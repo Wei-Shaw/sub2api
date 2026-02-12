@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
@@ -190,7 +190,7 @@ REDACTED
 		latest, ok, err := s.opsRepo.GetLatestHourlyBucketStart(ctxMax)
 		cancelMax()
 		if err != nil {
-			log.Printf("[OpsAggregation][hourly] failed to read latest bucket: %v", err)
+			logger.LegacyPrintf("service.ops_aggregation", "[OpsAggregation][hourly] failed to read latest bucket: %v", err)
 	REDACTED else if ok {
 			candidate := latest.Add(-opsAggHourlyOverlap)
 			if candidate.After(start) {
@@ -209,7 +209,7 @@ REDACTED
 		chunkEnd := minTime(cursor.Add(opsAggHourlyChunk), end)
 		if err := s.opsRepo.UpsertHourlyMetrics(ctx, cursor, chunkEnd); err != nil {
 			aggErr = err
-			log.Printf("[OpsAggregation][hourly] upsert failed (%s..%s): %v", cursor.Format(time.RFC3339), chunkEnd.Format(time.RFC3339), err)
+			logger.LegacyPrintf("service.ops_aggregation", "[OpsAggregation][hourly] upsert failed (%s..%s): %v", cursor.Format(time.RFC3339), chunkEnd.Format(time.RFC3339), err)
 			break
 	REDACTED
 REDACTED
@@ -288,7 +288,7 @@ REDACTED
 		latest, ok, err := s.opsRepo.GetLatestDailyBucketDate(ctxMax)
 		cancelMax()
 		if err != nil {
-			log.Printf("[OpsAggregation][daily] failed to read latest bucket: %v", err)
+			logger.LegacyPrintf("service.ops_aggregation", "[OpsAggregation][daily] failed to read latest bucket: %v", err)
 	REDACTED else if ok {
 			candidate := latest.Add(-opsAggDailyOverlap)
 			if candidate.After(start) {
@@ -307,7 +307,7 @@ REDACTED
 		chunkEnd := minTime(cursor.Add(opsAggDailyChunk), end)
 		if err := s.opsRepo.UpsertDailyMetrics(ctx, cursor, chunkEnd); err != nil {
 			aggErr = err
-			log.Printf("[OpsAggregation][daily] upsert failed (%s..%s): %v", cursor.Format("2006-01-02"), chunkEnd.Format("2006-01-02"), err)
+			logger.LegacyPrintf("service.ops_aggregation", "[OpsAggregation][daily] upsert failed (%s..%s): %v", cursor.Format("2006-01-02"), chunkEnd.Format("2006-01-02"), err)
 			break
 	REDACTED
 REDACTED
@@ -427,7 +427,7 @@ REDACTED
 	if prefix == "" {
 		prefix = "[OpsAggregation]"
 REDACTED
-	log.Printf("%s leader lock held by another instance; skipping", prefix)
+	logger.LegacyPrintf("service.ops_aggregation", "%s leader lock held by another instance; skipping", prefix)
 REDACTED
 
 func utcFloorToHour(t time.Time) time.Time {

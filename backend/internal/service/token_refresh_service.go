@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"strings"
 	"sync"
@@ -70,22 +69,24 @@ REDACTED
 // Start 启动后台刷新服务
 func (s *TokenRefreshService) Start() {
 	if !s.cfg.Enabled {
-		log.Println("[TokenRefresh] Service disabled by configuration")
+		slog.Info("token_refresh.service_disabled")
 		return
 REDACTED
 
 	s.wg.Add(1)
 	go s.refreshLoop()
 
-	log.Printf("[TokenRefresh] Service started (check every %d minutes, refresh %v hours before expiry)",
-		s.cfg.CheckIntervalMinutes, s.cfg.RefreshBeforeExpiryHours)
+	slog.Info("token_refresh.service_started",
+		"check_interval_minutes", s.cfg.CheckIntervalMinutes,
+		"refresh_before_expiry_hours", s.cfg.RefreshBeforeExpiryHours,
+	)
 REDACTED
 
 // Stop 停止刷新服务
 func (s *TokenRefreshService) Stop() {
 	close(s.stopCh)
 	s.wg.Wait()
-	log.Println("[TokenRefresh] Service stopped")
+	slog.Info("token_refresh.service_stopped")
 REDACTED
 
 // refreshLoop 刷新循环
@@ -124,7 +125,7 @@ func (s *TokenRefreshService) processRefresh() {
 	// 获取所有active状态的账号
 	accounts, err := s.listActiveAccounts(ctx)
 	if err != nil {
-		log.Printf("[TokenRefresh] Failed to list accounts: %v", err)
+		slog.Error("token_refresh.list_accounts_failed", "error", err)
 		return
 REDACTED
 
@@ -153,10 +154,17 @@ REDACTED
 
 			// 执行刷新
 			if err := s.refreshWithRetry(ctx, account, refresher); err != nil {
-				log.Printf("[TokenRefresh] Account %d (%s) failed: %v", account.ID, account.Name, err)
+				slog.Warn("token_refresh.account_refresh_failed",
+					"account_id", account.ID,
+					"account_name", account.Name,
+					"error", err,
+				)
 				failed++
 		REDACTED else {
-				log.Printf("[TokenRefresh] Account %d (%s) refreshed successfully", account.ID, account.Name)
+				slog.Info("token_refresh.account_refreshed",
+					"account_id", account.ID,
+					"account_name", account.Name,
+				)
 				refreshed++
 		REDACTED
 
@@ -167,12 +175,17 @@ REDACTED
 
 	// 无刷新活动时降级为 Debug，有实际刷新活动时保持 Info
 	if needsRefresh == 0 && failed == 0 {
-		slog.Debug("[TokenRefresh] Cycle complete",
+		slog.Debug("token_refresh.cycle_completed",
 			"total", totalAccounts, "oauth", oauthAccounts,
 			"needs_refresh", needsRefresh, "refreshed", refreshed, "failed", failed)
 REDACTED else {
-		log.Printf("[TokenRefresh] Cycle complete: total=%d, oauth=%d, needs_refresh=%d, refreshed=%d, failed=%d",
-			totalAccounts, oauthAccounts, needsRefresh, refreshed, failed)
+		slog.Info("token_refresh.cycle_completed",
+			"total", totalAccounts,
+			"oauth", oauthAccounts,
+			"needs_refresh", needsRefresh,
+			"refreshed", refreshed,
+			"failed", failed,
+		)
 REDACTED
 REDACTED
 
@@ -207,26 +220,35 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 				account.Status == StatusError &&
 				strings.Contains(account.ErrorMessage, "missing_project_id:") {
 				if clearErr := s.accountRepo.ClearError(ctx, account.ID); clearErr != nil {
-					log.Printf("[TokenRefresh] Failed to clear error status for account %d: %v", account.ID, clearErr)
+					slog.Warn("token_refresh.clear_account_error_failed",
+						"account_id", account.ID,
+						"error", clearErr,
+					)
 			REDACTED else {
-					log.Printf("[TokenRefresh] Account %d: cleared missing_project_id error", account.ID)
+					slog.Info("token_refresh.cleared_missing_project_id_error", "account_id", account.ID)
 			REDACTED
 		REDACTED
 			// 对所有 OAuth 账号调用缓存失效（InvalidateToken 内部根据平台判断是否需要处理）
 			if s.cacheInvalidator != nil && account.Type == AccountTypeOAuth {
 				if err := s.cacheInvalidator.InvalidateToken(ctx, account); err != nil {
-					log.Printf("[TokenRefresh] Failed to invalidate token cache for account %d: %v", account.ID, err)
+					slog.Warn("token_refresh.invalidate_token_cache_failed",
+						"account_id", account.ID,
+						"error", err,
+					)
 			REDACTED else {
-					log.Printf("[TokenRefresh] Token cache invalidated for account %d", account.ID)
+					slog.Debug("token_refresh.token_cache_invalidated", "account_id", account.ID)
 			REDACTED
 		REDACTED
 			// 同步更新调度器缓存，确保调度获取的 Account 对象包含最新的 credentials
 			// 这解决了 token 刷新后调度器缓存数据不一致的问题（#445）
 			if s.schedulerCache != nil {
 				if err := s.schedulerCache.SetAccount(ctx, account); err != nil {
-					log.Printf("[TokenRefresh] Failed to sync scheduler cache for account %d: %v", account.ID, err)
+					slog.Warn("token_refresh.sync_scheduler_cache_failed",
+						"account_id", account.ID,
+						"error", err,
+					)
 			REDACTED else {
-					log.Printf("[TokenRefresh] Scheduler cache synced for account %d", account.ID)
+					slog.Debug("token_refresh.scheduler_cache_synced", "account_id", account.ID)
 			REDACTED
 		REDACTED
 			return nil
@@ -236,14 +258,21 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 		if account.Platform == PlatformAntigravity && isNonRetryableRefreshError(err) {
 			errorMsg := fmt.Sprintf("Token refresh failed (non-retryable): %v", err)
 			if setErr := s.accountRepo.SetError(ctx, account.ID, errorMsg); setErr != nil {
-				log.Printf("[TokenRefresh] Failed to set error status for account %d: %v", account.ID, setErr)
+				slog.Error("token_refresh.set_error_status_failed",
+					"account_id", account.ID,
+					"error", setErr,
+				)
 		REDACTED
 			return err
 	REDACTED
 
 		lastErr = err
-		log.Printf("[TokenRefresh] Account %d attempt %d/%d failed: %v",
-			account.ID, attempt, s.cfg.MaxRetries, err)
+		slog.Warn("token_refresh.retry_attempt_failed",
+			"account_id", account.ID,
+			"attempt", attempt,
+			"max_retries", s.cfg.MaxRetries,
+			"error", err,
+		)
 
 		// 如果还有重试机会，等待后重试
 		if attempt < s.cfg.MaxRetries {
@@ -256,11 +285,18 @@ REDACTED
 	// Antigravity 账户：其他错误仅记录日志，不标记 error（可能是临时网络问题）
 	// 其他平台账户：重试失败后标记 error
 	if account.Platform == PlatformAntigravity {
-		log.Printf("[TokenRefresh] Account %d: refresh failed after %d retries: %v", account.ID, s.cfg.MaxRetries, lastErr)
+		slog.Warn("token_refresh.retry_exhausted_antigravity",
+			"account_id", account.ID,
+			"max_retries", s.cfg.MaxRetries,
+			"error", lastErr,
+		)
 REDACTED else {
 		errorMsg := fmt.Sprintf("Token refresh failed after %d retries: %v", s.cfg.MaxRetries, lastErr)
 		if err := s.accountRepo.SetError(ctx, account.ID, errorMsg); err != nil {
-			log.Printf("[TokenRefresh] Failed to set error status for account %d: %v", account.ID, err)
+			slog.Error("token_refresh.set_error_status_failed",
+				"account_id", account.ID,
+				"error", err,
+			)
 	REDACTED
 REDACTED
 

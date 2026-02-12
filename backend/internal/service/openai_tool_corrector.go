@@ -3,8 +3,9 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 // codexToolNameMapping 定义 Codex 原生工具名称到 OpenCode 工具名称的映射
@@ -140,7 +141,7 @@ REDACTED
 	// 序列化回 JSON
 	correctedBytes, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("[CodexToolCorrector] Failed to marshal corrected data: %v", err)
+		logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Failed to marshal corrected data: %v", err)
 		return data, false
 REDACTED
 
@@ -219,13 +220,13 @@ REDACTED
 				argsMap["workdir"] = workDir
 				delete(argsMap, "work_dir")
 				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'work_dir' to 'workdir' in bash tool")
+				logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'work_dir' to 'workdir' in bash tool")
 		REDACTED
 	REDACTED else {
 			if _, exists := argsMap["work_dir"]; exists {
 				delete(argsMap, "work_dir")
 				corrected = true
-				log.Printf("[CodexToolCorrector] Removed duplicate 'work_dir' parameter from bash tool")
+				logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Removed duplicate 'work_dir' parameter from bash tool")
 		REDACTED
 	REDACTED
 
@@ -236,17 +237,17 @@ REDACTED
 				argsMap["filePath"] = filePath
 				delete(argsMap, "file_path")
 				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'file_path' to 'filePath' in edit tool")
+				logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'file_path' to 'filePath' in edit tool")
 		REDACTED else if filePath, exists := argsMap["path"]; exists {
 				argsMap["filePath"] = filePath
 				delete(argsMap, "path")
 				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'path' to 'filePath' in edit tool")
+				logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'path' to 'filePath' in edit tool")
 		REDACTED else if filePath, exists := argsMap["file"]; exists {
 				argsMap["filePath"] = filePath
 				delete(argsMap, "file")
 				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'file' to 'filePath' in edit tool")
+				logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'file' to 'filePath' in edit tool")
 		REDACTED
 	REDACTED
 
@@ -255,7 +256,7 @@ REDACTED
 				argsMap["oldString"] = oldString
 				delete(argsMap, "old_string")
 				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'old_string' to 'oldString' in edit tool")
+				logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'old_string' to 'oldString' in edit tool")
 		REDACTED
 	REDACTED
 
@@ -264,7 +265,7 @@ REDACTED
 				argsMap["newString"] = newString
 				delete(argsMap, "new_string")
 				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'new_string' to 'newString' in edit tool")
+				logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'new_string' to 'newString' in edit tool")
 		REDACTED
 	REDACTED
 
@@ -273,7 +274,7 @@ REDACTED
 				argsMap["replaceAll"] = replaceAll
 				delete(argsMap, "replace_all")
 				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'replace_all' to 'replaceAll' in edit tool")
+				logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'replace_all' to 'replaceAll' in edit tool")
 		REDACTED
 	REDACTED
 REDACTED
@@ -303,7 +304,7 @@ func (c *CodexToolCorrector) recordCorrection(from, to string) {
 	key := fmt.Sprintf("%s->%s", from, to)
 	c.stats.CorrectionsByTool[key]++
 
-	log.Printf("[CodexToolCorrector] Corrected tool call: %s -> %s (total: %d)",
+	logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Corrected tool call: %s -> %s (total: %d)",
 		from, to, c.stats.TotalCorrected)
 REDACTED
 

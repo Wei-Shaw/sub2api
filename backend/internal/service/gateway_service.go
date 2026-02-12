@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	mathrand "math/rand"
 	"net/http"
@@ -24,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/cespare/xxhash/v2"
@@ -213,7 +213,7 @@ func logClaudeMimicDebug(req *http.Request, body []byte, account *Account, token
 	if line == "" {
 		return
 REDACTED
-	log.Printf("[ClaudeMimicDebug] %s", line)
+	logger.LegacyPrintf("service.gateway", "[ClaudeMimicDebug] %s", line)
 REDACTED
 
 func isClaudeCodeCredentialScopeError(msg string) bool {
@@ -936,7 +936,7 @@ REDACTED
 		if group != nil {
 			groupPlatform = group.Platform
 	REDACTED
-		log.Printf("[ModelRoutingDebug] select entry: group_id=%v group_platform=%s model=%s session=%s sticky_account=%d load_batch=%v concurrency=%v",
+		logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] select entry: group_id=%v group_platform=%s model=%s session=%s sticky_account=%d load_batch=%v concurrency=%v",
 			derefGroupID(groupID), groupPlatform, requestedModel, shortSessionHash(sessionHash), stickyAccountID, cfg.LoadBatchEnabled, s.concurrencyService != nil)
 REDACTED
 
@@ -1006,7 +1006,7 @@ REDACTED
 REDACTED
 	preferOAuth := platform == PlatformGemini
 	if s.debugModelRoutingEnabled() && platform == PlatformAnthropic && requestedModel != "" {
-		log.Printf("[ModelRoutingDebug] load-aware enabled: group_id=%v model=%s session=%s platform=%s", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), platform)
+		logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] load-aware enabled: group_id=%v model=%s session=%s platform=%s", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), platform)
 REDACTED
 
 	accounts, useMixed, err := s.listSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
@@ -1036,7 +1036,7 @@ REDACTED
 	if group != nil && requestedModel != "" && group.Platform == PlatformAnthropic {
 		routingAccountIDs = group.GetRoutingAccountIDs(requestedModel)
 		if s.debugModelRoutingEnabled() {
-			log.Printf("[ModelRoutingDebug] context group routing: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v session=%s sticky_account=%d",
+			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] context group routing: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v session=%s sticky_account=%d",
 				group.ID, requestedModel, group.ModelRoutingEnabled, len(group.ModelRouting), routingAccountIDs, shortSessionHash(sessionHash), stickyAccountID)
 			if len(routingAccountIDs) == 0 && group.ModelRoutingEnabled && len(group.ModelRouting) > 0 {
 				keys := make([]string, 0, len(group.ModelRouting))
@@ -1048,7 +1048,7 @@ REDACTED
 				if len(keys) > maxKeys {
 					keys = keys[:maxKeys]
 			REDACTED
-				log.Printf("[ModelRoutingDebug] context group routing miss: group_id=%d model=%s patterns(sample)=%v", group.ID, requestedModel, keys)
+				logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] context group routing miss: group_id=%d model=%s patterns(sample)=%v", group.ID, requestedModel, keys)
 		REDACTED
 	REDACTED
 REDACTED
@@ -1095,11 +1095,11 @@ REDACTED
 	REDACTED
 
 		if s.debugModelRoutingEnabled() {
-			log.Printf("[ModelRoutingDebug] routed candidates: group_id=%v model=%s routed=%d candidates=%d filtered(excluded=%d missing=%d unsched=%d platform=%d model_scope=%d model_mapping=%d window_cost=%d)",
+			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed candidates: group_id=%v model=%s routed=%d candidates=%d filtered(excluded=%d missing=%d unsched=%d platform=%d model_scope=%d model_mapping=%d window_cost=%d)",
 				derefGroupID(groupID), requestedModel, len(routingAccountIDs), len(routingCandidates),
 				filteredExcluded, filteredMissing, filteredUnsched, filteredPlatform, filteredModelScope, filteredModelMapping, filteredWindowCost)
 			if len(modelScopeSkippedIDs) > 0 {
-				log.Printf("[ModelRoutingDebug] model_rate_limited accounts skipped: group_id=%v model=%s account_ids=%v",
+				logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] model_rate_limited accounts skipped: group_id=%v model=%s account_ids=%v",
 					derefGroupID(groupID), requestedModel, modelScopeSkippedIDs)
 		REDACTED
 	REDACTED
@@ -1124,7 +1124,7 @@ REDACTED
 									// 继续到负载感知选择
 							REDACTED else {
 									if s.debugModelRoutingEnabled() {
-										log.Printf("[ModelRoutingDebug] routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), stickyAccountID)
+										logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), stickyAccountID)
 								REDACTED
 									return &AccountSelectionResult{
 										Account:     stickyAccount,
@@ -1217,7 +1217,7 @@ REDACTED
 							_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, item.account.ID, stickySessionTTL)
 					REDACTED
 						if s.debugModelRoutingEnabled() {
-							log.Printf("[ModelRoutingDebug] routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
+							logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
 					REDACTED
 						return &AccountSelectionResult{
 							Account:     item.account,
@@ -1234,7 +1234,7 @@ REDACTED
 						continue // 会话限制已满，尝试下一个
 				REDACTED
 					if s.debugModelRoutingEnabled() {
-						log.Printf("[ModelRoutingDebug] routed wait: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
+						logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed wait: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
 				REDACTED
 					return &AccountSelectionResult{
 						Account: item.account,
@@ -1249,7 +1249,7 @@ REDACTED
 				// 所有路由账号会话限制都已满，继续到 Layer 2 回退
 		REDACTED
 			// 路由列表中的账号都不可用（负载率 >= 100），继续到 Layer 2 回退
-			log.Printf("[ModelRouting] All routed accounts unavailable for model=%s, falling back to normal selection", requestedModel)
+			logger.LegacyPrintf("service.gateway", "[ModelRouting] All routed accounts unavailable for model=%s, falling back to normal selection", requestedModel)
 	REDACTED
 REDACTED
 
@@ -1510,20 +1510,20 @@ REDACTED
 	group, err := s.resolveGroupByID(ctx, *groupID)
 	if err != nil || group == nil {
 		if s.debugModelRoutingEnabled() {
-			log.Printf("[ModelRoutingDebug] resolve group failed: group_id=%v model=%s platform=%s err=%v", derefGroupID(groupID), requestedModel, platform, err)
+			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] resolve group failed: group_id=%v model=%s platform=%s err=%v", derefGroupID(groupID), requestedModel, platform, err)
 	REDACTED
 		return nil
 REDACTED
 	// Preserve existing behavior: model routing only applies to anthropic groups.
 	if group.Platform != PlatformAnthropic {
 		if s.debugModelRoutingEnabled() {
-			log.Printf("[ModelRoutingDebug] skip: non-anthropic group platform: group_id=%d group_platform=%s model=%s", group.ID, group.Platform, requestedModel)
+			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] skip: non-anthropic group platform: group_id=%d group_platform=%s model=%s", group.ID, group.Platform, requestedModel)
 	REDACTED
 		return nil
 REDACTED
 	ids := group.GetRoutingAccountIDs(requestedModel)
 	if s.debugModelRoutingEnabled() {
-		log.Printf("[ModelRoutingDebug] routing lookup: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v",
+		logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routing lookup: group_id=%d model=%s enabled=%v rules=%d matched_ids=%v",
 			group.ID, requestedModel, group.ModelRoutingEnabled, len(group.ModelRouting), ids)
 REDACTED
 	return ids
@@ -2117,7 +2117,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	// so switching model can switch upstream account within the same sticky session.
 	if len(routingAccountIDs) > 0 {
 		if s.debugModelRoutingEnabled() {
-			log.Printf("[ModelRoutingDebug] legacy routed begin: group_id=%v model=%s platform=%s session=%s routed_ids=%v",
+			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed begin: group_id=%v model=%s platform=%s session=%s routed_ids=%v",
 				derefGroupID(groupID), requestedModel, platform, shortSessionHash(sessionHash), routingAccountIDs)
 	REDACTED
 		// 1) Sticky session only applies if the bound account is within the routing set.
@@ -2134,7 +2134,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 					REDACTED
 						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && account.IsSchedulableForModelWithContext(ctx, requestedModel) {
 							if s.debugModelRoutingEnabled() {
-								log.Printf("[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
+								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 						REDACTED
 							return account, nil
 					REDACTED
@@ -2209,15 +2209,15 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		if selected != nil {
 			if sessionHash != "" && s.cache != nil {
 				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
-					log.Printf("set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
+					logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 			REDACTED
 		REDACTED
 			if s.debugModelRoutingEnabled() {
-				log.Printf("[ModelRoutingDebug] legacy routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), selected.ID)
+				logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), selected.ID)
 		REDACTED
 			return selected, nil
 	REDACTED
-		log.Printf("[ModelRouting] No routed accounts available for model=%s, falling back to normal selection", requestedModel)
+		logger.LegacyPrintf("service.gateway", "[ModelRouting] No routed accounts available for model=%s, falling back to normal selection", requestedModel)
 REDACTED
 
 	// 1. 查询粘性会话
@@ -2305,7 +2305,7 @@ REDACTED
 	// 4. 建立粘性绑定
 	if sessionHash != "" && s.cache != nil {
 		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
-			log.Printf("set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
+			logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 	REDACTED
 REDACTED
 
@@ -2324,7 +2324,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	// ============ Model Routing (legacy path): apply before sticky session ============
 	if len(routingAccountIDs) > 0 {
 		if s.debugModelRoutingEnabled() {
-			log.Printf("[ModelRoutingDebug] legacy mixed routed begin: group_id=%v model=%s platform=%s session=%s routed_ids=%v",
+			logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed begin: group_id=%v model=%s platform=%s session=%s routed_ids=%v",
 				derefGroupID(groupID), requestedModel, nativePlatform, shortSessionHash(sessionHash), routingAccountIDs)
 	REDACTED
 		// 1) Sticky session only applies if the bound account is within the routing set.
@@ -2342,7 +2342,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && account.IsSchedulableForModelWithContext(ctx, requestedModel) {
 							if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 								if s.debugModelRoutingEnabled() {
-									log.Printf("[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
+									logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 							REDACTED
 								return account, nil
 						REDACTED
@@ -2418,15 +2418,15 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		if selected != nil {
 			if sessionHash != "" && s.cache != nil {
 				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
-					log.Printf("set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
+					logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 			REDACTED
 		REDACTED
 			if s.debugModelRoutingEnabled() {
-				log.Printf("[ModelRoutingDebug] legacy mixed routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), selected.ID)
+				logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), selected.ID)
 		REDACTED
 			return selected, nil
 	REDACTED
-		log.Printf("[ModelRouting] No routed accounts available for model=%s, falling back to normal selection", requestedModel)
+		logger.LegacyPrintf("service.gateway", "[ModelRouting] No routed accounts available for model=%s, falling back to normal selection", requestedModel)
 REDACTED
 
 	// 1. 查询粘性会话
@@ -2516,7 +2516,7 @@ REDACTED
 	// 4. 建立粘性绑定
 	if sessionHash != "" && s.cache != nil {
 		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
-			log.Printf("set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
+			logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 	REDACTED
 REDACTED
 
@@ -2831,7 +2831,7 @@ REDACTED
 
 	result, err := sjson.SetBytes(body, "system", newSystem)
 	if err != nil {
-		log.Printf("Warning: failed to inject Claude Code prompt: %v", err)
+		logger.LegacyPrintf("service.gateway", "Warning: failed to inject Claude Code prompt: %v", err)
 		return body
 REDACTED
 	return result
@@ -2987,7 +2987,7 @@ func removeCacheControlFromThinkingBlocks(data map[string]any) {
 				if blockType, _ := m["type"].(string); blockType == "thinking" {
 					if _, has := m["cache_control"]; has {
 						delete(m, "cache_control")
-						log.Printf("[Warning] Removed illegal cache_control from thinking block in system")
+						logger.LegacyPrintf("service.gateway", "[Warning] Removed illegal cache_control from thinking block in system")
 				REDACTED
 			REDACTED
 		REDACTED
@@ -3004,7 +3004,7 @@ REDACTED
 							if blockType, _ := m["type"].(string); blockType == "thinking" {
 								if _, has := m["cache_control"]; has {
 									delete(m, "cache_control")
-									log.Printf("[Warning] Removed illegal cache_control from thinking block in messages[%d].content[%d]", msgIdx, contentIdx)
+									logger.LegacyPrintf("service.gateway", "[Warning] Removed illegal cache_control from thinking block in messages[%d].content[%d]", msgIdx, contentIdx)
 							REDACTED
 						REDACTED
 					REDACTED
@@ -3083,7 +3083,7 @@ REDACTED
 		// 替换请求体中的模型名
 		body = s.replaceModelInBody(body, mappedModel)
 		reqModel = mappedModel
-		log.Printf("Model mapping applied: %s -> %s (account: %s, source=%s)", originalModel, mappedModel, account.Name, mappingSource)
+		logger.LegacyPrintf("service.gateway", "Model mapping applied: %s -> %s (account: %s, source=%s)", originalModel, mappedModel, account.Name, mappingSource)
 REDACTED
 
 	// 获取凭证
@@ -3099,7 +3099,7 @@ REDACTED
 REDACTED
 
 	// 调试日志：记录即将转发的账号信息
-	log.Printf("[Forward] Using account: ID=%d Name=%s Platform=%s Type=%s TLSFingerprint=%v Proxy=%s",
+	logger.LegacyPrintf("service.gateway", "[Forward] Using account: ID=%d Name=%s Platform=%s Type=%s TLSFingerprint=%v Proxy=%s",
 		account.ID, account.Name, account.Platform, account.Type, account.IsTLSFingerprintEnabled(), proxyURL)
 
 	// 重试循环
@@ -3179,7 +3179,7 @@ REDACTED
 						resp.Body = io.NopCloser(bytes.NewReader(respBody))
 						break
 				REDACTED
-					log.Printf("Account %d: detected thinking block signature error, retrying with filtered thinking blocks", account.ID)
+					logger.LegacyPrintf("service.gateway", "Account %d: detected thinking block signature error, retrying with filtered thinking blocks", account.ID)
 
 					// Conservative two-stage fallback:
 					// 1) Disable thinking + thinking->text (preserve content)
@@ -3192,7 +3192,7 @@ REDACTED
 						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 						if retryErr == nil {
 							if retryResp.StatusCode < 400 {
-								log.Printf("Account %d: signature error retry succeeded (thinking downgraded)", account.ID)
+								logger.LegacyPrintf("service.gateway", "Account %d: signature error retry succeeded (thinking downgraded)", account.ID)
 								resp = retryResp
 								break
 						REDACTED
@@ -3217,7 +3217,7 @@ REDACTED
 							REDACTED)
 								msg2 := extractUpstreamErrorMessage(retryRespBody)
 								if looksLikeToolSignatureError(msg2) && time.Since(retryStart) < maxRetryElapsed {
-									log.Printf("Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
+									logger.LegacyPrintf("service.gateway", "Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
 									filteredBody2 := FilterSignatureSensitiveBlocksForRetry(body)
 									retryReq2, buildErr2 := s.buildUpstreamRequest(ctx, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 									if buildErr2 == nil {
@@ -3237,9 +3237,9 @@ REDACTED
 											Kind:               "signature_retry_tools_request_error",
 											Message:            sanitizeUpstreamErrorMessage(retryErr2.Error()),
 									REDACTED)
-										log.Printf("Account %d: tool-downgrade signature retry failed: %v", account.ID, retryErr2)
+										logger.LegacyPrintf("service.gateway", "Account %d: tool-downgrade signature retry failed: %v", account.ID, retryErr2)
 								REDACTED else {
-										log.Printf("Account %d: tool-downgrade signature retry build failed: %v", account.ID, buildErr2)
+										logger.LegacyPrintf("service.gateway", "Account %d: tool-downgrade signature retry build failed: %v", account.ID, buildErr2)
 								REDACTED
 							REDACTED
 						REDACTED
@@ -3255,9 +3255,9 @@ REDACTED
 						if retryResp != nil && retryResp.Body != nil {
 							_ = retryResp.Body.Close()
 					REDACTED
-						log.Printf("Account %d: signature error retry failed: %v", account.ID, retryErr)
+						logger.LegacyPrintf("service.gateway", "Account %d: signature error retry failed: %v", account.ID, retryErr)
 				REDACTED else {
-						log.Printf("Account %d: signature error retry build request failed: %v", account.ID, buildErr)
+						logger.LegacyPrintf("service.gateway", "Account %d: signature error retry build request failed: %v", account.ID, buildErr)
 				REDACTED
 
 					// Retry failed: restore original response body and continue handling.
@@ -3303,7 +3303,7 @@ REDACTED
 						return ""
 				REDACTED(),
 			REDACTED)
-				log.Printf("Account %d: upstream error %d, retry %d/%d after %v (elapsed=%v/%v)",
+				logger.LegacyPrintf("service.gateway", "Account %d: upstream error %d, retry %d/%d after %v (elapsed=%v/%v)",
 					account.ID, resp.StatusCode, attempt, maxRetryAttempts, delay, elapsed, maxRetryElapsed)
 				if err := sleepWithContext(ctx, delay); err != nil {
 					return nil, err
@@ -3317,9 +3317,9 @@ REDACTED
 		// 不需要重试（成功或不可重试的错误），跳出循环
 		// DEBUG: 输出响应 headers（用于检测 rate limit 信息）
 		if account.Platform == PlatformGemini && resp.StatusCode < 400 {
-			log.Printf("[DEBUG] Gemini API Response Headers for account %d:", account.ID)
+			logger.LegacyPrintf("service.gateway", "[DEBUG] Gemini API Response Headers for account %d:", account.ID)
 			for k, v := range resp.Header {
-				log.Printf("[DEBUG]   %s: %v", k, v)
+				logger.LegacyPrintf("service.gateway", "[DEBUG]   %s: %v", k, v)
 		REDACTED
 	REDACTED
 		break
@@ -3337,7 +3337,7 @@ REDACTED
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 			// 调试日志：打印重试耗尽后的错误响应
-			log.Printf("[Forward] Upstream error (retry exhausted, failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
+			logger.LegacyPrintf("service.gateway", "[Forward] Upstream error (retry exhausted, failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
 				account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(respBody), 1000))
 
 			s.handleRetryExhaustedSideEffects(ctx, resp, account)
@@ -3368,7 +3368,7 @@ REDACTED
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 		// 调试日志：打印上游错误响应
-		log.Printf("[Forward] Upstream error (failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
+		logger.LegacyPrintf("service.gateway", "[Forward] Upstream error (failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
 			account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(respBody), 1000))
 
 		s.handleFailoverSideEffects(ctx, resp, account)
@@ -3422,13 +3422,13 @@ REDACTED
 			REDACTED)
 
 				if s.cfg.Gateway.LogUpstreamErrorBody {
-					log.Printf(
+					logger.LegacyPrintf("service.gateway",
 						"Account %d: 400 error, attempting failover: %s",
 						account.ID,
 						truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
 					)
 			REDACTED else {
-					log.Printf("Account %d: 400 error, attempting failover", account.ID)
+					logger.LegacyPrintf("service.gateway", "Account %d: 400 error, attempting failover", account.ID)
 			REDACTED
 				s.handleFailoverSideEffects(ctx, resp, account)
 				return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
@@ -3497,7 +3497,7 @@ REDACTED
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
 		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
 		if err != nil {
-			log.Printf("Warning: failed to get fingerprint for account %d: %v", account.ID, err)
+			logger.LegacyPrintf("service.gateway", "Warning: failed to get fingerprint for account %d: %v", account.ID, err)
 			// 失败时降级为透传原始headers
 	REDACTED else {
 			fingerprint = fp
@@ -3768,33 +3768,33 @@ func (s *GatewayService) isThinkingBlockSignatureError(respBody []byte) bool {
 REDACTED
 
 	// Log for debugging
-	log.Printf("[SignatureCheck] Checking error message: %s", msg)
+	logger.LegacyPrintf("service.gateway", "[SignatureCheck] Checking error message: %s", msg)
 
 	// 检测signature相关的错误（更宽松的匹配）
 	// 例如: "Invalid `signature` in `thinking` block", "***.signature" 等
 	if strings.Contains(msg, "signature") {
-		log.Printf("[SignatureCheck] Detected signature error")
+		logger.LegacyPrintf("service.gateway", "[SignatureCheck] Detected signature error")
 		return true
 REDACTED
 
 	// 检测 thinking block 顺序/类型错误
 	// 例如: "Expected `thinking` or `redacted_thinking`, but found `text`"
 	if strings.Contains(msg, "expected") && (strings.Contains(msg, "thinking") || strings.Contains(msg, "redacted_thinking")) {
-		log.Printf("[SignatureCheck] Detected thinking block type error")
+		logger.LegacyPrintf("service.gateway", "[SignatureCheck] Detected thinking block type error")
 		return true
 REDACTED
 
 	// 检测 thinking block 被修改的错误
 	// 例如: "thinking or redacted_thinking blocks in the latest assistant message cannot be modified"
 	if strings.Contains(msg, "cannot be modified") && (strings.Contains(msg, "thinking") || strings.Contains(msg, "redacted_thinking")) {
-		log.Printf("[SignatureCheck] Detected thinking block modification error")
+		logger.LegacyPrintf("service.gateway", "[SignatureCheck] Detected thinking block modification error")
 		return true
 REDACTED
 
 	// 检测空消息内容错误（可能是过滤 thinking blocks 后导致的）
 	// 例如: "all messages must have non-empty content"
 	if strings.Contains(msg, "non-empty content") || strings.Contains(msg, "empty content") {
-		log.Printf("[SignatureCheck] Detected empty content error")
+		logger.LegacyPrintf("service.gateway", "[SignatureCheck] Detected empty content error")
 		return true
 REDACTED
 
@@ -3855,7 +3855,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
 	// 调试日志：打印上游错误响应
-	log.Printf("[Forward] Upstream error (non-retryable): Account=%d(%s) Status=%d RequestID=%s Body=%s",
+	logger.LegacyPrintf("service.gateway", "[Forward] Upstream error (non-retryable): Account=%d(%s) Status=%d RequestID=%s Body=%s",
 		account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(body), 1000))
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
@@ -3866,7 +3866,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	if isClaudeCodeCredentialScopeError(upstreamMsg) && c != nil {
 		if v, ok := c.Get(claudeMimicDebugInfoKey); ok {
 			if line, ok := v.(string); ok && strings.TrimSpace(line) != "" {
-				log.Printf("[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
+				logger.LegacyPrintf("service.gateway", "[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
 					resp.StatusCode,
 					resp.Header.Get("x-request-id"),
 					line,
@@ -3906,7 +3906,7 @@ REDACTED
 
 	// 记录上游错误响应体摘要便于排障（可选：由配置控制；不回显到客户端）
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-		log.Printf(
+		logger.LegacyPrintf("service.gateway",
 			"Upstream error %d (account=%d platform=%s type=%s): %s",
 			resp.StatusCode,
 			account.ID,
@@ -4007,10 +4007,10 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 	// OAuth/Setup Token 账号的 403：标记账号异常
 	if account.IsOAuth() && statusCode == 403 {
 		s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, resp.Header, body)
-		log.Printf("Account %d: marked as error after %d retries for status %d", account.ID, maxRetryAttempts, statusCode)
+		logger.LegacyPrintf("service.gateway", "Account %d: marked as error after %d retries for status %d", account.ID, maxRetryAttempts, statusCode)
 REDACTED else {
 		// API Key 未配置错误码：不标记账号状态
-		log.Printf("Account %d: upstream error %d after %d retries (not marking account)", account.ID, statusCode, maxRetryAttempts)
+		logger.LegacyPrintf("service.gateway", "Account %d: upstream error %d after %d retries (not marking account)", account.ID, statusCode, maxRetryAttempts)
 REDACTED
 REDACTED
 
@@ -4036,7 +4036,7 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	if isClaudeCodeCredentialScopeError(upstreamMsg) && c != nil {
 		if v, ok := c.Get(claudeMimicDebugInfoKey); ok {
 			if line, ok := v.(string); ok && strings.TrimSpace(line) != "" {
-				log.Printf("[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
+				logger.LegacyPrintf("service.gateway", "[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
 					resp.StatusCode,
 					resp.Header.Get("x-request-id"),
 					line,
@@ -4065,7 +4065,7 @@ REDACTED
 REDACTED)
 
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-		log.Printf(
+		logger.LegacyPrintf("service.gateway",
 			"Upstream error %d retries_exhausted (account=%d platform=%s type=%s): %s",
 			resp.StatusCode,
 			account.ID,
@@ -4325,17 +4325,17 @@ REDACTED
 			if ev.err != nil {
 				// 检测 context 取消（客户端断开会导致 context 取消，进而影响上游读取）
 				if errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
-					log.Printf("Context canceled during streaming, returning collected usage")
+					logger.LegacyPrintf("service.gateway", "Context canceled during streaming, returning collected usage")
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
 			REDACTED
 				// 客户端已通过写入失败检测到断开，上游也出错了，返回已收集的 usage
 				if clientDisconnected {
-					log.Printf("Upstream read error after client disconnect: %v, returning collected usage", ev.err)
+					logger.LegacyPrintf("service.gateway", "Upstream read error after client disconnect: %v, returning collected usage", ev.err)
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
 			REDACTED
 				// 客户端未断开，正常的错误处理
 				if errors.Is(ev.err, bufio.ErrTooLong) {
-					log.Printf("SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
+					logger.LegacyPrintf("service.gateway", "SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
 					sendErrorEvent("response_too_large")
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, ev.err
 			REDACTED
@@ -4363,7 +4363,7 @@ REDACTED
 					if !clientDisconnected {
 						if _, werr := fmt.Fprint(w, block); werr != nil {
 							clientDisconnected = true
-							log.Printf("Client disconnected during streaming, continuing to drain upstream for billing")
+							logger.LegacyPrintf("service.gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 							break
 					REDACTED
 						flusher.Flush()
@@ -4388,10 +4388,10 @@ REDACTED
 		REDACTED
 			if clientDisconnected {
 				// 客户端已断开，上游也超时了，返回已收集的 usage
-				log.Printf("Upstream timeout after client disconnect, returning collected usage")
+				logger.LegacyPrintf("service.gateway", "Upstream timeout after client disconnect, returning collected usage")
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
 		REDACTED
-			log.Printf("Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
+			logger.LegacyPrintf("service.gateway", "Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
 			// 处理流超时，可能标记账户为临时不可调度或错误状态
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
@@ -4536,7 +4536,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
 	// 用于粘性会话切换时的特殊计费处理
 	if input.ForceCacheBilling && result.Usage.InputTokens > 0 {
-		log.Printf("force_cache_billing: %d input_tokens → cache_read_input_tokens (account=%d)",
+		logger.LegacyPrintf("service.gateway", "force_cache_billing: %d input_tokens → cache_read_input_tokens (account=%d)",
 			result.Usage.InputTokens, account.ID)
 		result.Usage.CacheReadInputTokens += result.Usage.InputTokens
 		result.Usage.InputTokens = 0
@@ -4597,7 +4597,7 @@ REDACTED else {
 		var err error
 		cost, err = s.billingService.CalculateCost(result.Model, tokens, multiplier)
 		if err != nil {
-			log.Printf("Calculate cost failed: %v", err)
+			logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
 			cost = &CostBreakdown{ActualCost: 0REDACTED
 	REDACTED
 REDACTED
@@ -4668,11 +4668,11 @@ REDACTED
 
 	inserted, err := s.usageLogRepo.Create(ctx, usageLog)
 	if err != nil {
-		log.Printf("Create usage log failed: %v", err)
+		logger.LegacyPrintf("service.gateway", "Create usage log failed: %v", err)
 REDACTED
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		log.Printf("[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
 REDACTED
@@ -4684,7 +4684,7 @@ REDACTED
 		// 订阅模式：更新订阅用量（使用 TotalCost 原始费用，不考虑倍率）
 		if shouldBill && cost.TotalCost > 0 {
 			if err := s.userSubRepo.IncrementUsage(ctx, subscription.ID, cost.TotalCost); err != nil {
-				log.Printf("Increment subscription usage failed: %v", err)
+				logger.LegacyPrintf("service.gateway", "Increment subscription usage failed: %v", err)
 		REDACTED
 			// 异步更新订阅缓存
 			s.billingCacheService.QueueUpdateSubscriptionUsage(user.ID, *apiKey.GroupID, cost.TotalCost)
@@ -4693,7 +4693,7 @@ REDACTED else {
 		// 余额模式：扣除用户余额（使用 ActualCost 考虑倍率后的费用）
 		if shouldBill && cost.ActualCost > 0 {
 			if err := s.userRepo.DeductBalance(ctx, user.ID, cost.ActualCost); err != nil {
-				log.Printf("Deduct balance failed: %v", err)
+				logger.LegacyPrintf("service.gateway", "Deduct balance failed: %v", err)
 		REDACTED
 			// 异步更新余额缓存
 			s.billingCacheService.QueueDeductBalance(user.ID, cost.ActualCost)
@@ -4703,7 +4703,7 @@ REDACTED
 	// 更新 API Key 配额（如果设置了配额限制）
 	if shouldBill && cost.ActualCost > 0 && apiKey.Quota > 0 && input.APIKeyService != nil {
 		if err := input.APIKeyService.UpdateQuotaUsed(ctx, apiKey.ID, cost.ActualCost); err != nil {
-			log.Printf("Update API key quota failed: %v", err)
+			logger.LegacyPrintf("service.gateway", "Update API key quota failed: %v", err)
 	REDACTED
 REDACTED
 
@@ -4739,7 +4739,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
 	// 用于粘性会话切换时的特殊计费处理
 	if input.ForceCacheBilling && result.Usage.InputTokens > 0 {
-		log.Printf("force_cache_billing: %d input_tokens → cache_read_input_tokens (account=%d)",
+		logger.LegacyPrintf("service.gateway", "force_cache_billing: %d input_tokens → cache_read_input_tokens (account=%d)",
 			result.Usage.InputTokens, account.ID)
 		result.Usage.CacheReadInputTokens += result.Usage.InputTokens
 		result.Usage.InputTokens = 0
@@ -4783,7 +4783,7 @@ REDACTED else {
 		var err error
 		cost, err = s.billingService.CalculateCostWithLongContext(result.Model, tokens, multiplier, input.LongContextThreshold, input.LongContextMultiplier)
 		if err != nil {
-			log.Printf("Calculate cost failed: %v", err)
+			logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
 			cost = &CostBreakdown{ActualCost: 0REDACTED
 	REDACTED
 REDACTED
@@ -4849,11 +4849,11 @@ REDACTED
 
 	inserted, err := s.usageLogRepo.Create(ctx, usageLog)
 	if err != nil {
-		log.Printf("Create usage log failed: %v", err)
+		logger.LegacyPrintf("service.gateway", "Create usage log failed: %v", err)
 REDACTED
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		log.Printf("[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
 REDACTED
@@ -4865,7 +4865,7 @@ REDACTED
 		// 订阅模式：更新订阅用量（使用 TotalCost 原始费用，不考虑倍率）
 		if shouldBill && cost.TotalCost > 0 {
 			if err := s.userSubRepo.IncrementUsage(ctx, subscription.ID, cost.TotalCost); err != nil {
-				log.Printf("Increment subscription usage failed: %v", err)
+				logger.LegacyPrintf("service.gateway", "Increment subscription usage failed: %v", err)
 		REDACTED
 			// 异步更新订阅缓存
 			s.billingCacheService.QueueUpdateSubscriptionUsage(user.ID, *apiKey.GroupID, cost.TotalCost)
@@ -4874,14 +4874,14 @@ REDACTED else {
 		// 余额模式：扣除用户余额（使用 ActualCost 考虑倍率后的费用）
 		if shouldBill && cost.ActualCost > 0 {
 			if err := s.userRepo.DeductBalance(ctx, user.ID, cost.ActualCost); err != nil {
-				log.Printf("Deduct balance failed: %v", err)
+				logger.LegacyPrintf("service.gateway", "Deduct balance failed: %v", err)
 		REDACTED
 			// 异步更新余额缓存
 			s.billingCacheService.QueueDeductBalance(user.ID, cost.ActualCost)
 			// API Key 独立配额扣费
 			if input.APIKeyService != nil && apiKey.Quota > 0 {
 				if err := input.APIKeyService.UpdateQuotaUsed(ctx, apiKey.ID, cost.ActualCost); err != nil {
-					log.Printf("Add API key quota used failed: %v", err)
+					logger.LegacyPrintf("service.gateway", "Add API key quota used failed: %v", err)
 			REDACTED
 		REDACTED
 	REDACTED
@@ -4940,7 +4940,7 @@ REDACTED
 		if mappedModel != reqModel {
 			body = s.replaceModelInBody(body, mappedModel)
 			reqModel = mappedModel
-			log.Printf("CountTokens model mapping applied: %s -> %s (account: %s, source=%s)", parsed.Model, mappedModel, account.Name, mappingSource)
+			logger.LegacyPrintf("service.gateway", "CountTokens model mapping applied: %s -> %s (account: %s, source=%s)", parsed.Model, mappedModel, account.Name, mappingSource)
 	REDACTED
 REDACTED
 
@@ -4982,7 +4982,7 @@ REDACTED
 
 	// 检测 thinking block 签名错误（400）并重试一次（过滤 thinking blocks）
 	if resp.StatusCode == 400 && s.isThinkingBlockSignatureError(respBody) {
-		log.Printf("Account %d: detected thinking block signature error on count_tokens, retrying with filtered thinking blocks", account.ID)
+		logger.LegacyPrintf("service.gateway", "Account %d: detected thinking block signature error on count_tokens, retrying with filtered thinking blocks", account.ID)
 
 		filteredBody := FilterThinkingBlocksForRetry(body)
 		retryReq, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
@@ -5019,7 +5019,7 @@ REDACTED
 
 		// 记录上游错误摘要便于排障（不回显请求内容）
 		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-			log.Printf(
+			logger.LegacyPrintf("service.gateway",
 				"count_tokens upstream error %d (account=%d platform=%s type=%s): %s",
 				resp.StatusCode,
 				account.ID,

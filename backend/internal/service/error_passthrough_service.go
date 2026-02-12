@@ -2,13 +2,13 @@ package service
 
 import (
 	"context"
-	"log"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/model"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 // ErrorPassthroughRepository 定义错误透传规则的数据访问接口
@@ -62,9 +62,9 @@ REDACTED
 	// 启动时加载规则到本地缓存
 	ctx := context.Background()
 	if err := svc.reloadRulesFromDB(ctx); err != nil {
-		log.Printf("[ErrorPassthroughService] Failed to load rules from DB on startup: %v", err)
+		logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to load rules from DB on startup: %v", err)
 		if fallbackErr := svc.refreshLocalCache(ctx); fallbackErr != nil {
-			log.Printf("[ErrorPassthroughService] Failed to load rules from cache fallback on startup: %v", fallbackErr)
+			logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to load rules from cache fallback on startup: %v", fallbackErr)
 	REDACTED
 REDACTED
 
@@ -72,7 +72,7 @@ REDACTED
 	if cache != nil {
 		cache.SubscribeUpdates(ctx, func() {
 			if err := svc.refreshLocalCache(context.Background()); err != nil {
-				log.Printf("[ErrorPassthroughService] Failed to refresh cache on notification: %v", err)
+				logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to refresh cache on notification: %v", err)
 		REDACTED
 	REDACTED)
 REDACTED
@@ -180,7 +180,7 @@ REDACTED
 	// 如果本地缓存为空，尝试刷新
 	ctx := context.Background()
 	if err := s.refreshLocalCache(ctx); err != nil {
-		log.Printf("[ErrorPassthroughService] Failed to refresh cache: %v", err)
+		logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to refresh cache: %v", err)
 		return nil
 REDACTED
 
@@ -213,7 +213,7 @@ REDACTED
 	// 更新 Redis 缓存
 	if s.cache != nil {
 		if err := s.cache.Set(ctx, rules); err != nil {
-			log.Printf("[ErrorPassthroughService] Failed to set cache: %v", err)
+			logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to set cache: %v", err)
 	REDACTED
 REDACTED
 
@@ -254,13 +254,13 @@ func (s *ErrorPassthroughService) invalidateAndNotify(ctx context.Context) {
 	// 先失效缓存，避免后续刷新读到陈旧规则。
 	if s.cache != nil {
 		if err := s.cache.Invalidate(ctx); err != nil {
-			log.Printf("[ErrorPassthroughService] Failed to invalidate cache: %v", err)
+			logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to invalidate cache: %v", err)
 	REDACTED
 REDACTED
 
 	// 刷新本地缓存
 	if err := s.reloadRulesFromDB(ctx); err != nil {
-		log.Printf("[ErrorPassthroughService] Failed to refresh local cache: %v", err)
+		logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to refresh local cache: %v", err)
 		// 刷新失败时清空本地缓存，避免继续使用陈旧规则。
 		s.clearLocalCache()
 REDACTED
@@ -268,7 +268,7 @@ REDACTED
 	// 通知其他实例
 	if s.cache != nil {
 		if err := s.cache.NotifyUpdate(ctx); err != nil {
-			log.Printf("[ErrorPassthroughService] Failed to notify cache update: %v", err)
+			logger.LegacyPrintf("service.error_passthrough", "[ErrorPassthroughService] Failed to notify cache update: %v", err)
 	REDACTED
 REDACTED
 REDACTED

@@ -1,13 +1,13 @@
 package admin
 
 import (
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -378,11 +378,11 @@ REDACTED
 		operator = subject.UserID
 REDACTED
 	page, pageSize := response.ParsePagination(c)
-	log.Printf("[UsageCleanup] 请求清理任务列表: operator=%d page=%d page_size=%d", operator, page, pageSize)
+	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 请求清理任务列表: operator=%d page=%d page_size=%d", operator, page, pageSize)
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 	tasks, result, err := h.cleanupService.ListTasks(c.Request.Context(), params)
 	if err != nil {
-		log.Printf("[UsageCleanup] 查询清理任务列表失败: operator=%d page=%d page_size=%d err=%v", operator, page, pageSize, err)
+		logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 查询清理任务列表失败: operator=%d page=%d page_size=%d err=%v", operator, page, pageSize, err)
 		response.ErrorFrom(c, err)
 		return
 REDACTED
@@ -390,7 +390,7 @@ REDACTED
 	for i := range tasks {
 		out = append(out, *dto.UsageCleanupTaskFromService(&tasks[i]))
 REDACTED
-	log.Printf("[UsageCleanup] 返回清理任务列表: operator=%d total=%d items=%d page=%d page_size=%d", operator, result.Total, len(out), page, pageSize)
+	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 返回清理任务列表: operator=%d total=%d items=%d page=%d page_size=%d", operator, result.Total, len(out), page, pageSize)
 	response.Paginated(c, out, result.Total, page, pageSize)
 REDACTED
 
@@ -472,7 +472,7 @@ REDACTED
 		billingType = *filters.BillingType
 REDACTED
 
-	log.Printf("[UsageCleanup] 请求创建清理任务: operator=%d start=%s end=%s user_id=%v api_key_id=%v account_id=%v group_id=%v model=%v stream=%v billing_type=%v tz=%q",
+	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 请求创建清理任务: operator=%d start=%s end=%s user_id=%v api_key_id=%v account_id=%v group_id=%v model=%v stream=%v billing_type=%v tz=%q",
 		subject.UserID,
 		filters.StartTime.Format(time.RFC3339),
 		filters.EndTime.Format(time.RFC3339),
@@ -488,12 +488,12 @@ REDACTED
 
 	task, err := h.cleanupService.CreateTask(c.Request.Context(), filters, subject.UserID)
 	if err != nil {
-		log.Printf("[UsageCleanup] 创建清理任务失败: operator=%d err=%v", subject.UserID, err)
+		logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 创建清理任务失败: operator=%d err=%v", subject.UserID, err)
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	log.Printf("[UsageCleanup] 清理任务已创建: task=%d operator=%d status=%s", task.ID, subject.UserID, task.Status)
+	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 清理任务已创建: task=%d operator=%d status=%s", task.ID, subject.UserID, task.Status)
 	response.Success(c, dto.UsageCleanupTaskFromService(task))
 REDACTED
 
@@ -515,12 +515,12 @@ REDACTED
 		response.BadRequest(c, "Invalid task id")
 		return
 REDACTED
-	log.Printf("[UsageCleanup] 请求取消清理任务: task=%d operator=%d", taskID, subject.UserID)
+	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 请求取消清理任务: task=%d operator=%d", taskID, subject.UserID)
 	if err := h.cleanupService.CancelTask(c.Request.Context(), taskID, subject.UserID); err != nil {
-		log.Printf("[UsageCleanup] 取消清理任务失败: task=%d operator=%d err=%v", taskID, subject.UserID, err)
+		logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 取消清理任务失败: task=%d operator=%d err=%v", taskID, subject.UserID, err)
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	log.Printf("[UsageCleanup] 清理任务已取消: task=%d operator=%d", taskID, subject.UserID)
+	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 清理任务已取消: task=%d operator=%d", taskID, subject.UserID)
 	response.Success(c, gin.H{"id": taskID, "status": service.UsageCleanupStatusCanceledREDACTED)
 REDACTED

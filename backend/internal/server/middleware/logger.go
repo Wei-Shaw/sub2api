@@ -1,10 +1,12 @@
 package middleware
 
 import (
-	"log"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // Logger 请求日志中间件
@@ -24,38 +26,71 @@ func Logger() gin.HandlerFunc {
 			return
 	REDACTED
 
-		// 结束时间
 		endTime := time.Now()
-
-		// 执行时间
 		latency := endTime.Sub(startTime)
 
-		// 请求方法
 		method := c.Request.Method
-
-		// 状态码
 		statusCode := c.Writer.Status()
-
-		// 客户端IP
 		clientIP := c.ClientIP()
-
-		// 协议版本
 		protocol := c.Request.Proto
+		accountID, hasAccountID := c.Request.Context().Value(ctxkey.AccountID).(int64)
+		platform, _ := c.Request.Context().Value(ctxkey.Platform).(string)
+		model, _ := c.Request.Context().Value(ctxkey.Model).(string)
 
-		// 日志格式: [时间] 状态码 | 延迟 | IP | 协议 | 方法 路径
-		log.Printf("[GIN] %v | %3d | %13v | %15s | %-6s | %-7s %s",
-			endTime.Format("2006/01/02 - 15:04:05"),
-			statusCode,
-			latency,
-			clientIP,
-			protocol,
-			method,
-			path,
-		)
+		fields := []zap.Field{
+			zap.String("component", "http.access"),
+			zap.Int("status_code", statusCode),
+			zap.Int64("latency_ms", latency.Milliseconds()),
+			zap.String("client_ip", clientIP),
+			zap.String("protocol", protocol),
+			zap.String("method", method),
+			zap.String("path", path),
+	REDACTED
+		if hasAccountID && accountID > 0 {
+			fields = append(fields, zap.Int64("account_id", accountID))
+	REDACTED
+		if platform != "" {
+			fields = append(fields, zap.String("platform", platform))
+	REDACTED
+		if model != "" {
+			fields = append(fields, zap.String("model", model))
+	REDACTED
 
-		// 如果有错误，额外记录错误信息
+		l := logger.FromContext(c.Request.Context()).With(fields...)
+		l.Info("http request completed", zap.Time("completed_at", endTime))
+		// 当全局日志级别高于 info（如 warn/error）时，access info 不会进入 zap core，
+		// 这里补写一次 sink，保证 ops 系统日志仍可索引关键访问轨迹。
+		if !logger.L().Core().Enabled(logger.LevelInfo) {
+			sinkFields := map[string]any{
+				"component":    "http.access",
+				"status_code":  statusCode,
+				"latency_ms":   latency.Milliseconds(),
+				"client_ip":    clientIP,
+				"protocol":     protocol,
+				"method":       method,
+				"path":         path,
+				"completed_at": endTime,
+		REDACTED
+			if requestID, ok := c.Request.Context().Value(ctxkey.RequestID).(string); ok && requestID != "" {
+				sinkFields["request_id"] = requestID
+		REDACTED
+			if clientRequestID, ok := c.Request.Context().Value(ctxkey.ClientRequestID).(string); ok && clientRequestID != "" {
+				sinkFields["client_request_id"] = clientRequestID
+		REDACTED
+			if hasAccountID && accountID > 0 {
+				sinkFields["account_id"] = accountID
+		REDACTED
+			if platform != "" {
+				sinkFields["platform"] = platform
+		REDACTED
+			if model != "" {
+				sinkFields["model"] = model
+		REDACTED
+			logger.WriteSinkEvent("info", "http.access", "http request completed", sinkFields)
+	REDACTED
+
 		if len(c.Errors) > 0 {
-			log.Printf("[GIN] Errors: %v", c.Errors.String())
+			l.Warn("http request contains gin errors", zap.String("errors", c.Errors.String()))
 	REDACTED
 REDACTED
 REDACTED

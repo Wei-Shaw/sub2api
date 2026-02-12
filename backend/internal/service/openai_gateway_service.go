@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -19,12 +18,14 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
 )
 
 const (
@@ -786,7 +787,7 @@ REDACTED
 	// 对所有请求执行模型映射（包含 Codex CLI）。
 	mappedModel := account.GetMappedModel(reqModel)
 	if mappedModel != reqModel {
-		log.Printf("[OpenAI] Model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", reqModel, mappedModel, account.Name, isCodexCLI)
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", reqModel, mappedModel, account.Name, isCodexCLI)
 		reqBody["model"] = mappedModel
 		bodyModified = true
 REDACTED
@@ -795,7 +796,7 @@ REDACTED
 	if model, ok := reqBody["model"].(string); ok {
 		normalizedModel := normalizeCodexModel(model)
 		if normalizedModel != "" && normalizedModel != model {
-			log.Printf("[OpenAI] Codex model normalization: %s -> %s (account: %s, type: %s, isCodexCLI: %v)",
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Codex model normalization: %s -> %s (account: %s, type: %s, isCodexCLI: %v)",
 				model, normalizedModel, account.Name, account.Type, isCodexCLI)
 			reqBody["model"] = normalizedModel
 			mappedModel = normalizedModel
@@ -808,7 +809,7 @@ REDACTED
 		if effort, ok := reasoning["effort"].(string); ok && effort == "minimal" {
 			reasoning["effort"] = "none"
 			bodyModified = true
-			log.Printf("[OpenAI] Normalized reasoning.effort: minimal -> none (account: %s)", account.Name)
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized reasoning.effort: minimal -> none (account: %s)", account.Name)
 	REDACTED
 REDACTED
 
@@ -1012,7 +1013,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
-	log.Printf(
+	logger.LegacyPrintf("service.openai_gateway",
 		"[OpenAI 自动透传] 命中自动透传分支: account=%d name=%s type=%s model=%s stream=%v",
 		account.ID,
 		account.Name,
@@ -1022,18 +1023,15 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	)
 	if reqStream && c != nil && c.Request != nil {
 		if timeoutHeaders := collectOpenAIPassthroughTimeoutHeaders(c.Request.Header); len(timeoutHeaders) > 0 {
+			streamWarnLogger := logger.FromContext(ctx).With(
+				zap.String("component", "service.openai_gateway"),
+				zap.Int64("account_id", account.ID),
+				zap.Strings("timeout_headers", timeoutHeaders),
+			)
 			if s.isOpenAIPassthroughTimeoutHeadersAllowed() {
-				log.Printf(
-					"[WARN] [OpenAI passthrough] 透传请求包含超时相关请求头，且当前配置为放行，可能导致上游提前断流: account=%d headers=%s",
-					account.ID,
-					strings.Join(timeoutHeaders, ", "),
-				)
+				streamWarnLogger.Warn("OpenAI passthrough 透传请求包含超时相关请求头，且当前配置为放行，可能导致上游提前断流")
 		REDACTED else {
-				log.Printf(
-					"[WARN] [OpenAI passthrough] 检测到超时相关请求头，将按配置过滤以降低断流风险: account=%d headers=%s",
-					account.ID,
-					strings.Join(timeoutHeaders, ", "),
-				)
+				streamWarnLogger.Warn("OpenAI passthrough 检测到超时相关请求头，将按配置过滤以降低断流风险")
 		REDACTED
 	REDACTED
 REDACTED
@@ -1347,7 +1345,7 @@ REDACTED
 		if !clientDisconnected {
 			if _, err := fmt.Fprintln(w, line); err != nil {
 				clientDisconnected = true
-				log.Printf("[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 		REDACTED else {
 				flusher.Flush()
 		REDACTED
@@ -1355,11 +1353,11 @@ REDACTED
 REDACTED
 	if err := scanner.Err(); err != nil {
 		if clientDisconnected {
-			log.Printf("[OpenAI passthrough] Upstream read error after client disconnect: account=%d err=%v", account.ID, err)
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Upstream read error after client disconnect: account=%d err=%v", account.ID, err)
 			return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
 	REDACTED
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			log.Printf(
+			logger.LegacyPrintf("service.openai_gateway",
 				"[WARN] [OpenAI passthrough] 流读取被取消，可能发生断流: account=%d request_id=%s err=%v ctx_err=%v",
 				account.ID,
 				upstreamRequestID,
@@ -1369,10 +1367,10 @@ REDACTED
 			return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
 	REDACTED
 		if errors.Is(err, bufio.ErrTooLong) {
-			log.Printf("[OpenAI passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, err)
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, err)
 			return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
 	REDACTED
-		log.Printf(
+		logger.LegacyPrintf("service.openai_gateway",
 			"[WARN] [OpenAI passthrough] 流读取异常中断: account=%d request_id=%s err=%v",
 			account.ID,
 			upstreamRequestID,
@@ -1381,11 +1379,11 @@ REDACTED
 		return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream read error: %w", err)
 REDACTED
 	if !clientDisconnected && !sawDone && ctx.Err() == nil {
-		log.Printf(
-			"[WARN] [OpenAI passthrough] 上游流在未收到 [DONE] 时结束，疑似断流: account=%d request_id=%s",
-			account.ID,
-			upstreamRequestID,
-		)
+		logger.FromContext(ctx).With(
+			zap.String("component", "service.openai_gateway"),
+			zap.Int64("account_id", account.ID),
+			zap.String("upstream_request_id", upstreamRequestID),
+		).Warn("OpenAI passthrough 上游流在未收到 [DONE] 时结束，疑似断流")
 REDACTED
 
 	return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
@@ -1584,7 +1582,7 @@ REDACTED
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-		log.Printf(
+		logger.LegacyPrintf("service.openai_gateway",
 			"OpenAI upstream error %d (account=%d platform=%s type=%s): %s",
 			resp.StatusCode,
 			account.ID,
@@ -1844,16 +1842,16 @@ REDACTED
 				// 客户端断开/取消请求时，上游读取往往会返回 context canceled。
 				// /v1/responses 的 SSE 事件必须符合 OpenAI 协议；这里不注入自定义 error event，避免下游 SDK 解析失败。
 				if errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
-					log.Printf("Context canceled during streaming, returning collected usage")
+					logger.LegacyPrintf("service.openai_gateway", "Context canceled during streaming, returning collected usage")
 					return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
 			REDACTED
 				// 客户端已断开时，上游出错仅影响体验，不影响计费；返回已收集 usage
 				if clientDisconnected {
-					log.Printf("Upstream read error after client disconnect: %v, returning collected usage", ev.err)
+					logger.LegacyPrintf("service.openai_gateway", "Upstream read error after client disconnect: %v, returning collected usage", ev.err)
 					return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
 			REDACTED
 				if errors.Is(ev.err, bufio.ErrTooLong) {
-					log.Printf("SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
+					logger.LegacyPrintf("service.openai_gateway", "SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
 					sendErrorEvent("response_too_large")
 					return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, ev.err
 			REDACTED
@@ -1882,7 +1880,7 @@ REDACTED
 				if !clientDisconnected {
 					if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
 						clientDisconnected = true
-						log.Printf("Client disconnected during streaming, continuing to drain upstream for billing")
+						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 				REDACTED else {
 						flusher.Flush()
 				REDACTED
@@ -1899,7 +1897,7 @@ REDACTED
 				if !clientDisconnected {
 					if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
 						clientDisconnected = true
-						log.Printf("Client disconnected during streaming, continuing to drain upstream for billing")
+						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 				REDACTED else {
 						flusher.Flush()
 				REDACTED
@@ -1912,10 +1910,10 @@ REDACTED
 				continue
 		REDACTED
 			if clientDisconnected {
-				log.Printf("Upstream timeout after client disconnect, returning collected usage")
+				logger.LegacyPrintf("service.openai_gateway", "Upstream timeout after client disconnect, returning collected usage")
 				return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, nil
 		REDACTED
-			log.Printf("Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
+			logger.LegacyPrintf("service.openai_gateway", "Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
 			// 处理流超时，可能标记账户为临时不可调度或错误状态
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
@@ -1932,7 +1930,7 @@ REDACTED
 		REDACTED
 			if _, err := fmt.Fprint(w, ":\n\n"); err != nil {
 				clientDisconnected = true
-				log.Printf("Client disconnected during streaming, continuing to drain upstream for billing")
+				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 				continue
 		REDACTED
 			flusher.Flush()
@@ -2323,7 +2321,7 @@ REDACTED
 
 	inserted, err := s.usageLogRepo.Create(ctx, usageLog)
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		log.Printf("[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
 REDACTED
@@ -2346,7 +2344,7 @@ REDACTED
 	// Update API key quota if applicable (only for balance mode with quota set)
 	if shouldBill && cost.ActualCost > 0 && apiKey.Quota > 0 && input.APIKeyService != nil {
 		if err := input.APIKeyService.UpdateQuotaUsed(ctx, apiKey.ID, cost.ActualCost); err != nil {
-			log.Printf("Update API key quota failed: %v", err)
+			logger.LegacyPrintf("service.openai_gateway", "Update API key quota failed: %v", err)
 	REDACTED
 REDACTED
 

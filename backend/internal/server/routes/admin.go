@@ -101,6 +101,9 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		{
 			runtime.GET("/alert", h.Admin.Ops.GetAlertRuntimeSettings)
 			runtime.PUT("/alert", h.Admin.Ops.UpdateAlertRuntimeSettings)
+			runtime.GET("/logging", h.Admin.Ops.GetRuntimeLogConfig)
+			runtime.PUT("/logging", h.Admin.Ops.UpdateRuntimeLogConfig)
+			runtime.POST("/logging/reset", h.Admin.Ops.ResetRuntimeLogConfig)
 	REDACTED
 
 		// Advanced settings (DB-backed)
@@ -143,6 +146,11 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 		// Request drilldown (success + error)
 		ops.GET("/requests", h.Admin.Ops.ListRequestDetails)
+
+		// Indexed system logs
+		ops.GET("/system-logs", h.Admin.Ops.ListSystemLogs)
+		ops.POST("/system-logs/cleanup", h.Admin.Ops.CleanupSystemLogs)
+		ops.GET("/system-logs/health", h.Admin.Ops.GetSystemLogIngestionHealth)
 
 		// Dashboard (vNext - raw path for MVP)
 		ops.GET("/dashboard/overview", h.Admin.Ops.GetDashboardOverview)

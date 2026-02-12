@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -18,12 +17,14 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
 )
 
 // SoraGatewayHandler handles Sora chat completions requests
@@ -89,6 +90,13 @@ REDACTED
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 REDACTED
+	reqLog := requestLogger(
+		c,
+		"handler.sora_gateway.chat_completions",
+		zap.Int64("user_id", subject.UserID),
+		zap.Int64("api_key_id", apiKey.ID),
+		zap.Any("group_id", apiKey.GroupID),
+	)
 
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -127,6 +135,7 @@ REDACTED
 REDACTED
 
 	clientStream := gjson.GetBytes(body, "stream").Bool()
+	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", clientStream))
 	if !clientStream {
 		if h.streamMode == "error" {
 			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Sora requires stream=true")
@@ -160,8 +169,9 @@ REDACTED
 	canWait, err := h.concurrencyHelper.IncrementWaitCount(c.Request.Context(), subject.UserID, maxWait)
 	waitCounted := false
 	if err != nil {
-		log.Printf("Increment wait count failed: %v", err)
+		reqLog.Warn("sora.user_wait_counter_increment_failed", zap.Error(err))
 REDACTED else if !canWait {
+		reqLog.Info("sora.user_wait_queue_full", zap.Int("max_wait", maxWait))
 		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later")
 		return
 REDACTED
@@ -176,7 +186,7 @@ REDACTED()
 
 	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, clientStream, &streamStarted)
 	if err != nil {
-		log.Printf("User concurrency acquire failed: %v", err)
+		reqLog.Warn("sora.user_slot_acquire_failed", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", streamStarted)
 		return
 REDACTED
@@ -190,7 +200,7 @@ REDACTED
 REDACTED
 
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
-		log.Printf("Billing eligibility check failed after wait: %v", err)
+		reqLog.Info("sora.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message := billingErrorDetails(err)
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
@@ -206,7 +216,10 @@ REDACTED
 	for {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionHash, reqModel, failedAccountIDs, "")
 		if err != nil {
-			log.Printf("[Sora Handler] SelectAccount failed: %v", err)
+			reqLog.Warn("sora.account_select_failed",
+				zap.Error(err),
+				zap.Int("excluded_account_count", len(failedAccountIDs)),
+			)
 			if len(failedAccountIDs) == 0 {
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
 				return
@@ -215,7 +228,7 @@ REDACTED
 			return
 	REDACTED
 		account := selection.Account
-		setOpsSelectedAccount(c, account.ID)
+		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		accountReleaseFunc := selection.ReleaseFunc
 		if !selection.Acquired {
@@ -226,9 +239,12 @@ REDACTED
 			accountWaitCounted := false
 			canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
 			if err != nil {
-				log.Printf("Increment account wait count failed: %v", err)
+				reqLog.Warn("sora.account_wait_counter_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 		REDACTED else if !canWait {
-				log.Printf("Account wait queue full: account=%d", account.ID)
+				reqLog.Info("sora.account_wait_queue_full",
+					zap.Int64("account_id", account.ID),
+					zap.Int("max_waiting", selection.WaitPlan.MaxWaiting),
+				)
 				h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
 				return
 		REDACTED
@@ -250,7 +266,7 @@ REDACTED
 				&streamStarted,
 			)
 			if err != nil {
-				log.Printf("Account concurrency acquire failed: %v", err)
+				reqLog.Warn("sora.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				h.handleConcurrencyError(c, err, "account", streamStarted)
 				return
 		REDACTED
@@ -276,10 +292,15 @@ REDACTED
 			REDACTED
 				lastFailoverStatus = failoverErr.StatusCode
 				switchCount++
-				log.Printf("Account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
+				reqLog.Warn("sora.upstream_failover_switching",
+					zap.Int64("account_id", account.ID),
+					zap.Int("upstream_status", failoverErr.StatusCode),
+					zap.Int("switch_count", switchCount),
+					zap.Int("max_switches", maxAccountSwitches),
+				)
 				continue
 		REDACTED
-			log.Printf("Account %d: Forward request failed: %v", account.ID, err)
+			reqLog.Error("sora.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			return
 	REDACTED
 
@@ -298,9 +319,20 @@ REDACTED
 				UserAgent:    ua,
 				IPAddress:    ip,
 		REDACTED); err != nil {
-				log.Printf("Record usage failed: %v", err)
+				logger.L().With(
+					zap.String("component", "handler.sora_gateway.chat_completions"),
+					zap.Int64("user_id", subject.UserID),
+					zap.Int64("api_key_id", apiKey.ID),
+					zap.Any("group_id", apiKey.GroupID),
+					zap.String("model", reqModel),
+					zap.Int64("account_id", usedAccount.ID),
+				).Error("sora.record_usage_failed", zap.Error(err))
 		REDACTED
 	REDACTED(result, account, userAgent, clientIP)
+		reqLog.Debug("sora.request_completed",
+			zap.Int64("account_id", account.ID),
+			zap.Int("switch_count", switchCount),
+		)
 		return
 REDACTED
 REDACTED
