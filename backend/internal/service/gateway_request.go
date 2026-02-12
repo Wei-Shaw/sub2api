@@ -105,8 +105,9 @@ REDACTED
 	// metadata.user_id: 直接路径提取，不需要严格类型校验
 	parsed.MetadataUserID = gjson.Get(jsonStr, "metadata.user_id").String()
 
-	// thinking.type: 直接路径提取
-	if gjson.Get(jsonStr, "thinking.type").String() == "enabled" {
+	// thinking.type: enabled/adaptive 都视为开启
+	thinkingType := gjson.Get(jsonStr, "thinking.type").String()
+	if thinkingType == "enabled" || thinkingType == "adaptive" {
 		parsed.ThinkingEnabled = true
 REDACTED
 
@@ -193,9 +194,9 @@ REDACTED
 // Returns filtered body or original body if filtering fails (fail-safe)
 // This prevents 400 errors from invalid thinking block signatures
 //
-// Strategy:
-//   - When thinking.type != "enabled": Remove all thinking blocks
-//   - When thinking.type == "enabled": Only remove thinking blocks without valid signatures
+// 策略：
+//   - 当 thinking.type 不是 "enabled"/"adaptive"：移除所有 thinking 相关块
+//   - 当 thinking.type 是 "enabled"/"adaptive"：仅移除缺失/无效 signature 的 thinking 块（避免 400）
 //     (blocks with missing/empty/dummy signatures that would cause 400 errors)
 func FilterThinkingBlocks(body []byte) []byte {
 	return filterThinkingBlocksInternal(body, false)
@@ -571,9 +572,9 @@ REDACTED
 REDACTED
 
 // filterThinkingBlocksInternal removes invalid thinking blocks from request
-// Strategy:
-//   - When thinking.type != "enabled": Remove all thinking blocks
-//   - When thinking.type == "enabled": Only remove thinking blocks without valid signatures
+// 策略：
+//   - 当 thinking.type 不是 "enabled"/"adaptive"：移除所有 thinking 相关块
+//   - 当 thinking.type 是 "enabled"/"adaptive"：仅移除缺失/无效 signature 的 thinking 块
 func filterThinkingBlocksInternal(body []byte, _ bool) []byte {
 	// Fast path: if body doesn't contain "thinking", skip parsing
 	if !bytes.Contains(body, []byte(`"type":"thinking"`)) &&
@@ -593,7 +594,7 @@ REDACTED
 	// Check if thinking is enabled
 	thinkingEnabled := false
 	if thinking, ok := req["thinking"].(map[string]any); ok {
-		if thinkType, ok := thinking["type"].(string); ok && thinkType == "enabled" {
+		if thinkType, ok := thinking["type"].(string); ok && (thinkType == "enabled" || thinkType == "adaptive") {
 			thinkingEnabled = true
 	REDACTED
 REDACTED

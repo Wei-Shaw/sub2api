@@ -327,6 +327,10 @@ REDACTED()
 	errorpassthroughruleDescPassthroughBody := errorpassthroughruleFields[9].Descriptor()
 	// errorpassthroughrule.DefaultPassthroughBody holds the default value on creation for the passthrough_body field.
 	errorpassthroughrule.DefaultPassthroughBody = errorpassthroughruleDescPassthroughBody.Default.(bool)
+	// errorpassthroughruleDescSkipMonitoring is the schema descriptor for skip_monitoring field.
+	errorpassthroughruleDescSkipMonitoring := errorpassthroughruleFields[11].Descriptor()
+	// errorpassthroughrule.DefaultSkipMonitoring holds the default value on creation for the skip_monitoring field.
+	errorpassthroughrule.DefaultSkipMonitoring = errorpassthroughruleDescSkipMonitoring.Default.(bool)
 	groupMixin := schema.Group{REDACTED.Mixin()
 	groupMixinHooks1 := groupMixin[1].Hooks()
 	group.Hooks[0] = groupMixinHooks1[0]

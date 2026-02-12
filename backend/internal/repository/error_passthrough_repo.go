@@ -54,7 +54,8 @@ func (r *errorPassthroughRepository) Create(ctx context.Context, rule *model.Err
 		SetPriority(rule.Priority).
 		SetMatchMode(rule.MatchMode).
 		SetPassthroughCode(rule.PassthroughCode).
-		SetPassthroughBody(rule.PassthroughBody)
+		SetPassthroughBody(rule.PassthroughBody).
+		SetSkipMonitoring(rule.SkipMonitoring)
 
 	if len(rule.ErrorCodes) > 0 {
 		builder.SetErrorCodes(rule.ErrorCodes)
@@ -90,7 +91,8 @@ func (r *errorPassthroughRepository) Update(ctx context.Context, rule *model.Err
 		SetPriority(rule.Priority).
 		SetMatchMode(rule.MatchMode).
 		SetPassthroughCode(rule.PassthroughCode).
-		SetPassthroughBody(rule.PassthroughBody)
+		SetPassthroughBody(rule.PassthroughBody).
+		SetSkipMonitoring(rule.SkipMonitoring)
 
 	// 处理可选字段
 	if len(rule.ErrorCodes) > 0 {
@@ -149,6 +151,7 @@ func (r *errorPassthroughRepository) toModel(e *ent.ErrorPassthroughRule) *model
 		Platforms:       e.Platforms,
 		PassthroughCode: e.PassthroughCode,
 		PassthroughBody: e.PassthroughBody,
+		SkipMonitoring:  e.SkipMonitoring,
 		CreatedAt:       e.CreatedAt,
 		UpdatedAt:       e.UpdatedAt,
 REDACTED

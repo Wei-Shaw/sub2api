@@ -45,19 +45,19 @@
                 class="text-blue-600 focus:ring-blue-500"
               />
               <span class="text-sm text-blue-900 dark:text-blue-200">{{
-                t('admin.accounts.oauth.openai.refreshTokenAuth')
+                t(getOAuthKey('refreshTokenAuth'))
               REDACTEDREDACTED</span>
             </label>
           </div>
         </div>
 
-        <!-- Refresh Token Input (OpenAI only) -->
+        <!-- Refresh Token Input (OpenAI / Antigravity) -->
         <div v-if="inputMethod === 'refresh_token'" class="space-y-4">
           <div
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
           >
             <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
-              {{ t('admin.accounts.oauth.openai.refreshTokenDesc') REDACTEDREDACTED
+              {{ t(getOAuthKey('refreshTokenDesc')) REDACTEDREDACTED
             </p>
 
             <!-- Refresh Token Input -->
@@ -78,7 +78,7 @@
                 v-model="refreshTokenInput"
                 rows="3"
                 class="input w-full resize-y font-mono text-sm"
-                :placeholder="t('admin.accounts.oauth.openai.refreshTokenPlaceholder')"
+                :placeholder="t(getOAuthKey('refreshTokenPlaceholder'))"
               ></textarea>
               <p
                 v-if="parsedRefreshTokenCount > 1"
@@ -128,8 +128,8 @@
               <Icon v-else name="sparkles" size="sm" class="mr-2" />
               {{
                 loading
-                  ? t('admin.accounts.oauth.openai.validating')
-                  : t('admin.accounts.oauth.openai.validateAndCreate')
+                  ? t(getOAuthKey('validating'))
+                  : t(getOAuthKey('validateAndCreate'))
               REDACTEDREDACTED
             </button>
           </div>

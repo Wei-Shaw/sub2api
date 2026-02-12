@@ -95,7 +95,7 @@ REDACTED
 func TestLogCodexCLIOnlyDetection_NilSafety(t *testing.T) {
 	// 不校验日志内容，仅保证在 nil 入参下不会 panic。
 	require.NotPanics(t, func() {
-		logCodexCLIOnlyDetection(nil, nil, 0, CodexClientRestrictionDetectionResult{Enabled: true, Matched: false, Reason: "test"REDACTED)
+		logCodexCLIOnlyDetection(context.TODO(), nil, 0, CodexClientRestrictionDetectionResult{Enabled: true, Matched: false, Reason: "test"REDACTED)
 		logCodexCLIOnlyDetection(context.Background(), nil, 0, CodexClientRestrictionDetectionResult{Enabled: false, Matched: false, Reason: "disabled"REDACTED)
 REDACTED)
 REDACTED

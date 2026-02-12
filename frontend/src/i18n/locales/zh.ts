@@ -865,8 +865,8 @@ export default {
       editUser: '编辑用户',
       deleteUser: '删除用户',
       deleteConfirmMessage: "确定要删除用户 '{emailREDACTED' 吗？此操作无法撤销。",
-      searchPlaceholder: '搜索用户邮箱或用户名、备注、支持模糊查询...',
-      searchUsers: '搜索用户邮箱或用户名、备注、支持模糊查询',
+      searchPlaceholder: '邮箱/用户名/备注/API Key 模糊搜索...',
+      searchUsers: '邮箱/用户名/备注/API Key 模糊搜索',
       roleFilter: '角色筛选',
       allRoles: '全部角色',
       allStatus: '全部状态',
@@ -1936,7 +1936,15 @@ export default {
           authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别',
           failedToGenerateUrl: '生成 Antigravity 授权链接失败',
           missingExchangeParams: '缺少 code / session_id / state',
-          failedToExchangeCode: 'Antigravity 授权码兑换失败'
+          failedToExchangeCode: 'Antigravity 授权码兑换失败',
+          // Refresh Token auth
+          refreshTokenAuth: '手动输入 RT',
+          refreshTokenDesc: '输入您已有的 Antigravity Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
+          refreshTokenPlaceholder: '粘贴您的 Antigravity Refresh Token...\n支持多个，每行一个',
+          validating: '验证中...',
+          validateAndCreate: '验证并创建账号',
+          pleaseEnterRefreshToken: '请输入 Refresh Token',
+          failedToValidateRT: '验证 Refresh Token 失败'
         REDACTED
       REDACTED,
       // Gemini specific (platform-wide)
@@ -2315,7 +2323,7 @@ export default {
       allStatus: '全部状态',
       unused: '未使用',
       used: '已使用',
-      searchCodes: '搜索兑换码...',
+      searchCodes: '搜索兑换码或邮箱...',
       exportCsv: '导出 CSV',
       deleteAllUnused: '删除全部未使用',
       deleteCodeConfirm: '确定要删除此兑换码吗？此操作无法撤销。',
@@ -3572,6 +3580,7 @@ export default {
       custom: '自定义',
       code: '状态码',
       body: '消息体',
+      skipMonitoring: '跳过监控',
 
       // Columns
       columns: {
@@ -3616,6 +3625,8 @@ export default {
         passthroughBody: '透传上游错误信息',
         customMessage: '自定义错误信息',
         customMessagePlaceholder: '返回给客户端的错误信息...',
+        skipMonitoring: '跳过运维监控记录',
+        skipMonitoringHint: '开启后，匹配此规则的错误不会被记录到运维监控中',
         enabled: '启用此规则'
       REDACTED,
 

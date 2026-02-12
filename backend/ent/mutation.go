@@ -5778,6 +5778,7 @@ type ErrorPassthroughRuleMutation struct {
 	addresponse_code  *int
 	passthrough_body  *bool
 	custom_message    *string
+	skip_monitoring   *bool
 	description       *string
 	clearedFields     map[string]struct{REDACTED
 	done              bool
@@ -6505,6 +6506,42 @@ func (m *ErrorPassthroughRuleMutation) ResetCustomMessage() {
 	delete(m.clearedFields, errorpassthroughrule.FieldCustomMessage)
 REDACTED
 
+// SetSkipMonitoring sets the "skip_monitoring" field.
+func (m *ErrorPassthroughRuleMutation) SetSkipMonitoring(b bool) {
+	m.skip_monitoring = &b
+REDACTED
+
+// SkipMonitoring returns the value of the "skip_monitoring" field in the mutation.
+func (m *ErrorPassthroughRuleMutation) SkipMonitoring() (r bool, exists bool) {
+	v := m.skip_monitoring
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSkipMonitoring returns the old "skip_monitoring" field's value of the ErrorPassthroughRule entity.
+// If the ErrorPassthroughRule object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ErrorPassthroughRuleMutation) OldSkipMonitoring(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSkipMonitoring is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSkipMonitoring requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSkipMonitoring: %w", err)
+REDACTED
+	return oldValue.SkipMonitoring, nil
+REDACTED
+
+// ResetSkipMonitoring resets all changes to the "skip_monitoring" field.
+func (m *ErrorPassthroughRuleMutation) ResetSkipMonitoring() {
+	m.skip_monitoring = nil
+REDACTED
+
 // SetDescription sets the "description" field.
 func (m *ErrorPassthroughRuleMutation) SetDescription(s string) {
 	m.description = &s
@@ -6588,7 +6625,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ErrorPassthroughRuleMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 15)
 	if m.created_at != nil {
 		fields = append(fields, errorpassthroughrule.FieldCreatedAt)
 REDACTED
@@ -6628,6 +6665,9 @@ REDACTED
 	if m.custom_message != nil {
 		fields = append(fields, errorpassthroughrule.FieldCustomMessage)
 REDACTED
+	if m.skip_monitoring != nil {
+		fields = append(fields, errorpassthroughrule.FieldSkipMonitoring)
+REDACTED
 	if m.description != nil {
 		fields = append(fields, errorpassthroughrule.FieldDescription)
 REDACTED
@@ -6665,6 +6705,8 @@ func (m *ErrorPassthroughRuleMutation) Field(name string) (ent.Value, bool) {
 		return m.PassthroughBody()
 	case errorpassthroughrule.FieldCustomMessage:
 		return m.CustomMessage()
+	case errorpassthroughrule.FieldSkipMonitoring:
+		return m.SkipMonitoring()
 	case errorpassthroughrule.FieldDescription:
 		return m.Description()
 REDACTED
@@ -6702,6 +6744,8 @@ func (m *ErrorPassthroughRuleMutation) OldField(ctx context.Context, name string
 		return m.OldPassthroughBody(ctx)
 	case errorpassthroughrule.FieldCustomMessage:
 		return m.OldCustomMessage(ctx)
+	case errorpassthroughrule.FieldSkipMonitoring:
+		return m.OldSkipMonitoring(ctx)
 	case errorpassthroughrule.FieldDescription:
 		return m.OldDescription(ctx)
 REDACTED
@@ -6803,6 +6847,13 @@ func (m *ErrorPassthroughRuleMutation) SetField(name string, value ent.Value) er
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetCustomMessage(v)
+		return nil
+	case errorpassthroughrule.FieldSkipMonitoring:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSkipMonitoring(v)
 		return nil
 	case errorpassthroughrule.FieldDescription:
 		v, ok := value.(string)
@@ -6964,6 +7015,9 @@ func (m *ErrorPassthroughRuleMutation) ResetField(name string) error {
 		return nil
 	case errorpassthroughrule.FieldCustomMessage:
 		m.ResetCustomMessage()
+		return nil
+	case errorpassthroughrule.FieldSkipMonitoring:
+		m.ResetSkipMonitoring()
 		return nil
 	case errorpassthroughrule.FieldDescription:
 		m.ResetDescription()

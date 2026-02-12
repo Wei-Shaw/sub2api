@@ -282,7 +282,7 @@ REDACTED
 	if geminiResp.UsageMetadata != nil {
 		cached := geminiResp.UsageMetadata.CachedContentTokenCount
 		usage.InputTokens = geminiResp.UsageMetadata.PromptTokenCount - cached
-		usage.OutputTokens = geminiResp.UsageMetadata.CandidatesTokenCount
+		usage.OutputTokens = geminiResp.UsageMetadata.CandidatesTokenCount + geminiResp.UsageMetadata.ThoughtsTokenCount
 		usage.CacheReadInputTokens = cached
 REDACTED
 

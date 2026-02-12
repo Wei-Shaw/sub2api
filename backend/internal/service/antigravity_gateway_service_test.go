@@ -592,6 +592,75 @@ REDACTED
 	require.NotContains(t, body, "event: error")
 REDACTED
 
+// TestHandleGeminiStreamingResponse_ThoughtsTokenCount
+// 验证：Gemini 流式转发时 thoughtsTokenCount 被计入 OutputTokens
+func TestHandleGeminiStreamingResponse_ThoughtsTokenCount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newAntigravityTestService(&config.Config{
+		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTED,
+REDACTED)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Body: pr, Header: http.Header{REDACTEDREDACTED
+
+	go func() {
+		defer func() { _ = pw.Close() REDACTED()
+		fmt.Fprintln(pw, `data: {"candidates":[{"content":{"parts":[{"text":"Hello"REDACTED]REDACTEDREDACTED],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":20,"thoughtsTokenCount":50REDACTEDREDACTED`)
+		fmt.Fprintln(pw, "")
+		fmt.Fprintln(pw, `data: {"candidates":[{"content":{"parts":[{"text":" world"REDACTED]REDACTED,"finishReason":"STOP"REDACTED],"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":30,"thoughtsTokenCount":80,"cachedContentTokenCount":10REDACTEDREDACTED`)
+		fmt.Fprintln(pw, "")
+REDACTED()
+
+	result, err := svc.handleGeminiStreamingResponse(c, resp, time.Now())
+	_ = pr.Close()
+
+REDACTED
+	require.NotNil(t, result)
+	require.NotNil(t, result.usage)
+	// promptTokenCount=100, cachedContentTokenCount=10 → InputTokens=90
+	require.Equal(t, 90, result.usage.InputTokens)
+	// candidatesTokenCount=30 + thoughtsTokenCount=80 → OutputTokens=110
+	require.Equal(t, 110, result.usage.OutputTokens)
+	require.Equal(t, 10, result.usage.CacheReadInputTokens)
+REDACTED
+
+// TestHandleClaudeStreamingResponse_ThoughtsTokenCount
+// 验证：Gemini→Claude 流式转换时 thoughtsTokenCount 被计入 OutputTokens
+func TestHandleClaudeStreamingResponse_ThoughtsTokenCount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newAntigravityTestService(&config.Config{
+		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTED,
+REDACTED)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Body: pr, Header: http.Header{REDACTEDREDACTED
+
+	go func() {
+		defer func() { _ = pw.Close() REDACTED()
+		fmt.Fprintln(pw, `data: {"response":{"candidates":[{"content":{"parts":[{"text":"Hi"REDACTED]REDACTED,"finishReason":"STOP"REDACTED],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":10,"thoughtsTokenCount":25REDACTEDREDACTEDREDACTED`)
+		fmt.Fprintln(pw, "")
+REDACTED()
+
+	result, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "gemini-2.5-pro")
+	_ = pr.Close()
+
+REDACTED
+	require.NotNil(t, result)
+	require.NotNil(t, result.usage)
+	// promptTokenCount=50 → InputTokens=50
+	require.Equal(t, 50, result.usage.InputTokens)
+	// candidatesTokenCount=10 + thoughtsTokenCount=25 → OutputTokens=35
+	require.Equal(t, 35, result.usage.OutputTokens)
+REDACTED
+
 // --- 流式客户端断开检测测试 ---
 
 // TestStreamUpstreamResponse_ClientDisconnectDrainsUsage

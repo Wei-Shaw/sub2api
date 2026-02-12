@@ -553,12 +553,26 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			// Store request headers/body only when an upstream error occurred to keep overhead minimal.
 			entry.RequestHeadersJSON = extractOpsRetryRequestHeaders(c)
 
+			// Skip logging if a passthrough rule with skip_monitoring=true matched.
+			if v, ok := c.Get(service.OpsSkipPassthroughKey); ok {
+				if skip, _ := v.(bool); skip {
+					return
+			REDACTED
+		REDACTED
+
 			enqueueOpsErrorLog(ops, entry, requestBody)
 			return
 	REDACTED
 
 		body := w.buf.Bytes()
 		parsed := parseOpsErrorResponse(body)
+
+		// Skip logging if a passthrough rule with skip_monitoring=true matched.
+		if v, ok := c.Get(service.OpsSkipPassthroughKey); ok {
+			if skip, _ := v.(bool); skip {
+				return
+		REDACTED
+	REDACTED
 
 		// Skip logging if the error should be filtered based on settings
 		if shouldSkipOpsErrorLog(c.Request.Context(), ops, parsed.Message, string(body), c.Request.URL.Path) {

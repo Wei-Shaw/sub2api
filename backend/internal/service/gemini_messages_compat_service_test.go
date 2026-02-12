@@ -299,6 +299,26 @@ REDACTED{
 		REDACTED,
 	REDACTED,
 		{
+			name:    "包含 thoughtsTokenCount",
+			input:   `{"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":20,"thoughtsTokenCount":50REDACTEDREDACTED`,
+			wantNil: false,
+			wantUsage: &ClaudeUsage{
+				InputTokens:          100,
+				OutputTokens:         70,
+				CacheReadInputTokens: 0,
+		REDACTED,
+	REDACTED,
+		{
+			name:    "包含 thoughtsTokenCount 与缓存",
+			input:   `{"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":20,"cachedContentTokenCount":30,"thoughtsTokenCount":50REDACTEDREDACTED`,
+			wantNil: false,
+			wantUsage: &ClaudeUsage{
+				InputTokens:          70,
+				OutputTokens:         70,
+				CacheReadInputTokens: 30,
+		REDACTED,
+	REDACTED,
+		{
 			name:    "缺失 cachedContentTokenCount",
 			input:   `{"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":50REDACTEDREDACTED`,
 			wantNil: false,

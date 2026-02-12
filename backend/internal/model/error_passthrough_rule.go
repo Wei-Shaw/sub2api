@@ -18,6 +18,7 @@ type ErrorPassthroughRule struct {
 	ResponseCode    *int      `json:"response_code"`    // 自定义状态码（passthrough_code=false 时使用）
 	PassthroughBody bool      `json:"passthrough_body"` // 是否透传原始错误信息
 	CustomMessage   *string   `json:"custom_message"`   // 自定义错误信息（passthrough_body=false 时使用）
+	SkipMonitoring  bool      `json:"skip_monitoring"`  // 是否跳过运维监控记录
 	Description     *string   `json:"description"`      // 规则描述
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
