@@ -10,6 +10,10 @@ type OpsRepository interface {
 	ListErrorLogs(ctx context.Context, filter *OpsErrorLogFilter) (*OpsErrorLogList, error)
 	GetErrorLogByID(ctx context.Context, id int64) (*OpsErrorLogDetail, error)
 	ListRequestDetails(ctx context.Context, filter *OpsRequestDetailFilter) ([]*OpsRequestDetail, int64, error)
+	BatchInsertSystemLogs(ctx context.Context, inputs []*OpsInsertSystemLogInput) (int64, error)
+	ListSystemLogs(ctx context.Context, filter *OpsSystemLogFilter) (*OpsSystemLogList, error)
+	DeleteSystemLogs(ctx context.Context, filter *OpsSystemLogCleanupFilter) (int64, error)
+	InsertSystemLogCleanupAudit(ctx context.Context, input *OpsSystemLogCleanupAudit) error
 
 	InsertRetryAttempt(ctx context.Context, input *OpsInsertRetryAttemptInput) (int64, error)
 	UpdateRetryAttempt(ctx context.Context, input *OpsUpdateRetryAttemptInput) error
@@ -203,6 +207,69 @@ type OpsInsertSystemMetricsInput struct {
 
 	GoroutineCount        *int
 	ConcurrencyQueueDepth *int
+REDACTED
+
+type OpsInsertSystemLogInput struct {
+	CreatedAt       time.Time
+	Level           string
+	Component       string
+	Message         string
+	RequestID       string
+	ClientRequestID string
+	UserID          *int64
+	AccountID       *int64
+	Platform        string
+	Model           string
+	ExtraJSON       string
+REDACTED
+
+type OpsSystemLogFilter struct {
+	StartTime *time.Time
+	EndTime   *time.Time
+
+	Level     string
+	Component string
+
+	RequestID       string
+	ClientRequestID string
+	UserID          *int64
+	AccountID       *int64
+	Platform        string
+	Model           string
+	Query           string
+
+	Page     int
+	PageSize int
+REDACTED
+
+type OpsSystemLogCleanupFilter struct {
+	StartTime *time.Time
+	EndTime   *time.Time
+
+	Level     string
+	Component string
+
+	RequestID       string
+	ClientRequestID string
+	UserID          *int64
+	AccountID       *int64
+	Platform        string
+	Model           string
+	Query           string
+REDACTED
+
+type OpsSystemLogList struct {
+	Logs     []*OpsSystemLog `json:"logs"`
+	Total    int             `json:"total"`
+	Page     int             `json:"page"`
+	PageSize int             `json:"page_size"`
+REDACTED
+
+type OpsSystemLogCleanupAudit struct {
+	CreatedAt   time.Time
+	OperatorID  int64
+	Conditions  string
+	DeletedRows int64
 REDACTED
 
 type OpsSystemMetricsSnapshot struct {

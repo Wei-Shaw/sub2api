@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	mathrand "math/rand"
 	"net/http"
@@ -22,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 
@@ -282,7 +282,7 @@ func (s *GeminiMessagesCompatService) passesRateLimitPreCheck(ctx context.Contex
 REDACTED
 	ok, err := s.rateLimitService.PreCheckUsage(ctx, account, requestedModel)
 	if err != nil {
-		log.Printf("[Gemini PreCheck] Account %d precheck error: %v", account.ID, err)
+		logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini PreCheck] Account %d precheck error: %v", account.ID, err)
 REDACTED
 	return ok
 REDACTED
@@ -698,7 +698,7 @@ REDACTED
 				Message:            safeErr,
 		REDACTED)
 			if attempt < geminiMaxRetries {
-				log.Printf("Gemini account %d: upstream request failed, retry %d/%d: %v", account.ID, attempt, geminiMaxRetries, err)
+				logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: upstream request failed, retry %d/%d: %v", account.ID, attempt, geminiMaxRetries, err)
 				sleepGeminiBackoff(attempt)
 				continue
 		REDACTED
@@ -754,7 +754,7 @@ REDACTED
 			REDACTED
 				retryGeminiReq, txErr := convertClaudeMessagesToGeminiGenerateContent(strippedClaudeBody)
 				if txErr == nil {
-					log.Printf("Gemini account %d: detected signature-related 400, retrying with downgraded Claude blocks (%s)", account.ID, stageName)
+					logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: detected signature-related 400, retrying with downgraded Claude blocks (%s)", account.ID, stageName)
 					geminiReq = retryGeminiReq
 					// Consume one retry budget attempt and continue with the updated request payload.
 					sleepGeminiBackoff(1)
@@ -821,7 +821,7 @@ REDACTED
 					Detail:             upstreamDetail,
 			REDACTED)
 
-				log.Printf("Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, geminiMaxRetries)
+				logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, geminiMaxRetries)
 				sleepGeminiBackoff(attempt)
 				continue
 		REDACTED
@@ -1166,7 +1166,7 @@ REDACTED
 				Message:            safeErr,
 		REDACTED)
 			if attempt < geminiMaxRetries {
-				log.Printf("Gemini account %d: upstream request failed, retry %d/%d: %v", account.ID, attempt, geminiMaxRetries, err)
+				logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: upstream request failed, retry %d/%d: %v", account.ID, attempt, geminiMaxRetries, err)
 				sleepGeminiBackoff(attempt)
 				continue
 		REDACTED
@@ -1235,7 +1235,7 @@ REDACTED
 					Detail:             upstreamDetail,
 			REDACTED)
 
-				log.Printf("Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, geminiMaxRetries)
+				logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, geminiMaxRetries)
 				sleepGeminiBackoff(attempt)
 				continue
 		REDACTED
@@ -1367,7 +1367,7 @@ REDACTED
 				maxBytes = 2048
 		REDACTED
 			upstreamDetail = truncateString(string(respBody), maxBytes)
-			log.Printf("[Gemini] native upstream error %d: %s", resp.StatusCode, truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes))
+			logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini] native upstream error %d: %s", resp.StatusCode, truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes))
 	REDACTED
 		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -1544,7 +1544,7 @@ REDACTED
 REDACTED)
 
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-		log.Printf("[Gemini] upstream error %d: %s", upstreamStatus, truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes))
+		logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini] upstream error %d: %s", upstreamStatus, truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes))
 REDACTED
 
 	if status, errType, errMsg, matched := applyErrorPassthroughRule(
@@ -2299,13 +2299,13 @@ REDACTED
 
 func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Context, resp *http.Response, isOAuth bool) (*ClaudeUsage, error) {
 	// Log response headers for debugging
-	log.Printf("[GeminiAPI] ========== Response Headers ==========")
+	logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Response Headers ==========")
 	for key, values := range resp.Header {
 		if strings.HasPrefix(strings.ToLower(key), "x-ratelimit") {
-			log.Printf("[GeminiAPI] %s: %v", key, values)
+			logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] %s: %v", key, values)
 	REDACTED
 REDACTED
-	log.Printf("[GeminiAPI] ========================================")
+	logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========================================")
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -2339,13 +2339,13 @@ REDACTED
 
 func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool) (*geminiNativeStreamResult, error) {
 	// Log response headers for debugging
-	log.Printf("[GeminiAPI] ========== Streaming Response Headers ==========")
+	logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Streaming Response Headers ==========")
 	for key, values := range resp.Header {
 		if strings.HasPrefix(strings.ToLower(key), "x-ratelimit") {
-			log.Printf("[GeminiAPI] %s: %v", key, values)
+			logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] %s: %v", key, values)
 	REDACTED
 REDACTED
-	log.Printf("[GeminiAPI] ====================================================")
+	logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ====================================================")
 
 	if s.cfg != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)
@@ -2640,16 +2640,16 @@ REDACTED
 				cooldown = s.rateLimitService.GeminiCooldown(ctx, account)
 		REDACTED
 			ra = time.Now().Add(cooldown)
-			log.Printf("[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, time.Until(ra).Truncate(time.Second))
+			logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, time.Until(ra).Truncate(time.Second))
 	REDACTED else {
 			// API Key / AI Studio OAuth: PST 午夜
 			if ts := nextGeminiDailyResetUnix(); ts != nil {
 				ra = time.Unix(*ts, 0)
-				log.Printf("[Gemini 429] Account %d (API Key/AI Studio, type=%s) rate limited, reset at PST midnight (%v)", account.ID, account.Type, ra)
+				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (API Key/AI Studio, type=%s) rate limited, reset at PST midnight (%v)", account.ID, account.Type, ra)
 		REDACTED else {
 				// 兜底：5 分钟
 				ra = time.Now().Add(5 * time.Minute)
-				log.Printf("[Gemini 429] Account %d rate limited, fallback to 5min", account.ID)
+				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d rate limited, fallback to 5min", account.ID)
 		REDACTED
 	REDACTED
 		_ = s.accountRepo.SetRateLimited(ctx, account.ID, ra)
@@ -2659,7 +2659,7 @@ REDACTED
 	// 使用解析到的重置时间
 	resetTime := time.Unix(*resetAt, 0)
 	_ = s.accountRepo.SetRateLimited(ctx, account.ID, resetTime)
-	log.Printf("[Gemini 429] Account %d rate limited until %v (oauth_type=%s, tier=%s)",
+	logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d rate limited until %v (oauth_type=%s, tier=%s)",
 		account.ID, resetTime, oauthType, tierID)
 REDACTED
 

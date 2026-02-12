@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 )
@@ -193,6 +194,13 @@ func ProvideOpsCleanupService(
 	return svc
 REDACTED
 
+func ProvideOpsSystemLogSink(opsRepo OpsRepository) *OpsSystemLogSink {
+	sink := NewOpsSystemLogSink(opsRepo)
+	sink.Start()
+	logger.SetSink(sink)
+	return sink
+REDACTED
+
 // ProvideSoraMediaStorage 初始化 Sora 媒体存储
 func ProvideSoraMediaStorage(cfg *config.Config) *SoraMediaStorage {
 	return NewSoraMediaStorage(cfg)
@@ -268,6 +276,7 @@ var ProviderSet = wire.NewSet(
 	NewAccountUsageService,
 	NewAccountTestService,
 	NewSettingService,
+	ProvideOpsSystemLogSink,
 	NewOpsService,
 	ProvideOpsMetricsCollector,
 	ProvideOpsAggregationService,

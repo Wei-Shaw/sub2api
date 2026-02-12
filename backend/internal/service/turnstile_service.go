@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 var (
@@ -47,36 +47,36 @@ REDACTED
 func (s *TurnstileService) VerifyToken(ctx context.Context, token string, remoteIP string) error {
 	// 检查是否启用 Turnstile
 	if !s.settingService.IsTurnstileEnabled(ctx) {
-		log.Println("[Turnstile] Disabled, skipping verification")
+		logger.LegacyPrintf("service.turnstile", "%s", "[Turnstile] Disabled, skipping verification")
 		return nil
 REDACTED
 
 	// 获取 Secret Key
 	secretKey := s.settingService.GetTurnstileSecretKey(ctx)
 	if secretKey == "" {
-		log.Println("[Turnstile] Secret key not configured")
+		logger.LegacyPrintf("service.turnstile", "%s", "[Turnstile] Secret key not configured")
 		return ErrTurnstileNotConfigured
 REDACTED
 
 	// 如果 token 为空，返回错误
 	if token == "" {
-		log.Println("[Turnstile] Token is empty")
+		logger.LegacyPrintf("service.turnstile", "%s", "[Turnstile] Token is empty")
 		return ErrTurnstileVerificationFailed
 REDACTED
 
-	log.Printf("[Turnstile] Verifying token for IP: %s", remoteIP)
+	logger.LegacyPrintf("service.turnstile", "[Turnstile] Verifying token for IP: %s", remoteIP)
 	result, err := s.verifier.VerifyToken(ctx, secretKey, token, remoteIP)
 	if err != nil {
-		log.Printf("[Turnstile] Request failed: %v", err)
+		logger.LegacyPrintf("service.turnstile", "[Turnstile] Request failed: %v", err)
 		return fmt.Errorf("send request: %w", err)
 REDACTED
 
 	if !result.Success {
-		log.Printf("[Turnstile] Verification failed, error codes: %v", result.ErrorCodes)
+		logger.LegacyPrintf("service.turnstile", "[Turnstile] Verification failed, error codes: %v", result.ErrorCodes)
 		return ErrTurnstileVerificationFailed
 REDACTED
 
-	log.Println("[Turnstile] Verification successful")
+	logger.LegacyPrintf("service.turnstile", "%s", "[Turnstile] Verification successful")
 	return nil
 REDACTED
 

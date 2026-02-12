@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
@@ -361,7 +361,7 @@ REDACTED
 		for i := range users {
 			rates, err := s.userGroupRateRepo.GetByUserID(ctx, users[i].ID)
 			if err != nil {
-				log.Printf("failed to load user group rates: user_id=%d err=%v", users[i].ID, err)
+				logger.LegacyPrintf("service.admin", "failed to load user group rates: user_id=%d err=%v", users[i].ID, err)
 				continue
 		REDACTED
 			users[i].GroupRates = rates
@@ -379,7 +379,7 @@ REDACTED
 	if s.userGroupRateRepo != nil {
 		rates, err := s.userGroupRateRepo.GetByUserID(ctx, id)
 		if err != nil {
-			log.Printf("failed to load user group rates: user_id=%d err=%v", id, err)
+			logger.LegacyPrintf("service.admin", "failed to load user group rates: user_id=%d err=%v", id, err)
 	REDACTED else {
 			user.GroupRates = rates
 	REDACTED
@@ -457,7 +457,7 @@ REDACTED
 	// 同步用户专属分组倍率
 	if input.GroupRates != nil && s.userGroupRateRepo != nil {
 		if err := s.userGroupRateRepo.SyncUserGroupRates(ctx, user.ID, input.GroupRates); err != nil {
-			log.Printf("failed to sync user group rates: user_id=%d err=%v", user.ID, err)
+			logger.LegacyPrintf("service.admin", "failed to sync user group rates: user_id=%d err=%v", user.ID, err)
 	REDACTED
 REDACTED
 
@@ -471,7 +471,7 @@ REDACTED
 	if concurrencyDiff != 0 {
 		code, err := GenerateRedeemCode()
 		if err != nil {
-			log.Printf("failed to generate adjustment redeem code: %v", err)
+			logger.LegacyPrintf("service.admin", "failed to generate adjustment redeem code: %v", err)
 			return user, nil
 	REDACTED
 		adjustmentRecord := &RedeemCode{
@@ -484,7 +484,7 @@ REDACTED
 		now := time.Now()
 		adjustmentRecord.UsedAt = &now
 		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
-			log.Printf("failed to create concurrency adjustment redeem code: %v", err)
+			logger.LegacyPrintf("service.admin", "failed to create concurrency adjustment redeem code: %v", err)
 	REDACTED
 REDACTED
 
@@ -501,7 +501,7 @@ REDACTED
 		return errors.New("cannot delete admin user")
 REDACTED
 	if err := s.userRepo.Delete(ctx, id); err != nil {
-		log.Printf("delete user failed: user_id=%d err=%v", id, err)
+		logger.LegacyPrintf("service.admin", "delete user failed: user_id=%d err=%v", id, err)
 		return err
 REDACTED
 	if s.authCacheInvalidator != nil {
@@ -544,7 +544,7 @@ REDACTED
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := s.billingCacheService.InvalidateUserBalance(cacheCtx, userID); err != nil {
-				log.Printf("invalidate user balance cache failed: user_id=%d err=%v", userID, err)
+				logger.LegacyPrintf("service.admin", "invalidate user balance cache failed: user_id=%d err=%v", userID, err)
 		REDACTED
 	REDACTED()
 REDACTED
@@ -552,7 +552,7 @@ REDACTED
 	if balanceDiff != 0 {
 		code, err := GenerateRedeemCode()
 		if err != nil {
-			log.Printf("failed to generate adjustment redeem code: %v", err)
+			logger.LegacyPrintf("service.admin", "failed to generate adjustment redeem code: %v", err)
 			return user, nil
 	REDACTED
 
@@ -568,7 +568,7 @@ REDACTED
 		adjustmentRecord.UsedAt = &now
 
 		if err := s.redeemCodeRepo.Create(ctx, adjustmentRecord); err != nil {
-			log.Printf("failed to create balance adjustment redeem code: %v", err)
+			logger.LegacyPrintf("service.admin", "failed to create balance adjustment redeem code: %v", err)
 	REDACTED
 REDACTED
 
@@ -1026,7 +1026,7 @@ REDACTED
 			defer cancel()
 			for _, userID := range affectedUserIDs {
 				if err := s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID); err != nil {
-					log.Printf("invalidate subscription cache failed: user_id=%d group_id=%d err=%v", userID, groupID, err)
+					logger.LegacyPrintf("service.admin", "invalidate subscription cache failed: user_id=%d group_id=%d err=%v", userID, groupID, err)
 			REDACTED
 		REDACTED
 	REDACTED()
@@ -1144,7 +1144,7 @@ REDACTED
 	REDACTED
 		if err := s.soraAccountRepo.Upsert(ctx, account.ID, soraUpdates); err != nil {
 			// 只记录警告日志，不阻塞账号创建
-			log.Printf("[AdminService] 创建 sora_accounts 记录失败: account_id=%d err=%v", account.ID, err)
+			logger.LegacyPrintf("service.admin", "[AdminService] 创建 sora_accounts 记录失败: account_id=%d err=%v", account.ID, err)
 	REDACTED
 REDACTED
 
@@ -1779,7 +1779,7 @@ REDACTED
 
 	latencies, err := s.proxyLatencyCache.GetProxyLatencies(ctx, ids)
 	if err != nil {
-		log.Printf("Warning: load proxy latency cache failed: %v", err)
+		logger.LegacyPrintf("service.admin", "Warning: load proxy latency cache failed: %v", err)
 		return
 REDACTED
 
@@ -1808,7 +1808,7 @@ func (s *adminServiceImpl) saveProxyLatency(ctx context.Context, proxyID int64, 
 		return
 REDACTED
 	if err := s.proxyLatencyCache.SetProxyLatency(ctx, proxyID, info); err != nil {
-		log.Printf("Warning: store proxy latency cache failed: %v", err)
+		logger.LegacyPrintf("service.admin", "Warning: store proxy latency cache failed: %v", err)
 REDACTED
 REDACTED
 

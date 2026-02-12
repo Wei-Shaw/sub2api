@@ -130,8 +130,7 @@ watch(
       next.viewMode !== prev.viewMode ||
       next.pageSize !== prev.pageSize ||
       next.platform !== prev.platform ||
-      next.groupId !== prev.groupId ||
-      next.refreshToken !== prev.refreshToken
+      next.groupId !== prev.groupId
 
     if (next.viewMode === 'pagination' && filtersChanged && next.page !== 1) {
       page.value = 1
