@@ -1682,7 +1682,8 @@ export default {
         apiKeyHint: '您的 OpenAI API Key',
         oauthPassthrough: '自动透传（仅替换认证）',
         oauthPassthroughDesc:
-          '开启后，仅对 Codex CLI 请求生效：网关将原样透传请求与响应内容，只替换 OAuth 认证并保留计费/并发/审计；如遇 4xx/兼容性问题可关闭回滚。',
+          '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
+        modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
         enableSora: '同时启用 Sora',
         enableSoraHint: 'Sora 使用相同的 OpenAI 账号，开启后将同时创建 Sora 平台账号'
       REDACTED,

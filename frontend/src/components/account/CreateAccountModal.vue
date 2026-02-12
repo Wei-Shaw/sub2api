@@ -866,77 +866,30 @@
         <div v-if="form.platform !== 'gemini'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
 
-          <!-- Mode Toggle -->
-          <div class="mb-4 flex gap-2">
-            <button
-              type="button"
-              @click="modelRestrictionMode = 'whitelist'"
-              :class="[
-                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                modelRestrictionMode === 'whitelist'
-                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-              ]"
-            >
-              <svg
-                class="mr-1.5 inline h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
-            </button>
-            <button
-              type="button"
-              @click="modelRestrictionMode = 'mapping'"
-              :class="[
-                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                modelRestrictionMode === 'mapping'
-                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-              ]"
-            >
-              <svg
-                class="mr-1.5 inline h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-                />
-              </svg>
-              {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
-            </button>
-          </div>
-
-          <!-- Whitelist Mode -->
-          <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" />
-            <p class="text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
-              <span v-if="allowedModels.length === 0">{{
-                t('admin.accounts.supportsAllModels')
-              REDACTEDREDACTED</span>
+          <div
+            v-if="isOpenAIModelRestrictionDisabled"
+            class="mb-3 rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20"
+          >
+            <p class="text-xs text-amber-700 dark:text-amber-400">
+              {{ t('admin.accounts.openai.modelRestrictionDisabledByPassthrough') REDACTEDREDACTED
             </p>
           </div>
 
-          <!-- Mapping Mode -->
-          <div v-else>
-            <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
-              <p class="text-xs text-purple-700 dark:text-purple-400">
+          <template v-else>
+            <!-- Mode Toggle -->
+            <div class="mb-4 flex gap-2">
+              <button
+                type="button"
+                @click="modelRestrictionMode = 'whitelist'"
+                :class="[
+                  'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                  modelRestrictionMode === 'whitelist'
+                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                ]"
+              >
                 <svg
-                  class="mr-1 inline h-4 w-4"
+                  class="mr-1.5 inline h-4 w-4"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -945,12 +898,69 @@
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                {{ t('admin.accounts.mapRequestModels') REDACTEDREDACTED
+                {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
+              </button>
+              <button
+                type="button"
+                @click="modelRestrictionMode = 'mapping'"
+                :class="[
+                  'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                  modelRestrictionMode === 'mapping'
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                ]"
+              >
+                <svg
+                  class="mr-1.5 inline h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                  />
+                </svg>
+                {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
+              </button>
+            </div>
+
+            <!-- Whitelist Mode -->
+            <div v-if="modelRestrictionMode === 'whitelist'">
+              <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" />
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
+                <span v-if="allowedModels.length === 0">{{
+                  t('admin.accounts.supportsAllModels')
+                REDACTEDREDACTED</span>
               </p>
             </div>
+
+            <!-- Mapping Mode -->
+            <div v-else>
+              <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+                <p class="text-xs text-purple-700 dark:text-purple-400">
+                  <svg
+                    class="mr-1 inline h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  {{ t('admin.accounts.mapRequestModels') REDACTEDREDACTED
+                </p>
+              </div>
 
             <!-- Model Mapping List -->
             <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
@@ -1022,19 +1032,20 @@
               {{ t('admin.accounts.addMapping') REDACTEDREDACTED
             </button>
 
-            <!-- Quick Add Buttons -->
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="preset in presetMappings"
-                :key="preset.label"
-                type="button"
-                @click="addPresetMapping(preset.from, preset.to)"
-                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
-              >
-                + {{ preset.label REDACTEDREDACTED
-              </button>
+              <!-- Quick Add Buttons -->
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="preset in presetMappings"
+                  :key="preset.label"
+                  type="button"
+                  @click="addPresetMapping(preset.from, preset.to)"
+                  :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+                >
+                  + {{ preset.label REDACTEDREDACTED
+                </button>
+              </div>
             </div>
-          </div>
+          </template>
         </div>
 
         <!-- Custom Error Codes Section -->
@@ -1560,6 +1571,36 @@
         <label class="input-label">{{ t('admin.accounts.expiresAt') REDACTEDREDACTED</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
         <p class="input-hint">{{ t('admin.accounts.expiresAtHint') REDACTEDREDACTED</p>
+      </div>
+
+      <!-- OpenAI 自动透传开关（OAuth/API Key） -->
+      <div
+        v-if="form.platform === 'openai'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.oauthPassthrough') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.oauthPassthroughDesc') REDACTEDREDACTED
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="openaiPassthroughEnabled = !openaiPassthroughEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openaiPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openaiPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
       </div>
 
       <div>
@@ -2143,6 +2184,7 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
+const openaiPassthroughEnabled = ref(false)
 const enableSoraOnOpenAIOAuth = ref(false) // OpenAI OAuth 时同时启用 Sora
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const antigravityAccountType = ref<'oauth' | 'upstream'>('oauth') // For antigravity: oauth or upstream
@@ -2191,6 +2233,10 @@ const geminiSelectedTier = computed(() => {
       return geminiTierAIStudio.value
   REDACTED
 REDACTED)
+
+const isOpenAIModelRestrictionDisabled = computed(() =>
+  form.platform === 'openai' && openaiPassthroughEnabled.value
+)
 
 const geminiQuotaDocs = {
   codeAssist: 'https://developers.google.com/gemini-code-assist/resources/quotas',
@@ -2361,6 +2407,9 @@ watch(
     // Reset Anthropic-specific settings when switching to other platforms
     if (newPlatform !== 'anthropic') {
       interceptWarmupRequests.value = false
+    REDACTED
+    if (newPlatform !== 'openai') {
+      openaiPassthroughEnabled.value = false
     REDACTED
     // Reset OAuth states
     oauth.resetState()
@@ -2615,6 +2664,7 @@ const resetForm = () => {
   customErrorCodeInput.value = null
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
+  openaiPassthroughEnabled.value = false
   enableSoraOnOpenAIOAuth.value = false
   // Reset quota control state
   windowCostEnabled.value = false
@@ -2643,6 +2693,21 @@ REDACTED
 
 const handleClose = () => {
   emit('close')
+REDACTED
+
+const buildOpenAIPassthroughExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  if (form.platform !== 'openai') {
+    return base
+  REDACTED
+
+  const extra: Record<string, unknown> = { ...(base || {REDACTED) REDACTED
+  if (openaiPassthroughEnabled.value) {
+    extra.openai_passthrough = true
+  REDACTED else {
+    delete extra.openai_passthrough
+    delete extra.openai_oauth_passthrough
+  REDACTED
+  return Object.keys(extra).length > 0 ? extra : undefined
 REDACTED
 
 // Helper function to create account with mixed channel warning handling
@@ -2775,10 +2840,12 @@ const handleSubmit = async () => {
     credentials.tier_id = geminiTierAIStudio.value
   REDACTED
 
-  // Add model mapping if configured
-  const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-  if (modelMapping) {
-    credentials.model_mapping = modelMapping
+  // Add model mapping if configured（OpenAI 开启自动透传时不应用）
+  if (!isOpenAIModelRestrictionDisabled.value) {
+    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    REDACTED
   REDACTED
 
   // Add custom error codes if enabled
@@ -2796,10 +2863,12 @@ const handleSubmit = async () => {
   REDACTED
 
   form.credentials = credentials
+  const extra = buildOpenAIPassthroughExtra()
 
   await doCreateAccount({
     ...form,
     group_ids: form.group_ids,
+    extra,
     auto_pause_on_expired: autoPauseOnExpired.value
   REDACTED)
 REDACTED
@@ -2879,7 +2948,8 @@ const handleOpenAIExchange = async (authCode: string) => {
     if (!tokenInfo) return
 
     const credentials = openaiOAuth.buildCredentials(tokenInfo)
-    const extra = openaiOAuth.buildExtraInfo(tokenInfo)
+    const oauthExtra = openaiOAuth.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
+    const extra = buildOpenAIPassthroughExtra(oauthExtra)
 
     // 应用临时不可调度配置
     if (!applyTempUnschedConfig(credentials)) {
@@ -2916,10 +2986,12 @@ const handleOpenAIExchange = async (authCode: string) => {
         REDACTED
 
         // 建立关联关系
-        const soraExtra = {
-          ...extra,
+        const soraExtra: Record<string, unknown> = {
+          ...(extra || {REDACTED),
           linked_openai_account_id: String(openaiAccount.id)
         REDACTED
+        delete soraExtra.openai_passthrough
+        delete soraExtra.openai_oauth_passthrough
 
         await adminAPI.accounts.create({
           name: `${form.nameREDACTED (Sora)`,
@@ -2991,7 +3063,8 @@ const handleOpenAIValidateRT = async (refreshTokenInput: string) => {
         REDACTED
 
         const credentials = openaiOAuth.buildCredentials(tokenInfo)
-        const extra = openaiOAuth.buildExtraInfo(tokenInfo)
+        const oauthExtra = openaiOAuth.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
+        const extra = buildOpenAIPassthroughExtra(oauthExtra)
 
         // Generate account name with index for batch
         const accountName = refreshTokens.length > 1 ? `${form.nameREDACTED #${i + 1REDACTED` : form.name

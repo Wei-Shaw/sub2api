@@ -696,23 +696,27 @@ REDACTED
 	return false
 REDACTED
 
-// IsOpenAIOAuthPassthroughEnabled 返回 OpenAI OAuth 账号是否启用“原样透传（仅替换认证）”。
+// IsOpenAIPassthroughEnabled 返回 OpenAI 账号是否启用“自动透传（仅替换认证）”。
 //
-// 存储位置：accounts.extra.openai_oauth_passthrough。
+// 新字段：accounts.extra.openai_passthrough。
+// 兼容字段：accounts.extra.openai_oauth_passthrough（历史 OAuth 开关）。
 // 字段缺失或类型不正确时，按 false（关闭）处理。
+func (a *Account) IsOpenAIPassthroughEnabled() bool {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return false
+REDACTED
+	if enabled, ok := a.Extra["openai_passthrough"].(bool); ok {
+		return enabled
+REDACTED
+	if enabled, ok := a.Extra["openai_oauth_passthrough"].(bool); ok {
+		return enabled
+REDACTED
+	return false
+REDACTED
+
+// IsOpenAIOAuthPassthroughEnabled 兼容旧接口，等价于 OAuth 账号的 IsOpenAIPassthroughEnabled。
 func (a *Account) IsOpenAIOAuthPassthroughEnabled() bool {
-	if a == nil || a.Extra == nil {
-		return false
-REDACTED
-	v, ok := a.Extra["openai_oauth_passthrough"]
-	if !ok || v == nil {
-		return false
-REDACTED
-	enabled, ok := v.(bool)
-	if !ok {
-		return false
-REDACTED
-	return enabled
+	return a != nil && a.IsOpenAIOAuth() && a.IsOpenAIPassthroughEnabled()
 REDACTED
 
 // WindowCostSchedulability 窗口费用调度状态
