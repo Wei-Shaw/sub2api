@@ -55,6 +55,10 @@ INSERT INTO ops_error_logs (
   upstream_error_message,
   upstream_error_detail,
   upstream_errors,
+  auth_latency_ms,
+  routing_latency_ms,
+  upstream_latency_ms,
+  response_latency_ms,
   time_to_first_token_ms,
   request_body,
   request_body_truncated,
@@ -64,7 +68,7 @@ INSERT INTO ops_error_logs (
   retry_count,
   created_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38
 ) RETURNING id`
 
 	var id int64
@@ -97,6 +101,10 @@ INSERT INTO ops_error_logs (
 		opsNullString(input.UpstreamErrorMessage),
 		opsNullString(input.UpstreamErrorDetail),
 		opsNullString(input.UpstreamErrorsJSON),
+		opsNullInt64(input.AuthLatencyMs),
+		opsNullInt64(input.RoutingLatencyMs),
+		opsNullInt64(input.UpstreamLatencyMs),
+		opsNullInt64(input.ResponseLatencyMs),
 		opsNullInt64(input.TimeToFirstTokenMs),
 		opsNullString(input.RequestBodyJSON),
 		input.RequestBodyTruncated,

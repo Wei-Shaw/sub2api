@@ -104,31 +104,24 @@ REDACTED
 
 // wrapReleaseOnDone ensures release runs at most once and still triggers on context cancellation.
 // 用于避免客户端断开或上游超时导致的并发槽位泄漏。
-// 修复：添加 quit channel 确保 goroutine 及时退出，避免泄露
+// 优化：基于 context.AfterFunc 注册回调，避免每请求额外守护 goroutine。
 func wrapReleaseOnDone(ctx context.Context, releaseFunc func()) func() {
 	if releaseFunc == nil {
 		return nil
 REDACTED
 	var once sync.Once
-	quit := make(chan struct{REDACTED)
+	var stop func() bool
 
 	release := func() {
 		once.Do(func() {
+			if stop != nil {
+				_ = stop()
+		REDACTED
 			releaseFunc()
-			close(quit) // 通知监听 goroutine 退出
 	REDACTED)
 REDACTED
 
-	go func() {
-		select {
-		case <-ctx.Done():
-			// Context 取消时释放资源
-			release()
-		case <-quit:
-			// 正常释放已完成，goroutine 退出
-			return
-	REDACTED
-REDACTED()
+	stop = context.AfterFunc(ctx, release)
 
 	return release
 REDACTED
@@ -153,6 +146,32 @@ func (h *ConcurrencyHelper) DecrementAccountWaitCount(ctx context.Context, accou
 	h.concurrencyService.DecrementAccountWaitCount(ctx, accountID)
 REDACTED
 
+// TryAcquireUserSlot 尝试立即获取用户并发槽位。
+// 返回值: (releaseFunc, acquired, error)
+func (h *ConcurrencyHelper) TryAcquireUserSlot(ctx context.Context, userID int64, maxConcurrency int) (func(), bool, error) {
+	result, err := h.concurrencyService.AcquireUserSlot(ctx, userID, maxConcurrency)
+	if err != nil {
+		return nil, false, err
+REDACTED
+	if !result.Acquired {
+		return nil, false, nil
+REDACTED
+	return result.ReleaseFunc, true, nil
+REDACTED
+
+// TryAcquireAccountSlot 尝试立即获取账号并发槽位。
+// 返回值: (releaseFunc, acquired, error)
+func (h *ConcurrencyHelper) TryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (func(), bool, error) {
+	result, err := h.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	if err != nil {
+		return nil, false, err
+REDACTED
+	if !result.Acquired {
+		return nil, false, nil
+REDACTED
+	return result.ReleaseFunc, true, nil
+REDACTED
+
 // AcquireUserSlotWithWait acquires a user concurrency slot, waiting if necessary.
 // For streaming requests, sends ping events during the wait.
 // streamStarted is updated if streaming response has begun.
@@ -160,13 +179,13 @@ func (h *ConcurrencyHelper) AcquireUserSlotWithWait(c *gin.Context, userID int64
 	ctx := c.Request.Context()
 
 	// Try to acquire immediately
-	result, err := h.concurrencyService.AcquireUserSlot(ctx, userID, maxConcurrency)
+	releaseFunc, acquired, err := h.TryAcquireUserSlot(ctx, userID, maxConcurrency)
 	if err != nil {
 		return nil, err
 REDACTED
 
-	if result.Acquired {
-		return result.ReleaseFunc, nil
+	if acquired {
+		return releaseFunc, nil
 REDACTED
 
 	// Need to wait - handle streaming ping if needed
@@ -180,13 +199,13 @@ func (h *ConcurrencyHelper) AcquireAccountSlotWithWait(c *gin.Context, accountID
 	ctx := c.Request.Context()
 
 	// Try to acquire immediately
-	result, err := h.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	releaseFunc, acquired, err := h.TryAcquireAccountSlot(ctx, accountID, maxConcurrency)
 	if err != nil {
 		return nil, err
 REDACTED
 
-	if result.Acquired {
-		return result.ReleaseFunc, nil
+	if acquired {
+		return releaseFunc, nil
 REDACTED
 
 	// Need to wait - handle streaming ping if needed

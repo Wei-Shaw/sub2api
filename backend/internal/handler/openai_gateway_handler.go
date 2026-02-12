@@ -64,6 +64,8 @@ REDACTED
 // Responses handles OpenAI Responses API endpoint
 // POST /openai/v1/responses
 func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
+	requestStart := time.Now()
+
 	// Get apiKey and user from context (set by ApiKeyAuth middleware)
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
@@ -141,6 +143,7 @@ REDACTED
 	if gjson.GetBytes(body, `input.#(type=="function_call_output")`).Exists() {
 		var reqBody map[string]any
 		if err := json.Unmarshal(body, &reqBody); err == nil {
+			c.Set(service.OpenAIParsedRequestBodyKey, reqBody)
 			if service.HasFunctionCallOutput(reqBody) {
 				previousResponseID, _ := reqBody["previous_response_id"].(string)
 				if strings.TrimSpace(previousResponseID) == "" && !service.HasToolCallContext(reqBody) {
@@ -171,34 +174,47 @@ REDACTED
 	// Get subscription info (may be nil)
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 
-	// 0. Check if wait queue is full
-	maxWait := service.CalculateMaxWait(subject.Concurrency)
-	canWait, err := h.concurrencyHelper.IncrementWaitCount(c.Request.Context(), subject.UserID, maxWait)
-	waitCounted := false
-	if err != nil {
-		log.Printf("Increment wait count failed: %v", err)
-		// On error, allow request to proceed
-REDACTED else if !canWait {
-		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later")
-		return
-REDACTED
-	if err == nil && canWait {
-		waitCounted = true
-REDACTED
-	defer func() {
-		if waitCounted {
-			h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), subject.UserID)
-	REDACTED
-REDACTED()
+	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
+	routingStart := time.Now()
 
-	// 1. First acquire user concurrency slot
-	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
+	// 0. 先尝试直接抢占用户槽位（快速路径）
+	userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlot(c.Request.Context(), subject.UserID, subject.Concurrency)
 	if err != nil {
 		log.Printf("User concurrency acquire failed: %v", err)
 		h.handleConcurrencyError(c, err, "user", streamStarted)
 		return
 REDACTED
-	// User slot acquired: no longer waiting.
+
+	waitCounted := false
+	if !userAcquired {
+		// 仅在抢槽失败时才进入等待队列，减少常态请求 Redis 写入。
+		maxWait := service.CalculateMaxWait(subject.Concurrency)
+		canWait, waitErr := h.concurrencyHelper.IncrementWaitCount(c.Request.Context(), subject.UserID, maxWait)
+		if waitErr != nil {
+			log.Printf("Increment wait count failed: %v", waitErr)
+			// 按现有降级语义：等待计数异常时放行后续抢槽流程
+	REDACTED else if !canWait {
+			h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later")
+			return
+	REDACTED
+		if waitErr == nil && canWait {
+			waitCounted = true
+	REDACTED
+		defer func() {
+			if waitCounted {
+				h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), subject.UserID)
+		REDACTED
+	REDACTED()
+
+		userReleaseFunc, err = h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
+		if err != nil {
+			log.Printf("User concurrency acquire failed: %v", err)
+			h.handleConcurrencyError(c, err, "user", streamStarted)
+			return
+	REDACTED
+REDACTED
+
+	// 用户槽位已获取：退出等待队列计数。
 	if waitCounted {
 		h.concurrencyHelper.DecrementWaitCount(c.Request.Context(), subject.UserID)
 		waitCounted = false
@@ -253,52 +269,83 @@ REDACTED
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
 				return
 		REDACTED
-			accountWaitCounted := false
-			canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
-			if err != nil {
-				log.Printf("Increment account wait count failed: %v", err)
-		REDACTED else if !canWait {
-				log.Printf("Account wait queue full: account=%d", account.ID)
-				h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
-				return
-		REDACTED
-			if err == nil && canWait {
-				accountWaitCounted = true
-		REDACTED
-			releaseWait := func() {
-				if accountWaitCounted {
-					h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
-					accountWaitCounted = false
-			REDACTED
-		REDACTED
 
-			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
-				c,
+			// 先快速尝试一次账号槽位，命中则跳过等待计数写入。
+			fastReleaseFunc, fastAcquired, err := h.concurrencyHelper.TryAcquireAccountSlot(
+				c.Request.Context(),
 				account.ID,
 				selection.WaitPlan.MaxConcurrency,
-				selection.WaitPlan.Timeout,
-				reqStream,
-				&streamStarted,
 			)
 			if err != nil {
-				log.Printf("Account concurrency acquire failed: %v", err)
-				releaseWait()
+				log.Printf("Account concurrency quick acquire failed: %v", err)
 				h.handleConcurrencyError(c, err, "account", streamStarted)
 				return
 		REDACTED
-			// Slot acquired: no longer waiting in queue.
-			releaseWait()
-			if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionHash, account.ID); err != nil {
-				log.Printf("Bind sticky session failed: %v", err)
+			if fastAcquired {
+				accountReleaseFunc = fastReleaseFunc
+				if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionHash, account.ID); err != nil {
+					log.Printf("Bind sticky session failed: %v", err)
+			REDACTED
+		REDACTED else {
+				accountWaitCounted := false
+				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
+				if err != nil {
+					log.Printf("Increment account wait count failed: %v", err)
+			REDACTED else if !canWait {
+					log.Printf("Account wait queue full: account=%d", account.ID)
+					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
+					return
+			REDACTED
+				if err == nil && canWait {
+					accountWaitCounted = true
+			REDACTED
+				releaseWait := func() {
+					if accountWaitCounted {
+						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+						accountWaitCounted = false
+				REDACTED
+			REDACTED
+
+				accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
+					c,
+					account.ID,
+					selection.WaitPlan.MaxConcurrency,
+					selection.WaitPlan.Timeout,
+					reqStream,
+					&streamStarted,
+				)
+				if err != nil {
+					log.Printf("Account concurrency acquire failed: %v", err)
+					releaseWait()
+					h.handleConcurrencyError(c, err, "account", streamStarted)
+					return
+			REDACTED
+				// Slot acquired: no longer waiting in queue.
+				releaseWait()
+				if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionHash, account.ID); err != nil {
+					log.Printf("Bind sticky session failed: %v", err)
+			REDACTED
 		REDACTED
 	REDACTED
 		// 账号槽位/等待计数需要在超时或断开时安全回收
 		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
 		// Forward request
+		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
+		forwardStart := time.Now()
 		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, body)
+		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
+	REDACTED
+		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
+		responseLatencyMs := forwardDurationMs
+		if upstreamLatencyMs > 0 && forwardDurationMs > upstreamLatencyMs {
+			responseLatencyMs = forwardDurationMs - upstreamLatencyMs
+	REDACTED
+		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
+		if err == nil && result != nil && result.FirstTokenMs != nil {
+			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 	REDACTED
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError
@@ -340,6 +387,28 @@ REDACTED
 		REDACTED
 	REDACTED(result, account, userAgent, clientIP)
 		return
+REDACTED
+REDACTED
+
+func getContextInt64(c *gin.Context, key string) (int64, bool) {
+	if c == nil || key == "" {
+		return 0, false
+REDACTED
+	v, ok := c.Get(key)
+	if !ok {
+		return 0, false
+REDACTED
+	switch t := v.(type) {
+	case int64:
+		return t, true
+	case int:
+		return int64(t), true
+	case int32:
+		return int64(t), true
+	case float64:
+		return int64(t), true
+	default:
+		return 0, false
 REDACTED
 REDACTED
 
