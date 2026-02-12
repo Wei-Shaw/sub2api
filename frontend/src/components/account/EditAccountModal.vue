@@ -1823,6 +1823,7 @@ const handleSubmit = async () => {
     if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'apikey')) {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {REDACTED
       const newExtra: Record<string, unknown> = { ...currentExtra REDACTED
+      const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
       if (openaiPassthroughEnabled.value) {
         newExtra.openai_passthrough = true
       REDACTED else {
@@ -1830,10 +1831,15 @@ const handleSubmit = async () => {
         delete newExtra.openai_oauth_passthrough
       REDACTED
 
-      if (props.account.type === 'oauth' && codexCLIOnlyEnabled.value) {
-        newExtra.codex_cli_only = true
-      REDACTED else {
-        delete newExtra.codex_cli_only
+      if (props.account.type === 'oauth') {
+        if (codexCLIOnlyEnabled.value) {
+          newExtra.codex_cli_only = true
+        REDACTED else if (hadCodexCLIOnlyEnabled) {
+          // 关闭时显式写 false，避免 extra 为空被后端忽略导致旧值无法清除
+          newExtra.codex_cli_only = false
+        REDACTED else {
+          delete newExtra.codex_cli_only
+        REDACTED
       REDACTED
 
       updatePayload.extra = newExtra
