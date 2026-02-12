@@ -575,6 +575,20 @@ REDACTED
 		REDACTED,
 	REDACTED,
 REDACTED
+	// SecuritySecretsColumns holds the columns for the "security_secrets" table.
+	SecuritySecretsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "key", Type: field.TypeString, Unique: true, Size: 100REDACTED,
+		{Name: "value", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+REDACTED
+	// SecuritySecretsTable holds the schema information for the "security_secrets" table.
+	SecuritySecretsTable = &schema.Table{
+		Name:       "security_secrets",
+		Columns:    SecuritySecretsColumns,
+		PrimaryKey: []*schema.Column{SecuritySecretsColumns[0]REDACTED,
+REDACTED
 	// SettingsColumns holds the columns for the "settings" table.
 	SettingsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
@@ -1003,6 +1017,7 @@ REDACTED
 		PromoCodeUsagesTable,
 		ProxiesTable,
 		RedeemCodesTable,
+		SecuritySecretsTable,
 		SettingsTable,
 		UsageCleanupTasksTable,
 		UsageLogsTable,
@@ -1058,6 +1073,9 @@ REDACTED
 	RedeemCodesTable.ForeignKeys[1].RefTable = UsersTable
 	RedeemCodesTable.Annotation = &entsql.Annotation{
 		Table: "redeem_codes",
+REDACTED
+	SecuritySecretsTable.Annotation = &entsql.Annotation{
+		Table: "security_secrets",
 REDACTED
 	SettingsTable.Annotation = &entsql.Annotation{
 		Table: "settings",

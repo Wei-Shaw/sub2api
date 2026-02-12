@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/schema"
+	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -598,6 +599,43 @@ REDACTED()
 	redeemcodeDescValidityDays := redeemcodeFields[9].Descriptor()
 	// redeemcode.DefaultValidityDays holds the default value on creation for the validity_days field.
 	redeemcode.DefaultValidityDays = redeemcodeDescValidityDays.Default.(int)
+	securitysecretMixin := schema.SecuritySecret{REDACTED.Mixin()
+	securitysecretMixinFields0 := securitysecretMixin[0].Fields()
+	_ = securitysecretMixinFields0
+	securitysecretFields := schema.SecuritySecret{REDACTED.Fields()
+	_ = securitysecretFields
+	// securitysecretDescCreatedAt is the schema descriptor for created_at field.
+	securitysecretDescCreatedAt := securitysecretMixinFields0[0].Descriptor()
+	// securitysecret.DefaultCreatedAt holds the default value on creation for the created_at field.
+	securitysecret.DefaultCreatedAt = securitysecretDescCreatedAt.Default.(func() time.Time)
+	// securitysecretDescUpdatedAt is the schema descriptor for updated_at field.
+	securitysecretDescUpdatedAt := securitysecretMixinFields0[1].Descriptor()
+	// securitysecret.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	securitysecret.DefaultUpdatedAt = securitysecretDescUpdatedAt.Default.(func() time.Time)
+	// securitysecret.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	securitysecret.UpdateDefaultUpdatedAt = securitysecretDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// securitysecretDescKey is the schema descriptor for key field.
+	securitysecretDescKey := securitysecretFields[0].Descriptor()
+	// securitysecret.KeyValidator is a validator for the "key" field. It is called by the builders before save.
+	securitysecret.KeyValidator = func() func(string) error {
+		validators := securitysecretDescKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+	REDACTED
+		return func(key string) error {
+			for _, fn := range fns {
+				if err := fn(key); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// securitysecretDescValue is the schema descriptor for value field.
+	securitysecretDescValue := securitysecretFields[1].Descriptor()
+	// securitysecret.ValueValidator is a validator for the "value" field. It is called by the builders before save.
+	securitysecret.ValueValidator = securitysecretDescValue.Validators[0].(func(string) error)
 	settingFields := schema.Setting{REDACTED.Fields()
 	_ = settingFields
 	// settingDescKey is the schema descriptor for key field.
