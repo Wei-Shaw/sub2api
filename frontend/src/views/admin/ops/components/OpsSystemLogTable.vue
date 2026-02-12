@@ -71,6 +71,55 @@ const formatTime = (value: string) => {
   return d.toLocaleString()
 REDACTED
 
+const getExtraString = (extra: Record<string, any> | undefined, key: string) => {
+  if (!extra) return ''
+  const v = extra[key]
+  if (v == null) return ''
+  if (typeof v === 'string') return v.trim()
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  return ''
+REDACTED
+
+const formatSystemLogDetail = (row: OpsSystemLog) => {
+  const parts: string[] = []
+  const msg = String(row.message || '').trim()
+  if (msg) parts.push(msg)
+
+  const extra = row.extra || {REDACTED
+  const statusCode = getExtraString(extra, 'status_code')
+  const latencyMs = getExtraString(extra, 'latency_ms')
+  const method = getExtraString(extra, 'method')
+  const path = getExtraString(extra, 'path')
+  const clientIP = getExtraString(extra, 'client_ip')
+  const protocol = getExtraString(extra, 'protocol')
+
+  const accessParts: string[] = []
+  if (statusCode) accessParts.push(`status=${statusCodeREDACTED`)
+  if (latencyMs) accessParts.push(`latency_ms=${latencyMsREDACTED`)
+  if (method) accessParts.push(`method=${methodREDACTED`)
+  if (path) accessParts.push(`path=${pathREDACTED`)
+  if (clientIP) accessParts.push(`ip=${clientIPREDACTED`)
+  if (protocol) accessParts.push(`proto=${protocolREDACTED`)
+  if (accessParts.length > 0) parts.push(accessParts.join(' '))
+
+  const corrParts: string[] = []
+  if (row.request_id) corrParts.push(`req=${row.request_idREDACTED`)
+  if (row.client_request_id) corrParts.push(`client_req=${row.client_request_idREDACTED`)
+  if (row.user_id != null) corrParts.push(`user=${row.user_idREDACTED`)
+  if (row.account_id != null) corrParts.push(`acc=${row.account_idREDACTED`)
+  if (row.platform) corrParts.push(`platform=${row.platformREDACTED`)
+  if (row.model) corrParts.push(`model=${row.modelREDACTED`)
+  if (corrParts.length > 0) parts.push(corrParts.join(' '))
+
+  const errors = getExtraString(extra, 'errors')
+  if (errors) parts.push(`errors=${errorsREDACTED`)
+  const err = getExtraString(extra, 'err') || getExtraString(extra, 'error')
+  if (err) parts.push(`error=${errREDACTED`)
+
+  // 用空格拼接，交给 CSS 自动换行，尽量“填满再换行”。
+  return parts.join('  ')
+REDACTED
+
 const toRFC3339 = (value: string) => {
   if (!value) return undefined
   const d = new Date(value)
@@ -421,14 +470,12 @@ REDACTED)
       <div v-if="loading" class="px-4 py-8 text-center text-sm text-gray-500">加载中...</div>
       <div v-else-if="!hasData" class="px-4 py-8 text-center text-sm text-gray-500">暂无系统日志</div>
       <div v-else class="overflow-auto">
-        <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
+        <table class="min-w-full table-fixed divide-y divide-gray-200 dark:divide-dark-700">
           <thead class="bg-gray-50 dark:bg-dark-900">
             <tr>
-              <th class="px-3 py-2 text-left text-[11px] font-semibold text-gray-500">时间</th>
-              <th class="px-3 py-2 text-left text-[11px] font-semibold text-gray-500">级别</th>
-              <th class="px-3 py-2 text-left text-[11px] font-semibold text-gray-500">组件</th>
-              <th class="px-3 py-2 text-left text-[11px] font-semibold text-gray-500">消息</th>
-              <th class="px-3 py-2 text-left text-[11px] font-semibold text-gray-500">关联</th>
+              <th class="w-[170px] px-3 py-2 text-left text-[11px] font-semibold text-gray-500">时间</th>
+              <th class="w-[80px] px-3 py-2 text-left text-[11px] font-semibold text-gray-500">级别</th>
+              <th class="px-3 py-2 text-left text-[11px] font-semibold text-gray-500">日志详细信息</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-dark-800">
@@ -439,13 +486,8 @@ REDACTED)
                   {{ row.level REDACTEDREDACTED
                 </span>
               </td>
-              <td class="px-3 py-2 text-xs text-gray-700 dark:text-gray-300">{{ row.component || '-' REDACTEDREDACTED</td>
-              <td class="max-w-[680px] px-3 py-2 text-xs text-gray-700 dark:text-gray-300">{{ row.message REDACTEDREDACTED</td>
-              <td class="px-3 py-2 text-xs text-gray-600 dark:text-gray-400">
-                <div>req: {{ row.request_id || '-' REDACTEDREDACTED</div>
-                <div>client: {{ row.client_request_id || '-' REDACTEDREDACTED</div>
-                <div>user: {{ row.user_id || '-' REDACTEDREDACTED / acc: {{ row.account_id || '-' REDACTEDREDACTED</div>
-                <div>{{ row.platform || '-' REDACTEDREDACTED / {{ row.model || '-' REDACTEDREDACTED</div>
+              <td class="px-3 py-2 text-xs text-gray-700 dark:text-gray-300 whitespace-normal break-all">
+                {{ formatSystemLogDetail(row) REDACTEDREDACTED
               </td>
             </tr>
           </tbody>
