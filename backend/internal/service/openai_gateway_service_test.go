@@ -1416,3 +1416,109 @@ REDACTED
 	REDACTED)
 REDACTED
 REDACTED
+
+func TestExtractOpenAISSEDataLine(t *testing.T) {
+	tests := []struct {
+		name     string
+		line     string
+		wantData string
+		wantOK   bool
+REDACTED{
+		{name: "标准格式", line: `data: {"type":"x"REDACTED`, wantData: `{"type":"x"REDACTED`, wantOK: trueREDACTED,
+		{name: "无空格格式", line: `data:{"type":"x"REDACTED`, wantData: `{"type":"x"REDACTED`, wantOK: trueREDACTED,
+		{name: "纯空数据", line: `data:   `, wantData: ``, wantOK: trueREDACTED,
+		{name: "非 data 行", line: `event: message`, wantData: ``, wantOK: falseREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := extractOpenAISSEDataLine(tt.line)
+			require.Equal(t, tt.wantOK, ok)
+			require.Equal(t, tt.wantData, got)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestParseSSEUsage_SelectiveParsing(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+	usage := &OpenAIUsage{InputTokens: 9, OutputTokens: 8, CacheReadInputTokens: 7REDACTED
+
+	// 非 completed 事件，不应覆盖 usage
+	svc.parseSSEUsage(`{"type":"response.in_progress","response":{"usage":{"input_tokens":1,"output_tokens":2REDACTEDREDACTEDREDACTED`, usage)
+	require.Equal(t, 9, usage.InputTokens)
+	require.Equal(t, 8, usage.OutputTokens)
+	require.Equal(t, 7, usage.CacheReadInputTokens)
+
+	// completed 事件，应提取 usage
+	svc.parseSSEUsage(`{"type":"response.completed","response":{"usage":{"input_tokens":3,"output_tokens":5,"input_tokens_details":{"cached_tokens":2REDACTEDREDACTEDREDACTEDREDACTED`, usage)
+	require.Equal(t, 3, usage.InputTokens)
+	require.Equal(t, 5, usage.OutputTokens)
+	require.Equal(t, 2, usage.CacheReadInputTokens)
+REDACTED
+
+func TestExtractCodexFinalResponse_SampleReplay(t *testing.T) {
+	body := strings.Join([]string{
+		`event: message`,
+		`data: {"type":"response.in_progress","response":{"id":"resp_1"REDACTEDREDACTED`,
+		`data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-4o","usage":{"input_tokens":11,"output_tokens":22,"input_tokens_details":{"cached_tokens":3REDACTEDREDACTEDREDACTEDREDACTED`,
+		`data: [DONE]`,
+REDACTED, "\n")
+
+	finalResp, ok := extractCodexFinalResponse(body)
+	require.True(t, ok)
+	require.Contains(t, string(finalResp), `"id":"resp_1"`)
+	require.Contains(t, string(finalResp), `"input_tokens":11`)
+REDACTED
+
+func TestHandleOAuthSSEToJSON_CompletedEventReturnsJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{REDACTEDREDACTED
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+REDACTED
+	body := []byte(strings.Join([]string{
+		`data: {"type":"response.in_progress","response":{"id":"resp_2"REDACTEDREDACTED`,
+		`data: {"type":"response.completed","response":{"id":"resp_2","model":"gpt-4o","usage":{"input_tokens":7,"output_tokens":9,"input_tokens_details":{"cached_tokens":1REDACTEDREDACTEDREDACTEDREDACTED`,
+		`data: [DONE]`,
+REDACTED, "\n"))
+
+	usage, err := svc.handleOAuthSSEToJSON(resp, c, body, "gpt-4o", "gpt-4o")
+REDACTED
+	require.NotNil(t, usage)
+	require.Equal(t, 7, usage.InputTokens)
+	require.Equal(t, 9, usage.OutputTokens)
+	require.Equal(t, 1, usage.CacheReadInputTokens)
+	// Header 可能由上游 Content-Type 透传；关键是 body 已转换为最终 JSON 响应。
+	require.NotContains(t, rec.Body.String(), "event:")
+	require.Contains(t, rec.Body.String(), `"id":"resp_2"`)
+	require.NotContains(t, rec.Body.String(), "data:")
+REDACTED
+
+func TestHandleOAuthSSEToJSON_NoFinalResponseKeepsSSEBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{REDACTEDREDACTED
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+REDACTED
+	body := []byte(strings.Join([]string{
+		`data: {"type":"response.in_progress","response":{"id":"resp_3"REDACTEDREDACTED`,
+		`data: [DONE]`,
+REDACTED, "\n"))
+
+	usage, err := svc.handleOAuthSSEToJSON(resp, c, body, "gpt-4o", "gpt-4o")
+REDACTED
+	require.NotNil(t, usage)
+	require.Equal(t, 0, usage.InputTokens)
+	require.Contains(t, rec.Header().Get("Content-Type"), "text/event-stream")
+	require.Contains(t, rec.Body.String(), `data: {"type":"response.in_progress"`)
+REDACTED
