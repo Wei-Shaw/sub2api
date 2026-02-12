@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/url"
 	"os"
 	"strings"
@@ -805,7 +805,7 @@ REDACTED
 	REDACTED
 		cfg.Totp.EncryptionKey = key
 		cfg.Totp.EncryptionKeyConfigured = false
-		log.Println("Warning: TOTP encryption key auto-generated. Consider setting a fixed key for production.")
+		slog.Warn("TOTP encryption key auto-generated. Consider setting a fixed key for production.")
 REDACTED else {
 		cfg.Totp.EncryptionKeyConfigured = true
 REDACTED
@@ -825,19 +825,19 @@ REDACTED
 REDACTED
 
 	if !cfg.Security.URLAllowlist.Enabled {
-		log.Println("Warning: security.url_allowlist.enabled=false; allowlist/SSRF checks disabled (minimal format validation only).")
+		slog.Warn("security.url_allowlist.enabled=false; allowlist/SSRF checks disabled (minimal format validation only).")
 REDACTED
 	if !cfg.Security.ResponseHeaders.Enabled {
-		log.Println("Warning: security.response_headers.enabled=false; configurable header filtering disabled (default allowlist only).")
+		slog.Warn("security.response_headers.enabled=false; configurable header filtering disabled (default allowlist only).")
 REDACTED
 
 	if cfg.JWT.Secret != "" && isWeakJWTSecret(cfg.JWT.Secret) {
-		log.Println("Warning: JWT secret appears weak; use a 32+ character random secret in production.")
+		slog.Warn("JWT secret appears weak; use a 32+ character random secret in production.")
 REDACTED
 	if len(cfg.Security.ResponseHeaders.AdditionalAllowed) > 0 || len(cfg.Security.ResponseHeaders.ForceRemove) > 0 {
-		log.Printf("AUDIT: response header policy configured additional_allowed=%v force_remove=%v",
-			cfg.Security.ResponseHeaders.AdditionalAllowed,
-			cfg.Security.ResponseHeaders.ForceRemove,
+		slog.Info("response header policy configured",
+			"additional_allowed", cfg.Security.ResponseHeaders.AdditionalAllowed,
+			"force_remove", cfg.Security.ResponseHeaders.ForceRemove,
 		)
 REDACTED
 
@@ -1243,20 +1243,20 @@ REDACTED
 		return fmt.Errorf("jwt.expire_hour must be <= 168 (7 days)")
 REDACTED
 	if c.JWT.ExpireHour > 24 {
-		log.Printf("Warning: jwt.expire_hour is %d hours (> 24). Consider shorter expiration for security.", c.JWT.ExpireHour)
+		slog.Warn("jwt.expire_hour is high; consider shorter expiration for security", "expire_hour", c.JWT.ExpireHour)
 REDACTED
 	// JWT Refresh Token配置验证
 	if c.JWT.AccessTokenExpireMinutes <= 0 {
 		return fmt.Errorf("jwt.access_token_expire_minutes must be positive")
 REDACTED
 	if c.JWT.AccessTokenExpireMinutes > 720 {
-		log.Printf("Warning: jwt.access_token_expire_minutes is %d (> 720). Consider shorter expiration for security.", c.JWT.AccessTokenExpireMinutes)
+		slog.Warn("jwt.access_token_expire_minutes is high; consider shorter expiration for security", "access_token_expire_minutes", c.JWT.AccessTokenExpireMinutes)
 REDACTED
 	if c.JWT.RefreshTokenExpireDays <= 0 {
 		return fmt.Errorf("jwt.refresh_token_expire_days must be positive")
 REDACTED
 	if c.JWT.RefreshTokenExpireDays > 90 {
-		log.Printf("Warning: jwt.refresh_token_expire_days is %d (> 90). Consider shorter expiration for security.", c.JWT.RefreshTokenExpireDays)
+		slog.Warn("jwt.refresh_token_expire_days is high; consider shorter expiration for security", "refresh_token_expire_days", c.JWT.RefreshTokenExpireDays)
 REDACTED
 	if c.JWT.RefreshWindowMinutes < 0 {
 		return fmt.Errorf("jwt.refresh_window_minutes must be non-negative")
@@ -1551,7 +1551,7 @@ REDACTED
 		return fmt.Errorf("gateway.idle_conn_timeout_seconds must be positive")
 REDACTED
 	if c.Gateway.IdleConnTimeoutSeconds > 180 {
-		log.Printf("Warning: gateway.idle_conn_timeout_seconds is %d (> 180). Consider 60-120 seconds for better connection reuse.", c.Gateway.IdleConnTimeoutSeconds)
+		slog.Warn("gateway.idle_conn_timeout_seconds is high; consider 60-120 seconds for better connection reuse", "idle_conn_timeout_seconds", c.Gateway.IdleConnTimeoutSeconds)
 REDACTED
 	if c.Gateway.MaxUpstreamClients <= 0 {
 		return fmt.Errorf("gateway.max_upstream_clients must be positive")
@@ -1788,6 +1788,6 @@ func warnIfInsecureURL(field, raw string) {
 		return
 REDACTED
 	if strings.EqualFold(u.Scheme, "http") {
-		log.Printf("Warning: %s uses http scheme; use https in production to avoid token leakage.", field)
+		slog.Warn("url uses http scheme; use https in production to avoid token leakage", "field", field)
 REDACTED
 REDACTED

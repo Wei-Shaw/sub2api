@@ -6,18 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"go.uber.org/zap"
 )
 
 // OpenAIGatewayHandler handles OpenAI API gateway requests
@@ -74,6 +75,13 @@ REDACTED
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 REDACTED
+	reqLog := requestLogger(
+		c,
+		"handler.openai_gateway.responses",
+		zap.Int64("user_id", subject.UserID),
+		zap.Int64("api_key_id", apiKey.ID),
+		zap.Any("group_id", apiKey.GroupID),
+	)
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -113,6 +121,7 @@ REDACTED
 		return
 REDACTED
 	reqStream := streamResult.Bool()
+	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
 
@@ -128,13 +137,17 @@ REDACTED
 				previousResponseID, _ := reqBody["previous_response_id"].(string)
 				if strings.TrimSpace(previousResponseID) == "" && !service.HasToolCallContext(reqBody) {
 					if service.HasFunctionCallOutputMissingCallID(reqBody) {
-						log.Printf("[OpenAI Handler] function_call_output 缺少 call_id: model=%s", reqModel)
+						reqLog.Warn("openai.request_validation_failed",
+							zap.String("reason", "function_call_output_missing_call_id"),
+						)
 						h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires call_id or previous_response_id; if relying on history, ensure store=true and reuse previous_response_id")
 						return
 				REDACTED
 					callIDs := service.FunctionCallOutputCallIDs(reqBody)
 					if !service.HasItemReferenceForCallIDs(reqBody, callIDs) {
-						log.Printf("[OpenAI Handler] function_call_output 缺少匹配的 item_reference: model=%s", reqModel)
+						reqLog.Warn("openai.request_validation_failed",
+							zap.String("reason", "function_call_output_missing_item_reference"),
+						)
 						h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id, or previous_response_id/tool_call context; if relying on history, ensure store=true and reuse previous_response_id")
 						return
 				REDACTED
@@ -160,7 +173,7 @@ REDACTED
 	// 0. 先尝试直接抢占用户槽位（快速路径）
 	userReleaseFunc, userAcquired, err := h.concurrencyHelper.TryAcquireUserSlot(c.Request.Context(), subject.UserID, subject.Concurrency)
 	if err != nil {
-		log.Printf("User concurrency acquire failed: %v", err)
+		reqLog.Warn("openai.user_slot_acquire_failed", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", streamStarted)
 		return
 REDACTED
@@ -171,9 +184,10 @@ REDACTED
 		maxWait := service.CalculateMaxWait(subject.Concurrency)
 		canWait, waitErr := h.concurrencyHelper.IncrementWaitCount(c.Request.Context(), subject.UserID, maxWait)
 		if waitErr != nil {
-			log.Printf("Increment wait count failed: %v", waitErr)
+			reqLog.Warn("openai.user_wait_counter_increment_failed", zap.Error(waitErr))
 			// 按现有降级语义：等待计数异常时放行后续抢槽流程
 	REDACTED else if !canWait {
+			reqLog.Info("openai.user_wait_queue_full", zap.Int("max_wait", maxWait))
 			h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later")
 			return
 	REDACTED
@@ -188,7 +202,7 @@ REDACTED
 
 		userReleaseFunc, err = h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
 		if err != nil {
-			log.Printf("User concurrency acquire failed: %v", err)
+			reqLog.Warn("openai.user_slot_acquire_failed_after_wait", zap.Error(err))
 			h.handleConcurrencyError(c, err, "user", streamStarted)
 			return
 	REDACTED
@@ -207,7 +221,7 @@ REDACTED
 
 	// 2. Re-check billing eligibility after wait
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
-		log.Printf("Billing eligibility check failed after wait: %v", err)
+		reqLog.Info("openai.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message := billingErrorDetails(err)
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
@@ -223,10 +237,13 @@ REDACTED
 
 	for {
 		// Select account supporting the requested model
-		log.Printf("[OpenAI Handler] Selecting account: groupID=%v model=%s", apiKey.GroupID, reqModel)
+		reqLog.Debug("openai.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionHash, reqModel, failedAccountIDs)
 		if err != nil {
-			log.Printf("[OpenAI Handler] SelectAccount failed: groupID=%v model=%s tried=%d err=%v", apiKey.GroupID, reqModel, len(failedAccountIDs), err)
+			reqLog.Warn("openai.account_select_failed",
+				zap.Error(err),
+				zap.Int("excluded_account_count", len(failedAccountIDs)),
+			)
 			if len(failedAccountIDs) == 0 {
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
 				return
@@ -239,7 +256,7 @@ REDACTED
 			return
 	REDACTED
 		account := selection.Account
-		log.Printf("[OpenAI Handler] Selected account: id=%d name=%s", account.ID, account.Name)
+		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		// 3. Acquire account concurrency slot
@@ -257,22 +274,25 @@ REDACTED
 				selection.WaitPlan.MaxConcurrency,
 			)
 			if err != nil {
-				log.Printf("Account concurrency quick acquire failed: %v", err)
+				reqLog.Warn("openai.account_slot_quick_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				h.handleConcurrencyError(c, err, "account", streamStarted)
 				return
 		REDACTED
 			if fastAcquired {
 				accountReleaseFunc = fastReleaseFunc
 				if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionHash, account.ID); err != nil {
-					log.Printf("Bind sticky session failed: %v", err)
+					reqLog.Warn("openai.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			REDACTED
 		REDACTED else {
 				accountWaitCounted := false
 				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
 				if err != nil {
-					log.Printf("Increment account wait count failed: %v", err)
+					reqLog.Warn("openai.account_wait_counter_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			REDACTED else if !canWait {
-					log.Printf("Account wait queue full: account=%d", account.ID)
+					reqLog.Info("openai.account_wait_queue_full",
+						zap.Int64("account_id", account.ID),
+						zap.Int("max_waiting", selection.WaitPlan.MaxWaiting),
+					)
 					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
 					return
 			REDACTED
@@ -295,7 +315,7 @@ REDACTED
 					&streamStarted,
 				)
 				if err != nil {
-					log.Printf("Account concurrency acquire failed: %v", err)
+					reqLog.Warn("openai.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 					releaseWait()
 					h.handleConcurrencyError(c, err, "account", streamStarted)
 					return
@@ -303,7 +323,7 @@ REDACTED
 				// Slot acquired: no longer waiting in queue.
 				releaseWait()
 				if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionHash, account.ID); err != nil {
-					log.Printf("Bind sticky session failed: %v", err)
+					reqLog.Warn("openai.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			REDACTED
 		REDACTED
 	REDACTED
@@ -337,11 +357,16 @@ REDACTED
 					return
 			REDACTED
 				switchCount++
-				log.Printf("Account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
+				reqLog.Warn("openai.upstream_failover_switching",
+					zap.Int64("account_id", account.ID),
+					zap.Int("upstream_status", failoverErr.StatusCode),
+					zap.Int("switch_count", switchCount),
+					zap.Int("max_switches", maxAccountSwitches),
+				)
 				continue
 		REDACTED
 			// Error response already handled in Forward, just log
-			log.Printf("Account %d: Forward request failed: %v", account.ID, err)
+			reqLog.Error("openai.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			return
 	REDACTED
 
@@ -363,9 +388,20 @@ REDACTED
 				IPAddress:     ip,
 				APIKeyService: h.apiKeyService,
 		REDACTED); err != nil {
-				log.Printf("Record usage failed: %v", err)
+				logger.L().With(
+					zap.String("component", "handler.openai_gateway.responses"),
+					zap.Int64("user_id", subject.UserID),
+					zap.Int64("api_key_id", apiKey.ID),
+					zap.Any("group_id", apiKey.GroupID),
+					zap.String("model", reqModel),
+					zap.Int64("account_id", usedAccount.ID),
+				).Error("openai.record_usage_failed", zap.Error(err))
 		REDACTED
 	REDACTED(result, account, userAgent, clientIP)
+		reqLog.Debug("openai.request_completed",
+			zap.Int64("account_id", account.ID),
+			zap.Int("switch_count", switchCount),
+		)
 		return
 REDACTED
 REDACTED

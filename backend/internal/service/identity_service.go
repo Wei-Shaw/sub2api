@@ -7,13 +7,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 // 预编译正则表达式（避免每次调用重新编译）
@@ -84,7 +85,7 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 			cached.UserAgent = clientUA
 			// 保存更新后的指纹
 			_ = s.cache.SetFingerprint(ctx, accountID, cached)
-			log.Printf("Updated fingerprint user-agent for account %d: %s", accountID, clientUA)
+			logger.LegacyPrintf("service.identity", "Updated fingerprint user-agent for account %d: %s", accountID, clientUA)
 	REDACTED
 		return cached, nil
 REDACTED
@@ -97,10 +98,10 @@ REDACTED
 
 	// 保存到缓存（永不过期）
 	if err := s.cache.SetFingerprint(ctx, accountID, fp); err != nil {
-		log.Printf("Warning: failed to cache fingerprint for account %d: %v", accountID, err)
+		logger.LegacyPrintf("service.identity", "Warning: failed to cache fingerprint for account %d: %v", accountID, err)
 REDACTED
 
-	log.Printf("Created new fingerprint for account %d with client_id: %s", accountID, fp.ClientID)
+	logger.LegacyPrintf("service.identity", "Created new fingerprint for account %d with client_id: %s", accountID, fp.ClientID)
 	return fp, nil
 REDACTED
 
@@ -277,19 +278,19 @@ REDACTED
 	// 获取或生成固定的伪装 session ID
 	maskedSessionID, err := s.cache.GetMaskedSessionID(ctx, account.ID)
 	if err != nil {
-		log.Printf("Warning: failed to get masked session ID for account %d: %v", account.ID, err)
+		logger.LegacyPrintf("service.identity", "Warning: failed to get masked session ID for account %d: %v", account.ID, err)
 		return newBody, nil
 REDACTED
 
 	if maskedSessionID == "" {
 		// 首次或已过期，生成新的伪装 session ID
 		maskedSessionID = generateRandomUUID()
-		log.Printf("Generated new masked session ID for account %d: %s", account.ID, maskedSessionID)
+		logger.LegacyPrintf("service.identity", "Generated new masked session ID for account %d: %s", account.ID, maskedSessionID)
 REDACTED
 
 	// 刷新 TTL（每次请求都刷新，保持 15 分钟有效期）
 	if err := s.cache.SetMaskedSessionID(ctx, account.ID, maskedSessionID); err != nil {
-		log.Printf("Warning: failed to set masked session ID for account %d: %v", account.ID, err)
+		logger.LegacyPrintf("service.identity", "Warning: failed to set masked session ID for account %d: %v", account.ID, err)
 REDACTED
 
 	// 替换 session 部分：保留 _session_ 之前的内容，替换之后的内容
@@ -335,7 +336,7 @@ func generateClientID() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		// 极罕见的情况，使用时间戳+固定值作为fallback
-		log.Printf("Warning: crypto/rand.Read failed: %v, using fallback", err)
+		logger.LegacyPrintf("service.identity", "Warning: crypto/rand.Read failed: %v, using fallback", err)
 		// 使用SHA256(当前纳秒时间)作为fallback
 		h := sha256.Sum256([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
 		return hex.EncodeToString(h[:])

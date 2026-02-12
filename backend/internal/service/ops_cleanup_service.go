@@ -4,12 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/robfig/cron/v3"
@@ -75,11 +75,11 @@ REDACTED
 		return
 REDACTED
 	if s.cfg != nil && !s.cfg.Ops.Cleanup.Enabled {
-		log.Printf("[OpsCleanup] not started (disabled)")
+		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] not started (disabled)")
 		return
 REDACTED
 	if s.opsRepo == nil || s.db == nil {
-		log.Printf("[OpsCleanup] not started (missing deps)")
+		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] not started (missing deps)")
 		return
 REDACTED
 
@@ -99,12 +99,12 @@ REDACTED
 		c := cron.New(cron.WithParser(opsCleanupCronParser), cron.WithLocation(loc))
 		_, err := c.AddFunc(schedule, func() { s.runScheduled() REDACTED)
 		if err != nil {
-			log.Printf("[OpsCleanup] not started (invalid schedule=%q): %v", schedule, err)
+			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] not started (invalid schedule=%q): %v", schedule, err)
 			return
 	REDACTED
 		s.cron = c
 		s.cron.Start()
-		log.Printf("[OpsCleanup] started (schedule=%q tz=%s)", schedule, loc.String())
+		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] started (schedule=%q tz=%s)", schedule, loc.String())
 REDACTED)
 REDACTED
 
@@ -118,7 +118,7 @@ REDACTED
 			select {
 			case <-ctx.Done():
 			case <-time.After(3 * time.Second):
-				log.Printf("[OpsCleanup] cron stop timed out")
+				logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] cron stop timed out")
 		REDACTED
 	REDACTED
 REDACTED)
@@ -146,11 +146,11 @@ REDACTED
 	counts, err := s.runCleanupOnce(ctx)
 	if err != nil {
 		s.recordHeartbeatError(runAt, time.Since(startedAt), err)
-		log.Printf("[OpsCleanup] cleanup failed: %v", err)
+		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] cleanup failed: %v", err)
 		return
 REDACTED
 	s.recordHeartbeatSuccess(runAt, time.Since(startedAt), counts)
-	log.Printf("[OpsCleanup] cleanup complete: %s", counts)
+	logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] cleanup complete: %s", counts)
 REDACTED
 
 type opsCleanupDeletedCounts struct {
@@ -331,11 +331,11 @@ REDACTED
 	REDACTED
 		// Redis error: fall back to DB advisory lock.
 		s.warnNoRedisOnce.Do(func() {
-			log.Printf("[OpsCleanup] leader lock SetNX failed; falling back to DB advisory lock: %v", err)
+			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] leader lock SetNX failed; falling back to DB advisory lock: %v", err)
 	REDACTED)
 REDACTED else {
 		s.warnNoRedisOnce.Do(func() {
-			log.Printf("[OpsCleanup] redis not configured; using DB advisory lock")
+			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] redis not configured; using DB advisory lock")
 	REDACTED)
 REDACTED
 

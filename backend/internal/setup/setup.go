@@ -7,12 +7,12 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -168,7 +168,7 @@ REDACTED
 			return
 	REDACTED
 		if err := db.Close(); err != nil {
-			log.Printf("failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 	REDACTED
 REDACTED()
 
@@ -195,12 +195,12 @@ REDACTED
 		if err != nil {
 			return fmt.Errorf("failed to create database '%s': %w", cfg.DBName, err)
 	REDACTED
-		log.Printf("Database '%s' created successfully", cfg.DBName)
+		logger.LegacyPrintf("setup", "Database '%s' created successfully", cfg.DBName)
 REDACTED
 
 	// Now connect to the target database to verify
 	if err := db.Close(); err != nil {
-		log.Printf("failed to close postgres connection: %v", err)
+		logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 REDACTED
 	db = nil
 
@@ -216,7 +216,7 @@ REDACTED
 
 	defer func() {
 		if err := targetDB.Close(); err != nil {
-			log.Printf("failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 	REDACTED
 REDACTED()
 
@@ -248,7 +248,7 @@ REDACTED
 	rdb := redis.NewClient(opts)
 	defer func() {
 		if err := rdb.Close(); err != nil {
-			log.Printf("failed to close redis client: %v", err)
+			logger.LegacyPrintf("setup", "failed to close redis client: %v", err)
 	REDACTED
 REDACTED()
 
@@ -276,7 +276,7 @@ REDACTED
 			return fmt.Errorf("failed to generate jwt secret: %w", err)
 	REDACTED
 		cfg.JWT.Secret = secret
-		log.Println("Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
+		logger.LegacyPrintf("setup", "%s", "Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
 REDACTED
 
 	// Test connections
@@ -331,7 +331,7 @@ REDACTED
 
 	defer func() {
 		if err := db.Close(); err != nil {
-			log.Printf("failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 	REDACTED
 REDACTED()
 
@@ -354,7 +354,7 @@ REDACTED
 
 	defer func() {
 		if err := db.Close(); err != nil {
-			log.Printf("failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 	REDACTED
 REDACTED()
 
@@ -524,8 +524,8 @@ REDACTED
 // AutoSetupFromEnv performs automatic setup using environment variables
 // This is designed for Docker deployment where all config is passed via env vars
 func AutoSetupFromEnv() error {
-	log.Println("Auto setup enabled, configuring from environment variables...")
-	log.Printf("Data directory: %s", GetDataDir())
+	logger.LegacyPrintf("setup", "%s", "Auto setup enabled, configuring from environment variables...")
+	logger.LegacyPrintf("setup", "Data directory: %s", GetDataDir())
 
 	// Get timezone from TZ or TIMEZONE env var (TZ is standard for Docker)
 	tz := getEnvOrDefault("TZ", "")
@@ -573,62 +573,62 @@ REDACTED
 			return fmt.Errorf("failed to generate jwt secret: %w", err)
 	REDACTED
 		cfg.JWT.Secret = secret
-		log.Println("Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
+		logger.LegacyPrintf("setup", "%s", "Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
 REDACTED
 
 	// Test database connection
-	log.Println("Testing database connection...")
+	logger.LegacyPrintf("setup", "%s", "Testing database connection...")
 	if err := TestDatabaseConnection(&cfg.Database); err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
 REDACTED
-	log.Println("Database connection successful")
+	logger.LegacyPrintf("setup", "%s", "Database connection successful")
 
 	// Test Redis connection
-	log.Println("Testing Redis connection...")
+	logger.LegacyPrintf("setup", "%s", "Testing Redis connection...")
 	if err := TestRedisConnection(&cfg.Redis); err != nil {
 		return fmt.Errorf("redis connection failed: %w", err)
 REDACTED
-	log.Println("Redis connection successful")
+	logger.LegacyPrintf("setup", "%s", "Redis connection successful")
 
 	// Initialize database
-	log.Println("Initializing database...")
+	logger.LegacyPrintf("setup", "%s", "Initializing database...")
 	if err := initializeDatabase(cfg); err != nil {
 		return fmt.Errorf("database initialization failed: %w", err)
 REDACTED
-	log.Println("Database initialized successfully")
+	logger.LegacyPrintf("setup", "%s", "Database initialized successfully")
 
 	// Create admin user
-	log.Println("Creating admin user...")
+	logger.LegacyPrintf("setup", "%s", "Creating admin user...")
 	created, reason, err := createAdminUser(cfg)
 	if err != nil {
 		return fmt.Errorf("admin user creation failed: %w", err)
 REDACTED
 	if created {
-		log.Printf("Admin user created: %s", cfg.Admin.Email)
+		logger.LegacyPrintf("setup", "Admin user created: %s", cfg.Admin.Email)
 REDACTED else {
 		switch reason {
 		case adminBootstrapReasonAdminExists:
-			log.Println("Admin user already exists, skipping admin bootstrap")
+			logger.LegacyPrintf("setup", "%s", "Admin user already exists, skipping admin bootstrap")
 		case adminBootstrapReasonUsersExistWithoutAdmin:
-			log.Println("Database already has user data; skipping auto admin bootstrap to avoid password overwrite")
+			logger.LegacyPrintf("setup", "%s", "Database already has user data; skipping auto admin bootstrap to avoid password overwrite")
 		default:
-			log.Println("Admin bootstrap skipped")
+			logger.LegacyPrintf("setup", "%s", "Admin bootstrap skipped")
 	REDACTED
 REDACTED
 
 	// Write config file
-	log.Println("Writing configuration file...")
+	logger.LegacyPrintf("setup", "%s", "Writing configuration file...")
 	if err := writeConfigFile(cfg); err != nil {
 		return fmt.Errorf("config file creation failed: %w", err)
 REDACTED
-	log.Println("Configuration file created")
+	logger.LegacyPrintf("setup", "%s", "Configuration file created")
 
 	// Create installation lock file
 	if err := createInstallLock(); err != nil {
 		return fmt.Errorf("failed to create install lock: %w", err)
 REDACTED
-	log.Println("Installation lock created")
+	logger.LegacyPrintf("setup", "%s", "Installation lock created")
 
-	log.Println("Auto setup completed successfully!")
+	logger.LegacyPrintf("setup", "%s", "Auto setup completed successfully!")
 	return nil
 REDACTED

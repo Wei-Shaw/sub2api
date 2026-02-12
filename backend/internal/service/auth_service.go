@@ -7,13 +7,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"net/mail"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -118,12 +118,12 @@ REDACTED
 		// 验证邀请码
 		redeemCode, err := s.redeemRepo.GetByCode(ctx, invitationCode)
 		if err != nil {
-			log.Printf("[Auth] Invalid invitation code: %s, error: %v", invitationCode, err)
+			logger.LegacyPrintf("service.auth", "[Auth] Invalid invitation code: %s, error: %v", invitationCode, err)
 			return "", nil, ErrInvitationCodeInvalid
 	REDACTED
 		// 检查类型和状态
 		if redeemCode.Type != RedeemTypeInvitation || redeemCode.Status != StatusUnused {
-			log.Printf("[Auth] Invitation code invalid: type=%s, status=%s", redeemCode.Type, redeemCode.Status)
+			logger.LegacyPrintf("service.auth", "[Auth] Invitation code invalid: type=%s, status=%s", redeemCode.Type, redeemCode.Status)
 			return "", nil, ErrInvitationCodeInvalid
 	REDACTED
 		invitationRedeemCode = redeemCode
@@ -134,7 +134,7 @@ REDACTED
 		// 如果邮件验证已开启但邮件服务未配置，拒绝注册
 		// 这是一个配置错误，不应该允许绕过验证
 		if s.emailService == nil {
-			log.Println("[Auth] Email verification enabled but email service not configured, rejecting registration")
+			logger.LegacyPrintf("service.auth", "%s", "[Auth] Email verification enabled but email service not configured, rejecting registration")
 			return "", nil, ErrServiceUnavailable
 	REDACTED
 		if verifyCode == "" {
@@ -149,7 +149,7 @@ REDACTED
 	// 检查邮箱是否已存在
 	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
 	if err != nil {
-		log.Printf("[Auth] Database error checking email exists: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email exists: %v", err)
 		return "", nil, ErrServiceUnavailable
 REDACTED
 	if existsEmail {
@@ -185,7 +185,7 @@ REDACTED
 		if errors.Is(err, ErrEmailExists) {
 			return "", nil, ErrEmailExists
 	REDACTED
-		log.Printf("[Auth] Database error creating user: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Database error creating user: %v", err)
 		return "", nil, ErrServiceUnavailable
 REDACTED
 
@@ -193,14 +193,14 @@ REDACTED
 	if invitationRedeemCode != nil {
 		if err := s.redeemRepo.Use(ctx, invitationRedeemCode.ID, user.ID); err != nil {
 			// 邀请码标记失败不影响注册，只记录日志
-			log.Printf("[Auth] Failed to mark invitation code as used for user %d: %v", user.ID, err)
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to mark invitation code as used for user %d: %v", user.ID, err)
 	REDACTED
 REDACTED
 	// 应用优惠码（如果提供且功能已启用）
 	if promoCode != "" && s.promoService != nil && s.settingService != nil && s.settingService.IsPromoCodeEnabled(ctx) {
 		if err := s.promoService.ApplyPromoCode(ctx, user.ID, promoCode); err != nil {
 			// 优惠码应用失败不影响注册，只记录日志
-			log.Printf("[Auth] Failed to apply promo code for user %d: %v", user.ID, err)
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to apply promo code for user %d: %v", user.ID, err)
 	REDACTED else {
 			// 重新获取用户信息以获取更新后的余额
 			if updatedUser, err := s.userRepo.GetByID(ctx, user.ID); err == nil {
@@ -237,7 +237,7 @@ REDACTED
 	// 检查邮箱是否已存在
 	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
 	if err != nil {
-		log.Printf("[Auth] Database error checking email exists: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email exists: %v", err)
 		return ErrServiceUnavailable
 REDACTED
 	if existsEmail {
@@ -260,11 +260,11 @@ REDACTED
 
 // SendVerifyCodeAsync 异步发送邮箱验证码并返回倒计时
 func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string) (*SendVerifyCodeResult, error) {
-	log.Printf("[Auth] SendVerifyCodeAsync called for email: %s", email)
+	logger.LegacyPrintf("service.auth", "[Auth] SendVerifyCodeAsync called for email: %s", email)
 
 	// 检查是否开放注册（默认关闭）
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
-		log.Println("[Auth] Registration is disabled")
+		logger.LegacyPrintf("service.auth", "%s", "[Auth] Registration is disabled")
 		return nil, ErrRegDisabled
 REDACTED
 
@@ -275,17 +275,17 @@ REDACTED
 	// 检查邮箱是否已存在
 	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
 	if err != nil {
-		log.Printf("[Auth] Database error checking email exists: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email exists: %v", err)
 		return nil, ErrServiceUnavailable
 REDACTED
 	if existsEmail {
-		log.Printf("[Auth] Email already exists: %s", email)
+		logger.LegacyPrintf("service.auth", "[Auth] Email already exists: %s", email)
 		return nil, ErrEmailExists
 REDACTED
 
 	// 检查邮件队列服务是否配置
 	if s.emailQueueService == nil {
-		log.Println("[Auth] Email queue service not configured")
+		logger.LegacyPrintf("service.auth", "%s", "[Auth] Email queue service not configured")
 		return nil, errors.New("email queue service not configured")
 REDACTED
 
@@ -296,13 +296,13 @@ REDACTED
 REDACTED
 
 	// 异步发送
-	log.Printf("[Auth] Enqueueing verify code for: %s", email)
+	logger.LegacyPrintf("service.auth", "[Auth] Enqueueing verify code for: %s", email)
 	if err := s.emailQueueService.EnqueueVerifyCode(email, siteName); err != nil {
-		log.Printf("[Auth] Failed to enqueue: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to enqueue: %v", err)
 		return nil, fmt.Errorf("enqueue verify code: %w", err)
 REDACTED
 
-	log.Printf("[Auth] Verify code enqueued successfully for: %s", email)
+	logger.LegacyPrintf("service.auth", "[Auth] Verify code enqueued successfully for: %s", email)
 	return &SendVerifyCodeResult{
 		Countdown: 60, // 60秒倒计时
 REDACTED, nil
@@ -314,27 +314,27 @@ func (s *AuthService) VerifyTurnstile(ctx context.Context, token string, remoteI
 
 	if required {
 		if s.settingService == nil {
-			log.Println("[Auth] Turnstile required but settings service is not configured")
+			logger.LegacyPrintf("service.auth", "%s", "[Auth] Turnstile required but settings service is not configured")
 			return ErrTurnstileNotConfigured
 	REDACTED
 		enabled := s.settingService.IsTurnstileEnabled(ctx)
 		secretConfigured := s.settingService.GetTurnstileSecretKey(ctx) != ""
 		if !enabled || !secretConfigured {
-			log.Printf("[Auth] Turnstile required but not configured (enabled=%v, secret_configured=%v)", enabled, secretConfigured)
+			logger.LegacyPrintf("service.auth", "[Auth] Turnstile required but not configured (enabled=%v, secret_configured=%v)", enabled, secretConfigured)
 			return ErrTurnstileNotConfigured
 	REDACTED
 REDACTED
 
 	if s.turnstileService == nil {
 		if required {
-			log.Println("[Auth] Turnstile required but service not configured")
+			logger.LegacyPrintf("service.auth", "%s", "[Auth] Turnstile required but service not configured")
 			return ErrTurnstileNotConfigured
 	REDACTED
 		return nil // 服务未配置则跳过验证
 REDACTED
 
 	if !required && s.settingService != nil && s.settingService.IsTurnstileEnabled(ctx) && s.settingService.GetTurnstileSecretKey(ctx) == "" {
-		log.Println("[Auth] Turnstile enabled but secret key not configured")
+		logger.LegacyPrintf("service.auth", "%s", "[Auth] Turnstile enabled but secret key not configured")
 REDACTED
 
 	return s.turnstileService.VerifyToken(ctx, token, remoteIP)
@@ -373,7 +373,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 			return "", nil, ErrInvalidCredentials
 	REDACTED
 		// 记录数据库错误但不暴露给用户
-		log.Printf("[Auth] Database error during login: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Database error during login: %v", err)
 		return "", nil, ErrServiceUnavailable
 REDACTED
 
@@ -426,7 +426,7 @@ REDACTED
 
 			randomPassword, err := randomHexString(32)
 			if err != nil {
-				log.Printf("[Auth] Failed to generate random password for oauth signup: %v", err)
+				logger.LegacyPrintf("service.auth", "[Auth] Failed to generate random password for oauth signup: %v", err)
 				return "", nil, ErrServiceUnavailable
 		REDACTED
 			hashedPassword, err := s.HashPassword(randomPassword)
@@ -457,18 +457,18 @@ REDACTED
 					// 并发场景：GetByEmail 与 Create 之间用户被创建。
 					user, err = s.userRepo.GetByEmail(ctx, email)
 					if err != nil {
-						log.Printf("[Auth] Database error getting user after conflict: %v", err)
+						logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
 						return "", nil, ErrServiceUnavailable
 				REDACTED
 			REDACTED else {
-					log.Printf("[Auth] Database error creating oauth user: %v", err)
+					logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
 					return "", nil, ErrServiceUnavailable
 			REDACTED
 		REDACTED else {
 				user = newUser
 		REDACTED
 	REDACTED else {
-			log.Printf("[Auth] Database error during oauth login: %v", err)
+			logger.LegacyPrintf("service.auth", "[Auth] Database error during oauth login: %v", err)
 			return "", nil, ErrServiceUnavailable
 	REDACTED
 REDACTED
@@ -481,7 +481,7 @@ REDACTED
 	if user.Username == "" && username != "" {
 		user.Username = username
 		if err := s.userRepo.Update(ctx, user); err != nil {
-			log.Printf("[Auth] Failed to update username after oauth login: %v", err)
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to update username after oauth login: %v", err)
 	REDACTED
 REDACTED
 
@@ -523,7 +523,7 @@ REDACTED
 
 			randomPassword, err := randomHexString(32)
 			if err != nil {
-				log.Printf("[Auth] Failed to generate random password for oauth signup: %v", err)
+				logger.LegacyPrintf("service.auth", "[Auth] Failed to generate random password for oauth signup: %v", err)
 				return nil, nil, ErrServiceUnavailable
 		REDACTED
 			hashedPassword, err := s.HashPassword(randomPassword)
@@ -552,18 +552,18 @@ REDACTED
 				if errors.Is(err, ErrEmailExists) {
 					user, err = s.userRepo.GetByEmail(ctx, email)
 					if err != nil {
-						log.Printf("[Auth] Database error getting user after conflict: %v", err)
+						logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
 						return nil, nil, ErrServiceUnavailable
 				REDACTED
 			REDACTED else {
-					log.Printf("[Auth] Database error creating oauth user: %v", err)
+					logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
 					return nil, nil, ErrServiceUnavailable
 			REDACTED
 		REDACTED else {
 				user = newUser
 		REDACTED
 	REDACTED else {
-			log.Printf("[Auth] Database error during oauth login: %v", err)
+			logger.LegacyPrintf("service.auth", "[Auth] Database error during oauth login: %v", err)
 			return nil, nil, ErrServiceUnavailable
 	REDACTED
 REDACTED
@@ -575,7 +575,7 @@ REDACTED
 	if user.Username == "" && username != "" {
 		user.Username = username
 		if err := s.userRepo.Update(ctx, user); err != nil {
-			log.Printf("[Auth] Failed to update username after oauth login: %v", err)
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to update username after oauth login: %v", err)
 	REDACTED
 REDACTED
 
@@ -715,7 +715,7 @@ REDACTED
 		if errors.Is(err, ErrUserNotFound) {
 			return "", ErrInvalidToken
 	REDACTED
-		log.Printf("[Auth] Database error refreshing token: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Database error refreshing token: %v", err)
 		return "", ErrServiceUnavailable
 REDACTED
 
@@ -756,16 +756,16 @@ func (s *AuthService) preparePasswordReset(ctx context.Context, email, frontendB
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			// Security: Log but don't reveal that user doesn't exist
-			log.Printf("[Auth] Password reset requested for non-existent email: %s", email)
+			logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for non-existent email: %s", email)
 			return "", "", false
 	REDACTED
-		log.Printf("[Auth] Database error checking email for password reset: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email for password reset: %v", err)
 		return "", "", false
 REDACTED
 
 	// Check if user is active
 	if !user.IsActive() {
-		log.Printf("[Auth] Password reset requested for inactive user: %s", email)
+		logger.LegacyPrintf("service.auth", "[Auth] Password reset requested for inactive user: %s", email)
 		return "", "", false
 REDACTED
 
@@ -797,11 +797,11 @@ REDACTED
 REDACTED
 
 	if err := s.emailService.SendPasswordResetEmail(ctx, email, siteName, resetURL); err != nil {
-		log.Printf("[Auth] Failed to send password reset email to %s: %v", email, err)
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to send password reset email to %s: %v", email, err)
 		return nil // Silent success to prevent enumeration
 REDACTED
 
-	log.Printf("[Auth] Password reset email sent to: %s", email)
+	logger.LegacyPrintf("service.auth", "[Auth] Password reset email sent to: %s", email)
 	return nil
 REDACTED
 
@@ -821,11 +821,11 @@ REDACTED
 REDACTED
 
 	if err := s.emailQueueService.EnqueuePasswordReset(email, siteName, resetURL); err != nil {
-		log.Printf("[Auth] Failed to enqueue password reset email for %s: %v", email, err)
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to enqueue password reset email for %s: %v", email, err)
 		return nil // Silent success to prevent enumeration
 REDACTED
 
-	log.Printf("[Auth] Password reset email enqueued for: %s", email)
+	logger.LegacyPrintf("service.auth", "[Auth] Password reset email enqueued for: %s", email)
 	return nil
 REDACTED
 
@@ -852,7 +852,7 @@ REDACTED
 		if errors.Is(err, ErrUserNotFound) {
 			return ErrInvalidResetToken // Token was valid but user was deleted
 	REDACTED
-		log.Printf("[Auth] Database error getting user for password reset: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Database error getting user for password reset: %v", err)
 		return ErrServiceUnavailable
 REDACTED
 
@@ -872,17 +872,17 @@ REDACTED
 	user.TokenVersion++ // Invalidate all existing tokens
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
-		log.Printf("[Auth] Database error updating password for user %d: %v", user.ID, err)
+		logger.LegacyPrintf("service.auth", "[Auth] Database error updating password for user %d: %v", user.ID, err)
 		return ErrServiceUnavailable
 REDACTED
 
 	// Also revoke all refresh tokens for this user
 	if err := s.RevokeAllUserSessions(ctx, user.ID); err != nil {
-		log.Printf("[Auth] Failed to revoke refresh tokens for user %d: %v", user.ID, err)
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to revoke refresh tokens for user %d: %v", user.ID, err)
 		// Don't return error - password was already changed successfully
 REDACTED
 
-	log.Printf("[Auth] Password reset successful for user: %s", email)
+	logger.LegacyPrintf("service.auth", "[Auth] Password reset successful for user: %s", email)
 	return nil
 REDACTED
 
@@ -961,13 +961,13 @@ REDACTED
 
 	// 添加到用户Token集合
 	if err := s.refreshTokenCache.AddToUserTokenSet(ctx, user.ID, tokenHash, ttl); err != nil {
-		log.Printf("[Auth] Failed to add token to user set: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to add token to user set: %v", err)
 		// 不影响主流程
 REDACTED
 
 	// 添加到家族Token集合
 	if err := s.refreshTokenCache.AddToFamilyTokenSet(ctx, familyID, tokenHash, ttl); err != nil {
-		log.Printf("[Auth] Failed to add token to family set: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to add token to family set: %v", err)
 		// 不影响主流程
 REDACTED
 
@@ -994,10 +994,10 @@ REDACTED
 	if err != nil {
 		if errors.Is(err, ErrRefreshTokenNotFound) {
 			// Token不存在，可能是已被使用（Token轮转）或已过期
-			log.Printf("[Auth] Refresh token not found, possible reuse attack")
+			logger.LegacyPrintf("service.auth", "[Auth] Refresh token not found, possible reuse attack")
 			return nil, ErrRefreshTokenInvalid
 	REDACTED
-		log.Printf("[Auth] Error getting refresh token: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Error getting refresh token: %v", err)
 		return nil, ErrServiceUnavailable
 REDACTED
 
@@ -1016,7 +1016,7 @@ REDACTED
 			_ = s.refreshTokenCache.DeleteTokenFamily(ctx, data.FamilyID)
 			return nil, ErrRefreshTokenInvalid
 	REDACTED
-		log.Printf("[Auth] Database error getting user for token refresh: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Database error getting user for token refresh: %v", err)
 		return nil, ErrServiceUnavailable
 REDACTED
 
@@ -1036,7 +1036,7 @@ REDACTED
 
 	// Token轮转：立即使旧Token失效
 	if err := s.refreshTokenCache.DeleteRefreshToken(ctx, tokenHash); err != nil {
-		log.Printf("[Auth] Failed to delete old refresh token: %v", err)
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to delete old refresh token: %v", err)
 		// 继续处理，不影响主流程
 REDACTED
 

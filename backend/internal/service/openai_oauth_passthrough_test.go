@@ -3,17 +3,17 @@ package service
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -46,24 +46,76 @@ func (u *httpUpstreamRecorder) DoWithTLS(req *http.Request, proxyURL string, acc
 	return u.Do(req, proxyURL, accountID, accountConcurrency)
 REDACTED
 
-var stdLogCaptureMu sync.Mutex
+var structuredLogCaptureMu sync.Mutex
 
-func captureStdLog(t *testing.T) (*bytes.Buffer, func()) {
+type inMemoryLogSink struct {
+	mu     sync.Mutex
+	events []*logger.LogEvent
 REDACTED
-	stdLogCaptureMu.Lock()
-	buf := &bytes.Buffer{REDACTED
-	prevWriter := log.Writer()
-	prevFlags := log.Flags()
-	log.SetFlags(0)
-	log.SetOutput(buf)
-	return buf, func() {
-		log.SetOutput(prevWriter)
-		log.SetFlags(prevFlags)
-		// 防御性恢复，避免其他测试改动了底层 writer。
-		if prevWriter == nil {
-			log.SetOutput(os.Stderr)
+
+func (s *inMemoryLogSink) WriteLogEvent(event *logger.LogEvent) {
+	if event == nil {
+		return
+REDACTED
+	cloned := *event
+	if event.Fields != nil {
+		cloned.Fields = make(map[string]any, len(event.Fields))
+		for k, v := range event.Fields {
+			cloned.Fields[k] = v
 	REDACTED
-		stdLogCaptureMu.Unlock()
+REDACTED
+	s.mu.Lock()
+	s.events = append(s.events, &cloned)
+	s.mu.Unlock()
+REDACTED
+
+func (s *inMemoryLogSink) ContainsMessage(substr string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ev := range s.events {
+		if ev != nil && strings.Contains(ev.Message, substr) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func (s *inMemoryLogSink) ContainsFieldValue(field, substr string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ev := range s.events {
+		if ev == nil || ev.Fields == nil {
+			continue
+	REDACTED
+		if v, ok := ev.Fields[field]; ok && strings.Contains(fmt.Sprint(v), substr) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func captureStructuredLog(t *testing.T) (*inMemoryLogSink, func()) {
+REDACTED
+	structuredLogCaptureMu.Lock()
+
+	err := logger.Init(logger.InitOptions{
+		Level:       "debug",
+		Format:      "json",
+		ServiceName: "sub2api",
+		Environment: "test",
+		Output: logger.OutputOptions{
+			ToStdout: true,
+			ToFile:   false,
+	REDACTED,
+		Sampling: logger.SamplingOptions{Enabled: falseREDACTED,
+REDACTED)
+REDACTED
+
+	sink := &inMemoryLogSink{REDACTED
+	logger.SetSink(sink)
+	return sink, func() {
+		logger.SetSink(nil)
+		structuredLogCaptureMu.Unlock()
 REDACTED
 REDACTED
 
@@ -486,7 +538,7 @@ REDACTED
 
 func TestOpenAIGatewayService_OAuthPassthrough_WarnOnTimeoutHeadersForStream(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	logBuf, restore := captureStdLog(t)
+	logSink, restore := captureStructuredLog(t)
 	defer restore()
 
 	rec := httptest.NewRecorder()
@@ -521,13 +573,13 @@ REDACTED
 
 	_, err := svc.Forward(context.Background(), c, account, originalBody)
 REDACTED
-	require.Contains(t, logBuf.String(), "检测到超时相关请求头，将按配置过滤以降低断流风险")
-	require.Contains(t, logBuf.String(), "x-stainless-timeout=10000")
+	require.True(t, logSink.ContainsMessage("检测到超时相关请求头，将按配置过滤以降低断流风险"))
+	require.True(t, logSink.ContainsFieldValue("timeout_headers", "x-stainless-timeout=10000"))
 REDACTED
 
 func TestOpenAIGatewayService_OAuthPassthrough_WarnWhenStreamEndsWithoutDone(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	logBuf, restore := captureStdLog(t)
+	logSink, restore := captureStructuredLog(t)
 	defer restore()
 
 	rec := httptest.NewRecorder()
@@ -562,8 +614,8 @@ REDACTED
 
 	_, err := svc.Forward(context.Background(), c, account, originalBody)
 REDACTED
-	require.Contains(t, logBuf.String(), "上游流在未收到 [DONE] 时结束，疑似断流")
-	require.Contains(t, logBuf.String(), "rid-truncate")
+	require.True(t, logSink.ContainsMessage("上游流在未收到 [DONE] 时结束，疑似断流"))
+	require.True(t, logSink.ContainsFieldValue("upstream_request_id", "rid-truncate"))
 REDACTED
 
 func TestOpenAIGatewayService_OAuthPassthrough_DefaultFiltersTimeoutHeaders(t *testing.T) {

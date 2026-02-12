@@ -3,12 +3,12 @@ package service
 import (
 	"context"
 	"errors"
-	"log"
 	"log/slog"
 	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 const (
@@ -66,7 +66,7 @@ func (s *DashboardAggregationService) Start() {
 		return
 REDACTED
 	if !s.cfg.Enabled {
-		log.Printf("[DashboardAggregation] 聚合作业已禁用")
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合作业已禁用")
 		return
 REDACTED
 
@@ -82,9 +82,9 @@ REDACTED
 	s.timingWheel.ScheduleRecurring("dashboard:aggregation", interval, func() {
 		s.runScheduledAggregation()
 REDACTED)
-	log.Printf("[DashboardAggregation] 聚合作业启动 (interval=%v, lookback=%ds)", interval, s.cfg.LookbackSeconds)
+	logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合作业启动 (interval=%v, lookback=%ds)", interval, s.cfg.LookbackSeconds)
 	if !s.cfg.BackfillEnabled {
-		log.Printf("[DashboardAggregation] 回填已禁用，如需补齐保留窗口以外历史数据请手动回填")
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 回填已禁用，如需补齐保留窗口以外历史数据请手动回填")
 REDACTED
 REDACTED
 
@@ -94,7 +94,7 @@ func (s *DashboardAggregationService) TriggerBackfill(start, end time.Time) erro
 		return errors.New("聚合服务未初始化")
 REDACTED
 	if !s.cfg.BackfillEnabled {
-		log.Printf("[DashboardAggregation] 回填被拒绝: backfill_enabled=false")
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 回填被拒绝: backfill_enabled=false")
 		return ErrDashboardBackfillDisabled
 REDACTED
 	if !end.After(start) {
@@ -111,7 +111,7 @@ REDACTED
 		ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationBackfillTimeout)
 		defer cancel()
 		if err := s.backfillRange(ctx, start, end); err != nil {
-			log.Printf("[DashboardAggregation] 回填失败: %v", err)
+			logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 回填失败: %v", err)
 	REDACTED
 REDACTED()
 	return nil
@@ -142,12 +142,12 @@ REDACTED
 				return
 		REDACTED
 			if !errors.Is(err, errDashboardAggregationRunning) {
-				log.Printf("[DashboardAggregation] 重新计算失败: %v", err)
+				logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 重新计算失败: %v", err)
 				return
 		REDACTED
 			time.Sleep(5 * time.Second)
 	REDACTED
-		log.Printf("[DashboardAggregation] 重新计算放弃: 聚合作业持续占用")
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 重新计算放弃: 聚合作业持续占用")
 REDACTED()
 	return nil
 REDACTED
@@ -163,7 +163,7 @@ REDACTED
 	ctx, cancel := context.WithTimeout(context.Background(), defaultDashboardAggregationBackfillTimeout)
 	defer cancel()
 	if err := s.backfillRange(ctx, start, now); err != nil {
-		log.Printf("[DashboardAggregation] 启动重算失败: %v", err)
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 启动重算失败: %v", err)
 		return
 REDACTED
 REDACTED
@@ -178,7 +178,7 @@ REDACTED
 	if err := s.repo.RecomputeRange(ctx, start, end); err != nil {
 		return err
 REDACTED
-	log.Printf("[DashboardAggregation] 重新计算完成 (start=%s end=%s duration=%s)",
+	logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 重新计算完成 (start=%s end=%s duration=%s)",
 		start.UTC().Format(time.RFC3339),
 		end.UTC().Format(time.RFC3339),
 		time.Since(jobStart).String(),
@@ -199,7 +199,7 @@ REDACTED
 	now := time.Now().UTC()
 	last, err := s.repo.GetAggregationWatermark(ctx)
 	if err != nil {
-		log.Printf("[DashboardAggregation] 读取水位失败: %v", err)
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 读取水位失败: %v", err)
 		last = time.Unix(0, 0).UTC()
 REDACTED
 
@@ -217,13 +217,13 @@ REDACTED else if start.After(now) {
 REDACTED
 
 	if err := s.aggregateRange(ctx, start, now); err != nil {
-		log.Printf("[DashboardAggregation] 聚合失败: %v", err)
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合失败: %v", err)
 		return
 REDACTED
 
 	updateErr := s.repo.UpdateAggregationWatermark(ctx, now)
 	if updateErr != nil {
-		log.Printf("[DashboardAggregation] 更新水位失败: %v", updateErr)
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 更新水位失败: %v", updateErr)
 REDACTED
 	slog.Debug("[DashboardAggregation] 聚合完成",
 		"start", start.Format(time.RFC3339),
@@ -262,9 +262,9 @@ REDACTED
 
 	updateErr := s.repo.UpdateAggregationWatermark(ctx, endUTC)
 	if updateErr != nil {
-		log.Printf("[DashboardAggregation] 更新水位失败: %v", updateErr)
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 更新水位失败: %v", updateErr)
 REDACTED
-	log.Printf("[DashboardAggregation] 回填聚合完成 (start=%s end=%s duration=%s watermark_updated=%t)",
+	logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 回填聚合完成 (start=%s end=%s duration=%s watermark_updated=%t)",
 		startUTC.Format(time.RFC3339),
 		endUTC.Format(time.RFC3339),
 		time.Since(jobStart).String(),
@@ -280,7 +280,7 @@ func (s *DashboardAggregationService) aggregateRange(ctx context.Context, start,
 		return nil
 REDACTED
 	if err := s.repo.EnsureUsageLogsPartitions(ctx, end); err != nil {
-		log.Printf("[DashboardAggregation] 分区检查失败: %v", err)
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 分区检查失败: %v", err)
 REDACTED
 	return s.repo.AggregateRange(ctx, start, end)
 REDACTED
@@ -299,11 +299,11 @@ REDACTED
 
 	aggErr := s.repo.CleanupAggregates(ctx, hourlyCutoff, dailyCutoff)
 	if aggErr != nil {
-		log.Printf("[DashboardAggregation] 聚合保留清理失败: %v", aggErr)
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] 聚合保留清理失败: %v", aggErr)
 REDACTED
 	usageErr := s.repo.CleanupUsageLogs(ctx, usageCutoff)
 	if usageErr != nil {
-		log.Printf("[DashboardAggregation] usage_logs 保留清理失败: %v", usageErr)
+		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] usage_logs 保留清理失败: %v", usageErr)
 REDACTED
 	if aggErr == nil && usageErr == nil {
 		s.lastRetentionCleanup.Store(now)

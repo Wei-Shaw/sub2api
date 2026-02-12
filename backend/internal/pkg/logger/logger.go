@@ -3,6 +3,7 @@ package logger
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"os"
@@ -77,8 +78,8 @@ REDACTED
 	atomicLevel = al
 	initOptions = normalized
 
-	bridgeStdLogLocked()
 	bridgeSlogLocked()
+	bridgeStdLogLocked()
 
 	if prev != nil {
 		_ = prev.Sync()
@@ -163,14 +164,19 @@ func bridgeStdLogLocked() {
 		stdLogUndo = nil
 REDACTED
 
+	prevFlags := log.Flags()
+	prevPrefix := log.Prefix()
+	prevWriter := log.Writer()
+
 	log.SetFlags(0)
 	log.SetPrefix("")
-	undo, err := zap.RedirectStdLogAt(global.Named("stdlog"), zap.InfoLevel)
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "logger redirect stdlog failed: %v\n", err)
-		return
+	log.SetOutput(newStdLogBridge(global.Named("stdlog")))
+
+	stdLogUndo = func() {
+		log.SetOutput(prevWriter)
+		log.SetFlags(prevFlags)
+		log.SetPrefix(prevPrefix)
 REDACTED
-	stdLogUndo = undo
 REDACTED
 
 func bridgeSlogLocked() {
@@ -345,6 +351,106 @@ REDACTED
 
 func (s *sinkCore) Sync() error {
 	return s.core.Sync()
+REDACTED
+
+type stdLogBridge struct {
+	logger *zap.Logger
+REDACTED
+
+func newStdLogBridge(l *zap.Logger) io.Writer {
+	if l == nil {
+		l = zap.NewNop()
+REDACTED
+	return &stdLogBridge{logger: lREDACTED
+REDACTED
+
+func (b *stdLogBridge) Write(p []byte) (int, error) {
+	msg := normalizeStdLogMessage(string(p))
+	if msg == "" {
+		return len(p), nil
+REDACTED
+
+	level := inferStdLogLevel(msg)
+	entry := b.logger.WithOptions(zap.AddCallerSkip(4))
+
+	switch level {
+	case LevelDebug:
+		entry.Debug(msg, zap.Bool("legacy_stdlog", true))
+	case LevelWarn:
+		entry.Warn(msg, zap.Bool("legacy_stdlog", true))
+	case LevelError, LevelFatal:
+		entry.Error(msg, zap.Bool("legacy_stdlog", true))
+	default:
+		entry.Info(msg, zap.Bool("legacy_stdlog", true))
+REDACTED
+	return len(p), nil
+REDACTED
+
+func normalizeStdLogMessage(raw string) string {
+	msg := strings.TrimSpace(strings.ReplaceAll(raw, "\n", " "))
+	if msg == "" {
+		return ""
+REDACTED
+	return strings.Join(strings.Fields(msg), " ")
+REDACTED
+
+func inferStdLogLevel(msg string) Level {
+	lower := strings.ToLower(strings.TrimSpace(msg))
+	if lower == "" {
+		return LevelInfo
+REDACTED
+
+	if strings.HasPrefix(lower, "[debug]") || strings.HasPrefix(lower, "debug:") {
+		return LevelDebug
+REDACTED
+	if strings.HasPrefix(lower, "[warn]") || strings.HasPrefix(lower, "[warning]") || strings.HasPrefix(lower, "warn:") || strings.HasPrefix(lower, "warning:") {
+		return LevelWarn
+REDACTED
+	if strings.HasPrefix(lower, "[error]") || strings.HasPrefix(lower, "error:") || strings.HasPrefix(lower, "fatal:") || strings.HasPrefix(lower, "panic:") {
+		return LevelError
+REDACTED
+
+	if strings.Contains(lower, " failed") || strings.Contains(lower, "error") || strings.Contains(lower, "panic") || strings.Contains(lower, "fatal") {
+		return LevelError
+REDACTED
+	if strings.Contains(lower, "warning") || strings.Contains(lower, "warn") || strings.Contains(lower, " retry") || strings.Contains(lower, " queue full") || strings.Contains(lower, "fallback") {
+		return LevelWarn
+REDACTED
+	return LevelInfo
+REDACTED
+
+// LegacyPrintf 用于平滑迁移历史的 printf 风格日志到结构化 logger。
+func LegacyPrintf(component, format string, args ...any) {
+	msg := normalizeStdLogMessage(fmt.Sprintf(format, args...))
+	if msg == "" {
+		return
+REDACTED
+
+	mu.RLock()
+	initialized := global != nil
+	mu.RUnlock()
+	if !initialized {
+		// 在日志系统未初始化前，回退到标准库 log，避免测试/工具链丢日志。
+		log.Print(msg)
+		return
+REDACTED
+
+	l := L()
+	if component != "" {
+		l = l.With(zap.String("component", component))
+REDACTED
+	l = l.WithOptions(zap.AddCallerSkip(1))
+
+	switch inferStdLogLevel(msg) {
+	case LevelDebug:
+		l.Debug(msg, zap.Bool("legacy_printf", true))
+	case LevelWarn:
+		l.Warn(msg, zap.Bool("legacy_printf", true))
+	case LevelError, LevelFatal:
+		l.Error(msg, zap.Bool("legacy_printf", true))
+	default:
+		l.Info(msg, zap.Bool("legacy_printf", true))
+REDACTED
 REDACTED
 
 type contextKey string
