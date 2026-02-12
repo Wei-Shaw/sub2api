@@ -101,9 +101,9 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// thinking: {type: "enabled"REDACTED
+	// thinking: {type: "enabled" | "adaptive"REDACTED
 	if rawThinking, ok := req["thinking"].(map[string]any); ok {
-		if t, ok := rawThinking["type"].(string); ok && t == "enabled" {
+		if t, ok := rawThinking["type"].(string); ok && (t == "enabled" || t == "adaptive") {
 			parsed.ThinkingEnabled = true
 	REDACTED
 REDACTED
@@ -161,9 +161,9 @@ REDACTED
 // Returns filtered body or original body if filtering fails (fail-safe)
 // This prevents 400 errors from invalid thinking block signatures
 //
-// Strategy:
-//   - When thinking.type != "enabled": Remove all thinking blocks
-//   - When thinking.type == "enabled": Only remove thinking blocks without valid signatures
+// 策略：
+//   - 当 thinking.type 不是 "enabled"/"adaptive"：移除所有 thinking 相关块
+//   - 当 thinking.type 是 "enabled"/"adaptive"：仅移除缺失/无效 signature 的 thinking 块（避免 400）
 //     (blocks with missing/empty/dummy signatures that would cause 400 errors)
 func FilterThinkingBlocks(body []byte) []byte {
 	return filterThinkingBlocksInternal(body, false)
@@ -489,9 +489,9 @@ REDACTED
 REDACTED
 
 // filterThinkingBlocksInternal removes invalid thinking blocks from request
-// Strategy:
-//   - When thinking.type != "enabled": Remove all thinking blocks
-//   - When thinking.type == "enabled": Only remove thinking blocks without valid signatures
+// 策略：
+//   - 当 thinking.type 不是 "enabled"/"adaptive"：移除所有 thinking 相关块
+//   - 当 thinking.type 是 "enabled"/"adaptive"：仅移除缺失/无效 signature 的 thinking 块
 func filterThinkingBlocksInternal(body []byte, _ bool) []byte {
 	// Fast path: if body doesn't contain "thinking", skip parsing
 	if !bytes.Contains(body, []byte(`"type":"thinking"`)) &&
@@ -511,7 +511,7 @@ REDACTED
 	// Check if thinking is enabled
 	thinkingEnabled := false
 	if thinking, ok := req["thinking"].(map[string]any); ok {
-		if thinkType, ok := thinking["type"].(string); ok && thinkType == "enabled" {
+		if thinkType, ok := thinking["type"].(string); ok && (thinkType == "enabled" || thinkType == "adaptive") {
 			thinkingEnabled = true
 	REDACTED
 REDACTED

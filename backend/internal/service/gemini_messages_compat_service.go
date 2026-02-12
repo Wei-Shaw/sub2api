@@ -2663,11 +2663,12 @@ REDACTED
 	prompt, _ := asInt(usageMeta["promptTokenCount"])
 	cand, _ := asInt(usageMeta["candidatesTokenCount"])
 	cached, _ := asInt(usageMeta["cachedContentTokenCount"])
+	thoughts, _ := asInt(usageMeta["thoughtsTokenCount"])
 	// 注意：Gemini 的 promptTokenCount 包含 cachedContentTokenCount，
 	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去
 	return &ClaudeUsage{
 		InputTokens:          prompt - cached,
-		OutputTokens:         cand,
+		OutputTokens:         cand + thoughts,
 		CacheReadInputTokens: cached,
 REDACTED
 REDACTED

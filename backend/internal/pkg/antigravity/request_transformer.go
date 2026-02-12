@@ -64,6 +64,10 @@ const MaxTokensBudgetPadding = 1000
 // Gemini 2.5 Flash thinking budget 上限
 const Gemini25FlashThinkingBudgetLimit = 24576
 
+// 对于 Antigravity 的 Claude（budget-only）模型，该语义最终等价为 thinkingBudget=24576。
+// 这里复用相同数值以保持行为一致。
+const ClaudeAdaptiveHighThinkingBudgetTokens = Gemini25FlashThinkingBudgetLimit
+
 // ensureMaxTokensGreaterThanBudget 确保 max_tokens > budget_tokens
 // Claude API 要求启用 thinking 时，max_tokens 必须大于 thinking.budget_tokens
 // 返回调整后的 maxTokens 和是否进行了调整
@@ -96,7 +100,7 @@ func TransformClaudeToGeminiWithOptions(claudeReq *ClaudeRequest, projectID, map
 REDACTED
 
 	// 检测是否启用 thinking
-	isThinkingEnabled := claudeReq.Thinking != nil && claudeReq.Thinking.Type == "enabled"
+	isThinkingEnabled := claudeReq.Thinking != nil && (claudeReq.Thinking.Type == "enabled" || claudeReq.Thinking.Type == "adaptive")
 
 	// 只有 Gemini 模型支持 dummy thought workaround
 	// Claude 模型通过 Vertex/Google API 需要有效的 thought signatures
@@ -198,8 +202,7 @@ REDACTED
 
 // modelInfoMap 模型前缀 → 模型信息映射
 // 只有在此映射表中的模型才会注入身份提示词
-// 注意：当前 claude-opus-4-6 会被映射到 claude-opus-4-5-thinking，
-// 但保留此条目以便后续 Antigravity 上游支持 4.6 时快速切换
+// 注意：模型映射逻辑在网关层完成；这里仅用于按模型前缀判断是否注入身份提示词。
 var modelInfoMap = map[string]modelInfo{
 	"claude-opus-4-5":   {DisplayName: "Claude Opus 4.5", CanonicalID: "claude-opus-4-5-20250929"REDACTED,
 	"claude-opus-4-6":   {DisplayName: "Claude Opus 4.6", CanonicalID: "claude-opus-4-6"REDACTED,
@@ -593,6 +596,10 @@ REDACTED
 	return maxOutputTokensUpperBound
 REDACTED
 
+func isAntigravityOpus46Model(model string) bool {
+	return strings.HasPrefix(strings.ToLower(model), "claude-opus-4-6")
+REDACTED
+
 func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
 	maxLimit := maxOutputTokensLimit(req.Model)
 	config := &GeminiGenerationConfig{
@@ -606,25 +613,36 @@ REDACTED
 REDACTED
 
 	// Thinking 配置
-	if req.Thinking != nil && req.Thinking.Type == "enabled" {
+	if req.Thinking != nil && (req.Thinking.Type == "enabled" || req.Thinking.Type == "adaptive") {
 		config.ThinkingConfig = &GeminiThinkingConfig{
 			IncludeThoughts: true,
 	REDACTED
+
+		// - thinking.type=enabled：budget_tokens>0 用显式预算
+		// - thinking.type=adaptive：仅在 Antigravity 的 Opus 4.6 上覆写为 （24576）
+		budget := -1
 		if req.Thinking.BudgetTokens > 0 {
-			budget := req.Thinking.BudgetTokens
+			budget = req.Thinking.BudgetTokens
+	REDACTED
+		if req.Thinking.Type == "adaptive" && isAntigravityOpus46Model(req.Model) {
+			budget = ClaudeAdaptiveHighThinkingBudgetTokens
+	REDACTED
+
+		// 正预算需要做上限与 max_tokens 约束；动态预算（-1）直接透传给上游。
+		if budget > 0 {
 			// gemini-2.5-flash 上限
 			if strings.Contains(req.Model, "gemini-2.5-flash") && budget > Gemini25FlashThinkingBudgetLimit {
 				budget = Gemini25FlashThinkingBudgetLimit
 		REDACTED
-			config.ThinkingConfig.ThinkingBudget = budget
 
-			// 自动修正：max_tokens 必须大于 budget_tokens
+			// 自动修正：max_tokens 必须大于 budget_tokens（Claude 上游要求）
 			if adjusted, ok := ensureMaxTokensGreaterThanBudget(config.MaxOutputTokens, budget); ok {
 				log.Printf("[Antigravity] Auto-adjusted max_tokens from %d to %d (must be > budget_tokens=%d)",
 					config.MaxOutputTokens, adjusted, budget)
 				config.MaxOutputTokens = adjusted
 		REDACTED
 	REDACTED
+		config.ThinkingConfig.ThinkingBudget = budget
 REDACTED
 
 	if config.MaxOutputTokens > maxLimit {

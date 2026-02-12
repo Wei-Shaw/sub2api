@@ -202,7 +202,7 @@ REDACTED
 	writer := csv.NewWriter(&buf)
 
 	// Write header
-	if err := writer.Write([]string{"id", "code", "type", "value", "status", "used_by", "used_at", "created_at"REDACTED); err != nil {
+	if err := writer.Write([]string{"id", "code", "type", "value", "status", "used_by", "used_by_email", "used_at", "created_at"REDACTED); err != nil {
 		response.InternalError(c, "Failed to export redeem codes: "+err.Error())
 		return
 REDACTED
@@ -212,6 +212,10 @@ REDACTED
 		usedBy := ""
 		if code.UsedBy != nil {
 			usedBy = fmt.Sprintf("%d", *code.UsedBy)
+	REDACTED
+		usedByEmail := ""
+		if code.User != nil {
+			usedByEmail = code.User.Email
 	REDACTED
 		usedAt := ""
 		if code.UsedAt != nil {
@@ -224,6 +228,7 @@ REDACTED
 			fmt.Sprintf("%.2f", code.Value),
 			code.Status,
 			usedBy,
+			usedByEmail,
 			usedAt,
 			code.CreatedAt.Format("2006-01-02 15:04:05"),
 	REDACTED); err != nil {

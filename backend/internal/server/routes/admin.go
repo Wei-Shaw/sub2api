@@ -281,6 +281,7 @@ func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 	{
 		antigravity.POST("/oauth/auth-url", h.Admin.AntigravityOAuth.GenerateAuthURL)
 		antigravity.POST("/oauth/exchange-code", h.Admin.AntigravityOAuth.ExchangeCode)
+		antigravity.POST("/oauth/refresh-token", h.Admin.AntigravityOAuth.RefreshToken)
 REDACTED
 REDACTED
 
