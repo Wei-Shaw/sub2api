@@ -187,6 +187,9 @@ gateway:
   #
   # 注意：开启后会影响所有客户端的行为（不仅限于 VS Code / Codex CLI），请谨慎开启。
   force_codex_cli: false
+  # OpenAI 透传模式是否放行客户端超时头（如 x-stainless-timeout）
+  # 默认 false：过滤超时头，降低上游提前断流风险。
+  openai_passthrough_allow_timeout_headers: false
   # HTTP upstream connection pool settings (HTTP/2 + multi-proxy scenario defaults)
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts
