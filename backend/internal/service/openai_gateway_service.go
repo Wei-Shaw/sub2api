@@ -1012,7 +1012,14 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
-	log.Printf("[OpenAI 透传] 已启用：account=%d name=%s", account.ID, account.Name)
+	log.Printf(
+		"[OpenAI 自动透传] 命中自动透传分支: account=%d name=%s type=%s model=%s stream=%v",
+		account.ID,
+		account.Name,
+		account.Type,
+		reqModel,
+		reqStream,
+	)
 
 	// Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
