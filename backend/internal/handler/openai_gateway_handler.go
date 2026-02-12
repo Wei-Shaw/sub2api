@@ -28,7 +28,6 @@ type OpenAIGatewayHandler struct {
 	errorPassthroughService *service.ErrorPassthroughService
 	concurrencyHelper       *ConcurrencyHelper
 	maxAccountSwitches      int
-	cfg                     *config.Config
 REDACTED
 
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
@@ -55,7 +54,6 @@ REDACTED
 		errorPassthroughService: errorPassthroughService,
 		concurrencyHelper:       NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
 		maxAccountSwitches:      maxAccountSwitches,
-		cfg:                     cfg,
 REDACTED
 REDACTED
 
