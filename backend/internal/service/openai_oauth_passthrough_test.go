@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func f64p(v float64) *float64 { return &v REDACTED
@@ -119,7 +120,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestOpenAIGatewayService_OAuthPassthrough_StreamKeepsToolNameAndBodyUnchanged(t *testing.T) {
+func TestOpenAIGatewayService_OAuthPassthrough_StreamKeepsToolNameAndBodyNormalized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -178,8 +179,12 @@ REDACTED
 	require.NotNil(t, result)
 	require.True(t, result.Stream)
 
-	// 1) upstream body is exactly unchanged
-	require.Equal(t, originalBody, upstream.lastBody)
+	// 1) 透传 OAuth 请求体与旧链路关键行为保持一致：store=false + stream=true。
+	require.Equal(t, false, gjson.GetBytes(upstream.lastBody, "store").Bool())
+	require.Equal(t, true, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	// 其余关键字段保持原值。
+	require.Equal(t, "gpt-5.2", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "hi", gjson.GetBytes(upstream.lastBody, "input.0.text").String())
 
 	// 2) only auth is replaced; inbound auth/cookie are not forwarded
 	require.Equal(t, "Bearer oauth-token", upstream.lastReq.Header.Get("Authorization"))
@@ -244,6 +249,49 @@ REDACTED
 	require.NotEqual(t, inputBody, upstream.lastBody)
 	require.Contains(t, string(upstream.lastBody), `"store":false`)
 	require.Contains(t, string(upstream.lastBody), `"stream":true`)
+REDACTED
+
+func TestOpenAIGatewayService_OAuthLegacy_CompositeCodexUAUsesCodexOriginator(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+	// 复合 UA（前缀不是 codex_cli_rs），历史实现会误判为非 Codex 并走 opencode。
+	c.Request.Header.Set("User-Agent", "Mozilla/5.0 codex_cli_rs/0.1.0")
+
+	inputBody := []byte(`{"model":"gpt-5.2","stream":true,"store":false,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader("data: [DONE]\n\n")),
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: respREDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: falseREDACTEDREDACTED,
+		httpUpstream: upstream,
+REDACTED
+
+	account := &Account{
+		ID:             123,
+		Name:           "acc",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeOAuth,
+		Concurrency:    1,
+		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
+		Extra:          map[string]any{"openai_passthrough": falseREDACTED,
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+REDACTED
+
+	_, err := svc.Forward(context.Background(), c, account, inputBody)
+REDACTED
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "codex_cli_rs", upstream.lastReq.Header.Get("originator"))
+	require.NotEqual(t, "opencode", upstream.lastReq.Header.Get("originator"))
 REDACTED
 
 func TestOpenAIGatewayService_OAuthPassthrough_ResponseHeadersAllowXCodex(t *testing.T) {
@@ -382,7 +430,8 @@ REDACTED
 
 	_, err := svc.Forward(context.Background(), c, account, inputBody)
 REDACTED
-	require.Equal(t, inputBody, upstream.lastBody)
+	require.Equal(t, false, gjson.GetBytes(upstream.lastBody, "store").Bool())
+	require.Equal(t, true, gjson.GetBytes(upstream.lastBody, "stream").Bool())
 	require.Equal(t, "codex_cli_rs/0.98.0", upstream.lastReq.Header.Get("User-Agent"))
 REDACTED
 

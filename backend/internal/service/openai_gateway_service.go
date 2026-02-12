@@ -1027,6 +1027,17 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
+	if account != nil && account.Type == AccountTypeOAuth {
+		normalizedBody, normalized, err := normalizeOpenAIPassthroughOAuthBody(body)
+		if err != nil {
+			return nil, err
+	REDACTED
+		if normalized {
+			body = normalizedBody
+			reqStream = true
+	REDACTED
+REDACTED
+
 	logger.LegacyPrintf("service.openai_gateway",
 		"[OpenAI 自动透传] 命中自动透传分支: account=%d name=%s type=%s model=%s stream=%v",
 		account.ID,
@@ -2570,6 +2581,37 @@ REDACTED
 	stream = gjson.GetBytes(body, "stream").Bool()
 	promptCacheKey = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
 	return model, stream, promptCacheKey
+REDACTED
+
+// normalizeOpenAIPassthroughOAuthBody 将透传 OAuth 请求体收敛为旧链路关键行为：
+// 1) store=false 2) stream=true
+func normalizeOpenAIPassthroughOAuthBody(body []byte) ([]byte, bool, error) {
+	if len(body) == 0 {
+		return body, false, nil
+REDACTED
+
+	normalized := body
+	changed := false
+
+	if store := gjson.GetBytes(normalized, "store"); !store.Exists() || store.Type != gjson.False {
+		next, err := sjson.SetBytes(normalized, "store", false)
+		if err != nil {
+			return body, false, fmt.Errorf("normalize passthrough body store=false: %w", err)
+	REDACTED
+		normalized = next
+		changed = true
+REDACTED
+
+	if stream := gjson.GetBytes(normalized, "stream"); !stream.Exists() || stream.Type != gjson.True {
+		next, err := sjson.SetBytes(normalized, "stream", true)
+		if err != nil {
+			return body, false, fmt.Errorf("normalize passthrough body stream=true: %w", err)
+	REDACTED
+		normalized = next
+		changed = true
+REDACTED
+
+	return normalized, changed, nil
 REDACTED
 
 func extractOpenAIReasoningEffortFromBody(body []byte, requestedModel string) *string {
