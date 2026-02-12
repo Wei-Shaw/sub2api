@@ -79,6 +79,13 @@ func (s *OpsSystemLogSink) WriteLogEvent(event *logger.LogEvent) {
 	if s == nil || event == nil || !s.shouldIndex(event) {
 		return
 REDACTED
+	if s.ctx != nil {
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+	REDACTED
+REDACTED
 
 	select {
 	case s.queue <- event:
@@ -95,6 +102,12 @@ func (s *OpsSystemLogSink) shouldIndex(event *logger.LogEvent) bool {
 REDACTED
 
 	component := strings.ToLower(strings.TrimSpace(event.Component))
+	// zap 的 LoggerName 往往为空或不等于业务组件名；业务组件名通常以字段 component 透传。
+	if event.Fields != nil {
+		if fc := strings.ToLower(strings.TrimSpace(asString(event.Fields["component"]))); fc != "" {
+			component = fc
+	REDACTED
+REDACTED
 	if strings.Contains(component, "http.access") {
 		return true
 REDACTED
@@ -111,12 +124,12 @@ func (s *OpsSystemLogSink) run() {
 	defer ticker.Stop()
 
 	batch := make([]*logger.LogEvent, 0, s.batchSize)
-	flush := func() {
+	flush := func(baseCtx context.Context) {
 		if len(batch) == 0 {
 			return
 	REDACTED
 		started := time.Now()
-		inserted, err := s.flushBatch(batch)
+		inserted, err := s.flushBatch(baseCtx, batch)
 		delay := time.Since(started)
 		if err != nil {
 			atomic.AddUint64(&s.writeFailed, uint64(len(batch)))
@@ -131,11 +144,28 @@ func (s *OpsSystemLogSink) run() {
 	REDACTED
 		batch = batch[:0]
 REDACTED
+	drainAndFlush := func() {
+		for {
+			select {
+			case item := <-s.queue:
+				if item == nil {
+					continue
+			REDACTED
+				batch = append(batch, item)
+				if len(batch) >= s.batchSize {
+					flush(context.Background())
+			REDACTED
+			default:
+				flush(context.Background())
+				return
+		REDACTED
+	REDACTED
+REDACTED
 
 	for {
 		select {
 		case <-s.ctx.Done():
-			flush()
+			drainAndFlush()
 			return
 		case item := <-s.queue:
 			if item == nil {
@@ -143,15 +173,15 @@ REDACTED
 		REDACTED
 			batch = append(batch, item)
 			if len(batch) >= s.batchSize {
-				flush()
+				flush(s.ctx)
 		REDACTED
 		case <-ticker.C:
-			flush()
+			flush(s.ctx)
 	REDACTED
 REDACTED
 REDACTED
 
-func (s *OpsSystemLogSink) flushBatch(batch []*logger.LogEvent) (int, error) {
+func (s *OpsSystemLogSink) flushBatch(baseCtx context.Context, batch []*logger.LogEvent) (int, error) {
 	inputs := make([]*OpsInsertSystemLogInput, 0, len(batch))
 	for _, event := range batch {
 		if event == nil {
@@ -205,7 +235,10 @@ REDACTED
 	if len(inputs) == 0 {
 		return 0, nil
 REDACTED
-	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
+	if baseCtx == nil || baseCtx.Err() != nil {
+		baseCtx = context.Background()
+REDACTED
+	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
 	defer cancel()
 	inserted, err := s.opsRepo.BatchInsertSystemLogs(ctx, inputs)
 	if err != nil {

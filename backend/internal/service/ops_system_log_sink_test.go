@@ -37,9 +37,27 @@ REDACTED{
 			want:  true,
 	REDACTED,
 		{
+			name: "access component from fields (real zap path)",
+			event: &logger.LogEvent{
+				Level:     "info",
+				Component: "",
+				Fields:    map[string]any{"component": "http.access"REDACTED,
+		REDACTED,
+			want: true,
+	REDACTED,
+		{
 			name:  "audit component",
 			event: &logger.LogEvent{Level: "info", Component: "audit.log_config_change"REDACTED,
 			want:  true,
+	REDACTED,
+		{
+			name: "audit component from fields (real zap path)",
+			event: &logger.LogEvent{
+				Level:     "info",
+				Component: "",
+				Fields:    map[string]any{"component": "audit.log_config_change"REDACTED,
+		REDACTED,
+			want: true,
 	REDACTED,
 		{
 			name:  "plain info",
@@ -203,6 +221,47 @@ REDACTED)
 		time.Sleep(20 * time.Millisecond)
 REDACTED
 	t.Fatalf("write_failed_count not updated")
+REDACTED
+
+func TestOpsSystemLogSink_StopFlushUsesActiveContextAndDrainsQueue(t *testing.T) {
+	var inserted int64
+	var canceledCtxCalls int64
+	repo := &opsRepoMock{
+		BatchInsertSystemLogsFn: func(ctx context.Context, inputs []*OpsInsertSystemLogInput) (int64, error) {
+			if err := ctx.Err(); err != nil {
+				atomic.AddInt64(&canceledCtxCalls, 1)
+				return 0, err
+		REDACTED
+			atomic.AddInt64(&inserted, int64(len(inputs)))
+			return int64(len(inputs)), nil
+	REDACTED,
+REDACTED
+
+	sink := NewOpsSystemLogSink(repo)
+	sink.batchSize = 200
+	sink.flushInterval = time.Hour
+	sink.Start()
+
+	sink.WriteLogEvent(&logger.LogEvent{
+		Time:      time.Now().UTC(),
+		Level:     "warn",
+		Component: "app",
+		Message:   "pending-on-shutdown",
+		Fields:    map[string]any{"component": "http.access"REDACTED,
+REDACTED)
+
+	sink.Stop()
+
+	if got := atomic.LoadInt64(&inserted); got != 1 {
+		t.Fatalf("inserted = %d, want 1", got)
+REDACTED
+	if got := atomic.LoadInt64(&canceledCtxCalls); got != 0 {
+		t.Fatalf("canceled ctx calls = %d, want 0", got)
+REDACTED
+	health := sink.Health()
+	if health.WrittenCount != 1 {
+		t.Fatalf("written_count = %d, want 1", health.WrittenCount)
+REDACTED
 REDACTED
 
 type stringerValue string

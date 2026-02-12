@@ -247,7 +247,6 @@ REDACTED
 	if stacktraceLevel <= zapcore.FatalLevel {
 		zapOpts = append(zapOpts, zap.AddStacktrace(stacktraceLevel))
 REDACTED
-	zapOpts = append(zapOpts, zap.AddCallerSkip(1))
 
 	logger := zap.New(core, zapOpts...).With(
 		zap.String("service", options.ServiceName),

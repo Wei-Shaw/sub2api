@@ -41,8 +41,7 @@ REDACTED
 REDACTED
 
 func (h *slogZapHandler) Handle(_ context.Context, record slog.Record) error {
-	fields := make([]zap.Field, 0, len(h.attrs)+record.NumAttrs()+4)
-	fields = append(fields, zap.Time("time", record.Time))
+	fields := make([]zap.Field, 0, len(h.attrs)+record.NumAttrs()+3)
 	fields = append(fields, slogAttrsToZapFields(h.groups, h.attrs)...)
 	record.Attrs(func(attr slog.Attr) bool {
 		fields = append(fields, slogAttrToZapField(h.groups, attr))

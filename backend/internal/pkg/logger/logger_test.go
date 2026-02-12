@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -125,5 +126,67 @@ REDACTED
 	stderrBytes, _ := io.ReadAll(stderrR)
 	if !strings.Contains(string(stderrBytes), "日志文件输出初始化失败") {
 		t.Fatalf("stderr should contain fallback warning, got: %s", string(stderrBytes))
+REDACTED
+REDACTED
+
+func TestInit_CallerShouldPointToCallsite(t *testing.T) {
+	origStdout := os.Stdout
+	origStderr := os.Stderr
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stdout pipe: %v", err)
+REDACTED
+	_, stderrW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stderr pipe: %v", err)
+REDACTED
+	os.Stdout = stdoutW
+	os.Stderr = stderrW
+	t.Cleanup(func() {
+		os.Stdout = origStdout
+		os.Stderr = origStderr
+		_ = stdoutR.Close()
+		_ = stdoutW.Close()
+		_ = stderrW.Close()
+REDACTED)
+
+	if err := Init(InitOptions{
+		Level:       "info",
+		Format:      "json",
+		ServiceName: "sub2api",
+		Environment: "test",
+		Caller:      true,
+		Output: OutputOptions{
+			ToStdout: true,
+			ToFile:   false,
+	REDACTED,
+		Sampling: SamplingOptions{Enabled: falseREDACTED,
+REDACTED); err != nil {
+		t.Fatalf("Init() error: %v", err)
+REDACTED
+
+	L().Info("caller-check")
+	Sync()
+	_ = stdoutW.Close()
+	logBytes, _ := io.ReadAll(stdoutR)
+
+	var line string
+	for _, item := range strings.Split(string(logBytes), "\n") {
+		if strings.Contains(item, "caller-check") {
+			line = item
+			break
+	REDACTED
+REDACTED
+	if line == "" {
+		t.Fatalf("log output missing caller-check: %s", string(logBytes))
+REDACTED
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(line), &payload); err != nil {
+		t.Fatalf("parse log json failed: %v, line=%s", err, line)
+REDACTED
+	caller, _ := payload["caller"].(string)
+	if !strings.Contains(caller, "logger_test.go:") {
+		t.Fatalf("caller should point to this test file, got: %s", caller)
 REDACTED
 REDACTED
