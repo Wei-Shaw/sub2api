@@ -747,11 +747,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	originalModel := reqModel
 
 	isCodexCLI := openai.IsCodexCLIRequest(c.GetHeader("User-Agent")) || (s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
-	passthroughEnabled := account.Type == AccountTypeOAuth && account.IsOpenAIOAuthPassthroughEnabled() && isCodexCLI
+	passthroughEnabled := account.IsOpenAIPassthroughEnabled()
 	if passthroughEnabled {
 		// 透传分支只需要轻量提取字段，避免热路径全量 Unmarshal。
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, reqModel)
-		return s.forwardOAuthPassthrough(ctx, c, account, originalBody, reqModel, reasoningEffort, reqStream, startTime)
+		return s.forwardOpenAIPassthrough(ctx, c, account, originalBody, reqModel, reasoningEffort, reqStream, startTime)
 REDACTED
 
 	reqBody, err := getOpenAIRequestBodyMap(c, body)
@@ -774,6 +774,14 @@ REDACTED
 
 	// Track if body needs re-serialization
 	bodyModified := false
+
+	// 非透传模式下，保持历史行为：非 Codex CLI 请求在 instructions 为空时注入默认指令。
+	if !isCodexCLI && isInstructionsEmpty(reqBody) {
+		if instructions := strings.TrimSpace(GetOpenCodeInstructions()); instructions != "" {
+			reqBody["instructions"] = instructions
+			bodyModified = true
+	REDACTED
+REDACTED
 
 	// 对所有请求执行模型映射（包含 Codex CLI）。
 	mappedModel := account.GetMappedModel(reqModel)
@@ -994,7 +1002,7 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-func (s *OpenAIGatewayService) forwardOAuthPassthrough(
+func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,
@@ -1004,7 +1012,14 @@ func (s *OpenAIGatewayService) forwardOAuthPassthrough(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
-	log.Printf("[OpenAI 透传] 已启用：account=%d name=%s", account.ID, account.Name)
+	log.Printf(
+		"[OpenAI 自动透传] 命中自动透传分支: account=%d name=%s type=%s model=%s stream=%v",
+		account.ID,
+		account.Name,
+		account.Type,
+		reqModel,
+		reqStream,
+	)
 
 	// Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
@@ -1012,7 +1027,7 @@ func (s *OpenAIGatewayService) forwardOAuthPassthrough(
 		return nil, err
 REDACTED
 
-	upstreamReq, err := s.buildUpstreamRequestOAuthPassthrough(ctx, c, account, body, token)
+	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(ctx, c, account, body, token)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -1092,14 +1107,29 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-func (s *OpenAIGatewayService) buildUpstreamRequestOAuthPassthrough(
+func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,
 	body []byte,
 	token string,
 ) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatgptCodexURL, bytes.NewReader(body))
+	targetURL := openaiPlatformAPIURL
+	switch account.Type {
+	case AccountTypeOAuth:
+		targetURL = chatgptCodexURL
+	case AccountTypeAPIKey:
+		baseURL := account.GetOpenAIBaseURL()
+		if baseURL != "" {
+			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+			if err != nil {
+				return nil, err
+		REDACTED
+			targetURL = buildOpenAIResponsesURL(validatedURL)
+	REDACTED
+REDACTED
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 REDACTED
@@ -1123,16 +1153,18 @@ REDACTED
 	req.Header.Del("x-goog-api-key")
 	req.Header.Set("authorization", "Bearer "+token)
 
-	// ChatGPT internal Codex API 必要头
-	req.Host = "chatgpt.com"
-	if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
-		req.Header.Set("chatgpt-account-id", chatgptAccountID)
-REDACTED
-	if req.Header.Get("OpenAI-Beta") == "" {
-		req.Header.Set("OpenAI-Beta", "responses=experimental")
-REDACTED
-	if req.Header.Get("originator") == "" {
-		req.Header.Set("originator", "codex_cli_rs")
+	// OAuth 透传到 ChatGPT internal API 时补齐必要头。
+	if account.Type == AccountTypeOAuth {
+		req.Host = "chatgpt.com"
+		if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
+			req.Header.Set("chatgpt-account-id", chatgptAccountID)
+	REDACTED
+		if req.Header.Get("OpenAI-Beta") == "" {
+			req.Header.Set("OpenAI-Beta", "responses=experimental")
+	REDACTED
+		if req.Header.Get("originator") == "" {
+			req.Header.Set("originator", "codex_cli_rs")
+	REDACTED
 REDACTED
 
 	if req.Header.Get("content-type") == "" {
@@ -1389,7 +1421,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			if err != nil {
 				return nil, err
 		REDACTED
-			targetURL = validatedURL + "/responses"
+			targetURL = buildOpenAIResponsesURL(validatedURL)
 	REDACTED
 	default:
 		targetURL = openaiPlatformAPIURL
@@ -2082,6 +2114,21 @@ REDACTED)
 		return "", fmt.Errorf("invalid base_url: %w", err)
 REDACTED
 	return normalized, nil
+REDACTED
+
+// buildOpenAIResponsesURL 组装 OpenAI Responses 端点。
+// - base 以 /v1 结尾：追加 /responses
+// - base 已是 /responses：原样返回
+// - 其他情况：追加 /v1/responses
+func buildOpenAIResponsesURL(base string) string {
+	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
+	if strings.HasSuffix(normalized, "/responses") {
+		return normalized
+REDACTED
+	if strings.HasSuffix(normalized, "/v1") {
+		return normalized + "/responses"
+REDACTED
+	return normalized + "/v1/responses"
 REDACTED
 
 func (s *OpenAIGatewayService) replaceModelInResponseBody(body []byte, fromModel, toModel string) []byte {

@@ -13,13 +13,11 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 // OpenAIGatewayHandler handles OpenAI API gateway requests
@@ -117,22 +115,6 @@ REDACTED
 		return
 REDACTED
 	reqStream := streamResult.Bool()
-
-	userAgent := c.GetHeader("User-Agent")
-	isCodexCLI := openai.IsCodexCLIRequest(userAgent) || (h.cfg != nil && h.cfg.Gateway.ForceCodexCLI)
-	if !isCodexCLI {
-		existingInstructions := gjson.GetBytes(body, "instructions").String()
-		if strings.TrimSpace(existingInstructions) == "" {
-			if instructions := strings.TrimSpace(service.GetOpenCodeInstructions()); instructions != "" {
-				newBody, err := sjson.SetBytes(body, "instructions", instructions)
-				if err != nil {
-					h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to process request")
-					return
-			REDACTED
-				body = newBody
-		REDACTED
-	REDACTED
-REDACTED
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
 

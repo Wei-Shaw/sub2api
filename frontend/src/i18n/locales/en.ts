@@ -1533,7 +1533,8 @@ export default {
         apiKeyHint: 'Your OpenAI API Key',
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
-          'When enabled, applies to Codex CLI requests only: the gateway forwards request/response as-is and only swaps OAuth auth, while keeping billing/concurrency/audit. Disable to rollback if you hit 4xx or compatibility issues.',
+          'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
+        modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
         enableSora: 'Enable Sora simultaneously',
         enableSoraHint: 'Sora uses the same OpenAI account. Enable to create Sora account simultaneously.'
       REDACTED,

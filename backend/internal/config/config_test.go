@@ -14,6 +14,19 @@ REDACTED
 	t.Setenv("JWT_SECRET", strings.Repeat("x", 32))
 REDACTED
 
+func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
+	viper.Reset()
+	t.Setenv("JWT_SECRET", "")
+
+	cfg, err := LoadForBootstrap()
+	if err != nil {
+		t.Fatalf("LoadForBootstrap() error: %v", err)
+REDACTED
+	if cfg.JWT.Secret != "" {
+		t.Fatalf("LoadForBootstrap() should keep empty jwt.secret during bootstrap")
+REDACTED
+REDACTED
+
 func TestNormalizeRunMode(t *testing.T) {
 	tests := []struct {
 		input    string
