@@ -296,7 +296,7 @@ log:
   level: "info"
   # Log format: json/console
   # 日志格式：json/console
-  format: "json"
+  format: "console"
   # Service name field written into each log line
   # 每条日志都会附带 service 字段
   service_name: "sub2api"
