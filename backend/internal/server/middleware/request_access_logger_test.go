@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -32,9 +33,17 @@ func (s *testLogSink) list() []*logger.LogEvent {
 REDACTED
 
 func initMiddlewareTestLogger(t *testing.T) *testLogSink {
+	return initMiddlewareTestLoggerWithLevel(t, "debug")
+REDACTED
+
+func initMiddlewareTestLoggerWithLevel(t *testing.T, level string) *testLogSink {
+REDACTED
+	level = strings.TrimSpace(level)
+	if level == "" {
+		level = "debug"
 REDACTED
 	if err := logger.Init(logger.InitOptions{
-		Level:       "debug",
+		Level:       level,
 		Format:      "json",
 		ServiceName: "sub2api",
 		Environment: "test",
@@ -189,5 +198,52 @@ REDACTED)
 REDACTED
 	if len(sink.list()) != 0 {
 		t.Fatalf("health endpoint should not write access log")
+REDACTED
+REDACTED
+
+func TestLogger_AccessLogStillIndexedWhenLevelWarn(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sink := initMiddlewareTestLoggerWithLevel(t, "warn")
+
+	r := gin.New()
+	r.Use(RequestLogger())
+	r.Use(Logger())
+	r.GET("/api/test", func(c *gin.Context) {
+		c.Status(http.StatusCreated)
+REDACTED)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status=%d", w.Code)
+REDACTED
+
+	events := sink.list()
+	if len(events) == 0 {
+		t.Fatalf("expected access log event to be indexed when level=warn")
+REDACTED
+
+	found := false
+	for _, event := range events {
+		if event == nil || event.Message != "http request completed" {
+			continue
+	REDACTED
+		found = true
+		if event.Level != "info" {
+			t.Fatalf("event level=%q, want info", event.Level)
+	REDACTED
+		if event.Component != "http.access" && event.Fields["component"] != "http.access" {
+			t.Fatalf("event component mismatch: component=%q fields=%v", event.Component, event.Fields["component"])
+	REDACTED
+		if _, ok := event.Fields["status_code"]; !ok {
+			t.Fatalf("status_code field missing: %+v", event.Fields)
+	REDACTED
+		if _, ok := event.Fields["request_id"]; !ok {
+			t.Fatalf("request_id field missing: %+v", event.Fields)
+	REDACTED
+REDACTED
+	if !found {
+		t.Fatalf("access log event not found")
 REDACTED
 REDACTED

@@ -127,6 +127,46 @@ func SetSink(sink Sink) {
 	currentSink = sink
 REDACTED
 
+// WriteSinkEvent 直接写入日志 sink，不经过全局日志级别门控。
+// 用于需要“可观测性入库”与“业务输出级别”解耦的场景（例如 ops 系统日志索引）。
+func WriteSinkEvent(level, component, message string, fields map[string]any) {
+	mu.RLock()
+	sink := currentSink
+	mu.RUnlock()
+	if sink == nil {
+		return
+REDACTED
+
+	level = strings.ToLower(strings.TrimSpace(level))
+	if level == "" {
+		level = "info"
+REDACTED
+	component = strings.TrimSpace(component)
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return
+REDACTED
+
+	eventFields := make(map[string]any, len(fields)+1)
+	for k, v := range fields {
+		eventFields[k] = v
+REDACTED
+	if component != "" {
+		if _, ok := eventFields["component"]; !ok {
+			eventFields["component"] = component
+	REDACTED
+REDACTED
+
+	sink.WriteLogEvent(&LogEvent{
+		Time:       time.Now(),
+		Level:      level,
+		Component:  component,
+		Message:    message,
+		LoggerName: component,
+		Fields:     eventFields,
+REDACTED)
+REDACTED
+
 func L() *zap.Logger {
 	mu.RLock()
 	defer mu.RUnlock()
