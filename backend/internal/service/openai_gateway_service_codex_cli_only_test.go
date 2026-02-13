@@ -1,9 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -95,7 +98,169 @@ REDACTED
 func TestLogCodexCLIOnlyDetection_NilSafety(t *testing.T) {
 	// 不校验日志内容，仅保证在 nil 入参下不会 panic。
 	require.NotPanics(t, func() {
-		logCodexCLIOnlyDetection(context.TODO(), nil, 0, CodexClientRestrictionDetectionResult{Enabled: true, Matched: false, Reason: "test"REDACTED)
-		logCodexCLIOnlyDetection(context.Background(), nil, 0, CodexClientRestrictionDetectionResult{Enabled: false, Matched: false, Reason: "disabled"REDACTED)
+		logCodexCLIOnlyDetection(context.TODO(), nil, nil, 0, CodexClientRestrictionDetectionResult{Enabled: true, Matched: false, Reason: "test"REDACTED, nil)
+		logCodexCLIOnlyDetection(context.Background(), nil, nil, 0, CodexClientRestrictionDetectionResult{Enabled: false, Matched: false, Reason: "disabled"REDACTED, nil)
 REDACTED)
+REDACTED
+
+func TestLogCodexCLIOnlyDetection_LogsBothMatchedAndRejected(t *testing.T) {
+	logSink, restore := captureStructuredLog(t)
+	defer restore()
+
+	account := &Account{ID: 1001REDACTED
+	logCodexCLIOnlyDetection(context.Background(), nil, account, 2002, CodexClientRestrictionDetectionResult{
+		Enabled: true,
+		Matched: true,
+		Reason:  CodexClientRestrictionReasonMatchedUA,
+REDACTED, nil)
+	logCodexCLIOnlyDetection(context.Background(), nil, account, 2002, CodexClientRestrictionDetectionResult{
+		Enabled: true,
+		Matched: false,
+		Reason:  CodexClientRestrictionReasonNotMatchedUA,
+REDACTED, nil)
+
+	require.True(t, logSink.ContainsMessage("OpenAI codex_cli_only 允许官方客户端请求"))
+	require.True(t, logSink.ContainsMessage("OpenAI codex_cli_only 拒绝非官方客户端请求"))
+REDACTED
+
+func TestLogCodexCLIOnlyDetection_RejectedIncludesRequestDetails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logSink, restore := captureStructuredLog(t)
+	defer restore()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses?trace=1", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "curl/8.0")
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("OpenAI-Beta", "assistants=v2")
+
+	body := []byte(`{"model":"gpt-5.2","stream":false,"prompt_cache_key":"pc-123","access_token":"secret-token","input":[{"type":"text","text":"hello"REDACTED]REDACTED`)
+	account := &Account{ID: 1001REDACTED
+	logCodexCLIOnlyDetection(context.Background(), c, account, 2002, CodexClientRestrictionDetectionResult{
+		Enabled: true,
+		Matched: false,
+		Reason:  CodexClientRestrictionReasonNotMatchedUA,
+REDACTED, body)
+
+	require.True(t, logSink.ContainsFieldValue("request_user_agent", "curl/8.0"))
+	require.True(t, logSink.ContainsFieldValue("request_model", "gpt-5.2"))
+	require.True(t, logSink.ContainsFieldValue("request_query", "trace=1"))
+	require.True(t, logSink.ContainsFieldValue("request_prompt_cache_key_sha256", hashSensitiveValueForLog("pc-123")))
+	require.True(t, logSink.ContainsFieldValue("request_headers", "openai-beta"))
+	require.True(t, logSink.ContainsField("request_body_size"))
+	require.False(t, logSink.ContainsField("request_body_preview"))
+REDACTED
+
+func TestLogOpenAIInstructionsRequiredDebug_LogsRequestDetails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logSink, restore := captureStructuredLog(t)
+	defer restore()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses?trace=1", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "curl/8.0")
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("OpenAI-Beta", "assistants=v2")
+
+	body := []byte(`{"model":"gpt-5.1-codex","stream":false,"prompt_cache_key":"pc-abc","access_token":"secret-token","input":[{"type":"text","text":"hello"REDACTED]REDACTED`)
+	account := &Account{ID: 1001, Name: "codex max套餐"REDACTED
+
+	logOpenAIInstructionsRequiredDebug(
+		context.Background(),
+		c,
+		account,
+		http.StatusBadRequest,
+		"Instructions are required",
+		body,
+		[]byte(`{"error":{"message":"Instructions are required","type":"invalid_request_error","param":"instructions","code":"missing_required_parameter"REDACTEDREDACTED`),
+	)
+
+	require.True(t, logSink.ContainsMessageAtLevel("OpenAI 上游返回 Instructions are required，已记录请求详情用于排查", "warn"))
+	require.True(t, logSink.ContainsFieldValue("request_user_agent", "curl/8.0"))
+	require.True(t, logSink.ContainsFieldValue("request_model", "gpt-5.1-codex"))
+	require.True(t, logSink.ContainsFieldValue("request_query", "trace=1"))
+	require.True(t, logSink.ContainsFieldValue("account_name", "codex max套餐"))
+	require.True(t, logSink.ContainsFieldValue("request_headers", "openai-beta"))
+	require.True(t, logSink.ContainsField("request_body_size"))
+	require.False(t, logSink.ContainsField("request_body_preview"))
+REDACTED
+
+func TestLogOpenAIInstructionsRequiredDebug_NonTargetErrorSkipped(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logSink, restore := captureStructuredLog(t)
+	defer restore()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "curl/8.0")
+	body := []byte(`{"model":"gpt-5.1-codex","stream":falseREDACTED`)
+
+	logOpenAIInstructionsRequiredDebug(
+		context.Background(),
+		c,
+		&Account{ID: 1001REDACTED,
+		http.StatusForbidden,
+		"forbidden",
+		body,
+		[]byte(`{"error":{"message":"forbidden"REDACTEDREDACTED`),
+	)
+
+	require.False(t, logSink.ContainsMessage("OpenAI 上游返回 Instructions are required，已记录请求详情用于排查"))
+REDACTED
+
+func TestOpenAIGatewayService_Forward_LogsInstructionsRequiredDetails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logSink, restore := captureStructuredLog(t)
+	defer restore()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses?trace=1", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("OpenAI-Beta", "assistants=v2")
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"REDACTED,
+				"x-request-id": []string{"rid-upstream"REDACTED,
+		REDACTED,
+			Body: io.NopCloser(strings.NewReader(`{"error":{"message":"Missing required parameter: 'instructions'","type":"invalid_request_error","param":"instructions","code":"missing_required_parameter"REDACTEDREDACTED`)),
+	REDACTED,
+REDACTED
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{ForceCodexCLI: falseREDACTED,
+	REDACTED,
+		httpUpstream: upstream,
+REDACTED
+	account := &Account{
+		ID:             1001,
+		Name:           "codex max套餐",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeAPIKey,
+		Concurrency:    1,
+		Credentials:    map[string]any{"api_key": "sk-test"REDACTED,
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+REDACTED
+	body := []byte(`{"model":"gpt-5.1-codex","stream":false,"input":[{"type":"text","text":"hello"REDACTED],"prompt_cache_key":"pc-forward","access_token":"secret-token"REDACTED`)
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+REDACTED
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Contains(t, err.Error(), "upstream error: 400")
+
+	require.True(t, logSink.ContainsMessageAtLevel("OpenAI 上游返回 Instructions are required，已记录请求详情用于排查", "warn"))
+	require.True(t, logSink.ContainsFieldValue("request_user_agent", "codex_cli_rs/0.1.0"))
+	require.True(t, logSink.ContainsFieldValue("request_model", "gpt-5.1-codex"))
+	require.True(t, logSink.ContainsFieldValue("request_headers", "openai-beta"))
+	require.True(t, logSink.ContainsField("request_body_size"))
+	require.False(t, logSink.ContainsField("request_body_preview"))
 REDACTED

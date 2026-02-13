@@ -58,36 +58,6 @@ func Logger() gin.HandlerFunc {
 
 		l := logger.FromContext(c.Request.Context()).With(fields...)
 		l.Info("http request completed", zap.Time("completed_at", endTime))
-		// 当全局日志级别高于 info（如 warn/error）时，access info 不会进入 zap core，
-		// 这里补写一次 sink，保证 ops 系统日志仍可索引关键访问轨迹。
-		if !logger.L().Core().Enabled(logger.LevelInfo) {
-			sinkFields := map[string]any{
-				"component":    "http.access",
-				"status_code":  statusCode,
-				"latency_ms":   latency.Milliseconds(),
-				"client_ip":    clientIP,
-				"protocol":     protocol,
-				"method":       method,
-				"path":         path,
-				"completed_at": endTime,
-		REDACTED
-			if requestID, ok := c.Request.Context().Value(ctxkey.RequestID).(string); ok && requestID != "" {
-				sinkFields["request_id"] = requestID
-		REDACTED
-			if clientRequestID, ok := c.Request.Context().Value(ctxkey.ClientRequestID).(string); ok && clientRequestID != "" {
-				sinkFields["client_request_id"] = clientRequestID
-		REDACTED
-			if hasAccountID && accountID > 0 {
-				sinkFields["account_id"] = accountID
-		REDACTED
-			if platform != "" {
-				sinkFields["platform"] = platform
-		REDACTED
-			if model != "" {
-				sinkFields["model"] = model
-		REDACTED
-			logger.WriteSinkEvent("info", "http.access", "http request completed", sinkFields)
-	REDACTED
 
 		if len(c.Errors) > 0 {
 			l.Warn("http request contains gin errors", zap.String("errors", c.Errors.String()))
