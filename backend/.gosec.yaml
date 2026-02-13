@@ -1,0 +1,7 @@
+global:
+  # Exclude G704 (SSRF via taint analysis) - this is an API gateway platform
+  # that by design proxies requests to configurable upstream services.
+  # All upstream URLs are sourced from admin-configured settings or known
+  # third-party API endpoints, not from end-user input.
+  exclude:
+    - G704
