@@ -650,11 +650,20 @@ REDACTED
 
 // matchOpenAIModel OpenAI 模型回退匹配策略
 // 回退顺序：
-// 1. gpt-5.2-codex -> gpt-5.2（去掉后缀如 -codex, -mini, -max 等）
-// 2. gpt-5.2-20251222 -> gpt-5.2（去掉日期版本号）
-// 3. gpt-5.3-codex -> gpt-5.2-codex
-// 4. 最终回退到 DefaultTestModel (gpt-5.1-codex)
+// 1. gpt-5.3-codex-spark* -> gpt-5.1-codex（按业务要求固定计费）
+// 2. gpt-5.2-codex -> gpt-5.2（去掉后缀如 -codex, -mini, -max 等）
+// 3. gpt-5.2-20251222 -> gpt-5.2（去掉日期版本号）
+// 4. gpt-5.3-codex -> gpt-5.2-codex
+// 5. 最终回退到 DefaultTestModel (gpt-5.1-codex)
 func (s *PricingService) matchOpenAIModel(model string) *LiteLLMModelPricing {
+	if strings.HasPrefix(model, "gpt-5.3-codex-spark") {
+		if pricing, ok := s.pricingData["gpt-5.1-codex"]; ok {
+			logger.LegacyPrintf("service.pricing", "[Pricing][SparkBilling] %s -> %s billing", model, "gpt-5.1-codex")
+			logger.LegacyPrintf("service.pricing", "[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.1-codex")
+			return pricing
+	REDACTED
+REDACTED
+
 	// 尝试的回退变体
 	variants := s.generateOpenAIModelVariants(model, openAIModelDatePattern)
 

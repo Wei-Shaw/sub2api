@@ -716,6 +716,7 @@ const allModels = [
   { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' REDACTED,
   { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' REDACTED,
   { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' REDACTED,
+  { value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark' REDACTED,
   { value: 'gpt-5.2-2025-12-11', label: 'GPT-5.2' REDACTED,
   { value: 'gpt-5.2-codex', label: 'GPT-5.2 Codex' REDACTED,
   { value: 'gpt-5.1-codex-max', label: 'GPT-5.1 Codex Max' REDACTED,
@@ -759,6 +760,12 @@ const presetMappings = [
     from: 'claude-opus-4-5-20251101',
     to: 'claude-sonnet-4-5-20250929',
     color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400'
+  REDACTED,
+  {
+    label: 'GPT-5.3 Codex Spark',
+    from: 'gpt-5.3-codex-spark',
+    to: 'gpt-5.3-codex-spark',
+    color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400'
   REDACTED,
   {
     label: 'GPT-5.2',
