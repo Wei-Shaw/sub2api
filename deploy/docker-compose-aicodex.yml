@@ -1,10 +1,10 @@
 # =============================================================================
-# Sub2API Docker Compose Host Configuration (Local Build)
+# aicodex2api Docker Compose Host Configuration (Local Build)
 # =============================================================================
 # Quick Start:
 #   1. Copy .env.example to .env and configure
 #   2. docker-compose -f docker-compose-host.yml up -d --build
-#   3. Check logs: docker-compose -f docker-compose-host.yml logs -f sub2api
+#   3. Check logs: docker-compose -f docker-compose-host.yml logs -f aicodex2api
 #   4. Access: http://localhost:8080
 #
 # This configuration builds the image from source (Dockerfile in project root).
@@ -14,15 +14,14 @@
 
 services:
   # ===========================================================================
-  # Sub2API Application
+  # aicodex2api Application
   # ===========================================================================
-  sub2api:
-    #image: weishaw/sub2api:latest
+  aicodex2api:
     image: yangjianbo/aicodex2api:latest
     build:
       context: ..
       dockerfile: Dockerfile
-    container_name: sub2api
+    container_name: aicodex2api
     restart: unless-stopped
     network_mode: host
     ulimits:
@@ -31,7 +30,7 @@ services:
         hard: 800000
     volumes:
       # Data persistence (config.yaml will be auto-generated here)
-      - sub2api_data:/app/data
+      - aicodex2api_data:/app/data
       # Mount custom config.yaml (optional, overrides auto-generated config)
       #- ./config.yaml:/app/data/config.yaml:ro
     environment:
@@ -54,9 +53,9 @@ services:
       # Using host network: point to host/external DB by DATABASE_HOST/DATABASE_PORT
       - DATABASE_HOST=${DATABASE_HOST:-127.0.0.1REDACTED
       - DATABASE_PORT=${DATABASE_PORT:-5432REDACTED
-      - DATABASE_USER=${POSTGRES_USER:-sub2apiREDACTED
+      - DATABASE_USER=${POSTGRES_USER:-aicodex2apiREDACTED
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is requiredREDACTED
-      - DATABASE_DBNAME=${POSTGRES_DB:-sub2apiREDACTED
+      - DATABASE_DBNAME=${POSTGRES_DB:-aicodex2apiREDACTED
       - DATABASE_SSLMODE=disable
       - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50REDACTED
       - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-10REDACTED
@@ -86,7 +85,7 @@ services:
       # =======================================================================
       # Admin Account (auto-created on first run)
       # =======================================================================
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@sub2api.localREDACTED
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@aicodex2api.localREDACTED
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-REDACTED
 
       # =======================================================================
@@ -152,7 +151,7 @@ services:
   # ===========================================================================
   postgres:
     image: postgres:18-alpine
-    container_name: sub2api-postgres
+    container_name: aicodex2api-postgres
     restart: unless-stopped
     network_mode: host
     ulimits:
@@ -166,9 +165,9 @@ services:
       # 若不显式设置 PGDATA，则即使挂载了 postgres_data 到 /var/lib/postgresql/data，数据也不会落盘到该命名卷，
       # docker compose down/up 后会触发 initdb 重新初始化，导致用户/密码等数据丢失。
       - PGDATA=/var/lib/postgresql/data
-      - POSTGRES_USER=${POSTGRES_USER:-sub2apiREDACTED
+      - POSTGRES_USER=${POSTGRES_USER:-aicodex2apiREDACTED
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is requiredREDACTED
-      - POSTGRES_DB=${POSTGRES_DB:-sub2apiREDACTED
+      - POSTGRES_DB=${POSTGRES_DB:-aicodex2apiREDACTED
       - TZ=${TZ:-Asia/ShanghaiREDACTED
     command:
       - "postgres"
@@ -189,7 +188,7 @@ services:
       - "-c"
       - "maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-128MBREDACTED"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2apiREDACTED -d ${POSTGRES_DB:-sub2apiREDACTED -p ${DATABASE_PORT:-5432REDACTED"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aicodex2apiREDACTED -d ${POSTGRES_DB:-aicodex2apiREDACTED -p ${DATABASE_PORT:-5432REDACTED"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -201,7 +200,7 @@ services:
   # ===========================================================================
   redis:
     image: redis:8-alpine
-    container_name: sub2api-redis
+    container_name: aicodex2api-redis
     restart: unless-stopped
     network_mode: host
     ulimits:
@@ -234,7 +233,7 @@ services:
 # Volumes
 # =============================================================================
 volumes:
-  sub2api_data:
+  aicodex2api_data:
     driver: local
   postgres_data:
     driver: local

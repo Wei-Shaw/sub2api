@@ -139,6 +139,8 @@ curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install
 
 使用 Docker Compose 部署，包含 PostgreSQL 和 Redis 容器。
 
+如果你的服务器是 **Ubuntu 24.04**，建议直接参考：`deploy/ubuntu24-docker-compose-aicodex.md`，其中包含「安装最新版 Docker + docker-compose-aicodex.yml 部署」的完整步骤。
+
 #### 前置条件
 
 - Docker 20.10+
