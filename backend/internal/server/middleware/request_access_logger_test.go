@@ -201,7 +201,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestLogger_AccessLogStillIndexedWhenLevelWarn(t *testing.T) {
+func TestLogger_AccessLogDroppedWhenLevelWarn(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	sink := initMiddlewareTestLoggerWithLevel(t, "warn")
 
@@ -220,30 +220,9 @@ REDACTED)
 REDACTED
 
 	events := sink.list()
-	if len(events) == 0 {
-		t.Fatalf("expected access log event to be indexed when level=warn")
-REDACTED
-
-	found := false
 	for _, event := range events {
-		if event == nil || event.Message != "http request completed" {
-			continue
+		if event != nil && event.Message == "http request completed" {
+			t.Fatalf("access log should not be indexed when level=warn: %+v", event)
 	REDACTED
-		found = true
-		if event.Level != "info" {
-			t.Fatalf("event level=%q, want info", event.Level)
-	REDACTED
-		if event.Component != "http.access" && event.Fields["component"] != "http.access" {
-			t.Fatalf("event component mismatch: component=%q fields=%v", event.Component, event.Fields["component"])
-	REDACTED
-		if _, ok := event.Fields["status_code"]; !ok {
-			t.Fatalf("status_code field missing: %+v", event.Fields)
-	REDACTED
-		if _, ok := event.Fields["request_id"]; !ok {
-			t.Fatalf("request_id field missing: %+v", event.Fields)
-	REDACTED
-REDACTED
-	if !found {
-		t.Fatalf("access log event not found")
 REDACTED
 REDACTED

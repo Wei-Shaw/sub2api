@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
+	"go.uber.org/zap"
 )
 
 var (
@@ -659,7 +660,8 @@ func (s *PricingService) matchOpenAIModel(model string) *LiteLLMModelPricing {
 	if strings.HasPrefix(model, "gpt-5.3-codex-spark") {
 		if pricing, ok := s.pricingData["gpt-5.1-codex"]; ok {
 			logger.LegacyPrintf("service.pricing", "[Pricing][SparkBilling] %s -> %s billing", model, "gpt-5.1-codex")
-			logger.LegacyPrintf("service.pricing", "[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.1-codex")
+			logger.With(zap.String("component", "service.pricing")).
+				Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.1-codex"))
 			return pricing
 	REDACTED
 REDACTED
@@ -669,14 +671,16 @@ REDACTED
 
 	for _, variant := range variants {
 		if pricing, ok := s.pricingData[variant]; ok {
-			logger.LegacyPrintf("service.pricing", "[Pricing] OpenAI fallback matched %s -> %s", model, variant)
+			logger.With(zap.String("component", "service.pricing")).
+				Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, variant))
 			return pricing
 	REDACTED
 REDACTED
 
 	if strings.HasPrefix(model, "gpt-5.3-codex") {
 		if pricing, ok := s.pricingData["gpt-5.2-codex"]; ok {
-			logger.LegacyPrintf("service.pricing", "[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.2-codex")
+			logger.With(zap.String("component", "service.pricing")).
+				Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.2-codex"))
 			return pricing
 	REDACTED
 REDACTED
