@@ -146,6 +146,15 @@ gateway:
   # Max request body size in bytes (default: 100MB)
   # 请求体最大字节数（默认 100MB）
   max_body_size: 104857600
+  # Max bytes to read for non-stream upstream responses (default: 8MB)
+  # 非流式上游响应体读取上限（默认 8MB）
+  upstream_response_read_max_bytes: 8388608
+  # Max bytes to read for proxy probe responses (default: 1MB)
+  # 代理探测响应体读取上限（默认 1MB）
+  proxy_probe_response_read_max_bytes: 1048576
+  # Enable Gemini upstream response header debug logs (default: false)
+  # 是否开启 Gemini 上游响应头调试日志（默认 false）
+  gemini_debug_response_headers: false
   # Sora max request body size in bytes (0=use max_body_size)
   # Sora 请求体最大字节数（0=使用 max_body_size）
   sora_max_body_size: 268435456

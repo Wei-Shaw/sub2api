@@ -51,6 +51,9 @@ REDACTED else {
 		if err := r.SetTrustedProxies(nil); err != nil {
 			log.Printf("Failed to disable trusted proxies: %v", err)
 	REDACTED
+		if cfg.Server.Mode == "release" {
+			log.Printf("Warning: server.trusted_proxies is empty in release mode; client IP trust chain is disabled")
+	REDACTED
 REDACTED
 
 	return SetupRouter(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient)

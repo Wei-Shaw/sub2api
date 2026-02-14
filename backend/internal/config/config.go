@@ -308,6 +308,12 @@ type GatewayConfig struct {
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
+	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
+	UpstreamResponseReadMaxBytes int64 `mapstructure:"upstream_response_read_max_bytes"`
+	// 代理探测响应体读取上限（字节）
+	ProxyProbeResponseReadMaxBytes int64 `mapstructure:"proxy_probe_response_read_max_bytes"`
+	// Gemini 上游响应头调试日志开关（默认关闭，避免高频日志开销）
+	GeminiDebugResponseHeaders bool `mapstructure:"gemini_debug_response_headers"`
 	// ConnectionPoolIsolation: 上游连接池隔离策略（proxy/account/account_proxy）
 	ConnectionPoolIsolation string `mapstructure:"connection_pool_isolation"`
 	// ForceCodexCLI: 强制将 OpenAI `/v1/responses` 请求按 Codex CLI 处理。
@@ -1059,6 +1065,9 @@ REDACTED)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.max_body_size", int64(100*1024*1024))
+	viper.SetDefault("gateway.upstream_response_read_max_bytes", int64(8*1024*1024))
+	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
+	viper.SetDefault("gateway.gemini_debug_response_headers", false)
 	viper.SetDefault("gateway.sora_max_body_size", int64(256*1024*1024))
 	viper.SetDefault("gateway.sora_stream_timeout_seconds", 900)
 	viper.SetDefault("gateway.sora_request_timeout_seconds", 180)
@@ -1464,6 +1473,12 @@ REDACTED else {
 REDACTED
 	if c.Gateway.MaxBodySize <= 0 {
 		return fmt.Errorf("gateway.max_body_size must be positive")
+REDACTED
+	if c.Gateway.UpstreamResponseReadMaxBytes <= 0 {
+		return fmt.Errorf("gateway.upstream_response_read_max_bytes must be positive")
+REDACTED
+	if c.Gateway.ProxyProbeResponseReadMaxBytes <= 0 {
+		return fmt.Errorf("gateway.proxy_probe_response_read_max_bytes must be positive")
 REDACTED
 	if c.Gateway.SoraMaxBodySize < 0 {
 		return fmt.Errorf("gateway.sora_max_body_size must be non-negative")
