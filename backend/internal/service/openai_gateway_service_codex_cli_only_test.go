@@ -103,7 +103,7 @@ func TestLogCodexCLIOnlyDetection_NilSafety(t *testing.T) {
 REDACTED)
 REDACTED
 
-func TestLogCodexCLIOnlyDetection_LogsBothMatchedAndRejected(t *testing.T) {
+func TestLogCodexCLIOnlyDetection_OnlyLogsRejected(t *testing.T) {
 	logSink, restore := captureStructuredLog(t)
 	defer restore()
 
@@ -119,7 +119,7 @@ REDACTED, nil)
 		Reason:  CodexClientRestrictionReasonNotMatchedUA,
 REDACTED, nil)
 
-	require.True(t, logSink.ContainsMessage("OpenAI codex_cli_only 允许官方客户端请求"))
+	require.False(t, logSink.ContainsMessage("OpenAI codex_cli_only 允许官方客户端请求"))
 	require.True(t, logSink.ContainsMessage("OpenAI codex_cli_only 拒绝非官方客户端请求"))
 REDACTED
 
@@ -131,7 +131,8 @@ func TestLogCodexCLIOnlyDetection_RejectedIncludesRequestDetails(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses?trace=1", bytes.NewReader(nil))
-	c.Request.Header.Set("User-Agent", "curl/8.0")
+	c.Request.Header.Add("User-Agent", "curl/8.0")
+	c.Request.Header.Add("User-Agent", "Codex/1.2.3 (cli)")
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set("OpenAI-Beta", "assistants=v2")
 
@@ -143,7 +144,7 @@ func TestLogCodexCLIOnlyDetection_RejectedIncludesRequestDetails(t *testing.T) {
 		Reason:  CodexClientRestrictionReasonNotMatchedUA,
 REDACTED, body)
 
-	require.True(t, logSink.ContainsFieldValue("request_user_agent", "curl/8.0"))
+	require.True(t, logSink.ContainsFieldValue("request_user_agent", "curl/8.0 | Codex/1.2.3 (cli)"))
 	require.True(t, logSink.ContainsFieldValue("request_model", "gpt-5.2"))
 	require.True(t, logSink.ContainsFieldValue("request_query", "trace=1"))
 	require.True(t, logSink.ContainsFieldValue("request_prompt_cache_key_sha256", hashSensitiveValueForLog("pc-123")))
