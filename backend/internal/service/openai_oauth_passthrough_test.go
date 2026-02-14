@@ -164,7 +164,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_StreamKeepsToolNameAndBodyNormali
 	c.Request.Header.Set("Proxy-Authorization", "Basic abc")
 	c.Request.Header.Set("X-Test", "keep")
 
-	originalBody := []byte(`{"model":"gpt-5.2","stream":true,"store":true,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
+	originalBody := []byte(`{"model":"gpt-5.2","stream":true,"store":true,"instructions":"local-test-instructions","input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
 
 	upstreamSSE := strings.Join([]string{
 		`data: {"type":"response.output_item.added","item":{"type":"tool_call","tool_calls":[{"function":{"name":"apply_patch"REDACTEDREDACTED]REDACTEDREDACTED`,
@@ -211,6 +211,7 @@ REDACTED
 	// 1) 透传 OAuth 请求体与旧链路关键行为保持一致：store=false + stream=true。
 	require.Equal(t, false, gjson.GetBytes(upstream.lastBody, "store").Bool())
 	require.Equal(t, true, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+	require.Equal(t, "local-test-instructions", strings.TrimSpace(gjson.GetBytes(upstream.lastBody, "instructions").String()))
 	// 其余关键字段保持原值。
 	require.Equal(t, "gpt-5.2", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "hi", gjson.GetBytes(upstream.lastBody, "input.0.text").String())
@@ -233,6 +234,59 @@ REDACTED
 	body := rec.Body.String()
 	require.Contains(t, body, "apply_patch")
 	require.NotContains(t, body, "\"name\":\"edit\"")
+REDACTED
+
+func TestOpenAIGatewayService_OAuthPassthrough_CodexMissingInstructionsRejectedBeforeUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logSink, restore := captureStructuredLog(t)
+	defer restore()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses?trace=1", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.98.0 (Windows 10.0.19045; x86_64) unknown")
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("OpenAI-Beta", "responses=experimental")
+
+	// Codex 模型且缺少 instructions，应在本地直接 403 拒绝，不触达上游。
+	originalBody := []byte(`{"model":"gpt-5.1-codex-max","stream":false,"store":true,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "x-request-id": []string{"rid"REDACTEDREDACTED,
+			Body:       io.NopCloser(strings.NewReader(`{"output":[],"usage":{"input_tokens":1,"output_tokens":1REDACTEDREDACTED`)),
+	REDACTED,
+REDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: falseREDACTEDREDACTED,
+		httpUpstream: upstream,
+REDACTED
+
+	account := &Account{
+		ID:             123,
+		Name:           "acc",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeOAuth,
+		Concurrency:    1,
+		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
+		Extra:          map[string]any{"openai_passthrough": trueREDACTED,
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+REDACTED
+
+	result, err := svc.Forward(context.Background(), c, account, originalBody)
+REDACTED
+	require.Nil(t, result)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "requires a non-empty instructions field")
+	require.Nil(t, upstream.lastReq)
+
+	require.True(t, logSink.ContainsMessage("OpenAI passthrough 本地拦截：Codex 请求缺少有效 instructions"))
+	require.True(t, logSink.ContainsFieldValue("request_user_agent", "codex_cli_rs/0.98.0 (Windows 10.0.19045; x86_64) unknown"))
+	require.True(t, logSink.ContainsFieldValue("reject_reason", "instructions_missing"))
 REDACTED
 
 func TestOpenAIGatewayService_OAuthPassthrough_DisabledUsesLegacyTransform(t *testing.T) {
