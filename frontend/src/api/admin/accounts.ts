@@ -164,10 +164,10 @@ REDACTED
 /**
  * Clear account rate limit status
  * @param id - Account ID
- * @returns Success confirmation
+ * @returns Updated account
  */
-export async function clearRateLimit(id: number): Promise<{ message: string REDACTED> {
-  const { data REDACTED = await apiClient.post<{ message: string REDACTED>(
+export async function clearRateLimit(id: number): Promise<Account> {
+  const { data REDACTED = await apiClient.post<Account>(
     `/admin/accounts/${idREDACTED/clear-rate-limit`
   )
   return data

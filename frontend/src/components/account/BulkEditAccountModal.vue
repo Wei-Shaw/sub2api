@@ -209,7 +209,7 @@
             <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
               <div
                 v-for="(mapping, index) in modelMappings"
-                :key="index"
+                :key="getModelMappingKey(mapping)"
                 class="flex items-center gap-2"
               >
                 <input
@@ -654,6 +654,7 @@ import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
 
 interface Props {
   show: boolean
@@ -695,6 +696,7 @@ const baseUrl = ref('')
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
 const modelMappings = ref<ModelMapping[]>([])
+const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('bulk-model-mapping')
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)

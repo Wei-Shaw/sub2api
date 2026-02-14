@@ -2358,29 +2358,36 @@ type UpstreamHTTPResult struct {
 REDACTED
 
 func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Context, resp *http.Response, isOAuth bool) (*ClaudeUsage, error) {
-	// Log response headers for debugging
-	logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Response Headers ==========")
-	for key, values := range resp.Header {
-		if strings.HasPrefix(strings.ToLower(key), "x-ratelimit") {
-			logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] %s: %v", key, values)
+	if s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
+		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Response Headers ==========")
+		for key, values := range resp.Header {
+			if strings.HasPrefix(strings.ToLower(key), "x-ratelimit") {
+				logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] %s: %v", key, values)
+		REDACTED
 	REDACTED
+		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========================================")
 REDACTED
-	logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========================================")
 
-	respBody, err := io.ReadAll(resp.Body)
+	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
+	respBody, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
 	if err != nil {
+		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
+			c.JSON(http.StatusBadGateway, gin.H{
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": "Upstream response too large",
+			REDACTED,
+		REDACTED)
+	REDACTED
 		return nil, err
 REDACTED
 
-	var parsed map[string]any
 	if isOAuth {
 		unwrappedBody, uwErr := unwrapGeminiResponse(respBody)
 		if uwErr == nil {
 			respBody = unwrappedBody
 	REDACTED
-		_ = json.Unmarshal(respBody, &parsed)
-REDACTED else {
-		_ = json.Unmarshal(respBody, &parsed)
 REDACTED
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)
@@ -2398,14 +2405,15 @@ REDACTED
 REDACTED
 
 func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool) (*geminiNativeStreamResult, error) {
-	// Log response headers for debugging
-	logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Streaming Response Headers ==========")
-	for key, values := range resp.Header {
-		if strings.HasPrefix(strings.ToLower(key), "x-ratelimit") {
-			logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] %s: %v", key, values)
+	if s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
+		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Streaming Response Headers ==========")
+		for key, values := range resp.Header {
+			if strings.HasPrefix(strings.ToLower(key), "x-ratelimit") {
+				logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] %s: %v", key, values)
+		REDACTED
 	REDACTED
+		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ====================================================")
 REDACTED
-	logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ====================================================")
 
 	if s.cfg != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)

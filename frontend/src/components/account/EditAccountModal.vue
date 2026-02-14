@@ -169,7 +169,7 @@
             <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
               <div
                 v-for="(mapping, index) in modelMappings"
-                :key="index"
+                :key="getModelMappingKey(mapping)"
                 class="flex items-center gap-2"
               >
                 <input
@@ -417,7 +417,7 @@
           <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-2">
             <div
               v-for="(mapping, index) in antigravityModelMappings"
-              :key="index"
+              :key="getAntigravityModelMappingKey(mapping)"
               class="space-y-1"
             >
               <div class="flex items-center gap-2">
@@ -542,7 +542,7 @@
           <div v-if="tempUnschedRules.length > 0" class="space-y-3">
             <div
               v-for="(rule, index) in tempUnschedRules"
-              :key="index"
+              :key="getTempUnschedRuleKey(rule)"
               class="rounded-lg border border-gray-200 p-3 dark:border-dark-600"
             >
               <div class="mb-2 flex items-center justify-between">
@@ -1093,6 +1093,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput REDACTED from '@/utils/format'
+import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
 import {
   getPresetMappingsByPlatform,
   commonErrorCodes,
@@ -1110,7 +1111,7 @@ REDACTED
 const props = defineProps<Props>()
 const emit = defineEmits<{
   close: []
-  updated: []
+  updated: [account: Account]
 REDACTED>()
 
 const { t REDACTED = useI18n()
@@ -1158,6 +1159,9 @@ const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
+const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-model-mapping')
+const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-antigravity-model-mapping')
+const getTempUnschedRuleKey = createStableObjectKeyResolver<TempUnschedRuleForm>('edit-temp-unsched-rule')
 
 // Mixed channel warning dialog state
 const showMixedChannelWarning = ref(false)
@@ -1845,9 +1849,9 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     REDACTED
 
-    await adminAPI.accounts.update(props.account.id, updatePayload)
+    const updatedAccount = await adminAPI.accounts.update(props.account.id, updatePayload)
     appStore.showSuccess(t('admin.accounts.accountUpdated'))
-    emit('updated')
+    emit('updated', updatedAccount)
     handleClose()
   REDACTED catch (error: any) {
     // Handle 409 mixed_channel_warning - show confirmation dialog
@@ -1875,9 +1879,9 @@ const handleMixedChannelConfirm = async () => {
     pendingUpdatePayload.value.confirm_mixed_channel_risk = true
     submitting.value = true
     try {
-      await adminAPI.accounts.update(props.account.id, pendingUpdatePayload.value)
+      const updatedAccount = await adminAPI.accounts.update(props.account.id, pendingUpdatePayload.value)
       appStore.showSuccess(t('admin.accounts.accountUpdated'))
-      emit('updated')
+      emit('updated', updatedAccount)
       handleClose()
     REDACTED catch (error: any) {
       appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToUpdate'))

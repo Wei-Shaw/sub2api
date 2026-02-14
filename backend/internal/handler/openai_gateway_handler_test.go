@@ -105,6 +105,42 @@ REDACTED
 	assert.Equal(t, "test error", errorObj["message"])
 REDACTED
 
+func TestOpenAIEnsureForwardErrorResponse_WritesFallbackWhenNotWritten(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	h := &OpenAIGatewayHandler{REDACTED
+	wrote := h.ensureForwardErrorResponse(c, false)
+
+	require.True(t, wrote)
+	require.Equal(t, http.StatusBadGateway, w.Code)
+
+	var parsed map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &parsed)
+REDACTED
+	errorObj, ok := parsed["error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "upstream_error", errorObj["type"])
+	assert.Equal(t, "Upstream request failed", errorObj["message"])
+REDACTED
+
+func TestOpenAIEnsureForwardErrorResponse_DoesNotOverrideWrittenResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	c.String(http.StatusTeapot, "already written")
+
+	h := &OpenAIGatewayHandler{REDACTED
+	wrote := h.ensureForwardErrorResponse(c, false)
+
+	require.False(t, wrote)
+	require.Equal(t, http.StatusTeapot, w.Code)
+	assert.Equal(t, "already written", w.Body.String())
+REDACTED
+
 // TestOpenAIHandler_GjsonExtraction 验证 gjson 从请求体中提取 model/stream 的正确性
 func TestOpenAIHandler_GjsonExtraction(t *testing.T) {
 	tests := []struct {

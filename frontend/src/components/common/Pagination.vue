@@ -84,8 +84,8 @@
 
         <!-- Page numbers -->
         <button
-          v-for="pageNum in visiblePages"
-          :key="pageNum"
+          v-for="(pageNum, index) in visiblePages"
+          :key="`${pageNumREDACTED-${indexREDACTED`"
           @click="typeof pageNum === 'number' && goToPage(pageNum)"
           :disabled="typeof pageNum !== 'number'"
           :class="[

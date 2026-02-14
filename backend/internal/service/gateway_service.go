@@ -3332,7 +3332,7 @@ REDACTED
 
 		// 不需要重试（成功或不可重试的错误），跳出循环
 		// DEBUG: 输出响应 headers（用于检测 rate limit 信息）
-		if account.Platform == PlatformGemini && resp.StatusCode < 400 {
+		if account.Platform == PlatformGemini && resp.StatusCode < 400 && s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
 			logger.LegacyPrintf("service.gateway", "[DEBUG] Gemini API Response Headers for account %d:", account.ID)
 			for k, v := range resp.Header {
 				logger.LegacyPrintf("service.gateway", "[DEBUG]   %s: %v", k, v)
@@ -4467,8 +4467,19 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
-	body, err := io.ReadAll(resp.Body)
+	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
+	body, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
 	if err != nil {
+		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
+			c.JSON(http.StatusBadGateway, gin.H{
+				"type": "error",
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": "Upstream response too large",
+			REDACTED,
+		REDACTED)
+	REDACTED
 		return nil, err
 REDACTED
 
@@ -4990,9 +5001,15 @@ REDACTED
 REDACTED
 
 	// 读取响应体
-	respBody, err := io.ReadAll(resp.Body)
+	maxReadBytes := resolveUpstreamResponseReadLimit(s.cfg)
+	respBody, err := readUpstreamResponseBodyLimited(resp.Body, maxReadBytes)
 	_ = resp.Body.Close()
 	if err != nil {
+		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
+			s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream response too large")
+			return err
+	REDACTED
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
 		return err
 REDACTED
@@ -5007,9 +5024,14 @@ REDACTED
 			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 			if retryErr == nil {
 				resp = retryResp
-				respBody, err = io.ReadAll(resp.Body)
+				respBody, err = readUpstreamResponseBodyLimited(resp.Body, maxReadBytes)
 				_ = resp.Body.Close()
 				if err != nil {
+					if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+						setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
+						s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream response too large")
+						return err
+				REDACTED
 					s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
 					return err
 			REDACTED

@@ -3,8 +3,10 @@
 package ip
 
 import (
+	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,4 +50,26 @@ REDACTED
 			require.Equal(t, tc.expected, got, "isPrivateIP(%q)", tc.ip)
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestGetTrustedClientIPUsesGinClientIP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	require.NoError(t, r.SetTrustedProxies(nil))
+
+	r.GET("/t", func(c *gin.Context) {
+		c.String(200, GetTrustedClientIP(c))
+REDACTED)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/t", nil)
+	req.RemoteAddr = "9.9.9.9:12345"
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	req.Header.Set("X-Real-IP", "1.2.3.4")
+	req.Header.Set("CF-Connecting-IP", "1.2.3.4")
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, 200, w.Code)
+	require.Equal(t, "9.9.9.9", w.Body.String())
 REDACTED

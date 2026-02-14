@@ -175,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch, computed REDACTED from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { totpAPI REDACTED from '@/api'
@@ -198,6 +198,7 @@ const verifyForm = ref({ emailCode: '', password: '' REDACTED)
 const verifyError = ref('')
 const sendingCode = ref(false)
 const codeCooldown = ref(0)
+const cooldownTimer = ref<ReturnType<typeof setInterval> | null>(null)
 
 const setupLoading = ref(false)
 const setupData = ref<TotpSetupResponse | null>(null)
@@ -338,10 +339,17 @@ const handleSendCode = async () => {
     appStore.showSuccess(t('profile.totp.codeSent'))
     // Start cooldown
     codeCooldown.value = 60
-    const timer = setInterval(() => {
+    if (cooldownTimer.value) {
+      clearInterval(cooldownTimer.value)
+      cooldownTimer.value = null
+    REDACTED
+    cooldownTimer.value = setInterval(() => {
       codeCooldown.value--
       if (codeCooldown.value <= 0) {
-        clearInterval(timer)
+        if (cooldownTimer.value) {
+          clearInterval(cooldownTimer.value)
+          cooldownTimer.value = null
+        REDACTED
       REDACTED
     REDACTED, 1000)
   REDACTED catch (err: any) {
@@ -396,5 +404,12 @@ REDACTED
 
 onMounted(() => {
   loadVerificationMethod()
+REDACTED)
+
+onUnmounted(() => {
+  if (cooldownTimer.value) {
+    clearInterval(cooldownTimer.value)
+    cooldownTimer.value = null
+  REDACTED
 REDACTED)
 </script>

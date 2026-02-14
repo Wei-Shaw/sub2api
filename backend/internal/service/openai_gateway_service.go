@@ -313,7 +313,6 @@ REDACTED
 REDACTED
 	log := logger.FromContext(ctx).With(fields...)
 	if result.Matched {
-		log.Warn("OpenAI codex_cli_only 允许官方客户端请求")
 		return
 REDACTED
 	log.Warn("OpenAI codex_cli_only 拒绝非官方客户端请求")
@@ -1277,6 +1276,29 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	if account != nil && account.Type == AccountTypeOAuth {
+		if rejectReason := detectOpenAIPassthroughInstructionsRejectReason(reqModel, body); rejectReason != "" {
+			rejectMsg := "OpenAI codex passthrough requires a non-empty instructions field"
+			setOpsUpstreamError(c, http.StatusForbidden, rejectMsg, "")
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: http.StatusForbidden,
+				Passthrough:        true,
+				Kind:               "request_error",
+				Message:            rejectMsg,
+				Detail:             rejectReason,
+		REDACTED)
+			logOpenAIPassthroughInstructionsRejected(ctx, c, account, reqModel, rejectReason, body)
+			c.JSON(http.StatusForbidden, gin.H{
+				"error": gin.H{
+					"type":    "forbidden_error",
+					"message": rejectMsg,
+			REDACTED,
+		REDACTED)
+			return nil, fmt.Errorf("openai passthrough rejected before upstream: %s", rejectReason)
+	REDACTED
+
 		normalizedBody, normalized, err := normalizeOpenAIPassthroughOAuthBody(body)
 		if err != nil {
 			return nil, err
@@ -1394,6 +1416,37 @@ REDACTED
 		Duration:        time.Since(startTime),
 		FirstTokenMs:    firstTokenMs,
 REDACTED, nil
+REDACTED
+
+func logOpenAIPassthroughInstructionsRejected(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	reqModel string,
+	rejectReason string,
+	body []byte,
+) {
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+	accountID := int64(0)
+	accountName := ""
+	accountType := ""
+	if account != nil {
+		accountID = account.ID
+		accountName = strings.TrimSpace(account.Name)
+		accountType = strings.TrimSpace(string(account.Type))
+REDACTED
+	fields := []zap.Field{
+		zap.String("component", "service.openai_gateway"),
+		zap.Int64("account_id", accountID),
+		zap.String("account_name", accountName),
+		zap.String("account_type", accountType),
+		zap.String("request_model", strings.TrimSpace(reqModel)),
+		zap.String("reject_reason", strings.TrimSpace(rejectReason)),
+REDACTED
+	fields = appendCodexCLIOnlyRejectedRequestFields(fields, c, body)
+	logger.FromContext(ctx).With(fields...).Warn("OpenAI passthrough 本地拦截：Codex 请求缺少有效 instructions")
 REDACTED
 
 func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
@@ -1688,8 +1741,18 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	resp *http.Response,
 	c *gin.Context,
 ) (*OpenAIUsage, error) {
-	body, err := io.ReadAll(resp.Body)
+	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
+	body, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
 	if err != nil {
+		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
+			c.JSON(http.StatusBadGateway, gin.H{
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": "Upstream response too large",
+			REDACTED,
+		REDACTED)
+	REDACTED
 		return nil, err
 REDACTED
 
@@ -2318,8 +2381,18 @@ REDACTED
 REDACTED
 
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*OpenAIUsage, error) {
-	body, err := io.ReadAll(resp.Body)
+	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
+	body, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
 	if err != nil {
+		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
+			c.JSON(http.StatusBadGateway, gin.H{
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": "Upstream response too large",
+			REDACTED,
+		REDACTED)
+	REDACTED
 		return nil, err
 REDACTED
 
@@ -2875,6 +2948,25 @@ REDACTED
 REDACTED
 
 	return normalized, changed, nil
+REDACTED
+
+func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byte) string {
+	model := strings.ToLower(strings.TrimSpace(reqModel))
+	if !strings.Contains(model, "codex") {
+		return ""
+REDACTED
+
+	instructions := gjson.GetBytes(body, "instructions")
+	if !instructions.Exists() {
+		return "instructions_missing"
+REDACTED
+	if instructions.Type != gjson.String {
+		return "instructions_not_string"
+REDACTED
+	if strings.TrimSpace(instructions.String()) == "" {
+		return "instructions_empty"
+REDACTED
+	return ""
 REDACTED
 
 func extractOpenAIReasoningEffortFromBody(body []byte, requestedModel string) *string {

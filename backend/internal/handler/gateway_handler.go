@@ -418,8 +418,12 @@ REDACTED
 				REDACTED
 					continue
 			REDACTED
-				// 错误响应已在Forward中处理，这里只记录日志
-				reqLog.Error("gateway.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+				reqLog.Error("gateway.forward_failed",
+					zap.Int64("account_id", account.ID),
+					zap.Bool("fallback_error_response_written", wroteFallback),
+					zap.Error(err),
+				)
 				return
 		REDACTED
 
@@ -683,8 +687,12 @@ REDACTED
 				REDACTED
 					continue
 			REDACTED
-				// 错误响应已在Forward中处理，这里只记录日志
-				reqLog.Error("gateway.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+				reqLog.Error("gateway.forward_failed",
+					zap.Int64("account_id", account.ID),
+					zap.Bool("fallback_error_response_written", wroteFallback),
+					zap.Error(err),
+				)
 				return
 		REDACTED
 
@@ -1115,6 +1123,15 @@ REDACTED
 
 	// Normal case: return JSON response with proper status code
 	h.errorResponse(c, status, errType, message)
+REDACTED
+
+// ensureForwardErrorResponse 在 Forward 返回错误但尚未写响应时补写统一错误响应。
+func (h *GatewayHandler) ensureForwardErrorResponse(c *gin.Context, streamStarted bool) bool {
+	if c == nil || c.Writer == nil || c.Writer.Written() {
+		return false
+REDACTED
+	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", streamStarted)
+	return true
 REDACTED
 
 // errorResponse 返回Claude API格式的错误响应

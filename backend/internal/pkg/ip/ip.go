@@ -44,6 +44,16 @@ REDACTED
 	return normalizeIP(c.ClientIP())
 REDACTED
 
+// GetTrustedClientIP 从 Gin 的可信代理解析链提取客户端 IP。
+// 该方法依赖 gin.Engine.SetTrustedProxies 配置，不会优先直接信任原始转发头值。
+// 适用于 ACL / 风控等安全敏感场景。
+func GetTrustedClientIP(c *gin.Context) string {
+	if c == nil {
+		return ""
+REDACTED
+	return normalizeIP(c.ClientIP())
+REDACTED
+
 // normalizeIP 规范化 IP 地址，去除端口号和空格。
 func normalizeIP(ip string) string {
 	ip = strings.TrimSpace(ip)

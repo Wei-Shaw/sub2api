@@ -8,6 +8,7 @@ import { useAuthStore REDACTED from '@/stores/auth'
 import { useAppStore REDACTED from '@/stores/app'
 import { useNavigationLoadingState REDACTED from '@/composables/useNavigationLoading'
 import { useRoutePrefetch REDACTED from '@/composables/useRoutePrefetch'
+import { resolveDocumentTitle REDACTED from './title'
 
 /**
  * Route definitions with lazy loading
@@ -389,12 +390,7 @@ router.beforeEach((to, _from, next) => {
 
   // Set page title
   const appStore = useAppStore()
-  const siteName = appStore.siteName || 'Sub2API'
-  if (to.meta.title) {
-    document.title = `${to.meta.titleREDACTED - ${siteNameREDACTED`
-  REDACTED else {
-    document.title = siteName
-  REDACTED
+  document.title = resolveDocumentTitle(to.meta.title, appStore.siteName)
 
   // Check if route requires authentication
   const requiresAuth = to.meta.requiresAuth !== false // Default to true

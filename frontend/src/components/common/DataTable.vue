@@ -3,7 +3,7 @@
     <template v-if="loading">
       <div v-for="i in 5" :key="i" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
         <div class="space-y-3">
-          <div v-for="column in columns.filter(c => c.key !== 'actions')" :key="column.key" class="flex justify-between">
+          <div v-for="column in dataColumns" :key="column.key" class="flex justify-between">
             <div class="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
             <div class="h-4 w-32 animate-pulse rounded bg-gray-200 dark:bg-dark-700"></div>
           </div>
@@ -39,7 +39,7 @@
       >
         <div class="space-y-3">
           <div
-            v-for="column in columns.filter(c => c.key !== 'actions')"
+            v-for="column in dataColumns"
             :key="column.key"
             class="flex items-start justify-between gap-4"
           >
@@ -439,10 +439,15 @@ const resolveRowKey = (row: any, index: number) => {
   return key ?? index
 REDACTED
 
+const dataColumns = computed(() => props.columns.filter((column) => column.key !== 'actions'))
+const columnsSignature = computed(() =>
+  props.columns.map((column) => `${column.keyREDACTED:${column.sortable ? '1' : '0'REDACTED`).join('|')
+)
+
 // 数据/列变化时重新检查滚动状态
 // 注意：不能监听 actionsExpanded，因为 checkActionsColumnWidth 会临时修改它，会导致无限循环
 watch(
-  [() => props.data.length, () => props.columns],
+  [() => props.data.length, columnsSignature],
   async () => {
     await nextTick()
     checkScrollable()
@@ -555,7 +560,7 @@ onMounted(() => {
 REDACTED)
 
 watch(
-  () => props.columns,
+  columnsSignature,
   () => {
     // If current sort key is no longer sortable/visible, fall back to default/persisted.
     const normalized = normalizeSortKey(sortKey.value)
@@ -575,7 +580,7 @@ watch(
       REDACTED
     REDACTED
   REDACTED,
-  { deep: true REDACTED
+  { flush: 'post' REDACTED
 )
 
 watch(
