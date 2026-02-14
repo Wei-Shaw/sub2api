@@ -716,12 +716,38 @@ const mergeRuntimeFields = (oldAccount: Account, updatedAccount: Account): Accou
   current_window_cost: updatedAccount.current_window_cost ?? oldAccount.current_window_cost,
   active_sessions: updatedAccount.active_sessions ?? oldAccount.active_sessions
 REDACTED)
+
+const syncPaginationAfterLocalRemoval = () => {
+  const nextTotal = Math.max(0, pagination.total - 1)
+  pagination.total = nextTotal
+  pagination.pages = nextTotal > 0 ? Math.ceil(nextTotal / pagination.page_size) : 0
+
+  const maxPage = Math.max(1, pagination.pages || 1)
+  let shouldReload = false
+
+  if (pagination.page > maxPage) {
+    pagination.page = maxPage
+    shouldReload = nextTotal > 0
+  REDACTED else if (nextTotal > 0) {
+    const displayedEnd = (pagination.page - 1) * pagination.page_size + accounts.value.length
+    // 当前页条目变少时，若后续还有数据则补齐，避免空页/少一条直到手动刷新。
+    shouldReload = displayedEnd < nextTotal
+  REDACTED
+
+  if (shouldReload) {
+    load().catch((error) => {
+      console.error('Failed to refresh accounts after local removal:', error)
+    REDACTED)
+  REDACTED
+REDACTED
+
 const patchAccountInList = (updatedAccount: Account) => {
   const index = accounts.value.findIndex(account => account.id === updatedAccount.id)
   if (index === -1) return
   const mergedAccount = mergeRuntimeFields(accounts.value[index], updatedAccount)
   if (!accountMatchesCurrentFilters(mergedAccount)) {
     accounts.value = accounts.value.filter(account => account.id !== mergedAccount.id)
+    syncPaginationAfterLocalRemoval()
     selIds.value = selIds.value.filter(id => id !== mergedAccount.id)
     if (menu.acc?.id === mergedAccount.id) {
       menu.show = false
