@@ -40,7 +40,12 @@ var (
 )
 
 func init() {
-	// Read version from embedded VERSION file
+	// 如果 Version 已通过 ldflags 注入（例如 -X main.Version=...），则不要覆盖。
+	if strings.TrimSpace(Version) != "" {
+		return
+REDACTED
+
+	// 默认从 embedded VERSION 文件读取版本号（编译期打包进二进制）。
 	Version = strings.TrimSpace(embeddedVersion)
 	if Version == "" {
 		Version = "0.0.0-dev"
