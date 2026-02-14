@@ -332,7 +332,7 @@ REDACTED
 		zap.String("request_host", strings.TrimSpace(req.Host)),
 		zap.String("request_client_ip", strings.TrimSpace(c.ClientIP())),
 		zap.String("request_remote_addr", strings.TrimSpace(req.RemoteAddr)),
-		zap.String("request_user_agent", buildDetailedUserAgent(req.Header.Values("User-Agent"))),
+		zap.String("request_user_agent", strings.TrimSpace(req.Header.Get("User-Agent"))),
 		zap.String("request_content_type", strings.TrimSpace(req.Header.Get("Content-Type"))),
 		zap.Int64("request_content_length", req.ContentLength),
 		zap.Bool("request_stream", requestStream),
@@ -349,21 +349,6 @@ REDACTED
 REDACTED
 	fields = append(fields, zap.Int("request_body_size", len(body)))
 	return fields
-REDACTED
-
-func buildDetailedUserAgent(values []string) string {
-	if len(values) == 0 {
-		return ""
-REDACTED
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		v := strings.TrimSpace(value)
-		if v == "" {
-			continue
-	REDACTED
-		result = append(result, v)
-REDACTED
-	return strings.Join(result, " | ")
 REDACTED
 
 func snapshotCodexCLIOnlyHeaders(header http.Header) map[string]string {

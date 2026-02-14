@@ -131,8 +131,7 @@ func TestLogCodexCLIOnlyDetection_RejectedIncludesRequestDetails(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses?trace=1", bytes.NewReader(nil))
-	c.Request.Header.Add("User-Agent", "curl/8.0")
-	c.Request.Header.Add("User-Agent", "Codex/1.2.3 (cli)")
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.98.0 (Windows 10.0.19045; x86_64) unknown")
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set("OpenAI-Beta", "assistants=v2")
 
@@ -144,7 +143,7 @@ func TestLogCodexCLIOnlyDetection_RejectedIncludesRequestDetails(t *testing.T) {
 		Reason:  CodexClientRestrictionReasonNotMatchedUA,
 REDACTED, body)
 
-	require.True(t, logSink.ContainsFieldValue("request_user_agent", "curl/8.0 | Codex/1.2.3 (cli)"))
+	require.True(t, logSink.ContainsFieldValue("request_user_agent", "codex_cli_rs/0.98.0 (Windows 10.0.19045; x86_64) unknown"))
 	require.True(t, logSink.ContainsFieldValue("request_model", "gpt-5.2"))
 	require.True(t, logSink.ContainsFieldValue("request_query", "trace=1"))
 	require.True(t, logSink.ContainsFieldValue("request_prompt_cache_key_sha256", hashSensitiveValueForLog("pc-123")))
