@@ -1194,7 +1194,7 @@ REDACTED
 REDACTED
 	// Keep list endpoints scoped to client errors unless explicitly filtering upstream phase.
 	if phaseFilter != "upstream" {
-		clauses = append(clauses, "COALESCE(status_code, 0) >= 400")
+		clauses = append(clauses, "COALESCE(e.status_code, 0) >= 400")
 REDACTED
 
 	if filter.StartTime != nil && !filter.StartTime.IsZero() {
@@ -1208,33 +1208,33 @@ REDACTED
 REDACTED
 	if p := strings.TrimSpace(filter.Platform); p != "" {
 		args = append(args, p)
-		clauses = append(clauses, "platform = $"+itoa(len(args)))
+		clauses = append(clauses, "e.platform = $"+itoa(len(args)))
 REDACTED
 	if filter.GroupID != nil && *filter.GroupID > 0 {
 		args = append(args, *filter.GroupID)
-		clauses = append(clauses, "group_id = $"+itoa(len(args)))
+		clauses = append(clauses, "e.group_id = $"+itoa(len(args)))
 REDACTED
 	if filter.AccountID != nil && *filter.AccountID > 0 {
 		args = append(args, *filter.AccountID)
-		clauses = append(clauses, "account_id = $"+itoa(len(args)))
+		clauses = append(clauses, "e.account_id = $"+itoa(len(args)))
 REDACTED
 	if phase := phaseFilter; phase != "" {
 		args = append(args, phase)
-		clauses = append(clauses, "error_phase = $"+itoa(len(args)))
+		clauses = append(clauses, "e.error_phase = $"+itoa(len(args)))
 REDACTED
 	if filter != nil {
 		if owner := strings.TrimSpace(strings.ToLower(filter.Owner)); owner != "" {
 			args = append(args, owner)
-			clauses = append(clauses, "LOWER(COALESCE(error_owner,'')) = $"+itoa(len(args)))
+			clauses = append(clauses, "LOWER(COALESCE(e.error_owner,'')) = $"+itoa(len(args)))
 	REDACTED
 		if source := strings.TrimSpace(strings.ToLower(filter.Source)); source != "" {
 			args = append(args, source)
-			clauses = append(clauses, "LOWER(COALESCE(error_source,'')) = $"+itoa(len(args)))
+			clauses = append(clauses, "LOWER(COALESCE(e.error_source,'')) = $"+itoa(len(args)))
 	REDACTED
 REDACTED
 	if resolvedFilter != nil {
 		args = append(args, *resolvedFilter)
-		clauses = append(clauses, "COALESCE(resolved,false) = $"+itoa(len(args)))
+		clauses = append(clauses, "COALESCE(e.resolved,false) = $"+itoa(len(args)))
 REDACTED
 
 	// View filter: errors vs excluded vs all.
@@ -1246,46 +1246,46 @@ REDACTED
 REDACTED
 	switch view {
 	case "", "errors":
-		clauses = append(clauses, "COALESCE(is_business_limited,false) = false")
+		clauses = append(clauses, "COALESCE(e.is_business_limited,false) = false")
 	case "excluded":
-		clauses = append(clauses, "COALESCE(is_business_limited,false) = true")
+		clauses = append(clauses, "COALESCE(e.is_business_limited,false) = true")
 	case "all":
 		// no-op
 	default:
 		// treat unknown as default 'errors'
-		clauses = append(clauses, "COALESCE(is_business_limited,false) = false")
+		clauses = append(clauses, "COALESCE(e.is_business_limited,false) = false")
 REDACTED
 	if len(filter.StatusCodes) > 0 {
 		args = append(args, pq.Array(filter.StatusCodes))
-		clauses = append(clauses, "COALESCE(upstream_status_code, status_code, 0) = ANY($"+itoa(len(args))+")")
+		clauses = append(clauses, "COALESCE(e.upstream_status_code, e.status_code, 0) = ANY($"+itoa(len(args))+")")
 REDACTED else if filter.StatusCodesOther {
 		// "Other" means: status codes not in the common list.
 		known := []int{400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504, 529REDACTED
 		args = append(args, pq.Array(known))
-		clauses = append(clauses, "NOT (COALESCE(upstream_status_code, status_code, 0) = ANY($"+itoa(len(args))+"))")
+		clauses = append(clauses, "NOT (COALESCE(e.upstream_status_code, e.status_code, 0) = ANY($"+itoa(len(args))+"))")
 REDACTED
 	// Exact correlation keys (preferred for request↔upstream linkage).
 	if rid := strings.TrimSpace(filter.RequestID); rid != "" {
 		args = append(args, rid)
-		clauses = append(clauses, "COALESCE(request_id,'') = $"+itoa(len(args)))
+		clauses = append(clauses, "COALESCE(e.request_id,'') = $"+itoa(len(args)))
 REDACTED
 	if crid := strings.TrimSpace(filter.ClientRequestID); crid != "" {
 		args = append(args, crid)
-		clauses = append(clauses, "COALESCE(client_request_id,'') = $"+itoa(len(args)))
+		clauses = append(clauses, "COALESCE(e.client_request_id,'') = $"+itoa(len(args)))
 REDACTED
 
 	if q := strings.TrimSpace(filter.Query); q != "" {
 		like := "%" + q + "%"
 		args = append(args, like)
 		n := itoa(len(args))
-		clauses = append(clauses, "(request_id ILIKE $"+n+" OR client_request_id ILIKE $"+n+" OR error_message ILIKE $"+n+")")
+		clauses = append(clauses, "(e.request_id ILIKE $"+n+" OR e.client_request_id ILIKE $"+n+" OR e.error_message ILIKE $"+n+")")
 REDACTED
 
 	if userQuery := strings.TrimSpace(filter.UserQuery); userQuery != "" {
 		like := "%" + userQuery + "%"
 		args = append(args, like)
 		n := itoa(len(args))
-		clauses = append(clauses, "u.email ILIKE $"+n)
+		clauses = append(clauses, "EXISTS (SELECT 1 FROM users u WHERE u.id = e.user_id AND u.email ILIKE $"+n+")")
 REDACTED
 
 	return "WHERE " + strings.Join(clauses, " AND "), args
