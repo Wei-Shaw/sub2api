@@ -1106,7 +1106,13 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, gin.H{"message": "Rate limit cleared successfully"REDACTED)
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, dto.AccountFromService(account))
 REDACTED
 
 // GetTempUnschedulable handles getting temporary unschedulable status

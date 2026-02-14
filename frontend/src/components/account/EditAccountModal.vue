@@ -1111,7 +1111,7 @@ REDACTED
 const props = defineProps<Props>()
 const emit = defineEmits<{
   close: []
-  updated: []
+  updated: [account: Account]
 REDACTED>()
 
 const { t REDACTED = useI18n()
@@ -1849,9 +1849,9 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     REDACTED
 
-    await adminAPI.accounts.update(props.account.id, updatePayload)
+    const updatedAccount = await adminAPI.accounts.update(props.account.id, updatePayload)
     appStore.showSuccess(t('admin.accounts.accountUpdated'))
-    emit('updated')
+    emit('updated', updatedAccount)
     handleClose()
   REDACTED catch (error: any) {
     // Handle 409 mixed_channel_warning - show confirmation dialog
@@ -1879,9 +1879,9 @@ const handleMixedChannelConfirm = async () => {
     pendingUpdatePayload.value.confirm_mixed_channel_risk = true
     submitting.value = true
     try {
-      await adminAPI.accounts.update(props.account.id, pendingUpdatePayload.value)
+      const updatedAccount = await adminAPI.accounts.update(props.account.id, pendingUpdatePayload.value)
       appStore.showSuccess(t('admin.accounts.accountUpdated'))
-      emit('updated')
+      emit('updated', updatedAccount)
       handleClose()
     REDACTED catch (error: any) {
       appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToUpdate'))
