@@ -2,6 +2,7 @@
   <div class="relative" ref="dropdownRef">
     <button
       @click="toggleDropdown"
+      :disabled="switching"
       class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
       :title="currentLocale?.name"
     >
@@ -23,6 +24,7 @@
         <button
           v-for="locale in availableLocales"
           :key="locale.code"
+          :disabled="switching"
           @click="selectLocale(locale.code)"
           class="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-dark-700"
           :class="{
@@ -49,6 +51,7 @@ const { locale REDACTED = useI18n()
 
 const isOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
+const switching = ref(false)
 
 const currentLocaleCode = computed(() => locale.value)
 const currentLocale = computed(() => availableLocales.find((l) => l.code === locale.value))
@@ -57,9 +60,18 @@ function toggleDropdown() {
   isOpen.value = !isOpen.value
 REDACTED
 
-function selectLocale(code: string) {
-  setLocale(code)
-  isOpen.value = false
+async function selectLocale(code: string) {
+  if (switching.value || code === currentLocaleCode.value) {
+    isOpen.value = false
+    return
+  REDACTED
+  switching.value = true
+  try {
+    await setLocale(code)
+    isOpen.value = false
+  REDACTED finally {
+    switching.value = false
+  REDACTED
 REDACTED
 
 function handleClickOutside(event: MouseEvent) {

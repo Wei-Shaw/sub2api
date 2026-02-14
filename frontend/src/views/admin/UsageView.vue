@@ -94,57 +94,44 @@ const exportToExcel = async () => {
   if (exporting.value) return; exporting.value = true; exportProgress.show = true
   const c = new AbortController(); exportAbortController = c
   try {
-    const all: AdminUsageLog[] = []; let p = 1; let total = pagination.total
+    let p = 1; let total = pagination.total; let exportedCount = 0
+    const XLSX = await import('xlsx')
+    const headers = [
+      t('usage.time'), t('admin.usage.user'), t('usage.apiKeyFilter'),
+      t('admin.usage.account'), t('usage.model'), t('usage.reasoningEffort'), t('admin.usage.group'),
+      t('usage.type'),
+      t('admin.usage.inputTokens'), t('admin.usage.outputTokens'),
+      t('admin.usage.cacheReadTokens'), t('admin.usage.cacheCreationTokens'),
+      t('admin.usage.inputCost'), t('admin.usage.outputCost'),
+      t('admin.usage.cacheReadCost'), t('admin.usage.cacheCreationCost'),
+      t('usage.rate'), t('usage.accountMultiplier'), t('usage.original'), t('usage.userBilled'), t('usage.accountBilled'),
+      t('usage.firstToken'), t('usage.duration'),
+      t('admin.usage.requestId'), t('usage.userAgent'), t('admin.usage.ipAddress')
+    ]
+    const ws = XLSX.utils.aoa_to_sheet([headers])
     while (true) {
       const res = await adminUsageAPI.list({ page: p, page_size: 100, ...filters.value REDACTED, { signal: c.signal REDACTED)
       if (c.signal.aborted) break; if (p === 1) { total = res.total; exportProgress.total = total REDACTED
-      if (res.items?.length) all.push(...res.items)
-      exportProgress.current = all.length; exportProgress.progress = total > 0 ? Math.min(100, Math.round(all.length/total*100)) : 0
-      if (all.length >= total || res.items.length < 100) break; p++
+      const rows = (res.items || []).map((log: AdminUsageLog) => [
+        log.created_at, log.user?.email || '', log.api_key?.name || '', log.account?.name || '', log.model,
+        formatReasoningEffort(log.reasoning_effort), log.group?.name || '', log.stream ? t('usage.stream') : t('usage.sync'),
+        log.input_tokens, log.output_tokens, log.cache_read_tokens, log.cache_creation_tokens,
+        log.input_cost?.toFixed(6) || '0.000000', log.output_cost?.toFixed(6) || '0.000000',
+        log.cache_read_cost?.toFixed(6) || '0.000000', log.cache_creation_cost?.toFixed(6) || '0.000000',
+        log.rate_multiplier?.toFixed(2) || '1.00', (log.account_rate_multiplier ?? 1).toFixed(2),
+        log.total_cost?.toFixed(6) || '0.000000', log.actual_cost?.toFixed(6) || '0.000000',
+        (log.total_cost * (log.account_rate_multiplier ?? 1)).toFixed(6), log.first_token_ms ?? '', log.duration_ms,
+        log.request_id || '', log.user_agent || '', log.ip_address || ''
+      ])
+      if (rows.length) {
+        XLSX.utils.sheet_add_aoa(ws, rows, { origin: -1 REDACTED)
+      REDACTED
+      exportedCount += rows.length
+      exportProgress.current = exportedCount
+      exportProgress.progress = total > 0 ? Math.min(100, Math.round(exportedCount / total * 100)) : 0
+      if (exportedCount >= total || res.items.length < 100) break; p++
     REDACTED
     if(!c.signal.aborted) {
-      const XLSX = await import('xlsx')
-      const headers = [
-        t('usage.time'), t('admin.usage.user'), t('usage.apiKeyFilter'),
-        t('admin.usage.account'), t('usage.model'), t('usage.reasoningEffort'), t('admin.usage.group'),
-        t('usage.type'),
-        t('admin.usage.inputTokens'), t('admin.usage.outputTokens'),
-        t('admin.usage.cacheReadTokens'), t('admin.usage.cacheCreationTokens'),
-        t('admin.usage.inputCost'), t('admin.usage.outputCost'),
-        t('admin.usage.cacheReadCost'), t('admin.usage.cacheCreationCost'),
-        t('usage.rate'), t('usage.accountMultiplier'), t('usage.original'), t('usage.userBilled'), t('usage.accountBilled'),
-        t('usage.firstToken'), t('usage.duration'),
-        t('admin.usage.requestId'), t('usage.userAgent'), t('admin.usage.ipAddress')
-      ]
-      const rows = all.map(log => [
-        log.created_at,
-        log.user?.email || '',
-        log.api_key?.name || '',
-        log.account?.name || '',
-        log.model,
-        formatReasoningEffort(log.reasoning_effort),
-        log.group?.name || '',
-        log.stream ? t('usage.stream') : t('usage.sync'),
-        log.input_tokens,
-        log.output_tokens,
-        log.cache_read_tokens,
-        log.cache_creation_tokens,
-        log.input_cost?.toFixed(6) || '0.000000',
-        log.output_cost?.toFixed(6) || '0.000000',
-        log.cache_read_cost?.toFixed(6) || '0.000000',
-        log.cache_creation_cost?.toFixed(6) || '0.000000',
-        log.rate_multiplier?.toFixed(2) || '1.00',
-        (log.account_rate_multiplier ?? 1).toFixed(2),
-        log.total_cost?.toFixed(6) || '0.000000',
-        log.actual_cost?.toFixed(6) || '0.000000',
-        (log.total_cost * (log.account_rate_multiplier ?? 1)).toFixed(6),
-        log.first_token_ms ?? '',
-        log.duration_ms,
-        log.request_id || '',
-        log.user_agent || '',
-        log.ip_address || ''
-      ])
-      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Usage')
       saveAs(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' REDACTED)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' REDACTED), `usage_${filters.value.start_dateREDACTED_to_${filters.value.end_dateREDACTED.xlsx`)
