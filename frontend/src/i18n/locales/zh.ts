@@ -1368,6 +1368,8 @@ export default {
       refreshInterval15s: '15 秒',
       refreshInterval30s: '30 秒',
       autoRefreshCountdown: '自动刷新：{secondsREDACTEDs',
+      listPendingSyncHint: '列表存在待同步变更，点击同步可补齐最新数据。',
+      listPendingSyncAction: '立即同步',
       syncFromCrs: '从 CRS 同步',
       dataExport: '导出',
       dataExportSelected: '导出选中',

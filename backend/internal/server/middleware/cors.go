@@ -70,6 +70,7 @@ REDACTED
 		REDACTED
 			c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-API-Key")
 			c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
+			c.Writer.Header().Set("Access-Control-Expose-Headers", "ETag")
 			c.Writer.Header().Set("Access-Control-Max-Age", "86400")
 	REDACTED
 

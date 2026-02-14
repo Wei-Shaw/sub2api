@@ -2,8 +2,13 @@
 package admin
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -143,6 +148,44 @@ type AccountWithConcurrency struct {
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
 REDACTED
 
+func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
+	item := AccountWithConcurrency{
+		Account:            dto.AccountFromService(account),
+		CurrentConcurrency: 0,
+REDACTED
+	if account == nil {
+		return item
+REDACTED
+
+	if h.concurrencyService != nil {
+		if counts, err := h.concurrencyService.GetAccountConcurrencyBatch(ctx, []int64{account.IDREDACTED); err == nil {
+			item.CurrentConcurrency = counts[account.ID]
+	REDACTED
+REDACTED
+
+	if account.IsAnthropicOAuthOrSetupToken() {
+		if h.accountUsageService != nil && account.GetWindowCostLimit() > 0 {
+			startTime := account.GetCurrentWindowStartTime()
+			if stats, err := h.accountUsageService.GetAccountWindowStats(ctx, account.ID, startTime); err == nil && stats != nil {
+				cost := stats.StandardCost
+				item.CurrentWindowCost = &cost
+		REDACTED
+	REDACTED
+
+		if h.sessionLimitCache != nil && account.GetMaxSessions() > 0 {
+			idleTimeout := time.Duration(account.GetSessionIdleTimeoutMinutes()) * time.Minute
+			idleTimeouts := map[int64]time.Duration{account.ID: idleTimeoutREDACTED
+			if sessions, err := h.sessionLimitCache.GetActiveSessionCountBatch(ctx, []int64{account.IDREDACTED, idleTimeouts); err == nil {
+				if count, ok := sessions[account.ID]; ok {
+					item.ActiveSessions = &count
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	return item
+REDACTED
+
 // List handles listing all accounts with pagination
 // GET /api/v1/admin/accounts
 func (h *AccountHandler) List(c *gin.Context) {
@@ -258,7 +301,69 @@ REDACTED
 		result[i] = item
 REDACTED
 
+	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search)
+	if etag != "" {
+		c.Header("ETag", etag)
+		c.Header("Vary", "If-None-Match")
+		if ifNoneMatchMatched(c.GetHeader("If-None-Match"), etag) {
+			c.Status(http.StatusNotModified)
+			return
+	REDACTED
+REDACTED
+
 	response.Paginated(c, result, total, page, pageSize)
+REDACTED
+
+func buildAccountsListETag(
+	items []AccountWithConcurrency,
+	total int64,
+	page, pageSize int,
+	platform, accountType, status, search string,
+) string {
+	payload := struct {
+		Total       int64                    `json:"total"`
+		Page        int                      `json:"page"`
+		PageSize    int                      `json:"page_size"`
+		Platform    string                   `json:"platform"`
+		AccountType string                   `json:"type"`
+		Status      string                   `json:"status"`
+		Search      string                   `json:"search"`
+		Items       []AccountWithConcurrency `json:"items"`
+REDACTED{
+		Total:       total,
+		Page:        page,
+		PageSize:    pageSize,
+		Platform:    platform,
+		AccountType: accountType,
+		Status:      status,
+		Search:      search,
+		Items:       items,
+REDACTED
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+REDACTED
+	sum := sha256.Sum256(raw)
+	return "\"" + hex.EncodeToString(sum[:]) + "\""
+REDACTED
+
+func ifNoneMatchMatched(ifNoneMatch, etag string) bool {
+	if etag == "" || ifNoneMatch == "" {
+		return false
+REDACTED
+	for _, token := range strings.Split(ifNoneMatch, ",") {
+		candidate := strings.TrimSpace(token)
+		if candidate == "*" {
+			return true
+	REDACTED
+		if candidate == etag {
+			return true
+	REDACTED
+		if strings.HasPrefix(candidate, "W/") && strings.TrimPrefix(candidate, "W/") == etag {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 // GetByID handles getting an account by ID
@@ -276,7 +381,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.AccountFromService(account))
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 REDACTED
 
 // Create handles creating a new account
@@ -334,7 +439,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, dto.AccountFromService(account))
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 REDACTED
 
 // Update handles updating an account
@@ -398,7 +503,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, dto.AccountFromService(account))
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 REDACTED
 
 // Delete handles deleting an account
@@ -656,7 +761,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	response.Success(c, dto.AccountFromService(updatedAccount))
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), updatedAccount))
 REDACTED
 
 // GetStats handles getting account statistics
@@ -714,7 +819,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	response.Success(c, dto.AccountFromService(account))
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 REDACTED
 
 // BatchCreate handles batch creating accounts
@@ -1112,7 +1217,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.AccountFromService(account))
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 REDACTED
 
 // GetTempUnschedulable handles getting temporary unschedulable status
@@ -1202,7 +1307,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.AccountFromService(account))
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 REDACTED
 
 // GetAvailableModels handles getting available models for an account

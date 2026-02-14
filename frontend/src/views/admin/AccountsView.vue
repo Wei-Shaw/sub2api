@@ -12,7 +12,7 @@
           />
           <AccountTableActions
             :loading="loading"
-            @refresh="load"
+            @refresh="handleManualRefresh"
             @sync="showSync = true"
             @create="showCreate = true"
           >
@@ -115,6 +115,18 @@
               </button>
             </template>
           </AccountTableActions>
+        </div>
+        <div
+          v-if="hasPendingListSync"
+          class="mt-2 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/20 dark:text-amber-200"
+        >
+          <span>{{ t('admin.accounts.listPendingSyncHint') REDACTEDREDACTED</span>
+          <button
+            class="btn btn-secondary px-2 py-1 text-xs"
+            @click="syncPendingListChanges"
+          >
+            {{ t('admin.accounts.listPendingSyncAction') REDACTEDREDACTED
+          </button>
         </div>
       </template>
       <template #table>
@@ -260,7 +272,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted REDACTED from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, toRaw REDACTED from 'vue'
 import { useIntervalFn REDACTED from '@vueuse/core'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
@@ -340,6 +352,11 @@ const autoRefreshIntervals = [5, 10, 15, 30] as const
 const autoRefreshEnabled = ref(false)
 const autoRefreshIntervalSeconds = ref<(typeof autoRefreshIntervals)[number]>(30)
 const autoRefreshCountdown = ref(0)
+const autoRefreshETag = ref<string | null>(null)
+const autoRefreshFetching = ref(false)
+const AUTO_REFRESH_SILENT_WINDOW_MS = 15000
+const autoRefreshSilentUntil = ref(0)
+const hasPendingListSync = ref(false)
 
 const autoRefreshIntervalLabel = (sec: number) => {
   if (sec === 5) return t('admin.accounts.refreshInterval5s')
@@ -437,10 +454,54 @@ REDACTED
 
 const isColumnVisible = (key: string) => !hiddenColumns.has(key)
 
-const { items: accounts, loading, params, pagination, load, reload, debouncedReload, handlePageChange, handlePageSizeChange REDACTED = useTableLoader<Account, any>({
+const {
+  items: accounts,
+  loading,
+  params,
+  pagination,
+  load: baseLoad,
+  reload: baseReload,
+  debouncedReload: baseDebouncedReload,
+  handlePageChange: baseHandlePageChange,
+  handlePageSizeChange: baseHandlePageSizeChange
+REDACTED = useTableLoader<Account, any>({
   fetchFn: adminAPI.accounts.list,
   initialParams: { platform: '', type: '', status: '', search: '' REDACTED
 REDACTED)
+
+const resetAutoRefreshCache = () => {
+  autoRefreshETag.value = null
+REDACTED
+
+const load = async () => {
+  hasPendingListSync.value = false
+  resetAutoRefreshCache()
+  await baseLoad()
+REDACTED
+
+const reload = async () => {
+  hasPendingListSync.value = false
+  resetAutoRefreshCache()
+  await baseReload()
+REDACTED
+
+const debouncedReload = () => {
+  hasPendingListSync.value = false
+  resetAutoRefreshCache()
+  baseDebouncedReload()
+REDACTED
+
+const handlePageChange = (page: number) => {
+  hasPendingListSync.value = false
+  resetAutoRefreshCache()
+  baseHandlePageChange(page)
+REDACTED
+
+const handlePageSizeChange = (size: number) => {
+  hasPendingListSync.value = false
+  resetAutoRefreshCache()
+  baseHandlePageSizeChange(size)
+REDACTED
 
 const isAnyModalOpen = computed(() => {
   return (
@@ -459,21 +520,128 @@ const isAnyModalOpen = computed(() => {
   )
 REDACTED)
 
+const enterAutoRefreshSilentWindow = () => {
+  autoRefreshSilentUntil.value = Date.now() + AUTO_REFRESH_SILENT_WINDOW_MS
+  autoRefreshCountdown.value = autoRefreshIntervalSeconds.value
+REDACTED
+
+const inAutoRefreshSilentWindow = () => {
+  return Date.now() < autoRefreshSilentUntil.value
+REDACTED
+
+const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
+  return (
+    current.updated_at !== next.updated_at ||
+    current.current_concurrency !== next.current_concurrency ||
+    current.current_window_cost !== next.current_window_cost ||
+    current.active_sessions !== next.active_sessions ||
+    current.schedulable !== next.schedulable ||
+    current.status !== next.status ||
+    current.rate_limit_reset_at !== next.rate_limit_reset_at ||
+    current.overload_until !== next.overload_until ||
+    current.temp_unschedulable_until !== next.temp_unschedulable_until
+  )
+REDACTED
+
+const syncAccountRefs = (nextAccount: Account) => {
+  if (edAcc.value?.id === nextAccount.id) edAcc.value = nextAccount
+  if (reAuthAcc.value?.id === nextAccount.id) reAuthAcc.value = nextAccount
+  if (tempUnschedAcc.value?.id === nextAccount.id) tempUnschedAcc.value = nextAccount
+  if (deletingAcc.value?.id === nextAccount.id) deletingAcc.value = nextAccount
+  if (menu.acc?.id === nextAccount.id) menu.acc = nextAccount
+REDACTED
+
+const mergeAccountsIncrementally = (nextRows: Account[]) => {
+  const currentRows = accounts.value
+  const currentByID = new Map(currentRows.map(row => [row.id, row]))
+  let changed = nextRows.length !== currentRows.length
+  const mergedRows = nextRows.map((nextRow) => {
+    const currentRow = currentByID.get(nextRow.id)
+    if (!currentRow) {
+      changed = true
+      return nextRow
+    REDACTED
+    if (shouldReplaceAutoRefreshRow(currentRow, nextRow)) {
+      changed = true
+      syncAccountRefs(nextRow)
+      return nextRow
+    REDACTED
+    return currentRow
+  REDACTED)
+  if (!changed) {
+    for (let i = 0; i < mergedRows.length; i += 1) {
+      if (mergedRows[i].id !== currentRows[i]?.id) {
+        changed = true
+        break
+      REDACTED
+    REDACTED
+  REDACTED
+  if (changed) {
+    accounts.value = mergedRows
+  REDACTED
+REDACTED
+
+const refreshAccountsIncrementally = async () => {
+  if (autoRefreshFetching.value) return
+  autoRefreshFetching.value = true
+  try {
+    const result = await adminAPI.accounts.listWithEtag(
+      pagination.page,
+      pagination.page_size,
+      toRaw(params) as {
+        platform?: string
+        type?: string
+        status?: string
+        search?: string
+      REDACTED,
+      { etag: autoRefreshETag.value REDACTED
+    )
+
+    if (result.etag) {
+      autoRefreshETag.value = result.etag
+    REDACTED
+    if (result.notModified || !result.data) {
+      return
+    REDACTED
+
+    pagination.total = result.data.total || 0
+    pagination.pages = result.data.pages || 0
+    mergeAccountsIncrementally(result.data.items || [])
+    hasPendingListSync.value = false
+  REDACTED catch (error) {
+    console.error('Auto refresh failed:', error)
+  REDACTED finally {
+    autoRefreshFetching.value = false
+  REDACTED
+REDACTED
+
+const handleManualRefresh = async () => {
+  await load()
+REDACTED
+
+const syncPendingListChanges = async () => {
+  hasPendingListSync.value = false
+  await load()
+REDACTED
+
 const { pause: pauseAutoRefresh, resume: resumeAutoRefresh REDACTED = useIntervalFn(
   async () => {
     if (!autoRefreshEnabled.value) return
     if (document.hidden) return
-    if (loading.value) return
+    if (loading.value || autoRefreshFetching.value) return
     if (isAnyModalOpen.value) return
     if (menu.show) return
+    if (inAutoRefreshSilentWindow()) {
+      autoRefreshCountdown.value = Math.max(
+        0,
+        Math.ceil((autoRefreshSilentUntil.value - Date.now()) / 1000)
+      )
+      return
+    REDACTED
 
     if (autoRefreshCountdown.value <= 0) {
       autoRefreshCountdown.value = autoRefreshIntervalSeconds.value
-      try {
-        await load()
-      REDACTED catch (e) {
-        console.error('Auto refresh failed:', e)
-      REDACTED
+      await refreshAccountsIncrementally()
       return
     REDACTED
 
@@ -723,22 +891,12 @@ const syncPaginationAfterLocalRemoval = () => {
   pagination.pages = nextTotal > 0 ? Math.ceil(nextTotal / pagination.page_size) : 0
 
   const maxPage = Math.max(1, pagination.pages || 1)
-  let shouldReload = false
 
   if (pagination.page > maxPage) {
     pagination.page = maxPage
-    shouldReload = nextTotal > 0
-  REDACTED else if (nextTotal > 0) {
-    const displayedEnd = (pagination.page - 1) * pagination.page_size + accounts.value.length
-    // 当前页条目变少时，若后续还有数据则补齐，避免空页/少一条直到手动刷新。
-    shouldReload = displayedEnd < nextTotal
   REDACTED
-
-  if (shouldReload) {
-    load().catch((error) => {
-      console.error('Failed to refresh accounts after local removal:', error)
-    REDACTED)
-  REDACTED
+  // 行被本地移除后不立刻全量补页，改为提示用户手动同步。
+  hasPendingListSync.value = nextTotal > 0
 REDACTED
 
 const patchAccountInList = (updatedAccount: Account) => {
@@ -758,14 +916,11 @@ const patchAccountInList = (updatedAccount: Account) => {
   const nextAccounts = [...accounts.value]
   nextAccounts[index] = mergedAccount
   accounts.value = nextAccounts
-  if (edAcc.value?.id === mergedAccount.id) edAcc.value = mergedAccount
-  if (reAuthAcc.value?.id === mergedAccount.id) reAuthAcc.value = mergedAccount
-  if (tempUnschedAcc.value?.id === mergedAccount.id) tempUnschedAcc.value = mergedAccount
-  if (deletingAcc.value?.id === mergedAccount.id) deletingAcc.value = mergedAccount
-  if (menu.acc?.id === mergedAccount.id) menu.acc = mergedAccount
+  syncAccountRefs(mergedAccount)
 REDACTED
 const handleAccountUpdated = (updatedAccount: Account) => {
   patchAccountInList(updatedAccount)
+  enterAutoRefreshSilentWindow()
 REDACTED
 const formatExportTimestamp = () => {
   const now = new Date()
@@ -820,6 +975,7 @@ const handleRefresh = async (a: Account) => {
   try {
     const updated = await adminAPI.accounts.refreshCredentials(a.id)
     patchAccountInList(updated)
+    enterAutoRefreshSilentWindow()
   REDACTED catch (error) {
     console.error('Failed to refresh credentials:', error)
   REDACTED
@@ -828,6 +984,7 @@ const handleResetStatus = async (a: Account) => {
   try {
     const updated = await adminAPI.accounts.clearError(a.id)
     patchAccountInList(updated)
+    enterAutoRefreshSilentWindow()
     appStore.showSuccess(t('common.success'))
   REDACTED catch (error) {
     console.error('Failed to reset status:', error)
@@ -837,6 +994,7 @@ const handleClearRateLimit = async (a: Account) => {
   try {
     const updated = await adminAPI.accounts.clearRateLimit(a.id)
     patchAccountInList(updated)
+    enterAutoRefreshSilentWindow()
     appStore.showSuccess(t('common.success'))
   REDACTED catch (error) {
     console.error('Failed to clear rate limit:', error)
@@ -850,6 +1008,7 @@ const handleToggleSchedulable = async (a: Account) => {
   try {
     const updated = await adminAPI.accounts.setSchedulable(a.id, nextSchedulable)
     updateSchedulableInList([a.id], updated?.schedulable ?? nextSchedulable)
+    enterAutoRefreshSilentWindow()
   REDACTED catch (error) {
     console.error('Failed to toggle schedulable:', error)
     appStore.showError(t('admin.accounts.failedToToggleSchedulable'))
@@ -865,6 +1024,7 @@ const handleTempUnschedReset = async () => {
     showTempUnsched.value = false
     tempUnschedAcc.value = null
     patchAccountInList(updated)
+    enterAutoRefreshSilentWindow()
   REDACTED catch (error) {
     console.error('Failed to reset temp unscheduled:', error)
   REDACTED
