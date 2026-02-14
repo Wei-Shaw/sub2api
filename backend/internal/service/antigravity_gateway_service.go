@@ -4111,6 +4111,15 @@ REDACTED
 	if v, ok := u["cache_creation_input_tokens"].(float64); ok && int(v) > 0 {
 		usage.CacheCreationInputTokens = int(v)
 REDACTED
+	// 解析嵌套的 cache_creation 对象中的 5m/1h 明细
+	if cc, ok := u["cache_creation"].(map[string]any); ok {
+		if v, ok := cc["ephemeral_5m_input_tokens"].(float64); ok {
+			usage.CacheCreation5mTokens = int(v)
+	REDACTED
+		if v, ok := cc["ephemeral_1h_input_tokens"].(float64); ok {
+			usage.CacheCreation1hTokens = int(v)
+	REDACTED
+REDACTED
 REDACTED
 
 // extractClaudeUsage 从非流式 Claude 响应提取 usage
@@ -4132,6 +4141,15 @@ REDACTED
 	REDACTED
 		if v, ok := u["cache_creation_input_tokens"].(float64); ok {
 			usage.CacheCreationInputTokens = int(v)
+	REDACTED
+		// 解析嵌套的 cache_creation 对象中的 5m/1h 明细
+		if cc, ok := u["cache_creation"].(map[string]any); ok {
+			if v, ok := cc["ephemeral_5m_input_tokens"].(float64); ok {
+				usage.CacheCreation5mTokens = int(v)
+		REDACTED
+			if v, ok := cc["ephemeral_1h_input_tokens"].(float64); ok {
+				usage.CacheCreation1hTokens = int(v)
+		REDACTED
 	REDACTED
 REDACTED
 	return usage
