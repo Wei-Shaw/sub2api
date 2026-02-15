@@ -31,8 +31,8 @@ type ModelPricing struct {
 	OutputPricePerToken        float64 // 每token输出价格 (USD)
 	CacheCreationPricePerToken float64 // 缓存创建每token价格 (USD)
 	CacheReadPricePerToken     float64 // 缓存读取每token价格 (USD)
-	CacheCreation5mPrice       float64 // 5分钟缓存创建价格（每百万token）- 仅用于硬编码回退
-	CacheCreation1hPrice       float64 // 1小时缓存创建价格（每百万token）- 仅用于硬编码回退
+	CacheCreation5mPrice       float64 // 5分钟缓存创建每token价格 (USD)
+	CacheCreation1hPrice       float64 // 1小时缓存创建每token价格 (USD)
 	SupportsCacheBreakdown     bool    // 是否支持详细的缓存分类
 REDACTED
 
@@ -172,12 +172,20 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 	if s.pricingService != nil {
 		litellmPricing := s.pricingService.GetModelPricing(model)
 		if litellmPricing != nil {
+			// 启用 5m/1h 分类计费的条件：
+			// 1. 存在 1h 价格
+			// 2. 1h 价格 > 5m 价格（防止 LiteLLM 数据错误导致少收费）
+			price5m := litellmPricing.CacheCreationInputTokenCost
+			price1h := litellmPricing.CacheCreationInputTokenCostAbove1hr
+			enableBreakdown := price1h > 0 && price1h > price5m
 			return &ModelPricing{
 				InputPricePerToken:         litellmPricing.InputCostPerToken,
 				OutputPricePerToken:        litellmPricing.OutputCostPerToken,
 				CacheCreationPricePerToken: litellmPricing.CacheCreationInputTokenCost,
 				CacheReadPricePerToken:     litellmPricing.CacheReadInputTokenCost,
-				SupportsCacheBreakdown:     false,
+				CacheCreation5mPrice:       price5m,
+				CacheCreation1hPrice:       price1h,
+				SupportsCacheBreakdown:     enableBreakdown,
 		REDACTED, nil
 	REDACTED
 REDACTED
@@ -209,9 +217,14 @@ REDACTED
 
 	// 计算缓存费用
 	if pricing.SupportsCacheBreakdown && (pricing.CacheCreation5mPrice > 0 || pricing.CacheCreation1hPrice > 0) {
-		// 支持详细缓存分类的模型（5分钟/1小时缓存）
-		breakdown.CacheCreationCost = float64(tokens.CacheCreation5mTokens)/1_000_000*pricing.CacheCreation5mPrice +
-			float64(tokens.CacheCreation1hTokens)/1_000_000*pricing.CacheCreation1hPrice
+		// 支持详细缓存分类的模型（5分钟/1小时缓存，价格为 per-token）
+		if tokens.CacheCreation5mTokens == 0 && tokens.CacheCreation1hTokens == 0 && tokens.CacheCreationTokens > 0 {
+			// API 未返回 ephemeral 明细，回退到全部按 5m 单价计费
+			breakdown.CacheCreationCost = float64(tokens.CacheCreationTokens) * pricing.CacheCreation5mPrice
+	REDACTED else {
+			breakdown.CacheCreationCost = float64(tokens.CacheCreation5mTokens)*pricing.CacheCreation5mPrice +
+				float64(tokens.CacheCreation1hTokens)*pricing.CacheCreation1hPrice
+	REDACTED
 REDACTED else {
 		// 标准缓存创建价格（per-token）
 		breakdown.CacheCreationCost = float64(tokens.CacheCreationTokens) * pricing.CacheCreationPricePerToken
@@ -280,10 +293,12 @@ REDACTED
 
 	// 范围内部分：正常计费
 	inRangeTokens := UsageTokens{
-		InputTokens:         inRangeInputTokens,
-		OutputTokens:        tokens.OutputTokens, // 输出只算一次
-		CacheCreationTokens: tokens.CacheCreationTokens,
-		CacheReadTokens:     inRangeCacheTokens,
+		InputTokens:           inRangeInputTokens,
+		OutputTokens:          tokens.OutputTokens, // 输出只算一次
+		CacheCreationTokens:   tokens.CacheCreationTokens,
+		CacheReadTokens:       inRangeCacheTokens,
+		CacheCreation5mTokens: tokens.CacheCreation5mTokens,
+		CacheCreation1hTokens: tokens.CacheCreation1hTokens,
 REDACTED
 	inRangeCost, err := s.CalculateCost(model, inRangeTokens, rateMultiplier)
 	if err != nil {
