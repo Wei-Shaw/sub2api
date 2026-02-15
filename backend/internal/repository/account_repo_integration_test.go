@@ -238,7 +238,7 @@ REDACTED
 
 			tt.setup(client)
 
-			accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, tt.platform, tt.accType, tt.status, tt.search)
+			accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, tt.platform, tt.accType, tt.status, tt.search, 0)
 			s.Require().NoError(err)
 			s.Require().Len(accounts, tt.wantCount)
 			if tt.validate != nil {
@@ -305,7 +305,7 @@ REDACTED)
 	s.Require().Len(got.Groups, 1, "expected Groups to be populated")
 	s.Require().Equal(group.ID, got.Groups[0].ID)
 
-	accounts, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", "", "acc")
+	accounts, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", "", "acc", 0)
 	s.Require().NoError(err, "ListWithFilters")
 	s.Require().Equal(int64(1), page.Total)
 	s.Require().Len(accounts, 1)

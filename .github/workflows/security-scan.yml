@@ -32,7 +32,7 @@ jobs:
         working-directory: backend
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
-          gosec -severity high -confidence high ./...
+          gosec -conf .gosec.json -severity high -confidence high ./...
 
   frontend-security:
     runs-on: ubuntu-latest

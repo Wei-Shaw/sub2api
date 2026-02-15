@@ -157,7 +157,12 @@ func (h *AccountHandler) List(c *gin.Context) {
 		search = search[:100]
 REDACTED
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search)
+	var groupID int64
+	if groupIDStr := c.Query("group"); groupIDStr != "" {
+		groupID, _ = strconv.ParseInt(groupIDStr, 10, 64)
+REDACTED
+
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -1413,7 +1418,7 @@ REDACTED
 	accounts := make([]*service.Account, 0)
 
 	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "")
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
