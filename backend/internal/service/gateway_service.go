@@ -4474,8 +4474,10 @@ REDACTED
 		// 解析嵌套的 cache_creation 对象中的 5m/1h 明细
 		cc5m := gjson.Get(data, "usage.cache_creation.ephemeral_5m_input_tokens")
 		cc1h := gjson.Get(data, "usage.cache_creation.ephemeral_1h_input_tokens")
-		if cc5m.Exists() || cc1h.Exists() {
+		if cc5m.Exists() && cc5m.Int() > 0 {
 			usage.CacheCreation5mTokens = int(cc5m.Int())
+	REDACTED
+		if cc1h.Exists() && cc1h.Int() > 0 {
 			usage.CacheCreation1hTokens = int(cc1h.Int())
 	REDACTED
 REDACTED
