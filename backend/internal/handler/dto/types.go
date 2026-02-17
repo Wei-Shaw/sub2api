@@ -150,6 +150,11 @@ type Account struct {
 	// 从 extra 字段提取，方便前端显示和编辑
 	EnableSessionIDMasking *bool `json:"session_id_masking_enabled,omitempty"`
 
+	// 缓存 TTL 强制替换（仅 Anthropic OAuth/SetupToken 账号有效）
+	// 启用后将所有 cache creation tokens 归入指定的 TTL 类型计费
+	CacheTTLOverrideEnabled *bool   `json:"cache_ttl_override_enabled,omitempty"`
+	CacheTTLOverrideTarget  *string `json:"cache_ttl_override_target,omitempty"`
+
 	Proxy         *Proxy         `json:"proxy,omitempty"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
 
@@ -272,6 +277,9 @@ type UsageLog struct {
 
 	// User-Agent
 	UserAgent *string `json:"user_agent"`
+
+	// Cache TTL Override 标记
+	CacheTTLOverridden bool `json:"cache_ttl_overridden"`
 
 	CreatedAt time.Time `json:"created_at"`
 
