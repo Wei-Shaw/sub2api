@@ -4276,6 +4276,23 @@ REDACTED
 		REDACTED
 	REDACTED
 
+		// Cache TTL Override: 重写 SSE 事件中的 cache_creation 分类
+		if account.IsCacheTTLOverrideEnabled() {
+			overrideTarget := account.GetCacheTTLOverrideTarget()
+			if eventType == "message_start" {
+				if msg, ok := event["message"].(map[string]any); ok {
+					if u, ok := msg["usage"].(map[string]any); ok {
+						rewriteCacheCreationJSON(u, overrideTarget)
+				REDACTED
+			REDACTED
+		REDACTED
+			if eventType == "message_delta" {
+				if u, ok := event["usage"].(map[string]any); ok {
+					rewriteCacheCreationJSON(u, overrideTarget)
+			REDACTED
+		REDACTED
+	REDACTED
+
 		if needModelReplace {
 			if msg, ok := event["message"].(map[string]any); ok {
 				if model, ok := msg["model"].(string); ok && model == mappedModel {
@@ -4450,6 +4467,58 @@ REDACTED
 REDACTED
 REDACTED
 
+// applyCacheTTLOverride 将所有 cache creation tokens 归入指定的 TTL 类型。
+// target 为 "5m" 或 "1h"。返回 true 表示发生了变更。
+func applyCacheTTLOverride(usage *ClaudeUsage, target string) bool {
+	// Fallback: 如果只有聚合字段但无 5m/1h 明细，将聚合字段归入 5m 默认类别
+	if usage.CacheCreation5mTokens == 0 && usage.CacheCreation1hTokens == 0 && usage.CacheCreationInputTokens > 0 {
+		usage.CacheCreation5mTokens = usage.CacheCreationInputTokens
+REDACTED
+
+	total := usage.CacheCreation5mTokens + usage.CacheCreation1hTokens
+	if total == 0 {
+		return false
+REDACTED
+	switch target {
+	case "1h":
+		if usage.CacheCreation1hTokens == total {
+			return false // 已经全是 1h
+	REDACTED
+		usage.CacheCreation1hTokens = total
+		usage.CacheCreation5mTokens = 0
+	default: // "5m"
+		if usage.CacheCreation5mTokens == total {
+			return false // 已经全是 5m
+	REDACTED
+		usage.CacheCreation5mTokens = total
+		usage.CacheCreation1hTokens = 0
+REDACTED
+	return true
+REDACTED
+
+// rewriteCacheCreationJSON 在 JSON usage 对象中重写 cache_creation 嵌套对象的 TTL 分类。
+// usageObj 是 usage JSON 对象（map[string]any）。
+func rewriteCacheCreationJSON(usageObj map[string]any, target string) {
+	ccObj, ok := usageObj["cache_creation"].(map[string]any)
+	if !ok {
+		return
+REDACTED
+	v5m, _ := ccObj["ephemeral_5m_input_tokens"].(float64)
+	v1h, _ := ccObj["ephemeral_1h_input_tokens"].(float64)
+	total := v5m + v1h
+	if total == 0 {
+		return
+REDACTED
+	switch target {
+	case "1h":
+		ccObj["ephemeral_1h_input_tokens"] = total
+		ccObj["ephemeral_5m_input_tokens"] = float64(0)
+	default: // "5m"
+		ccObj["ephemeral_5m_input_tokens"] = total
+		ccObj["ephemeral_1h_input_tokens"] = float64(0)
+REDACTED
+REDACTED
+
 func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*ClaudeUsage, error) {
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
@@ -4481,6 +4550,20 @@ REDACTED
 		if cachedTokens > 0 {
 			response.Usage.CacheReadInputTokens = int(cachedTokens)
 			if newBody, err := sjson.SetBytes(body, "usage.cache_read_input_tokens", cachedTokens); err == nil {
+				body = newBody
+		REDACTED
+	REDACTED
+REDACTED
+
+	// Cache TTL Override: 重写 non-streaming 响应中的 cache_creation 分类
+	if account.IsCacheTTLOverrideEnabled() {
+		overrideTarget := account.GetCacheTTLOverrideTarget()
+		if applyCacheTTLOverride(&response.Usage, overrideTarget) {
+			// 同步更新 body JSON 中的嵌套 cache_creation 对象
+			if newBody, err := sjson.SetBytes(body, "usage.cache_creation.ephemeral_5m_input_tokens", response.Usage.CacheCreation5mTokens); err == nil {
+				body = newBody
+		REDACTED
+			if newBody, err := sjson.SetBytes(body, "usage.cache_creation.ephemeral_1h_input_tokens", response.Usage.CacheCreation1hTokens); err == nil {
 				body = newBody
 		REDACTED
 	REDACTED
@@ -4560,6 +4643,13 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 			result.Usage.InputTokens, account.ID)
 		result.Usage.CacheReadInputTokens += result.Usage.InputTokens
 		result.Usage.InputTokens = 0
+REDACTED
+
+	// Cache TTL Override: 确保计费时 token 分类与账号设置一致
+	cacheTTLOverridden := false
+	if account.IsCacheTTLOverrideEnabled() {
+		applyCacheTTLOverride(&result.Usage, account.GetCacheTTLOverrideTarget())
+		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
 REDACTED
 
 	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
@@ -4647,6 +4737,7 @@ REDACTED
 		FirstTokenMs:          result.FirstTokenMs,
 		ImageCount:            result.ImageCount,
 		ImageSize:             imageSize,
+		CacheTTLOverridden:    cacheTTLOverridden,
 		CreatedAt:             time.Now(),
 REDACTED
 
@@ -4747,6 +4838,13 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		result.Usage.InputTokens = 0
 REDACTED
 
+	// Cache TTL Override: 确保计费时 token 分类与账号设置一致
+	cacheTTLOverridden := false
+	if account.IsCacheTTLOverrideEnabled() {
+		applyCacheTTLOverride(&result.Usage, account.GetCacheTTLOverrideTarget())
+		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
+REDACTED
+
 	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
 	multiplier := s.cfg.Default.RateMultiplier
 	if apiKey.GroupID != nil && apiKey.Group != nil {
@@ -4832,6 +4930,7 @@ REDACTED
 		FirstTokenMs:          result.FirstTokenMs,
 		ImageCount:            result.ImageCount,
 		ImageSize:             imageSize,
+		CacheTTLOverridden:    cacheTTLOverridden,
 		CreatedAt:             time.Now(),
 REDACTED
 

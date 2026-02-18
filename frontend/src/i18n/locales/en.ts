@@ -576,6 +576,10 @@ export default {
     description: 'View and analyze your API usage history',
     costDetails: 'Cost Breakdown',
     tokenDetails: 'Token Breakdown',
+    cacheTtlOverriddenHint: 'Cache TTL Override enabled',
+    cacheTtlOverriddenLabel: 'TTL Override',
+    cacheTtlOverridden5m: 'Billed as 5m',
+    cacheTtlOverridden1h: 'Billed as 1h',
     totalRequests: 'Total Requests',
     totalTokens: 'Total Tokens',
     totalCost: 'Total Cost',
@@ -1595,6 +1599,12 @@ export default {
         sessionIdMasking: {
           label: 'Session ID Masking',
           hint: 'When enabled, fixes the session ID in metadata.user_id for 15 minutes, making upstream think requests come from the same session'
+        REDACTED,
+        cacheTTLOverride: {
+          label: 'Cache TTL Override',
+          hint: 'Force all cache creation tokens to be billed as the selected TTL tier (5m or 1h)',
+          target: 'Target TTL',
+          targetHint: 'Select the TTL tier for billing'
         REDACTED
       REDACTED,
       expired: 'Expired',
