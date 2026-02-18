@@ -614,6 +614,10 @@ export interface Account {
   // 启用后将在15分钟内固定 metadata.user_id 中的 session ID
   session_id_masking_enabled?: boolean | null
 
+  // 缓存 TTL 强制替换（仅 Anthropic OAuth/SetupToken 账号有效）
+  cache_ttl_override_enabled?: boolean | null
+  cache_ttl_override_target?: string | null
+
   // 运行时状态（仅当启用对应限制时返回）
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
@@ -826,6 +830,9 @@ export interface UsageLog {
 
   // User-Agent
   user_agent: string | null
+
+  // Cache TTL Override
+  cache_ttl_overridden: boolean
 
   created_at: string
 

@@ -72,6 +72,8 @@ const (
 	FieldImageCount = "image_count"
 	// FieldImageSize holds the string denoting the image_size field in the database.
 	FieldImageSize = "image_size"
+	// FieldCacheTTLOverridden holds the string denoting the cache_ttl_overridden field in the database.
+	FieldCacheTTLOverridden = "cache_ttl_overridden"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeUser holds the string denoting the user edge name in mutations.
@@ -155,6 +157,7 @@ var Columns = []string{
 	FieldIPAddress,
 	FieldImageCount,
 	FieldImageSize,
+	FieldCacheTTLOverridden,
 	FieldCreatedAt,
 REDACTED
 
@@ -211,6 +214,8 @@ var (
 	DefaultImageCount int
 	// ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
 	ImageSizeValidator func(string) error
+	// DefaultCacheTTLOverridden holds the default value on creation for the "cache_ttl_overridden" field.
+	DefaultCacheTTLOverridden bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 )
@@ -366,6 +371,11 @@ REDACTED
 // ByImageSize orders the results by the image_size field.
 func ByImageSize(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImageSize, opts...).ToFunc()
+REDACTED
+
+// ByCacheTTLOverridden orders the results by the cache_ttl_overridden field.
+func ByCacheTTLOverridden(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheTTLOverridden, opts...).ToFunc()
 REDACTED
 
 // ByCreatedAt orders the results by the created_at field.

@@ -22,7 +22,7 @@ import (
 	"github.com/lib/pq"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, stream, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, reasoning_effort, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, stream, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, reasoning_effort, cache_ttl_overridden, created_at"
 
 // dateFormatWhitelist 将 granularity 参数映射为 PostgreSQL TO_CHAR 格式字符串，防止外部输入直接拼入 SQL
 var dateFormatWhitelist = map[string]string{
@@ -131,6 +131,7 @@ REDACTED
 				image_count,
 				image_size,
 				reasoning_effort,
+				cache_ttl_overridden,
 				created_at
 			) VALUES (
 				$1, $2, $3, $4, $5,
@@ -138,7 +139,7 @@ REDACTED
 				$8, $9, $10, $11,
 				$12, $13,
 				$14, $15, $16, $17, $18, $19,
-				$20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31
+				$20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32
 			)
 			ON CONFLICT (request_id, api_key_id) DO NOTHING
 			RETURNING id, created_at
@@ -189,6 +190,7 @@ REDACTED
 		log.ImageCount,
 		imageSize,
 		reasoningEffort,
+		log.CacheTTLOverridden,
 		createdAt,
 REDACTED
 	if err := scanSingleRow(ctx, sqlq, query, args, &log.ID, &log.CreatedAt); err != nil {
@@ -2217,6 +2219,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.Usag
 		imageCount            int
 		imageSize             sql.NullString
 		reasoningEffort       sql.NullString
+		cacheTTLOverridden    bool
 		createdAt             time.Time
 	)
 
@@ -2252,6 +2255,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.Usag
 		&imageCount,
 		&imageSize,
 		&reasoningEffort,
+		&cacheTTLOverridden,
 		&createdAt,
 	); err != nil {
 		return nil, err
@@ -2280,6 +2284,7 @@ REDACTED
 		BillingType:           int8(billingType),
 		Stream:                stream,
 		ImageCount:            imageCount,
+		CacheTTLOverridden:    cacheTTLOverridden,
 		CreatedAt:             createdAt,
 REDACTED
 

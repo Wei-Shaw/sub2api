@@ -10,6 +10,7 @@ const (
 	BetaInterleavedThinking      = "REDACTED"
 	BetaFineGrainedToolStreaming = "fine-grained-tool-streaming-2025-05-14"
 	BetaTokenCounting            = "token-counting-2024-11-01"
+	BetaContext1M                = "context-1m-2025-08-07"
 )
 
 // DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
@@ -76,6 +77,12 @@ REDACTED,
 		Type:        "model",
 		DisplayName: "Claude Opus 4.6",
 		CreatedAt:   "2026-02-06T00:00:00Z",
+REDACTED,
+	{
+		ID:          "claude-sonnet-4-6",
+		Type:        "model",
+		DisplayName: "Claude Sonnet 4.6",
+		CreatedAt:   "2026-02-18T00:00:00Z",
 REDACTED,
 	{
 		ID:          "claude-sonnet-4-5-20250929",

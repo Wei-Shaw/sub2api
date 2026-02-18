@@ -119,6 +119,10 @@ func (UsageLog) Fields() []ent.Field {
 			Optional().
 			Nillable(),
 
+		// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
+		field.Bool("cache_ttl_overridden").
+			Default(false),
+
 		// 时间戳（只有 created_at，日志不可修改）
 		field.Time("created_at").
 			Default(time.Now).
