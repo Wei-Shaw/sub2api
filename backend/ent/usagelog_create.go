@@ -407,6 +407,20 @@ REDACTED
 	return _c
 REDACTED
 
+// SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
+func (_c *UsageLogCreate) SetCacheTTLOverridden(v bool) *UsageLogCreate {
+	_c.mutation.SetCacheTTLOverridden(v)
+	return _c
+REDACTED
+
+// SetNillableCacheTTLOverridden sets the "cache_ttl_overridden" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheTTLOverridden(v *bool) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheTTLOverridden(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *UsageLogCreate) SetCreatedAt(v time.Time) *UsageLogCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -545,6 +559,10 @@ REDACTED
 		v := usagelog.DefaultImageCount
 		_c.mutation.SetImageCount(v)
 REDACTED
+	if _, ok := _c.mutation.CacheTTLOverridden(); !ok {
+		v := usagelog.DefaultCacheTTLOverridden
+		_c.mutation.SetCacheTTLOverridden(v)
+REDACTED
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := usagelog.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -645,6 +663,9 @@ REDACTED
 		if err := usagelog.MediaTypeValidator(v); err != nil {
 			return &ValidationError{Name: "media_type", err: fmt.Errorf(`ent: validator failed for field "UsageLog.media_type": %w`, err)REDACTED
 	REDACTED
+REDACTED
+	if _, ok := _c.mutation.CacheTTLOverridden(); !ok {
+		return &ValidationError{Name: "cache_ttl_overridden", err: errors.New(`ent: missing required field "UsageLog.cache_ttl_overridden"`)REDACTED
 REDACTED
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "UsageLog.created_at"`)REDACTED
@@ -784,6 +805,10 @@ REDACTED
 	if value, ok := _c.mutation.MediaType(); ok {
 		_spec.SetField(usagelog.FieldMediaType, field.TypeString, value)
 		_node.MediaType = &value
+REDACTED
+	if value, ok := _c.mutation.CacheTTLOverridden(); ok {
+		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+		_node.CacheTTLOverridden = value
 REDACTED
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(usagelog.FieldCreatedAt, field.TypeTime, value)
@@ -1448,6 +1473,18 @@ func (u *UsageLogUpsert) ClearMediaType() *UsageLogUpsert {
 	return u
 REDACTED
 
+// SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
+func (u *UsageLogUpsert) SetCacheTTLOverridden(v bool) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheTTLOverridden, v)
+	return u
+REDACTED
+
+// UpdateCacheTTLOverridden sets the "cache_ttl_overridden" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheTTLOverridden() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheTTLOverridden)
+	return u
+REDACTED
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2099,6 +2136,20 @@ REDACTED
 func (u *UsageLogUpsertOne) ClearMediaType() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearMediaType()
+REDACTED)
+REDACTED
+
+// SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
+func (u *UsageLogUpsertOne) SetCacheTTLOverridden(v bool) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheTTLOverridden(v)
+REDACTED)
+REDACTED
+
+// UpdateCacheTTLOverridden sets the "cache_ttl_overridden" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheTTLOverridden() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheTTLOverridden()
 REDACTED)
 REDACTED
 
@@ -2919,6 +2970,20 @@ REDACTED
 func (u *UsageLogUpsertBulk) ClearMediaType() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearMediaType()
+REDACTED)
+REDACTED
+
+// SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
+func (u *UsageLogUpsertBulk) SetCacheTTLOverridden(v bool) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheTTLOverridden(v)
+REDACTED)
+REDACTED
+
+// UpdateCacheTTLOverridden sets the "cache_ttl_overridden" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheTTLOverridden() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheTTLOverridden()
 REDACTED)
 REDACTED
 

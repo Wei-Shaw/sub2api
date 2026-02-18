@@ -46,6 +46,9 @@ type UsageLog struct {
 	UserAgent    *string
 	IPAddress    *string
 
+	// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
+	CacheTTLOverridden bool
+
 	// 图片生成字段
 	ImageCount int
 	ImageSize  *string

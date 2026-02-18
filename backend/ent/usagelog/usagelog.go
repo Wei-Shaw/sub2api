@@ -74,6 +74,8 @@ const (
 	FieldImageSize = "image_size"
 	// FieldMediaType holds the string denoting the media_type field in the database.
 	FieldMediaType = "media_type"
+	// FieldCacheTTLOverridden holds the string denoting the cache_ttl_overridden field in the database.
+	FieldCacheTTLOverridden = "cache_ttl_overridden"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// EdgeUser holds the string denoting the user edge name in mutations.
@@ -158,6 +160,7 @@ var Columns = []string{
 	FieldImageCount,
 	FieldImageSize,
 	FieldMediaType,
+	FieldCacheTTLOverridden,
 	FieldCreatedAt,
 REDACTED
 
@@ -216,6 +219,8 @@ var (
 	ImageSizeValidator func(string) error
 	// MediaTypeValidator is a validator for the "media_type" field. It is called by the builders before save.
 	MediaTypeValidator func(string) error
+	// DefaultCacheTTLOverridden holds the default value on creation for the "cache_ttl_overridden" field.
+	DefaultCacheTTLOverridden bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 )
@@ -376,6 +381,11 @@ REDACTED
 // ByMediaType orders the results by the media_type field.
 func ByMediaType(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMediaType, opts...).ToFunc()
+REDACTED
+
+// ByCacheTTLOverridden orders the results by the cache_ttl_overridden field.
+func ByCacheTTLOverridden(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheTTLOverridden, opts...).ToFunc()
 REDACTED
 
 // ByCreatedAt orders the results by the created_at field.

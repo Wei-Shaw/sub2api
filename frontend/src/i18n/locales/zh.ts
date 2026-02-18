@@ -582,6 +582,10 @@ export default {
     description: '查看和分析您的 API 使用历史',
     costDetails: '成本明细',
     tokenDetails: 'Token 明细',
+    cacheTtlOverriddenHint: '缓存 TTL Override 已启用',
+    cacheTtlOverriddenLabel: 'TTL 替换',
+    cacheTtlOverridden5m: '按 5m 计费',
+    cacheTtlOverridden1h: '按 1h 计费',
     totalRequests: '总请求数',
     totalTokens: '总 Token',
     totalCost: '总消费',
@@ -1762,6 +1766,12 @@ export default {
         sessionIdMasking: {
           label: '会话 ID 伪装',
           hint: '启用后将在 15 分钟内固定 metadata.user_id 中的 session ID，使上游认为请求来自同一会话'
+        REDACTED,
+        cacheTTLOverride: {
+          label: '缓存 TTL 强制替换',
+          hint: '将所有缓存创建 token 强制按指定的 TTL 类型（5分钟或1小时）计费',
+          target: '目标 TTL',
+          targetHint: '选择计费使用的 TTL 类型'
         REDACTED
       REDACTED,
       expired: '已过期',
