@@ -78,6 +78,12 @@ REDACTED,
 		CreatedAt:   "2026-02-06T00:00:00Z",
 REDACTED,
 	{
+		ID:          "claude-sonnet-4-6",
+		Type:        "model",
+		DisplayName: "Claude Sonnet 4.6",
+		CreatedAt:   "2026-02-18T00:00:00Z",
+REDACTED,
+	{
 		ID:          "claude-sonnet-4-5-20250929",
 		Type:        "model",
 		DisplayName: "Claude Sonnet 4.5",
