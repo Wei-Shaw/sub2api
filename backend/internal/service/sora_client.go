@@ -95,6 +95,16 @@ var soraDesktopUserAgents = []string{
 	"Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 REDACTED
 
+var soraMobileUserAgents = []string{
+	"Sora/1.2026.007 (Android 15; 24122RKC7C; build 2600700)",
+	"Sora/1.2026.007 (Android 14; SM-G998B; build 2600700)",
+	"Sora/1.2026.007 (Android 15; Pixel 8 Pro; build 2600700)",
+	"Sora/1.2026.007 (Android 14; Pixel 7; build 2600700)",
+	"Sora/1.2026.007 (Android 15; 2211133C; build 2600700)",
+	"Sora/1.2026.007 (Android 14; SM-S918B; build 2600700)",
+	"Sora/1.2026.007 (Android 15; OnePlus 12; build 2600700)",
+REDACTED
+
 var soraRand = rand.New(rand.NewSource(time.Now().UnixNano()))
 var soraRandMu sync.Mutex
 var soraPerfStart = time.Now()
@@ -106,6 +116,17 @@ type SoraClient interface {
 	UploadImage(ctx context.Context, account *Account, data []byte, filename string) (string, error)
 	CreateImageTask(ctx context.Context, account *Account, req SoraImageRequest) (string, error)
 	CreateVideoTask(ctx context.Context, account *Account, req SoraVideoRequest) (string, error)
+	CreateStoryboardTask(ctx context.Context, account *Account, req SoraStoryboardRequest) (string, error)
+	UploadCharacterVideo(ctx context.Context, account *Account, data []byte) (string, error)
+	GetCameoStatus(ctx context.Context, account *Account, cameoID string) (*SoraCameoStatus, error)
+	DownloadCharacterImage(ctx context.Context, account *Account, imageURL string) ([]byte, error)
+	UploadCharacterImage(ctx context.Context, account *Account, data []byte) (string, error)
+	FinalizeCharacter(ctx context.Context, account *Account, req SoraCharacterFinalizeRequest) (string, error)
+	SetCharacterPublic(ctx context.Context, account *Account, cameoID string) error
+	DeleteCharacter(ctx context.Context, account *Account, characterID string) error
+	PostVideoForWatermarkFree(ctx context.Context, account *Account, generationID string) (string, error)
+	DeletePost(ctx context.Context, account *Account, postID string) error
+	GetWatermarkFreeURLCustom(ctx context.Context, account *Account, parseURL, parseToken, postID string) (string, error)
 	EnhancePrompt(ctx context.Context, account *Account, prompt, expansionLevel string, durationS int) (string, error)
 	GetImageTask(ctx context.Context, account *Account, taskID string) (*SoraImageTaskStatus, error)
 	GetVideoTask(ctx context.Context, account *Account, taskID string) (*SoraVideoTaskStatus, error)
@@ -128,6 +149,17 @@ type SoraVideoRequest struct {
 	Size          string
 	MediaID       string
 	RemixTargetID string
+	CameoIDs      []string
+REDACTED
+
+// SoraStoryboardRequest 分镜视频生成请求参数
+type SoraStoryboardRequest struct {
+	Prompt      string
+	Orientation string
+	Frames      int
+	Model       string
+	Size        string
+	MediaID     string
 REDACTED
 
 // SoraImageTaskStatus 图片任务状态
@@ -141,11 +173,32 @@ REDACTED
 
 // SoraVideoTaskStatus 视频任务状态
 type SoraVideoTaskStatus struct {
-	ID          string
-	Status      string
-	ProgressPct int
-	URLs        []string
-	ErrorMsg    string
+	ID           string
+	Status       string
+	ProgressPct  int
+	URLs         []string
+	GenerationID string
+	ErrorMsg     string
+REDACTED
+
+// SoraCameoStatus 角色处理中间态
+type SoraCameoStatus struct {
+	Status             string
+	StatusMessage      string
+	DisplayNameHint    string
+	UsernameHint       string
+	ProfileAssetURL    string
+	InstructionSetHint any
+	InstructionSet     any
+REDACTED
+
+// SoraCharacterFinalizeRequest 角色定稿请求参数
+type SoraCharacterFinalizeRequest struct {
+	CameoID             string
+	Username            string
+	DisplayName         string
+	ProfileAssetPointer string
+	InstructionSet      any
 REDACTED
 
 // SoraUpstreamError 上游错误
@@ -407,6 +460,9 @@ REDACTED
 		payload["remix_target_id"] = req.RemixTargetID
 		payload["cameo_ids"] = []string{REDACTED
 		payload["cameo_replacements"] = map[string]any{REDACTED
+REDACTED else if len(req.CameoIDs) > 0 {
+		payload["cameo_ids"] = req.CameoIDs
+		payload["cameo_replacements"] = map[string]any{REDACTED
 REDACTED
 
 	headers := c.buildBaseHeaders(token, userAgent)
@@ -432,6 +488,425 @@ REDACTED
 		return "", errors.New("video task response missing id")
 REDACTED
 	return taskID, nil
+REDACTED
+
+func (c *SoraDirectClient) CreateStoryboardTask(ctx context.Context, account *Account, req SoraStoryboardRequest) (string, error) {
+	token, err := c.getAccessToken(ctx, account)
+	if err != nil {
+		return "", err
+REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
+	orientation := req.Orientation
+	if orientation == "" {
+		orientation = "landscape"
+REDACTED
+	nFrames := req.Frames
+	if nFrames <= 0 {
+		nFrames = 450
+REDACTED
+	model := req.Model
+	if model == "" {
+		model = "sy_8"
+REDACTED
+	size := req.Size
+	if size == "" {
+		size = "small"
+REDACTED
+
+	inpaintItems := []map[string]any{REDACTED
+	if strings.TrimSpace(req.MediaID) != "" {
+		inpaintItems = append(inpaintItems, map[string]any{
+			"kind":      "upload",
+			"upload_id": req.MediaID,
+	REDACTED)
+REDACTED
+	payload := map[string]any{
+		"kind":               "video",
+		"prompt":             req.Prompt,
+		"title":              "Draft your video",
+		"orientation":        orientation,
+		"size":               size,
+		"n_frames":           nFrames,
+		"storyboard_id":      nil,
+		"inpaint_items":      inpaintItems,
+		"remix_target_id":    nil,
+		"model":              model,
+		"metadata":           nil,
+		"style_id":           nil,
+		"cameo_ids":          nil,
+		"cameo_replacements": nil,
+		"audio_caption":      nil,
+		"audio_transcript":   nil,
+		"video_caption":      nil,
+REDACTED
+
+	headers := c.buildBaseHeaders(token, userAgent)
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Origin", "https://sora.chatgpt.com")
+	headers.Set("Referer", "https://sora.chatgpt.com/")
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+REDACTED
+	sentinel, err := c.generateSentinelToken(ctx, account, token, userAgent, proxyURL)
+	if err != nil {
+		return "", err
+REDACTED
+	headers.Set("openai-sentinel-token", sentinel)
+
+	respBody, _, err := c.doRequestWithProxy(ctx, account, proxyURL, http.MethodPost, c.buildURL("/nf/create/storyboard"), headers, bytes.NewReader(body), true)
+	if err != nil {
+		return "", err
+REDACTED
+	taskID := strings.TrimSpace(gjson.GetBytes(respBody, "id").String())
+	if taskID == "" {
+		return "", errors.New("storyboard task response missing id")
+REDACTED
+	return taskID, nil
+REDACTED
+
+func (c *SoraDirectClient) UploadCharacterVideo(ctx context.Context, account *Account, data []byte) (string, error) {
+	if len(data) == 0 {
+		return "", errors.New("empty video data")
+REDACTED
+	token, err := c.getAccessToken(ctx, account)
+	if err != nil {
+		return "", err
+REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	partHeader := make(textproto.MIMEHeader)
+	partHeader.Set("Content-Disposition", `form-data; name="file"; filename="video.mp4"`)
+	partHeader.Set("Content-Type", "video/mp4")
+	part, err := writer.CreatePart(partHeader)
+	if err != nil {
+		return "", err
+REDACTED
+	if _, err := part.Write(data); err != nil {
+		return "", err
+REDACTED
+	if err := writer.WriteField("timestamps", "0,3"); err != nil {
+		return "", err
+REDACTED
+	if err := writer.Close(); err != nil {
+		return "", err
+REDACTED
+
+	headers := c.buildBaseHeaders(token, userAgent)
+	headers.Set("Content-Type", writer.FormDataContentType())
+	respBody, _, err := c.doRequestWithProxy(ctx, account, proxyURL, http.MethodPost, c.buildURL("/characters/upload"), headers, &body, false)
+	if err != nil {
+		return "", err
+REDACTED
+	cameoID := strings.TrimSpace(gjson.GetBytes(respBody, "id").String())
+	if cameoID == "" {
+		return "", errors.New("character upload response missing id")
+REDACTED
+	return cameoID, nil
+REDACTED
+
+func (c *SoraDirectClient) GetCameoStatus(ctx context.Context, account *Account, cameoID string) (*SoraCameoStatus, error) {
+	token, err := c.getAccessToken(ctx, account)
+	if err != nil {
+		return nil, err
+REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
+	headers := c.buildBaseHeaders(token, userAgent)
+	respBody, _, err := c.doRequestWithProxy(
+		ctx,
+		account,
+		proxyURL,
+		http.MethodGet,
+		c.buildURL("/project_y/cameos/in_progress/"+strings.TrimSpace(cameoID)),
+		headers,
+		nil,
+		false,
+	)
+	if err != nil {
+		return nil, err
+REDACTED
+	return &SoraCameoStatus{
+		Status:             strings.TrimSpace(gjson.GetBytes(respBody, "status").String()),
+		StatusMessage:      strings.TrimSpace(gjson.GetBytes(respBody, "status_message").String()),
+		DisplayNameHint:    strings.TrimSpace(gjson.GetBytes(respBody, "display_name_hint").String()),
+		UsernameHint:       strings.TrimSpace(gjson.GetBytes(respBody, "username_hint").String()),
+		ProfileAssetURL:    strings.TrimSpace(gjson.GetBytes(respBody, "profile_asset_url").String()),
+		InstructionSetHint: gjson.GetBytes(respBody, "instruction_set_hint").Value(),
+		InstructionSet:     gjson.GetBytes(respBody, "instruction_set").Value(),
+REDACTED, nil
+REDACTED
+
+func (c *SoraDirectClient) DownloadCharacterImage(ctx context.Context, account *Account, imageURL string) ([]byte, error) {
+	token, err := c.getAccessToken(ctx, account)
+	if err != nil {
+		return nil, err
+REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
+	headers := c.buildBaseHeaders(token, userAgent)
+	headers.Set("Accept", "image/*,*/*;q=0.8")
+
+	respBody, _, err := c.doRequestWithProxy(
+		ctx,
+		account,
+		proxyURL,
+		http.MethodGet,
+		strings.TrimSpace(imageURL),
+		headers,
+		nil,
+		false,
+	)
+	if err != nil {
+		return nil, err
+REDACTED
+	return respBody, nil
+REDACTED
+
+func (c *SoraDirectClient) UploadCharacterImage(ctx context.Context, account *Account, data []byte) (string, error) {
+	if len(data) == 0 {
+		return "", errors.New("empty character image")
+REDACTED
+	token, err := c.getAccessToken(ctx, account)
+	if err != nil {
+		return "", err
+REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	partHeader := make(textproto.MIMEHeader)
+	partHeader.Set("Content-Disposition", `form-data; name="file"; filename="profile.webp"`)
+	partHeader.Set("Content-Type", "image/webp")
+	part, err := writer.CreatePart(partHeader)
+	if err != nil {
+		return "", err
+REDACTED
+	if _, err := part.Write(data); err != nil {
+		return "", err
+REDACTED
+	if err := writer.WriteField("use_case", "profile"); err != nil {
+		return "", err
+REDACTED
+	if err := writer.Close(); err != nil {
+		return "", err
+REDACTED
+
+	headers := c.buildBaseHeaders(token, userAgent)
+	headers.Set("Content-Type", writer.FormDataContentType())
+	respBody, _, err := c.doRequestWithProxy(ctx, account, proxyURL, http.MethodPost, c.buildURL("/project_y/file/upload"), headers, &body, false)
+	if err != nil {
+		return "", err
+REDACTED
+	assetPointer := strings.TrimSpace(gjson.GetBytes(respBody, "asset_pointer").String())
+	if assetPointer == "" {
+		return "", errors.New("character image upload response missing asset_pointer")
+REDACTED
+	return assetPointer, nil
+REDACTED
+
+func (c *SoraDirectClient) FinalizeCharacter(ctx context.Context, account *Account, req SoraCharacterFinalizeRequest) (string, error) {
+	token, err := c.getAccessToken(ctx, account)
+	if err != nil {
+		return "", err
+REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
+	payload := map[string]any{
+		"cameo_id":               req.CameoID,
+		"username":               req.Username,
+		"display_name":           req.DisplayName,
+		"profile_asset_pointer":  req.ProfileAssetPointer,
+		"instruction_set":        nil,
+		"safety_instruction_set": nil,
+REDACTED
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+REDACTED
+	headers := c.buildBaseHeaders(token, userAgent)
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Origin", "https://sora.chatgpt.com")
+	headers.Set("Referer", "https://sora.chatgpt.com/")
+	respBody, _, err := c.doRequestWithProxy(ctx, account, proxyURL, http.MethodPost, c.buildURL("/characters/finalize"), headers, bytes.NewReader(body), false)
+	if err != nil {
+		return "", err
+REDACTED
+	characterID := strings.TrimSpace(gjson.GetBytes(respBody, "character.character_id").String())
+	if characterID == "" {
+		return "", errors.New("character finalize response missing character_id")
+REDACTED
+	return characterID, nil
+REDACTED
+
+func (c *SoraDirectClient) SetCharacterPublic(ctx context.Context, account *Account, cameoID string) error {
+	token, err := c.getAccessToken(ctx, account)
+	if err != nil {
+		return err
+REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
+	payload := map[string]any{"visibility": "public"REDACTED
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+REDACTED
+	headers := c.buildBaseHeaders(token, userAgent)
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Origin", "https://sora.chatgpt.com")
+	headers.Set("Referer", "https://sora.chatgpt.com/")
+	_, _, err = c.doRequestWithProxy(
+		ctx,
+		account,
+		proxyURL,
+		http.MethodPost,
+		c.buildURL("/project_y/cameos/by_id/"+strings.TrimSpace(cameoID)+"/update_v2"),
+		headers,
+		bytes.NewReader(body),
+		false,
+	)
+	return err
+REDACTED
+
+func (c *SoraDirectClient) DeleteCharacter(ctx context.Context, account *Account, characterID string) error {
+	token, err := c.getAccessToken(ctx, account)
+	if err != nil {
+		return err
+REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
+	headers := c.buildBaseHeaders(token, userAgent)
+	_, _, err = c.doRequestWithProxy(
+		ctx,
+		account,
+		proxyURL,
+		http.MethodDelete,
+		c.buildURL("/project_y/characters/"+strings.TrimSpace(characterID)),
+		headers,
+		nil,
+		false,
+	)
+	return err
+REDACTED
+
+func (c *SoraDirectClient) PostVideoForWatermarkFree(ctx context.Context, account *Account, generationID string) (string, error) {
+	token, err := c.getAccessToken(ctx, account)
+	if err != nil {
+		return "", err
+REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
+	payload := map[string]any{
+		"attachments_to_create": []map[string]any{
+			{
+				"generation_id": generationID,
+				"kind":          "sora",
+		REDACTED,
+	REDACTED,
+		"post_text": "",
+REDACTED
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+REDACTED
+	headers := c.buildBaseHeaders(token, userAgent)
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Origin", "https://sora.chatgpt.com")
+	headers.Set("Referer", "https://sora.chatgpt.com/")
+	sentinel, err := c.generateSentinelToken(ctx, account, token, userAgent, proxyURL)
+	if err != nil {
+		return "", err
+REDACTED
+	headers.Set("openai-sentinel-token", sentinel)
+	respBody, _, err := c.doRequestWithProxy(ctx, account, proxyURL, http.MethodPost, c.buildURL("/project_y/post"), headers, bytes.NewReader(body), true)
+	if err != nil {
+		return "", err
+REDACTED
+	postID := strings.TrimSpace(gjson.GetBytes(respBody, "post.id").String())
+	if postID == "" {
+		return "", errors.New("watermark-free publish response missing post.id")
+REDACTED
+	return postID, nil
+REDACTED
+
+func (c *SoraDirectClient) DeletePost(ctx context.Context, account *Account, postID string) error {
+	token, err := c.getAccessToken(ctx, account)
+	if err != nil {
+		return err
+REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
+	headers := c.buildBaseHeaders(token, userAgent)
+	_, _, err = c.doRequestWithProxy(
+		ctx,
+		account,
+		proxyURL,
+		http.MethodDelete,
+		c.buildURL("/project_y/post/"+strings.TrimSpace(postID)),
+		headers,
+		nil,
+		false,
+	)
+	return err
+REDACTED
+
+func (c *SoraDirectClient) GetWatermarkFreeURLCustom(ctx context.Context, account *Account, parseURL, parseToken, postID string) (string, error) {
+	parseURL = strings.TrimRight(strings.TrimSpace(parseURL), "/")
+	if parseURL == "" {
+		return "", errors.New("custom parse url is required")
+REDACTED
+	if strings.TrimSpace(parseToken) == "" {
+		return "", errors.New("custom parse token is required")
+REDACTED
+	shareURL := "https://sora.chatgpt.com/p/" + strings.TrimSpace(postID)
+	payload := map[string]any{
+		"url":   shareURL,
+		"token": strings.TrimSpace(parseToken),
+REDACTED
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+REDACTED
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, parseURL+"/get-sora-link", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+REDACTED
+	req.Header.Set("Content-Type", "application/json")
+
+	proxyURL := c.resolveProxyURL(account)
+	accountID := int64(0)
+	accountConcurrency := 0
+	if account != nil {
+		accountID = account.ID
+		accountConcurrency = account.Concurrency
+REDACTED
+	var resp *http.Response
+	if c.httpUpstream != nil {
+		resp, err = c.httpUpstream.Do(req, proxyURL, accountID, accountConcurrency)
+REDACTED else {
+		resp, err = http.DefaultClient.Do(req)
+REDACTED
+	if err != nil {
+		return "", err
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return "", err
+REDACTED
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("custom parse failed: %d %s", resp.StatusCode, truncateForLog(raw, 256))
+REDACTED
+	downloadLink := strings.TrimSpace(gjson.GetBytes(raw, "download_link").String())
+	if downloadLink == "" {
+		return "", errors.New("custom parse response missing download_link")
+REDACTED
+	return downloadLink, nil
 REDACTED
 
 func (c *SoraDirectClient) EnhancePrompt(ctx context.Context, account *Account, prompt, expansionLevel string, durationS int) (string, error) {
@@ -607,6 +1082,7 @@ REDACTED
 		if draft.Get("task_id").String() != taskID {
 			return true
 	REDACTED
+		generationID := strings.TrimSpace(draft.Get("id").String())
 		kind := strings.TrimSpace(draft.Get("kind").String())
 		reason := strings.TrimSpace(draft.Get("reason_str").String())
 		if reason == "" {
@@ -623,15 +1099,17 @@ REDACTED
 				msg = "Content violates guardrails"
 		REDACTED
 			draftFound = &SoraVideoTaskStatus{
-				ID:       taskID,
-				Status:   "failed",
-				ErrorMsg: msg,
+				ID:           taskID,
+				Status:       "failed",
+				GenerationID: generationID,
+				ErrorMsg:     msg,
 		REDACTED
 	REDACTED else {
 			draftFound = &SoraVideoTaskStatus{
-				ID:     taskID,
-				Status: "completed",
-				URLs:   []string{urlStrREDACTED,
+				ID:           taskID,
+				Status:       "completed",
+				GenerationID: generationID,
+				URLs:         []string{urlStrREDACTED,
 		REDACTED
 	REDACTED
 		return false
@@ -675,8 +1153,11 @@ func (c *SoraDirectClient) taskUserAgent() string {
 			return ua
 	REDACTED
 REDACTED
+	if len(soraMobileUserAgents) > 0 {
+		return soraMobileUserAgents[soraRandInt(len(soraMobileUserAgents))]
+REDACTED
 	if len(soraDesktopUserAgents) > 0 {
-		return soraDesktopUserAgents[0]
+		return soraDesktopUserAgents[soraRandInt(len(soraDesktopUserAgents))]
 REDACTED
 	return soraDefaultUserAgent
 REDACTED
@@ -1149,10 +1630,7 @@ REDACTED
 REDACTED
 
 func (c *SoraDirectClient) doHTTP(req *http.Request, proxyURL string, account *Account) (*http.Response, error) {
-	enableTLS := true
-	if c != nil && c.cfg != nil && c.cfg.Sora.Client.DisableTLSFingerprint {
-		enableTLS = false
-REDACTED
+	enableTLS := c == nil || c.cfg == nil || !c.cfg.Sora.Client.DisableTLSFingerprint
 	if c.httpUpstream != nil {
 		accountID := int64(0)
 		accountConcurrency := 0
@@ -1286,6 +1764,15 @@ func soraRandFloat() float64 {
 	soraRandMu.Lock()
 	defer soraRandMu.Unlock()
 	return soraRand.Float64()
+REDACTED
+
+func soraRandInt(max int) int {
+	if max <= 1 {
+		return 0
+REDACTED
+	soraRandMu.Lock()
+	defer soraRandMu.Unlock()
+	return soraRand.Intn(max)
 REDACTED
 
 func soraBuildPowConfig(userAgent string) []any {

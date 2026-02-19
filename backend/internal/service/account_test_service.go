@@ -15,11 +15,14 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/util/soraerror"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -28,7 +31,6 @@ import (
 // sseDataPrefix matches SSE data lines with optional whitespace after colon.
 // Some upstream APIs return non-standard "data:" without space (should be "data: ").
 var sseDataPrefix = regexp.MustCompile(`^data:\s*`)
-var cloudflareRayPattern = regexp.MustCompile(`(?i)cRay:\s*'([a-z0-9-]+)'`)
 
 const (
 	testClaudeAPIURL   = "https://api.anthropic.com/v1/messages"
@@ -45,6 +47,9 @@ type TestEvent struct {
 	Type    string `json:"type"`
 	Text    string `json:"text,omitempty"`
 	Model   string `json:"model,omitempty"`
+	Status  string `json:"status,omitempty"`
+	Code    string `json:"code,omitempty"`
+	Data    any    `json:"data,omitempty"`
 	Success bool   `json:"success,omitempty"`
 	Error   string `json:"error,omitempty"`
 REDACTED
@@ -56,7 +61,12 @@ type AccountTestService struct {
 	antigravityGatewayService *AntigravityGatewayService
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
+	soraTestGuardMu           sync.Mutex
+	soraTestLastRun           map[int64]time.Time
+	soraTestCooldown          time.Duration
 REDACTED
+
+const defaultSoraTestCooldown = 10 * time.Second
 
 // NewAccountTestService creates a new AccountTestService
 func NewAccountTestService(
@@ -72,6 +82,8 @@ func NewAccountTestService(
 		antigravityGatewayService: antigravityGatewayService,
 		httpUpstream:              httpUpstream,
 		cfg:                       cfg,
+		soraTestLastRun:           make(map[int64]time.Time),
+		soraTestCooldown:          defaultSoraTestCooldown,
 REDACTED
 REDACTED
 
@@ -473,13 +485,129 @@ REDACTED
 	return s.processGeminiStream(c, resp.Body)
 REDACTED
 
+type soraProbeStep struct {
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	HTTPStatus int    `json:"http_status,omitempty"`
+	ErrorCode  string `json:"error_code,omitempty"`
+	Message    string `json:"message,omitempty"`
+REDACTED
+
+type soraProbeSummary struct {
+	Status string          `json:"status"`
+	Steps  []soraProbeStep `json:"steps"`
+REDACTED
+
+type soraProbeRecorder struct {
+	steps []soraProbeStep
+REDACTED
+
+func (r *soraProbeRecorder) addStep(name, status string, httpStatus int, errorCode, message string) {
+	r.steps = append(r.steps, soraProbeStep{
+		Name:       name,
+		Status:     status,
+		HTTPStatus: httpStatus,
+		ErrorCode:  strings.TrimSpace(errorCode),
+		Message:    strings.TrimSpace(message),
+REDACTED)
+REDACTED
+
+func (r *soraProbeRecorder) finalize() soraProbeSummary {
+	meSuccess := false
+	partial := false
+	for _, step := range r.steps {
+		if step.Name == "me" {
+			meSuccess = strings.EqualFold(step.Status, "success")
+			continue
+	REDACTED
+		if strings.EqualFold(step.Status, "failed") {
+			partial = true
+	REDACTED
+REDACTED
+
+	status := "success"
+	if !meSuccess {
+		status = "failed"
+REDACTED else if partial {
+		status = "partial_success"
+REDACTED
+
+	return soraProbeSummary{
+		Status: status,
+		Steps:  append([]soraProbeStep(nil), r.steps...),
+REDACTED
+REDACTED
+
+func (s *AccountTestService) emitSoraProbeSummary(c *gin.Context, rec *soraProbeRecorder) {
+	if rec == nil {
+		return
+REDACTED
+	summary := rec.finalize()
+	code := ""
+	for _, step := range summary.Steps {
+		if strings.EqualFold(step.Status, "failed") && strings.TrimSpace(step.ErrorCode) != "" {
+			code = step.ErrorCode
+			break
+	REDACTED
+REDACTED
+	s.sendEvent(c, TestEvent{
+		Type:   "sora_test_result",
+		Status: summary.Status,
+		Code:   code,
+		Data:   summary,
+REDACTED)
+REDACTED
+
+func (s *AccountTestService) acquireSoraTestPermit(accountID int64) (time.Duration, bool) {
+	if accountID <= 0 {
+		return 0, true
+REDACTED
+	s.soraTestGuardMu.Lock()
+	defer s.soraTestGuardMu.Unlock()
+
+	if s.soraTestLastRun == nil {
+		s.soraTestLastRun = make(map[int64]time.Time)
+REDACTED
+	cooldown := s.soraTestCooldown
+	if cooldown <= 0 {
+		cooldown = defaultSoraTestCooldown
+REDACTED
+
+	now := time.Now()
+	if lastRun, ok := s.soraTestLastRun[accountID]; ok {
+		elapsed := now.Sub(lastRun)
+		if elapsed < cooldown {
+			return cooldown - elapsed, false
+	REDACTED
+REDACTED
+	s.soraTestLastRun[accountID] = now
+	return 0, true
+REDACTED
+
+func ceilSeconds(d time.Duration) int {
+	if d <= 0 {
+		return 1
+REDACTED
+	sec := int(d / time.Second)
+	if d%time.Second != 0 {
+		sec++
+REDACTED
+	if sec < 1 {
+		sec = 1
+REDACTED
+	return sec
+REDACTED
+
 // testSoraAccountConnection 测试 Sora 账号的连接
 // 调用 /backend/me 接口验证 access_token 有效性（不需要 Sentinel Token）
 func (s *AccountTestService) testSoraAccountConnection(c *gin.Context, account *Account) error {
 	ctx := c.Request.Context()
+	recorder := &soraProbeRecorder{REDACTED
 
 	authToken := account.GetCredential("access_token")
 	if authToken == "" {
+		recorder.addStep("me", "failed", http.StatusUnauthorized, "missing_access_token", "No access token available")
+		s.emitSoraProbeSummary(c, recorder)
 		return s.sendErrorAndEnd(c, "No access token available")
 REDACTED
 
@@ -490,11 +618,20 @@ REDACTED
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
+	if wait, ok := s.acquireSoraTestPermit(account.ID); !ok {
+		msg := fmt.Sprintf("Sora 账号测试过于频繁，请 %d 秒后重试", ceilSeconds(wait))
+		recorder.addStep("rate_limit", "failed", http.StatusTooManyRequests, "test_rate_limited", msg)
+		s.emitSoraProbeSummary(c, recorder)
+		return s.sendErrorAndEnd(c, msg)
+REDACTED
+
 	// Send test_start event
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: "sora"REDACTED)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", soraMeAPIURL, nil)
 	if err != nil {
+		recorder.addStep("me", "failed", 0, "request_build_failed", err.Error())
+		s.emitSoraProbeSummary(c, recorder)
 		return s.sendErrorAndEnd(c, "Failed to create request")
 REDACTED
 
@@ -515,6 +652,8 @@ REDACTED
 
 	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, enableSoraTLSFingerprint)
 	if err != nil {
+		recorder.addStep("me", "failed", 0, "network_error", err.Error())
+		s.emitSoraProbeSummary(c, recorder)
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
@@ -522,12 +661,33 @@ REDACTED
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		if isCloudflareChallengeResponse(resp.StatusCode, body) {
+		if isCloudflareChallengeResponse(resp.StatusCode, resp.Header, body) {
+			recorder.addStep("me", "failed", resp.StatusCode, "cf_challenge", "Cloudflare challenge detected")
+			s.emitSoraProbeSummary(c, recorder)
 			s.logSoraCloudflareChallenge(account, proxyURL, soraMeAPIURL, resp.Header, body)
-			return s.sendErrorAndEnd(c, formatCloudflareChallengeMessage("Sora request blocked by Cloudflare challenge (HTTP 403). Please switch to a clean proxy/network and retry.", resp.Header, body))
+			return s.sendErrorAndEnd(c, formatCloudflareChallengeMessage(fmt.Sprintf("Sora request blocked by Cloudflare challenge (HTTP %d). Please switch to a clean proxy/network and retry.", resp.StatusCode), resp.Header, body))
 	REDACTED
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Sora API returned %d: %s", resp.StatusCode, truncateSoraErrorBody(body, 512)))
+		upstreamCode, upstreamMessage := soraerror.ExtractUpstreamErrorCodeAndMessage(body)
+		switch {
+		case resp.StatusCode == http.StatusUnauthorized && strings.EqualFold(upstreamCode, "token_invalidated"):
+			recorder.addStep("me", "failed", resp.StatusCode, "token_invalidated", "Sora token invalidated")
+			s.emitSoraProbeSummary(c, recorder)
+			return s.sendErrorAndEnd(c, "Sora token 已失效（token_invalidated），请重新授权账号")
+		case strings.EqualFold(upstreamCode, "unsupported_country_code"):
+			recorder.addStep("me", "failed", resp.StatusCode, "unsupported_country_code", "Sora is unavailable in current egress region")
+			s.emitSoraProbeSummary(c, recorder)
+			return s.sendErrorAndEnd(c, "Sora 在当前网络出口地区不可用（unsupported_country_code），请切换到支持地区后重试")
+		case strings.TrimSpace(upstreamMessage) != "":
+			recorder.addStep("me", "failed", resp.StatusCode, upstreamCode, upstreamMessage)
+			s.emitSoraProbeSummary(c, recorder)
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Sora API returned %d: %s", resp.StatusCode, upstreamMessage))
+		default:
+			recorder.addStep("me", "failed", resp.StatusCode, upstreamCode, "Sora me endpoint failed")
+			s.emitSoraProbeSummary(c, recorder)
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Sora API returned %d: %s", resp.StatusCode, truncateSoraErrorBody(body, 512)))
+	REDACTED
 REDACTED
+	recorder.addStep("me", "success", resp.StatusCode, "", "me endpoint ok")
 
 	// 解析 /me 响应，提取用户信息
 	var meResp map[string]any
@@ -557,21 +717,26 @@ REDACTED
 
 		subResp, subErr := s.httpUpstream.DoWithTLS(subReq, proxyURL, account.ID, account.Concurrency, enableSoraTLSFingerprint)
 		if subErr != nil {
+			recorder.addStep("subscription", "failed", 0, "network_error", subErr.Error())
 			s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Subscription check skipped: %s", subErr.Error())REDACTED)
 	REDACTED else {
 			subBody, _ := io.ReadAll(subResp.Body)
 			_ = subResp.Body.Close()
 			if subResp.StatusCode == http.StatusOK {
+				recorder.addStep("subscription", "success", subResp.StatusCode, "", "subscription endpoint ok")
 				if summary := parseSoraSubscriptionSummary(subBody); summary != "" {
 					s.sendEvent(c, TestEvent{Type: "content", Text: summaryREDACTED)
 			REDACTED else {
 					s.sendEvent(c, TestEvent{Type: "content", Text: "Subscription check OK"REDACTED)
 			REDACTED
 		REDACTED else {
-				if isCloudflareChallengeResponse(subResp.StatusCode, subBody) {
+				if isCloudflareChallengeResponse(subResp.StatusCode, subResp.Header, subBody) {
+					recorder.addStep("subscription", "failed", subResp.StatusCode, "cf_challenge", "Cloudflare challenge detected")
 					s.logSoraCloudflareChallenge(account, proxyURL, soraBillingAPIURL, subResp.Header, subBody)
-					s.sendEvent(c, TestEvent{Type: "content", Text: formatCloudflareChallengeMessage("Subscription check blocked by Cloudflare challenge (HTTP 403)", subResp.Header, subBody)REDACTED)
+					s.sendEvent(c, TestEvent{Type: "content", Text: formatCloudflareChallengeMessage(fmt.Sprintf("Subscription check blocked by Cloudflare challenge (HTTP %d)", subResp.StatusCode), subResp.Header, subBody)REDACTED)
 			REDACTED else {
+					upstreamCode, upstreamMessage := soraerror.ExtractUpstreamErrorCodeAndMessage(subBody)
+					recorder.addStep("subscription", "failed", subResp.StatusCode, upstreamCode, upstreamMessage)
 					s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Subscription check returned %d", subResp.StatusCode)REDACTED)
 			REDACTED
 		REDACTED
@@ -579,8 +744,9 @@ REDACTED
 REDACTED
 
 	// 追加 Sora2 能力探测（对齐 sora2api 的测试思路）：邀请码 + 剩余额度。
-	s.testSora2Capabilities(c, ctx, account, authToken, proxyURL, enableSoraTLSFingerprint)
+	s.testSora2Capabilities(c, ctx, account, authToken, proxyURL, enableSoraTLSFingerprint, recorder)
 
+	s.emitSoraProbeSummary(c, recorder)
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
 	return nil
 REDACTED
@@ -592,6 +758,7 @@ func (s *AccountTestService) testSora2Capabilities(
 	authToken string,
 	proxyURL string,
 	enableTLSFingerprint bool,
+	recorder *soraProbeRecorder,
 ) {
 	inviteStatus, inviteHeader, inviteBody, err := s.fetchSoraTestEndpoint(
 		ctx,
@@ -602,6 +769,9 @@ func (s *AccountTestService) testSora2Capabilities(
 		enableTLSFingerprint,
 	)
 	if err != nil {
+		if recorder != nil {
+			recorder.addStep("sora2_invite", "failed", 0, "network_error", err.Error())
+	REDACTED
 		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Sora2 invite check skipped: %s", err.Error())REDACTED)
 		return
 REDACTED
@@ -616,6 +786,9 @@ REDACTED
 			enableTLSFingerprint,
 		)
 		if bootstrapErr == nil && bootstrapStatus == http.StatusOK {
+			if recorder != nil {
+				recorder.addStep("sora2_bootstrap", "success", bootstrapStatus, "", "bootstrap endpoint ok")
+		REDACTED
 			s.sendEvent(c, TestEvent{Type: "content", Text: "Sora2 bootstrap OK, retry invite check"REDACTED)
 			inviteStatus, inviteHeader, inviteBody, err = s.fetchSoraTestEndpoint(
 				ctx,
@@ -626,19 +799,41 @@ REDACTED
 				enableTLSFingerprint,
 			)
 			if err != nil {
+				if recorder != nil {
+					recorder.addStep("sora2_invite", "failed", 0, "network_error", err.Error())
+			REDACTED
 				s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Sora2 invite retry failed: %s", err.Error())REDACTED)
 				return
 		REDACTED
+	REDACTED else if recorder != nil {
+			code := ""
+			msg := ""
+			if bootstrapErr != nil {
+				code = "network_error"
+				msg = bootstrapErr.Error()
+		REDACTED
+			recorder.addStep("sora2_bootstrap", "failed", bootstrapStatus, code, msg)
 	REDACTED
 REDACTED
 
 	if inviteStatus != http.StatusOK {
-		if isCloudflareChallengeResponse(inviteStatus, inviteBody) {
-			s.sendEvent(c, TestEvent{Type: "content", Text: formatCloudflareChallengeMessage("Sora2 invite check blocked by Cloudflare challenge (HTTP 403)", inviteHeader, inviteBody)REDACTED)
+		if isCloudflareChallengeResponse(inviteStatus, inviteHeader, inviteBody) {
+			if recorder != nil {
+				recorder.addStep("sora2_invite", "failed", inviteStatus, "cf_challenge", "Cloudflare challenge detected")
+		REDACTED
+			s.logSoraCloudflareChallenge(account, proxyURL, soraInviteMineURL, inviteHeader, inviteBody)
+			s.sendEvent(c, TestEvent{Type: "content", Text: formatCloudflareChallengeMessage(fmt.Sprintf("Sora2 invite check blocked by Cloudflare challenge (HTTP %d)", inviteStatus), inviteHeader, inviteBody)REDACTED)
 			return
+	REDACTED
+		upstreamCode, upstreamMessage := soraerror.ExtractUpstreamErrorCodeAndMessage(inviteBody)
+		if recorder != nil {
+			recorder.addStep("sora2_invite", "failed", inviteStatus, upstreamCode, upstreamMessage)
 	REDACTED
 		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Sora2 invite check returned %d", inviteStatus)REDACTED)
 		return
+REDACTED
+	if recorder != nil {
+		recorder.addStep("sora2_invite", "success", inviteStatus, "", "invite endpoint ok")
 REDACTED
 
 	if summary := parseSoraInviteSummary(inviteBody); summary != "" {
@@ -656,16 +851,30 @@ REDACTED
 		enableTLSFingerprint,
 	)
 	if remainingErr != nil {
+		if recorder != nil {
+			recorder.addStep("sora2_remaining", "failed", 0, "network_error", remainingErr.Error())
+	REDACTED
 		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Sora2 remaining check skipped: %s", remainingErr.Error())REDACTED)
 		return
 REDACTED
 	if remainingStatus != http.StatusOK {
-		if isCloudflareChallengeResponse(remainingStatus, remainingBody) {
-			s.sendEvent(c, TestEvent{Type: "content", Text: formatCloudflareChallengeMessage("Sora2 remaining check blocked by Cloudflare challenge (HTTP 403)", remainingHeader, remainingBody)REDACTED)
+		if isCloudflareChallengeResponse(remainingStatus, remainingHeader, remainingBody) {
+			if recorder != nil {
+				recorder.addStep("sora2_remaining", "failed", remainingStatus, "cf_challenge", "Cloudflare challenge detected")
+		REDACTED
+			s.logSoraCloudflareChallenge(account, proxyURL, soraRemainingURL, remainingHeader, remainingBody)
+			s.sendEvent(c, TestEvent{Type: "content", Text: formatCloudflareChallengeMessage(fmt.Sprintf("Sora2 remaining check blocked by Cloudflare challenge (HTTP %d)", remainingStatus), remainingHeader, remainingBody)REDACTED)
 			return
+	REDACTED
+		upstreamCode, upstreamMessage := soraerror.ExtractUpstreamErrorCodeAndMessage(remainingBody)
+		if recorder != nil {
+			recorder.addStep("sora2_remaining", "failed", remainingStatus, upstreamCode, upstreamMessage)
 	REDACTED
 		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Sora2 remaining check returned %d", remainingStatus)REDACTED)
 		return
+REDACTED
+	if recorder != nil {
+		recorder.addStep("sora2_remaining", "success", remainingStatus, "", "remaining endpoint ok")
 REDACTED
 	if summary := parseSoraRemainingSummary(remainingBody); summary != "" {
 		s.sendEvent(c, TestEvent{Type: "content", Text: summaryREDACTED)
@@ -789,42 +998,16 @@ REDACTED
 	return !s.cfg.Sora.Client.DisableTLSFingerprint
 REDACTED
 
-func isCloudflareChallengeResponse(statusCode int, body []byte) bool {
-	if statusCode != http.StatusForbidden {
-		return false
-REDACTED
-	preview := strings.ToLower(truncateSoraErrorBody(body, 4096))
-	return strings.Contains(preview, "window._cf_chl_opt") ||
-		strings.Contains(preview, "just a moment") ||
-		strings.Contains(preview, "enable javascript and cookies to continue")
+func isCloudflareChallengeResponse(statusCode int, headers http.Header, body []byte) bool {
+	return soraerror.IsCloudflareChallengeResponse(statusCode, headers, body)
 REDACTED
 
 func formatCloudflareChallengeMessage(base string, headers http.Header, body []byte) string {
-	rayID := extractCloudflareRayID(headers, body)
-	if rayID == "" {
-		return base
-REDACTED
-	return fmt.Sprintf("%s (cf-ray: %s)", base, rayID)
+	return soraerror.FormatCloudflareChallengeMessage(base, headers, body)
 REDACTED
 
 func extractCloudflareRayID(headers http.Header, body []byte) string {
-	if headers != nil {
-		rayID := strings.TrimSpace(headers.Get("cf-ray"))
-		if rayID != "" {
-			return rayID
-	REDACTED
-		rayID = strings.TrimSpace(headers.Get("Cf-Ray"))
-		if rayID != "" {
-			return rayID
-	REDACTED
-REDACTED
-
-	preview := truncateSoraErrorBody(body, 8192)
-	matches := cloudflareRayPattern.FindStringSubmatch(preview)
-	if len(matches) >= 2 {
-		return strings.TrimSpace(matches[1])
-REDACTED
-	return ""
+	return soraerror.ExtractCloudflareRayID(headers, body)
 REDACTED
 
 func extractSoraEgressIPHint(headers http.Header) string {
@@ -897,14 +1080,7 @@ REDACTED
 REDACTED
 
 func truncateSoraErrorBody(body []byte, max int) string {
-	if max <= 0 {
-		max = 512
-REDACTED
-	raw := strings.TrimSpace(string(body))
-	if len(raw) <= max {
-		return raw
-REDACTED
-	return raw[:max] + "...(truncated)"
+	return soraerror.TruncateBody(body, max)
 REDACTED
 
 // testAntigravityAccountConnection tests an Antigravity account's connection

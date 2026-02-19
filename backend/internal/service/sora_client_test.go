@@ -393,10 +393,22 @@ REDACTED)
 		return newSoraClientMockResponse(http.StatusOK, `{"token":"sentinel-token","turnstile":{"dx":"ok"REDACTEDREDACTED`), nil
 	case "/backend/nf/create":
 		return newSoraClientMockResponse(http.StatusOK, `{"id":"task-123"REDACTED`), nil
+	case "/backend/nf/create/storyboard":
+		return newSoraClientMockResponse(http.StatusOK, `{"id":"storyboard-123"REDACTED`), nil
 	case "/backend/uploads":
 		return newSoraClientMockResponse(http.StatusOK, `{"id":"upload-123"REDACTED`), nil
 	case "/backend/nf/check":
 		return newSoraClientMockResponse(http.StatusOK, `{"rate_limit_and_credit_balance":{"estimated_num_videos_remaining":1,"rate_limit_reached":falseREDACTEDREDACTED`), nil
+	case "/backend/characters/upload":
+		return newSoraClientMockResponse(http.StatusOK, `{"id":"cameo-123"REDACTED`), nil
+	case "/backend/project_y/cameos/in_progress/cameo-123":
+		return newSoraClientMockResponse(http.StatusOK, `{"status":"finalized","status_message":"Completed","username_hint":"foo.bar","display_name_hint":"Bar","profile_asset_url":"https://example.com/avatar.webp"REDACTED`), nil
+	case "/backend/project_y/file/upload":
+		return newSoraClientMockResponse(http.StatusOK, `{"asset_pointer":"asset-123"REDACTED`), nil
+	case "/backend/characters/finalize":
+		return newSoraClientMockResponse(http.StatusOK, `{"character":{"character_id":"character-123"REDACTEDREDACTED`), nil
+	case "/backend/project_y/post":
+		return newSoraClientMockResponse(http.StatusOK, `{"post":{"id":"s_post"REDACTEDREDACTED`), nil
 	default:
 		return newSoraClientMockResponse(http.StatusOK, `{"ok":trueREDACTED`), nil
 REDACTED
@@ -410,9 +422,13 @@ func newSoraClientMockResponse(statusCode int, body string) *http.Response {
 REDACTED
 REDACTED
 
-func TestSoraDirectClient_TaskUserAgent_DefaultDesktopFallback(t *testing.T) {
+func TestSoraDirectClient_TaskUserAgent_DefaultMobileFallback(t *testing.T) {
 	client := NewSoraDirectClient(&config.Config{REDACTED, nil, nil)
-	require.Equal(t, soraDesktopUserAgents[0], client.taskUserAgent())
+	ua := client.taskUserAgent()
+	require.NotEmpty(t, ua)
+	allowed := append([]string{REDACTED, soraMobileUserAgents...)
+	allowed = append(allowed, soraDesktopUserAgents...)
+	require.Contains(t, allowed, ua)
 REDACTED
 
 func TestSoraDirectClient_CreateVideoTask_UsesSameUserAgentAndProxyForSentinelAndCreate(t *testing.T) {
@@ -460,7 +476,7 @@ REDACTED
 	require.Equal(t, "/backend/nf/create", createCall.Path)
 	require.Equal(t, "http://127.0.0.1:8080", sentinelCall.ProxyURL)
 	require.Equal(t, sentinelCall.ProxyURL, createCall.ProxyURL)
-	require.Equal(t, soraDesktopUserAgents[0], sentinelCall.UserAgent)
+	require.NotEmpty(t, sentinelCall.UserAgent)
 	require.Equal(t, sentinelCall.UserAgent, createCall.UserAgent)
 REDACTED
 
@@ -495,7 +511,7 @@ REDACTED
 	require.Len(t, upstream.calls, 1)
 	require.Equal(t, "/backend/uploads", upstream.calls[0].Path)
 	require.Equal(t, "http://127.0.0.1:8080", upstream.calls[0].ProxyURL)
-	require.Equal(t, soraDesktopUserAgents[0], upstream.calls[0].UserAgent)
+	require.NotEmpty(t, upstream.calls[0].UserAgent)
 REDACTED
 
 func TestSoraDirectClient_PreflightCheck_UsesTaskUserAgentAndProxy(t *testing.T) {
@@ -528,5 +544,98 @@ REDACTED
 	require.Len(t, upstream.calls, 1)
 	require.Equal(t, "/backend/nf/check", upstream.calls[0].Path)
 	require.Equal(t, "http://127.0.0.1:8080", upstream.calls[0].ProxyURL)
-	require.Equal(t, soraDesktopUserAgents[0], upstream.calls[0].UserAgent)
+	require.NotEmpty(t, upstream.calls[0].UserAgent)
+REDACTED
+
+func TestSoraDirectClient_CreateStoryboardTask(t *testing.T) {
+	originPowTokenGenerator := soraPowTokenGenerator
+	soraPowTokenGenerator = func(_ string) string { return "gAAAAACmock" REDACTED
+	defer func() { soraPowTokenGenerator = originPowTokenGenerator REDACTED()
+
+	upstream := &soraClientRecordingUpstream{REDACTED
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				BaseURL: "https://sora.chatgpt.com/backend",
+		REDACTED,
+	REDACTED,
+REDACTED
+	client := NewSoraDirectClient(cfg, upstream, nil)
+	account := &Account{
+		ID: 51,
+REDACTED
+			"access_token": "access-token",
+			"expires_at":   time.Now().Add(30 * time.Minute).Format(time.RFC3339),
+	REDACTED,
+REDACTED
+
+	taskID, err := client.CreateStoryboardTask(context.Background(), account, SoraStoryboardRequest{
+		Prompt: "Shot 1:\nduration: 5sec\nScene: cat",
+REDACTED)
+REDACTED
+	require.Equal(t, "storyboard-123", taskID)
+	require.Len(t, upstream.calls, 2)
+	require.Equal(t, "/backend-api/sentinel/req", upstream.calls[0].Path)
+	require.Equal(t, "/backend/nf/create/storyboard", upstream.calls[1].Path)
+REDACTED
+
+func TestSoraDirectClient_GetVideoTask_ReturnsGenerationID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/nf/pending/v2":
+			_, _ = w.Write([]byte(`[]`))
+		case "/project_y/profile/drafts":
+			_, _ = w.Write([]byte(`{"items":[{"id":"gen_1","task_id":"task-1","kind":"video","downloadable_url":"https://example.com/v.mp4"REDACTED]REDACTED`))
+		default:
+			http.NotFound(w, r)
+	REDACTED
+REDACTED))
+	defer server.Close()
+
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				BaseURL: server.URL,
+		REDACTED,
+	REDACTED,
+REDACTED
+	client := NewSoraDirectClient(cfg, nil, nil)
+	account := &Account{Credentials: map[string]any{"access_token": "token"REDACTEDREDACTED
+
+	status, err := client.GetVideoTask(context.Background(), account, "task-1")
+REDACTED
+	require.Equal(t, "completed", status.Status)
+	require.Equal(t, "gen_1", status.GenerationID)
+	require.Equal(t, []string{"https://example.com/v.mp4"REDACTED, status.URLs)
+REDACTED
+
+func TestSoraDirectClient_PostVideoForWatermarkFree(t *testing.T) {
+	originPowTokenGenerator := soraPowTokenGenerator
+	soraPowTokenGenerator = func(_ string) string { return "gAAAAACmock" REDACTED
+	defer func() { soraPowTokenGenerator = originPowTokenGenerator REDACTED()
+
+	upstream := &soraClientRecordingUpstream{REDACTED
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				BaseURL: "https://sora.chatgpt.com/backend",
+		REDACTED,
+	REDACTED,
+REDACTED
+	client := NewSoraDirectClient(cfg, upstream, nil)
+	account := &Account{
+		ID: 52,
+REDACTED
+			"access_token": "access-token",
+			"expires_at":   time.Now().Add(30 * time.Minute).Format(time.RFC3339),
+	REDACTED,
+REDACTED
+
+	postID, err := client.PostVideoForWatermarkFree(context.Background(), account, "gen_1")
+REDACTED
+	require.Equal(t, "s_post", postID)
+	require.Len(t, upstream.calls, 2)
+	require.Equal(t, "/backend-api/sentinel/req", upstream.calls[0].Path)
+	require.Equal(t, "/backend/project_y/post", upstream.calls[1].Path)
 REDACTED

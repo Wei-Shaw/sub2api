@@ -43,6 +43,45 @@ REDACTED
 func (s *stubSoraClient) CreateVideoTask(ctx context.Context, account *service.Account, req service.SoraVideoRequest) (string, error) {
 	return "task-video", nil
 REDACTED
+func (s *stubSoraClient) CreateStoryboardTask(ctx context.Context, account *service.Account, req service.SoraStoryboardRequest) (string, error) {
+	return "task-video", nil
+REDACTED
+func (s *stubSoraClient) UploadCharacterVideo(ctx context.Context, account *service.Account, data []byte) (string, error) {
+	return "cameo-1", nil
+REDACTED
+func (s *stubSoraClient) GetCameoStatus(ctx context.Context, account *service.Account, cameoID string) (*service.SoraCameoStatus, error) {
+	return &service.SoraCameoStatus{
+		Status:          "finalized",
+		StatusMessage:   "Completed",
+		DisplayNameHint: "Character",
+		UsernameHint:    "user.character",
+		ProfileAssetURL: "https://example.com/avatar.webp",
+REDACTED, nil
+REDACTED
+func (s *stubSoraClient) DownloadCharacterImage(ctx context.Context, account *service.Account, imageURL string) ([]byte, error) {
+	return []byte("avatar"), nil
+REDACTED
+func (s *stubSoraClient) UploadCharacterImage(ctx context.Context, account *service.Account, data []byte) (string, error) {
+	return "asset-pointer", nil
+REDACTED
+func (s *stubSoraClient) FinalizeCharacter(ctx context.Context, account *service.Account, req service.SoraCharacterFinalizeRequest) (string, error) {
+	return "character-1", nil
+REDACTED
+func (s *stubSoraClient) SetCharacterPublic(ctx context.Context, account *service.Account, cameoID string) error {
+	return nil
+REDACTED
+func (s *stubSoraClient) DeleteCharacter(ctx context.Context, account *service.Account, characterID string) error {
+	return nil
+REDACTED
+func (s *stubSoraClient) PostVideoForWatermarkFree(ctx context.Context, account *service.Account, generationID string) (string, error) {
+	return "s_post", nil
+REDACTED
+func (s *stubSoraClient) DeletePost(ctx context.Context, account *service.Account, postID string) error {
+	return nil
+REDACTED
+func (s *stubSoraClient) GetWatermarkFreeURLCustom(ctx context.Context, account *service.Account, parseURL, parseToken, postID string) (string, error) {
+	return "https://example.com/no-watermark.mp4", nil
+REDACTED
 func (s *stubSoraClient) EnhancePrompt(ctx context.Context, account *service.Account, prompt, expansionLevel string, durationS int) (string, error) {
 	return "enhanced prompt", nil
 REDACTED
@@ -606,4 +645,32 @@ func TestSoraHandleFailoverExhausted_CloudflareChallengeIncludesRay(t *testing.T
 	msg, _ := errorObj["message"].(string)
 	require.Contains(t, msg, "Cloudflare challenge")
 	require.Contains(t, msg, "cf-ray: 9d01b0e9ecc35829-SEA")
+REDACTED
+
+func TestSoraHandleFailoverExhausted_CfShield429MappedToRateLimitError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	headers := http.Header{REDACTED
+	headers.Set("cf-ray", "9d03b68c086027a1-SEA")
+	body := []byte(`{"error":{"code":"cf_shield_429","message":"shield blocked"REDACTEDREDACTED`)
+
+	h := &SoraGatewayHandler{REDACTED
+	h.handleFailoverExhausted(c, http.StatusTooManyRequests, headers, body, true)
+
+	lines := strings.Split(strings.TrimSuffix(w.Body.String(), "\n\n"), "\n")
+	require.Len(t, lines, 2)
+	jsonStr := strings.TrimPrefix(lines[1], "data: ")
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(jsonStr), &parsed))
+
+	errorObj, ok := parsed["error"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "rate_limit_error", errorObj["type"])
+	msg, _ := errorObj["message"].(string)
+	require.Contains(t, msg, "Cloudflare shield")
+	require.Contains(t, msg, "cf-ray: 9d03b68c086027a1-SEA")
 REDACTED
