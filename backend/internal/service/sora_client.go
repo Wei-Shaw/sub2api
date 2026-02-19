@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log"
 	"math/rand"
@@ -97,6 +98,7 @@ REDACTED
 var soraRand = rand.New(rand.NewSource(time.Now().UnixNano()))
 var soraRandMu sync.Mutex
 var soraPerfStart = time.Now()
+var soraPowTokenGenerator = soraGetPowToken
 
 // SoraClient 定义直连 Sora 的任务操作接口。
 type SoraClient interface {
@@ -224,9 +226,11 @@ REDACTED
 	if err != nil {
 		return err
 REDACTED
-	headers := c.buildBaseHeaders(token, c.defaultUserAgent())
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
+	headers := c.buildBaseHeaders(token, userAgent)
 	headers.Set("Accept", "application/json")
-	body, _, err := c.doRequest(ctx, account, http.MethodGet, c.buildURL("/nf/check"), headers, nil, false)
+	body, _, err := c.doRequestWithProxy(ctx, account, proxyURL, http.MethodGet, c.buildURL("/nf/check"), headers, nil, false)
 	if err != nil {
 		var upstreamErr *SoraUpstreamError
 		if errors.As(err, &upstreamErr) && upstreamErr.StatusCode == http.StatusNotFound {
@@ -264,6 +268,8 @@ REDACTED
 	if err != nil {
 		return "", err
 REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
 	if filename == "" {
 		filename = "image.png"
 REDACTED
@@ -290,10 +296,10 @@ REDACTED
 		return "", err
 REDACTED
 
-	headers := c.buildBaseHeaders(token, c.defaultUserAgent())
+	headers := c.buildBaseHeaders(token, userAgent)
 	headers.Set("Content-Type", writer.FormDataContentType())
 
-	respBody, _, err := c.doRequest(ctx, account, http.MethodPost, c.buildURL("/uploads"), headers, &body, false)
+	respBody, _, err := c.doRequestWithProxy(ctx, account, proxyURL, http.MethodPost, c.buildURL("/uploads"), headers, &body, false)
 	if err != nil {
 		return "", err
 REDACTED
@@ -309,6 +315,8 @@ func (c *SoraDirectClient) CreateImageTask(ctx context.Context, account *Account
 	if err != nil {
 		return "", err
 REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
 	operation := "simple_compose"
 	inpaintItems := []map[string]any{REDACTED
 	if strings.TrimSpace(req.MediaID) != "" {
@@ -329,7 +337,7 @@ REDACTED
 		"n_frames":      1,
 		"inpaint_items": inpaintItems,
 REDACTED
-	headers := c.buildBaseHeaders(token, c.defaultUserAgent())
+	headers := c.buildBaseHeaders(token, userAgent)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Origin", "https://sora.chatgpt.com")
 	headers.Set("Referer", "https://sora.chatgpt.com/")
@@ -338,13 +346,13 @@ REDACTED
 	if err != nil {
 		return "", err
 REDACTED
-	sentinel, err := c.generateSentinelToken(ctx, account, token)
+	sentinel, err := c.generateSentinelToken(ctx, account, token, userAgent, proxyURL)
 	if err != nil {
 		return "", err
 REDACTED
 	headers.Set("openai-sentinel-token", sentinel)
 
-	respBody, _, err := c.doRequest(ctx, account, http.MethodPost, c.buildURL("/video_gen"), headers, bytes.NewReader(body), true)
+	respBody, _, err := c.doRequestWithProxy(ctx, account, proxyURL, http.MethodPost, c.buildURL("/video_gen"), headers, bytes.NewReader(body), true)
 	if err != nil {
 		return "", err
 REDACTED
@@ -360,6 +368,8 @@ func (c *SoraDirectClient) CreateVideoTask(ctx context.Context, account *Account
 	if err != nil {
 		return "", err
 REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
 	orientation := req.Orientation
 	if orientation == "" {
 		orientation = "landscape"
@@ -399,7 +409,7 @@ REDACTED
 		payload["cameo_replacements"] = map[string]any{REDACTED
 REDACTED
 
-	headers := c.buildBaseHeaders(token, c.defaultUserAgent())
+	headers := c.buildBaseHeaders(token, userAgent)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Origin", "https://sora.chatgpt.com")
 	headers.Set("Referer", "https://sora.chatgpt.com/")
@@ -407,13 +417,13 @@ REDACTED
 	if err != nil {
 		return "", err
 REDACTED
-	sentinel, err := c.generateSentinelToken(ctx, account, token)
+	sentinel, err := c.generateSentinelToken(ctx, account, token, userAgent, proxyURL)
 	if err != nil {
 		return "", err
 REDACTED
 	headers.Set("openai-sentinel-token", sentinel)
 
-	respBody, _, err := c.doRequest(ctx, account, http.MethodPost, c.buildURL("/nf/create"), headers, bytes.NewReader(body), true)
+	respBody, _, err := c.doRequestWithProxy(ctx, account, proxyURL, http.MethodPost, c.buildURL("/nf/create"), headers, bytes.NewReader(body), true)
 	if err != nil {
 		return "", err
 REDACTED
@@ -429,6 +439,8 @@ func (c *SoraDirectClient) EnhancePrompt(ctx context.Context, account *Account, 
 	if err != nil {
 		return "", err
 REDACTED
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
 	if strings.TrimSpace(expansionLevel) == "" {
 		expansionLevel = "medium"
 REDACTED
@@ -446,13 +458,13 @@ REDACTED
 		return "", err
 REDACTED
 
-	headers := c.buildBaseHeaders(token, c.defaultUserAgent())
+	headers := c.buildBaseHeaders(token, userAgent)
 	headers.Set("Content-Type", "application/json")
 	headers.Set("Accept", "application/json")
 	headers.Set("Origin", "https://sora.chatgpt.com")
 	headers.Set("Referer", "https://sora.chatgpt.com/")
 
-	respBody, _, err := c.doRequest(ctx, account, http.MethodPost, c.buildURL("/editor/enhance_prompt"), headers, bytes.NewReader(body), false)
+	respBody, _, err := c.doRequestWithProxy(ctx, account, proxyURL, http.MethodPost, c.buildURL("/editor/enhance_prompt"), headers, bytes.NewReader(body), false)
 	if err != nil {
 		return "", err
 REDACTED
@@ -489,12 +501,14 @@ func (c *SoraDirectClient) fetchRecentImageTask(ctx context.Context, account *Ac
 	if err != nil {
 		return nil, false, err
 REDACTED
-	headers := c.buildBaseHeaders(token, c.defaultUserAgent())
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
+	headers := c.buildBaseHeaders(token, userAgent)
 	if limit <= 0 {
 		limit = 20
 REDACTED
 	endpoint := fmt.Sprintf("/v2/recent_tasks?limit=%d", limit)
-	respBody, _, err := c.doRequest(ctx, account, http.MethodGet, c.buildURL(endpoint), headers, nil, false)
+	respBody, _, err := c.doRequestWithProxy(ctx, account, proxyURL, http.MethodGet, c.buildURL(endpoint), headers, nil, false)
 	if err != nil {
 		return nil, false, err
 REDACTED
@@ -551,9 +565,11 @@ func (c *SoraDirectClient) GetVideoTask(ctx context.Context, account *Account, t
 	if err != nil {
 		return nil, err
 REDACTED
-	headers := c.buildBaseHeaders(token, c.defaultUserAgent())
+	userAgent := c.taskUserAgent()
+	proxyURL := c.resolveProxyURL(account)
+	headers := c.buildBaseHeaders(token, userAgent)
 
-	respBody, _, err := c.doRequest(ctx, account, http.MethodGet, c.buildURL("/nf/pending/v2"), headers, nil, false)
+	respBody, _, err := c.doRequestWithProxy(ctx, account, proxyURL, http.MethodGet, c.buildURL("/nf/pending/v2"), headers, nil, false)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -582,7 +598,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	respBody, _, err = c.doRequest(ctx, account, http.MethodGet, c.buildURL("/project_y/profile/drafts?limit=15"), headers, nil, false)
+	respBody, _, err = c.doRequestWithProxy(ctx, account, proxyURL, http.MethodGet, c.buildURL("/project_y/profile/drafts?limit=15"), headers, nil, false)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -651,6 +667,25 @@ REDACTED
 		return soraDefaultUserAgent
 REDACTED
 	return ua
+REDACTED
+
+func (c *SoraDirectClient) taskUserAgent() string {
+	if c != nil && c.cfg != nil {
+		if ua := strings.TrimSpace(c.cfg.Sora.Client.UserAgent); ua != "" {
+			return ua
+	REDACTED
+REDACTED
+	if len(soraDesktopUserAgents) > 0 {
+		return soraDesktopUserAgents[0]
+REDACTED
+	return soraDefaultUserAgent
+REDACTED
+
+func (c *SoraDirectClient) resolveProxyURL(account *Account) string {
+	if account == nil || account.ProxyID == nil || account.Proxy == nil {
+		return ""
+REDACTED
+	return strings.TrimSpace(account.Proxy.URL())
 REDACTED
 
 func (c *SoraDirectClient) getAccessToken(ctx context.Context, account *Account) (string, error) {
@@ -925,8 +960,25 @@ REDACTED
 REDACTED
 
 func (c *SoraDirectClient) doRequest(ctx context.Context, account *Account, method, urlStr string, headers http.Header, body io.Reader, allowRetry bool) ([]byte, http.Header, error) {
+	return c.doRequestWithProxy(ctx, account, c.resolveProxyURL(account), method, urlStr, headers, body, allowRetry)
+REDACTED
+
+func (c *SoraDirectClient) doRequestWithProxy(
+	ctx context.Context,
+	account *Account,
+	proxyURL string,
+	method,
+	urlStr string,
+	headers http.Header,
+	body io.Reader,
+	allowRetry bool,
+) ([]byte, http.Header, error) {
 	if strings.TrimSpace(urlStr) == "" {
 		return nil, nil, errors.New("empty upstream url")
+REDACTED
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL == "" {
+		proxyURL = c.resolveProxyURL(account)
 REDACTED
 	timeout := 0
 	if c != nil && c.cfg != nil {
@@ -968,7 +1020,7 @@ REDACTED
 				attempts,
 				timeout,
 				len(bodyBytes),
-				account != nil && account.ProxyID != nil && account.Proxy != nil,
+				proxyURL != "",
 				formatSoraHeaders(headers),
 			)
 	REDACTED
@@ -984,10 +1036,6 @@ REDACTED
 		req.Header = headers.Clone()
 		start := time.Now()
 
-		proxyURL := ""
-		if account != nil && account.ProxyID != nil && account.Proxy != nil {
-			proxyURL = account.Proxy.URL()
-	REDACTED
 		resp, err := c.doHTTP(req, proxyURL, account)
 		if err != nil {
 			lastErr = err
@@ -1183,10 +1231,13 @@ REDACTED
 	return "(请检查 sora.client.base_url，建议配置为 https://sora.chatgpt.com/backend)"
 REDACTED
 
-func (c *SoraDirectClient) generateSentinelToken(ctx context.Context, account *Account, accessToken string) (string, error) {
+func (c *SoraDirectClient) generateSentinelToken(ctx context.Context, account *Account, accessToken, userAgent, proxyURL string) (string, error) {
 	reqID := uuid.NewString()
-	userAgent := soraRandChoice(soraDesktopUserAgents)
-	powToken := soraGetPowToken(userAgent)
+	userAgent = strings.TrimSpace(userAgent)
+	if userAgent == "" {
+		userAgent = c.taskUserAgent()
+REDACTED
+	powToken := soraPowTokenGenerator(userAgent)
 	payload := map[string]any{
 		"p":    powToken,
 		"flow": soraSentinelFlow,
@@ -1207,7 +1258,7 @@ REDACTED
 REDACTED
 
 	urlStr := soraChatGPTBaseURL + "/backend-api/sentinel/req"
-	respBody, _, err := c.doRequest(ctx, account, http.MethodPost, urlStr, headers, bytes.NewReader(body), true)
+	respBody, _, err := c.doRequestWithProxy(ctx, account, proxyURL, http.MethodPost, urlStr, headers, bytes.NewReader(body), true)
 	if err != nil {
 		return "", err
 REDACTED
@@ -1221,16 +1272,6 @@ REDACTED
 		return "", errors.New("failed to build sentinel token")
 REDACTED
 	return sentinel, nil
-REDACTED
-
-func soraRandChoice(items []string) string {
-	if len(items) == 0 {
-		return ""
-REDACTED
-	soraRandMu.Lock()
-	idx := soraRand.Intn(len(items))
-	soraRandMu.Unlock()
-	return items[idx]
 REDACTED
 
 func soraGetPowToken(userAgent string) string {
@@ -1248,13 +1289,16 @@ func soraRandFloat() float64 {
 REDACTED
 
 func soraBuildPowConfig(userAgent string) []any {
-	screen := soraRandChoice([]string{
-		strconv.Itoa(1920 + 1080),
-		strconv.Itoa(2560 + 1440),
-		strconv.Itoa(1920 + 1200),
-		strconv.Itoa(2560 + 1600),
-REDACTED)
-	screenVal, _ := strconv.Atoi(screen)
+	userAgent = strings.TrimSpace(userAgent)
+	if userAgent == "" && len(soraDesktopUserAgents) > 0 {
+		userAgent = soraDesktopUserAgents[0]
+REDACTED
+	screenVal := soraStableChoiceInt([]int{
+		1920 + 1080,
+		2560 + 1440,
+		1920 + 1200,
+		2560 + 1600,
+REDACTED, userAgent+"|screen")
 	perfMs := float64(time.Since(soraPerfStart).Milliseconds())
 	wallMs := float64(time.Now().UnixNano()) / 1e6
 	diff := wallMs - perfMs
@@ -1264,30 +1308,45 @@ REDACTED)
 		4294705152,
 		0,
 		userAgent,
-		soraRandChoice(soraPowScripts),
-		soraRandChoice(soraPowDPL),
+		soraStableChoice(soraPowScripts, userAgent+"|script"),
+		soraStableChoice(soraPowDPL, userAgent+"|dpl"),
 		"en-US",
 		"en-US,es-US,en,es",
 		0,
-		soraRandChoice(soraPowNavigatorKeys),
-		soraRandChoice(soraPowDocumentKeys),
-		soraRandChoice(soraPowWindowKeys),
+		soraStableChoice(soraPowNavigatorKeys, userAgent+"|navigator"),
+		soraStableChoice(soraPowDocumentKeys, userAgent+"|document"),
+		soraStableChoice(soraPowWindowKeys, userAgent+"|window"),
 		perfMs,
 		uuid.NewString(),
 		"",
-		soraRandChoiceInt(soraPowCores),
+		soraStableChoiceInt(soraPowCores, userAgent+"|cores"),
 		diff,
 REDACTED
 REDACTED
 
-func soraRandChoiceInt(items []int) int {
+func soraStableChoice(items []string, seed string) string {
+	if len(items) == 0 {
+		return ""
+REDACTED
+	idx := soraStableIndex(seed, len(items))
+	return items[idx]
+REDACTED
+
+func soraStableChoiceInt(items []int, seed string) int {
 	if len(items) == 0 {
 		return 0
 REDACTED
-	soraRandMu.Lock()
-	idx := soraRand.Intn(len(items))
-	soraRandMu.Unlock()
+	idx := soraStableIndex(seed, len(items))
 	return items[idx]
+REDACTED
+
+func soraStableIndex(seed string, size int) int {
+	if size <= 0 {
+		return 0
+REDACTED
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(seed))
+	return int(h.Sum32() % uint32(size))
 REDACTED
 
 func soraPowParseTime() string {

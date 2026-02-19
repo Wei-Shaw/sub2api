@@ -561,7 +561,7 @@ func TestSoraHandleFailoverExhausted_StreamPassesUpstreamMessage(t *testing.T) {
 
 	h := &SoraGatewayHandler{REDACTED
 	resp := []byte(`{"error":{"message":"invalid \"prompt\"\nline2","code":"bad_request"REDACTEDREDACTED`)
-	h.handleFailoverExhausted(c, http.StatusBadGateway, resp, true)
+	h.handleFailoverExhausted(c, http.StatusBadGateway, nil, resp, true)
 
 	body := w.Body.String()
 	require.True(t, strings.HasPrefix(body, "event: error\n"))
@@ -578,4 +578,32 @@ func TestSoraHandleFailoverExhausted_StreamPassesUpstreamMessage(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "upstream_error", errorObj["type"])
 	require.Equal(t, "invalid \"prompt\"\nline2", errorObj["message"])
+REDACTED
+
+func TestSoraHandleFailoverExhausted_CloudflareChallengeIncludesRay(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	headers := http.Header{REDACTED
+	headers.Set("cf-ray", "9d01b0e9ecc35829-SEA")
+	body := []byte(`<!DOCTYPE html><html><head><title>Just a moment...</title></head><body><script>window._cf_chl_opt={REDACTED;</script></body></html>`)
+
+	h := &SoraGatewayHandler{REDACTED
+	h.handleFailoverExhausted(c, http.StatusForbidden, headers, body, true)
+
+	lines := strings.Split(strings.TrimSuffix(w.Body.String(), "\n\n"), "\n")
+	require.Len(t, lines, 2)
+	jsonStr := strings.TrimPrefix(lines[1], "data: ")
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(jsonStr), &parsed))
+
+	errorObj, ok := parsed["error"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "upstream_error", errorObj["type"])
+	msg, _ := errorObj["message"].(string)
+	require.Contains(t, msg, "Cloudflare challenge")
+	require.Contains(t, msg, "cf-ray: 9d01b0e9ecc35829-SEA")
 REDACTED

@@ -202,3 +202,22 @@ REDACTED
 	require.Contains(t, body, "cf-ray: 9cff2d62d83bb98d")
 	require.Contains(t, body, `"type":"test_complete","success":true`)
 REDACTED
+
+func TestSanitizeProxyURLForLog(t *testing.T) {
+	require.Equal(t, "http://proxy.example.com:8080", sanitizeProxyURLForLog("http://user:pass@proxy.example.com:8080"))
+	require.Equal(t, "", sanitizeProxyURLForLog(""))
+	require.Equal(t, "<invalid_proxy_url>", sanitizeProxyURLForLog("://invalid"))
+REDACTED
+
+func TestExtractSoraEgressIPHint(t *testing.T) {
+	h := make(http.Header)
+	h.Set("x-openai-public-ip", "203.0.113.10")
+	require.Equal(t, "203.0.113.10", extractSoraEgressIPHint(h))
+
+	h2 := make(http.Header)
+	h2.Set("x-envoy-external-address", "198.51.100.9")
+	require.Equal(t, "198.51.100.9", extractSoraEgressIPHint(h2))
+
+	require.Equal(t, "unknown", extractSoraEgressIPHint(nil))
+	require.Equal(t, "unknown", extractSoraEgressIPHint(http.Header{REDACTED))
+REDACTED

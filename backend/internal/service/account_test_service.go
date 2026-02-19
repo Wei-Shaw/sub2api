@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -522,6 +523,7 @@ REDACTED
 
 	if resp.StatusCode != http.StatusOK {
 		if isCloudflareChallengeResponse(resp.StatusCode, body) {
+			s.logSoraCloudflareChallenge(account, proxyURL, soraMeAPIURL, resp.Header, body)
 			return s.sendErrorAndEnd(c, formatCloudflareChallengeMessage("Sora request blocked by Cloudflare challenge (HTTP 403). Please switch to a clean proxy/network and retry.", resp.Header, body))
 	REDACTED
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Sora API returned %d: %s", resp.StatusCode, truncateSoraErrorBody(body, 512)))
@@ -567,6 +569,7 @@ REDACTED
 			REDACTED
 		REDACTED else {
 				if isCloudflareChallengeResponse(subResp.StatusCode, subBody) {
+					s.logSoraCloudflareChallenge(account, proxyURL, soraBillingAPIURL, subResp.Header, subBody)
 					s.sendEvent(c, TestEvent{Type: "content", Text: formatCloudflareChallengeMessage("Subscription check blocked by Cloudflare challenge (HTTP 403)", subResp.Header, subBody)REDACTED)
 			REDACTED else {
 					s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Subscription check returned %d", subResp.StatusCode)REDACTED)
@@ -822,6 +825,75 @@ REDACTED
 		return strings.TrimSpace(matches[1])
 REDACTED
 	return ""
+REDACTED
+
+func extractSoraEgressIPHint(headers http.Header) string {
+	if headers == nil {
+		return "unknown"
+REDACTED
+	candidates := []string{
+		"x-openai-public-ip",
+		"x-envoy-external-address",
+		"cf-connecting-ip",
+		"x-forwarded-for",
+REDACTED
+	for _, key := range candidates {
+		if value := strings.TrimSpace(headers.Get(key)); value != "" {
+			return value
+	REDACTED
+REDACTED
+	return "unknown"
+REDACTED
+
+func sanitizeProxyURLForLog(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+REDACTED
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "<invalid_proxy_url>"
+REDACTED
+	if u.User != nil {
+		u.User = nil
+REDACTED
+	return u.String()
+REDACTED
+
+func endpointPathForLog(endpoint string) string {
+	parsed, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil || parsed.Path == "" {
+		return endpoint
+REDACTED
+	return parsed.Path
+REDACTED
+
+func (s *AccountTestService) logSoraCloudflareChallenge(account *Account, proxyURL, endpoint string, headers http.Header, body []byte) {
+	accountID := int64(0)
+	platform := ""
+	proxyID := "none"
+	if account != nil {
+		accountID = account.ID
+		platform = account.Platform
+		if account.ProxyID != nil {
+			proxyID = fmt.Sprintf("%d", *account.ProxyID)
+	REDACTED
+REDACTED
+	cfRay := extractCloudflareRayID(headers, body)
+	if cfRay == "" {
+		cfRay = "unknown"
+REDACTED
+	log.Printf(
+		"[SoraCFChallenge] account_id=%d platform=%s endpoint=%s path=%s proxy_id=%s proxy_url=%s cf_ray=%s egress_ip_hint=%s",
+		accountID,
+		platform,
+		endpoint,
+		endpointPathForLog(endpoint),
+		proxyID,
+		sanitizeProxyURLForLog(proxyURL),
+		cfRay,
+		extractSoraEgressIPHint(headers),
+	)
 REDACTED
 
 func truncateSoraErrorBody(body []byte, max int) string {

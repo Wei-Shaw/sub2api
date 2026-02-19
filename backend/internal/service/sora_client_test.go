@@ -5,6 +5,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -364,4 +366,167 @@ func TestShouldAttemptSoraTokenRecover(t *testing.T) {
 	require.False(t, shouldAttemptSoraTokenRecover(http.StatusUnauthorized, "https://sora.chatgpt.com/api/auth/session"))
 	require.False(t, shouldAttemptSoraTokenRecover(http.StatusUnauthorized, "https://auth.openai.com/oauth/token"))
 	require.False(t, shouldAttemptSoraTokenRecover(http.StatusTooManyRequests, "https://sora.chatgpt.com/backend/video_gen"))
+REDACTED
+
+type soraClientRequestCall struct {
+	Path      string
+	UserAgent string
+	ProxyURL  string
+REDACTED
+
+type soraClientRecordingUpstream struct {
+	calls []soraClientRequestCall
+REDACTED
+
+func (u *soraClientRecordingUpstream) Do(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	return nil, errors.New("unexpected Do call")
+REDACTED
+
+func (u *soraClientRecordingUpstream) DoWithTLS(req *http.Request, proxyURL string, _ int64, _ int, _ bool) (*http.Response, error) {
+	u.calls = append(u.calls, soraClientRequestCall{
+		Path:      req.URL.Path,
+		UserAgent: req.Header.Get("User-Agent"),
+		ProxyURL:  proxyURL,
+REDACTED)
+	switch req.URL.Path {
+	case "/backend-api/sentinel/req":
+		return newSoraClientMockResponse(http.StatusOK, `{"token":"sentinel-token","turnstile":{"dx":"ok"REDACTEDREDACTED`), nil
+	case "/backend/nf/create":
+		return newSoraClientMockResponse(http.StatusOK, `{"id":"task-123"REDACTED`), nil
+	case "/backend/uploads":
+		return newSoraClientMockResponse(http.StatusOK, `{"id":"upload-123"REDACTED`), nil
+	case "/backend/nf/check":
+		return newSoraClientMockResponse(http.StatusOK, `{"rate_limit_and_credit_balance":{"estimated_num_videos_remaining":1,"rate_limit_reached":falseREDACTEDREDACTED`), nil
+	default:
+		return newSoraClientMockResponse(http.StatusOK, `{"ok":trueREDACTED`), nil
+REDACTED
+REDACTED
+
+func newSoraClientMockResponse(statusCode int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: statusCode,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
+REDACTED
+REDACTED
+
+func TestSoraDirectClient_TaskUserAgent_DefaultDesktopFallback(t *testing.T) {
+	client := NewSoraDirectClient(&config.Config{REDACTED, nil, nil)
+	require.Equal(t, soraDesktopUserAgents[0], client.taskUserAgent())
+REDACTED
+
+func TestSoraDirectClient_CreateVideoTask_UsesSameUserAgentAndProxyForSentinelAndCreate(t *testing.T) {
+	originPowTokenGenerator := soraPowTokenGenerator
+	soraPowTokenGenerator = func(_ string) string { return "gAAAAACmock" REDACTED
+	defer func() {
+		soraPowTokenGenerator = originPowTokenGenerator
+REDACTED()
+
+	upstream := &soraClientRecordingUpstream{REDACTED
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				BaseURL: "https://sora.chatgpt.com/backend",
+		REDACTED,
+	REDACTED,
+REDACTED
+	client := NewSoraDirectClient(cfg, upstream, nil)
+	proxyID := int64(9)
+	account := &Account{
+		ID:          21,
+		Platform:    PlatformSora,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		ProxyID:     &proxyID,
+		Proxy: &Proxy{
+			Protocol: "http",
+			Host:     "127.0.0.1",
+			Port:     8080,
+	REDACTED,
+REDACTED
+			"access_token": "access-token",
+			"expires_at":   time.Now().Add(30 * time.Minute).Format(time.RFC3339),
+	REDACTED,
+REDACTED
+
+	taskID, err := client.CreateVideoTask(context.Background(), account, SoraVideoRequest{Prompt: "test"REDACTED)
+REDACTED
+	require.Equal(t, "task-123", taskID)
+	require.Len(t, upstream.calls, 2)
+
+	sentinelCall := upstream.calls[0]
+	createCall := upstream.calls[1]
+	require.Equal(t, "/backend-api/sentinel/req", sentinelCall.Path)
+	require.Equal(t, "/backend/nf/create", createCall.Path)
+	require.Equal(t, "http://127.0.0.1:8080", sentinelCall.ProxyURL)
+	require.Equal(t, sentinelCall.ProxyURL, createCall.ProxyURL)
+	require.Equal(t, soraDesktopUserAgents[0], sentinelCall.UserAgent)
+	require.Equal(t, sentinelCall.UserAgent, createCall.UserAgent)
+REDACTED
+
+func TestSoraDirectClient_UploadImage_UsesTaskUserAgentAndProxy(t *testing.T) {
+	upstream := &soraClientRecordingUpstream{REDACTED
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				BaseURL: "https://sora.chatgpt.com/backend",
+		REDACTED,
+	REDACTED,
+REDACTED
+	client := NewSoraDirectClient(cfg, upstream, nil)
+	proxyID := int64(3)
+	account := &Account{
+		ID:      31,
+		ProxyID: &proxyID,
+		Proxy: &Proxy{
+			Protocol: "http",
+			Host:     "127.0.0.1",
+			Port:     8080,
+	REDACTED,
+REDACTED
+			"access_token": "access-token",
+			"expires_at":   time.Now().Add(30 * time.Minute).Format(time.RFC3339),
+	REDACTED,
+REDACTED
+
+	uploadID, err := client.UploadImage(context.Background(), account, []byte("mock-image"), "a.png")
+REDACTED
+	require.Equal(t, "upload-123", uploadID)
+	require.Len(t, upstream.calls, 1)
+	require.Equal(t, "/backend/uploads", upstream.calls[0].Path)
+	require.Equal(t, "http://127.0.0.1:8080", upstream.calls[0].ProxyURL)
+	require.Equal(t, soraDesktopUserAgents[0], upstream.calls[0].UserAgent)
+REDACTED
+
+func TestSoraDirectClient_PreflightCheck_UsesTaskUserAgentAndProxy(t *testing.T) {
+	upstream := &soraClientRecordingUpstream{REDACTED
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				BaseURL: "https://sora.chatgpt.com/backend",
+		REDACTED,
+	REDACTED,
+REDACTED
+	client := NewSoraDirectClient(cfg, upstream, nil)
+	proxyID := int64(7)
+	account := &Account{
+		ID:      41,
+		ProxyID: &proxyID,
+		Proxy: &Proxy{
+			Protocol: "http",
+			Host:     "127.0.0.1",
+			Port:     8080,
+	REDACTED,
+REDACTED
+			"access_token": "access-token",
+			"expires_at":   time.Now().Add(30 * time.Minute).Format(time.RFC3339),
+	REDACTED,
+REDACTED
+
+	err := client.PreflightCheck(context.Background(), account, "sora2", SoraModelConfig{Type: "video"REDACTED)
+REDACTED
+	require.Len(t, upstream.calls, 1)
+	require.Equal(t, "/backend/nf/check", upstream.calls[0].Path)
+	require.Equal(t, "http://127.0.0.1:8080", upstream.calls[0].ProxyURL)
+	require.Equal(t, soraDesktopUserAgents[0], upstream.calls[0].UserAgent)
 REDACTED

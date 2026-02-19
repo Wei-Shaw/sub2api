@@ -376,8 +376,9 @@ REDACTED
 type UpstreamFailoverError struct {
 	StatusCode             int
 	ResponseBody           []byte // 上游响应体，用于错误透传规则匹配
-	ForceCacheBilling      bool   // Antigravity 粘性会话切换时设为 true
-	RetryableOnSameAccount bool   // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
+	ResponseHeaders        http.Header
+	ForceCacheBilling      bool // Antigravity 粘性会话切换时设为 true
+	RetryableOnSameAccount bool // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
 REDACTED
 
 func (e *UpstreamFailoverError) Error() string {

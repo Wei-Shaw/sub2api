@@ -468,7 +468,18 @@ func (s *SoraGatewayService) writeSoraError(c *gin.Context, status int, errType,
 REDACTED
 	if stream {
 		flusher, _ := c.Writer.(http.Flusher)
-		errorEvent := fmt.Sprintf(`event: error`+"\n"+`data: {"error": {"type": "%s", "message": "%s"REDACTEDREDACTED`+"\n\n", errType, message)
+		errorData := map[string]any{
+			"error": map[string]string{
+				"type":    errType,
+				"message": message,
+		REDACTED,
+	REDACTED
+		jsonBytes, err := json.Marshal(errorData)
+		if err != nil {
+			_ = c.Error(err)
+			return
+	REDACTED
+		errorEvent := fmt.Sprintf("event: error\ndata: %s\n\n", string(jsonBytes))
 		_, _ = fmt.Fprint(c.Writer, errorEvent)
 		_, _ = fmt.Fprint(c.Writer, "data: [DONE]\n\n")
 		if flusher != nil {
@@ -494,7 +505,11 @@ REDACTED
 			s.rateLimitService.HandleUpstreamError(ctx, account, upstreamErr.StatusCode, upstreamErr.Headers, upstreamErr.Body)
 	REDACTED
 		if s.shouldFailoverUpstreamError(upstreamErr.StatusCode) {
-			return &UpstreamFailoverError{StatusCode: upstreamErr.StatusCode, ResponseBody: upstreamErr.BodyREDACTED
+			return &UpstreamFailoverError{
+				StatusCode:      upstreamErr.StatusCode,
+				ResponseBody:    upstreamErr.Body,
+				ResponseHeaders: upstreamErr.Headers,
+		REDACTED
 	REDACTED
 		msg := upstreamErr.Message
 		if override := soraProErrorMessage(model, msg); override != "" {

@@ -4,10 +4,15 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -208,6 +213,33 @@ func TestSoraProErrorMessage(t *testing.T) {
 	require.Contains(t, soraProErrorMessage("sora2pro-hd", ""), "Pro-HD")
 	require.Contains(t, soraProErrorMessage("sora2pro", ""), "Pro")
 	require.Empty(t, soraProErrorMessage("sora-basic", ""))
+REDACTED
+
+func TestSoraGatewayService_WriteSoraError_StreamEscapesJSON(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	svc := NewSoraGatewayService(nil, nil, nil, &config.Config{REDACTED)
+	svc.writeSoraError(c, http.StatusBadGateway, "upstream_error", "invalid \"prompt\"\nline2", true)
+
+	body := rec.Body.String()
+	require.Contains(t, body, "event: error\n")
+	require.Contains(t, body, "data: [DONE]\n\n")
+
+	lines := strings.Split(body, "\n")
+	require.GreaterOrEqual(t, len(lines), 2)
+	require.Equal(t, "event: error", lines[0])
+	require.True(t, strings.HasPrefix(lines[1], "data: "))
+
+	data := strings.TrimPrefix(lines[1], "data: ")
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(data), &parsed))
+	errObj, ok := parsed["error"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "upstream_error", errObj["type"])
+	require.Equal(t, "invalid \"prompt\"\nline2", errObj["message"])
 REDACTED
 
 func TestShouldFailoverUpstreamError(t *testing.T) {
