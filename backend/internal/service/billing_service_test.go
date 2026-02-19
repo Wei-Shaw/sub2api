@@ -399,8 +399,8 @@ func TestCalculateCost_SupportsCacheBreakdown(t *testing.T) {
 				InputPricePerToken:     3e-6,
 				OutputPricePerToken:    15e-6,
 				SupportsCacheBreakdown: true,
-				CacheCreation5mPrice:   4.0, // per million tokens
-				CacheCreation1hPrice:   5.0, // per million tokens
+				CacheCreation5mPrice:   4e-6, // per token
+				CacheCreation1hPrice:   5e-6, // per token
 		REDACTED,
 	REDACTED,
 REDACTED
@@ -414,8 +414,8 @@ REDACTED
 	cost, err := svc.CalculateCost("claude-sonnet-4", tokens, 1.0)
 REDACTED
 
-	expected5m := float64(100000) / 1_000_000 * 4.0
-	expected1h := float64(50000) / 1_000_000 * 5.0
+	expected5m := float64(tokens.CacheCreation5mTokens) * 4e-6
+	expected1h := float64(tokens.CacheCreation1hTokens) * 5e-6
 	require.InDelta(t, expected5m+expected1h, cost.CacheCreationCost, 1e-10)
 REDACTED
 
