@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -638,4 +639,145 @@ REDACTED
 	require.Len(t, upstream.calls, 2)
 	require.Equal(t, "/backend-api/sentinel/req", upstream.calls[0].Path)
 	require.Equal(t, "/backend/project_y/post", upstream.calls[1].Path)
+REDACTED
+
+type soraClientFallbackUpstream struct {
+	doWithTLSCalls int32
+	respBody       string
+	respStatusCode int
+	err            error
+REDACTED
+
+func (u *soraClientFallbackUpstream) Do(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	return nil, errors.New("unexpected Do call")
+REDACTED
+
+func (u *soraClientFallbackUpstream) DoWithTLS(_ *http.Request, _ string, _ int64, _ int, _ bool) (*http.Response, error) {
+	atomic.AddInt32(&u.doWithTLSCalls, 1)
+	if u.err != nil {
+		return nil, u.err
+REDACTED
+	statusCode := u.respStatusCode
+	if statusCode <= 0 {
+		statusCode = http.StatusOK
+REDACTED
+	body := u.respBody
+	if body == "" {
+		body = `{"ok":trueREDACTED`
+REDACTED
+	return newSoraClientMockResponse(statusCode, body), nil
+REDACTED
+
+func TestSoraDirectClient_DoHTTP_UsesCurlCFFISidecarWhenEnabled(t *testing.T) {
+	var captured soraCurlCFFISidecarRequest
+	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/request", r.URL.Path)
+		raw, err := io.ReadAll(r.Body)
+	REDACTED
+		require.NoError(t, json.Unmarshal(raw, &captured))
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status_code": http.StatusOK,
+			"headers": map[string]any{
+				"Content-Type": "application/json",
+				"X-Sidecar":    []string{"yes"REDACTED,
+		REDACTED,
+			"body_base64": base64.StdEncoding.EncodeToString([]byte(`{"ok":trueREDACTED`)),
+	REDACTED)
+REDACTED))
+	defer sidecar.Close()
+
+	upstream := &soraClientFallbackUpstream{REDACTED
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				BaseURL: "https://sora.chatgpt.com/backend",
+				CurlCFFISidecar: config.SoraCurlCFFISidecarConfig{
+					Enabled:        true,
+					BaseURL:        sidecar.URL,
+					Impersonate:    "chrome131",
+					TimeoutSeconds: 15,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	client := NewSoraDirectClient(cfg, upstream, nil)
+	req, err := http.NewRequest(http.MethodPost, "https://sora.chatgpt.com/backend/me", strings.NewReader("hello-sidecar"))
+REDACTED
+	req.Header.Set("User-Agent", "test-ua")
+
+	resp, err := client.doHTTP(req, "http://127.0.0.1:18080", &Account{ID: 1REDACTED)
+REDACTED
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+REDACTED
+
+	require.JSONEq(t, `{"ok":trueREDACTED`, string(body))
+	require.Equal(t, int32(0), atomic.LoadInt32(&upstream.doWithTLSCalls))
+	require.Equal(t, "http://127.0.0.1:18080", captured.ProxyURL)
+	require.Equal(t, "chrome131", captured.Impersonate)
+	require.Equal(t, "https://sora.chatgpt.com/backend/me", captured.URL)
+	decodedReqBody, err := base64.StdEncoding.DecodeString(captured.BodyBase64)
+REDACTED
+	require.Equal(t, "hello-sidecar", string(decodedReqBody))
+REDACTED
+
+func TestSoraDirectClient_DoHTTP_CurlCFFISidecarFailureReturnsError(t *testing.T) {
+	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":"boom"REDACTED`))
+REDACTED))
+	defer sidecar.Close()
+
+	upstream := &soraClientFallbackUpstream{respBody: `{"fallback":trueREDACTED`REDACTED
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				BaseURL: "https://sora.chatgpt.com/backend",
+				CurlCFFISidecar: config.SoraCurlCFFISidecarConfig{
+					Enabled: true,
+					BaseURL: sidecar.URL,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	client := NewSoraDirectClient(cfg, upstream, nil)
+	req, err := http.NewRequest(http.MethodGet, "https://sora.chatgpt.com/backend/me", nil)
+REDACTED
+
+	_, err = client.doHTTP(req, "", &Account{ID: 2REDACTED)
+REDACTED
+	require.Contains(t, err.Error(), "sora curl_cffi sidecar")
+	require.Equal(t, int32(0), atomic.LoadInt32(&upstream.doWithTLSCalls))
+REDACTED
+
+func TestSoraDirectClient_DoHTTP_CurlCFFISidecarDisabledUsesLegacyStack(t *testing.T) {
+	upstream := &soraClientFallbackUpstream{respBody: `{"legacy":trueREDACTED`REDACTED
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				BaseURL: "https://sora.chatgpt.com/backend",
+				CurlCFFISidecar: config.SoraCurlCFFISidecarConfig{
+					Enabled: false,
+					BaseURL: "http://127.0.0.1:18080",
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	client := NewSoraDirectClient(cfg, upstream, nil)
+	req, err := http.NewRequest(http.MethodGet, "https://sora.chatgpt.com/backend/me", nil)
+REDACTED
+
+	resp, err := client.doHTTP(req, "", &Account{ID: 3REDACTED)
+REDACTED
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+REDACTED
+	require.JSONEq(t, `{"legacy":trueREDACTED`, string(body))
+	require.Equal(t, int32(1), atomic.LoadInt32(&upstream.doWithTLSCalls))
+REDACTED
+
+func TestConvertSidecarHeaderValue_NilAndSlice(t *testing.T) {
+	require.Nil(t, convertSidecarHeaderValue(nil))
+	require.Equal(t, []string{"a", "b"REDACTED, convertSidecarHeaderValue([]any{"a", " ", "b"REDACTED))
 REDACTED

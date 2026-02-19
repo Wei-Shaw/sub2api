@@ -1024,3 +1024,52 @@ REDACTED
 	REDACTED)
 REDACTED
 REDACTED
+
+func TestSoraCurlCFFISidecarDefaults(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	if !cfg.Sora.Client.CurlCFFISidecar.Enabled {
+		t.Fatalf("Sora curl_cffi sidecar should be enabled by default")
+REDACTED
+	if cfg.Sora.Client.CurlCFFISidecar.BaseURL == "" {
+		t.Fatalf("Sora curl_cffi sidecar base_url should not be empty by default")
+REDACTED
+	if cfg.Sora.Client.CurlCFFISidecar.Impersonate == "" {
+		t.Fatalf("Sora curl_cffi sidecar impersonate should not be empty by default")
+REDACTED
+REDACTED
+
+func TestValidateSoraCurlCFFISidecarRequired(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	cfg.Sora.Client.CurlCFFISidecar.Enabled = false
+	err = cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "sora.client.curl_cffi_sidecar.enabled must be true") {
+		t.Fatalf("Validate() error = %v, want sidecar enabled error", err)
+REDACTED
+REDACTED
+
+func TestValidateSoraCurlCFFISidecarBaseURLRequired(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	cfg.Sora.Client.CurlCFFISidecar.BaseURL = "   "
+	err = cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "sora.client.curl_cffi_sidecar.base_url is required") {
+		t.Fatalf("Validate() error = %v, want sidecar base_url required error", err)
+REDACTED
+REDACTED

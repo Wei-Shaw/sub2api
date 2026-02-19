@@ -402,6 +402,21 @@ sora:
     # Disable TLS fingerprint for Sora upstream
     # 关闭 Sora 上游 TLS 指纹伪装
     disable_tls_fingerprint: false
+    # curl_cffi sidecar for Sora only (required)
+    # 仅 Sora 链路使用的 curl_cffi sidecar（必需）
+    curl_cffi_sidecar:
+      # Sora 强制通过 sidecar 请求，必须启用
+      # Sora is forced to use sidecar only; keep enabled=true
+      enabled: true
+      # Sidecar base URL (default endpoint: /request)
+      # sidecar 基础地址（默认请求端点：/request）
+      base_url: "http://sora-curl-cffi-sidecar:8080"
+      # curl_cffi impersonate profile, e.g. chrome131/chrome124/safari18_0
+      # curl_cffi 指纹伪装 profile，例如 chrome131/chrome124/safari18_0
+      impersonate: "chrome131"
+      # Sidecar request timeout (seconds)
+      # sidecar 请求超时（秒）
+      timeout_seconds: 60
   storage:
     # Storage type (local only for now)
     # 存储类型（首发仅支持 local）

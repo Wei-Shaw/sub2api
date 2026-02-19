@@ -1630,6 +1630,14 @@ REDACTED
 REDACTED
 
 func (c *SoraDirectClient) doHTTP(req *http.Request, proxyURL string, account *Account) (*http.Response, error) {
+	if c != nil && c.cfg != nil && c.cfg.Sora.Client.CurlCFFISidecar.Enabled {
+		resp, err := c.doHTTPViaCurlCFFISidecar(req, proxyURL)
+		if err != nil {
+			return nil, err
+	REDACTED
+		return resp, nil
+REDACTED
+
 	enableTLS := c == nil || c.cfg == nil || !c.cfg.Sora.Client.DisableTLSFingerprint
 	if c.httpUpstream != nil {
 		accountID := int64(0)
