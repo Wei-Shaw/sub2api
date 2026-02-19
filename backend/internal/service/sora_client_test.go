@@ -833,7 +833,7 @@ REDACTED
 	require.Equal(t, captured[0].SessionKey, captured[1].SessionKey)
 REDACTED
 
-func TestSoraDirectClient_DoRequestWithProxy_CloudflareChallengeSetsCooldownAndSkipsRetry(t *testing.T) {
+func TestSoraDirectClient_DoRequestWithProxy_CloudflareChallengeSetsCooldownAfterSingleRetry(t *testing.T) {
 	var sidecarCalls int32
 	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&sidecarCalls, 1)
@@ -879,7 +879,7 @@ REDACTED
 	var upstreamErr *SoraUpstreamError
 	require.ErrorAs(t, err, &upstreamErr)
 	require.Equal(t, http.StatusForbidden, upstreamErr.StatusCode)
-	require.Equal(t, int32(1), atomic.LoadInt32(&sidecarCalls), "challenge should not trigger retry loop")
+	require.Equal(t, int32(2), atomic.LoadInt32(&sidecarCalls), "challenge should trigger exactly one same-proxy retry")
 
 	_, _, err = client.doRequestWithProxy(
 		context.Background(),
@@ -896,7 +896,112 @@ REDACTED
 	require.Equal(t, http.StatusTooManyRequests, upstreamErr.StatusCode)
 	require.Contains(t, upstreamErr.Message, "cooling down")
 	require.Contains(t, upstreamErr.Message, "cf-ray")
-	require.Equal(t, int32(1), atomic.LoadInt32(&sidecarCalls), "cooldown should block outbound request")
+	require.Equal(t, int32(2), atomic.LoadInt32(&sidecarCalls), "cooldown should block outbound request")
+REDACTED
+
+func TestSoraDirectClient_DoRequestWithProxy_CloudflareRetrySuccessClearsCooldown(t *testing.T) {
+	var sidecarCalls int32
+	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call := atomic.AddInt32(&sidecarCalls, 1)
+		if call == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status_code": http.StatusForbidden,
+				"headers": map[string]any{
+					"cf-ray":       "9d05d73dec4d8c8e-GRU",
+					"content-type": "text/html",
+			REDACTED,
+				"body": `<!DOCTYPE html><html><head><title>Just a moment...</title></head><body><script>window._cf_chl_opt={REDACTED;</script></body></html>`,
+		REDACTED)
+			return
+	REDACTED
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status_code": http.StatusOK,
+			"headers": map[string]any{
+				"content-type": "application/json",
+		REDACTED,
+			"body": `{"ok":trueREDACTED`,
+	REDACTED)
+REDACTED))
+	defer sidecar.Close()
+
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				BaseURL:                            "https://sora.chatgpt.com/backend",
+				MaxRetries:                         3,
+				CloudflareChallengeCooldownSeconds: 60,
+				CurlCFFISidecar: config.SoraCurlCFFISidecarConfig{
+					Enabled:     true,
+					BaseURL:     sidecar.URL,
+					Impersonate: "chrome131",
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	client := NewSoraDirectClient(cfg, nil, nil)
+	headers := http.Header{REDACTED
+	account := &Account{ID: 109REDACTED
+	proxyURL := "http://127.0.0.1:18080"
+
+	body, _, err := client.doRequestWithProxy(
+		context.Background(),
+		account,
+		proxyURL,
+		http.MethodGet,
+		"https://sora.chatgpt.com/backend/me",
+		headers,
+		nil,
+		true,
+	)
+REDACTED
+	require.Contains(t, string(body), `"ok":true`)
+	require.Equal(t, int32(2), atomic.LoadInt32(&sidecarCalls))
+
+	_, _, err = client.doRequestWithProxy(
+		context.Background(),
+		account,
+		proxyURL,
+		http.MethodGet,
+		"https://sora.chatgpt.com/backend/me",
+		headers,
+		nil,
+		true,
+	)
+REDACTED
+	require.Equal(t, int32(3), atomic.LoadInt32(&sidecarCalls), "cooldown should be cleared after retry succeeds")
+REDACTED
+
+func TestSoraComputeChallengeCooldownSeconds(t *testing.T) {
+	require.Equal(t, 0, soraComputeChallengeCooldownSeconds(0, 3))
+	require.Equal(t, 10, soraComputeChallengeCooldownSeconds(10, 1))
+	require.Equal(t, 20, soraComputeChallengeCooldownSeconds(10, 2))
+	require.Equal(t, 40, soraComputeChallengeCooldownSeconds(10, 4))
+	require.Equal(t, 40, soraComputeChallengeCooldownSeconds(10, 9), "streak should cap at x4")
+	require.Equal(t, 3600, soraComputeChallengeCooldownSeconds(1200, 9), "cooldown should cap at 3600s")
+REDACTED
+
+func TestSoraDirectClient_RecordCloudflareChallengeCooldown_EscalatesStreak(t *testing.T) {
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				CloudflareChallengeCooldownSeconds: 10,
+		REDACTED,
+	REDACTED,
+REDACTED
+	client := NewSoraDirectClient(cfg, nil, nil)
+	account := &Account{ID: 201REDACTED
+	proxyURL := "http://127.0.0.1:18080"
+
+	client.recordCloudflareChallengeCooldown(account, proxyURL, http.StatusForbidden, http.Header{"Cf-Ray": []string{"9d05d73dec4d8c8e-GRU"REDACTEDREDACTED, nil)
+	client.recordCloudflareChallengeCooldown(account, proxyURL, http.StatusForbidden, http.Header{"Cf-Ray": []string{"9d05d73dec4d8c8f-GRU"REDACTEDREDACTED, nil)
+
+	key := soraAccountProxyKey(account, proxyURL)
+	entry, ok := client.challengeCooldowns[key]
+	require.True(t, ok)
+	require.Equal(t, 2, entry.ConsecutiveChallenges)
+	require.Equal(t, "9d05d73dec4d8c8f-GRU", entry.CFRay)
+	remain := int(entry.Until.Sub(entry.LastChallengeAt).Seconds())
+	require.GreaterOrEqual(t, remain, 19)
 REDACTED
 
 func TestSoraDirectClient_SidecarSessionKey_SkipsWhenAccountMissing(t *testing.T) {

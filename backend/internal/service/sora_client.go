@@ -234,6 +234,14 @@ type SoraDirectClient struct {
 	sidecarSessions     map[string]soraSidecarSessionEntry
 REDACTED
 
+type soraRequestTraceContextKey struct{REDACTED
+
+type soraRequestTrace struct {
+	ID       string
+	ProxyKey string
+	UAHash   string
+REDACTED
+
 // NewSoraDirectClient 创建 Sora 直连客户端
 func NewSoraDirectClient(cfg *config.Config, httpUpstream HTTPUpstream, tokenProvider *OpenAITokenProvider) *SoraDirectClient {
 	baseURL := ""
@@ -377,6 +385,7 @@ func (c *SoraDirectClient) CreateImageTask(ctx context.Context, account *Account
 REDACTED
 	userAgent := c.taskUserAgent()
 	proxyURL := c.resolveProxyURL(account)
+	ctx = c.withRequestTrace(ctx, account, proxyURL, userAgent)
 	operation := "simple_compose"
 	inpaintItems := []map[string]any{REDACTED
 	if strings.TrimSpace(req.MediaID) != "" {
@@ -430,6 +439,7 @@ func (c *SoraDirectClient) CreateVideoTask(ctx context.Context, account *Account
 REDACTED
 	userAgent := c.taskUserAgent()
 	proxyURL := c.resolveProxyURL(account)
+	ctx = c.withRequestTrace(ctx, account, proxyURL, userAgent)
 	orientation := req.Orientation
 	if orientation == "" {
 		orientation = "landscape"
@@ -504,6 +514,7 @@ func (c *SoraDirectClient) CreateStoryboardTask(ctx context.Context, account *Ac
 REDACTED
 	userAgent := c.taskUserAgent()
 	proxyURL := c.resolveProxyURL(account)
+	ctx = c.withRequestTrace(ctx, account, proxyURL, userAgent)
 	orientation := req.Orientation
 	if orientation == "" {
 		orientation = "landscape"
@@ -724,6 +735,7 @@ func (c *SoraDirectClient) FinalizeCharacter(ctx context.Context, account *Accou
 REDACTED
 	userAgent := c.taskUserAgent()
 	proxyURL := c.resolveProxyURL(account)
+	ctx = c.withRequestTrace(ctx, account, proxyURL, userAgent)
 	payload := map[string]any{
 		"cameo_id":               req.CameoID,
 		"username":               req.Username,
@@ -808,6 +820,7 @@ func (c *SoraDirectClient) PostVideoForWatermarkFree(ctx context.Context, accoun
 REDACTED
 	userAgent := c.taskUserAgent()
 	proxyURL := c.resolveProxyURL(account)
+	ctx = c.withRequestTrace(ctx, account, proxyURL, userAgent)
 	payload := map[string]any{
 		"attachments_to_create": []map[string]any{
 			{
@@ -1471,6 +1484,7 @@ REDACTED
 	if cooldownErr := c.checkCloudflareChallengeCooldown(account, proxyURL); cooldownErr != nil {
 		return nil, nil, cooldownErr
 REDACTED
+	traceID, traceProxyKey, traceUAHash := c.requestTraceFields(ctx, proxyURL, headers.Get("User-Agent"))
 	timeout := 0
 	if c != nil && c.cfg != nil {
 		timeout = c.cfg.Sora.Client.TimeoutSeconds
@@ -1500,11 +1514,14 @@ REDACTED
 	attempts := maxRetries + 1
 	authRecovered := false
 	authRecoverExtraAttemptGranted := false
+	challengeRetried := false
+	sawCFChallenge := false
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
 		if c.debugEnabled() {
 			c.debugLogf(
-				"request_start method=%s url=%s attempt=%d/%d timeout_s=%d body_bytes=%d proxy_bound=%t headers=%s",
+				"request_start trace_id=%s method=%s url=%s attempt=%d/%d timeout_s=%d body_bytes=%d proxy_bound=%t proxy_key=%s ua_hash=%s headers=%s",
+				traceID,
 				method,
 				sanitizeSoraLogURL(urlStr),
 				attempt,
@@ -1512,6 +1529,8 @@ REDACTED
 				timeout,
 				len(bodyBytes),
 				proxyURL != "",
+				traceProxyKey,
+				traceUAHash,
 				formatSoraHeaders(headers),
 			)
 	REDACTED
@@ -1532,7 +1551,8 @@ REDACTED
 			lastErr = err
 			if c.debugEnabled() {
 				c.debugLogf(
-					"request_transport_error method=%s url=%s attempt=%d/%d err=%s",
+					"request_transport_error trace_id=%s method=%s url=%s attempt=%d/%d err=%s",
+					traceID,
 					method,
 					sanitizeSoraLogURL(urlStr),
 					attempt,
@@ -1542,7 +1562,7 @@ REDACTED
 		REDACTED
 			if attempt < attempts && allowRetry {
 				if c.debugEnabled() {
-					c.debugLogf("request_retry_scheduled method=%s url=%s reason=transport_error next_attempt=%d/%d", method, sanitizeSoraLogURL(urlStr), attempt+1, attempts)
+					c.debugLogf("request_retry_scheduled trace_id=%s method=%s url=%s reason=transport_error next_attempt=%d/%d", traceID, method, sanitizeSoraLogURL(urlStr), attempt+1, attempts)
 			REDACTED
 				c.sleepRetry(attempt)
 				continue
@@ -1558,7 +1578,8 @@ REDACTED
 
 		if c.cfg != nil && c.cfg.Sora.Client.Debug {
 			c.debugLogf(
-				"response_received method=%s url=%s attempt=%d/%d status=%d cost=%s resp_bytes=%d resp_headers=%s",
+				"response_received trace_id=%s method=%s url=%s attempt=%d/%d status=%d cost=%s resp_bytes=%d resp_headers=%s",
+				traceID,
 				method,
 				sanitizeSoraLogURL(urlStr),
 				attempt,
@@ -1573,7 +1594,16 @@ REDACTED
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 			isCFChallenge := soraerror.IsCloudflareChallengeResponse(resp.StatusCode, resp.Header, respBody)
 			if isCFChallenge {
+				sawCFChallenge = true
 				c.recordCloudflareChallengeCooldown(account, proxyURL, resp.StatusCode, resp.Header, respBody)
+				if allowRetry && attempt < attempts && !challengeRetried {
+					challengeRetried = true
+					if c.debugEnabled() {
+						c.debugLogf("request_retry_scheduled trace_id=%s method=%s url=%s reason=cloudflare_challenge status=%d next_attempt=%d/%d", traceID, method, sanitizeSoraLogURL(urlStr), resp.StatusCode, attempt+1, attempts)
+				REDACTED
+					c.sleepRetry(attempt)
+					continue
+			REDACTED
 		REDACTED
 			if !isCFChallenge && !authRecovered && shouldAttemptSoraTokenRecover(resp.StatusCode, urlStr) && account != nil {
 				if recovered, recoverErr := c.recoverAccessToken(ctx, account, fmt.Sprintf("upstream_status_%d", resp.StatusCode)); recoverErr == nil && strings.TrimSpace(recovered) != "" {
@@ -1584,16 +1614,17 @@ REDACTED
 						authRecoverExtraAttemptGranted = true
 				REDACTED
 					if c.debugEnabled() {
-						c.debugLogf("request_retry_with_recovered_token method=%s url=%s status=%d", method, sanitizeSoraLogURL(urlStr), resp.StatusCode)
+						c.debugLogf("request_retry_with_recovered_token trace_id=%s method=%s url=%s status=%d", traceID, method, sanitizeSoraLogURL(urlStr), resp.StatusCode)
 				REDACTED
 					continue
 			REDACTED else if recoverErr != nil && c.debugEnabled() {
-					c.debugLogf("request_recover_token_failed method=%s url=%s status=%d err=%s", method, sanitizeSoraLogURL(urlStr), resp.StatusCode, logredact.RedactText(recoverErr.Error()))
+					c.debugLogf("request_recover_token_failed trace_id=%s method=%s url=%s status=%d err=%s", traceID, method, sanitizeSoraLogURL(urlStr), resp.StatusCode, logredact.RedactText(recoverErr.Error()))
 			REDACTED
 		REDACTED
 			if c.debugEnabled() {
 				c.debugLogf(
-					"response_non_success method=%s url=%s attempt=%d/%d status=%d body=%s",
+					"response_non_success trace_id=%s method=%s url=%s attempt=%d/%d status=%d body=%s",
+					traceID,
 					method,
 					sanitizeSoraLogURL(urlStr),
 					attempt,
@@ -1609,12 +1640,15 @@ REDACTED
 		REDACTED
 			if allowRetry && attempt < attempts && (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500) {
 				if c.debugEnabled() {
-					c.debugLogf("request_retry_scheduled method=%s url=%s reason=status_%d next_attempt=%d/%d", method, sanitizeSoraLogURL(urlStr), resp.StatusCode, attempt+1, attempts)
+					c.debugLogf("request_retry_scheduled trace_id=%s method=%s url=%s reason=status_%d next_attempt=%d/%d", traceID, method, sanitizeSoraLogURL(urlStr), resp.StatusCode, attempt+1, attempts)
 			REDACTED
 				c.sleepRetry(attempt)
 				continue
 		REDACTED
 			return nil, resp.Header, upstreamErr
+	REDACTED
+		if sawCFChallenge {
+			c.clearCloudflareChallengeCooldown(account, proxyURL)
 	REDACTED
 		return respBody, resp.Header, nil
 REDACTED
@@ -1958,6 +1992,55 @@ func hexDecodeString(s string) ([]byte, error) {
 	dst := make([]byte, len(s)/2)
 	_, err := hex.Decode(dst, []byte(s))
 	return dst, err
+REDACTED
+
+func (c *SoraDirectClient) withRequestTrace(ctx context.Context, account *Account, proxyURL, userAgent string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+REDACTED
+	if existing, ok := ctx.Value(soraRequestTraceContextKey{REDACTED).(*soraRequestTrace); ok && existing != nil && existing.ID != "" {
+		return ctx
+REDACTED
+	accountID := int64(0)
+	if account != nil {
+		accountID = account.ID
+REDACTED
+	seed := fmt.Sprintf("%d|%s|%s|%d", accountID, normalizeSoraProxyKey(proxyURL), strings.TrimSpace(userAgent), time.Now().UnixNano())
+	trace := &soraRequestTrace{
+		ID:       "sora-" + soraHashForLog(seed),
+		ProxyKey: normalizeSoraProxyKey(proxyURL),
+		UAHash:   soraHashForLog(strings.TrimSpace(userAgent)),
+REDACTED
+	return context.WithValue(ctx, soraRequestTraceContextKey{REDACTED, trace)
+REDACTED
+
+func (c *SoraDirectClient) requestTraceFields(ctx context.Context, proxyURL, userAgent string) (string, string, string) {
+	proxyKey := normalizeSoraProxyKey(proxyURL)
+	uaHash := soraHashForLog(strings.TrimSpace(userAgent))
+	traceID := ""
+	if ctx != nil {
+		if trace, ok := ctx.Value(soraRequestTraceContextKey{REDACTED).(*soraRequestTrace); ok && trace != nil {
+			if strings.TrimSpace(trace.ID) != "" {
+				traceID = strings.TrimSpace(trace.ID)
+		REDACTED
+			if strings.TrimSpace(trace.ProxyKey) != "" {
+				proxyKey = strings.TrimSpace(trace.ProxyKey)
+		REDACTED
+			if strings.TrimSpace(trace.UAHash) != "" {
+				uaHash = strings.TrimSpace(trace.UAHash)
+		REDACTED
+	REDACTED
+REDACTED
+	if traceID == "" {
+		traceID = "sora-" + soraHashForLog(fmt.Sprintf("%s|%d", proxyKey, time.Now().UnixNano()))
+REDACTED
+	return traceID, proxyKey, uaHash
+REDACTED
+
+func soraHashForLog(raw string) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(raw))
+	return fmt.Sprintf("%08x", h.Sum32())
 REDACTED
 
 func sanitizeSoraLogURL(raw string) string {

@@ -37,6 +37,7 @@ type SoraGatewayHandler struct {
 	concurrencyHelper   *ConcurrencyHelper
 	maxAccountSwitches  int
 	streamMode          string
+	soraTLSEnabled      bool
 	soraMediaSigningKey string
 	soraMediaRoot       string
 REDACTED
@@ -52,6 +53,7 @@ func NewSoraGatewayHandler(
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 3
 	streamMode := "force"
+	soraTLSEnabled := true
 	signKey := ""
 	mediaRoot := "/app/data/sora"
 	if cfg != nil {
@@ -62,6 +64,7 @@ func NewSoraGatewayHandler(
 		if mode := strings.TrimSpace(cfg.Gateway.SoraStreamMode); mode != "" {
 			streamMode = mode
 	REDACTED
+		soraTLSEnabled = !cfg.Sora.Client.DisableTLSFingerprint
 		signKey = strings.TrimSpace(cfg.Gateway.SoraMediaSigningKey)
 		if root := strings.TrimSpace(cfg.Sora.Storage.LocalPath); root != "" {
 			mediaRoot = root
@@ -74,6 +77,7 @@ REDACTED
 		concurrencyHelper:   NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
 		maxAccountSwitches:  maxAccountSwitches,
 		streamMode:          strings.ToLower(streamMode),
+		soraTLSEnabled:      soraTLSEnabled,
 		soraMediaSigningKey: signKey,
 		soraMediaRoot:       mediaRoot,
 REDACTED
@@ -247,6 +251,12 @@ REDACTED
 	REDACTED
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		proxyBound := account.ProxyID != nil
+		proxyID := int64(0)
+		if account.ProxyID != nil {
+			proxyID = *account.ProxyID
+	REDACTED
+		tlsFingerprintEnabled := h.soraTLSEnabled
 
 		accountReleaseFunc := selection.ReleaseFunc
 		if !selection.Acquired {
@@ -257,10 +267,19 @@ REDACTED
 			accountWaitCounted := false
 			canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
 			if err != nil {
-				reqLog.Warn("sora.account_wait_counter_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+				reqLog.Warn("sora.account_wait_counter_increment_failed",
+					zap.Int64("account_id", account.ID),
+					zap.Int64("proxy_id", proxyID),
+					zap.Bool("proxy_bound", proxyBound),
+					zap.Bool("tls_fingerprint_enabled", tlsFingerprintEnabled),
+					zap.Error(err),
+				)
 		REDACTED else if !canWait {
 				reqLog.Info("sora.account_wait_queue_full",
 					zap.Int64("account_id", account.ID),
+					zap.Int64("proxy_id", proxyID),
+					zap.Bool("proxy_bound", proxyBound),
+					zap.Bool("tls_fingerprint_enabled", tlsFingerprintEnabled),
 					zap.Int("max_waiting", selection.WaitPlan.MaxWaiting),
 				)
 				h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
@@ -284,7 +303,13 @@ REDACTED
 				&streamStarted,
 			)
 			if err != nil {
-				reqLog.Warn("sora.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+				reqLog.Warn("sora.account_slot_acquire_failed",
+					zap.Int64("account_id", account.ID),
+					zap.Int64("proxy_id", proxyID),
+					zap.Bool("proxy_bound", proxyBound),
+					zap.Bool("tls_fingerprint_enabled", tlsFingerprintEnabled),
+					zap.Error(err),
+				)
 				h.handleConcurrencyError(c, err, "account", streamStarted)
 				return
 		REDACTED
@@ -310,6 +335,9 @@ REDACTED
 					rayID, mitigated, contentType := extractSoraFailoverHeaderInsights(lastFailoverHeaders, lastFailoverBody)
 					fields := []zap.Field{
 						zap.Int64("account_id", account.ID),
+						zap.Int64("proxy_id", proxyID),
+						zap.Bool("proxy_bound", proxyBound),
+						zap.Bool("tls_fingerprint_enabled", tlsFingerprintEnabled),
 						zap.Int("upstream_status", failoverErr.StatusCode),
 						zap.Int("switch_count", switchCount),
 						zap.Int("max_switches", maxAccountSwitches),
@@ -335,6 +363,9 @@ REDACTED
 				rayID, mitigated, contentType := extractSoraFailoverHeaderInsights(lastFailoverHeaders, lastFailoverBody)
 				fields := []zap.Field{
 					zap.Int64("account_id", account.ID),
+					zap.Int64("proxy_id", proxyID),
+					zap.Bool("proxy_bound", proxyBound),
+					zap.Bool("tls_fingerprint_enabled", tlsFingerprintEnabled),
 					zap.Int("upstream_status", failoverErr.StatusCode),
 					zap.String("upstream_error_code", upstreamErrCode),
 					zap.String("upstream_error_message", upstreamErrMsg),
@@ -353,7 +384,13 @@ REDACTED
 				reqLog.Warn("sora.upstream_failover_switching", fields...)
 				continue
 		REDACTED
-			reqLog.Error("sora.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			reqLog.Error("sora.forward_failed",
+				zap.Int64("account_id", account.ID),
+				zap.Int64("proxy_id", proxyID),
+				zap.Bool("proxy_bound", proxyBound),
+				zap.Bool("tls_fingerprint_enabled", tlsFingerprintEnabled),
+				zap.Error(err),
+			)
 			return
 	REDACTED
 
@@ -384,6 +421,9 @@ REDACTED
 	REDACTED(result, account, userAgent, clientIP)
 		reqLog.Debug("sora.request_completed",
 			zap.Int64("account_id", account.ID),
+			zap.Int64("proxy_id", proxyID),
+			zap.Bool("proxy_bound", proxyBound),
+			zap.Bool("tls_fingerprint_enabled", tlsFingerprintEnabled),
 			zap.Int("switch_count", switchCount),
 		)
 		return

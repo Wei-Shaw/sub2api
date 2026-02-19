@@ -13,9 +13,11 @@ import (
 )
 
 type soraChallengeCooldownEntry struct {
-	Until      time.Time
-	StatusCode int
-	CFRay      string
+	Until                 time.Time
+	StatusCode            int
+	CFRay                 string
+	ConsecutiveChallenges int
+	LastChallengeAt       time.Time
 REDACTED
 
 type soraSidecarSessionEntry struct {
@@ -67,6 +69,9 @@ REDACTED
 		remaining = 1
 REDACTED
 	message := fmt.Sprintf("Sora request cooling down due to recent Cloudflare challenge. Retry in %d seconds.", remaining)
+	if entry.ConsecutiveChallenges > 1 {
+		message = fmt.Sprintf("%s (streak=%d)", message, entry.ConsecutiveChallenges)
+REDACTED
 	if entry.CFRay != "" {
 		message = fmt.Sprintf("%s (last cf-ray: %s)", message, entry.CFRay)
 REDACTED
@@ -90,22 +95,33 @@ REDACTED
 REDACTED
 	key := soraAccountProxyKey(account, proxyURL)
 	now := time.Now()
-	until := now.Add(time.Duration(cooldownSeconds) * time.Second)
 	cfRay := soraerror.ExtractCloudflareRayID(headers, body)
 
 	c.challengeCooldownMu.Lock()
 	c.cleanupExpiredChallengeCooldownsLocked(now)
+
+	streak := 1
 	existing, ok := c.challengeCooldowns[key]
+	if ok && now.Sub(existing.LastChallengeAt) <= 30*time.Minute {
+		streak = existing.ConsecutiveChallenges + 1
+REDACTED
+	effectiveCooldown := soraComputeChallengeCooldownSeconds(cooldownSeconds, streak)
+	until := now.Add(time.Duration(effectiveCooldown) * time.Second)
 	if ok && existing.Until.After(until) {
 		until = existing.Until
+		if existing.ConsecutiveChallenges > streak {
+			streak = existing.ConsecutiveChallenges
+	REDACTED
 		if cfRay == "" {
 			cfRay = existing.CFRay
 	REDACTED
 REDACTED
 	c.challengeCooldowns[key] = soraChallengeCooldownEntry{
-		Until:      until,
-		StatusCode: statusCode,
-		CFRay:      cfRay,
+		Until:                 until,
+		StatusCode:            statusCode,
+		CFRay:                 cfRay,
+		ConsecutiveChallenges: streak,
+		LastChallengeAt:       now,
 REDACTED
 	c.challengeCooldownMu.Unlock()
 
@@ -114,7 +130,44 @@ REDACTED
 		if remain < 0 {
 			remain = 0
 	REDACTED
-		c.debugLogf("cloudflare_challenge_cooldown_set key=%s status=%d remain_s=%d cf_ray=%s", key, statusCode, remain, cfRay)
+		c.debugLogf("cloudflare_challenge_cooldown_set key=%s status=%d remain_s=%d streak=%d cf_ray=%s", key, statusCode, remain, streak, cfRay)
+REDACTED
+REDACTED
+
+func soraComputeChallengeCooldownSeconds(baseSeconds, streak int) int {
+	if baseSeconds <= 0 {
+		return 0
+REDACTED
+	if streak < 1 {
+		streak = 1
+REDACTED
+	multiplier := streak
+	if multiplier > 4 {
+		multiplier = 4
+REDACTED
+	cooldown := baseSeconds * multiplier
+	if cooldown > 3600 {
+		cooldown = 3600
+REDACTED
+	return cooldown
+REDACTED
+
+func (c *SoraDirectClient) clearCloudflareChallengeCooldown(account *Account, proxyURL string) {
+	if c == nil {
+		return
+REDACTED
+	if account == nil || account.ID <= 0 {
+		return
+REDACTED
+	key := soraAccountProxyKey(account, proxyURL)
+	c.challengeCooldownMu.Lock()
+	_, existed := c.challengeCooldowns[key]
+	if existed {
+		delete(c.challengeCooldowns, key)
+REDACTED
+	c.challengeCooldownMu.Unlock()
+	if existed && c.debugEnabled() {
+		c.debugLogf("cloudflare_challenge_cooldown_cleared key=%s", key)
 REDACTED
 REDACTED
 
