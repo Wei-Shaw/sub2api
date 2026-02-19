@@ -2125,6 +2125,10 @@ export default {
       selectTestModel: '选择测试模型',
       testModel: '测试模型',
       testPrompt: '提示词："hi"',
+      soraTestHint: 'Sora 测试将执行连通性与能力检测（/backend/me、订阅信息、Sora2 邀请码与剩余额度）。',
+      soraTestTarget: '检测目标：Sora 账号能力',
+      soraTestMode: '模式：连通性 + 能力探测',
+      soraTestingFlow: '执行 Sora 连通性与能力检测...',
       // Stats Modal
       viewStats: '查看统计',
       usageStatistics: '使用统计',

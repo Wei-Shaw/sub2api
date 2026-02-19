@@ -1993,6 +1993,10 @@ export default {
       selectTestModel: 'Select Test Model',
       testModel: 'Test model',
       testPrompt: 'Prompt: "hi"',
+      soraTestHint: 'Sora test runs connectivity and capability checks (/backend/me, subscription, Sora2 invite and remaining quota).',
+      soraTestTarget: 'Target: Sora account capability',
+      soraTestMode: 'Mode: Connectivity + Capability checks',
+      soraTestingFlow: 'Running Sora connectivity and capability checks...',
       // Stats Modal
       viewStats: 'View Stats',
       usageStatistics: 'Usage Statistics',
