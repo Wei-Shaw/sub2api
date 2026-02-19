@@ -498,3 +498,84 @@ func TestGenerateOpenAISessionHash_WithBody(t *testing.T) {
 	require.NotEmpty(t, hash3)
 	require.NotEqual(t, hash, hash3) // 不同来源应产生不同 hash
 REDACTED
+
+func TestSoraHandleStreamingAwareError_JSONEscaping(t *testing.T) {
+	tests := []struct {
+		name    string
+		errType string
+		message string
+REDACTED{
+		{
+			name:    "包含双引号",
+			errType: "upstream_error",
+			message: `upstream returned "invalid" payload`,
+	REDACTED,
+		{
+			name:    "包含换行和制表符",
+			errType: "rate_limit_error",
+			message: "line1\nline2\ttab",
+	REDACTED,
+		{
+			name:    "包含反斜杠",
+			errType: "upstream_error",
+			message: `path C:\Users\test\file.txt not found`,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+			h := &SoraGatewayHandler{REDACTED
+			h.handleStreamingAwareError(c, http.StatusBadGateway, tt.errType, tt.message, true)
+
+			body := w.Body.String()
+			require.True(t, strings.HasPrefix(body, "event: error\n"), "应以 SSE error 事件开头")
+			require.True(t, strings.HasSuffix(body, "\n\n"), "应以 SSE 结束分隔符结尾")
+
+			lines := strings.Split(strings.TrimSuffix(body, "\n\n"), "\n")
+			require.Len(t, lines, 2, "SSE 错误事件应包含 event 行和 data 行")
+			require.Equal(t, "event: error", lines[0])
+			require.True(t, strings.HasPrefix(lines[1], "data: "), "第二行应为 data 前缀")
+
+			jsonStr := strings.TrimPrefix(lines[1], "data: ")
+			var parsed map[string]any
+			require.NoError(t, json.Unmarshal([]byte(jsonStr), &parsed), "data 行必须是合法 JSON")
+
+			errorObj, ok := parsed["error"].(map[string]any)
+			require.True(t, ok, "JSON 中应包含 error 对象")
+			require.Equal(t, tt.errType, errorObj["type"])
+			require.Equal(t, tt.message, errorObj["message"])
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestSoraHandleFailoverExhausted_StreamPassesUpstreamMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	h := &SoraGatewayHandler{REDACTED
+	resp := []byte(`{"error":{"message":"invalid \"prompt\"\nline2","code":"bad_request"REDACTEDREDACTED`)
+	h.handleFailoverExhausted(c, http.StatusBadGateway, resp, true)
+
+	body := w.Body.String()
+	require.True(t, strings.HasPrefix(body, "event: error\n"))
+	require.True(t, strings.HasSuffix(body, "\n\n"))
+
+	lines := strings.Split(strings.TrimSuffix(body, "\n\n"), "\n")
+	require.Len(t, lines, 2)
+	jsonStr := strings.TrimPrefix(lines[1], "data: ")
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(jsonStr), &parsed))
+
+	errorObj, ok := parsed["error"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "upstream_error", errorObj["type"])
+	require.Equal(t, "invalid \"prompt\"\nline2", errorObj["message"])
+REDACTED

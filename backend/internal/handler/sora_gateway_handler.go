@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -442,7 +443,18 @@ func (h *SoraGatewayHandler) handleStreamingAwareError(c *gin.Context, status in
 	if streamStarted {
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
-			errorEvent := fmt.Sprintf(`event: error`+"\n"+`data: {"error": {"type": "%s", "message": "%s"REDACTEDREDACTED`+"\n\n", errType, message)
+			errorData := map[string]any{
+				"error": map[string]string{
+					"type":    errType,
+					"message": message,
+			REDACTED,
+		REDACTED
+			jsonBytes, err := json.Marshal(errorData)
+			if err != nil {
+				_ = c.Error(err)
+				return
+		REDACTED
+			errorEvent := fmt.Sprintf("event: error\ndata: %s\n\n", string(jsonBytes))
 			if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
 				_ = c.Error(err)
 		REDACTED

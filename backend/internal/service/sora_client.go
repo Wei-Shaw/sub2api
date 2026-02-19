@@ -779,22 +779,17 @@ REDACTED
 	REDACTED
 		tried[clientID] = struct{REDACTED{REDACTED
 
-		payload := map[string]any{
-			"client_id":     clientID,
-			"grant_type":    "refresh_token",
-			"refresh_token": refreshToken,
-			"redirect_uri":  "com.openai.chat://auth0.openai.com/ios/com.openai.chat/callback",
-	REDACTED
-		bodyBytes, err := json.Marshal(payload)
-		if err != nil {
-			return "", "", "", err
-	REDACTED
+		formData := url.Values{REDACTED
+		formData.Set("client_id", clientID)
+		formData.Set("grant_type", "refresh_token")
+		formData.Set("refresh_token", refreshToken)
+		formData.Set("redirect_uri", "com.openai.chat://auth0.openai.com/ios/com.openai.chat/callback")
 		headers := http.Header{REDACTED
 		headers.Set("Accept", "application/json")
-		headers.Set("Content-Type", "application/json")
+		headers.Set("Content-Type", "application/x-www-form-urlencoded")
 		headers.Set("User-Agent", c.defaultUserAgent())
 
-		respBody, _, err := c.doRequest(ctx, account, http.MethodPost, soraOAuthTokenURL, headers, bytes.NewReader(bodyBytes), false)
+		respBody, _, err := c.doRequest(ctx, account, http.MethodPost, soraOAuthTokenURL, headers, strings.NewReader(formData.Encode()), false)
 		if err != nil {
 			lastErr = err
 			if c.debugEnabled() {
