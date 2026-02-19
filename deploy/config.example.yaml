@@ -374,6 +374,9 @@ sora:
     # Max retries for upstream requests
     # 上游请求最大重试次数
     max_retries: 3
+    # Account+proxy cooldown window after Cloudflare challenge (seconds, 0 to disable)
+    # Cloudflare challenge 后按账号+代理冷却窗口（秒，0 表示关闭）
+    cloudflare_challenge_cooldown_seconds: 900
     # Poll interval (seconds)
     # 轮询间隔（秒）
     poll_interval_seconds: 2
@@ -417,6 +420,12 @@ sora:
       # Sidecar request timeout (seconds)
       # sidecar 请求超时（秒）
       timeout_seconds: 60
+      # Reuse session key per account+proxy to let sidecar persist cookies/session
+      # 按账号+代理复用 session key，让 sidecar 持久化 cookies/session
+      session_reuse_enabled: true
+      # Session TTL in sidecar (seconds)
+      # sidecar 会话 TTL（秒）
+      session_ttl_seconds: 3600
   storage:
     # Storage type (local only for now)
     # 存储类型（首发仅支持 local）

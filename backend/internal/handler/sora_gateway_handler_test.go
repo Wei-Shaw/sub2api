@@ -674,3 +674,15 @@ func TestSoraHandleFailoverExhausted_CfShield429MappedToRateLimitError(t *testin
 	require.Contains(t, msg, "Cloudflare shield")
 	require.Contains(t, msg, "cf-ray: 9d03b68c086027a1-SEA")
 REDACTED
+
+func TestExtractSoraFailoverHeaderInsights(t *testing.T) {
+	headers := http.Header{REDACTED
+	headers.Set("cf-mitigated", "challenge")
+	headers.Set("content-type", "text/html")
+	body := []byte(`<script>window._cf_chl_opt={cRay: '9cff2d62d83bb98d'REDACTED;</script>`)
+
+	rayID, mitigated, contentType := extractSoraFailoverHeaderInsights(headers, body)
+	require.Equal(t, "9cff2d62d83bb98d", rayID)
+	require.Equal(t, "challenge", mitigated)
+	require.Equal(t, "text/html", contentType)
+REDACTED

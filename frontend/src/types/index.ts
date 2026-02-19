@@ -524,6 +524,32 @@ export interface ProxyAccountSummary {
   notes?: string | null
 REDACTED
 
+export interface ProxyQualityCheckItem {
+  target: string
+  status: 'pass' | 'warn' | 'fail' | 'challenge'
+  http_status?: number
+  latency_ms?: number
+  message?: string
+  cf_ray?: string
+REDACTED
+
+export interface ProxyQualityCheckResult {
+  proxy_id: number
+  score: number
+  grade: string
+  summary: string
+  exit_ip?: string
+  country?: string
+  country_code?: string
+  base_latency_ms?: number
+  passed_count: number
+  warn_count: number
+  failed_count: number
+  challenge_count: number
+  checked_at: number
+  items: ProxyQualityCheckItem[]
+REDACTED
+
 // Gemini credentials structure for OAuth and API Key authentication
 export interface GeminiCredentials {
   // API Key authentication

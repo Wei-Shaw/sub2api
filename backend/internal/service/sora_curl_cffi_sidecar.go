@@ -23,6 +23,7 @@ type soraCurlCFFISidecarRequest struct {
 	Headers        map[string][]string `json:"headers,omitempty"`
 	BodyBase64     string              `json:"body_base64,omitempty"`
 	ProxyURL       string              `json:"proxy_url,omitempty"`
+	SessionKey     string              `json:"session_key,omitempty"`
 	Impersonate    string              `json:"impersonate,omitempty"`
 	TimeoutSeconds int                 `json:"timeout_seconds,omitempty"`
 REDACTED
@@ -36,7 +37,7 @@ type soraCurlCFFISidecarResponse struct {
 	Error      string         `json:"error"`
 REDACTED
 
-func (c *SoraDirectClient) doHTTPViaCurlCFFISidecar(req *http.Request, proxyURL string) (*http.Response, error) {
+func (c *SoraDirectClient) doHTTPViaCurlCFFISidecar(req *http.Request, proxyURL string, account *Account) (*http.Response, error) {
 	if req == nil || req.URL == nil {
 		return nil, errors.New("request url is nil")
 REDACTED
@@ -73,6 +74,7 @@ REDACTED
 		URL:            req.URL.String(),
 		Headers:        headers,
 		ProxyURL:       strings.TrimSpace(proxyURL),
+		SessionKey:     c.sidecarSessionKey(account, proxyURL),
 		Impersonate:    c.curlCFFIImpersonate(),
 		TimeoutSeconds: c.curlCFFISidecarTimeoutSeconds(),
 REDACTED
@@ -97,7 +99,9 @@ REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("sora curl_cffi sidecar request failed: %w", err)
 REDACTED
-	defer sidecarResp.Body.Close()
+	defer func() {
+		_ = sidecarResp.Body.Close()
+REDACTED()
 
 	sidecarRespBody, err := io.ReadAll(io.LimitReader(sidecarResp.Body, 8<<20))
 	if err != nil {
@@ -200,6 +204,24 @@ REDACTED
 		return "chrome131"
 REDACTED
 	return impersonate
+REDACTED
+
+func (c *SoraDirectClient) sidecarSessionReuseEnabled() bool {
+	if c == nil || c.cfg == nil {
+		return true
+REDACTED
+	return c.cfg.Sora.Client.CurlCFFISidecar.SessionReuseEnabled
+REDACTED
+
+func (c *SoraDirectClient) sidecarSessionTTLSeconds() int {
+	if c == nil || c.cfg == nil {
+		return 3600
+REDACTED
+	ttl := c.cfg.Sora.Client.CurlCFFISidecar.SessionTTLSeconds
+	if ttl < 0 {
+		return 3600
+REDACTED
+	return ttl
 REDACTED
 
 func convertSidecarHeaderValue(raw any) []string {

@@ -906,10 +906,14 @@ REDACTED
 			s.rateLimitService.HandleUpstreamError(ctx, account, upstreamErr.StatusCode, upstreamErr.Headers, upstreamErr.Body)
 	REDACTED
 		if s.shouldFailoverUpstreamError(upstreamErr.StatusCode) {
+			var responseHeaders http.Header
+			if upstreamErr.Headers != nil {
+				responseHeaders = upstreamErr.Headers.Clone()
+		REDACTED
 			return &UpstreamFailoverError{
 				StatusCode:      upstreamErr.StatusCode,
 				ResponseBody:    upstreamErr.Body,
-				ResponseHeaders: upstreamErr.Headers,
+				ResponseHeaders: responseHeaders,
 		REDACTED
 	REDACTED
 		msg := upstreamErr.Message

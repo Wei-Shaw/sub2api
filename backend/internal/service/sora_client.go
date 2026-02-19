@@ -27,6 +27,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	openaioauth "github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
+	"github.com/Wei-Shaw/sub2api/internal/util/soraerror"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"golang.org/x/crypto/sha3"
@@ -221,12 +222,16 @@ REDACTED
 
 // SoraDirectClient 直连 Sora 实现
 type SoraDirectClient struct {
-	cfg             *config.Config
-	httpUpstream    HTTPUpstream
-	tokenProvider   *OpenAITokenProvider
-	accountRepo     AccountRepository
-	soraAccountRepo SoraAccountRepository
-	baseURL         string
+	cfg                 *config.Config
+	httpUpstream        HTTPUpstream
+	tokenProvider       *OpenAITokenProvider
+	accountRepo         AccountRepository
+	soraAccountRepo     SoraAccountRepository
+	baseURL             string
+	challengeCooldownMu sync.RWMutex
+	challengeCooldowns  map[string]soraChallengeCooldownEntry
+	sidecarSessionMu    sync.RWMutex
+	sidecarSessions     map[string]soraSidecarSessionEntry
 REDACTED
 
 // NewSoraDirectClient 创建 Sora 直连客户端
@@ -240,10 +245,12 @@ func NewSoraDirectClient(cfg *config.Config, httpUpstream HTTPUpstream, tokenPro
 	REDACTED
 REDACTED
 	return &SoraDirectClient{
-		cfg:           cfg,
-		httpUpstream:  httpUpstream,
-		tokenProvider: tokenProvider,
-		baseURL:       baseURL,
+		cfg:                cfg,
+		httpUpstream:       httpUpstream,
+		tokenProvider:      tokenProvider,
+		baseURL:            baseURL,
+		challengeCooldowns: make(map[string]soraChallengeCooldownEntry),
+		sidecarSessions:    make(map[string]soraSidecarSessionEntry),
 REDACTED
 REDACTED
 
@@ -1461,6 +1468,9 @@ REDACTED
 	if proxyURL == "" {
 		proxyURL = c.resolveProxyURL(account)
 REDACTED
+	if cooldownErr := c.checkCloudflareChallengeCooldown(account, proxyURL); cooldownErr != nil {
+		return nil, nil, cooldownErr
+REDACTED
 	timeout := 0
 	if c != nil && c.cfg != nil {
 		timeout = c.cfg.Sora.Client.TimeoutSeconds
@@ -1561,7 +1571,11 @@ REDACTED
 	REDACTED
 
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-			if !authRecovered && shouldAttemptSoraTokenRecover(resp.StatusCode, urlStr) && account != nil {
+			isCFChallenge := soraerror.IsCloudflareChallengeResponse(resp.StatusCode, resp.Header, respBody)
+			if isCFChallenge {
+				c.recordCloudflareChallengeCooldown(account, proxyURL, resp.StatusCode, resp.Header, respBody)
+		REDACTED
+			if !isCFChallenge && !authRecovered && shouldAttemptSoraTokenRecover(resp.StatusCode, urlStr) && account != nil {
 				if recovered, recoverErr := c.recoverAccessToken(ctx, account, fmt.Sprintf("upstream_status_%d", resp.StatusCode)); recoverErr == nil && strings.TrimSpace(recovered) != "" {
 					headers.Set("Authorization", "Bearer "+recovered)
 					authRecovered = true
@@ -1590,6 +1604,9 @@ REDACTED
 		REDACTED
 			upstreamErr := c.buildUpstreamError(resp.StatusCode, resp.Header, respBody, urlStr)
 			lastErr = upstreamErr
+			if isCFChallenge {
+				return nil, resp.Header, upstreamErr
+		REDACTED
 			if allowRetry && attempt < attempts && (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500) {
 				if c.debugEnabled() {
 					c.debugLogf("request_retry_scheduled method=%s url=%s reason=status_%d next_attempt=%d/%d", method, sanitizeSoraLogURL(urlStr), resp.StatusCode, attempt+1, attempts)
@@ -1631,7 +1648,7 @@ REDACTED
 
 func (c *SoraDirectClient) doHTTP(req *http.Request, proxyURL string, account *Account) (*http.Response, error) {
 	if c != nil && c.cfg != nil && c.cfg.Sora.Client.CurlCFFISidecar.Enabled {
-		resp, err := c.doHTTPViaCurlCFFISidecar(req, proxyURL)
+		resp, err := c.doHTTPViaCurlCFFISidecar(req, proxyURL, account)
 		if err != nil {
 			return nil, err
 	REDACTED
