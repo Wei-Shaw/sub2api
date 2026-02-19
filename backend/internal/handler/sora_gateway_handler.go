@@ -212,6 +212,7 @@ REDACTED
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{REDACTED)
 	lastFailoverStatus := 0
+	var lastFailoverBody []byte
 
 	for {
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionHash, reqModel, failedAccountIDs, "")
@@ -224,7 +225,7 @@ REDACTED
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
 				return
 		REDACTED
-			h.handleFailoverExhausted(c, lastFailoverStatus, streamStarted)
+			h.handleFailoverExhausted(c, lastFailoverStatus, lastFailoverBody, streamStarted)
 			return
 	REDACTED
 		account := selection.Account
@@ -287,14 +288,19 @@ REDACTED
 				failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
 				if switchCount >= maxAccountSwitches {
 					lastFailoverStatus = failoverErr.StatusCode
-					h.handleFailoverExhausted(c, lastFailoverStatus, streamStarted)
+					lastFailoverBody = failoverErr.ResponseBody
+					h.handleFailoverExhausted(c, lastFailoverStatus, lastFailoverBody, streamStarted)
 					return
 			REDACTED
 				lastFailoverStatus = failoverErr.StatusCode
+				lastFailoverBody = failoverErr.ResponseBody
 				switchCount++
+				upstreamErrCode, upstreamErrMsg := extractUpstreamErrorCodeAndMessage(lastFailoverBody)
 				reqLog.Warn("sora.upstream_failover_switching",
 					zap.Int64("account_id", account.ID),
 					zap.Int("upstream_status", failoverErr.StatusCode),
+					zap.String("upstream_error_code", upstreamErrCode),
+					zap.String("upstream_error_message", upstreamErrMsg),
 					zap.Int("switch_count", switchCount),
 					zap.Int("max_switches", maxAccountSwitches),
 				)
@@ -360,17 +366,32 @@ func (h *SoraGatewayHandler) handleConcurrencyError(c *gin.Context, err error, s
 		fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType), streamStarted)
 REDACTED
 
-func (h *SoraGatewayHandler) handleFailoverExhausted(c *gin.Context, statusCode int, streamStarted bool) {
-	status, errType, errMsg := h.mapUpstreamError(statusCode)
+func (h *SoraGatewayHandler) handleFailoverExhausted(c *gin.Context, statusCode int, responseBody []byte, streamStarted bool) {
+	status, errType, errMsg := h.mapUpstreamError(statusCode, responseBody)
 	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)
 REDACTED
 
-func (h *SoraGatewayHandler) mapUpstreamError(statusCode int) (int, string, string) {
+func (h *SoraGatewayHandler) mapUpstreamError(statusCode int, responseBody []byte) (int, string, string) {
+	upstreamCode, upstreamMessage := extractUpstreamErrorCodeAndMessage(responseBody)
+	if upstreamMessage != "" {
+		switch statusCode {
+		case 401, 403, 404, 500, 502, 503, 504:
+			return http.StatusBadGateway, "upstream_error", upstreamMessage
+		case 429:
+			return http.StatusTooManyRequests, "rate_limit_error", upstreamMessage
+	REDACTED
+REDACTED
+
 	switch statusCode {
 	case 401:
 		return http.StatusBadGateway, "upstream_error", "Upstream authentication failed, please contact administrator"
 	case 403:
 		return http.StatusBadGateway, "upstream_error", "Upstream access forbidden, please contact administrator"
+	case 404:
+		if strings.EqualFold(upstreamCode, "unsupported_country_code") {
+			return http.StatusBadGateway, "upstream_error", "Upstream region capability unavailable for this account, please contact administrator"
+	REDACTED
+		return http.StatusBadGateway, "upstream_error", "Upstream capability unavailable for this account, please contact administrator"
 	case 429:
 		return http.StatusTooManyRequests, "rate_limit_error", "Upstream rate limit exceeded, please retry later"
 	case 529:
@@ -380,6 +401,41 @@ func (h *SoraGatewayHandler) mapUpstreamError(statusCode int) (int, string, stri
 	default:
 		return http.StatusBadGateway, "upstream_error", "Upstream request failed"
 REDACTED
+REDACTED
+
+func extractUpstreamErrorCodeAndMessage(body []byte) (string, string) {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return "", ""
+REDACTED
+	if !gjson.Valid(trimmed) {
+		return "", truncateSoraErrorMessage(trimmed, 256)
+REDACTED
+	code := strings.TrimSpace(gjson.Get(trimmed, "error.code").String())
+	if code == "" {
+		code = strings.TrimSpace(gjson.Get(trimmed, "code").String())
+REDACTED
+	message := strings.TrimSpace(gjson.Get(trimmed, "error.message").String())
+	if message == "" {
+		message = strings.TrimSpace(gjson.Get(trimmed, "message").String())
+REDACTED
+	if message == "" {
+		message = strings.TrimSpace(gjson.Get(trimmed, "error.detail").String())
+REDACTED
+	if message == "" {
+		message = strings.TrimSpace(gjson.Get(trimmed, "detail").String())
+REDACTED
+	return code, truncateSoraErrorMessage(message, 512)
+REDACTED
+
+func truncateSoraErrorMessage(s string, maxLen int) string {
+	if maxLen <= 0 {
+		return ""
+REDACTED
+	if len(s) <= maxLen {
+		return s
+REDACTED
+	return s[:maxLen] + "...(truncated)"
 REDACTED
 
 func (h *SoraGatewayHandler) handleStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {

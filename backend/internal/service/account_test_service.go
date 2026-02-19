@@ -27,11 +27,13 @@ import (
 // sseDataPrefix matches SSE data lines with optional whitespace after colon.
 // Some upstream APIs return non-standard "data:" without space (should be "data: ").
 var sseDataPrefix = regexp.MustCompile(`^data:\s*`)
+var cloudflareRayPattern = regexp.MustCompile(`(?i)cRay:\s*'([a-z0-9-]+)'`)
 
 const (
 	testClaudeAPIURL   = "https://api.anthropic.com/v1/messages"
 	chatgptCodexAPIURL = "https://chatgpt.com/backend-api/codex/responses"
 	soraMeAPIURL       = "https://sora.chatgpt.com/backend/me" // Sora 用户信息接口，用于测试连接
+	soraBillingAPIURL  = "https://sora.chatgpt.com/backend/billing/subscriptions"
 )
 
 // TestEvent represents a SSE event for account testing
@@ -502,8 +504,9 @@ REDACTED
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 REDACTED
+	enableSoraTLSFingerprint := s.shouldEnableSoraTLSFingerprint()
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, enableSoraTLSFingerprint)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 REDACTED
@@ -512,7 +515,10 @@ REDACTED
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Sora API returned %d: %s", resp.StatusCode, string(body)))
+		if isCloudflareChallengeResponse(resp.StatusCode, body) {
+			return s.sendErrorAndEnd(c, formatCloudflareChallengeMessage("Sora request blocked by Cloudflare challenge (HTTP 403). Please switch to a clean proxy/network and retry.", resp.Header, body))
+	REDACTED
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Sora API returned %d: %s", resp.StatusCode, truncateSoraErrorBody(body, 512)))
 REDACTED
 
 	// 解析 /me 响应，提取用户信息
@@ -531,8 +537,127 @@ REDACTED else {
 		s.sendEvent(c, TestEvent{Type: "content", Text: infoREDACTED)
 REDACTED
 
+	// 追加轻量能力检查：订阅信息查询（失败仅告警，不中断连接测试）
+	subReq, err := http.NewRequestWithContext(ctx, "GET", soraBillingAPIURL, nil)
+	if err == nil {
+		subReq.Header.Set("Authorization", "Bearer "+authToken)
+		subReq.Header.Set("User-Agent", "Sora/1.2026.007 (Android 15; 24122RKC7C; build 2600700)")
+		subReq.Header.Set("Accept", "application/json")
+
+		subResp, subErr := s.httpUpstream.DoWithTLS(subReq, proxyURL, account.ID, account.Concurrency, enableSoraTLSFingerprint)
+		if subErr != nil {
+			s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Subscription check skipped: %s", subErr.Error())REDACTED)
+	REDACTED else {
+			subBody, _ := io.ReadAll(subResp.Body)
+			_ = subResp.Body.Close()
+			if subResp.StatusCode == http.StatusOK {
+				if summary := parseSoraSubscriptionSummary(subBody); summary != "" {
+					s.sendEvent(c, TestEvent{Type: "content", Text: summaryREDACTED)
+			REDACTED else {
+					s.sendEvent(c, TestEvent{Type: "content", Text: "Subscription check OK"REDACTED)
+			REDACTED
+		REDACTED else {
+				if isCloudflareChallengeResponse(subResp.StatusCode, subBody) {
+					s.sendEvent(c, TestEvent{Type: "content", Text: formatCloudflareChallengeMessage("Subscription check blocked by Cloudflare challenge (HTTP 403)", subResp.Header, subBody)REDACTED)
+			REDACTED else {
+					s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("Subscription check returned %d", subResp.StatusCode)REDACTED)
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
 	return nil
+REDACTED
+
+func parseSoraSubscriptionSummary(body []byte) string {
+	var subResp struct {
+		Data []struct {
+			Plan struct {
+				ID    string `json:"id"`
+				Title string `json:"title"`
+		REDACTED `json:"plan"`
+			EndTS string `json:"end_ts"`
+	REDACTED `json:"data"`
+REDACTED
+	if err := json.Unmarshal(body, &subResp); err != nil {
+		return ""
+REDACTED
+	if len(subResp.Data) == 0 {
+		return ""
+REDACTED
+
+	first := subResp.Data[0]
+	parts := make([]string, 0, 3)
+	if first.Plan.Title != "" {
+		parts = append(parts, first.Plan.Title)
+REDACTED
+	if first.Plan.ID != "" {
+		parts = append(parts, first.Plan.ID)
+REDACTED
+	if first.EndTS != "" {
+		parts = append(parts, "end="+first.EndTS)
+REDACTED
+	if len(parts) == 0 {
+		return ""
+REDACTED
+	return "Subscription: " + strings.Join(parts, " | ")
+REDACTED
+
+func (s *AccountTestService) shouldEnableSoraTLSFingerprint() bool {
+	if s == nil || s.cfg == nil {
+		return false
+REDACTED
+	return s.cfg.Gateway.TLSFingerprint.Enabled && !s.cfg.Sora.Client.DisableTLSFingerprint
+REDACTED
+
+func isCloudflareChallengeResponse(statusCode int, body []byte) bool {
+	if statusCode != http.StatusForbidden {
+		return false
+REDACTED
+	preview := strings.ToLower(truncateSoraErrorBody(body, 4096))
+	return strings.Contains(preview, "window._cf_chl_opt") ||
+		strings.Contains(preview, "just a moment") ||
+		strings.Contains(preview, "enable javascript and cookies to continue")
+REDACTED
+
+func formatCloudflareChallengeMessage(base string, headers http.Header, body []byte) string {
+	rayID := extractCloudflareRayID(headers, body)
+	if rayID == "" {
+		return base
+REDACTED
+	return fmt.Sprintf("%s (cf-ray: %s)", base, rayID)
+REDACTED
+
+func extractCloudflareRayID(headers http.Header, body []byte) string {
+	if headers != nil {
+		rayID := strings.TrimSpace(headers.Get("cf-ray"))
+		if rayID != "" {
+			return rayID
+	REDACTED
+		rayID = strings.TrimSpace(headers.Get("Cf-Ray"))
+		if rayID != "" {
+			return rayID
+	REDACTED
+REDACTED
+
+	preview := truncateSoraErrorBody(body, 8192)
+	matches := cloudflareRayPattern.FindStringSubmatch(preview)
+	if len(matches) >= 2 {
+		return strings.TrimSpace(matches[1])
+REDACTED
+	return ""
+REDACTED
+
+func truncateSoraErrorBody(body []byte, max int) string {
+	if max <= 0 {
+		max = 512
+REDACTED
+	raw := strings.TrimSpace(string(body))
+	if len(raw) <= max {
+		return raw
+REDACTED
+	return raw[:max] + "...(truncated)"
 REDACTED
 
 // testAntigravityAccountConnection tests an Antigravity account's connection

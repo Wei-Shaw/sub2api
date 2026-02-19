@@ -43,6 +43,9 @@ REDACTED
 func (s *stubSoraClient) CreateVideoTask(ctx context.Context, account *service.Account, req service.SoraVideoRequest) (string, error) {
 	return "task-video", nil
 REDACTED
+func (s *stubSoraClient) EnhancePrompt(ctx context.Context, account *service.Account, prompt, expansionLevel string, durationS int) (string, error) {
+	return "enhanced prompt", nil
+REDACTED
 func (s *stubSoraClient) GetImageTask(ctx context.Context, account *service.Account, taskID string) (*service.SoraImageTaskStatus, error) {
 	return &service.SoraImageTaskStatus{ID: taskID, Status: "completed", URLs: s.imageURLsREDACTED, nil
 REDACTED

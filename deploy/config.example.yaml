@@ -388,7 +388,11 @@ sora:
     recent_task_limit_max: 200
     # Enable debug logs for Sora upstream requests
     # 启用 Sora 直连调试日志
+    # 调试日志会输出上游请求尝试、重试、响应摘要；Authorization/openai-sentinel-token 等敏感头会自动脱敏
     debug: false
+    # Allow Sora client to fetch token via OpenAI token provider
+    # 是否允许 Sora 客户端通过 OpenAI token provider 取 token（默认 false，避免误走 OpenAI 刷新链路）
+    use_openai_token_provider: false
     # Optional custom headers (key-value)
     # 额外请求头（键值对）
     headers: {REDACTED
@@ -430,6 +434,13 @@ sora:
       # Cron schedule
       # Cron 调度表达式
       schedule: "0 3 * * *"
+
+# Token refresh behavior
+# token 刷新行为控制
+token_refresh:
+  # Whether OpenAI refresh flow is allowed to sync linked Sora accounts
+  # 是否允许 OpenAI 刷新流程同步覆盖 linked_openai_account_id 关联的 Sora 账号 token
+  sync_linked_sora_accounts: false
 
 # =============================================================================
 # API Key Auth Cache Configuration

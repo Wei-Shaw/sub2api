@@ -1740,9 +1740,13 @@ export default {
           refreshTokenAuth: 'Manual RT Input',
           refreshTokenDesc: 'Enter your existing OpenAI Refresh Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
           refreshTokenPlaceholder: 'Paste your OpenAI Refresh Token...\nSupports multiple, one per line',
+          sessionTokenAuth: 'Manual ST Input',
+          sessionTokenDesc: 'Enter your existing Sora Session Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
+          sessionTokenPlaceholder: 'Paste your Sora Session Token...\nSupports multiple, one per line',
           validating: 'Validating...',
           validateAndCreate: 'Validate & Create Account',
-          pleaseEnterRefreshToken: 'Please enter Refresh Token'
+          pleaseEnterRefreshToken: 'Please enter Refresh Token',
+          pleaseEnterSessionToken: 'Please enter Session Token'
         REDACTED,
         // Gemini specific
 	        gemini: {
@@ -1963,6 +1967,7 @@ export default {
       reAuthorizeAccount: 'Re-Authorize Account',
       claudeCodeAccount: 'Claude Code Account',
       openaiAccount: 'OpenAI Account',
+      soraAccount: 'Sora Account',
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
       inputMethod: 'Input Method',

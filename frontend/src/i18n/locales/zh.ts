@@ -1879,9 +1879,13 @@ export default {
           refreshTokenAuth: '手动输入 RT',
           refreshTokenDesc: '输入您已有的 OpenAI Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
           refreshTokenPlaceholder: '粘贴您的 OpenAI Refresh Token...\n支持多个，每行一个',
+          sessionTokenAuth: '手动输入 ST',
+          sessionTokenDesc: '输入您已有的 Sora Session Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
+          sessionTokenPlaceholder: '粘贴您的 Sora Session Token...\n支持多个，每行一个',
           validating: '验证中...',
           validateAndCreate: '验证并创建账号',
-          pleaseEnterRefreshToken: '请输入 Refresh Token'
+          pleaseEnterRefreshToken: '请输入 Refresh Token',
+          pleaseEnterSessionToken: '请输入 Session Token'
         REDACTED,
         // Gemini specific
         gemini: {
@@ -2097,6 +2101,7 @@ export default {
       reAuthorizeAccount: '重新授权账号',
       claudeCodeAccount: 'Claude Code 账号',
       openaiAccount: 'OpenAI 账号',
+      soraAccount: 'Sora 账号',
       geminiAccount: 'Gemini 账号',
       antigravityAccount: 'Antigravity 账号',
       inputMethod: '输入方式',

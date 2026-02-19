@@ -18,6 +18,8 @@ type stubSoraClientForPoll struct {
 	videoStatus *SoraVideoTaskStatus
 	imageCalls  int
 	videoCalls  int
+	enhanced    string
+	enhanceErr  error
 REDACTED
 
 func (s *stubSoraClientForPoll) Enabled() bool { return true REDACTED
@@ -29,6 +31,12 @@ func (s *stubSoraClientForPoll) CreateImageTask(ctx context.Context, account *Ac
 REDACTED
 func (s *stubSoraClientForPoll) CreateVideoTask(ctx context.Context, account *Account, req SoraVideoRequest) (string, error) {
 	return "task-video", nil
+REDACTED
+func (s *stubSoraClientForPoll) EnhancePrompt(ctx context.Context, account *Account, prompt, expansionLevel string, durationS int) (string, error) {
+	if s.enhanced != "" {
+		return s.enhanced, s.enhanceErr
+REDACTED
+	return "enhanced prompt", s.enhanceErr
 REDACTED
 func (s *stubSoraClientForPoll) GetImageTask(ctx context.Context, account *Account, taskID string) (*SoraImageTaskStatus, error) {
 	s.imageCalls++
@@ -60,6 +68,33 @@ REDACTED
 REDACTED
 	require.Equal(t, []string{"https://example.com/a.png"REDACTED, urls)
 	require.Equal(t, 1, client.imageCalls)
+REDACTED
+
+func TestSoraGatewayService_ForwardPromptEnhance(t *testing.T) {
+	client := &stubSoraClientForPoll{
+		enhanced: "cinematic prompt",
+REDACTED
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				PollIntervalSeconds: 1,
+				MaxPollAttempts:     1,
+		REDACTED,
+	REDACTED,
+REDACTED
+	svc := NewSoraGatewayService(client, nil, nil, cfg)
+	account := &Account{
+		ID:       1,
+		Platform: PlatformSora,
+		Status:   StatusActive,
+REDACTED
+	body := []byte(`{"model":"prompt-enhance-short-10s","messages":[{"role":"user","content":"cat running"REDACTED],"stream":falseREDACTED`)
+
+	result, err := svc.Forward(context.Background(), nil, account, body, false)
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, "prompt", result.MediaType)
+	require.Equal(t, "prompt-enhance-short-10s", result.Model)
 REDACTED
 
 func TestSoraGatewayService_PollVideoTaskFailed(t *testing.T) {
@@ -178,6 +213,7 @@ REDACTED
 func TestShouldFailoverUpstreamError(t *testing.T) {
 	svc := NewSoraGatewayService(nil, nil, nil, &config.Config{REDACTED)
 	require.True(t, svc.shouldFailoverUpstreamError(401))
+	require.True(t, svc.shouldFailoverUpstreamError(404))
 	require.True(t, svc.shouldFailoverUpstreamError(429))
 	require.True(t, svc.shouldFailoverUpstreamError(500))
 	require.True(t, svc.shouldFailoverUpstreamError(502))

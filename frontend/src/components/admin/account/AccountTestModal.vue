@@ -238,6 +238,11 @@ const loadAvailableModels = async () => {
           availableModels.value.find((m) => m.id === 'gemini-3-flash-preview') ||
           availableModels.value.find((m) => m.id === 'gemini-3-pro-preview')
         selectedModelId.value = preferred?.id || availableModels.value[0].id
+      REDACTED else if (props.account.platform === 'sora') {
+        const preferred =
+          availableModels.value.find((m) => m.id === 'gpt-image') ||
+          availableModels.value.find((m) => !m.id.startsWith('prompt-enhance'))
+        selectedModelId.value = preferred?.id || availableModels.value[0].id
       REDACTED else {
         // Try to select Sonnet as default, otherwise use first model
         const sonnetModel = availableModels.value.find((m) => m.id.includes('sonnet'))
