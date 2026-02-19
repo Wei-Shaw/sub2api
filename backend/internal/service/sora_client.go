@@ -1101,7 +1101,10 @@ REDACTED
 REDACTED
 
 func (c *SoraDirectClient) doHTTP(req *http.Request, proxyURL string, account *Account) (*http.Response, error) {
-	enableTLS := c != nil && c.cfg != nil && c.cfg.Gateway.TLSFingerprint.Enabled && !c.cfg.Sora.Client.DisableTLSFingerprint
+	enableTLS := true
+	if c != nil && c.cfg != nil && c.cfg.Sora.Client.DisableTLSFingerprint {
+		enableTLS = false
+REDACTED
 	if c.httpUpstream != nil {
 		accountID := int64(0)
 		accountConcurrency := 0
