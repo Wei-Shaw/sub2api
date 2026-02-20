@@ -1796,6 +1796,7 @@ REDACTED
 	REDACTED)
 		result.FailedCount++
 		finalizeProxyQualityResult(result)
+		s.saveProxyQualitySnapshot(ctx, id, result, nil)
 		return result, nil
 REDACTED
 
@@ -1809,6 +1810,7 @@ REDACTED
 	REDACTED)
 		result.FailedCount++
 		finalizeProxyQualityResult(result)
+		s.saveProxyQualitySnapshot(ctx, id, result, nil)
 		return result, nil
 REDACTED
 
@@ -1838,6 +1840,7 @@ REDACTED)
 	REDACTED)
 		result.FailedCount++
 		finalizeProxyQualityResult(result)
+		s.saveProxyQualitySnapshot(ctx, id, result, exitInfo)
 		return result, nil
 REDACTED
 
@@ -1857,6 +1860,7 @@ REDACTED
 REDACTED
 
 	finalizeProxyQualityResult(result)
+	s.saveProxyQualitySnapshot(ctx, id, result, exitInfo)
 	return result, nil
 REDACTED
 
@@ -1952,6 +1956,80 @@ func proxyQualityGrade(score int) string {
 	default:
 		return "F"
 REDACTED
+REDACTED
+
+func proxyQualityOverallStatus(result *ProxyQualityCheckResult) string {
+	if result == nil {
+		return ""
+REDACTED
+	if result.ChallengeCount > 0 {
+		return "challenge"
+REDACTED
+	if result.FailedCount > 0 {
+		return "failed"
+REDACTED
+	if result.WarnCount > 0 {
+		return "warn"
+REDACTED
+	if result.PassedCount > 0 {
+		return "healthy"
+REDACTED
+	return "failed"
+REDACTED
+
+func proxyQualityFirstCFRay(result *ProxyQualityCheckResult) string {
+	if result == nil {
+		return ""
+REDACTED
+	for _, item := range result.Items {
+		if item.CFRay != "" {
+			return item.CFRay
+	REDACTED
+REDACTED
+	return ""
+REDACTED
+
+func proxyQualityBaseConnectivityPass(result *ProxyQualityCheckResult) bool {
+	if result == nil {
+		return false
+REDACTED
+	for _, item := range result.Items {
+		if item.Target == "base_connectivity" {
+			return item.Status == "pass"
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func (s *adminServiceImpl) saveProxyQualitySnapshot(ctx context.Context, proxyID int64, result *ProxyQualityCheckResult, exitInfo *ProxyExitInfo) {
+	if result == nil {
+		return
+REDACTED
+	score := result.Score
+	checkedAt := result.CheckedAt
+	info := &ProxyLatencyInfo{
+		Success:          proxyQualityBaseConnectivityPass(result),
+		Message:          result.Summary,
+		QualityStatus:    proxyQualityOverallStatus(result),
+		QualityScore:     &score,
+		QualityGrade:     result.Grade,
+		QualitySummary:   result.Summary,
+		QualityCheckedAt: &checkedAt,
+		QualityCFRay:     proxyQualityFirstCFRay(result),
+		UpdatedAt:        time.Now(),
+REDACTED
+	if result.BaseLatencyMs > 0 {
+		latency := result.BaseLatencyMs
+		info.LatencyMs = &latency
+REDACTED
+	if exitInfo != nil {
+		info.IPAddress = exitInfo.IP
+		info.Country = exitInfo.Country
+		info.CountryCode = exitInfo.CountryCode
+		info.Region = exitInfo.Region
+		info.City = exitInfo.City
+REDACTED
+	s.saveProxyLatency(ctx, proxyID, info)
 REDACTED
 
 func (s *adminServiceImpl) probeProxyLatency(ctx context.Context, proxy *Proxy) {
@@ -2064,6 +2142,11 @@ REDACTED
 		proxies[i].CountryCode = info.CountryCode
 		proxies[i].Region = info.Region
 		proxies[i].City = info.City
+		proxies[i].QualityStatus = info.QualityStatus
+		proxies[i].QualityScore = info.QualityScore
+		proxies[i].QualityGrade = info.QualityGrade
+		proxies[i].QualitySummary = info.QualitySummary
+		proxies[i].QualityChecked = info.QualityCheckedAt
 REDACTED
 REDACTED
 
@@ -2071,7 +2154,27 @@ func (s *adminServiceImpl) saveProxyLatency(ctx context.Context, proxyID int64, 
 	if s.proxyLatencyCache == nil || info == nil {
 		return
 REDACTED
-	if err := s.proxyLatencyCache.SetProxyLatency(ctx, proxyID, info); err != nil {
+
+	merged := *info
+	if latencies, err := s.proxyLatencyCache.GetProxyLatencies(ctx, []int64{proxyIDREDACTED); err == nil {
+		if existing := latencies[proxyID]; existing != nil {
+			if merged.QualityCheckedAt == nil &&
+				merged.QualityScore == nil &&
+				merged.QualityGrade == "" &&
+				merged.QualityStatus == "" &&
+				merged.QualitySummary == "" &&
+				merged.QualityCFRay == "" {
+				merged.QualityStatus = existing.QualityStatus
+				merged.QualityScore = existing.QualityScore
+				merged.QualityGrade = existing.QualityGrade
+				merged.QualitySummary = existing.QualitySummary
+				merged.QualityCheckedAt = existing.QualityCheckedAt
+				merged.QualityCFRay = existing.QualityCFRay
+		REDACTED
+	REDACTED
+REDACTED
+
+	if err := s.proxyLatencyCache.SetProxyLatency(ctx, proxyID, &merged); err != nil {
 		logger.LegacyPrintf("service.admin", "Warning: store proxy latency cache failed: %v", err)
 REDACTED
 REDACTED

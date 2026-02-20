@@ -2181,6 +2181,8 @@ export default {
       qualityTableStatus: 'Status',
       qualityTableLatency: 'Latency',
       qualityTableMessage: 'Message',
+      qualityInline: 'Quality {gradeREDACTED/{scoreREDACTED',
+      qualityStatusHealthy: 'Healthy',
       qualityStatusPass: 'Pass',
       qualityStatusWarn: 'Warn',
       qualityStatusFail: 'Fail',

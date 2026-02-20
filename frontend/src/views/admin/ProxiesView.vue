@@ -160,20 +160,32 @@
           </template>
 
           <template #cell-latency="{ row REDACTED">
-            <span
-              v-if="row.latency_status === 'failed'"
-              class="badge badge-danger"
-              :title="row.latency_message || undefined"
-            >
-              {{ t('admin.proxies.latencyFailed') REDACTEDREDACTED
-            </span>
-            <span
-              v-else-if="typeof row.latency_ms === 'number'"
-              :class="['badge', row.latency_ms < 200 ? 'badge-success' : 'badge-warning']"
-            >
-              {{ row.latency_ms REDACTEDREDACTEDms
-            </span>
-            <span v-else class="text-sm text-gray-400">-</span>
+            <div class="flex flex-col gap-1">
+              <span
+                v-if="row.latency_status === 'failed'"
+                class="badge badge-danger"
+                :title="row.latency_message || undefined"
+              >
+                {{ t('admin.proxies.latencyFailed') REDACTEDREDACTED
+              </span>
+              <span
+                v-else-if="typeof row.latency_ms === 'number'"
+                :class="['badge', row.latency_ms < 200 ? 'badge-success' : 'badge-warning']"
+              >
+                {{ row.latency_ms REDACTEDREDACTEDms
+              </span>
+              <span v-else class="text-sm text-gray-400">-</span>
+              <div
+                v-if="typeof row.quality_checked === 'number'"
+                class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400"
+                :title="row.quality_summary || undefined"
+              >
+                <span>{{ t('admin.proxies.qualityInline', { grade: row.quality_grade || '-', score: row.quality_score ?? '-' REDACTED) REDACTEDREDACTED</span>
+                <span class="badge" :class="qualityOverallClass(row.quality_status)">
+                  {{ qualityOverallLabel(row.quality_status) REDACTEDREDACTED
+                </span>
+              </div>
+            </div>
           </template>
 
           <template #cell-status="{ value REDACTED">
@@ -1250,6 +1262,23 @@ const applyLatencyResult = (
   target.latency_message = result.message
 REDACTED
 
+const summarizeQualityStatus = (result: ProxyQualityCheckResult): Proxy['quality_status'] => {
+  if (result.challenge_count > 0) return 'challenge'
+  if (result.failed_count > 0) return 'failed'
+  if (result.warn_count > 0) return 'warn'
+  return 'healthy'
+REDACTED
+
+const applyQualityResult = (proxyId: number, result: ProxyQualityCheckResult) => {
+  const target = proxies.value.find((proxy) => proxy.id === proxyId)
+  if (!target) return
+  target.quality_status = summarizeQualityStatus(result)
+  target.quality_score = result.score
+  target.quality_grade = result.grade
+  target.quality_summary = result.summary
+  target.quality_checked = result.checked_at
+REDACTED
+
 const formatLocation = (proxy: Proxy) => {
   const parts = [proxy.country, proxy.city].filter(Boolean) as string[]
   return parts.join(' · ')
@@ -1330,6 +1359,7 @@ const handleQualityCheck = async (proxy: Proxy) => {
         country_code: result.country_code
       REDACTED)
     REDACTED
+    applyQualityResult(proxy.id, result)
 
     appStore.showSuccess(
       t('admin.proxies.qualityCheckDone', { score: result.score, grade: result.grade REDACTED)
@@ -1374,6 +1404,7 @@ const runBatchProxyQualityChecks = async (ids: number[]) => {
             REDACTED)
           REDACTED
         REDACTED
+        applyQualityResult(current, result)
         if (result.challenge_count > 0) {
           challenge++
         REDACTED else if (result.failed_count > 0) {
@@ -1417,6 +1448,20 @@ REDACTED
 
 const qualityStatusLabel = (status: string) => {
   if (status === 'pass') return t('admin.proxies.qualityStatusPass')
+  if (status === 'warn') return t('admin.proxies.qualityStatusWarn')
+  if (status === 'challenge') return t('admin.proxies.qualityStatusChallenge')
+  return t('admin.proxies.qualityStatusFail')
+REDACTED
+
+const qualityOverallClass = (status?: string) => {
+  if (status === 'healthy') return 'badge-success'
+  if (status === 'warn') return 'badge-warning'
+  if (status === 'challenge') return 'badge-danger'
+  return 'badge-danger'
+REDACTED
+
+const qualityOverallLabel = (status?: string) => {
+  if (status === 'healthy') return t('admin.proxies.qualityStatusHealthy')
   if (status === 'warn') return t('admin.proxies.qualityStatusWarn')
   if (status === 'challenge') return t('admin.proxies.qualityStatusChallenge')
   return t('admin.proxies.qualityStatusFail')

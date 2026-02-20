@@ -512,6 +512,11 @@ export interface Proxy {
   country_code?: string
   region?: string
   city?: string
+  quality_status?: 'healthy' | 'warn' | 'challenge' | 'failed'
+  quality_score?: number
+  quality_grade?: string
+  quality_summary?: string
+  quality_checked?: number
   created_at: string
   updated_at: string
 REDACTED
