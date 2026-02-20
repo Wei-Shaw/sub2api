@@ -1908,8 +1908,13 @@ REDACTED
 REDACTED
 
 	if _, ok := target.AllowedStatuses[resp.StatusCode]; ok {
-		item.Status = "pass"
-		item.Message = fmt.Sprintf("HTTP %d", resp.StatusCode)
+		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+			item.Status = "pass"
+			item.Message = fmt.Sprintf("HTTP %d", resp.StatusCode)
+	REDACTED else {
+			item.Status = "warn"
+			item.Message = fmt.Sprintf("HTTP %d（目标可达，但鉴权或方法受限）", resp.StatusCode)
+	REDACTED
 		return item
 REDACTED
 
