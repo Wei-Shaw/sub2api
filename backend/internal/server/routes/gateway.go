@@ -43,12 +43,12 @@ REDACTED
 		gateway.GET("/usage", h.Gateway.Usage)
 		// OpenAI Responses API
 		gateway.POST("/responses", h.OpenAIGateway.Responses)
-		// 明确阻止旧入口误用到 Sora，避免客户端把 OpenAI Chat Completions 当作 Sora 入口
+		// 明确阻止旧协议入口：OpenAI 仅支持 Responses API，避免客户端误解为会自动路由到其它平台。
 		gateway.POST("/chat/completions", func(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": gin.H{
 					"type":    "invalid_request_error",
-					"message": "For Sora, use /sora/v1/chat/completions. OpenAI should use /v1/responses.",
+					"message": "Unsupported legacy protocol: /v1/chat/completions is not supported. Please use /v1/responses.",
 			REDACTED,
 		REDACTED)
 	REDACTED)
