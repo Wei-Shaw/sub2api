@@ -352,7 +352,7 @@ REDACTED
 	REDACTED, "\n"))),
 REDACTED
 
-	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 1REDACTED, time.Now())
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 1REDACTED, time.Now(), "claude-3-7-sonnet-20250219")
 REDACTED
 	require.NotNil(t, result)
 	require.NotNil(t, result.usage)
@@ -602,10 +602,115 @@ REDACTED
 		Body:       io.NopCloser(strings.NewReader(longLine)),
 REDACTED
 
-	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 2REDACTED, time.Now())
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 2REDACTED, time.Now(), "claude-3-7-sonnet-20250219")
 REDACTED
 	require.ErrorIs(t, err, bufio.ErrTooLong)
 	require.NotNil(t, result)
+REDACTED
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingDataIntervalTimeout(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				StreamDataIntervalTimeout: 1,
+				MaxLineSize:               defaultMaxLineSize,
+		REDACTED,
+	REDACTED,
+		rateLimitService: &RateLimitService{REDACTED,
+REDACTED
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+		Body:       pr,
+REDACTED
+
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 5REDACTED, time.Now(), "claude-3-7-sonnet-20250219")
+	_ = pw.Close()
+	_ = pr.Close()
+
+REDACTED
+	require.Contains(t, err.Error(), "stream data interval timeout")
+	require.NotNil(t, result)
+	require.False(t, result.clientDisconnect)
+REDACTED
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingReadError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				MaxLineSize: defaultMaxLineSize,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+		Body: &streamReadCloser{
+			err: io.ErrUnexpectedEOF,
+	REDACTED,
+REDACTED
+
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 6REDACTED, time.Now(), "claude-3-7-sonnet-20250219")
+REDACTED
+	require.Contains(t, err.Error(), "stream read error")
+	require.NotNil(t, result)
+	require.False(t, result.clientDisconnect)
+REDACTED
+
+func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingTimeoutAfterClientDisconnect(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	c.Writer = &failWriteResponseWriter{ResponseWriter: c.WriterREDACTED
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				StreamDataIntervalTimeout: 1,
+				MaxLineSize:               defaultMaxLineSize,
+		REDACTED,
+	REDACTED,
+		rateLimitService: &RateLimitService{REDACTED,
+REDACTED
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+		Body:       pr,
+REDACTED
+
+	done := make(chan struct{REDACTED)
+	go func() {
+		defer close(done)
+		_, _ = pw.Write([]byte(`data: {"type":"message_start","message":{"usage":{"input_tokens":9REDACTEDREDACTEDREDACTED` + "\n"))
+		// 保持上游连接静默，触发数据间隔超时分支。
+		time.Sleep(1500 * time.Millisecond)
+		_ = pw.Close()
+REDACTED()
+
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 7REDACTED, time.Now(), "claude-3-7-sonnet-20250219")
+	_ = pr.Close()
+	<-done
+
+REDACTED
+	require.NotNil(t, result)
+	require.True(t, result.clientDisconnect)
+	require.Equal(t, 9, result.usage.InputTokens)
 REDACTED
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingContextCanceled(t *testing.T) {
@@ -630,7 +735,7 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 3REDACTED, time.Now())
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 3REDACTED, time.Now(), "claude-3-7-sonnet-20250219")
 REDACTED
 	require.NotNil(t, result)
 	require.True(t, result.clientDisconnect)
@@ -660,7 +765,7 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 4REDACTED, time.Now())
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 4REDACTED, time.Now(), "claude-3-7-sonnet-20250219")
 REDACTED
 	require.NotNil(t, result)
 	require.True(t, result.clientDisconnect)

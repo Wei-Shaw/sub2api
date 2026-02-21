@@ -3679,7 +3679,7 @@ REDACTED
 	var firstTokenMs *int
 	var clientDisconnect bool
 	if reqStream {
-		streamResult, err := s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, startTime)
+		streamResult, err := s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, startTime, reqModel)
 		if err != nil {
 			return nil, err
 	REDACTED
@@ -3764,6 +3764,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	c *gin.Context,
 	account *Account,
 	startTime time.Time,
+	model string,
 ) (*streamingResult, error) {
 	if s.rateLimitService != nil {
 		s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
@@ -3804,55 +3805,118 @@ REDACTED
 REDACTED
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
-	defer putSSEScannerBuf64K(scanBuf)
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		if data, ok := extractAnthropicSSEDataLine(line); ok {
-			trimmed := strings.TrimSpace(data)
-			if firstTokenMs == nil && trimmed != "" && trimmed != "[DONE]" {
-				ms := int(time.Since(startTime).Milliseconds())
-				firstTokenMs = &ms
+	type scanEvent struct {
+		line string
+		err  error
+REDACTED
+	events := make(chan scanEvent, 16)
+	done := make(chan struct{REDACTED)
+	sendEvent := func(ev scanEvent) bool {
+		select {
+		case events <- ev:
+			return true
+		case <-done:
+			return false
+	REDACTED
+REDACTED
+	var lastReadAt int64
+	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+	go func(scanBuf *sseScannerBuf64K) {
+		defer putSSEScannerBuf64K(scanBuf)
+		defer close(events)
+		for scanner.Scan() {
+			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+			if !sendEvent(scanEvent{line: scanner.Text()REDACTED) {
+				return
 		REDACTED
-			s.parseSSEUsagePassthrough(data, usage)
 	REDACTED
+		if err := scanner.Err(); err != nil {
+			_ = sendEvent(scanEvent{err: errREDACTED)
+	REDACTED
+REDACTED(scanBuf)
+	defer close(done)
 
-		if !clientDisconnected {
-			if _, err := io.WriteString(w, line); err != nil {
-				clientDisconnected = true
-				logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
-		REDACTED else if _, err := io.WriteString(w, "\n"); err != nil {
-				clientDisconnected = true
-				logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
-		REDACTED else if line == "" {
-				// 按 SSE 事件边界刷出，减少每行 flush 带来的 syscall 开销。
-				flusher.Flush()
+	streamInterval := time.Duration(0)
+	if s.cfg != nil && s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
+		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
+REDACTED
+	var intervalTicker *time.Ticker
+	if streamInterval > 0 {
+		intervalTicker = time.NewTicker(streamInterval)
+		defer intervalTicker.Stop()
+REDACTED
+	var intervalCh <-chan time.Time
+	if intervalTicker != nil {
+		intervalCh = intervalTicker.C
+REDACTED
+
+	for {
+		select {
+		case ev, ok := <-events:
+			if !ok {
+				if !clientDisconnected {
+					// 兜底补刷，确保最后一个未以空行结尾的事件也能及时送达客户端。
+					flusher.Flush()
+			REDACTED
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnectedREDACTED, nil
 		REDACTED
-	REDACTED
-REDACTED
-	if !clientDisconnected {
-		// 兜底补刷，确保最后一个未以空行结尾的事件也能及时送达客户端。
-		flusher.Flush()
-REDACTED
+			if ev.err != nil {
+				if clientDisconnected {
+					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Upstream read error after client disconnect: account=%d err=%v", account.ID, ev.err)
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+			REDACTED
+				if errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
+					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] 流读取被取消: account=%d request_id=%s err=%v ctx_err=%v",
+						account.ID, resp.Header.Get("x-request-id"), ev.err, ctx.Err())
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+			REDACTED
+				if errors.Is(ev.err, bufio.ErrTooLong) {
+					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, ev.err
+			REDACTED
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream read error: %w", ev.err)
+		REDACTED
 
-	if err := scanner.Err(); err != nil {
-		if clientDisconnected {
-			logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Upstream read error after client disconnect: account=%d err=%v", account.ID, err)
-			return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
-	REDACTED
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] 流读取被取消: account=%d request_id=%s err=%v ctx_err=%v",
-				account.ID, resp.Header.Get("x-request-id"), err, ctx.Err())
-			return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
-	REDACTED
-		if errors.Is(err, bufio.ErrTooLong) {
-			logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, err)
-			return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, err
-	REDACTED
-		return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream read error: %w", err)
-REDACTED
+			line := ev.line
+			if data, ok := extractAnthropicSSEDataLine(line); ok {
+				trimmed := strings.TrimSpace(data)
+				if firstTokenMs == nil && trimmed != "" && trimmed != "[DONE]" {
+					ms := int(time.Since(startTime).Milliseconds())
+					firstTokenMs = &ms
+			REDACTED
+				s.parseSSEUsagePassthrough(data, usage)
+		REDACTED
 
-	return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnectedREDACTED, nil
+			if !clientDisconnected {
+				if _, err := io.WriteString(w, line); err != nil {
+					clientDisconnected = true
+					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+			REDACTED else if _, err := io.WriteString(w, "\n"); err != nil {
+					clientDisconnected = true
+					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+			REDACTED else if line == "" {
+					// 按 SSE 事件边界刷出，减少每行 flush 带来的 syscall 开销。
+					flusher.Flush()
+			REDACTED
+		REDACTED
+
+		case <-intervalCh:
+			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
+			if time.Since(lastRead) < streamInterval {
+				continue
+		REDACTED
+			if clientDisconnected {
+				logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Upstream timeout after client disconnect: account=%d model=%s", account.ID, model)
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+		REDACTED
+			logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Stream data interval timeout: account=%d model=%s interval=%s", account.ID, model, streamInterval)
+			if s.rateLimitService != nil {
+				s.rateLimitService.HandleStreamTimeout(ctx, account, model)
+		REDACTED
+			return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream data interval timeout")
+	REDACTED
+REDACTED
 REDACTED
 
 func extractAnthropicSSEDataLine(line string) (string, bool) {
