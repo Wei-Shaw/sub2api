@@ -1548,6 +1548,11 @@ export default {
         enableSora: 'Enable Sora simultaneously',
         enableSoraHint: 'Sora uses the same OpenAI account. Enable to create Sora account simultaneously.'
       REDACTED,
+      anthropic: {
+        apiKeyPassthrough: 'Auto passthrough (auth only)',
+        apiKeyPassthroughDesc:
+          'Only applies to Anthropic API Key accounts. When enabled, messages/count_tokens are forwarded in passthrough mode with auth replacement only, while billing/concurrency/audit and safety filtering are preserved. Disable to roll back immediately.'
+      REDACTED,
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
       modelMapping: 'Model Mapping',
