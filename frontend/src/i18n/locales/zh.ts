@@ -1694,6 +1694,11 @@ export default {
         enableSora: '同时启用 Sora',
         enableSoraHint: 'Sora 使用相同的 OpenAI 账号，开启后将同时创建 Sora 平台账号'
       REDACTED,
+      anthropic: {
+        apiKeyPassthrough: '自动透传（仅替换认证）',
+        apiKeyPassthroughDesc:
+          '仅对 Anthropic API Key 生效。开启后，messages/count_tokens 请求将透传上游并仅替换认证，保留计费/并发/审计及必要安全过滤；关闭即可回滚到现有兼容链路。'
+      REDACTED,
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',
       modelMapping: '模型映射',
