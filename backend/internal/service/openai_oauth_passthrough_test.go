@@ -555,12 +555,14 @@ func TestOpenAIGatewayService_CodexCLIOnly_AllowOfficialClientFamilies(t *testin
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name string
-		ua   string
+		name       string
+		ua         string
+		originator string
 REDACTED{
-		{name: "codex_cli_rs", ua: "codex_cli_rs/0.99.0"REDACTED,
-		{name: "codex_vscode", ua: "codex_vscode/1.0.0"REDACTED,
-		{name: "codex_app", ua: "codex_app/2.1.0"REDACTED,
+		{name: "codex_cli_rs", ua: "codex_cli_rs/0.99.0", originator: ""REDACTED,
+		{name: "codex_vscode", ua: "codex_vscode/1.0.0", originator: ""REDACTED,
+		{name: "codex_app", ua: "codex_app/2.1.0", originator: ""REDACTED,
+		{name: "originator_codex_chatgpt_desktop", ua: "curl/8.0", originator: "codex_chatgpt_desktop"REDACTED,
 REDACTED
 
 	for _, tt := range tests {
@@ -569,6 +571,9 @@ REDACTED
 			c, _ := gin.CreateTestContext(rec)
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
 			c.Request.Header.Set("User-Agent", tt.ua)
+			if tt.originator != "" {
+				c.Request.Header.Set("originator", tt.originator)
+		REDACTED
 
 			inputBody := []byte(`{"model":"gpt-5.2","stream":false,"store":true,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
 
