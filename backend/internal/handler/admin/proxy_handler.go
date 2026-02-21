@@ -236,6 +236,24 @@ REDACTED
 	response.Success(c, result)
 REDACTED
 
+// CheckQuality handles checking proxy quality across common AI targets.
+// POST /api/v1/admin/proxies/:id/quality-check
+func (h *ProxyHandler) CheckQuality(c *gin.Context) {
+	proxyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid proxy ID")
+		return
+REDACTED
+
+	result, err := h.adminService.CheckProxyQuality(c.Request.Context(), proxyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, result)
+REDACTED
+
 // GetStats handles getting proxy statistics
 // GET /api/v1/admin/proxies/:id/stats
 func (h *ProxyHandler) GetStats(c *gin.Context) {

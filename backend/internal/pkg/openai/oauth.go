@@ -17,6 +17,8 @@ import (
 const (
 	// OAuth Client ID for OpenAI (Codex CLI official)
 	ClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
+	// OAuth Client ID for Sora mobile flow (aligned with sora2api)
+	SoraClientID = "app_LlGpXReQgckcGGUo2JrYvtJK"
 
 	// OAuth endpoints
 	AuthorizeURL = "https://auth.openai.com/oauth/authorize"

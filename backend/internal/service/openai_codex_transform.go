@@ -99,13 +99,19 @@ REDACTED
 		result.Modified = true
 REDACTED
 
-	if _, ok := reqBody["max_output_tokens"]; ok {
-		delete(reqBody, "max_output_tokens")
-		result.Modified = true
-REDACTED
-	if _, ok := reqBody["max_completion_tokens"]; ok {
-		delete(reqBody, "max_completion_tokens")
-		result.Modified = true
+	// Strip parameters unsupported by codex models via the Responses API.
+	for _, key := range []string{
+		"max_output_tokens",
+		"max_completion_tokens",
+		"temperature",
+		"top_p",
+		"frequency_penalty",
+		"presence_penalty",
+REDACTED {
+		if _, ok := reqBody[key]; ok {
+			delete(reqBody, key)
+			result.Modified = true
+	REDACTED
 REDACTED
 
 	if normalizeCodexTools(reqBody) {

@@ -26,8 +26,8 @@ type UsageLog struct {
 	CacheCreationTokens int
 	CacheReadTokens     int
 
-	CacheCreation5mTokens int
-	CacheCreation1hTokens int
+	CacheCreation5mTokens int `gorm:"column:cache_creation_5m_tokens"`
+	CacheCreation1hTokens int `gorm:"column:cache_creation_1h_tokens"`
 
 	InputCost         float64
 	OutputCost        float64
@@ -45,6 +45,9 @@ type UsageLog struct {
 	FirstTokenMs *int
 	UserAgent    *string
 	IPAddress    *string
+
+	// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
+	CacheTTLOverridden bool
 
 	// 图片生成字段
 	ImageCount int

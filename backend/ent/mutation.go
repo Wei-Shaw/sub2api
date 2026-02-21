@@ -15980,6 +15980,7 @@ type UsageLogMutation struct {
 	addimage_count              *int
 	image_size                  *string
 	media_type                  *string
+	cache_ttl_overridden        *bool
 	created_at                  *time.Time
 	clearedFields               map[string]struct{REDACTED
 	user                        *int64
@@ -17655,6 +17656,42 @@ func (m *UsageLogMutation) ResetMediaType() {
 	delete(m.clearedFields, usagelog.FieldMediaType)
 REDACTED
 
+// SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
+func (m *UsageLogMutation) SetCacheTTLOverridden(b bool) {
+	m.cache_ttl_overridden = &b
+REDACTED
+
+// CacheTTLOverridden returns the value of the "cache_ttl_overridden" field in the mutation.
+func (m *UsageLogMutation) CacheTTLOverridden() (r bool, exists bool) {
+	v := m.cache_ttl_overridden
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCacheTTLOverridden returns the old "cache_ttl_overridden" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCacheTTLOverridden(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCacheTTLOverridden is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCacheTTLOverridden requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCacheTTLOverridden: %w", err)
+REDACTED
+	return oldValue.CacheTTLOverridden, nil
+REDACTED
+
+// ResetCacheTTLOverridden resets all changes to the "cache_ttl_overridden" field.
+func (m *UsageLogMutation) ResetCacheTTLOverridden() {
+	m.cache_ttl_overridden = nil
+REDACTED
+
 // SetCreatedAt sets the "created_at" field.
 func (m *UsageLogMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -17860,7 +17897,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 32)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 REDACTED
@@ -17951,6 +17988,9 @@ REDACTED
 	if m.media_type != nil {
 		fields = append(fields, usagelog.FieldMediaType)
 REDACTED
+	if m.cache_ttl_overridden != nil {
+		fields = append(fields, usagelog.FieldCacheTTLOverridden)
+REDACTED
 	if m.created_at != nil {
 		fields = append(fields, usagelog.FieldCreatedAt)
 REDACTED
@@ -18022,6 +18062,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.ImageSize()
 	case usagelog.FieldMediaType:
 		return m.MediaType()
+	case usagelog.FieldCacheTTLOverridden:
+		return m.CacheTTLOverridden()
 	case usagelog.FieldCreatedAt:
 		return m.CreatedAt()
 REDACTED
@@ -18093,6 +18135,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldImageSize(ctx)
 	case usagelog.FieldMediaType:
 		return m.OldMediaType(ctx)
+	case usagelog.FieldCacheTTLOverridden:
+		return m.OldCacheTTLOverridden(ctx)
 	case usagelog.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 REDACTED
@@ -18313,6 +18357,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetMediaType(v)
+		return nil
+	case usagelog.FieldCacheTTLOverridden:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCacheTTLOverridden(v)
 		return nil
 	case usagelog.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -18735,6 +18786,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldMediaType:
 		m.ResetMediaType()
+		return nil
+	case usagelog.FieldCacheTTLOverridden:
+		m.ResetCacheTTLOverridden()
 		return nil
 	case usagelog.FieldCreatedAt:
 		m.ResetCreatedAt()

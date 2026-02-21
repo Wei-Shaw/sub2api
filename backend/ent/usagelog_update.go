@@ -632,6 +632,20 @@ func (_u *UsageLogUpdate) ClearMediaType() *UsageLogUpdate {
 	return _u
 REDACTED
 
+// SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
+func (_u *UsageLogUpdate) SetCacheTTLOverridden(v bool) *UsageLogUpdate {
+	_u.mutation.SetCacheTTLOverridden(v)
+	return _u
+REDACTED
+
+// SetNillableCacheTTLOverridden sets the "cache_ttl_overridden" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCacheTTLOverridden(*v)
+REDACTED
+	return _u
+REDACTED
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdate) SetUser(v *User) *UsageLogUpdate {
 	return _u.SetUserID(v.ID)
@@ -924,6 +938,9 @@ REDACTED
 REDACTED
 	if _u.mutation.MediaTypeCleared() {
 		_spec.ClearField(usagelog.FieldMediaType, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
+		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
 REDACTED
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1690,6 +1707,20 @@ func (_u *UsageLogUpdateOne) ClearMediaType() *UsageLogUpdateOne {
 	return _u
 REDACTED
 
+// SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
+func (_u *UsageLogUpdateOne) SetCacheTTLOverridden(v bool) *UsageLogUpdateOne {
+	_u.mutation.SetCacheTTLOverridden(v)
+	return _u
+REDACTED
+
+// SetNillableCacheTTLOverridden sets the "cache_ttl_overridden" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCacheTTLOverridden(*v)
+REDACTED
+	return _u
+REDACTED
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdateOne) SetUser(v *User) *UsageLogUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -2012,6 +2043,9 @@ REDACTED
 REDACTED
 	if _u.mutation.MediaTypeCleared() {
 		_spec.ClearField(usagelog.FieldMediaType, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
+		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
 REDACTED
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

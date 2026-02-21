@@ -512,6 +512,11 @@ export interface Proxy {
   country_code?: string
   region?: string
   city?: string
+  quality_status?: 'healthy' | 'warn' | 'challenge' | 'failed'
+  quality_score?: number
+  quality_grade?: string
+  quality_summary?: string
+  quality_checked?: number
   created_at: string
   updated_at: string
 REDACTED
@@ -522,6 +527,32 @@ export interface ProxyAccountSummary {
   platform: AccountPlatform
   type: AccountType
   notes?: string | null
+REDACTED
+
+export interface ProxyQualityCheckItem {
+  target: string
+  status: 'pass' | 'warn' | 'fail' | 'challenge'
+  http_status?: number
+  latency_ms?: number
+  message?: string
+  cf_ray?: string
+REDACTED
+
+export interface ProxyQualityCheckResult {
+  proxy_id: number
+  score: number
+  grade: string
+  summary: string
+  exit_ip?: string
+  country?: string
+  country_code?: string
+  base_latency_ms?: number
+  passed_count: number
+  warn_count: number
+  failed_count: number
+  challenge_count: number
+  checked_at: number
+  items: ProxyQualityCheckItem[]
 REDACTED
 
 // Gemini credentials structure for OAuth and API Key authentication
@@ -626,6 +657,10 @@ export interface Account {
   // 会话ID伪装（仅 Anthropic OAuth/SetupToken 账号有效）
   // 启用后将在15分钟内固定 metadata.user_id 中的 session ID
   session_id_masking_enabled?: boolean | null
+
+  // 缓存 TTL 强制替换（仅 Anthropic OAuth/SetupToken 账号有效）
+  cache_ttl_override_enabled?: boolean | null
+  cache_ttl_override_target?: string | null
 
   // 运行时状态（仅当启用对应限制时返回）
   current_window_cost?: number | null // 当前窗口费用
@@ -839,6 +874,9 @@ export interface UsageLog {
 
   // User-Agent
   user_agent: string | null
+
+  // Cache TTL Override
+  cache_ttl_overridden: boolean
 
   created_at: string
 

@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"net/http"
+
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -41,16 +43,15 @@ REDACTED
 		gateway.GET("/usage", h.Gateway.Usage)
 		// OpenAI Responses API
 		gateway.POST("/responses", h.OpenAIGateway.Responses)
-REDACTED
-
-	// Sora Chat Completions
-	soraGateway := r.Group("/v1")
-	soraGateway.Use(soraBodyLimit)
-	soraGateway.Use(clientRequestID)
-	soraGateway.Use(opsErrorLogger)
-	soraGateway.Use(gin.HandlerFunc(apiKeyAuth))
-	{
-		soraGateway.POST("/chat/completions", h.SoraGateway.ChatCompletions)
+		// 明确阻止旧入口误用到 Sora，避免客户端把 OpenAI Chat Completions 当作 Sora 入口
+		gateway.POST("/chat/completions", func(c *gin.Context) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": gin.H{
+					"type":    "invalid_request_error",
+					"message": "For Sora, use /sora/v1/chat/completions. OpenAI should use /v1/responses.",
+			REDACTED,
+		REDACTED)
+	REDACTED)
 REDACTED
 
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）

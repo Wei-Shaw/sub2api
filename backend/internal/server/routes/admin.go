@@ -34,6 +34,8 @@ func RegisterAdminRoutes(
 
 		// OpenAI OAuth
 		registerOpenAIOAuthRoutes(admin, h)
+		// Sora OAuth（实现复用 OpenAI OAuth 服务，入口独立）
+		registerSoraOAuthRoutes(admin, h)
 
 		// Gemini OAuth
 		registerGeminiOAuthRoutes(admin, h)
@@ -276,6 +278,19 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 REDACTED
 REDACTED
 
+func registerSoraOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	sora := admin.Group("/sora")
+	{
+		sora.POST("/generate-auth-url", h.Admin.OpenAIOAuth.GenerateAuthURL)
+		sora.POST("/exchange-code", h.Admin.OpenAIOAuth.ExchangeCode)
+		sora.POST("/refresh-token", h.Admin.OpenAIOAuth.RefreshToken)
+		sora.POST("/st2at", h.Admin.OpenAIOAuth.ExchangeSoraSessionToken)
+		sora.POST("/rt2at", h.Admin.OpenAIOAuth.RefreshToken)
+		sora.POST("/accounts/:id/refresh", h.Admin.OpenAIOAuth.RefreshAccountToken)
+		sora.POST("/create-from-oauth", h.Admin.OpenAIOAuth.CreateAccountFromOAuth)
+REDACTED
+REDACTED
+
 func registerGeminiOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	gemini := admin.Group("/gemini")
 	{
@@ -306,6 +321,7 @@ func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		proxies.PUT("/:id", h.Admin.Proxy.Update)
 		proxies.DELETE("/:id", h.Admin.Proxy.Delete)
 		proxies.POST("/:id/test", h.Admin.Proxy.Test)
+		proxies.POST("/:id/quality-check", h.Admin.Proxy.CheckQuality)
 		proxies.GET("/:id/stats", h.Admin.Proxy.GetStats)
 		proxies.GET("/:id/accounts", h.Admin.Proxy.GetProxyAccounts)
 		proxies.POST("/batch-delete", h.Admin.Proxy.BatchDelete)

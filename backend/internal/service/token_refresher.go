@@ -86,6 +86,7 @@ type OpenAITokenRefresher struct {
 	openaiOAuthService *OpenAIOAuthService
 	accountRepo        AccountRepository
 	soraAccountRepo    SoraAccountRepository // Sora 扩展表仓储，用于双表同步
+	syncLinkedSora     bool
 REDACTED
 
 // NewOpenAITokenRefresher 创建 OpenAI token刷新器
@@ -103,11 +104,15 @@ func (r *OpenAITokenRefresher) SetSoraAccountRepo(repo SoraAccountRepository) {
 	r.soraAccountRepo = repo
 REDACTED
 
+// SetSyncLinkedSoraAccounts 控制是否同步覆盖关联的 Sora 账号 token。
+func (r *OpenAITokenRefresher) SetSyncLinkedSoraAccounts(enabled bool) {
+	r.syncLinkedSora = enabled
+REDACTED
+
 // CanRefresh 检查是否能处理此账号
-// 只处理 openai 平台的 oauth 类型账号
+// 只处理 openai 平台的 oauth 类型账号（不直接刷新 sora 平台账号）
 func (r *OpenAITokenRefresher) CanRefresh(account *Account) bool {
-	return (account.Platform == PlatformOpenAI || account.Platform == PlatformSora) &&
-		account.Type == AccountTypeOAuth
+	return account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth
 REDACTED
 
 // NeedsRefresh 检查token是否需要刷新
@@ -141,7 +146,7 @@ REDACTED
 REDACTED
 
 	// 异步同步关联的 Sora 账号（不阻塞主流程）
-	if r.accountRepo != nil {
+	if r.accountRepo != nil && r.syncLinkedSora {
 		go r.syncLinkedSoraAccounts(context.Background(), account.ID, newCredentials)
 REDACTED
 

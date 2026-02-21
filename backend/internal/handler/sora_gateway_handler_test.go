@@ -43,6 +43,48 @@ REDACTED
 func (s *stubSoraClient) CreateVideoTask(ctx context.Context, account *service.Account, req service.SoraVideoRequest) (string, error) {
 	return "task-video", nil
 REDACTED
+func (s *stubSoraClient) CreateStoryboardTask(ctx context.Context, account *service.Account, req service.SoraStoryboardRequest) (string, error) {
+	return "task-video", nil
+REDACTED
+func (s *stubSoraClient) UploadCharacterVideo(ctx context.Context, account *service.Account, data []byte) (string, error) {
+	return "cameo-1", nil
+REDACTED
+func (s *stubSoraClient) GetCameoStatus(ctx context.Context, account *service.Account, cameoID string) (*service.SoraCameoStatus, error) {
+	return &service.SoraCameoStatus{
+		Status:          "finalized",
+		StatusMessage:   "Completed",
+		DisplayNameHint: "Character",
+		UsernameHint:    "user.character",
+		ProfileAssetURL: "https://example.com/avatar.webp",
+REDACTED, nil
+REDACTED
+func (s *stubSoraClient) DownloadCharacterImage(ctx context.Context, account *service.Account, imageURL string) ([]byte, error) {
+	return []byte("avatar"), nil
+REDACTED
+func (s *stubSoraClient) UploadCharacterImage(ctx context.Context, account *service.Account, data []byte) (string, error) {
+	return "asset-pointer", nil
+REDACTED
+func (s *stubSoraClient) FinalizeCharacter(ctx context.Context, account *service.Account, req service.SoraCharacterFinalizeRequest) (string, error) {
+	return "character-1", nil
+REDACTED
+func (s *stubSoraClient) SetCharacterPublic(ctx context.Context, account *service.Account, cameoID string) error {
+	return nil
+REDACTED
+func (s *stubSoraClient) DeleteCharacter(ctx context.Context, account *service.Account, characterID string) error {
+	return nil
+REDACTED
+func (s *stubSoraClient) PostVideoForWatermarkFree(ctx context.Context, account *service.Account, generationID string) (string, error) {
+	return "s_post", nil
+REDACTED
+func (s *stubSoraClient) DeletePost(ctx context.Context, account *service.Account, postID string) error {
+	return nil
+REDACTED
+func (s *stubSoraClient) GetWatermarkFreeURLCustom(ctx context.Context, account *service.Account, parseURL, parseToken, postID string) (string, error) {
+	return "https://example.com/no-watermark.mp4", nil
+REDACTED
+func (s *stubSoraClient) EnhancePrompt(ctx context.Context, account *service.Account, prompt, expansionLevel string, durationS int) (string, error) {
+	return "enhanced prompt", nil
+REDACTED
 func (s *stubSoraClient) GetImageTask(ctx context.Context, account *service.Account, taskID string) (*service.SoraImageTaskStatus, error) {
 	return &service.SoraImageTaskStatus{ID: taskID, Status: "completed", URLs: s.imageURLsREDACTED, nil
 REDACTED
@@ -88,7 +130,7 @@ func (r *stubAccountRepo) Delete(ctx context.Context, id int64) error           
 func (r *stubAccountRepo) List(ctx context.Context, params pagination.PaginationParams) ([]service.Account, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 REDACTED
-func (r *stubAccountRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string) ([]service.Account, *pagination.PaginationResult, error) {
+func (r *stubAccountRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64) ([]service.Account, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 REDACTED
 func (r *stubAccountRepo) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {
@@ -494,4 +536,153 @@ func TestGenerateOpenAISessionHash_WithBody(t *testing.T) {
 	hash3 := generateOpenAISessionHash(c, body)
 	require.NotEmpty(t, hash3)
 	require.NotEqual(t, hash, hash3) // 不同来源应产生不同 hash
+REDACTED
+
+func TestSoraHandleStreamingAwareError_JSONEscaping(t *testing.T) {
+	tests := []struct {
+		name    string
+		errType string
+		message string
+REDACTED{
+		{
+			name:    "包含双引号",
+			errType: "upstream_error",
+			message: `upstream returned "invalid" payload`,
+	REDACTED,
+		{
+			name:    "包含换行和制表符",
+			errType: "rate_limit_error",
+			message: "line1\nline2\ttab",
+	REDACTED,
+		{
+			name:    "包含反斜杠",
+			errType: "upstream_error",
+			message: `path C:\Users\test\file.txt not found`,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+			h := &SoraGatewayHandler{REDACTED
+			h.handleStreamingAwareError(c, http.StatusBadGateway, tt.errType, tt.message, true)
+
+			body := w.Body.String()
+			require.True(t, strings.HasPrefix(body, "event: error\n"), "应以 SSE error 事件开头")
+			require.True(t, strings.HasSuffix(body, "\n\n"), "应以 SSE 结束分隔符结尾")
+
+			lines := strings.Split(strings.TrimSuffix(body, "\n\n"), "\n")
+			require.Len(t, lines, 2, "SSE 错误事件应包含 event 行和 data 行")
+			require.Equal(t, "event: error", lines[0])
+			require.True(t, strings.HasPrefix(lines[1], "data: "), "第二行应为 data 前缀")
+
+			jsonStr := strings.TrimPrefix(lines[1], "data: ")
+			var parsed map[string]any
+			require.NoError(t, json.Unmarshal([]byte(jsonStr), &parsed), "data 行必须是合法 JSON")
+
+			errorObj, ok := parsed["error"].(map[string]any)
+			require.True(t, ok, "JSON 中应包含 error 对象")
+			require.Equal(t, tt.errType, errorObj["type"])
+			require.Equal(t, tt.message, errorObj["message"])
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestSoraHandleFailoverExhausted_StreamPassesUpstreamMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	h := &SoraGatewayHandler{REDACTED
+	resp := []byte(`{"error":{"message":"invalid \"prompt\"\nline2","code":"bad_request"REDACTEDREDACTED`)
+	h.handleFailoverExhausted(c, http.StatusBadGateway, nil, resp, true)
+
+	body := w.Body.String()
+	require.True(t, strings.HasPrefix(body, "event: error\n"))
+	require.True(t, strings.HasSuffix(body, "\n\n"))
+
+	lines := strings.Split(strings.TrimSuffix(body, "\n\n"), "\n")
+	require.Len(t, lines, 2)
+	jsonStr := strings.TrimPrefix(lines[1], "data: ")
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(jsonStr), &parsed))
+
+	errorObj, ok := parsed["error"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "upstream_error", errorObj["type"])
+	require.Equal(t, "invalid \"prompt\"\nline2", errorObj["message"])
+REDACTED
+
+func TestSoraHandleFailoverExhausted_CloudflareChallengeIncludesRay(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	headers := http.Header{REDACTED
+	headers.Set("cf-ray", "9d01b0e9ecc35829-SEA")
+	body := []byte(`<!DOCTYPE html><html><head><title>Just a moment...</title></head><body><script>window._cf_chl_opt={REDACTED;</script></body></html>`)
+
+	h := &SoraGatewayHandler{REDACTED
+	h.handleFailoverExhausted(c, http.StatusForbidden, headers, body, true)
+
+	lines := strings.Split(strings.TrimSuffix(w.Body.String(), "\n\n"), "\n")
+	require.Len(t, lines, 2)
+	jsonStr := strings.TrimPrefix(lines[1], "data: ")
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(jsonStr), &parsed))
+
+	errorObj, ok := parsed["error"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "upstream_error", errorObj["type"])
+	msg, _ := errorObj["message"].(string)
+	require.Contains(t, msg, "Cloudflare challenge")
+	require.Contains(t, msg, "cf-ray: 9d01b0e9ecc35829-SEA")
+REDACTED
+
+func TestSoraHandleFailoverExhausted_CfShield429MappedToRateLimitError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	headers := http.Header{REDACTED
+	headers.Set("cf-ray", "9d03b68c086027a1-SEA")
+	body := []byte(`{"error":{"code":"cf_shield_429","message":"shield blocked"REDACTEDREDACTED`)
+
+	h := &SoraGatewayHandler{REDACTED
+	h.handleFailoverExhausted(c, http.StatusTooManyRequests, headers, body, true)
+
+	lines := strings.Split(strings.TrimSuffix(w.Body.String(), "\n\n"), "\n")
+	require.Len(t, lines, 2)
+	jsonStr := strings.TrimPrefix(lines[1], "data: ")
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(jsonStr), &parsed))
+
+	errorObj, ok := parsed["error"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "rate_limit_error", errorObj["type"])
+	msg, _ := errorObj["message"].(string)
+	require.Contains(t, msg, "Cloudflare shield")
+	require.Contains(t, msg, "cf-ray: 9d03b68c086027a1-SEA")
+REDACTED
+
+func TestExtractSoraFailoverHeaderInsights(t *testing.T) {
+	headers := http.Header{REDACTED
+	headers.Set("cf-mitigated", "challenge")
+	headers.Set("content-type", "text/html")
+	body := []byte(`<script>window._cf_chl_opt={cRay: '9cff2d62d83bb98d'REDACTED;</script>`)
+
+	rayID, mitigated, contentType := extractSoraFailoverHeaderInsights(headers, body)
+	require.Equal(t, "9cff2d62d83bb98d", rayID)
+	require.Equal(t, "challenge", mitigated)
+	require.Equal(t, "text/html", contentType)
 REDACTED

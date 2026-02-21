@@ -43,10 +43,13 @@ func NewTokenRefreshService(
 		stopCh:           make(chan struct{REDACTED),
 REDACTED
 
+	openAIRefresher := NewOpenAITokenRefresher(openaiOAuthService, accountRepo)
+	openAIRefresher.SetSyncLinkedSoraAccounts(cfg.TokenRefresh.SyncLinkedSoraAccounts)
+
 	// 注册平台特定的刷新器
 	s.refreshers = []TokenRefresher{
 		NewClaudeTokenRefresher(oauthService),
-		NewOpenAITokenRefresher(openaiOAuthService, accountRepo),
+		openAIRefresher,
 		NewGeminiTokenRefresher(geminiOAuthService),
 		NewAntigravityTokenRefresher(antigravityOAuthService),
 REDACTED

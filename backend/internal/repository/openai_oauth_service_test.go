@@ -136,6 +136,60 @@ REDACTED
 	require.Equal(s.T(), "rt2", resp.RefreshToken)
 REDACTED
 
+func (s *OpenAIOAuthServiceSuite) TestRefreshToken_FallbackToSoraClientID() {
+	var seenClientIDs []string
+	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+	REDACTED
+		clientID := r.PostForm.Get("client_id")
+		seenClientIDs = append(seenClientIDs, clientID)
+		if clientID == openai.ClientID {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, "invalid_grant")
+			return
+	REDACTED
+		if clientID == openai.SoraClientID {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"access_token":"at-sora","refresh_token":"rt-sora","token_type":"bearer","expires_in":3600REDACTED`)
+			return
+	REDACTED
+		w.WriteHeader(http.StatusBadRequest)
+REDACTED))
+
+	resp, err := s.svc.RefreshToken(s.ctx, "rt", "")
+	require.NoError(s.T(), err, "RefreshToken")
+	require.Equal(s.T(), "at-sora", resp.AccessToken)
+	require.Equal(s.T(), "rt-sora", resp.RefreshToken)
+	require.Equal(s.T(), []string{openai.ClientID, openai.SoraClientIDREDACTED, seenClientIDs)
+REDACTED
+
+func (s *OpenAIOAuthServiceSuite) TestRefreshToken_UseProvidedClientID() {
+	const customClientID = "custom-client-id"
+	var seenClientIDs []string
+	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+	REDACTED
+		clientID := r.PostForm.Get("client_id")
+		seenClientIDs = append(seenClientIDs, clientID)
+		if clientID != customClientID {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+	REDACTED
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"at-custom","refresh_token":"rt-custom","token_type":"bearer","expires_in":3600REDACTED`)
+REDACTED))
+
+	resp, err := s.svc.RefreshTokenWithClientID(s.ctx, "rt", "", customClientID)
+	require.NoError(s.T(), err, "RefreshTokenWithClientID")
+	require.Equal(s.T(), "at-custom", resp.AccessToken)
+	require.Equal(s.T(), "rt-custom", resp.RefreshToken)
+	require.Equal(s.T(), []string{customClientIDREDACTED, seenClientIDs)
+REDACTED
+
 func (s *OpenAIOAuthServiceSuite) TestNonSuccessStatus_IncludesBody() {
 	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)

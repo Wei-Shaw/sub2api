@@ -162,6 +162,8 @@ type TokenRefreshConfig struct {
 	MaxRetries int `mapstructure:"max_retries"`
 	// 重试退避基础时间（秒）
 	RetryBackoffSeconds int `mapstructure:"retry_backoff_seconds"`
+	// 是否允许 OpenAI 刷新器同步覆盖关联的 Sora 账号 token（默认关闭）
+	SyncLinkedSoraAccounts bool `mapstructure:"sync_linked_sora_accounts"`
 REDACTED
 
 type PricingConfig struct {
@@ -269,17 +271,30 @@ REDACTED
 
 // SoraClientConfig 直连 Sora 客户端配置
 type SoraClientConfig struct {
-	BaseURL               string            `mapstructure:"base_url"`
-	TimeoutSeconds        int               `mapstructure:"timeout_seconds"`
-	MaxRetries            int               `mapstructure:"max_retries"`
-	PollIntervalSeconds   int               `mapstructure:"poll_interval_seconds"`
-	MaxPollAttempts       int               `mapstructure:"max_poll_attempts"`
-	RecentTaskLimit       int               `mapstructure:"recent_task_limit"`
-	RecentTaskLimitMax    int               `mapstructure:"recent_task_limit_max"`
-	Debug                 bool              `mapstructure:"debug"`
-	Headers               map[string]string `mapstructure:"headers"`
-	UserAgent             string            `mapstructure:"user_agent"`
-	DisableTLSFingerprint bool              `mapstructure:"disable_tls_fingerprint"`
+	BaseURL                            string                    `mapstructure:"base_url"`
+	TimeoutSeconds                     int                       `mapstructure:"timeout_seconds"`
+	MaxRetries                         int                       `mapstructure:"max_retries"`
+	CloudflareChallengeCooldownSeconds int                       `mapstructure:"cloudflare_challenge_cooldown_seconds"`
+	PollIntervalSeconds                int                       `mapstructure:"poll_interval_seconds"`
+	MaxPollAttempts                    int                       `mapstructure:"max_poll_attempts"`
+	RecentTaskLimit                    int                       `mapstructure:"recent_task_limit"`
+	RecentTaskLimitMax                 int                       `mapstructure:"recent_task_limit_max"`
+	Debug                              bool                      `mapstructure:"debug"`
+	UseOpenAITokenProvider             bool                      `mapstructure:"use_openai_token_provider"`
+	Headers                            map[string]string         `mapstructure:"headers"`
+	UserAgent                          string                    `mapstructure:"user_agent"`
+	DisableTLSFingerprint              bool                      `mapstructure:"disable_tls_fingerprint"`
+	CurlCFFISidecar                    SoraCurlCFFISidecarConfig `mapstructure:"curl_cffi_sidecar"`
+REDACTED
+
+// SoraCurlCFFISidecarConfig Sora 专用 curl_cffi sidecar 配置
+type SoraCurlCFFISidecarConfig struct {
+	Enabled             bool   `mapstructure:"enabled"`
+	BaseURL             string `mapstructure:"base_url"`
+	Impersonate         string `mapstructure:"impersonate"`
+	TimeoutSeconds      int    `mapstructure:"timeout_seconds"`
+	SessionReuseEnabled bool   `mapstructure:"session_reuse_enabled"`
+	SessionTTLSeconds   int    `mapstructure:"session_ttl_seconds"`
 REDACTED
 
 // SoraStorageConfig 媒体存储配置
@@ -1111,14 +1126,22 @@ REDACTED)
 	viper.SetDefault("sora.client.base_url", "https://sora.chatgpt.com/backend")
 	viper.SetDefault("sora.client.timeout_seconds", 120)
 	viper.SetDefault("sora.client.max_retries", 3)
+	viper.SetDefault("sora.client.cloudflare_challenge_cooldown_seconds", 900)
 	viper.SetDefault("sora.client.poll_interval_seconds", 2)
 	viper.SetDefault("sora.client.max_poll_attempts", 600)
 	viper.SetDefault("sora.client.recent_task_limit", 50)
 	viper.SetDefault("sora.client.recent_task_limit_max", 200)
 	viper.SetDefault("sora.client.debug", false)
+	viper.SetDefault("sora.client.use_openai_token_provider", false)
 	viper.SetDefault("sora.client.headers", map[string]string{REDACTED)
 	viper.SetDefault("sora.client.user_agent", "Sora/1.2026.007 (Android 15; 24122RKC7C; build 2600700)")
 	viper.SetDefault("sora.client.disable_tls_fingerprint", false)
+	viper.SetDefault("sora.client.curl_cffi_sidecar.enabled", true)
+	viper.SetDefault("sora.client.curl_cffi_sidecar.base_url", "http://sora-curl-cffi-sidecar:8080")
+	viper.SetDefault("sora.client.curl_cffi_sidecar.impersonate", "chrome131")
+	viper.SetDefault("sora.client.curl_cffi_sidecar.timeout_seconds", 60)
+	viper.SetDefault("sora.client.curl_cffi_sidecar.session_reuse_enabled", true)
+	viper.SetDefault("sora.client.curl_cffi_sidecar.session_ttl_seconds", 3600)
 
 	viper.SetDefault("sora.storage.type", "local")
 	viper.SetDefault("sora.storage.local_path", "")
@@ -1137,6 +1160,7 @@ REDACTED)
 	viper.SetDefault("token_refresh.refresh_before_expiry_hours", 0.5) // 提前30分钟刷新（适配Google 1小时token）
 	viper.SetDefault("token_refresh.max_retries", 3)                   // 最多重试3次
 	viper.SetDefault("token_refresh.retry_backoff_seconds", 2)         // 重试退避基础2秒
+	viper.SetDefault("token_refresh.sync_linked_sora_accounts", false) // 默认不跨平台覆盖 Sora token
 
 	// Gemini OAuth - configure via environment variables or config file
 	// GEMINI_OAUTH_CLIENT_ID and GEMINI_OAUTH_CLIENT_SECRET
@@ -1505,6 +1529,9 @@ REDACTED
 	if c.Sora.Client.MaxRetries < 0 {
 		return fmt.Errorf("sora.client.max_retries must be non-negative")
 REDACTED
+	if c.Sora.Client.CloudflareChallengeCooldownSeconds < 0 {
+		return fmt.Errorf("sora.client.cloudflare_challenge_cooldown_seconds must be non-negative")
+REDACTED
 	if c.Sora.Client.PollIntervalSeconds < 0 {
 		return fmt.Errorf("sora.client.poll_interval_seconds must be non-negative")
 REDACTED
@@ -1520,6 +1547,18 @@ REDACTED
 	if c.Sora.Client.RecentTaskLimitMax > 0 && c.Sora.Client.RecentTaskLimit > 0 &&
 		c.Sora.Client.RecentTaskLimitMax < c.Sora.Client.RecentTaskLimit {
 		c.Sora.Client.RecentTaskLimitMax = c.Sora.Client.RecentTaskLimit
+REDACTED
+	if c.Sora.Client.CurlCFFISidecar.TimeoutSeconds < 0 {
+		return fmt.Errorf("sora.client.curl_cffi_sidecar.timeout_seconds must be non-negative")
+REDACTED
+	if c.Sora.Client.CurlCFFISidecar.SessionTTLSeconds < 0 {
+		return fmt.Errorf("sora.client.curl_cffi_sidecar.session_ttl_seconds must be non-negative")
+REDACTED
+	if !c.Sora.Client.CurlCFFISidecar.Enabled {
+		return fmt.Errorf("sora.client.curl_cffi_sidecar.enabled must be true")
+REDACTED
+	if strings.TrimSpace(c.Sora.Client.CurlCFFISidecar.BaseURL) == "" {
+		return fmt.Errorf("sora.client.curl_cffi_sidecar.base_url is required")
 REDACTED
 	if c.Sora.Storage.MaxConcurrentDownloads < 0 {
 		return fmt.Errorf("sora.storage.max_concurrent_downloads must be non-negative")

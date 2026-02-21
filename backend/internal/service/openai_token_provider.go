@@ -157,7 +157,11 @@ REDACTED
 		REDACTED
 			expiresAt = account.GetCredentialAsTime("expires_at")
 			if expiresAt == nil || time.Until(*expiresAt) <= openAITokenRefreshSkew {
-				if p.openAIOAuthService == nil {
+				if account.Platform == PlatformSora {
+					slog.Debug("openai_token_refresh_skipped_for_sora", "account_id", account.ID)
+					// Sora 账号不走 OpenAI OAuth 刷新，交由 Sora 客户端的 ST/RT 恢复链路处理。
+					refreshFailed = true
+			REDACTED else if p.openAIOAuthService == nil {
 					slog.Warn("openai_oauth_service_not_configured", "account_id", account.ID)
 					p.metrics.refreshFailure.Add(1)
 					refreshFailed = true // 无法刷新，标记失败
@@ -206,7 +210,11 @@ REDACTED
 
 			// 仅在 expires_at 已过期/接近过期时才执行无锁刷新
 			if expiresAt == nil || time.Until(*expiresAt) <= openAITokenRefreshSkew {
-				if p.openAIOAuthService == nil {
+				if account.Platform == PlatformSora {
+					slog.Debug("openai_token_refresh_skipped_for_sora_degraded", "account_id", account.ID)
+					// Sora 账号不走 OpenAI OAuth 刷新，交由 Sora 客户端的 ST/RT 恢复链路处理。
+					refreshFailed = true
+			REDACTED else if p.openAIOAuthService == nil {
 					slog.Warn("openai_oauth_service_not_configured", "account_id", account.ID)
 					p.metrics.refreshFailure.Add(1)
 					refreshFailed = true
