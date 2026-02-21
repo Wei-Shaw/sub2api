@@ -1697,6 +1697,36 @@
         </div>
       </div>
 
+      <!-- Anthropic API Key 自动透传开关 -->
+      <div
+        v-if="form.platform === 'anthropic' && accountCategory === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.anthropic.apiKeyPassthrough') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.anthropic.apiKeyPassthroughDesc') REDACTEDREDACTED
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="anthropicPassthroughEnabled = !anthropicPassthroughEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              anthropicPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                anthropicPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI OAuth Codex 官方客户端限制开关 -->
       <div
         v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
@@ -2290,6 +2320,7 @@ const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
 const codexCLIOnlyEnabled = ref(false)
+const anthropicPassthroughEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const antigravityAccountType = ref<'oauth' | 'upstream'>('oauth') // For antigravity: oauth or upstream
 const upstreamBaseUrl = ref('') // For upstream type: base URL
@@ -2526,6 +2557,9 @@ watch(
       openaiPassthroughEnabled.value = false
       codexCLIOnlyEnabled.value = false
     REDACTED
+    if (newPlatform !== 'anthropic') {
+      anthropicPassthroughEnabled.value = false
+    REDACTED
     // Reset OAuth states
     oauth.resetState()
     openaiOAuth.resetState()
@@ -2541,6 +2575,9 @@ watch(
   ([category, platform]) => {
     if (platform === 'openai' && category !== 'oauth-based') {
       codexCLIOnlyEnabled.value = false
+    REDACTED
+    if (platform !== 'anthropic' || category !== 'apikey') {
+      anthropicPassthroughEnabled.value = false
     REDACTED
   REDACTED
 )
@@ -2791,6 +2828,7 @@ const resetForm = () => {
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
   codexCLIOnlyEnabled.value = false
+  anthropicPassthroughEnabled.value = false
   // Reset quota control state
   windowCostEnabled.value = false
   windowCostLimit.value = null
@@ -2840,6 +2878,21 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.codex_cli_only = true
   REDACTED else {
     delete extra.codex_cli_only
+  REDACTED
+
+  return Object.keys(extra).length > 0 ? extra : undefined
+REDACTED
+
+const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  if (form.platform !== 'anthropic' || accountCategory.value !== 'apikey') {
+    return base
+  REDACTED
+
+  const extra: Record<string, unknown> = { ...(base || {REDACTED) REDACTED
+  if (anthropicPassthroughEnabled.value) {
+    extra.anthropic_passthrough = true
+  REDACTED else {
+    delete extra.anthropic_passthrough
   REDACTED
 
   return Object.keys(extra).length > 0 ? extra : undefined
@@ -3015,7 +3068,7 @@ const handleSubmit = async () => {
   REDACTED
 
   form.credentials = credentials
-  const extra = buildOpenAIExtra()
+  const extra = buildAnthropicExtra(buildOpenAIExtra())
 
   await doCreateAccount({
     ...form,
