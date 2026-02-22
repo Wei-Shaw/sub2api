@@ -263,6 +263,10 @@ REDACTED
 	var sessionBoundAccountID int64
 	if sessionKey != "" {
 		sessionBoundAccountID, _ = h.gatewayService.GetCachedSessionAccountID(c.Request.Context(), apiKey.GroupID, sessionKey)
+		if sessionBoundAccountID > 0 {
+			ctx := context.WithValue(c.Request.Context(), ctxkey.PrefetchedStickyAccountID, sessionBoundAccountID)
+			c.Request = c.Request.WithContext(ctx)
+	REDACTED
 REDACTED
 
 	// === Gemini 内容摘要会话 Fallback 逻辑 ===

@@ -121,7 +121,6 @@ AGENTS.md
 scripts
 .code-review-state
 openspec/
-docs/
 code-reviews/
 AGENTS.md
 backend/cmd/server/server

@@ -423,6 +423,11 @@ type GatewayConfig struct {
 
 	// UsageRecord: 使用量记录异步队列配置（有界队列 + 固定 worker）
 	UsageRecord GatewayUsageRecordConfig `mapstructure:"usage_record"`
+
+	// UserGroupRateCacheTTLSeconds: 用户分组倍率热路径缓存 TTL（秒）
+	UserGroupRateCacheTTLSeconds int `mapstructure:"user_group_rate_cache_ttl_seconds"`
+	// ModelsListCacheTTLSeconds: /v1/models 模型列表短缓存 TTL（秒）
+	ModelsListCacheTTLSeconds int `mapstructure:"models_list_cache_ttl_seconds"`
 REDACTED
 
 // GatewayUsageRecordConfig 使用量记录异步队列配置
@@ -1175,6 +1180,8 @@ REDACTED)
 	viper.SetDefault("gateway.usage_record.auto_scale_down_step", 16)
 	viper.SetDefault("gateway.usage_record.auto_scale_check_interval_seconds", 3)
 	viper.SetDefault("gateway.usage_record.auto_scale_cooldown_seconds", 10)
+	viper.SetDefault("gateway.user_group_rate_cache_ttl_seconds", 30)
+	viper.SetDefault("gateway.models_list_cache_ttl_seconds", 15)
 	// TLS指纹伪装配置（默认关闭，需要账号级别单独启用）
 	viper.SetDefault("gateway.tls_fingerprint.enabled", true)
 	viper.SetDefault("concurrency.ping_interval", 10)
@@ -1750,6 +1757,12 @@ REDACTED
 		if c.Gateway.UsageRecord.AutoScaleCooldownSeconds < 0 {
 			return fmt.Errorf("gateway.usage_record.auto_scale_cooldown_seconds must be non-negative")
 	REDACTED
+REDACTED
+	if c.Gateway.UserGroupRateCacheTTLSeconds <= 0 {
+		return fmt.Errorf("gateway.user_group_rate_cache_ttl_seconds must be positive")
+REDACTED
+	if c.Gateway.ModelsListCacheTTLSeconds < 10 || c.Gateway.ModelsListCacheTTLSeconds > 30 {
+		return fmt.Errorf("gateway.models_list_cache_ttl_seconds must be between 10-30")
 REDACTED
 	if c.Gateway.Scheduling.StickySessionMaxWaiting <= 0 {
 		return fmt.Errorf("gateway.scheduling.sticky_session_max_waiting must be positive")

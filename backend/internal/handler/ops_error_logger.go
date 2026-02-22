@@ -41,9 +41,8 @@ const (
 )
 
 type opsErrorLogJob struct {
-	ops         *service.OpsService
-	entry       *service.OpsInsertErrorLogInput
-	requestBody []byte
+	ops   *service.OpsService
+	entry *service.OpsInsertErrorLogInput
 REDACTED
 
 var (
@@ -58,6 +57,7 @@ var (
 	opsErrorLogEnqueued  atomic.Int64
 	opsErrorLogDropped   atomic.Int64
 	opsErrorLogProcessed atomic.Int64
+	opsErrorLogSanitized atomic.Int64
 
 	opsErrorLogLastDropLogAt atomic.Int64
 
@@ -94,7 +94,7 @@ REDACTED
 					REDACTED
 				REDACTED()
 					ctx, cancel := context.WithTimeout(context.Background(), opsErrorLogTimeout)
-					_ = job.ops.RecordError(ctx, job.entry, job.requestBody)
+					_ = job.ops.RecordError(ctx, job.entry, nil)
 					cancel()
 					opsErrorLogProcessed.Add(1)
 			REDACTED()
@@ -103,7 +103,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func enqueueOpsErrorLog(ops *service.OpsService, entry *service.OpsInsertErrorLogInput, requestBody []byte) {
+func enqueueOpsErrorLog(ops *service.OpsService, entry *service.OpsInsertErrorLogInput) {
 	if ops == nil || entry == nil {
 		return
 REDACTED
@@ -129,7 +129,7 @@ REDACTED
 REDACTED
 
 	select {
-	case opsErrorLogQueue <- opsErrorLogJob{ops: ops, entry: entry, requestBody: requestBodyREDACTED:
+	case opsErrorLogQueue <- opsErrorLogJob{ops: ops, entry: entryREDACTED:
 		opsErrorLogQueueLen.Add(1)
 		opsErrorLogEnqueued.Add(1)
 	default:
@@ -205,6 +205,10 @@ func OpsErrorLogProcessedTotal() int64 {
 	return opsErrorLogProcessed.Load()
 REDACTED
 
+func OpsErrorLogSanitizedTotal() int64 {
+	return opsErrorLogSanitized.Load()
+REDACTED
+
 func maybeLogOpsErrorLogDrop() {
 	now := time.Now().Unix()
 
@@ -222,12 +226,13 @@ REDACTED
 	queueCap := OpsErrorLogQueueCapacity()
 
 	log.Printf(
-		"[OpsErrorLogger] queue is full; dropping logs (queued=%d cap=%d enqueued_total=%d dropped_total=%d processed_total=%d)",
+		"[OpsErrorLogger] queue is full; dropping logs (queued=%d cap=%d enqueued_total=%d dropped_total=%d processed_total=%d sanitized_total=%d)",
 		queued,
 		queueCap,
 		opsErrorLogEnqueued.Load(),
 		opsErrorLogDropped.Load(),
 		opsErrorLogProcessed.Load(),
+		opsErrorLogSanitized.Load(),
 	)
 REDACTED
 
@@ -265,6 +270,22 @@ REDACTED
 		ctx := context.WithValue(c.Request.Context(), ctxkey.Model, model)
 		c.Request = c.Request.WithContext(ctx)
 REDACTED
+REDACTED
+
+func attachOpsRequestBodyToEntry(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
+	if c == nil || entry == nil {
+		return
+REDACTED
+	v, ok := c.Get(opsRequestBodyKey)
+	if !ok {
+		return
+REDACTED
+	raw, ok := v.([]byte)
+	if !ok || len(raw) == 0 {
+		return
+REDACTED
+	entry.RequestBodyJSON, entry.RequestBodyTruncated, entry.RequestBodyBytes = service.PrepareOpsRequestBodyForQueue(raw)
+	opsErrorLogSanitized.Add(1)
 REDACTED
 
 func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) {
@@ -544,14 +565,9 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				entry.ClientIP = &clientIP
 		REDACTED
 
-			var requestBody []byte
-			if v, ok := c.Get(opsRequestBodyKey); ok {
-				if b, ok := v.([]byte); ok && len(b) > 0 {
-					requestBody = b
-			REDACTED
-		REDACTED
 			// Store request headers/body only when an upstream error occurred to keep overhead minimal.
 			entry.RequestHeadersJSON = extractOpsRetryRequestHeaders(c)
+			attachOpsRequestBodyToEntry(c, entry)
 
 			// Skip logging if a passthrough rule with skip_monitoring=true matched.
 			if v, ok := c.Get(service.OpsSkipPassthroughKey); ok {
@@ -560,7 +576,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			REDACTED
 		REDACTED
 
-			enqueueOpsErrorLog(ops, entry, requestBody)
+			enqueueOpsErrorLog(ops, entry)
 			return
 	REDACTED
 
@@ -724,17 +740,12 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			entry.ClientIP = &clientIP
 	REDACTED
 
-		var requestBody []byte
-		if v, ok := c.Get(opsRequestBodyKey); ok {
-			if b, ok := v.([]byte); ok && len(b) > 0 {
-				requestBody = b
-		REDACTED
-	REDACTED
 		// Persist only a minimal, whitelisted set of request headers to improve retry fidelity.
 		// Do NOT store Authorization/Cookie/etc.
 		entry.RequestHeadersJSON = extractOpsRetryRequestHeaders(c)
+		attachOpsRequestBodyToEntry(c, entry)
 
-		enqueueOpsErrorLog(ops, entry, requestBody)
+		enqueueOpsErrorLog(ops, entry)
 REDACTED
 REDACTED
 

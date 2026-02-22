@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,14 +21,28 @@ var claudeCodeValidator = service.NewClaudeCodeValidator()
 // SetClaudeCodeClientContext 检查请求是否来自 Claude Code 客户端，并设置到 context 中
 // 返回更新后的 context
 func SetClaudeCodeClientContext(c *gin.Context, body []byte) {
-	// 解析请求体为 map
-	var bodyMap map[string]any
-	if len(body) > 0 {
-		_ = json.Unmarshal(body, &bodyMap)
+	if c == nil || c.Request == nil {
+		return
+REDACTED
+	// Fast path：非 Claude CLI UA 直接判定 false，避免热路径二次 JSON 反序列化。
+	if !claudeCodeValidator.ValidateUserAgent(c.GetHeader("User-Agent")) {
+		ctx := service.SetClaudeCodeClient(c.Request.Context(), false)
+		c.Request = c.Request.WithContext(ctx)
+		return
 REDACTED
 
-	// 验证是否为 Claude Code 客户端
-	isClaudeCode := claudeCodeValidator.Validate(c.Request, bodyMap)
+	isClaudeCode := false
+	if !strings.Contains(c.Request.URL.Path, "messages") {
+		// 与 Validate 行为一致：非 messages 路径 UA 命中即可视为 Claude Code 客户端。
+		isClaudeCode = true
+REDACTED else {
+		// 仅在确认为 Claude CLI 且 messages 路径时再做 body 解析。
+		var bodyMap map[string]any
+		if len(body) > 0 {
+			_ = json.Unmarshal(body, &bodyMap)
+	REDACTED
+		isClaudeCode = claudeCodeValidator.Validate(c.Request, bodyMap)
+REDACTED
 
 	// 更新 request context
 	ctx := service.SetClaudeCodeClient(c.Request.Context(), isClaudeCode)
@@ -222,21 +237,6 @@ REDACTED
 func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType string, id int64, maxConcurrency int, timeout time.Duration, isStream bool, streamStarted *bool) (func(), error) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 	defer cancel()
-
-	// Try immediate acquire first (avoid unnecessary wait)
-	var result *service.AcquireResult
-	var err error
-	if slotType == "user" {
-		result, err = h.concurrencyService.AcquireUserSlot(ctx, id, maxConcurrency)
-REDACTED else {
-		result, err = h.concurrencyService.AcquireAccountSlot(ctx, id, maxConcurrency)
-REDACTED
-	if err != nil {
-		return nil, err
-REDACTED
-	if result.Acquired {
-		return result.ReleaseFunc, nil
-REDACTED
 
 	// Determine if ping is needed (streaming + ping format defined)
 	needPing := isStream && h.pingFormat != ""

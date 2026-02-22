@@ -1011,6 +1011,16 @@ REDACTED{
 			wantErr: "gateway.usage_record.auto_scale_check_interval_seconds",
 	REDACTED,
 		{
+			name:    "gateway user group rate cache ttl",
+			mutate:  func(c *Config) { c.Gateway.UserGroupRateCacheTTLSeconds = 0 REDACTED,
+			wantErr: "gateway.user_group_rate_cache_ttl_seconds",
+	REDACTED,
+		{
+			name:    "gateway models list cache ttl range",
+			mutate:  func(c *Config) { c.Gateway.ModelsListCacheTTLSeconds = 31 REDACTED,
+			wantErr: "gateway.models_list_cache_ttl_seconds",
+	REDACTED,
+		{
 			name:    "gateway scheduling sticky waiting",
 			mutate:  func(c *Config) { c.Gateway.Scheduling.StickySessionMaxWaiting = 0 REDACTED,
 			wantErr: "gateway.scheduling.sticky_session_max_waiting",
