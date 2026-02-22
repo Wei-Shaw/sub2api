@@ -18,6 +18,7 @@ var (
 		{Name: "key", Type: field.TypeString, Unique: true, Size: 128REDACTED,
 		{Name: "name", Type: field.TypeString, Size: 100REDACTED,
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"REDACTED,
+		{Name: "last_used_at", Type: field.TypeTime, Nullable: trueREDACTED,
 		{Name: "ip_whitelist", Type: field.TypeJSON, Nullable: trueREDACTED,
 		{Name: "ip_blacklist", Type: field.TypeJSON, Nullable: trueREDACTED,
 		{Name: "quota", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
@@ -34,13 +35,13 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "api_keys_groups_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[12]REDACTED,
+				Columns:    []*schema.Column{APIKeysColumns[13]REDACTED,
 				RefColumns: []*schema.Column{GroupsColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
 			{
 				Symbol:     "api_keys_users_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[13]REDACTED,
+				Columns:    []*schema.Column{APIKeysColumns[14]REDACTED,
 				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
@@ -49,12 +50,12 @@ REDACTED
 			{
 				Name:    "apikey_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[13]REDACTED,
+				Columns: []*schema.Column{APIKeysColumns[14]REDACTED,
 		REDACTED,
 			{
 				Name:    "apikey_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[12]REDACTED,
+				Columns: []*schema.Column{APIKeysColumns[13]REDACTED,
 		REDACTED,
 			{
 				Name:    "apikey_status",
@@ -67,14 +68,19 @@ REDACTED
 				Columns: []*schema.Column{APIKeysColumns[3]REDACTED,
 		REDACTED,
 			{
+				Name:    "apikey_last_used_at",
+				Unique:  false,
+				Columns: []*schema.Column{APIKeysColumns[7]REDACTED,
+		REDACTED,
+			{
 				Name:    "apikey_quota_quota_used",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[9], APIKeysColumns[10]REDACTED,
+				Columns: []*schema.Column{APIKeysColumns[10], APIKeysColumns[11]REDACTED,
 		REDACTED,
 			{
 				Name:    "apikey_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[11]REDACTED,
+				Columns: []*schema.Column{APIKeysColumns[12]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED

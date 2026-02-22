@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -32,6 +34,7 @@ var (
 
 const (
 	apiKeyMaxErrorsPerHour = 20
+	apiKeyLastUsedMinTouch = 30 * time.Second
 )
 
 type APIKeyRepository interface {
@@ -58,6 +61,7 @@ type APIKeyRepository interface {
 
 	// Quota methods
 	IncrementQuotaUsed(ctx context.Context, id int64, amount float64) (float64, error)
+	UpdateLastUsed(ctx context.Context, id int64, usedAt time.Time) error
 REDACTED
 
 // APIKeyCache defines cache operations for API key service
@@ -125,6 +129,8 @@ type APIKeyService struct {
 	authCacheL1       *ristretto.Cache
 	authCfg           apiKeyAuthCacheConfig
 	authGroup         singleflight.Group
+	lastUsedTouchL1   sync.Map // keyID -> time.Time
+	lastUsedTouchSF   singleflight.Group
 REDACTED
 
 // NewAPIKeyService 创建API Key服务实例
@@ -527,6 +533,7 @@ REDACTED
 	if err := s.apiKeyRepo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete api key: %w", err)
 REDACTED
+	s.lastUsedTouchL1.Delete(id)
 
 	return nil
 REDACTED
@@ -556,6 +563,37 @@ REDACTED
 REDACTED
 
 	return apiKey, user, nil
+REDACTED
+
+// TouchLastUsed 通过防抖更新 api_keys.last_used_at，减少高频写放大。
+// 该操作为尽力而为，不应阻塞主请求链路。
+func (s *APIKeyService) TouchLastUsed(ctx context.Context, keyID int64) error {
+	if keyID <= 0 {
+		return nil
+REDACTED
+
+	now := time.Now()
+	if v, ok := s.lastUsedTouchL1.Load(keyID); ok {
+		if last, ok := v.(time.Time); ok && now.Sub(last) < apiKeyLastUsedMinTouch {
+			return nil
+	REDACTED
+REDACTED
+
+	_, err, _ := s.lastUsedTouchSF.Do(strconv.FormatInt(keyID, 10), func() (any, error) {
+		latest := time.Now()
+		if v, ok := s.lastUsedTouchL1.Load(keyID); ok {
+			if last, ok := v.(time.Time); ok && latest.Sub(last) < apiKeyLastUsedMinTouch {
+				return nil, nil
+		REDACTED
+	REDACTED
+
+		if err := s.apiKeyRepo.UpdateLastUsed(ctx, keyID, latest); err != nil {
+			return nil, fmt.Errorf("touch api key last used: %w", err)
+	REDACTED
+		s.lastUsedTouchL1.Store(keyID, latest)
+		return nil, nil
+REDACTED)
+	return err
 REDACTED
 
 // IncrementUsage 增加API Key使用次数（可选：用于统计）

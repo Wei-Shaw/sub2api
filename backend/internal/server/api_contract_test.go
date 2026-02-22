@@ -83,6 +83,7 @@ REDACTED{
 					"status": "active",
 					"ip_whitelist": null,
 					"ip_blacklist": null,
+					"last_used_at": null,
 					"quota": 0,
 					"quota_used": 0,
 					"expires_at": null,
@@ -122,6 +123,7 @@ REDACTED{
 							"status": "active",
 							"ip_whitelist": null,
 							"ip_blacklist": null,
+							"last_used_at": null,
 							"quota": 0,
 							"quota_used": 0,
 							"expires_at": null,
@@ -1469,6 +1471,20 @@ REDACTED
 
 func (r *stubApiKeyRepo) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) (float64, error) {
 	return 0, errors.New("not implemented")
+REDACTED
+
+func (r *stubApiKeyRepo) UpdateLastUsed(ctx context.Context, id int64, usedAt time.Time) error {
+	key, ok := r.byID[id]
+	if !ok {
+		return service.ErrAPIKeyNotFound
+REDACTED
+	ts := usedAt
+	key.LastUsedAt = &ts
+	key.UpdatedAt = usedAt
+	clone := *key
+	r.byID[id] = &clone
+	r.byKey[clone.Key] = &clone
+	return nil
 REDACTED
 
 type stubUsageLogRepo struct {

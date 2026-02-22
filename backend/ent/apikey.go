@@ -36,6 +36,8 @@ type APIKey struct {
 	GroupID *int64 `json:"group_id,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// Last usage time of this API key
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	// Allowed IPs/CIDRs, e.g. ["192.168.1.100", "10.0.0.0/8"]
 	IPWhitelist []string `json:"ip_whitelist,omitempty"`
 	// Blocked IPs/CIDRs
@@ -109,7 +111,7 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case apikey.FieldKey, apikey.FieldName, apikey.FieldStatus:
 			values[i] = new(sql.NullString)
-		case apikey.FieldCreatedAt, apikey.FieldUpdatedAt, apikey.FieldDeletedAt, apikey.FieldExpiresAt:
+		case apikey.FieldCreatedAt, apikey.FieldUpdatedAt, apikey.FieldDeletedAt, apikey.FieldLastUsedAt, apikey.FieldExpiresAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -181,6 +183,13 @@ REDACTED
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 		REDACTED else if value.Valid {
 				_m.Status = value.String
+		REDACTED
+		case apikey.FieldLastUsedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field last_used_at", values[i])
+		REDACTED else if value.Valid {
+				_m.LastUsedAt = new(time.Time)
+				*_m.LastUsedAt = value.Time
 		REDACTED
 		case apikey.FieldIPWhitelist:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -295,6 +304,11 @@ REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	if v := _m.LastUsedAt; v != nil {
+		builder.WriteString("last_used_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("ip_whitelist=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IPWhitelist))

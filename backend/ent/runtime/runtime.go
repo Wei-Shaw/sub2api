@@ -94,11 +94,11 @@ REDACTED()
 	// apikey.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	apikey.StatusValidator = apikeyDescStatus.Validators[0].(func(string) error)
 	// apikeyDescQuota is the schema descriptor for quota field.
-	apikeyDescQuota := apikeyFields[7].Descriptor()
+	apikeyDescQuota := apikeyFields[8].Descriptor()
 	// apikey.DefaultQuota holds the default value on creation for the quota field.
 	apikey.DefaultQuota = apikeyDescQuota.Default.(float64)
 	// apikeyDescQuotaUsed is the schema descriptor for quota_used field.
-	apikeyDescQuotaUsed := apikeyFields[8].Descriptor()
+	apikeyDescQuotaUsed := apikeyFields[9].Descriptor()
 	// apikey.DefaultQuotaUsed holds the default value on creation for the quota_used field.
 	apikey.DefaultQuotaUsed = apikeyDescQuotaUsed.Default.(float64)
 	accountMixin := schema.Account{REDACTED.Mixin()

@@ -24,10 +24,13 @@ import (
 //   - deleteErr: 模拟 Delete 返回的错误
 //   - deletedIDs: 记录被调用删除的 API Key ID，用于断言验证
 type apiKeyRepoStub struct {
-	apiKey     *APIKey // GetKeyAndOwnerID 的返回值
-	getByIDErr error   // GetKeyAndOwnerID 的错误返回值
-	deleteErr  error   // Delete 的错误返回值
-	deletedIDs []int64 // 记录已删除的 API Key ID 列表
+	apiKey         *APIKey // GetKeyAndOwnerID 的返回值
+	getByIDErr     error   // GetKeyAndOwnerID 的错误返回值
+	deleteErr      error   // Delete 的错误返回值
+	deletedIDs     []int64 // 记录已删除的 API Key ID 列表
+	updateLastUsed func(ctx context.Context, id int64, usedAt time.Time) error
+	touchedIDs     []int64
+	touchedUsedAts []time.Time
 REDACTED
 
 // 以下方法在本测试中不应被调用，使用 panic 确保测试失败时能快速定位问题
@@ -122,6 +125,15 @@ func (s *apiKeyRepoStub) IncrementQuotaUsed(ctx context.Context, id int64, amoun
 	panic("unexpected IncrementQuotaUsed call")
 REDACTED
 
+func (s *apiKeyRepoStub) UpdateLastUsed(ctx context.Context, id int64, usedAt time.Time) error {
+	s.touchedIDs = append(s.touchedIDs, id)
+	s.touchedUsedAts = append(s.touchedUsedAts, usedAt)
+	if s.updateLastUsed != nil {
+		return s.updateLastUsed(ctx, id, usedAt)
+REDACTED
+	return nil
+REDACTED
+
 // apiKeyCacheStub 是 APIKeyCache 接口的测试桩实现。
 // 用于验证删除操作时缓存清理逻辑是否被正确调用。
 //
@@ -214,12 +226,15 @@ func TestApiKeyService_Delete_Success(t *testing.T) {
 REDACTED
 	cache := &apiKeyCacheStub{REDACTED
 	svc := &APIKeyService{apiKeyRepo: repo, cache: cacheREDACTED
+	svc.lastUsedTouchL1.Store(int64(42), time.Now())
 
 	err := svc.Delete(context.Background(), 42, 7) // API Key ID=42, 调用者 userID=7
 REDACTED
 	require.Equal(t, []int64{42REDACTED, repo.deletedIDs)  // 验证正确的 API Key 被删除
 	require.Equal(t, []int64{7REDACTED, cache.invalidated) // 验证所有者的缓存被清除
 	require.Equal(t, []string{svc.authCacheKey("k")REDACTED, cache.deleteAuthKeys)
+	_, exists := svc.lastUsedTouchL1.Load(int64(42))
+	require.False(t, exists, "delete should clear touch debounce cache")
 REDACTED
 
 // TestApiKeyService_Delete_NotFound 测试删除不存在的 API Key 时返回正确的错误。

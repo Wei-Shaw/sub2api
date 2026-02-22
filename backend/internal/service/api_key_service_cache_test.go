@@ -103,6 +103,10 @@ func (s *authRepoStub) IncrementQuotaUsed(ctx context.Context, id int64, amount 
 	panic("unexpected IncrementQuotaUsed call")
 REDACTED
 
+func (s *authRepoStub) UpdateLastUsed(ctx context.Context, id int64, usedAt time.Time) error {
+	panic("unexpected UpdateLastUsed call")
+REDACTED
+
 type authCacheStub struct {
 	getAuthCache   func(ctx context.Context, key string) (*APIKeyAuthCacheEntry, error)
 	setAuthKeys    []string

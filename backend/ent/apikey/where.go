@@ -95,6 +95,11 @@ func Status(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
 REDACTED
 
+// LastUsedAt applies equality check predicate on the "last_used_at" field. It's identical to LastUsedAtEQ.
+func LastUsedAt(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
+REDACTED
+
 // Quota applies equality check predicate on the "quota" field. It's identical to QuotaEQ.
 func Quota(v float64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldQuota, v))
@@ -483,6 +488,56 @@ REDACTED
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldContainsFold(FieldStatus, v))
+REDACTED
+
+// LastUsedAtEQ applies the EQ predicate on the "last_used_at" field.
+func LastUsedAtEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
+REDACTED
+
+// LastUsedAtNEQ applies the NEQ predicate on the "last_used_at" field.
+func LastUsedAtNEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldLastUsedAt, v))
+REDACTED
+
+// LastUsedAtIn applies the In predicate on the "last_used_at" field.
+func LastUsedAtIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldLastUsedAt, vs...))
+REDACTED
+
+// LastUsedAtNotIn applies the NotIn predicate on the "last_used_at" field.
+func LastUsedAtNotIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldLastUsedAt, vs...))
+REDACTED
+
+// LastUsedAtGT applies the GT predicate on the "last_used_at" field.
+func LastUsedAtGT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldLastUsedAt, v))
+REDACTED
+
+// LastUsedAtGTE applies the GTE predicate on the "last_used_at" field.
+func LastUsedAtGTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldLastUsedAt, v))
+REDACTED
+
+// LastUsedAtLT applies the LT predicate on the "last_used_at" field.
+func LastUsedAtLT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldLastUsedAt, v))
+REDACTED
+
+// LastUsedAtLTE applies the LTE predicate on the "last_used_at" field.
+func LastUsedAtLTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldLastUsedAt, v))
+REDACTED
+
+// LastUsedAtIsNil applies the IsNil predicate on the "last_used_at" field.
+func LastUsedAtIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldLastUsedAt))
+REDACTED
+
+// LastUsedAtNotNil applies the NotNil predicate on the "last_used_at" field.
+func LastUsedAtNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldLastUsedAt))
 REDACTED
 
 // IPWhitelistIsNil applies the IsNil predicate on the "ip_whitelist" field.

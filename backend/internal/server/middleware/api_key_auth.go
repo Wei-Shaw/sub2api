@@ -125,6 +125,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		REDACTED)
 			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 			setGroupContext(c, apiKey.Group)
+			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 			c.Next()
 			return
 	REDACTED
@@ -184,6 +185,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 	REDACTED)
 		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 		setGroupContext(c, apiKey.Group)
+		_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 
 		c.Next()
 REDACTED

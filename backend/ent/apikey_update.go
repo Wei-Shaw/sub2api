@@ -134,6 +134,26 @@ REDACTED
 	return _u
 REDACTED
 
+// SetLastUsedAt sets the "last_used_at" field.
+func (_u *APIKeyUpdate) SetLastUsedAt(v time.Time) *APIKeyUpdate {
+	_u.mutation.SetLastUsedAt(v)
+	return _u
+REDACTED
+
+// SetNillableLastUsedAt sets the "last_used_at" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableLastUsedAt(v *time.Time) *APIKeyUpdate {
+	if v != nil {
+		_u.SetLastUsedAt(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearLastUsedAt clears the value of the "last_used_at" field.
+func (_u *APIKeyUpdate) ClearLastUsedAt() *APIKeyUpdate {
+	_u.mutation.ClearLastUsedAt()
+	return _u
+REDACTED
+
 // SetIPWhitelist sets the "ip_whitelist" field.
 func (_u *APIKeyUpdate) SetIPWhitelist(v []string) *APIKeyUpdate {
 	_u.mutation.SetIPWhitelist(v)
@@ -389,6 +409,12 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
+REDACTED
+	if value, ok := _u.mutation.LastUsedAt(); ok {
+		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
+REDACTED
+	if _u.mutation.LastUsedAtCleared() {
+		_spec.ClearField(apikey.FieldLastUsedAt, field.TypeTime)
 REDACTED
 	if value, ok := _u.mutation.IPWhitelist(); ok {
 		_spec.SetField(apikey.FieldIPWhitelist, field.TypeJSON, value)
@@ -652,6 +678,26 @@ func (_u *APIKeyUpdateOne) SetNillableStatus(v *string) *APIKeyUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
 REDACTED
+	return _u
+REDACTED
+
+// SetLastUsedAt sets the "last_used_at" field.
+func (_u *APIKeyUpdateOne) SetLastUsedAt(v time.Time) *APIKeyUpdateOne {
+	_u.mutation.SetLastUsedAt(v)
+	return _u
+REDACTED
+
+// SetNillableLastUsedAt sets the "last_used_at" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableLastUsedAt(v *time.Time) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetLastUsedAt(*v)
+REDACTED
+	return _u
+REDACTED
+
+// ClearLastUsedAt clears the value of the "last_used_at" field.
+func (_u *APIKeyUpdateOne) ClearLastUsedAt() *APIKeyUpdateOne {
+	_u.mutation.ClearLastUsedAt()
 	return _u
 REDACTED
 
@@ -940,6 +986,12 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
+REDACTED
+	if value, ok := _u.mutation.LastUsedAt(); ok {
+		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
+REDACTED
+	if _u.mutation.LastUsedAtCleared() {
+		_spec.ClearField(apikey.FieldLastUsedAt, field.TypeTime)
 REDACTED
 	if value, ok := _u.mutation.IPWhitelist(); ok {
 		_spec.SetField(apikey.FieldIPWhitelist, field.TypeJSON, value)

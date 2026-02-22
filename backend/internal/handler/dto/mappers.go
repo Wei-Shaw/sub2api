@@ -77,6 +77,7 @@ REDACTED
 		Status:      k.Status,
 		IPWhitelist: k.IPWhitelist,
 		IPBlacklist: k.IPBlacklist,
+		LastUsedAt:  k.LastUsedAt,
 		Quota:       k.Quota,
 		QuotaUsed:   k.QuotaUsed,
 		ExpiresAt:   k.ExpiresAt,

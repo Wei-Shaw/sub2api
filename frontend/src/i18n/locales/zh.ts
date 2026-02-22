@@ -479,6 +479,7 @@ export default {
     today: '今日',
     total: '累计',
     quota: '额度',
+    lastUsedAt: '上次使用时间',
     useKey: '使用密钥',
     useKeyModal: {
       title: '使用 API 密钥',

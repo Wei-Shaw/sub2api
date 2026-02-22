@@ -159,6 +159,13 @@
             </span>
           </template>
 
+          <template #cell-last_used_at="{ value REDACTED">
+            <span v-if="value" class="text-sm text-gray-500 dark:text-dark-400">
+              {{ formatDateTime(value) REDACTEDREDACTED
+            </span>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
+
           <template #cell-created_at="{ value REDACTED">
             <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDateTime(value) REDACTEDREDACTED</span>
           </template>
@@ -738,6 +745,7 @@ const columns = computed<Column[]>(() => [
   { key: 'usage', label: t('keys.usage'), sortable: false REDACTED,
   { key: 'expires_at', label: t('keys.expiresAt'), sortable: true REDACTED,
   { key: 'status', label: t('common.status'), sortable: true REDACTED,
+  { key: 'last_used_at', label: t('keys.lastUsedAt'), sortable: true REDACTED,
   { key: 'created_at', label: t('keys.created'), sortable: true REDACTED,
   { key: 'actions', label: t('common.actions'), sortable: false REDACTED
 ])
