@@ -663,9 +663,14 @@ jwt:
   # 重要：生产环境中请更改为随机字符串！
   # Generate with / 生成命令: openssl rand -hex 32
   secret: "change-this-to-a-secure-random-string"
-  # Token expiration time in hours (max 24)
-  # 令牌过期时间（小时，最大 24）
+  # Token expiration time in hours (max 168)
+  # 令牌过期时间（小时，最大 168）
   expire_hour: 24
+  # Access Token 过期时间（分钟）
+  # 优先级说明：
+  # - >0: 按分钟生效（优先于 expire_hour）
+  # - =0: 回退使用 expire_hour
+  access_token_expire_minutes: 0
 
 # =============================================================================
 # TOTP (2FA) Configuration

@@ -124,6 +124,36 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestLoadDefaultJWTAccessTokenExpireMinutes(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	if cfg.JWT.ExpireHour != 24 {
+		t.Fatalf("JWT.ExpireHour = %d, want 24", cfg.JWT.ExpireHour)
+REDACTED
+	if cfg.JWT.AccessTokenExpireMinutes != 0 {
+		t.Fatalf("JWT.AccessTokenExpireMinutes = %d, want 0", cfg.JWT.AccessTokenExpireMinutes)
+REDACTED
+REDACTED
+
+func TestLoadJWTAccessTokenExpireMinutesFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "90")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	if cfg.JWT.AccessTokenExpireMinutes != 90 {
+		t.Fatalf("JWT.AccessTokenExpireMinutes = %d, want 90", cfg.JWT.AccessTokenExpireMinutes)
+REDACTED
+REDACTED
+
 func TestLoadDefaultDatabaseSSLMode(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
@@ -734,6 +764,11 @@ REDACTED{
 			name:    "jwt expire hour max",
 			mutate:  func(c *Config) { c.JWT.ExpireHour = 200 REDACTED,
 			wantErr: "jwt.expire_hour must be <= 168",
+	REDACTED,
+		{
+			name:    "jwt access token expire minutes non-negative",
+			mutate:  func(c *Config) { c.JWT.AccessTokenExpireMinutes = -1 REDACTED,
+			wantErr: "jwt.access_token_expire_minutes must be non-negative",
 	REDACTED,
 		{
 			name:    "csp policy required",
