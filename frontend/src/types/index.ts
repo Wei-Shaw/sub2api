@@ -398,6 +398,7 @@ export interface ApiKey {
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
+  last_used_at: string | null
   quota: number // Quota limit in USD (0 = unlimited)
   quota_used: number // Used quota amount in USD
   expires_at: string | null // Expiration time (null = never expires)
@@ -720,9 +721,11 @@ export interface CodexUsageSnapshot {
   // Canonical fields (normalized by backend, use these preferentially)
   codex_5h_used_percent?: number // 5-hour window usage percentage
   codex_5h_reset_after_seconds?: number // Seconds until 5h window reset
+  codex_5h_reset_at?: string // 5-hour window absolute reset time (RFC3339)
   codex_5h_window_minutes?: number // 5h window in minutes (should be ~300)
   codex_7d_used_percent?: number // 7-day window usage percentage
   codex_7d_reset_after_seconds?: number // Seconds until 7d window reset
+  codex_7d_reset_at?: string // 7-day window absolute reset time (RFC3339)
   codex_7d_window_minutes?: number // 7d window in minutes (should be ~10080)
 
   codex_usage_updated_at?: string // Last update timestamp
