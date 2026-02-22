@@ -26,6 +26,7 @@ type OpenAIGatewayHandler struct {
 	gatewayService          *service.OpenAIGatewayService
 	billingCacheService     *service.BillingCacheService
 	apiKeyService           *service.APIKeyService
+	usageRecordWorkerPool   *service.UsageRecordWorkerPool
 	errorPassthroughService *service.ErrorPassthroughService
 	concurrencyHelper       *ConcurrencyHelper
 	maxAccountSwitches      int
@@ -37,6 +38,7 @@ func NewOpenAIGatewayHandler(
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
 	apiKeyService *service.APIKeyService,
+	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
 	cfg *config.Config,
 ) *OpenAIGatewayHandler {
@@ -52,6 +54,7 @@ REDACTED
 		gatewayService:          gatewayService,
 		billingCacheService:     billingCacheService,
 		apiKeyService:           apiKeyService,
+		usageRecordWorkerPool:   usageRecordWorkerPool,
 		errorPassthroughService: errorPassthroughService,
 		concurrencyHelper:       NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
 		maxAccountSwitches:      maxAccountSwitches,
@@ -378,18 +381,16 @@ REDACTED
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 
-		// Async record usage
-		go func(result *service.OpenAIForwardResult, usedAccount *service.Account, ua, ip string) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
+		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
+		h.submitUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:        result,
 				APIKey:        apiKey,
 				User:          apiKey.User,
-				Account:       usedAccount,
+				Account:       account,
 				Subscription:  subscription,
-				UserAgent:     ua,
-				IPAddress:     ip,
+				UserAgent:     userAgent,
+				IPAddress:     clientIP,
 				APIKeyService: h.apiKeyService,
 		REDACTED); err != nil {
 				logger.L().With(
@@ -398,10 +399,10 @@ REDACTED
 					zap.Int64("api_key_id", apiKey.ID),
 					zap.Any("group_id", apiKey.GroupID),
 					zap.String("model", reqModel),
-					zap.Int64("account_id", usedAccount.ID),
+					zap.Int64("account_id", account.ID),
 				).Error("openai.record_usage_failed", zap.Error(err))
 		REDACTED
-	REDACTED(result, account, userAgent, clientIP)
+	REDACTED)
 		reqLog.Debug("openai.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),
@@ -430,6 +431,20 @@ REDACTED
 	default:
 		return 0, false
 REDACTED
+REDACTED
+
+func (h *OpenAIGatewayHandler) submitUsageRecordTask(task service.UsageRecordTask) {
+	if task == nil {
+		return
+REDACTED
+	if h.usageRecordWorkerPool != nil {
+		h.usageRecordWorkerPool.Submit(task)
+		return
+REDACTED
+	// 回退路径：worker 池未注入时同步执行，避免退回到无界 goroutine 模式。
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	task(ctx)
 REDACTED
 
 // handleConcurrencyError handles concurrency-related errors with proper 429 response

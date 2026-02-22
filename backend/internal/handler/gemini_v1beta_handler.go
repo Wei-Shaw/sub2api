@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
@@ -519,22 +518,19 @@ REDACTED
 		REDACTED
 	REDACTED
 
-		// 6) record usage async (Gemini 使用长上下文双倍计费)
-		go func(result *service.ForwardResult, usedAccount *service.Account, ua, ip string, fcb bool) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
+		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
+		h.submitUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsageWithLongContext(ctx, &service.RecordUsageLongContextInput{
 				Result:                result,
 				APIKey:                apiKey,
 				User:                  apiKey.User,
-				Account:               usedAccount,
+				Account:               account,
 				Subscription:          subscription,
-				UserAgent:             ua,
-				IPAddress:             ip,
+				UserAgent:             userAgent,
+				IPAddress:             clientIP,
 				LongContextThreshold:  200000, // Gemini 200K 阈值
 				LongContextMultiplier: 2.0,    // 超出部分双倍计费
-				ForceCacheBilling:     fcb,
+				ForceCacheBilling:     forceCacheBilling,
 				APIKeyService:         h.apiKeyService,
 		REDACTED); err != nil {
 				logger.L().With(
@@ -543,10 +539,10 @@ REDACTED
 					zap.Int64("api_key_id", apiKey.ID),
 					zap.Any("group_id", apiKey.GroupID),
 					zap.String("model", modelName),
-					zap.Int64("account_id", usedAccount.ID),
+					zap.Int64("account_id", account.ID),
 				).Error("gemini.record_usage_failed", zap.Error(err))
 		REDACTED
-	REDACTED(result, account, userAgent, clientIP, forceCacheBilling)
+	REDACTED)
 		reqLog.Debug("gemini.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),

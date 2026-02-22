@@ -5,6 +5,7 @@ go 1.25.7
 require (
 	entgo.io/ent v0.14.5
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/alitto/pond/v2 v2.6.2
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/gin-gonic/gin v1.9.1

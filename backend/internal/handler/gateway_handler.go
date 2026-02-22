@@ -37,6 +37,7 @@ type GatewayHandler struct {
 	billingCacheService       *service.BillingCacheService
 	usageService              *service.UsageService
 	apiKeyService             *service.APIKeyService
+	usageRecordWorkerPool     *service.UsageRecordWorkerPool
 	errorPassthroughService   *service.ErrorPassthroughService
 	concurrencyHelper         *ConcurrencyHelper
 	maxAccountSwitches        int
@@ -54,6 +55,7 @@ func NewGatewayHandler(
 	billingCacheService *service.BillingCacheService,
 	usageService *service.UsageService,
 	apiKeyService *service.APIKeyService,
+	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
 	cfg *config.Config,
 ) *GatewayHandler {
@@ -77,6 +79,7 @@ REDACTED
 		billingCacheService:       billingCacheService,
 		usageService:              usageService,
 		apiKeyService:             apiKeyService,
+		usageRecordWorkerPool:     usageRecordWorkerPool,
 		errorPassthroughService:   errorPassthroughService,
 		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
 		maxAccountSwitches:        maxAccountSwitches,
@@ -431,19 +434,17 @@ REDACTED
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
 
-			// 异步记录使用量（subscription已在函数开头获取）
-			go func(result *service.ForwardResult, usedAccount *service.Account, ua, clientIP string, fcb bool) {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
+			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
+			h.submitUsageRecordTask(func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:            result,
 					APIKey:            apiKey,
 					User:              apiKey.User,
-					Account:           usedAccount,
+					Account:           account,
 					Subscription:      subscription,
-					UserAgent:         ua,
+					UserAgent:         userAgent,
 					IPAddress:         clientIP,
-					ForceCacheBilling: fcb,
+					ForceCacheBilling: forceCacheBilling,
 					APIKeyService:     h.apiKeyService,
 			REDACTED); err != nil {
 					logger.L().With(
@@ -452,10 +453,10 @@ REDACTED
 						zap.Int64("api_key_id", apiKey.ID),
 						zap.Any("group_id", apiKey.GroupID),
 						zap.String("model", reqModel),
-						zap.Int64("account_id", usedAccount.ID),
+						zap.Int64("account_id", account.ID),
 					).Error("gateway.record_usage_failed", zap.Error(err))
 			REDACTED
-		REDACTED(result, account, userAgent, clientIP, forceCacheBilling)
+		REDACTED)
 			return
 	REDACTED
 REDACTED
@@ -700,19 +701,17 @@ REDACTED
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
 
-			// 异步记录使用量（subscription已在函数开头获取）
-			go func(result *service.ForwardResult, usedAccount *service.Account, ua, clientIP string, fcb bool) {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
+			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
+			h.submitUsageRecordTask(func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:            result,
 					APIKey:            currentAPIKey,
 					User:              currentAPIKey.User,
-					Account:           usedAccount,
+					Account:           account,
 					Subscription:      currentSubscription,
-					UserAgent:         ua,
+					UserAgent:         userAgent,
 					IPAddress:         clientIP,
-					ForceCacheBilling: fcb,
+					ForceCacheBilling: forceCacheBilling,
 					APIKeyService:     h.apiKeyService,
 			REDACTED); err != nil {
 					logger.L().With(
@@ -721,10 +720,10 @@ REDACTED
 						zap.Int64("api_key_id", currentAPIKey.ID),
 						zap.Any("group_id", currentAPIKey.GroupID),
 						zap.String("model", reqModel),
-						zap.Int64("account_id", usedAccount.ID),
+						zap.Int64("account_id", account.ID),
 					).Error("gateway.record_usage_failed", zap.Error(err))
 			REDACTED
-		REDACTED(result, account, userAgent, clientIP, forceCacheBilling)
+		REDACTED)
 			reqLog.Debug("gateway.request_completed",
 				zap.Int64("account_id", account.ID),
 				zap.Int("switch_count", switchCount),
@@ -1507,4 +1506,18 @@ REDACTED
 		msg = "Billing error"
 REDACTED
 	return http.StatusForbidden, "billing_error", msg
+REDACTED
+
+func (h *GatewayHandler) submitUsageRecordTask(task service.UsageRecordTask) {
+	if task == nil {
+		return
+REDACTED
+	if h.usageRecordWorkerPool != nil {
+		h.usageRecordWorkerPool.Submit(task)
+		return
+REDACTED
+	// 回退路径：worker 池未注入时同步执行，避免退回到无界 goroutine 模式。
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	task(ctx)
 REDACTED

@@ -31,15 +31,16 @@ import (
 
 // SoraGatewayHandler handles Sora chat completions requests
 type SoraGatewayHandler struct {
-	gatewayService      *service.GatewayService
-	soraGatewayService  *service.SoraGatewayService
-	billingCacheService *service.BillingCacheService
-	concurrencyHelper   *ConcurrencyHelper
-	maxAccountSwitches  int
-	streamMode          string
-	soraTLSEnabled      bool
-	soraMediaSigningKey string
-	soraMediaRoot       string
+	gatewayService        *service.GatewayService
+	soraGatewayService    *service.SoraGatewayService
+	billingCacheService   *service.BillingCacheService
+	usageRecordWorkerPool *service.UsageRecordWorkerPool
+	concurrencyHelper     *ConcurrencyHelper
+	maxAccountSwitches    int
+	streamMode            string
+	soraTLSEnabled        bool
+	soraMediaSigningKey   string
+	soraMediaRoot         string
 REDACTED
 
 // NewSoraGatewayHandler creates a new SoraGatewayHandler
@@ -48,6 +49,7 @@ func NewSoraGatewayHandler(
 	soraGatewayService *service.SoraGatewayService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
+	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	cfg *config.Config,
 ) *SoraGatewayHandler {
 	pingInterval := time.Duration(0)
@@ -71,15 +73,16 @@ func NewSoraGatewayHandler(
 	REDACTED
 REDACTED
 	return &SoraGatewayHandler{
-		gatewayService:      gatewayService,
-		soraGatewayService:  soraGatewayService,
-		billingCacheService: billingCacheService,
-		concurrencyHelper:   NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
-		maxAccountSwitches:  maxAccountSwitches,
-		streamMode:          strings.ToLower(streamMode),
-		soraTLSEnabled:      soraTLSEnabled,
-		soraMediaSigningKey: signKey,
-		soraMediaRoot:       mediaRoot,
+		gatewayService:        gatewayService,
+		soraGatewayService:    soraGatewayService,
+		billingCacheService:   billingCacheService,
+		usageRecordWorkerPool: usageRecordWorkerPool,
+		concurrencyHelper:     NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
+		maxAccountSwitches:    maxAccountSwitches,
+		streamMode:            strings.ToLower(streamMode),
+		soraTLSEnabled:        soraTLSEnabled,
+		soraMediaSigningKey:   signKey,
+		soraMediaRoot:         mediaRoot,
 REDACTED
 REDACTED
 
@@ -397,17 +400,16 @@ REDACTED
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
 
-		go func(result *service.ForwardResult, usedAccount *service.Account, ua, ip string) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
+		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
+		h.submitUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 				Result:       result,
 				APIKey:       apiKey,
 				User:         apiKey.User,
-				Account:      usedAccount,
+				Account:      account,
 				Subscription: subscription,
-				UserAgent:    ua,
-				IPAddress:    ip,
+				UserAgent:    userAgent,
+				IPAddress:    clientIP,
 		REDACTED); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.sora_gateway.chat_completions"),
@@ -415,10 +417,10 @@ REDACTED
 					zap.Int64("api_key_id", apiKey.ID),
 					zap.Any("group_id", apiKey.GroupID),
 					zap.String("model", reqModel),
-					zap.Int64("account_id", usedAccount.ID),
+					zap.Int64("account_id", account.ID),
 				).Error("sora.record_usage_failed", zap.Error(err))
 		REDACTED
-	REDACTED(result, account, userAgent, clientIP)
+	REDACTED)
 		reqLog.Debug("sora.request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int64("proxy_id", proxyID),
@@ -446,6 +448,20 @@ REDACTED
 REDACTED
 	hash := sha256.Sum256([]byte(sessionID))
 	return hex.EncodeToString(hash[:])
+REDACTED
+
+func (h *SoraGatewayHandler) submitUsageRecordTask(task service.UsageRecordTask) {
+	if task == nil {
+		return
+REDACTED
+	if h.usageRecordWorkerPool != nil {
+		h.usageRecordWorkerPool.Submit(task)
+		return
+REDACTED
+	// 回退路径：worker 池未注入时同步执行，避免退回到无界 goroutine 模式。
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	task(ctx)
 REDACTED
 
 func (h *SoraGatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
