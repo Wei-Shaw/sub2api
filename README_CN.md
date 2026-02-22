@@ -372,7 +372,13 @@ default:
   rate_multiplier: 1.0
 ```
 
-### Sora 媒体签名 URL（可选）
+### Sora 功能状态（暂不可用）
+
+> ⚠️ 当前 Sora 相关功能因上游接入与媒体链路存在技术问题，暂时不可用。
+> 现阶段请勿在生产环境依赖 Sora 能力。
+> 文档中的 `gateway.sora_*` 配置仅作预留，待技术问题修复后再恢复可用。
+
+### Sora 媒体签名 URL（功能恢复后可选）
 
 当配置 `gateway.sora_media_signing_key` 且 `gateway.sora_media_signed_url_ttl_seconds > 0` 时，网关会将 Sora 输出的媒体地址改写为临时签名 URL（`/sora/media-signed/...`）。这样无需 API Key 即可在浏览器中直接访问，且具备过期控制与防篡改能力（签名包含 path + query）。
 
