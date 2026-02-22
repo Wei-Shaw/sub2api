@@ -230,13 +230,30 @@ REDACTED
 // waitForSlotWithPing waits for a concurrency slot, sending ping events for streaming requests.
 // streamStarted pointer is updated when streaming begins (for proper error handling by caller).
 func (h *ConcurrencyHelper) waitForSlotWithPing(c *gin.Context, slotType string, id int64, maxConcurrency int, isStream bool, streamStarted *bool) (func(), error) {
-	return h.waitForSlotWithPingTimeout(c, slotType, id, maxConcurrency, maxConcurrencyWait, isStream, streamStarted)
+	return h.waitForSlotWithPingTimeout(c, slotType, id, maxConcurrency, maxConcurrencyWait, isStream, streamStarted, false)
 REDACTED
 
 // waitForSlotWithPingTimeout waits for a concurrency slot with a custom timeout.
-func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType string, id int64, maxConcurrency int, timeout time.Duration, isStream bool, streamStarted *bool) (func(), error) {
+func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType string, id int64, maxConcurrency int, timeout time.Duration, isStream bool, streamStarted *bool, tryImmediate bool) (func(), error) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
 	defer cancel()
+
+	acquireSlot := func() (*service.AcquireResult, error) {
+		if slotType == "user" {
+			return h.concurrencyService.AcquireUserSlot(ctx, id, maxConcurrency)
+	REDACTED
+		return h.concurrencyService.AcquireAccountSlot(ctx, id, maxConcurrency)
+REDACTED
+
+	if tryImmediate {
+		result, err := acquireSlot()
+		if err != nil {
+			return nil, err
+	REDACTED
+		if result.Acquired {
+			return result.ReleaseFunc, nil
+	REDACTED
+REDACTED
 
 	// Determine if ping is needed (streaming + ping format defined)
 	needPing := isStream && h.pingFormat != ""
@@ -286,15 +303,7 @@ REDACTED
 
 		case <-timer.C:
 			// Try to acquire slot
-			var result *service.AcquireResult
-			var err error
-
-			if slotType == "user" {
-				result, err = h.concurrencyService.AcquireUserSlot(ctx, id, maxConcurrency)
-		REDACTED else {
-				result, err = h.concurrencyService.AcquireAccountSlot(ctx, id, maxConcurrency)
-		REDACTED
-
+			result, err := acquireSlot()
 			if err != nil {
 				return nil, err
 		REDACTED
@@ -310,7 +319,7 @@ REDACTED
 
 // AcquireAccountSlotWithWaitTimeout acquires an account slot with a custom timeout (keeps SSE ping).
 func (h *ConcurrencyHelper) AcquireAccountSlotWithWaitTimeout(c *gin.Context, accountID int64, maxConcurrency int, timeout time.Duration, isStream bool, streamStarted *bool) (func(), error) {
-	return h.waitForSlotWithPingTimeout(c, "account", accountID, maxConcurrency, timeout, isStream, streamStarted)
+	return h.waitForSlotWithPingTimeout(c, "account", accountID, maxConcurrency, timeout, isStream, streamStarted, true)
 REDACTED
 
 // nextBackoff 计算下一次退避时间

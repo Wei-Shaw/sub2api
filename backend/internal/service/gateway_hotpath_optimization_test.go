@@ -604,17 +604,25 @@ REDACTED)
 REDACTED)
 
 	t.Run("prefetched_sticky_account_id_from_context", func(t *testing.T) {
-		require.Equal(t, int64(0), prefetchedStickyAccountIDFromContext(context.TODO()))
-		require.Equal(t, int64(0), prefetchedStickyAccountIDFromContext(context.Background()))
+		require.Equal(t, int64(0), prefetchedStickyAccountIDFromContext(context.TODO(), nil))
+		require.Equal(t, int64(0), prefetchedStickyAccountIDFromContext(context.Background(), nil))
 
 		ctx := context.WithValue(context.Background(), ctxkey.PrefetchedStickyAccountID, int64(123))
-		require.Equal(t, int64(123), prefetchedStickyAccountIDFromContext(ctx))
+		ctx = context.WithValue(ctx, ctxkey.PrefetchedStickyGroupID, int64(0))
+		require.Equal(t, int64(123), prefetchedStickyAccountIDFromContext(ctx, nil))
 
+		groupID := int64(9)
 		ctx2 := context.WithValue(context.Background(), ctxkey.PrefetchedStickyAccountID, 456)
-		require.Equal(t, int64(456), prefetchedStickyAccountIDFromContext(ctx2))
+		ctx2 = context.WithValue(ctx2, ctxkey.PrefetchedStickyGroupID, groupID)
+		require.Equal(t, int64(456), prefetchedStickyAccountIDFromContext(ctx2, &groupID))
 
 		ctx3 := context.WithValue(context.Background(), ctxkey.PrefetchedStickyAccountID, "invalid")
-		require.Equal(t, int64(0), prefetchedStickyAccountIDFromContext(ctx3))
+		ctx3 = context.WithValue(ctx3, ctxkey.PrefetchedStickyGroupID, groupID)
+		require.Equal(t, int64(0), prefetchedStickyAccountIDFromContext(ctx3, &groupID))
+
+		ctx4 := context.WithValue(context.Background(), ctxkey.PrefetchedStickyAccountID, int64(789))
+		ctx4 = context.WithValue(ctx4, ctxkey.PrefetchedStickyGroupID, int64(10))
+		require.Equal(t, int64(0), prefetchedStickyAccountIDFromContext(ctx4, &groupID))
 REDACTED)
 
 	t.Run("window_cost_from_prefetch_context", func(t *testing.T) {
@@ -745,11 +753,34 @@ REDACTED)
 	REDACTED
 
 		ctx := context.WithValue(baseCtx, ctxkey.PrefetchedStickyAccountID, account.ID)
+		ctx = context.WithValue(ctx, ctxkey.PrefetchedStickyGroupID, int64(0))
 		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sess-hash", "", nil, "")
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
 		require.Equal(t, account.ID, result.Account.ID)
 		require.Equal(t, int64(0), cache.getCalls.Load())
+REDACTED)
+
+	t.Run("with_prefetch_group_mismatch_reads_cache", func(t *testing.T) {
+		cache := &stickyGatewayCacheHotpathStub{stickyID: account.IDREDACTED
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: concurrency,
+			userGroupRateCache: gocache.New(time.Minute, time.Minute),
+			modelsListCache:    gocache.New(time.Minute, time.Minute),
+			modelsListCacheTTL: time.Minute,
+	REDACTED
+
+		ctx := context.WithValue(baseCtx, ctxkey.PrefetchedStickyAccountID, int64(999))
+		ctx = context.WithValue(ctx, ctxkey.PrefetchedStickyGroupID, int64(77))
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sess-hash", "", nil, "")
+	REDACTED
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, account.ID, result.Account.ID)
+		require.Equal(t, int64(1), cache.getCalls.Load())
 REDACTED)
 REDACTED

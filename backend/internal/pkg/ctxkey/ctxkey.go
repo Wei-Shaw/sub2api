@@ -48,4 +48,8 @@ const (
 	// PrefetchedStickyAccountID 标识上游（通常 handler）预取到的 sticky session 账号 ID。
 	// Service 层可复用该值，避免同请求链路重复读取 Redis。
 	PrefetchedStickyAccountID Key = "ctx_prefetched_sticky_account_id"
+
+	// PrefetchedStickyGroupID 标识上游预取 sticky session 时所使用的分组 ID。
+	// Service 层仅在分组匹配时复用 PrefetchedStickyAccountID，避免分组切换重试误用旧 sticky。
+	PrefetchedStickyGroupID Key = "ctx_prefetched_sticky_group_id"
 )
