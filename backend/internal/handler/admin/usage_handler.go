@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -472,29 +473,36 @@ REDACTED
 		billingType = *filters.BillingType
 REDACTED
 
-	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 请求创建清理任务: operator=%d start=%s end=%s user_id=%v api_key_id=%v account_id=%v group_id=%v model=%v stream=%v billing_type=%v tz=%q",
-		subject.UserID,
-		filters.StartTime.Format(time.RFC3339),
-		filters.EndTime.Format(time.RFC3339),
-		userID,
-		apiKeyID,
-		accountID,
-		groupID,
-		model,
-		stream,
-		billingType,
-		req.Timezone,
-	)
-
-	task, err := h.cleanupService.CreateTask(c.Request.Context(), filters, subject.UserID)
-	if err != nil {
-		logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 创建清理任务失败: operator=%d err=%v", subject.UserID, err)
-		response.ErrorFrom(c, err)
-		return
+	idempotencyPayload := struct {
+		OperatorID int64                         `json:"operator_id"`
+		Body       CreateUsageCleanupTaskRequest `json:"body"`
+REDACTED{
+		OperatorID: subject.UserID,
+		Body:       req,
 REDACTED
+	executeAdminIdempotentJSON(c, "admin.usage.cleanup_tasks.create", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 请求创建清理任务: operator=%d start=%s end=%s user_id=%v api_key_id=%v account_id=%v group_id=%v model=%v stream=%v billing_type=%v tz=%q",
+			subject.UserID,
+			filters.StartTime.Format(time.RFC3339),
+			filters.EndTime.Format(time.RFC3339),
+			userID,
+			apiKeyID,
+			accountID,
+			groupID,
+			model,
+			stream,
+			billingType,
+			req.Timezone,
+		)
 
-	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 清理任务已创建: task=%d operator=%d status=%s", task.ID, subject.UserID, task.Status)
-	response.Success(c, dto.UsageCleanupTaskFromService(task))
+		task, err := h.cleanupService.CreateTask(ctx, filters, subject.UserID)
+		if err != nil {
+			logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 创建清理任务失败: operator=%d err=%v", subject.UserID, err)
+			return nil, err
+	REDACTED
+		logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 清理任务已创建: task=%d operator=%d status=%s", task.ID, subject.UserID, task.Status)
+		return dto.UsageCleanupTaskFromService(task), nil
+REDACTED)
 REDACTED
 
 // CancelCleanupTask handles canceling a usage cleanup task

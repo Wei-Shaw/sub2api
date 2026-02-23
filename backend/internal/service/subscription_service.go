@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand/v2"
 	"strconv"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -24,16 +25,17 @@ var MaxExpiresAt = time.Date(2099, 12, 31, 23, 59, 59, 0, time.UTC)
 const MaxValidityDays = 36500
 
 var (
-	ErrSubscriptionNotFound      = infraerrors.NotFound("SUBSCRIPTION_NOT_FOUND", "subscription not found")
-	ErrSubscriptionExpired       = infraerrors.Forbidden("SUBSCRIPTION_EXPIRED", "subscription has expired")
-	ErrSubscriptionSuspended     = infraerrors.Forbidden("SUBSCRIPTION_SUSPENDED", "subscription is suspended")
-	ErrSubscriptionAlreadyExists = infraerrors.Conflict("SUBSCRIPTION_ALREADY_EXISTS", "subscription already exists for this user and group")
-	ErrGroupNotSubscriptionType  = infraerrors.BadRequest("GROUP_NOT_SUBSCRIPTION_TYPE", "group is not a subscription type")
-	ErrDailyLimitExceeded        = infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily usage limit exceeded")
-	ErrWeeklyLimitExceeded       = infraerrors.TooManyRequests("WEEKLY_LIMIT_EXCEEDED", "weekly usage limit exceeded")
-	ErrMonthlyLimitExceeded      = infraerrors.TooManyRequests("MONTHLY_LIMIT_EXCEEDED", "monthly usage limit exceeded")
-	ErrSubscriptionNilInput      = infraerrors.BadRequest("SUBSCRIPTION_NIL_INPUT", "subscription input cannot be nil")
-	ErrAdjustWouldExpire         = infraerrors.BadRequest("ADJUST_WOULD_EXPIRE", "adjustment would result in expired subscription (remaining days must be > 0)")
+	ErrSubscriptionNotFound       = infraerrors.NotFound("SUBSCRIPTION_NOT_FOUND", "subscription not found")
+	ErrSubscriptionExpired        = infraerrors.Forbidden("SUBSCRIPTION_EXPIRED", "subscription has expired")
+	ErrSubscriptionSuspended      = infraerrors.Forbidden("SUBSCRIPTION_SUSPENDED", "subscription is suspended")
+	ErrSubscriptionAlreadyExists  = infraerrors.Conflict("SUBSCRIPTION_ALREADY_EXISTS", "subscription already exists for this user and group")
+	ErrSubscriptionAssignConflict = infraerrors.Conflict("SUBSCRIPTION_ASSIGN_CONFLICT", "subscription exists but request conflicts with existing assignment semantics")
+	ErrGroupNotSubscriptionType   = infraerrors.BadRequest("GROUP_NOT_SUBSCRIPTION_TYPE", "group is not a subscription type")
+	ErrDailyLimitExceeded         = infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily usage limit exceeded")
+	ErrWeeklyLimitExceeded        = infraerrors.TooManyRequests("WEEKLY_LIMIT_EXCEEDED", "weekly usage limit exceeded")
+	ErrMonthlyLimitExceeded       = infraerrors.TooManyRequests("MONTHLY_LIMIT_EXCEEDED", "monthly usage limit exceeded")
+	ErrSubscriptionNilInput       = infraerrors.BadRequest("SUBSCRIPTION_NIL_INPUT", "subscription input cannot be nil")
+	ErrAdjustWouldExpire          = infraerrors.BadRequest("ADJUST_WOULD_EXPIRE", "adjustment would result in expired subscription (remaining days must be > 0)")
 )
 
 // SubscriptionService 订阅服务
@@ -150,40 +152,10 @@ REDACTED
 
 // AssignSubscription 分配订阅给用户（不允许重复分配）
 func (s *SubscriptionService) AssignSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, error) {
-	// 检查分组是否存在且为订阅类型
-	group, err := s.groupRepo.GetByID(ctx, input.GroupID)
-	if err != nil {
-		return nil, fmt.Errorf("group not found: %w", err)
-REDACTED
-	if !group.IsSubscriptionType() {
-		return nil, ErrGroupNotSubscriptionType
-REDACTED
-
-	// 检查是否已存在订阅
-	exists, err := s.userSubRepo.ExistsByUserIDAndGroupID(ctx, input.UserID, input.GroupID)
+	sub, _, err := s.assignSubscriptionWithReuse(ctx, input)
 	if err != nil {
 		return nil, err
 REDACTED
-	if exists {
-		return nil, ErrSubscriptionAlreadyExists
-REDACTED
-
-	sub, err := s.createSubscription(ctx, input)
-	if err != nil {
-		return nil, err
-REDACTED
-
-	// 失效订阅缓存
-	s.InvalidateSubCache(input.UserID, input.GroupID)
-	if s.billingCacheService != nil {
-		userID, groupID := input.UserID, input.GroupID
-		go func() {
-			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
-	REDACTED()
-REDACTED
-
 	return sub, nil
 REDACTED
 
@@ -363,9 +335,12 @@ REDACTED
 // BulkAssignResult 批量分配结果
 type BulkAssignResult struct {
 	SuccessCount  int
+	CreatedCount  int
+	ReusedCount   int
 	FailedCount   int
 	Subscriptions []UserSubscription
 	Errors        []string
+	Statuses      map[int64]string
 REDACTED
 
 // BulkAssignSubscription 批量分配订阅
@@ -373,10 +348,11 @@ func (s *SubscriptionService) BulkAssignSubscription(ctx context.Context, input 
 	result := &BulkAssignResult{
 		Subscriptions: make([]UserSubscription, 0),
 		Errors:        make([]string, 0),
+		Statuses:      make(map[int64]string),
 REDACTED
 
 	for _, userID := range input.UserIDs {
-		sub, err := s.AssignSubscription(ctx, &AssignSubscriptionInput{
+		sub, reused, err := s.assignSubscriptionWithReuse(ctx, &AssignSubscriptionInput{
 			UserID:       userID,
 			GroupID:      input.GroupID,
 			ValidityDays: input.ValidityDays,
@@ -386,13 +362,103 @@ REDACTED
 		if err != nil {
 			result.FailedCount++
 			result.Errors = append(result.Errors, fmt.Sprintf("user %d: %v", userID, err))
+			result.Statuses[userID] = "failed"
 	REDACTED else {
 			result.SuccessCount++
 			result.Subscriptions = append(result.Subscriptions, *sub)
+			if reused {
+				result.ReusedCount++
+				result.Statuses[userID] = "reused"
+		REDACTED else {
+				result.CreatedCount++
+				result.Statuses[userID] = "created"
+		REDACTED
 	REDACTED
 REDACTED
 
 	return result, nil
+REDACTED
+
+func (s *SubscriptionService) assignSubscriptionWithReuse(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, bool, error) {
+	// 检查分组是否存在且为订阅类型
+	group, err := s.groupRepo.GetByID(ctx, input.GroupID)
+	if err != nil {
+		return nil, false, fmt.Errorf("group not found: %w", err)
+REDACTED
+	if !group.IsSubscriptionType() {
+		return nil, false, ErrGroupNotSubscriptionType
+REDACTED
+
+	// 检查是否已存在订阅；若已存在，则按幂等成功返回现有订阅
+	exists, err := s.userSubRepo.ExistsByUserIDAndGroupID(ctx, input.UserID, input.GroupID)
+	if err != nil {
+		return nil, false, err
+REDACTED
+	if exists {
+		sub, getErr := s.userSubRepo.GetByUserIDAndGroupID(ctx, input.UserID, input.GroupID)
+		if getErr != nil {
+			return nil, false, getErr
+	REDACTED
+		if conflictReason, conflict := detectAssignSemanticConflict(sub, input); conflict {
+			return nil, false, ErrSubscriptionAssignConflict.WithMetadata(map[string]string{
+				"conflict_reason": conflictReason,
+		REDACTED)
+	REDACTED
+		return sub, true, nil
+REDACTED
+
+	sub, err := s.createSubscription(ctx, input)
+	if err != nil {
+		return nil, false, err
+REDACTED
+
+	// 失效订阅缓存
+	s.InvalidateSubCache(input.UserID, input.GroupID)
+	if s.billingCacheService != nil {
+		userID, groupID := input.UserID, input.GroupID
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+	REDACTED()
+REDACTED
+
+	return sub, false, nil
+REDACTED
+
+func detectAssignSemanticConflict(existing *UserSubscription, input *AssignSubscriptionInput) (string, bool) {
+	if existing == nil || input == nil {
+		return "", false
+REDACTED
+
+	normalizedDays := normalizeAssignValidityDays(input.ValidityDays)
+	if !existing.StartsAt.IsZero() {
+		expectedExpiresAt := existing.StartsAt.AddDate(0, 0, normalizedDays)
+		if expectedExpiresAt.After(MaxExpiresAt) {
+			expectedExpiresAt = MaxExpiresAt
+	REDACTED
+		if !existing.ExpiresAt.Equal(expectedExpiresAt) {
+			return "validity_days_mismatch", true
+	REDACTED
+REDACTED
+
+	existingNotes := strings.TrimSpace(existing.Notes)
+	inputNotes := strings.TrimSpace(input.Notes)
+	if existingNotes != inputNotes {
+		return "notes_mismatch", true
+REDACTED
+
+	return "", false
+REDACTED
+
+func normalizeAssignValidityDays(days int) int {
+	if days <= 0 {
+		days = 30
+REDACTED
+	if days > MaxValidityDays {
+		days = MaxValidityDays
+REDACTED
+	return days
 REDACTED
 
 // RevokeSubscription 撤销订阅

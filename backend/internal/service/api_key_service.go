@@ -35,6 +35,8 @@ var (
 const (
 	apiKeyMaxErrorsPerHour = 20
 	apiKeyLastUsedMinTouch = 30 * time.Second
+	// DB 写失败后的短退避，避免请求路径持续同步重试造成写风暴与高延迟。
+	apiKeyLastUsedFailBackoff = 5 * time.Second
 )
 
 type APIKeyRepository interface {
@@ -129,7 +131,7 @@ type APIKeyService struct {
 	authCacheL1       *ristretto.Cache
 	authCfg           apiKeyAuthCacheConfig
 	authGroup         singleflight.Group
-	lastUsedTouchL1   sync.Map // keyID -> time.Time
+	lastUsedTouchL1   sync.Map // keyID -> nextAllowedAt(time.Time)
 	lastUsedTouchSF   singleflight.Group
 REDACTED
 
@@ -574,7 +576,7 @@ REDACTED
 
 	now := time.Now()
 	if v, ok := s.lastUsedTouchL1.Load(keyID); ok {
-		if last, ok := v.(time.Time); ok && now.Sub(last) < apiKeyLastUsedMinTouch {
+		if nextAllowedAt, ok := v.(time.Time); ok && now.Before(nextAllowedAt) {
 			return nil
 	REDACTED
 REDACTED
@@ -582,15 +584,16 @@ REDACTED
 	_, err, _ := s.lastUsedTouchSF.Do(strconv.FormatInt(keyID, 10), func() (any, error) {
 		latest := time.Now()
 		if v, ok := s.lastUsedTouchL1.Load(keyID); ok {
-			if last, ok := v.(time.Time); ok && latest.Sub(last) < apiKeyLastUsedMinTouch {
+			if nextAllowedAt, ok := v.(time.Time); ok && latest.Before(nextAllowedAt) {
 				return nil, nil
 		REDACTED
 	REDACTED
 
 		if err := s.apiKeyRepo.UpdateLastUsed(ctx, keyID, latest); err != nil {
+			s.lastUsedTouchL1.Store(keyID, latest.Add(apiKeyLastUsedFailBackoff))
 			return nil, fmt.Errorf("touch api key last used: %w", err)
 	REDACTED
-		s.lastUsedTouchL1.Store(keyID, latest)
+		s.lastUsedTouchL1.Store(keyID, latest.Add(apiKeyLastUsedMinTouch))
 		return nil, nil
 REDACTED)
 	return err

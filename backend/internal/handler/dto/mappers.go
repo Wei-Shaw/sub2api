@@ -2,6 +2,7 @@
 package dto
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -542,11 +543,18 @@ REDACTED
 	for i := range r.Subscriptions {
 		subs = append(subs, *UserSubscriptionFromServiceAdmin(&r.Subscriptions[i]))
 REDACTED
+	statuses := make(map[string]string, len(r.Statuses))
+	for userID, status := range r.Statuses {
+		statuses[strconv.FormatInt(userID, 10)] = status
+REDACTED
 	return &BulkAssignResult{
 		SuccessCount:  r.SuccessCount,
+		CreatedCount:  r.CreatedCount,
+		ReusedCount:   r.ReusedCount,
 		FailedCount:   r.FailedCount,
 		Subscriptions: subs,
 		Errors:        r.Errors,
+		Statuses:      statuses,
 REDACTED
 REDACTED
 

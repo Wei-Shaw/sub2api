@@ -74,6 +74,7 @@ type Config struct {
 	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
+	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 REDACTED
 
 type LogConfig struct {
@@ -135,6 +136,25 @@ type UpdateConfig struct {
 	// 支持 http/https/socks5/socks5h 协议
 	// 例如: "http://127.0.0.1:7890", "socks5://127.0.0.1:1080"
 	ProxyURL string `mapstructure:"proxy_url"`
+REDACTED
+
+type IdempotencyConfig struct {
+	// ObserveOnly 为 true 时处于观察期：未携带 Idempotency-Key 的请求继续放行。
+	ObserveOnly bool `mapstructure:"observe_only"`
+	// DefaultTTLSeconds 关键写接口的幂等记录默认 TTL（秒）。
+	DefaultTTLSeconds int `mapstructure:"default_ttl_seconds"`
+	// SystemOperationTTLSeconds 系统操作接口的幂等记录 TTL（秒）。
+	SystemOperationTTLSeconds int `mapstructure:"system_operation_ttl_seconds"`
+	// ProcessingTimeoutSeconds processing 状态锁超时（秒）。
+	ProcessingTimeoutSeconds int `mapstructure:"processing_timeout_seconds"`
+	// FailedRetryBackoffSeconds 失败退避窗口（秒）。
+	FailedRetryBackoffSeconds int `mapstructure:"failed_retry_backoff_seconds"`
+	// MaxStoredResponseLen 持久化响应体最大长度（字节）。
+	MaxStoredResponseLen int `mapstructure:"max_stored_response_len"`
+	// CleanupIntervalSeconds 过期记录清理周期（秒）。
+	CleanupIntervalSeconds int `mapstructure:"cleanup_interval_seconds"`
+	// CleanupBatchSize 每次清理的最大记录数。
+	CleanupBatchSize int `mapstructure:"cleanup_batch_size"`
 REDACTED
 
 type LinuxDoConnectConfig struct {
@@ -1117,6 +1137,16 @@ REDACTED)
 	viper.SetDefault("usage_cleanup.worker_interval_seconds", 10)
 	viper.SetDefault("usage_cleanup.task_timeout_seconds", 1800)
 
+	// Idempotency
+	viper.SetDefault("idempotency.observe_only", true)
+	viper.SetDefault("idempotency.default_ttl_seconds", 86400)
+	viper.SetDefault("idempotency.system_operation_ttl_seconds", 3600)
+	viper.SetDefault("idempotency.processing_timeout_seconds", 30)
+	viper.SetDefault("idempotency.failed_retry_backoff_seconds", 5)
+	viper.SetDefault("idempotency.max_stored_response_len", 64*1024)
+	viper.SetDefault("idempotency.cleanup_interval_seconds", 60)
+	viper.SetDefault("idempotency.cleanup_batch_size", 500)
+
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.log_upstream_error_body", true)
@@ -1559,6 +1589,27 @@ REDACTED else {
 		if c.UsageCleanup.TaskTimeoutSeconds < 0 {
 			return fmt.Errorf("usage_cleanup.task_timeout_seconds must be non-negative")
 	REDACTED
+REDACTED
+	if c.Idempotency.DefaultTTLSeconds <= 0 {
+		return fmt.Errorf("idempotency.default_ttl_seconds must be positive")
+REDACTED
+	if c.Idempotency.SystemOperationTTLSeconds <= 0 {
+		return fmt.Errorf("idempotency.system_operation_ttl_seconds must be positive")
+REDACTED
+	if c.Idempotency.ProcessingTimeoutSeconds <= 0 {
+		return fmt.Errorf("idempotency.processing_timeout_seconds must be positive")
+REDACTED
+	if c.Idempotency.FailedRetryBackoffSeconds <= 0 {
+		return fmt.Errorf("idempotency.failed_retry_backoff_seconds must be positive")
+REDACTED
+	if c.Idempotency.MaxStoredResponseLen <= 0 {
+		return fmt.Errorf("idempotency.max_stored_response_len must be positive")
+REDACTED
+	if c.Idempotency.CleanupIntervalSeconds <= 0 {
+		return fmt.Errorf("idempotency.cleanup_interval_seconds must be positive")
+REDACTED
+	if c.Idempotency.CleanupBatchSize <= 0 {
+		return fmt.Errorf("idempotency.cleanup_batch_size must be positive")
 REDACTED
 	if c.Gateway.MaxBodySize <= 0 {
 		return fmt.Errorf("gateway.max_body_size must be positive")

@@ -225,6 +225,45 @@ func ProvideSoraMediaCleanupService(storage *SoraMediaStorage, cfg *config.Confi
 	return svc
 REDACTED
 
+func buildIdempotencyConfig(cfg *config.Config) IdempotencyConfig {
+	idempotencyCfg := DefaultIdempotencyConfig()
+	if cfg != nil {
+		if cfg.Idempotency.DefaultTTLSeconds > 0 {
+			idempotencyCfg.DefaultTTL = time.Duration(cfg.Idempotency.DefaultTTLSeconds) * time.Second
+	REDACTED
+		if cfg.Idempotency.SystemOperationTTLSeconds > 0 {
+			idempotencyCfg.SystemOperationTTL = time.Duration(cfg.Idempotency.SystemOperationTTLSeconds) * time.Second
+	REDACTED
+		if cfg.Idempotency.ProcessingTimeoutSeconds > 0 {
+			idempotencyCfg.ProcessingTimeout = time.Duration(cfg.Idempotency.ProcessingTimeoutSeconds) * time.Second
+	REDACTED
+		if cfg.Idempotency.FailedRetryBackoffSeconds > 0 {
+			idempotencyCfg.FailedRetryBackoff = time.Duration(cfg.Idempotency.FailedRetryBackoffSeconds) * time.Second
+	REDACTED
+		if cfg.Idempotency.MaxStoredResponseLen > 0 {
+			idempotencyCfg.MaxStoredResponseLen = cfg.Idempotency.MaxStoredResponseLen
+	REDACTED
+		idempotencyCfg.ObserveOnly = cfg.Idempotency.ObserveOnly
+REDACTED
+	return idempotencyCfg
+REDACTED
+
+func ProvideIdempotencyCoordinator(repo IdempotencyRepository, cfg *config.Config) *IdempotencyCoordinator {
+	coordinator := NewIdempotencyCoordinator(repo, buildIdempotencyConfig(cfg))
+	SetDefaultIdempotencyCoordinator(coordinator)
+	return coordinator
+REDACTED
+
+func ProvideSystemOperationLockService(repo IdempotencyRepository, cfg *config.Config) *SystemOperationLockService {
+	return NewSystemOperationLockService(repo, buildIdempotencyConfig(cfg))
+REDACTED
+
+func ProvideIdempotencyCleanupService(repo IdempotencyRepository, cfg *config.Config) *IdempotencyCleanupService {
+	svc := NewIdempotencyCleanupService(repo, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProvideOpsScheduledReportService creates and starts OpsScheduledReportService.
 func ProvideOpsScheduledReportService(
 	opsService *OpsService,
@@ -318,4 +357,7 @@ var ProviderSet = wire.NewSet(
 	NewTotpService,
 	NewErrorPassthroughService,
 	NewDigestSessionStore,
+	ProvideIdempotencyCoordinator,
+	ProvideSystemOperationLockService,
+	ProvideIdempotencyCleanupService,
 )

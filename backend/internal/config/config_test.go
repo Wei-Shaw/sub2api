@@ -75,6 +75,42 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestLoadDefaultIdempotencyConfig(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	if !cfg.Idempotency.ObserveOnly {
+		t.Fatalf("Idempotency.ObserveOnly = false, want true")
+REDACTED
+	if cfg.Idempotency.DefaultTTLSeconds != 86400 {
+		t.Fatalf("Idempotency.DefaultTTLSeconds = %d, want 86400", cfg.Idempotency.DefaultTTLSeconds)
+REDACTED
+	if cfg.Idempotency.SystemOperationTTLSeconds != 3600 {
+		t.Fatalf("Idempotency.SystemOperationTTLSeconds = %d, want 3600", cfg.Idempotency.SystemOperationTTLSeconds)
+REDACTED
+REDACTED
+
+func TestLoadIdempotencyConfigFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("IDEMPOTENCY_OBSERVE_ONLY", "false")
+	t.Setenv("IDEMPOTENCY_DEFAULT_TTL_SECONDS", "600")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+	if cfg.Idempotency.ObserveOnly {
+		t.Fatalf("Idempotency.ObserveOnly = true, want false")
+REDACTED
+	if cfg.Idempotency.DefaultTTLSeconds != 600 {
+		t.Fatalf("Idempotency.DefaultTTLSeconds = %d, want 600", cfg.Idempotency.DefaultTTLSeconds)
+REDACTED
+REDACTED
+
 func TestLoadSchedulingConfigFromEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_SCHEDULING_STICKY_SESSION_MAX_WAITING", "5")

@@ -405,21 +405,27 @@ REDACTED
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
-	account, err := h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
-		Name:                  req.Name,
-		Notes:                 req.Notes,
-		Platform:              req.Platform,
-		Type:                  req.Type,
-		Credentials:           req.Credentials,
-		Extra:                 req.Extra,
-		ProxyID:               req.ProxyID,
-		Concurrency:           req.Concurrency,
-		Priority:              req.Priority,
-		RateMultiplier:        req.RateMultiplier,
-		GroupIDs:              req.GroupIDs,
-		ExpiresAt:             req.ExpiresAt,
-		AutoPauseOnExpired:    req.AutoPauseOnExpired,
-		SkipMixedChannelCheck: skipCheck,
+	result, err := executeAdminIdempotent(c, "admin.accounts.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		account, execErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
+			Name:                  req.Name,
+			Notes:                 req.Notes,
+			Platform:              req.Platform,
+			Type:                  req.Type,
+			Credentials:           req.Credentials,
+			Extra:                 req.Extra,
+			ProxyID:               req.ProxyID,
+			Concurrency:           req.Concurrency,
+			Priority:              req.Priority,
+			RateMultiplier:        req.RateMultiplier,
+			GroupIDs:              req.GroupIDs,
+			ExpiresAt:             req.ExpiresAt,
+			AutoPauseOnExpired:    req.AutoPauseOnExpired,
+			SkipMixedChannelCheck: skipCheck,
+	REDACTED)
+		if execErr != nil {
+			return nil, execErr
+	REDACTED
+		return h.buildAccountResponseWithRuntime(ctx, account), nil
 REDACTED)
 	if err != nil {
 		// 检查是否为混合渠道错误
@@ -440,11 +446,17 @@ REDACTED)
 			return
 	REDACTED
 
+		if retryAfter := service.RetryAfterSecondsFromError(err); retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+	REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+	if result != nil && result.Replayed {
+		c.Header("X-Idempotency-Replayed", "true")
+REDACTED
+	response.Success(c, result.Data)
 REDACTED
 
 // Update handles updating an account
@@ -838,61 +850,62 @@ REDACTED
 		return
 REDACTED
 
-	ctx := c.Request.Context()
-	success := 0
-	failed := 0
-	results := make([]gin.H, 0, len(req.Accounts))
+	executeAdminIdempotentJSON(c, "admin.accounts.batch_create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		success := 0
+		failed := 0
+		results := make([]gin.H, 0, len(req.Accounts))
 
-	for _, item := range req.Accounts {
-		if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
-			failed++
+		for _, item := range req.Accounts {
+			if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
+				failed++
+				results = append(results, gin.H{
+					"name":    item.Name,
+					"success": false,
+					"error":   "rate_multiplier must be >= 0",
+			REDACTED)
+				continue
+		REDACTED
+
+			skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
+
+			account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
+				Name:                  item.Name,
+				Notes:                 item.Notes,
+				Platform:              item.Platform,
+				Type:                  item.Type,
+				Credentials:           item.Credentials,
+				Extra:                 item.Extra,
+				ProxyID:               item.ProxyID,
+				Concurrency:           item.Concurrency,
+				Priority:              item.Priority,
+				RateMultiplier:        item.RateMultiplier,
+				GroupIDs:              item.GroupIDs,
+				ExpiresAt:             item.ExpiresAt,
+				AutoPauseOnExpired:    item.AutoPauseOnExpired,
+				SkipMixedChannelCheck: skipCheck,
+		REDACTED)
+			if err != nil {
+				failed++
+				results = append(results, gin.H{
+					"name":    item.Name,
+					"success": false,
+					"error":   err.Error(),
+			REDACTED)
+				continue
+		REDACTED
+			success++
 			results = append(results, gin.H{
 				"name":    item.Name,
-				"success": false,
-				"error":   "rate_multiplier must be >= 0",
+				"id":      account.ID,
+				"success": true,
 		REDACTED)
-			continue
 	REDACTED
 
-		skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
-
-		account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
-			Name:                  item.Name,
-			Notes:                 item.Notes,
-			Platform:              item.Platform,
-			Type:                  item.Type,
-			Credentials:           item.Credentials,
-			Extra:                 item.Extra,
-			ProxyID:               item.ProxyID,
-			Concurrency:           item.Concurrency,
-			Priority:              item.Priority,
-			RateMultiplier:        item.RateMultiplier,
-			GroupIDs:              item.GroupIDs,
-			ExpiresAt:             item.ExpiresAt,
-			AutoPauseOnExpired:    item.AutoPauseOnExpired,
-			SkipMixedChannelCheck: skipCheck,
-	REDACTED)
-		if err != nil {
-			failed++
-			results = append(results, gin.H{
-				"name":    item.Name,
-				"success": false,
-				"error":   err.Error(),
-		REDACTED)
-			continue
-	REDACTED
-		success++
-		results = append(results, gin.H{
-			"name":    item.Name,
-			"id":      account.ID,
-			"success": true,
-	REDACTED)
-REDACTED
-
-	response.Success(c, gin.H{
-		"success": success,
-		"failed":  failed,
-		"results": results,
+		return gin.H{
+			"success": success,
+			"failed":  failed,
+			"results": results,
+	REDACTED, nil
 REDACTED)
 REDACTED
 

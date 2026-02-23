@@ -53,8 +53,8 @@ REDACTED
 REDACTED
 
 // ProvideSystemHandler creates admin.SystemHandler with UpdateService
-func ProvideSystemHandler(updateService *service.UpdateService) *admin.SystemHandler {
-	return admin.NewSystemHandler(updateService)
+func ProvideSystemHandler(updateService *service.UpdateService, lockService *service.SystemOperationLockService) *admin.SystemHandler {
+	return admin.NewSystemHandler(updateService, lockService)
 REDACTED
 
 // ProvideSettingHandler creates SettingHandler with version from BuildInfo
@@ -77,6 +77,8 @@ func ProvideHandlers(
 	soraGatewayHandler *SoraGatewayHandler,
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
+	_ *service.IdempotencyCoordinator,
+	_ *service.IdempotencyCleanupService,
 ) *Handlers {
 	return &Handlers{
 		Auth:          authHandler,
