@@ -6,6 +6,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -92,20 +93,27 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestJoinPathWithinDir(t *testing.T) {
-	baseDir := t.TempDir()
-
-	path1, err := joinPathWithinDir(baseDir, "ok.png")
-REDACTED
-	require.Equal(t, filepath.Join(baseDir, "ok.png"), path1)
-
-	_, err = joinPathWithinDir(baseDir, "../escape.png")
-REDACTED
-REDACTED
-
 func TestNormalizeSoraFileExt(t *testing.T) {
 	require.Equal(t, ".png", normalizeSoraFileExt(".PNG"))
 	require.Equal(t, ".mp4", normalizeSoraFileExt(".mp4"))
 	require.Equal(t, "", normalizeSoraFileExt("../../etc/passwd"))
 	require.Equal(t, "", normalizeSoraFileExt(".php"))
+REDACTED
+
+func TestRemovePartialDownload(t *testing.T) {
+	tmpDir := t.TempDir()
+	root, err := os.OpenRoot(tmpDir)
+REDACTED
+	defer func() { _ = root.Close() REDACTED()
+
+	filePath := "partial.bin"
+	f, err := root.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+REDACTED
+	_, _ = f.WriteString("partial")
+	_ = f.Close()
+
+	removePartialDownload(root, filePath)
+	_, err = root.Stat(filePath)
+REDACTED
+	require.True(t, os.IsNotExist(err))
 REDACTED
