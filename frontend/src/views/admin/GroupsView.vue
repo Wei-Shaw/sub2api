@@ -476,6 +476,64 @@
           </div>
         </div>
 
+        <!-- Sora 按次计费配置 -->
+        <div v-if="createForm.platform === 'sora'" class="border-t pt-4">
+          <label class="block mb-2 font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.groups.soraPricing.title') REDACTEDREDACTED
+          </label>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t('admin.groups.soraPricing.description') REDACTEDREDACTED
+          </p>
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.image360') REDACTEDREDACTED</label>
+              <input
+                v-model.number="createForm.sora_image_price_360"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.05"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.image540') REDACTEDREDACTED</label>
+              <input
+                v-model.number="createForm.sora_image_price_540"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.08"
+              />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.video') REDACTEDREDACTED</label>
+              <input
+                v-model.number="createForm.sora_video_price_per_request"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.5"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.videoHd') REDACTEDREDACTED</label>
+              <input
+                v-model.number="createForm.sora_video_price_per_request_hd"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.8"
+              />
+            </div>
+          </div>
+        </div>
+
         <!-- 支持的模型系列（仅 antigravity 平台） -->
         <div v-if="createForm.platform === 'antigravity'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -701,8 +759,8 @@
           <!-- 路由规则列表（仅在启用时显示） -->
           <div v-if="createForm.model_routing_enabled" class="space-y-3">
             <div
-              v-for="(rule, index) in createModelRoutingRules"
-              :key="index"
+              v-for="rule in createModelRoutingRules"
+              :key="getCreateRuleRenderKey(rule)"
               class="rounded-lg border border-gray-200 p-3 dark:border-dark-600"
             >
               <div class="flex items-start gap-3">
@@ -728,7 +786,7 @@
                         {{ account.name REDACTEDREDACTED
                         <button
                           type="button"
-                          @click="removeSelectedAccount(index, account.id, false)"
+                          @click="removeSelectedAccount(rule, account.id)"
                           class="ml-0.5 text-primary-500 hover:text-primary-700 dark:hover:text-primary-200"
                         >
                           <Icon name="x" size="xs" />
@@ -738,23 +796,23 @@
                     <!-- 账号搜索输入框 -->
                     <div class="relative account-search-container">
                       <input
-                        v-model="accountSearchKeyword[`create-${indexREDACTED`]"
+                        v-model="accountSearchKeyword[getCreateRuleSearchKey(rule)]"
                         type="text"
                         class="input text-sm"
                         :placeholder="t('admin.groups.modelRouting.searchAccountPlaceholder')"
-                        @input="searchAccounts(`create-${indexREDACTED`)"
-                        @focus="onAccountSearchFocus(index, false)"
+                        @input="searchAccountsByRule(rule)"
+                        @focus="onAccountSearchFocus(rule)"
                       />
                       <!-- 搜索结果下拉框 -->
                       <div
-                        v-if="showAccountDropdown[`create-${indexREDACTED`] && accountSearchResults[`create-${indexREDACTED`]?.length > 0"
+                        v-if="showAccountDropdown[getCreateRuleSearchKey(rule)] && accountSearchResults[getCreateRuleSearchKey(rule)]?.length > 0"
                         class="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
                       >
                         <button
-                          v-for="account in accountSearchResults[`create-${indexREDACTED`]"
+                          v-for="account in accountSearchResults[getCreateRuleSearchKey(rule)]"
                           :key="account.id"
                           type="button"
-                          @click="selectAccount(index, account, false)"
+                          @click="selectAccount(rule, account)"
                           class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-700"
                           :class="{ 'opacity-50': rule.accounts.some(a => a.id === account.id) REDACTED"
                           :disabled="rule.accounts.some(a => a.id === account.id)"
@@ -769,7 +827,7 @@
                 </div>
                 <button
                   type="button"
-                  @click="removeCreateRoutingRule(index)"
+                  @click="removeCreateRoutingRule(rule)"
                   class="mt-5 p-1.5 text-gray-400 hover:text-red-500 transition-colors"
                   :title="t('admin.groups.modelRouting.removeRule')"
                 >
@@ -1098,6 +1156,64 @@
           </div>
         </div>
 
+        <!-- Sora 按次计费配置 -->
+        <div v-if="editForm.platform === 'sora'" class="border-t pt-4">
+          <label class="block mb-2 font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.groups.soraPricing.title') REDACTEDREDACTED
+          </label>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            {{ t('admin.groups.soraPricing.description') REDACTEDREDACTED
+          </p>
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.image360') REDACTEDREDACTED</label>
+              <input
+                v-model.number="editForm.sora_image_price_360"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.05"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.image540') REDACTEDREDACTED</label>
+              <input
+                v-model.number="editForm.sora_image_price_540"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.08"
+              />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.video') REDACTEDREDACTED</label>
+              <input
+                v-model.number="editForm.sora_video_price_per_request"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.5"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.groups.soraPricing.videoHd') REDACTEDREDACTED</label>
+              <input
+                v-model.number="editForm.sora_video_price_per_request_hd"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                placeholder="0.8"
+              />
+            </div>
+          </div>
+        </div>
+
         <!-- 支持的模型系列（仅 antigravity 平台） -->
         <div v-if="editForm.platform === 'antigravity'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -1323,8 +1439,8 @@
           <!-- 路由规则列表（仅在启用时显示） -->
           <div v-if="editForm.model_routing_enabled" class="space-y-3">
             <div
-              v-for="(rule, index) in editModelRoutingRules"
-              :key="index"
+              v-for="rule in editModelRoutingRules"
+              :key="getEditRuleRenderKey(rule)"
               class="rounded-lg border border-gray-200 p-3 dark:border-dark-600"
             >
               <div class="flex items-start gap-3">
@@ -1350,7 +1466,7 @@
                         {{ account.name REDACTEDREDACTED
                         <button
                           type="button"
-                          @click="removeSelectedAccount(index, account.id, true)"
+                          @click="removeSelectedAccount(rule, account.id, true)"
                           class="ml-0.5 text-primary-500 hover:text-primary-700 dark:hover:text-primary-200"
                         >
                           <Icon name="x" size="xs" />
@@ -1360,23 +1476,23 @@
                     <!-- 账号搜索输入框 -->
                     <div class="relative account-search-container">
                       <input
-                        v-model="accountSearchKeyword[`edit-${indexREDACTED`]"
+                        v-model="accountSearchKeyword[getEditRuleSearchKey(rule)]"
                         type="text"
                         class="input text-sm"
                         :placeholder="t('admin.groups.modelRouting.searchAccountPlaceholder')"
-                        @input="searchAccounts(`edit-${indexREDACTED`)"
-                        @focus="onAccountSearchFocus(index, true)"
+                        @input="searchAccountsByRule(rule, true)"
+                        @focus="onAccountSearchFocus(rule, true)"
                       />
                       <!-- 搜索结果下拉框 -->
                       <div
-                        v-if="showAccountDropdown[`edit-${indexREDACTED`] && accountSearchResults[`edit-${indexREDACTED`]?.length > 0"
+                        v-if="showAccountDropdown[getEditRuleSearchKey(rule)] && accountSearchResults[getEditRuleSearchKey(rule)]?.length > 0"
                         class="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
                       >
                         <button
-                          v-for="account in accountSearchResults[`edit-${indexREDACTED`]"
+                          v-for="account in accountSearchResults[getEditRuleSearchKey(rule)]"
                           :key="account.id"
                           type="button"
-                          @click="selectAccount(index, account, true)"
+                          @click="selectAccount(rule, account, true)"
                           class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-700"
                           :class="{ 'opacity-50': rule.accounts.some(a => a.id === account.id) REDACTED"
                           :disabled="rule.accounts.some(a => a.id === account.id)"
@@ -1391,7 +1507,7 @@
                 </div>
                 <button
                   type="button"
-                  @click="removeEditRoutingRule(index)"
+                  @click="removeEditRoutingRule(rule)"
                   class="mt-5 p-1.5 text-gray-400 hover:text-red-500 transition-colors"
                   :title="t('admin.groups.modelRouting.removeRule')"
                 >
@@ -1571,6 +1687,8 @@ import Select from '@/components/common/Select.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { VueDraggable REDACTED from 'vue-draggable-plus'
+import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
+import { useKeyedDebouncedSearch REDACTED from '@/composables/useKeyedDebouncedSearch'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -1604,7 +1722,8 @@ const platformOptions = computed(() => [
   { value: 'anthropic', label: 'Anthropic' REDACTED,
   { value: 'openai', label: 'OpenAI' REDACTED,
   { value: 'gemini', label: 'Gemini' REDACTED,
-  { value: 'antigravity', label: 'Antigravity' REDACTED
+  { value: 'antigravity', label: 'Antigravity' REDACTED,
+  { value: 'sora', label: 'Sora' REDACTED
 ])
 
 const platformFilterOptions = computed(() => [
@@ -1612,7 +1731,8 @@ const platformFilterOptions = computed(() => [
   { value: 'anthropic', label: 'Anthropic' REDACTED,
   { value: 'openai', label: 'OpenAI' REDACTED,
   { value: 'gemini', label: 'Gemini' REDACTED,
-  { value: 'antigravity', label: 'Antigravity' REDACTED
+  { value: 'antigravity', label: 'Antigravity' REDACTED,
+  { value: 'sora', label: 'Sora' REDACTED
 ])
 
 const editStatusOptions = computed(() => [
@@ -1756,6 +1876,11 @@ const createForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  // Sora 按次计费配置
+  sora_image_price_360: null as number | null,
+  sora_image_price_540: null as number | null,
+  sora_video_price_per_request: null as number | null,
+  sora_video_price_per_request_hd: null as number | null,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -1788,33 +1913,70 @@ const createModelRoutingRules = ref<ModelRoutingRule[]>([])
 // 编辑表单的模型路由规则
 const editModelRoutingRules = ref<ModelRoutingRule[]>([])
 
-// 账号搜索相关状态
-const accountSearchKeyword = ref<Record<string, string>>({REDACTED) // 每个规则的搜索关键词 (key: "create-0" 或 "edit-0")
-const accountSearchResults = ref<Record<string, SimpleAccount[]>>({REDACTED) // 每个规则的搜索结果
-const showAccountDropdown = ref<Record<string, boolean>>({REDACTED) // 每个规则的下拉框显示状态
-let accountSearchTimeout: ReturnType<typeof setTimeout> | null = null
+// 规则对象稳定 key（避免使用 index 导致状态错位）
+const resolveCreateRuleKey = createStableObjectKeyResolver<ModelRoutingRule>('create-rule')
+const resolveEditRuleKey = createStableObjectKeyResolver<ModelRoutingRule>('edit-rule')
 
-// 搜索账号（仅限 anthropic 平台）
-const searchAccounts = async (key: string) => {
-  if (accountSearchTimeout) clearTimeout(accountSearchTimeout)
-  accountSearchTimeout = setTimeout(async () => {
-    const keyword = accountSearchKeyword.value[key] || ''
-    try {
-      const res = await adminAPI.accounts.list(1, 20, {
+const getCreateRuleRenderKey = (rule: ModelRoutingRule) => resolveCreateRuleKey(rule)
+const getEditRuleRenderKey = (rule: ModelRoutingRule) => resolveEditRuleKey(rule)
+
+const getCreateRuleSearchKey = (rule: ModelRoutingRule) => `create-${resolveCreateRuleKey(rule)REDACTED`
+const getEditRuleSearchKey = (rule: ModelRoutingRule) => `edit-${resolveEditRuleKey(rule)REDACTED`
+
+const getRuleSearchKey = (rule: ModelRoutingRule, isEdit: boolean = false) => {
+  return isEdit ? getEditRuleSearchKey(rule) : getCreateRuleSearchKey(rule)
+REDACTED
+
+// 账号搜索相关状态
+const accountSearchKeyword = ref<Record<string, string>>({REDACTED)
+const accountSearchResults = ref<Record<string, SimpleAccount[]>>({REDACTED)
+const showAccountDropdown = ref<Record<string, boolean>>({REDACTED)
+
+const clearAccountSearchStateByKey = (key: string) => {
+  delete accountSearchKeyword.value[key]
+  delete accountSearchResults.value[key]
+  delete showAccountDropdown.value[key]
+REDACTED
+
+const clearAllAccountSearchState = () => {
+  accountSearchKeyword.value = {REDACTED
+  accountSearchResults.value = {REDACTED
+  showAccountDropdown.value = {REDACTED
+REDACTED
+
+const accountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
+  delay: 300,
+  search: async (keyword, { signal REDACTED) => {
+    const res = await adminAPI.accounts.list(
+      1,
+      20,
+      {
         search: keyword,
         platform: 'anthropic'
-      REDACTED)
-      accountSearchResults.value[key] = res.items.map((a) => ({ id: a.id, name: a.name REDACTED))
-    REDACTED catch {
-      accountSearchResults.value[key] = []
-    REDACTED
-  REDACTED, 300)
+      REDACTED,
+      { signal REDACTED
+    )
+    return res.items.map((account) => ({ id: account.id, name: account.name REDACTED))
+  REDACTED,
+  onSuccess: (key, result) => {
+    accountSearchResults.value[key] = result
+  REDACTED,
+  onError: (key) => {
+    accountSearchResults.value[key] = []
+  REDACTED
+REDACTED)
+
+// 搜索账号（仅限 anthropic 平台）
+const searchAccounts = (key: string) => {
+  accountSearchRunner.trigger(key, accountSearchKeyword.value[key] || '')
+REDACTED
+
+const searchAccountsByRule = (rule: ModelRoutingRule, isEdit: boolean = false) => {
+  searchAccounts(getRuleSearchKey(rule, isEdit))
 REDACTED
 
 // 选择账号
-const selectAccount = (ruleIndex: number, account: SimpleAccount, isEdit: boolean = false) => {
-  const rules = isEdit ? editModelRoutingRules.value : createModelRoutingRules.value
-  const rule = rules[ruleIndex]
+const selectAccount = (rule: ModelRoutingRule, account: SimpleAccount, isEdit: boolean = false) => {
   if (!rule) return
 
   // 检查是否已选择
@@ -1823,15 +1985,13 @@ const selectAccount = (ruleIndex: number, account: SimpleAccount, isEdit: boolea
   REDACTED
 
   // 清空搜索
-  const key = `${isEdit ? 'edit' : 'create'REDACTED-${ruleIndexREDACTED`
+  const key = getRuleSearchKey(rule, isEdit)
   accountSearchKeyword.value[key] = ''
   showAccountDropdown.value[key] = false
 REDACTED
 
 // 移除已选账号
-const removeSelectedAccount = (ruleIndex: number, accountId: number, isEdit: boolean = false) => {
-  const rules = isEdit ? editModelRoutingRules.value : createModelRoutingRules.value
-  const rule = rules[ruleIndex]
+const removeSelectedAccount = (rule: ModelRoutingRule, accountId: number, _isEdit: boolean = false) => {
   if (!rule) return
 
   rule.accounts = rule.accounts.filter(a => a.id !== accountId)
@@ -1858,8 +2018,8 @@ const toggleEditScope = (scope: string) => {
 REDACTED
 
 // 处理账号搜索输入框聚焦
-const onAccountSearchFocus = (ruleIndex: number, isEdit: boolean = false) => {
-  const key = `${isEdit ? 'edit' : 'create'REDACTED-${ruleIndexREDACTED`
+const onAccountSearchFocus = (rule: ModelRoutingRule, isEdit: boolean = false) => {
+  const key = getRuleSearchKey(rule, isEdit)
   showAccountDropdown.value[key] = true
   // 如果没有搜索结果，触发一次搜索
   if (!accountSearchResults.value[key]?.length) {
@@ -1873,13 +2033,14 @@ const addCreateRoutingRule = () => {
 REDACTED
 
 // 删除创建表单的路由规则
-const removeCreateRoutingRule = (index: number) => {
+const removeCreateRoutingRule = (rule: ModelRoutingRule) => {
+  const index = createModelRoutingRules.value.indexOf(rule)
+  if (index === -1) return
+
+  const key = getCreateRuleSearchKey(rule)
+  accountSearchRunner.clearKey(key)
+  clearAccountSearchStateByKey(key)
   createModelRoutingRules.value.splice(index, 1)
-  // 清理相关的搜索状态
-  const key = `create-${indexREDACTED`
-  delete accountSearchKeyword.value[key]
-  delete accountSearchResults.value[key]
-  delete showAccountDropdown.value[key]
 REDACTED
 
 // 添加编辑表单的路由规则
@@ -1888,13 +2049,14 @@ const addEditRoutingRule = () => {
 REDACTED
 
 // 删除编辑表单的路由规则
-const removeEditRoutingRule = (index: number) => {
+const removeEditRoutingRule = (rule: ModelRoutingRule) => {
+  const index = editModelRoutingRules.value.indexOf(rule)
+  if (index === -1) return
+
+  const key = getEditRuleSearchKey(rule)
+  accountSearchRunner.clearKey(key)
+  clearAccountSearchStateByKey(key)
   editModelRoutingRules.value.splice(index, 1)
-  // 清理相关的搜索状态
-  const key = `edit-${indexREDACTED`
-  delete accountSearchKeyword.value[key]
-  delete accountSearchResults.value[key]
-  delete showAccountDropdown.value[key]
 REDACTED
 
 // 将 UI 格式的路由规则转换为 API 格式
@@ -1954,6 +2116,11 @@ const editForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  // Sora 按次计费配置
+  sora_image_price_360: null as number | null,
+  sora_image_price_540: null as number | null,
+  sora_video_price_per_request: null as number | null,
+  sora_video_price_per_request_hd: null as number | null,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -2033,6 +2200,10 @@ REDACTED
 
 const closeCreateModal = () => {
   showCreateModal.value = false
+  createModelRoutingRules.value.forEach((rule) => {
+    accountSearchRunner.clearKey(getCreateRuleSearchKey(rule))
+  REDACTED)
+  clearAllAccountSearchState()
   createForm.name = ''
   createForm.description = ''
   createForm.platform = 'anthropic'
@@ -2045,6 +2216,10 @@ const closeCreateModal = () => {
   createForm.image_price_1k = null
   createForm.image_price_2k = null
   createForm.image_price_4k = null
+  createForm.sora_image_price_360 = null
+  createForm.sora_image_price_540 = null
+  createForm.sora_video_price_per_request = null
+  createForm.sora_video_price_per_request_hd = null
   createForm.claude_code_only = false
   createForm.fallback_group_id = null
   createForm.fallback_group_id_on_invalid_request = null
@@ -2098,6 +2273,10 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_1k = group.image_price_1k
   editForm.image_price_2k = group.image_price_2k
   editForm.image_price_4k = group.image_price_4k
+  editForm.sora_image_price_360 = group.sora_image_price_360
+  editForm.sora_image_price_540 = group.sora_image_price_540
+  editForm.sora_video_price_per_request = group.sora_video_price_per_request
+  editForm.sora_video_price_per_request_hd = group.sora_video_price_per_request_hd
   editForm.claude_code_only = group.claude_code_only || false
   editForm.fallback_group_id = group.fallback_group_id
   editForm.fallback_group_id_on_invalid_request = group.fallback_group_id_on_invalid_request
@@ -2111,6 +2290,10 @@ const handleEdit = async (group: AdminGroup) => {
 REDACTED
 
 const closeEditModal = () => {
+  editModelRoutingRules.value.forEach((rule) => {
+    accountSearchRunner.clearKey(getEditRuleSearchKey(rule))
+  REDACTED)
+  clearAllAccountSearchState()
   showEditModal.value = false
   editingGroup.value = null
   editModelRoutingRules.value = []
@@ -2246,5 +2429,7 @@ REDACTED)
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  accountSearchRunner.clearAll()
+  clearAllAccountSearchState()
 REDACTED)
 </script>

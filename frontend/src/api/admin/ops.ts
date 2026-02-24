@@ -259,6 +259,40 @@ export interface OpsErrorDistributionResponse {
   items: OpsErrorDistributionItem[]
 REDACTED
 
+export type OpsOpenAITokenStatsTimeRange = '30m' | '1h' | '1d' | '15d' | '30d'
+
+export interface OpsOpenAITokenStatsItem {
+  model: string
+  request_count: number
+  avg_tokens_per_sec?: number | null
+  avg_first_token_ms?: number | null
+  total_output_tokens: number
+  avg_duration_ms: number
+  requests_with_first_token: number
+REDACTED
+
+export interface OpsOpenAITokenStatsResponse {
+  time_range: OpsOpenAITokenStatsTimeRange
+  start_time: string
+  end_time: string
+  platform?: string
+  group_id?: number | null
+  items: OpsOpenAITokenStatsItem[]
+  total: number
+  page?: number
+  page_size?: number
+  top_n?: number | null
+REDACTED
+
+export interface OpsOpenAITokenStatsParams {
+  time_range?: OpsOpenAITokenStatsTimeRange
+  platform?: string
+  group_id?: number | null
+  page?: number
+  page_size?: number
+  top_n?: number
+REDACTED
+
 export interface OpsSystemMetricsSnapshot {
   id: number
   created_at: string
@@ -816,6 +850,77 @@ export interface OpsAggregationSettings {
   aggregation_enabled: boolean
 REDACTED
 
+export interface OpsRuntimeLogConfig {
+  level: 'debug' | 'info' | 'warn' | 'error'
+  enable_sampling: boolean
+  sampling_initial: number
+  sampling_thereafter: number
+  caller: boolean
+  stacktrace_level: 'none' | 'error' | 'fatal'
+  retention_days: number
+  source?: string
+  updated_at?: string
+  updated_by_user_id?: number
+REDACTED
+
+export interface OpsSystemLog {
+  id: number
+  created_at: string
+  level: string
+  component: string
+  message: string
+  request_id?: string
+  client_request_id?: string
+  user_id?: number | null
+  account_id?: number | null
+  platform?: string
+  model?: string
+  extra?: Record<string, any>
+REDACTED
+
+export type OpsSystemLogListResponse = PaginatedResponse<OpsSystemLog>
+
+export interface OpsSystemLogQuery {
+  page?: number
+  page_size?: number
+  time_range?: '5m' | '30m' | '1h' | '6h' | '24h' | '7d' | '30d'
+  start_time?: string
+  end_time?: string
+  level?: string
+  component?: string
+  request_id?: string
+  client_request_id?: string
+  user_id?: number | null
+  account_id?: number | null
+  platform?: string
+  model?: string
+  q?: string
+REDACTED
+
+export interface OpsSystemLogCleanupRequest {
+  start_time?: string
+  end_time?: string
+  level?: string
+  component?: string
+  request_id?: string
+  client_request_id?: string
+  user_id?: number | null
+  account_id?: number | null
+  platform?: string
+  model?: string
+  q?: string
+REDACTED
+
+export interface OpsSystemLogSinkHealth {
+  queue_depth: number
+  queue_capacity: number
+  dropped_count: number
+  write_failed_count: number
+  written_count: number
+  avg_write_delay_ms: number
+  last_error?: string
+REDACTED
+
 export interface OpsErrorLog {
   id: number
   created_at: string
@@ -965,6 +1070,17 @@ export async function getErrorDistribution(
   options: OpsRequestOptions = {REDACTED
 ): Promise<OpsErrorDistributionResponse> {
   const { data REDACTED = await apiClient.get<OpsErrorDistributionResponse>('/admin/ops/dashboard/error-distribution', {
+    params,
+    signal: options.signal
+  REDACTED)
+  return data
+REDACTED
+
+export async function getOpenAITokenStats(
+  params: OpsOpenAITokenStatsParams,
+  options: OpsRequestOptions = {REDACTED
+): Promise<OpsOpenAITokenStatsResponse> {
+  const { data REDACTED = await apiClient.get<OpsOpenAITokenStatsResponse>('/admin/ops/dashboard/openai-token-stats', {
     params,
     signal: options.signal
   REDACTED)
@@ -1160,6 +1276,36 @@ export async function updateAlertRuntimeSettings(config: OpsAlertRuntimeSettings
   return data
 REDACTED
 
+export async function getRuntimeLogConfig(): Promise<OpsRuntimeLogConfig> {
+  const { data REDACTED = await apiClient.get<OpsRuntimeLogConfig>('/admin/ops/runtime/logging')
+  return data
+REDACTED
+
+export async function updateRuntimeLogConfig(config: OpsRuntimeLogConfig): Promise<OpsRuntimeLogConfig> {
+  const { data REDACTED = await apiClient.put<OpsRuntimeLogConfig>('/admin/ops/runtime/logging', config)
+  return data
+REDACTED
+
+export async function resetRuntimeLogConfig(): Promise<OpsRuntimeLogConfig> {
+  const { data REDACTED = await apiClient.post<OpsRuntimeLogConfig>('/admin/ops/runtime/logging/reset')
+  return data
+REDACTED
+
+export async function listSystemLogs(params: OpsSystemLogQuery): Promise<OpsSystemLogListResponse> {
+  const { data REDACTED = await apiClient.get<OpsSystemLogListResponse>('/admin/ops/system-logs', { params REDACTED)
+  return data
+REDACTED
+
+export async function cleanupSystemLogs(payload: OpsSystemLogCleanupRequest): Promise<{ deleted: number REDACTED> {
+  const { data REDACTED = await apiClient.post<{ deleted: number REDACTED>('/admin/ops/system-logs/cleanup', payload)
+  return data
+REDACTED
+
+export async function getSystemLogSinkHealth(): Promise<OpsSystemLogSinkHealth> {
+  const { data REDACTED = await apiClient.get<OpsSystemLogSinkHealth>('/admin/ops/system-logs/health')
+  return data
+REDACTED
+
 // Advanced settings (DB-backed)
 export async function getAdvancedSettings(): Promise<OpsAdvancedSettings> {
   const { data REDACTED = await apiClient.get<OpsAdvancedSettings>('/admin/ops/advanced-settings')
@@ -1188,6 +1334,7 @@ export const opsAPI = {
   getLatencyHistogram,
   getErrorTrend,
   getErrorDistribution,
+  getOpenAITokenStats,
   getConcurrencyStats,
   getUserConcurrencyStats,
   getAccountAvailabilityStats,
@@ -1226,10 +1373,16 @@ export const opsAPI = {
   updateEmailNotificationConfig,
   getAlertRuntimeSettings,
   updateAlertRuntimeSettings,
+  getRuntimeLogConfig,
+  updateRuntimeLogConfig,
+  resetRuntimeLogConfig,
   getAdvancedSettings,
   updateAdvancedSettings,
   getMetricThresholds,
-  updateMetricThresholds
+  updateMetricThresholds,
+  listSystemLogs,
+  cleanupSystemLogs,
+  getSystemLogSinkHealth
 REDACTED
 
 export default opsAPI

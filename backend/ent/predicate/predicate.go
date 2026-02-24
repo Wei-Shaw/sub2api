@@ -39,6 +39,9 @@ type Proxy func(*sql.Selector)
 // RedeemCode is the predicate function for redeemcode builders.
 type RedeemCode func(*sql.Selector)
 
+// SecuritySecret is the predicate function for securitysecret builders.
+type SecuritySecret func(*sql.Selector)
+
 // Setting is the predicate function for setting builders.
 type Setting func(*sql.Selector)
 

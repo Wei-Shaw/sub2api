@@ -24,6 +24,7 @@ const (
 	PlatformOpenAI      = domain.PlatformOpenAI
 	PlatformGemini      = domain.PlatformGemini
 	PlatformAntigravity = domain.PlatformAntigravity
+	PlatformSora        = domain.PlatformSora
 )
 
 // Account type constants
@@ -159,6 +160,9 @@ const (
 
 	// SettingKeyOpsAdvancedSettings stores JSON config for ops advanced settings (data retention, aggregation).
 	SettingKeyOpsAdvancedSettings = "ops_advanced_settings"
+
+	// SettingKeyOpsRuntimeLogConfig stores JSON config for runtime log settings.
+	SettingKeyOpsRuntimeLogConfig = "ops_runtime_log_config"
 
 	// =========================
 	// Stream Timeout Handling

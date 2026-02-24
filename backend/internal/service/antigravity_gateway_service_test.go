@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -415,6 +416,44 @@ REDACTED
 	require.ErrorAs(t, err, &failoverErr, "error should be UpstreamFailoverError to trigger account switch")
 	require.Equal(t, http.StatusServiceUnavailable, failoverErr.StatusCode)
 	require.True(t, failoverErr.ForceCacheBilling, "ForceCacheBilling should be true for sticky session switch")
+REDACTED
+
+// TestStreamUpstreamResponse_UsageAndFirstToken
+// 验证：usage 字段可被累积/覆盖更新，并且能记录首 token 时间
+func TestStreamUpstreamResponse_UsageAndFirstToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newAntigravityTestService(&config.Config{
+		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTED,
+REDACTED)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{REDACTED, Body: prREDACTED
+
+	go func() {
+		defer func() { _ = pw.Close() REDACTED()
+		fmt.Fprintln(pw, `data: {"usage":{"input_tokens":1,"output_tokens":2,"cache_read_input_tokens":3,"cache_creation_input_tokens":4REDACTEDREDACTED`)
+		fmt.Fprintln(pw, `data: {"usage":{"output_tokens":5REDACTEDREDACTED`)
+REDACTED()
+
+	start := time.Now().Add(-10 * time.Millisecond)
+	result := svc.streamUpstreamResponse(c, resp, start)
+	_ = pr.Close()
+
+	require.NotNil(t, result)
+	require.NotNil(t, result.usage)
+	require.Equal(t, 1, result.usage.InputTokens)
+	// 第二次事件覆盖 output_tokens
+	require.Equal(t, 5, result.usage.OutputTokens)
+	require.Equal(t, 3, result.usage.CacheReadInputTokens)
+	require.Equal(t, 4, result.usage.CacheCreationInputTokens)
+	require.NotNil(t, result.firstTokenMs)
+
+	// 确保有透传输出
+	require.Contains(t, rec.Body.String(), "data:")
 REDACTED
 
 // --- 流式 happy path 测试 ---
@@ -919,4 +958,145 @@ REDACTED)
 		require.False(t, ok)
 		require.True(t, cw.Disconnected())
 REDACTED)
+REDACTED
+
+// TestUnwrapV1InternalResponse 测试 unwrapV1InternalResponse 的各种输入场景
+func TestUnwrapV1InternalResponse(t *testing.T) {
+	svc := &AntigravityGatewayService{REDACTED
+
+	// 构造 >50KB 的大型 JSON
+	largePadding := strings.Repeat("x", 50*1024)
+	largeInput := []byte(fmt.Sprintf(`{"response":{"id":"big","pad":"%s"REDACTEDREDACTED`, largePadding))
+	largeExpected := fmt.Sprintf(`{"id":"big","pad":"%s"REDACTED`, largePadding)
+
+	tests := []struct {
+		name     string
+		input    []byte
+		expected string
+		wantErr  bool
+REDACTED{
+		{
+			name:     "正常 response 包装",
+			input:    []byte(`{"response":{"id":"123","content":"hello"REDACTEDREDACTED`),
+			expected: `{"id":"123","content":"hello"REDACTED`,
+	REDACTED,
+		{
+			name:     "无 response 透传",
+			input:    []byte(`{"id":"456"REDACTED`),
+			expected: `{"id":"456"REDACTED`,
+	REDACTED,
+		{
+			name:     "空 JSON",
+			input:    []byte(`{REDACTED`),
+			expected: `{REDACTED`,
+	REDACTED,
+		{
+			name:     "response 为 null",
+			input:    []byte(`{"response":nullREDACTED`),
+			expected: `null`,
+	REDACTED,
+		{
+			name:     "response 为基础类型 string",
+			input:    []byte(`{"response":"hello"REDACTED`),
+			expected: `"hello"`,
+	REDACTED,
+		{
+			name:     "非法 JSON",
+			input:    []byte(`not json`),
+			expected: `not json`,
+	REDACTED,
+		{
+			name:     "嵌套 response 只解一层",
+			input:    []byte(`{"response":{"response":{"inner":trueREDACTEDREDACTEDREDACTED`),
+			expected: `{"response":{"inner":trueREDACTEDREDACTED`,
+	REDACTED,
+		{
+			name:     "大型 JSON >50KB",
+			input:    largeInput,
+			expected: largeExpected,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := svc.unwrapV1InternalResponse(tt.input)
+			if tt.wantErr {
+			REDACTED
+				return
+		REDACTED
+		REDACTED
+			require.Equal(t, tt.expected, strings.TrimSpace(string(got)))
+	REDACTED)
+REDACTED
+REDACTED
+
+// --- unwrapV1InternalResponse benchmark 对照组 ---
+
+// unwrapV1InternalResponseOld 旧实现：Unmarshal+Marshal 双重开销（仅用于 benchmark 对照）
+func unwrapV1InternalResponseOld(body []byte) ([]byte, error) {
+	var outer map[string]any
+	if err := json.Unmarshal(body, &outer); err != nil {
+		return nil, err
+REDACTED
+	if resp, ok := outer["response"]; ok {
+		return json.Marshal(resp)
+REDACTED
+	return body, nil
+REDACTED
+
+func BenchmarkUnwrapV1Internal_Old_Small(b *testing.B) {
+	body := []byte(`{"response":{"candidates":[{"content":{"parts":[{"text":"hello world"REDACTED]REDACTEDREDACTED],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5REDACTEDREDACTEDREDACTED`)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = unwrapV1InternalResponseOld(body)
+REDACTED
+REDACTED
+
+func BenchmarkUnwrapV1Internal_New_Small(b *testing.B) {
+	body := []byte(`{"response":{"candidates":[{"content":{"parts":[{"text":"hello world"REDACTED]REDACTEDREDACTED],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5REDACTEDREDACTEDREDACTED`)
+	svc := &AntigravityGatewayService{REDACTED
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = svc.unwrapV1InternalResponse(body)
+REDACTED
+REDACTED
+
+func BenchmarkUnwrapV1Internal_Old_Large(b *testing.B) {
+	body := generateLargeUnwrapJSON(10 * 1024) // ~10KB
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = unwrapV1InternalResponseOld(body)
+REDACTED
+REDACTED
+
+func BenchmarkUnwrapV1Internal_New_Large(b *testing.B) {
+	body := generateLargeUnwrapJSON(10 * 1024) // ~10KB
+	svc := &AntigravityGatewayService{REDACTED
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = svc.unwrapV1InternalResponse(body)
+REDACTED
+REDACTED
+
+// generateLargeUnwrapJSON 生成指定最小大小的包含 response 包装的 JSON
+func generateLargeUnwrapJSON(minSize int) []byte {
+	parts := make([]map[string]string, 0)
+	current := 0
+	for current < minSize {
+		text := fmt.Sprintf("这是第 %d 段内容，用于填充 JSON 到目标大小。", len(parts)+1)
+		parts = append(parts, map[string]string{"text": textREDACTED)
+		current += len(text) + 20 // 估算 JSON 编码开销
+REDACTED
+	inner := map[string]any{
+		"candidates": []map[string]any{
+			{"content": map[string]any{"parts": partsREDACTEDREDACTED,
+	REDACTED,
+		"usageMetadata": map[string]any{
+			"promptTokenCount":     100,
+			"candidatesTokenCount": 50,
+	REDACTED,
+REDACTED
+	outer := map[string]any{"response": innerREDACTED
+	b, _ := json.Marshal(outer)
+	return b
 REDACTED

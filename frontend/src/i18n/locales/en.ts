@@ -478,6 +478,7 @@ export default {
     today: 'Today',
     total: 'Total',
     quota: 'Quota',
+    lastUsedAt: 'Last Used',
     useKey: 'Use Key',
     useKeyModal: {
       title: 'Use API Key',
@@ -1108,7 +1109,8 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
-        antigravity: 'Antigravity'
+        antigravity: 'Antigravity',
+        sora: 'Sora'
       REDACTED,
       deleteConfirm:
         "Are you sure you want to delete '{nameREDACTED'? All associated API keys will no longer belong to any group.",
@@ -1132,6 +1134,14 @@ export default {
       imagePricing: {
         title: 'Image Generation Pricing',
         description: 'Configure pricing for gemini-3-pro-image model. Leave empty to use default prices.'
+      REDACTED,
+      soraPricing: {
+        title: 'Sora Per-Request Pricing',
+        description: 'Configure per-request pricing for Sora image/video generation. Leave empty to disable billing.',
+        image360: 'Image 360px ($)',
+        image540: 'Image 540px ($)',
+        video: 'Video (standard) ($)',
+        videoHd: 'Video (Pro-HD) ($)'
       REDACTED,
       claudeCode: {
         title: 'Claude Code Client Restriction',
@@ -1275,6 +1285,8 @@ export default {
       refreshInterval15s: '15 seconds',
       refreshInterval30s: '30 seconds',
       autoRefreshCountdown: 'Auto refresh: {secondsREDACTEDs',
+      listPendingSyncHint: 'List changes are pending sync. Click sync to load latest rows.',
+      listPendingSyncAction: 'Sync now',
       syncFromCrs: 'Sync from CRS',
       dataExport: 'Export',
       dataExportSelected: 'Export Selected',
@@ -1355,7 +1367,8 @@ export default {
         claude: 'Claude',
         openai: 'OpenAI',
         gemini: 'Gemini',
-        antigravity: 'Antigravity'
+        antigravity: 'Antigravity',
+        sora: 'Sora'
       REDACTED,
       types: {
         oauth: 'OAuth',
@@ -1525,7 +1538,21 @@ export default {
       // OpenAI specific hints
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',
-        apiKeyHint: 'Your OpenAI API Key'
+        apiKeyHint: 'Your OpenAI API Key',
+        oauthPassthrough: 'Auto passthrough (auth only)',
+        oauthPassthroughDesc:
+          'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
+        codexCLIOnly: 'Codex official clients only',
+        codexCLIOnlyDesc:
+          'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
+        modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
+        enableSora: 'Enable Sora simultaneously',
+        enableSoraHint: 'Sora uses the same OpenAI account. Enable to create Sora account simultaneously.'
+      REDACTED,
+      anthropic: {
+        apiKeyPassthrough: 'Auto passthrough (auth only)',
+        apiKeyPassthroughDesc:
+          'Only applies to Anthropic API Key accounts. When enabled, messages/count_tokens are forwarded in passthrough mode with auth replacement only, while billing/concurrency/audit and safety filtering are preserved. Disable to roll back immediately.'
       REDACTED,
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
@@ -1535,6 +1562,9 @@ export default {
         'Map request models to actual models. Left is the requested model, right is the actual model sent to API.',
       selectedModels: 'Selected {countREDACTED model(s)',
       supportsAllModels: '(supports all models)',
+      soraModelsLoadFailed: 'Failed to load Sora models, fallback to default list',
+      soraModelsLoading: 'Loading Sora models...',
+      soraModelsRetry: 'Load failed, click to retry',
       requestModel: 'Request model',
       actualModel: 'Actual model',
       addMapping: 'Add Mapping',
@@ -1625,6 +1655,8 @@ export default {
       creating: 'Creating...',
       updating: 'Updating...',
       accountCreated: 'Account created successfully',
+      soraAccountCreated: 'Sora account created simultaneously',
+      soraAccountFailed: 'Failed to create Sora account, please add manually later',
       accountUpdated: 'Account updated successfully',
       failedToCreate: 'Failed to create account',
       failedToUpdate: 'Failed to update account',
@@ -1716,9 +1748,13 @@ export default {
           refreshTokenAuth: 'Manual RT Input',
           refreshTokenDesc: 'Enter your existing OpenAI Refresh Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
           refreshTokenPlaceholder: 'Paste your OpenAI Refresh Token...\nSupports multiple, one per line',
+          sessionTokenAuth: 'Manual ST Input',
+          sessionTokenDesc: 'Enter your existing Sora Session Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
+          sessionTokenPlaceholder: 'Paste your Sora Session Token...\nSupports multiple, one per line',
           validating: 'Validating...',
           validateAndCreate: 'Validate & Create Account',
-          pleaseEnterRefreshToken: 'Please enter Refresh Token'
+          pleaseEnterRefreshToken: 'Please enter Refresh Token',
+          pleaseEnterSessionToken: 'Please enter Session Token'
         REDACTED,
         // Gemini specific
 	        gemini: {
@@ -1939,6 +1975,7 @@ export default {
       reAuthorizeAccount: 'Re-Authorize Account',
       claudeCodeAccount: 'Claude Code Account',
       openaiAccount: 'OpenAI Account',
+      soraAccount: 'Sora Account',
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
       inputMethod: 'Input Method',
@@ -1964,6 +2001,10 @@ export default {
       selectTestModel: 'Select Test Model',
       testModel: 'Test model',
       testPrompt: 'Prompt: "hi"',
+      soraTestHint: 'Sora test runs connectivity and capability checks (/backend/me, subscription, Sora2 invite and remaining quota).',
+      soraTestTarget: 'Target: Sora account capability',
+      soraTestMode: 'Mode: Connectivity + Capability checks',
+      soraTestingFlow: 'Running Sora connectivity and capability checks...',
       // Stats Modal
       viewStats: 'View Stats',
       usageStatistics: 'Usage Statistics',
@@ -2070,6 +2111,8 @@ export default {
         actions: 'Actions'
       REDACTED,
       testConnection: 'Test Connection',
+      qualityCheck: 'Quality Check',
+      batchQualityCheck: 'Batch Quality Check',
       batchTest: 'Test All Proxies',
       testFailed: 'Failed',
       latencyFailed: 'Connection failed',
@@ -2130,6 +2173,29 @@ export default {
       proxyWorking: 'Proxy is working!',
       proxyWorkingWithLatency: 'Proxy is working! Latency: {latencyREDACTEDms',
       proxyTestFailed: 'Proxy test failed',
+      qualityCheckDone: 'Quality check completed: score {scoreREDACTED ({gradeREDACTED)',
+      qualityCheckFailed: 'Failed to run proxy quality check',
+      batchQualityDone:
+        'Batch quality check completed for {countREDACTED proxies: healthy {healthyREDACTED, warn {warnREDACTED, challenge {challengeREDACTED, abnormal {failedREDACTED',
+      batchQualityFailed: 'Batch quality check failed',
+      batchQualityEmpty: 'No proxies available for quality check',
+      qualityReportTitle: 'Proxy Quality Report',
+      qualityGrade: 'Grade {gradeREDACTED',
+      qualityExitIP: 'Exit IP',
+      qualityCountry: 'Exit Region',
+      qualityBaseLatency: 'Base Latency',
+      qualityCheckedAt: 'Checked At',
+      qualityTableTarget: 'Target',
+      qualityTableStatus: 'Status',
+      qualityTableLatency: 'Latency',
+      qualityTableMessage: 'Message',
+      qualityInline: 'Quality {gradeREDACTED/{scoreREDACTED',
+      qualityStatusHealthy: 'Healthy',
+      qualityStatusPass: 'Pass',
+      qualityStatusWarn: 'Warn',
+      qualityStatusFail: 'Fail',
+      qualityStatusChallenge: 'Challenge',
+      qualityTargetBase: 'Base Connectivity',
       failedToLoad: 'Failed to load proxies',
       failedToCreate: 'Failed to create proxy',
       failedToUpdate: 'Failed to update proxy',
@@ -2507,10 +2573,32 @@ export default {
         '5m': 'Last 5 minutes',
         '30m': 'Last 30 minutes',
         '1h': 'Last 1 hour',
+        '1d': 'Last 1 day',
+        '15d': 'Last 15 days',
         '6h': 'Last 6 hours',
         '24h': 'Last 24 hours',
         '7d': 'Last 7 days',
         '30d': 'Last 30 days'
+      REDACTED,
+      openaiTokenStats: {
+        title: 'OpenAI Token Request Stats',
+        viewModeTopN: 'TopN',
+        viewModePagination: 'Pagination',
+        prevPage: 'Previous',
+        nextPage: 'Next',
+        pageInfo: 'Page {pageREDACTED/{totalREDACTED',
+        totalModels: 'Total models: {totalREDACTED',
+        failedToLoad: 'Failed to load OpenAI token stats',
+        empty: 'No OpenAI token stats for the current filters',
+        table: {
+          model: 'Model',
+          requestCount: 'Requests',
+          avgTokensPerSec: 'Avg Tokens/sec',
+          avgFirstTokenMs: 'Avg First Token Latency (ms)',
+          totalOutputTokens: 'Total Output Tokens',
+          avgDurationMs: 'Avg Duration (ms)',
+          requestsWithFirstToken: 'Requests With First Token'
+        REDACTED
       REDACTED,
       fullscreen: {
         enter: 'Enter Fullscreen'

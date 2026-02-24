@@ -147,100 +147,6 @@ var (
 			return 1
 		`)
 
-	// getAccountsLoadBatchScript - batch load query with expired slot cleanup
-	// ARGV[1] = slot TTL (seconds)
-	// ARGV[2..n] = accountID1, maxConcurrency1, accountID2, maxConcurrency2, ...
-	getAccountsLoadBatchScript = redis.NewScript(`
-			local result = {REDACTED
-			local slotTTL = tonumber(ARGV[1])
-
-			-- Get current server time
-			local timeResult = redis.call('TIME')
-			local nowSeconds = tonumber(timeResult[1])
-			local cutoffTime = nowSeconds - slotTTL
-
-			local i = 2
-			while i <= #ARGV do
-				local accountID = ARGV[i]
-				local maxConcurrency = tonumber(ARGV[i + 1])
-
-				local slotKey = 'concurrency:account:' .. accountID
-
-				-- Clean up expired slots before counting
-				redis.call('ZREMRANGEBYSCORE', slotKey, '-inf', cutoffTime)
-				local currentConcurrency = redis.call('ZCARD', slotKey)
-
-				local waitKey = 'wait:account:' .. accountID
-				local waitingCount = redis.call('GET', waitKey)
-				if waitingCount == false then
-					waitingCount = 0
-				else
-					waitingCount = tonumber(waitingCount)
-				end
-
-				local loadRate = 0
-				if maxConcurrency > 0 then
-					loadRate = math.floor((currentConcurrency + waitingCount) * 100 / maxConcurrency)
-				end
-
-				table.insert(result, accountID)
-				table.insert(result, currentConcurrency)
-				table.insert(result, waitingCount)
-				table.insert(result, loadRate)
-
-				i = i + 2
-			end
-
-			return result
-		`)
-
-	// getUsersLoadBatchScript - batch load query for users with expired slot cleanup
-	// ARGV[1] = slot TTL (seconds)
-	// ARGV[2..n] = userID1, maxConcurrency1, userID2, maxConcurrency2, ...
-	getUsersLoadBatchScript = redis.NewScript(`
-			local result = {REDACTED
-			local slotTTL = tonumber(ARGV[1])
-
-			-- Get current server time
-			local timeResult = redis.call('TIME')
-			local nowSeconds = tonumber(timeResult[1])
-			local cutoffTime = nowSeconds - slotTTL
-
-			local i = 2
-			while i <= #ARGV do
-				local userID = ARGV[i]
-				local maxConcurrency = tonumber(ARGV[i + 1])
-
-				local slotKey = 'concurrency:user:' .. userID
-
-				-- Clean up expired slots before counting
-				redis.call('ZREMRANGEBYSCORE', slotKey, '-inf', cutoffTime)
-				local currentConcurrency = redis.call('ZCARD', slotKey)
-
-				local waitKey = 'concurrency:wait:' .. userID
-				local waitingCount = redis.call('GET', waitKey)
-				if waitingCount == false then
-					waitingCount = 0
-				else
-					waitingCount = tonumber(waitingCount)
-				end
-
-				local loadRate = 0
-				if maxConcurrency > 0 then
-					loadRate = math.floor((currentConcurrency + waitingCount) * 100 / maxConcurrency)
-				end
-
-				table.insert(result, userID)
-				table.insert(result, currentConcurrency)
-				table.insert(result, waitingCount)
-				table.insert(result, loadRate)
-
-				i = i + 2
-			end
-
-			return result
-		`)
-
 	// cleanupExpiredSlotsScript - remove expired slots
 	// KEYS[1] = concurrency:account:{accountIDREDACTED
 	// ARGV[1] = TTL (seconds)
@@ -399,29 +305,53 @@ func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []
 		return map[int64]*service.AccountLoadInfo{REDACTED, nil
 REDACTED
 
-	args := []any{c.slotTTLSecondsREDACTED
-	for _, acc := range accounts {
-		args = append(args, acc.ID, acc.MaxConcurrency)
-REDACTED
-
-	result, err := getAccountsLoadBatchScript.Run(ctx, c.rdb, []string{REDACTED, args...).Slice()
+	// 使用 Pipeline 替代 Lua 脚本，兼容 Redis Cluster（Lua 内动态拼 key 会 CROSSSLOT）。
+	// 每个账号执行 3 个命令：ZREMRANGEBYSCORE（清理过期）、ZCARD（并发数）、GET（等待数）。
+	now, err := c.rdb.Time(ctx).Result()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("redis TIME: %w", err)
+REDACTED
+	cutoffTime := now.Unix() - int64(c.slotTTLSeconds)
+
+	pipe := c.rdb.Pipeline()
+
+	type accountCmds struct {
+		id             int64
+		maxConcurrency int
+		zcardCmd       *redis.IntCmd
+		getCmd         *redis.StringCmd
+REDACTED
+	cmds := make([]accountCmds, 0, len(accounts))
+	for _, acc := range accounts {
+		slotKey := accountSlotKeyPrefix + strconv.FormatInt(acc.ID, 10)
+		waitKey := accountWaitKeyPrefix + strconv.FormatInt(acc.ID, 10)
+		pipe.ZRemRangeByScore(ctx, slotKey, "-inf", strconv.FormatInt(cutoffTime, 10))
+		ac := accountCmds{
+			id:             acc.ID,
+			maxConcurrency: acc.MaxConcurrency,
+			zcardCmd:       pipe.ZCard(ctx, slotKey),
+			getCmd:         pipe.Get(ctx, waitKey),
+	REDACTED
+		cmds = append(cmds, ac)
 REDACTED
 
-	loadMap := make(map[int64]*service.AccountLoadInfo)
-	for i := 0; i < len(result); i += 4 {
-		if i+3 >= len(result) {
-			break
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+		return nil, fmt.Errorf("pipeline exec: %w", err)
+REDACTED
+
+	loadMap := make(map[int64]*service.AccountLoadInfo, len(accounts))
+	for _, ac := range cmds {
+		currentConcurrency := int(ac.zcardCmd.Val())
+		waitingCount := 0
+		if v, err := ac.getCmd.Int(); err == nil {
+			waitingCount = v
 	REDACTED
-
-		accountID, _ := strconv.ParseInt(fmt.Sprintf("%v", result[i]), 10, 64)
-		currentConcurrency, _ := strconv.Atoi(fmt.Sprintf("%v", result[i+1]))
-		waitingCount, _ := strconv.Atoi(fmt.Sprintf("%v", result[i+2]))
-		loadRate, _ := strconv.Atoi(fmt.Sprintf("%v", result[i+3]))
-
-		loadMap[accountID] = &service.AccountLoadInfo{
-			AccountID:          accountID,
+		loadRate := 0
+		if ac.maxConcurrency > 0 {
+			loadRate = (currentConcurrency + waitingCount) * 100 / ac.maxConcurrency
+	REDACTED
+		loadMap[ac.id] = &service.AccountLoadInfo{
+			AccountID:          ac.id,
 			CurrentConcurrency: currentConcurrency,
 			WaitingCount:       waitingCount,
 			LoadRate:           loadRate,
@@ -436,29 +366,52 @@ func (c *concurrencyCache) GetUsersLoadBatch(ctx context.Context, users []servic
 		return map[int64]*service.UserLoadInfo{REDACTED, nil
 REDACTED
 
-	args := []any{c.slotTTLSecondsREDACTED
-	for _, u := range users {
-		args = append(args, u.ID, u.MaxConcurrency)
-REDACTED
-
-	result, err := getUsersLoadBatchScript.Run(ctx, c.rdb, []string{REDACTED, args...).Slice()
+	// 使用 Pipeline 替代 Lua 脚本，兼容 Redis Cluster。
+	now, err := c.rdb.Time(ctx).Result()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("redis TIME: %w", err)
+REDACTED
+	cutoffTime := now.Unix() - int64(c.slotTTLSeconds)
+
+	pipe := c.rdb.Pipeline()
+
+	type userCmds struct {
+		id             int64
+		maxConcurrency int
+		zcardCmd       *redis.IntCmd
+		getCmd         *redis.StringCmd
+REDACTED
+	cmds := make([]userCmds, 0, len(users))
+	for _, u := range users {
+		slotKey := userSlotKeyPrefix + strconv.FormatInt(u.ID, 10)
+		waitKey := waitQueueKeyPrefix + strconv.FormatInt(u.ID, 10)
+		pipe.ZRemRangeByScore(ctx, slotKey, "-inf", strconv.FormatInt(cutoffTime, 10))
+		uc := userCmds{
+			id:             u.ID,
+			maxConcurrency: u.MaxConcurrency,
+			zcardCmd:       pipe.ZCard(ctx, slotKey),
+			getCmd:         pipe.Get(ctx, waitKey),
+	REDACTED
+		cmds = append(cmds, uc)
 REDACTED
 
-	loadMap := make(map[int64]*service.UserLoadInfo)
-	for i := 0; i < len(result); i += 4 {
-		if i+3 >= len(result) {
-			break
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+		return nil, fmt.Errorf("pipeline exec: %w", err)
+REDACTED
+
+	loadMap := make(map[int64]*service.UserLoadInfo, len(users))
+	for _, uc := range cmds {
+		currentConcurrency := int(uc.zcardCmd.Val())
+		waitingCount := 0
+		if v, err := uc.getCmd.Int(); err == nil {
+			waitingCount = v
 	REDACTED
-
-		userID, _ := strconv.ParseInt(fmt.Sprintf("%v", result[i]), 10, 64)
-		currentConcurrency, _ := strconv.Atoi(fmt.Sprintf("%v", result[i+1]))
-		waitingCount, _ := strconv.Atoi(fmt.Sprintf("%v", result[i+2]))
-		loadRate, _ := strconv.Atoi(fmt.Sprintf("%v", result[i+3]))
-
-		loadMap[userID] = &service.UserLoadInfo{
-			UserID:             userID,
+		loadRate := 0
+		if uc.maxConcurrency > 0 {
+			loadRate = (currentConcurrency + waitingCount) * 100 / uc.maxConcurrency
+	REDACTED
+		loadMap[uc.id] = &service.UserLoadInfo{
+			UserID:             uc.id,
 			CurrentConcurrency: currentConcurrency,
 			WaitingCount:       waitingCount,
 			LoadRate:           loadRate,

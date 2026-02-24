@@ -3,6 +3,7 @@
 package middleware
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,34 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRecovery_PanicLogContainsInfo(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	// 临时替换 DefaultErrorWriter 以捕获日志输出
+	var buf bytes.Buffer
+	originalWriter := gin.DefaultErrorWriter
+	gin.DefaultErrorWriter = &buf
+	t.Cleanup(func() {
+		gin.DefaultErrorWriter = originalWriter
+REDACTED)
+
+	r := gin.New()
+	r.Use(Recovery())
+	r.GET("/panic", func(c *gin.Context) {
+		panic("custom panic message for test")
+REDACTED)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+
+	logOutput := buf.String()
+	require.Contains(t, logOutput, "custom panic message for test", "日志应包含 panic 信息")
+	require.Contains(t, logOutput, "recovery_test.go", "日志应包含堆栈跟踪文件名")
+REDACTED
 
 func TestRecovery(t *testing.T) {
 	gin.SetMode(gin.TestMode)

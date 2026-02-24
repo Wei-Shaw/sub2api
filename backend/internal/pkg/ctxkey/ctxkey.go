@@ -8,8 +8,20 @@ const (
 	// ForcePlatform 强制平台（用于 /antigravity 路由），由 middleware.ForcePlatform 设置
 	ForcePlatform Key = "ctx_force_platform"
 
+	// RequestID 为服务端生成/透传的请求 ID。
+	RequestID Key = "ctx_request_id"
+
 	// ClientRequestID 客户端请求的唯一标识，用于追踪请求全生命周期（用于 Ops 监控与排障）。
 	ClientRequestID Key = "ctx_client_request_id"
+
+	// Model 请求模型标识（用于统一请求链路日志字段）。
+	Model Key = "ctx_model"
+
+	// Platform 当前请求最终命中的平台（用于统一请求链路日志字段）。
+	Platform Key = "ctx_platform"
+
+	// AccountID 当前请求最终命中的账号 ID（用于统一请求链路日志字段）。
+	AccountID Key = "ctx_account_id"
 
 	// RetryCount 表示当前请求在网关层的重试次数（用于 Ops 记录与排障）。
 	RetryCount Key = "ctx_retry_count"
@@ -32,4 +44,12 @@ const (
 	// SingleAccountRetry 标识当前请求处于单账号 503 退避重试模式。
 	// 在此模式下，Service 层的模型限流预检查将等待限流过期而非直接切换账号。
 	SingleAccountRetry Key = "ctx_single_account_retry"
+
+	// PrefetchedStickyAccountID 标识上游（通常 handler）预取到的 sticky session 账号 ID。
+	// Service 层可复用该值，避免同请求链路重复读取 Redis。
+	PrefetchedStickyAccountID Key = "ctx_prefetched_sticky_account_id"
+
+	// PrefetchedStickyGroupID 标识上游预取 sticky session 时所使用的分组 ID。
+	// Service 层仅在分组匹配时复用 PrefetchedStickyAccountID，避免分组切换重试误用旧 sticky。
+	PrefetchedStickyGroupID Key = "ctx_prefetched_sticky_group_id"
 )

@@ -17,7 +17,7 @@ func main() {
 	email := flag.String("email", "", "Admin email to issue a JWT for (defaults to first active admin)")
 	flag.Parse()
 
-	cfg, err := config.Load()
+	cfg, err := config.LoadForBootstrap()
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 REDACTED

@@ -40,6 +40,11 @@ type ProxyWithAccountCount struct {
 	CountryCode    string
 	Region         string
 	City           string
+	QualityStatus  string
+	QualityScore   *int
+	QualityGrade   string
+	QualitySummary string
+	QualityChecked *int64
 REDACTED
 
 type ProxyAccountSummary struct {

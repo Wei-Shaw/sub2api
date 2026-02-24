@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 )
@@ -39,6 +40,7 @@ REDACTED
 // ProvideTokenRefreshService creates and starts TokenRefreshService
 func ProvideTokenRefreshService(
 	accountRepo AccountRepository,
+	soraAccountRepo SoraAccountRepository, // Sora 扩展表仓储，用于双表同步
 	oauthService *OAuthService,
 	openaiOAuthService *OpenAIOAuthService,
 	geminiOAuthService *GeminiOAuthService,
@@ -48,6 +50,8 @@ func ProvideTokenRefreshService(
 	cfg *config.Config,
 ) *TokenRefreshService {
 	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg)
+	// 注入 Sora 账号扩展表仓储，用于 OpenAI Token 刷新时同步 sora_accounts 表
+	svc.SetSoraAccountRepo(soraAccountRepo)
 	svc.Start()
 	return svc
 REDACTED
@@ -190,6 +194,76 @@ func ProvideOpsCleanupService(
 	return svc
 REDACTED
 
+func ProvideOpsSystemLogSink(opsRepo OpsRepository) *OpsSystemLogSink {
+	sink := NewOpsSystemLogSink(opsRepo)
+	sink.Start()
+	logger.SetSink(sink)
+	return sink
+REDACTED
+
+// ProvideSoraMediaStorage 初始化 Sora 媒体存储
+func ProvideSoraMediaStorage(cfg *config.Config) *SoraMediaStorage {
+	return NewSoraMediaStorage(cfg)
+REDACTED
+
+func ProvideSoraDirectClient(
+	cfg *config.Config,
+	httpUpstream HTTPUpstream,
+	tokenProvider *OpenAITokenProvider,
+	accountRepo AccountRepository,
+	soraAccountRepo SoraAccountRepository,
+) *SoraDirectClient {
+	client := NewSoraDirectClient(cfg, httpUpstream, tokenProvider)
+	client.SetAccountRepositories(accountRepo, soraAccountRepo)
+	return client
+REDACTED
+
+// ProvideSoraMediaCleanupService 创建并启动 Sora 媒体清理服务
+func ProvideSoraMediaCleanupService(storage *SoraMediaStorage, cfg *config.Config) *SoraMediaCleanupService {
+	svc := NewSoraMediaCleanupService(storage, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
+func buildIdempotencyConfig(cfg *config.Config) IdempotencyConfig {
+	idempotencyCfg := DefaultIdempotencyConfig()
+	if cfg != nil {
+		if cfg.Idempotency.DefaultTTLSeconds > 0 {
+			idempotencyCfg.DefaultTTL = time.Duration(cfg.Idempotency.DefaultTTLSeconds) * time.Second
+	REDACTED
+		if cfg.Idempotency.SystemOperationTTLSeconds > 0 {
+			idempotencyCfg.SystemOperationTTL = time.Duration(cfg.Idempotency.SystemOperationTTLSeconds) * time.Second
+	REDACTED
+		if cfg.Idempotency.ProcessingTimeoutSeconds > 0 {
+			idempotencyCfg.ProcessingTimeout = time.Duration(cfg.Idempotency.ProcessingTimeoutSeconds) * time.Second
+	REDACTED
+		if cfg.Idempotency.FailedRetryBackoffSeconds > 0 {
+			idempotencyCfg.FailedRetryBackoff = time.Duration(cfg.Idempotency.FailedRetryBackoffSeconds) * time.Second
+	REDACTED
+		if cfg.Idempotency.MaxStoredResponseLen > 0 {
+			idempotencyCfg.MaxStoredResponseLen = cfg.Idempotency.MaxStoredResponseLen
+	REDACTED
+		idempotencyCfg.ObserveOnly = cfg.Idempotency.ObserveOnly
+REDACTED
+	return idempotencyCfg
+REDACTED
+
+func ProvideIdempotencyCoordinator(repo IdempotencyRepository, cfg *config.Config) *IdempotencyCoordinator {
+	coordinator := NewIdempotencyCoordinator(repo, buildIdempotencyConfig(cfg))
+	SetDefaultIdempotencyCoordinator(coordinator)
+	return coordinator
+REDACTED
+
+func ProvideSystemOperationLockService(repo IdempotencyRepository, cfg *config.Config) *SystemOperationLockService {
+	return NewSystemOperationLockService(repo, buildIdempotencyConfig(cfg))
+REDACTED
+
+func ProvideIdempotencyCleanupService(repo IdempotencyRepository, cfg *config.Config) *IdempotencyCleanupService {
+	svc := NewIdempotencyCleanupService(repo, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProvideOpsScheduledReportService creates and starts OpsScheduledReportService.
 func ProvideOpsScheduledReportService(
 	opsService *OpsService,
@@ -230,6 +304,11 @@ var ProviderSet = wire.NewSet(
 	NewAnnouncementService,
 	NewAdminService,
 	NewGatewayService,
+	ProvideSoraMediaStorage,
+	ProvideSoraMediaCleanupService,
+	ProvideSoraDirectClient,
+	wire.Bind(new(SoraClient), new(*SoraDirectClient)),
+	NewSoraGatewayService,
 	NewOpenAIGatewayService,
 	NewOAuthService,
 	NewOpenAIOAuthService,
@@ -248,6 +327,7 @@ var ProviderSet = wire.NewSet(
 	NewAccountUsageService,
 	NewAccountTestService,
 	NewSettingService,
+	ProvideOpsSystemLogSink,
 	NewOpsService,
 	ProvideOpsMetricsCollector,
 	ProvideOpsAggregationService,
@@ -259,6 +339,7 @@ var ProviderSet = wire.NewSet(
 	NewTurnstileService,
 	NewSubscriptionService,
 	ProvideConcurrencyService,
+	NewUsageRecordWorkerPool,
 	ProvideSchedulerSnapshotService,
 	NewIdentityService,
 	NewCRSSyncService,
@@ -276,4 +357,7 @@ var ProviderSet = wire.NewSet(
 	NewTotpService,
 	NewErrorPassthroughService,
 	NewDigestSessionStore,
+	ProvideIdempotencyCoordinator,
+	ProvideSystemOperationLockService,
+	ProvideIdempotencyCleanupService,
 )

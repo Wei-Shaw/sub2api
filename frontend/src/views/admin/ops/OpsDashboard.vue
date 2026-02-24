@@ -84,8 +84,24 @@
         />
       </div>
 
+      <!-- Row: OpenAI Token Stats -->
+      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
+        <OpsOpenAITokenStatsCard
+          :platform-filter="platform"
+          :group-id-filter="groupId"
+          :refresh-token="dashboardRefreshToken"
+        />
+      </div>
+
       <!-- Alert Events -->
       <OpsAlertEventsCard v-if="opsEnabled && !(loading && !hasLoadedOnce)" />
+
+      <!-- System Logs -->
+      <OpsSystemLogTable
+        v-if="opsEnabled && !(loading && !hasLoadedOnce)"
+        :platform-filter="platform"
+        :refresh-token="dashboardRefreshToken"
+      />
 
       <!-- Settings Dialog (hidden in fullscreen mode) -->
       <template v-if="!isFullscreen">
@@ -148,6 +164,8 @@ import OpsLatencyChart from './components/OpsLatencyChart.vue'
 import OpsThroughputTrendChart from './components/OpsThroughputTrendChart.vue'
 import OpsSwitchRateTrendChart from './components/OpsSwitchRateTrendChart.vue'
 import OpsAlertEventsCard from './components/OpsAlertEventsCard.vue'
+import OpsOpenAITokenStatsCard from './components/OpsOpenAITokenStatsCard.vue'
+import OpsSystemLogTable from './components/OpsSystemLogTable.vue'
 import OpsRequestDetailsModal, { type OpsRequestDetailsPreset REDACTED from './components/OpsRequestDetailsModal.vue'
 import OpsSettingsDialog from './components/OpsSettingsDialog.vue'
 import OpsAlertRulesCard from './components/OpsAlertRulesCard.vue'

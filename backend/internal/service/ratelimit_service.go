@@ -738,7 +738,19 @@ REDACTED
 	if err := s.accountRepo.ClearAntigravityQuotaScopes(ctx, accountID); err != nil {
 		return err
 REDACTED
-	return s.accountRepo.ClearModelRateLimits(ctx, accountID)
+	if err := s.accountRepo.ClearModelRateLimits(ctx, accountID); err != nil {
+		return err
+REDACTED
+	// 清除限流时一并清理临时不可调度状态，避免周限/窗口重置后仍被本地临时状态阻断。
+	if err := s.accountRepo.ClearTempUnschedulable(ctx, accountID); err != nil {
+		return err
+REDACTED
+	if s.tempUnschedCache != nil {
+		if err := s.tempUnschedCache.DeleteTempUnsched(ctx, accountID); err != nil {
+			slog.Warn("temp_unsched_cache_delete_failed", "account_id", accountID, "error", err)
+	REDACTED
+REDACTED
+	return nil
 REDACTED
 
 func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID int64) error {

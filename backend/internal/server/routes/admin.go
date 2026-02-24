@@ -34,6 +34,8 @@ func RegisterAdminRoutes(
 
 		// OpenAI OAuth
 		registerOpenAIOAuthRoutes(admin, h)
+		// Sora OAuth（实现复用 OpenAI OAuth 服务，入口独立）
+		registerSoraOAuthRoutes(admin, h)
 
 		// Gemini OAuth
 		registerGeminiOAuthRoutes(admin, h)
@@ -101,6 +103,9 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		{
 			runtime.GET("/alert", h.Admin.Ops.GetAlertRuntimeSettings)
 			runtime.PUT("/alert", h.Admin.Ops.UpdateAlertRuntimeSettings)
+			runtime.GET("/logging", h.Admin.Ops.GetRuntimeLogConfig)
+			runtime.PUT("/logging", h.Admin.Ops.UpdateRuntimeLogConfig)
+			runtime.POST("/logging/reset", h.Admin.Ops.ResetRuntimeLogConfig)
 	REDACTED
 
 		// Advanced settings (DB-backed)
@@ -144,12 +149,18 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// Request drilldown (success + error)
 		ops.GET("/requests", h.Admin.Ops.ListRequestDetails)
 
+		// Indexed system logs
+		ops.GET("/system-logs", h.Admin.Ops.ListSystemLogs)
+		ops.POST("/system-logs/cleanup", h.Admin.Ops.CleanupSystemLogs)
+		ops.GET("/system-logs/health", h.Admin.Ops.GetSystemLogIngestionHealth)
+
 		// Dashboard (vNext - raw path for MVP)
 		ops.GET("/dashboard/overview", h.Admin.Ops.GetDashboardOverview)
 		ops.GET("/dashboard/throughput-trend", h.Admin.Ops.GetDashboardThroughputTrend)
 		ops.GET("/dashboard/latency-histogram", h.Admin.Ops.GetDashboardLatencyHistogram)
 		ops.GET("/dashboard/error-trend", h.Admin.Ops.GetDashboardErrorTrend)
 		ops.GET("/dashboard/error-distribution", h.Admin.Ops.GetDashboardErrorDistribution)
+		ops.GET("/dashboard/openai-token-stats", h.Admin.Ops.GetDashboardOpenAITokenStats)
 REDACTED
 REDACTED
 
@@ -267,6 +278,19 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 REDACTED
 REDACTED
 
+func registerSoraOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	sora := admin.Group("/sora")
+	{
+		sora.POST("/generate-auth-url", h.Admin.OpenAIOAuth.GenerateAuthURL)
+		sora.POST("/exchange-code", h.Admin.OpenAIOAuth.ExchangeCode)
+		sora.POST("/refresh-token", h.Admin.OpenAIOAuth.RefreshToken)
+		sora.POST("/st2at", h.Admin.OpenAIOAuth.ExchangeSoraSessionToken)
+		sora.POST("/rt2at", h.Admin.OpenAIOAuth.RefreshToken)
+		sora.POST("/accounts/:id/refresh", h.Admin.OpenAIOAuth.RefreshAccountToken)
+		sora.POST("/create-from-oauth", h.Admin.OpenAIOAuth.CreateAccountFromOAuth)
+REDACTED
+REDACTED
+
 func registerGeminiOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	gemini := admin.Group("/gemini")
 	{
@@ -297,6 +321,7 @@ func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		proxies.PUT("/:id", h.Admin.Proxy.Update)
 		proxies.DELETE("/:id", h.Admin.Proxy.Delete)
 		proxies.POST("/:id/test", h.Admin.Proxy.Test)
+		proxies.POST("/:id/quality-check", h.Admin.Proxy.CheckQuality)
 		proxies.GET("/:id/stats", h.Admin.Proxy.GetStats)
 		proxies.GET("/:id/accounts", h.Admin.Proxy.GetProxyAccounts)
 		proxies.POST("/batch-delete", h.Admin.Proxy.BatchDelete)

@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/url"
 	"os"
 	"strings"
@@ -17,6 +17,13 @@ import (
 const (
 	RunModeStandard = "standard"
 	RunModeSimple   = "simple"
+)
+
+// 使用量记录队列溢出策略
+const (
+	UsageRecordOverflowPolicyDrop   = "drop"
+	UsageRecordOverflowPolicySample = "sample"
+	UsageRecordOverflowPolicySync   = "sync"
 )
 
 // DefaultCSPPolicy is the default Content-Security-Policy with nonce support
@@ -38,31 +45,68 @@ const (
 )
 
 type Config struct {
-	Server       ServerConfig               `mapstructure:"server"`
-	CORS         CORSConfig                 `mapstructure:"cors"`
-	Security     SecurityConfig             `mapstructure:"security"`
-	Billing      BillingConfig              `mapstructure:"billing"`
-	Turnstile    TurnstileConfig            `mapstructure:"turnstile"`
-	Database     DatabaseConfig             `mapstructure:"database"`
-	Redis        RedisConfig                `mapstructure:"redis"`
-	Ops          OpsConfig                  `mapstructure:"ops"`
-	JWT          JWTConfig                  `mapstructure:"jwt"`
-	Totp         TotpConfig                 `mapstructure:"totp"`
-	LinuxDo      LinuxDoConnectConfig       `mapstructure:"linuxdo_connect"`
-	Default      DefaultConfig              `mapstructure:"default"`
-	RateLimit    RateLimitConfig            `mapstructure:"rate_limit"`
-	Pricing      PricingConfig              `mapstructure:"pricing"`
-	Gateway      GatewayConfig              `mapstructure:"gateway"`
-	APIKeyAuth   APIKeyAuthCacheConfig      `mapstructure:"api_key_auth_cache"`
-	Dashboard    DashboardCacheConfig       `mapstructure:"dashboard_cache"`
-	DashboardAgg DashboardAggregationConfig `mapstructure:"dashboard_aggregation"`
-	UsageCleanup UsageCleanupConfig         `mapstructure:"usage_cleanup"`
-	Concurrency  ConcurrencyConfig          `mapstructure:"concurrency"`
-	TokenRefresh TokenRefreshConfig         `mapstructure:"token_refresh"`
-	RunMode      string                     `mapstructure:"run_mode" yaml:"run_mode"`
-	Timezone     string                     `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
-	Gemini       GeminiConfig               `mapstructure:"gemini"`
-	Update       UpdateConfig               `mapstructure:"update"`
+	Server                  ServerConfig                  `mapstructure:"server"`
+	Log                     LogConfig                     `mapstructure:"log"`
+	CORS                    CORSConfig                    `mapstructure:"cors"`
+	Security                SecurityConfig                `mapstructure:"security"`
+	Billing                 BillingConfig                 `mapstructure:"billing"`
+	Turnstile               TurnstileConfig               `mapstructure:"turnstile"`
+	Database                DatabaseConfig                `mapstructure:"database"`
+	Redis                   RedisConfig                   `mapstructure:"redis"`
+	Ops                     OpsConfig                     `mapstructure:"ops"`
+	JWT                     JWTConfig                     `mapstructure:"jwt"`
+	Totp                    TotpConfig                    `mapstructure:"totp"`
+	LinuxDo                 LinuxDoConnectConfig          `mapstructure:"linuxdo_connect"`
+	Default                 DefaultConfig                 `mapstructure:"default"`
+	RateLimit               RateLimitConfig               `mapstructure:"rate_limit"`
+	Pricing                 PricingConfig                 `mapstructure:"pricing"`
+	Gateway                 GatewayConfig                 `mapstructure:"gateway"`
+	APIKeyAuth              APIKeyAuthCacheConfig         `mapstructure:"api_key_auth_cache"`
+	SubscriptionCache       SubscriptionCacheConfig       `mapstructure:"subscription_cache"`
+	SubscriptionMaintenance SubscriptionMaintenanceConfig `mapstructure:"subscription_maintenance"`
+	Dashboard               DashboardCacheConfig          `mapstructure:"dashboard_cache"`
+	DashboardAgg            DashboardAggregationConfig    `mapstructure:"dashboard_aggregation"`
+	UsageCleanup            UsageCleanupConfig            `mapstructure:"usage_cleanup"`
+	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
+	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
+	Sora                    SoraConfig                    `mapstructure:"sora"`
+	RunMode                 string                        `mapstructure:"run_mode" yaml:"run_mode"`
+	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
+	Update                  UpdateConfig                  `mapstructure:"update"`
+	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+REDACTED
+
+type LogConfig struct {
+	Level           string            `mapstructure:"level"`
+	Format          string            `mapstructure:"format"`
+	ServiceName     string            `mapstructure:"service_name"`
+	Environment     string            `mapstructure:"env"`
+	Caller          bool              `mapstructure:"caller"`
+	StacktraceLevel string            `mapstructure:"stacktrace_level"`
+	Output          LogOutputConfig   `mapstructure:"output"`
+	Rotation        LogRotationConfig `mapstructure:"rotation"`
+	Sampling        LogSamplingConfig `mapstructure:"sampling"`
+REDACTED
+
+type LogOutputConfig struct {
+	ToStdout bool   `mapstructure:"to_stdout"`
+	ToFile   bool   `mapstructure:"to_file"`
+	FilePath string `mapstructure:"file_path"`
+REDACTED
+
+type LogRotationConfig struct {
+	MaxSizeMB  int  `mapstructure:"max_size_mb"`
+	MaxBackups int  `mapstructure:"max_backups"`
+	MaxAgeDays int  `mapstructure:"max_age_days"`
+	Compress   bool `mapstructure:"compress"`
+	LocalTime  bool `mapstructure:"local_time"`
+REDACTED
+
+type LogSamplingConfig struct {
+	Enabled    bool `mapstructure:"enabled"`
+	Initial    int  `mapstructure:"initial"`
+	Thereafter int  `mapstructure:"thereafter"`
 REDACTED
 
 type GeminiConfig struct {
@@ -92,6 +136,25 @@ type UpdateConfig struct {
 	// 支持 http/https/socks5/socks5h 协议
 	// 例如: "http://127.0.0.1:7890", "socks5://127.0.0.1:1080"
 	ProxyURL string `mapstructure:"proxy_url"`
+REDACTED
+
+type IdempotencyConfig struct {
+	// ObserveOnly 为 true 时处于观察期：未携带 Idempotency-Key 的请求继续放行。
+	ObserveOnly bool `mapstructure:"observe_only"`
+	// DefaultTTLSeconds 关键写接口的幂等记录默认 TTL（秒）。
+	DefaultTTLSeconds int `mapstructure:"default_ttl_seconds"`
+	// SystemOperationTTLSeconds 系统操作接口的幂等记录 TTL（秒）。
+	SystemOperationTTLSeconds int `mapstructure:"system_operation_ttl_seconds"`
+	// ProcessingTimeoutSeconds processing 状态锁超时（秒）。
+	ProcessingTimeoutSeconds int `mapstructure:"processing_timeout_seconds"`
+	// FailedRetryBackoffSeconds 失败退避窗口（秒）。
+	FailedRetryBackoffSeconds int `mapstructure:"failed_retry_backoff_seconds"`
+	// MaxStoredResponseLen 持久化响应体最大长度（字节）。
+	MaxStoredResponseLen int `mapstructure:"max_stored_response_len"`
+	// CleanupIntervalSeconds 过期记录清理周期（秒）。
+	CleanupIntervalSeconds int `mapstructure:"cleanup_interval_seconds"`
+	// CleanupBatchSize 每次清理的最大记录数。
+	CleanupBatchSize int `mapstructure:"cleanup_batch_size"`
 REDACTED
 
 type LinuxDoConnectConfig struct {
@@ -126,6 +189,8 @@ type TokenRefreshConfig struct {
 	MaxRetries int `mapstructure:"max_retries"`
 	// 重试退避基础时间（秒）
 	RetryBackoffSeconds int `mapstructure:"retry_backoff_seconds"`
+	// 是否允许 OpenAI 刷新器同步覆盖关联的 Sora 账号 token（默认关闭）
+	SyncLinkedSoraAccounts bool `mapstructure:"sync_linked_sora_accounts"`
 REDACTED
 
 type PricingConfig struct {
@@ -147,6 +212,7 @@ type ServerConfig struct {
 	Host               string    `mapstructure:"host"`
 	Port               int       `mapstructure:"port"`
 	Mode               string    `mapstructure:"mode"`                  // debug/release
+	FrontendURL        string    `mapstructure:"frontend_url"`          // 前端基础 URL，用于生成邮件中的外部链接
 	ReadHeaderTimeout  int       `mapstructure:"read_header_timeout"`   // 读取请求头超时（秒）
 	IdleTimeout        int       `mapstructure:"idle_timeout"`          // 空闲连接超时（秒）
 	TrustedProxies     []string  `mapstructure:"trusted_proxies"`       // 可信代理列表（CIDR/IP）
@@ -173,6 +239,7 @@ type SecurityConfig struct {
 	URLAllowlist    URLAllowlistConfig   `mapstructure:"url_allowlist"`
 	ResponseHeaders ResponseHeaderConfig `mapstructure:"response_headers"`
 	CSP             CSPConfig            `mapstructure:"csp"`
+	ProxyFallback   ProxyFallbackConfig  `mapstructure:"proxy_fallback"`
 	ProxyProbe      ProxyProbeConfig     `mapstructure:"proxy_probe"`
 REDACTED
 
@@ -197,6 +264,12 @@ type CSPConfig struct {
 	Policy  string `mapstructure:"policy"`
 REDACTED
 
+type ProxyFallbackConfig struct {
+	// AllowDirectOnError 当代理初始化失败时是否允许回退直连。
+	// 默认 false：避免因代理配置错误导致 IP 泄露/关联。
+	AllowDirectOnError bool `mapstructure:"allow_direct_on_error"`
+REDACTED
+
 type ProxyProbeConfig struct {
 	InsecureSkipVerify bool `mapstructure:"insecure_skip_verify"` // 已禁用：禁止跳过 TLS 证书验证
 REDACTED
@@ -217,6 +290,59 @@ type ConcurrencyConfig struct {
 	PingInterval int `mapstructure:"ping_interval"`
 REDACTED
 
+// SoraConfig 直连 Sora 配置
+type SoraConfig struct {
+	Client  SoraClientConfig  `mapstructure:"client"`
+	Storage SoraStorageConfig `mapstructure:"storage"`
+REDACTED
+
+// SoraClientConfig 直连 Sora 客户端配置
+type SoraClientConfig struct {
+	BaseURL                            string                    `mapstructure:"base_url"`
+	TimeoutSeconds                     int                       `mapstructure:"timeout_seconds"`
+	MaxRetries                         int                       `mapstructure:"max_retries"`
+	CloudflareChallengeCooldownSeconds int                       `mapstructure:"cloudflare_challenge_cooldown_seconds"`
+	PollIntervalSeconds                int                       `mapstructure:"poll_interval_seconds"`
+	MaxPollAttempts                    int                       `mapstructure:"max_poll_attempts"`
+	RecentTaskLimit                    int                       `mapstructure:"recent_task_limit"`
+	RecentTaskLimitMax                 int                       `mapstructure:"recent_task_limit_max"`
+	Debug                              bool                      `mapstructure:"debug"`
+	UseOpenAITokenProvider             bool                      `mapstructure:"use_openai_token_provider"`
+	Headers                            map[string]string         `mapstructure:"headers"`
+	UserAgent                          string                    `mapstructure:"user_agent"`
+	DisableTLSFingerprint              bool                      `mapstructure:"disable_tls_fingerprint"`
+	CurlCFFISidecar                    SoraCurlCFFISidecarConfig `mapstructure:"curl_cffi_sidecar"`
+REDACTED
+
+// SoraCurlCFFISidecarConfig Sora 专用 curl_cffi sidecar 配置
+type SoraCurlCFFISidecarConfig struct {
+	Enabled             bool   `mapstructure:"enabled"`
+	BaseURL             string `mapstructure:"base_url"`
+	Impersonate         string `mapstructure:"impersonate"`
+	TimeoutSeconds      int    `mapstructure:"timeout_seconds"`
+	SessionReuseEnabled bool   `mapstructure:"session_reuse_enabled"`
+	SessionTTLSeconds   int    `mapstructure:"session_ttl_seconds"`
+REDACTED
+
+// SoraStorageConfig 媒体存储配置
+type SoraStorageConfig struct {
+	Type                   string                   `mapstructure:"type"`
+	LocalPath              string                   `mapstructure:"local_path"`
+	FallbackToUpstream     bool                     `mapstructure:"fallback_to_upstream"`
+	MaxConcurrentDownloads int                      `mapstructure:"max_concurrent_downloads"`
+	DownloadTimeoutSeconds int                      `mapstructure:"download_timeout_seconds"`
+	MaxDownloadBytes       int64                    `mapstructure:"max_download_bytes"`
+	Debug                  bool                     `mapstructure:"debug"`
+	Cleanup                SoraStorageCleanupConfig `mapstructure:"cleanup"`
+REDACTED
+
+// SoraStorageCleanupConfig 媒体清理配置
+type SoraStorageCleanupConfig struct {
+	Enabled       bool   `mapstructure:"enabled"`
+	Schedule      string `mapstructure:"schedule"`
+	RetentionDays int    `mapstructure:"retention_days"`
+REDACTED
+
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
@@ -224,8 +350,20 @@ type GatewayConfig struct {
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
+	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
+	UpstreamResponseReadMaxBytes int64 `mapstructure:"upstream_response_read_max_bytes"`
+	// 代理探测响应体读取上限（字节）
+	ProxyProbeResponseReadMaxBytes int64 `mapstructure:"proxy_probe_response_read_max_bytes"`
+	// Gemini 上游响应头调试日志开关（默认关闭，避免高频日志开销）
+	GeminiDebugResponseHeaders bool `mapstructure:"gemini_debug_response_headers"`
 	// ConnectionPoolIsolation: 上游连接池隔离策略（proxy/account/account_proxy）
 	ConnectionPoolIsolation string `mapstructure:"connection_pool_isolation"`
+	// ForceCodexCLI: 强制将 OpenAI `/v1/responses` 请求按 Codex CLI 处理。
+	// 用于网关未透传/改写 User-Agent 时的兼容兜底（默认关闭，避免影响其他客户端）。
+	ForceCodexCLI bool `mapstructure:"force_codex_cli"`
+	// OpenAIPassthroughAllowTimeoutHeaders: OpenAI 透传模式是否放行客户端超时头
+	// 关闭（默认）可避免 x-stainless-timeout 等头导致上游提前断流。
+	OpenAIPassthroughAllowTimeoutHeaders bool `mapstructure:"openai_passthrough_allow_timeout_headers"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -271,6 +409,24 @@ type GatewayConfig struct {
 	// 是否允许对部分 400 错误触发 failover（默认关闭以避免改变语义）
 	FailoverOn400 bool `mapstructure:"failover_on_400"`
 
+	// Sora 专用配置
+	// SoraMaxBodySize: Sora 请求体最大字节数（0 表示使用 gateway.max_body_size）
+	SoraMaxBodySize int64 `mapstructure:"sora_max_body_size"`
+	// SoraStreamTimeoutSeconds: Sora 流式请求总超时（秒，0 表示不限制）
+	SoraStreamTimeoutSeconds int `mapstructure:"sora_stream_timeout_seconds"`
+	// SoraRequestTimeoutSeconds: Sora 非流式请求超时（秒，0 表示不限制）
+	SoraRequestTimeoutSeconds int `mapstructure:"sora_request_timeout_seconds"`
+	// SoraStreamMode: stream 强制策略（force/error）
+	SoraStreamMode string `mapstructure:"sora_stream_mode"`
+	// SoraModelFilters: 模型列表过滤配置
+	SoraModelFilters SoraModelFiltersConfig `mapstructure:"sora_model_filters"`
+	// SoraMediaRequireAPIKey: 是否要求访问 /sora/media 携带 API Key
+	SoraMediaRequireAPIKey bool `mapstructure:"sora_media_require_api_key"`
+	// SoraMediaSigningKey: /sora/media 临时签名密钥（空表示禁用签名）
+	SoraMediaSigningKey string `mapstructure:"sora_media_signing_key"`
+	// SoraMediaSignedURLTTLSeconds: 临时签名 URL 有效期（秒，<=0 表示禁用）
+	SoraMediaSignedURLTTLSeconds int `mapstructure:"sora_media_signed_url_ttl_seconds"`
+
 	// 账户切换最大次数（遇到上游错误时切换到其他账户的次数上限）
 	MaxAccountSwitches int `mapstructure:"max_account_switches"`
 	// Gemini 账户切换最大次数（Gemini 平台单独配置，因 API 限制更严格）
@@ -284,6 +440,53 @@ type GatewayConfig struct {
 
 	// TLSFingerprint: TLS指纹伪装配置
 	TLSFingerprint TLSFingerprintConfig `mapstructure:"tls_fingerprint"`
+
+	// UsageRecord: 使用量记录异步队列配置（有界队列 + 固定 worker）
+	UsageRecord GatewayUsageRecordConfig `mapstructure:"usage_record"`
+
+	// UserGroupRateCacheTTLSeconds: 用户分组倍率热路径缓存 TTL（秒）
+	UserGroupRateCacheTTLSeconds int `mapstructure:"user_group_rate_cache_ttl_seconds"`
+	// ModelsListCacheTTLSeconds: /v1/models 模型列表短缓存 TTL（秒）
+	ModelsListCacheTTLSeconds int `mapstructure:"models_list_cache_ttl_seconds"`
+REDACTED
+
+// GatewayUsageRecordConfig 使用量记录异步队列配置
+type GatewayUsageRecordConfig struct {
+	// WorkerCount: worker 初始数量（自动扩缩容开启时作为初始并发上限）
+	WorkerCount int `mapstructure:"worker_count"`
+	// QueueSize: 队列容量（有界）
+	QueueSize int `mapstructure:"queue_size"`
+	// TaskTimeoutSeconds: 单个使用量记录任务超时（秒）
+	TaskTimeoutSeconds int `mapstructure:"task_timeout_seconds"`
+	// OverflowPolicy: 队列满时策略（drop/sample/sync）
+	OverflowPolicy string `mapstructure:"overflow_policy"`
+	// OverflowSamplePercent: sample 策略下，同步回写采样百分比（1-100）
+	OverflowSamplePercent int `mapstructure:"overflow_sample_percent"`
+
+	// AutoScaleEnabled: 是否启用 worker 自动扩缩容
+	AutoScaleEnabled bool `mapstructure:"auto_scale_enabled"`
+	// AutoScaleMinWorkers: 自动扩缩容最小 worker 数
+	AutoScaleMinWorkers int `mapstructure:"auto_scale_min_workers"`
+	// AutoScaleMaxWorkers: 自动扩缩容最大 worker 数
+	AutoScaleMaxWorkers int `mapstructure:"auto_scale_max_workers"`
+	// AutoScaleUpQueuePercent: 队列占用率达到该阈值时触发扩容
+	AutoScaleUpQueuePercent int `mapstructure:"auto_scale_up_queue_percent"`
+	// AutoScaleDownQueuePercent: 队列占用率低于该阈值时触发缩容
+	AutoScaleDownQueuePercent int `mapstructure:"auto_scale_down_queue_percent"`
+	// AutoScaleUpStep: 每次扩容步长
+	AutoScaleUpStep int `mapstructure:"auto_scale_up_step"`
+	// AutoScaleDownStep: 每次缩容步长
+	AutoScaleDownStep int `mapstructure:"auto_scale_down_step"`
+	// AutoScaleCheckIntervalSeconds: 自动扩缩容检测间隔（秒）
+	AutoScaleCheckIntervalSeconds int `mapstructure:"auto_scale_check_interval_seconds"`
+	// AutoScaleCooldownSeconds: 自动扩缩容冷却时间（秒）
+	AutoScaleCooldownSeconds int `mapstructure:"auto_scale_cooldown_seconds"`
+REDACTED
+
+// SoraModelFiltersConfig Sora 模型过滤配置
+type SoraModelFiltersConfig struct {
+	// HidePromptEnhance 是否隐藏 prompt-enhance 模型
+	HidePromptEnhance bool `mapstructure:"hide_prompt_enhance"`
 REDACTED
 
 // TLSFingerprintConfig TLS指纹伪装配置
@@ -479,8 +682,9 @@ REDACTED
 type JWTConfig struct {
 	Secret     string `mapstructure:"secret"`
 	ExpireHour int    `mapstructure:"expire_hour"`
-	// AccessTokenExpireMinutes: Access Token有效期（分钟），默认15分钟
-	// 短有效期减少被盗用风险，配合Refresh Token实现无感续期
+	// AccessTokenExpireMinutes: Access Token有效期（分钟）
+	// - >0: 使用分钟配置（优先级高于 ExpireHour）
+	// - =0: 回退使用 ExpireHour（向后兼容旧配置）
 	AccessTokenExpireMinutes int `mapstructure:"access_token_expire_minutes"`
 	// RefreshTokenExpireDays: Refresh Token有效期（天），默认30天
 	RefreshTokenExpireDays int `mapstructure:"refresh_token_expire_days"`
@@ -523,6 +727,20 @@ type APIKeyAuthCacheConfig struct {
 	NegativeTTLSeconds int  `mapstructure:"negative_ttl_seconds"`
 	JitterPercent      int  `mapstructure:"jitter_percent"`
 	Singleflight       bool `mapstructure:"singleflight"`
+REDACTED
+
+// SubscriptionCacheConfig 订阅认证 L1 缓存配置
+type SubscriptionCacheConfig struct {
+	L1Size        int `mapstructure:"l1_size"`
+	L1TTLSeconds  int `mapstructure:"l1_ttl_seconds"`
+	JitterPercent int `mapstructure:"jitter_percent"`
+REDACTED
+
+// SubscriptionMaintenanceConfig 订阅窗口维护后台任务配置。
+// 用于将“请求路径触发的维护动作”有界化，避免高并发下 goroutine 膨胀。
+type SubscriptionMaintenanceConfig struct {
+	WorkerCount int `mapstructure:"worker_count"`
+	QueueSize   int `mapstructure:"queue_size"`
 REDACTED
 
 // DashboardCacheConfig 仪表盘统计缓存配置
@@ -588,7 +806,19 @@ func NormalizeRunMode(value string) string {
 REDACTED
 REDACTED
 
+// Load 读取并校验完整配置（要求 jwt.secret 已显式提供）。
 func Load() (*Config, error) {
+	return load(false)
+REDACTED
+
+// LoadForBootstrap 读取启动阶段配置。
+//
+// 启动阶段允许 jwt.secret 先留空，后续由数据库初始化流程补齐并再次完整校验。
+func LoadForBootstrap() (*Config, error) {
+	return load(true)
+REDACTED
+
+func load(allowMissingJWTSecret bool) (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 
@@ -630,6 +860,7 @@ REDACTED
 	if cfg.Server.Mode == "" {
 		cfg.Server.Mode = "debug"
 REDACTED
+	cfg.Server.FrontendURL = strings.TrimSpace(cfg.Server.FrontendURL)
 	cfg.JWT.Secret = strings.TrimSpace(cfg.JWT.Secret)
 	cfg.LinuxDo.ClientID = strings.TrimSpace(cfg.LinuxDo.ClientID)
 	cfg.LinuxDo.ClientSecret = strings.TrimSpace(cfg.LinuxDo.ClientSecret)
@@ -648,15 +879,12 @@ REDACTED
 	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
 	cfg.Security.CSP.Policy = strings.TrimSpace(cfg.Security.CSP.Policy)
-
-	if cfg.JWT.Secret == "" {
-		secret, err := generateJWTSecret(64)
-		if err != nil {
-			return nil, fmt.Errorf("generate jwt secret error: %w", err)
-	REDACTED
-		cfg.JWT.Secret = secret
-		log.Println("Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
-REDACTED
+	cfg.Log.Level = strings.ToLower(strings.TrimSpace(cfg.Log.Level))
+	cfg.Log.Format = strings.ToLower(strings.TrimSpace(cfg.Log.Format))
+	cfg.Log.ServiceName = strings.TrimSpace(cfg.Log.ServiceName)
+	cfg.Log.Environment = strings.TrimSpace(cfg.Log.Environment)
+	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
+	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
 
 	// Auto-generate TOTP encryption key if not set (32 bytes = 64 hex chars for AES-256)
 	cfg.Totp.EncryptionKey = strings.TrimSpace(cfg.Totp.EncryptionKey)
@@ -667,29 +895,39 @@ REDACTED
 	REDACTED
 		cfg.Totp.EncryptionKey = key
 		cfg.Totp.EncryptionKeyConfigured = false
-		log.Println("Warning: TOTP encryption key auto-generated. Consider setting a fixed key for production.")
+		slog.Warn("TOTP encryption key auto-generated. Consider setting a fixed key for production.")
 REDACTED else {
 		cfg.Totp.EncryptionKeyConfigured = true
+REDACTED
+
+	originalJWTSecret := cfg.JWT.Secret
+	if allowMissingJWTSecret && originalJWTSecret == "" {
+		// 启动阶段允许先无 JWT 密钥，后续在数据库初始化后补齐。
+		cfg.JWT.Secret = strings.Repeat("0", 32)
 REDACTED
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validate config error: %w", err)
 REDACTED
 
+	if allowMissingJWTSecret && originalJWTSecret == "" {
+		cfg.JWT.Secret = ""
+REDACTED
+
 	if !cfg.Security.URLAllowlist.Enabled {
-		log.Println("Warning: security.url_allowlist.enabled=false; allowlist/SSRF checks disabled (minimal format validation only).")
+		slog.Warn("security.url_allowlist.enabled=false; allowlist/SSRF checks disabled (minimal format validation only).")
 REDACTED
 	if !cfg.Security.ResponseHeaders.Enabled {
-		log.Println("Warning: security.response_headers.enabled=false; configurable header filtering disabled (default allowlist only).")
+		slog.Warn("security.response_headers.enabled=false; configurable header filtering disabled (default allowlist only).")
 REDACTED
 
 	if cfg.JWT.Secret != "" && isWeakJWTSecret(cfg.JWT.Secret) {
-		log.Println("Warning: JWT secret appears weak; use a 32+ character random secret in production.")
+		slog.Warn("JWT secret appears weak; use a 32+ character random secret in production.")
 REDACTED
 	if len(cfg.Security.ResponseHeaders.AdditionalAllowed) > 0 || len(cfg.Security.ResponseHeaders.ForceRemove) > 0 {
-		log.Printf("AUDIT: response header policy configured additional_allowed=%v force_remove=%v",
-			cfg.Security.ResponseHeaders.AdditionalAllowed,
-			cfg.Security.ResponseHeaders.ForceRemove,
+		slog.Info("response header policy configured",
+			"additional_allowed", cfg.Security.ResponseHeaders.AdditionalAllowed,
+			"force_remove", cfg.Security.ResponseHeaders.ForceRemove,
 		)
 REDACTED
 
@@ -702,7 +940,8 @@ func setDefaults() {
 	// Server
 	viper.SetDefault("server.host", "0.0.0.0")
 	viper.SetDefault("server.port", 8080)
-	viper.SetDefault("server.mode", "debug")
+	viper.SetDefault("server.mode", "release")
+	viper.SetDefault("server.frontend_url", "")
 	viper.SetDefault("server.read_header_timeout", 30) // 30秒读取请求头
 	viper.SetDefault("server.idle_timeout", 120)       // 120秒空闲超时
 	viper.SetDefault("server.trusted_proxies", []string{REDACTED)
@@ -714,6 +953,25 @@ func setDefaults() {
 	viper.SetDefault("server.h2c.max_read_frame_size", 1<<20)              // 1MB（够用）
 	viper.SetDefault("server.h2c.max_upload_buffer_per_connection", 2<<20) // 2MB
 	viper.SetDefault("server.h2c.max_upload_buffer_per_stream", 512<<10)   // 512KB
+
+	// Log
+	viper.SetDefault("log.level", "info")
+	viper.SetDefault("log.format", "console")
+	viper.SetDefault("log.service_name", "sub2api")
+	viper.SetDefault("log.env", "production")
+	viper.SetDefault("log.caller", true)
+	viper.SetDefault("log.stacktrace_level", "error")
+	viper.SetDefault("log.output.to_stdout", true)
+	viper.SetDefault("log.output.to_file", true)
+	viper.SetDefault("log.output.file_path", "")
+	viper.SetDefault("log.rotation.max_size_mb", 100)
+	viper.SetDefault("log.rotation.max_backups", 10)
+	viper.SetDefault("log.rotation.max_age_days", 7)
+	viper.SetDefault("log.rotation.compress", true)
+	viper.SetDefault("log.rotation.local_time", true)
+	viper.SetDefault("log.sampling.enabled", false)
+	viper.SetDefault("log.sampling.initial", 100)
+	viper.SetDefault("log.sampling.thereafter", 100)
 
 	// CORS
 	viper.SetDefault("cors.allowed_origins", []string{REDACTED)
@@ -737,7 +995,7 @@ REDACTED)
 	viper.SetDefault("security.url_allowlist.crs_hosts", []string{REDACTED)
 	viper.SetDefault("security.url_allowlist.allow_private_hosts", true)
 	viper.SetDefault("security.url_allowlist.allow_insecure_http", true)
-	viper.SetDefault("security.response_headers.enabled", false)
+	viper.SetDefault("security.response_headers.enabled", true)
 	viper.SetDefault("security.response_headers.additional_allowed", []string{REDACTED)
 	viper.SetDefault("security.response_headers.force_remove", []string{REDACTED)
 	viper.SetDefault("security.csp.enabled", true)
@@ -775,9 +1033,9 @@ REDACTED)
 	viper.SetDefault("database.user", "postgres")
 	viper.SetDefault("database.password", "postgres")
 	viper.SetDefault("database.dbname", "sub2api")
-	viper.SetDefault("database.sslmode", "disable")
-	viper.SetDefault("database.max_open_conns", 50)
-	viper.SetDefault("database.max_idle_conns", 10)
+	viper.SetDefault("database.sslmode", "prefer")
+	viper.SetDefault("database.max_open_conns", 256)
+	viper.SetDefault("database.max_idle_conns", 128)
 	viper.SetDefault("database.conn_max_lifetime_minutes", 30)
 	viper.SetDefault("database.conn_max_idle_time_minutes", 5)
 
@@ -789,8 +1047,8 @@ REDACTED)
 	viper.SetDefault("redis.dial_timeout_seconds", 5)
 	viper.SetDefault("redis.read_timeout_seconds", 3)
 	viper.SetDefault("redis.write_timeout_seconds", 3)
-	viper.SetDefault("redis.pool_size", 128)
-	viper.SetDefault("redis.min_idle_conns", 10)
+	viper.SetDefault("redis.pool_size", 1024)
+	viper.SetDefault("redis.min_idle_conns", 128)
 	viper.SetDefault("redis.enable_tls", false)
 
 	// Ops (vNext)
@@ -810,9 +1068,9 @@ REDACTED)
 	// JWT
 	viper.SetDefault("jwt.secret", "")
 	viper.SetDefault("jwt.expire_hour", 24)
-	viper.SetDefault("jwt.access_token_expire_minutes", 360) // 6小时Access Token有效期
-	viper.SetDefault("jwt.refresh_token_expire_days", 30)    // 30天Refresh Token有效期
-	viper.SetDefault("jwt.refresh_window_minutes", 2)        // 过期前2分钟开始允许刷新
+	viper.SetDefault("jwt.access_token_expire_minutes", 0) // 0 表示回退到 expire_hour
+	viper.SetDefault("jwt.refresh_token_expire_days", 30)  // 30天Refresh Token有效期
+	viper.SetDefault("jwt.refresh_window_minutes", 2)      // 过期前2分钟开始允许刷新
 
 	// TOTP
 	viper.SetDefault("totp.encryption_key", "")
@@ -849,6 +1107,11 @@ REDACTED)
 	viper.SetDefault("api_key_auth_cache.jitter_percent", 10)
 	viper.SetDefault("api_key_auth_cache.singleflight", true)
 
+	// Subscription auth L1 cache
+	viper.SetDefault("subscription_cache.l1_size", 16384)
+	viper.SetDefault("subscription_cache.l1_ttl_seconds", 10)
+	viper.SetDefault("subscription_cache.jitter_percent", 10)
+
 	// Dashboard cache
 	viper.SetDefault("dashboard_cache.enabled", true)
 	viper.SetDefault("dashboard_cache.key_prefix", "sub2api:")
@@ -874,6 +1137,16 @@ REDACTED)
 	viper.SetDefault("usage_cleanup.worker_interval_seconds", 10)
 	viper.SetDefault("usage_cleanup.task_timeout_seconds", 1800)
 
+	// Idempotency
+	viper.SetDefault("idempotency.observe_only", true)
+	viper.SetDefault("idempotency.default_ttl_seconds", 86400)
+	viper.SetDefault("idempotency.system_operation_ttl_seconds", 3600)
+	viper.SetDefault("idempotency.processing_timeout_seconds", 30)
+	viper.SetDefault("idempotency.failed_retry_backoff_seconds", 5)
+	viper.SetDefault("idempotency.max_stored_response_len", 64*1024)
+	viper.SetDefault("idempotency.cleanup_interval_seconds", 60)
+	viper.SetDefault("idempotency.cleanup_batch_size", 500)
+
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.log_upstream_error_body", true)
@@ -882,13 +1155,25 @@ REDACTED)
 	viper.SetDefault("gateway.failover_on_400", false)
 	viper.SetDefault("gateway.max_account_switches", 10)
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
+	viper.SetDefault("gateway.force_codex_cli", false)
+	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.max_body_size", int64(100*1024*1024))
+	viper.SetDefault("gateway.upstream_response_read_max_bytes", int64(8*1024*1024))
+	viper.SetDefault("gateway.proxy_probe_response_read_max_bytes", int64(1024*1024))
+	viper.SetDefault("gateway.gemini_debug_response_headers", false)
+	viper.SetDefault("gateway.sora_max_body_size", int64(256*1024*1024))
+	viper.SetDefault("gateway.sora_stream_timeout_seconds", 900)
+	viper.SetDefault("gateway.sora_request_timeout_seconds", 180)
+	viper.SetDefault("gateway.sora_stream_mode", "force")
+	viper.SetDefault("gateway.sora_model_filters.hide_prompt_enhance", true)
+	viper.SetDefault("gateway.sora_media_require_api_key", true)
+	viper.SetDefault("gateway.sora_media_signed_url_ttl_seconds", 900)
 	viper.SetDefault("gateway.connection_pool_isolation", ConnectionPoolIsolationAccountProxy)
 	// HTTP 上游连接池配置（针对 5000+ 并发用户优化）
-	viper.SetDefault("gateway.max_idle_conns", 240)           // 最大空闲连接总数（HTTP/2 场景默认）
+	viper.SetDefault("gateway.max_idle_conns", 2560)          // 最大空闲连接总数（高并发场景可调大）
 	viper.SetDefault("gateway.max_idle_conns_per_host", 120)  // 每主机最大空闲连接（HTTP/2 场景默认）
-	viper.SetDefault("gateway.max_conns_per_host", 240)       // 每主机最大连接数（含活跃，HTTP/2 场景默认）
+	viper.SetDefault("gateway.max_conns_per_host", 1024)      // 每主机最大连接数（含活跃；流式/HTTP1.1 场景可调大，如 2400+）
 	viper.SetDefault("gateway.idle_conn_timeout_seconds", 90) // 空闲连接超时（秒）
 	viper.SetDefault("gateway.max_upstream_clients", 5000)
 	viper.SetDefault("gateway.client_idle_ttl_seconds", 900)
@@ -912,9 +1197,57 @@ REDACTED)
 	viper.SetDefault("gateway.scheduling.outbox_lag_rebuild_failures", 3)
 	viper.SetDefault("gateway.scheduling.outbox_backlog_rebuild_rows", 10000)
 	viper.SetDefault("gateway.scheduling.full_rebuild_interval_seconds", 300)
+	viper.SetDefault("gateway.usage_record.worker_count", 128)
+	viper.SetDefault("gateway.usage_record.queue_size", 16384)
+	viper.SetDefault("gateway.usage_record.task_timeout_seconds", 5)
+	viper.SetDefault("gateway.usage_record.overflow_policy", UsageRecordOverflowPolicySample)
+	viper.SetDefault("gateway.usage_record.overflow_sample_percent", 10)
+	viper.SetDefault("gateway.usage_record.auto_scale_enabled", true)
+	viper.SetDefault("gateway.usage_record.auto_scale_min_workers", 128)
+	viper.SetDefault("gateway.usage_record.auto_scale_max_workers", 512)
+	viper.SetDefault("gateway.usage_record.auto_scale_up_queue_percent", 70)
+	viper.SetDefault("gateway.usage_record.auto_scale_down_queue_percent", 15)
+	viper.SetDefault("gateway.usage_record.auto_scale_up_step", 32)
+	viper.SetDefault("gateway.usage_record.auto_scale_down_step", 16)
+	viper.SetDefault("gateway.usage_record.auto_scale_check_interval_seconds", 3)
+	viper.SetDefault("gateway.usage_record.auto_scale_cooldown_seconds", 10)
+	viper.SetDefault("gateway.user_group_rate_cache_ttl_seconds", 30)
+	viper.SetDefault("gateway.models_list_cache_ttl_seconds", 15)
 	// TLS指纹伪装配置（默认关闭，需要账号级别单独启用）
 	viper.SetDefault("gateway.tls_fingerprint.enabled", true)
 	viper.SetDefault("concurrency.ping_interval", 10)
+
+	// Sora 直连配置
+	viper.SetDefault("sora.client.base_url", "https://sora.chatgpt.com/backend")
+	viper.SetDefault("sora.client.timeout_seconds", 120)
+	viper.SetDefault("sora.client.max_retries", 3)
+	viper.SetDefault("sora.client.cloudflare_challenge_cooldown_seconds", 900)
+	viper.SetDefault("sora.client.poll_interval_seconds", 2)
+	viper.SetDefault("sora.client.max_poll_attempts", 600)
+	viper.SetDefault("sora.client.recent_task_limit", 50)
+	viper.SetDefault("sora.client.recent_task_limit_max", 200)
+	viper.SetDefault("sora.client.debug", false)
+	viper.SetDefault("sora.client.use_openai_token_provider", false)
+	viper.SetDefault("sora.client.headers", map[string]string{REDACTED)
+	viper.SetDefault("sora.client.user_agent", "Sora/1.2026.007 (Android 15; 24122RKC7C; build 2600700)")
+	viper.SetDefault("sora.client.disable_tls_fingerprint", false)
+	viper.SetDefault("sora.client.curl_cffi_sidecar.enabled", true)
+	viper.SetDefault("sora.client.curl_cffi_sidecar.base_url", "http://sora-curl-cffi-sidecar:8080")
+	viper.SetDefault("sora.client.curl_cffi_sidecar.impersonate", "chrome131")
+	viper.SetDefault("sora.client.curl_cffi_sidecar.timeout_seconds", 60)
+	viper.SetDefault("sora.client.curl_cffi_sidecar.session_reuse_enabled", true)
+	viper.SetDefault("sora.client.curl_cffi_sidecar.session_ttl_seconds", 3600)
+
+	viper.SetDefault("sora.storage.type", "local")
+	viper.SetDefault("sora.storage.local_path", "")
+	viper.SetDefault("sora.storage.fallback_to_upstream", true)
+	viper.SetDefault("sora.storage.max_concurrent_downloads", 4)
+	viper.SetDefault("sora.storage.download_timeout_seconds", 120)
+	viper.SetDefault("sora.storage.max_download_bytes", int64(200<<20))
+	viper.SetDefault("sora.storage.debug", false)
+	viper.SetDefault("sora.storage.cleanup.enabled", true)
+	viper.SetDefault("sora.storage.cleanup.retention_days", 7)
+	viper.SetDefault("sora.storage.cleanup.schedule", "0 3 * * *")
 
 	// TokenRefresh
 	viper.SetDefault("token_refresh.enabled", true)
@@ -922,6 +1255,7 @@ REDACTED)
 	viper.SetDefault("token_refresh.refresh_before_expiry_hours", 0.5) // 提前30分钟刷新（适配Google 1小时token）
 	viper.SetDefault("token_refresh.max_retries", 3)                   // 最多重试3次
 	viper.SetDefault("token_refresh.retry_backoff_seconds", 2)         // 重试退避基础2秒
+	viper.SetDefault("token_refresh.sync_linked_sora_accounts", false) // 默认不跨平台覆盖 Sora token
 
 	// Gemini OAuth - configure via environment variables or config file
 	// GEMINI_OAUTH_CLIENT_ID and GEMINI_OAUTH_CLIENT_SECRET
@@ -930,9 +1264,106 @@ REDACTED)
 	viper.SetDefault("gemini.oauth.client_secret", "")
 	viper.SetDefault("gemini.oauth.scopes", "")
 	viper.SetDefault("gemini.quota.policy", "")
+
+	// Security - proxy fallback
+	viper.SetDefault("security.proxy_fallback.allow_direct_on_error", false)
+
+	// Subscription Maintenance (bounded queue + worker pool)
+	viper.SetDefault("subscription_maintenance.worker_count", 2)
+	viper.SetDefault("subscription_maintenance.queue_size", 1024)
+
 REDACTED
 
 func (c *Config) Validate() error {
+	jwtSecret := strings.TrimSpace(c.JWT.Secret)
+	if jwtSecret == "" {
+		return fmt.Errorf("jwt.secret is required")
+REDACTED
+	// NOTE: 按 UTF-8 编码后的字节长度计算。
+	// 选择 bytes 而不是 rune 计数，确保二进制/随机串的长度语义更接近“熵”而非“字符数”。
+	if len([]byte(jwtSecret)) < 32 {
+		return fmt.Errorf("jwt.secret must be at least 32 bytes")
+REDACTED
+	switch c.Log.Level {
+	case "debug", "info", "warn", "error":
+	case "":
+		return fmt.Errorf("log.level is required")
+	default:
+		return fmt.Errorf("log.level must be one of: debug/info/warn/error")
+REDACTED
+	switch c.Log.Format {
+	case "json", "console":
+	case "":
+		return fmt.Errorf("log.format is required")
+	default:
+		return fmt.Errorf("log.format must be one of: json/console")
+REDACTED
+	switch c.Log.StacktraceLevel {
+	case "none", "error", "fatal":
+	case "":
+		return fmt.Errorf("log.stacktrace_level is required")
+	default:
+		return fmt.Errorf("log.stacktrace_level must be one of: none/error/fatal")
+REDACTED
+	if !c.Log.Output.ToStdout && !c.Log.Output.ToFile {
+		return fmt.Errorf("log.output.to_stdout and log.output.to_file cannot both be false")
+REDACTED
+	if c.Log.Rotation.MaxSizeMB <= 0 {
+		return fmt.Errorf("log.rotation.max_size_mb must be positive")
+REDACTED
+	if c.Log.Rotation.MaxBackups < 0 {
+		return fmt.Errorf("log.rotation.max_backups must be non-negative")
+REDACTED
+	if c.Log.Rotation.MaxAgeDays < 0 {
+		return fmt.Errorf("log.rotation.max_age_days must be non-negative")
+REDACTED
+	if c.Log.Sampling.Enabled {
+		if c.Log.Sampling.Initial <= 0 {
+			return fmt.Errorf("log.sampling.initial must be positive when sampling is enabled")
+	REDACTED
+		if c.Log.Sampling.Thereafter <= 0 {
+			return fmt.Errorf("log.sampling.thereafter must be positive when sampling is enabled")
+	REDACTED
+REDACTED else {
+		if c.Log.Sampling.Initial < 0 {
+			return fmt.Errorf("log.sampling.initial must be non-negative")
+	REDACTED
+		if c.Log.Sampling.Thereafter < 0 {
+			return fmt.Errorf("log.sampling.thereafter must be non-negative")
+	REDACTED
+REDACTED
+
+	if c.SubscriptionMaintenance.WorkerCount < 0 {
+		return fmt.Errorf("subscription_maintenance.worker_count must be non-negative")
+REDACTED
+	if c.SubscriptionMaintenance.QueueSize < 0 {
+		return fmt.Errorf("subscription_maintenance.queue_size must be non-negative")
+REDACTED
+
+	// Gemini OAuth 配置校验：client_id 与 client_secret 必须同时设置或同时留空。
+	// 留空时表示使用内置的 Gemini CLI OAuth 客户端（其 client_secret 通过环境变量注入）。
+	geminiClientID := strings.TrimSpace(c.Gemini.OAuth.ClientID)
+	geminiClientSecret := strings.TrimSpace(c.Gemini.OAuth.ClientSecret)
+	if (geminiClientID == "") != (geminiClientSecret == "") {
+		return fmt.Errorf("gemini.oauth.client_id and gemini.oauth.client_secret must be both set or both empty")
+REDACTED
+
+	if strings.TrimSpace(c.Server.FrontendURL) != "" {
+		if err := ValidateAbsoluteHTTPURL(c.Server.FrontendURL); err != nil {
+			return fmt.Errorf("server.frontend_url invalid: %w", err)
+	REDACTED
+		u, err := url.Parse(strings.TrimSpace(c.Server.FrontendURL))
+		if err != nil {
+			return fmt.Errorf("server.frontend_url invalid: %w", err)
+	REDACTED
+		if u.RawQuery != "" || u.ForceQuery {
+			return fmt.Errorf("server.frontend_url invalid: must not include query")
+	REDACTED
+		if u.User != nil {
+			return fmt.Errorf("server.frontend_url invalid: must not include userinfo")
+	REDACTED
+		warnIfInsecureURL("server.frontend_url", c.Server.FrontendURL)
+REDACTED
 	if c.JWT.ExpireHour <= 0 {
 		return fmt.Errorf("jwt.expire_hour must be positive")
 REDACTED
@@ -940,20 +1371,20 @@ REDACTED
 		return fmt.Errorf("jwt.expire_hour must be <= 168 (7 days)")
 REDACTED
 	if c.JWT.ExpireHour > 24 {
-		log.Printf("Warning: jwt.expire_hour is %d hours (> 24). Consider shorter expiration for security.", c.JWT.ExpireHour)
+		slog.Warn("jwt.expire_hour is high; consider shorter expiration for security", "expire_hour", c.JWT.ExpireHour)
 REDACTED
 	// JWT Refresh Token配置验证
-	if c.JWT.AccessTokenExpireMinutes <= 0 {
-		return fmt.Errorf("jwt.access_token_expire_minutes must be positive")
+	if c.JWT.AccessTokenExpireMinutes < 0 {
+		return fmt.Errorf("jwt.access_token_expire_minutes must be non-negative")
 REDACTED
 	if c.JWT.AccessTokenExpireMinutes > 720 {
-		log.Printf("Warning: jwt.access_token_expire_minutes is %d (> 720). Consider shorter expiration for security.", c.JWT.AccessTokenExpireMinutes)
+		slog.Warn("jwt.access_token_expire_minutes is high; consider shorter expiration for security", "access_token_expire_minutes", c.JWT.AccessTokenExpireMinutes)
 REDACTED
 	if c.JWT.RefreshTokenExpireDays <= 0 {
 		return fmt.Errorf("jwt.refresh_token_expire_days must be positive")
 REDACTED
 	if c.JWT.RefreshTokenExpireDays > 90 {
-		log.Printf("Warning: jwt.refresh_token_expire_days is %d (> 90). Consider shorter expiration for security.", c.JWT.RefreshTokenExpireDays)
+		slog.Warn("jwt.refresh_token_expire_days is high; consider shorter expiration for security", "refresh_token_expire_days", c.JWT.RefreshTokenExpireDays)
 REDACTED
 	if c.JWT.RefreshWindowMinutes < 0 {
 		return fmt.Errorf("jwt.refresh_window_minutes must be non-negative")
@@ -1159,8 +1590,115 @@ REDACTED else {
 			return fmt.Errorf("usage_cleanup.task_timeout_seconds must be non-negative")
 	REDACTED
 REDACTED
+	if c.Idempotency.DefaultTTLSeconds <= 0 {
+		return fmt.Errorf("idempotency.default_ttl_seconds must be positive")
+REDACTED
+	if c.Idempotency.SystemOperationTTLSeconds <= 0 {
+		return fmt.Errorf("idempotency.system_operation_ttl_seconds must be positive")
+REDACTED
+	if c.Idempotency.ProcessingTimeoutSeconds <= 0 {
+		return fmt.Errorf("idempotency.processing_timeout_seconds must be positive")
+REDACTED
+	if c.Idempotency.FailedRetryBackoffSeconds <= 0 {
+		return fmt.Errorf("idempotency.failed_retry_backoff_seconds must be positive")
+REDACTED
+	if c.Idempotency.MaxStoredResponseLen <= 0 {
+		return fmt.Errorf("idempotency.max_stored_response_len must be positive")
+REDACTED
+	if c.Idempotency.CleanupIntervalSeconds <= 0 {
+		return fmt.Errorf("idempotency.cleanup_interval_seconds must be positive")
+REDACTED
+	if c.Idempotency.CleanupBatchSize <= 0 {
+		return fmt.Errorf("idempotency.cleanup_batch_size must be positive")
+REDACTED
 	if c.Gateway.MaxBodySize <= 0 {
 		return fmt.Errorf("gateway.max_body_size must be positive")
+REDACTED
+	if c.Gateway.UpstreamResponseReadMaxBytes <= 0 {
+		return fmt.Errorf("gateway.upstream_response_read_max_bytes must be positive")
+REDACTED
+	if c.Gateway.ProxyProbeResponseReadMaxBytes <= 0 {
+		return fmt.Errorf("gateway.proxy_probe_response_read_max_bytes must be positive")
+REDACTED
+	if c.Gateway.SoraMaxBodySize < 0 {
+		return fmt.Errorf("gateway.sora_max_body_size must be non-negative")
+REDACTED
+	if c.Gateway.SoraStreamTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.sora_stream_timeout_seconds must be non-negative")
+REDACTED
+	if c.Gateway.SoraRequestTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway.sora_request_timeout_seconds must be non-negative")
+REDACTED
+	if c.Gateway.SoraMediaSignedURLTTLSeconds < 0 {
+		return fmt.Errorf("gateway.sora_media_signed_url_ttl_seconds must be non-negative")
+REDACTED
+	if mode := strings.TrimSpace(strings.ToLower(c.Gateway.SoraStreamMode)); mode != "" {
+		switch mode {
+		case "force", "error":
+		default:
+			return fmt.Errorf("gateway.sora_stream_mode must be one of: force/error")
+	REDACTED
+REDACTED
+	if c.Sora.Client.TimeoutSeconds < 0 {
+		return fmt.Errorf("sora.client.timeout_seconds must be non-negative")
+REDACTED
+	if c.Sora.Client.MaxRetries < 0 {
+		return fmt.Errorf("sora.client.max_retries must be non-negative")
+REDACTED
+	if c.Sora.Client.CloudflareChallengeCooldownSeconds < 0 {
+		return fmt.Errorf("sora.client.cloudflare_challenge_cooldown_seconds must be non-negative")
+REDACTED
+	if c.Sora.Client.PollIntervalSeconds < 0 {
+		return fmt.Errorf("sora.client.poll_interval_seconds must be non-negative")
+REDACTED
+	if c.Sora.Client.MaxPollAttempts < 0 {
+		return fmt.Errorf("sora.client.max_poll_attempts must be non-negative")
+REDACTED
+	if c.Sora.Client.RecentTaskLimit < 0 {
+		return fmt.Errorf("sora.client.recent_task_limit must be non-negative")
+REDACTED
+	if c.Sora.Client.RecentTaskLimitMax < 0 {
+		return fmt.Errorf("sora.client.recent_task_limit_max must be non-negative")
+REDACTED
+	if c.Sora.Client.RecentTaskLimitMax > 0 && c.Sora.Client.RecentTaskLimit > 0 &&
+		c.Sora.Client.RecentTaskLimitMax < c.Sora.Client.RecentTaskLimit {
+		c.Sora.Client.RecentTaskLimitMax = c.Sora.Client.RecentTaskLimit
+REDACTED
+	if c.Sora.Client.CurlCFFISidecar.TimeoutSeconds < 0 {
+		return fmt.Errorf("sora.client.curl_cffi_sidecar.timeout_seconds must be non-negative")
+REDACTED
+	if c.Sora.Client.CurlCFFISidecar.SessionTTLSeconds < 0 {
+		return fmt.Errorf("sora.client.curl_cffi_sidecar.session_ttl_seconds must be non-negative")
+REDACTED
+	if !c.Sora.Client.CurlCFFISidecar.Enabled {
+		return fmt.Errorf("sora.client.curl_cffi_sidecar.enabled must be true")
+REDACTED
+	if strings.TrimSpace(c.Sora.Client.CurlCFFISidecar.BaseURL) == "" {
+		return fmt.Errorf("sora.client.curl_cffi_sidecar.base_url is required")
+REDACTED
+	if c.Sora.Storage.MaxConcurrentDownloads < 0 {
+		return fmt.Errorf("sora.storage.max_concurrent_downloads must be non-negative")
+REDACTED
+	if c.Sora.Storage.DownloadTimeoutSeconds < 0 {
+		return fmt.Errorf("sora.storage.download_timeout_seconds must be non-negative")
+REDACTED
+	if c.Sora.Storage.MaxDownloadBytes < 0 {
+		return fmt.Errorf("sora.storage.max_download_bytes must be non-negative")
+REDACTED
+	if c.Sora.Storage.Cleanup.Enabled {
+		if c.Sora.Storage.Cleanup.RetentionDays <= 0 {
+			return fmt.Errorf("sora.storage.cleanup.retention_days must be positive")
+	REDACTED
+		if strings.TrimSpace(c.Sora.Storage.Cleanup.Schedule) == "" {
+			return fmt.Errorf("sora.storage.cleanup.schedule is required when cleanup is enabled")
+	REDACTED
+REDACTED else {
+		if c.Sora.Storage.Cleanup.RetentionDays < 0 {
+			return fmt.Errorf("sora.storage.cleanup.retention_days must be non-negative")
+	REDACTED
+REDACTED
+	if storageType := strings.TrimSpace(strings.ToLower(c.Sora.Storage.Type)); storageType != "" && storageType != "local" {
+		return fmt.Errorf("sora.storage.type must be 'local'")
 REDACTED
 	if strings.TrimSpace(c.Gateway.ConnectionPoolIsolation) != "" {
 		switch c.Gateway.ConnectionPoolIsolation {
@@ -1183,7 +1721,7 @@ REDACTED
 		return fmt.Errorf("gateway.idle_conn_timeout_seconds must be positive")
 REDACTED
 	if c.Gateway.IdleConnTimeoutSeconds > 180 {
-		log.Printf("Warning: gateway.idle_conn_timeout_seconds is %d (> 180). Consider 60-120 seconds for better connection reuse.", c.Gateway.IdleConnTimeoutSeconds)
+		slog.Warn("gateway.idle_conn_timeout_seconds is high; consider 60-120 seconds for better connection reuse", "idle_conn_timeout_seconds", c.Gateway.IdleConnTimeoutSeconds)
 REDACTED
 	if c.Gateway.MaxUpstreamClients <= 0 {
 		return fmt.Errorf("gateway.max_upstream_clients must be positive")
@@ -1213,6 +1751,70 @@ REDACTED
 REDACTED
 	if c.Gateway.MaxLineSize != 0 && c.Gateway.MaxLineSize < 1024*1024 {
 		return fmt.Errorf("gateway.max_line_size must be at least 1MB")
+REDACTED
+	if c.Gateway.UsageRecord.WorkerCount <= 0 {
+		return fmt.Errorf("gateway.usage_record.worker_count must be positive")
+REDACTED
+	if c.Gateway.UsageRecord.QueueSize <= 0 {
+		return fmt.Errorf("gateway.usage_record.queue_size must be positive")
+REDACTED
+	if c.Gateway.UsageRecord.TaskTimeoutSeconds <= 0 {
+		return fmt.Errorf("gateway.usage_record.task_timeout_seconds must be positive")
+REDACTED
+	switch strings.ToLower(strings.TrimSpace(c.Gateway.UsageRecord.OverflowPolicy)) {
+	case UsageRecordOverflowPolicyDrop, UsageRecordOverflowPolicySample, UsageRecordOverflowPolicySync:
+	default:
+		return fmt.Errorf("gateway.usage_record.overflow_policy must be one of: %s/%s/%s",
+			UsageRecordOverflowPolicyDrop, UsageRecordOverflowPolicySample, UsageRecordOverflowPolicySync)
+REDACTED
+	if c.Gateway.UsageRecord.OverflowSamplePercent < 0 || c.Gateway.UsageRecord.OverflowSamplePercent > 100 {
+		return fmt.Errorf("gateway.usage_record.overflow_sample_percent must be between 0-100")
+REDACTED
+	if strings.EqualFold(strings.TrimSpace(c.Gateway.UsageRecord.OverflowPolicy), UsageRecordOverflowPolicySample) &&
+		c.Gateway.UsageRecord.OverflowSamplePercent <= 0 {
+		return fmt.Errorf("gateway.usage_record.overflow_sample_percent must be positive when overflow_policy=sample")
+REDACTED
+	if c.Gateway.UsageRecord.AutoScaleEnabled {
+		if c.Gateway.UsageRecord.AutoScaleMinWorkers <= 0 {
+			return fmt.Errorf("gateway.usage_record.auto_scale_min_workers must be positive")
+	REDACTED
+		if c.Gateway.UsageRecord.AutoScaleMaxWorkers <= 0 {
+			return fmt.Errorf("gateway.usage_record.auto_scale_max_workers must be positive")
+	REDACTED
+		if c.Gateway.UsageRecord.AutoScaleMaxWorkers < c.Gateway.UsageRecord.AutoScaleMinWorkers {
+			return fmt.Errorf("gateway.usage_record.auto_scale_max_workers must be >= auto_scale_min_workers")
+	REDACTED
+		if c.Gateway.UsageRecord.WorkerCount < c.Gateway.UsageRecord.AutoScaleMinWorkers ||
+			c.Gateway.UsageRecord.WorkerCount > c.Gateway.UsageRecord.AutoScaleMaxWorkers {
+			return fmt.Errorf("gateway.usage_record.worker_count must be between auto_scale_min_workers and auto_scale_max_workers")
+	REDACTED
+		if c.Gateway.UsageRecord.AutoScaleUpQueuePercent <= 0 || c.Gateway.UsageRecord.AutoScaleUpQueuePercent > 100 {
+			return fmt.Errorf("gateway.usage_record.auto_scale_up_queue_percent must be between 1-100")
+	REDACTED
+		if c.Gateway.UsageRecord.AutoScaleDownQueuePercent < 0 || c.Gateway.UsageRecord.AutoScaleDownQueuePercent >= 100 {
+			return fmt.Errorf("gateway.usage_record.auto_scale_down_queue_percent must be between 0-99")
+	REDACTED
+		if c.Gateway.UsageRecord.AutoScaleDownQueuePercent >= c.Gateway.UsageRecord.AutoScaleUpQueuePercent {
+			return fmt.Errorf("gateway.usage_record.auto_scale_down_queue_percent must be less than auto_scale_up_queue_percent")
+	REDACTED
+		if c.Gateway.UsageRecord.AutoScaleUpStep <= 0 {
+			return fmt.Errorf("gateway.usage_record.auto_scale_up_step must be positive")
+	REDACTED
+		if c.Gateway.UsageRecord.AutoScaleDownStep <= 0 {
+			return fmt.Errorf("gateway.usage_record.auto_scale_down_step must be positive")
+	REDACTED
+		if c.Gateway.UsageRecord.AutoScaleCheckIntervalSeconds <= 0 {
+			return fmt.Errorf("gateway.usage_record.auto_scale_check_interval_seconds must be positive")
+	REDACTED
+		if c.Gateway.UsageRecord.AutoScaleCooldownSeconds < 0 {
+			return fmt.Errorf("gateway.usage_record.auto_scale_cooldown_seconds must be non-negative")
+	REDACTED
+REDACTED
+	if c.Gateway.UserGroupRateCacheTTLSeconds <= 0 {
+		return fmt.Errorf("gateway.user_group_rate_cache_ttl_seconds must be positive")
+REDACTED
+	if c.Gateway.ModelsListCacheTTLSeconds < 10 || c.Gateway.ModelsListCacheTTLSeconds > 30 {
+		return fmt.Errorf("gateway.models_list_cache_ttl_seconds must be between 10-30")
 REDACTED
 	if c.Gateway.Scheduling.StickySessionMaxWaiting <= 0 {
 		return fmt.Errorf("gateway.scheduling.sticky_session_max_waiting must be positive")
@@ -1420,6 +2022,6 @@ func warnIfInsecureURL(field, raw string) {
 		return
 REDACTED
 	if strings.EqualFold(u.Scheme, "http") {
-		log.Printf("Warning: %s uses http scheme; use https in production to avoid token leakage.", field)
+		slog.Warn("url uses http scheme; use https in production to avoid token leakage", "field", field)
 REDACTED
 REDACTED

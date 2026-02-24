@@ -327,6 +327,27 @@ func (s *stubAdminService) TestProxy(ctx context.Context, id int64) (*service.Pr
 	return &service.ProxyTestResult{Success: true, Message: "ok"REDACTED, nil
 REDACTED
 
+func (s *stubAdminService) CheckProxyQuality(ctx context.Context, id int64) (*service.ProxyQualityCheckResult, error) {
+	return &service.ProxyQualityCheckResult{
+		ProxyID:        id,
+		Score:          95,
+		Grade:          "A",
+		Summary:        "通过 5 项，告警 0 项，失败 0 项，挑战 0 项",
+		PassedCount:    5,
+		WarnCount:      0,
+		FailedCount:    0,
+		ChallengeCount: 0,
+		CheckedAt:      time.Now().Unix(),
+		Items: []service.ProxyQualityCheckItem{
+			{Target: "base_connectivity", Status: "pass", Message: "ok"REDACTED,
+			{Target: "openai", Status: "pass", HTTPStatus: 401REDACTED,
+			{Target: "anthropic", Status: "pass", HTTPStatus: 401REDACTED,
+			{Target: "gemini", Status: "pass", HTTPStatus: 200REDACTED,
+			{Target: "sora", Status: "pass", HTTPStatus: 401REDACTED,
+	REDACTED,
+REDACTED, nil
+REDACTED
+
 func (s *stubAdminService) ListRedeemCodes(ctx context.Context, page, pageSize int, codeType, status, search string) ([]service.RedeemCode, int64, error) {
 	return s.redeems, int64(len(s.redeems)), nil
 REDACTED

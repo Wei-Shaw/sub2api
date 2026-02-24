@@ -38,6 +38,7 @@ type APIKey struct {
 	Status      string     `json:"status"`
 	IPWhitelist []string   `json:"ip_whitelist"`
 	IPBlacklist []string   `json:"ip_blacklist"`
+	LastUsedAt  *time.Time `json:"last_used_at"`
 	Quota       float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
 	QuotaUsed   float64    `json:"quota_used"` // Used quota amount in USD
 	ExpiresAt   *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
@@ -66,6 +67,12 @@ type Group struct {
 	ImagePrice1K *float64 `json:"image_price_1k"`
 	ImagePrice2K *float64 `json:"image_price_2k"`
 	ImagePrice4K *float64 `json:"image_price_4k"`
+
+	// Sora 按次计费配置
+	SoraImagePrice360          *float64 `json:"sora_image_price_360"`
+	SoraImagePrice540          *float64 `json:"sora_image_price_540"`
+	SoraVideoPricePerRequest   *float64 `json:"sora_video_price_per_request"`
+	SoraVideoPricePerRequestHD *float64 `json:"sora_video_price_per_request_hd"`
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`
@@ -196,6 +203,11 @@ type ProxyWithAccountCount struct {
 	CountryCode    string `json:"country_code,omitempty"`
 	Region         string `json:"region,omitempty"`
 	City           string `json:"city,omitempty"`
+	QualityStatus  string `json:"quality_status,omitempty"`
+	QualityScore   *int   `json:"quality_score,omitempty"`
+	QualityGrade   string `json:"quality_grade,omitempty"`
+	QualitySummary string `json:"quality_summary,omitempty"`
+	QualityChecked *int64 `json:"quality_checked,omitempty"`
 REDACTED
 
 type ProxyAccountSummary struct {
@@ -274,6 +286,7 @@ type UsageLog struct {
 	// 图片生成字段
 	ImageCount int     `json:"image_count"`
 	ImageSize  *string `json:"image_size"`
+	MediaType  *string `json:"media_type"`
 
 	// User-Agent
 	UserAgent *string `json:"user_agent"`
@@ -382,9 +395,12 @@ REDACTED
 
 type BulkAssignResult struct {
 	SuccessCount  int                     `json:"success_count"`
+	CreatedCount  int                     `json:"created_count"`
+	ReusedCount   int                     `json:"reused_count"`
 	FailedCount   int                     `json:"failed_count"`
 	Subscriptions []AdminUserSubscription `json:"subscriptions"`
 	Errors        []string                `json:"errors"`
+	Statuses      map[string]string       `json:"statuses,omitempty"`
 REDACTED
 
 // PromoCode 注册优惠码

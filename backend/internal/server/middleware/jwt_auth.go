@@ -26,12 +26,12 @@ func jwtAuth(authService *service.AuthService, userService *service.UserService)
 
 		// 验证Bearer scheme
 		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || parts[0] != "Bearer" {
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 			AbortWithError(c, 401, "INVALID_AUTH_HEADER", "Authorization header format must be 'Bearer {tokenREDACTED'")
 			return
 	REDACTED
 
-		tokenString := parts[1]
+		tokenString := strings.TrimSpace(parts[1])
 		if tokenString == "" {
 			AbortWithError(c, 401, "EMPTY_TOKEN", "Token cannot be empty")
 			return

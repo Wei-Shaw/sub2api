@@ -19,11 +19,13 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // GatewayHandler handles API gateway requests
@@ -35,10 +37,12 @@ type GatewayHandler struct {
 	billingCacheService       *service.BillingCacheService
 	usageService              *service.UsageService
 	apiKeyService             *service.APIKeyService
+	usageRecordWorkerPool     *service.UsageRecordWorkerPool
 	errorPassthroughService   *service.ErrorPassthroughService
 	concurrencyHelper         *ConcurrencyHelper
 	maxAccountSwitches        int
 	maxAccountSwitchesGemini  int
+	cfg                       *config.Config
 REDACTED
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -51,6 +55,7 @@ func NewGatewayHandler(
 	billingCacheService *service.BillingCacheService,
 	usageService *service.UsageService,
 	apiKeyService *service.APIKeyService,
+	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
 	cfg *config.Config,
 ) *GatewayHandler {
@@ -74,10 +79,12 @@ REDACTED
 		billingCacheService:       billingCacheService,
 		usageService:              usageService,
 		apiKeyService:             apiKeyService,
+		usageRecordWorkerPool:     usageRecordWorkerPool,
 		errorPassthroughService:   errorPassthroughService,
 		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
 		maxAccountSwitches:        maxAccountSwitches,
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
+		cfg:                       cfg,
 REDACTED
 REDACTED
 
@@ -96,6 +103,13 @@ REDACTED
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 REDACTED
+	reqLog := requestLogger(
+		c,
+		"handler.gateway.messages",
+		zap.Int64("user_id", subject.UserID),
+		zap.Int64("api_key_id", apiKey.ID),
+		zap.Any("group_id", apiKey.GroupID),
+	)
 
 	// 读取请求体
 	body, err := io.ReadAll(c.Request.Body)
@@ -122,6 +136,7 @@ REDACTED
 REDACTED
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
+	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
 	// 设置 max_tokens=1 + haiku 探测请求标识到 context 中
 	// 必须在 SetClaudeCodeClientContext 之前设置，因为 ClaudeCodeValidator 需要读取此标识进行绕过判断
@@ -161,9 +176,10 @@ REDACTED
 	canWait, err := h.concurrencyHelper.IncrementWaitCount(c.Request.Context(), subject.UserID, maxWait)
 	waitCounted := false
 	if err != nil {
-		log.Printf("Increment wait count failed: %v", err)
+		reqLog.Warn("gateway.user_wait_counter_increment_failed", zap.Error(err))
 		// On error, allow request to proceed
 REDACTED else if !canWait {
+		reqLog.Info("gateway.user_wait_queue_full", zap.Int("max_wait", maxWait))
 		h.errorResponse(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later")
 		return
 REDACTED
@@ -180,7 +196,7 @@ REDACTED()
 	// 1. 首先获取用户并发槽位
 	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
 	if err != nil {
-		log.Printf("User concurrency acquire failed: %v", err)
+		reqLog.Warn("gateway.user_slot_acquire_failed", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", streamStarted)
 		return
 REDACTED
@@ -197,7 +213,7 @@ REDACTED
 
 	// 2. 【新增】Wait后二次检查余额/订阅
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
-		log.Printf("Billing eligibility check failed after wait: %v", err)
+		reqLog.Info("gateway.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message := billingErrorDetails(err)
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
@@ -227,6 +243,15 @@ REDACTED
 	var sessionBoundAccountID int64
 	if sessionKey != "" {
 		sessionBoundAccountID, _ = h.gatewayService.GetCachedSessionAccountID(c.Request.Context(), apiKey.GroupID, sessionKey)
+		if sessionBoundAccountID > 0 {
+			prefetchedGroupID := int64(0)
+			if apiKey.GroupID != nil {
+				prefetchedGroupID = *apiKey.GroupID
+		REDACTED
+			ctx := context.WithValue(c.Request.Context(), ctxkey.PrefetchedStickyAccountID, sessionBoundAccountID)
+			ctx = context.WithValue(ctx, ctxkey.PrefetchedStickyGroupID, prefetchedGroupID)
+			c.Request = c.Request.WithContext(ctx)
+	REDACTED
 REDACTED
 	// 判断是否真的绑定了粘性会话：有 sessionKey 且已经绑定到某个账号
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
@@ -250,7 +275,8 @@ REDACTED
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, failedAccountIDs, "") // Gemini 不使用会话限制
 			if err != nil {
 				if len(failedAccountIDs) == 0 {
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
+					reqLog.Warn("gateway.account_select_failed", zap.Error(err), zap.Int("excluded_account_count", len(failedAccountIDs)))
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
 					return
 			REDACTED
 				// Antigravity 单账号退避重试：分组内没有其他可用账号时，
@@ -258,7 +284,10 @@ REDACTED
 				// 谷歌上游 503 (MODEL_CAPACITY_EXHAUSTED) 通常是暂时性的，等几秒就能恢复。
 				if lastFailoverErr != nil && lastFailoverErr.StatusCode == http.StatusServiceUnavailable && switchCount <= maxAccountSwitches {
 					if sleepAntigravitySingleAccountBackoff(c.Request.Context(), switchCount) {
-						log.Printf("Antigravity single-account 503 retry: clearing failed accounts, retry %d/%d", switchCount, maxAccountSwitches)
+						reqLog.Warn("gateway.single_account_retrying",
+							zap.Int("retry_count", switchCount),
+							zap.Int("max_retries", maxAccountSwitches),
+						)
 						failedAccountIDs = make(map[int64]struct{REDACTED)
 						// 设置 context 标记，让 Service 层预检查等待限流过期而非直接切换
 						ctx := context.WithValue(c.Request.Context(), ctxkey.SingleAccountRetry, true)
@@ -274,7 +303,7 @@ REDACTED
 				return
 		REDACTED
 			account := selection.Account
-			setOpsSelectedAccount(c, account.ID)
+			setOpsSelectedAccount(c, account.ID, account.Platform)
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
@@ -302,21 +331,24 @@ REDACTED
 				accountWaitCounted := false
 				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
 				if err != nil {
-					log.Printf("Increment account wait count failed: %v", err)
+					reqLog.Warn("gateway.account_wait_counter_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			REDACTED else if !canWait {
-					log.Printf("Account wait queue full: account=%d", account.ID)
+					reqLog.Info("gateway.account_wait_queue_full",
+						zap.Int64("account_id", account.ID),
+						zap.Int("max_waiting", selection.WaitPlan.MaxWaiting),
+					)
 					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
 					return
 			REDACTED
 				if err == nil && canWait {
 					accountWaitCounted = true
 			REDACTED
-				// Ensure the wait counter is decremented if we exit before acquiring the slot.
-				defer func() {
+				releaseWait := func() {
 					if accountWaitCounted {
 						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+						accountWaitCounted = false
 				REDACTED
-			REDACTED()
+			REDACTED
 
 				accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
 					c,
@@ -327,17 +359,15 @@ REDACTED
 					&streamStarted,
 				)
 				if err != nil {
-					log.Printf("Account concurrency acquire failed: %v", err)
+					reqLog.Warn("gateway.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+					releaseWait()
 					h.handleConcurrencyError(c, err, "account", streamStarted)
 					return
 			REDACTED
 				// Slot acquired: no longer waiting in queue.
-				if accountWaitCounted {
-					h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
-					accountWaitCounted = false
-			REDACTED
+				releaseWait()
 				if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionKey, account.ID); err != nil {
-					log.Printf("Bind sticky session failed: %v", err)
+					reqLog.Warn("gateway.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			REDACTED
 		REDACTED
 			// 账号槽位/等待计数需要在超时或断开时安全回收
@@ -387,7 +417,12 @@ REDACTED
 						return
 				REDACTED
 					switchCount++
-					log.Printf("Account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
+					reqLog.Warn("gateway.upstream_failover_switching",
+						zap.Int64("account_id", account.ID),
+						zap.Int("upstream_status", failoverErr.StatusCode),
+						zap.Int("switch_count", switchCount),
+						zap.Int("max_switches", maxAccountSwitches),
+					)
 					if account.Platform == service.PlatformAntigravity {
 						if !sleepFailoverDelay(c.Request.Context(), switchCount) {
 							return
@@ -395,8 +430,12 @@ REDACTED
 				REDACTED
 					continue
 			REDACTED
-				// 错误响应已在Forward中处理，这里只记录日志
-				log.Printf("Forward request failed: %v", err)
+				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+				reqLog.Error("gateway.forward_failed",
+					zap.Int64("account_id", account.ID),
+					zap.Bool("fallback_error_response_written", wroteFallback),
+					zap.Error(err),
+				)
 				return
 		REDACTED
 
@@ -404,24 +443,29 @@ REDACTED
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
 
-			// 异步记录使用量（subscription已在函数开头获取）
-			go func(result *service.ForwardResult, usedAccount *service.Account, ua, clientIP string, fcb bool) {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
+			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
+			h.submitUsageRecordTask(func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:            result,
 					APIKey:            apiKey,
 					User:              apiKey.User,
-					Account:           usedAccount,
+					Account:           account,
 					Subscription:      subscription,
-					UserAgent:         ua,
+					UserAgent:         userAgent,
 					IPAddress:         clientIP,
-					ForceCacheBilling: fcb,
+					ForceCacheBilling: forceCacheBilling,
 					APIKeyService:     h.apiKeyService,
 			REDACTED); err != nil {
-					log.Printf("Record usage failed: %v", err)
+					logger.L().With(
+						zap.String("component", "handler.gateway.messages"),
+						zap.Int64("user_id", subject.UserID),
+						zap.Int64("api_key_id", apiKey.ID),
+						zap.Any("group_id", apiKey.GroupID),
+						zap.String("model", reqModel),
+						zap.Int64("account_id", account.ID),
+					).Error("gateway.record_usage_failed", zap.Error(err))
 			REDACTED
-		REDACTED(result, account, userAgent, clientIP, forceCacheBilling)
+		REDACTED)
 			return
 	REDACTED
 REDACTED
@@ -455,7 +499,8 @@ REDACTED
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, failedAccountIDs, parsedReq.MetadataUserID)
 			if err != nil {
 				if len(failedAccountIDs) == 0 {
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
+					reqLog.Warn("gateway.account_select_failed", zap.Error(err), zap.Int("excluded_account_count", len(failedAccountIDs)))
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
 					return
 			REDACTED
 				// Antigravity 单账号退避重试：分组内没有其他可用账号时，
@@ -463,7 +508,10 @@ REDACTED
 				// 谷歌上游 503 (MODEL_CAPACITY_EXHAUSTED) 通常是暂时性的，等几秒就能恢复。
 				if lastFailoverErr != nil && lastFailoverErr.StatusCode == http.StatusServiceUnavailable && switchCount <= maxAccountSwitches {
 					if sleepAntigravitySingleAccountBackoff(c.Request.Context(), switchCount) {
-						log.Printf("Antigravity single-account 503 retry: clearing failed accounts, retry %d/%d", switchCount, maxAccountSwitches)
+						reqLog.Warn("gateway.single_account_retrying",
+							zap.Int("retry_count", switchCount),
+							zap.Int("max_retries", maxAccountSwitches),
+						)
 						failedAccountIDs = make(map[int64]struct{REDACTED)
 						// 设置 context 标记，让 Service 层预检查等待限流过期而非直接切换
 						ctx := context.WithValue(c.Request.Context(), ctxkey.SingleAccountRetry, true)
@@ -479,7 +527,7 @@ REDACTED
 				return
 		REDACTED
 			account := selection.Account
-			setOpsSelectedAccount(c, account.ID)
+			setOpsSelectedAccount(c, account.ID, account.Platform)
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
@@ -507,20 +555,24 @@ REDACTED
 				accountWaitCounted := false
 				canWait, err := h.concurrencyHelper.IncrementAccountWaitCount(c.Request.Context(), account.ID, selection.WaitPlan.MaxWaiting)
 				if err != nil {
-					log.Printf("Increment account wait count failed: %v", err)
+					reqLog.Warn("gateway.account_wait_counter_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			REDACTED else if !canWait {
-					log.Printf("Account wait queue full: account=%d", account.ID)
+					reqLog.Info("gateway.account_wait_queue_full",
+						zap.Int64("account_id", account.ID),
+						zap.Int("max_waiting", selection.WaitPlan.MaxWaiting),
+					)
 					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error", "Too many pending requests, please retry later", streamStarted)
 					return
 			REDACTED
 				if err == nil && canWait {
 					accountWaitCounted = true
 			REDACTED
-				defer func() {
+				releaseWait := func() {
 					if accountWaitCounted {
 						h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
+						accountWaitCounted = false
 				REDACTED
-			REDACTED()
+			REDACTED
 
 				accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
 					c,
@@ -531,16 +583,15 @@ REDACTED
 					&streamStarted,
 				)
 				if err != nil {
-					log.Printf("Account concurrency acquire failed: %v", err)
+					reqLog.Warn("gateway.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+					releaseWait()
 					h.handleConcurrencyError(c, err, "account", streamStarted)
 					return
 			REDACTED
-				if accountWaitCounted {
-					h.concurrencyHelper.DecrementAccountWaitCount(c.Request.Context(), account.ID)
-					accountWaitCounted = false
-			REDACTED
+				// Slot acquired: no longer waiting in queue.
+				releaseWait()
 				if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
-					log.Printf("Bind sticky session failed: %v", err)
+					reqLog.Warn("gateway.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			REDACTED
 		REDACTED
 			// 账号槽位/等待计数需要在超时或断开时安全回收
@@ -563,18 +614,26 @@ REDACTED
 			if err != nil {
 				var promptTooLongErr *service.PromptTooLongError
 				if errors.As(err, &promptTooLongErr) {
-					log.Printf("Prompt too long from antigravity: group=%d fallback_group_id=%v fallback_used=%v", currentAPIKey.GroupID, fallbackGroupID, fallbackUsed)
+					reqLog.Warn("gateway.prompt_too_long_from_antigravity",
+						zap.Any("current_group_id", currentAPIKey.GroupID),
+						zap.Any("fallback_group_id", fallbackGroupID),
+						zap.Bool("fallback_used", fallbackUsed),
+					)
 					if !fallbackUsed && fallbackGroupID != nil && *fallbackGroupID > 0 {
 						fallbackGroup, err := h.gatewayService.ResolveGroupByID(c.Request.Context(), *fallbackGroupID)
 						if err != nil {
-							log.Printf("Resolve fallback group failed: %v", err)
+							reqLog.Warn("gateway.resolve_fallback_group_failed", zap.Int64("fallback_group_id", *fallbackGroupID), zap.Error(err))
 							_ = h.antigravityGatewayService.WriteMappedClaudeError(c, account, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body)
 							return
 					REDACTED
 						if fallbackGroup.Platform != service.PlatformAnthropic ||
 							fallbackGroup.SubscriptionType == service.SubscriptionTypeSubscription ||
 							fallbackGroup.FallbackGroupIDOnInvalidRequest != nil {
-							log.Printf("Fallback group invalid: group=%d platform=%s subscription=%s", fallbackGroup.ID, fallbackGroup.Platform, fallbackGroup.SubscriptionType)
+							reqLog.Warn("gateway.fallback_group_invalid",
+								zap.Int64("fallback_group_id", fallbackGroup.ID),
+								zap.String("fallback_platform", fallbackGroup.Platform),
+								zap.String("fallback_subscription_type", fallbackGroup.SubscriptionType),
+							)
 							_ = h.antigravityGatewayService.WriteMappedClaudeError(c, account, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body)
 							return
 					REDACTED
@@ -625,7 +684,12 @@ REDACTED
 						return
 				REDACTED
 					switchCount++
-					log.Printf("Account %d: upstream error %d, switching account %d/%d", account.ID, failoverErr.StatusCode, switchCount, maxAccountSwitches)
+					reqLog.Warn("gateway.upstream_failover_switching",
+						zap.Int64("account_id", account.ID),
+						zap.Int("upstream_status", failoverErr.StatusCode),
+						zap.Int("switch_count", switchCount),
+						zap.Int("max_switches", maxAccountSwitches),
+					)
 					if account.Platform == service.PlatformAntigravity {
 						if !sleepFailoverDelay(c.Request.Context(), switchCount) {
 							return
@@ -633,8 +697,12 @@ REDACTED
 				REDACTED
 					continue
 			REDACTED
-				// 错误响应已在Forward中处理，这里只记录日志
-				log.Printf("Account %d: Forward request failed: %v", account.ID, err)
+				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+				reqLog.Error("gateway.forward_failed",
+					zap.Int64("account_id", account.ID),
+					zap.Bool("fallback_error_response_written", wroteFallback),
+					zap.Error(err),
+				)
 				return
 		REDACTED
 
@@ -642,24 +710,34 @@ REDACTED
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
 
-			// 异步记录使用量（subscription已在函数开头获取）
-			go func(result *service.ForwardResult, usedAccount *service.Account, ua, clientIP string, fcb bool) {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
+			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
+			h.submitUsageRecordTask(func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:            result,
 					APIKey:            currentAPIKey,
 					User:              currentAPIKey.User,
-					Account:           usedAccount,
+					Account:           account,
 					Subscription:      currentSubscription,
-					UserAgent:         ua,
+					UserAgent:         userAgent,
 					IPAddress:         clientIP,
-					ForceCacheBilling: fcb,
+					ForceCacheBilling: forceCacheBilling,
 					APIKeyService:     h.apiKeyService,
 			REDACTED); err != nil {
-					log.Printf("Record usage failed: %v", err)
+					logger.L().With(
+						zap.String("component", "handler.gateway.messages"),
+						zap.Int64("user_id", subject.UserID),
+						zap.Int64("api_key_id", currentAPIKey.ID),
+						zap.Any("group_id", currentAPIKey.GroupID),
+						zap.String("model", reqModel),
+						zap.Int64("account_id", account.ID),
+					).Error("gateway.record_usage_failed", zap.Error(err))
 			REDACTED
-		REDACTED(result, account, userAgent, clientIP, forceCacheBilling)
+		REDACTED)
+			reqLog.Debug("gateway.request_completed",
+				zap.Int64("account_id", account.ID),
+				zap.Int("switch_count", switchCount),
+				zap.Bool("fallback_used", fallbackUsed),
+			)
 			return
 	REDACTED
 		if !retryWithFallback {
@@ -681,6 +759,17 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	if apiKey != nil && apiKey.Group != nil {
 		groupID = &apiKey.Group.ID
 		platform = apiKey.Group.Platform
+REDACTED
+	if forcedPlatform, ok := middleware2.GetForcePlatformFromContext(c); ok && strings.TrimSpace(forcedPlatform) != "" {
+		platform = forcedPlatform
+REDACTED
+
+	if platform == service.PlatformSora {
+		c.JSON(http.StatusOK, gin.H{
+			"object": "list",
+			"data":   service.DefaultSoraModels(h.cfg),
+	REDACTED)
+		return
 REDACTED
 
 	// Get available models from account configurations (without platform filter)
@@ -942,7 +1031,11 @@ func sleepAntigravitySingleAccountBackoff(ctx context.Context, retryCount int) b
 	// Handler 层只需短暂间隔后重新进入 Service 层即可。
 	const delay = 2 * time.Second
 
-	log.Printf("Antigravity single-account 503 backoff: waiting %v before retry (attempt %d)", delay, retryCount)
+	logger.L().With(
+		zap.String("component", "handler.gateway.failover"),
+		zap.Duration("delay", delay),
+		zap.Int("retry_count", retryCount),
+	).Info("gateway.single_account_backoff_waiting")
 
 	select {
 	case <-ctx.Done():
@@ -1040,6 +1133,15 @@ REDACTED
 	h.errorResponse(c, status, errType, message)
 REDACTED
 
+// ensureForwardErrorResponse 在 Forward 返回错误但尚未写响应时补写统一错误响应。
+func (h *GatewayHandler) ensureForwardErrorResponse(c *gin.Context, streamStarted bool) bool {
+	if c == nil || c.Writer == nil || c.Writer.Written() {
+		return false
+REDACTED
+	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", streamStarted)
+	return true
+REDACTED
+
 // errorResponse 返回Claude API格式的错误响应
 func (h *GatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
 	c.JSON(status, gin.H{
@@ -1067,6 +1169,12 @@ REDACTED
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 REDACTED
+	reqLog := requestLogger(
+		c,
+		"handler.gateway.count_tokens",
+		zap.Int64("api_key_id", apiKey.ID),
+		zap.Any("group_id", apiKey.GroupID),
+	)
 
 	// 读取请求体
 	body, err := io.ReadAll(c.Request.Body)
@@ -1094,6 +1202,7 @@ REDACTED
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 REDACTED
+	reqLog = reqLog.With(zap.String("model", parsedReq.Model), zap.Bool("stream", parsedReq.Stream))
 	// 在请求上下文中记录 thinking 状态，供 Antigravity 最终模型 key 推导/模型维度限流使用
 	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.ThinkingEnabled, parsedReq.ThinkingEnabled))
 
@@ -1127,14 +1236,15 @@ REDACTED
 	// 选择支持该模型的账号
 	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model)
 	if err != nil {
-		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error())
+		reqLog.Warn("gateway.count_tokens_select_account_failed", zap.Error(err))
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
 		return
 REDACTED
-	setOpsSelectedAccount(c, account.ID)
+	setOpsSelectedAccount(c, account.ID, account.Platform)
 
 	// 转发请求（不记录使用量）
 	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {
-		log.Printf("Forward count_tokens request failed: %v", err)
+		reqLog.Error("gateway.count_tokens_forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 		// 错误响应已在 ForwardCountTokens 中处理
 		return
 REDACTED
@@ -1398,7 +1508,25 @@ func billingErrorDetails(err error) (status int, code, message string) {
 REDACTED
 	msg := pkgerrors.Message(err)
 	if msg == "" {
-		msg = err.Error()
+		logger.L().With(
+			zap.String("component", "handler.gateway.billing"),
+			zap.Error(err),
+		).Warn("gateway.billing_error_missing_message")
+		msg = "Billing error"
 REDACTED
 	return http.StatusForbidden, "billing_error", msg
+REDACTED
+
+func (h *GatewayHandler) submitUsageRecordTask(task service.UsageRecordTask) {
+	if task == nil {
+		return
+REDACTED
+	if h.usageRecordWorkerPool != nil {
+		h.usageRecordWorkerPool.Submit(task)
+		return
+REDACTED
+	// 回退路径：worker 池未注入时同步执行，避免退回到无界 goroutine 模式。
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	task(ctx)
 REDACTED

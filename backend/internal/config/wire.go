@@ -9,5 +9,5 @@ var ProviderSet = wire.NewSet(
 
 // ProvideConfig 提供应用配置
 func ProvideConfig() (*Config, error) {
-	return Load()
+	return LoadForBootstrap()
 REDACTED

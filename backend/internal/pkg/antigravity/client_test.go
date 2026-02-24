@@ -1,8 +1,1660 @@
+//go:build unit
+
 package antigravity
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
+	"time"
 )
+
+// ---------------------------------------------------------------------------
+// NewAPIRequestWithURL
+// ---------------------------------------------------------------------------
+
+func TestNewAPIRequestWithURL_普通请求(t *testing.T) {
+	ctx := context.Background()
+	baseURL := "https://example.com"
+	action := "generateContent"
+	token := "test-token"
+	body := []byte(`{"prompt":"hello"REDACTED`)
+
+	req, err := NewAPIRequestWithURL(ctx, baseURL, action, token, body)
+	if err != nil {
+		t.Fatalf("创建请求失败: %v", err)
+REDACTED
+
+	// 验证 URL 不含 ?alt=sse
+	expectedURL := "https://example.com/v1internal:generateContent"
+	if req.URL.String() != expectedURL {
+		t.Errorf("URL 不匹配: got %s, want %s", req.URL.String(), expectedURL)
+REDACTED
+
+	// 验证请求方法
+	if req.Method != http.MethodPost {
+		t.Errorf("请求方法不匹配: got %s, want POST", req.Method)
+REDACTED
+
+	// 验证 Headers
+	if ct := req.Header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type 不匹配: got %s", ct)
+REDACTED
+	if auth := req.Header.Get("Authorization"); auth != "Bearer test-token" {
+		t.Errorf("Authorization 不匹配: got %s", auth)
+REDACTED
+	if ua := req.Header.Get("User-Agent"); ua != UserAgent {
+		t.Errorf("User-Agent 不匹配: got %s, want %s", ua, UserAgent)
+REDACTED
+REDACTED
+
+func TestNewAPIRequestWithURL_流式请求(t *testing.T) {
+	ctx := context.Background()
+	baseURL := "https://example.com"
+	action := "streamGenerateContent"
+	token := "tok"
+	body := []byte(`{REDACTED`)
+
+	req, err := NewAPIRequestWithURL(ctx, baseURL, action, token, body)
+	if err != nil {
+		t.Fatalf("创建请求失败: %v", err)
+REDACTED
+
+	expectedURL := "https://example.com/v1internal:streamGenerateContent?alt=sse"
+	if req.URL.String() != expectedURL {
+		t.Errorf("URL 不匹配: got %s, want %s", req.URL.String(), expectedURL)
+REDACTED
+REDACTED
+
+func TestNewAPIRequestWithURL_空Body(t *testing.T) {
+	ctx := context.Background()
+	req, err := NewAPIRequestWithURL(ctx, "https://example.com", "test", "tok", nil)
+	if err != nil {
+		t.Fatalf("创建请求失败: %v", err)
+REDACTED
+	if req.Body == nil {
+		t.Error("Body 应该非 nil（bytes.NewReader(nil) 会返回空 reader）")
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// NewAPIRequest
+// ---------------------------------------------------------------------------
+
+func TestNewAPIRequest_使用默认URL(t *testing.T) {
+	ctx := context.Background()
+	req, err := NewAPIRequest(ctx, "generateContent", "tok", []byte(`{REDACTED`))
+	if err != nil {
+		t.Fatalf("创建请求失败: %v", err)
+REDACTED
+
+	expected := BaseURL + "/v1internal:generateContent"
+	if req.URL.String() != expected {
+		t.Errorf("URL 不匹配: got %s, want %s", req.URL.String(), expected)
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// TierInfo.UnmarshalJSON
+// ---------------------------------------------------------------------------
+
+func TestTierInfo_UnmarshalJSON_字符串格式(t *testing.T) {
+	data := []byte(`"free-tier"`)
+	var tier TierInfo
+	if err := tier.UnmarshalJSON(data); err != nil {
+		t.Fatalf("反序列化失败: %v", err)
+REDACTED
+	if tier.ID != "free-tier" {
+		t.Errorf("ID 不匹配: got %s, want free-tier", tier.ID)
+REDACTED
+	if tier.Name != "" {
+		t.Errorf("Name 应为空: got %s", tier.Name)
+REDACTED
+REDACTED
+
+func TestTierInfo_UnmarshalJSON_对象格式(t *testing.T) {
+	data := []byte(`{"id":"g1-pro-tier","name":"Pro","description":"Pro plan"REDACTED`)
+	var tier TierInfo
+	if err := tier.UnmarshalJSON(data); err != nil {
+		t.Fatalf("反序列化失败: %v", err)
+REDACTED
+	if tier.ID != "g1-pro-tier" {
+		t.Errorf("ID 不匹配: got %s, want g1-pro-tier", tier.ID)
+REDACTED
+	if tier.Name != "Pro" {
+		t.Errorf("Name 不匹配: got %s, want Pro", tier.Name)
+REDACTED
+	if tier.Description != "Pro plan" {
+		t.Errorf("Description 不匹配: got %s, want Pro plan", tier.Description)
+REDACTED
+REDACTED
+
+func TestTierInfo_UnmarshalJSON_null(t *testing.T) {
+	data := []byte(`null`)
+	var tier TierInfo
+	if err := tier.UnmarshalJSON(data); err != nil {
+		t.Fatalf("反序列化 null 失败: %v", err)
+REDACTED
+	if tier.ID != "" {
+		t.Errorf("null 场景下 ID 应为空: got %s", tier.ID)
+REDACTED
+REDACTED
+
+func TestTierInfo_UnmarshalJSON_空数据(t *testing.T) {
+	data := []byte(``)
+	var tier TierInfo
+	if err := tier.UnmarshalJSON(data); err != nil {
+		t.Fatalf("反序列化空数据失败: %v", err)
+REDACTED
+	if tier.ID != "" {
+		t.Errorf("空数据场景下 ID 应为空: got %s", tier.ID)
+REDACTED
+REDACTED
+
+func TestTierInfo_UnmarshalJSON_空格包裹null(t *testing.T) {
+	data := []byte(`  null  `)
+	var tier TierInfo
+	if err := tier.UnmarshalJSON(data); err != nil {
+		t.Fatalf("反序列化空格 null 失败: %v", err)
+REDACTED
+	if tier.ID != "" {
+		t.Errorf("空格 null 场景下 ID 应为空: got %s", tier.ID)
+REDACTED
+REDACTED
+
+func TestTierInfo_UnmarshalJSON_通过JSON嵌套结构(t *testing.T) {
+	// 模拟 LoadCodeAssistResponse 中的嵌套反序列化
+	jsonData := `{"currentTier":"free-tier","paidTier":{"id":"g1-ultra-tier","name":"Ultra"REDACTEDREDACTED`
+	var resp LoadCodeAssistResponse
+	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
+		t.Fatalf("反序列化嵌套结构失败: %v", err)
+REDACTED
+	if resp.CurrentTier == nil || resp.CurrentTier.ID != "free-tier" {
+		t.Errorf("CurrentTier 不匹配: got %+v", resp.CurrentTier)
+REDACTED
+	if resp.PaidTier == nil || resp.PaidTier.ID != "g1-ultra-tier" {
+		t.Errorf("PaidTier 不匹配: got %+v", resp.PaidTier)
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// LoadCodeAssistResponse.GetTier
+// ---------------------------------------------------------------------------
+
+func TestGetTier_PaidTier优先(t *testing.T) {
+	resp := &LoadCodeAssistResponse{
+		CurrentTier: &TierInfo{ID: "free-tier"REDACTED,
+		PaidTier:    &TierInfo{ID: "g1-pro-tier"REDACTED,
+REDACTED
+	if got := resp.GetTier(); got != "g1-pro-tier" {
+		t.Errorf("应返回 paidTier: got %s", got)
+REDACTED
+REDACTED
+
+func TestGetTier_回退到CurrentTier(t *testing.T) {
+	resp := &LoadCodeAssistResponse{
+		CurrentTier: &TierInfo{ID: "free-tier"REDACTED,
+REDACTED
+	if got := resp.GetTier(); got != "free-tier" {
+		t.Errorf("应返回 currentTier: got %s", got)
+REDACTED
+REDACTED
+
+func TestGetTier_PaidTier为空ID(t *testing.T) {
+	resp := &LoadCodeAssistResponse{
+		CurrentTier: &TierInfo{ID: "free-tier"REDACTED,
+		PaidTier:    &TierInfo{ID: ""REDACTED,
+REDACTED
+	// paidTier.ID 为空时应回退到 currentTier
+	if got := resp.GetTier(); got != "free-tier" {
+		t.Errorf("paidTier.ID 为空时应回退到 currentTier: got %s", got)
+REDACTED
+REDACTED
+
+func TestGetTier_两者都为nil(t *testing.T) {
+	resp := &LoadCodeAssistResponse{REDACTED
+	if got := resp.GetTier(); got != "" {
+		t.Errorf("两者都为 nil 时应返回空字符串: got %s", got)
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// NewClient
+// ---------------------------------------------------------------------------
+
+func TestNewClient_无代理(t *testing.T) {
+	client := NewClient("")
+	if client == nil {
+		t.Fatal("NewClient 返回 nil")
+REDACTED
+	if client.httpClient == nil {
+		t.Fatal("httpClient 为 nil")
+REDACTED
+	if client.httpClient.Timeout != 30*time.Second {
+		t.Errorf("Timeout 不匹配: got %v, want 30s", client.httpClient.Timeout)
+REDACTED
+	// 无代理时 Transport 应为 nil（使用默认）
+	if client.httpClient.Transport != nil {
+		t.Error("无代理时 Transport 应为 nil")
+REDACTED
+REDACTED
+
+func TestNewClient_有代理(t *testing.T) {
+	client := NewClient("http://proxy.example.com:8080")
+	if client == nil {
+		t.Fatal("NewClient 返回 nil")
+REDACTED
+	if client.httpClient.Transport == nil {
+		t.Fatal("有代理时 Transport 不应为 nil")
+REDACTED
+REDACTED
+
+func TestNewClient_空格代理(t *testing.T) {
+	client := NewClient("   ")
+	if client == nil {
+		t.Fatal("NewClient 返回 nil")
+REDACTED
+	// 空格代理应等同于无代理
+	if client.httpClient.Transport != nil {
+		t.Error("空格代理 Transport 应为 nil")
+REDACTED
+REDACTED
+
+func TestNewClient_无效代理URL(t *testing.T) {
+	// 无效 URL 时 url.Parse 不一定返回错误（Go 的 url.Parse 很宽容），
+	// 但 ://invalid 会导致解析错误
+	client := NewClient("://invalid")
+	if client == nil {
+		t.Fatal("NewClient 返回 nil")
+REDACTED
+	// 无效 URL 解析失败时，Transport 应保持 nil
+	if client.httpClient.Transport != nil {
+		t.Error("无效代理 URL 时 Transport 应为 nil")
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// isConnectionError
+// ---------------------------------------------------------------------------
+
+func TestIsConnectionError_nil(t *testing.T) {
+	if isConnectionError(nil) {
+		t.Error("nil 错误不应判定为连接错误")
+REDACTED
+REDACTED
+
+func TestIsConnectionError_超时错误(t *testing.T) {
+	// 使用 net.OpError 包装超时
+	err := &net.OpError{
+		Op:  "dial",
+		Net: "tcp",
+		Err: &timeoutError{REDACTED,
+REDACTED
+	if !isConnectionError(err) {
+		t.Error("超时错误应判定为连接错误")
+REDACTED
+REDACTED
+
+// timeoutError 实现 net.Error 接口用于测试
+type timeoutError struct{REDACTED
+
+func (e *timeoutError) Error() string   { return "timeout" REDACTED
+func (e *timeoutError) Timeout() bool   { return true REDACTED
+func (e *timeoutError) Temporary() bool { return true REDACTED
+
+func TestIsConnectionError_netOpError(t *testing.T) {
+	err := &net.OpError{
+		Op:  "dial",
+		Net: "tcp",
+		Err: fmt.Errorf("connection refused"),
+REDACTED
+	if !isConnectionError(err) {
+		t.Error("net.OpError 应判定为连接错误")
+REDACTED
+REDACTED
+
+func TestIsConnectionError_urlError(t *testing.T) {
+	err := &url.Error{
+		Op:  "Get",
+		URL: "https://example.com",
+		Err: fmt.Errorf("some error"),
+REDACTED
+	if !isConnectionError(err) {
+		t.Error("url.Error 应判定为连接错误")
+REDACTED
+REDACTED
+
+func TestIsConnectionError_普通错误(t *testing.T) {
+	err := fmt.Errorf("some random error")
+	if isConnectionError(err) {
+		t.Error("普通错误不应判定为连接错误")
+REDACTED
+REDACTED
+
+func TestIsConnectionError_包装的netOpError(t *testing.T) {
+	inner := &net.OpError{
+		Op:  "dial",
+		Net: "tcp",
+		Err: fmt.Errorf("connection refused"),
+REDACTED
+	err := fmt.Errorf("wrapping: %w", inner)
+	if !isConnectionError(err) {
+		t.Error("被包装的 net.OpError 应判定为连接错误")
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// shouldFallbackToNextURL
+// ---------------------------------------------------------------------------
+
+func TestShouldFallbackToNextURL_连接错误(t *testing.T) {
+	err := &net.OpError{Op: "dial", Net: "tcp", Err: fmt.Errorf("refused")REDACTED
+	if !shouldFallbackToNextURL(err, 0) {
+		t.Error("连接错误应触发 URL 降级")
+REDACTED
+REDACTED
+
+func TestShouldFallbackToNextURL_状态码(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		want       bool
+REDACTED{
+		{"429 Too Many Requests", http.StatusTooManyRequests, trueREDACTED,
+		{"408 Request Timeout", http.StatusRequestTimeout, trueREDACTED,
+		{"404 Not Found", http.StatusNotFound, trueREDACTED,
+		{"500 Internal Server Error", http.StatusInternalServerError, trueREDACTED,
+		{"502 Bad Gateway", http.StatusBadGateway, trueREDACTED,
+		{"503 Service Unavailable", http.StatusServiceUnavailable, trueREDACTED,
+		{"200 OK", http.StatusOK, falseREDACTED,
+		{"201 Created", http.StatusCreated, falseREDACTED,
+		{"400 Bad Request", http.StatusBadRequest, falseREDACTED,
+		{"401 Unauthorized", http.StatusUnauthorized, falseREDACTED,
+		{"403 Forbidden", http.StatusForbidden, falseREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := shouldFallbackToNextURL(nil, tt.statusCode)
+			if got != tt.want {
+				t.Errorf("shouldFallbackToNextURL(nil, %d) = %v, want %v", tt.statusCode, got, tt.want)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestShouldFallbackToNextURL_无错误且200(t *testing.T) {
+	if shouldFallbackToNextURL(nil, http.StatusOK) {
+		t.Error("无错误且 200 不应触发 URL 降级")
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// Client.ExchangeCode (使用 httptest)
+// ---------------------------------------------------------------------------
+
+func TestClient_ExchangeCode_成功(t *testing.T) {
+	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 验证请求方法
+		if r.Method != http.MethodPost {
+			t.Errorf("请求方法不匹配: got %s", r.Method)
+	REDACTED
+		// 验证 Content-Type
+		if ct := r.Header.Get("Content-Type"); ct != "application/x-www-form-urlencoded" {
+			t.Errorf("Content-Type 不匹配: got %s", ct)
+	REDACTED
+		// 验证请求体参数
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("解析表单失败: %v", err)
+	REDACTED
+		if r.FormValue("client_id") != ClientID {
+			t.Errorf("client_id 不匹配: got %s", r.FormValue("client_id"))
+	REDACTED
+		if r.FormValue("client_secret") != "test-secret" {
+			t.Errorf("client_secret 不匹配: got %s", r.FormValue("client_secret"))
+	REDACTED
+		if r.FormValue("code") != "auth-code" {
+			t.Errorf("code 不匹配: got %s", r.FormValue("code"))
+	REDACTED
+		if r.FormValue("code_verifier") != "verifier123" {
+			t.Errorf("code_verifier 不匹配: got %s", r.FormValue("code_verifier"))
+	REDACTED
+		if r.FormValue("grant_type") != "authorization_code" {
+			t.Errorf("grant_type 不匹配: got %s", r.FormValue("grant_type"))
+	REDACTED
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(TokenResponse{
+			AccessToken:  "access-tok",
+			ExpiresIn:    3600,
+			TokenType:    "Bearer",
+			RefreshToken: "refresh-tok",
+	REDACTED)
+REDACTED))
+	defer server.Close()
+
+	// 临时替换 TokenURL（该函数直接使用常量，需要我们通过构建自定义 client 来绕过）
+	// 由于 ExchangeCode 硬编码了 TokenURL，我们需要直接测试 HTTP client 的行为
+	// 这里通过构造一个直接调用 mock server 的测试
+	client := &Client{httpClient: server.Client()REDACTED
+
+	// 由于 ExchangeCode 使用硬编码的 TokenURL，我们无法直接注入 mock server URL
+	// 需要使用 httptest 的 Transport 重定向
+	originalTokenURL := TokenURL
+	// 我们改为直接构造请求来测试逻辑
+	_ = originalTokenURL
+	_ = client
+
+	// 改用直接构造请求测试 mock server 响应
+	ctx := context.Background()
+	params := url.Values{REDACTED
+	params.Set("client_id", ClientID)
+	params.Set("client_secret", "test-secret")
+	params.Set("code", "auth-code")
+	params.Set("redirect_uri", RedirectURI)
+	params.Set("grant_type", "authorization_code")
+	params.Set("code_verifier", "verifier123")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, strings.NewReader(params.Encode()))
+	if err != nil {
+		t.Fatalf("创建请求失败: %v", err)
+REDACTED
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("状态码不匹配: got %d", resp.StatusCode)
+REDACTED
+
+	var tokenResp TokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		t.Fatalf("解码失败: %v", err)
+REDACTED
+	if tokenResp.AccessToken != "access-tok" {
+		t.Errorf("AccessToken 不匹配: got %s", tokenResp.AccessToken)
+REDACTED
+	if tokenResp.RefreshToken != "refresh-tok" {
+		t.Errorf("RefreshToken 不匹配: got %s", tokenResp.RefreshToken)
+REDACTED
+REDACTED
+
+func TestClient_ExchangeCode_无ClientSecret(t *testing.T) {
+	t.Setenv(AntigravityOAuthClientSecretEnv, "")
+
+	client := NewClient("")
+	_, err := client.ExchangeCode(context.Background(), "code", "verifier")
+	if err == nil {
+		t.Fatal("缺少 client_secret 时应返回错误")
+REDACTED
+	if !strings.Contains(err.Error(), AntigravityOAuthClientSecretEnv) {
+		t.Errorf("错误信息应包含环境变量名: got %s", err.Error())
+REDACTED
+REDACTED
+
+func TestClient_ExchangeCode_服务器返回错误(t *testing.T) {
+	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant"REDACTED`))
+REDACTED))
+	defer server.Close()
+
+	// 直接测试 mock server 的错误响应
+	resp, err := server.Client().Get(server.URL)
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("状态码不匹配: got %d, want 400", resp.StatusCode)
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// Client.RefreshToken (使用 httptest)
+// ---------------------------------------------------------------------------
+
+func TestClient_RefreshToken_MockServer(t *testing.T) {
+	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("请求方法不匹配: got %s", r.Method)
+	REDACTED
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("解析表单失败: %v", err)
+	REDACTED
+		if r.FormValue("grant_type") != "refresh_token" {
+			t.Errorf("grant_type 不匹配: got %s", r.FormValue("grant_type"))
+	REDACTED
+		if r.FormValue("refresh_token") != "old-refresh-tok" {
+			t.Errorf("refresh_token 不匹配: got %s", r.FormValue("refresh_token"))
+	REDACTED
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(TokenResponse{
+			AccessToken: "new-access-tok",
+			ExpiresIn:   3600,
+			TokenType:   "Bearer",
+	REDACTED)
+REDACTED))
+	defer server.Close()
+
+	ctx := context.Background()
+	params := url.Values{REDACTED
+	params.Set("client_id", ClientID)
+	params.Set("client_secret", "test-secret")
+	params.Set("refresh_token", "old-refresh-tok")
+	params.Set("grant_type", "refresh_token")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, strings.NewReader(params.Encode()))
+	if err != nil {
+		t.Fatalf("创建请求失败: %v", err)
+REDACTED
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("状态码不匹配: got %d", resp.StatusCode)
+REDACTED
+
+	var tokenResp TokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		t.Fatalf("解码失败: %v", err)
+REDACTED
+	if tokenResp.AccessToken != "new-access-tok" {
+		t.Errorf("AccessToken 不匹配: got %s", tokenResp.AccessToken)
+REDACTED
+REDACTED
+
+func TestClient_RefreshToken_无ClientSecret(t *testing.T) {
+	t.Setenv(AntigravityOAuthClientSecretEnv, "")
+
+	client := NewClient("")
+	_, err := client.RefreshToken(context.Background(), "refresh-tok")
+	if err == nil {
+		t.Fatal("缺少 client_secret 时应返回错误")
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// Client.GetUserInfo (使用 httptest)
+// ---------------------------------------------------------------------------
+
+func TestClient_GetUserInfo_成功(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("请求方法不匹配: got %s", r.Method)
+	REDACTED
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer test-access-token" {
+			t.Errorf("Authorization 不匹配: got %s", auth)
+	REDACTED
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(UserInfo{
+			Email:      "user@example.com",
+			Name:       "Test User",
+			GivenName:  "Test",
+			FamilyName: "User",
+			Picture:    "https://example.com/photo.jpg",
+	REDACTED)
+REDACTED))
+	defer server.Close()
+
+	// 直接通过 mock server 测试 GetUserInfo 的行为逻辑
+	ctx := context.Background()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatalf("创建请求失败: %v", err)
+REDACTED
+	req.Header.Set("Authorization", "Bearer test-access-token")
+
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("状态码不匹配: got %d", resp.StatusCode)
+REDACTED
+
+	var userInfo UserInfo
+	if err := json.NewDecoder(resp.Body).Decode(&userInfo); err != nil {
+		t.Fatalf("解码失败: %v", err)
+REDACTED
+	if userInfo.Email != "user@example.com" {
+		t.Errorf("Email 不匹配: got %s", userInfo.Email)
+REDACTED
+	if userInfo.Name != "Test User" {
+		t.Errorf("Name 不匹配: got %s", userInfo.Name)
+REDACTED
+REDACTED
+
+func TestClient_GetUserInfo_服务器返回错误(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid_token"REDACTED`))
+REDACTED))
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL)
+	if err != nil {
+		t.Fatalf("请求失败: %v", err)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("状态码不匹配: got %d, want 401", resp.StatusCode)
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// TokenResponse / UserInfo JSON 序列化
+// ---------------------------------------------------------------------------
+
+func TestTokenResponse_JSON序列化(t *testing.T) {
+	jsonData := `{"access_token":"at","expires_in":3600,"token_type":"Bearer","scope":"openid","refresh_token":"rt"REDACTED`
+	var resp TokenResponse
+	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
+		t.Fatalf("反序列化失败: %v", err)
+REDACTED
+	if resp.AccessToken != "at" {
+		t.Errorf("AccessToken 不匹配: got %s", resp.AccessToken)
+REDACTED
+	if resp.ExpiresIn != 3600 {
+		t.Errorf("ExpiresIn 不匹配: got %d", resp.ExpiresIn)
+REDACTED
+	if resp.RefreshToken != "rt" {
+		t.Errorf("RefreshToken 不匹配: got %s", resp.RefreshToken)
+REDACTED
+REDACTED
+
+func TestUserInfo_JSON序列化(t *testing.T) {
+	jsonData := `{"email":"a@b.com","name":"Alice"REDACTED`
+	var info UserInfo
+	if err := json.Unmarshal([]byte(jsonData), &info); err != nil {
+		t.Fatalf("反序列化失败: %v", err)
+REDACTED
+	if info.Email != "a@b.com" {
+		t.Errorf("Email 不匹配: got %s", info.Email)
+REDACTED
+	if info.Name != "Alice" {
+		t.Errorf("Name 不匹配: got %s", info.Name)
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// LoadCodeAssistResponse JSON 序列化
+// ---------------------------------------------------------------------------
+
+func TestLoadCodeAssistResponse_完整JSON(t *testing.T) {
+	jsonData := `{
+		"cloudaicompanionProject": "proj-123",
+		"currentTier": "free-tier",
+		"paidTier": {"id": "g1-pro-tier", "name": "Pro"REDACTED,
+		"ineligibleTiers": [{"tier": {"id": "g1-ultra-tier"REDACTED, "reasonCode": "INELIGIBLE_ACCOUNT"REDACTED]
+REDACTED`
+	var resp LoadCodeAssistResponse
+	if err := json.Unmarshal([]byte(jsonData), &resp); err != nil {
+		t.Fatalf("反序列化失败: %v", err)
+REDACTED
+	if resp.CloudAICompanionProject != "proj-123" {
+		t.Errorf("CloudAICompanionProject 不匹配: got %s", resp.CloudAICompanionProject)
+REDACTED
+	if resp.GetTier() != "g1-pro-tier" {
+		t.Errorf("GetTier 不匹配: got %s", resp.GetTier())
+REDACTED
+	if len(resp.IneligibleTiers) != 1 {
+		t.Fatalf("IneligibleTiers 数量不匹配: got %d", len(resp.IneligibleTiers))
+REDACTED
+	if resp.IneligibleTiers[0].ReasonCode != "INELIGIBLE_ACCOUNT" {
+		t.Errorf("ReasonCode 不匹配: got %s", resp.IneligibleTiers[0].ReasonCode)
+REDACTED
+REDACTED
+
+// ===========================================================================
+// 以下为新增测试：真正调用 Client 方法，通过 RoundTripper 拦截 HTTP 请求
+// ===========================================================================
+
+// redirectRoundTripper 将请求中特定前缀的 URL 重定向到 httptest server
+type redirectRoundTripper struct {
+	// 原始 URL 前缀 -> 替换目标 URL 的映射
+	redirects map[string]string
+	transport http.RoundTripper
+REDACTED
+
+func (rt *redirectRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	originalURL := req.URL.String()
+	for prefix, target := range rt.redirects {
+		if strings.HasPrefix(originalURL, prefix) {
+			newURL := target + strings.TrimPrefix(originalURL, prefix)
+			parsed, err := url.Parse(newURL)
+			if err != nil {
+				return nil, err
+		REDACTED
+			req.URL = parsed
+			break
+	REDACTED
+REDACTED
+	if rt.transport == nil {
+		return http.DefaultTransport.RoundTrip(req)
+REDACTED
+	return rt.transport.RoundTrip(req)
+REDACTED
+
+// newTestClientWithRedirect 创建一个 Client，将指定 URL 前缀的请求重定向到 mock server
+func newTestClientWithRedirect(redirects map[string]string) *Client {
+	return &Client{
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &redirectRoundTripper{
+				redirects: redirects,
+		REDACTED,
+	REDACTED,
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// Client.ExchangeCode - 真正调用方法的测试
+// ---------------------------------------------------------------------------
+
+func TestClient_ExchangeCode_Success_RealCall(t *testing.T) {
+	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("请求方法不匹配: got %s, want POST", r.Method)
+	REDACTED
+		if ct := r.Header.Get("Content-Type"); ct != "application/x-www-form-urlencoded" {
+			t.Errorf("Content-Type 不匹配: got %s", ct)
+	REDACTED
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("解析表单失败: %v", err)
+	REDACTED
+		if r.FormValue("client_id") != ClientID {
+			t.Errorf("client_id 不匹配: got %s", r.FormValue("client_id"))
+	REDACTED
+		if r.FormValue("client_secret") != "test-secret" {
+			t.Errorf("client_secret 不匹配: got %s", r.FormValue("client_secret"))
+	REDACTED
+		if r.FormValue("code") != "test-auth-code" {
+			t.Errorf("code 不匹配: got %s", r.FormValue("code"))
+	REDACTED
+		if r.FormValue("code_verifier") != "test-verifier" {
+			t.Errorf("code_verifier 不匹配: got %s", r.FormValue("code_verifier"))
+	REDACTED
+		if r.FormValue("grant_type") != "authorization_code" {
+			t.Errorf("grant_type 不匹配: got %s", r.FormValue("grant_type"))
+	REDACTED
+		if r.FormValue("redirect_uri") != RedirectURI {
+			t.Errorf("redirect_uri 不匹配: got %s", r.FormValue("redirect_uri"))
+	REDACTED
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(TokenResponse{
+			AccessToken:  "new-access-token",
+			ExpiresIn:    3600,
+			TokenType:    "Bearer",
+			Scope:        "openid email",
+			RefreshToken: "new-refresh-token",
+	REDACTED)
+REDACTED))
+	defer server.Close()
+
+	client := newTestClientWithRedirect(map[string]string{
+		TokenURL: server.URL,
+REDACTED)
+
+	tokenResp, err := client.ExchangeCode(context.Background(), "test-auth-code", "test-verifier")
+	if err != nil {
+		t.Fatalf("ExchangeCode 失败: %v", err)
+REDACTED
+	if tokenResp.AccessToken != "new-access-token" {
+		t.Errorf("AccessToken 不匹配: got %s, want new-access-token", tokenResp.AccessToken)
+REDACTED
+	if tokenResp.RefreshToken != "new-refresh-token" {
+		t.Errorf("RefreshToken 不匹配: got %s, want new-refresh-token", tokenResp.RefreshToken)
+REDACTED
+	if tokenResp.ExpiresIn != 3600 {
+		t.Errorf("ExpiresIn 不匹配: got %d, want 3600", tokenResp.ExpiresIn)
+REDACTED
+	if tokenResp.TokenType != "Bearer" {
+		t.Errorf("TokenType 不匹配: got %s, want Bearer", tokenResp.TokenType)
+REDACTED
+	if tokenResp.Scope != "openid email" {
+		t.Errorf("Scope 不匹配: got %s, want openid email", tokenResp.Scope)
+REDACTED
+REDACTED
+
+func TestClient_ExchangeCode_ServerError_RealCall(t *testing.T) {
+	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"code expired"REDACTED`))
+REDACTED))
+	defer server.Close()
+
+	client := newTestClientWithRedirect(map[string]string{
+		TokenURL: server.URL,
+REDACTED)
+
+	_, err := client.ExchangeCode(context.Background(), "expired-code", "verifier")
+	if err == nil {
+		t.Fatal("服务器返回 400 时应返回错误")
+REDACTED
+	if !strings.Contains(err.Error(), "token 交换失败") {
+		t.Errorf("错误信息应包含 'token 交换失败': got %s", err.Error())
+REDACTED
+	if !strings.Contains(err.Error(), "400") {
+		t.Errorf("错误信息应包含状态码 400: got %s", err.Error())
+REDACTED
+REDACTED
+
+func TestClient_ExchangeCode_InvalidJSON_RealCall(t *testing.T) {
+	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{invalid json`))
+REDACTED))
+	defer server.Close()
+
+	client := newTestClientWithRedirect(map[string]string{
+		TokenURL: server.URL,
+REDACTED)
+
+	_, err := client.ExchangeCode(context.Background(), "code", "verifier")
+	if err == nil {
+		t.Fatal("无效 JSON 响应应返回错误")
+REDACTED
+	if !strings.Contains(err.Error(), "token 解析失败") {
+		t.Errorf("错误信息应包含 'token 解析失败': got %s", err.Error())
+REDACTED
+REDACTED
+
+func TestClient_ExchangeCode_ContextCanceled_RealCall(t *testing.T) {
+	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(5 * time.Second) // 模拟慢响应
+		w.WriteHeader(http.StatusOK)
+REDACTED))
+	defer server.Close()
+
+	client := newTestClientWithRedirect(map[string]string{
+		TokenURL: server.URL,
+REDACTED)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // 立即取消
+
+	_, err := client.ExchangeCode(ctx, "code", "verifier")
+	if err == nil {
+		t.Fatal("context 取消时应返回错误")
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// Client.RefreshToken - 真正调用方法的测试
+// ---------------------------------------------------------------------------
+
+func TestClient_RefreshToken_Success_RealCall(t *testing.T) {
+	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("请求方法不匹配: got %s, want POST", r.Method)
+	REDACTED
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("解析表单失败: %v", err)
+	REDACTED
+		if r.FormValue("grant_type") != "refresh_token" {
+			t.Errorf("grant_type 不匹配: got %s", r.FormValue("grant_type"))
+	REDACTED
+		if r.FormValue("refresh_token") != "my-refresh-token" {
+			t.Errorf("refresh_token 不匹配: got %s", r.FormValue("refresh_token"))
+	REDACTED
+		if r.FormValue("client_id") != ClientID {
+			t.Errorf("client_id 不匹配: got %s", r.FormValue("client_id"))
+	REDACTED
+		if r.FormValue("client_secret") != "test-secret" {
+			t.Errorf("client_secret 不匹配: got %s", r.FormValue("client_secret"))
+	REDACTED
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(TokenResponse{
+			AccessToken: "refreshed-access-token",
+			ExpiresIn:   3600,
+			TokenType:   "Bearer",
+	REDACTED)
+REDACTED))
+	defer server.Close()
+
+	client := newTestClientWithRedirect(map[string]string{
+		TokenURL: server.URL,
+REDACTED)
+
+	tokenResp, err := client.RefreshToken(context.Background(), "my-refresh-token")
+	if err != nil {
+		t.Fatalf("RefreshToken 失败: %v", err)
+REDACTED
+	if tokenResp.AccessToken != "refreshed-access-token" {
+		t.Errorf("AccessToken 不匹配: got %s, want refreshed-access-token", tokenResp.AccessToken)
+REDACTED
+	if tokenResp.ExpiresIn != 3600 {
+		t.Errorf("ExpiresIn 不匹配: got %d, want 3600", tokenResp.ExpiresIn)
+REDACTED
+REDACTED
+
+func TestClient_RefreshToken_ServerError_RealCall(t *testing.T) {
+	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"token revoked"REDACTED`))
+REDACTED))
+	defer server.Close()
+
+	client := newTestClientWithRedirect(map[string]string{
+		TokenURL: server.URL,
+REDACTED)
+
+	_, err := client.RefreshToken(context.Background(), "revoked-token")
+	if err == nil {
+		t.Fatal("服务器返回 401 时应返回错误")
+REDACTED
+	if !strings.Contains(err.Error(), "token 刷新失败") {
+		t.Errorf("错误信息应包含 'token 刷新失败': got %s", err.Error())
+REDACTED
+REDACTED
+
+func TestClient_RefreshToken_InvalidJSON_RealCall(t *testing.T) {
+	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`not-json`))
+REDACTED))
+	defer server.Close()
+
+	client := newTestClientWithRedirect(map[string]string{
+		TokenURL: server.URL,
+REDACTED)
+
+	_, err := client.RefreshToken(context.Background(), "refresh-tok")
+	if err == nil {
+		t.Fatal("无效 JSON 响应应返回错误")
+REDACTED
+	if !strings.Contains(err.Error(), "token 解析失败") {
+		t.Errorf("错误信息应包含 'token 解析失败': got %s", err.Error())
+REDACTED
+REDACTED
+
+func TestClient_RefreshToken_ContextCanceled_RealCall(t *testing.T) {
+	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(5 * time.Second)
+		w.WriteHeader(http.StatusOK)
+REDACTED))
+	defer server.Close()
+
+	client := newTestClientWithRedirect(map[string]string{
+		TokenURL: server.URL,
+REDACTED)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := client.RefreshToken(ctx, "refresh-tok")
+	if err == nil {
+		t.Fatal("context 取消时应返回错误")
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// Client.GetUserInfo - 真正调用方法的测试
+// ---------------------------------------------------------------------------
+
+func TestClient_GetUserInfo_Success_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("请求方法不匹配: got %s, want GET", r.Method)
+	REDACTED
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer user-access-token" {
+			t.Errorf("Authorization 不匹配: got %s", auth)
+	REDACTED
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(UserInfo{
+			Email:      "test@example.com",
+			Name:       "Test User",
+			GivenName:  "Test",
+			FamilyName: "User",
+			Picture:    "https://example.com/avatar.jpg",
+	REDACTED)
+REDACTED))
+	defer server.Close()
+
+	client := newTestClientWithRedirect(map[string]string{
+		UserInfoURL: server.URL,
+REDACTED)
+
+	userInfo, err := client.GetUserInfo(context.Background(), "user-access-token")
+	if err != nil {
+		t.Fatalf("GetUserInfo 失败: %v", err)
+REDACTED
+	if userInfo.Email != "test@example.com" {
+		t.Errorf("Email 不匹配: got %s, want test@example.com", userInfo.Email)
+REDACTED
+	if userInfo.Name != "Test User" {
+		t.Errorf("Name 不匹配: got %s, want Test User", userInfo.Name)
+REDACTED
+	if userInfo.GivenName != "Test" {
+		t.Errorf("GivenName 不匹配: got %s, want Test", userInfo.GivenName)
+REDACTED
+	if userInfo.FamilyName != "User" {
+		t.Errorf("FamilyName 不匹配: got %s, want User", userInfo.FamilyName)
+REDACTED
+	if userInfo.Picture != "https://example.com/avatar.jpg" {
+		t.Errorf("Picture 不匹配: got %s", userInfo.Picture)
+REDACTED
+REDACTED
+
+func TestClient_GetUserInfo_Unauthorized_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid_token"REDACTED`))
+REDACTED))
+	defer server.Close()
+
+	client := newTestClientWithRedirect(map[string]string{
+		UserInfoURL: server.URL,
+REDACTED)
+
+	_, err := client.GetUserInfo(context.Background(), "bad-token")
+	if err == nil {
+		t.Fatal("服务器返回 401 时应返回错误")
+REDACTED
+	if !strings.Contains(err.Error(), "获取用户信息失败") {
+		t.Errorf("错误信息应包含 '获取用户信息失败': got %s", err.Error())
+REDACTED
+	if !strings.Contains(err.Error(), "401") {
+		t.Errorf("错误信息应包含状态码 401: got %s", err.Error())
+REDACTED
+REDACTED
+
+func TestClient_GetUserInfo_InvalidJSON_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{broken`))
+REDACTED))
+	defer server.Close()
+
+	client := newTestClientWithRedirect(map[string]string{
+		UserInfoURL: server.URL,
+REDACTED)
+
+	_, err := client.GetUserInfo(context.Background(), "token")
+	if err == nil {
+		t.Fatal("无效 JSON 响应应返回错误")
+REDACTED
+	if !strings.Contains(err.Error(), "用户信息解析失败") {
+		t.Errorf("错误信息应包含 '用户信息解析失败': got %s", err.Error())
+REDACTED
+REDACTED
+
+func TestClient_GetUserInfo_ContextCanceled_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(5 * time.Second)
+		w.WriteHeader(http.StatusOK)
+REDACTED))
+	defer server.Close()
+
+	client := newTestClientWithRedirect(map[string]string{
+		UserInfoURL: server.URL,
+REDACTED)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := client.GetUserInfo(ctx, "token")
+	if err == nil {
+		t.Fatal("context 取消时应返回错误")
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// Client.LoadCodeAssist - 真正调用方法的测试
+// ---------------------------------------------------------------------------
+
+// withMockBaseURLs 临时替换 BaseURLs，测试结束后恢复
+func withMockBaseURLs(t *testing.T, urls []string) {
+REDACTED
+	origBaseURLs := BaseURLs
+	origBaseURL := BaseURL
+	BaseURLs = urls
+	if len(urls) > 0 {
+		BaseURL = urls[0]
+REDACTED
+	t.Cleanup(func() {
+		BaseURLs = origBaseURLs
+		BaseURL = origBaseURL
+REDACTED)
+REDACTED
+
+func TestClient_LoadCodeAssist_Success_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("请求方法不匹配: got %s, want POST", r.Method)
+	REDACTED
+		if !strings.HasSuffix(r.URL.Path, "/v1internal:loadCodeAssist") {
+			t.Errorf("URL 路径不匹配: got %s", r.URL.Path)
+	REDACTED
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer test-token" {
+			t.Errorf("Authorization 不匹配: got %s", auth)
+	REDACTED
+		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Content-Type 不匹配: got %s", ct)
+	REDACTED
+		if ua := r.Header.Get("User-Agent"); ua != UserAgent {
+			t.Errorf("User-Agent 不匹配: got %s", ua)
+	REDACTED
+
+		// 验证请求体
+		var reqBody LoadCodeAssistRequest
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("解析请求体失败: %v", err)
+	REDACTED
+		if reqBody.Metadata.IDEType != "ANTIGRAVITY" {
+			t.Errorf("IDEType 不匹配: got %s, want ANTIGRAVITY", reqBody.Metadata.IDEType)
+	REDACTED
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"cloudaicompanionProject": "test-project-123",
+			"currentTier": {"id": "free-tier", "name": "Free"REDACTED,
+			"paidTier": {"id": "g1-pro-tier", "name": "Pro", "description": "Pro plan"REDACTED
+	REDACTED`))
+REDACTED))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URLREDACTED)
+
+	client := NewClient("")
+	resp, rawResp, err := client.LoadCodeAssist(context.Background(), "test-token")
+	if err != nil {
+		t.Fatalf("LoadCodeAssist 失败: %v", err)
+REDACTED
+	if resp.CloudAICompanionProject != "test-project-123" {
+		t.Errorf("CloudAICompanionProject 不匹配: got %s", resp.CloudAICompanionProject)
+REDACTED
+	if resp.GetTier() != "g1-pro-tier" {
+		t.Errorf("GetTier 不匹配: got %s, want g1-pro-tier", resp.GetTier())
+REDACTED
+	if resp.CurrentTier == nil || resp.CurrentTier.ID != "free-tier" {
+		t.Errorf("CurrentTier 不匹配: got %+v", resp.CurrentTier)
+REDACTED
+	if resp.PaidTier == nil || resp.PaidTier.ID != "g1-pro-tier" {
+		t.Errorf("PaidTier 不匹配: got %+v", resp.PaidTier)
+REDACTED
+	// 验证原始 JSON map
+	if rawResp == nil {
+		t.Fatal("rawResp 不应为 nil")
+REDACTED
+	if rawResp["cloudaicompanionProject"] != "test-project-123" {
+		t.Errorf("rawResp cloudaicompanionProject 不匹配: got %v", rawResp["cloudaicompanionProject"])
+REDACTED
+REDACTED
+
+func TestClient_LoadCodeAssist_HTTPError_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"forbidden"REDACTED`))
+REDACTED))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URLREDACTED)
+
+	client := NewClient("")
+	_, _, err := client.LoadCodeAssist(context.Background(), "bad-token")
+	if err == nil {
+		t.Fatal("服务器返回 403 时应返回错误")
+REDACTED
+	if !strings.Contains(err.Error(), "loadCodeAssist 失败") {
+		t.Errorf("错误信息应包含 'loadCodeAssist 失败': got %s", err.Error())
+REDACTED
+	if !strings.Contains(err.Error(), "403") {
+		t.Errorf("错误信息应包含状态码 403: got %s", err.Error())
+REDACTED
+REDACTED
+
+func TestClient_LoadCodeAssist_InvalidJSON_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{not valid json!!!`))
+REDACTED))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URLREDACTED)
+
+	client := NewClient("")
+	_, _, err := client.LoadCodeAssist(context.Background(), "token")
+	if err == nil {
+		t.Fatal("无效 JSON 响应应返回错误")
+REDACTED
+	if !strings.Contains(err.Error(), "响应解析失败") {
+		t.Errorf("错误信息应包含 '响应解析失败': got %s", err.Error())
+REDACTED
+REDACTED
+
+func TestClient_LoadCodeAssist_URLFallback_RealCall(t *testing.T) {
+	// 第一个 server 返回 500，第二个 server 返回成功
+	callCount := 0
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal"REDACTED`))
+REDACTED))
+	defer server1.Close()
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"cloudaicompanionProject": "fallback-project",
+			"currentTier": {"id": "free-tier", "name": "Free"REDACTED
+	REDACTED`))
+REDACTED))
+	defer server2.Close()
+
+	withMockBaseURLs(t, []string{server1.URL, server2.URLREDACTED)
+
+	client := NewClient("")
+	resp, _, err := client.LoadCodeAssist(context.Background(), "token")
+	if err != nil {
+		t.Fatalf("LoadCodeAssist 应在 fallback 后成功: %v", err)
+REDACTED
+	if resp.CloudAICompanionProject != "fallback-project" {
+		t.Errorf("CloudAICompanionProject 不匹配: got %s", resp.CloudAICompanionProject)
+REDACTED
+	if callCount != 2 {
+		t.Errorf("应该调用了 2 个 server，实际调用 %d 次", callCount)
+REDACTED
+REDACTED
+
+func TestClient_LoadCodeAssist_AllURLsFail_RealCall(t *testing.T) {
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":"unavailable"REDACTED`))
+REDACTED))
+	defer server1.Close()
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":"bad_gateway"REDACTED`))
+REDACTED))
+	defer server2.Close()
+
+	withMockBaseURLs(t, []string{server1.URL, server2.URLREDACTED)
+
+	client := NewClient("")
+	_, _, err := client.LoadCodeAssist(context.Background(), "token")
+	if err == nil {
+		t.Fatal("所有 URL 都失败时应返回错误")
+REDACTED
+REDACTED
+
+func TestClient_LoadCodeAssist_ContextCanceled_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(5 * time.Second)
+		w.WriteHeader(http.StatusOK)
+REDACTED))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URLREDACTED)
+
+	client := NewClient("")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := client.LoadCodeAssist(ctx, "token")
+	if err == nil {
+		t.Fatal("context 取消时应返回错误")
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// Client.FetchAvailableModels - 真正调用方法的测试
+// ---------------------------------------------------------------------------
+
+func TestClient_FetchAvailableModels_Success_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("请求方法不匹配: got %s, want POST", r.Method)
+	REDACTED
+		if !strings.HasSuffix(r.URL.Path, "/v1internal:fetchAvailableModels") {
+			t.Errorf("URL 路径不匹配: got %s", r.URL.Path)
+	REDACTED
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer test-token" {
+			t.Errorf("Authorization 不匹配: got %s", auth)
+	REDACTED
+		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Content-Type 不匹配: got %s", ct)
+	REDACTED
+		if ua := r.Header.Get("User-Agent"); ua != UserAgent {
+			t.Errorf("User-Agent 不匹配: got %s", ua)
+	REDACTED
+
+		// 验证请求体
+		var reqBody FetchAvailableModelsRequest
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Fatalf("解析请求体失败: %v", err)
+	REDACTED
+		if reqBody.Project != "project-abc" {
+			t.Errorf("Project 不匹配: got %s, want project-abc", reqBody.Project)
+	REDACTED
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"models": {
+				"gemini-2.0-flash": {
+					"quotaInfo": {
+						"remainingFraction": 0.85,
+						"resetTime": "2025-01-01T00:00:00Z"
+				REDACTED
+			REDACTED,
+				"gemini-2.5-pro": {
+					"quotaInfo": {
+						"remainingFraction": 0.5
+				REDACTED
+			REDACTED
+		REDACTED
+	REDACTED`))
+REDACTED))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URLREDACTED)
+
+	client := NewClient("")
+	resp, rawResp, err := client.FetchAvailableModels(context.Background(), "test-token", "project-abc")
+	if err != nil {
+		t.Fatalf("FetchAvailableModels 失败: %v", err)
+REDACTED
+	if resp.Models == nil {
+		t.Fatal("Models 不应为 nil")
+REDACTED
+	if len(resp.Models) != 2 {
+		t.Errorf("Models 数量不匹配: got %d, want 2", len(resp.Models))
+REDACTED
+
+	flashModel, ok := resp.Models["gemini-2.0-flash"]
+	if !ok {
+		t.Fatal("缺少 gemini-2.0-flash 模型")
+REDACTED
+	if flashModel.QuotaInfo == nil {
+		t.Fatal("gemini-2.0-flash QuotaInfo 不应为 nil")
+REDACTED
+	if flashModel.QuotaInfo.RemainingFraction != 0.85 {
+		t.Errorf("RemainingFraction 不匹配: got %f, want 0.85", flashModel.QuotaInfo.RemainingFraction)
+REDACTED
+	if flashModel.QuotaInfo.ResetTime != "2025-01-01T00:00:00Z" {
+		t.Errorf("ResetTime 不匹配: got %s", flashModel.QuotaInfo.ResetTime)
+REDACTED
+
+	proModel, ok := resp.Models["gemini-2.5-pro"]
+	if !ok {
+		t.Fatal("缺少 gemini-2.5-pro 模型")
+REDACTED
+	if proModel.QuotaInfo == nil {
+		t.Fatal("gemini-2.5-pro QuotaInfo 不应为 nil")
+REDACTED
+	if proModel.QuotaInfo.RemainingFraction != 0.5 {
+		t.Errorf("RemainingFraction 不匹配: got %f, want 0.5", proModel.QuotaInfo.RemainingFraction)
+REDACTED
+
+	// 验证原始 JSON map
+	if rawResp == nil {
+		t.Fatal("rawResp 不应为 nil")
+REDACTED
+	if rawResp["models"] == nil {
+		t.Error("rawResp models 不应为 nil")
+REDACTED
+REDACTED
+
+func TestClient_FetchAvailableModels_HTTPError_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"forbidden"REDACTED`))
+REDACTED))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URLREDACTED)
+
+	client := NewClient("")
+	_, _, err := client.FetchAvailableModels(context.Background(), "bad-token", "proj")
+	if err == nil {
+		t.Fatal("服务器返回 403 时应返回错误")
+REDACTED
+	if !strings.Contains(err.Error(), "fetchAvailableModels 失败") {
+		t.Errorf("错误信息应包含 'fetchAvailableModels 失败': got %s", err.Error())
+REDACTED
+REDACTED
+
+func TestClient_FetchAvailableModels_InvalidJSON_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<<<not json>>>`))
+REDACTED))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URLREDACTED)
+
+	client := NewClient("")
+	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	if err == nil {
+		t.Fatal("无效 JSON 响应应返回错误")
+REDACTED
+	if !strings.Contains(err.Error(), "响应解析失败") {
+		t.Errorf("错误信息应包含 '响应解析失败': got %s", err.Error())
+REDACTED
+REDACTED
+
+func TestClient_FetchAvailableModels_URLFallback_RealCall(t *testing.T) {
+	callCount := 0
+	// 第一个 server 返回 429，第二个 server 返回成功
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":"rate_limited"REDACTED`))
+REDACTED))
+	defer server1.Close()
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"models": {"model-a": {REDACTEDREDACTEDREDACTED`))
+REDACTED))
+	defer server2.Close()
+
+	withMockBaseURLs(t, []string{server1.URL, server2.URLREDACTED)
+
+	client := NewClient("")
+	resp, _, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	if err != nil {
+		t.Fatalf("FetchAvailableModels 应在 fallback 后成功: %v", err)
+REDACTED
+	if _, ok := resp.Models["model-a"]; !ok {
+		t.Error("应返回 fallback server 的模型")
+REDACTED
+	if callCount != 2 {
+		t.Errorf("应该调用了 2 个 server，实际调用 %d 次", callCount)
+REDACTED
+REDACTED
+
+func TestClient_FetchAvailableModels_AllURLsFail_RealCall(t *testing.T) {
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`not found`))
+REDACTED))
+	defer server1.Close()
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`internal error`))
+REDACTED))
+	defer server2.Close()
+
+	withMockBaseURLs(t, []string{server1.URL, server2.URLREDACTED)
+
+	client := NewClient("")
+	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	if err == nil {
+		t.Fatal("所有 URL 都失败时应返回错误")
+REDACTED
+REDACTED
+
+func TestClient_FetchAvailableModels_ContextCanceled_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(5 * time.Second)
+		w.WriteHeader(http.StatusOK)
+REDACTED))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URLREDACTED)
+
+	client := NewClient("")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := client.FetchAvailableModels(ctx, "token", "proj")
+	if err == nil {
+		t.Fatal("context 取消时应返回错误")
+REDACTED
+REDACTED
+
+func TestClient_FetchAvailableModels_EmptyModels_RealCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"models": {REDACTEDREDACTED`))
+REDACTED))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URLREDACTED)
+
+	client := NewClient("")
+	resp, rawResp, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	if err != nil {
+		t.Fatalf("FetchAvailableModels 失败: %v", err)
+REDACTED
+	if resp.Models == nil {
+		t.Fatal("Models 不应为 nil")
+REDACTED
+	if len(resp.Models) != 0 {
+		t.Errorf("Models 应为空: got %d", len(resp.Models))
+REDACTED
+	if rawResp == nil {
+		t.Fatal("rawResp 不应为 nil")
+REDACTED
+REDACTED
+
+// ---------------------------------------------------------------------------
+// LoadCodeAssist 和 FetchAvailableModels 的 408 fallback 测试
+// ---------------------------------------------------------------------------
+
+func TestClient_LoadCodeAssist_408Fallback_RealCall(t *testing.T) {
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusRequestTimeout)
+		_, _ = w.Write([]byte(`timeout`))
+REDACTED))
+	defer server1.Close()
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"cloudaicompanionProject":"p2","currentTier":"free-tier"REDACTED`))
+REDACTED))
+	defer server2.Close()
+
+	withMockBaseURLs(t, []string{server1.URL, server2.URLREDACTED)
+
+	client := NewClient("")
+	resp, _, err := client.LoadCodeAssist(context.Background(), "token")
+	if err != nil {
+		t.Fatalf("LoadCodeAssist 应在 408 fallback 后成功: %v", err)
+REDACTED
+	if resp.CloudAICompanionProject != "p2" {
+		t.Errorf("CloudAICompanionProject 不匹配: got %s", resp.CloudAICompanionProject)
+REDACTED
+REDACTED
+
+func TestClient_FetchAvailableModels_404Fallback_RealCall(t *testing.T) {
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`not found`))
+REDACTED))
+	defer server1.Close()
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"models":{"m1":{"quotaInfo":{"remainingFraction":1.0REDACTEDREDACTEDREDACTEDREDACTED`))
+REDACTED))
+	defer server2.Close()
+
+	withMockBaseURLs(t, []string{server1.URL, server2.URLREDACTED)
+
+	client := NewClient("")
+	resp, _, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	if err != nil {
+		t.Fatalf("FetchAvailableModels 应在 404 fallback 后成功: %v", err)
+REDACTED
+	if _, ok := resp.Models["m1"]; !ok {
+		t.Error("应返回 fallback server 的模型 m1")
+REDACTED
+REDACTED
 
 func TestExtractProjectIDFromOnboardResponse(t *testing.T) {
 	t.Parallel()

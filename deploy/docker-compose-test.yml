@@ -33,7 +33,7 @@ services:
       # Data persistence (config.yaml will be auto-generated here)
       - sub2api_data:/app/data
       # Mount custom config.yaml (optional, overrides auto-generated config)
-      - ./config.yaml:/app/data/config.yaml:ro
+      # - ./config.yaml:/app/data/config.yaml:ro
     environment:
       # =======================================================================
       # Auto Setup (REQUIRED for Docker deployment)
@@ -57,6 +57,10 @@ services:
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is requiredREDACTED
       - DATABASE_DBNAME=${POSTGRES_DB:-sub2apiREDACTED
       - DATABASE_SSLMODE=disable
+      - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50REDACTED
+      - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-10REDACTED
+      - DATABASE_CONN_MAX_LIFETIME_MINUTES=${DATABASE_CONN_MAX_LIFETIME_MINUTES:-30REDACTED
+      - DATABASE_CONN_MAX_IDLE_TIME_MINUTES=${DATABASE_CONN_MAX_IDLE_TIME_MINUTES:-5REDACTED
 
       # =======================================================================
       # Redis Configuration
@@ -65,6 +69,8 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-REDACTED
       - REDIS_DB=${REDIS_DB:-0REDACTED
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-1024REDACTED
+      - REDIS_MIN_IDLE_CONNS=${REDIS_MIN_IDLE_CONNS:-10REDACTED
 
       # =======================================================================
       # Admin Account (auto-created on first run)
@@ -97,6 +103,11 @@ services:
       - GEMINI_OAUTH_CLIENT_SECRET=${GEMINI_OAUTH_CLIENT_SECRET:-REDACTED
       - GEMINI_OAUTH_SCOPES=${GEMINI_OAUTH_SCOPES:-REDACTED
       - GEMINI_QUOTA_POLICY=${GEMINI_QUOTA_POLICY:-REDACTED
+
+      # Built-in OAuth client secrets (optional)
+      # SECURITY: This repo does not embed third-party client_secret.
+      - GEMINI_CLI_OAUTH_CLIENT_SECRET=${GEMINI_CLI_OAUTH_CLIENT_SECRET:-REDACTED
+      - ANTIGRAVITY_OAUTH_CLIENT_SECRET=${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-REDACTED
 
       # =======================================================================
       # Security Configuration (URL Allowlist)
@@ -131,6 +142,10 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
+      # postgres:18-alpine 默认 PGDATA=/var/lib/postgresql/18/docker（位于镜像声明的匿名卷 /var/lib/postgresql 内）。
+      # 若不显式设置 PGDATA，则即使挂载了 postgres_data 到 /var/lib/postgresql/data，数据也不会落盘到该命名卷，
+      # docker compose down/up 后会触发 initdb 重新初始化，导致用户/密码等数据丢失。
+      - PGDATA=/var/lib/postgresql/data
       - POSTGRES_USER=${POSTGRES_USER:-sub2apiREDACTED
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is requiredREDACTED
       - POSTGRES_DB=${POSTGRES_DB:-sub2apiREDACTED
@@ -150,7 +165,7 @@ services:
   # Redis Cache
   # ===========================================================================
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: sub2api-redis
     restart: unless-stopped
     ulimits:

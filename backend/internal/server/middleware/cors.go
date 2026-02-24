@@ -50,6 +50,19 @@ REDACTED
 	REDACTED
 		allowedSet[origin] = struct{REDACTED{REDACTED
 REDACTED
+	allowHeaders := []string{
+		"Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization",
+		"accept", "origin", "Cache-Control", "X-Requested-With", "X-API-Key",
+REDACTED
+	// OpenAI Node SDK 会发送 x-stainless-* 请求头，需在 CORS 中显式放行。
+	openAIProperties := []string{
+		"lang", "package-version", "os", "arch", "retry-count", "runtime",
+		"runtime-version", "async", "helper-method", "poll-helper", "custom-poll-interval", "timeout",
+REDACTED
+	for _, prop := range openAIProperties {
+		allowHeaders = append(allowHeaders, "x-stainless-"+prop)
+REDACTED
+	allowHeadersValue := strings.Join(allowHeaders, ", ")
 
 	return func(c *gin.Context) {
 		origin := strings.TrimSpace(c.GetHeader("Origin"))
@@ -68,19 +81,11 @@ REDACTED
 			if allowCredentials {
 				c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		REDACTED
+			c.Writer.Header().Set("Access-Control-Allow-Headers", allowHeadersValue)
+			c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
+			c.Writer.Header().Set("Access-Control-Expose-Headers", "ETag")
+			c.Writer.Header().Set("Access-Control-Max-Age", "86400")
 	REDACTED
-
-		allowHeaders := []string{"Content-Type", "Content-Length", "Accept-Encoding", "X-CSRF-Token", "Authorization", "accept", "origin", "Cache-Control", "X-Requested-With", "X-API-Key"REDACTED
-
-		// openai node sdk
-		openAIProperties := []string{"lang", "package-version", "os", "arch", "retry-count", "runtime", "runtime-version", "async", "helper-method", "poll-helper", "custom-poll-interval", "timeout"REDACTED
-		for _, prop := range openAIProperties {
-			allowHeaders = append(allowHeaders, "x-stainless-"+prop)
-	REDACTED
-
-		c.Writer.Header().Set("Access-Control-Allow-Headers", strings.Join(allowHeaders, ", "))
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
-
 		// 处理预检请求
 		if c.Request.Method == http.MethodOptions {
 			if originAllowed {

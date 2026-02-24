@@ -363,6 +363,12 @@ default:
   rate_multiplier: 1.0
 ```
 
+### Sora Status (Temporarily Unavailable)
+
+> ⚠️ Sora-related features are temporarily unavailable due to technical issues in upstream integration and media delivery.
+> Please do not rely on Sora in production at this time.
+> Existing `gateway.sora_*` configuration keys are reserved and may not take effect until these issues are resolved.
+
 Additional security-related options are available in `config.yaml`:
 
 - `cors.allowed_origins` for CORS allowlist

@@ -62,6 +62,10 @@ services:
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is requiredREDACTED
       - DATABASE_DBNAME=${POSTGRES_DB:-sub2apiREDACTED
       - DATABASE_SSLMODE=disable
+      - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50REDACTED
+      - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-10REDACTED
+      - DATABASE_CONN_MAX_LIFETIME_MINUTES=${DATABASE_CONN_MAX_LIFETIME_MINUTES:-30REDACTED
+      - DATABASE_CONN_MAX_IDLE_TIME_MINUTES=${DATABASE_CONN_MAX_IDLE_TIME_MINUTES:-5REDACTED
 
       # =======================================================================
       # Redis Configuration
@@ -70,6 +74,8 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-REDACTED
       - REDIS_DB=${REDIS_DB:-0REDACTED
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-1024REDACTED
+      - REDIS_MIN_IDLE_CONNS=${REDIS_MIN_IDLE_CONNS:-10REDACTED
       - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-falseREDACTED
 
       # =======================================================================
@@ -116,6 +122,11 @@ services:
       - GEMINI_OAUTH_CLIENT_SECRET=${GEMINI_OAUTH_CLIENT_SECRET:-REDACTED
       - GEMINI_OAUTH_SCOPES=${GEMINI_OAUTH_SCOPES:-REDACTED
       - GEMINI_QUOTA_POLICY=${GEMINI_QUOTA_POLICY:-REDACTED
+
+      # Built-in OAuth client secrets (optional)
+      # SECURITY: This repo does not embed third-party client_secret.
+      - GEMINI_CLI_OAUTH_CLIENT_SECRET=${GEMINI_CLI_OAUTH_CLIENT_SECRET:-REDACTED
+      - ANTIGRAVITY_OAUTH_CLIENT_SECRET=${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-REDACTED
 
       # =======================================================================
       # Security Configuration (URL Allowlist)

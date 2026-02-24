@@ -393,6 +393,20 @@ REDACTED
 	return _c
 REDACTED
 
+// SetMediaType sets the "media_type" field.
+func (_c *UsageLogCreate) SetMediaType(v string) *UsageLogCreate {
+	_c.mutation.SetMediaType(v)
+	return _c
+REDACTED
+
+// SetNillableMediaType sets the "media_type" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableMediaType(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetMediaType(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
 func (_c *UsageLogCreate) SetCacheTTLOverridden(v bool) *UsageLogCreate {
 	_c.mutation.SetCacheTTLOverridden(v)
@@ -645,6 +659,11 @@ REDACTED
 			return &ValidationError{Name: "image_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size": %w`, err)REDACTED
 	REDACTED
 REDACTED
+	if v, ok := _c.mutation.MediaType(); ok {
+		if err := usagelog.MediaTypeValidator(v); err != nil {
+			return &ValidationError{Name: "media_type", err: fmt.Errorf(`ent: validator failed for field "UsageLog.media_type": %w`, err)REDACTED
+	REDACTED
+REDACTED
 	if _, ok := _c.mutation.CacheTTLOverridden(); !ok {
 		return &ValidationError{Name: "cache_ttl_overridden", err: errors.New(`ent: missing required field "UsageLog.cache_ttl_overridden"`)REDACTED
 REDACTED
@@ -782,6 +801,10 @@ REDACTED
 	if value, ok := _c.mutation.ImageSize(); ok {
 		_spec.SetField(usagelog.FieldImageSize, field.TypeString, value)
 		_node.ImageSize = &value
+REDACTED
+	if value, ok := _c.mutation.MediaType(); ok {
+		_spec.SetField(usagelog.FieldMediaType, field.TypeString, value)
+		_node.MediaType = &value
 REDACTED
 	if value, ok := _c.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
@@ -1432,6 +1455,24 @@ func (u *UsageLogUpsert) ClearImageSize() *UsageLogUpsert {
 	return u
 REDACTED
 
+// SetMediaType sets the "media_type" field.
+func (u *UsageLogUpsert) SetMediaType(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldMediaType, v)
+	return u
+REDACTED
+
+// UpdateMediaType sets the "media_type" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateMediaType() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldMediaType)
+	return u
+REDACTED
+
+// ClearMediaType clears the value of the "media_type" field.
+func (u *UsageLogUpsert) ClearMediaType() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldMediaType)
+	return u
+REDACTED
+
 // SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
 func (u *UsageLogUpsert) SetCacheTTLOverridden(v bool) *UsageLogUpsert {
 	u.Set(usagelog.FieldCacheTTLOverridden, v)
@@ -2074,6 +2115,27 @@ REDACTED
 func (u *UsageLogUpsertOne) ClearImageSize() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearImageSize()
+REDACTED)
+REDACTED
+
+// SetMediaType sets the "media_type" field.
+func (u *UsageLogUpsertOne) SetMediaType(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetMediaType(v)
+REDACTED)
+REDACTED
+
+// UpdateMediaType sets the "media_type" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateMediaType() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateMediaType()
+REDACTED)
+REDACTED
+
+// ClearMediaType clears the value of the "media_type" field.
+func (u *UsageLogUpsertOne) ClearMediaType() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearMediaType()
 REDACTED)
 REDACTED
 
@@ -2887,6 +2949,27 @@ REDACTED
 func (u *UsageLogUpsertBulk) ClearImageSize() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearImageSize()
+REDACTED)
+REDACTED
+
+// SetMediaType sets the "media_type" field.
+func (u *UsageLogUpsertBulk) SetMediaType(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetMediaType(v)
+REDACTED)
+REDACTED
+
+// UpdateMediaType sets the "media_type" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateMediaType() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateMediaType()
+REDACTED)
+REDACTED
+
+// ClearMediaType clears the value of the "media_type" field.
+func (u *UsageLogUpsertBulk) ClearMediaType() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearMediaType()
 REDACTED)
 REDACTED
 
