@@ -139,6 +139,3 @@ REDACTED
 	require.Nil(t, got.LockedUntil)
 REDACTED
 
-func ptrTime(v time.Time) *time.Time {
-	return &v
-REDACTED
