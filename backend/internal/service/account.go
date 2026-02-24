@@ -372,6 +372,9 @@ REDACTED
 		REDACTED
 	REDACTED
 		if len(result) > 0 {
+			if a.Platform == domain.PlatformAntigravity {
+				ensureAntigravityDefaultPassthrough(result, "gemini-3-flash")
+		REDACTED
 			return result
 	REDACTED
 REDACTED
@@ -380,6 +383,21 @@ REDACTED
 		return domain.DefaultAntigravityModelMapping
 REDACTED
 	return nil
+REDACTED
+
+func ensureAntigravityDefaultPassthrough(mapping map[string]string, model string) {
+	if mapping == nil || model == "" {
+		return
+REDACTED
+	if _, exists := mapping[model]; exists {
+		return
+REDACTED
+	for pattern := range mapping {
+		if matchWildcard(pattern, model) {
+			return
+	REDACTED
+REDACTED
+	mapping[model] = model
 REDACTED
 
 // IsModelSupported 检查模型是否在 model_mapping 中（支持通配符）
