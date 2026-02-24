@@ -766,6 +766,26 @@ export interface UpdateAccountRequest {
   confirm_mixed_channel_risk?: boolean
 REDACTED
 
+export interface CheckMixedChannelRequest {
+  platform: AccountPlatform
+  group_ids: number[]
+  account_id?: number
+REDACTED
+
+export interface MixedChannelWarningDetails {
+  group_id: number
+  group_name: string
+  current_platform: string
+  other_platform: string
+REDACTED
+
+export interface CheckMixedChannelResponse {
+  has_risk: boolean
+  error?: string
+  message?: string
+  details?: MixedChannelWarningDetails
+REDACTED
+
 export interface CreateProxyRequest {
   name: string
   protocol: ProxyProtocol

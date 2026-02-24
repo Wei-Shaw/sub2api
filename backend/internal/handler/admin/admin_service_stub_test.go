@@ -10,19 +10,27 @@ import (
 )
 
 type stubAdminService struct {
-	users           []service.User
-	apiKeys         []service.APIKey
-	groups          []service.Group
-	accounts        []service.Account
-	proxies         []service.Proxy
-	proxyCounts     []service.ProxyWithAccountCount
-	redeems         []service.RedeemCode
-	createdAccounts []*service.CreateAccountInput
-	createdProxies  []*service.CreateProxyInput
-	updatedProxyIDs []int64
-	updatedProxies  []*service.UpdateProxyInput
-	testedProxyIDs  []int64
-	mu              sync.Mutex
+	users            []service.User
+	apiKeys          []service.APIKey
+	groups           []service.Group
+	accounts         []service.Account
+	proxies          []service.Proxy
+	proxyCounts      []service.ProxyWithAccountCount
+	redeems          []service.RedeemCode
+	createdAccounts  []*service.CreateAccountInput
+	createdProxies   []*service.CreateProxyInput
+	updatedProxyIDs  []int64
+	updatedProxies   []*service.UpdateProxyInput
+	testedProxyIDs   []int64
+	createAccountErr error
+	updateAccountErr error
+	checkMixedErr    error
+	lastMixedCheck   struct {
+		accountID int64
+		platform  string
+		groupIDs  []int64
+REDACTED
+	mu sync.Mutex
 REDACTED
 
 func newStubAdminService() *stubAdminService {
@@ -188,11 +196,17 @@ func (s *stubAdminService) CreateAccount(ctx context.Context, input *service.Cre
 	s.mu.Lock()
 	s.createdAccounts = append(s.createdAccounts, input)
 	s.mu.Unlock()
+	if s.createAccountErr != nil {
+		return nil, s.createAccountErr
+REDACTED
 	account := service.Account{ID: 300, Name: input.Name, Status: service.StatusActiveREDACTED
 	return &account, nil
 REDACTED
 
 func (s *stubAdminService) UpdateAccount(ctx context.Context, id int64, input *service.UpdateAccountInput) (*service.Account, error) {
+	if s.updateAccountErr != nil {
+		return nil, s.updateAccountErr
+REDACTED
 	account := service.Account{ID: id, Name: input.Name, Status: service.StatusActiveREDACTED
 	return &account, nil
 REDACTED
@@ -222,6 +236,13 @@ REDACTED
 
 func (s *stubAdminService) BulkUpdateAccounts(ctx context.Context, input *service.BulkUpdateAccountsInput) (*service.BulkUpdateAccountsResult, error) {
 	return &service.BulkUpdateAccountsResult{Success: 1, Failed: 0, SuccessIDs: []int64{1REDACTEDREDACTED, nil
+REDACTED
+
+func (s *stubAdminService) CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error {
+	s.lastMixedCheck.accountID = currentAccountID
+	s.lastMixedCheck.platform = currentAccountPlatform
+	s.lastMixedCheck.groupIDs = append([]int64(nil), groupIDs...)
+	return s.checkMixedErr
 REDACTED
 
 func (s *stubAdminService) ListProxies(ctx context.Context, page, pageSize int, protocol, status, search string) ([]service.Proxy, int64, error) {
