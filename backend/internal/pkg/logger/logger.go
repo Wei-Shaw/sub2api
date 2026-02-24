@@ -351,17 +351,18 @@ REDACTED
 REDACTED
 
 func (s *sinkCore) Check(entry zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
-	if s.Enabled(entry.Level) {
-		return ce.AddCore(entry, s)
+	// Delegate to inner core (tee) so each sub-core's level enabler is respected.
+	// Then add ourselves for sink forwarding only.
+	ce = s.core.Check(entry, ce)
+	if ce != nil {
+		ce = ce.AddCore(entry, s)
 REDACTED
 	return ce
 REDACTED
 
 func (s *sinkCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
-	if err := s.core.Write(entry, fields); err != nil {
-		return err
-REDACTED
-
+	// Only handle sink forwarding — the inner cores write via their own
+	// Write methods (added to CheckedEntry by s.core.Check above).
 	mu.RLock()
 	sink := currentSink
 	mu.RUnlock()
