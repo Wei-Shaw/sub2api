@@ -400,7 +400,9 @@ REDACTED
 // ---------------------------------------------------------------------------
 
 func TestClient_ExchangeCode_成功(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+	old := defaultClientSecret
+	defaultClientSecret = "test-secret"
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 验证请求方法
@@ -493,7 +495,9 @@ REDACTED
 REDACTED
 
 func TestClient_ExchangeCode_无ClientSecret(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "")
+	old := defaultClientSecret
+	defaultClientSecret = ""
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	client := NewClient("")
 	_, err := client.ExchangeCode(context.Background(), "code", "verifier")
@@ -506,7 +510,9 @@ REDACTED
 REDACTED
 
 func TestClient_ExchangeCode_服务器返回错误(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+	old := defaultClientSecret
+	defaultClientSecret = "test-secret"
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -531,7 +537,9 @@ REDACTED
 // ---------------------------------------------------------------------------
 
 func TestClient_RefreshToken_MockServer(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+	old := defaultClientSecret
+	defaultClientSecret = "test-secret"
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -590,7 +598,9 @@ REDACTED
 REDACTED
 
 func TestClient_RefreshToken_无ClientSecret(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "")
+	old := defaultClientSecret
+	defaultClientSecret = ""
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	client := NewClient("")
 	_, err := client.RefreshToken(context.Background(), "refresh-tok")
@@ -784,7 +794,9 @@ REDACTED
 // ---------------------------------------------------------------------------
 
 func TestClient_ExchangeCode_Success_RealCall(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+	old := defaultClientSecret
+	defaultClientSecret = "test-secret"
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -853,7 +865,9 @@ REDACTED
 REDACTED
 
 func TestClient_ExchangeCode_ServerError_RealCall(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+	old := defaultClientSecret
+	defaultClientSecret = "test-secret"
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -878,7 +892,9 @@ REDACTED
 REDACTED
 
 func TestClient_ExchangeCode_InvalidJSON_RealCall(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+	old := defaultClientSecret
+	defaultClientSecret = "test-secret"
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -901,7 +917,9 @@ REDACTED
 REDACTED
 
 func TestClient_ExchangeCode_ContextCanceled_RealCall(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+	old := defaultClientSecret
+	defaultClientSecret = "test-secret"
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(5 * time.Second) // 模拟慢响应
@@ -927,7 +945,9 @@ REDACTED
 // ---------------------------------------------------------------------------
 
 func TestClient_RefreshToken_Success_RealCall(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+	old := defaultClientSecret
+	defaultClientSecret = "test-secret"
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -976,7 +996,9 @@ REDACTED
 REDACTED
 
 func TestClient_RefreshToken_ServerError_RealCall(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+	old := defaultClientSecret
+	defaultClientSecret = "test-secret"
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -998,7 +1020,9 @@ REDACTED
 REDACTED
 
 func TestClient_RefreshToken_InvalidJSON_RealCall(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+	old := defaultClientSecret
+	defaultClientSecret = "test-secret"
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1021,7 +1045,9 @@ REDACTED
 REDACTED
 
 func TestClient_RefreshToken_ContextCanceled_RealCall(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "test-secret")
+	old := defaultClientSecret
+	defaultClientSecret = "test-secret"
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(5 * time.Second)
