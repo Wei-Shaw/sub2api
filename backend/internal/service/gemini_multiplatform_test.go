@@ -66,6 +66,11 @@ func (m *mockAccountRepoForGemini) Create(ctx context.Context, account *Account)
 func (m *mockAccountRepoForGemini) GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error) {
 	return nil, nil
 REDACTED
+
+func (m *mockAccountRepoForGemini) FindByExtraField(ctx context.Context, key string, value any) ([]Account, error) {
+	return nil, nil
+REDACTED
+
 func (m *mockAccountRepoForGemini) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
 	return nil, nil
 REDACTED

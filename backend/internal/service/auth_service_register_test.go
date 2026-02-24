@@ -315,3 +315,69 @@ REDACTED
 		require.NotEmpty(t, newToken)
 REDACTED)
 REDACTED
+
+func TestAuthService_GetAccessTokenExpiresIn_FallbackToExpireHour(t *testing.T) {
+	service := newAuthService(&userRepoStub{REDACTED, nil, nil)
+	service.cfg.JWT.ExpireHour = 24
+	service.cfg.JWT.AccessTokenExpireMinutes = 0
+
+	require.Equal(t, 24*3600, service.GetAccessTokenExpiresIn())
+REDACTED
+
+func TestAuthService_GetAccessTokenExpiresIn_MinutesHasPriority(t *testing.T) {
+	service := newAuthService(&userRepoStub{REDACTED, nil, nil)
+	service.cfg.JWT.ExpireHour = 24
+	service.cfg.JWT.AccessTokenExpireMinutes = 90
+
+	require.Equal(t, 90*60, service.GetAccessTokenExpiresIn())
+REDACTED
+
+func TestAuthService_GenerateToken_UsesExpireHourWhenMinutesZero(t *testing.T) {
+	service := newAuthService(&userRepoStub{REDACTED, nil, nil)
+	service.cfg.JWT.ExpireHour = 24
+	service.cfg.JWT.AccessTokenExpireMinutes = 0
+
+	user := &User{
+		ID:           1,
+		Email:        "test@test.com",
+		Role:         RoleUser,
+		Status:       StatusActive,
+		TokenVersion: 1,
+REDACTED
+
+	token, err := service.GenerateToken(user)
+REDACTED
+
+	claims, err := service.ValidateToken(token)
+REDACTED
+	require.NotNil(t, claims)
+	require.NotNil(t, claims.IssuedAt)
+	require.NotNil(t, claims.ExpiresAt)
+
+	require.WithinDuration(t, claims.IssuedAt.Time.Add(24*time.Hour), claims.ExpiresAt.Time, 2*time.Second)
+REDACTED
+
+func TestAuthService_GenerateToken_UsesMinutesWhenConfigured(t *testing.T) {
+	service := newAuthService(&userRepoStub{REDACTED, nil, nil)
+	service.cfg.JWT.ExpireHour = 24
+	service.cfg.JWT.AccessTokenExpireMinutes = 90
+
+	user := &User{
+		ID:           2,
+		Email:        "test2@test.com",
+		Role:         RoleUser,
+		Status:       StatusActive,
+		TokenVersion: 1,
+REDACTED
+
+	token, err := service.GenerateToken(user)
+REDACTED
+
+	claims, err := service.ValidateToken(token)
+REDACTED
+	require.NotNil(t, claims)
+	require.NotNil(t, claims.IssuedAt)
+	require.NotNil(t, claims.ExpiresAt)
+
+	require.WithinDuration(t, claims.IssuedAt.Time.Add(90*time.Minute), claims.ExpiresAt.Time, 2*time.Second)
+REDACTED

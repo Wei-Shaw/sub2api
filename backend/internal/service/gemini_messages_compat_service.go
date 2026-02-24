@@ -22,10 +22,12 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 const geminiStickySessionTTL = time.Hour
@@ -281,7 +283,7 @@ func (s *GeminiMessagesCompatService) passesRateLimitPreCheck(ctx context.Contex
 REDACTED
 	ok, err := s.rateLimitService.PreCheckUsage(ctx, account, requestedModel)
 	if err != nil {
-		log.Printf("[Gemini PreCheck] Account %d precheck error: %v", account.ID, err)
+		logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini PreCheck] Account %d precheck error: %v", account.ID, err)
 REDACTED
 	return ok
 REDACTED
@@ -697,7 +699,7 @@ REDACTED
 				Message:            safeErr,
 		REDACTED)
 			if attempt < geminiMaxRetries {
-				log.Printf("Gemini account %d: upstream request failed, retry %d/%d: %v", account.ID, attempt, geminiMaxRetries, err)
+				logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: upstream request failed, retry %d/%d: %v", account.ID, attempt, geminiMaxRetries, err)
 				sleepGeminiBackoff(attempt)
 				continue
 		REDACTED
@@ -753,7 +755,7 @@ REDACTED
 			REDACTED
 				retryGeminiReq, txErr := convertClaudeMessagesToGeminiGenerateContent(strippedClaudeBody)
 				if txErr == nil {
-					log.Printf("Gemini account %d: detected signature-related 400, retrying with downgraded Claude blocks (%s)", account.ID, stageName)
+					logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: detected signature-related 400, retrying with downgraded Claude blocks (%s)", account.ID, stageName)
 					geminiReq = retryGeminiReq
 					// Consume one retry budget attempt and continue with the updated request payload.
 					sleepGeminiBackoff(1)
@@ -820,7 +822,7 @@ REDACTED
 					Detail:             upstreamDetail,
 			REDACTED)
 
-				log.Printf("Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, geminiMaxRetries)
+				logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, geminiMaxRetries)
 				sleepGeminiBackoff(attempt)
 				continue
 		REDACTED
@@ -968,7 +970,8 @@ REDACTED else {
 			if err != nil {
 				return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
 		REDACTED
-			claudeResp, usageObj2 := convertGeminiToClaudeMessage(collected, originalModel)
+			collectedBytes, _ := json.Marshal(collected)
+			claudeResp, usageObj2 := convertGeminiToClaudeMessage(collected, originalModel, collectedBytes)
 			c.JSON(http.StatusOK, claudeResp)
 			usage = usageObj2
 			if usageObj != nil && (usageObj.InputTokens > 0 || usageObj.OutputTokens > 0) {
@@ -1195,7 +1198,7 @@ REDACTED
 				Message:            safeErr,
 		REDACTED)
 			if attempt < geminiMaxRetries {
-				log.Printf("Gemini account %d: upstream request failed, retry %d/%d: %v", account.ID, attempt, geminiMaxRetries, err)
+				logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: upstream request failed, retry %d/%d: %v", account.ID, attempt, geminiMaxRetries, err)
 				sleepGeminiBackoff(attempt)
 				continue
 		REDACTED
@@ -1264,7 +1267,7 @@ REDACTED
 					Detail:             upstreamDetail,
 			REDACTED)
 
-				log.Printf("Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, geminiMaxRetries)
+				logger.LegacyPrintf("service.gemini_messages_compat", "Gemini account %d: upstream status %d, retry %d/%d", account.ID, resp.StatusCode, attempt, geminiMaxRetries)
 				sleepGeminiBackoff(attempt)
 				continue
 		REDACTED
@@ -1424,7 +1427,7 @@ REDACTED
 				maxBytes = 2048
 		REDACTED
 			upstreamDetail = truncateString(string(respBody), maxBytes)
-			log.Printf("[Gemini] native upstream error %d: %s", resp.StatusCode, truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes))
+			logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini] native upstream error %d: %s", resp.StatusCode, truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes))
 	REDACTED
 		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -1601,7 +1604,7 @@ REDACTED
 REDACTED)
 
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-		log.Printf("[Gemini] upstream error %d: %s", upstreamStatus, truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes))
+		logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini] upstream error %d: %s", upstreamStatus, truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes))
 REDACTED
 
 	if status, errType, errMsg, matched := applyErrorPassthroughRule(
@@ -1821,12 +1824,17 @@ func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context,
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream response")
 REDACTED
 
-	geminiResp, err := unwrapGeminiResponse(body)
+	unwrappedBody, err := unwrapGeminiResponse(body)
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 REDACTED
 
-	claudeResp, usage := convertGeminiToClaudeMessage(geminiResp, originalModel)
+	var geminiResp map[string]any
+	if err := json.Unmarshal(unwrappedBody, &geminiResp); err != nil {
+		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
+REDACTED
+
+	claudeResp, usage := convertGeminiToClaudeMessage(geminiResp, originalModel, unwrappedBody)
 	c.JSON(http.StatusOK, claudeResp)
 
 	return usage, nil
@@ -1899,8 +1907,13 @@ REDACTED
 			continue
 	REDACTED
 
-		geminiResp, err := unwrapGeminiResponse([]byte(payload))
+		unwrappedBytes, err := unwrapGeminiResponse([]byte(payload))
 		if err != nil {
+			continue
+	REDACTED
+
+		var geminiResp map[string]any
+		if err := json.Unmarshal(unwrappedBytes, &geminiResp); err != nil {
 			continue
 	REDACTED
 
@@ -2030,7 +2043,7 @@ REDACTED
 		REDACTED
 	REDACTED
 
-		if u := extractGeminiUsage(geminiResp); u != nil {
+		if u := extractGeminiUsage(unwrappedBytes); u != nil {
 			usage = *u
 	REDACTED
 
@@ -2121,11 +2134,7 @@ REDACTED
 	if err != nil {
 		return raw
 REDACTED
-	b, err := json.Marshal(inner)
-	if err != nil {
-		return raw
-REDACTED
-	return b
+	return inner
 REDACTED
 
 func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsage, error) {
@@ -2149,17 +2158,20 @@ func collectGeminiSSE(body io.Reader, isOAuth bool) (map[string]any, *ClaudeUsag
 				REDACTED
 				default:
 					var parsed map[string]any
+					var rawBytes []byte
 					if isOAuth {
-						inner, err := unwrapGeminiResponse([]byte(payload))
-						if err == nil && inner != nil {
-							parsed = inner
+						innerBytes, err := unwrapGeminiResponse([]byte(payload))
+						if err == nil {
+							rawBytes = innerBytes
+							_ = json.Unmarshal(innerBytes, &parsed)
 					REDACTED
 				REDACTED else {
-						_ = json.Unmarshal([]byte(payload), &parsed)
+						rawBytes = []byte(payload)
+						_ = json.Unmarshal(rawBytes, &parsed)
 				REDACTED
 					if parsed != nil {
 						last = parsed
-						if u := extractGeminiUsage(parsed); u != nil {
+						if u := extractGeminiUsage(rawBytes); u != nil {
 							usage = u
 					REDACTED
 						if parts := extractGeminiParts(parsed); len(parts) > 0 {
@@ -2288,53 +2300,27 @@ REDACTED
 REDACTED
 
 func estimateGeminiCountTokens(reqBody []byte) int {
-	var obj map[string]any
-	if err := json.Unmarshal(reqBody, &obj); err != nil {
-		return 0
-REDACTED
-
-	var texts []string
+	total := 0
 
 	// systemInstruction.parts[].text
-	if si, ok := obj["systemInstruction"].(map[string]any); ok {
-		if parts, ok := si["parts"].([]any); ok {
-			for _, p := range parts {
-				if pm, ok := p.(map[string]any); ok {
-					if t, ok := pm["text"].(string); ok && strings.TrimSpace(t) != "" {
-						texts = append(texts, t)
-				REDACTED
-			REDACTED
-		REDACTED
+	gjson.GetBytes(reqBody, "systemInstruction.parts").ForEach(func(_, part gjson.Result) bool {
+		if t := strings.TrimSpace(part.Get("text").String()); t != "" {
+			total += estimateTokensForText(t)
 	REDACTED
-REDACTED
+		return true
+REDACTED)
 
 	// contents[].parts[].text
-	if contents, ok := obj["contents"].([]any); ok {
-		for _, c := range contents {
-			cm, ok := c.(map[string]any)
-			if !ok {
-				continue
+	gjson.GetBytes(reqBody, "contents").ForEach(func(_, content gjson.Result) bool {
+		content.Get("parts").ForEach(func(_, part gjson.Result) bool {
+			if t := strings.TrimSpace(part.Get("text").String()); t != "" {
+				total += estimateTokensForText(t)
 		REDACTED
-			parts, ok := cm["parts"].([]any)
-			if !ok {
-				continue
-		REDACTED
-			for _, p := range parts {
-				pm, ok := p.(map[string]any)
-				if !ok {
-					continue
-			REDACTED
-				if t, ok := pm["text"].(string); ok && strings.TrimSpace(t) != "" {
-					texts = append(texts, t)
-			REDACTED
-		REDACTED
-	REDACTED
-REDACTED
+			return true
+	REDACTED)
+		return true
+REDACTED)
 
-	total := 0
-	for _, t := range texts {
-		total += estimateTokensForText(t)
-REDACTED
 	if total < 0 {
 		return 0
 REDACTED
@@ -2372,28 +2358,36 @@ type UpstreamHTTPResult struct {
 REDACTED
 
 func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Context, resp *http.Response, isOAuth bool) (*ClaudeUsage, error) {
-	// Log response headers for debugging
-	log.Printf("[GeminiAPI] ========== Response Headers ==========")
-	for key, values := range resp.Header {
-		if strings.HasPrefix(strings.ToLower(key), "x-ratelimit") {
-			log.Printf("[GeminiAPI] %s: %v", key, values)
+	if s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
+		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Response Headers ==========")
+		for key, values := range resp.Header {
+			if strings.HasPrefix(strings.ToLower(key), "x-ratelimit") {
+				logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] %s: %v", key, values)
+		REDACTED
 	REDACTED
+		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========================================")
 REDACTED
-	log.Printf("[GeminiAPI] ========================================")
 
-	respBody, err := io.ReadAll(resp.Body)
+	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
+	respBody, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
 	if err != nil {
+		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
+			c.JSON(http.StatusBadGateway, gin.H{
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": "Upstream response too large",
+			REDACTED,
+		REDACTED)
+	REDACTED
 		return nil, err
 REDACTED
 
-	var parsed map[string]any
 	if isOAuth {
-		parsed, err = unwrapGeminiResponse(respBody)
-		if err == nil && parsed != nil {
-			respBody, _ = json.Marshal(parsed)
+		unwrappedBody, uwErr := unwrapGeminiResponse(respBody)
+		if uwErr == nil {
+			respBody = unwrappedBody
 	REDACTED
-REDACTED else {
-		_ = json.Unmarshal(respBody, &parsed)
 REDACTED
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)
@@ -2404,23 +2398,22 @@ REDACTED
 REDACTED
 	c.Data(resp.StatusCode, contentType, respBody)
 
-	if parsed != nil {
-		if u := extractGeminiUsage(parsed); u != nil {
-			return u, nil
-	REDACTED
+	if u := extractGeminiUsage(respBody); u != nil {
+		return u, nil
 REDACTED
 	return &ClaudeUsage{REDACTED, nil
 REDACTED
 
 func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool) (*geminiNativeStreamResult, error) {
-	// Log response headers for debugging
-	log.Printf("[GeminiAPI] ========== Streaming Response Headers ==========")
-	for key, values := range resp.Header {
-		if strings.HasPrefix(strings.ToLower(key), "x-ratelimit") {
-			log.Printf("[GeminiAPI] %s: %v", key, values)
+	if s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
+		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Streaming Response Headers ==========")
+		for key, values := range resp.Header {
+			if strings.HasPrefix(strings.ToLower(key), "x-ratelimit") {
+				logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] %s: %v", key, values)
+		REDACTED
 	REDACTED
+		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ====================================================")
 REDACTED
-	log.Printf("[GeminiAPI] ====================================================")
 
 	if s.cfg != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)
@@ -2460,23 +2453,19 @@ REDACTED
 					var rawToWrite string
 					rawToWrite = payload
 
-					var parsed map[string]any
+					var rawBytes []byte
 					if isOAuth {
-						inner, err := unwrapGeminiResponse([]byte(payload))
-						if err == nil && inner != nil {
-							parsed = inner
-							if b, err := json.Marshal(inner); err == nil {
-								rawToWrite = string(b)
-						REDACTED
+						innerBytes, err := unwrapGeminiResponse([]byte(payload))
+						if err == nil {
+							rawToWrite = string(innerBytes)
+							rawBytes = innerBytes
 					REDACTED
 				REDACTED else {
-						_ = json.Unmarshal([]byte(payload), &parsed)
+						rawBytes = []byte(payload)
 				REDACTED
 
-					if parsed != nil {
-						if u := extractGeminiUsage(parsed); u != nil {
-							usage = u
-					REDACTED
+					if u := extractGeminiUsage(rawBytes); u != nil {
+						usage = u
 				REDACTED
 
 					if firstTokenMs == nil {
@@ -2579,19 +2568,18 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-func unwrapGeminiResponse(raw []byte) (map[string]any, error) {
-	var outer map[string]any
-	if err := json.Unmarshal(raw, &outer); err != nil {
-		return nil, err
+// unwrapGeminiResponse 解包 Gemini OAuth 响应中的 response 字段
+// 使用 gjson 零拷贝提取，避免完整 Unmarshal+Marshal
+func unwrapGeminiResponse(raw []byte) ([]byte, error) {
+	result := gjson.GetBytes(raw, "response")
+	if result.Exists() && result.Type == gjson.JSON {
+		return []byte(result.Raw), nil
 REDACTED
-	if resp, ok := outer["response"].(map[string]any); ok && resp != nil {
-		return resp, nil
-REDACTED
-	return outer, nil
+	return raw, nil
 REDACTED
 
-func convertGeminiToClaudeMessage(geminiResp map[string]any, originalModel string) (map[string]any, *ClaudeUsage) {
-	usage := extractGeminiUsage(geminiResp)
+func convertGeminiToClaudeMessage(geminiResp map[string]any, originalModel string, rawData []byte) (map[string]any, *ClaudeUsage) {
+	usage := extractGeminiUsage(rawData)
 	if usage == nil {
 		usage = &ClaudeUsage{REDACTED
 REDACTED
@@ -2655,15 +2643,15 @@ REDACTED
 	return resp, usage
 REDACTED
 
-func extractGeminiUsage(geminiResp map[string]any) *ClaudeUsage {
-	usageMeta, ok := geminiResp["usageMetadata"].(map[string]any)
-	if !ok || usageMeta == nil {
+func extractGeminiUsage(data []byte) *ClaudeUsage {
+	usage := gjson.GetBytes(data, "usageMetadata")
+	if !usage.Exists() {
 		return nil
 REDACTED
-	prompt, _ := asInt(usageMeta["promptTokenCount"])
-	cand, _ := asInt(usageMeta["candidatesTokenCount"])
-	cached, _ := asInt(usageMeta["cachedContentTokenCount"])
-	thoughts, _ := asInt(usageMeta["thoughtsTokenCount"])
+	prompt := int(usage.Get("promptTokenCount").Int())
+	cand := int(usage.Get("candidatesTokenCount").Int())
+	cached := int(usage.Get("cachedContentTokenCount").Int())
+	thoughts := int(usage.Get("thoughtsTokenCount").Int())
 	// 注意：Gemini 的 promptTokenCount 包含 cachedContentTokenCount，
 	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去
 	return &ClaudeUsage{
@@ -2721,16 +2709,16 @@ REDACTED
 				cooldown = s.rateLimitService.GeminiCooldown(ctx, account)
 		REDACTED
 			ra = time.Now().Add(cooldown)
-			log.Printf("[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, time.Until(ra).Truncate(time.Second))
+			logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (Code Assist, tier=%s, project=%s) rate limited, cooldown=%v", account.ID, tierID, projectID, time.Until(ra).Truncate(time.Second))
 	REDACTED else {
 			// API Key / AI Studio OAuth: PST 午夜
 			if ts := nextGeminiDailyResetUnix(); ts != nil {
 				ra = time.Unix(*ts, 0)
-				log.Printf("[Gemini 429] Account %d (API Key/AI Studio, type=%s) rate limited, reset at PST midnight (%v)", account.ID, account.Type, ra)
+				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d (API Key/AI Studio, type=%s) rate limited, reset at PST midnight (%v)", account.ID, account.Type, ra)
 		REDACTED else {
 				// 兜底：5 分钟
 				ra = time.Now().Add(5 * time.Minute)
-				log.Printf("[Gemini 429] Account %d rate limited, fallback to 5min", account.ID)
+				logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d rate limited, fallback to 5min", account.ID)
 		REDACTED
 	REDACTED
 		_ = s.accountRepo.SetRateLimited(ctx, account.ID, ra)
@@ -2740,45 +2728,41 @@ REDACTED
 	// 使用解析到的重置时间
 	resetTime := time.Unix(*resetAt, 0)
 	_ = s.accountRepo.SetRateLimited(ctx, account.ID, resetTime)
-	log.Printf("[Gemini 429] Account %d rate limited until %v (oauth_type=%s, tier=%s)",
+	logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini 429] Account %d rate limited until %v (oauth_type=%s, tier=%s)",
 		account.ID, resetTime, oauthType, tierID)
 REDACTED
 
 // ParseGeminiRateLimitResetTime 解析 Gemini 格式的 429 响应，返回重置时间的 Unix 时间戳
 func ParseGeminiRateLimitResetTime(body []byte) *int64 {
-	// Try to parse metadata.quotaResetDelay like "12.345s"
-	var parsed map[string]any
-	if err := json.Unmarshal(body, &parsed); err == nil {
-		if errObj, ok := parsed["error"].(map[string]any); ok {
-			if msg, ok := errObj["message"].(string); ok {
-				if looksLikeGeminiDailyQuota(msg) {
-					if ts := nextGeminiDailyResetUnix(); ts != nil {
-						return ts
-				REDACTED
-			REDACTED
-		REDACTED
-			if details, ok := errObj["details"].([]any); ok {
-				for _, d := range details {
-					dm, ok := d.(map[string]any)
-					if !ok {
-						continue
-				REDACTED
-					if meta, ok := dm["metadata"].(map[string]any); ok {
-						if v, ok := meta["quotaResetDelay"].(string); ok {
-							if dur, err := time.ParseDuration(v); err == nil {
-								// Use ceil to avoid undercounting fractional seconds (e.g. 10.1s should not become 10s),
-								// which can affect scheduling decisions around thresholds (like 10s).
-								ts := time.Now().Unix() + int64(math.Ceil(dur.Seconds()))
-								return &ts
-						REDACTED
-					REDACTED
-				REDACTED
-			REDACTED
-		REDACTED
+	// 第一阶段：gjson 结构化提取
+	errMsg := gjson.GetBytes(body, "error.message").String()
+	if looksLikeGeminiDailyQuota(errMsg) {
+		if ts := nextGeminiDailyResetUnix(); ts != nil {
+			return ts
 	REDACTED
 REDACTED
 
-	// Match "Please retry in Xs"
+	// 遍历 error.details 查找 quotaResetDelay
+	var found *int64
+	gjson.GetBytes(body, "error.details").ForEach(func(_, detail gjson.Result) bool {
+		v := detail.Get("metadata.quotaResetDelay").String()
+		if v == "" {
+			return true
+	REDACTED
+		if dur, err := time.ParseDuration(v); err == nil {
+			// Use ceil to avoid undercounting fractional seconds (e.g. 10.1s should not become 10s),
+			// which can affect scheduling decisions around thresholds (like 10s).
+			ts := time.Now().Unix() + int64(math.Ceil(dur.Seconds()))
+			found = &ts
+			return false
+	REDACTED
+		return true
+REDACTED)
+	if found != nil {
+		return found
+REDACTED
+
+	// 第二阶段：regex 回退匹配 "Please retry in Xs"
 	matches := retryInRegex.FindStringSubmatch(string(body))
 	if len(matches) == 2 {
 		if dur, err := time.ParseDuration(matches[1] + "s"); err == nil {

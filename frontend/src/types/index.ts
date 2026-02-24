@@ -338,7 +338,7 @@ REDACTED
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'sora'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -358,6 +358,11 @@ export interface Group {
   image_price_1k: number | null
   image_price_2k: number | null
   image_price_4k: number | null
+  // Sora 按次计费配置
+  sora_image_price_360: number | null
+  sora_image_price_540: number | null
+  sora_video_price_per_request: number | null
+  sora_video_price_per_request_hd: number | null
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
@@ -393,6 +398,7 @@ export interface ApiKey {
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
+  last_used_at: string | null
   quota: number // Quota limit in USD (0 = unlimited)
   quota_used: number // Used quota amount in USD
   expires_at: string | null // Expiration time (null = never expires)
@@ -435,6 +441,10 @@ export interface CreateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  sora_image_price_360?: number | null
+  sora_image_price_540?: number | null
+  sora_video_price_per_request?: number | null
+  sora_video_price_per_request_hd?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -458,6 +468,10 @@ export interface UpdateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  sora_image_price_360?: number | null
+  sora_image_price_540?: number | null
+  sora_video_price_per_request?: number | null
+  sora_video_price_per_request_hd?: number | null
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
@@ -468,7 +482,7 @@ REDACTED
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'sora'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -499,6 +513,11 @@ export interface Proxy {
   country_code?: string
   region?: string
   city?: string
+  quality_status?: 'healthy' | 'warn' | 'challenge' | 'failed'
+  quality_score?: number
+  quality_grade?: string
+  quality_summary?: string
+  quality_checked?: number
   created_at: string
   updated_at: string
 REDACTED
@@ -509,6 +528,32 @@ export interface ProxyAccountSummary {
   platform: AccountPlatform
   type: AccountType
   notes?: string | null
+REDACTED
+
+export interface ProxyQualityCheckItem {
+  target: string
+  status: 'pass' | 'warn' | 'fail' | 'challenge'
+  http_status?: number
+  latency_ms?: number
+  message?: string
+  cf_ray?: string
+REDACTED
+
+export interface ProxyQualityCheckResult {
+  proxy_id: number
+  score: number
+  grade: string
+  summary: string
+  exit_ip?: string
+  country?: string
+  country_code?: string
+  base_latency_ms?: number
+  passed_count: number
+  warn_count: number
+  failed_count: number
+  challenge_count: number
+  checked_at: number
+  items: ProxyQualityCheckItem[]
 REDACTED
 
 // Gemini credentials structure for OAuth and API Key authentication
@@ -676,9 +721,11 @@ export interface CodexUsageSnapshot {
   // Canonical fields (normalized by backend, use these preferentially)
   codex_5h_used_percent?: number // 5-hour window usage percentage
   codex_5h_reset_after_seconds?: number // Seconds until 5h window reset
+  codex_5h_reset_at?: string // 5-hour window absolute reset time (RFC3339)
   codex_5h_window_minutes?: number // 5h window in minutes (should be ~300)
   codex_7d_used_percent?: number // 7-day window usage percentage
   codex_7d_reset_after_seconds?: number // Seconds until 7d window reset
+  codex_7d_reset_at?: string // 7-day window absolute reset time (RFC3339)
   codex_7d_window_minutes?: number // 7d window in minutes (should be ~10080)
 
   codex_usage_updated_at?: string // Last update timestamp

@@ -25,6 +25,9 @@ type AccountRepository interface {
 	// GetByCRSAccountID finds an account previously synced from CRS.
 	// Returns (nil, nil) if not found.
 	GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error)
+	// FindByExtraField 根据 extra 字段中的键值对查找账号（限定 platform='sora'）
+	// 用于查找通过 linked_openai_account_id 关联的 Sora 账号
+	FindByExtraField(ctx context.Context, key string, value any) ([]Account, error)
 	// ListCRSAccountIDs returns a map of crs_account_id -> local account ID
 	// for all accounts that have been synced from CRS.
 	ListCRSAccountIDs(ctx context.Context) (map[string]int64, error)

@@ -1,4 +1,4 @@
-.PHONY: build build-backend build-frontend test test-backend test-frontend
+.PHONY: build build-backend build-frontend test test-backend test-frontend secret-scan
 
 # 一键编译前后端
 build: build-backend build-frontend
@@ -20,3 +20,6 @@ test-backend:
 test-frontend:
 	@pnpm --dir frontend run lint:check
 	@pnpm --dir frontend run typecheck
+
+secret-scan:
+	@python3 tools/secret_scan.py

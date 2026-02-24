@@ -118,6 +118,11 @@ func (UsageLog) Fields() []ent.Field {
 			MaxLen(10).
 			Optional().
 			Nillable(),
+		// 媒体类型字段（sora 使用）
+		field.String("media_type").
+			MaxLen(16).
+			Optional().
+			Nillable(),
 
 		// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 		field.Bool("cache_ttl_overridden").

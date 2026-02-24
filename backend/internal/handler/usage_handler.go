@@ -392,7 +392,7 @@ REDACTED
 		return
 REDACTED
 
-	stats, err := h.usageService.GetBatchAPIKeyUsageStats(c.Request.Context(), validAPIKeyIDs)
+	stats, err := h.usageService.GetBatchAPIKeyUsageStats(c.Request.Context(), validAPIKeyIDs, time.Time{REDACTED, time.Time{REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

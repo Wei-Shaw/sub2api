@@ -52,6 +52,7 @@ type UsageLog struct {
 	// 图片生成字段
 	ImageCount int
 	ImageSize  *string
+	MediaType  *string
 
 	CreatedAt time.Time
 

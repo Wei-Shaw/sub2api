@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
@@ -113,7 +113,7 @@ func (s *DashboardService) GetDashboardStats(ctx context.Context) (*usagestats.D
 			return cached, nil
 	REDACTED
 		if err != nil && !errors.Is(err, ErrDashboardStatsCacheMiss) {
-			log.Printf("[Dashboard] 仪表盘缓存读取失败: %v", err)
+			logger.LegacyPrintf("service.dashboard", "[Dashboard] 仪表盘缓存读取失败: %v", err)
 	REDACTED
 REDACTED
 
@@ -188,7 +188,7 @@ REDACTED
 
 		stats, err := s.fetchDashboardStats(ctx)
 		if err != nil {
-			log.Printf("[Dashboard] 仪表盘缓存异步刷新失败: %v", err)
+			logger.LegacyPrintf("service.dashboard", "[Dashboard] 仪表盘缓存异步刷新失败: %v", err)
 			return
 	REDACTED
 		s.applyAggregationStatus(ctx, stats)
@@ -220,12 +220,12 @@ REDACTED
 REDACTED
 	data, err := json.Marshal(entry)
 	if err != nil {
-		log.Printf("[Dashboard] 仪表盘缓存序列化失败: %v", err)
+		logger.LegacyPrintf("service.dashboard", "[Dashboard] 仪表盘缓存序列化失败: %v", err)
 		return
 REDACTED
 
 	if err := s.cache.SetDashboardStats(ctx, string(data), s.cacheTTL); err != nil {
-		log.Printf("[Dashboard] 仪表盘缓存写入失败: %v", err)
+		logger.LegacyPrintf("service.dashboard", "[Dashboard] 仪表盘缓存写入失败: %v", err)
 REDACTED
 REDACTED
 
@@ -237,10 +237,10 @@ REDACTED
 	defer cancel()
 
 	if err := s.cache.DeleteDashboardStats(cacheCtx); err != nil {
-		log.Printf("[Dashboard] 仪表盘缓存清理失败: %v", err)
+		logger.LegacyPrintf("service.dashboard", "[Dashboard] 仪表盘缓存清理失败: %v", err)
 REDACTED
 	if reason != nil {
-		log.Printf("[Dashboard] 仪表盘缓存异常，已清理: %v", reason)
+		logger.LegacyPrintf("service.dashboard", "[Dashboard] 仪表盘缓存异常，已清理: %v", reason)
 REDACTED
 REDACTED
 
@@ -271,7 +271,7 @@ func (s *DashboardService) fetchAggregationUpdatedAt(ctx context.Context) time.T
 REDACTED
 	updatedAt, err := s.aggRepo.GetAggregationWatermark(ctx)
 	if err != nil {
-		log.Printf("[Dashboard] 读取聚合水位失败: %v", err)
+		logger.LegacyPrintf("service.dashboard", "[Dashboard] 读取聚合水位失败: %v", err)
 		return time.Unix(0, 0).UTC()
 REDACTED
 	if updatedAt.IsZero() {
@@ -319,16 +319,16 @@ REDACTED
 	return trend, nil
 REDACTED
 
-func (s *DashboardService) GetBatchUserUsageStats(ctx context.Context, userIDs []int64) (map[int64]*usagestats.BatchUserUsageStats, error) {
-	stats, err := s.usageRepo.GetBatchUserUsageStats(ctx, userIDs)
+func (s *DashboardService) GetBatchUserUsageStats(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]*usagestats.BatchUserUsageStats, error) {
+	stats, err := s.usageRepo.GetBatchUserUsageStats(ctx, userIDs, startTime, endTime)
 	if err != nil {
 		return nil, fmt.Errorf("get batch user usage stats: %w", err)
 REDACTED
 	return stats, nil
 REDACTED
 
-func (s *DashboardService) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64) (map[int64]*usagestats.BatchAPIKeyUsageStats, error) {
-	stats, err := s.usageRepo.GetBatchAPIKeyUsageStats(ctx, apiKeyIDs)
+func (s *DashboardService) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64, startTime, endTime time.Time) (map[int64]*usagestats.BatchAPIKeyUsageStats, error) {
+	stats, err := s.usageRepo.GetBatchAPIKeyUsageStats(ctx, apiKeyIDs, startTime, endTime)
 	if err != nil {
 		return nil, fmt.Errorf("get batch api key usage stats: %w", err)
 REDACTED

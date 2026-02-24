@@ -65,8 +65,8 @@ REDACTED
 	apiKeyAuthCacheInvalidator := service.ProvideAPIKeyAuthCacheInvalidator(apiKeyService)
 	promoService := service.NewPromoService(promoCodeRepository, userRepository, billingCacheService, client, apiKeyAuthCacheInvalidator)
 	authService := service.NewAuthService(userRepository, redeemCodeRepository, refreshTokenCache, configConfig, settingService, emailService, turnstileService, emailQueueService, promoService)
-	userService := service.NewUserService(userRepository, apiKeyAuthCacheInvalidator)
-	subscriptionService := service.NewSubscriptionService(groupRepository, userSubscriptionRepository, billingCacheService)
+	userService := service.NewUserService(userRepository, apiKeyAuthCacheInvalidator, billingCache)
+	subscriptionService := service.NewSubscriptionService(groupRepository, userSubscriptionRepository, billingCacheService, client, configConfig)
 	redeemCache := repository.NewRedeemCache(redisClient)
 	redeemService := service.NewRedeemService(redeemCodeRepository, userRepository, subscriptionService, redeemCache, billingCacheService, client, apiKeyAuthCacheInvalidator)
 	secretEncryptor, err := repository.NewAESEncryptor(configConfig)
@@ -98,10 +98,11 @@ REDACTED
 	dashboardHandler := admin.NewDashboardHandler(dashboardService, dashboardAggregationService)
 	schedulerCache := repository.NewSchedulerCache(redisClient)
 	accountRepository := repository.NewAccountRepository(client, db, schedulerCache)
+	soraAccountRepository := repository.NewSoraAccountRepository(db)
 	proxyRepository := repository.NewProxyRepository(client, db)
 	proxyExitInfoProber := repository.NewProxyExitInfoProber(configConfig)
 	proxyLatencyCache := repository.NewProxyLatencyCache(redisClient)
-	adminService := service.NewAdminService(userRepository, groupRepository, accountRepository, proxyRepository, apiKeyRepository, redeemCodeRepository, userGroupRateRepository, billingCacheService, proxyExitInfoProber, proxyLatencyCache, apiKeyAuthCacheInvalidator)
+	adminService := service.NewAdminService(userRepository, groupRepository, accountRepository, soraAccountRepository, proxyRepository, apiKeyRepository, redeemCodeRepository, userGroupRateRepository, billingCacheService, proxyExitInfoProber, proxyLatencyCache, apiKeyAuthCacheInvalidator)
 	concurrencyCache := repository.ProvideConcurrencyCache(redisClient, configConfig)
 	concurrencyService := service.ProvideConcurrencyService(concurrencyCache, accountRepository, configConfig)
 	adminUserHandler := admin.NewUserHandler(adminService, concurrencyService)
@@ -159,14 +160,17 @@ REDACTED
 	openAITokenProvider := service.NewOpenAITokenProvider(accountRepository, geminiTokenCache, openAIOAuthService)
 	openAIGatewayService := service.NewOpenAIGatewayService(accountRepository, usageLogRepository, userRepository, userSubscriptionRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, httpUpstream, deferredService, openAITokenProvider)
 	geminiMessagesCompatService := service.NewGeminiMessagesCompatService(accountRepository, groupRepository, gatewayCache, schedulerSnapshotService, geminiTokenProvider, rateLimitService, httpUpstream, antigravityGatewayService, configConfig)
-	opsService := service.NewOpsService(opsRepository, settingRepository, configConfig, accountRepository, userRepository, concurrencyService, gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService)
+	opsSystemLogSink := service.ProvideOpsSystemLogSink(opsRepository)
+	opsService := service.NewOpsService(opsRepository, settingRepository, configConfig, accountRepository, userRepository, concurrencyService, gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, opsSystemLogSink)
 	settingHandler := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService)
 	opsHandler := admin.NewOpsHandler(opsService)
 	updateCache := repository.NewUpdateCache(redisClient)
 	gitHubReleaseClient := repository.ProvideGitHubReleaseClient(configConfig)
 	serviceBuildInfo := provideServiceBuildInfo(buildInfo)
 	updateService := service.ProvideUpdateService(updateCache, gitHubReleaseClient, serviceBuildInfo)
-	systemHandler := handler.ProvideSystemHandler(updateService)
+	idempotencyRepository := repository.NewIdempotencyRepository(client, db)
+	systemOperationLockService := service.ProvideSystemOperationLockService(idempotencyRepository, configConfig)
+	systemHandler := handler.ProvideSystemHandler(updateService, systemOperationLockService)
 	adminSubscriptionHandler := admin.NewSubscriptionHandler(subscriptionService)
 	usageCleanupRepository := repository.NewUsageCleanupRepository(client, db)
 	usageCleanupService := service.ProvideUsageCleanupService(usageCleanupRepository, timingWheelService, dashboardAggregationService, configConfig)
@@ -180,11 +184,18 @@ REDACTED
 	errorPassthroughService := service.NewErrorPassthroughService(errorPassthroughRepository, errorPassthroughCache)
 	errorPassthroughHandler := admin.NewErrorPassthroughHandler(errorPassthroughService)
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler)
-	gatewayHandler := handler.NewGatewayHandler(gatewayService, geminiMessagesCompatService, antigravityGatewayService, userService, concurrencyService, billingCacheService, usageService, apiKeyService, errorPassthroughService, configConfig)
-	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, errorPassthroughService, configConfig)
+	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
+	gatewayHandler := handler.NewGatewayHandler(gatewayService, geminiMessagesCompatService, antigravityGatewayService, userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, configConfig)
+	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, configConfig)
+	soraDirectClient := service.ProvideSoraDirectClient(configConfig, httpUpstream, openAITokenProvider, accountRepository, soraAccountRepository)
+	soraMediaStorage := service.ProvideSoraMediaStorage(configConfig)
+	soraGatewayService := service.NewSoraGatewayService(soraDirectClient, soraMediaStorage, rateLimitService, configConfig)
+	soraGatewayHandler := handler.NewSoraGatewayHandler(gatewayService, soraGatewayService, concurrencyService, billingCacheService, usageRecordWorkerPool, configConfig)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo)
 	totpHandler := handler.NewTotpHandler(totpService)
-	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler)
+	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
+	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)
+	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, soraGatewayHandler, handlerSettingHandler, totpHandler, idempotencyCoordinator, idempotencyCleanupService)
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService)
 	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)
@@ -195,10 +206,11 @@ REDACTED
 	opsAlertEvaluatorService := service.ProvideOpsAlertEvaluatorService(opsService, opsRepository, emailService, redisClient, configConfig)
 	opsCleanupService := service.ProvideOpsCleanupService(opsRepository, db, redisClient, configConfig)
 	opsScheduledReportService := service.ProvideOpsScheduledReportService(opsService, userService, emailService, redisClient, configConfig)
-	tokenRefreshService := service.ProvideTokenRefreshService(accountRepository, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, compositeTokenCacheInvalidator, schedulerCache, configConfig)
+	soraMediaCleanupService := service.ProvideSoraMediaCleanupService(soraMediaStorage, configConfig)
+	tokenRefreshService := service.ProvideTokenRefreshService(accountRepository, soraAccountRepository, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, compositeTokenCacheInvalidator, schedulerCache, configConfig)
 	accountExpiryService := service.ProvideAccountExpiryService(accountRepository)
 	subscriptionExpiryService := service.ProvideSubscriptionExpiryService(userSubscriptionRepository)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, pricingService, emailQueueService, billingCacheService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, soraMediaCleanupService, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -228,14 +240,19 @@ func provideCleanup(
 	opsAlertEvaluator *service.OpsAlertEvaluatorService,
 	opsCleanup *service.OpsCleanupService,
 	opsScheduledReport *service.OpsScheduledReportService,
+	opsSystemLogSink *service.OpsSystemLogSink,
+	soraMediaCleanup *service.SoraMediaCleanupService,
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
 	accountExpiry *service.AccountExpiryService,
 	subscriptionExpiry *service.SubscriptionExpiryService,
 	usageCleanup *service.UsageCleanupService,
+	idempotencyCleanup *service.IdempotencyCleanupService,
 	pricing *service.PricingService,
 	emailQueue *service.EmailQueueService,
 	billingCache *service.BillingCacheService,
+	usageRecordWorkerPool *service.UsageRecordWorkerPool,
+	subscriptionService *service.SubscriptionService,
 	oauth *service.OAuthService,
 	openaiOAuth *service.OpenAIOAuthService,
 	geminiOAuth *service.GeminiOAuthService,
@@ -258,6 +275,18 @@ func provideCleanup(
 			{"OpsCleanupService", func() error {
 				if opsCleanup != nil {
 					opsCleanup.Stop()
+			REDACTED
+				return nil
+	REDACTED
+			{"OpsSystemLogSink", func() error {
+				if opsSystemLogSink != nil {
+					opsSystemLogSink.Stop()
+			REDACTED
+				return nil
+	REDACTED
+			{"SoraMediaCleanupService", func() error {
+				if soraMediaCleanup != nil {
+					soraMediaCleanup.Stop()
 			REDACTED
 				return nil
 	REDACTED
@@ -291,6 +320,12 @@ func provideCleanup(
 			REDACTED
 				return nil
 	REDACTED
+			{"IdempotencyCleanupService", func() error {
+				if idempotencyCleanup != nil {
+					idempotencyCleanup.Stop()
+			REDACTED
+				return nil
+	REDACTED
 			{"TokenRefreshService", func() error {
 				tokenRefresh.Stop()
 				return nil
@@ -303,6 +338,12 @@ func provideCleanup(
 				subscriptionExpiry.Stop()
 				return nil
 	REDACTED
+			{"SubscriptionService", func() error {
+				if subscriptionService != nil {
+					subscriptionService.Stop()
+			REDACTED
+				return nil
+	REDACTED
 			{"PricingService", func() error {
 				pricing.Stop()
 				return nil
@@ -313,6 +354,12 @@ func provideCleanup(
 	REDACTED
 			{"BillingCacheService", func() error {
 				billingCache.Stop()
+				return nil
+	REDACTED
+			{"UsageRecordWorkerPool", func() error {
+				if usageRecordWorkerPool != nil {
+					usageRecordWorkerPool.Stop()
+			REDACTED
 				return nil
 	REDACTED
 			{"OAuthService", func() error {

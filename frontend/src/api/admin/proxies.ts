@@ -7,6 +7,7 @@ import { apiClient REDACTED from '../client'
 import type {
   Proxy,
   ProxyAccountSummary,
+  ProxyQualityCheckResult,
   CreateProxyRequest,
   UpdateProxyRequest,
   PaginatedResponse,
@@ -144,6 +145,16 @@ REDACTED> {
 REDACTED
 
 /**
+ * Check proxy quality across common AI targets
+ * @param id - Proxy ID
+ * @returns Quality check result
+ */
+export async function checkProxyQuality(id: number): Promise<ProxyQualityCheckResult> {
+  const { data REDACTED = await apiClient.post<ProxyQualityCheckResult>(`/admin/proxies/${idREDACTED/quality-check`)
+  return data
+REDACTED
+
+/**
  * Get proxy usage statistics
  * @param id - Proxy ID
  * @returns Proxy usage statistics
@@ -248,6 +259,7 @@ export const proxiesAPI = {
   delete: deleteProxy,
   toggleStatus,
   testProxy,
+  checkProxyQuality,
   getStats,
   getProxyAccounts,
   batchCreate,

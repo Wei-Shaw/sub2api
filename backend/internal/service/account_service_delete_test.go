@@ -54,6 +54,10 @@ func (s *accountRepoStub) GetByCRSAccountID(ctx context.Context, crsAccountID st
 	panic("unexpected GetByCRSAccountID call")
 REDACTED
 
+func (s *accountRepoStub) FindByExtraField(ctx context.Context, key string, value any) ([]Account, error) {
+	panic("unexpected FindByExtraField call")
+REDACTED
+
 func (s *accountRepoStub) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
 	panic("unexpected ListCRSAccountIDs call")
 REDACTED

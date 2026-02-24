@@ -303,6 +303,10 @@ Requires your own OAuth client credentials.
 ```bash
 GEMINI_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GEMINI_OAUTH_CLIENT_SECRET=GOCSPX-your-client-secret
+
+# 可选：如需使用 Gemini CLI 内置 OAuth Client（Code Assist / Google One）
+# 安全说明：本仓库不会内置该 client_secret，请在运行环境通过环境变量注入。
+# GEMINI_CLI_OAUTH_CLIENT_SECRET=GOCSPX-your-built-in-secret
 ```
 
 **Step 3: Create Account in Admin UI**
@@ -428,6 +432,11 @@ If you need to use AI Studio OAuth for Gemini accounts, add the OAuth client cre
    ```ini
    Environment=GEMINI_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
    Environment=GEMINI_OAUTH_CLIENT_SECRET=GOCSPX-your-client-secret
+   ```
+
+   如需使用“内置 Gemini CLI OAuth Client”（Code Assist / Google One），还需要注入：
+   ```ini
+   Environment=GEMINI_CLI_OAUTH_CLIENT_SECRET=GOCSPX-your-built-in-secret
    ```
 
 3. Reload and restart:

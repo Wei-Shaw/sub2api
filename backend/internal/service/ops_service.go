@@ -20,6 +20,22 @@ const (
 	opsMaxStoredErrorBodyBytes   = 20 * 1024
 )
 
+// PrepareOpsRequestBodyForQueue 在入队前对请求体执行脱敏与裁剪，返回可直接写入 OpsInsertErrorLogInput 的字段。
+// 该方法用于避免异步队列持有大块原始请求体，减少错误风暴下的内存放大风险。
+func PrepareOpsRequestBodyForQueue(raw []byte) (requestBodyJSON *string, truncated bool, requestBodyBytes *int) {
+	if len(raw) == 0 {
+		return nil, false, nil
+REDACTED
+	sanitized, truncated, bytesLen := sanitizeAndTrimRequestBody(raw, opsMaxStoredRequestBodyBytes)
+	if sanitized != "" {
+		out := sanitized
+		requestBodyJSON = &out
+REDACTED
+	n := bytesLen
+	requestBodyBytes = &n
+	return requestBodyJSON, truncated, requestBodyBytes
+REDACTED
+
 // OpsService provides ingestion and query APIs for the Ops monitoring module.
 type OpsService struct {
 	opsRepo     OpsRepository
@@ -37,6 +53,7 @@ type OpsService struct {
 	openAIGatewayService      *OpenAIGatewayService
 	geminiCompatService       *GeminiMessagesCompatService
 	antigravityGatewayService *AntigravityGatewayService
+	systemLogSink             *OpsSystemLogSink
 REDACTED
 
 func NewOpsService(
@@ -50,8 +67,9 @@ func NewOpsService(
 	openAIGatewayService *OpenAIGatewayService,
 	geminiCompatService *GeminiMessagesCompatService,
 	antigravityGatewayService *AntigravityGatewayService,
+	systemLogSink *OpsSystemLogSink,
 ) *OpsService {
-	return &OpsService{
+	svc := &OpsService{
 		opsRepo:     opsRepo,
 		settingRepo: settingRepo,
 		cfg:         cfg,
@@ -64,7 +82,10 @@ func NewOpsService(
 		openAIGatewayService:      openAIGatewayService,
 		geminiCompatService:       geminiCompatService,
 		antigravityGatewayService: antigravityGatewayService,
+		systemLogSink:             systemLogSink,
 REDACTED
+	svc.applyRuntimeLogConfigOnStartup(context.Background())
+	return svc
 REDACTED
 
 func (s *OpsService) RequireMonitoringEnabled(ctx context.Context) error {
@@ -127,12 +148,7 @@ REDACTED
 
 	// Sanitize + trim request body (errors only).
 	if len(rawRequestBody) > 0 {
-		sanitized, truncated, bytesLen := sanitizeAndTrimRequestBody(rawRequestBody, opsMaxStoredRequestBodyBytes)
-		if sanitized != "" {
-			entry.RequestBodyJSON = &sanitized
-	REDACTED
-		entry.RequestBodyTruncated = truncated
-		entry.RequestBodyBytes = &bytesLen
+		entry.RequestBodyJSON, entry.RequestBodyTruncated, entry.RequestBodyBytes = PrepareOpsRequestBodyForQueue(rawRequestBody)
 REDACTED
 
 	// Sanitize + truncate error_body to avoid storing sensitive data.

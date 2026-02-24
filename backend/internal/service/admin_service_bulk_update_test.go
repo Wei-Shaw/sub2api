@@ -15,6 +15,13 @@ type accountRepoStubForBulkUpdate struct {
 	bulkUpdateErr    error
 	bulkUpdateIDs    []int64
 	bindGroupErrByID map[int64]error
+	getByIDsAccounts []*Account
+	getByIDsErr      error
+	getByIDsCalled   bool
+	getByIDsIDs      []int64
+	getByIDAccounts  map[int64]*Account
+	getByIDErrByID   map[int64]error
+	getByIDCalled    []int64
 REDACTED
 
 func (s *accountRepoStubForBulkUpdate) BulkUpdate(_ context.Context, ids []int64, _ AccountBulkUpdate) (int64, error) {
@@ -30,6 +37,26 @@ func (s *accountRepoStubForBulkUpdate) BindGroups(_ context.Context, accountID i
 		return err
 REDACTED
 	return nil
+REDACTED
+
+func (s *accountRepoStubForBulkUpdate) GetByIDs(_ context.Context, ids []int64) ([]*Account, error) {
+	s.getByIDsCalled = true
+	s.getByIDsIDs = append([]int64{REDACTED, ids...)
+	if s.getByIDsErr != nil {
+		return nil, s.getByIDsErr
+REDACTED
+	return s.getByIDsAccounts, nil
+REDACTED
+
+func (s *accountRepoStubForBulkUpdate) GetByID(_ context.Context, id int64) (*Account, error) {
+	s.getByIDCalled = append(s.getByIDCalled, id)
+	if err, ok := s.getByIDErrByID[id]; ok {
+		return nil, err
+REDACTED
+	if account, ok := s.getByIDAccounts[id]; ok {
+		return account, nil
+REDACTED
+	return nil, errors.New("account not found")
 REDACTED
 
 // TestAdminService_BulkUpdateAccounts_AllSuccessIDs 验证批量更新成功时返回 success_ids/failed_ids。

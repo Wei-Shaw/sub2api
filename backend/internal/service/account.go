@@ -696,6 +696,51 @@ REDACTED
 	return false
 REDACTED
 
+// IsOpenAIPassthroughEnabled 返回 OpenAI 账号是否启用“自动透传（仅替换认证）”。
+//
+// 新字段：accounts.extra.openai_passthrough。
+// 兼容字段：accounts.extra.openai_oauth_passthrough（历史 OAuth 开关）。
+// 字段缺失或类型不正确时，按 false（关闭）处理。
+func (a *Account) IsOpenAIPassthroughEnabled() bool {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return false
+REDACTED
+	if enabled, ok := a.Extra["openai_passthrough"].(bool); ok {
+		return enabled
+REDACTED
+	if enabled, ok := a.Extra["openai_oauth_passthrough"].(bool); ok {
+		return enabled
+REDACTED
+	return false
+REDACTED
+
+// IsOpenAIOAuthPassthroughEnabled 兼容旧接口，等价于 OAuth 账号的 IsOpenAIPassthroughEnabled。
+func (a *Account) IsOpenAIOAuthPassthroughEnabled() bool {
+	return a != nil && a.IsOpenAIOAuth() && a.IsOpenAIPassthroughEnabled()
+REDACTED
+
+// IsAnthropicAPIKeyPassthroughEnabled 返回 Anthropic API Key 账号是否启用“自动透传（仅替换认证）”。
+// 字段：accounts.extra.anthropic_passthrough。
+// 字段缺失或类型不正确时，按 false（关闭）处理。
+func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
+	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey || a.Extra == nil {
+		return false
+REDACTED
+	enabled, ok := a.Extra["anthropic_passthrough"].(bool)
+	return ok && enabled
+REDACTED
+
+// IsCodexCLIOnlyEnabled 返回 OpenAI OAuth 账号是否启用“仅允许 Codex 官方客户端”。
+// 字段：accounts.extra.codex_cli_only。
+// 字段缺失或类型不正确时，按 false（关闭）处理。
+func (a *Account) IsCodexCLIOnlyEnabled() bool {
+	if a == nil || !a.IsOpenAIOAuth() || a.Extra == nil {
+		return false
+REDACTED
+	enabled, ok := a.Extra["codex_cli_only"].(bool)
+	return ok && enabled
+REDACTED
+
 // WindowCostSchedulability 窗口费用调度状态
 type WindowCostSchedulability int
 

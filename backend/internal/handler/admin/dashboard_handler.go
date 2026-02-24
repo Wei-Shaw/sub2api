@@ -379,7 +379,7 @@ REDACTED
 		return
 REDACTED
 
-	stats, err := h.dashboardService.GetBatchUserUsageStats(c.Request.Context(), req.UserIDs)
+	stats, err := h.dashboardService.GetBatchUserUsageStats(c.Request.Context(), req.UserIDs, time.Time{REDACTED, time.Time{REDACTED)
 	if err != nil {
 		response.Error(c, 500, "Failed to get user usage stats")
 		return
@@ -407,7 +407,7 @@ REDACTED
 		return
 REDACTED
 
-	stats, err := h.dashboardService.GetBatchAPIKeyUsageStats(c.Request.Context(), req.APIKeyIDs)
+	stats, err := h.dashboardService.GetBatchAPIKeyUsageStats(c.Request.Context(), req.APIKeyIDs, time.Time{REDACTED, time.Time{REDACTED)
 	if err != nil {
 		response.Error(c, 500, "Failed to get API key usage stats")
 		return

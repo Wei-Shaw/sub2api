@@ -41,7 +41,7 @@
         </span>
       </div>
 
-      <div class="space-y-1.5">
+      <div v-if="!isSoraAccount" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.selectTestModel') REDACTEDREDACTED
         </label>
@@ -53,6 +53,12 @@
           label-key="display_name"
           :placeholder="loadingModels ? t('common.loading') + '...' : t('admin.accounts.selectTestModel')"
         />
+      </div>
+      <div
+        v-else
+        class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:border-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
+      >
+        {{ t('admin.accounts.soraTestHint') REDACTEDREDACTED
       </div>
 
       <!-- Terminal Output -->
@@ -114,12 +120,12 @@
         <div class="flex items-center gap-3">
           <span class="flex items-center gap-1">
             <Icon name="grid" size="sm" :stroke-width="2" />
-            {{ t('admin.accounts.testModel') REDACTEDREDACTED
+            {{ isSoraAccount ? t('admin.accounts.soraTestTarget') : t('admin.accounts.testModel') REDACTEDREDACTED
           </span>
         </div>
         <span class="flex items-center gap-1">
           <Icon name="chat" size="sm" :stroke-width="2" />
-          {{ t('admin.accounts.testPrompt') REDACTEDREDACTED
+          {{ isSoraAccount ? t('admin.accounts.soraTestMode') : t('admin.accounts.testPrompt') REDACTEDREDACTED
         </span>
       </div>
     </div>
@@ -135,10 +141,10 @@
         </button>
         <button
           @click="startTest"
-          :disabled="status === 'connecting' || !selectedModelId"
+          :disabled="status === 'connecting' || (!isSoraAccount && !selectedModelId)"
           :class="[
             'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-            status === 'connecting' || !selectedModelId
+            status === 'connecting' || (!isSoraAccount && !selectedModelId)
               ? 'cursor-not-allowed bg-primary-400 text-white'
               : status === 'success'
                 ? 'bg-green-500 text-white hover:bg-green-600'
@@ -172,7 +178,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick REDACTED from 'vue'
+import { computed, ref, watch, nextTick REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -207,6 +213,7 @@ const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const loadingModels = ref(false)
 let eventSource: EventSource | null = null
+const isSoraAccount = computed(() => props.account?.platform === 'sora')
 
 // Load available models when modal opens
 watch(
@@ -223,6 +230,12 @@ watch(
 
 const loadAvailableModels = async () => {
   if (!props.account) return
+  if (props.account.platform === 'sora') {
+    availableModels.value = []
+    selectedModelId.value = ''
+    loadingModels.value = false
+    return
+  REDACTED
 
   loadingModels.value = true
   selectedModelId.value = '' // Reset selection before loading
@@ -290,7 +303,7 @@ const scrollToBottom = async () => {
 REDACTED
 
 const startTest = async () => {
-  if (!props.account || !selectedModelId.value) return
+  if (!props.account || (!isSoraAccount.value && !selectedModelId.value)) return
 
   resetState()
   status.value = 'connecting'
@@ -311,7 +324,9 @@ const startTest = async () => {
         Authorization: `Bearer ${localStorage.getItem('auth_token')REDACTED`,
         'Content-Type': 'application/json'
       REDACTED,
-      body: JSON.stringify({ model_id: selectedModelId.value REDACTED)
+      body: JSON.stringify(
+        isSoraAccount.value ? {REDACTED : { model_id: selectedModelId.value REDACTED
+      )
     REDACTED)
 
     if (!response.ok) {
@@ -368,7 +383,10 @@ REDACTED) => {
       if (event.model) {
         addLine(t('admin.accounts.usingModel', { model: event.model REDACTED), 'text-cyan-400')
       REDACTED
-      addLine(t('admin.accounts.sendingTestMessage'), 'text-gray-400')
+      addLine(
+        isSoraAccount.value ? t('admin.accounts.soraTestingFlow') : t('admin.accounts.sendingTestMessage'),
+        'text-gray-400'
+      )
       addLine('', 'text-gray-300')
       addLine(t('admin.accounts.response'), 'text-yellow-400')
       break

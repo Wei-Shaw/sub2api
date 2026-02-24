@@ -6,11 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 const (
@@ -21,7 +24,11 @@ const (
 
 	// Antigravity OAuth 客户端凭证
 	ClientID     = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
-	ClientSecret = "REDACTED"
+	ClientSecret = ""
+
+	// AntigravityOAuthClientSecretEnv 是 Antigravity OAuth client_secret 的环境变量名。
+	// 出于安全原因，该值不得硬编码入库。
+	AntigravityOAuthClientSecretEnv = "ANTIGRAVITY_OAUTH_CLIENT_SECRET"
 
 	// 固定的 redirect_uri（用户需手动复制 code）
 	RedirectURI = "http://localhost:8085/callback"
@@ -57,6 +64,17 @@ REDACTED
 // GetUserAgent 返回当前配置的 User-Agent
 func GetUserAgent() string {
 	return fmt.Sprintf("antigravity/%s windows/amd64", defaultUserAgentVersion)
+  
+func getClientSecret() (string, error) {
+	if v := strings.TrimSpace(ClientSecret); v != "" {
+		return v, nil
+REDACTED
+	if v, ok := os.LookupEnv(AntigravityOAuthClientSecretEnv); ok {
+		if vv := strings.TrimSpace(v); vv != "" {
+			return vv, nil
+	REDACTED
+REDACTED
+	return "", infraerrors.Newf(http.StatusBadRequest, "ANTIGRAVITY_OAUTH_CLIENT_SECRET_MISSING", "missing antigravity oauth client_secret; set %s", AntigravityOAuthClientSecretEnv)
 REDACTED
 
 // BaseURLs 定义 Antigravity API 端点（与 Antigravity-Manager 保持一致）

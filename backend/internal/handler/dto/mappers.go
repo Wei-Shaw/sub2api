@@ -2,6 +2,7 @@
 package dto
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -77,6 +78,7 @@ REDACTED
 		Status:      k.Status,
 		IPWhitelist: k.IPWhitelist,
 		IPBlacklist: k.IPBlacklist,
+		LastUsedAt:  k.LastUsedAt,
 		Quota:       k.Quota,
 		QuotaUsed:   k.QuotaUsed,
 		ExpiresAt:   k.ExpiresAt,
@@ -129,23 +131,26 @@ REDACTED
 
 func groupFromServiceBase(g *service.Group) Group {
 	return Group{
-		ID:               g.ID,
-		Name:             g.Name,
-		Description:      g.Description,
-		Platform:         g.Platform,
-		RateMultiplier:   g.RateMultiplier,
-		IsExclusive:      g.IsExclusive,
-		Status:           g.Status,
-		SubscriptionType: g.SubscriptionType,
-		DailyLimitUSD:    g.DailyLimitUSD,
-		WeeklyLimitUSD:   g.WeeklyLimitUSD,
-		MonthlyLimitUSD:  g.MonthlyLimitUSD,
-		ImagePrice1K:     g.ImagePrice1K,
-		ImagePrice2K:     g.ImagePrice2K,
-		ImagePrice4K:     g.ImagePrice4K,
-		ClaudeCodeOnly:   g.ClaudeCodeOnly,
-		FallbackGroupID:  g.FallbackGroupID,
-		// 无效请求兜底分组
+		ID:                              g.ID,
+		Name:                            g.Name,
+		Description:                     g.Description,
+		Platform:                        g.Platform,
+		RateMultiplier:                  g.RateMultiplier,
+		IsExclusive:                     g.IsExclusive,
+		Status:                          g.Status,
+		SubscriptionType:                g.SubscriptionType,
+		DailyLimitUSD:                   g.DailyLimitUSD,
+		WeeklyLimitUSD:                  g.WeeklyLimitUSD,
+		MonthlyLimitUSD:                 g.MonthlyLimitUSD,
+		ImagePrice1K:                    g.ImagePrice1K,
+		ImagePrice2K:                    g.ImagePrice2K,
+		ImagePrice4K:                    g.ImagePrice4K,
+		SoraImagePrice360:               g.SoraImagePrice360,
+		SoraImagePrice540:               g.SoraImagePrice540,
+		SoraVideoPricePerRequest:        g.SoraVideoPricePerRequest,
+		SoraVideoPricePerRequestHD:      g.SoraVideoPricePerRequestHD,
+		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
+		FallbackGroupID:                 g.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
@@ -300,6 +305,11 @@ REDACTED
 		CountryCode:    p.CountryCode,
 		Region:         p.Region,
 		City:           p.City,
+		QualityStatus:  p.QualityStatus,
+		QualityScore:   p.QualityScore,
+		QualityGrade:   p.QualityGrade,
+		QualitySummary: p.QualitySummary,
+		QualityChecked: p.QualityChecked,
 REDACTED
 REDACTED
 
@@ -404,6 +414,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		FirstTokenMs:          l.FirstTokenMs,
 		ImageCount:            l.ImageCount,
 		ImageSize:             l.ImageSize,
+		MediaType:             l.MediaType,
 		UserAgent:             l.UserAgent,
 		CacheTTLOverridden:    l.CacheTTLOverridden,
 		CreatedAt:             l.CreatedAt,
@@ -532,11 +543,18 @@ REDACTED
 	for i := range r.Subscriptions {
 		subs = append(subs, *UserSubscriptionFromServiceAdmin(&r.Subscriptions[i]))
 REDACTED
+	statuses := make(map[string]string, len(r.Statuses))
+	for userID, status := range r.Statuses {
+		statuses[strconv.FormatInt(userID, 10)] = status
+REDACTED
 	return &BulkAssignResult{
 		SuccessCount:  r.SuccessCount,
+		CreatedCount:  r.CreatedCount,
+		ReusedCount:   r.ReusedCount,
 		FailedCount:   r.FailedCount,
 		Subscriptions: subs,
 		Errors:        r.Errors,
+		Statuses:      statuses,
 REDACTED
 REDACTED
 

@@ -7,11 +7,12 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -103,6 +104,36 @@ type JWTConfig struct {
 	ExpireHour int    `json:"expire_hour" yaml:"expire_hour"`
 REDACTED
 
+const (
+	adminBootstrapReasonEmptyDatabase          = "empty_database"
+	adminBootstrapReasonAdminExists            = "admin_exists"
+	adminBootstrapReasonUsersExistWithoutAdmin = "users_exist_without_admin"
+)
+
+type adminBootstrapDecision struct {
+	shouldCreate bool
+	reason       string
+REDACTED
+
+func decideAdminBootstrap(totalUsers, adminUsers int64) adminBootstrapDecision {
+	if adminUsers > 0 {
+		return adminBootstrapDecision{
+			shouldCreate: false,
+			reason:       adminBootstrapReasonAdminExists,
+	REDACTED
+REDACTED
+	if totalUsers > 0 {
+		return adminBootstrapDecision{
+			shouldCreate: false,
+			reason:       adminBootstrapReasonUsersExistWithoutAdmin,
+	REDACTED
+REDACTED
+	return adminBootstrapDecision{
+		shouldCreate: true,
+		reason:       adminBootstrapReasonEmptyDatabase,
+REDACTED
+REDACTED
+
 // NeedsSetup checks if the system needs initial setup
 // Uses multiple checks to prevent attackers from forcing re-setup by deleting config
 func NeedsSetup() bool {
@@ -137,7 +168,7 @@ REDACTED
 			return
 	REDACTED
 		if err := db.Close(); err != nil {
-			log.Printf("failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 	REDACTED
 REDACTED()
 
@@ -164,12 +195,12 @@ REDACTED
 		if err != nil {
 			return fmt.Errorf("failed to create database '%s': %w", cfg.DBName, err)
 	REDACTED
-		log.Printf("Database '%s' created successfully", cfg.DBName)
+		logger.LegacyPrintf("setup", "Database '%s' created successfully", cfg.DBName)
 REDACTED
 
 	// Now connect to the target database to verify
 	if err := db.Close(); err != nil {
-		log.Printf("failed to close postgres connection: %v", err)
+		logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 REDACTED
 	db = nil
 
@@ -185,7 +216,7 @@ REDACTED
 
 	defer func() {
 		if err := targetDB.Close(); err != nil {
-			log.Printf("failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 	REDACTED
 REDACTED()
 
@@ -217,7 +248,7 @@ REDACTED
 	rdb := redis.NewClient(opts)
 	defer func() {
 		if err := rdb.Close(); err != nil {
-			log.Printf("failed to close redis client: %v", err)
+			logger.LegacyPrintf("setup", "failed to close redis client: %v", err)
 	REDACTED
 REDACTED()
 
@@ -245,7 +276,7 @@ REDACTED
 			return fmt.Errorf("failed to generate jwt secret: %w", err)
 	REDACTED
 		cfg.JWT.Secret = secret
-		log.Println("Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
+		logger.LegacyPrintf("setup", "%s", "Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
 REDACTED
 
 	// Test connections
@@ -262,8 +293,8 @@ REDACTED
 		return fmt.Errorf("database initialization failed: %w", err)
 REDACTED
 
-	// Create admin user
-	if err := createAdminUser(cfg); err != nil {
+	// Create admin user (only when database is empty and no admin exists).
+	if _, _, err := createAdminUser(cfg); err != nil {
 		return fmt.Errorf("admin user creation failed: %w", err)
 REDACTED
 
@@ -300,7 +331,7 @@ REDACTED
 
 	defer func() {
 		if err := db.Close(); err != nil {
-			log.Printf("failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 	REDACTED
 REDACTED()
 
@@ -309,7 +340,7 @@ REDACTED()
 	return repository.ApplyMigrations(migrationCtx, db)
 REDACTED
 
-func createAdminUser(cfg *SetupConfig) error {
+func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 	dsn := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Database.Host, cfg.Database.Port, cfg.Database.User,
@@ -318,12 +349,12 @@ func createAdminUser(cfg *SetupConfig) error {
 
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		return err
+		return false, "", err
 REDACTED
 
 	defer func() {
 		if err := db.Close(); err != nil {
-			log.Printf("failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 	REDACTED
 REDACTED()
 
@@ -331,13 +362,27 @@ REDACTED()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Check if admin already exists
-	var count int64
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users WHERE role = $1", service.RoleAdmin).Scan(&count); err != nil {
-		return err
+	var totalUsers int64
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users").Scan(&totalUsers); err != nil {
+		return false, "", err
 REDACTED
-	if count > 0 {
-		return nil // Admin already exists
+	var adminUsers int64
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users WHERE role = $1", service.RoleAdmin).Scan(&adminUsers); err != nil {
+		return false, "", err
+REDACTED
+	decision := decideAdminBootstrap(totalUsers, adminUsers)
+	if !decision.shouldCreate {
+		return false, decision.reason, nil
+REDACTED
+
+	if strings.TrimSpace(cfg.Admin.Password) == "" {
+		password, genErr := generateSecret(16)
+		if genErr != nil {
+			return false, "", fmt.Errorf("failed to generate admin password: %w", genErr)
+	REDACTED
+		cfg.Admin.Password = password
+		fmt.Printf("Generated admin password (one-time): %s\n", cfg.Admin.Password)
+		fmt.Println("IMPORTANT: Save this password! It will not be shown again.")
 REDACTED
 
 	admin := &service.User{
@@ -351,7 +396,7 @@ REDACTED
 REDACTED
 
 	if err := admin.SetPassword(cfg.Admin.Password); err != nil {
-		return err
+		return false, "", err
 REDACTED
 
 	_, err = db.ExecContext(
@@ -367,7 +412,10 @@ REDACTED
 		admin.CreatedAt,
 		admin.UpdatedAt,
 	)
-	return err
+	if err != nil {
+		return false, "", err
+REDACTED
+	return true, decision.reason, nil
 REDACTED
 
 func writeConfigFile(cfg *SetupConfig) error {
@@ -476,8 +524,8 @@ REDACTED
 // AutoSetupFromEnv performs automatic setup using environment variables
 // This is designed for Docker deployment where all config is passed via env vars
 func AutoSetupFromEnv() error {
-	log.Println("Auto setup enabled, configuring from environment variables...")
-	log.Printf("Data directory: %s", GetDataDir())
+	logger.LegacyPrintf("setup", "%s", "Auto setup enabled, configuring from environment variables...")
+	logger.LegacyPrintf("setup", "Data directory: %s", GetDataDir())
 
 	// Get timezone from TZ or TIMEZONE env var (TZ is standard for Docker)
 	tz := getEnvOrDefault("TZ", "")
@@ -525,61 +573,62 @@ REDACTED
 			return fmt.Errorf("failed to generate jwt secret: %w", err)
 	REDACTED
 		cfg.JWT.Secret = secret
-		log.Println("Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
-REDACTED
-
-	// Generate admin password if not provided
-	if cfg.Admin.Password == "" {
-		password, err := generateSecret(16)
-		if err != nil {
-			return fmt.Errorf("failed to generate admin password: %w", err)
-	REDACTED
-		cfg.Admin.Password = password
-		fmt.Printf("Generated admin password (one-time): %s\n", cfg.Admin.Password)
-		fmt.Println("IMPORTANT: Save this password! It will not be shown again.")
+		logger.LegacyPrintf("setup", "%s", "Warning: JWT secret auto-generated. Consider setting a fixed secret for production.")
 REDACTED
 
 	// Test database connection
-	log.Println("Testing database connection...")
+	logger.LegacyPrintf("setup", "%s", "Testing database connection...")
 	if err := TestDatabaseConnection(&cfg.Database); err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
 REDACTED
-	log.Println("Database connection successful")
+	logger.LegacyPrintf("setup", "%s", "Database connection successful")
 
 	// Test Redis connection
-	log.Println("Testing Redis connection...")
+	logger.LegacyPrintf("setup", "%s", "Testing Redis connection...")
 	if err := TestRedisConnection(&cfg.Redis); err != nil {
 		return fmt.Errorf("redis connection failed: %w", err)
 REDACTED
-	log.Println("Redis connection successful")
+	logger.LegacyPrintf("setup", "%s", "Redis connection successful")
 
 	// Initialize database
-	log.Println("Initializing database...")
+	logger.LegacyPrintf("setup", "%s", "Initializing database...")
 	if err := initializeDatabase(cfg); err != nil {
 		return fmt.Errorf("database initialization failed: %w", err)
 REDACTED
-	log.Println("Database initialized successfully")
+	logger.LegacyPrintf("setup", "%s", "Database initialized successfully")
 
 	// Create admin user
-	log.Println("Creating admin user...")
-	if err := createAdminUser(cfg); err != nil {
+	logger.LegacyPrintf("setup", "%s", "Creating admin user...")
+	created, reason, err := createAdminUser(cfg)
+	if err != nil {
 		return fmt.Errorf("admin user creation failed: %w", err)
 REDACTED
-	log.Printf("Admin user created: %s", cfg.Admin.Email)
+	if created {
+		logger.LegacyPrintf("setup", "Admin user created: %s", cfg.Admin.Email)
+REDACTED else {
+		switch reason {
+		case adminBootstrapReasonAdminExists:
+			logger.LegacyPrintf("setup", "%s", "Admin user already exists, skipping admin bootstrap")
+		case adminBootstrapReasonUsersExistWithoutAdmin:
+			logger.LegacyPrintf("setup", "%s", "Database already has user data; skipping auto admin bootstrap to avoid password overwrite")
+		default:
+			logger.LegacyPrintf("setup", "%s", "Admin bootstrap skipped")
+	REDACTED
+REDACTED
 
 	// Write config file
-	log.Println("Writing configuration file...")
+	logger.LegacyPrintf("setup", "%s", "Writing configuration file...")
 	if err := writeConfigFile(cfg); err != nil {
 		return fmt.Errorf("config file creation failed: %w", err)
 REDACTED
-	log.Println("Configuration file created")
+	logger.LegacyPrintf("setup", "%s", "Configuration file created")
 
 	// Create installation lock file
 	if err := createInstallLock(); err != nil {
 		return fmt.Errorf("failed to create install lock: %w", err)
 REDACTED
-	log.Println("Installation lock created")
+	logger.LegacyPrintf("setup", "%s", "Installation lock created")
 
-	log.Println("Auto setup completed successfully!")
+	logger.LegacyPrintf("setup", "%s", "Auto setup completed successfully!")
 	return nil
 REDACTED

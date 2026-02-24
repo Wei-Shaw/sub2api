@@ -144,11 +144,17 @@ const showDropdown = ref(false)
 const searchQuery = ref('')
 const customModel = ref('')
 const isComposing = ref(false)
+const availableOptions = computed(() => {
+  if (props.platform === 'sora') {
+    return getModelsByPlatform('sora').map(m => ({ value: m, label: m REDACTED))
+  REDACTED
+  return allModels
+REDACTED)
 
 const filteredModels = computed(() => {
   const query = searchQuery.value.toLowerCase().trim()
-  if (!query) return allModels
-  return allModels.filter(
+  if (!query) return availableOptions.value
+  return availableOptions.value.filter(
     m => m.value.toLowerCase().includes(query) || m.label.toLowerCase().includes(query)
   )
 REDACTED)
@@ -197,4 +203,5 @@ REDACTED
 const clearAll = () => {
   emit('update:modelValue', [])
 REDACTED
+
 </script>

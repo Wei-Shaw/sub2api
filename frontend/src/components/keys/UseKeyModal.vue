@@ -534,6 +534,18 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     REDACTED
   REDACTED
   const openaiModels = {
+    'gpt-5.3-codex-spark': {
+      name: 'GPT-5.3 Codex Spark',
+      options: {
+        store: false
+      REDACTED,
+      variants: {
+        low: {REDACTED,
+        medium: {REDACTED,
+        high: {REDACTED,
+        xhigh: {REDACTED
+      REDACTED
+    REDACTED,
     'gpt-5.2-codex': {
       name: 'GPT-5.2 Codex',
       options: {

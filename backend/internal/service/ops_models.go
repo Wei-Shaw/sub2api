@@ -2,6 +2,21 @@ package service
 
 import "time"
 
+type OpsSystemLog struct {
+	ID              int64          `json:"id"`
+	CreatedAt       time.Time      `json:"created_at"`
+	Level           string         `json:"level"`
+	Component       string         `json:"component"`
+	Message         string         `json:"message"`
+	RequestID       string         `json:"request_id"`
+	ClientRequestID string         `json:"client_request_id"`
+	UserID          *int64         `json:"user_id"`
+	AccountID       *int64         `json:"account_id"`
+	Platform        string         `json:"platform"`
+	Model           string         `json:"model"`
+	Extra           map[string]any `json:"extra,omitempty"`
+REDACTED
+
 type OpsErrorLog struct {
 	ID        int64     `json:"id"`
 	CreatedAt time.Time `json:"created_at"`

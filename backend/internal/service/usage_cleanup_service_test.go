@@ -644,6 +644,23 @@ REDACTED
 	require.Equal(t, "USAGE_CLEANUP_CANCEL_CONFLICT", infraerrors.Reason(err))
 REDACTED
 
+func TestUsageCleanupServiceCancelTaskAlreadyCanceledIsIdempotent(t *testing.T) {
+	repo := &cleanupRepoStub{
+		statusByID: map[int64]string{
+			7: UsageCleanupStatusCanceled,
+	REDACTED,
+REDACTED
+	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: trueREDACTEDREDACTED
+	svc := NewUsageCleanupService(repo, nil, nil, cfg)
+
+	err := svc.CancelTask(context.Background(), 7, 1)
+REDACTED
+
+	repo.mu.Lock()
+	defer repo.mu.Unlock()
+	require.Empty(t, repo.cancelCalls, "already canceled should return success without extra cancel write")
+REDACTED
+
 func TestUsageCleanupServiceCancelTaskRepoConflict(t *testing.T) {
 	shouldCancel := false
 	repo := &cleanupRepoStub{

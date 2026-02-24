@@ -19,10 +19,14 @@ func NewProxyExitInfoProber(cfg *config.Config) service.ProxyExitInfoProber {
 	insecure := false
 	allowPrivate := false
 	validateResolvedIP := true
+	maxResponseBytes := defaultProxyProbeResponseMaxBytes
 	if cfg != nil {
 		insecure = cfg.Security.ProxyProbe.InsecureSkipVerify
 		allowPrivate = cfg.Security.URLAllowlist.AllowPrivateHosts
 		validateResolvedIP = cfg.Security.URLAllowlist.Enabled
+		if cfg.Gateway.ProxyProbeResponseReadMaxBytes > 0 {
+			maxResponseBytes = cfg.Gateway.ProxyProbeResponseReadMaxBytes
+	REDACTED
 REDACTED
 	if insecure {
 		log.Printf("[ProxyProbe] Warning: insecure_skip_verify is not allowed and will cause probe failure.")
@@ -31,11 +35,13 @@ REDACTED
 		insecureSkipVerify: insecure,
 		allowPrivateHosts:  allowPrivate,
 		validateResolvedIP: validateResolvedIP,
+		maxResponseBytes:   maxResponseBytes,
 REDACTED
 REDACTED
 
 const (
-	defaultProxyProbeTimeout = 30 * time.Second
+	defaultProxyProbeTimeout          = 30 * time.Second
+	defaultProxyProbeResponseMaxBytes = int64(1024 * 1024)
 )
 
 // probeURLs 按优先级排列的探测 URL 列表
@@ -52,6 +58,7 @@ type proxyProbeService struct {
 	insecureSkipVerify bool
 	allowPrivateHosts  bool
 	validateResolvedIP bool
+	maxResponseBytes   int64
 REDACTED
 
 func (s *proxyProbeService) ProbeProxy(ctx context.Context, proxyURL string) (*service.ProxyExitInfo, int64, error) {
@@ -98,9 +105,16 @@ REDACTED
 		return nil, latencyMs, fmt.Errorf("request failed with status: %d", resp.StatusCode)
 REDACTED
 
-	body, err := io.ReadAll(resp.Body)
+	maxResponseBytes := s.maxResponseBytes
+	if maxResponseBytes <= 0 {
+		maxResponseBytes = defaultProxyProbeResponseMaxBytes
+REDACTED
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return nil, latencyMs, fmt.Errorf("failed to read response: %w", err)
+REDACTED
+	if int64(len(body)) > maxResponseBytes {
+		return nil, latencyMs, fmt.Errorf("proxy probe response exceeds limit: %d", maxResponseBytes)
 REDACTED
 
 	switch parser {

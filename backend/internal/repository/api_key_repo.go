@@ -34,6 +34,7 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetName(key.Name).
 		SetStatus(key.Status).
 		SetNillableGroupID(key.GroupID).
+		SetNillableLastUsedAt(key.LastUsedAt).
 		SetQuota(key.Quota).
 		SetQuotaUsed(key.QuotaUsed).
 		SetNillableExpiresAt(key.ExpiresAt)
@@ -48,6 +49,7 @@ REDACTED
 	created, err := builder.Save(ctx)
 	if err == nil {
 		key.ID = created.ID
+		key.LastUsedAt = created.LastUsedAt
 		key.CreatedAt = created.CreatedAt
 		key.UpdatedAt = created.UpdatedAt
 REDACTED
@@ -140,6 +142,10 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldImagePrice1k,
 				group.FieldImagePrice2k,
 				group.FieldImagePrice4k,
+				group.FieldSoraImagePrice360,
+				group.FieldSoraImagePrice540,
+				group.FieldSoraVideoPricePerRequest,
+				group.FieldSoraVideoPricePerRequestHd,
 				group.FieldClaudeCodeOnly,
 				group.FieldFallbackGroupID,
 				group.FieldFallbackGroupIDOnInvalidRequest,
@@ -375,36 +381,34 @@ REDACTED
 	return keys, nil
 REDACTED
 
-// IncrementQuotaUsed atomically increments the quota_used field and returns the new value
+// IncrementQuotaUsed 使用 Ent 原子递增 quota_used 字段并返回新值
 func (r *apiKeyRepository) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) (float64, error) {
-	// Use raw SQL for atomic increment to avoid race conditions
-	// First get current value
-	m, err := r.activeQuery().
-		Where(apikey.IDEQ(id)).
-		Select(apikey.FieldQuotaUsed).
-		Only(ctx)
+	updated, err := r.client.APIKey.UpdateOneID(id).
+		Where(apikey.DeletedAtIsNil()).
+		AddQuotaUsed(amount).
+		Save(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
 			return 0, service.ErrAPIKeyNotFound
 	REDACTED
 		return 0, err
 REDACTED
+	return updated.QuotaUsed, nil
+REDACTED
 
-	newValue := m.QuotaUsed + amount
-
-	// Update with new value
+func (r *apiKeyRepository) UpdateLastUsed(ctx context.Context, id int64, usedAt time.Time) error {
 	affected, err := r.client.APIKey.Update().
 		Where(apikey.IDEQ(id), apikey.DeletedAtIsNil()).
-		SetQuotaUsed(newValue).
+		SetLastUsedAt(usedAt).
+		SetUpdatedAt(usedAt).
 		Save(ctx)
 	if err != nil {
-		return 0, err
+		return err
 REDACTED
 	if affected == 0 {
-		return 0, service.ErrAPIKeyNotFound
+		return service.ErrAPIKeyNotFound
 REDACTED
-
-	return newValue, nil
+	return nil
 REDACTED
 
 func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
@@ -419,6 +423,7 @@ REDACTED
 		Status:      m.Status,
 		IPWhitelist: m.IPWhitelist,
 		IPBlacklist: m.IPBlacklist,
+		LastUsedAt:  m.LastUsedAt,
 		CreatedAt:   m.CreatedAt,
 		UpdatedAt:   m.UpdatedAt,
 		GroupID:     m.GroupID,
@@ -477,6 +482,10 @@ REDACTED
 		ImagePrice1K:                    g.ImagePrice1k,
 		ImagePrice2K:                    g.ImagePrice2k,
 		ImagePrice4K:                    g.ImagePrice4k,
+		SoraImagePrice360:               g.SoraImagePrice360,
+		SoraImagePrice540:               g.SoraImagePrice540,
+		SoraVideoPricePerRequest:        g.SoraVideoPricePerRequest,
+		SoraVideoPricePerRequestHD:      g.SoraVideoPricePerRequestHd,
 		DefaultValidityDays:             g.DefaultValidityDays,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,

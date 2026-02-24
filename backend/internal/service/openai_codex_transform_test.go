@@ -1,18 +1,13 @@
 package service
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestApplyCodexOAuthTransform_ToolContinuationPreservesInput(t *testing.T) {
 	// 续链场景：保留 item_reference 与 id，但不再强制 store=true。
-	setupCodexCache(t)
 
 	reqBody := map[string]any{
 		"model": "gpt-5.2",
@@ -48,7 +43,6 @@ REDACTED
 
 func TestApplyCodexOAuthTransform_ExplicitStoreFalsePreserved(t *testing.T) {
 	// 续链场景：显式 store=false 不再强制为 true，保持 false。
-	setupCodexCache(t)
 
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
@@ -68,7 +62,6 @@ REDACTED
 
 func TestApplyCodexOAuthTransform_ExplicitStoreTrueForcedFalse(t *testing.T) {
 	// 显式 store=true 也会强制为 false。
-	setupCodexCache(t)
 
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
@@ -88,7 +81,6 @@ REDACTED
 
 func TestApplyCodexOAuthTransform_NonContinuationDefaultsStoreFalseAndStripsIDs(t *testing.T) {
 	// 非续链场景：未设置 store 时默认 false，并移除 input 中的 id。
-	setupCodexCache(t)
 
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
@@ -130,8 +122,6 @@ REDACTED
 REDACTED
 
 func TestApplyCodexOAuthTransform_NormalizeCodexTools_PreservesResponsesFunctionTools(t *testing.T) {
-	setupCodexCache(t)
-
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
 		"tools": []any{
@@ -162,7 +152,6 @@ REDACTED
 
 func TestApplyCodexOAuthTransform_EmptyInput(t *testing.T) {
 	// 空 input 应保持为空且不触发异常。
-	setupCodexCache(t)
 
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
@@ -178,97 +167,39 @@ REDACTED
 
 func TestNormalizeCodexModel_Gpt53(t *testing.T) {
 	cases := map[string]string{
-		"gpt-5.3":             "gpt-5.3",
-		"gpt-5.3-codex":       "gpt-5.3-codex",
-		"gpt-5.3-codex-xhigh": "gpt-5.3-codex",
-		"gpt 5.3 codex":       "gpt-5.3-codex",
+		"gpt-5.3":                   "gpt-5.3-codex",
+		"gpt-5.3-codex":             "gpt-5.3-codex",
+		"gpt-5.3-codex-xhigh":       "gpt-5.3-codex",
+		"gpt-5.3-codex-spark":       "gpt-5.3-codex",
+		"gpt-5.3-codex-spark-high":  "gpt-5.3-codex",
+		"gpt-5.3-codex-spark-xhigh": "gpt-5.3-codex",
+		"gpt 5.3 codex":             "gpt-5.3-codex",
 REDACTED
 
 	for input, expected := range cases {
 		require.Equal(t, expected, normalizeCodexModel(input))
 REDACTED
-
 REDACTED
 
 func TestApplyCodexOAuthTransform_CodexCLI_PreservesExistingInstructions(t *testing.T) {
-	// Codex CLI 场景：已有 instructions 时保持不变
-	setupCodexCache(t)
+	// Codex CLI 场景：已有 instructions 时不修改
 
 	reqBody := map[string]any{
 		"model":        "gpt-5.1",
-		"instructions": "user custom instructions",
-		"input":        []any{REDACTED,
+		"instructions": "existing instructions",
 REDACTED
 
-	result := applyCodexOAuthTransform(reqBody, true)
+	result := applyCodexOAuthTransform(reqBody, true) // isCodexCLI=true
 
 	instructions, ok := reqBody["instructions"].(string)
 	require.True(t, ok)
-	require.Equal(t, "user custom instructions", instructions)
-	// instructions 未变，但其他字段（如 store、stream）可能被修改
-	require.True(t, result.Modified)
-REDACTED
-
-func TestApplyCodexOAuthTransform_CodexCLI_AddsInstructionsWhenEmpty(t *testing.T) {
-	// Codex CLI 场景：无 instructions 时补充内置指令
-	setupCodexCache(t)
-
-	reqBody := map[string]any{
-		"model": "gpt-5.1",
-		"input": []any{REDACTED,
-REDACTED
-
-	result := applyCodexOAuthTransform(reqBody, true)
-
-	instructions, ok := reqBody["instructions"].(string)
-	require.True(t, ok)
-	require.NotEmpty(t, instructions)
-	require.True(t, result.Modified)
-REDACTED
-
-func TestApplyCodexOAuthTransform_NonCodexCLI_UsesOpenCodeInstructions(t *testing.T) {
-	// 非 Codex CLI 场景：使用 opencode 指令（缓存中有 header）
-	setupCodexCache(t)
-
-	reqBody := map[string]any{
-		"model": "gpt-5.1",
-		"input": []any{REDACTED,
-REDACTED
-
-	result := applyCodexOAuthTransform(reqBody, false)
-
-	instructions, ok := reqBody["instructions"].(string)
-	require.True(t, ok)
-	require.Equal(t, "header", instructions) // setupCodexCache 设置的缓存内容
-	require.True(t, result.Modified)
-REDACTED
-
-func setupCodexCache(t *testing.T) {
-REDACTED
-
-	// 使用临时 HOME 避免触发网络拉取 header。
-	// Windows 使用 USERPROFILE，Unix 使用 HOME。
-	tempDir := t.TempDir()
-	t.Setenv("HOME", tempDir)
-	t.Setenv("USERPROFILE", tempDir)
-
-	cacheDir := filepath.Join(tempDir, ".opencode", "cache")
-	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(cacheDir, "opencode-codex-header.txt"), []byte("header"), 0o644))
-
-	meta := map[string]any{
-		"etag":        "",
-		"lastFetch":   time.Now().UTC().Format(time.RFC3339),
-		"lastChecked": time.Now().UnixMilli(),
-REDACTED
-	data, err := json.Marshal(meta)
-REDACTED
-	require.NoError(t, os.WriteFile(filepath.Join(cacheDir, "opencode-codex-header-meta.json"), data, 0o644))
+	require.Equal(t, "existing instructions", instructions)
+	// Modified 仍可能为 true（因为其他字段被修改），但 instructions 应保持不变
+	_ = result
 REDACTED
 
 func TestApplyCodexOAuthTransform_CodexCLI_SuppliesDefaultWhenEmpty(t *testing.T) {
 	// Codex CLI 场景：无 instructions 时补充默认值
-	setupCodexCache(t)
 
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
@@ -284,8 +215,7 @@ REDACTED
 REDACTED
 
 func TestApplyCodexOAuthTransform_NonCodexCLI_OverridesInstructions(t *testing.T) {
-	// 非 Codex CLI 场景：使用 opencode 指令覆盖
-	setupCodexCache(t)
+	// 非 Codex CLI 场景：使用内置 Codex CLI 指令覆盖
 
 	reqBody := map[string]any{
 		"model":        "gpt-5.1",

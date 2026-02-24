@@ -14,6 +14,44 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// ---------- 辅助函数 ----------
+
+// parseResponseBody 从 httptest.ResponseRecorder 中解析 JSON 响应体
+func parseResponseBody(t *testing.T, w *httptest.ResponseRecorder) Response {
+REDACTED
+	var got Response
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	return got
+REDACTED
+
+// parsePaginatedBody 从响应体中解析分页数据（Data 字段是 PaginatedData）
+func parsePaginatedBody(t *testing.T, w *httptest.ResponseRecorder) (Response, PaginatedData) {
+REDACTED
+	// 先用 raw json 解析，因为 Data 是 any 类型
+	var raw struct {
+		Code    int               `json:"code"`
+		Message string            `json:"message"`
+		Reason  string            `json:"reason,omitempty"`
+		Data    json.RawMessage   `json:"data,omitempty"`
+REDACTED
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &raw))
+
+	var pd PaginatedData
+	require.NoError(t, json.Unmarshal(raw.Data, &pd))
+
+	return Response{Code: raw.Code, Message: raw.Message, Reason: raw.ReasonREDACTED, pd
+REDACTED
+
+// newContextWithQuery 创建一个带有 URL query 参数的 gin.Context 用于测试 ParsePagination
+func newContextWithQuery(query string) (*httptest.ResponseRecorder, *gin.Context) {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/?"+query, nil)
+	return w, c
+REDACTED
+
+// ---------- 现有测试 ----------
+
 func TestErrorWithDetails(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -166,6 +204,585 @@ REDACTED
 			var got Response
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
 			require.Equal(t, tt.wantBody, got)
+	REDACTED)
+REDACTED
+REDACTED
+
+// ---------- 新增测试 ----------
+
+func TestSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name     string
+		data     any
+		wantCode int
+		wantBody Response
+REDACTED{
+		{
+			name:     "返回字符串数据",
+			data:     "hello",
+			wantCode: http.StatusOK,
+			wantBody: Response{Code: 0, Message: "success", Data: "hello"REDACTED,
+	REDACTED,
+		{
+			name:     "返回nil数据",
+			data:     nil,
+			wantCode: http.StatusOK,
+			wantBody: Response{Code: 0, Message: "success"REDACTED,
+	REDACTED,
+		{
+			name:     "返回map数据",
+			data:     map[string]string{"key": "value"REDACTED,
+			wantCode: http.StatusOK,
+			wantBody: Response{Code: 0, Message: "success"REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			Success(c, tt.data)
+
+			require.Equal(t, tt.wantCode, w.Code)
+
+			// 只验证 code 和 message，data 字段类型在 JSON 反序列化时会变成 map/slice
+			got := parseResponseBody(t, w)
+			require.Equal(t, 0, got.Code)
+			require.Equal(t, "success", got.Message)
+
+			if tt.data == nil {
+				require.Nil(t, got.Data)
+		REDACTED else {
+				require.NotNil(t, got.Data)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestCreated(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name     string
+		data     any
+		wantCode int
+REDACTED{
+		{
+			name:     "创建成功_返回数据",
+			data:     map[string]int{"id": 42REDACTED,
+			wantCode: http.StatusCreated,
+	REDACTED,
+		{
+			name:     "创建成功_nil数据",
+			data:     nil,
+			wantCode: http.StatusCreated,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			Created(c, tt.data)
+
+			require.Equal(t, tt.wantCode, w.Code)
+
+			got := parseResponseBody(t, w)
+			require.Equal(t, 0, got.Code)
+			require.Equal(t, "success", got.Message)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name       string
+		statusCode int
+		message    string
+REDACTED{
+		{
+			name:       "400错误",
+			statusCode: http.StatusBadRequest,
+			message:    "bad request",
+	REDACTED,
+		{
+			name:       "500错误",
+			statusCode: http.StatusInternalServerError,
+			message:    "internal error",
+	REDACTED,
+		{
+			name:       "自定义状态码",
+			statusCode: 418,
+			message:    "I'm a teapot",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			Error(c, tt.statusCode, tt.message)
+
+			require.Equal(t, tt.statusCode, w.Code)
+
+			got := parseResponseBody(t, w)
+			require.Equal(t, tt.statusCode, got.Code)
+			require.Equal(t, tt.message, got.Message)
+			require.Empty(t, got.Reason)
+			require.Nil(t, got.Metadata)
+			require.Nil(t, got.Data)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestBadRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	BadRequest(c, "参数无效")
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	got := parseResponseBody(t, w)
+	require.Equal(t, http.StatusBadRequest, got.Code)
+	require.Equal(t, "参数无效", got.Message)
+REDACTED
+
+func TestUnauthorized(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	Unauthorized(c, "未登录")
+
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+	got := parseResponseBody(t, w)
+	require.Equal(t, http.StatusUnauthorized, got.Code)
+	require.Equal(t, "未登录", got.Message)
+REDACTED
+
+func TestForbidden(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	Forbidden(c, "无权限")
+
+	require.Equal(t, http.StatusForbidden, w.Code)
+	got := parseResponseBody(t, w)
+	require.Equal(t, http.StatusForbidden, got.Code)
+	require.Equal(t, "无权限", got.Message)
+REDACTED
+
+func TestNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	NotFound(c, "资源不存在")
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	got := parseResponseBody(t, w)
+	require.Equal(t, http.StatusNotFound, got.Code)
+	require.Equal(t, "资源不存在", got.Message)
+REDACTED
+
+func TestInternalError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	InternalError(c, "服务器内部错误")
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	got := parseResponseBody(t, w)
+	require.Equal(t, http.StatusInternalServerError, got.Code)
+	require.Equal(t, "服务器内部错误", got.Message)
+REDACTED
+
+func TestPaginated(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name         string
+		items        any
+		total        int64
+		page         int
+		pageSize     int
+		wantPages    int
+		wantTotal    int64
+		wantPage     int
+		wantPageSize int
+REDACTED{
+		{
+			name:         "标准分页_多页",
+			items:        []string{"a", "b"REDACTED,
+			total:        25,
+			page:         1,
+			pageSize:     10,
+			wantPages:    3,
+			wantTotal:    25,
+			wantPage:     1,
+			wantPageSize: 10,
+	REDACTED,
+		{
+			name:         "总数刚好整除",
+			items:        []string{"a"REDACTED,
+			total:        20,
+			page:         2,
+			pageSize:     10,
+			wantPages:    2,
+			wantTotal:    20,
+			wantPage:     2,
+			wantPageSize: 10,
+	REDACTED,
+		{
+			name:         "总数为0_pages至少为1",
+			items:        []string{REDACTED,
+			total:        0,
+			page:         1,
+			pageSize:     10,
+			wantPages:    1,
+			wantTotal:    0,
+			wantPage:     1,
+			wantPageSize: 10,
+	REDACTED,
+		{
+			name:         "单页数据",
+			items:        []int{1, 2, 3REDACTED,
+			total:        3,
+			page:         1,
+			pageSize:     20,
+			wantPages:    1,
+			wantTotal:    3,
+			wantPage:     1,
+			wantPageSize: 20,
+	REDACTED,
+		{
+			name:         "总数为1",
+			items:        []string{"only"REDACTED,
+			total:        1,
+			page:         1,
+			pageSize:     10,
+			wantPages:    1,
+			wantTotal:    1,
+			wantPage:     1,
+			wantPageSize: 10,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			Paginated(c, tt.items, tt.total, tt.page, tt.pageSize)
+
+			require.Equal(t, http.StatusOK, w.Code)
+
+			resp, pd := parsePaginatedBody(t, w)
+			require.Equal(t, 0, resp.Code)
+			require.Equal(t, "success", resp.Message)
+			require.Equal(t, tt.wantTotal, pd.Total)
+			require.Equal(t, tt.wantPage, pd.Page)
+			require.Equal(t, tt.wantPageSize, pd.PageSize)
+			require.Equal(t, tt.wantPages, pd.Pages)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestPaginatedWithResult(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name         string
+		items        any
+		pagination   *PaginationResult
+		wantTotal    int64
+		wantPage     int
+		wantPageSize int
+		wantPages    int
+REDACTED{
+		{
+			name:  "正常分页结果",
+			items: []string{"a", "b"REDACTED,
+			pagination: &PaginationResult{
+				Total:    50,
+				Page:     3,
+				PageSize: 10,
+				Pages:    5,
+		REDACTED,
+			wantTotal:    50,
+			wantPage:     3,
+			wantPageSize: 10,
+			wantPages:    5,
+	REDACTED,
+		{
+			name:         "pagination为nil_使用默认值",
+			items:        []string{REDACTED,
+			pagination:   nil,
+			wantTotal:    0,
+			wantPage:     1,
+			wantPageSize: 20,
+			wantPages:    1,
+	REDACTED,
+		{
+			name:  "单页结果",
+			items: []int{1REDACTED,
+			pagination: &PaginationResult{
+				Total:    1,
+				Page:     1,
+				PageSize: 20,
+				Pages:    1,
+		REDACTED,
+			wantTotal:    1,
+			wantPage:     1,
+			wantPageSize: 20,
+			wantPages:    1,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			PaginatedWithResult(c, tt.items, tt.pagination)
+
+			require.Equal(t, http.StatusOK, w.Code)
+
+			resp, pd := parsePaginatedBody(t, w)
+			require.Equal(t, 0, resp.Code)
+			require.Equal(t, "success", resp.Message)
+			require.Equal(t, tt.wantTotal, pd.Total)
+			require.Equal(t, tt.wantPage, pd.Page)
+			require.Equal(t, tt.wantPageSize, pd.PageSize)
+			require.Equal(t, tt.wantPages, pd.Pages)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestParsePagination(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name         string
+		query        string
+		wantPage     int
+		wantPageSize int
+REDACTED{
+		{
+			name:         "无参数_使用默认值",
+			query:        "",
+			wantPage:     1,
+			wantPageSize: 20,
+	REDACTED,
+		{
+			name:         "仅指定page",
+			query:        "page=3",
+			wantPage:     3,
+			wantPageSize: 20,
+	REDACTED,
+		{
+			name:         "仅指定page_size",
+			query:        "page_size=50",
+			wantPage:     1,
+			wantPageSize: 50,
+	REDACTED,
+		{
+			name:         "同时指定page和page_size",
+			query:        "page=2&page_size=30",
+			wantPage:     2,
+			wantPageSize: 30,
+	REDACTED,
+		{
+			name:         "使用limit代替page_size",
+			query:        "limit=15",
+			wantPage:     1,
+			wantPageSize: 15,
+	REDACTED,
+		{
+			name:         "page_size优先于limit",
+			query:        "page_size=25&limit=50",
+			wantPage:     1,
+			wantPageSize: 25,
+	REDACTED,
+		{
+			name:         "page为0_使用默认值",
+			query:        "page=0",
+			wantPage:     1,
+			wantPageSize: 20,
+	REDACTED,
+		{
+			name:         "page_size超过1000_使用默认值",
+			query:        "page_size=1001",
+			wantPage:     1,
+			wantPageSize: 20,
+	REDACTED,
+		{
+			name:         "page_size恰好1000_有效",
+			query:        "page_size=1000",
+			wantPage:     1,
+			wantPageSize: 1000,
+	REDACTED,
+		{
+			name:         "page为非数字_使用默认值",
+			query:        "page=abc",
+			wantPage:     1,
+			wantPageSize: 20,
+	REDACTED,
+		{
+			name:         "page_size为非数字_使用默认值",
+			query:        "page_size=xyz",
+			wantPage:     1,
+			wantPageSize: 20,
+	REDACTED,
+		{
+			name:         "limit为非数字_使用默认值",
+			query:        "limit=abc",
+			wantPage:     1,
+			wantPageSize: 20,
+	REDACTED,
+		{
+			name:         "page_size为0_使用默认值",
+			query:        "page_size=0",
+			wantPage:     1,
+			wantPageSize: 20,
+	REDACTED,
+		{
+			name:         "limit为0_使用默认值",
+			query:        "limit=0",
+			wantPage:     1,
+			wantPageSize: 20,
+	REDACTED,
+		{
+			name:         "大页码",
+			query:        "page=999&page_size=100",
+			wantPage:     999,
+			wantPageSize: 100,
+	REDACTED,
+		{
+			name:         "page_size为1_最小有效值",
+			query:        "page_size=1",
+			wantPage:     1,
+			wantPageSize: 1,
+	REDACTED,
+		{
+			name:         "混合数字和字母的page",
+			query:        "page=12a",
+			wantPage:     1,
+			wantPageSize: 20,
+	REDACTED,
+		{
+			name:         "limit超过1000_使用默认值",
+			query:        "limit=2000",
+			wantPage:     1,
+			wantPageSize: 20,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, c := newContextWithQuery(tt.query)
+
+			page, pageSize := ParsePagination(c)
+
+			require.Equal(t, tt.wantPage, page, "page 不符合预期")
+			require.Equal(t, tt.wantPageSize, pageSize, "pageSize 不符合预期")
+	REDACTED)
+REDACTED
+REDACTED
+
+func Test_parseInt(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantVal int
+		wantErr bool
+REDACTED{
+		{
+			name:    "正常数字",
+			input:   "123",
+			wantVal: 123,
+			wantErr: false,
+	REDACTED,
+		{
+			name:    "零",
+			input:   "0",
+			wantVal: 0,
+			wantErr: false,
+	REDACTED,
+		{
+			name:    "单个数字",
+			input:   "5",
+			wantVal: 5,
+			wantErr: false,
+	REDACTED,
+		{
+			name:    "大数字",
+			input:   "99999",
+			wantVal: 99999,
+			wantErr: false,
+	REDACTED,
+		{
+			name:    "包含字母_返回0",
+			input:   "abc",
+			wantVal: 0,
+			wantErr: false,
+	REDACTED,
+		{
+			name:    "数字开头接字母_返回0",
+			input:   "12a",
+			wantVal: 0,
+			wantErr: false,
+	REDACTED,
+		{
+			name:    "包含负号_返回0",
+			input:   "-1",
+			wantVal: 0,
+			wantErr: false,
+	REDACTED,
+		{
+			name:    "包含小数点_返回0",
+			input:   "1.5",
+			wantVal: 0,
+			wantErr: false,
+	REDACTED,
+		{
+			name:    "包含空格_返回0",
+			input:   "1 2",
+			wantVal: 0,
+			wantErr: false,
+	REDACTED,
+		{
+			name:    "空字符串",
+			input:   "",
+			wantVal: 0,
+			wantErr: false,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			val, err := parseInt(tt.input)
+			if tt.wantErr {
+			REDACTED
+		REDACTED else {
+			REDACTED
+		REDACTED
+			require.Equal(t, tt.wantVal, val)
 	REDACTED)
 REDACTED
 REDACTED

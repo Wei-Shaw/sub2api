@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"net/http"
+
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -20,6 +22,11 @@ func RegisterGatewayRoutes(
 	cfg *config.Config,
 ) {
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
+	soraMaxBodySize := cfg.Gateway.SoraMaxBodySize
+	if soraMaxBodySize <= 0 {
+		soraMaxBodySize = cfg.Gateway.MaxBodySize
+REDACTED
+	soraBodyLimit := middleware.RequestBodyLimit(soraMaxBodySize)
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 
@@ -36,6 +43,15 @@ func RegisterGatewayRoutes(
 		gateway.GET("/usage", h.Gateway.Usage)
 		// OpenAI Responses API
 		gateway.POST("/responses", h.OpenAIGateway.Responses)
+		// 明确阻止旧协议入口：OpenAI 仅支持 Responses API，避免客户端误解为会自动路由到其它平台。
+		gateway.POST("/chat/completions", func(c *gin.Context) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": gin.H{
+					"type":    "invalid_request_error",
+					"message": "Unsupported legacy protocol: /v1/chat/completions is not supported. Please use /v1/responses.",
+			REDACTED,
+		REDACTED)
+	REDACTED)
 REDACTED
 
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）
@@ -82,4 +98,25 @@ REDACTED
 		antigravityV1Beta.GET("/models/:model", h.Gateway.GeminiV1BetaGetModel)
 		antigravityV1Beta.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
 REDACTED
+
+	// Sora 专用路由（强制使用 sora 平台）
+	soraV1 := r.Group("/sora/v1")
+	soraV1.Use(soraBodyLimit)
+	soraV1.Use(clientRequestID)
+	soraV1.Use(opsErrorLogger)
+	soraV1.Use(middleware.ForcePlatform(service.PlatformSora))
+	soraV1.Use(gin.HandlerFunc(apiKeyAuth))
+	{
+		soraV1.POST("/chat/completions", h.SoraGateway.ChatCompletions)
+		soraV1.GET("/models", h.Gateway.Models)
+REDACTED
+
+	// Sora 媒体代理（可选 API Key 验证）
+	if cfg.Gateway.SoraMediaRequireAPIKey {
+		r.GET("/sora/media/*filepath", gin.HandlerFunc(apiKeyAuth), h.SoraGateway.MediaProxy)
+REDACTED else {
+		r.GET("/sora/media/*filepath", h.SoraGateway.MediaProxy)
+REDACTED
+	// Sora 媒体代理（签名 URL，无需 API Key）
+	r.GET("/sora/media-signed/*filepath", h.SoraGateway.MediaProxySigned)
 REDACTED

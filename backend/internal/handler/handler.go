@@ -39,6 +39,7 @@ type Handlers struct {
 	Admin         *AdminHandlers
 	Gateway       *GatewayHandler
 	OpenAIGateway *OpenAIGatewayHandler
+	SoraGateway   *SoraGatewayHandler
 	Setting       *SettingHandler
 	Totp          *TotpHandler
 REDACTED

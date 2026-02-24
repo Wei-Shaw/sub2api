@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"strconv"
 	"time"
 
@@ -16,7 +17,18 @@ const (
 	billingBalanceKeyPrefix = "billing:balance:"
 	billingSubKeyPrefix     = "billing:sub:"
 	billingCacheTTL         = 5 * time.Minute
+	billingCacheJitter      = 30 * time.Second
 )
+
+// jitteredTTL 返回带随机抖动的 TTL，防止缓存雪崩
+func jitteredTTL() time.Duration {
+	// 只做“减法抖动”，确保实际 TTL 不会超过 billingCacheTTL（避免上界预期被打破）。
+	if billingCacheJitter <= 0 {
+		return billingCacheTTL
+REDACTED
+	jitter := time.Duration(rand.IntN(int(billingCacheJitter)))
+	return billingCacheTTL - jitter
+REDACTED
 
 // billingBalanceKey generates the Redis key for user balance cache.
 func billingBalanceKey(userID int64) string {
@@ -82,14 +94,15 @@ REDACTED
 
 func (c *billingCache) SetUserBalance(ctx context.Context, userID int64, balance float64) error {
 	key := billingBalanceKey(userID)
-	return c.rdb.Set(ctx, key, balance, billingCacheTTL).Err()
+	return c.rdb.Set(ctx, key, balance, jitteredTTL()).Err()
 REDACTED
 
 func (c *billingCache) DeductUserBalance(ctx context.Context, userID int64, amount float64) error {
 	key := billingBalanceKey(userID)
-	_, err := deductBalanceScript.Run(ctx, c.rdb, []string{keyREDACTED, amount, int(billingCacheTTL.Seconds())).Result()
+	_, err := deductBalanceScript.Run(ctx, c.rdb, []string{keyREDACTED, amount, int(jitteredTTL().Seconds())).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		log.Printf("Warning: deduct balance cache failed for user %d: %v", userID, err)
+		return err
 REDACTED
 	return nil
 REDACTED
@@ -163,16 +176,17 @@ REDACTED
 
 	pipe := c.rdb.Pipeline()
 	pipe.HSet(ctx, key, fields)
-	pipe.Expire(ctx, key, billingCacheTTL)
+	pipe.Expire(ctx, key, jitteredTTL())
 	_, err := pipe.Exec(ctx)
 	return err
 REDACTED
 
 func (c *billingCache) UpdateSubscriptionUsage(ctx context.Context, userID, groupID int64, cost float64) error {
 	key := billingSubKey(userID, groupID)
-	_, err := updateSubUsageScript.Run(ctx, c.rdb, []string{keyREDACTED, cost, int(billingCacheTTL.Seconds())).Result()
+	_, err := updateSubUsageScript.Run(ctx, c.rdb, []string{keyREDACTED, cost, int(jitteredTTL().Seconds())).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		log.Printf("Warning: update subscription usage cache failed for user %d group %d: %v", userID, groupID, err)
+		return err
 REDACTED
 	return nil
 REDACTED

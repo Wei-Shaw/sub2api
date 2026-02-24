@@ -3,13 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 // 错误定义
@@ -156,13 +156,13 @@ func (s *BillingCacheService) cacheWriteWorker() {
 		case cacheWriteUpdateSubscriptionUsage:
 			if s.cache != nil {
 				if err := s.cache.UpdateSubscriptionUsage(ctx, task.userID, task.groupID, task.amount); err != nil {
-					log.Printf("Warning: update subscription cache failed for user %d group %d: %v", task.userID, task.groupID, err)
+					logger.LegacyPrintf("service.billing_cache", "Warning: update subscription cache failed for user %d group %d: %v", task.userID, task.groupID, err)
 			REDACTED
 		REDACTED
 		case cacheWriteDeductBalance:
 			if s.cache != nil {
 				if err := s.cache.DeductUserBalance(ctx, task.userID, task.amount); err != nil {
-					log.Printf("Warning: deduct balance cache failed for user %d: %v", task.userID, err)
+					logger.LegacyPrintf("service.billing_cache", "Warning: deduct balance cache failed for user %d: %v", task.userID, err)
 			REDACTED
 		REDACTED
 	REDACTED
@@ -216,7 +216,7 @@ REDACTED
 	if dropped == 0 {
 		return
 REDACTED
-	log.Printf("Warning: cache write queue %s, dropped %d tasks in last %s (latest kind=%s user %d group %d)",
+	logger.LegacyPrintf("service.billing_cache", "Warning: cache write queue %s, dropped %d tasks in last %s (latest kind=%s user %d group %d)",
 		reason,
 		dropped,
 		cacheWriteDropLogInterval,
@@ -274,7 +274,7 @@ func (s *BillingCacheService) setBalanceCache(ctx context.Context, userID int64,
 		return
 REDACTED
 	if err := s.cache.SetUserBalance(ctx, userID, balance); err != nil {
-		log.Printf("Warning: set balance cache failed for user %d: %v", userID, err)
+		logger.LegacyPrintf("service.billing_cache", "Warning: set balance cache failed for user %d: %v", userID, err)
 REDACTED
 REDACTED
 
@@ -302,7 +302,7 @@ REDACTED
 	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 	defer cancel()
 	if err := s.DeductBalanceCache(ctx, userID, amount); err != nil {
-		log.Printf("Warning: deduct balance cache fallback failed for user %d: %v", userID, err)
+		logger.LegacyPrintf("service.billing_cache", "Warning: deduct balance cache fallback failed for user %d: %v", userID, err)
 REDACTED
 REDACTED
 
@@ -312,7 +312,7 @@ func (s *BillingCacheService) InvalidateUserBalance(ctx context.Context, userID 
 		return nil
 REDACTED
 	if err := s.cache.InvalidateUserBalance(ctx, userID); err != nil {
-		log.Printf("Warning: invalidate balance cache failed for user %d: %v", userID, err)
+		logger.LegacyPrintf("service.billing_cache", "Warning: invalidate balance cache failed for user %d: %v", userID, err)
 		return err
 REDACTED
 	return nil
@@ -396,7 +396,7 @@ func (s *BillingCacheService) setSubscriptionCache(ctx context.Context, userID, 
 		return
 REDACTED
 	if err := s.cache.SetSubscriptionCache(ctx, userID, groupID, s.convertToPortsData(data)); err != nil {
-		log.Printf("Warning: set subscription cache failed for user %d group %d: %v", userID, groupID, err)
+		logger.LegacyPrintf("service.billing_cache", "Warning: set subscription cache failed for user %d group %d: %v", userID, groupID, err)
 REDACTED
 REDACTED
 
@@ -425,7 +425,7 @@ REDACTED
 	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 	defer cancel()
 	if err := s.UpdateSubscriptionUsage(ctx, userID, groupID, costUSD); err != nil {
-		log.Printf("Warning: update subscription cache fallback failed for user %d group %d: %v", userID, groupID, err)
+		logger.LegacyPrintf("service.billing_cache", "Warning: update subscription cache fallback failed for user %d group %d: %v", userID, groupID, err)
 REDACTED
 REDACTED
 
@@ -435,7 +435,7 @@ func (s *BillingCacheService) InvalidateSubscription(ctx context.Context, userID
 		return nil
 REDACTED
 	if err := s.cache.InvalidateSubscriptionCache(ctx, userID, groupID); err != nil {
-		log.Printf("Warning: invalidate subscription cache failed for user %d group %d: %v", userID, groupID, err)
+		logger.LegacyPrintf("service.billing_cache", "Warning: invalidate subscription cache failed for user %d group %d: %v", userID, groupID, err)
 		return err
 REDACTED
 	return nil
@@ -474,7 +474,7 @@ func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userI
 		if s.circuitBreaker != nil {
 			s.circuitBreaker.OnFailure(err)
 	REDACTED
-		log.Printf("ALERT: billing balance check failed for user %d: %v", userID, err)
+		logger.LegacyPrintf("service.billing_cache", "ALERT: billing balance check failed for user %d: %v", userID, err)
 		return ErrBillingServiceUnavailable.WithCause(err)
 REDACTED
 	if s.circuitBreaker != nil {
@@ -496,7 +496,7 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		if s.circuitBreaker != nil {
 			s.circuitBreaker.OnFailure(err)
 	REDACTED
-		log.Printf("ALERT: billing subscription check failed for user %d group %d: %v", userID, group.ID, err)
+		logger.LegacyPrintf("service.billing_cache", "ALERT: billing subscription check failed for user %d group %d: %v", userID, group.ID, err)
 		return ErrBillingServiceUnavailable.WithCause(err)
 REDACTED
 	if s.circuitBreaker != nil {
@@ -585,7 +585,7 @@ func (b *billingCircuitBreaker) Allow() bool {
 	REDACTED
 		b.state = billingCircuitHalfOpen
 		b.halfOpenRemaining = b.halfOpenRequests
-		log.Printf("ALERT: billing circuit breaker entering half-open state")
+		logger.LegacyPrintf("service.billing_cache", "ALERT: billing circuit breaker entering half-open state")
 		fallthrough
 	case billingCircuitHalfOpen:
 		if b.halfOpenRemaining <= 0 {
@@ -612,7 +612,7 @@ REDACTED
 		b.state = billingCircuitOpen
 		b.openedAt = time.Now()
 		b.halfOpenRemaining = 0
-		log.Printf("ALERT: billing circuit breaker opened after half-open failure: %v", err)
+		logger.LegacyPrintf("service.billing_cache", "ALERT: billing circuit breaker opened after half-open failure: %v", err)
 		return
 	default:
 		b.failures++
@@ -620,7 +620,7 @@ REDACTED
 			b.state = billingCircuitOpen
 			b.openedAt = time.Now()
 			b.halfOpenRemaining = 0
-			log.Printf("ALERT: billing circuit breaker opened after %d failures: %v", b.failures, err)
+			logger.LegacyPrintf("service.billing_cache", "ALERT: billing circuit breaker opened after %d failures: %v", b.failures, err)
 	REDACTED
 REDACTED
 REDACTED
@@ -641,9 +641,9 @@ REDACTED
 
 	// 只有状态真正发生变化时才记录日志
 	if previousState != billingCircuitClosed {
-		log.Printf("ALERT: billing circuit breaker closed (was %s)", circuitStateString(previousState))
+		logger.LegacyPrintf("service.billing_cache", "ALERT: billing circuit breaker closed (was %s)", circuitStateString(previousState))
 REDACTED else if previousFailures > 0 {
-		log.Printf("INFO: billing circuit breaker failures reset from %d", previousFailures)
+		logger.LegacyPrintf("service.billing_cache", "INFO: billing circuit breaker failures reset from %d", previousFailures)
 REDACTED
 REDACTED
 

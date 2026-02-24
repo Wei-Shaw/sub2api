@@ -2,6 +2,7 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"fmt"
 	"strconv"
@@ -88,23 +89,24 @@ func (h *RedeemHandler) Generate(c *gin.Context) {
 		return
 REDACTED
 
-	codes, err := h.adminService.GenerateRedeemCodes(c.Request.Context(), &service.GenerateRedeemCodesInput{
-		Count:        req.Count,
-		Type:         req.Type,
-		Value:        req.Value,
-		GroupID:      req.GroupID,
-		ValidityDays: req.ValidityDays,
-REDACTED)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
+	executeAdminIdempotentJSON(c, "admin.redeem_codes.generate", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		codes, execErr := h.adminService.GenerateRedeemCodes(ctx, &service.GenerateRedeemCodesInput{
+			Count:        req.Count,
+			Type:         req.Type,
+			Value:        req.Value,
+			GroupID:      req.GroupID,
+			ValidityDays: req.ValidityDays,
+	REDACTED)
+		if execErr != nil {
+			return nil, execErr
+	REDACTED
 
-	out := make([]dto.AdminRedeemCode, 0, len(codes))
-	for i := range codes {
-		out = append(out, *dto.RedeemCodeFromServiceAdmin(&codes[i]))
-REDACTED
-	response.Success(c, out)
+		out := make([]dto.AdminRedeemCode, 0, len(codes))
+		for i := range codes {
+			out = append(out, *dto.RedeemCodeFromServiceAdmin(&codes[i]))
+	REDACTED
+		return out, nil
+REDACTED)
 REDACTED
 
 // Delete handles deleting a redeem code

@@ -66,8 +66,8 @@
           <!-- Progress bar -->
           <div v-if="toast.duration" class="h-1 bg-gray-100 dark:bg-dark-700">
             <div
-              :class="['h-full transition-all', getProgressBarColor(toast.type)]"
-              :style="{ width: `${getProgress(toast)REDACTED%` REDACTED"
+              :class="['h-full toast-progress', getProgressBarColor(toast.type)]"
+              :style="{ animationDuration: `${toast.durationREDACTEDms` REDACTED"
             ></div>
           </div>
         </div>
@@ -77,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted REDACTED from 'vue'
+import { computed REDACTED from 'vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore REDACTED from '@/stores/app'
 
@@ -129,36 +129,25 @@ const getProgressBarColor = (type: string): string => {
   return colors[type] || colors.info
 REDACTED
 
-const getProgress = (toast: any): number => {
-  if (!toast.duration || !toast.startTime) return 100
-  const elapsed = Date.now() - toast.startTime
-  const progress = Math.max(0, 100 - (elapsed / toast.duration) * 100)
-  return progress
-REDACTED
-
 const removeToast = (id: string) => {
   appStore.hideToast(id)
 REDACTED
-
-let intervalId: number | undefined
-
-onMounted(() => {
-  // Check for expired toasts every 100ms
-  intervalId = window.setInterval(() => {
-    const now = Date.now()
-    toasts.value.forEach((toast) => {
-      if (toast.duration && toast.startTime) {
-        if (now - toast.startTime >= toast.duration) {
-          removeToast(toast.id)
-        REDACTED
-      REDACTED
-    REDACTED)
-  REDACTED, 100)
-REDACTED)
-
-onUnmounted(() => {
-  if (intervalId !== undefined) {
-    clearInterval(intervalId)
-  REDACTED
-REDACTED)
 </script>
+
+<style scoped>
+.toast-progress {
+  width: 100%;
+  animation-name: toast-progress-shrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+REDACTED
+
+@keyframes toast-progress-shrink {
+  from {
+    width: 100%;
+  REDACTED
+  to {
+    width: 0%;
+  REDACTED
+REDACTED
+</style>

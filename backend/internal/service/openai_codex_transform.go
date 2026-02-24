@@ -2,85 +2,72 @@ package service
 
 import (
 	_ "embed"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
-)
-
-const (
-	opencodeCodexHeaderURL = "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/src/session/prompt/codex_header.txt"
-	codexCacheTTL          = 15 * time.Minute
 )
 
 //go:embed prompts/codex_cli_instructions.md
 var codexCLIInstructions string
 
 var codexModelMap = map[string]string{
-	"gpt-5.3":                   "gpt-5.3",
-	"gpt-5.3-none":              "gpt-5.3",
-	"gpt-5.3-low":               "gpt-5.3",
-	"gpt-5.3-medium":            "gpt-5.3",
-	"gpt-5.3-high":              "gpt-5.3",
-	"gpt-5.3-xhigh":             "gpt-5.3",
-	"gpt-5.3-codex":             "gpt-5.3-codex",
-	"gpt-5.3-codex-low":         "gpt-5.3-codex",
-	"gpt-5.3-codex-medium":      "gpt-5.3-codex",
-	"gpt-5.3-codex-high":        "gpt-5.3-codex",
-	"gpt-5.3-codex-xhigh":       "gpt-5.3-codex",
-	"gpt-5.1-codex":             "gpt-5.1-codex",
-	"gpt-5.1-codex-low":         "gpt-5.1-codex",
-	"gpt-5.1-codex-medium":      "gpt-5.1-codex",
-	"gpt-5.1-codex-high":        "gpt-5.1-codex",
-	"gpt-5.1-codex-max":         "gpt-5.1-codex-max",
-	"gpt-5.1-codex-max-low":     "gpt-5.1-codex-max",
-	"gpt-5.1-codex-max-medium":  "gpt-5.1-codex-max",
-	"gpt-5.1-codex-max-high":    "gpt-5.1-codex-max",
-	"gpt-5.1-codex-max-xhigh":   "gpt-5.1-codex-max",
-	"gpt-5.2":                   "gpt-5.2",
-	"gpt-5.2-none":              "gpt-5.2",
-	"gpt-5.2-low":               "gpt-5.2",
-	"gpt-5.2-medium":            "gpt-5.2",
-	"gpt-5.2-high":              "gpt-5.2",
-	"gpt-5.2-xhigh":             "gpt-5.2",
-	"gpt-5.2-codex":             "gpt-5.2-codex",
-	"gpt-5.2-codex-low":         "gpt-5.2-codex",
-	"gpt-5.2-codex-medium":      "gpt-5.2-codex",
-	"gpt-5.2-codex-high":        "gpt-5.2-codex",
-	"gpt-5.2-codex-xhigh":       "gpt-5.2-codex",
-	"gpt-5.1-codex-mini":        "gpt-5.1-codex-mini",
-	"gpt-5.1-codex-mini-medium": "gpt-5.1-codex-mini",
-	"gpt-5.1-codex-mini-high":   "gpt-5.1-codex-mini",
-	"gpt-5.1":                   "gpt-5.1",
-	"gpt-5.1-none":              "gpt-5.1",
-	"gpt-5.1-low":               "gpt-5.1",
-	"gpt-5.1-medium":            "gpt-5.1",
-	"gpt-5.1-high":              "gpt-5.1",
-	"gpt-5.1-chat-latest":       "gpt-5.1",
-	"gpt-5-codex":               "gpt-5.1-codex",
-	"codex-mini-latest":         "gpt-5.1-codex-mini",
-	"gpt-5-codex-mini":          "gpt-5.1-codex-mini",
-	"gpt-5-codex-mini-medium":   "gpt-5.1-codex-mini",
-	"gpt-5-codex-mini-high":     "gpt-5.1-codex-mini",
-	"gpt-5":                     "gpt-5.1",
-	"gpt-5-mini":                "gpt-5.1",
-	"gpt-5-nano":                "gpt-5.1",
+	"gpt-5.3":                    "gpt-5.3-codex",
+	"gpt-5.3-none":               "gpt-5.3-codex",
+	"gpt-5.3-low":                "gpt-5.3-codex",
+	"gpt-5.3-medium":             "gpt-5.3-codex",
+	"gpt-5.3-high":               "gpt-5.3-codex",
+	"gpt-5.3-xhigh":              "gpt-5.3-codex",
+	"gpt-5.3-codex":              "gpt-5.3-codex",
+	"gpt-5.3-codex-spark":        "gpt-5.3-codex",
+	"gpt-5.3-codex-spark-low":    "gpt-5.3-codex",
+	"gpt-5.3-codex-spark-medium": "gpt-5.3-codex",
+	"gpt-5.3-codex-spark-high":   "gpt-5.3-codex",
+	"gpt-5.3-codex-spark-xhigh":  "gpt-5.3-codex",
+	"gpt-5.3-codex-low":          "gpt-5.3-codex",
+	"gpt-5.3-codex-medium":       "gpt-5.3-codex",
+	"gpt-5.3-codex-high":         "gpt-5.3-codex",
+	"gpt-5.3-codex-xhigh":        "gpt-5.3-codex",
+	"gpt-5.1-codex":              "gpt-5.1-codex",
+	"gpt-5.1-codex-low":          "gpt-5.1-codex",
+	"gpt-5.1-codex-medium":       "gpt-5.1-codex",
+	"gpt-5.1-codex-high":         "gpt-5.1-codex",
+	"gpt-5.1-codex-max":          "gpt-5.1-codex-max",
+	"gpt-5.1-codex-max-low":      "gpt-5.1-codex-max",
+	"gpt-5.1-codex-max-medium":   "gpt-5.1-codex-max",
+	"gpt-5.1-codex-max-high":     "gpt-5.1-codex-max",
+	"gpt-5.1-codex-max-xhigh":    "gpt-5.1-codex-max",
+	"gpt-5.2":                    "gpt-5.2",
+	"gpt-5.2-none":               "gpt-5.2",
+	"gpt-5.2-low":                "gpt-5.2",
+	"gpt-5.2-medium":             "gpt-5.2",
+	"gpt-5.2-high":               "gpt-5.2",
+	"gpt-5.2-xhigh":              "gpt-5.2",
+	"gpt-5.2-codex":              "gpt-5.2-codex",
+	"gpt-5.2-codex-low":          "gpt-5.2-codex",
+	"gpt-5.2-codex-medium":       "gpt-5.2-codex",
+	"gpt-5.2-codex-high":         "gpt-5.2-codex",
+	"gpt-5.2-codex-xhigh":        "gpt-5.2-codex",
+	"gpt-5.1-codex-mini":         "gpt-5.1-codex-mini",
+	"gpt-5.1-codex-mini-medium":  "gpt-5.1-codex-mini",
+	"gpt-5.1-codex-mini-high":    "gpt-5.1-codex-mini",
+	"gpt-5.1":                    "gpt-5.1",
+	"gpt-5.1-none":               "gpt-5.1",
+	"gpt-5.1-low":                "gpt-5.1",
+	"gpt-5.1-medium":             "gpt-5.1",
+	"gpt-5.1-high":               "gpt-5.1",
+	"gpt-5.1-chat-latest":        "gpt-5.1",
+	"gpt-5-codex":                "gpt-5.1-codex",
+	"codex-mini-latest":          "gpt-5.1-codex-mini",
+	"gpt-5-codex-mini":           "gpt-5.1-codex-mini",
+	"gpt-5-codex-mini-medium":    "gpt-5.1-codex-mini",
+	"gpt-5-codex-mini-high":      "gpt-5.1-codex-mini",
+	"gpt-5":                      "gpt-5.1",
+	"gpt-5-mini":                 "gpt-5.1",
+	"gpt-5-nano":                 "gpt-5.1",
 REDACTED
 
 type codexTransformResult struct {
 	Modified        bool
 	NormalizedModel string
 	PromptCacheKey  string
-REDACTED
-
-type opencodeCacheMetadata struct {
-	ETag        string `json:"etag"`
-	LastFetch   string `json:"lastFetch,omitempty"`
-	LastChecked int64  `json:"lastChecked"`
 REDACTED
 
 func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool) codexTransformResult {
@@ -177,7 +164,7 @@ REDACTED
 		return "gpt-5.3-codex"
 REDACTED
 	if strings.Contains(normalized, "gpt-5.3") || strings.Contains(normalized, "gpt 5.3") {
-		return "gpt-5.3"
+		return "gpt-5.3-codex"
 REDACTED
 	if strings.Contains(normalized, "gpt-5.1-codex-max") || strings.Contains(normalized, "gpt 5.1 codex max") {
 		return "gpt-5.1-codex-max"
@@ -222,54 +209,9 @@ REDACTED
 	return ""
 REDACTED
 
-func getOpenCodeCachedPrompt(url, cacheFileName, metaFileName string) string {
-	cacheDir := codexCachePath("")
-	if cacheDir == "" {
-		return ""
-REDACTED
-	cacheFile := filepath.Join(cacheDir, cacheFileName)
-	metaFile := filepath.Join(cacheDir, metaFileName)
-
-	var cachedContent string
-	if content, ok := readFile(cacheFile); ok {
-		cachedContent = content
-REDACTED
-
-	var meta opencodeCacheMetadata
-	if loadJSON(metaFile, &meta) && meta.LastChecked > 0 && cachedContent != "" {
-		if time.Since(time.UnixMilli(meta.LastChecked)) < codexCacheTTL {
-			return cachedContent
-	REDACTED
-REDACTED
-
-	content, etag, status, err := fetchWithETag(url, meta.ETag)
-	if err == nil && status == http.StatusNotModified && cachedContent != "" {
-		return cachedContent
-REDACTED
-	if err == nil && status >= 200 && status < 300 && content != "" {
-		_ = writeFile(cacheFile, content)
-		meta = opencodeCacheMetadata{
-			ETag:        etag,
-			LastFetch:   time.Now().UTC().Format(time.RFC3339),
-			LastChecked: time.Now().UnixMilli(),
-	REDACTED
-		_ = writeJSON(metaFile, meta)
-		return content
-REDACTED
-
-	return cachedContent
-REDACTED
-
 func getOpenCodeCodexHeader() string {
-	// 优先从 opencode 仓库缓存获取指令。
-	opencodeInstructions := getOpenCodeCachedPrompt(opencodeCodexHeaderURL, "opencode-codex-header.txt", "opencode-codex-header-meta.json")
-
-	// 若 opencode 指令可用，直接返回。
-	if opencodeInstructions != "" {
-		return opencodeInstructions
-REDACTED
-
-	// 否则回退使用本地 Codex CLI 指令。
+	// 兼容保留：历史上这里会从 opencode 仓库拉取 codex_header.txt。
+	// 现在我们与 Codex CLI 一致，直接使用仓库内置的 instructions，避免读写缓存与外网依赖。
 	return getCodexCLIInstructions()
 REDACTED
 
@@ -287,8 +229,8 @@ func GetCodexCLIInstructions() string {
 REDACTED
 
 // applyInstructions 处理 instructions 字段
-// isCodexCLI=true: 仅补充缺失的 instructions（使用 opencode 指令）
-// isCodexCLI=false: 优先使用 opencode 指令覆盖
+// isCodexCLI=true: 仅补充缺失的 instructions（使用内置 Codex CLI 指令）
+// isCodexCLI=false: 优先使用内置 Codex CLI 指令覆盖
 func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
 	if isCodexCLI {
 		return applyCodexCLIInstructions(reqBody)
@@ -297,13 +239,13 @@ REDACTED
 REDACTED
 
 // applyCodexCLIInstructions 为 Codex CLI 请求补充缺失的 instructions
-// 仅在 instructions 为空时添加 opencode 指令
+// 仅在 instructions 为空时添加内置 Codex CLI 指令（不依赖 opencode 缓存/回源）
 func applyCodexCLIInstructions(reqBody map[string]any) bool {
 	if !isInstructionsEmpty(reqBody) {
 		return false // 已有有效 instructions，不修改
 REDACTED
 
-	instructions := strings.TrimSpace(getOpenCodeCodexHeader())
+	instructions := strings.TrimSpace(getCodexCLIInstructions())
 	if instructions != "" {
 		reqBody["instructions"] = instructions
 		return true
@@ -312,8 +254,8 @@ REDACTED
 	return false
 REDACTED
 
-// applyOpenCodeInstructions 为非 Codex CLI 请求应用 opencode 指令
-// 优先使用 opencode 指令覆盖
+// applyOpenCodeInstructions 为非 Codex CLI 请求应用内置 Codex CLI 指令（兼容历史函数名）
+// 优先使用内置 Codex CLI 指令覆盖
 func applyOpenCodeInstructions(reqBody map[string]any) bool {
 	instructions := strings.TrimSpace(getOpenCodeCodexHeader())
 	existingInstructions, _ := reqBody["instructions"].(string)
@@ -494,86 +436,4 @@ REDACTED
 REDACTED
 
 	return modified
-REDACTED
-
-func codexCachePath(filename string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-REDACTED
-	cacheDir := filepath.Join(home, ".opencode", "cache")
-	if filename == "" {
-		return cacheDir
-REDACTED
-	return filepath.Join(cacheDir, filename)
-REDACTED
-
-func readFile(path string) (string, bool) {
-	if path == "" {
-		return "", false
-REDACTED
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", false
-REDACTED
-	return string(data), true
-REDACTED
-
-func writeFile(path, content string) error {
-	if path == "" {
-		return fmt.Errorf("empty cache path")
-REDACTED
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-REDACTED
-	return os.WriteFile(path, []byte(content), 0o644)
-REDACTED
-
-func loadJSON(path string, target any) bool {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false
-REDACTED
-	if err := json.Unmarshal(data, target); err != nil {
-		return false
-REDACTED
-	return true
-REDACTED
-
-func writeJSON(path string, value any) error {
-	if path == "" {
-		return fmt.Errorf("empty json path")
-REDACTED
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-REDACTED
-	data, err := json.Marshal(value)
-	if err != nil {
-		return err
-REDACTED
-	return os.WriteFile(path, data, 0o644)
-REDACTED
-
-func fetchWithETag(url, etag string) (string, string, int, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return "", "", 0, err
-REDACTED
-	req.Header.Set("User-Agent", "sub2api-codex")
-	if etag != "" {
-		req.Header.Set("If-None-Match", etag)
-REDACTED
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", "", 0, err
-REDACTED
-	defer func() {
-		_ = resp.Body.Close()
-REDACTED()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", "", resp.StatusCode, err
-REDACTED
-	return string(body), resp.Header.Get("etag"), resp.StatusCode, nil
 REDACTED

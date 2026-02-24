@@ -69,77 +69,30 @@
         <div v-if="account.platform !== 'gemini' && account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
 
-          <!-- Mode Toggle -->
-          <div class="mb-4 flex gap-2">
-            <button
-              type="button"
-              @click="modelRestrictionMode = 'whitelist'"
-              :class="[
-                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                modelRestrictionMode === 'whitelist'
-                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-              ]"
-            >
-              <svg
-                class="mr-1.5 inline h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
-            </button>
-            <button
-              type="button"
-              @click="modelRestrictionMode = 'mapping'"
-              :class="[
-                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                modelRestrictionMode === 'mapping'
-                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-              ]"
-            >
-              <svg
-                class="mr-1.5 inline h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-                />
-              </svg>
-              {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
-            </button>
-          </div>
-
-          <!-- Whitelist Mode -->
-          <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" />
-            <p class="text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
-              <span v-if="allowedModels.length === 0">{{
-                t('admin.accounts.supportsAllModels')
-              REDACTEDREDACTED</span>
+          <div
+            v-if="isOpenAIModelRestrictionDisabled"
+            class="mb-3 rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20"
+          >
+            <p class="text-xs text-amber-700 dark:text-amber-400">
+              {{ t('admin.accounts.openai.modelRestrictionDisabledByPassthrough') REDACTEDREDACTED
             </p>
           </div>
 
-          <!-- Mapping Mode -->
-          <div v-else>
-            <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
-              <p class="text-xs text-purple-700 dark:text-purple-400">
+          <template v-else>
+            <!-- Mode Toggle -->
+            <div class="mb-4 flex gap-2">
+              <button
+                type="button"
+                @click="modelRestrictionMode = 'whitelist'"
+                :class="[
+                  'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                  modelRestrictionMode === 'whitelist'
+                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                ]"
+              >
                 <svg
-                  class="mr-1 inline h-4 w-4"
+                  class="mr-1.5 inline h-4 w-4"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -148,18 +101,75 @@
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                {{ t('admin.accounts.mapRequestModels') REDACTEDREDACTED
+                {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
+              </button>
+              <button
+                type="button"
+                @click="modelRestrictionMode = 'mapping'"
+                :class="[
+                  'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                  modelRestrictionMode === 'mapping'
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                ]"
+              >
+                <svg
+                  class="mr-1.5 inline h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                  />
+                </svg>
+                {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
+              </button>
+            </div>
+
+            <!-- Whitelist Mode -->
+            <div v-if="modelRestrictionMode === 'whitelist'">
+              <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" />
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
+                <span v-if="allowedModels.length === 0">{{
+                  t('admin.accounts.supportsAllModels')
+                REDACTEDREDACTED</span>
               </p>
             </div>
+
+            <!-- Mapping Mode -->
+            <div v-else>
+              <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+                <p class="text-xs text-purple-700 dark:text-purple-400">
+                  <svg
+                    class="mr-1 inline h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  {{ t('admin.accounts.mapRequestModels') REDACTEDREDACTED
+                </p>
+              </div>
 
             <!-- Model Mapping List -->
             <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
               <div
                 v-for="(mapping, index) in modelMappings"
-                :key="index"
+                :key="getModelMappingKey(mapping)"
                 class="flex items-center gap-2"
               >
                 <input
@@ -225,19 +235,20 @@
               {{ t('admin.accounts.addMapping') REDACTEDREDACTED
             </button>
 
-            <!-- Quick Add Buttons -->
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="preset in presetMappings"
-                :key="preset.label"
-                type="button"
-                @click="addPresetMapping(preset.from, preset.to)"
-                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
-              >
-                + {{ preset.label REDACTEDREDACTED
-              </button>
+              <!-- Quick Add Buttons -->
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="preset in presetMappings"
+                  :key="preset.label"
+                  type="button"
+                  @click="addPresetMapping(preset.from, preset.to)"
+                  :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+                >
+                  + {{ preset.label REDACTEDREDACTED
+                </button>
+              </div>
             </div>
-          </div>
+          </template>
         </div>
 
         <!-- Custom Error Codes Section -->
@@ -406,7 +417,7 @@
           <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-2">
             <div
               v-for="(mapping, index) in antigravityModelMappings"
-              :key="index"
+              :key="getAntigravityModelMappingKey(mapping)"
               class="space-y-1"
             >
               <div class="flex items-center gap-2">
@@ -531,7 +542,7 @@
           <div v-if="tempUnschedRules.length > 0" class="space-y-3">
             <div
               v-for="(rule, index) in tempUnschedRules"
-              :key="index"
+              :key="getTempUnschedRuleKey(rule)"
               class="rounded-lg border border-gray-200 p-3 dark:border-dark-600"
             >
               <div class="mb-2 flex items-center justify-between">
@@ -692,6 +703,96 @@
         <label class="input-label">{{ t('admin.accounts.expiresAt') REDACTEDREDACTED</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
         <p class="input-hint">{{ t('admin.accounts.expiresAtHint') REDACTEDREDACTED</p>
+      </div>
+
+      <!-- OpenAI 自动透传开关（OAuth/API Key） -->
+      <div
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.oauthPassthrough') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.oauthPassthroughDesc') REDACTEDREDACTED
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="openaiPassthroughEnabled = !openaiPassthroughEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openaiPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openaiPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
+      <!-- Anthropic API Key 自动透传开关 -->
+      <div
+        v-if="account?.platform === 'anthropic' && account?.type === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.anthropic.apiKeyPassthrough') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.anthropic.apiKeyPassthroughDesc') REDACTEDREDACTED
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="anthropicPassthroughEnabled = !anthropicPassthroughEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              anthropicPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                anthropicPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
+      <!-- OpenAI OAuth Codex 官方客户端限制开关 -->
+      <div
+        v-if="account?.platform === 'openai' && account?.type === 'oauth'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexCLIOnly') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.codexCLIOnlyDesc') REDACTEDREDACTED
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="codexCLIOnlyEnabled = !codexCLIOnlyEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              codexCLIOnlyEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                codexCLIOnlyEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
       </div>
 
       <div>
@@ -1062,6 +1163,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput REDACTED from '@/utils/format'
+import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
 import {
   getPresetMappingsByPlatform,
   commonErrorCodes,
@@ -1079,7 +1181,7 @@ REDACTED
 const props = defineProps<Props>()
 const emit = defineEmits<{
   close: []
-  updated: []
+  updated: [account: Account]
 REDACTED>()
 
 const { t REDACTED = useI18n()
@@ -1127,6 +1229,9 @@ const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
+const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-model-mapping')
+const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping>('edit-antigravity-model-mapping')
+const getTempUnschedRuleKey = createStableObjectKeyResolver<TempUnschedRuleForm>('edit-temp-unsched-rule')
 
 // Mixed channel warning dialog state
 const showMixedChannelWarning = ref(false)
@@ -1144,6 +1249,14 @@ const tlsFingerprintEnabled = ref(false)
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
+
+// OpenAI 自动透传开关（OAuth/API Key）
+const openaiPassthroughEnabled = ref(false)
+const codexCLIOnlyEnabled = ref(false)
+const anthropicPassthroughEnabled = ref(false)
+const isOpenAIModelRestrictionDisabled = computed(() =>
+  props.account?.platform === 'openai' && openaiPassthroughEnabled.value
+)
 
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(props.account?.platform || 'anthropic'))
@@ -1231,6 +1344,20 @@ watch(
       // Load mixed scheduling setting (only for antigravity accounts)
       const extra = newAccount.extra as Record<string, unknown> | undefined
       mixedScheduling.value = extra?.mixed_scheduling === true
+
+      // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)
+      openaiPassthroughEnabled.value = false
+      codexCLIOnlyEnabled.value = false
+      anthropicPassthroughEnabled.value = false
+      if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
+        openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
+        if (newAccount.type === 'oauth') {
+          codexCLIOnlyEnabled.value = extra?.codex_cli_only === true
+        REDACTED
+      REDACTED
+      if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
+        anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
+      REDACTED
 
       // Load antigravity model mapping (Antigravity 只支持映射模式)
       if (newAccount.platform === 'antigravity') {
@@ -1625,7 +1752,7 @@ const handleSubmit = async () => {
     if (props.account.type === 'apikey') {
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {REDACTED
       const newBaseUrl = editBaseUrl.value.trim() || defaultBaseUrl.value
-      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      const shouldApplyModelMapping = !(props.account.platform === 'openai' && openaiPassthroughEnabled.value)
 
       // Always update credentials for apikey type to handle model mapping changes
       const newCredentials: Record<string, unknown> = {
@@ -1645,9 +1772,14 @@ const handleSubmit = async () => {
         return
       REDACTED
 
-      // Add model mapping if configured
-      if (modelMapping) {
-        newCredentials.model_mapping = modelMapping
+      // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）
+      if (shouldApplyModelMapping) {
+        const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+        if (modelMapping) {
+          newCredentials.model_mapping = modelMapping
+        REDACTED
+      REDACTED else if (currentCredentials.model_mapping) {
+        newCredentials.model_mapping = currentCredentials.model_mapping
       REDACTED
 
       // Add custom error codes if enabled
@@ -1785,9 +1917,47 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     REDACTED
 
-    await adminAPI.accounts.update(props.account.id, updatePayload)
+    // For Anthropic API Key accounts, handle passthrough mode in extra
+    if (props.account.platform === 'anthropic' && props.account.type === 'apikey') {
+      const currentExtra = (props.account.extra as Record<string, unknown>) || {REDACTED
+      const newExtra: Record<string, unknown> = { ...currentExtra REDACTED
+      if (anthropicPassthroughEnabled.value) {
+        newExtra.anthropic_passthrough = true
+      REDACTED else {
+        delete newExtra.anthropic_passthrough
+      REDACTED
+      updatePayload.extra = newExtra
+    REDACTED
+
+    // For OpenAI OAuth/API Key accounts, handle passthrough mode in extra
+    if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'apikey')) {
+      const currentExtra = (props.account.extra as Record<string, unknown>) || {REDACTED
+      const newExtra: Record<string, unknown> = { ...currentExtra REDACTED
+      const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
+      if (openaiPassthroughEnabled.value) {
+        newExtra.openai_passthrough = true
+      REDACTED else {
+        delete newExtra.openai_passthrough
+        delete newExtra.openai_oauth_passthrough
+      REDACTED
+
+      if (props.account.type === 'oauth') {
+        if (codexCLIOnlyEnabled.value) {
+          newExtra.codex_cli_only = true
+        REDACTED else if (hadCodexCLIOnlyEnabled) {
+          // 关闭时显式写 false，避免 extra 为空被后端忽略导致旧值无法清除
+          newExtra.codex_cli_only = false
+        REDACTED else {
+          delete newExtra.codex_cli_only
+        REDACTED
+      REDACTED
+
+      updatePayload.extra = newExtra
+    REDACTED
+
+    const updatedAccount = await adminAPI.accounts.update(props.account.id, updatePayload)
     appStore.showSuccess(t('admin.accounts.accountUpdated'))
-    emit('updated')
+    emit('updated', updatedAccount)
     handleClose()
   REDACTED catch (error: any) {
     // Handle 409 mixed_channel_warning - show confirmation dialog
@@ -1815,9 +1985,9 @@ const handleMixedChannelConfirm = async () => {
     pendingUpdatePayload.value.confirm_mixed_channel_risk = true
     submitting.value = true
     try {
-      await adminAPI.accounts.update(props.account.id, pendingUpdatePayload.value)
+      const updatedAccount = await adminAPI.accounts.update(props.account.id, pendingUpdatePayload.value)
       appStore.showSuccess(t('admin.accounts.accountUpdated'))
-      emit('updated')
+      emit('updated', updatedAccount)
       handleClose()
     REDACTED catch (error: any) {
       appStore.showError(error.response?.data?.message || error.response?.data?.detail || t('admin.accounts.failedToUpdate'))

@@ -47,6 +47,10 @@ func (APIKey) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.Time("last_used_at").
+			Optional().
+			Nillable().
+			Comment("Last usage time of this API key"),
 		field.JSON("ip_whitelist", []string{REDACTED).
 			Optional().
 			Comment("Allowed IPs/CIDRs, e.g. [\"192.168.1.100\", \"10.0.0.0/8\"]"),
@@ -95,6 +99,7 @@ func (APIKey) Indexes() []ent.Index {
 		index.Fields("group_id"),
 		index.Fields("status"),
 		index.Fields("deleted_at"),
+		index.Fields("last_used_at"),
 		// Index for quota queries
 		index.Fields("quota", "quota_used"),
 		index.Fields("expires_at"),

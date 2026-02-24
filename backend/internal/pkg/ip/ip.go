@@ -44,6 +44,16 @@ REDACTED
 	return normalizeIP(c.ClientIP())
 REDACTED
 
+// GetTrustedClientIP 从 Gin 的可信代理解析链提取客户端 IP。
+// 该方法依赖 gin.Engine.SetTrustedProxies 配置，不会优先直接信任原始转发头值。
+// 适用于 ACL / 风控等安全敏感场景。
+func GetTrustedClientIP(c *gin.Context) string {
+	if c == nil {
+		return ""
+REDACTED
+	return normalizeIP(c.ClientIP())
+REDACTED
+
 // normalizeIP 规范化 IP 地址，去除端口号和空格。
 func normalizeIP(ip string) string {
 	ip = strings.TrimSpace(ip)
@@ -54,29 +64,34 @@ REDACTED
 	return ip
 REDACTED
 
-// isPrivateIP 检查 IP 是否为私有地址。
-func isPrivateIP(ipStr string) bool {
-	ip := net.ParseIP(ipStr)
-	if ip == nil {
-		return false
-REDACTED
+// privateNets 预编译私有 IP CIDR 块，避免每次调用 isPrivateIP 时重复解析
+var privateNets []*net.IPNet
 
-	// 私有 IP 范围
-	privateBlocks := []string{
+func init() {
+	for _, cidr := range []string{
 		"10.0.0.0/8",
 		"172.16.0.0/12",
 		"192.168.0.0/16",
 		"127.0.0.0/8",
 		"::1/128",
 		"fc00::/7",
+REDACTED {
+		_, block, err := net.ParseCIDR(cidr)
+		if err != nil {
+			panic("invalid CIDR: " + cidr)
+	REDACTED
+		privateNets = append(privateNets, block)
+REDACTED
 REDACTED
 
-	for _, block := range privateBlocks {
-		_, cidr, err := net.ParseCIDR(block)
-		if err != nil {
-			continue
-	REDACTED
-		if cidr.Contains(ip) {
+// isPrivateIP 检查 IP 是否为私有地址。
+func isPrivateIP(ipStr string) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+REDACTED
+	for _, block := range privateNets {
+		if block.Contains(ip) {
 			return true
 	REDACTED
 REDACTED

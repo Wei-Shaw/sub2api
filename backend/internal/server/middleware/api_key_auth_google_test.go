@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -18,7 +19,8 @@ import (
 )
 
 type fakeAPIKeyRepo struct {
-	getByKey func(ctx context.Context, key string) (*service.APIKey, error)
+	getByKey       func(ctx context.Context, key string) (*service.APIKey, error)
+	updateLastUsed func(ctx context.Context, id int64, usedAt time.Time) error
 REDACTED
 
 func (f fakeAPIKeyRepo) Create(ctx context.Context, key *service.APIKey) error {
@@ -77,6 +79,12 @@ func (f fakeAPIKeyRepo) ListKeysByGroupID(ctx context.Context, groupID int64) ([
 REDACTED
 func (f fakeAPIKeyRepo) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) (float64, error) {
 	return 0, errors.New("not implemented")
+REDACTED
+func (f fakeAPIKeyRepo) UpdateLastUsed(ctx context.Context, id int64, usedAt time.Time) error {
+	if f.updateLastUsed != nil {
+		return f.updateLastUsed(ctx, id, usedAt)
+REDACTED
+	return nil
 REDACTED
 
 type googleErrorResponse struct {
@@ -355,4 +363,145 @@ REDACTED)
 	require.Equal(t, http.StatusForbidden, resp.Error.Code)
 	require.Equal(t, "Insufficient account balance", resp.Error.Message)
 	require.Equal(t, "PERMISSION_DENIED", resp.Error.Status)
+REDACTED
+
+func TestApiKeyAuthWithSubscriptionGoogle_TouchesLastUsedOnSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{
+		ID:          11,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     10,
+		Concurrency: 3,
+REDACTED
+	apiKey := &service.APIKey{
+		ID:     201,
+		UserID: user.ID,
+		Key:    "google-touch-ok",
+		Status: service.StatusActive,
+		User:   user,
+REDACTED
+
+	var touchedID int64
+	var touchedAt time.Time
+	r := gin.New()
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+		REDACTED
+			clone := *apiKey
+			return &clone, nil
+	REDACTED,
+		updateLastUsed: func(ctx context.Context, id int64, usedAt time.Time) error {
+			touchedID = id
+			touchedAt = usedAt
+			return nil
+	REDACTED,
+REDACTED)
+	cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
+	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
+	req.Header.Set("x-goog-api-key", apiKey.Key)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, apiKey.ID, touchedID)
+	require.False(t, touchedAt.IsZero())
+REDACTED
+
+func TestApiKeyAuthWithSubscriptionGoogle_TouchFailureDoesNotBlock(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{
+		ID:          12,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     10,
+		Concurrency: 3,
+REDACTED
+	apiKey := &service.APIKey{
+		ID:     202,
+		UserID: user.ID,
+		Key:    "google-touch-fail",
+		Status: service.StatusActive,
+		User:   user,
+REDACTED
+
+	touchCalls := 0
+	r := gin.New()
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+		REDACTED
+			clone := *apiKey
+			return &clone, nil
+	REDACTED,
+		updateLastUsed: func(ctx context.Context, id int64, usedAt time.Time) error {
+			touchCalls++
+			return errors.New("write failed")
+	REDACTED,
+REDACTED)
+	cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
+	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
+	req.Header.Set("x-goog-api-key", apiKey.Key)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, touchCalls)
+REDACTED
+
+func TestApiKeyAuthWithSubscriptionGoogle_TouchesLastUsedInStandardMode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{
+		ID:          13,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     10,
+		Concurrency: 3,
+REDACTED
+	apiKey := &service.APIKey{
+		ID:     203,
+		UserID: user.ID,
+		Key:    "google-touch-standard",
+		Status: service.StatusActive,
+		User:   user,
+REDACTED
+
+	touchCalls := 0
+	r := gin.New()
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+		REDACTED
+			clone := *apiKey
+			return &clone, nil
+	REDACTED,
+		updateLastUsed: func(ctx context.Context, id int64, usedAt time.Time) error {
+			touchCalls++
+			return nil
+	REDACTED,
+REDACTED)
+	cfg := &config.Config{RunMode: config.RunModeStandardREDACTED
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
+	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": trueREDACTED) REDACTED)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
+	req.Header.Set("Authorization", "Bearer "+apiKey.Key)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1, touchCalls)
 REDACTED

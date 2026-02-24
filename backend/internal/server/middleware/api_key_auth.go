@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"errors"
-	"log"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -36,8 +35,8 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		if authHeader != "" {
 			// 验证Bearer scheme
 			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) == 2 && parts[0] == "Bearer" {
-				apiKeyString = parts[1]
+			if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+				apiKeyString = strings.TrimSpace(parts[1])
 		REDACTED
 	REDACTED
 
@@ -97,7 +96,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// 检查 IP 限制（白名单/黑名单）
 		// 注意：错误信息故意模糊，避免暴露具体的 IP 限制机制
 		if len(apiKey.IPWhitelist) > 0 || len(apiKey.IPBlacklist) > 0 {
-			clientIP := ip.GetClientIP(c)
+			clientIP := ip.GetTrustedClientIP(c)
 			allowed, _ := ip.CheckIPRestriction(clientIP, apiKey.IPWhitelist, apiKey.IPBlacklist)
 			if !allowed {
 				AbortWithError(c, 403, "ACCESS_DENIED", "Access denied")
@@ -126,6 +125,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		REDACTED)
 			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 			setGroupContext(c, apiKey.Group)
+			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 			c.Next()
 			return
 	REDACTED
@@ -134,7 +134,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 
 		if isSubscriptionType && subscriptionService != nil {
-			// 订阅模式：验证订阅
+			// 订阅模式：获取订阅（L1 缓存 + singleflight）
 			subscription, err := subscriptionService.GetActiveSubscription(
 				c.Request.Context(),
 				apiKey.User.ID,
@@ -145,30 +145,30 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				return
 		REDACTED
 
-			// 验证订阅状态（是否过期、暂停等）
-			if err := subscriptionService.ValidateSubscription(c.Request.Context(), subscription); err != nil {
-				AbortWithError(c, 403, "SUBSCRIPTION_INVALID", err.Error())
-				return
-		REDACTED
-
-			// 激活滑动窗口（首次使用时）
-			if err := subscriptionService.CheckAndActivateWindow(c.Request.Context(), subscription); err != nil {
-				log.Printf("Failed to activate subscription windows: %v", err)
-		REDACTED
-
-			// 检查并重置过期窗口
-			if err := subscriptionService.CheckAndResetWindows(c.Request.Context(), subscription); err != nil {
-				log.Printf("Failed to reset subscription windows: %v", err)
-		REDACTED
-
-			// 预检查用量限制（使用0作为额外费用进行预检查）
-			if err := subscriptionService.CheckUsageLimits(c.Request.Context(), subscription, apiKey.Group, 0); err != nil {
-				AbortWithError(c, 429, "USAGE_LIMIT_EXCEEDED", err.Error())
+			// 合并验证 + 限额检查（纯内存操作）
+			needsMaintenance, err := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
+			if err != nil {
+				code := "SUBSCRIPTION_INVALID"
+				status := 403
+				if errors.Is(err, service.ErrDailyLimitExceeded) ||
+					errors.Is(err, service.ErrWeeklyLimitExceeded) ||
+					errors.Is(err, service.ErrMonthlyLimitExceeded) {
+					code = "USAGE_LIMIT_EXCEEDED"
+					status = 429
+			REDACTED
+				AbortWithError(c, status, code, err.Error())
 				return
 		REDACTED
 
 			// 将订阅信息存入上下文
 			c.Set(string(ContextKeySubscription), subscription)
+
+			// 窗口维护异步化（不阻塞请求）
+			// 传递独立拷贝，避免与 handler 读取 context 中的 subscription 产生 data race
+			if needsMaintenance {
+				maintenanceCopy := *subscription
+				subscriptionService.DoWindowMaintenance(&maintenanceCopy)
+		REDACTED
 	REDACTED else {
 			// 余额模式：检查用户余额
 			if apiKey.User.Balance <= 0 {
@@ -185,6 +185,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 	REDACTED)
 		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
 		setGroupContext(c, apiKey.Group)
+		_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 
 		c.Next()
 REDACTED

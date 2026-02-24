@@ -1,39 +1,6 @@
-# =============================================================================
-# Sub2API Caddy Reverse Proxy Configuration (宿主机部署)
-# =============================================================================
-# 使用方法:
-#   1. 安装 Caddy: https://caddyserver.com/docs/install
-#   2. 修改下方 example.com 为你的域名
-#   3. 确保域名 DNS 已指向服务器
-#   4. 复制配置: sudo cp Caddyfile /etc/caddy/Caddyfile
-#   5. 重载配置: sudo systemctl reload caddy
-#
-# Caddy 会自动申请和续期 Let's Encrypt SSL 证书
-# =============================================================================
-
-# 全局配置
-{
-	# Let's Encrypt 邮箱通知
-	email admin@example.com
-	
-	# 服务器配置
-	servers {
-		# 启用 HTTP/2 和 HTTP/3
-		protocols h1 h2 h3
-		
-		# 超时配置
-		timeouts {
-			read_body 30s
-			read_header 10s
-			write 300s
-			idle 300s
-	REDACTED
-REDACTED
-REDACTED
-
 # 修改为你的域名
-example.com {
-	# =========================================================================
+api.sub2api.com {
+        # =========================================================================
 	# 静态资源长期缓存（高优先级，放在最前面）
 	# 带 hash 的文件可以永久缓存，浏览器和 CDN 都会缓存
 	# =========================================================================
@@ -93,10 +60,7 @@ REDACTED
 			write_buffer 16KB
 			compression off
 	REDACTED
-
-		# SSE/流式传输优化：禁用响应缓冲，立即刷新数据给客户端
-		flush_interval -1
-
+		
 		# 故障转移
 		fail_duration 30s
 		max_fails 3
@@ -111,10 +75,6 @@ REDACTED
 		gzip 6
 		minimum_length 256
 		match {
-			# SSE 请求通常会带 Accept: text/event-stream，需排除压缩
-			not header Accept text/event-stream*
-			# 排除已知 SSE 路径（即便 Accept 缺失）
-			not path /v1/messages /v1/responses /responses /antigravity/v1/messages /v1beta/models/* /antigravity/v1beta/models/*
 			header Content-Type text/*
 			header Content-Type application/json*
 			header Content-Type application/javascript*
@@ -122,53 +82,6 @@ REDACTED
 			header Content-Type application/rss+xml*
 			header Content-Type image/svg+xml*
 	REDACTED
-REDACTED
-
-	# =========================================================================
-	# 速率限制 (需要 caddy-ratelimit 插件)
-	# 如未安装插件，请注释掉此段
-	# =========================================================================
-	# rate_limit {
-	# 	zone api {
-	# 		key {remote_hostREDACTED
-	# 		events 100
-	# 		window 1m
-	# REDACTED
-	# REDACTED
-
-	# =========================================================================
-	# 安全响应头
-	# =========================================================================
-	header {
-		# 防止点击劫持
-		X-Frame-Options "SAMEORIGIN"
-		
-		# XSS 保护
-		X-XSS-Protection "1; mode=block"
-		
-		# 防止 MIME 类型嗅探
-		X-Content-Type-Options "nosniff"
-		
-		# 引用策略
-		Referrer-Policy "strict-origin-when-cross-origin"
-		
-		# HSTS - 强制 HTTPS (max-age=1年)
-		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-		
-		# 内容安全策略 (根据需要调整)
-		# Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:;"
-		
-		# 权限策略
-		Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
-		
-		# 跨域资源策略
-		Cross-Origin-Opener-Policy "same-origin"
-		Cross-Origin-Embedder-Policy "require-corp"
-		Cross-Origin-Resource-Policy "same-origin"
-		
-		# 移除敏感头
-		-Server
-		-X-Powered-By
 REDACTED
 
 	# =========================================================================
@@ -198,7 +111,3 @@ REDACTED
 		respond "{err.status_codeREDACTED {err.status_textREDACTED"
 REDACTED
 REDACTED
-
-# =============================================================================
-# HTTP 重定向到 HTTPS (Caddy 默认自动处理，此处显式声明)
-# =============================================================================

@@ -31,6 +31,8 @@ const (
 	FieldGroupID = "group_id"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
+	FieldLastUsedAt = "last_used_at"
 	// FieldIPWhitelist holds the string denoting the ip_whitelist field in the database.
 	FieldIPWhitelist = "ip_whitelist"
 	// FieldIPBlacklist holds the string denoting the ip_blacklist field in the database.
@@ -83,6 +85,7 @@ var Columns = []string{
 	FieldName,
 	FieldGroupID,
 	FieldStatus,
+	FieldLastUsedAt,
 	FieldIPWhitelist,
 	FieldIPBlacklist,
 	FieldQuota,
@@ -174,6 +177,11 @@ REDACTED
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+REDACTED
+
+// ByLastUsedAt orders the results by the last_used_at field.
+func ByLastUsedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastUsedAt, opts...).ToFunc()
 REDACTED
 
 // ByQuota orders the results by the quota field.

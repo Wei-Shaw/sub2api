@@ -21,9 +21,16 @@ var (
 	// - "" (默认): 使用 /v1/messages, /v1beta/models（混合模式，可调度 antigravity 账户）
 	// - "/antigravity": 使用 /antigravity/v1/messages, /antigravity/v1beta/models（非混合模式，仅 antigravity 账户）
 	endpointPrefix = getEnv("ENDPOINT_PREFIX", "")
-	claudeAPIKey   = "sk-8e572bc3b3de92ace4f41f4256c28600ca11805732a7b693b5c44741346bbbb3"
-	geminiAPIKey   = "sk-5950197a2085b38bbe5a1b229cc02b8ece914963fc44cacc06d497ae8b87410f"
 	testInterval   = 1 * time.Second // 测试间隔，防止限流
+)
+
+const (
+	// 注意：E2E 测试请使用环境变量注入密钥，避免任何凭证进入仓库历史。
+	// 例如：
+	//   export CLAUDE_API_KEY="sk-..."
+	//   export GEMINI_API_KEY="sk-..."
+	claudeAPIKeyEnv = "CLAUDE_API_KEY"
+	geminiAPIKeyEnv = "GEMINI_API_KEY"
 )
 
 func getEnv(key, defaultVal string) string {
@@ -65,16 +72,45 @@ func TestMain(m *testing.M) {
 	if endpointPrefix != "" {
 		mode = "Antigravity 模式"
 REDACTED
-	fmt.Printf("\n🚀 E2E Gateway Tests - %s (prefix=%q, %s)\n\n", baseURL, endpointPrefix, mode)
+	claudeKeySet := strings.TrimSpace(os.Getenv(claudeAPIKeyEnv)) != ""
+	geminiKeySet := strings.TrimSpace(os.Getenv(geminiAPIKeyEnv)) != ""
+	fmt.Printf("\n🚀 E2E Gateway Tests - %s (prefix=%q, %s, %s=%v, %s=%v)\n\n",
+		baseURL,
+		endpointPrefix,
+		mode,
+		claudeAPIKeyEnv,
+		claudeKeySet,
+		geminiAPIKeyEnv,
+		geminiKeySet,
+	)
 	os.Exit(m.Run())
+REDACTED
+
+func requireClaudeAPIKey(t *testing.T) string {
+REDACTED
+	key := strings.TrimSpace(os.Getenv(claudeAPIKeyEnv))
+	if key == "" {
+		t.Skipf("未设置 %s，跳过 Claude 相关 E2E 测试", claudeAPIKeyEnv)
+REDACTED
+	return key
+REDACTED
+
+func requireGeminiAPIKey(t *testing.T) string {
+REDACTED
+	key := strings.TrimSpace(os.Getenv(geminiAPIKeyEnv))
+	if key == "" {
+		t.Skipf("未设置 %s，跳过 Gemini 相关 E2E 测试", geminiAPIKeyEnv)
+REDACTED
+	return key
 REDACTED
 
 // TestClaudeModelsList 测试 GET /v1/models
 func TestClaudeModelsList(t *testing.T) {
+	claudeKey := requireClaudeAPIKey(t)
 	url := baseURL + endpointPrefix + "/v1/models"
 
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Bearer "+claudeAPIKey)
+	req.Header.Set("Authorization", "Bearer "+claudeKey)
 
 	client := &http.Client{Timeout: 30 * time.SecondREDACTED
 	resp, err := client.Do(req)
@@ -106,10 +142,11 @@ REDACTED
 
 // TestGeminiModelsList 测试 GET /v1beta/models
 func TestGeminiModelsList(t *testing.T) {
+	geminiKey := requireGeminiAPIKey(t)
 	url := baseURL + endpointPrefix + "/v1beta/models"
 
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Bearer "+geminiAPIKey)
+	req.Header.Set("Authorization", "Bearer "+geminiKey)
 
 	client := &http.Client{Timeout: 30 * time.SecondREDACTED
 	resp, err := client.Do(req)
@@ -137,21 +174,22 @@ REDACTED
 
 // TestClaudeMessages 测试 Claude /v1/messages 接口
 func TestClaudeMessages(t *testing.T) {
+	claudeKey := requireClaudeAPIKey(t)
 	for i, model := range claudeModels {
 		if i > 0 {
 			time.Sleep(testInterval)
 	REDACTED
 		t.Run(model+"_非流式", func(t *testing.T) {
-			testClaudeMessage(t, model, false)
+			testClaudeMessage(t, claudeKey, model, false)
 	REDACTED)
 		time.Sleep(testInterval)
 		t.Run(model+"_流式", func(t *testing.T) {
-			testClaudeMessage(t, model, true)
+			testClaudeMessage(t, claudeKey, model, true)
 	REDACTED)
 REDACTED
 REDACTED
 
-func testClaudeMessage(t *testing.T, model string, stream bool) {
+func testClaudeMessage(t *testing.T, claudeKey string, model string, stream bool) {
 	url := baseURL + endpointPrefix + "/v1/messages"
 
 	payload := map[string]any{
@@ -166,7 +204,7 @@ REDACTED
 
 	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+claudeAPIKey)
+	req.Header.Set("Authorization", "Bearer "+claudeKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	client := &http.Client{Timeout: 60 * time.SecondREDACTED
@@ -213,21 +251,22 @@ REDACTED
 
 // TestGeminiGenerateContent 测试 Gemini /v1beta/models/:model 接口
 func TestGeminiGenerateContent(t *testing.T) {
+	geminiKey := requireGeminiAPIKey(t)
 	for i, model := range geminiModels {
 		if i > 0 {
 			time.Sleep(testInterval)
 	REDACTED
 		t.Run(model+"_非流式", func(t *testing.T) {
-			testGeminiGenerate(t, model, false)
+			testGeminiGenerate(t, geminiKey, model, false)
 	REDACTED)
 		time.Sleep(testInterval)
 		t.Run(model+"_流式", func(t *testing.T) {
-			testGeminiGenerate(t, model, true)
+			testGeminiGenerate(t, geminiKey, model, true)
 	REDACTED)
 REDACTED
 REDACTED
 
-func testGeminiGenerate(t *testing.T, model string, stream bool) {
+func testGeminiGenerate(t *testing.T, geminiKey string, model string, stream bool) {
 	action := "generateContent"
 	if stream {
 		action = "streamGenerateContent"
@@ -254,7 +293,7 @@ REDACTED
 
 	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+geminiAPIKey)
+	req.Header.Set("Authorization", "Bearer "+geminiKey)
 
 	client := &http.Client{Timeout: 60 * time.SecondREDACTED
 	resp, err := client.Do(req)
@@ -301,6 +340,7 @@ REDACTED
 // TestClaudeMessagesWithComplexTools 测试带复杂工具 schema 的请求
 // 模拟 Claude Code 发送的请求，包含需要清理的 JSON Schema 字段
 func TestClaudeMessagesWithComplexTools(t *testing.T) {
+	claudeKey := requireClaudeAPIKey(t)
 	// 测试模型列表（只测试几个代表性模型）
 	models := []string{
 		"claude-opus-4-5-20251101",  // Claude 模型
@@ -312,12 +352,12 @@ REDACTED
 			time.Sleep(testInterval)
 	REDACTED
 		t.Run(model+"_复杂工具", func(t *testing.T) {
-			testClaudeMessageWithTools(t, model)
+			testClaudeMessageWithTools(t, claudeKey, model)
 	REDACTED)
 REDACTED
 REDACTED
 
-func testClaudeMessageWithTools(t *testing.T, model string) {
+func testClaudeMessageWithTools(t *testing.T, claudeKey string, model string) {
 	url := baseURL + endpointPrefix + "/v1/messages"
 
 	// 构造包含复杂 schema 的工具定义（模拟 Claude Code 的工具）
@@ -473,7 +513,7 @@ REDACTED
 
 	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+claudeAPIKey)
+	req.Header.Set("Authorization", "Bearer "+claudeKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	client := &http.Client{Timeout: 60 * time.SecondREDACTED
@@ -519,6 +559,7 @@ REDACTED
 // 验证：当历史 assistant 消息包含 tool_use 但没有 signature 时，
 // 系统应自动添加 dummy thought_signature 避免 Gemini 400 错误
 func TestClaudeMessagesWithThinkingAndTools(t *testing.T) {
+	claudeKey := requireClaudeAPIKey(t)
 	models := []string{
 		"REDACTED", // gemini-3-flash
 REDACTED
@@ -527,12 +568,12 @@ REDACTED
 			time.Sleep(testInterval)
 	REDACTED
 		t.Run(model+"_thinking模式工具调用", func(t *testing.T) {
-			testClaudeThinkingWithToolHistory(t, model)
+			testClaudeThinkingWithToolHistory(t, claudeKey, model)
 	REDACTED)
 REDACTED
 REDACTED
 
-func testClaudeThinkingWithToolHistory(t *testing.T, model string) {
+func testClaudeThinkingWithToolHistory(t *testing.T, claudeKey string, model string) {
 	url := baseURL + endpointPrefix + "/v1/messages"
 
 	// 模拟历史对话：用户请求 → assistant 调用工具 → 工具返回 → 继续对话
@@ -600,7 +641,7 @@ REDACTED
 
 	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+claudeAPIKey)
+	req.Header.Set("Authorization", "Bearer "+claudeKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	client := &http.Client{Timeout: 60 * time.SecondREDACTED
@@ -649,6 +690,7 @@ func TestClaudeMessagesWithGeminiModel(t *testing.T) {
 	if endpointPrefix != "/antigravity" {
 		t.Skip("仅在 Antigravity 模式下运行")
 REDACTED
+	claudeKey := requireClaudeAPIKey(t)
 
 	// 测试通过 Claude 端点调用 Gemini 模型
 	geminiViaClaude := []string{
@@ -664,11 +706,11 @@ REDACTED
 			time.Sleep(testInterval)
 	REDACTED
 		t.Run(model+"_通过Claude端点", func(t *testing.T) {
-			testClaudeMessage(t, model, false)
+			testClaudeMessage(t, claudeKey, model, false)
 	REDACTED)
 		time.Sleep(testInterval)
 		t.Run(model+"_通过Claude端点_流式", func(t *testing.T) {
-			testClaudeMessage(t, model, true)
+			testClaudeMessage(t, claudeKey, model, true)
 	REDACTED)
 REDACTED
 REDACTED
@@ -676,6 +718,7 @@ REDACTED
 // TestClaudeMessagesWithNoSignature 测试历史 thinking block 不带 signature 的场景
 // 验证：Gemini 模型接受没有 signature 的 thinking block
 func TestClaudeMessagesWithNoSignature(t *testing.T) {
+	claudeKey := requireClaudeAPIKey(t)
 	models := []string{
 		"REDACTED", // gemini-3-flash - 支持无 signature
 REDACTED
@@ -684,12 +727,12 @@ REDACTED
 			time.Sleep(testInterval)
 	REDACTED
 		t.Run(model+"_无signature", func(t *testing.T) {
-			testClaudeWithNoSignature(t, model)
+			testClaudeWithNoSignature(t, claudeKey, model)
 	REDACTED)
 REDACTED
 REDACTED
 
-func testClaudeWithNoSignature(t *testing.T, model string) {
+func testClaudeWithNoSignature(t *testing.T, claudeKey string, model string) {
 	url := baseURL + endpointPrefix + "/v1/messages"
 
 	// 模拟历史对话包含 thinking block 但没有 signature
@@ -732,7 +775,7 @@ REDACTED
 
 	req, _ := http.NewRequest("POST", url, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+claudeAPIKey)
+	req.Header.Set("Authorization", "Bearer "+claudeKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 
 	client := &http.Client{Timeout: 60 * time.SecondREDACTED
@@ -777,6 +820,7 @@ func TestGeminiEndpointWithClaudeModel(t *testing.T) {
 	if endpointPrefix != "/antigravity" {
 		t.Skip("仅在 Antigravity 模式下运行")
 REDACTED
+	geminiKey := requireGeminiAPIKey(t)
 
 	// 测试通过 Gemini 端点调用 Claude 模型
 	claudeViaGemini := []string{
@@ -789,11 +833,11 @@ REDACTED
 			time.Sleep(testInterval)
 	REDACTED
 		t.Run(model+"_通过Gemini端点", func(t *testing.T) {
-			testGeminiGenerate(t, model, false)
+			testGeminiGenerate(t, geminiKey, model, false)
 	REDACTED)
 		time.Sleep(testInterval)
 		t.Run(model+"_通过Gemini端点_流式", func(t *testing.T) {
-			testGeminiGenerate(t, model, true)
+			testGeminiGenerate(t, geminiKey, model, true)
 	REDACTED)
 REDACTED
 REDACTED

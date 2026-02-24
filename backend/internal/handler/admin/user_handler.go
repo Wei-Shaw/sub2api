@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"strconv"
 	"strings"
 
@@ -78,8 +79,8 @@ func (h *UserHandler) List(c *gin.Context) {
 	search := c.Query("search")
 	// 标准化和验证 search 参数
 	search = strings.TrimSpace(search)
-	if len(search) > 100 {
-		search = search[:100]
+	if runes := []rune(search); len(runes) > 100 {
+		search = string(runes[:100])
 REDACTED
 
 	filters := service.UserListFilters{
@@ -257,13 +258,20 @@ REDACTED
 		return
 REDACTED
 
-	user, err := h.adminService.UpdateUserBalance(c.Request.Context(), userID, req.Balance, req.Operation, req.Notes)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
+	idempotencyPayload := struct {
+		UserID int64                `json:"user_id"`
+		Body   UpdateBalanceRequest `json:"body"`
+REDACTED{
+		UserID: userID,
+		Body:   req,
 REDACTED
-
-	response.Success(c, dto.UserFromServiceAdmin(user))
+	executeAdminIdempotentJSON(c, "admin.users.balance.update", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		user, execErr := h.adminService.UpdateUserBalance(ctx, userID, req.Balance, req.Operation, req.Notes)
+		if execErr != nil {
+			return nil, execErr
+	REDACTED
+		return dto.UserFromServiceAdmin(user), nil
+REDACTED)
 REDACTED
 
 // GetUserAPIKeys handles getting user's API keys

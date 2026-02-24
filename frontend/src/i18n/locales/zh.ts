@@ -479,6 +479,7 @@ export default {
     today: '今日',
     total: '累计',
     quota: '额度',
+    lastUsedAt: '上次使用时间',
     useKey: '使用密钥',
     useKeyModal: {
       title: '使用 API 密钥',
@@ -1166,7 +1167,8 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
-        antigravity: 'Antigravity'
+        antigravity: 'Antigravity',
+        sora: 'Sora'
       REDACTED,
       saving: '保存中...',
       noGroups: '暂无分组',
@@ -1219,6 +1221,14 @@ export default {
       imagePricing: {
         title: '图片生成计费',
         description: '配置 gemini-3-pro-image 模型的图片生成价格，留空则使用默认价格'
+      REDACTED,
+      soraPricing: {
+        title: 'Sora 按次计费',
+        description: '配置 Sora 图片/视频按次收费价格，留空则默认不计费',
+        image360: '图片 360px ($)',
+        image540: '图片 540px ($)',
+        video: '视频（标准）($)',
+        videoHd: '视频（Pro-HD）($)'
       REDACTED,
       claudeCode: {
         title: 'Claude Code 客户端限制',
@@ -1363,6 +1373,8 @@ export default {
       refreshInterval15s: '15 秒',
       refreshInterval30s: '30 秒',
       autoRefreshCountdown: '自动刷新：{secondsREDACTEDs',
+      listPendingSyncHint: '列表存在待同步变更，点击同步可补齐最新数据。',
+      listPendingSyncAction: '立即同步',
       syncFromCrs: '从 CRS 同步',
       dataExport: '导出',
       dataExportSelected: '导出选中',
@@ -1489,7 +1501,8 @@ export default {
         openai: 'OpenAI',
         anthropic: 'Anthropic',
         gemini: 'Gemini',
-        antigravity: 'Antigravity'
+        antigravity: 'Antigravity',
+        sora: 'Sora'
       REDACTED,
       types: {
         oauth: 'OAuth',
@@ -1674,7 +1687,20 @@ export default {
       // OpenAI specific hints
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',
-        apiKeyHint: '您的 OpenAI API Key'
+        apiKeyHint: '您的 OpenAI API Key',
+        oauthPassthrough: '自动透传（仅替换认证）',
+        oauthPassthroughDesc:
+          '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
+        codexCLIOnly: '仅允许 Codex 官方客户端',
+        codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
+        modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
+        enableSora: '同时启用 Sora',
+        enableSoraHint: 'Sora 使用相同的 OpenAI 账号，开启后将同时创建 Sora 平台账号'
+      REDACTED,
+      anthropic: {
+        apiKeyPassthrough: '自动透传（仅替换认证）',
+        apiKeyPassthroughDesc:
+          '仅对 Anthropic API Key 生效。开启后，messages/count_tokens 请求将透传上游并仅替换认证，保留计费/并发/审计及必要安全过滤；关闭即可回滚到现有兼容链路。'
       REDACTED,
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',
@@ -1683,6 +1709,9 @@ export default {
       mapRequestModels: '将请求模型映射到实际模型。左边是请求的模型，右边是发送到 API 的实际模型。',
       selectedModels: '已选择 {countREDACTED 个模型',
       supportsAllModels: '（支持所有模型）',
+      soraModelsLoadFailed: '加载 Sora 模型列表失败，已回退到默认列表',
+      soraModelsLoading: '正在加载 Sora 模型...',
+      soraModelsRetry: '加载失败，点击重试',
       requestModel: '请求模型',
       actualModel: '实际模型',
       addMapping: '添加映射',
@@ -1771,6 +1800,8 @@ export default {
       creating: '创建中...',
       updating: '更新中...',
       accountCreated: '账号创建成功',
+      soraAccountCreated: 'Sora 账号已同时创建',
+      soraAccountFailed: 'Sora 账号创建失败，请稍后手动添加',
       accountUpdated: '账号更新成功',
       failedToCreate: '创建账号失败',
       failedToUpdate: '更新账号失败',
@@ -1856,9 +1887,13 @@ export default {
           refreshTokenAuth: '手动输入 RT',
           refreshTokenDesc: '输入您已有的 OpenAI Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
           refreshTokenPlaceholder: '粘贴您的 OpenAI Refresh Token...\n支持多个，每行一个',
+          sessionTokenAuth: '手动输入 ST',
+          sessionTokenDesc: '输入您已有的 Sora Session Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
+          sessionTokenPlaceholder: '粘贴您的 Sora Session Token...\n支持多个，每行一个',
           validating: '验证中...',
           validateAndCreate: '验证并创建账号',
-          pleaseEnterRefreshToken: '请输入 Refresh Token'
+          pleaseEnterRefreshToken: '请输入 Refresh Token',
+          pleaseEnterSessionToken: '请输入 Session Token'
         REDACTED,
         // Gemini specific
         gemini: {
@@ -2074,6 +2109,7 @@ export default {
       reAuthorizeAccount: '重新授权账号',
       claudeCodeAccount: 'Claude Code 账号',
       openaiAccount: 'OpenAI 账号',
+      soraAccount: 'Sora 账号',
       geminiAccount: 'Gemini 账号',
       antigravityAccount: 'Antigravity 账号',
       inputMethod: '输入方式',
@@ -2097,6 +2133,10 @@ export default {
       selectTestModel: '选择测试模型',
       testModel: '测试模型',
       testPrompt: '提示词："hi"',
+      soraTestHint: 'Sora 测试将执行连通性与能力检测（/backend/me、订阅信息、Sora2 邀请码与剩余额度）。',
+      soraTestTarget: '检测目标：Sora 账号能力',
+      soraTestMode: '模式：连通性 + 能力探测',
+      soraTestingFlow: '执行 Sora 连通性与能力检测...',
       // Stats Modal
       viewStats: '查看统计',
       usageStatistics: '使用统计',
@@ -2214,6 +2254,8 @@ export default {
       noProxiesYet: '暂无代理',
       createFirstProxy: '添加您的第一个代理以开始使用。',
       testConnection: '测试连接',
+      qualityCheck: '质量检测',
+      batchQualityCheck: '批量质量检测',
       batchTest: '批量测试',
       testFailed: '失败',
       latencyFailed: '链接失败',
@@ -2261,6 +2303,28 @@ export default {
       proxyWorking: '代理连接正常',
       proxyWorkingWithLatency: '代理连接正常，延迟 {latencyREDACTEDms',
       proxyTestFailed: '代理测试失败',
+      qualityCheckDone: '质量检测完成：评分 {scoreREDACTED（{gradeREDACTED）',
+      qualityCheckFailed: '代理质量检测失败',
+      batchQualityDone: '批量质量检测完成，共检测 {countREDACTED 个；优质 {healthyREDACTED 个，告警 {warnREDACTED 个，挑战 {challengeREDACTED 个，异常 {failedREDACTED 个',
+      batchQualityFailed: '批量质量检测失败',
+      batchQualityEmpty: '暂无可检测质量的代理',
+      qualityReportTitle: '代理质量检测报告',
+      qualityGrade: '等级 {gradeREDACTED',
+      qualityExitIP: '出口 IP',
+      qualityCountry: '出口地区',
+      qualityBaseLatency: '基础延迟',
+      qualityCheckedAt: '检测时间',
+      qualityTableTarget: '检测项',
+      qualityTableStatus: '状态',
+      qualityTableLatency: '延迟',
+      qualityTableMessage: '说明',
+      qualityInline: '质量 {gradeREDACTED/{scoreREDACTED',
+      qualityStatusHealthy: '优质',
+      qualityStatusPass: '通过',
+      qualityStatusWarn: '告警',
+      qualityStatusFail: '失败',
+      qualityStatusChallenge: '挑战',
+      qualityTargetBase: '基础连通性',
       proxyCreatedSuccess: '代理添加成功',
       proxyUpdatedSuccess: '代理更新成功',
       proxyDeletedSuccess: '代理删除成功',
@@ -2675,11 +2739,33 @@ export default {
         '5m': '近5分钟',
         '30m': '近30分钟',
         '1h': '近1小时',
+        '1d': '近1天',
+        '15d': '近15天',
         '6h': '近6小时',
         '24h': '近24小时',
         '7d': '近7天',
         '30d': '近30天',
         custom: '自定义'
+      REDACTED,
+      openaiTokenStats: {
+        title: 'OpenAI Token 请求统计',
+        viewModeTopN: 'TopN',
+        viewModePagination: '分页',
+        prevPage: '上一页',
+        nextPage: '下一页',
+        pageInfo: '第 {pageREDACTED/{totalREDACTED 页',
+        totalModels: '模型总数：{totalREDACTED',
+        failedToLoad: '加载 OpenAI Token 统计失败',
+        empty: '当前筛选条件下暂无 OpenAI Token 请求统计数据',
+        table: {
+          model: '模型',
+          requestCount: '请求数',
+          avgTokensPerSec: '平均 Tokens/秒',
+          avgFirstTokenMs: '平均首 Token 延迟(ms)',
+          totalOutputTokens: '输出 Token 总数',
+          avgDurationMs: '平均时长(ms)',
+          requestsWithFirstToken: '首 Token 样本数'
+        REDACTED
       REDACTED,
       customTimeRange: {
         startTime: '开始时间',

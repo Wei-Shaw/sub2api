@@ -111,6 +111,28 @@
           </button>
           <button
             type="button"
+            @click="form.platform = 'sora'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'sora'
+                ? 'bg-white text-rose-600 shadow-sm dark:bg-dark-600 dark:text-rose-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <svg
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Sora
+          </button>
+          <button
+            type="button"
             @click="form.platform = 'gemini'"
             :class="[
               'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
@@ -146,6 +168,38 @@
           >
             <Icon name="cloud" size="sm" />
             Antigravity
+          </button>
+        </div>
+      </div>
+
+      <!-- Account Type Selection (Sora) -->
+      <div v-if="form.platform === 'sora'">
+        <label class="input-label">{{ t('admin.accounts.accountType') REDACTEDREDACTED</label>
+        <div class="mt-2 grid grid-cols-1 gap-3" data-tour="account-form-type">
+          <button
+            type="button"
+            @click="accountCategory = 'oauth-based'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'oauth-based'
+                ? 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'
+                : 'border-gray-200 hover:border-rose-300 dark:border-dark-600 dark:hover:border-rose-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'oauth-based'
+                  ? 'bg-rose-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="key" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">OAuth</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.chatgptOauth') REDACTEDREDACTED</span>
+            </div>
           </button>
         </div>
       </div>
@@ -714,7 +768,7 @@
           <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-2">
             <div
               v-for="(mapping, index) in antigravityModelMappings"
-              :key="index"
+              :key="getAntigravityModelMappingKey(mapping)"
               class="space-y-1"
             >
               <div class="flex items-center gap-2">
@@ -866,77 +920,30 @@
         <div v-if="form.platform !== 'gemini'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
 
-          <!-- Mode Toggle -->
-          <div class="mb-4 flex gap-2">
-            <button
-              type="button"
-              @click="modelRestrictionMode = 'whitelist'"
-              :class="[
-                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                modelRestrictionMode === 'whitelist'
-                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-              ]"
-            >
-              <svg
-                class="mr-1.5 inline h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
-            </button>
-            <button
-              type="button"
-              @click="modelRestrictionMode = 'mapping'"
-              :class="[
-                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                modelRestrictionMode === 'mapping'
-                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-              ]"
-            >
-              <svg
-                class="mr-1.5 inline h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-                />
-              </svg>
-              {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
-            </button>
-          </div>
-
-          <!-- Whitelist Mode -->
-          <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" />
-            <p class="text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
-              <span v-if="allowedModels.length === 0">{{
-                t('admin.accounts.supportsAllModels')
-              REDACTEDREDACTED</span>
+          <div
+            v-if="isOpenAIModelRestrictionDisabled"
+            class="mb-3 rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20"
+          >
+            <p class="text-xs text-amber-700 dark:text-amber-400">
+              {{ t('admin.accounts.openai.modelRestrictionDisabledByPassthrough') REDACTEDREDACTED
             </p>
           </div>
 
-          <!-- Mapping Mode -->
-          <div v-else>
-            <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
-              <p class="text-xs text-purple-700 dark:text-purple-400">
+          <template v-else>
+            <!-- Mode Toggle -->
+            <div class="mb-4 flex gap-2">
+              <button
+                type="button"
+                @click="modelRestrictionMode = 'whitelist'"
+                :class="[
+                  'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                  modelRestrictionMode === 'whitelist'
+                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                ]"
+              >
                 <svg
-                  class="mr-1 inline h-4 w-4"
+                  class="mr-1.5 inline h-4 w-4"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -945,18 +952,75 @@
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                {{ t('admin.accounts.mapRequestModels') REDACTEDREDACTED
+                {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
+              </button>
+              <button
+                type="button"
+                @click="modelRestrictionMode = 'mapping'"
+                :class="[
+                  'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                  modelRestrictionMode === 'mapping'
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                ]"
+              >
+                <svg
+                  class="mr-1.5 inline h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                  />
+                </svg>
+                {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
+              </button>
+            </div>
+
+            <!-- Whitelist Mode -->
+            <div v-if="modelRestrictionMode === 'whitelist'">
+              <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" />
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
+                <span v-if="allowedModels.length === 0">{{
+                  t('admin.accounts.supportsAllModels')
+                REDACTEDREDACTED</span>
               </p>
             </div>
+
+            <!-- Mapping Mode -->
+            <div v-else>
+              <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+                <p class="text-xs text-purple-700 dark:text-purple-400">
+                  <svg
+                    class="mr-1 inline h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  {{ t('admin.accounts.mapRequestModels') REDACTEDREDACTED
+                </p>
+              </div>
 
             <!-- Model Mapping List -->
             <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
               <div
                 v-for="(mapping, index) in modelMappings"
-                :key="index"
+                :key="getModelMappingKey(mapping)"
                 class="flex items-center gap-2"
               >
                 <input
@@ -1022,19 +1086,20 @@
               {{ t('admin.accounts.addMapping') REDACTEDREDACTED
             </button>
 
-            <!-- Quick Add Buttons -->
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="preset in presetMappings"
-                :key="preset.label"
-                type="button"
-                @click="addPresetMapping(preset.from, preset.to)"
-                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
-              >
-                + {{ preset.label REDACTEDREDACTED
-              </button>
+              <!-- Quick Add Buttons -->
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="preset in presetMappings"
+                  :key="preset.label"
+                  type="button"
+                  @click="addPresetMapping(preset.from, preset.to)"
+                  :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+                >
+                  + {{ preset.label REDACTEDREDACTED
+                </button>
+              </div>
             </div>
-          </div>
+          </template>
         </div>
 
         <!-- Custom Error Codes Section -->
@@ -1214,7 +1279,7 @@
           <div v-if="tempUnschedRules.length > 0" class="space-y-3">
             <div
               v-for="(rule, index) in tempUnschedRules"
-              :key="index"
+              :key="getTempUnschedRuleKey(rule)"
               class="rounded-lg border border-gray-200 p-3 dark:border-dark-600"
             >
               <div class="mb-2 flex items-center justify-between">
@@ -1602,6 +1667,96 @@
         <p class="input-hint">{{ t('admin.accounts.expiresAtHint') REDACTEDREDACTED</p>
       </div>
 
+      <!-- OpenAI 自动透传开关（OAuth/API Key） -->
+      <div
+        v-if="form.platform === 'openai'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.oauthPassthrough') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.oauthPassthroughDesc') REDACTEDREDACTED
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="openaiPassthroughEnabled = !openaiPassthroughEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openaiPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openaiPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
+      <!-- Anthropic API Key 自动透传开关 -->
+      <div
+        v-if="form.platform === 'anthropic' && accountCategory === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.anthropic.apiKeyPassthrough') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.anthropic.apiKeyPassthroughDesc') REDACTEDREDACTED
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="anthropicPassthroughEnabled = !anthropicPassthroughEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              anthropicPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                anthropicPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
+      <!-- OpenAI OAuth Codex 官方客户端限制开关 -->
+      <div
+        v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexCLIOnly') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.codexCLIOnlyDesc') REDACTEDREDACTED
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="codexCLIOnlyEnabled = !codexCLIOnlyEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              codexCLIOnlyEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                codexCLIOnlyEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <div>
         <div class="flex items-center justify-between">
           <div>
@@ -1684,15 +1839,17 @@
         :loading="currentOAuthLoading"
         :error="currentOAuthError"
         :show-help="form.platform === 'anthropic'"
-        :show-proxy-warning="form.platform !== 'openai' && !!form.proxy_id"
+        :show-proxy-warning="form.platform !== 'openai' && form.platform !== 'sora' && !!form.proxy_id"
         :allow-multiple="form.platform === 'anthropic'"
         :show-cookie-option="form.platform === 'anthropic'"
-        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity'"
+        :show-refresh-token-option="form.platform === 'openai' || form.platform === 'sora' || form.platform === 'antigravity'"
+        :show-session-token-option="form.platform === 'sora'"
         :platform="form.platform"
         :show-project-id="geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
         @validate-refresh-token="handleValidateRefreshToken"
+        @validate-session-token="handleValidateSessionToken"
       />
 
     </div>
@@ -2040,6 +2197,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput REDACTED from '@/utils/format'
+import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 
 // Type for exposed OAuthAuthorizationFlow component
@@ -2050,6 +2208,7 @@ interface OAuthFlowExposed {
   projectId: string
   sessionKey: string
   refreshToken: string
+  sessionToken: string
   inputMethod: AuthInputMethod
   reset: () => void
 REDACTED
@@ -2058,7 +2217,7 @@ const { t REDACTED = useI18n()
 const authStore = useAuthStore()
 
 const oauthStepTitle = computed(() => {
-  if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
+  if (form.platform === 'openai' || form.platform === 'sora') return t('admin.accounts.oauth.openai.title')
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
   return t('admin.accounts.oauth.title')
@@ -2066,13 +2225,13 @@ REDACTED)
 
 // Platform-specific hints for API Key type
 const baseUrlHint = computed(() => {
-  if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
+  if (form.platform === 'openai' || form.platform === 'sora') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 REDACTED)
 
 const apiKeyHint = computed(() => {
-  if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
+  if (form.platform === 'openai' || form.platform === 'sora') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
 REDACTED)
@@ -2093,34 +2252,36 @@ const appStore = useAppStore()
 
 // OAuth composables
 const oauth = useAccountOAuth() // For Anthropic OAuth
-const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
+const openaiOAuth = useOpenAIOAuth({ platform: 'openai' REDACTED) // For OpenAI OAuth
+const soraOAuth = useOpenAIOAuth({ platform: 'sora' REDACTED) // For Sora OAuth
 const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
 const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
+const activeOpenAIOAuth = computed(() => (form.platform === 'sora' ? soraOAuth : openaiOAuth))
 
 // Computed: current OAuth state for template binding
 const currentAuthUrl = computed(() => {
-  if (form.platform === 'openai') return openaiOAuth.authUrl.value
+  if (form.platform === 'openai' || form.platform === 'sora') return activeOpenAIOAuth.value.authUrl.value
   if (form.platform === 'gemini') return geminiOAuth.authUrl.value
   if (form.platform === 'antigravity') return antigravityOAuth.authUrl.value
   return oauth.authUrl.value
 REDACTED)
 
 const currentSessionId = computed(() => {
-  if (form.platform === 'openai') return openaiOAuth.sessionId.value
+  if (form.platform === 'openai' || form.platform === 'sora') return activeOpenAIOAuth.value.sessionId.value
   if (form.platform === 'gemini') return geminiOAuth.sessionId.value
   if (form.platform === 'antigravity') return antigravityOAuth.sessionId.value
   return oauth.sessionId.value
 REDACTED)
 
 const currentOAuthLoading = computed(() => {
-  if (form.platform === 'openai') return openaiOAuth.loading.value
+  if (form.platform === 'openai' || form.platform === 'sora') return activeOpenAIOAuth.value.loading.value
   if (form.platform === 'gemini') return geminiOAuth.loading.value
   if (form.platform === 'antigravity') return antigravityOAuth.loading.value
   return oauth.loading.value
 REDACTED)
 
 const currentOAuthError = computed(() => {
-  if (form.platform === 'openai') return openaiOAuth.error.value
+  if (form.platform === 'openai' || form.platform === 'sora') return activeOpenAIOAuth.value.error.value
   if (form.platform === 'gemini') return geminiOAuth.error.value
   if (form.platform === 'antigravity') return antigravityOAuth.error.value
   return oauth.error.value
@@ -2157,6 +2318,9 @@ const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
+const openaiPassthroughEnabled = ref(false)
+const codexCLIOnlyEnabled = ref(false)
+const anthropicPassthroughEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const antigravityAccountType = ref<'oauth' | 'upstream'>('oauth') // For antigravity: oauth or upstream
 const upstreamBaseUrl = ref('') // For upstream type: base URL
@@ -2167,6 +2331,9 @@ const antigravityModelMappings = ref<ModelMapping[]>([])
 const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
+const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-model-mapping')
+const getAntigravityModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-antigravity-model-mapping')
+const getTempUnschedRuleKey = createStableObjectKeyResolver<TempUnschedRuleForm>('create-temp-unsched-rule')
 const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('google_one')
 const geminiAIStudioOAuthEnabled = ref(false)
 
@@ -2206,6 +2373,10 @@ const geminiSelectedTier = computed(() => {
       return geminiTierAIStudio.value
   REDACTED
 REDACTED)
+
+const isOpenAIModelRestrictionDisabled = computed(() =>
+  form.platform === 'openai' && openaiPassthroughEnabled.value
+)
 
 const geminiQuotaDocs = {
   codeAssist: 'https://developers.google.com/gemini-code-assist/resources/quotas',
@@ -2290,8 +2461,8 @@ REDACTED)
 
 const canExchangeCode = computed(() => {
   const authCode = oauthFlowRef.value?.authCode || ''
-  if (form.platform === 'openai') {
-    return authCode.trim() && openaiOAuth.sessionId.value && !openaiOAuth.loading.value
+  if (form.platform === 'openai' || form.platform === 'sora') {
+    return authCode.trim() && activeOpenAIOAuth.value.sessionId.value && !activeOpenAIOAuth.value.loading.value
   REDACTED
   if (form.platform === 'gemini') {
     return authCode.trim() && geminiOAuth.sessionId.value && !geminiOAuth.loading.value
@@ -2351,7 +2522,7 @@ watch(
   (newPlatform) => {
     // Reset base URL based on platform
     apiKeyBaseUrl.value =
-      newPlatform === 'openai'
+      (newPlatform === 'openai' || newPlatform === 'sora')
         ? 'https://api.openai.com'
         : newPlatform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
@@ -2377,15 +2548,40 @@ watch(
     if (newPlatform !== 'anthropic') {
       interceptWarmupRequests.value = false
     REDACTED
+    if (newPlatform === 'sora') {
+      accountCategory.value = 'oauth-based'
+      addMethod.value = 'oauth'
+      form.type = 'oauth'
+    REDACTED
+    if (newPlatform !== 'openai') {
+      openaiPassthroughEnabled.value = false
+      codexCLIOnlyEnabled.value = false
+    REDACTED
+    if (newPlatform !== 'anthropic') {
+      anthropicPassthroughEnabled.value = false
+    REDACTED
     // Reset OAuth states
     oauth.resetState()
     openaiOAuth.resetState()
+    soraOAuth.resetState()
     geminiOAuth.resetState()
     antigravityOAuth.resetState()
   REDACTED
 )
 
 // Gemini AI Studio OAuth availability (requires operator-configured OAuth client)
+watch(
+  [accountCategory, () => form.platform],
+  ([category, platform]) => {
+    if (platform === 'openai' && category !== 'oauth-based') {
+      codexCLIOnlyEnabled.value = false
+    REDACTED
+    if (platform !== 'anthropic' || category !== 'apikey') {
+      anthropicPassthroughEnabled.value = false
+    REDACTED
+  REDACTED
+)
+
 watch(
   [() => props.show, () => form.platform, accountCategory],
   async ([show, platform, category]) => {
@@ -2630,6 +2826,9 @@ const resetForm = () => {
   customErrorCodeInput.value = null
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
+  openaiPassthroughEnabled.value = false
+  codexCLIOnlyEnabled.value = false
+  anthropicPassthroughEnabled.value = false
   // Reset quota control state
   windowCostEnabled.value = false
   windowCostLimit.value = null
@@ -2652,6 +2851,7 @@ const resetForm = () => {
   geminiTierAIStudio.value = 'aistudio_free'
   oauth.resetState()
   openaiOAuth.resetState()
+  soraOAuth.resetState()
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   oauthFlowRef.value?.reset()
@@ -2659,6 +2859,60 @@ REDACTED
 
 const handleClose = () => {
   emit('close')
+REDACTED
+
+const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  if (form.platform !== 'openai') {
+    return base
+  REDACTED
+
+  const extra: Record<string, unknown> = { ...(base || {REDACTED) REDACTED
+  if (openaiPassthroughEnabled.value) {
+    extra.openai_passthrough = true
+  REDACTED else {
+    delete extra.openai_passthrough
+    delete extra.openai_oauth_passthrough
+  REDACTED
+
+  if (accountCategory.value === 'oauth-based' && codexCLIOnlyEnabled.value) {
+    extra.codex_cli_only = true
+  REDACTED else {
+    delete extra.codex_cli_only
+  REDACTED
+
+  return Object.keys(extra).length > 0 ? extra : undefined
+REDACTED
+
+const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  if (form.platform !== 'anthropic' || accountCategory.value !== 'apikey') {
+    return base
+  REDACTED
+
+  const extra: Record<string, unknown> = { ...(base || {REDACTED) REDACTED
+  if (anthropicPassthroughEnabled.value) {
+    extra.anthropic_passthrough = true
+  REDACTED else {
+    delete extra.anthropic_passthrough
+  REDACTED
+
+  return Object.keys(extra).length > 0 ? extra : undefined
+REDACTED
+
+const buildSoraExtra = (
+  base?: Record<string, unknown>,
+  linkedOpenAIAccountId?: string | number
+): Record<string, unknown> | undefined => {
+  const extra: Record<string, unknown> = { ...(base || {REDACTED) REDACTED
+  if (linkedOpenAIAccountId !== undefined && linkedOpenAIAccountId !== null) {
+    const id = String(linkedOpenAIAccountId).trim()
+    if (id) {
+      extra.linked_openai_account_id = id
+    REDACTED
+  REDACTED
+  delete extra.openai_passthrough
+  delete extra.openai_oauth_passthrough
+  delete extra.codex_cli_only
+  return Object.keys(extra).length > 0 ? extra : undefined
 REDACTED
 
 // Helper function to create account with mixed channel warning handling
@@ -2776,7 +3030,7 @@ const handleSubmit = async () => {
 
   // Determine default base URL based on platform
   const defaultBaseUrl =
-    form.platform === 'openai'
+    (form.platform === 'openai' || form.platform === 'sora')
       ? 'https://api.openai.com'
       : form.platform === 'gemini'
         ? 'https://generativelanguage.googleapis.com'
@@ -2791,10 +3045,12 @@ const handleSubmit = async () => {
     credentials.tier_id = geminiTierAIStudio.value
   REDACTED
 
-  // Add model mapping if configured
-  const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-  if (modelMapping) {
-    credentials.model_mapping = modelMapping
+  // Add model mapping if configured（OpenAI 开启自动透传时不应用）
+  if (!isOpenAIModelRestrictionDisabled.value) {
+    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    REDACTED
   REDACTED
 
   // Add custom error codes if enabled
@@ -2812,10 +3068,12 @@ const handleSubmit = async () => {
   REDACTED
 
   form.credentials = credentials
+  const extra = buildAnthropicExtra(buildOpenAIExtra())
 
   await doCreateAccount({
     ...form,
     group_ids: form.group_ids,
+    extra,
     auto_pause_on_expired: autoPauseOnExpired.value
   REDACTED)
 REDACTED
@@ -2824,14 +3082,15 @@ const goBackToBasicInfo = () => {
   step.value = 1
   oauth.resetState()
   openaiOAuth.resetState()
+  soraOAuth.resetState()
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   oauthFlowRef.value?.reset()
 REDACTED
 
 const handleGenerateUrl = async () => {
-  if (form.platform === 'openai') {
-    await openaiOAuth.generateAuthUrl(form.proxy_id)
+  if (form.platform === 'openai' || form.platform === 'sora') {
+    await activeOpenAIOAuth.value.generateAuthUrl(form.proxy_id)
   REDACTED else if (form.platform === 'gemini') {
     await geminiOAuth.generateAuthUrl(
       form.proxy_id,
@@ -2847,10 +3106,16 @@ const handleGenerateUrl = async () => {
 REDACTED
 
 const handleValidateRefreshToken = (rt: string) => {
-  if (form.platform === 'openai') {
+  if (form.platform === 'openai' || form.platform === 'sora') {
     handleOpenAIValidateRT(rt)
   REDACTED else if (form.platform === 'antigravity') {
     handleAntigravityValidateRT(rt)
+  REDACTED
+REDACTED
+
+const handleValidateSessionToken = (sessionToken: string) => {
+  if (form.platform === 'sora') {
+    handleSoraValidateST(sessionToken)
   REDACTED
 REDACTED
 
@@ -2889,32 +3154,101 @@ REDACTED
 
 // OpenAI OAuth 授权码兑换
 const handleOpenAIExchange = async (authCode: string) => {
-  if (!authCode.trim() || !openaiOAuth.sessionId.value) return
+  const oauthClient = activeOpenAIOAuth.value
+  if (!authCode.trim() || !oauthClient.sessionId.value) return
 
-  openaiOAuth.loading.value = true
-  openaiOAuth.error.value = ''
+  oauthClient.loading.value = true
+  oauthClient.error.value = ''
 
   try {
-    const tokenInfo = await openaiOAuth.exchangeAuthCode(
+    const stateToUse = (oauthFlowRef.value?.oauthState || oauthClient.oauthState.value || '').trim()
+    if (!stateToUse) {
+      oauthClient.error.value = t('admin.accounts.oauth.authFailed')
+      appStore.showError(oauthClient.error.value)
+      return
+    REDACTED
+
+    const tokenInfo = await oauthClient.exchangeAuthCode(
       authCode.trim(),
-      openaiOAuth.sessionId.value,
+      oauthClient.sessionId.value,
+      stateToUse,
       form.proxy_id
     )
     if (!tokenInfo) return
 
-    const credentials = openaiOAuth.buildCredentials(tokenInfo)
-    const extra = openaiOAuth.buildExtraInfo(tokenInfo)
-    await createAccountAndFinish('openai', 'oauth', credentials, extra)
+    const credentials = oauthClient.buildCredentials(tokenInfo)
+    const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
+    const extra = buildOpenAIExtra(oauthExtra)
+    const shouldCreateOpenAI = form.platform === 'openai'
+    const shouldCreateSora = form.platform === 'sora'
+
+    // 应用临时不可调度配置
+    if (!applyTempUnschedConfig(credentials)) {
+      return
+    REDACTED
+
+    let openaiAccountId: string | number | undefined
+
+    if (shouldCreateOpenAI) {
+      const openaiAccount = await adminAPI.accounts.create({
+        name: form.name,
+        notes: form.notes,
+        platform: 'openai',
+        type: 'oauth',
+        credentials,
+        extra,
+        proxy_id: form.proxy_id,
+        concurrency: form.concurrency,
+        priority: form.priority,
+        rate_multiplier: form.rate_multiplier,
+        group_ids: form.group_ids,
+        expires_at: form.expires_at,
+        auto_pause_on_expired: autoPauseOnExpired.value
+      REDACTED)
+      openaiAccountId = openaiAccount.id
+      appStore.showSuccess(t('admin.accounts.accountCreated'))
+    REDACTED
+
+    if (shouldCreateSora) {
+      const soraCredentials = {
+        access_token: credentials.access_token,
+        refresh_token: credentials.refresh_token,
+        expires_at: credentials.expires_at
+      REDACTED
+
+      const soraName = shouldCreateOpenAI ? `${form.nameREDACTED (Sora)` : form.name
+      const soraExtra = buildSoraExtra(shouldCreateOpenAI ? extra : oauthExtra, openaiAccountId)
+      await adminAPI.accounts.create({
+        name: soraName,
+        notes: form.notes,
+        platform: 'sora',
+        type: 'oauth',
+        credentials: soraCredentials,
+        extra: soraExtra,
+        proxy_id: form.proxy_id,
+        concurrency: form.concurrency,
+        priority: form.priority,
+        rate_multiplier: form.rate_multiplier,
+        group_ids: form.group_ids,
+        expires_at: form.expires_at,
+        auto_pause_on_expired: autoPauseOnExpired.value
+      REDACTED)
+      appStore.showSuccess(t('admin.accounts.accountCreated'))
+    REDACTED
+
+    emit('created')
+    handleClose()
   REDACTED catch (error: any) {
-    openaiOAuth.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
-    appStore.showError(openaiOAuth.error.value)
+    oauthClient.error.value = error.response?.data?.detail || t('admin.accounts.oauth.authFailed')
+    appStore.showError(oauthClient.error.value)
   REDACTED finally {
-    openaiOAuth.loading.value = false
+    oauthClient.loading.value = false
   REDACTED
 REDACTED
 
 // OpenAI 手动 RT 批量验证和创建
 const handleOpenAIValidateRT = async (refreshTokenInput: string) => {
+  const oauthClient = activeOpenAIOAuth.value
   if (!refreshTokenInput.trim()) return
 
   // Parse multiple refresh tokens (one per line)
@@ -2924,52 +3258,86 @@ const handleOpenAIValidateRT = async (refreshTokenInput: string) => {
     .filter((rt) => rt)
 
   if (refreshTokens.length === 0) {
-    openaiOAuth.error.value = t('admin.accounts.oauth.openai.pleaseEnterRefreshToken')
+    oauthClient.error.value = t('admin.accounts.oauth.openai.pleaseEnterRefreshToken')
     return
   REDACTED
 
-  openaiOAuth.loading.value = true
-  openaiOAuth.error.value = ''
+  oauthClient.loading.value = true
+  oauthClient.error.value = ''
 
   let successCount = 0
   let failedCount = 0
   const errors: string[] = []
+  const shouldCreateOpenAI = form.platform === 'openai'
+  const shouldCreateSora = form.platform === 'sora'
 
   try {
     for (let i = 0; i < refreshTokens.length; i++) {
       try {
-        const tokenInfo = await openaiOAuth.validateRefreshToken(
+        const tokenInfo = await oauthClient.validateRefreshToken(
           refreshTokens[i],
           form.proxy_id
         )
         if (!tokenInfo) {
           failedCount++
-          errors.push(`#${i + 1REDACTED: ${openaiOAuth.error.value || 'Validation failed'REDACTED`)
-          openaiOAuth.error.value = ''
+          errors.push(`#${i + 1REDACTED: ${oauthClient.error.value || 'Validation failed'REDACTED`)
+          oauthClient.error.value = ''
           continue
         REDACTED
 
-        const credentials = openaiOAuth.buildCredentials(tokenInfo)
-        const extra = openaiOAuth.buildExtraInfo(tokenInfo)
+        const credentials = oauthClient.buildCredentials(tokenInfo)
+        const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
+        const extra = buildOpenAIExtra(oauthExtra)
 
         // Generate account name with index for batch
         const accountName = refreshTokens.length > 1 ? `${form.nameREDACTED #${i + 1REDACTED` : form.name
 
-        await adminAPI.accounts.create({
-          name: accountName,
-          notes: form.notes,
-          platform: 'openai',
-          type: 'oauth',
-          credentials,
-          extra,
-          proxy_id: form.proxy_id,
-          concurrency: form.concurrency,
-          priority: form.priority,
-          rate_multiplier: form.rate_multiplier,
-          group_ids: form.group_ids,
-          expires_at: form.expires_at,
-          auto_pause_on_expired: autoPauseOnExpired.value
-        REDACTED)
+        let openaiAccountId: string | number | undefined
+
+        if (shouldCreateOpenAI) {
+          const openaiAccount = await adminAPI.accounts.create({
+            name: accountName,
+            notes: form.notes,
+            platform: 'openai',
+            type: 'oauth',
+            credentials,
+            extra,
+            proxy_id: form.proxy_id,
+            concurrency: form.concurrency,
+            priority: form.priority,
+            rate_multiplier: form.rate_multiplier,
+            group_ids: form.group_ids,
+            expires_at: form.expires_at,
+            auto_pause_on_expired: autoPauseOnExpired.value
+          REDACTED)
+          openaiAccountId = openaiAccount.id
+        REDACTED
+
+        if (shouldCreateSora) {
+          const soraCredentials = {
+            access_token: credentials.access_token,
+            refresh_token: credentials.refresh_token,
+            expires_at: credentials.expires_at
+          REDACTED
+          const soraName = shouldCreateOpenAI ? `${accountNameREDACTED (Sora)` : accountName
+          const soraExtra = buildSoraExtra(shouldCreateOpenAI ? extra : oauthExtra, openaiAccountId)
+          await adminAPI.accounts.create({
+            name: soraName,
+            notes: form.notes,
+            platform: 'sora',
+            type: 'oauth',
+            credentials: soraCredentials,
+            extra: soraExtra,
+            proxy_id: form.proxy_id,
+            concurrency: form.concurrency,
+            priority: form.priority,
+            rate_multiplier: form.rate_multiplier,
+            group_ids: form.group_ids,
+            expires_at: form.expires_at,
+            auto_pause_on_expired: autoPauseOnExpired.value
+          REDACTED)
+        REDACTED
+
         successCount++
       REDACTED catch (error: any) {
         failedCount++
@@ -2991,14 +3359,99 @@ const handleOpenAIValidateRT = async (refreshTokenInput: string) => {
       appStore.showWarning(
         t('admin.accounts.oauth.batchPartialSuccess', { success: successCount, failed: failedCount REDACTED)
       )
-      openaiOAuth.error.value = errors.join('\n')
+      oauthClient.error.value = errors.join('\n')
       emit('created')
     REDACTED else {
-      openaiOAuth.error.value = errors.join('\n')
+      oauthClient.error.value = errors.join('\n')
       appStore.showError(t('admin.accounts.oauth.batchFailed'))
     REDACTED
   REDACTED finally {
-    openaiOAuth.loading.value = false
+    oauthClient.loading.value = false
+  REDACTED
+REDACTED
+
+// Sora 手动 ST 批量验证和创建
+const handleSoraValidateST = async (sessionTokenInput: string) => {
+  const oauthClient = activeOpenAIOAuth.value
+  if (!sessionTokenInput.trim()) return
+
+  const sessionTokens = sessionTokenInput
+    .split('\n')
+    .map((st) => st.trim())
+    .filter((st) => st)
+
+  if (sessionTokens.length === 0) {
+    oauthClient.error.value = t('admin.accounts.oauth.openai.pleaseEnterSessionToken')
+    return
+  REDACTED
+
+  oauthClient.loading.value = true
+  oauthClient.error.value = ''
+
+  let successCount = 0
+  let failedCount = 0
+  const errors: string[] = []
+
+  try {
+    for (let i = 0; i < sessionTokens.length; i++) {
+      try {
+        const tokenInfo = await oauthClient.validateSessionToken(sessionTokens[i], form.proxy_id)
+        if (!tokenInfo) {
+          failedCount++
+          errors.push(`#${i + 1REDACTED: ${oauthClient.error.value || 'Validation failed'REDACTED`)
+          oauthClient.error.value = ''
+          continue
+        REDACTED
+
+        const credentials = oauthClient.buildCredentials(tokenInfo)
+        credentials.session_token = sessionTokens[i]
+        const oauthExtra = oauthClient.buildExtraInfo(tokenInfo) as Record<string, unknown> | undefined
+        const soraExtra = buildSoraExtra(oauthExtra)
+
+        const accountName = sessionTokens.length > 1 ? `${form.nameREDACTED #${i + 1REDACTED` : form.name
+        await adminAPI.accounts.create({
+          name: accountName,
+          notes: form.notes,
+          platform: 'sora',
+          type: 'oauth',
+          credentials,
+          extra: soraExtra,
+          proxy_id: form.proxy_id,
+          concurrency: form.concurrency,
+          priority: form.priority,
+          rate_multiplier: form.rate_multiplier,
+          group_ids: form.group_ids,
+          expires_at: form.expires_at,
+          auto_pause_on_expired: autoPauseOnExpired.value
+        REDACTED)
+        successCount++
+      REDACTED catch (error: any) {
+        failedCount++
+        const errMsg = error.response?.data?.detail || error.message || 'Unknown error'
+        errors.push(`#${i + 1REDACTED: ${errMsgREDACTED`)
+      REDACTED
+    REDACTED
+
+    if (successCount > 0 && failedCount === 0) {
+      appStore.showSuccess(
+        sessionTokens.length > 1
+          ? t('admin.accounts.oauth.batchSuccess', { count: successCount REDACTED)
+          : t('admin.accounts.accountCreated')
+      )
+      emit('created')
+      handleClose()
+    REDACTED else if (successCount > 0 && failedCount > 0) {
+      appStore.showWarning(
+        t('admin.accounts.oauth.batchPartialSuccess', { success: successCount, failed: failedCount REDACTED)
+      )
+      oauthClient.error.value = errors.join('\n')
+      emit('created')
+    REDACTED else {
+      oauthClient.error.value = errors.join('\n')
+      appStore.showError(t('admin.accounts.oauth.batchFailed'))
+    REDACTED
+  REDACTED finally {
+    oauthClient.loading.value = false
   REDACTED
 REDACTED
 
@@ -3243,6 +3696,7 @@ const handleExchangeCode = async () => {
 
   switch (form.platform) {
     case 'openai':
+    case 'sora':
       return handleOpenAIExchange(authCode)
     case 'gemini':
       return handleGeminiExchange(authCode)

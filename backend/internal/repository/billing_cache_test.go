@@ -5,6 +5,7 @@ package repository
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -84,4 +85,27 @@ REDACTED
 			require.Equal(t, tc.expected, got)
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestJitteredTTL(t *testing.T) {
+	const (
+		minTTL = 4*time.Minute + 30*time.Second // 270s = 5min - 30s
+		maxTTL = 5*time.Minute + 30*time.Second // 330s = 5min + 30s
+	)
+
+	for i := 0; i < 200; i++ {
+		ttl := jitteredTTL()
+		require.GreaterOrEqual(t, ttl, minTTL, "jitteredTTL() 返回值低于下限: %v", ttl)
+		require.LessOrEqual(t, ttl, maxTTL, "jitteredTTL() 返回值超过上限: %v", ttl)
+REDACTED
+REDACTED
+
+func TestJitteredTTL_HasVariation(t *testing.T) {
+	// 多次调用应该产生不同的值（验证抖动存在）
+	seen := make(map[time.Duration]struct{REDACTED, 50)
+	for i := 0; i < 50; i++ {
+		seen[jitteredTTL()] = struct{REDACTED{REDACTED
+REDACTED
+	// 50 次调用中应该至少有 2 个不同的值
+	require.Greater(t, len(seen), 1, "jitteredTTL() 应产生不同的 TTL 值")
 REDACTED

@@ -375,7 +375,7 @@ REDACTED
 
 	token, err := provider.GetAccessToken(context.Background(), account)
 REDACTED
-	require.Contains(t, err.Error(), "not an openai oauth account")
+	require.Contains(t, err.Error(), "not an openai/sora oauth account")
 	require.Empty(t, token)
 REDACTED
 
@@ -389,7 +389,7 @@ REDACTED
 
 	token, err := provider.GetAccessToken(context.Background(), account)
 REDACTED
-	require.Contains(t, err.Error(), "not an openai oauth account")
+	require.Contains(t, err.Error(), "not an openai/sora oauth account")
 	require.Empty(t, token)
 REDACTED
 
@@ -807,4 +807,120 @@ REDACTED
 REDACTED
 	require.Contains(t, err.Error(), "access_token not found")
 	require.Empty(t, token)
+REDACTED
+
+func TestOpenAITokenProvider_Real_LockRace_PollingHitsCache(t *testing.T) {
+	cache := newOpenAITokenCacheStub()
+	cache.lockAcquired = false // 模拟锁被其他 worker 持有
+
+	expiresAt := time.Now().Add(1 * time.Minute).Format(time.RFC3339)
+	account := &Account{
+		ID:       207,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"access_token": "fallback-token",
+			"expires_at":   expiresAt,
+	REDACTED,
+REDACTED
+
+	cacheKey := OpenAITokenCacheKey(account)
+	go func() {
+		time.Sleep(5 * time.Millisecond)
+		cache.mu.Lock()
+		cache.tokens[cacheKey] = "winner-token"
+		cache.mu.Unlock()
+REDACTED()
+
+	provider := NewOpenAITokenProvider(nil, cache, nil)
+	token, err := provider.GetAccessToken(context.Background(), account)
+REDACTED
+	require.Equal(t, "winner-token", token)
+REDACTED
+
+func TestOpenAITokenProvider_Real_LockRace_ContextCanceled(t *testing.T) {
+	cache := newOpenAITokenCacheStub()
+	cache.lockAcquired = false // 模拟锁被其他 worker 持有
+
+	expiresAt := time.Now().Add(1 * time.Minute).Format(time.RFC3339)
+	account := &Account{
+		ID:       208,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"access_token": "fallback-token",
+			"expires_at":   expiresAt,
+	REDACTED,
+REDACTED
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	provider := NewOpenAITokenProvider(nil, cache, nil)
+	start := time.Now()
+	token, err := provider.GetAccessToken(ctx, account)
+REDACTED
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, token)
+	require.Less(t, time.Since(start), 50*time.Millisecond)
+REDACTED
+
+func TestOpenAITokenProvider_RuntimeMetrics_LockWaitHitAndSnapshot(t *testing.T) {
+	cache := newOpenAITokenCacheStub()
+	cache.lockAcquired = false
+
+	expiresAt := time.Now().Add(1 * time.Minute).Format(time.RFC3339)
+	account := &Account{
+		ID:       209,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"access_token": "fallback-token",
+			"expires_at":   expiresAt,
+	REDACTED,
+REDACTED
+	cacheKey := OpenAITokenCacheKey(account)
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		cache.mu.Lock()
+		cache.tokens[cacheKey] = "winner-token"
+		cache.mu.Unlock()
+REDACTED()
+
+	provider := NewOpenAITokenProvider(nil, cache, nil)
+	token, err := provider.GetAccessToken(context.Background(), account)
+REDACTED
+	require.Equal(t, "winner-token", token)
+
+	metrics := provider.SnapshotRuntimeMetrics()
+	require.GreaterOrEqual(t, metrics.RefreshRequests, int64(1))
+	require.GreaterOrEqual(t, metrics.LockContention, int64(1))
+	require.GreaterOrEqual(t, metrics.LockWaitSamples, int64(1))
+	require.GreaterOrEqual(t, metrics.LockWaitHit, int64(1))
+	require.GreaterOrEqual(t, metrics.LockWaitTotalMs, int64(0))
+	require.GreaterOrEqual(t, metrics.LastObservedUnixMs, int64(1))
+REDACTED
+
+func TestOpenAITokenProvider_RuntimeMetrics_LockAcquireFailure(t *testing.T) {
+	cache := newOpenAITokenCacheStub()
+	cache.lockErr = errors.New("redis lock error")
+
+	expiresAt := time.Now().Add(1 * time.Minute).Format(time.RFC3339)
+	account := &Account{
+		ID:       210,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"access_token": "fallback-token",
+			"expires_at":   expiresAt,
+	REDACTED,
+REDACTED
+
+	provider := NewOpenAITokenProvider(nil, cache, nil)
+	_, err := provider.GetAccessToken(context.Background(), account)
+REDACTED
+
+	metrics := provider.SnapshotRuntimeMetrics()
+	require.GreaterOrEqual(t, metrics.LockAcquireFailure, int64(1))
+	require.GreaterOrEqual(t, metrics.RefreshRequests, int64(1))
 REDACTED
