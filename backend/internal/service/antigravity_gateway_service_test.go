@@ -134,6 +134,36 @@ func (s *httpUpstreamStub) DoWithTLS(_ *http.Request, _ string, _ int64, _ int, 
 	return s.resp, s.err
 REDACTED
 
+type antigravitySettingRepoStub struct{REDACTED
+
+func (s *antigravitySettingRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
+	panic("unexpected Get call")
+REDACTED
+
+func (s *antigravitySettingRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	return "", ErrSettingNotFound
+REDACTED
+
+func (s *antigravitySettingRepoStub) Set(ctx context.Context, key, value string) error {
+	panic("unexpected Set call")
+REDACTED
+
+func (s *antigravitySettingRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	panic("unexpected GetMultiple call")
+REDACTED
+
+func (s *antigravitySettingRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	panic("unexpected SetMultiple call")
+REDACTED
+
+func (s *antigravitySettingRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
+	panic("unexpected GetAll call")
+REDACTED
+
+func (s *antigravitySettingRepoStub) Delete(ctx context.Context, key string) error {
+	panic("unexpected Delete call")
+REDACTED
+
 func TestAntigravityGatewayService_Forward_PromptTooLong(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	writer := httptest.NewRecorder()
@@ -160,8 +190,9 @@ REDACTED
 REDACTED
 
 	svc := &AntigravityGatewayService{
-		tokenProvider: &AntigravityTokenProvider{REDACTED,
-		httpUpstream:  &httpUpstreamStub{resp: respREDACTED,
+		settingService: NewSettingService(&antigravitySettingRepoStub{REDACTED, &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTEDREDACTED),
+		tokenProvider:  &AntigravityTokenProvider{REDACTED,
+		httpUpstream:   &httpUpstreamStub{resp: respREDACTED,
 REDACTED
 
 	account := &Account{
@@ -416,6 +447,113 @@ REDACTED
 	require.ErrorAs(t, err, &failoverErr, "error should be UpstreamFailoverError to trigger account switch")
 	require.Equal(t, http.StatusServiceUnavailable, failoverErr.StatusCode)
 	require.True(t, failoverErr.ForceCacheBilling, "ForceCacheBilling should be true for sticky session switch")
+REDACTED
+
+// TestAntigravityGatewayService_Forward_BillsWithMappedModel
+// 验证：Antigravity Claude 转发返回的计费模型使用映射后的模型
+func TestAntigravityGatewayService_Forward_BillsWithMappedModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+
+	body, err := json.Marshal(map[string]any{
+		"model": "claude-sonnet-4-5",
+		"messages": []map[string]any{
+			{"role": "user", "content": "hello"REDACTED,
+	REDACTED,
+		"max_tokens": 16,
+		"stream":     true,
+REDACTED)
+REDACTED
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request = req
+
+	upstreamBody := []byte("data: {\"response\":{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"REDACTED]REDACTED,\"finishReason\":\"STOP\"REDACTED],\"usageMetadata\":{\"promptTokenCount\":8,\"candidatesTokenCount\":3REDACTEDREDACTEDREDACTED\n\n")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"X-Request-Id": []string{"req-bill-1"REDACTEDREDACTED,
+		Body:       io.NopCloser(bytes.NewReader(upstreamBody)),
+REDACTED
+
+	svc := &AntigravityGatewayService{
+		settingService: NewSettingService(&antigravitySettingRepoStub{REDACTED, &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTEDREDACTED),
+		tokenProvider:  &AntigravityTokenProvider{REDACTED,
+		httpUpstream:   &httpUpstreamStub{resp: respREDACTED,
+REDACTED
+
+	const mappedModel = "gemini-3-pro-high"
+	account := &Account{
+		ID:          5,
+		Name:        "acc-forward-billing",
+		Platform:    PlatformAntigravity,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Concurrency: 1,
+REDACTED
+			"access_token": "token",
+			"model_mapping": map[string]any{
+				"claude-sonnet-4-5": mappedModel,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	result, err := svc.Forward(context.Background(), c, account, body, false)
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, mappedModel, result.Model)
+REDACTED
+
+// TestAntigravityGatewayService_ForwardGemini_BillsWithMappedModel
+// 验证：Antigravity Gemini 转发返回的计费模型使用映射后的模型
+func TestAntigravityGatewayService_ForwardGemini_BillsWithMappedModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+
+	body, err := json.Marshal(map[string]any{
+		"contents": []map[string]any{
+			{"role": "user", "parts": []map[string]any{{"text": "hello"REDACTEDREDACTEDREDACTED,
+	REDACTED,
+REDACTED)
+REDACTED
+
+	req := httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-flash:generateContent", bytes.NewReader(body))
+	c.Request = req
+
+	upstreamBody := []byte("data: {\"response\":{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"REDACTED]REDACTED,\"finishReason\":\"STOP\"REDACTED],\"usageMetadata\":{\"promptTokenCount\":8,\"candidatesTokenCount\":3REDACTEDREDACTEDREDACTED\n\n")
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"X-Request-Id": []string{"req-bill-2"REDACTEDREDACTED,
+		Body:       io.NopCloser(bytes.NewReader(upstreamBody)),
+REDACTED
+
+	svc := &AntigravityGatewayService{
+		settingService: NewSettingService(&antigravitySettingRepoStub{REDACTED, &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTEDREDACTED),
+		tokenProvider:  &AntigravityTokenProvider{REDACTED,
+		httpUpstream:   &httpUpstreamStub{resp: respREDACTED,
+REDACTED
+
+	const mappedModel = "gemini-3-pro-high"
+	account := &Account{
+		ID:          6,
+		Name:        "acc-gemini-billing",
+		Platform:    PlatformAntigravity,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Concurrency: 1,
+REDACTED
+			"access_token": "token",
+			"model_mapping": map[string]any{
+				"gemini-2.5-flash": mappedModel,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	result, err := svc.ForwardGemini(context.Background(), c, account, "gemini-2.5-flash", "generateContent", true, body, false)
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, mappedModel, result.Model)
 REDACTED
 
 // TestStreamUpstreamResponse_UsageAndFirstToken
