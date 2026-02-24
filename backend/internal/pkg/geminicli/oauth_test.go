@@ -685,15 +685,17 @@ REDACTED
 REDACTED
 
 func TestEffectiveOAuthConfig_NoEnvSecret(t *testing.T) {
-	// 不设置环境变量且不提供凭据，应该报错
 	t.Setenv(GeminiCLIOAuthClientSecretEnv, "")
 
-	_, err := EffectiveOAuthConfig(OAuthConfig{REDACTED, "code_assist")
-	if err == nil {
-		t.Error("没有内置 secret 且未提供凭据时应该报错")
+	cfg, err := EffectiveOAuthConfig(OAuthConfig{REDACTED, "code_assist")
+	if err != nil {
+		t.Fatalf("不设置环境变量时应回退到内置 secret，实际报错: %v", err)
 REDACTED
-	if !strings.Contains(err.Error(), GeminiCLIOAuthClientSecretEnv) {
-		t.Errorf("错误消息应提及环境变量 %s，实际: %v", GeminiCLIOAuthClientSecretEnv, err)
+	if strings.TrimSpace(cfg.ClientSecret) == "" {
+		t.Error("ClientSecret 不应为空")
+REDACTED
+	if cfg.ClientID != GeminiCLIOAuthClientID {
+		t.Errorf("ClientID 应回退为内置客户端 ID，实际: %q", cfg.ClientID)
 REDACTED
 REDACTED
 
