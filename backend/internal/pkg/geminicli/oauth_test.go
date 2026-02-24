@@ -408,11 +408,10 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestBuildAuthorizationURL_OAuthConfigError(t *testing.T) {
-	// 不设置环境变量，也不提供 client 凭据，EffectiveOAuthConfig 应该报错
+func TestBuildAuthorizationURL_UsesBuiltinSecretFallback(t *testing.T) {
 	t.Setenv(GeminiCLIOAuthClientSecretEnv, "")
 
-	_, err := BuildAuthorizationURL(
+	authURL, err := BuildAuthorizationURL(
 		OAuthConfig{REDACTED,
 		"test-state",
 		"test-challenge",
@@ -420,8 +419,11 @@ func TestBuildAuthorizationURL_OAuthConfigError(t *testing.T) {
 		"",
 		"code_assist",
 	)
-	if err == nil {
-		t.Error("当 EffectiveOAuthConfig 失败时，BuildAuthorizationURL 应该返回错误")
+	if err != nil {
+		t.Fatalf("BuildAuthorizationURL() 不应报错: %v", err)
+REDACTED
+	if !strings.Contains(authURL, "client_id="+GeminiCLIOAuthClientID) {
+		t.Errorf("应使用内置 Gemini CLI client_id，实际 URL: %s", authURL)
 REDACTED
 REDACTED
 
