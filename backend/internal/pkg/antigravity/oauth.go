@@ -51,8 +51,8 @@ const (
 	antigravityDailyBaseURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
 )
 
-// defaultUserAgentVersion 可通过环境变量 ANTIGRAVITY_USER_AGENT_VERSION 配置，默认 1.84.2
-var defaultUserAgentVersion = "1.84.2"
+// defaultUserAgentVersion 可通过环境变量 ANTIGRAVITY_USER_AGENT_VERSION 配置，默认 1.18.4
+var defaultUserAgentVersion = "1.18.4"
 
 func init() {
 	// 从环境变量读取版本号，未设置则使用默认值
