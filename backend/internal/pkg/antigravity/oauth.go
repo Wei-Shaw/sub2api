@@ -40,9 +40,6 @@ const (
 		"https://www.googleapis.com/auth/cclog " +
 		"https://www.googleapis.com/auth/experimentsandconfigs"
 
-	// User-Agent（与 Antigravity-Manager 保持一致）
-	UserAgent = "antigravity/1.15.8 windows/amd64"
-
 	// Session 过期时间
 	SessionTTL = 30 * time.Minute
 
@@ -54,6 +51,20 @@ const (
 	antigravityDailyBaseURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
 )
 
+// defaultUserAgentVersion 可通过环境变量 ANTIGRAVITY_USER_AGENT_VERSION 配置，默认 1.84.2
+var defaultUserAgentVersion = "1.84.2"
+
+func init() {
+	// 从环境变量读取版本号，未设置则使用默认值
+	if version := os.Getenv("ANTIGRAVITY_USER_AGENT_VERSION"); version != "" {
+		defaultUserAgentVersion = version
+REDACTED
+REDACTED
+
+// GetUserAgent 返回当前配置的 User-Agent
+func GetUserAgent() string {
+	return fmt.Sprintf("antigravity/%s windows/amd64", defaultUserAgentVersion)
+  
 func getClientSecret() (string, error) {
 	if v := strings.TrimSpace(ClientSecret); v != "" {
 		return v, nil

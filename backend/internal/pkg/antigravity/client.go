@@ -33,7 +33,7 @@ REDACTED
 	// 基础 Headers（与 Antigravity-Manager 保持一致，只设置这 3 个）
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("User-Agent", UserAgent)
+	req.Header.Set("User-Agent", GetUserAgent())
 
 	return req, nil
 REDACTED
@@ -343,7 +343,7 @@ REDACTED
 	REDACTED
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", UserAgent)
+		req.Header.Set("User-Agent", GetUserAgent())
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -422,7 +422,7 @@ REDACTED
 		REDACTED
 			req.Header.Set("Authorization", "Bearer "+accessToken)
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("User-Agent", UserAgent)
+			req.Header.Set("User-Agent", GetUserAgent())
 
 			resp, err := c.httpClient.Do(req)
 			if err != nil {
@@ -542,7 +542,7 @@ REDACTED
 	REDACTED
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", UserAgent)
+		req.Header.Set("User-Agent", GetUserAgent())
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
