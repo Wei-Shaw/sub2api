@@ -139,9 +139,9 @@ REDACTED
 
 	// Gemini 3.1 Pro
 	s.fallbackPrices["gemini-3.1-pro"] = &ModelPricing{
-		InputPricePerToken:         2e-6,  // $2 per MTok
-		OutputPricePerToken:        12e-6, // $12 per MTok
-		CacheCreationPricePerToken: 2e-6,  // $2 per MTok
+		InputPricePerToken:         2e-6,   // $2 per MTok
+		OutputPricePerToken:        12e-6,  // $12 per MTok
+		CacheCreationPricePerToken: 2e-6,   // $2 per MTok
 		CacheReadPricePerToken:     0.2e-6, // $0.20 per MTok
 		SupportsCacheBreakdown:     false,
 REDACTED
