@@ -2825,10 +2825,6 @@ REDACTED
 	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
 		requestedModel = claude.NormalizeModelID(requestedModel)
 REDACTED
-	// Gemini API Key 账户直接透传，由上游判断模型是否支持
-	if account.Platform == PlatformGemini && account.Type == AccountTypeAPIKey {
-		return true
-REDACTED
 	// 其他平台使用账户的模型支持检查
 	return account.IsModelSupported(requestedModel)
 REDACTED
