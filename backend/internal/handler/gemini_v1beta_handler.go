@@ -344,11 +344,7 @@ REDACTED
 	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
 	cleanedForUnknownBinding := false
 
-	maxAccountSwitches := h.maxAccountSwitchesGemini
-	switchCount := 0
-	failedAccountIDs := make(map[int64]struct{REDACTED)
-	var lastFailoverErr *service.UpstreamFailoverError
-	var forceCacheBilling bool // 粘性会话切换时的缓存计费标记
+	fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
 
 	// 单账号分组提前设置 SingleAccountRetry 标记，让 Service 层首次 503 就不设模型限流标记。
 	// 避免单账号分组收到 503 (MODEL_CAPACITY_EXHAUSTED) 时设 29s 限流，导致后续请求连续快速失败。
@@ -358,30 +354,24 @@ REDACTED
 REDACTED
 
 	for {
-		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, failedAccountIDs, "") // Gemini 不使用会话限制
+		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, fs.FailedAccountIDs, "") // Gemini 不使用会话限制
 		if err != nil {
-			if len(failedAccountIDs) == 0 {
+			if len(fs.FailedAccountIDs) == 0 {
 				googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
 				return
 		REDACTED
-			// Antigravity 单账号退避重试：分组内没有其他可用账号时，
-			// 对 503 错误不直接返回，而是清除排除列表、等待退避后重试同一个账号。
-			// 谷歌上游 503 (MODEL_CAPACITY_EXHAUSTED) 通常是暂时性的，等几秒就能恢复。
-			if lastFailoverErr != nil && lastFailoverErr.StatusCode == http.StatusServiceUnavailable && switchCount <= maxAccountSwitches {
-				if sleepAntigravitySingleAccountBackoff(c.Request.Context(), switchCount) {
-					reqLog.Warn("gemini.single_account_retrying",
-						zap.Int("retry_count", switchCount),
-						zap.Int("max_retries", maxAccountSwitches),
-					)
-					failedAccountIDs = make(map[int64]struct{REDACTED)
-					// 设置 context 标记，让 Service 层预检查等待限流过期而非直接切换
-					ctx := context.WithValue(c.Request.Context(), ctxkey.SingleAccountRetry, true)
-					c.Request = c.Request.WithContext(ctx)
-					continue
-			REDACTED
+			action := fs.HandleSelectionExhausted(c.Request.Context())
+			switch action {
+			case FailoverContinue:
+				ctx := context.WithValue(c.Request.Context(), ctxkey.SingleAccountRetry, true)
+				c.Request = c.Request.WithContext(ctx)
+				continue
+			case FailoverCanceled:
+				return
+			default: // FailoverExhausted
+				h.handleGeminiFailoverExhausted(c, fs.LastFailoverErr)
+				return
 		REDACTED
-			h.handleGeminiFailoverExhausted(c, lastFailoverErr)
-			return
 	REDACTED
 		account := selection.Account
 		setOpsSelectedAccount(c, account.ID, account.Platform)
@@ -465,8 +455,8 @@ REDACTED
 		// 5) forward (根据平台分流)
 		var result *service.ForwardResult
 		requestCtx := c.Request.Context()
-		if switchCount > 0 {
-			requestCtx = context.WithValue(requestCtx, ctxkey.AccountSwitchCount, switchCount)
+		if fs.SwitchCount > 0 {
+			requestCtx = context.WithValue(requestCtx, ctxkey.AccountSwitchCount, fs.SwitchCount)
 	REDACTED
 		if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 			result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, modelName, action, stream, body, hasBoundSession)
@@ -479,29 +469,16 @@ REDACTED
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
-				failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
-				if needForceCacheBilling(hasBoundSession, failoverErr) {
-					forceCacheBilling = true
-			REDACTED
-				if switchCount >= maxAccountSwitches {
-					lastFailoverErr = failoverErr
-					h.handleGeminiFailoverExhausted(c, lastFailoverErr)
+				failoverAction := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr)
+				switch failoverAction {
+				case FailoverContinue:
+					continue
+				case FailoverExhausted:
+					h.handleGeminiFailoverExhausted(c, fs.LastFailoverErr)
+					return
+				case FailoverCanceled:
 					return
 			REDACTED
-				lastFailoverErr = failoverErr
-				switchCount++
-				reqLog.Warn("gemini.upstream_failover_switching",
-					zap.Int64("account_id", account.ID),
-					zap.Int("upstream_status", failoverErr.StatusCode),
-					zap.Int("switch_count", switchCount),
-					zap.Int("max_switches", maxAccountSwitches),
-				)
-				if account.Platform == service.PlatformAntigravity {
-					if !sleepFailoverDelay(c.Request.Context(), switchCount) {
-						return
-				REDACTED
-			REDACTED
-				continue
 		REDACTED
 			// ForwardNative already wrote the response
 			reqLog.Error("gemini.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
@@ -539,7 +516,7 @@ REDACTED
 				IPAddress:             clientIP,
 				LongContextThreshold:  200000, // Gemini 200K 阈值
 				LongContextMultiplier: 2.0,    // 超出部分双倍计费
-				ForceCacheBilling:     forceCacheBilling,
+				ForceCacheBilling:     fs.ForceCacheBilling,
 				APIKeyService:         h.apiKeyService,
 		REDACTED); err != nil {
 				logger.L().With(
@@ -554,7 +531,7 @@ REDACTED
 	REDACTED)
 		reqLog.Debug("gemini.request_completed",
 			zap.Int64("account_id", account.ID),
-			zap.Int("switch_count", switchCount),
+			zap.Int("switch_count", fs.SwitchCount),
 		)
 		return
 REDACTED
