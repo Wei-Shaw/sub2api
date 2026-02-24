@@ -76,6 +76,7 @@ const antigravityModels = [
   // Claude 4.5+ 系列
   'claude-opus-4-6',
   'claude-opus-4-5-thinking',
+  'claude-sonnet-4-6',
   'claude-sonnet-4-5',
   'claude-sonnet-4-5-thinking',
   // Gemini 2.5 系列
@@ -88,6 +89,9 @@ const antigravityModels = [
   'gemini-3-pro-high',
   'gemini-3-pro-low',
   'gemini-3-pro-image',
+  // Gemini 3.1 系列
+  'gemini-3.1-pro-high',
+  'gemini-3.1-pro-low',
   // 其他
   'gpt-oss-120b-medium',
   'tab_flash_lite_preview'
@@ -295,6 +299,7 @@ const antigravityPresetMappings = [
   { label: 'Gemini 3→Flash', from: 'gemini-3*', to: 'gemini-3-flash', color: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400' REDACTED,
   { label: 'Gemini 2.5→Flash', from: 'gemini-2.5*', to: 'gemini-2.5-flash', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' REDACTED,
   // 精确映射
+  { label: 'Sonnet 4.6', from: 'claude-sonnet-4-6', to: 'claude-sonnet-4-6', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' REDACTED,
   { label: 'Sonnet 4.5', from: 'claude-sonnet-4-5', to: 'claude-sonnet-4-5', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' REDACTED,
   { label: 'Opus 4.6-thinking', from: 'claude-opus-4-6-thinking', to: 'claude-opus-4-6-thinking', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' REDACTED
 ]
