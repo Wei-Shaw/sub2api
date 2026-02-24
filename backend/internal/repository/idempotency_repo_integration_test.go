@@ -4,12 +4,21 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+// hashedTestValue returns a unique SHA-256 hex string (64 chars) that fits VARCHAR(64) columns.
+func hashedTestValue(t *testing.T, prefix string) string {
+REDACTED
+	sum := sha256.Sum256([]byte(uniqueTestValue(t, prefix)))
+	return hex.EncodeToString(sum[:])
+REDACTED
 
 func TestIdempotencyRepo_CreateProcessing_CompeteSameKey(t *testing.T) {
 	tx := testTx(t)
@@ -19,8 +28,8 @@ func TestIdempotencyRepo_CreateProcessing_CompeteSameKey(t *testing.T) {
 	now := time.Now().UTC()
 	record := &service.IdempotencyRecord{
 		Scope:              uniqueTestValue(t, "idem-scope-create"),
-		IdempotencyKeyHash: uniqueTestValue(t, "idem-hash"),
-		RequestFingerprint: uniqueTestValue(t, "idem-fp"),
+		IdempotencyKeyHash: hashedTestValue(t, "idem-hash"),
+		RequestFingerprint: hashedTestValue(t, "idem-fp"),
 		Status:             service.IdempotencyStatusProcessing,
 		LockedUntil:        ptrTime(now.Add(30 * time.Second)),
 		ExpiresAt:          now.Add(24 * time.Hour),
@@ -33,7 +42,7 @@ REDACTED
 	duplicate := &service.IdempotencyRecord{
 		Scope:              record.Scope,
 		IdempotencyKeyHash: record.IdempotencyKeyHash,
-		RequestFingerprint: uniqueTestValue(t, "idem-fp-other"),
+		RequestFingerprint: hashedTestValue(t, "idem-fp-other"),
 		Status:             service.IdempotencyStatusProcessing,
 		LockedUntil:        ptrTime(now.Add(30 * time.Second)),
 		ExpiresAt:          now.Add(24 * time.Hour),
@@ -51,8 +60,8 @@ func TestIdempotencyRepo_TryReclaim_StatusAndLockWindow(t *testing.T) {
 	now := time.Now().UTC()
 	record := &service.IdempotencyRecord{
 		Scope:              uniqueTestValue(t, "idem-scope-reclaim"),
-		IdempotencyKeyHash: uniqueTestValue(t, "idem-hash-reclaim"),
-		RequestFingerprint: uniqueTestValue(t, "idem-fp-reclaim"),
+		IdempotencyKeyHash: hashedTestValue(t, "idem-hash-reclaim"),
+		RequestFingerprint: hashedTestValue(t, "idem-fp-reclaim"),
 		Status:             service.IdempotencyStatusProcessing,
 		LockedUntil:        ptrTime(now.Add(10 * time.Second)),
 		ExpiresAt:          now.Add(24 * time.Hour),
@@ -116,8 +125,8 @@ func TestIdempotencyRepo_StatusTransition_ToSucceeded(t *testing.T) {
 	now := time.Now().UTC()
 	record := &service.IdempotencyRecord{
 		Scope:              uniqueTestValue(t, "idem-scope-success"),
-		IdempotencyKeyHash: uniqueTestValue(t, "idem-hash-success"),
-		RequestFingerprint: uniqueTestValue(t, "idem-fp-success"),
+		IdempotencyKeyHash: hashedTestValue(t, "idem-hash-success"),
+		RequestFingerprint: hashedTestValue(t, "idem-fp-success"),
 		Status:             service.IdempotencyStatusProcessing,
 		LockedUntil:        ptrTime(now.Add(10 * time.Second)),
 		ExpiresAt:          now.Add(24 * time.Hour),
