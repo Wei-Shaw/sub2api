@@ -581,6 +581,7 @@ export interface GeminiCredentials {
   token_type?: string
   scope?: string
   expires_at?: string
+  model_mapping?: Record<string, string>
 REDACTED
 
 export interface TempUnschedulableRule {

@@ -93,14 +93,15 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"gemini-3-pro-high":  "gemini-3.1-pro-high",
 	"gemini-3-pro-low":   "gemini-3.1-pro-low",
 	"gemini-3-pro-image": "gemini-3-pro-image",
-	// Gemini 3.1 透传
-	"gemini-3.1-pro-high":    "gemini-3.1-pro-high",
-	"gemini-3.1-pro-low":     "gemini-3.1-pro-low",
-	"gemini-3.1-pro-preview": "gemini-3.1-pro-high",
 	// Gemini 3 preview 映射
 	"gemini-3-flash-preview":     "gemini-3-flash",
 	"gemini-3-pro-preview":       "gemini-3.1-pro-high",
 	"gemini-3-pro-image-preview": "gemini-3-pro-image",
+	// Gemini 3.1 白名单
+	"gemini-3.1-pro-high": "gemini-3.1-pro-high",
+	"gemini-3.1-pro-low":  "gemini-3.1-pro-low",
+	// Gemini 3.1 preview 映射
+	"gemini-3.1-pro-preview": "gemini-3.1-pro-high",
 	// 其他官方模型
 	"gpt-oss-120b-medium":    "gpt-oss-120b-medium",
 	"tab_flash_lite_preview": "tab_flash_lite_preview",

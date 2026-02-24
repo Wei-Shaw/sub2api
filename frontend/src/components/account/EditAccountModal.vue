@@ -65,8 +65,8 @@
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') REDACTEDREDACTED</p>
         </div>
 
-        <!-- Model Restriction Section (不适用于 Gemini 和 Antigravity) -->
-        <div v-if="account.platform !== 'gemini' && account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <!-- Model Restriction Section (不适用于 Antigravity) -->
+        <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
 
           <div
@@ -349,34 +349,6 @@
           </div>
         </div>
 
-        <!-- Gemini 模型说明 -->
-        <div v-if="account.platform === 'gemini'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-          <div class="rounded-lg bg-blue-50 p-4 dark:bg-blue-900/20">
-            <div class="flex items-start gap-3">
-              <svg
-                class="h-5 w-5 flex-shrink-0 text-blue-600 dark:text-blue-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <div>
-                <p class="text-sm font-medium text-blue-800 dark:text-blue-300">
-                  {{ t('admin.accounts.gemini.modelPassthrough') REDACTEDREDACTED
-                </p>
-                <p class="mt-1 text-xs text-blue-700 dark:text-blue-400">
-                  {{ t('admin.accounts.gemini.modelPassthroughDesc') REDACTEDREDACTED
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       <!-- Upstream fields (only for upstream type) -->
@@ -641,9 +613,9 @@
         </div>
       </div>
 
-      <!-- Intercept Warmup Requests (Anthropic only) -->
+      <!-- Intercept Warmup Requests (Anthropic/Antigravity) -->
       <div
-        v-if="account?.platform === 'anthropic'"
+        v-if="account?.platform === 'anthropic' || account?.platform === 'antigravity'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
