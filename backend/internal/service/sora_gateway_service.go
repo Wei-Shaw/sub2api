@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"math/rand"
 	"mime"
 	"net"
 	"net/http"
@@ -669,7 +671,7 @@ REDACTED
 	if usernameHint == "" {
 		usernameHint = "character"
 REDACTED
-	return fmt.Sprintf("%s%d", usernameHint, soraRandInt(900)+100)
+	return fmt.Sprintf("%s%d", usernameHint, rand.Intn(900)+100)
 REDACTED
 
 func (s *SoraGatewayService) resolveWatermarkFreeURL(ctx context.Context, account *Account, generationID string, opts soraWatermarkOptions) (string, string, error) {
@@ -829,7 +831,7 @@ REDACTED
 		REDACTED,
 	REDACTED,
 REDACTED
-	encoded, _ := json.Marshal(chunk)
+	encoded, _ := jsonMarshalRaw(chunk)
 	if _, err := fmt.Fprintf(writer, "data: %s\n\n", encoded); err != nil {
 		return nil, err
 REDACTED
@@ -850,7 +852,7 @@ REDACTED
 		REDACTED,
 	REDACTED,
 REDACTED
-	finalEncoded, _ := json.Marshal(finalChunk)
+	finalEncoded, _ := jsonMarshalRaw(finalChunk)
 	if _, err := fmt.Fprintf(writer, "data: %s\n\n", finalEncoded); err != nil {
 		return &ms, err
 REDACTED
@@ -1049,6 +1051,23 @@ REDACTED
 		output = append(output, s.buildSoraMediaURL(pathVal, ""))
 REDACTED
 	return output
+REDACTED
+
+// jsonMarshalRaw 序列化 JSON，不转义 &、<、> 等 HTML 字符，
+// 避免 URL 中的 & 被转义为 \u0026 导致客户端无法直接使用。
+func jsonMarshalRaw(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+REDACTED
+	// Encode 会追加换行符，去掉它
+	b := buf.Bytes()
+	if len(b) > 0 && b[len(b)-1] == '\n' {
+		b = b[:len(b)-1]
+REDACTED
+	return b, nil
 REDACTED
 
 func buildSoraContent(mediaType string, urls []string) string {

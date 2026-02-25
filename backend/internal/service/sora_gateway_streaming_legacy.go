@@ -316,7 +316,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	updatedData, err := json.Marshal(payload)
+	updatedData, err := jsonMarshalRaw(payload)
 	if err != nil {
 		return "data: " + data, contentDelta, nil
 REDACTED
@@ -484,7 +484,7 @@ REDACTED
 	if originalModel != "" {
 		payload["model"] = originalModel
 REDACTED
-	updatedData, err := json.Marshal(payload)
+	updatedData, err := jsonMarshalRaw(payload)
 	if err != nil {
 		return "", "", err
 REDACTED

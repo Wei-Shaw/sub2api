@@ -1816,12 +1816,14 @@
         :show-cookie-option="form.platform === 'anthropic'"
         :show-refresh-token-option="form.platform === 'openai' || form.platform === 'sora' || form.platform === 'antigravity'"
         :show-session-token-option="form.platform === 'sora'"
+        :show-access-token-option="form.platform === 'sora'"
         :platform="form.platform"
         :show-project-id="geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
         @validate-refresh-token="handleValidateRefreshToken"
         @validate-session-token="handleValidateSessionToken"
+        @import-access-token="handleImportAccessToken"
       />
 
     </div>
@@ -3185,6 +3187,83 @@ REDACTED
 const handleValidateSessionToken = (sessionToken: string) => {
   if (form.platform === 'sora') {
     handleSoraValidateST(sessionToken)
+  REDACTED
+REDACTED
+
+// Sora 手动 AT 批量导入
+const handleImportAccessToken = async (accessTokenInput: string) => {
+  const oauthClient = activeOpenAIOAuth.value
+  if (!accessTokenInput.trim()) return
+
+  const accessTokens = accessTokenInput
+    .split('\n')
+    .map((at) => at.trim())
+    .filter((at) => at)
+
+  if (accessTokens.length === 0) {
+    oauthClient.error.value = 'Please enter at least one Access Token'
+    return
+  REDACTED
+
+  oauthClient.loading.value = true
+  oauthClient.error.value = ''
+
+  let successCount = 0
+  let failedCount = 0
+  const errors: string[] = []
+
+  try {
+    for (let i = 0; i < accessTokens.length; i++) {
+      try {
+        const credentials: Record<string, unknown> = {
+          access_token: accessTokens[i],
+        REDACTED
+        const soraExtra = buildSoraExtra()
+
+        const accountName = accessTokens.length > 1 ? `${form.nameREDACTED #${i + 1REDACTED` : form.name
+        await adminAPI.accounts.create({
+          name: accountName,
+          notes: form.notes,
+          platform: 'sora',
+          type: 'oauth',
+          credentials,
+          extra: soraExtra,
+          proxy_id: form.proxy_id,
+          concurrency: form.concurrency,
+          priority: form.priority,
+          rate_multiplier: form.rate_multiplier,
+          group_ids: form.group_ids,
+          expires_at: form.expires_at,
+          auto_pause_on_expired: autoPauseOnExpired.value
+        REDACTED)
+        successCount++
+      REDACTED catch (error: any) {
+        failedCount++
+        const errMsg = error.response?.data?.detail || error.message || 'Unknown error'
+        errors.push(`#${i + 1REDACTED: ${errMsgREDACTED`)
+      REDACTED
+    REDACTED
+
+    if (successCount > 0 && failedCount === 0) {
+      appStore.showSuccess(
+        accessTokens.length > 1
+          ? t('admin.accounts.oauth.batchSuccess', { count: successCount REDACTED)
+          : t('admin.accounts.accountCreated')
+      )
+      emit('created')
+      handleClose()
+    REDACTED else if (successCount > 0 && failedCount > 0) {
+      appStore.showWarning(
+        t('admin.accounts.oauth.batchPartialSuccess', { success: successCount, failed: failedCount REDACTED)
+      )
+      oauthClient.error.value = errors.join('\n')
+      emit('created')
+    REDACTED else {
+      oauthClient.error.value = errors.join('\n')
+      appStore.showError(t('admin.accounts.oauth.batchFailed'))
+    REDACTED
+  REDACTED finally {
+    oauthClient.loading.value = false
   REDACTED
 REDACTED
 
