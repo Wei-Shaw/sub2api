@@ -181,7 +181,7 @@ REDACTED
 			return relative, nil
 	REDACTED
 		if s.debug {
-			log.Printf("[SoraStorage] 下载失败(%d/%d): %s err=%v", attempt, retries, sanitizeSoraLogURL(rawURL), err)
+			log.Printf("[SoraStorage] 下载失败(%d/%d): %s err=%v", attempt, retries, sanitizeMediaLogURL(rawURL), err)
 	REDACTED
 		if attempt < retries {
 			time.Sleep(time.Duration(attempt*attempt) * time.Second)
@@ -252,7 +252,7 @@ REDACTED
 
 	relative := path.Join("/", mediaType, datePath, filename)
 	if s.debug {
-		log.Printf("[SoraStorage] 已落地 %s -> %s", sanitizeSoraLogURL(rawURL), relative)
+		log.Printf("[SoraStorage] 已落地 %s -> %s", sanitizeMediaLogURL(rawURL), relative)
 REDACTED
 	return relative, nil
 REDACTED
@@ -304,4 +304,20 @@ func removePartialDownload(root *os.Root, filePath string) {
 		return
 REDACTED
 	_ = root.Remove(filePath)
+REDACTED
+
+// sanitizeMediaLogURL 脱敏 URL 用于日志记录（去除 query 参数中可能的 token 信息）
+func sanitizeMediaLogURL(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		if len(rawURL) > 80 {
+			return rawURL[:80] + "..."
+	REDACTED
+		return rawURL
+REDACTED
+	safe := parsed.Scheme + "://" + parsed.Host + parsed.Path
+	if len(safe) > 120 {
+		return safe[:120] + "..."
+REDACTED
+	return safe
 REDACTED
