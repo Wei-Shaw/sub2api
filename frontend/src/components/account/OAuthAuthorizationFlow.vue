@@ -59,6 +59,17 @@
                 t(getOAuthKey('sessionTokenAuth'))
               REDACTEDREDACTED</span>
             </label>
+            <label v-if="showAccessTokenOption" class="flex cursor-pointer items-center gap-2">
+              <input
+                v-model="inputMethod"
+                type="radio"
+                value="access_token"
+                class="text-blue-600 focus:ring-blue-500"
+              />
+              <span class="text-sm text-blue-900 dark:text-blue-200">{{
+                t('admin.accounts.oauth.openai.accessTokenAuth', '手动输入 AT')
+              REDACTEDREDACTED</span>
+            </label>
           </div>
         </div>
 
@@ -223,6 +234,63 @@
                   ? t(getOAuthKey('validating'))
                   : t(getOAuthKey('validateAndCreate'))
               REDACTEDREDACTED
+            </button>
+          </div>
+        </div>
+
+        <!-- Access Token Input (Sora) -->
+        <div v-if="inputMethod === 'access_token'" class="space-y-4">
+          <div
+            class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
+          >
+            <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
+              {{ t('admin.accounts.oauth.openai.accessTokenDesc', '直接粘贴 Access Token 创建账号，无需 OAuth 授权流程。支持批量导入（每行一个）。') REDACTEDREDACTED
+            </p>
+
+            <div class="mb-4">
+              <label
+                class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
+              >
+                <Icon name="key" size="sm" class="text-blue-500" />
+                Access Token
+                <span
+                  v-if="parsedAccessTokenCount > 1"
+                  class="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white"
+                >
+                  {{ t('admin.accounts.oauth.keysCount', { count: parsedAccessTokenCount REDACTED) REDACTEDREDACTED
+                </span>
+              </label>
+              <textarea
+                v-model="accessTokenInput"
+                rows="3"
+                class="input w-full resize-y font-mono text-sm"
+                :placeholder="t('admin.accounts.oauth.openai.accessTokenPlaceholder', '粘贴 Access Token，每行一个')"
+              ></textarea>
+              <p
+                v-if="parsedAccessTokenCount > 1"
+                class="mt-1 text-xs text-blue-600 dark:text-blue-400"
+              >
+                {{ t('admin.accounts.oauth.batchCreateAccounts', { count: parsedAccessTokenCount REDACTED) REDACTEDREDACTED
+              </p>
+            </div>
+
+            <div
+              v-if="error"
+              class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30"
+            >
+              <p class="whitespace-pre-line text-sm text-red-600 dark:text-red-400">
+                {{ error REDACTEDREDACTED
+              </p>
+            </div>
+
+            <button
+              type="button"
+              class="btn btn-primary w-full"
+              :disabled="loading || !accessTokenInput.trim()"
+              @click="handleImportAccessToken"
+            >
+              <Icon name="sparkles" size="sm" class="mr-2" />
+              {{ t('admin.accounts.oauth.openai.importAccessToken', '导入 Access Token') REDACTEDREDACTED
             </button>
           </div>
         </div>
@@ -618,6 +686,7 @@ interface Props {
   showCookieOption?: boolean // Whether to show cookie auto-auth option
   showRefreshTokenOption?: boolean // Whether to show refresh token input option (OpenAI only)
   showSessionTokenOption?: boolean // Whether to show session token input option (Sora only)
+  showAccessTokenOption?: boolean // Whether to show access token input option (Sora only)
   platform?: AccountPlatform // Platform type for different UI/text
   showProjectId?: boolean // New prop to control project ID visibility
 REDACTED
@@ -634,6 +703,7 @@ const props = withDefaults(defineProps<Props>(), {
   showCookieOption: true,
   showRefreshTokenOption: false,
   showSessionTokenOption: false,
+  showAccessTokenOption: false,
   platform: 'anthropic',
   showProjectId: true
 REDACTED)
@@ -644,6 +714,7 @@ const emit = defineEmits<{
   'cookie-auth': [sessionKey: string]
   'validate-refresh-token': [refreshToken: string]
   'validate-session-token': [sessionToken: string]
+  'import-access-token': [accessToken: string]
   'update:inputMethod': [method: AuthInputMethod]
 REDACTED>()
 
@@ -683,12 +754,13 @@ const authCodeInput = ref('')
 const sessionKeyInput = ref('')
 const refreshTokenInput = ref('')
 const sessionTokenInput = ref('')
+const accessTokenInput = ref('')
 const showHelpDialog = ref(false)
 const oauthState = ref('')
 const projectId = ref('')
 
 // Computed: show method selection when either cookie or refresh token option is enabled
-const showMethodSelection = computed(() => props.showCookieOption || props.showRefreshTokenOption || props.showSessionTokenOption)
+const showMethodSelection = computed(() => props.showCookieOption || props.showRefreshTokenOption || props.showSessionTokenOption || props.showAccessTokenOption)
 
 // Clipboard
 const { copied, copyToClipboard REDACTED = useClipboard()
@@ -714,6 +786,13 @@ const parsedSessionTokenCount = computed(() => {
     .split('\n')
     .map((st) => st.trim())
     .filter((st) => st).length
+REDACTED)
+
+const parsedAccessTokenCount = computed(() => {
+  return accessTokenInput.value
+    .split('\n')
+    .map((at) => at.trim())
+    .filter((at) => at).length
 REDACTED)
 
 // Watchers
@@ -786,6 +865,12 @@ REDACTED
 const handleValidateSessionToken = () => {
   if (sessionTokenInput.value.trim()) {
     emit('validate-session-token', sessionTokenInput.value.trim())
+  REDACTED
+REDACTED
+
+const handleImportAccessToken = () => {
+  if (accessTokenInput.value.trim()) {
+    emit('import-access-token', accessTokenInput.value.trim())
   REDACTED
 REDACTED
 
