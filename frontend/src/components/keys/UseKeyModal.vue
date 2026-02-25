@@ -675,11 +675,90 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     REDACTED
   REDACTED
   const geminiModels = {
-    'gemini-2.0-flash': { name: 'Gemini 2.0 Flash' REDACTED,
-    'gemini-2.5-flash': { name: 'Gemini 2.5 Flash' REDACTED,
-    'gemini-2.5-pro': { name: 'Gemini 2.5 Pro' REDACTED,
-    'gemini-3-flash-preview': { name: 'Gemini 3 Flash Preview' REDACTED,
-    'gemini-3-pro-preview': { name: 'Gemini 3 Pro Preview' REDACTED
+    'gemini-2.0-flash': {
+      name: 'Gemini 2.0 Flash',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED
+    REDACTED,
+    'gemini-2.5-flash': {
+      name: 'Gemini 2.5 Flash',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED
+    REDACTED,
+    'gemini-2.5-pro': {
+      name: 'Gemini 2.5 Pro',
+      limit: {
+        context: 2097152,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED,
+    'gemini-3-flash-preview': {
+      name: 'Gemini 3 Flash Preview',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED
+    REDACTED,
+    'gemini-3-pro-preview': {
+      name: 'Gemini 3 Pro Preview',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED,
+    'gemini-3.1-pro-preview': {
+      name: 'Gemini 3.1 Pro Preview',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED
   REDACTED
 
   const antigravityGeminiModels = {
