@@ -541,14 +541,19 @@ REDACTED
 func (c *SoraSDKClient) getSDKClient(account *Account) (*sora.Client, error) {
 	proxyURL := c.resolveProxyURL(account)
 	if v, ok := c.sdkClients.Load(proxyURL); ok {
-		return v.(*sora.Client), nil
+		if cli, ok2 := v.(*sora.Client); ok2 {
+			return cli, nil
+	REDACTED
 REDACTED
 	client, err := sora.New(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("创建 Sora SDK 客户端失败: %w", err)
 REDACTED
 	actual, _ := c.sdkClients.LoadOrStore(proxyURL, client)
-	return actual.(*sora.Client), nil
+	if cli, ok := actual.(*sora.Client); ok {
+		return cli, nil
+REDACTED
+	return client, nil
 REDACTED
 
 func (c *SoraSDKClient) resolveProxyURL(account *Account) string {
