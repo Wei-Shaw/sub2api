@@ -23,11 +23,9 @@ const (
 	UserInfoURL  = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 	// Antigravity OAuth 客户端凭证
-	ClientID     = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
-	ClientSecret = ""
+	ClientID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
 
 	// AntigravityOAuthClientSecretEnv 是 Antigravity OAuth client_secret 的环境变量名。
-	// 出于安全原因，该值不得硬编码入库。
 	AntigravityOAuthClientSecretEnv = "ANTIGRAVITY_OAUTH_CLIENT_SECRET"
 
 	// 固定的 redirect_uri（用户需手动复制 code）
@@ -51,13 +49,20 @@ const (
 	antigravityDailyBaseURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
 )
 
-// defaultUserAgentVersion 可通过环境变量 ANTIGRAVITY_USER_AGENT_VERSION 配置，默认 1.84.2
-var defaultUserAgentVersion = "1.84.2"
+// defaultUserAgentVersion 可通过环境变量 ANTIGRAVITY_USER_AGENT_VERSION 配置，默认 1.18.4
+var defaultUserAgentVersion = "1.18.4"
+
+// defaultClientSecret 可通过环境变量 ANTIGRAVITY_OAUTH_CLIENT_SECRET 配置
+var defaultClientSecret = "REDACTED"
 
 func init() {
 	// 从环境变量读取版本号，未设置则使用默认值
 	if version := os.Getenv("ANTIGRAVITY_USER_AGENT_VERSION"); version != "" {
 		defaultUserAgentVersion = version
+REDACTED
+	// 从环境变量读取 client_secret，未设置则使用默认值
+	if secret := os.Getenv(AntigravityOAuthClientSecretEnv); secret != "" {
+		defaultClientSecret = secret
 REDACTED
 REDACTED
 
@@ -67,13 +72,8 @@ func GetUserAgent() string {
 REDACTED
 
 func getClientSecret() (string, error) {
-	if v := strings.TrimSpace(ClientSecret); v != "" {
+	if v := strings.TrimSpace(defaultClientSecret); v != "" {
 		return v, nil
-REDACTED
-	if v, ok := os.LookupEnv(AntigravityOAuthClientSecretEnv); ok {
-		if vv := strings.TrimSpace(v); vv != "" {
-			return vv, nil
-	REDACTED
 REDACTED
 	return "", infraerrors.Newf(http.StatusBadRequest, "ANTIGRAVITY_OAUTH_CLIENT_SECRET_MISSING", "missing antigravity oauth client_secret; set %s", AntigravityOAuthClientSecretEnv)
 REDACTED

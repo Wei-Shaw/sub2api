@@ -77,13 +77,23 @@
     </div>
 
     <!-- Model Rate Limit Indicators (Antigravity OAuth Smart Retry) -->
-    <template v-if="activeModelRateLimits.length > 0">
-      <div v-for="item in activeModelRateLimits" :key="item.model" class="group relative">
+    <div
+      v-if="activeModelRateLimits.length > 0"
+      :class="[
+        activeModelRateLimits.length <= 4
+          ? 'flex flex-col gap-1'
+          : activeModelRateLimits.length <= 8
+            ? 'columns-2 gap-x-2'
+            : 'columns-3 gap-x-2'
+      ]"
+    >
+      <div v-for="item in activeModelRateLimits" :key="item.model" class="group relative mb-1 break-inside-avoid">
         <span
           class="inline-flex items-center gap-1 rounded bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
         >
           <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
           {{ formatScopeName(item.model) REDACTEDREDACTED
+          <span class="text-[10px] opacity-70">{{ formatModelResetTime(item.reset_at) REDACTEDREDACTED</span>
         </span>
         <!-- Tooltip -->
         <div
@@ -95,7 +105,7 @@
           ></div>
         </div>
       </div>
-    </template>
+    </div>
 
     <!-- Overload Indicator (529) -->
     <div v-if="isOverloaded" class="group relative">
@@ -154,17 +164,50 @@ const activeModelRateLimits = computed(() => {
 REDACTED)
 
 const formatScopeName = (scope: string): string => {
-  const names: Record<string, string> = {
+  const aliases: Record<string, string> = {
+    // Claude 系列
+    'claude-opus-4-6-thinking': 'COpus46',
+    'claude-sonnet-4-6': 'CSon46',
+    'claude-sonnet-4-5': 'CSon45',
+    'claude-sonnet-4-5-thinking': 'CSon45T',
+    // Gemini 2.5 系列
+    'gemini-2.5-flash': 'G25F',
+    'gemini-2.5-flash-lite': 'G25FL',
+    'gemini-2.5-flash-thinking': 'G25FT',
+    'gemini-2.5-pro': 'G25P',
+    // Gemini 3 系列
+    'gemini-3-flash': 'G3F',
+    'gemini-3.1-pro-high': 'G3PH',
+    'gemini-3.1-pro-low': 'G3PL',
+    'gemini-3-pro-image': 'G3PI',
+    // 其他
+    'gpt-oss-120b-medium': 'GPT120',
+    'tab_flash_lite_preview': 'TabFL',
+    // 旧版 scope 别名（兼容）
     claude: 'Claude',
-    claude_sonnet: 'Claude Sonnet',
-    claude_opus: 'Claude Opus',
-    claude_haiku: 'Claude Haiku',
+    claude_sonnet: 'CSon',
+    claude_opus: 'COpus',
+    claude_haiku: 'CHaiku',
     gemini_text: 'Gemini',
-    gemini_image: 'Image',
-    gemini_flash: 'Gemini Flash',
-    gemini_pro: 'Gemini Pro'
+    gemini_image: 'GImg',
+    gemini_flash: 'GFlash',
+    gemini_pro: 'GPro',
   REDACTED
-  return names[scope] || scope
+  return aliases[scope] || scope
+REDACTED
+
+const formatModelResetTime = (resetAt: string): string => {
+  const date = new Date(resetAt)
+  const now = new Date()
+  const diffMs = date.getTime() - now.getTime()
+  if (diffMs <= 0) return ''
+  const totalSecs = Math.floor(diffMs / 1000)
+  const h = Math.floor(totalSecs / 3600)
+  const m = Math.floor((totalSecs % 3600) / 60)
+  const s = totalSecs % 60
+  if (h > 0) return `${hREDACTEDh${mREDACTEDm`
+  if (m > 0) return `${mREDACTEDm${sREDACTEDs`
+  return `${sREDACTEDs`
 REDACTED
 
 // Computed: is overloaded (529)

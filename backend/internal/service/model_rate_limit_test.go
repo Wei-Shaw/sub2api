@@ -107,12 +107,12 @@ REDACTED{
 			expected:       true,
 	REDACTED,
 		{
-			name: "antigravity platform - gemini-3-pro-preview mapped to gemini-3.1-pro-high",
+			name: "antigravity platform - gemini-3-pro-preview mapped to gemini-3-pro-high",
 			account: &Account{
 				Platform: PlatformAntigravity,
 				Extra: map[string]any{
 					modelRateLimitsKey: map[string]any{
-						"gemini-3.1-pro-high": map[string]any{
+						"gemini-3-pro-high": map[string]any{
 							"rate_limit_reset_at": future,
 					REDACTED,
 				REDACTED,

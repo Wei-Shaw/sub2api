@@ -1,17 +1,12 @@
 import { defineConfig REDACTED from 'vitest/config'
-import vue from '@vitejs/plugin-vue'
 import { resolve REDACTED from 'path'
 
 export default defineConfig({
-  plugins: [vue()],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
       'vue-i18n': 'vue-i18n/dist/vue-i18n.runtime.esm-bundler.js'
     REDACTED
-  REDACTED,
-  define: {
-    __INTLIFY_JIT_COMPILATION__: true
   REDACTED,
   test: {
     globals: true,
@@ -37,8 +32,6 @@ export default defineConfig({
           lines: 80
         REDACTED
       REDACTED
-    REDACTED,
-    setupFiles: ['./src/__tests__/setup.ts'],
-    testTimeout: 10000
+    REDACTED
   REDACTED
 REDACTED)

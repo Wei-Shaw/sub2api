@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +18,13 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestGetClientSecret_环境变量设置(t *testing.T) {
+	old := defaultClientSecret
+	defaultClientSecret = ""
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 	t.Setenv(AntigravityOAuthClientSecretEnv, "my-secret-value")
+
+	// 需要重新触发 init 逻辑：手动从环境变量读取
+	defaultClientSecret = os.Getenv(AntigravityOAuthClientSecretEnv)
 
 	secret, err := getClientSecret()
 	if err != nil {
@@ -29,11 +36,13 @@ REDACTED
 REDACTED
 
 func TestGetClientSecret_环境变量为空(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "")
+	old := defaultClientSecret
+	defaultClientSecret = ""
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	_, err := getClientSecret()
 	if err == nil {
-		t.Fatal("环境变量为空时应返回错误")
+		t.Fatal("defaultClientSecret 为空时应返回错误")
 REDACTED
 	if !strings.Contains(err.Error(), AntigravityOAuthClientSecretEnv) {
 		t.Errorf("错误信息应包含环境变量名: got %s", err.Error())
@@ -41,30 +50,31 @@ REDACTED
 REDACTED
 
 func TestGetClientSecret_环境变量未设置(t *testing.T) {
-	// t.Setenv 会在测试结束时恢复，但我们需要确保它不存在
-	// 注意：如果 ClientSecret 常量非空，这个测试会直接返回常量值
-	// 当前代码中 ClientSecret = ""，所以会走环境变量逻辑
-
-	// 明确设置再取消，确保环境变量不存在
-	t.Setenv(AntigravityOAuthClientSecretEnv, "")
+	old := defaultClientSecret
+	defaultClientSecret = ""
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	_, err := getClientSecret()
 	if err == nil {
-		t.Fatal("环境变量未设置时应返回错误")
+		t.Fatal("defaultClientSecret 为空时应返回错误")
 REDACTED
 REDACTED
 
 func TestGetClientSecret_环境变量含空格(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "   ")
+	old := defaultClientSecret
+	defaultClientSecret = "   "
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	_, err := getClientSecret()
 	if err == nil {
-		t.Fatal("环境变量仅含空格时应返回错误")
+		t.Fatal("defaultClientSecret 仅含空格时应返回错误")
 REDACTED
 REDACTED
 
 func TestGetClientSecret_环境变量有前后空格(t *testing.T) {
-	t.Setenv(AntigravityOAuthClientSecretEnv, "  valid-secret  ")
+	old := defaultClientSecret
+	defaultClientSecret = "  valid-secret  "
+	t.Cleanup(func() { defaultClientSecret = old REDACTED)
 
 	secret, err := getClientSecret()
 	if err != nil {
@@ -670,13 +680,17 @@ REDACTED
 	if ClientID != "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com" {
 		t.Errorf("ClientID 不匹配: got %s", ClientID)
 REDACTED
-	if ClientSecret != "" {
-		t.Error("ClientSecret 应为空字符串")
+	secret, err := getClientSecret()
+	if err != nil {
+		t.Fatalf("getClientSecret 应返回默认值，但报错: %v", err)
+REDACTED
+	if secret != "REDACTED" {
+		t.Errorf("默认 client_secret 不匹配: got %s", secret)
 REDACTED
 	if RedirectURI != "http://localhost:8085/callback" {
 		t.Errorf("RedirectURI 不匹配: got %s", RedirectURI)
 REDACTED
-	if GetUserAgent() != "antigravity/1.84.2 windows/amd64" {
+	if GetUserAgent() != "antigravity/1.18.4 windows/amd64" {
 		t.Errorf("UserAgent 不匹配: got %s", GetUserAgent())
 REDACTED
 	if SessionTTL != 30*time.Minute {
