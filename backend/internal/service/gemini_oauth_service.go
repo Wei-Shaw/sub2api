@@ -54,6 +54,7 @@ type GeminiOAuthService struct {
 	proxyRepo    ProxyRepository
 	oauthClient  GeminiOAuthClient
 	codeAssist   GeminiCliCodeAssistClient
+	driveClient  geminicli.DriveClient
 	cfg          *config.Config
 REDACTED
 
@@ -66,6 +67,7 @@ func NewGeminiOAuthService(
 	proxyRepo ProxyRepository,
 	oauthClient GeminiOAuthClient,
 	codeAssist GeminiCliCodeAssistClient,
+	driveClient geminicli.DriveClient,
 	cfg *config.Config,
 ) *GeminiOAuthService {
 	return &GeminiOAuthService{
@@ -73,6 +75,7 @@ func NewGeminiOAuthService(
 		proxyRepo:    proxyRepo,
 		oauthClient:  oauthClient,
 		codeAssist:   codeAssist,
+		driveClient:  driveClient,
 		cfg:          cfg,
 REDACTED
 REDACTED
@@ -362,9 +365,8 @@ func (s *GeminiOAuthService) FetchGoogleOneTier(ctx context.Context, accessToken
 
 	// Use Drive API to infer tier from storage quota (requires drive.readonly scope)
 	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Calling Drive API for storage quota...")
-	driveClient := geminicli.NewDriveClient()
 
-	storageInfo, err := driveClient.GetStorageQuota(ctx, accessToken, proxyURL)
+	storageInfo, err := s.driveClient.GetStorageQuota(ctx, accessToken, proxyURL)
 	if err != nil {
 		// Check if it's a 403 (scope not granted)
 		if strings.Contains(err.Error(), "status 403") {

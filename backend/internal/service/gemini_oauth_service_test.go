@@ -101,7 +101,7 @@ REDACTED
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			svc := NewGeminiOAuthService(nil, nil, nil, tt.cfg)
+			svc := NewGeminiOAuthService(nil, nil, nil, nil, tt.cfg)
 			got, err := svc.GenerateAuthURL(context.Background(), nil, "https://example.com/auth/callback", tt.projectID, tt.oauthType, "")
 			if tt.wantErrSubstr != "" {
 				if err == nil {
@@ -487,7 +487,7 @@ REDACTED
 func TestGeminiOAuthService_BuildAccountCredentials(t *testing.T) {
 	t.Parallel()
 
-	svc := NewGeminiOAuthService(nil, nil, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(nil, nil, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	t.Run("完整字段", func(t *testing.T) {
@@ -687,7 +687,7 @@ REDACTED
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			svc := NewGeminiOAuthService(nil, nil, nil, tt.cfg)
+			svc := NewGeminiOAuthService(nil, nil, nil, nil, tt.cfg)
 			defer svc.Stop()
 
 			result := svc.GetOAuthConfig()
@@ -709,7 +709,7 @@ REDACTED
 func TestGeminiOAuthService_Stop_NoPanic(t *testing.T) {
 	t.Parallel()
 
-	svc := NewGeminiOAuthService(nil, nil, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(nil, nil, nil, nil, &config.Config{REDACTED)
 
 	// 调用 Stop 不应 panic
 	svc.Stop()
@@ -806,6 +806,18 @@ func (m *mockGeminiProxyRepo) ListAccountSummariesByProxyID(ctx context.Context,
 	panic("not impl")
 REDACTED
 
+// mockDriveClient implements geminicli.DriveClient for tests.
+type mockDriveClient struct {
+	getStorageQuotaFunc func(ctx context.Context, accessToken, proxyURL string) (*geminicli.DriveStorageInfo, error)
+REDACTED
+
+func (m *mockDriveClient) GetStorageQuota(ctx context.Context, accessToken, proxyURL string) (*geminicli.DriveStorageInfo, error) {
+	if m.getStorageQuotaFunc != nil {
+		return m.getStorageQuotaFunc(ctx, accessToken, proxyURL)
+REDACTED
+	return nil, fmt.Errorf("drive API not available in test")
+REDACTED
+
 // =====================
 // 新增测试：GeminiOAuthService.RefreshToken（含重试逻辑）
 // =====================
@@ -825,7 +837,7 @@ func TestGeminiOAuthService_RefreshToken_Success(t *testing.T) {
 	REDACTED,
 REDACTED
 
-	svc := NewGeminiOAuthService(nil, client, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(nil, client, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	info, err := svc.RefreshToken(context.Background(), "code_assist", "old-refresh", "")
@@ -852,7 +864,7 @@ func TestGeminiOAuthService_RefreshToken_NonRetryableError(t *testing.T) {
 	REDACTED,
 REDACTED
 
-	svc := NewGeminiOAuthService(nil, client, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(nil, client, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	_, err := svc.RefreshToken(context.Background(), "code_assist", "revoked-token", "")
@@ -881,7 +893,7 @@ func TestGeminiOAuthService_RefreshToken_RetryableError(t *testing.T) {
 	REDACTED,
 REDACTED
 
-	svc := NewGeminiOAuthService(nil, client, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(nil, client, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	info, err := svc.RefreshToken(context.Background(), "code_assist", "rt", "")
@@ -903,7 +915,7 @@ REDACTED
 func TestGeminiOAuthService_RefreshAccountToken_NotGeminiOAuth(t *testing.T) {
 	t.Parallel()
 
-	svc := NewGeminiOAuthService(nil, nil, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(nil, nil, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	account := &Account{
@@ -923,7 +935,7 @@ REDACTED
 func TestGeminiOAuthService_RefreshAccountToken_NoRefreshToken(t *testing.T) {
 	t.Parallel()
 
-	svc := NewGeminiOAuthService(nil, nil, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(nil, nil, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	account := &Account{
@@ -958,7 +970,7 @@ func TestGeminiOAuthService_RefreshAccountToken_AIStudio(t *testing.T) {
 	REDACTED,
 REDACTED
 
-	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	account := &Account{
@@ -997,7 +1009,7 @@ func TestGeminiOAuthService_RefreshAccountToken_CodeAssist_WithProjectID(t *test
 	REDACTED,
 REDACTED
 
-	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	account := &Account{
@@ -1042,7 +1054,7 @@ func TestGeminiOAuthService_RefreshAccountToken_DefaultOAuthType(t *testing.T) {
 	REDACTED,
 REDACTED
 
-	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	// 无 oauth_type 凭据的旧账号
@@ -1090,7 +1102,7 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	svc := NewGeminiOAuthService(proxyRepo, client, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(proxyRepo, client, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	proxyID := int64(5)
@@ -1132,7 +1144,7 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, codeAssist, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, codeAssist, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	account := &Account{
@@ -1181,7 +1193,7 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, codeAssist, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, codeAssist, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	account := &Account{
@@ -1214,7 +1226,7 @@ func TestGeminiOAuthService_RefreshAccountToken_GoogleOne_FreshCache(t *testing.
 	REDACTED,
 REDACTED
 
-	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	account := &Account{
@@ -1254,7 +1266,7 @@ func TestGeminiOAuthService_RefreshAccountToken_GoogleOne_NoTierID_DefaultsFree(
 	REDACTED,
 REDACTED
 
-	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, &mockDriveClient{REDACTED, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	account := &Account{
@@ -1308,7 +1320,7 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, cfg)
+	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, nil, cfg)
 	defer svc.Stop()
 
 	account := &Account{
@@ -1341,7 +1353,7 @@ func TestGeminiOAuthService_RefreshAccountToken_UnauthorizedClient_NoFallback(t 
 REDACTED
 
 	// 无自定义 OAuth 客户端，无法 fallback
-	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(&mockGeminiProxyRepo{REDACTED, client, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	account := &Account{
@@ -1370,7 +1382,7 @@ REDACTED
 func TestGeminiOAuthService_ExchangeCode_SessionNotFound(t *testing.T) {
 	t.Parallel()
 
-	svc := NewGeminiOAuthService(nil, nil, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(nil, nil, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	_, err := svc.ExchangeCode(context.Background(), &GeminiExchangeCodeInput{
@@ -1389,7 +1401,7 @@ REDACTED
 func TestGeminiOAuthService_ExchangeCode_InvalidState(t *testing.T) {
 	t.Parallel()
 
-	svc := NewGeminiOAuthService(nil, nil, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(nil, nil, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	// 手动创建 session（必须设置 CreatedAt，否则会因 TTL 过期被拒绝）
@@ -1416,7 +1428,7 @@ REDACTED
 func TestGeminiOAuthService_ExchangeCode_EmptyState(t *testing.T) {
 	t.Parallel()
 
-	svc := NewGeminiOAuthService(nil, nil, nil, &config.Config{REDACTED)
+	svc := NewGeminiOAuthService(nil, nil, nil, nil, &config.Config{REDACTED)
 	defer svc.Stop()
 
 	svc.sessionStore.Set("test-session", &geminicli.OAuthSession{
