@@ -1505,7 +1505,8 @@ export default {
         partialSuccess: 'Partially updated: {successREDACTED succeeded, {failedREDACTED failed',
         failed: 'Bulk update failed',
         noSelection: 'Please select accounts to edit',
-        noFieldsSelected: 'Select at least one field to update'
+        noFieldsSelected: 'Select at least one field to update',
+        mixedPlatformWarning: 'Selected accounts span multiple platforms ({platformsREDACTED). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.'
       REDACTED,
       bulkDeleteTitle: 'Bulk Delete Accounts',
       bulkDeleteConfirm: 'Delete the selected {countREDACTED account(s)? This action cannot be undone.',
