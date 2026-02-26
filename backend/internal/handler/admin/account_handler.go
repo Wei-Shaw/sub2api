@@ -1480,6 +1480,10 @@ REDACTED
 		// 添加 Gemini 3 系列模型用于测试
 		geminiTestModels := []UnifiedModel{
 			{ID: "gemini-3-flash", Type: "model", DisplayName: "Gemini 3 Flash"REDACTED,
+			{ID: "gemini-3-pro-low", Type: "model", DisplayName: "Gemini 3 Pro Low"REDACTED,
+			{ID: "gemini-3-pro-high", Type: "model", DisplayName: "Gemini 3 Pro High"REDACTED,
+			{ID: "gemini-3.1-pro-low", Type: "model", DisplayName: "Gemini 3.1 Pro Low"REDACTED,
+			{ID: "gemini-3.1-pro-high", Type: "model", DisplayName: "Gemini 3.1 Pro High"REDACTED,
 			{ID: "gemini-3-pro-preview", Type: "model", DisplayName: "Gemini 3 Pro Preview"REDACTED,
 	REDACTED
 		models = append(models, geminiTestModels...)
