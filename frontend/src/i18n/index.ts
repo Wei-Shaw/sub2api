@@ -68,6 +68,14 @@ export async function setLocale(locale: string): Promise<void> {
   i18n.global.locale.value = locale
   localStorage.setItem(LOCALE_KEY, locale)
   document.documentElement.setAttribute('lang', locale)
+
+  // 同步更新浏览器页签标题，使其跟随语言切换
+  const { resolveDocumentTitle REDACTED = await import('@/router/title')
+  const { default: router REDACTED = await import('@/router')
+  const { useAppStore REDACTED = await import('@/stores/app')
+  const route = router.currentRoute.value
+  const appStore = useAppStore()
+  document.title = resolveDocumentTitle(route.meta.title, appStore.siteName, route.meta.titleKey as string)
 REDACTED
 
 export function getLocale(): LocaleCode {
