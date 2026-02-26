@@ -6223,11 +6223,11 @@ REDACTED
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 
-		// 中转站不支持 count_tokens 端点时（404），透传 404 让客户端 fallback 到本地估算。
+		// 中转站不支持 count_tokens 端点时（404），返回 404 让客户端 fallback 到本地估算。
 		// 返回 nil 避免 handler 层记录为错误，也不设置 ops 上游错误上下文。
 		if resp.StatusCode == http.StatusNotFound {
 			logger.LegacyPrintf("service.gateway",
-				"[count_tokens] Upstream does not support count_tokens (404), passing through: account=%d name=%s msg=%s",
+				"[count_tokens] Upstream does not support count_tokens (404), returning 404: account=%d name=%s msg=%s",
 				account.ID, account.Name, truncateString(upstreamMsg, 512))
 			s.countTokensError(c, http.StatusNotFound, "not_found_error", "count_tokens endpoint is not supported by upstream")
 			return nil

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -346,9 +347,15 @@ REDACTED
 			err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
 
 			if tt.wantPassthrough {
-				// 404 透传：返回 nil（不记录为错误），但 HTTP 状态码是 404
+				// 返回 nil（不记录为错误），HTTP 状态码 404 + Anthropic 错误体
 			REDACTED
 				require.Equal(t, http.StatusNotFound, rec.Code)
+				var errResp map[string]any
+				require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &errResp))
+				require.Equal(t, "error", errResp["type"])
+				errObj, ok := errResp["error"].(map[string]any)
+				require.True(t, ok)
+				require.Equal(t, "not_found_error", errObj["type"])
 		REDACTED else {
 			REDACTED
 				require.Equal(t, tt.statusCode, rec.Code)
