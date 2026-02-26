@@ -173,7 +173,6 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-sub2apiREDACTED
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is requiredREDACTED
       - POSTGRES_DB=${POSTGRES_DB:-sub2apiREDACTED
-      - PGDATA=/var/lib/postgresql/data
       - TZ=${TZ:-Asia/ShanghaiREDACTED
     networks:
       - sub2api-network
