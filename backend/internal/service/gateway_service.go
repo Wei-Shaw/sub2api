@@ -6199,6 +6199,16 @@ REDACTED
 
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+		// 中转站不支持 count_tokens 端点时（404），降级返回空值，客户端会 fallback 到本地估算。
+		if resp.StatusCode == http.StatusNotFound {
+			logger.LegacyPrintf("service.gateway",
+				"[count_tokens] Upstream does not support count_tokens (404), returning fallback: account=%d name=%s msg=%s",
+				account.ID, account.Name, truncateString(upstreamMsg, 512))
+			c.JSON(http.StatusOK, gin.H{"input_tokens": 0REDACTED)
+			return nil
+	REDACTED
+
 		upstreamDetail := ""
 		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 			maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes

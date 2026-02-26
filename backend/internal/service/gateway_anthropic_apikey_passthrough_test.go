@@ -262,6 +262,101 @@ REDACTED
 	require.Empty(t, rec.Header().Get("Set-Cookie"))
 REDACTED
 
+func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokensFallbackOn404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name         string
+		statusCode   int
+		respBody     string
+		wantFallback bool
+REDACTED{
+		{
+			name:         "404 endpoint not found triggers fallback",
+			statusCode:   http.StatusNotFound,
+			respBody:     `{"error":{"message":"Not found: /v1/messages/count_tokens","type":"not_found_error"REDACTEDREDACTED`,
+			wantFallback: true,
+	REDACTED,
+		{
+			name:         "404 generic not found triggers fallback",
+			statusCode:   http.StatusNotFound,
+			respBody:     `{"error":{"message":"resource not found","type":"not_found_error"REDACTEDREDACTED`,
+			wantFallback: true,
+	REDACTED,
+		{
+			name:         "400 Invalid URL does not fallback",
+			statusCode:   http.StatusBadRequest,
+			respBody:     `{"error":{"message":"Invalid URL (POST /v1/messages/count_tokens)","type":"invalid_request_error"REDACTEDREDACTED`,
+			wantFallback: false,
+	REDACTED,
+		{
+			name:         "400 model error does not fallback",
+			statusCode:   http.StatusBadRequest,
+			respBody:     `{"error":{"message":"model not found: claude-unknown","type":"invalid_request_error"REDACTEDREDACTED`,
+			wantFallback: false,
+	REDACTED,
+		{
+			name:         "500 internal error does not fallback",
+			statusCode:   http.StatusInternalServerError,
+			respBody:     `{"error":{"message":"internal error","type":"api_error"REDACTEDREDACTED`,
+			wantFallback: false,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
+
+			body := []byte(`{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+			parsed := &ParsedRequest{Body: body, Model: "claude-sonnet-4-5-20250929"REDACTED
+
+			upstream := &anthropicHTTPUpstreamRecorder{
+				resp: &http.Response{
+					StatusCode: tt.statusCode,
+					Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+					Body:       io.NopCloser(strings.NewReader(tt.respBody)),
+			REDACTED,
+		REDACTED
+
+			svc := &GatewayService{
+				cfg: &config.Config{
+					Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTED,
+			REDACTED,
+				httpUpstream:     upstream,
+				rateLimitService: nil,
+		REDACTED
+
+			account := &Account{
+				ID:          200,
+				Name:        "proxy-acc",
+				Platform:    PlatformAnthropic,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+		REDACTED
+					"api_key":  "sk-proxy",
+					"base_url": "https://proxy.example.com",
+			REDACTED,
+				Extra:       map[string]any{"anthropic_passthrough": trueREDACTED,
+				Status:      StatusActive,
+				Schedulable: true,
+		REDACTED
+
+			err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
+
+			if tt.wantFallback {
+			REDACTED
+				require.Equal(t, http.StatusOK, rec.Code)
+				require.JSONEq(t, `{"input_tokens":0REDACTED`, rec.Body.String())
+		REDACTED else {
+			REDACTED
+				require.Equal(t, tt.statusCode, rec.Code)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestGatewayService_AnthropicAPIKeyPassthrough_BuildRequestRejectsInvalidBaseURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
