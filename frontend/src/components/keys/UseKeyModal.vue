@@ -883,25 +883,38 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     REDACTED
   REDACTED
   const claudeModels = {
-    'claude-opus-4-5-thinking': {
-      name: 'Claude Opus 4.5 Thinking',
+    'claude-opus-4-6-thinking': {
+      name: 'Claude 4.6 Opus (Thinking)',
       limit: {
         context: 200000,
-        output: 64000
+        output: 128000
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
       REDACTED
     REDACTED,
-    'claude-sonnet-4-5-thinking': {
-      name: 'Claude Sonnet 4.5 Thinking',
+    'claude-sonnet-4-6': {
+      name: 'Claude 4.6 Sonnet',
       limit: {
         context: 200000,
         output: 64000
-      REDACTED
-    REDACTED,
-    'claude-sonnet-4-5': {
-      name: 'Claude Sonnet 4.5',
-      limit: {
-        context: 200000,
-        output: 64000
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
       REDACTED
     REDACTED
   REDACTED
