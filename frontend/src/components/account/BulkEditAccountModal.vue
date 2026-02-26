@@ -648,7 +648,7 @@ import { ref, watch, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
-import type { Proxy, AdminGroup REDACTED from '@/types'
+import type { Proxy as ProxyConfig, AdminGroup REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -659,7 +659,7 @@ import { buildModelMappingObject as buildModelMappingPayload REDACTED from '@/co
 interface Props {
   show: boolean
   accountIds: number[]
-  proxies: Proxy[]
+  proxies: ProxyConfig[]
   groups: AdminGroup[]
 REDACTED
 
@@ -757,7 +757,14 @@ const presetMappings = [
   {
     label: 'Opus 4.6',
     from: 'claude-opus-4-6',
-    to: 'claude-opus-4-6',
+    to: 'claude-opus-4-6-thinking',
+    color:
+      'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400'
+  REDACTED,
+  {
+    label: 'Opus 4.6-thinking',
+    from: 'claude-opus-4-6-thinking',
+    to: 'claude-opus-4-6-thinking',
     color:
       'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400'
   REDACTED,
