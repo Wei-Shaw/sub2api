@@ -16,6 +16,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -1459,36 +1460,8 @@ REDACTED
 
 	// Handle Antigravity accounts: return Claude + Gemini models
 	if account.Platform == service.PlatformAntigravity {
-		// Antigravity 支持 Claude 和部分 Gemini 模型
-		type UnifiedModel struct {
-			ID          string `json:"id"`
-			Type        string `json:"type"`
-			DisplayName string `json:"display_name"`
-	REDACTED
-
-		var models []UnifiedModel
-
-		// 添加 Claude 模型
-		for _, m := range claude.DefaultModels {
-			models = append(models, UnifiedModel{
-				ID:          m.ID,
-				Type:        m.Type,
-				DisplayName: m.DisplayName,
-		REDACTED)
-	REDACTED
-
-		// 添加 Gemini 3 系列模型用于测试
-		geminiTestModels := []UnifiedModel{
-			{ID: "gemini-3-flash", Type: "model", DisplayName: "Gemini 3 Flash"REDACTED,
-			{ID: "gemini-3-pro-low", Type: "model", DisplayName: "Gemini 3 Pro Low"REDACTED,
-			{ID: "gemini-3-pro-high", Type: "model", DisplayName: "Gemini 3 Pro High"REDACTED,
-			{ID: "gemini-3.1-pro-low", Type: "model", DisplayName: "Gemini 3.1 Pro Low"REDACTED,
-			{ID: "gemini-3.1-pro-high", Type: "model", DisplayName: "Gemini 3.1 Pro High"REDACTED,
-			{ID: "gemini-3-pro-preview", Type: "model", DisplayName: "Gemini 3 Pro Preview"REDACTED,
-	REDACTED
-		models = append(models, geminiTestModels...)
-
-		response.Success(c, models)
+		// 直接复用 antigravity.DefaultModels()，与 /v1/models 端点保持同步
+		response.Success(c, antigravity.DefaultModels())
 		return
 REDACTED
 
