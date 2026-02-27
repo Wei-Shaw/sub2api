@@ -366,6 +366,13 @@ REDACTED
 			// 账号槽位/等待计数需要在超时或断开时安全回收
 			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
+			// RPM 计数递增（调度成功后、Forward 前）
+			if account.IsAnthropicOAuthOrSetupToken() && account.GetBaseRPM() > 0 {
+				if h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID) != nil {
+					// 失败开放：不阻塞请求
+			REDACTED
+		REDACTED
+
 			// 转发请求 - 根据账号平台分流
 			var result *service.ForwardResult
 			requestCtx := c.Request.Context()
@@ -548,6 +555,13 @@ REDACTED
 		REDACTED
 			// 账号槽位/等待计数需要在超时或断开时安全回收
 			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+
+			// RPM 计数递增（调度成功后、Forward 前）
+			if account.IsAnthropicOAuthOrSetupToken() && account.GetBaseRPM() > 0 {
+				if h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID) != nil {
+					// 失败开放：不阻塞请求
+			REDACTED
+		REDACTED
 
 			// 转发请求 - 根据账号平台分流
 			var result *service.ForwardResult
