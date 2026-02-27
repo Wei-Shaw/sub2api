@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -36,7 +37,7 @@ type RPMCacheImpl struct {
 	rdb *redis.Client
 REDACTED
 
-func NewRPMCache(rdb *redis.Client) *RPMCacheImpl {
+func NewRPMCache(rdb *redis.Client) service.RPMCache {
 	return &RPMCacheImpl{rdb: rdbREDACTED
 REDACTED
 

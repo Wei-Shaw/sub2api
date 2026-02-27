@@ -53,6 +53,7 @@ type AccountHandler struct {
 	concurrencyService      *service.ConcurrencyService
 	crsSyncService          *service.CRSSyncService
 	sessionLimitCache       service.SessionLimitCache
+	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
 REDACTED
 
@@ -69,6 +70,7 @@ func NewAccountHandler(
 	concurrencyService *service.ConcurrencyService,
 	crsSyncService *service.CRSSyncService,
 	sessionLimitCache service.SessionLimitCache,
+	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
 ) *AccountHandler {
 	return &AccountHandler{
@@ -83,6 +85,7 @@ func NewAccountHandler(
 		concurrencyService:      concurrencyService,
 		crsSyncService:          crsSyncService,
 		sessionLimitCache:       sessionLimitCache,
+		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
 REDACTED
 REDACTED
@@ -154,6 +157,7 @@ type AccountWithConcurrency struct {
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
+	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
 REDACTED
 
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
@@ -187,6 +191,12 @@ REDACTED
 				if count, ok := sessions[account.ID]; ok {
 					item.ActiveSessions = &count
 			REDACTED
+		REDACTED
+	REDACTED
+
+		if h.rpmCache != nil && account.GetBaseRPM() > 0 {
+			if rpm, err := h.rpmCache.GetRPM(ctx, account.ID); err == nil {
+				item.CurrentRPM = &rpm
 		REDACTED
 	REDACTED
 REDACTED
