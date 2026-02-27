@@ -664,6 +664,7 @@
             class="input"
             data-tour="account-form-priority"
           />
+          <p class="input-hint">{{ t('admin.accounts.priorityHint') REDACTEDREDACTED</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') REDACTEDREDACTED</label>
