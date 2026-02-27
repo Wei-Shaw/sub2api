@@ -1137,6 +1137,77 @@ REDACTED
 	return 5
 REDACTED
 
+// GetBaseRPM 获取基础 RPM 限制
+// 返回 0 表示未启用
+func (a *Account) GetBaseRPM() int {
+	if a.Extra == nil {
+		return 0
+REDACTED
+	if v, ok := a.Extra["base_rpm"]; ok {
+		return parseExtraInt(v)
+REDACTED
+	return 0
+REDACTED
+
+// GetRPMStrategy 获取 RPM 策略
+// "tiered" = 三区模型（默认）, "sticky_exempt" = 粘性豁免
+func (a *Account) GetRPMStrategy() string {
+	if a.Extra == nil {
+		return "tiered"
+REDACTED
+	if v, ok := a.Extra["rpm_strategy"]; ok {
+		if s, ok := v.(string); ok && s == "sticky_exempt" {
+			return "sticky_exempt"
+	REDACTED
+REDACTED
+	return "tiered"
+REDACTED
+
+// GetRPMStickyBuffer 获取 RPM 粘性缓冲数量
+// tiered 模式下的黄区大小，默认为 base_rpm 的 20%（至少 1）
+func (a *Account) GetRPMStickyBuffer() int {
+	if a.Extra == nil {
+		return 0
+REDACTED
+	if v, ok := a.Extra["rpm_sticky_buffer"]; ok {
+		val := parseExtraInt(v)
+		if val > 0 {
+			return val
+	REDACTED
+REDACTED
+	base := a.GetBaseRPM()
+	buffer := base / 5
+	if buffer < 1 && base > 0 {
+		buffer = 1
+REDACTED
+	return buffer
+REDACTED
+
+// CheckRPMSchedulability 根据当前 RPM 计数检查调度状态
+// 复用 WindowCostSchedulability 三态：Schedulable / StickyOnly / NotSchedulable
+func (a *Account) CheckRPMSchedulability(currentRPM int) WindowCostSchedulability {
+	baseRPM := a.GetBaseRPM()
+	if baseRPM <= 0 {
+		return WindowCostSchedulable
+REDACTED
+
+	if currentRPM < baseRPM {
+		return WindowCostSchedulable
+REDACTED
+
+	strategy := a.GetRPMStrategy()
+	if strategy == "sticky_exempt" {
+		return WindowCostStickyOnly // 粘性豁免无红区
+REDACTED
+
+	// tiered: 黄区 + 红区
+	buffer := a.GetRPMStickyBuffer()
+	if currentRPM < baseRPM+buffer {
+		return WindowCostStickyOnly
+REDACTED
+	return WindowCostNotSchedulable
+REDACTED
+
 // CheckWindowCostSchedulability 根据当前窗口费用检查调度状态
 // - 费用 < 阈值: WindowCostSchedulable（可正常调度）
 // - 费用 >= 阈值 且 < 阈值+预留: WindowCostStickyOnly（仅粘性会话）
