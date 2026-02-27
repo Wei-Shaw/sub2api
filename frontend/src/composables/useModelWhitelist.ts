@@ -91,10 +91,10 @@ const antigravityModels = [
   'gemini-3-flash',
   'gemini-3-pro-high',
   'gemini-3-pro-low',
-  'gemini-3-pro-image',
   // Gemini 3.1 系列
   'gemini-3.1-pro-high',
   'gemini-3.1-pro-low',
+  'gemini-3.1-flash-image',
   // 其他
   'gpt-oss-120b-medium',
   'tab_flash_lite_preview'

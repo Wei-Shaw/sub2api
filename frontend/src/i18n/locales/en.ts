@@ -1133,7 +1133,7 @@ export default {
       REDACTED,
       imagePricing: {
         title: 'Image Generation Pricing',
-        description: 'Configure pricing for gemini-3-pro-image model. Leave empty to use default prices.'
+        description: 'Configure pricing for image generation models. Leave empty to use default prices.'
       REDACTED,
       soraPricing: {
         title: 'Sora Per-Request Pricing',
@@ -2047,7 +2047,7 @@ export default {
         geminiFlashDaily: 'Flash',
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
-        gemini3Image: 'G3I',
+        gemini3Image: 'GImage',
         claude: 'Claude'
       REDACTED,
       tier: {

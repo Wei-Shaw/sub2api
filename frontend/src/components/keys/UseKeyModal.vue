@@ -864,8 +864,8 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         REDACTED
       REDACTED
     REDACTED,
-    'gemini-3-pro-image': {
-      name: 'Gemini 3 Pro (Image)',
+    'gemini-3.1-flash-image': {
+      name: 'Gemini 3.1 Flash Image',
       limit: {
         context: 1048576,
         output: 65536
