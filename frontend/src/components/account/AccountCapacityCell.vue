@@ -52,6 +52,24 @@
         <span class="font-mono">{{ account.max_sessions REDACTEDREDACTED</span>
       </span>
     </div>
+
+    <!-- RPM 限制（仅 Anthropic OAuth/SetupToken 且启用时显示） -->
+    <div v-if="showRpmLimit" class="flex items-center gap-1">
+      <span
+        :class="[
+          'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium',
+          rpmClass
+        ]"
+        :title="rpmTooltip"
+      >
+        <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+        <span class="font-mono">{{ currentRPM REDACTEDREDACTED</span>
+        <span class="text-gray-400 dark:text-gray-500">/</span>
+        <span class="font-mono">{{ account.base_rpm REDACTEDREDACTED</span>
+      </span>
+    </div>
   </div>
 </template>
 
@@ -189,6 +207,50 @@ const sessionLimitTooltip = computed(() => {
     return t('admin.accounts.capacity.sessions.full', { idle REDACTED)
   REDACTED
   return t('admin.accounts.capacity.sessions.normal', { idle REDACTED)
+REDACTED)
+
+// 是否显示 RPM 限制
+const showRpmLimit = computed(() => {
+  return (
+    isAnthropicOAuthOrSetupToken.value &&
+    props.account.base_rpm !== undefined &&
+    props.account.base_rpm !== null &&
+    props.account.base_rpm > 0
+  )
+REDACTED)
+
+// 当前 RPM 计数
+const currentRPM = computed(() => props.account.current_rpm ?? 0)
+
+// RPM 状态样式
+const rpmClass = computed(() => {
+  if (!showRpmLimit.value) return ''
+
+  const current = currentRPM.value
+  const base = props.account.base_rpm ?? 0
+  if (base <= 0) return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+
+  const strategy = props.account.rpm_strategy || 'tiered'
+  if (strategy === 'tiered') {
+    const buffer = props.account.rpm_sticky_buffer ?? Math.max(1, Math.floor(base / 5))
+    if (current >= base + buffer) return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+    if (current >= base) return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+  REDACTED else {
+    if (current >= base) return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+  REDACTED
+  if (current >= base * 0.8) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+  return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+REDACTED)
+
+// RPM 提示文字
+const rpmTooltip = computed(() => {
+  if (!showRpmLimit.value) return ''
+
+  const current = currentRPM.value
+  const base = props.account.base_rpm ?? 0
+  if (current >= base) return t('admin.accounts.capacity.rpm.full')
+  if (current >= base * 0.8) return t('admin.accounts.capacity.rpm.warning')
+  return t('admin.accounts.capacity.rpm.normal')
 REDACTED)
 
 // 格式化费用显示
