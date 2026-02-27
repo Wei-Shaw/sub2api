@@ -160,6 +160,7 @@
         <button type="button" @click="$emit('reset')" class="btn btn-secondary">
           {{ t('common.reset') REDACTEDREDACTED
         </button>
+        <slot name="after-reset" />
         <button type="button" @click="$emit('cleanup')" class="btn btn-danger">
           {{ t('admin.usage.cleanup.button') REDACTEDREDACTED
         </button>
