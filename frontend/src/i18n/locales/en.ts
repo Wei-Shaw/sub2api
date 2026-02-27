@@ -1613,7 +1613,12 @@ export default {
         sessions: {
           full: 'Active sessions full, new sessions must wait (idle timeout: {idleREDACTED min)',
           normal: 'Active sessions normal (idle timeout: {idleREDACTED min)'
-        REDACTED
+        REDACTED,
+        rpm: {
+          full: 'RPM limit reached',
+          warning: 'RPM approaching limit',
+          normal: 'RPM normal',
+        REDACTED,
       REDACTED,
       tempUnschedulable: {
         title: 'Temp Unschedulable',
@@ -1827,6 +1832,17 @@ export default {
           idleTimeout: 'Idle Timeout',
           idleTimeoutPlaceholder: '5',
           idleTimeoutHint: 'Sessions will be released after idle timeout'
+        REDACTED,
+        rpmLimit: {
+          label: 'RPM Limit',
+          hint: 'Limit requests per minute to protect upstream accounts',
+          baseRpm: 'Base RPM',
+          baseRpmPlaceholder: '15',
+          baseRpmHint: 'Max requests per minute, 0 or empty means no limit',
+          strategy: 'RPM Strategy',
+          strategyTiered: 'Tiered Model',
+          strategyStickyExempt: 'Sticky Exempt',
+          strategyHint: 'Tiered: gradually restrict when exceeded; Sticky Exempt: existing sessions unrestricted',
         REDACTED,
         tlsFingerprint: {
           label: 'TLS Fingerprint Simulation',

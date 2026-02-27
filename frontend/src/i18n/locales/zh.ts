@@ -1664,7 +1664,12 @@ export default {
         sessions: {
           full: '活跃会话已满，新会话需等待（空闲超时：{idleREDACTED分钟）',
           normal: '活跃会话正常（空闲超时：{idleREDACTED分钟）'
-        REDACTED
+        REDACTED,
+        rpm: {
+          full: '已达 RPM 上限',
+          warning: 'RPM 接近上限',
+          normal: 'RPM 正常',
+        REDACTED,
       REDACTED,
       clearRateLimit: '清除速率限制',
       testConnection: '测试连接',
@@ -1970,6 +1975,17 @@ export default {
           idleTimeout: '空闲超时',
           idleTimeoutPlaceholder: '5',
           idleTimeoutHint: '会话空闲超时后自动释放'
+        REDACTED,
+        rpmLimit: {
+          label: 'RPM 限制',
+          hint: '限制每分钟请求数量，保护上游账号',
+          baseRpm: '基础 RPM',
+          baseRpmPlaceholder: '15',
+          baseRpmHint: '每分钟最大请求数，0 或留空表示不限制',
+          strategy: 'RPM 策略',
+          strategyTiered: '三区模型',
+          strategyStickyExempt: '粘性豁免',
+          strategyHint: '三区模型: 超限后逐步限制; 粘性豁免: 已有会话不受限',
         REDACTED,
         tlsFingerprint: {
           label: 'TLS 指纹模拟',
