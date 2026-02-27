@@ -543,7 +543,10 @@ REDACTED
 		basePrice = 0.134
 REDACTED
 
-	// 4K 尺寸翻倍
+	// 2K 尺寸 1.5 倍，4K 尺寸翻倍
+	if imageSize == "2K" {
+		return basePrice * 1.5
+REDACTED
 	if imageSize == "4K" {
 		return basePrice * 2
 REDACTED
