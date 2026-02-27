@@ -75,6 +75,16 @@ func RegisterAdminRoutes(
 
 		// 错误透传规则管理
 		registerErrorPassthroughRoutes(admin, h)
+
+		// API Key 管理
+		registerAdminAPIKeyRoutes(admin, h)
+REDACTED
+REDACTED
+
+func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	apiKeys := admin.Group("/api-keys")
+	{
+		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
 REDACTED
 REDACTED
 

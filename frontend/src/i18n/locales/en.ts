@@ -1076,6 +1076,8 @@ export default {
       noApiKeys: 'This user has no API keys',
       group: 'Group',
       none: 'None',
+      groupChangedSuccess: 'Group updated successfully',
+      groupChangeFailed: 'Failed to update group',
       noUsersYet: 'No users yet',
       createFirstUser: 'Create your first user to get started.',
       userCreated: 'User created successfully',

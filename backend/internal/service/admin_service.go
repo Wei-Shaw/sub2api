@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -41,6 +42,9 @@ type AdminService interface {
 	DeleteGroup(ctx context.Context, id int64) error
 	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error)
 	UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error
+
+	// API Key management (admin)
+	AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*APIKey, error)
 
 	// Account management
 	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64) ([]Account, int64, error)
@@ -1183,6 +1187,53 @@ REDACTED
 
 func (s *adminServiceImpl) UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error {
 	return s.groupRepo.UpdateSortOrders(ctx, updates)
+REDACTED
+
+// AdminUpdateAPIKeyGroupID 管理员修改 API Key 分组绑定
+// groupID: nil=不修改, 指向0=解绑, 指向正整数=绑定到目标分组
+func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*APIKey, error) {
+	apiKey, err := s.apiKeyRepo.GetByID(ctx, keyID)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	if groupID == nil {
+		// nil 表示不修改，直接返回
+		return apiKey, nil
+REDACTED
+
+	if *groupID < 0 {
+		return nil, infraerrors.BadRequest("INVALID_GROUP_ID", "group_id must be non-negative")
+REDACTED
+
+	if *groupID == 0 {
+		// 0 表示解绑分组
+		apiKey.GroupID = nil
+		apiKey.Group = nil
+REDACTED else {
+		// 验证目标分组存在且状态为 active
+		group, err := s.groupRepo.GetByID(ctx, *groupID)
+		if err != nil {
+			return nil, err
+	REDACTED
+		if group.Status != StatusActive {
+			return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "target group is not active")
+	REDACTED
+		gid := *groupID
+		apiKey.GroupID = &gid
+		apiKey.Group = group
+REDACTED
+
+	if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
+		return nil, fmt.Errorf("update api key: %w", err)
+REDACTED
+
+	// 失效认证缓存
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+REDACTED
+
+	return apiKey, nil
 REDACTED
 
 // Account management implementations

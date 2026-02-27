@@ -1104,6 +1104,8 @@ export default {
       noApiKeys: '此用户暂无 API 密钥',
       group: '分组',
       none: '无',
+      groupChangedSuccess: '分组修改成功',
+      groupChangeFailed: '分组修改失败',
       noUsersYet: '暂无用户',
       createFirstUser: '创建您的第一个用户以开始使用系统',
       userCreated: '用户创建成功',
