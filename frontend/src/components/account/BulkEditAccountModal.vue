@@ -21,6 +21,16 @@
         </p>
       </div>
 
+      <!-- Mixed platform warning -->
+      <div v-if="isMixedPlatform" class="rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
+        <p class="text-sm text-amber-700 dark:text-amber-400">
+          <svg class="mr-1.5 inline h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          {{ t('admin.accounts.bulkEdit.mixedPlatformWarning', { platforms: selectedPlatforms.join(', ') REDACTED) REDACTEDREDACTED
+        </p>
+      </div>
+
       <!-- Base URL (API Key only) -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -157,7 +167,7 @@
             <!-- Model Checkbox List -->
             <div class="mb-3 grid grid-cols-2 gap-2">
               <label
-                v-for="model in allModels"
+                v-for="model in filteredModels"
                 :key="model.value"
                 class="flex cursor-pointer items-center rounded-lg border p-3 transition-all hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700"
                 :class="
@@ -278,7 +288,7 @@
             <!-- Quick Add Buttons -->
             <div class="flex flex-wrap gap-2">
               <button
-                v-for="preset in presetMappings"
+                v-for="preset in filteredPresets"
                 :key="preset.label"
                 type="button"
                 :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
@@ -648,7 +658,7 @@ import { ref, watch, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
-import type { Proxy as ProxyConfig, AdminGroup REDACTED from '@/types'
+import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -659,6 +669,7 @@ import { buildModelMappingObject as buildModelMappingPayload REDACTED from '@/co
 interface Props {
   show: boolean
   accountIds: number[]
+  selectedPlatforms: AccountPlatform[]
   proxies: ProxyConfig[]
   groups: AdminGroup[]
 REDACTED
@@ -671,6 +682,31 @@ REDACTED>()
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+
+// Platform awareness
+const isMixedPlatform = computed(() => props.selectedPlatforms.length > 1)
+
+const platformModelPrefix: Record<string, string[]> = {
+  anthropic: ['claude-'],
+  antigravity: ['claude-'],
+  openai: ['gpt-'],
+  gemini: ['gemini-'],
+  sora: []
+REDACTED
+
+const filteredModels = computed(() => {
+  if (props.selectedPlatforms.length === 0) return allModels
+  const prefixes = [...new Set(props.selectedPlatforms.flatMap(p => platformModelPrefix[p] || []))]
+  if (prefixes.length === 0) return allModels
+  return allModels.filter(m => prefixes.some(prefix => m.value.startsWith(prefix)))
+REDACTED)
+
+const filteredPresets = computed(() => {
+  if (props.selectedPlatforms.length === 0) return presetMappings
+  const prefixes = [...new Set(props.selectedPlatforms.flatMap(p => platformModelPrefix[p] || []))]
+  if (prefixes.length === 0) return presetMappings
+  return presetMappings.filter(m => prefixes.some(prefix => m.from.startsWith(prefix)))
+REDACTED)
 
 // Model mapping type
 interface ModelMapping {
@@ -718,6 +754,8 @@ const allModels = [
   { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' REDACTED,
   { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' REDACTED,
   { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' REDACTED,
+  { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' REDACTED,
+  { value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark' REDACTED,
   { value: 'gpt-5.2-2025-12-11', label: 'GPT-5.2' REDACTED,
   { value: 'gpt-5.2-codex', label: 'GPT-5.2 Codex' REDACTED,
   { value: 'gpt-5.1-codex-max', label: 'GPT-5.1 Codex Max' REDACTED,
@@ -805,6 +843,24 @@ const presetMappings = [
     from: 'claude-opus-4-5-20251101',
     to: 'claude-sonnet-4-5-20250929',
     color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400'
+  REDACTED,
+  {
+    label: 'GPT-5.3 Codex',
+    from: 'gpt-5.3-codex',
+    to: 'gpt-5.3-codex',
+    color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
+  REDACTED,
+  {
+    label: 'GPT-5.3 Spark',
+    from: 'gpt-5.3-codex-spark',
+    to: 'gpt-5.3-codex-spark',
+    color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
+  REDACTED,
+  {
+    label: '5.2→5.3',
+    from: 'gpt-5.2-codex',
+    to: 'gpt-5.3-codex',
+    color: 'bg-lime-100 text-lime-700 hover:bg-lime-200 dark:bg-lime-900/30 dark:text-lime-400'
   REDACTED,
   {
     label: 'GPT-5.2',
