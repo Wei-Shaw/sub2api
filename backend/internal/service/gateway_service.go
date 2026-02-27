@@ -1157,6 +1157,7 @@ REDACTED
 		return nil, errors.New("no available accounts")
 REDACTED
 	ctx = s.withWindowCostPrefetch(ctx, accounts)
+	ctx = s.withRPMPrefetch(ctx, accounts)
 
 	isExcluded := func(accountID int64) bool {
 		if excludedIDs == nil {
@@ -1232,6 +1233,10 @@ REDACTED
 				filteredWindowCost++
 				continue
 		REDACTED
+			// RPM 检查（非粘性会话路径）
+			if !s.isAccountSchedulableForRPM(ctx, account, false) {
+				continue
+		REDACTED
 			routingCandidates = append(routingCandidates, account)
 	REDACTED
 
@@ -1255,7 +1260,9 @@ REDACTED
 							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
 							(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel)) &&
 							s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
-							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true) { // 粘性会话窗口费用检查
+							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true) &&
+
+							s.isAccountSchedulableForRPM(ctx, stickyAccount, true) { // 粘性会话窗口费用+RPM 检查
 							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
 							if err == nil && result.Acquired {
 								// 会话数量限制检查
@@ -1409,7 +1416,9 @@ REDACTED
 					s.isAccountAllowedForPlatform(account, platform, useMixed) &&
 					(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) &&
 					s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) &&
-					s.isAccountSchedulableForWindowCost(ctx, account, true) { // 粘性会话窗口费用检查
+					s.isAccountSchedulableForWindowCost(ctx, account, true) &&
+
+					s.isAccountSchedulableForRPM(ctx, account, true) { // 粘性会话窗口费用+RPM 检查
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
@@ -1473,6 +1482,10 @@ REDACTED
 	REDACTED
 		// 窗口费用检查（非粘性会话路径）
 		if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
+			continue
+	REDACTED
+		// RPM 检查（非粘性会话路径）
+		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
 			continue
 	REDACTED
 		candidates = append(candidates, acc)
@@ -2158,6 +2171,76 @@ REDACTED
 	return true
 REDACTED
 
+// rpmPrefetchContextKey is the context key for prefetched RPM counts.
+type rpmPrefetchContextKeyType struct{REDACTED
+
+var rpmPrefetchContextKey = rpmPrefetchContextKeyType{REDACTED
+
+func rpmFromPrefetchContext(ctx context.Context, accountID int64) (int, bool) {
+	if v, ok := ctx.Value(rpmPrefetchContextKey).(map[int64]int); ok {
+		count, found := v[accountID]
+		return count, found
+REDACTED
+	return 0, false
+REDACTED
+
+// withRPMPrefetch 批量预取所有候选账号的 RPM 计数
+func (s *GatewayService) withRPMPrefetch(ctx context.Context, accounts []Account) context.Context {
+	if s.rpmCache == nil {
+		return ctx
+REDACTED
+
+	var ids []int64
+	for i := range accounts {
+		if accounts[i].IsAnthropicOAuthOrSetupToken() && accounts[i].GetBaseRPM() > 0 {
+			ids = append(ids, accounts[i].ID)
+	REDACTED
+REDACTED
+	if len(ids) == 0 {
+		return ctx
+REDACTED
+
+	counts, err := s.rpmCache.GetRPMBatch(ctx, ids)
+	if err != nil {
+		return ctx // 失败开放
+REDACTED
+	return context.WithValue(ctx, rpmPrefetchContextKey, counts)
+REDACTED
+
+// isAccountSchedulableForRPM 检查账号是否可根据 RPM 进行调度
+// 仅适用于 Anthropic OAuth/SetupToken 账号
+func (s *GatewayService) isAccountSchedulableForRPM(ctx context.Context, account *Account, isSticky bool) bool {
+	if !account.IsAnthropicOAuthOrSetupToken() {
+		return true
+REDACTED
+	baseRPM := account.GetBaseRPM()
+	if baseRPM <= 0 {
+		return true
+REDACTED
+
+	// 尝试从预取缓存获取
+	var currentRPM int
+	if count, ok := rpmFromPrefetchContext(ctx, account.ID); ok {
+		currentRPM = count
+REDACTED else if s.rpmCache != nil {
+		if count, err := s.rpmCache.GetRPM(ctx, account.ID); err == nil {
+			currentRPM = count
+	REDACTED
+		// 失败开放：GetRPM 错误时允许调度
+REDACTED
+
+	schedulability := account.CheckRPMSchedulability(currentRPM)
+	switch schedulability {
+	case WindowCostSchedulable:
+		return true
+	case WindowCostStickyOnly:
+		return isSticky
+	case WindowCostNotSchedulable:
+		return false
+REDACTED
+	return true
+REDACTED
+
 // checkAndRegisterSession 检查并注册会话，用于会话数量限制
 // 仅适用于 Anthropic OAuth/SetupToken 账号
 // sessionID: 会话标识符（使用粘性会话的 hash）
@@ -2492,7 +2575,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					REDACTED
-						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForRPM(ctx, account, true) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 						REDACTED
@@ -2540,6 +2623,9 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 				continue
 		REDACTED
 			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+				continue
+		REDACTED
+			if !s.isAccountSchedulableForRPM(ctx, acc, false) {
 				continue
 		REDACTED
 			if selected == nil {
@@ -2592,7 +2678,7 @@ REDACTED
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 				REDACTED
-					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						return account, nil
 				REDACTED
 			REDACTED
@@ -2629,6 +2715,9 @@ REDACTED
 			continue
 	REDACTED
 		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+			continue
+	REDACTED
+		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
 			continue
 	REDACTED
 		if selected == nil {
@@ -2700,7 +2789,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					REDACTED
-						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForRPM(ctx, account, true) {
 							if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 								if s.debugModelRoutingEnabled() {
 									logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
@@ -2750,6 +2839,9 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 				continue
 		REDACTED
 			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+				continue
+		REDACTED
+			if !s.isAccountSchedulableForRPM(ctx, acc, false) {
 				continue
 		REDACTED
 			if selected == nil {
@@ -2802,7 +2894,7 @@ REDACTED
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 				REDACTED
-					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 							return account, nil
 					REDACTED
@@ -2841,6 +2933,9 @@ REDACTED
 			continue
 	REDACTED
 		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+			continue
+	REDACTED
+		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
 			continue
 	REDACTED
 		if selected == nil {
