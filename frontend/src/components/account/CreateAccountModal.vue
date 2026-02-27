@@ -1536,6 +1536,56 @@
           </div>
         </div>
 
+        <!-- RPM Limit -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.rpmLimit.label') REDACTEDREDACTED</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.rpmLimit.hint') REDACTEDREDACTED
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="rpmLimitEnabled = !rpmLimitEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                rpmLimitEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  rpmLimitEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <div v-if="rpmLimitEnabled" class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.baseRpm') REDACTEDREDACTED</label>
+              <input
+                v-model.number="baseRpm"
+                type="number"
+                min="1"
+                step="1"
+                class="input"
+                :placeholder="t('admin.accounts.quotaControl.rpmLimit.baseRpmPlaceholder')"
+              />
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.rpmLimit.baseRpmHint') REDACTEDREDACTED</p>
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.strategy') REDACTEDREDACTED</label>
+              <select v-model="rpmStrategy" class="input">
+                <option value="tiered">{{ t('admin.accounts.quotaControl.rpmLimit.strategyTiered') REDACTEDREDACTED</option>
+                <option value="sticky_exempt">{{ t('admin.accounts.quotaControl.rpmLimit.strategyStickyExempt') REDACTEDREDACTED</option>
+              </select>
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.rpmLimit.strategyHint') REDACTEDREDACTED</p>
+            </div>
+          </div>
+        </div>
+
         <!-- TLS Fingerprint -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="flex items-center justify-between">
@@ -2393,6 +2443,9 @@ const windowCostStickyReserve = ref<number | null>(null)
 const sessionLimitEnabled = ref(false)
 const maxSessions = ref<number | null>(null)
 const sessionIdleTimeout = ref<number | null>(null)
+const rpmLimitEnabled = ref(false)
+const baseRpm = ref<number | null>(null)
+const rpmStrategy = ref<string>('tiered')
 const tlsFingerprintEnabled = ref(false)
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
@@ -3017,6 +3070,9 @@ const resetForm = () => {
   sessionLimitEnabled.value = false
   maxSessions.value = null
   sessionIdleTimeout.value = null
+  rpmLimitEnabled.value = false
+  baseRpm.value = null
+  rpmStrategy.value = 'tiered'
   tlsFingerprintEnabled.value = false
   sessionIdMaskingEnabled.value = false
   cacheTTLOverrideEnabled.value = false
@@ -3926,6 +3982,12 @@ const handleAnthropicExchange = async (authCode: string) => {
       extra.session_idle_timeout_minutes = sessionIdleTimeout.value ?? 5
     REDACTED
 
+    // Add RPM limit settings
+    if (rpmLimitEnabled.value && baseRpm.value != null && baseRpm.value > 0) {
+      extra.base_rpm = baseRpm.value
+      extra.rpm_strategy = rpmStrategy.value
+    REDACTED
+
     // Add TLS fingerprint settings
     if (tlsFingerprintEnabled.value) {
       extra.enable_tls_fingerprint = true
@@ -4022,6 +4084,12 @@ const handleCookieAuth = async (sessionKey: string) => {
         if (sessionLimitEnabled.value && maxSessions.value != null && maxSessions.value > 0) {
           extra.max_sessions = maxSessions.value
           extra.session_idle_timeout_minutes = sessionIdleTimeout.value ?? 5
+        REDACTED
+
+        // Add RPM limit settings
+        if (rpmLimitEnabled.value && baseRpm.value != null && baseRpm.value > 0) {
+          extra.base_rpm = baseRpm.value
+          extra.rpm_strategy = rpmStrategy.value
         REDACTED
 
         // Add TLS fingerprint settings
