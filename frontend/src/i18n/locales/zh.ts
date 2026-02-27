@@ -1220,7 +1220,7 @@ export default {
       REDACTED,
       imagePricing: {
         title: '图片生成计费',
-        description: '配置 gemini-3-pro-image 模型的图片生成价格，留空则使用默认价格'
+        description: '配置图片生成模型的图片生成价格，留空则使用默认价格'
       REDACTED,
       soraPricing: {
         title: 'Sora 按次计费',
@@ -1582,7 +1582,7 @@ export default {
         geminiFlashDaily: 'Flash',
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
-        gemini3Image: 'G3I',
+        gemini3Image: 'GImage',
         claude: 'Claude'
       REDACTED,
       tier: {

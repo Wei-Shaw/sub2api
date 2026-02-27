@@ -181,6 +181,7 @@ const formatScopeName = (scope: string): string => {
     'gemini-3.1-pro-high': 'G3PH',
     'gemini-3.1-pro-low': 'G3PL',
     'gemini-3-pro-image': 'G3PI',
+    'gemini-3.1-flash-image': 'GImage',
     // 其他
     'gpt-oss-120b-medium': 'GPT120',
     'tab_flash_lite_preview': 'TabFL',
