@@ -1,36 +1,45 @@
--- Add gemini-3.1-flash-image mapping keys without wiping existing custom mappings.
+-- Add gemini-3.1-flash-image and gemini-3.1-flash-image-preview to model_mapping
 --
 -- Background:
--- Antigravity now supports gemini-3.1-flash-image as the latest image generation model.
--- Existing accounts may still contain gemini-3-pro-image aliases.
+-- Antigravity now supports gemini-3.1-flash-image as the latest image generation model,
+-- replacing the previous gemini-3-pro-image.
 --
 -- Strategy:
--- Incrementally upsert only image-related keys in credentials.model_mapping:
--- 1) add canonical 3.1 image keys
--- 2) keep legacy 3-pro-image keys but remap them to 3.1 image for compatibility
--- This preserves user custom mappings and avoids full mapping overwrite.
+-- Directly overwrite the entire model_mapping with updated mappings
+-- This ensures consistency with DefaultAntigravityModelMapping in constants.go
 
 UPDATE accounts
 SET credentials = jsonb_set(
-    jsonb_set(
-        jsonb_set(
-            jsonb_set(
-                credentials,
-                '{model_mapping,gemini-3.1-flash-imageREDACTED',
-                '"gemini-3.1-flash-image"'::jsonb,
-                true
-            ),
-            '{model_mapping,gemini-3.1-flash-image-previewREDACTED',
-            '"gemini-3.1-flash-image"'::jsonb,
-            true
-        ),
-        '{model_mapping,gemini-3-pro-imageREDACTED',
-        '"gemini-3.1-flash-image"'::jsonb,
-        true
-    ),
-    '{model_mapping,gemini-3-pro-image-previewREDACTED',
-    '"gemini-3.1-flash-image"'::jsonb,
-    true
+    credentials,
+    '{model_mappingREDACTED',
+    '{
+        "claude-opus-4-6-thinking": "claude-opus-4-6-thinking",
+        "claude-opus-4-6": "claude-opus-4-6-thinking",
+        "claude-opus-4-5-thinking": "claude-opus-4-6-thinking",
+        "claude-opus-4-5-20251101": "claude-opus-4-6-thinking",
+        "claude-sonnet-4-6": "claude-sonnet-4-6",
+        "claude-sonnet-4-5": "claude-sonnet-4-5",
+        "claude-sonnet-4-5-thinking": "claude-sonnet-4-5-thinking",
+        "claude-sonnet-4-5-20250929": "claude-sonnet-4-5",
+        "claude-haiku-4-5": "claude-sonnet-4-5",
+        "REDACTED": "claude-sonnet-4-5",
+        "gemini-2.5-flash": "gemini-2.5-flash",
+        "gemini-2.5-flash-lite": "gemini-2.5-flash-lite",
+        "gemini-2.5-flash-thinking": "gemini-2.5-flash-thinking",
+        "gemini-2.5-pro": "gemini-2.5-pro",
+        "gemini-3-flash": "gemini-3-flash",
+        "gemini-3-pro-high": "gemini-3-pro-high",
+        "gemini-3-pro-low": "gemini-3-pro-low",
+        "gemini-3-flash-preview": "gemini-3-flash",
+        "gemini-3-pro-preview": "gemini-3-pro-high",
+        "gemini-3.1-pro-high": "gemini-3.1-pro-high",
+        "gemini-3.1-pro-low": "gemini-3.1-pro-low",
+        "gemini-3.1-pro-preview": "gemini-3.1-pro-high",
+        "gemini-3.1-flash-image": "gemini-3.1-flash-image",
+        "gemini-3.1-flash-image-preview": "gemini-3.1-flash-image",
+        "gpt-oss-120b-medium": "gpt-oss-120b-medium",
+        "tab_flash_lite_preview": "tab_flash_lite_preview"
+    REDACTED'::jsonb
 )
 WHERE platform = 'antigravity'
   AND deleted_at IS NULL
