@@ -186,11 +186,12 @@ REDACTED{
 						"image_price_1k": null,
 						"image_price_2k": null,
 						"image_price_4k": null,
-						"sora_image_price_360": null,
-						"sora_image_price_540": null,
-						"sora_video_price_per_request": null,
-						"sora_video_price_per_request_hd": null,
-						"claude_code_only": false,
+							"sora_image_price_360": null,
+							"sora_image_price_540": null,
+							"sora_storage_quota_bytes": 0,
+							"sora_video_price_per_request": null,
+							"sora_video_price_per_request_hd": null,
+							"claude_code_only": false,
 						"fallback_group_id": null,
 						"fallback_group_id_on_invalid_request": null,
 						"created_at": "2025-01-02T03:04:05Z",
@@ -384,10 +385,12 @@ REDACTED{
 							"user_id": 1,
 							"api_key_id": 100,
 							"account_id": 200,
-							"request_id": "req_123",
-							"model": "claude-3",
-							"group_id": null,
-							"subscription_id": null,
+								"request_id": "req_123",
+								"model": "claude-3",
+								"request_type": "stream",
+								"openai_ws_mode": false,
+								"group_id": null,
+								"subscription_id": null,
 							"input_tokens": 10,
 							"output_tokens": 20,
 							"cache_creation_tokens": 1,
@@ -500,11 +503,12 @@ REDACTED{
 					"fallback_model_anthropic": "claude-3-5-sonnet-20241022",
 					"fallback_model_antigravity": "gemini-2.5-pro",
 					"fallback_model_gemini": "gemini-2.5-pro",
-					"fallback_model_openai": "gpt-4o",
-					"enable_identity_patch": true,
-					"identity_patch_prompt": "",
-					"invitation_code_enabled": false,
-					"home_content": "",
+						"fallback_model_openai": "gpt-4o",
+						"enable_identity_patch": true,
+						"identity_patch_prompt": "",
+						"sora_client_enabled": false,
+						"invitation_code_enabled": false,
+						"home_content": "",
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": ""
@@ -619,7 +623,7 @@ REDACTED
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
-	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil)
+	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil)
 	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {
@@ -1555,11 +1559,11 @@ func (r *stubUsageLogRepo) GetDashboardStats(ctx context.Context) (*usagestats.D
 	return nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubUsageLogRepo) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID, accountID, groupID int64, model string, stream *bool, billingType *int8) ([]usagestats.TrendDataPoint, error) {
+func (r *stubUsageLogRepo) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8) ([]usagestats.TrendDataPoint, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 
-func (r *stubUsageLogRepo) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, stream *bool, billingType *int8) ([]usagestats.ModelStat, error) {
+func (r *stubUsageLogRepo) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8) ([]usagestats.ModelStat, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 

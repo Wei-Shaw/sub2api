@@ -119,6 +119,13 @@ REDACTED
 func (f *fakeConcurrencyCache) GetUsersLoadBatch(context.Context, []service.UserWithConcurrency) (map[int64]*service.UserLoadInfo, error) {
 	return map[int64]*service.UserLoadInfo{REDACTED, nil
 REDACTED
+func (f *fakeConcurrencyCache) GetAccountConcurrencyBatch(_ context.Context, accountIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int, len(accountIDs))
+	for _, id := range accountIDs {
+		result[id] = 0
+REDACTED
+	return result, nil
+REDACTED
 func (f *fakeConcurrencyCache) CleanupExpiredAccountSlots(context.Context, int64) error { return nil REDACTED
 
 func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*service.Account) (*GatewayHandler, func()) {

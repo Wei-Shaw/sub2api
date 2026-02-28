@@ -171,7 +171,7 @@
                 class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
               >
                 <Icon name="key" size="sm" class="text-blue-500" />
-                Session Token
+                {{ t(getOAuthKey('sessionTokenRawLabel')) REDACTEDREDACTED
                 <span
                   v-if="parsedSessionTokenCount > 1"
                   class="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white"
@@ -183,14 +183,87 @@
                 v-model="sessionTokenInput"
                 rows="3"
                 class="input w-full resize-y font-mono text-sm"
-                :placeholder="t(getOAuthKey('sessionTokenPlaceholder'))"
+                :placeholder="t(getOAuthKey('sessionTokenRawPlaceholder'))"
               ></textarea>
+              <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                {{ t(getOAuthKey('sessionTokenRawHint')) REDACTEDREDACTED
+              </p>
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  class="btn btn-secondary px-2 py-1 text-xs"
+                  @click="handleOpenSoraSessionUrl"
+                >
+                  {{ t(getOAuthKey('openSessionUrl')) REDACTEDREDACTED
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-secondary px-2 py-1 text-xs"
+                  @click="handleCopySoraSessionUrl"
+                >
+                  {{ t(getOAuthKey('copySessionUrl')) REDACTEDREDACTED
+                </button>
+              </div>
+              <p class="mt-1 break-all text-xs text-blue-600 dark:text-blue-400">
+                {{ soraSessionUrl REDACTEDREDACTED
+              </p>
+              <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                {{ t(getOAuthKey('sessionUrlHint')) REDACTEDREDACTED
+              </p>
               <p
                 v-if="parsedSessionTokenCount > 1"
                 class="mt-1 text-xs text-blue-600 dark:text-blue-400"
               >
                 {{ t('admin.accounts.oauth.batchCreateAccounts', { count: parsedSessionTokenCount REDACTED) REDACTEDREDACTED
               </p>
+            </div>
+
+            <div v-if="sessionTokenInput.trim()" class="mb-4 space-y-3">
+              <div>
+                <label
+                  class="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300"
+                >
+                  {{ t(getOAuthKey('parsedSessionTokensLabel')) REDACTEDREDACTED
+                  <span
+                    v-if="parsedSessionTokenCount > 0"
+                    class="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] text-white"
+                  >
+                    {{ parsedSessionTokenCount REDACTEDREDACTED
+                  </span>
+                </label>
+                <textarea
+                  :value="parsedSessionTokensText"
+                  rows="2"
+                  readonly
+                  class="input w-full resize-y bg-gray-50 font-mono text-xs dark:bg-gray-700"
+                ></textarea>
+                <p
+                  v-if="parsedSessionTokenCount === 0"
+                  class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+                >
+                  {{ t(getOAuthKey('parsedSessionTokensEmpty')) REDACTEDREDACTED
+                </p>
+              </div>
+
+              <div>
+                <label
+                  class="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300"
+                >
+                  {{ t(getOAuthKey('parsedAccessTokensLabel')) REDACTEDREDACTED
+                  <span
+                    v-if="parsedAccessTokenFromSessionInputCount > 0"
+                    class="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] text-white"
+                  >
+                    {{ parsedAccessTokenFromSessionInputCount REDACTEDREDACTED
+                  </span>
+                </label>
+                <textarea
+                  :value="parsedAccessTokensText"
+                  rows="2"
+                  readonly
+                  class="input w-full resize-y bg-gray-50 font-mono text-xs dark:bg-gray-700"
+                ></textarea>
+              </div>
             </div>
 
             <div
@@ -205,7 +278,7 @@
             <button
               type="button"
               class="btn btn-primary w-full"
-              :disabled="loading || !sessionTokenInput.trim()"
+              :disabled="loading || parsedSessionTokenCount === 0"
               @click="handleValidateSessionToken"
             >
               <svg
@@ -669,6 +742,7 @@
 import { ref, computed, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useClipboard REDACTED from '@/composables/useClipboard'
+import { parseSoraRawTokens REDACTED from '@/utils/soraTokenParser'
 import Icon from '@/components/icons/Icon.vue'
 import type { AddMethod, AuthInputMethod REDACTED from '@/composables/useAccountOAuth'
 import type { AccountPlatform REDACTED from '@/types'
@@ -781,12 +855,25 @@ const parsedRefreshTokenCount = computed(() => {
     .filter((rt) => rt).length
 REDACTED)
 
+const parsedSoraRawTokens = computed(() => parseSoraRawTokens(sessionTokenInput.value))
+
 const parsedSessionTokenCount = computed(() => {
-  return sessionTokenInput.value
-    .split('\n')
-    .map((st) => st.trim())
-    .filter((st) => st).length
+  return parsedSoraRawTokens.value.sessionTokens.length
 REDACTED)
+
+const parsedSessionTokensText = computed(() => {
+  return parsedSoraRawTokens.value.sessionTokens.join('\n')
+REDACTED)
+
+const parsedAccessTokenFromSessionInputCount = computed(() => {
+  return parsedSoraRawTokens.value.accessTokens.length
+REDACTED)
+
+const parsedAccessTokensText = computed(() => {
+  return parsedSoraRawTokens.value.accessTokens.join('\n')
+REDACTED)
+
+const soraSessionUrl = 'https://sora.chatgpt.com/api/auth/session'
 
 const parsedAccessTokenCount = computed(() => {
   return accessTokenInput.value
@@ -863,9 +950,17 @@ const handleValidateRefreshToken = () => {
 REDACTED
 
 const handleValidateSessionToken = () => {
-  if (sessionTokenInput.value.trim()) {
-    emit('validate-session-token', sessionTokenInput.value.trim())
+  if (parsedSessionTokenCount.value > 0) {
+    emit('validate-session-token', parsedSessionTokensText.value)
   REDACTED
+REDACTED
+
+const handleOpenSoraSessionUrl = () => {
+  window.open(soraSessionUrl, '_blank', 'noopener,noreferrer')
+REDACTED
+
+const handleCopySoraSessionUrl = () => {
+  copyToClipboard(soraSessionUrl, 'URL copied to clipboard')
 REDACTED
 
 const handleImportAccessToken = () => {

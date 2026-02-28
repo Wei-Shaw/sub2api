@@ -305,13 +305,78 @@ func (s *SchedulerSnapshotService) handleBulkAccountEvent(ctx context.Context, p
 	if payload == nil {
 		return nil
 REDACTED
-	ids := parseInt64Slice(payload["account_ids"])
-	for _, id := range ids {
-		if err := s.handleAccountEvent(ctx, &id, payload); err != nil {
-			return err
+	if s.accountRepo == nil {
+		return nil
+REDACTED
+
+	rawIDs := parseInt64Slice(payload["account_ids"])
+	if len(rawIDs) == 0 {
+		return nil
+REDACTED
+
+	ids := make([]int64, 0, len(rawIDs))
+	seen := make(map[int64]struct{REDACTED, len(rawIDs))
+	for _, id := range rawIDs {
+		if id <= 0 {
+			continue
+	REDACTED
+		if _, exists := seen[id]; exists {
+			continue
+	REDACTED
+		seen[id] = struct{REDACTED{REDACTED
+		ids = append(ids, id)
+REDACTED
+	if len(ids) == 0 {
+		return nil
+REDACTED
+
+	preloadGroupIDs := parseInt64Slice(payload["group_ids"])
+	accounts, err := s.accountRepo.GetByIDs(ctx, ids)
+	if err != nil {
+		return err
+REDACTED
+
+	found := make(map[int64]struct{REDACTED, len(accounts))
+	rebuildGroupSet := make(map[int64]struct{REDACTED, len(preloadGroupIDs))
+	for _, gid := range preloadGroupIDs {
+		if gid > 0 {
+			rebuildGroupSet[gid] = struct{REDACTED{REDACTED
 	REDACTED
 REDACTED
-	return nil
+
+	for _, account := range accounts {
+		if account == nil || account.ID <= 0 {
+			continue
+	REDACTED
+		found[account.ID] = struct{REDACTED{REDACTED
+		if s.cache != nil {
+			if err := s.cache.SetAccount(ctx, account); err != nil {
+				return err
+		REDACTED
+	REDACTED
+		for _, gid := range account.GroupIDs {
+			if gid > 0 {
+				rebuildGroupSet[gid] = struct{REDACTED{REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	if s.cache != nil {
+		for _, id := range ids {
+			if _, ok := found[id]; ok {
+				continue
+		REDACTED
+			if err := s.cache.DeleteAccount(ctx, id); err != nil {
+				return err
+		REDACTED
+	REDACTED
+REDACTED
+
+	rebuildGroupIDs := make([]int64, 0, len(rebuildGroupSet))
+	for gid := range rebuildGroupSet {
+		rebuildGroupIDs = append(rebuildGroupIDs, gid)
+REDACTED
+	return s.rebuildByGroupIDs(ctx, rebuildGroupIDs, "account_bulk_change")
 REDACTED
 
 func (s *SchedulerSnapshotService) handleAccountEvent(ctx context.Context, accountID *int64, payload map[string]any) error {

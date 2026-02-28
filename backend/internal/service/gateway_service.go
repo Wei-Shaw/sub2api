@@ -127,13 +127,26 @@ func WithForceCacheBilling(ctx context.Context) context.Context {
 REDACTED
 
 func (s *GatewayService) debugModelRoutingEnabled() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
-	return v == "1" || v == "true" || v == "yes" || v == "on"
+	if s == nil {
+		return false
+REDACTED
+	return s.debugModelRouting.Load()
 REDACTED
 
 func (s *GatewayService) debugClaudeMimicEnabled() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("SUB2API_DEBUG_CLAUDE_MIMIC")))
-	return v == "1" || v == "true" || v == "yes" || v == "on"
+	if s == nil {
+		return false
+REDACTED
+	return s.debugClaudeMimic.Load()
+REDACTED
+
+func parseDebugEnvBool(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+REDACTED
 REDACTED
 
 func shortSessionHash(sessionHash string) string {
@@ -374,37 +387,16 @@ func modelsListCacheKey(groupID *int64, platform string) string {
 REDACTED
 
 func prefetchedStickyGroupIDFromContext(ctx context.Context) (int64, bool) {
-	if ctx == nil {
-		return 0, false
-REDACTED
-	v := ctx.Value(ctxkey.PrefetchedStickyGroupID)
-	switch t := v.(type) {
-	case int64:
-		return t, true
-	case int:
-		return int64(t), true
-REDACTED
-	return 0, false
+	return PrefetchedStickyGroupIDFromContext(ctx)
 REDACTED
 
 func prefetchedStickyAccountIDFromContext(ctx context.Context, groupID *int64) int64 {
-	if ctx == nil {
-		return 0
-REDACTED
 	prefetchedGroupID, ok := prefetchedStickyGroupIDFromContext(ctx)
 	if !ok || prefetchedGroupID != derefGroupID(groupID) {
 		return 0
 REDACTED
-	v := ctx.Value(ctxkey.PrefetchedStickyAccountID)
-	switch t := v.(type) {
-	case int64:
-		if t > 0 {
-			return t
-	REDACTED
-	case int:
-		if t > 0 {
-			return int64(t)
-	REDACTED
+	if accountID, ok := PrefetchedStickyAccountIDFromContext(ctx); ok && accountID > 0 {
+		return accountID
 REDACTED
 	return 0
 REDACTED
@@ -509,29 +501,32 @@ REDACTED
 
 // GatewayService handles API gateway operations
 type GatewayService struct {
-	accountRepo         AccountRepository
-	groupRepo           GroupRepository
-	usageLogRepo        UsageLogRepository
-	userRepo            UserRepository
-	userSubRepo         UserSubscriptionRepository
-	userGroupRateRepo   UserGroupRateRepository
-	cache               GatewayCache
-	digestStore         *DigestSessionStore
-	cfg                 *config.Config
-	schedulerSnapshot   *SchedulerSnapshotService
-	billingService      *BillingService
-	rateLimitService    *RateLimitService
-	billingCacheService *BillingCacheService
-	identityService     *IdentityService
-	httpUpstream        HTTPUpstream
-	deferredService     *DeferredService
-	concurrencyService  *ConcurrencyService
-	claudeTokenProvider *ClaudeTokenProvider
-	sessionLimitCache   SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
-	userGroupRateCache  *gocache.Cache
-	userGroupRateSF     singleflight.Group
-	modelsListCache     *gocache.Cache
-	modelsListCacheTTL  time.Duration
+	accountRepo          AccountRepository
+	groupRepo            GroupRepository
+	usageLogRepo         UsageLogRepository
+	userRepo             UserRepository
+	userSubRepo          UserSubscriptionRepository
+	userGroupRateRepo    UserGroupRateRepository
+	cache                GatewayCache
+	digestStore          *DigestSessionStore
+	cfg                  *config.Config
+	schedulerSnapshot    *SchedulerSnapshotService
+	billingService       *BillingService
+	rateLimitService     *RateLimitService
+	billingCacheService  *BillingCacheService
+	identityService      *IdentityService
+	httpUpstream         HTTPUpstream
+	deferredService      *DeferredService
+	concurrencyService   *ConcurrencyService
+	claudeTokenProvider  *ClaudeTokenProvider
+	sessionLimitCache    SessionLimitCache // 会话数量限制缓存（仅 Anthropic OAuth/SetupToken）
+	userGroupRateCache   *gocache.Cache
+	userGroupRateSF      singleflight.Group
+	modelsListCache      *gocache.Cache
+	modelsListCacheTTL   time.Duration
+	responseHeaderFilter *responseheaders.CompiledHeaderFilter
+	debugModelRouting    atomic.Bool
+	debugClaudeMimic     atomic.Bool
 REDACTED
 
 // NewGatewayService creates a new GatewayService
@@ -559,30 +554,34 @@ func NewGatewayService(
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
 
-	return &GatewayService{
-		accountRepo:         accountRepo,
-		groupRepo:           groupRepo,
-		usageLogRepo:        usageLogRepo,
-		userRepo:            userRepo,
-		userSubRepo:         userSubRepo,
-		userGroupRateRepo:   userGroupRateRepo,
-		cache:               cache,
-		digestStore:         digestStore,
-		cfg:                 cfg,
-		schedulerSnapshot:   schedulerSnapshot,
-		concurrencyService:  concurrencyService,
-		billingService:      billingService,
-		rateLimitService:    rateLimitService,
-		billingCacheService: billingCacheService,
-		identityService:     identityService,
-		httpUpstream:        httpUpstream,
-		deferredService:     deferredService,
-		claudeTokenProvider: claudeTokenProvider,
-		sessionLimitCache:   sessionLimitCache,
-		userGroupRateCache:  gocache.New(userGroupRateTTL, time.Minute),
-		modelsListCache:     gocache.New(modelsListTTL, time.Minute),
-		modelsListCacheTTL:  modelsListTTL,
+	svc := &GatewayService{
+		accountRepo:          accountRepo,
+		groupRepo:            groupRepo,
+		usageLogRepo:         usageLogRepo,
+		userRepo:             userRepo,
+		userSubRepo:          userSubRepo,
+		userGroupRateRepo:    userGroupRateRepo,
+		cache:                cache,
+		digestStore:          digestStore,
+		cfg:                  cfg,
+		schedulerSnapshot:    schedulerSnapshot,
+		concurrencyService:   concurrencyService,
+		billingService:       billingService,
+		rateLimitService:     rateLimitService,
+		billingCacheService:  billingCacheService,
+		identityService:      identityService,
+		httpUpstream:         httpUpstream,
+		deferredService:      deferredService,
+		claudeTokenProvider:  claudeTokenProvider,
+		sessionLimitCache:    sessionLimitCache,
+		userGroupRateCache:   gocache.New(userGroupRateTTL, time.Minute),
+		modelsListCache:      gocache.New(modelsListTTL, time.Minute),
+		modelsListCacheTTL:   modelsListTTL,
+		responseHeaderFilter: compileResponseHeaderFilter(cfg),
 REDACTED
+	svc.debugModelRouting.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_MODEL_ROUTING")))
+	svc.debugClaudeMimic.Store(parseDebugEnvBool(os.Getenv("SUB2API_DEBUG_CLAUDE_MIMIC")))
+	return svc
 REDACTED
 
 // GenerateSessionHash 从预解析请求计算粘性会话 hash
@@ -1204,7 +1203,7 @@ REDACTED
 				continue
 		REDACTED
 			account, ok := accountByID[routingAccountID]
-			if !ok || !account.IsSchedulable() {
+			if !ok || !s.isAccountSchedulableForSelection(account) {
 				if !ok {
 					filteredMissing++
 			REDACTED else {
@@ -1220,7 +1219,7 @@ REDACTED
 				filteredModelMapping++
 				continue
 		REDACTED
-			if !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
+			if !s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) {
 				filteredModelScope++
 				modelScopeSkippedIDs = append(modelScopeSkippedIDs, account.ID)
 				continue
@@ -1249,10 +1248,10 @@ REDACTED
 				if containsInt64(routingAccountIDs, stickyAccountID) && !isExcluded(stickyAccountID) {
 					// 粘性账号在路由列表中，优先使用
 					if stickyAccount, ok := accountByID[stickyAccountID]; ok {
-						if stickyAccount.IsSchedulable() &&
+						if s.isAccountSchedulableForSelection(stickyAccount) &&
 							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
 							(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel)) &&
-							stickyAccount.IsSchedulableForModelWithContext(ctx, requestedModel) &&
+							s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
 							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true) { // 粘性会话窗口费用检查
 							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
 							if err == nil && result.Acquired {
@@ -1406,7 +1405,7 @@ REDACTED
 				if !clearSticky && s.isAccountInGroup(account, groupID) &&
 					s.isAccountAllowedForPlatform(account, platform, useMixed) &&
 					(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) &&
-					account.IsSchedulableForModelWithContext(ctx, requestedModel) &&
+					s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) &&
 					s.isAccountSchedulableForWindowCost(ctx, account, true) { // 粘性会话窗口费用检查
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
@@ -1457,7 +1456,7 @@ REDACTED
 		// Scheduler snapshots can be temporarily stale (bucket rebuild is throttled);
 		// re-check schedulability here so recently rate-limited/overloaded accounts
 		// are not selected again before the bucket is rebuilt.
-		if !acc.IsSchedulable() {
+		if !s.isAccountSchedulableForSelection(acc) {
 			continue
 	REDACTED
 		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
@@ -1466,7 +1465,7 @@ REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
 			continue
 	REDACTED
-		if !acc.IsSchedulableForModelWithContext(ctx, requestedModel) {
+		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
 			continue
 	REDACTED
 		// 窗口费用检查（非粘性会话路径）
@@ -1737,6 +1736,9 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
+	if platform == PlatformSora {
+		return s.listSoraSchedulableAccounts(ctx, groupID)
+REDACTED
 	if s.schedulerSnapshot != nil {
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		if err == nil {
@@ -1831,6 +1833,53 @@ REDACTED
 	return accounts, useMixed, nil
 REDACTED
 
+func (s *GatewayService) listSoraSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, bool, error) {
+	const useMixed = false
+
+	var accounts []Account
+	var err error
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		accounts, err = s.accountRepo.ListByPlatform(ctx, PlatformSora)
+REDACTED else if groupID != nil {
+		accounts, err = s.accountRepo.ListByGroup(ctx, *groupID)
+REDACTED else {
+		accounts, err = s.accountRepo.ListByPlatform(ctx, PlatformSora)
+REDACTED
+	if err != nil {
+		slog.Debug("account_scheduling_list_failed",
+			"group_id", derefGroupID(groupID),
+			"platform", PlatformSora,
+			"error", err)
+		return nil, useMixed, err
+REDACTED
+
+	filtered := make([]Account, 0, len(accounts))
+	for _, acc := range accounts {
+		if acc.Platform != PlatformSora {
+			continue
+	REDACTED
+		if !s.isSoraAccountSchedulable(&acc) {
+			continue
+	REDACTED
+		filtered = append(filtered, acc)
+REDACTED
+	slog.Debug("account_scheduling_list_sora",
+		"group_id", derefGroupID(groupID),
+		"platform", PlatformSora,
+		"raw_count", len(accounts),
+		"filtered_count", len(filtered))
+	for _, acc := range filtered {
+		slog.Debug("account_scheduling_account_detail",
+			"account_id", acc.ID,
+			"name", acc.Name,
+			"platform", acc.Platform,
+			"type", acc.Type,
+			"status", acc.Status,
+			"tls_fingerprint", acc.IsTLSFingerprintEnabled())
+REDACTED
+	return filtered, useMixed, nil
+REDACTED
+
 // IsSingleAntigravityAccountGroup 检查指定分组是否只有一个 antigravity 平台的可调度账号。
 // 用于 Handler 层在首次请求时提前设置 SingleAccountRetry context，
 // 避免单账号分组收到 503 时错误地设置模型限流标记导致后续请求连续快速失败。
@@ -1853,6 +1902,49 @@ REDACTED
 		return account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()
 REDACTED
 	return account.Platform == platform
+REDACTED
+
+func (s *GatewayService) isSoraAccountSchedulable(account *Account) bool {
+	return s.soraUnschedulableReason(account) == ""
+REDACTED
+
+func (s *GatewayService) soraUnschedulableReason(account *Account) string {
+	if account == nil {
+		return "account_nil"
+REDACTED
+	if account.Status != StatusActive {
+		return fmt.Sprintf("status=%s", account.Status)
+REDACTED
+	if !account.Schedulable {
+		return "schedulable=false"
+REDACTED
+	if account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) {
+		return fmt.Sprintf("temp_unschedulable_until=%s", account.TempUnschedulableUntil.UTC().Format(time.RFC3339))
+REDACTED
+	return ""
+REDACTED
+
+func (s *GatewayService) isAccountSchedulableForSelection(account *Account) bool {
+	if account == nil {
+		return false
+REDACTED
+	if account.Platform == PlatformSora {
+		return s.isSoraAccountSchedulable(account)
+REDACTED
+	return account.IsSchedulable()
+REDACTED
+
+func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Context, account *Account, requestedModel string) bool {
+	if account == nil {
+		return false
+REDACTED
+	if account.Platform == PlatformSora {
+		if !s.isSoraAccountSchedulable(account) {
+			return false
+	REDACTED
+		return account.GetRateLimitRemainingTimeWithContext(ctx, requestedModel) <= 0
+REDACTED
+	return account.IsSchedulableForModelWithContext(ctx, requestedModel)
 REDACTED
 
 // isAccountInGroup checks if the account belongs to the specified group.
@@ -2397,7 +2489,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					REDACTED
-						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && account.IsSchedulableForModelWithContext(ctx, requestedModel) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 						REDACTED
@@ -2438,13 +2530,13 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		REDACTED
 			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 			// avoid selecting accounts that were recently rate-limited/overloaded.
-			if !acc.IsSchedulable() {
+			if !s.isAccountSchedulableForSelection(acc) {
 				continue
 		REDACTED
 			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
 				continue
 		REDACTED
-			if !acc.IsSchedulableForModelWithContext(ctx, requestedModel) {
+			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
 				continue
 		REDACTED
 			if selected == nil {
@@ -2497,7 +2589,7 @@ REDACTED
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 				REDACTED
-					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && account.IsSchedulableForModelWithContext(ctx, requestedModel) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) {
 						return account, nil
 				REDACTED
 			REDACTED
@@ -2527,13 +2619,13 @@ REDACTED
 	REDACTED
 		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 		// avoid selecting accounts that were recently rate-limited/overloaded.
-		if !acc.IsSchedulable() {
+		if !s.isAccountSchedulableForSelection(acc) {
 			continue
 	REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
 			continue
 	REDACTED
-		if !acc.IsSchedulableForModelWithContext(ctx, requestedModel) {
+		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
 			continue
 	REDACTED
 		if selected == nil {
@@ -2561,8 +2653,9 @@ REDACTED
 REDACTED
 
 	if selected == nil {
+		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, platform, accounts, excludedIDs, false)
 		if requestedModel != "" {
-			return nil, fmt.Errorf("no available accounts supporting model: %s", requestedModel)
+			return nil, fmt.Errorf("no available accounts supporting model: %s (%s)", requestedModel, summarizeSelectionFailureStats(stats))
 	REDACTED
 		return nil, errors.New("no available accounts")
 REDACTED
@@ -2604,7 +2697,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					REDACTED
-						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && account.IsSchedulableForModelWithContext(ctx, requestedModel) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) {
 							if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 								if s.debugModelRoutingEnabled() {
 									logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
@@ -2643,7 +2736,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		REDACTED
 			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 			// avoid selecting accounts that were recently rate-limited/overloaded.
-			if !acc.IsSchedulable() {
+			if !s.isAccountSchedulableForSelection(acc) {
 				continue
 		REDACTED
 			// 过滤：原生平台直接通过，antigravity 需要启用混合调度
@@ -2653,7 +2746,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
 				continue
 		REDACTED
-			if !acc.IsSchedulableForModelWithContext(ctx, requestedModel) {
+			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
 				continue
 		REDACTED
 			if selected == nil {
@@ -2706,7 +2799,7 @@ REDACTED
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 				REDACTED
-					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && account.IsSchedulableForModelWithContext(ctx, requestedModel) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) {
 						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 							return account, nil
 					REDACTED
@@ -2734,7 +2827,7 @@ REDACTED
 	REDACTED
 		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 		// avoid selecting accounts that were recently rate-limited/overloaded.
-		if !acc.IsSchedulable() {
+		if !s.isAccountSchedulableForSelection(acc) {
 			continue
 	REDACTED
 		// 过滤：原生平台直接通过，antigravity 需要启用混合调度
@@ -2744,7 +2837,7 @@ REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
 			continue
 	REDACTED
-		if !acc.IsSchedulableForModelWithContext(ctx, requestedModel) {
+		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
 			continue
 	REDACTED
 		if selected == nil {
@@ -2772,8 +2865,9 @@ REDACTED
 REDACTED
 
 	if selected == nil {
+		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, nativePlatform, accounts, excludedIDs, true)
 		if requestedModel != "" {
-			return nil, fmt.Errorf("no available accounts supporting model: %s", requestedModel)
+			return nil, fmt.Errorf("no available accounts supporting model: %s (%s)", requestedModel, summarizeSelectionFailureStats(stats))
 	REDACTED
 		return nil, errors.New("no available accounts")
 REDACTED
@@ -2786,6 +2880,236 @@ REDACTED
 REDACTED
 
 	return selected, nil
+REDACTED
+
+type selectionFailureStats struct {
+	Total              int
+	Eligible           int
+	Excluded           int
+	Unschedulable      int
+	PlatformFiltered   int
+	ModelUnsupported   int
+	ModelRateLimited   int
+	SamplePlatformIDs  []int64
+	SampleMappingIDs   []int64
+	SampleRateLimitIDs []string
+REDACTED
+
+type selectionFailureDiagnosis struct {
+	Category string
+	Detail   string
+REDACTED
+
+func (s *GatewayService) logDetailedSelectionFailure(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	requestedModel string,
+	platform string,
+	accounts []Account,
+	excludedIDs map[int64]struct{REDACTED,
+	allowMixedScheduling bool,
+) selectionFailureStats {
+	stats := s.collectSelectionFailureStats(ctx, accounts, requestedModel, platform, excludedIDs, allowMixedScheduling)
+	logger.LegacyPrintf(
+		"service.gateway",
+		"[SelectAccountDetailed] group_id=%v model=%s platform=%s session=%s total=%d eligible=%d excluded=%d unschedulable=%d platform_filtered=%d model_unsupported=%d model_rate_limited=%d sample_platform_filtered=%v sample_model_unsupported=%v sample_model_rate_limited=%v",
+		derefGroupID(groupID),
+		requestedModel,
+		platform,
+		shortSessionHash(sessionHash),
+		stats.Total,
+		stats.Eligible,
+		stats.Excluded,
+		stats.Unschedulable,
+		stats.PlatformFiltered,
+		stats.ModelUnsupported,
+		stats.ModelRateLimited,
+		stats.SamplePlatformIDs,
+		stats.SampleMappingIDs,
+		stats.SampleRateLimitIDs,
+	)
+	if platform == PlatformSora {
+		s.logSoraSelectionFailureDetails(ctx, groupID, sessionHash, requestedModel, accounts, excludedIDs, allowMixedScheduling)
+REDACTED
+	return stats
+REDACTED
+
+func (s *GatewayService) collectSelectionFailureStats(
+	ctx context.Context,
+	accounts []Account,
+	requestedModel string,
+	platform string,
+	excludedIDs map[int64]struct{REDACTED,
+	allowMixedScheduling bool,
+) selectionFailureStats {
+	stats := selectionFailureStats{
+		Total: len(accounts),
+REDACTED
+
+	for i := range accounts {
+		acc := &accounts[i]
+		diagnosis := s.diagnoseSelectionFailure(ctx, acc, requestedModel, platform, excludedIDs, allowMixedScheduling)
+		switch diagnosis.Category {
+		case "excluded":
+			stats.Excluded++
+		case "unschedulable":
+			stats.Unschedulable++
+		case "platform_filtered":
+			stats.PlatformFiltered++
+			stats.SamplePlatformIDs = appendSelectionFailureSampleID(stats.SamplePlatformIDs, acc.ID)
+		case "model_unsupported":
+			stats.ModelUnsupported++
+			stats.SampleMappingIDs = appendSelectionFailureSampleID(stats.SampleMappingIDs, acc.ID)
+		case "model_rate_limited":
+			stats.ModelRateLimited++
+			remaining := acc.GetRateLimitRemainingTimeWithContext(ctx, requestedModel).Truncate(time.Second)
+			stats.SampleRateLimitIDs = appendSelectionFailureRateSample(stats.SampleRateLimitIDs, acc.ID, remaining)
+		default:
+			stats.Eligible++
+	REDACTED
+REDACTED
+
+	return stats
+REDACTED
+
+func (s *GatewayService) diagnoseSelectionFailure(
+	ctx context.Context,
+	acc *Account,
+	requestedModel string,
+	platform string,
+	excludedIDs map[int64]struct{REDACTED,
+	allowMixedScheduling bool,
+) selectionFailureDiagnosis {
+	if acc == nil {
+		return selectionFailureDiagnosis{Category: "unschedulable", Detail: "account_nil"REDACTED
+REDACTED
+	if _, excluded := excludedIDs[acc.ID]; excluded {
+		return selectionFailureDiagnosis{Category: "excluded"REDACTED
+REDACTED
+	if !s.isAccountSchedulableForSelection(acc) {
+		detail := "generic_unschedulable"
+		if acc.Platform == PlatformSora {
+			detail = s.soraUnschedulableReason(acc)
+	REDACTED
+		return selectionFailureDiagnosis{Category: "unschedulable", Detail: detailREDACTED
+REDACTED
+	if isPlatformFilteredForSelection(acc, platform, allowMixedScheduling) {
+		return selectionFailureDiagnosis{
+			Category: "platform_filtered",
+			Detail:   fmt.Sprintf("account_platform=%s requested_platform=%s", acc.Platform, strings.TrimSpace(platform)),
+	REDACTED
+REDACTED
+	if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+		return selectionFailureDiagnosis{
+			Category: "model_unsupported",
+			Detail:   fmt.Sprintf("model=%s", requestedModel),
+	REDACTED
+REDACTED
+	if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+		remaining := acc.GetRateLimitRemainingTimeWithContext(ctx, requestedModel).Truncate(time.Second)
+		return selectionFailureDiagnosis{
+			Category: "model_rate_limited",
+			Detail:   fmt.Sprintf("remaining=%s", remaining),
+	REDACTED
+REDACTED
+	return selectionFailureDiagnosis{Category: "eligible"REDACTED
+REDACTED
+
+func (s *GatewayService) logSoraSelectionFailureDetails(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	requestedModel string,
+	accounts []Account,
+	excludedIDs map[int64]struct{REDACTED,
+	allowMixedScheduling bool,
+) {
+	const maxLines = 30
+	logged := 0
+
+	for i := range accounts {
+		if logged >= maxLines {
+			break
+	REDACTED
+		acc := &accounts[i]
+		diagnosis := s.diagnoseSelectionFailure(ctx, acc, requestedModel, PlatformSora, excludedIDs, allowMixedScheduling)
+		if diagnosis.Category == "eligible" {
+			continue
+	REDACTED
+		detail := diagnosis.Detail
+		if detail == "" {
+			detail = "-"
+	REDACTED
+		logger.LegacyPrintf(
+			"service.gateway",
+			"[SelectAccountDetailed:Sora] group_id=%v model=%s session=%s account_id=%d account_platform=%s category=%s detail=%s",
+			derefGroupID(groupID),
+			requestedModel,
+			shortSessionHash(sessionHash),
+			acc.ID,
+			acc.Platform,
+			diagnosis.Category,
+			detail,
+		)
+		logged++
+REDACTED
+	if len(accounts) > maxLines {
+		logger.LegacyPrintf(
+			"service.gateway",
+			"[SelectAccountDetailed:Sora] group_id=%v model=%s session=%s truncated=true total=%d logged=%d",
+			derefGroupID(groupID),
+			requestedModel,
+			shortSessionHash(sessionHash),
+			len(accounts),
+			logged,
+		)
+REDACTED
+REDACTED
+
+func isPlatformFilteredForSelection(acc *Account, platform string, allowMixedScheduling bool) bool {
+	if acc == nil {
+		return true
+REDACTED
+	if allowMixedScheduling {
+		if acc.Platform == PlatformAntigravity {
+			return !acc.IsMixedSchedulingEnabled()
+	REDACTED
+		return acc.Platform != platform
+REDACTED
+	if strings.TrimSpace(platform) == "" {
+		return false
+REDACTED
+	return acc.Platform != platform
+REDACTED
+
+func appendSelectionFailureSampleID(samples []int64, id int64) []int64 {
+	const limit = 5
+	if len(samples) >= limit {
+		return samples
+REDACTED
+	return append(samples, id)
+REDACTED
+
+func appendSelectionFailureRateSample(samples []string, accountID int64, remaining time.Duration) []string {
+	const limit = 5
+	if len(samples) >= limit {
+		return samples
+REDACTED
+	return append(samples, fmt.Sprintf("%d(%s)", accountID, remaining))
+REDACTED
+
+func summarizeSelectionFailureStats(stats selectionFailureStats) string {
+	return fmt.Sprintf(
+		"total=%d eligible=%d excluded=%d unschedulable=%d platform_filtered=%d model_unsupported=%d model_rate_limited=%d",
+		stats.Total,
+		stats.Eligible,
+		stats.Excluded,
+		stats.Unschedulable,
+		stats.PlatformFiltered,
+		stats.ModelUnsupported,
+		stats.ModelRateLimited,
+	)
 REDACTED
 
 // isModelSupportedByAccountWithContext 根据账户平台检查模型支持（带 context）
@@ -2801,7 +3125,7 @@ func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Contex
 			return false
 	REDACTED
 		// 应用 thinking 后缀后检查最终模型是否在账号映射中
-		if enabled, ok := ctx.Value(ctxkey.ThinkingEnabled).(bool); ok {
+		if enabled, ok := ThinkingEnabledFromContext(ctx); ok {
 			finalModel := applyThinkingModelSuffix(mapped, enabled)
 			if finalModel == mapped {
 				return true // thinking 后缀未改变模型名，映射已通过
@@ -2821,12 +3145,152 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	REDACTED
 		return mapAntigravityModel(account, requestedModel) != ""
 REDACTED
+	if account.Platform == PlatformSora {
+		return s.isSoraModelSupportedByAccount(account, requestedModel)
+REDACTED
 	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
 	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
 		requestedModel = claude.NormalizeModelID(requestedModel)
 REDACTED
 	// 其他平台使用账户的模型支持检查
 	return account.IsModelSupported(requestedModel)
+REDACTED
+
+func (s *GatewayService) isSoraModelSupportedByAccount(account *Account, requestedModel string) bool {
+	if account == nil {
+		return false
+REDACTED
+	if strings.TrimSpace(requestedModel) == "" {
+		return true
+REDACTED
+
+	// 先走原始精确/通配符匹配。
+	mapping := account.GetModelMapping()
+	if len(mapping) == 0 || account.IsModelSupported(requestedModel) {
+		return true
+REDACTED
+
+	aliases := buildSoraModelAliases(requestedModel)
+	if len(aliases) == 0 {
+		return false
+REDACTED
+
+	hasSoraSelector := false
+	for pattern := range mapping {
+		if !isSoraModelSelector(pattern) {
+			continue
+	REDACTED
+		hasSoraSelector = true
+		if matchPatternAnyAlias(pattern, aliases) {
+			return true
+	REDACTED
+REDACTED
+
+	// 兼容旧账号：mapping 存在但未配置任何 Sora 选择器（例如只含 gpt-*），
+	// 此时不应误拦截 Sora 模型请求。
+	if !hasSoraSelector {
+		return true
+REDACTED
+
+	return false
+REDACTED
+
+func matchPatternAnyAlias(pattern string, aliases []string) bool {
+	normalizedPattern := strings.ToLower(strings.TrimSpace(pattern))
+	if normalizedPattern == "" {
+		return false
+REDACTED
+	for _, alias := range aliases {
+		if matchWildcard(normalizedPattern, alias) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func isSoraModelSelector(pattern string) bool {
+	p := strings.ToLower(strings.TrimSpace(pattern))
+	if p == "" {
+		return false
+REDACTED
+
+	switch {
+	case strings.HasPrefix(p, "sora"),
+		strings.HasPrefix(p, "gpt-image"),
+		strings.HasPrefix(p, "prompt-enhance"),
+		strings.HasPrefix(p, "sy_"):
+		return true
+REDACTED
+
+	return p == "video" || p == "image"
+REDACTED
+
+func buildSoraModelAliases(requestedModel string) []string {
+	modelID := strings.ToLower(strings.TrimSpace(requestedModel))
+	if modelID == "" {
+		return nil
+REDACTED
+
+	aliases := make([]string, 0, 8)
+	addAlias := func(value string) {
+		v := strings.ToLower(strings.TrimSpace(value))
+		if v == "" {
+			return
+	REDACTED
+		for _, existing := range aliases {
+			if existing == v {
+				return
+		REDACTED
+	REDACTED
+		aliases = append(aliases, v)
+REDACTED
+
+	addAlias(modelID)
+	cfg, ok := GetSoraModelConfig(modelID)
+	if ok {
+		addAlias(cfg.Model)
+		switch cfg.Type {
+		case "video":
+			addAlias("video")
+			addAlias("sora")
+			addAlias(soraVideoFamilyAlias(modelID))
+		case "image":
+			addAlias("image")
+			addAlias("gpt-image")
+		case "prompt_enhance":
+			addAlias("prompt-enhance")
+	REDACTED
+		return aliases
+REDACTED
+
+	switch {
+	case strings.HasPrefix(modelID, "sora"):
+		addAlias("video")
+		addAlias("sora")
+		addAlias(soraVideoFamilyAlias(modelID))
+	case strings.HasPrefix(modelID, "gpt-image"):
+		addAlias("image")
+		addAlias("gpt-image")
+	case strings.HasPrefix(modelID, "prompt-enhance"):
+		addAlias("prompt-enhance")
+	default:
+		return nil
+REDACTED
+
+	return aliases
+REDACTED
+
+func soraVideoFamilyAlias(modelID string) string {
+	switch {
+	case strings.HasPrefix(modelID, "sora2pro-hd"):
+		return "sora2pro-hd"
+	case strings.HasPrefix(modelID, "sora2pro"):
+		return "sora2pro"
+	case strings.HasPrefix(modelID, "sora2"):
+		return "sora2"
+	default:
+		return ""
+REDACTED
 REDACTED
 
 // GetAccessToken 获取账号凭证
@@ -4012,7 +4476,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 		s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 REDACTED
 
-	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.cfg)
+	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
 	if contentType == "" {
@@ -4308,7 +4772,7 @@ REDACTED
 
 	usage := parseClaudeUsageFromResponseBody(body)
 
-	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.cfg)
+	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
 	if contentType == "" {
 		contentType = "application/json"
@@ -4317,12 +4781,12 @@ REDACTED
 	return usage, nil
 REDACTED
 
-func writeAnthropicPassthroughResponseHeaders(dst http.Header, src http.Header, cfg *config.Config) {
+func writeAnthropicPassthroughResponseHeaders(dst http.Header, src http.Header, filter *responseheaders.CompiledHeaderFilter) {
 	if dst == nil || src == nil {
 		return
 REDACTED
-	if cfg != nil {
-		responseheaders.WriteFilteredHeaders(dst, src, cfg.Security.ResponseHeaders)
+	if filter != nil {
+		responseheaders.WriteFilteredHeaders(dst, src, filter)
 		return
 REDACTED
 	if v := strings.TrimSpace(src.Get("Content-Type")); v != "" {
@@ -4425,12 +4889,11 @@ REDACTED
 			// messages requests typically use only oauth + interleaved-thinking.
 			// Also drop claude-code beta if a downstream client added it.
 			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinkingREDACTED
-			drop := droppedBetaSet(claude.BetaClaudeCode)
-			req.Header.Set("anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, drop))
+			req.Header.Set("anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, droppedBetasWithClaudeCodeSet))
 	REDACTED else {
 			// Claude Code 客户端：尽量透传原始 header，仅补齐 oauth beta
 			clientBetaHeader := req.Header.Get("anthropic-beta")
-			req.Header.Set("anthropic-beta", stripBetaTokens(s.getBetaHeader(modelID, clientBetaHeader), claude.DroppedBetas))
+			req.Header.Set("anthropic-beta", stripBetaTokensWithSet(s.getBetaHeader(modelID, clientBetaHeader), defaultDroppedBetasSet))
 	REDACTED
 REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header.Get("anthropic-beta") == "" {
 		// API-key：仅在请求显式使用 beta 特性且客户端未提供时，按需补齐（默认关闭）
@@ -4589,9 +5052,12 @@ func stripBetaTokens(header string, tokens []string) string {
 	if header == "" || len(tokens) == 0 {
 		return header
 REDACTED
-	drop := make(map[string]struct{REDACTED, len(tokens))
-	for _, t := range tokens {
-		drop[t] = struct{REDACTED{REDACTED
+	return stripBetaTokensWithSet(header, buildBetaTokenSet(tokens))
+REDACTED
+
+func stripBetaTokensWithSet(header string, drop map[string]struct{REDACTED) string {
+	if header == "" || len(drop) == 0 {
+		return header
 REDACTED
 	parts := strings.Split(header, ",")
 	out := make([]string, 0, len(parts))
@@ -4613,8 +5079,8 @@ REDACTED
 
 // droppedBetaSet returns claude.DroppedBetas as a set, with optional extra tokens.
 func droppedBetaSet(extra ...string) map[string]struct{REDACTED {
-	m := make(map[string]struct{REDACTED, len(claude.DroppedBetas)+len(extra))
-	for _, t := range claude.DroppedBetas {
+	m := make(map[string]struct{REDACTED, len(defaultDroppedBetasSet)+len(extra))
+	for t := range defaultDroppedBetasSet {
 		m[t] = struct{REDACTED{REDACTED
 REDACTED
 	for _, t := range extra {
@@ -4622,6 +5088,22 @@ REDACTED
 REDACTED
 	return m
 REDACTED
+
+func buildBetaTokenSet(tokens []string) map[string]struct{REDACTED {
+	m := make(map[string]struct{REDACTED, len(tokens))
+	for _, t := range tokens {
+		if t == "" {
+			continue
+	REDACTED
+		m[t] = struct{REDACTED{REDACTED
+REDACTED
+	return m
+REDACTED
+
+var (
+	defaultDroppedBetasSet        = buildBetaTokenSet(claude.DroppedBetas)
+	droppedBetasWithClaudeCodeSet = droppedBetaSet(claude.BetaClaudeCode)
+)
 
 // applyClaudeCodeMimicHeaders forces "Claude Code-like" request headers.
 // This mirrors opencode-anthropic-auth behavior: do not trust downstream
@@ -4750,6 +5232,20 @@ REDACTED
 
 	// 兜底：尝试顶层 message
 	return gjson.GetBytes(body, "message").String()
+REDACTED
+
+func isCountTokensUnsupported404(statusCode int, body []byte) bool {
+	if statusCode != http.StatusNotFound {
+		return false
+REDACTED
+	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+	if msg == "" {
+		return false
+REDACTED
+	if strings.Contains(msg, "/v1/messages/count_tokens") {
+		return true
+REDACTED
+	return strings.Contains(msg, "count_tokens") && strings.Contains(msg, "not found")
 REDACTED
 
 func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account) (*ForwardResult, error) {
@@ -5029,8 +5525,8 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
-	if s.cfg != nil {
-		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)
+	if s.responseHeaderFilter != nil {
+		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 REDACTED
 
 	// 设置SSE响应头
@@ -5124,9 +5620,9 @@ REDACTED
 
 	pendingEventLines := make([]string, 0, 4)
 
-	processSSEEvent := func(lines []string) ([]string, string, error) {
+	processSSEEvent := func(lines []string) ([]string, string, *sseUsagePatch, error) {
 		if len(lines) == 0 {
-			return nil, "", nil
+			return nil, "", nil, nil
 	REDACTED
 
 		eventName := ""
@@ -5143,11 +5639,11 @@ REDACTED
 	REDACTED
 
 		if eventName == "error" {
-			return nil, dataLine, errors.New("have error in stream")
+			return nil, dataLine, nil, errors.New("have error in stream")
 	REDACTED
 
 		if dataLine == "" {
-			return []string{strings.Join(lines, "\n") + "\n\n"REDACTED, "", nil
+			return []string{strings.Join(lines, "\n") + "\n\n"REDACTED, "", nil, nil
 	REDACTED
 
 		if dataLine == "[DONE]" {
@@ -5156,7 +5652,7 @@ REDACTED
 				block = "event: " + eventName + "\n"
 		REDACTED
 			block += "data: " + dataLine + "\n\n"
-			return []string{blockREDACTED, dataLine, nil
+			return []string{blockREDACTED, dataLine, nil, nil
 	REDACTED
 
 		var event map[string]any
@@ -5167,25 +5663,26 @@ REDACTED
 				block = "event: " + eventName + "\n"
 		REDACTED
 			block += "data: " + dataLine + "\n\n"
-			return []string{blockREDACTED, dataLine, nil
+			return []string{blockREDACTED, dataLine, nil, nil
 	REDACTED
 
 		eventType, _ := event["type"].(string)
 		if eventName == "" {
 			eventName = eventType
 	REDACTED
+		eventChanged := false
 
 		// 兼容 Kimi cached_tokens → cache_read_input_tokens
 		if eventType == "message_start" {
 			if msg, ok := event["message"].(map[string]any); ok {
 				if u, ok := msg["usage"].(map[string]any); ok {
-					reconcileCachedTokens(u)
+					eventChanged = reconcileCachedTokens(u) || eventChanged
 			REDACTED
 		REDACTED
 	REDACTED
 		if eventType == "message_delta" {
 			if u, ok := event["usage"].(map[string]any); ok {
-				reconcileCachedTokens(u)
+				eventChanged = reconcileCachedTokens(u) || eventChanged
 		REDACTED
 	REDACTED
 
@@ -5195,13 +5692,13 @@ REDACTED
 			if eventType == "message_start" {
 				if msg, ok := event["message"].(map[string]any); ok {
 					if u, ok := msg["usage"].(map[string]any); ok {
-						rewriteCacheCreationJSON(u, overrideTarget)
+						eventChanged = rewriteCacheCreationJSON(u, overrideTarget) || eventChanged
 				REDACTED
 			REDACTED
 		REDACTED
 			if eventType == "message_delta" {
 				if u, ok := event["usage"].(map[string]any); ok {
-					rewriteCacheCreationJSON(u, overrideTarget)
+					eventChanged = rewriteCacheCreationJSON(u, overrideTarget) || eventChanged
 			REDACTED
 		REDACTED
 	REDACTED
@@ -5210,8 +5707,19 @@ REDACTED
 			if msg, ok := event["message"].(map[string]any); ok {
 				if model, ok := msg["model"].(string); ok && model == mappedModel {
 					msg["model"] = originalModel
+					eventChanged = true
 			REDACTED
 		REDACTED
+	REDACTED
+
+		usagePatch := s.extractSSEUsagePatch(event)
+		if !eventChanged {
+			block := ""
+			if eventName != "" {
+				block = "event: " + eventName + "\n"
+		REDACTED
+			block += "data: " + dataLine + "\n\n"
+			return []string{blockREDACTED, dataLine, usagePatch, nil
 	REDACTED
 
 		newData, err := json.Marshal(event)
@@ -5222,7 +5730,7 @@ REDACTED
 				block = "event: " + eventName + "\n"
 		REDACTED
 			block += "data: " + dataLine + "\n\n"
-			return []string{blockREDACTED, dataLine, nil
+			return []string{blockREDACTED, dataLine, usagePatch, nil
 	REDACTED
 
 		block := ""
@@ -5230,7 +5738,7 @@ REDACTED
 			block = "event: " + eventName + "\n"
 	REDACTED
 		block += "data: " + string(newData) + "\n\n"
-		return []string{blockREDACTED, string(newData), nil
+		return []string{blockREDACTED, string(newData), usagePatch, nil
 REDACTED
 
 	for {
@@ -5268,7 +5776,7 @@ REDACTED
 					continue
 			REDACTED
 
-				outputBlocks, data, err := processSSEEvent(pendingEventLines)
+				outputBlocks, data, usagePatch, err := processSSEEvent(pendingEventLines)
 				pendingEventLines = pendingEventLines[:0]
 				if err != nil {
 					if clientDisconnected {
@@ -5291,7 +5799,9 @@ REDACTED
 							ms := int(time.Since(startTime).Milliseconds())
 							firstTokenMs = &ms
 					REDACTED
-						s.parseSSEUsage(data, usage)
+						if usagePatch != nil {
+							mergeSSEUsagePatch(usage, usagePatch)
+					REDACTED
 				REDACTED
 			REDACTED
 				continue
@@ -5322,64 +5832,163 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) parseSSEUsage(data string, usage *ClaudeUsage) {
-	// 解析message_start获取input tokens（标准Claude API格式）
-	var msgStart struct {
-		Type    string `json:"type"`
-		Message struct {
-			Usage ClaudeUsage `json:"usage"`
-	REDACTED `json:"message"`
-REDACTED
-	if json.Unmarshal([]byte(data), &msgStart) == nil && msgStart.Type == "message_start" {
-		usage.InputTokens = msgStart.Message.Usage.InputTokens
-		usage.CacheCreationInputTokens = msgStart.Message.Usage.CacheCreationInputTokens
-		usage.CacheReadInputTokens = msgStart.Message.Usage.CacheReadInputTokens
-
-		// 解析嵌套的 cache_creation 对象中的 5m/1h 明细
-		cc5m := gjson.Get(data, "message.usage.cache_creation.ephemeral_5m_input_tokens")
-		cc1h := gjson.Get(data, "message.usage.cache_creation.ephemeral_1h_input_tokens")
-		if cc5m.Exists() || cc1h.Exists() {
-			usage.CacheCreation5mTokens = int(cc5m.Int())
-			usage.CacheCreation1hTokens = int(cc1h.Int())
-	REDACTED
+	if usage == nil {
+		return
 REDACTED
 
-	// 解析message_delta获取tokens（兼容GLM等把所有usage放在delta中的API）
-	var msgDelta struct {
-		Type  string `json:"type"`
-		Usage struct {
-			InputTokens              int `json:"input_tokens"`
-			OutputTokens             int `json:"output_tokens"`
-			CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-			CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-	REDACTED `json:"usage"`
+	var event map[string]any
+	if err := json.Unmarshal([]byte(data), &event); err != nil {
+		return
 REDACTED
-	if json.Unmarshal([]byte(data), &msgDelta) == nil && msgDelta.Type == "message_delta" {
-		// message_delta 仅覆盖存在且非0的字段
-		// 避免覆盖 message_start 中已有的值（如 input_tokens）
-		// Claude API 的 message_delta 通常只包含 output_tokens
-		if msgDelta.Usage.InputTokens > 0 {
-			usage.InputTokens = msgDelta.Usage.InputTokens
-	REDACTED
-		if msgDelta.Usage.OutputTokens > 0 {
-			usage.OutputTokens = msgDelta.Usage.OutputTokens
-	REDACTED
-		if msgDelta.Usage.CacheCreationInputTokens > 0 {
-			usage.CacheCreationInputTokens = msgDelta.Usage.CacheCreationInputTokens
-	REDACTED
-		if msgDelta.Usage.CacheReadInputTokens > 0 {
-			usage.CacheReadInputTokens = msgDelta.Usage.CacheReadInputTokens
+
+	if patch := s.extractSSEUsagePatch(event); patch != nil {
+		mergeSSEUsagePatch(usage, patch)
+REDACTED
+REDACTED
+
+type sseUsagePatch struct {
+	inputTokens              int
+	hasInputTokens           bool
+	outputTokens             int
+	hasOutputTokens          bool
+	cacheCreationInputTokens int
+	hasCacheCreationInput    bool
+	cacheReadInputTokens     int
+	hasCacheReadInput        bool
+	cacheCreation5mTokens    int
+	hasCacheCreation5m       bool
+	cacheCreation1hTokens    int
+	hasCacheCreation1h       bool
+REDACTED
+
+func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePatch {
+	if len(event) == 0 {
+		return nil
+REDACTED
+
+	eventType, _ := event["type"].(string)
+	switch eventType {
+	case "message_start":
+		msg, _ := event["message"].(map[string]any)
+		usageObj, _ := msg["usage"].(map[string]any)
+		if len(usageObj) == 0 {
+			return nil
 	REDACTED
 
-		// 解析嵌套的 cache_creation 对象中的 5m/1h 明细
-		cc5m := gjson.Get(data, "usage.cache_creation.ephemeral_5m_input_tokens")
-		cc1h := gjson.Get(data, "usage.cache_creation.ephemeral_1h_input_tokens")
-		if cc5m.Exists() && cc5m.Int() > 0 {
-			usage.CacheCreation5mTokens = int(cc5m.Int())
+		patch := &sseUsagePatch{REDACTED
+		patch.hasInputTokens = true
+		if v, ok := parseSSEUsageInt(usageObj["input_tokens"]); ok {
+			patch.inputTokens = v
 	REDACTED
-		if cc1h.Exists() && cc1h.Int() > 0 {
-			usage.CacheCreation1hTokens = int(cc1h.Int())
+		patch.hasCacheCreationInput = true
+		if v, ok := parseSSEUsageInt(usageObj["cache_creation_input_tokens"]); ok {
+			patch.cacheCreationInputTokens = v
+	REDACTED
+		patch.hasCacheReadInput = true
+		if v, ok := parseSSEUsageInt(usageObj["cache_read_input_tokens"]); ok {
+			patch.cacheReadInputTokens = v
+	REDACTED
+		if cc, ok := usageObj["cache_creation"].(map[string]any); ok {
+			if v, exists := parseSSEUsageInt(cc["ephemeral_5m_input_tokens"]); exists {
+				patch.cacheCreation5mTokens = v
+				patch.hasCacheCreation5m = true
+		REDACTED
+			if v, exists := parseSSEUsageInt(cc["ephemeral_1h_input_tokens"]); exists {
+				patch.cacheCreation1hTokens = v
+				patch.hasCacheCreation1h = true
+		REDACTED
+	REDACTED
+		return patch
+
+	case "message_delta":
+		usageObj, _ := event["usage"].(map[string]any)
+		if len(usageObj) == 0 {
+			return nil
+	REDACTED
+
+		patch := &sseUsagePatch{REDACTED
+		if v, ok := parseSSEUsageInt(usageObj["input_tokens"]); ok && v > 0 {
+			patch.inputTokens = v
+			patch.hasInputTokens = true
+	REDACTED
+		if v, ok := parseSSEUsageInt(usageObj["output_tokens"]); ok && v > 0 {
+			patch.outputTokens = v
+			patch.hasOutputTokens = true
+	REDACTED
+		if v, ok := parseSSEUsageInt(usageObj["cache_creation_input_tokens"]); ok && v > 0 {
+			patch.cacheCreationInputTokens = v
+			patch.hasCacheCreationInput = true
+	REDACTED
+		if v, ok := parseSSEUsageInt(usageObj["cache_read_input_tokens"]); ok && v > 0 {
+			patch.cacheReadInputTokens = v
+			patch.hasCacheReadInput = true
+	REDACTED
+		if cc, ok := usageObj["cache_creation"].(map[string]any); ok {
+			if v, exists := parseSSEUsageInt(cc["ephemeral_5m_input_tokens"]); exists && v > 0 {
+				patch.cacheCreation5mTokens = v
+				patch.hasCacheCreation5m = true
+		REDACTED
+			if v, exists := parseSSEUsageInt(cc["ephemeral_1h_input_tokens"]); exists && v > 0 {
+				patch.cacheCreation1hTokens = v
+				patch.hasCacheCreation1h = true
+		REDACTED
+	REDACTED
+		return patch
+REDACTED
+
+	return nil
+REDACTED
+
+func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
+	if usage == nil || patch == nil {
+		return
+REDACTED
+
+	if patch.hasInputTokens {
+		usage.InputTokens = patch.inputTokens
+REDACTED
+	if patch.hasCacheCreationInput {
+		usage.CacheCreationInputTokens = patch.cacheCreationInputTokens
+REDACTED
+	if patch.hasCacheReadInput {
+		usage.CacheReadInputTokens = patch.cacheReadInputTokens
+REDACTED
+	if patch.hasOutputTokens {
+		usage.OutputTokens = patch.outputTokens
+REDACTED
+	if patch.hasCacheCreation5m {
+		usage.CacheCreation5mTokens = patch.cacheCreation5mTokens
+REDACTED
+	if patch.hasCacheCreation1h {
+		usage.CacheCreation1hTokens = patch.cacheCreation1hTokens
+REDACTED
+REDACTED
+
+func parseSSEUsageInt(value any) (int, bool) {
+	switch v := value.(type) {
+	case float64:
+		return int(v), true
+	case float32:
+		return int(v), true
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
+	case int32:
+		return int(v), true
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return int(i), true
+	REDACTED
+		if f, err := v.Float64(); err == nil {
+			return int(f), true
+	REDACTED
+	case string:
+		if parsed, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return parsed, true
 	REDACTED
 REDACTED
+	return 0, false
 REDACTED
 
 // applyCacheTTLOverride 将所有 cache creation tokens 归入指定的 TTL 类型。
@@ -5413,25 +6022,32 @@ REDACTED
 
 // rewriteCacheCreationJSON 在 JSON usage 对象中重写 cache_creation 嵌套对象的 TTL 分类。
 // usageObj 是 usage JSON 对象（map[string]any）。
-func rewriteCacheCreationJSON(usageObj map[string]any, target string) {
+func rewriteCacheCreationJSON(usageObj map[string]any, target string) bool {
 	ccObj, ok := usageObj["cache_creation"].(map[string]any)
 	if !ok {
-		return
+		return false
 REDACTED
-	v5m, _ := ccObj["ephemeral_5m_input_tokens"].(float64)
-	v1h, _ := ccObj["ephemeral_1h_input_tokens"].(float64)
+	v5m, _ := parseSSEUsageInt(ccObj["ephemeral_5m_input_tokens"])
+	v1h, _ := parseSSEUsageInt(ccObj["ephemeral_1h_input_tokens"])
 	total := v5m + v1h
 	if total == 0 {
-		return
+		return false
 REDACTED
 	switch target {
 	case "1h":
-		ccObj["ephemeral_1h_input_tokens"] = total
+		if v1h == total {
+			return false
+	REDACTED
+		ccObj["ephemeral_1h_input_tokens"] = float64(total)
 		ccObj["ephemeral_5m_input_tokens"] = float64(0)
 	default: // "5m"
-		ccObj["ephemeral_5m_input_tokens"] = total
+		if v5m == total {
+			return false
+	REDACTED
+		ccObj["ephemeral_5m_input_tokens"] = float64(total)
 		ccObj["ephemeral_1h_input_tokens"] = float64(0)
 REDACTED
+	return true
 REDACTED
 
 func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*ClaudeUsage, error) {
@@ -5500,7 +6116,7 @@ REDACTED
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 REDACTED
 
-	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.cfg.Security.ResponseHeaders)
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
@@ -6224,8 +6840,9 @@ REDACTED
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 
 		// 中转站不支持 count_tokens 端点时（404），返回 404 让客户端 fallback 到本地估算。
+		// 仅在错误消息明确指向 count_tokens endpoint 不存在时生效，避免误吞其他 404（如错误 base_url）。
 		// 返回 nil 避免 handler 层记录为错误，也不设置 ops 上游错误上下文。
-		if resp.StatusCode == http.StatusNotFound {
+		if isCountTokensUnsupported404(resp.StatusCode, respBody) {
 			logger.LegacyPrintf("service.gateway",
 				"[count_tokens] Upstream does not support count_tokens (404), returning 404: account=%d name=%s msg=%s",
 				account.ID, account.Name, truncateString(upstreamMsg, 512))
@@ -6268,7 +6885,7 @@ REDACTED
 		return fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
 REDACTED
 
-	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.cfg)
+	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
 	if contentType == "" {
 		contentType = "application/json"
@@ -6420,7 +7037,7 @@ REDACTED
 				if !strings.Contains(beta, claude.BetaTokenCounting) {
 					beta = beta + "," + claude.BetaTokenCounting
 			REDACTED
-				req.Header.Set("anthropic-beta", stripBetaTokens(beta, claude.DroppedBetas))
+				req.Header.Set("anthropic-beta", stripBetaTokensWithSet(beta, defaultDroppedBetasSet))
 		REDACTED
 	REDACTED
 REDACTED else if s.cfg != nil && s.cfg.Gateway.InjectBetaForAPIKey && req.Header.Get("anthropic-beta") == "" {

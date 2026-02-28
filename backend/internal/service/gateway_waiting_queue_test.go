@@ -105,12 +105,12 @@ func TestCalculateMaxWait_Scenarios(t *testing.T) {
 		concurrency int
 		expected    int
 REDACTED{
-		{5, 25REDACTED,   // 5 + 20
-		{10, 30REDACTED,  // 10 + 20
-		{1, 21REDACTED,   // 1 + 20
-		{0, 21REDACTED,   // min(1) + 20
-		{-1, 21REDACTED,  // min(1) + 20
-		{-10, 21REDACTED, // min(1) + 20
+		{5, 25REDACTED,    // 5 + 20
+		{10, 30REDACTED,   // 10 + 20
+		{1, 21REDACTED,    // 1 + 20
+		{0, 21REDACTED,    // min(1) + 20
+		{-1, 21REDACTED,   // min(1) + 20
+		{-10, 21REDACTED,  // min(1) + 20
 		{100, 120REDACTED, // 100 + 20
 REDACTED
 	for _, tt := range tests {

@@ -2,11 +2,12 @@ package handler
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"go.uber.org/zap"
 )
 
 // TempUnscheduler 用于 HandleFailoverError 中同账号重试耗尽后的临时封禁。
@@ -78,8 +79,12 @@ REDACTED
 	// 同账号重试：对 RetryableOnSameAccount 的临时性错误，先在同一账号上重试
 	if failoverErr.RetryableOnSameAccount && s.SameAccountRetryCount[accountID] < maxSameAccountRetries {
 		s.SameAccountRetryCount[accountID]++
-		log.Printf("Account %d: retryable error %d, same-account retry %d/%d",
-			accountID, failoverErr.StatusCode, s.SameAccountRetryCount[accountID], maxSameAccountRetries)
+		logger.FromContext(ctx).Warn("gateway.failover_same_account_retry",
+			zap.Int64("account_id", accountID),
+			zap.Int("upstream_status", failoverErr.StatusCode),
+			zap.Int("same_account_retry_count", s.SameAccountRetryCount[accountID]),
+			zap.Int("same_account_retry_max", maxSameAccountRetries),
+		)
 		if !sleepWithContext(ctx, sameAccountRetryDelay) {
 			return FailoverCanceled
 	REDACTED
@@ -101,8 +106,12 @@ REDACTED
 
 	// 递增切换计数
 	s.SwitchCount++
-	log.Printf("Account %d: upstream error %d, switching account %d/%d",
-		accountID, failoverErr.StatusCode, s.SwitchCount, s.MaxSwitches)
+	logger.FromContext(ctx).Warn("gateway.failover_switch_account",
+		zap.Int64("account_id", accountID),
+		zap.Int("upstream_status", failoverErr.StatusCode),
+		zap.Int("switch_count", s.SwitchCount),
+		zap.Int("max_switches", s.MaxSwitches),
+	)
 
 	// Antigravity 平台换号线性递增延时
 	if platform == service.PlatformAntigravity {
@@ -127,13 +136,18 @@ func (s *FailoverState) HandleSelectionExhausted(ctx context.Context) FailoverAc
 		s.LastFailoverErr.StatusCode == http.StatusServiceUnavailable &&
 		s.SwitchCount <= s.MaxSwitches {
 
-		log.Printf("Antigravity single-account 503 backoff: waiting %v before retry (attempt %d)",
-			singleAccountBackoffDelay, s.SwitchCount)
+		logger.FromContext(ctx).Warn("gateway.failover_single_account_backoff",
+			zap.Duration("backoff_delay", singleAccountBackoffDelay),
+			zap.Int("switch_count", s.SwitchCount),
+			zap.Int("max_switches", s.MaxSwitches),
+		)
 		if !sleepWithContext(ctx, singleAccountBackoffDelay) {
 			return FailoverCanceled
 	REDACTED
-		log.Printf("Antigravity single-account 503 retry: clearing failed accounts, retry %d/%d",
-			s.SwitchCount, s.MaxSwitches)
+		logger.FromContext(ctx).Warn("gateway.failover_single_account_retry",
+			zap.Int("switch_count", s.SwitchCount),
+			zap.Int("max_switches", s.MaxSwitches),
+		)
 		s.FailedAccountIDs = make(map[int64]struct{REDACTED)
 		return FailoverContinue
 REDACTED

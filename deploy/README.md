@@ -19,7 +19,10 @@ This directory contains files for deploying Sub2API on Linux servers.
 | `.env.example` | Docker environment variables template |
 | `DOCKER.md` | Docker Hub documentation |
 | `install.sh` | One-click binary installation script |
+| `install-datamanagementd.sh` | datamanagementd 一键安装脚本 |
 | `sub2api.service` | Systemd service unit file |
+| `sub2api-datamanagementd.service` | datamanagementd systemd service unit file |
+| `DATAMANAGEMENTD_CN.md` | datamanagementd 部署与联动说明（中文） |
 | `config.example.yaml` | Example configuration file |
 
 ---
@@ -144,6 +147,14 @@ SELECT
   (SELECT COUNT(*) FROM old_pairs)           AS old_pair_count,
   (SELECT COUNT(*) FROM user_allowed_groups) AS new_pair_count;
 ```
+
+### datamanagementd（数据管理）联动
+
+如需启用管理后台“数据管理”功能，请额外部署宿主机 `datamanagementd`：
+
+- 主进程固定探测 `/tmp/sub2api-datamanagement.sock`
+- Docker 场景下需把宿主机 Socket 挂载到容器内同路径
+- 详细步骤见：`deploy/DATAMANAGEMENTD_CN.md`
 
 ### Commands
 
@@ -575,7 +586,7 @@ gateway:
         name: "Profile 2"
         cipher_suites: [4866, 4867, 4865, 49199, 49195, 49200, 49196]
         curves: [29, 23, 24]
-        point_formats: [0]
+        point_formats: 0
 
       # Another custom profile
       profile_3:

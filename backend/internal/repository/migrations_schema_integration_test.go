@@ -42,6 +42,8 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// usage_logs: billing_type used by filters/stats
 	requireColumn(t, tx, "usage_logs", "billing_type", "smallint", 0, false)
+	requireColumn(t, tx, "usage_logs", "request_type", "smallint", 0, false)
+	requireColumn(t, tx, "usage_logs", "openai_ws_mode", "boolean", 0, false)
 
 	// settings table should exist
 	var settingsRegclass sql.NullString

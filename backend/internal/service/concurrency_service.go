@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
-	"fmt"
+	"encoding/binary"
+	"os"
+	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -18,6 +20,7 @@ type ConcurrencyCache interface {
 	AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error)
 	ReleaseAccountSlot(ctx context.Context, accountID int64, requestID string) error
 	GetAccountConcurrency(ctx context.Context, accountID int64) (int, error)
+	GetAccountConcurrencyBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error)
 
 	// 账号等待队列（账号级）
 	IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error)
@@ -42,15 +45,25 @@ type ConcurrencyCache interface {
 	CleanupExpiredAccountSlots(ctx context.Context, accountID int64) error
 REDACTED
 
-// generateRequestID generates a unique request ID for concurrency slot tracking
-// Uses 8 random bytes (16 hex chars) for uniqueness
-func generateRequestID() string {
+var (
+	requestIDPrefix  = initRequestIDPrefix()
+	requestIDCounter atomic.Uint64
+)
+
+func initRequestIDPrefix() string {
 	b := make([]byte, 8)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback to nanosecond timestamp (extremely rare case)
-		return fmt.Sprintf("%x", time.Now().UnixNano())
+	if _, err := rand.Read(b); err == nil {
+		return "r" + strconv.FormatUint(binary.BigEndian.Uint64(b), 36)
 REDACTED
-	return hex.EncodeToString(b)
+	fallback := uint64(time.Now().UnixNano()) ^ (uint64(os.Getpid()) << 16)
+	return "r" + strconv.FormatUint(fallback, 36)
+REDACTED
+
+// generateRequestID generates a unique request ID for concurrency slot tracking.
+// Format: {process_random_prefixREDACTED-{base36_counterREDACTED
+func generateRequestID() string {
+	seq := requestIDCounter.Add(1)
+	return requestIDPrefix + "-" + strconv.FormatUint(seq, 36)
 REDACTED
 
 const (
@@ -321,16 +334,15 @@ REDACTED
 // GetAccountConcurrencyBatch gets current concurrency counts for multiple accounts
 // Returns a map of accountID -> current concurrency count
 func (s *ConcurrencyService) GetAccountConcurrencyBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error) {
-	result := make(map[int64]int)
-
-	for _, accountID := range accountIDs {
-		count, err := s.cache.GetAccountConcurrency(ctx, accountID)
-		if err != nil {
-			// If key doesn't exist in Redis, count is 0
-			count = 0
-	REDACTED
-		result[accountID] = count
+	if len(accountIDs) == 0 {
+		return map[int64]int{REDACTED, nil
 REDACTED
-
-	return result, nil
+	if s.cache == nil {
+		result := make(map[int64]int, len(accountIDs))
+		for _, accountID := range accountIDs {
+			result[accountID] = 0
+	REDACTED
+		return result, nil
+REDACTED
+	return s.cache.GetAccountConcurrencyBatch(ctx, accountIDs)
 REDACTED

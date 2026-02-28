@@ -50,6 +50,23 @@ CREATE TABLE IF NOT EXISTS atlas_schema_revisions (
 // 任何稳定的 int64 值都可以，只要不与同一数据库中的其他锁冲突即可。
 const migrationsAdvisoryLockID int64 = 694208311321144027
 const migrationsLockRetryInterval = 500 * time.Millisecond
+const nonTransactionalMigrationSuffix = "_notx.sql"
+
+type migrationChecksumCompatibilityRule struct {
+	fileChecksum       string
+	acceptedDBChecksum map[string]struct{REDACTED
+REDACTED
+
+// migrationChecksumCompatibilityRules 仅用于兼容历史上误修改过的迁移文件 checksum。
+// 规则必须同时匹配「迁移名 + 当前文件 checksum + 历史库 checksum」才会放行，避免放宽全局校验。
+var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibilityRule{
+	"054_drop_legacy_cache_columns.sql": {
+		fileChecksum: "82de761156e03876653e7a6a4eee883cd927847036f779b0b9f34c42a8af7a7d",
+		acceptedDBChecksum: map[string]struct{REDACTED{
+			"182c193f3359946cf094090cd9e57d5c3fd9abaffbc1e8fc378646b8a6fa12b4": {REDACTED,
+	REDACTED,
+REDACTED,
+REDACTED
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。
 //
@@ -147,6 +164,10 @@ REDACTED
 		if rowErr == nil {
 			// 迁移已应用，验证校验和是否匹配
 			if existing != checksum {
+				// 兼容特定历史误改场景（仅白名单规则），其余仍保持严格不可变约束。
+				if isMigrationChecksumCompatible(name, existing, checksum) {
+					continue
+			REDACTED
 				// 校验和不匹配意味着迁移文件在应用后被修改，这是危险的。
 				// 正确的做法是创建新的迁移文件来进行变更。
 				return fmt.Errorf(
@@ -165,8 +186,34 @@ REDACTED
 			return fmt.Errorf("check migration %s: %w", name, rowErr)
 	REDACTED
 
-		// 迁移未应用，在事务中执行。
-		// 使用事务确保迁移的原子性：要么完全成功，要么完全回滚。
+		nonTx, err := validateMigrationExecutionMode(name, content)
+		if err != nil {
+			return fmt.Errorf("validate migration %s: %w", name, err)
+	REDACTED
+
+		if nonTx {
+			// *_notx.sql：用于 CREATE/DROP INDEX CONCURRENTLY 场景，必须非事务执行。
+			// 逐条语句执行，避免将多条 CONCURRENTLY 语句放入同一个隐式事务块。
+			statements := splitSQLStatements(content)
+			for i, stmt := range statements {
+				trimmed := strings.TrimSpace(stmt)
+				if trimmed == "" {
+					continue
+			REDACTED
+				if stripSQLLineComment(trimmed) == "" {
+					continue
+			REDACTED
+				if _, err := db.ExecContext(ctx, trimmed); err != nil {
+					return fmt.Errorf("apply migration %s (non-tx statement %d): %w", name, i+1, err)
+			REDACTED
+		REDACTED
+			if _, err := db.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2)", name, checksum); err != nil {
+				return fmt.Errorf("record migration %s (non-tx): %w", name, err)
+		REDACTED
+			continue
+	REDACTED
+
+		// 默认迁移在事务中执行，确保原子性：要么完全成功，要么完全回滚。
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("begin migration %s: %w", name, err)
@@ -266,6 +313,84 @@ REDACTED
 	hash := hex.EncodeToString(sum[:])
 	version := strings.TrimSuffix(name, ".sql")
 	return version, version, hash, nil
+REDACTED
+
+func isMigrationChecksumCompatible(name, dbChecksum, fileChecksum string) bool {
+	rule, ok := migrationChecksumCompatibilityRules[name]
+	if !ok {
+		return false
+REDACTED
+	if rule.fileChecksum != fileChecksum {
+		return false
+REDACTED
+	_, ok = rule.acceptedDBChecksum[dbChecksum]
+	return ok
+REDACTED
+
+func validateMigrationExecutionMode(name, content string) (bool, error) {
+	normalizedName := strings.ToLower(strings.TrimSpace(name))
+	upperContent := strings.ToUpper(content)
+	nonTx := strings.HasSuffix(normalizedName, nonTransactionalMigrationSuffix)
+
+	if !nonTx {
+		if strings.Contains(upperContent, "CONCURRENTLY") {
+			return false, errors.New("CONCURRENTLY statements must be placed in *_notx.sql migrations")
+	REDACTED
+		return false, nil
+REDACTED
+
+	if strings.Contains(upperContent, "BEGIN") || strings.Contains(upperContent, "COMMIT") || strings.Contains(upperContent, "ROLLBACK") {
+		return false, errors.New("*_notx.sql must not contain transaction control statements (BEGIN/COMMIT/ROLLBACK)")
+REDACTED
+
+	statements := splitSQLStatements(content)
+	for _, stmt := range statements {
+		normalizedStmt := strings.ToUpper(stripSQLLineComment(strings.TrimSpace(stmt)))
+		if normalizedStmt == "" {
+			continue
+	REDACTED
+
+		if strings.Contains(normalizedStmt, "CONCURRENTLY") {
+			isCreateIndex := strings.Contains(normalizedStmt, "CREATE") && strings.Contains(normalizedStmt, "INDEX")
+			isDropIndex := strings.Contains(normalizedStmt, "DROP") && strings.Contains(normalizedStmt, "INDEX")
+			if !isCreateIndex && !isDropIndex {
+				return false, errors.New("*_notx.sql currently only supports CREATE/DROP INDEX CONCURRENTLY statements")
+		REDACTED
+			if isCreateIndex && !strings.Contains(normalizedStmt, "IF NOT EXISTS") {
+				return false, errors.New("CREATE INDEX CONCURRENTLY in *_notx.sql must include IF NOT EXISTS for idempotency")
+		REDACTED
+			if isDropIndex && !strings.Contains(normalizedStmt, "IF EXISTS") {
+				return false, errors.New("DROP INDEX CONCURRENTLY in *_notx.sql must include IF EXISTS for idempotency")
+		REDACTED
+			continue
+	REDACTED
+
+		return false, errors.New("*_notx.sql must not mix non-CONCURRENTLY SQL statements")
+REDACTED
+
+	return true, nil
+REDACTED
+
+func splitSQLStatements(content string) []string {
+	parts := strings.Split(content, ";")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			continue
+	REDACTED
+		out = append(out, part)
+REDACTED
+	return out
+REDACTED
+
+func stripSQLLineComment(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		if idx := strings.Index(line, "--"); idx >= 0 {
+			lines[i] = line[:idx]
+	REDACTED
+REDACTED
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 REDACTED
 
 // pgAdvisoryLock 获取 PostgreSQL Advisory Lock。

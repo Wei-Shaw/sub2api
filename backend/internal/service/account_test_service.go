@@ -598,9 +598,102 @@ REDACTED
 	return sec
 REDACTED
 
+// testSoraAPIKeyAccountConnection 测试 Sora apikey 类型账号的连通性。
+// 向上游 base_url 发送轻量级 prompt-enhance 请求验证连通性和 API Key 有效性。
+func (s *AccountTestService) testSoraAPIKeyAccountConnection(c *gin.Context, account *Account) error {
+	ctx := c.Request.Context()
+
+	apiKey := account.GetCredential("api_key")
+	if apiKey == "" {
+		return s.sendErrorAndEnd(c, "Sora apikey 账号缺少 api_key 凭证")
+REDACTED
+
+	baseURL := account.GetBaseURL()
+	if baseURL == "" {
+		return s.sendErrorAndEnd(c, "Sora apikey 账号缺少 base_url")
+REDACTED
+
+	// 验证 base_url 格式
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("base_url 无效: %s", err.Error()))
+REDACTED
+	upstreamURL := strings.TrimSuffix(normalizedBaseURL, "/") + "/sora/v1/chat/completions"
+
+	// 设置 SSE 头
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	if wait, ok := s.acquireSoraTestPermit(account.ID); !ok {
+		msg := fmt.Sprintf("Sora 账号测试过于频繁，请 %d 秒后重试", ceilSeconds(wait))
+		return s.sendErrorAndEnd(c, msg)
+REDACTED
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: "sora-upstream"REDACTED)
+
+	// 构建轻量级 prompt-enhance 请求作为连通性测试
+	testPayload := map[string]any{
+		"model":    "prompt-enhance-short-10s",
+		"messages": []map[string]string{{"role": "user", "content": "test"REDACTEDREDACTED,
+		"stream":   false,
+REDACTED
+	payloadBytes, _ := json.Marshal(testPayload)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "构建测试请求失败")
+REDACTED
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	// 获取代理 URL
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("上游连接失败: %s", err.Error()))
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+
+	if resp.StatusCode == http.StatusOK {
+		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("上游连接成功 (%s)", upstreamURL)REDACTED)
+		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("API Key 有效 (HTTP %d)", resp.StatusCode)REDACTED)
+		s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
+		return nil
+REDACTED
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("上游认证失败 (HTTP %d)，请检查 API Key 是否正确", resp.StatusCode))
+REDACTED
+
+	// 其他错误但能连通（如 400 参数错误）也算连通性测试通过
+	if resp.StatusCode == http.StatusBadRequest {
+		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("上游连接成功 (%s)", upstreamURL)REDACTED)
+		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("API Key 有效（上游返回 %d，参数校验错误属正常）", resp.StatusCode)REDACTED)
+		s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
+		return nil
+REDACTED
+
+	return s.sendErrorAndEnd(c, fmt.Sprintf("上游返回异常 HTTP %d: %s", resp.StatusCode, truncateSoraErrorBody(respBody, 256)))
+REDACTED
+
 // testSoraAccountConnection 测试 Sora 账号的连接
-// 调用 /backend/me 接口验证 access_token 有效性（不需要 Sentinel Token）
+// OAuth 类型：调用 /backend/me 接口验证 access_token 有效性
+// APIKey 类型：向上游 base_url 发送轻量级 prompt-enhance 请求验证连通性
 func (s *AccountTestService) testSoraAccountConnection(c *gin.Context, account *Account) error {
+	// apikey 类型走独立测试流程
+	if account.Type == AccountTypeAPIKey {
+		return s.testSoraAPIKeyAccountConnection(c, account)
+REDACTED
+
 	ctx := c.Request.Context()
 	recorder := &soraProbeRecorder{REDACTED
 

@@ -4,7 +4,7 @@
  */
 
 import { apiClient REDACTED from '../client'
-import type { AdminUsageLog, UsageQueryParams, PaginatedResponse REDACTED from '@/types'
+import type { AdminUsageLog, UsageQueryParams, PaginatedResponse, UsageRequestType REDACTED from '@/types'
 
 // ==================== Types ====================
 
@@ -39,6 +39,7 @@ export interface UsageCleanupFilters {
   account_id?: number
   group_id?: number
   model?: string | null
+  request_type?: UsageRequestType | null
   stream?: boolean | null
   billing_type?: number | null
 REDACTED
@@ -66,6 +67,7 @@ export interface CreateUsageCleanupTaskRequest {
   account_id?: number
   group_id?: number
   model?: string | null
+  request_type?: UsageRequestType | null
   stream?: boolean | null
   billing_type?: number | null
   timezone?: string
@@ -104,6 +106,7 @@ export async function getStats(params: {
   account_id?: number
   group_id?: number
   model?: string
+  request_type?: UsageRequestType
   stream?: boolean
   period?: string
   start_date?: string

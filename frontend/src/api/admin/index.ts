@@ -20,6 +20,7 @@ import antigravityAPI from './antigravity'
 import userAttributesAPI from './userAttributes'
 import opsAPI from './ops'
 import errorPassthroughAPI from './errorPassthrough'
+import dataManagementAPI from './dataManagement'
 
 /**
  * Unified admin API object for convenient access
@@ -41,7 +42,8 @@ export const adminAPI = {
   antigravity: antigravityAPI,
   userAttributes: userAttributesAPI,
   ops: opsAPI,
-  errorPassthrough: errorPassthroughAPI
+  errorPassthrough: errorPassthroughAPI,
+  dataManagement: dataManagementAPI
 REDACTED
 
 export {
@@ -61,7 +63,8 @@ export {
   antigravityAPI,
   userAttributesAPI,
   opsAPI,
-  errorPassthroughAPI
+  errorPassthroughAPI,
+  dataManagementAPI
 REDACTED
 
 export default adminAPI
@@ -69,3 +72,4 @@ export default adminAPI
 // Re-export types used by components
 export type { BalanceHistoryItem REDACTED from './users'
 export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest REDACTED from './errorPassthrough'
+export type { BackupAgentHealth, DataManagementConfig REDACTED from './dataManagement'

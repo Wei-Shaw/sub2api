@@ -54,6 +54,10 @@ REDACTED
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		if isAPIRoutePath(c) {
+			c.Next()
+			return
+	REDACTED
 
 		if cfg.Enabled {
 			// Generate nonce for this request
@@ -71,6 +75,18 @@ REDACTED
 	REDACTED
 		c.Next()
 REDACTED
+REDACTED
+
+func isAPIRoutePath(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+REDACTED
+	path := c.Request.URL.Path
+	return strings.HasPrefix(path, "/v1/") ||
+		strings.HasPrefix(path, "/v1beta/") ||
+		strings.HasPrefix(path, "/antigravity/") ||
+		strings.HasPrefix(path, "/sora/") ||
+		strings.HasPrefix(path, "/responses")
 REDACTED
 
 // enhanceCSPPolicy ensures the CSP policy includes nonce support and Cloudflare Insights domain.

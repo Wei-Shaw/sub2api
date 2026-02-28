@@ -175,13 +175,13 @@
       <!-- Account Type Selection (Sora) -->
       <div v-if="form.platform === 'sora'">
         <label class="input-label">{{ t('admin.accounts.accountType') REDACTEDREDACTED</label>
-        <div class="mt-2 grid grid-cols-1 gap-3" data-tour="account-form-type">
+        <div class="mt-2 grid grid-cols-2 gap-3" data-tour="account-form-type">
           <button
             type="button"
-            @click="accountCategory = 'oauth-based'"
+            @click="soraAccountType = 'oauth'; accountCategory = 'oauth-based'; addMethod = 'oauth'"
             :class="[
               'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-              accountCategory === 'oauth-based'
+              soraAccountType === 'oauth'
                 ? 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'
                 : 'border-gray-200 hover:border-rose-300 dark:border-dark-600 dark:hover:border-rose-700'
             ]"
@@ -189,7 +189,7 @@
             <div
               :class="[
                 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                accountCategory === 'oauth-based'
+                soraAccountType === 'oauth'
                   ? 'bg-rose-500 text-white'
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
               ]"
@@ -199,6 +199,31 @@
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">OAuth</span>
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.chatgptOauth') REDACTEDREDACTED</span>
+            </div>
+          </button>
+          <button
+            type="button"
+            @click="soraAccountType = 'apikey'; accountCategory = 'apikey'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              soraAccountType === 'apikey'
+                ? 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'
+                : 'border-gray-200 hover:border-rose-300 dark:border-dark-600 dark:hover:border-rose-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                soraAccountType === 'apikey'
+                  ? 'bg-rose-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="link" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.types.soraApiKey') REDACTEDREDACTED</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.soraApiKeyHint') REDACTEDREDACTED</span>
             </div>
           </button>
         </div>
@@ -879,14 +904,14 @@
             type="text"
             class="input"
             :placeholder="
-              form.platform === 'openai'
+              form.platform === 'openai' || form.platform === 'sora'
                 ? 'https://api.openai.com'
                 : form.platform === 'gemini'
                   ? 'https://generativelanguage.googleapis.com'
                   : 'https://api.anthropic.com'
             "
           />
-          <p class="input-hint">{{ baseUrlHint REDACTEDREDACTED</p>
+          <p class="input-hint">{{ form.platform === 'sora' ? t('admin.accounts.soraUpstreamBaseUrlHint') : baseUrlHint REDACTEDREDACTED</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKeyRequired') REDACTEDREDACTED</label>
@@ -1669,6 +1694,27 @@
         </div>
       </div>
 
+      <!-- OpenAI WS Mode 三态（off/shared/dedicated） -->
+      <div
+        v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.wsMode') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.wsModeDesc') REDACTEDREDACTED
+            </p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.wsModeConcurrencyHint') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="w-52">
+            <Select v-model="openaiResponsesWebSocketV2Mode" :options="openAIWSModeOptions" />
+          </div>
+        </div>
+      </div>
+
       <!-- Anthropic API Key 自动透传开关 -->
       <div
         v-if="form.platform === 'anthropic' && accountCategory === 'apikey'"
@@ -2173,6 +2219,7 @@ import type {
 REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
@@ -2180,6 +2227,13 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import { applyInterceptWarmup REDACTED from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput REDACTED from '@/utils/format'
 import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
+import {
+  OPENAI_WS_MODE_DEDICATED,
+  OPENAI_WS_MODE_OFF,
+  OPENAI_WS_MODE_SHARED,
+  isOpenAIWSModeEnabled,
+  type OpenAIWSMode
+REDACTED from '@/utils/openaiWsMode'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
 
 // Type for exposed OAuthAuthorizationFlow component
@@ -2301,10 +2355,13 @@ const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
+const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
+const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const antigravityAccountType = ref<'oauth' | 'upstream'>('oauth') // For antigravity: oauth or upstream
+const soraAccountType = ref<'oauth' | 'apikey'>('oauth') // For sora: oauth or apikey (upstream)
 const upstreamBaseUrl = ref('') // For upstream type: base URL
 const upstreamApiKey = ref('') // For upstream type: API key
 const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
@@ -2356,6 +2413,28 @@ const geminiSelectedTier = computed(() => {
       return geminiTierGcp.value
     default:
       return geminiTierAIStudio.value
+  REDACTED
+REDACTED)
+
+const openAIWSModeOptions = computed(() => [
+  { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') REDACTED,
+  { value: OPENAI_WS_MODE_SHARED, label: t('admin.accounts.openai.wsModeShared') REDACTED,
+  { value: OPENAI_WS_MODE_DEDICATED, label: t('admin.accounts.openai.wsModeDedicated') REDACTED
+])
+
+const openaiResponsesWebSocketV2Mode = computed({
+  get: () => {
+    if (form.platform === 'openai' && accountCategory.value === 'apikey') {
+      return openaiAPIKeyResponsesWebSocketV2Mode.value
+    REDACTED
+    return openaiOAuthResponsesWebSocketV2Mode.value
+  REDACTED,
+  set: (mode: OpenAIWSMode) => {
+    if (form.platform === 'openai' && accountCategory.value === 'apikey') {
+      openaiAPIKeyResponsesWebSocketV2Mode.value = mode
+      return
+    REDACTED
+    openaiOAuthResponsesWebSocketV2Mode.value = mode
   REDACTED
 REDACTED)
 
@@ -2490,12 +2569,17 @@ watch(
   REDACTED
 )
 
-// Sync form.type based on accountCategory, addMethod, and antigravityAccountType
+// Sync form.type based on accountCategory, addMethod, and platform-specific type
 watch(
-  [accountCategory, addMethod, antigravityAccountType],
-  ([category, method, agType]) => {
+  [accountCategory, addMethod, antigravityAccountType, soraAccountType],
+  ([category, method, agType, soraType]) => {
     // Antigravity upstream 类型（实际创建为 apikey）
     if (form.platform === 'antigravity' && agType === 'upstream') {
+      form.type = 'apikey'
+      return
+    REDACTED
+    // Sora apikey 类型（上游透传）
+    if (form.platform === 'sora' && soraType === 'apikey') {
       form.type = 'apikey'
       return
     REDACTED
@@ -2541,12 +2625,16 @@ watch(
       interceptWarmupRequests.value = false
     REDACTED
     if (newPlatform === 'sora') {
+      // 默认 OAuth，但允许用户选择 API Key
       accountCategory.value = 'oauth-based'
       addMethod.value = 'oauth'
       form.type = 'oauth'
+      soraAccountType.value = 'oauth'
     REDACTED
     if (newPlatform !== 'openai') {
       openaiPassthroughEnabled.value = false
+      openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
+      openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
     REDACTED
     if (newPlatform !== 'anthropic') {
@@ -2918,6 +3006,8 @@ const resetForm = () => {
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
+  openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
+  openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   anthropicPassthroughEnabled.value = false
   // Reset quota control state
@@ -2962,6 +3052,13 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   REDACTED
 
   const extra: Record<string, unknown> = { ...(base || {REDACTED) REDACTED
+  extra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
+  extra.openai_apikey_responses_websockets_v2_mode = openaiAPIKeyResponsesWebSocketV2Mode.value
+  extra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
+  extra.openai_apikey_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiAPIKeyResponsesWebSocketV2Mode.value)
+  // 清理兼容旧键，统一改用分类型开关。
+  delete extra.responses_websockets_v2_enabled
+  delete extra.openai_ws_enabled
   if (openaiPassthroughEnabled.value) {
     extra.openai_passthrough = true
   REDACTED else {
@@ -3007,6 +3104,12 @@ const buildSoraExtra = (
   delete extra.openai_passthrough
   delete extra.openai_oauth_passthrough
   delete extra.codex_cli_only
+  delete extra.openai_oauth_responses_websockets_v2_mode
+  delete extra.openai_apikey_responses_websockets_v2_mode
+  delete extra.openai_oauth_responses_websockets_v2_enabled
+  delete extra.openai_apikey_responses_websockets_v2_enabled
+  delete extra.responses_websockets_v2_enabled
+  delete extra.openai_ws_enabled
   return Object.keys(extra).length > 0 ? extra : undefined
 REDACTED
 
@@ -3102,9 +3205,22 @@ const handleSubmit = async () => {
     return
   REDACTED
 
+  // Sora apikey 账号 base_url 必填 + scheme 校验
+  if (form.platform === 'sora') {
+    const soraBaseUrl = apiKeyBaseUrl.value.trim()
+    if (!soraBaseUrl) {
+      appStore.showError(t('admin.accounts.soraBaseUrlRequired'))
+      return
+    REDACTED
+    if (!soraBaseUrl.startsWith('http://') && !soraBaseUrl.startsWith('https://')) {
+      appStore.showError(t('admin.accounts.soraBaseUrlInvalidScheme'))
+      return
+    REDACTED
+  REDACTED
+
   // Determine default base URL based on platform
   const defaultBaseUrl =
-    (form.platform === 'openai' || form.platform === 'sora')
+    form.platform === 'openai'
       ? 'https://api.openai.com'
       : form.platform === 'gemini'
         ? 'https://generativelanguage.googleapis.com'
@@ -3358,6 +3474,7 @@ const handleOpenAIExchange = async (authCode: string) => {
       const soraCredentials = {
         access_token: credentials.access_token,
         refresh_token: credentials.refresh_token,
+        client_id: credentials.client_id,
         expires_at: credentials.expires_at
       REDACTED
 
@@ -3462,6 +3579,7 @@ const handleOpenAIValidateRT = async (refreshTokenInput: string) => {
           const soraCredentials = {
             access_token: credentials.access_token,
             refresh_token: credentials.refresh_token,
+            client_id: credentials.client_id,
             expires_at: credentials.expires_at
           REDACTED
           const soraName = shouldCreateOpenAI ? `${accountNameREDACTED (Sora)` : accountName

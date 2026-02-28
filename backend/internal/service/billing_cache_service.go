@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"golang.org/x/sync/singleflight"
 )
 
 // 错误定义
@@ -58,6 +60,7 @@ const (
 	cacheWriteBufferSize      = 1000            // 任务队列缓冲大小
 	cacheWriteTimeout         = 2 * time.Second // 单个写入操作超时
 	cacheWriteDropLogInterval = 5 * time.Second // 丢弃日志节流间隔
+	balanceLoadTimeout        = 3 * time.Second
 )
 
 // cacheWriteTask 缓存写入任务
@@ -82,6 +85,9 @@ type BillingCacheService struct {
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
 	cacheWriteStopOnce sync.Once
+	cacheWriteMu       sync.RWMutex
+	stopped            atomic.Bool
+	balanceLoadSF      singleflight.Group
 	// 丢弃日志节流计数器（减少高负载下日志噪音）
 	cacheWriteDropFullCount     uint64
 	cacheWriteDropFullLastLog   int64
@@ -105,35 +111,52 @@ REDACTED
 // Stop 关闭缓存写入工作池
 func (s *BillingCacheService) Stop() {
 	s.cacheWriteStopOnce.Do(func() {
-		if s.cacheWriteChan == nil {
+		s.stopped.Store(true)
+
+		s.cacheWriteMu.Lock()
+		ch := s.cacheWriteChan
+		if ch != nil {
+			close(ch)
+	REDACTED
+		s.cacheWriteMu.Unlock()
+
+		if ch == nil {
 			return
 	REDACTED
-		close(s.cacheWriteChan)
 		s.cacheWriteWg.Wait()
-		s.cacheWriteChan = nil
+
+		s.cacheWriteMu.Lock()
+		if s.cacheWriteChan == ch {
+			s.cacheWriteChan = nil
+	REDACTED
+		s.cacheWriteMu.Unlock()
 REDACTED)
 REDACTED
 
 func (s *BillingCacheService) startCacheWriteWorkers() {
-	s.cacheWriteChan = make(chan cacheWriteTask, cacheWriteBufferSize)
+	ch := make(chan cacheWriteTask, cacheWriteBufferSize)
+	s.cacheWriteChan = ch
 	for i := 0; i < cacheWriteWorkerCount; i++ {
 		s.cacheWriteWg.Add(1)
-		go s.cacheWriteWorker()
+		go s.cacheWriteWorker(ch)
 REDACTED
 REDACTED
 
 // enqueueCacheWrite 尝试将任务入队，队列满时返回 false（并记录告警）。
 func (s *BillingCacheService) enqueueCacheWrite(task cacheWriteTask) (enqueued bool) {
-	if s.cacheWriteChan == nil {
+	if s.stopped.Load() {
+		s.logCacheWriteDrop(task, "closed")
 		return false
 REDACTED
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			// 队列已关闭时可能触发 panic，记录后静默失败。
-			s.logCacheWriteDrop(task, "closed")
-			enqueued = false
-	REDACTED
-REDACTED()
+
+	s.cacheWriteMu.RLock()
+	defer s.cacheWriteMu.RUnlock()
+
+	if s.cacheWriteChan == nil {
+		s.logCacheWriteDrop(task, "closed")
+		return false
+REDACTED
+
 	select {
 	case s.cacheWriteChan <- task:
 		return true
@@ -144,9 +167,9 @@ REDACTED()
 REDACTED
 REDACTED
 
-func (s *BillingCacheService) cacheWriteWorker() {
+func (s *BillingCacheService) cacheWriteWorker(ch <-chan cacheWriteTask) {
 	defer s.cacheWriteWg.Done()
-	for task := range s.cacheWriteChan {
+	for task := range ch {
 		ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 		switch task.kind {
 		case cacheWriteSetBalance:
@@ -243,19 +266,31 @@ REDACTED
 		return balance, nil
 REDACTED
 
-	// 缓存未命中，从数据库读取
-	balance, err = s.getUserBalanceFromDB(ctx, userID)
+	// 缓存未命中：singleflight 合并同一 userID 的并发回源请求。
+	value, err, _ := s.balanceLoadSF.Do(strconv.FormatInt(userID, 10), func() (any, error) {
+		loadCtx, cancel := context.WithTimeout(context.Background(), balanceLoadTimeout)
+		defer cancel()
+
+		balance, err := s.getUserBalanceFromDB(loadCtx, userID)
+		if err != nil {
+			return nil, err
+	REDACTED
+
+		// 异步建立缓存
+		_ = s.enqueueCacheWrite(cacheWriteTask{
+			kind:    cacheWriteSetBalance,
+			userID:  userID,
+			balance: balance,
+	REDACTED)
+		return balance, nil
+REDACTED)
 	if err != nil {
 		return 0, err
 REDACTED
-
-	// 异步建立缓存
-	_ = s.enqueueCacheWrite(cacheWriteTask{
-		kind:    cacheWriteSetBalance,
-		userID:  userID,
-		balance: balance,
-REDACTED)
-
+	balance, ok := value.(float64)
+	if !ok {
+		return 0, fmt.Errorf("unexpected balance type: %T", value)
+REDACTED
 	return balance, nil
 REDACTED
 

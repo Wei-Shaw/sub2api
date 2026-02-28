@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"golang.org/x/sync/errgroup"
 )
 
 type UsageLogRepository interface {
@@ -33,8 +35,8 @@ type UsageLogRepository interface {
 
 	// Admin dashboard stats
 	GetDashboardStats(ctx context.Context) (*usagestats.DashboardStats, error)
-	GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID, accountID, groupID int64, model string, stream *bool, billingType *int8) ([]usagestats.TrendDataPoint, error)
-	GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, stream *bool, billingType *int8) ([]usagestats.ModelStat, error)
+	GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8) ([]usagestats.TrendDataPoint, error)
+	GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8) ([]usagestats.ModelStat, error)
 	GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, error)
 	GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.UserUsageTrendPoint, error)
 	GetBatchUserUsageStats(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]*usagestats.BatchUserUsageStats, error)
@@ -60,6 +62,10 @@ type UsageLogRepository interface {
 	GetAccountStatsAggregated(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error)
 	GetModelStatsAggregated(ctx context.Context, modelName string, startTime, endTime time.Time) (*usagestats.UsageStats, error)
 	GetDailyStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) ([]map[string]any, error)
+REDACTED
+
+type accountWindowStatsBatchReader interface {
+	GetAccountWindowStatsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*usagestats.AccountStats, error)
 REDACTED
 
 // apiUsageCache 缓存从 Anthropic API 获取的使用率数据（utilization, resets_at）
@@ -297,7 +303,7 @@ REDACTED
 REDACTED
 
 	dayStart := geminiDailyWindowStart(now)
-	stats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, dayStart, now, 0, 0, account.ID, 0, nil, nil)
+	stats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, dayStart, now, 0, 0, account.ID, 0, nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("get gemini usage stats failed: %w", err)
 REDACTED
@@ -319,7 +325,7 @@ REDACTED
 	// Minute window (RPM) - fixed-window approximation: current minute [truncate(now), truncate(now)+1m)
 	minuteStart := now.Truncate(time.Minute)
 	minuteResetAt := minuteStart.Add(time.Minute)
-	minuteStats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, minuteStart, now, 0, 0, account.ID, 0, nil, nil)
+	minuteStats, err := s.usageLogRepo.GetModelStatsWithFilters(ctx, minuteStart, now, 0, 0, account.ID, 0, nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("get gemini minute usage stats failed: %w", err)
 REDACTED
@@ -438,6 +444,78 @@ REDACTED
 		StandardCost: stats.StandardCost,
 		UserCost:     stats.UserCost,
 REDACTED, nil
+REDACTED
+
+// GetTodayStatsBatch 批量获取账号今日统计，优先走批量 SQL，失败时回退单账号查询。
+func (s *AccountUsageService) GetTodayStatsBatch(ctx context.Context, accountIDs []int64) (map[int64]*WindowStats, error) {
+	uniqueIDs := make([]int64, 0, len(accountIDs))
+	seen := make(map[int64]struct{REDACTED, len(accountIDs))
+	for _, accountID := range accountIDs {
+		if accountID <= 0 {
+			continue
+	REDACTED
+		if _, exists := seen[accountID]; exists {
+			continue
+	REDACTED
+		seen[accountID] = struct{REDACTED{REDACTED
+		uniqueIDs = append(uniqueIDs, accountID)
+REDACTED
+
+	result := make(map[int64]*WindowStats, len(uniqueIDs))
+	if len(uniqueIDs) == 0 {
+		return result, nil
+REDACTED
+
+	startTime := timezone.Today()
+	if batchReader, ok := s.usageLogRepo.(accountWindowStatsBatchReader); ok {
+		statsByAccount, err := batchReader.GetAccountWindowStatsBatch(ctx, uniqueIDs, startTime)
+		if err == nil {
+			for _, accountID := range uniqueIDs {
+				result[accountID] = windowStatsFromAccountStats(statsByAccount[accountID])
+		REDACTED
+			return result, nil
+	REDACTED
+REDACTED
+
+	var mu sync.Mutex
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(8)
+
+	for _, accountID := range uniqueIDs {
+		id := accountID
+		g.Go(func() error {
+			stats, err := s.usageLogRepo.GetAccountWindowStats(gctx, id, startTime)
+			if err != nil {
+				return nil
+		REDACTED
+			mu.Lock()
+			result[id] = windowStatsFromAccountStats(stats)
+			mu.Unlock()
+			return nil
+	REDACTED)
+REDACTED
+
+	_ = g.Wait()
+
+	for _, accountID := range uniqueIDs {
+		if _, ok := result[accountID]; !ok {
+			result[accountID] = &WindowStats{REDACTED
+	REDACTED
+REDACTED
+	return result, nil
+REDACTED
+
+func windowStatsFromAccountStats(stats *usagestats.AccountStats) *WindowStats {
+	if stats == nil {
+		return &WindowStats{REDACTED
+REDACTED
+	return &WindowStats{
+		Requests:     stats.Requests,
+		Tokens:       stats.Tokens,
+		Cost:         stats.Cost,
+		StandardCost: stats.StandardCost,
+		UserCost:     stats.UserCost,
+REDACTED
 REDACTED
 
 func (s *AccountUsageService) GetAccountUsageStats(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.AccountUsageStatsResponse, error) {

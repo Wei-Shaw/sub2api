@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -164,6 +166,54 @@ REDACTED
 	if h4 != "" {
 		t.Fatalf("expected empty hash when no signals")
 REDACTED
+REDACTED
+
+func TestOpenAIGatewayService_GenerateSessionHash_UsesXXHash64(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+
+	c.Request.Header.Set("session_id", "sess-fixed-value")
+	svc := &OpenAIGatewayService{REDACTED
+
+	got := svc.GenerateSessionHash(c, nil)
+	want := fmt.Sprintf("%016x", xxhash.Sum64String("sess-fixed-value"))
+	require.Equal(t, want, got)
+REDACTED
+
+func TestOpenAIGatewayService_GenerateSessionHash_AttachesLegacyHashToContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+
+	c.Request.Header.Set("session_id", "sess-legacy-check")
+	svc := &OpenAIGatewayService{REDACTED
+
+	sessionHash := svc.GenerateSessionHash(c, nil)
+	require.NotEmpty(t, sessionHash)
+	require.NotNil(t, c.Request)
+	require.NotNil(t, c.Request.Context())
+	require.NotEmpty(t, openAILegacySessionHashFromContext(c.Request.Context()))
+REDACTED
+
+func TestOpenAIGatewayService_GenerateSessionHashWithFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+
+	svc := &OpenAIGatewayService{REDACTED
+	seed := "openai_ws_ingress:9:100:200"
+
+	got := svc.GenerateSessionHashWithFallback(c, []byte(`{REDACTED`), seed)
+	want := fmt.Sprintf("%016x", xxhash.Sum64String(seed))
+	require.Equal(t, want, got)
+	require.NotEmpty(t, openAILegacySessionHashFromContext(c.Request.Context()))
+
+	empty := svc.GenerateSessionHashWithFallback(c, []byte(`{REDACTED`), "   ")
+	require.Equal(t, "", empty)
 REDACTED
 
 func (c stubConcurrencyCache) GetAccountWaitingCount(ctx context.Context, accountID int64) (int, error) {

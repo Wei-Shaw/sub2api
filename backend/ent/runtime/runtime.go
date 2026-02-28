@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
@@ -209,7 +210,7 @@ REDACTED()
 	// account.DefaultSchedulable holds the default value on creation for the schedulable field.
 	account.DefaultSchedulable = accountDescSchedulable.Default.(bool)
 	// accountDescSessionWindowStatus is the schema descriptor for session_window_status field.
-	accountDescSessionWindowStatus := accountFields[21].Descriptor()
+	accountDescSessionWindowStatus := accountFields[23].Descriptor()
 	// account.SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	account.SessionWindowStatusValidator = accountDescSessionWindowStatus.Validators[0].(func(string) error)
 	accountgroupFields := schema.AccountGroup{REDACTED.Fields()
@@ -398,26 +399,65 @@ REDACTED()
 	groupDescDefaultValidityDays := groupFields[10].Descriptor()
 	// group.DefaultDefaultValidityDays holds the default value on creation for the default_validity_days field.
 	group.DefaultDefaultValidityDays = groupDescDefaultValidityDays.Default.(int)
+	// groupDescSoraStorageQuotaBytes is the schema descriptor for sora_storage_quota_bytes field.
+	groupDescSoraStorageQuotaBytes := groupFields[18].Descriptor()
+	// group.DefaultSoraStorageQuotaBytes holds the default value on creation for the sora_storage_quota_bytes field.
+	group.DefaultSoraStorageQuotaBytes = groupDescSoraStorageQuotaBytes.Default.(int64)
 	// groupDescClaudeCodeOnly is the schema descriptor for claude_code_only field.
-	groupDescClaudeCodeOnly := groupFields[18].Descriptor()
+	groupDescClaudeCodeOnly := groupFields[19].Descriptor()
 	// group.DefaultClaudeCodeOnly holds the default value on creation for the claude_code_only field.
 	group.DefaultClaudeCodeOnly = groupDescClaudeCodeOnly.Default.(bool)
 	// groupDescModelRoutingEnabled is the schema descriptor for model_routing_enabled field.
-	groupDescModelRoutingEnabled := groupFields[22].Descriptor()
+	groupDescModelRoutingEnabled := groupFields[23].Descriptor()
 	// group.DefaultModelRoutingEnabled holds the default value on creation for the model_routing_enabled field.
 	group.DefaultModelRoutingEnabled = groupDescModelRoutingEnabled.Default.(bool)
 	// groupDescMcpXMLInject is the schema descriptor for mcp_xml_inject field.
-	groupDescMcpXMLInject := groupFields[23].Descriptor()
+	groupDescMcpXMLInject := groupFields[24].Descriptor()
 	// group.DefaultMcpXMLInject holds the default value on creation for the mcp_xml_inject field.
 	group.DefaultMcpXMLInject = groupDescMcpXMLInject.Default.(bool)
 	// groupDescSupportedModelScopes is the schema descriptor for supported_model_scopes field.
-	groupDescSupportedModelScopes := groupFields[24].Descriptor()
+	groupDescSupportedModelScopes := groupFields[25].Descriptor()
 	// group.DefaultSupportedModelScopes holds the default value on creation for the supported_model_scopes field.
 	group.DefaultSupportedModelScopes = groupDescSupportedModelScopes.Default.([]string)
 	// groupDescSortOrder is the schema descriptor for sort_order field.
-	groupDescSortOrder := groupFields[25].Descriptor()
+	groupDescSortOrder := groupFields[26].Descriptor()
 	// group.DefaultSortOrder holds the default value on creation for the sort_order field.
 	group.DefaultSortOrder = groupDescSortOrder.Default.(int)
+	idempotencyrecordMixin := schema.IdempotencyRecord{REDACTED.Mixin()
+	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
+	_ = idempotencyrecordMixinFields0
+	idempotencyrecordFields := schema.IdempotencyRecord{REDACTED.Fields()
+	_ = idempotencyrecordFields
+	// idempotencyrecordDescCreatedAt is the schema descriptor for created_at field.
+	idempotencyrecordDescCreatedAt := idempotencyrecordMixinFields0[0].Descriptor()
+	// idempotencyrecord.DefaultCreatedAt holds the default value on creation for the created_at field.
+	idempotencyrecord.DefaultCreatedAt = idempotencyrecordDescCreatedAt.Default.(func() time.Time)
+	// idempotencyrecordDescUpdatedAt is the schema descriptor for updated_at field.
+	idempotencyrecordDescUpdatedAt := idempotencyrecordMixinFields0[1].Descriptor()
+	// idempotencyrecord.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	idempotencyrecord.DefaultUpdatedAt = idempotencyrecordDescUpdatedAt.Default.(func() time.Time)
+	// idempotencyrecord.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	idempotencyrecord.UpdateDefaultUpdatedAt = idempotencyrecordDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// idempotencyrecordDescScope is the schema descriptor for scope field.
+	idempotencyrecordDescScope := idempotencyrecordFields[0].Descriptor()
+	// idempotencyrecord.ScopeValidator is a validator for the "scope" field. It is called by the builders before save.
+	idempotencyrecord.ScopeValidator = idempotencyrecordDescScope.Validators[0].(func(string) error)
+	// idempotencyrecordDescIdempotencyKeyHash is the schema descriptor for idempotency_key_hash field.
+	idempotencyrecordDescIdempotencyKeyHash := idempotencyrecordFields[1].Descriptor()
+	// idempotencyrecord.IdempotencyKeyHashValidator is a validator for the "idempotency_key_hash" field. It is called by the builders before save.
+	idempotencyrecord.IdempotencyKeyHashValidator = idempotencyrecordDescIdempotencyKeyHash.Validators[0].(func(string) error)
+	// idempotencyrecordDescRequestFingerprint is the schema descriptor for request_fingerprint field.
+	idempotencyrecordDescRequestFingerprint := idempotencyrecordFields[2].Descriptor()
+	// idempotencyrecord.RequestFingerprintValidator is a validator for the "request_fingerprint" field. It is called by the builders before save.
+	idempotencyrecord.RequestFingerprintValidator = idempotencyrecordDescRequestFingerprint.Validators[0].(func(string) error)
+	// idempotencyrecordDescStatus is the schema descriptor for status field.
+	idempotencyrecordDescStatus := idempotencyrecordFields[3].Descriptor()
+	// idempotencyrecord.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	idempotencyrecord.StatusValidator = idempotencyrecordDescStatus.Validators[0].(func(string) error)
+	// idempotencyrecordDescErrorReason is the schema descriptor for error_reason field.
+	idempotencyrecordDescErrorReason := idempotencyrecordFields[6].Descriptor()
+	// idempotencyrecord.ErrorReasonValidator is a validator for the "error_reason" field. It is called by the builders before save.
+	idempotencyrecord.ErrorReasonValidator = idempotencyrecordDescErrorReason.Validators[0].(func(string) error)
 	promocodeFields := schema.PromoCode{REDACTED.Fields()
 	_ = promocodeFields
 	// promocodeDescCode is the schema descriptor for code field.
@@ -918,6 +958,14 @@ REDACTED()
 	userDescTotpEnabled := userFields[9].Descriptor()
 	// user.DefaultTotpEnabled holds the default value on creation for the totp_enabled field.
 	user.DefaultTotpEnabled = userDescTotpEnabled.Default.(bool)
+	// userDescSoraStorageQuotaBytes is the schema descriptor for sora_storage_quota_bytes field.
+	userDescSoraStorageQuotaBytes := userFields[11].Descriptor()
+	// user.DefaultSoraStorageQuotaBytes holds the default value on creation for the sora_storage_quota_bytes field.
+	user.DefaultSoraStorageQuotaBytes = userDescSoraStorageQuotaBytes.Default.(int64)
+	// userDescSoraStorageUsedBytes is the schema descriptor for sora_storage_used_bytes field.
+	userDescSoraStorageUsedBytes := userFields[12].Descriptor()
+	// user.DefaultSoraStorageUsedBytes holds the default value on creation for the sora_storage_used_bytes field.
+	user.DefaultSoraStorageUsedBytes = userDescSoraStorageUsedBytes.Default.(int64)
 	userallowedgroupFields := schema.UserAllowedGroup{REDACTED.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.

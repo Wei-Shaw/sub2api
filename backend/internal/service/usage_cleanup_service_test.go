@@ -257,6 +257,53 @@ REDACTED
 	require.Equal(t, int64(9), task.CreatedBy)
 REDACTED
 
+func TestSanitizeUsageCleanupFiltersRequestTypePriority(t *testing.T) {
+	requestType := int16(RequestTypeWSV2)
+	stream := false
+	model := "  gpt-5  "
+	filters := UsageCleanupFilters{
+		Model:       &model,
+		RequestType: &requestType,
+		Stream:      &stream,
+REDACTED
+
+	sanitizeUsageCleanupFilters(&filters)
+
+	require.NotNil(t, filters.RequestType)
+	require.Equal(t, int16(RequestTypeWSV2), *filters.RequestType)
+	require.Nil(t, filters.Stream)
+	require.NotNil(t, filters.Model)
+	require.Equal(t, "gpt-5", *filters.Model)
+REDACTED
+
+func TestSanitizeUsageCleanupFiltersInvalidRequestType(t *testing.T) {
+	requestType := int16(99)
+	stream := true
+	filters := UsageCleanupFilters{
+		RequestType: &requestType,
+		Stream:      &stream,
+REDACTED
+
+	sanitizeUsageCleanupFilters(&filters)
+
+	require.Nil(t, filters.RequestType)
+	require.NotNil(t, filters.Stream)
+	require.True(t, *filters.Stream)
+REDACTED
+
+func TestDescribeUsageCleanupFiltersIncludesRequestType(t *testing.T) {
+	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	requestType := int16(RequestTypeWSV2)
+	desc := describeUsageCleanupFilters(UsageCleanupFilters{
+		StartTime:   start,
+		EndTime:     end,
+		RequestType: &requestType,
+REDACTED)
+
+	require.Contains(t, desc, "request_type=ws_v2")
+REDACTED
+
 func TestUsageCleanupServiceCreateTaskInvalidCreator(t *testing.T) {
 	repo := &cleanupRepoStub{REDACTED
 	cfg := &config.Config{UsageCleanup: config.UsageCleanupConfig{Enabled: trueREDACTEDREDACTED

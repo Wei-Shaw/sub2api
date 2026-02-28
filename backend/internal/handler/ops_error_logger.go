@@ -311,6 +311,35 @@ type opsCaptureWriter struct {
 	buf   bytes.Buffer
 REDACTED
 
+const opsCaptureWriterLimit = 64 * 1024
+
+var opsCaptureWriterPool = sync.Pool{
+	New: func() any {
+		return &opsCaptureWriter{limit: opsCaptureWriterLimitREDACTED
+REDACTED,
+REDACTED
+
+func acquireOpsCaptureWriter(rw gin.ResponseWriter) *opsCaptureWriter {
+	w, ok := opsCaptureWriterPool.Get().(*opsCaptureWriter)
+	if !ok || w == nil {
+		w = &opsCaptureWriter{REDACTED
+REDACTED
+	w.ResponseWriter = rw
+	w.limit = opsCaptureWriterLimit
+	w.buf.Reset()
+	return w
+REDACTED
+
+func releaseOpsCaptureWriter(w *opsCaptureWriter) {
+	if w == nil {
+		return
+REDACTED
+	w.ResponseWriter = nil
+	w.limit = opsCaptureWriterLimit
+	w.buf.Reset()
+	opsCaptureWriterPool.Put(w)
+REDACTED
+
 func (w *opsCaptureWriter) Write(b []byte) (int, error) {
 	if w.Status() >= 400 && w.limit > 0 && w.buf.Len() < w.limit {
 		remaining := w.limit - w.buf.Len()
@@ -342,7 +371,16 @@ REDACTED
 // - Streaming errors after the response has started (SSE) may still need explicit logging.
 func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		w := &opsCaptureWriter{ResponseWriter: c.Writer, limit: 64 * 1024REDACTED
+		originalWriter := c.Writer
+		w := acquireOpsCaptureWriter(originalWriter)
+		defer func() {
+			// Restore the original writer before returning so outer middlewares
+			// don't observe a pooled wrapper that has been released.
+			if c.Writer == w {
+				c.Writer = originalWriter
+		REDACTED
+			releaseOpsCaptureWriter(w)
+	REDACTED()
 		c.Writer = w
 		c.Next()
 

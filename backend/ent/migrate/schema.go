@@ -108,6 +108,8 @@ REDACTED
 		{Name: "rate_limited_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "rate_limit_reset_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "overload_until", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "temp_unschedulable_until", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "temp_unschedulable_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "session_window_start", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "session_window_end", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "session_window_status", Type: field.TypeString, Nullable: true, Size: 20REDACTED,
@@ -121,7 +123,7 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "accounts_proxies_proxy",
-				Columns:    []*schema.Column{AccountsColumns[25]REDACTED,
+				Columns:    []*schema.Column{AccountsColumns[27]REDACTED,
 				RefColumns: []*schema.Column{ProxiesColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
@@ -145,7 +147,7 @@ REDACTED
 			{
 				Name:    "account_proxy_id",
 				Unique:  false,
-				Columns: []*schema.Column{AccountsColumns[25]REDACTED,
+				Columns: []*schema.Column{AccountsColumns[27]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_priority",
@@ -176,6 +178,16 @@ REDACTED
 				Name:    "account_overload_until",
 				Unique:  false,
 				Columns: []*schema.Column{AccountsColumns[21]REDACTED,
+		REDACTED,
+			{
+				Name:    "account_platform_priority",
+				Unique:  false,
+				Columns: []*schema.Column{AccountsColumns[6], AccountsColumns[11]REDACTED,
+		REDACTED,
+			{
+				Name:    "account_priority_status",
+				Unique:  false,
+				Columns: []*schema.Column{AccountsColumns[11], AccountsColumns[13]REDACTED,
 		REDACTED,
 			{
 				Name:    "account_deleted_at",
@@ -376,6 +388,7 @@ REDACTED
 		{Name: "sora_image_price_540", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "sora_video_price_per_request", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "sora_video_price_per_request_hd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "sora_storage_quota_bytes", Type: field.TypeInt64, Default: 0REDACTED,
 		{Name: "claude_code_only", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "fallback_group_id", Type: field.TypeInt64, Nullable: trueREDACTED,
 		{Name: "fallback_group_id_on_invalid_request", Type: field.TypeInt64, Nullable: trueREDACTED,
@@ -419,7 +432,45 @@ REDACTED
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[29]REDACTED,
+				Columns: []*schema.Column{GroupsColumns[30]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	// IdempotencyRecordsColumns holds the columns for the "idempotency_records" table.
+	IdempotencyRecordsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "scope", Type: field.TypeString, Size: 128REDACTED,
+		{Name: "idempotency_key_hash", Type: field.TypeString, Size: 64REDACTED,
+		{Name: "request_fingerprint", Type: field.TypeString, Size: 64REDACTED,
+		{Name: "status", Type: field.TypeString, Size: 32REDACTED,
+		{Name: "response_status", Type: field.TypeInt, Nullable: trueREDACTED,
+		{Name: "response_body", Type: field.TypeString, Nullable: trueREDACTED,
+		{Name: "error_reason", Type: field.TypeString, Nullable: true, Size: 128REDACTED,
+		{Name: "locked_until", Type: field.TypeTime, Nullable: trueREDACTED,
+		{Name: "expires_at", Type: field.TypeTimeREDACTED,
+REDACTED
+	// IdempotencyRecordsTable holds the schema information for the "idempotency_records" table.
+	IdempotencyRecordsTable = &schema.Table{
+		Name:       "idempotency_records",
+		Columns:    IdempotencyRecordsColumns,
+		PrimaryKey: []*schema.Column{IdempotencyRecordsColumns[0]REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "idempotencyrecord_scope_idempotency_key_hash",
+				Unique:  true,
+				Columns: []*schema.Column{IdempotencyRecordsColumns[3], IdempotencyRecordsColumns[4]REDACTED,
+		REDACTED,
+			{
+				Name:    "idempotencyrecord_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{IdempotencyRecordsColumns[11]REDACTED,
+		REDACTED,
+			{
+				Name:    "idempotencyrecord_status_locked_until",
+				Unique:  false,
+				Columns: []*schema.Column{IdempotencyRecordsColumns[6], IdempotencyRecordsColumns[10]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
@@ -771,6 +822,11 @@ REDACTED
 				Unique:  false,
 				Columns: []*schema.Column{UsageLogsColumns[28], UsageLogsColumns[27]REDACTED,
 		REDACTED,
+			{
+				Name:    "usagelog_group_id_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{UsageLogsColumns[30], UsageLogsColumns[27]REDACTED,
+		REDACTED,
 	REDACTED,
 REDACTED
 	// UsersColumns holds the columns for the "users" table.
@@ -790,6 +846,8 @@ REDACTED
 		{Name: "totp_secret_encrypted", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "totp_enabled", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "totp_enabled_at", Type: field.TypeTime, Nullable: trueREDACTED,
+		{Name: "sora_storage_quota_bytes", Type: field.TypeInt64, Default: 0REDACTED,
+		{Name: "sora_storage_used_bytes", Type: field.TypeInt64, Default: 0REDACTED,
 REDACTED
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{
@@ -996,6 +1054,11 @@ REDACTED
 				Columns: []*schema.Column{UserSubscriptionsColumns[5]REDACTED,
 		REDACTED,
 			{
+				Name:    "usersubscription_user_id_status_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{UserSubscriptionsColumns[16], UserSubscriptionsColumns[6], UserSubscriptionsColumns[5]REDACTED,
+		REDACTED,
+			{
 				Name:    "usersubscription_assigned_by",
 				Unique:  false,
 				Columns: []*schema.Column{UserSubscriptionsColumns[17]REDACTED,
@@ -1021,6 +1084,7 @@ REDACTED
 		AnnouncementReadsTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
+		IdempotencyRecordsTable,
 		PromoCodesTable,
 		PromoCodeUsagesTable,
 		ProxiesTable,
@@ -1065,6 +1129,9 @@ REDACTED
 REDACTED
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",
+REDACTED
+	IdempotencyRecordsTable.Annotation = &entsql.Annotation{
+		Table: "idempotency_records",
 REDACTED
 	PromoCodesTable.Annotation = &entsql.Annotation{
 		Table: "promo_codes",

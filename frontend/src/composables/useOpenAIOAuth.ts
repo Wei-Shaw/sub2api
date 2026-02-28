@@ -5,6 +5,7 @@ import { adminAPI REDACTED from '@/api/admin'
 export interface OpenAITokenInfo {
   access_token?: string
   refresh_token?: string
+  client_id?: string
   id_token?: string
   token_type?: string
   expires_in?: number
@@ -190,6 +191,10 @@ export function useOpenAIOAuth(options?: UseOpenAIOAuthOptions) {
       expires_in: tokenInfo.expires_in,
       expires_at: tokenInfo.expires_at,
       scope: tokenInfo.scope
+    REDACTED
+
+    if (tokenInfo.client_id) {
+      creds.client_id = tokenInfo.client_id
     REDACTED
 
     // Include OpenAI specific IDs (required for forwarding)

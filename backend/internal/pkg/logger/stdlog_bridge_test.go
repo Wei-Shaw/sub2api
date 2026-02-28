@@ -16,6 +16,7 @@ REDACTED{
 		{msg: "Warning: queue full", want: LevelWarnREDACTED,
 		{msg: "Forward request failed: timeout", want: LevelErrorREDACTED,
 		{msg: "[ERROR] upstream unavailable", want: LevelErrorREDACTED,
+		{msg: "[OpenAI WS Mode] reconnect_retry account_id=22 retry=1 max_retries=5", want: LevelInfoREDACTED,
 		{msg: "service started", want: LevelInfoREDACTED,
 		{msg: "debug: cache miss", want: LevelDebugREDACTED,
 REDACTED

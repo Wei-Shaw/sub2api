@@ -8,7 +8,7 @@
 
 ARG NODE_IMAGE=node:24-alpine
 ARG GOLANG_IMAGE=golang:1.25.7-alpine
-ARG ALPINE_IMAGE=alpine:3.20
+ARG ALPINE_IMAGE=alpine:3.21
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
 
@@ -68,6 +68,7 @@ RUN VERSION_VALUE="${VERSIONREDACTED" && \
     CGO_ENABLED=0 GOOS=linux go build \
     -tags embed \
     -ldflags="-s -w -X main.Version=${VERSION_VALUEREDACTED -X main.Commit=${COMMITREDACTED -X main.Date=${DATE_VALUEREDACTED -X main.BuildType=release" \
+    -trimpath \
     -o /app/sub2api \
     ./cmd/server
 
@@ -85,7 +86,6 @@ LABEL org.opencontainers.image.source="https://github.com/Wei-Shaw/sub2api"
 RUN apk add --no-cache \
     ca-certificates \
     tzdata \
-    curl \
     && rm -rf /var/cache/apk/*
 
 # Create non-root user
@@ -95,11 +95,12 @@ RUN addgroup -g 1000 sub2api && \
 # Set working directory
 WORKDIR /app
 
-# Copy binary from builder
-COPY --from=backend-builder /app/sub2api /app/sub2api
+# Copy binary/resources with ownership to avoid extra full-layer chown copy
+COPY --from=backend-builder --chown=sub2api:sub2api /app/sub2api /app/sub2api
+COPY --from=backend-builder --chown=sub2api:sub2api /app/backend/resources /app/resources
 
 # Create data directory
-RUN mkdir -p /app/data && chown -R sub2api:sub2api /app
+RUN mkdir -p /app/data && chown sub2api:sub2api /app/data
 
 # Switch to non-root user
 USER sub2api
@@ -109,7 +110,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:${SERVER_PORT:-8080REDACTED/health || exit 1
+    CMD wget -q -T 5 -O /dev/null http://localhost:${SERVER_PORT:-8080REDACTED/health || exit 1
 
 # Run the application
 ENTRYPOINT ["/app/sub2api"]

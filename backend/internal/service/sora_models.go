@@ -1,6 +1,9 @@
 package service
 
 import (
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -245,6 +248,218 @@ func GetSoraModelConfig(model string) (SoraModelConfig, bool) {
 	key := strings.ToLower(strings.TrimSpace(model))
 	cfg, ok := soraModelConfigs[key]
 	return cfg, ok
+REDACTED
+
+// SoraModelFamily 模型家族（前端 Sora 客户端使用）
+type SoraModelFamily struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Type         string   `json:"type"`
+	Orientations []string `json:"orientations"`
+	Durations    []int    `json:"durations,omitempty"`
+REDACTED
+
+var (
+	videoSuffixRe = regexp.MustCompile(`-(landscape|portrait)-(\d+)s$`)
+	imageSuffixRe = regexp.MustCompile(`-(landscape|portrait)$`)
+
+	soraFamilyNames = map[string]string{
+		"sora2":       "Sora 2",
+		"sora2pro":    "Sora 2 Pro",
+		"sora2pro-hd": "Sora 2 Pro HD",
+		"gpt-image":   "GPT Image",
+REDACTED
+)
+
+// BuildSoraModelFamilies 从 soraModelConfigs 自动聚合模型家族及其支持的方向和时长
+func BuildSoraModelFamilies() []SoraModelFamily {
+	type familyData struct {
+		modelType    string
+		orientations map[string]bool
+		durations    map[int]bool
+REDACTED
+	families := make(map[string]*familyData)
+
+	for id, cfg := range soraModelConfigs {
+		if cfg.Type == "prompt_enhance" {
+			continue
+	REDACTED
+		var famID, orientation string
+		var duration int
+
+		switch cfg.Type {
+		case "video":
+			if m := videoSuffixRe.FindStringSubmatch(id); m != nil {
+				famID = id[:len(id)-len(m[0])]
+				orientation = m[1]
+				duration, _ = strconv.Atoi(m[2])
+		REDACTED
+		case "image":
+			if m := imageSuffixRe.FindStringSubmatch(id); m != nil {
+				famID = id[:len(id)-len(m[0])]
+				orientation = m[1]
+		REDACTED else {
+				famID = id
+				orientation = "square"
+		REDACTED
+	REDACTED
+		if famID == "" {
+			continue
+	REDACTED
+
+		fd, ok := families[famID]
+		if !ok {
+			fd = &familyData{
+				modelType:    cfg.Type,
+				orientations: make(map[string]bool),
+				durations:    make(map[int]bool),
+		REDACTED
+			families[famID] = fd
+	REDACTED
+		if orientation != "" {
+			fd.orientations[orientation] = true
+	REDACTED
+		if duration > 0 {
+			fd.durations[duration] = true
+	REDACTED
+REDACTED
+
+	// 排序：视频在前、图像在后，同类按名称排序
+	famIDs := make([]string, 0, len(families))
+	for id := range families {
+		famIDs = append(famIDs, id)
+REDACTED
+	sort.Slice(famIDs, func(i, j int) bool {
+		fi, fj := families[famIDs[i]], families[famIDs[j]]
+		if fi.modelType != fj.modelType {
+			return fi.modelType == "video"
+	REDACTED
+		return famIDs[i] < famIDs[j]
+REDACTED)
+
+	result := make([]SoraModelFamily, 0, len(famIDs))
+	for _, famID := range famIDs {
+		fd := families[famID]
+		fam := SoraModelFamily{
+			ID:   famID,
+			Name: soraFamilyNames[famID],
+			Type: fd.modelType,
+	REDACTED
+		if fam.Name == "" {
+			fam.Name = famID
+	REDACTED
+		for o := range fd.orientations {
+			fam.Orientations = append(fam.Orientations, o)
+	REDACTED
+		sort.Strings(fam.Orientations)
+		for d := range fd.durations {
+			fam.Durations = append(fam.Durations, d)
+	REDACTED
+		sort.Ints(fam.Durations)
+		result = append(result, fam)
+REDACTED
+	return result
+REDACTED
+
+// BuildSoraModelFamiliesFromIDs 从任意模型 ID 列表聚合模型家族（用于解析上游返回的模型列表）。
+// 通过命名约定自动识别视频/图像模型并分组。
+func BuildSoraModelFamiliesFromIDs(modelIDs []string) []SoraModelFamily {
+	type familyData struct {
+		modelType    string
+		orientations map[string]bool
+		durations    map[int]bool
+REDACTED
+	families := make(map[string]*familyData)
+
+	for _, id := range modelIDs {
+		id = strings.ToLower(strings.TrimSpace(id))
+		if id == "" || strings.HasPrefix(id, "prompt-enhance") {
+			continue
+	REDACTED
+
+		var famID, orientation, modelType string
+		var duration int
+
+		if m := videoSuffixRe.FindStringSubmatch(id); m != nil {
+			// 视频模型: {familyREDACTED-{orientationREDACTED-{durationREDACTEDs
+			famID = id[:len(id)-len(m[0])]
+			orientation = m[1]
+			duration, _ = strconv.Atoi(m[2])
+			modelType = "video"
+	REDACTED else if m := imageSuffixRe.FindStringSubmatch(id); m != nil {
+			// 图像模型（带方向）: {familyREDACTED-{orientationREDACTED
+			famID = id[:len(id)-len(m[0])]
+			orientation = m[1]
+			modelType = "image"
+	REDACTED else if cfg, ok := soraModelConfigs[id]; ok && cfg.Type == "image" {
+			// 已知的无后缀图像模型（如 gpt-image）
+			famID = id
+			orientation = "square"
+			modelType = "image"
+	REDACTED else if strings.Contains(id, "image") {
+			// 未知但名称包含 image 的模型，推断为图像模型
+			famID = id
+			orientation = "square"
+			modelType = "image"
+	REDACTED else {
+			continue
+	REDACTED
+
+		if famID == "" {
+			continue
+	REDACTED
+
+		fd, ok := families[famID]
+		if !ok {
+			fd = &familyData{
+				modelType:    modelType,
+				orientations: make(map[string]bool),
+				durations:    make(map[int]bool),
+		REDACTED
+			families[famID] = fd
+	REDACTED
+		if orientation != "" {
+			fd.orientations[orientation] = true
+	REDACTED
+		if duration > 0 {
+			fd.durations[duration] = true
+	REDACTED
+REDACTED
+
+	famIDs := make([]string, 0, len(families))
+	for id := range families {
+		famIDs = append(famIDs, id)
+REDACTED
+	sort.Slice(famIDs, func(i, j int) bool {
+		fi, fj := families[famIDs[i]], families[famIDs[j]]
+		if fi.modelType != fj.modelType {
+			return fi.modelType == "video"
+	REDACTED
+		return famIDs[i] < famIDs[j]
+REDACTED)
+
+	result := make([]SoraModelFamily, 0, len(famIDs))
+	for _, famID := range famIDs {
+		fd := families[famID]
+		fam := SoraModelFamily{
+			ID:   famID,
+			Name: soraFamilyNames[famID],
+			Type: fd.modelType,
+	REDACTED
+		if fam.Name == "" {
+			fam.Name = famID
+	REDACTED
+		for o := range fd.orientations {
+			fam.Orientations = append(fam.Orientations, o)
+	REDACTED
+		sort.Strings(fam.Orientations)
+		for d := range fd.durations {
+			fam.Durations = append(fam.Durations, d)
+	REDACTED
+		sort.Ints(fam.Durations)
+		result = append(result, fam)
+REDACTED
+	return result
 REDACTED
 
 // DefaultSoraModels returns the default Sora model list.

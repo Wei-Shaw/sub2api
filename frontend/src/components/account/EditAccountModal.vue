@@ -35,7 +35,7 @@
             type="text"
             class="input"
             :placeholder="
-              account.platform === 'openai'
+              account.platform === 'openai' || account.platform === 'sora'
                 ? 'https://api.openai.com'
                 : account.platform === 'gemini'
                   ? 'https://generativelanguage.googleapis.com'
@@ -53,7 +53,7 @@
             type="password"
             class="input font-mono"
             :placeholder="
-              account.platform === 'openai'
+              account.platform === 'openai' || account.platform === 'sora'
                 ? 'sk-proj-...'
                 : account.platform === 'gemini'
                   ? 'AIza...'
@@ -708,6 +708,27 @@
         </div>
       </div>
 
+      <!-- OpenAI WS Mode 三态（off/shared/dedicated） -->
+      <div
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.wsMode') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.wsModeDesc') REDACTEDREDACTED
+            </p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.wsModeConcurrencyHint') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="w-52">
+            <Select v-model="openaiResponsesWebSocketV2Mode" :options="openAIWSModeOptions" />
+          </div>
+        </div>
+      </div>
+
       <!-- Anthropic API Key 自动透传开关 -->
       <div
         v-if="account?.platform === 'anthropic' && account?.type === 'apikey'"
@@ -1139,6 +1160,14 @@ import { applyInterceptWarmup REDACTED from '@/components/account/credentialsBui
 import { formatDateTimeLocalInput, parseDateTimeLocalInput REDACTED from '@/utils/format'
 import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
 import {
+  OPENAI_WS_MODE_DEDICATED,
+  OPENAI_WS_MODE_OFF,
+  OPENAI_WS_MODE_SHARED,
+  isOpenAIWSModeEnabled,
+  type OpenAIWSMode,
+  resolveOpenAIWSModeFromExtra
+REDACTED from '@/utils/openaiWsMode'
+import {
   getPresetMappingsByPlatform,
   commonErrorCodes,
   buildModelMappingObject,
@@ -1229,8 +1258,30 @@ const cacheTTLOverrideTarget = ref<string>('5m')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
+const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
+const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
+const openAIWSModeOptions = computed(() => [
+  { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') REDACTED,
+  { value: OPENAI_WS_MODE_SHARED, label: t('admin.accounts.openai.wsModeShared') REDACTED,
+  { value: OPENAI_WS_MODE_DEDICATED, label: t('admin.accounts.openai.wsModeDedicated') REDACTED
+])
+const openaiResponsesWebSocketV2Mode = computed({
+  get: () => {
+    if (props.account?.type === 'apikey') {
+      return openaiAPIKeyResponsesWebSocketV2Mode.value
+    REDACTED
+    return openaiOAuthResponsesWebSocketV2Mode.value
+  REDACTED,
+  set: (mode: OpenAIWSMode) => {
+    if (props.account?.type === 'apikey') {
+      openaiAPIKeyResponsesWebSocketV2Mode.value = mode
+      return
+    REDACTED
+    openaiOAuthResponsesWebSocketV2Mode.value = mode
+  REDACTED
+REDACTED)
 const isOpenAIModelRestrictionDisabled = computed(() =>
   props.account?.platform === 'openai' && openaiPassthroughEnabled.value
 )
@@ -1269,7 +1320,7 @@ const tempUnschedPresets = computed(() => [
 
 // Computed: default base URL based on platform
 const defaultBaseUrl = computed(() => {
-  if (props.account?.platform === 'openai') return 'https://api.openai.com'
+  if (props.account?.platform === 'openai' || props.account?.platform === 'sora') return 'https://api.openai.com'
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   return 'https://api.anthropic.com'
 REDACTED)
@@ -1336,10 +1387,24 @@ watch(
 
       // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)
       openaiPassthroughEnabled.value = false
+      openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
+      openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
       anthropicPassthroughEnabled.value = false
       if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
         openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
+        openaiOAuthResponsesWebSocketV2Mode.value = resolveOpenAIWSModeFromExtra(extra, {
+          modeKey: 'openai_oauth_responses_websockets_v2_mode',
+          enabledKey: 'openai_oauth_responses_websockets_v2_enabled',
+          fallbackEnabledKeys: ['responses_websockets_v2_enabled', 'openai_ws_enabled'],
+          defaultMode: OPENAI_WS_MODE_OFF
+        REDACTED)
+        openaiAPIKeyResponsesWebSocketV2Mode.value = resolveOpenAIWSModeFromExtra(extra, {
+          modeKey: 'openai_apikey_responses_websockets_v2_mode',
+          enabledKey: 'openai_apikey_responses_websockets_v2_enabled',
+          fallbackEnabledKeys: ['responses_websockets_v2_enabled', 'openai_ws_enabled'],
+          defaultMode: OPENAI_WS_MODE_OFF
+        REDACTED)
         if (newAccount.type === 'oauth') {
           codexCLIOnlyEnabled.value = extra?.codex_cli_only === true
         REDACTED
@@ -1389,7 +1454,7 @@ watch(
       if (newAccount.type === 'apikey' && newAccount.credentials) {
         const credentials = newAccount.credentials as Record<string, unknown>
         const platformDefaultUrl =
-          newAccount.platform === 'openai'
+          newAccount.platform === 'openai' || newAccount.platform === 'sora'
             ? 'https://api.openai.com'
             : newAccount.platform === 'gemini'
               ? 'https://generativelanguage.googleapis.com'
@@ -1435,7 +1500,7 @@ watch(
         editBaseUrl.value = (credentials.base_url as string) || ''
       REDACTED else {
         const platformDefaultUrl =
-          newAccount.platform === 'openai'
+          newAccount.platform === 'openai' || newAccount.platform === 'sora'
             ? 'https://api.openai.com'
             : newAccount.platform === 'gemini'
               ? 'https://generativelanguage.googleapis.com'
@@ -2021,6 +2086,12 @@ const handleSubmit = async () => {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {REDACTED
       const newExtra: Record<string, unknown> = { ...currentExtra REDACTED
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
+      newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
+      newExtra.openai_apikey_responses_websockets_v2_mode = openaiAPIKeyResponsesWebSocketV2Mode.value
+      newExtra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
+      newExtra.openai_apikey_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiAPIKeyResponsesWebSocketV2Mode.value)
+      delete newExtra.responses_websockets_v2_enabled
+      delete newExtra.openai_ws_enabled
       if (openaiPassthroughEnabled.value) {
         newExtra.openai_passthrough = true
       REDACTED else {

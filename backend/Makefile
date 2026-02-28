@@ -1,7 +1,14 @@
-.PHONY: build test test-unit test-integration test-e2e
+.PHONY: build generate test test-unit test-integration test-e2e
+
+VERSION ?= $(shell tr -d '\r\n' < ./cmd/server/VERSION)
+LDFLAGS ?= -s -w -X main.Version=$(VERSION)
 
 build:
-	go build -o bin/server ./cmd/server
+	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -trimpath -o bin/server ./cmd/server
+
+generate:
+	go generate ./ent
+	go generate ./cmd/server
 
 test:
 	go test ./...

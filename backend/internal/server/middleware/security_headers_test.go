@@ -131,6 +131,26 @@ REDACTED)
 		assert.Contains(t, csp, CloudflareInsightsDomain)
 REDACTED)
 
+	t.Run("api_route_skips_csp_nonce_generation", func(t *testing.T) {
+		cfg := config.CSPConfig{
+			Enabled: true,
+			Policy:  "default-src 'self'; script-src 'self' __CSP_NONCE__",
+	REDACTED
+		middleware := SecurityHeaders(cfg)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+		middleware(c)
+
+		assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"))
+		assert.Equal(t, "DENY", w.Header().Get("X-Frame-Options"))
+		assert.Equal(t, "strict-origin-when-cross-origin", w.Header().Get("Referrer-Policy"))
+		assert.Empty(t, w.Header().Get("Content-Security-Policy"))
+		assert.Empty(t, GetNonceFromContext(c))
+REDACTED)
+
 	t.Run("csp_enabled_with_nonce_placeholder", func(t *testing.T) {
 		cfg := config.CSPConfig{
 			Enabled: true,

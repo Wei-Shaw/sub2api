@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -2291,7 +2290,7 @@ REDACTED
 
 // isSingleAccountRetry 检查 context 中是否设置了单账号退避重试标记
 func isSingleAccountRetry(ctx context.Context) bool {
-	v, _ := ctx.Value(ctxkey.SingleAccountRetry).(bool)
+	v, _ := SingleAccountRetryFromContext(ctx)
 	return v
 REDACTED
 

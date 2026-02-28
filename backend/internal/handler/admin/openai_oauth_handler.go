@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -47,7 +48,12 @@ func (h *OpenAIOAuthHandler) GenerateAuthURL(c *gin.Context) {
 		req = OpenAIGenerateAuthURLRequest{REDACTED
 REDACTED
 
-	result, err := h.openaiOAuthService.GenerateAuthURL(c.Request.Context(), req.ProxyID, req.RedirectURI)
+	result, err := h.openaiOAuthService.GenerateAuthURL(
+		c.Request.Context(),
+		req.ProxyID,
+		req.RedirectURI,
+		oauthPlatformFromPath(c),
+	)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -123,7 +129,14 @@ REDACTED
 	REDACTED
 REDACTED
 
-	tokenInfo, err := h.openaiOAuthService.RefreshTokenWithClientID(c.Request.Context(), refreshToken, proxyURL, strings.TrimSpace(req.ClientID))
+	// 未指定 client_id 时，根据请求路径平台自动设置默认值，避免 repository 层盲猜
+	clientID := strings.TrimSpace(req.ClientID)
+	if clientID == "" {
+		platform := oauthPlatformFromPath(c)
+		clientID, _ = openai.OAuthClientConfigByPlatform(platform)
+REDACTED
+
+	tokenInfo, err := h.openaiOAuthService.RefreshTokenWithClientID(c.Request.Context(), refreshToken, proxyURL, clientID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

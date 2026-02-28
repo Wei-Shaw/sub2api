@@ -81,7 +81,7 @@ func (s *OpenAIOAuthServiceSuite) TestExchangeCode_DefaultRedirectURI() {
 		_, _ = io.WriteString(w, `{"access_token":"at","refresh_token":"rt","token_type":"bearer","expires_in":3600REDACTED`)
 REDACTED))
 
-	resp, err := s.svc.ExchangeCode(s.ctx, "code", "ver", "", "")
+	resp, err := s.svc.ExchangeCode(s.ctx, "code", "ver", "", "", "")
 	require.NoError(s.T(), err, "ExchangeCode")
 	select {
 	case msg := <-errCh:
@@ -136,7 +136,9 @@ REDACTED
 	require.Equal(s.T(), "rt2", resp.RefreshToken)
 REDACTED
 
-func (s *OpenAIOAuthServiceSuite) TestRefreshToken_FallbackToSoraClientID() {
+// TestRefreshToken_DefaultsToOpenAIClientID 验证未指定 client_id 时默认使用 OpenAI ClientID，
+// 且只发送一次请求（不再盲猜多个 client_id）。
+func (s *OpenAIOAuthServiceSuite) TestRefreshToken_DefaultsToOpenAIClientID() {
 	var seenClientIDs []string
 	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
@@ -145,11 +147,27 @@ func (s *OpenAIOAuthServiceSuite) TestRefreshToken_FallbackToSoraClientID() {
 	REDACTED
 		clientID := r.PostForm.Get("client_id")
 		seenClientIDs = append(seenClientIDs, clientID)
-		if clientID == openai.ClientID {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"at","refresh_token":"rt","token_type":"bearer","expires_in":3600REDACTED`)
+REDACTED))
+
+	resp, err := s.svc.RefreshToken(s.ctx, "rt", "")
+	require.NoError(s.T(), err, "RefreshToken")
+	require.Equal(s.T(), "at", resp.AccessToken)
+	// 只发送了一次请求，使用默认的 OpenAI ClientID
+	require.Equal(s.T(), []string{openai.ClientIDREDACTED, seenClientIDs)
+REDACTED
+
+// TestRefreshToken_UseSoraClientID 验证显式传入 Sora ClientID 时直接使用，不回退。
+func (s *OpenAIOAuthServiceSuite) TestRefreshToken_UseSoraClientID() {
+	var seenClientIDs []string
+	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = io.WriteString(w, "invalid_grant")
 			return
 	REDACTED
+		clientID := r.PostForm.Get("client_id")
+		seenClientIDs = append(seenClientIDs, clientID)
 		if clientID == openai.SoraClientID {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, `{"access_token":"at-sora","refresh_token":"rt-sora","token_type":"bearer","expires_in":3600REDACTED`)
@@ -158,11 +176,10 @@ func (s *OpenAIOAuthServiceSuite) TestRefreshToken_FallbackToSoraClientID() {
 		w.WriteHeader(http.StatusBadRequest)
 REDACTED))
 
-	resp, err := s.svc.RefreshToken(s.ctx, "rt", "")
-	require.NoError(s.T(), err, "RefreshToken")
+	resp, err := s.svc.RefreshTokenWithClientID(s.ctx, "rt", "", openai.SoraClientID)
+	require.NoError(s.T(), err, "RefreshTokenWithClientID")
 	require.Equal(s.T(), "at-sora", resp.AccessToken)
-	require.Equal(s.T(), "rt-sora", resp.RefreshToken)
-	require.Equal(s.T(), []string{openai.ClientID, openai.SoraClientIDREDACTED, seenClientIDs)
+	require.Equal(s.T(), []string{openai.SoraClientIDREDACTED, seenClientIDs)
 REDACTED
 
 func (s *OpenAIOAuthServiceSuite) TestRefreshToken_UseProvidedClientID() {
@@ -196,7 +213,7 @@ func (s *OpenAIOAuthServiceSuite) TestNonSuccessStatus_IncludesBody() {
 		_, _ = io.WriteString(w, "bad")
 REDACTED))
 
-	_, err := s.svc.ExchangeCode(s.ctx, "code", "ver", openai.DefaultRedirectURI, "")
+	_, err := s.svc.ExchangeCode(s.ctx, "code", "ver", openai.DefaultRedirectURI, "", "")
 	require.Error(s.T(), err)
 	require.ErrorContains(s.T(), err, "status 400")
 	require.ErrorContains(s.T(), err, "bad")
@@ -206,7 +223,7 @@ func (s *OpenAIOAuthServiceSuite) TestRequestError_ClosedServer() {
 	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {REDACTED))
 	s.srv.Close()
 
-	_, err := s.svc.ExchangeCode(s.ctx, "code", "ver", openai.DefaultRedirectURI, "")
+	_, err := s.svc.ExchangeCode(s.ctx, "code", "ver", openai.DefaultRedirectURI, "", "")
 	require.Error(s.T(), err)
 	require.ErrorContains(s.T(), err, "request failed")
 REDACTED
@@ -223,7 +240,7 @@ REDACTED))
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := s.svc.ExchangeCode(ctx, "code", "ver", openai.DefaultRedirectURI, "")
+		_, err := s.svc.ExchangeCode(ctx, "code", "ver", openai.DefaultRedirectURI, "", "")
 		done <- err
 REDACTED()
 
@@ -249,7 +266,30 @@ func (s *OpenAIOAuthServiceSuite) TestExchangeCode_UsesProvidedRedirectURI() {
 		_, _ = io.WriteString(w, `{"access_token":"at","token_type":"bearer","expires_in":1REDACTED`)
 REDACTED))
 
-	_, err := s.svc.ExchangeCode(s.ctx, "code", "ver", want, "")
+	_, err := s.svc.ExchangeCode(s.ctx, "code", "ver", want, "", "")
+	require.NoError(s.T(), err, "ExchangeCode")
+	select {
+	case msg := <-errCh:
+		require.Fail(s.T(), msg)
+	default:
+REDACTED
+REDACTED
+
+func (s *OpenAIOAuthServiceSuite) TestExchangeCode_UseProvidedClientID() {
+	wantClientID := openai.SoraClientID
+	errCh := make(chan string, 1)
+	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if got := r.PostForm.Get("client_id"); got != wantClientID {
+			errCh <- "client_id mismatch"
+			w.WriteHeader(http.StatusBadRequest)
+			return
+	REDACTED
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"at","token_type":"bearer","expires_in":1REDACTED`)
+REDACTED))
+
+	_, err := s.svc.ExchangeCode(s.ctx, "code", "ver", openai.DefaultRedirectURI, "", wantClientID)
 	require.NoError(s.T(), err, "ExchangeCode")
 	select {
 	case msg := <-errCh:
@@ -267,7 +307,7 @@ func (s *OpenAIOAuthServiceSuite) TestTokenURL_CanBeOverriddenWithQuery() {
 REDACTED))
 	s.svc.tokenURL = s.srv.URL + "?x=1"
 
-	_, err := s.svc.ExchangeCode(s.ctx, "code", "ver", openai.DefaultRedirectURI, "")
+	_, err := s.svc.ExchangeCode(s.ctx, "code", "ver", openai.DefaultRedirectURI, "", "")
 	require.NoError(s.T(), err, "ExchangeCode")
 	select {
 	case <-s.received:
@@ -283,7 +323,7 @@ func (s *OpenAIOAuthServiceSuite) TestExchangeCode_SuccessButInvalidJSON() {
 		_, _ = io.WriteString(w, "not-valid-json")
 REDACTED))
 
-	_, err := s.svc.ExchangeCode(s.ctx, "code", "ver", openai.DefaultRedirectURI, "")
+	_, err := s.svc.ExchangeCode(s.ctx, "code", "ver", openai.DefaultRedirectURI, "", "")
 	require.Error(s.T(), err, "expected error for invalid JSON response")
 REDACTED
 

@@ -184,7 +184,11 @@
             </button>
           </template>
           <template #cell-today_stats="{ row REDACTED">
-            <AccountTodayStatsCell :account="row" />
+            <AccountTodayStatsCell
+              :stats="todayStatsByAccountId[String(row.id)] ?? null"
+              :loading="todayStatsLoading"
+              :error="todayStatsError"
+            />
           </template>
           <template #cell-groups="{ row REDACTED">
             <AccountGroupsCell :groups="row.groups" :max-display="4" />
@@ -273,7 +277,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, toRaw REDACTED from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch REDACTED from 'vue'
 import { useIntervalFn REDACTED from '@vueuse/core'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
@@ -303,7 +307,7 @@ import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import { formatDateTime, formatRelativeTime REDACTED from '@/utils/format'
-import type { Account, AccountPlatform, Proxy, AdminGroup REDACTED from '@/types'
+import type { Account, AccountPlatform, Proxy, AdminGroup, WindowStats REDACTED from '@/types'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -366,6 +370,59 @@ const autoRefreshFetching = ref(false)
 const AUTO_REFRESH_SILENT_WINDOW_MS = 15000
 const autoRefreshSilentUntil = ref(0)
 const hasPendingListSync = ref(false)
+const todayStatsByAccountId = ref<Record<string, WindowStats>>({REDACTED)
+const todayStatsLoading = ref(false)
+const todayStatsError = ref<string | null>(null)
+const todayStatsReqSeq = ref(0)
+const pendingTodayStatsRefresh = ref(false)
+
+const buildDefaultTodayStats = (): WindowStats => ({
+  requests: 0,
+  tokens: 0,
+  cost: 0,
+  standard_cost: 0,
+  user_cost: 0
+REDACTED)
+
+const refreshTodayStatsBatch = async () => {
+  if (hiddenColumns.has('today_stats')) {
+    todayStatsLoading.value = false
+    todayStatsError.value = null
+    return
+  REDACTED
+
+  const accountIDs = accounts.value.map(account => account.id)
+  const reqSeq = ++todayStatsReqSeq.value
+  if (accountIDs.length === 0) {
+    todayStatsByAccountId.value = {REDACTED
+    todayStatsError.value = null
+    todayStatsLoading.value = false
+    return
+  REDACTED
+
+  todayStatsLoading.value = true
+  todayStatsError.value = null
+
+  try {
+    const result = await adminAPI.accounts.getBatchTodayStats(accountIDs)
+    if (reqSeq !== todayStatsReqSeq.value) return
+    const serverStats = result.stats ?? {REDACTED
+    const nextStats: Record<string, WindowStats> = {REDACTED
+    for (const accountID of accountIDs) {
+      const key = String(accountID)
+      nextStats[key] = serverStats[key] ?? buildDefaultTodayStats()
+    REDACTED
+    todayStatsByAccountId.value = nextStats
+  REDACTED catch (error) {
+    if (reqSeq !== todayStatsReqSeq.value) return
+    todayStatsError.value = 'Failed'
+    console.error('Failed to load account today stats:', error)
+  REDACTED finally {
+    if (reqSeq === todayStatsReqSeq.value) {
+      todayStatsLoading.value = false
+    REDACTED
+  REDACTED
+REDACTED
 
 const autoRefreshIntervalLabel = (sec: number) => {
   if (sec === 5) return t('admin.accounts.refreshInterval5s')
@@ -453,12 +510,18 @@ const setAutoRefreshInterval = (seconds: (typeof autoRefreshIntervals)[number]) 
 REDACTED
 
 const toggleColumn = (key: string) => {
+  const wasHidden = hiddenColumns.has(key)
   if (hiddenColumns.has(key)) {
     hiddenColumns.delete(key)
   REDACTED else {
     hiddenColumns.add(key)
   REDACTED
   saveColumnsToStorage()
+  if (key === 'today_stats' && wasHidden) {
+    refreshTodayStatsBatch().catch((error) => {
+      console.error('Failed to load account today stats after showing column:', error)
+    REDACTED)
+  REDACTED
 REDACTED
 
 const isColumnVisible = (key: string) => !hiddenColumns.has(key)
@@ -485,32 +548,48 @@ REDACTED
 const load = async () => {
   hasPendingListSync.value = false
   resetAutoRefreshCache()
+  pendingTodayStatsRefresh.value = false
   await baseLoad()
+  await refreshTodayStatsBatch()
 REDACTED
 
 const reload = async () => {
   hasPendingListSync.value = false
   resetAutoRefreshCache()
+  pendingTodayStatsRefresh.value = false
   await baseReload()
+  await refreshTodayStatsBatch()
 REDACTED
 
 const debouncedReload = () => {
   hasPendingListSync.value = false
   resetAutoRefreshCache()
+  pendingTodayStatsRefresh.value = true
   baseDebouncedReload()
 REDACTED
 
 const handlePageChange = (page: number) => {
   hasPendingListSync.value = false
   resetAutoRefreshCache()
+  pendingTodayStatsRefresh.value = true
   baseHandlePageChange(page)
 REDACTED
 
 const handlePageSizeChange = (size: number) => {
   hasPendingListSync.value = false
   resetAutoRefreshCache()
+  pendingTodayStatsRefresh.value = true
   baseHandlePageSizeChange(size)
 REDACTED
+
+watch(loading, (isLoading, wasLoading) => {
+  if (wasLoading && !isLoading && pendingTodayStatsRefresh.value) {
+    pendingTodayStatsRefresh.value = false
+    refreshTodayStatsBatch().catch((error) => {
+      console.error('Failed to refresh account today stats after table load:', error)
+    REDACTED)
+  REDACTED
+REDACTED)
 
 const isAnyModalOpen = computed(() => {
   return (
@@ -609,14 +688,14 @@ const refreshAccountsIncrementally = async () => {
     if (result.etag) {
       autoRefreshETag.value = result.etag
     REDACTED
-    if (result.notModified || !result.data) {
-      return
+    if (!result.notModified && result.data) {
+      pagination.total = result.data.total || 0
+      pagination.pages = result.data.pages || 0
+      mergeAccountsIncrementally(result.data.items || [])
+      hasPendingListSync.value = false
     REDACTED
 
-    pagination.total = result.data.total || 0
-    pagination.pages = result.data.pages || 0
-    mergeAccountsIncrementally(result.data.items || [])
-    hasPendingListSync.value = false
+    await refreshTodayStatsBatch()
   REDACTED catch (error) {
     console.error('Auto refresh failed:', error)
   REDACTED finally {

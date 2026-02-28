@@ -270,6 +270,7 @@ export default {
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
     promoCodes: 'Promo Codes',
+    dataManagement: 'Data Management',
     settings: 'Settings',
     myAccount: 'My Account',
     lightMode: 'Light Mode',
@@ -280,7 +281,8 @@ export default {
     github: 'GitHub',
     mySubscriptions: 'My Subscriptions',
     buySubscription: 'Purchase Subscription',
-    docs: 'Docs'
+    docs: 'Docs',
+    sora: 'Sora Studio'
   REDACTED,
 
   // Auth
@@ -612,8 +614,10 @@ export default {
     firstToken: 'First Token',
     duration: 'Duration',
     time: 'Time',
+    ws: 'WS',
     stream: 'Stream',
     sync: 'Sync',
+    unknown: 'Unknown',
     in: 'In',
     out: 'Out',
     cacheRead: 'Read',
@@ -839,6 +843,181 @@ export default {
       failedToLoad: 'Failed to load dashboard statistics'
     REDACTED,
 
+    dataManagement: {
+      title: 'Data Management',
+      description: 'Manage data management agent status, object storage settings, and backup jobs in one place',
+      agent: {
+        title: 'Data Management Agent Status',
+        description: 'The system probes a fixed Unix socket and enables data management only when reachable.',
+        enabled: 'Data management agent is ready. Data management operations are available.',
+        disabled: 'Data management agent is unavailable. Only diagnostic information is available now.',
+        socketPath: 'Socket Path',
+        version: 'Version',
+        status: 'Status',
+        uptime: 'Uptime',
+        reasonLabel: 'Unavailable Reason',
+        reason: {
+          DATA_MANAGEMENT_AGENT_SOCKET_MISSING: 'Data management socket file is missing',
+          DATA_MANAGEMENT_AGENT_UNAVAILABLE: 'Data management agent is unreachable',
+          BACKUP_AGENT_SOCKET_MISSING: 'Backup socket file is missing',
+          BACKUP_AGENT_UNAVAILABLE: 'Backup agent is unreachable',
+          UNKNOWN: 'Unknown reason'
+        REDACTED
+      REDACTED,
+      sections: {
+        config: {
+          title: 'Backup Configuration',
+          description: 'Configure backup source, retention policy, and S3 settings.'
+        REDACTED,
+        s3: {
+          title: 'S3 Object Storage',
+          description: 'Configure and test uploads of backup artifacts to a standard S3-compatible storage.'
+        REDACTED,
+        backup: {
+          title: 'Backup Operations',
+          description: 'Trigger PostgreSQL, Redis, and full backup jobs.'
+        REDACTED,
+        history: {
+          title: 'Backup History',
+          description: 'Review backup job status, errors, and artifact metadata.'
+        REDACTED
+      REDACTED,
+      form: {
+        sourceMode: 'Source Mode',
+        backupRoot: 'Backup Root',
+        activePostgresProfile: 'Active PostgreSQL Profile',
+        activeRedisProfile: 'Active Redis Profile',
+        activeS3Profile: 'Active S3 Profile',
+        retentionDays: 'Retention Days',
+        keepLast: 'Keep Last Jobs',
+        uploadToS3: 'Upload to S3',
+        useActivePostgresProfile: 'Use Active PostgreSQL Profile',
+        useActiveRedisProfile: 'Use Active Redis Profile',
+        useActiveS3Profile: 'Use Active Profile',
+        idempotencyKey: 'Idempotency Key (Optional)',
+        secretConfigured: 'Configured already, leave empty to keep unchanged',
+        source: {
+          profileID: 'Profile ID (Unique)',
+          profileName: 'Profile Name',
+          setActive: 'Set as active after creation'
+        REDACTED,
+        postgres: {
+          title: 'PostgreSQL',
+          host: 'Host',
+          port: 'Port',
+          user: 'User',
+          password: 'Password',
+          database: 'Database',
+          sslMode: 'SSL Mode',
+          containerName: 'Container Name (docker_exec mode)'
+        REDACTED,
+        redis: {
+          title: 'Redis',
+          addr: 'Address (host:port)',
+          username: 'Username',
+          password: 'Password',
+          db: 'Database Index',
+          containerName: 'Container Name (docker_exec mode)'
+        REDACTED,
+        s3: {
+          enabled: 'Enable S3 Upload',
+          profileID: 'Profile ID (Unique)',
+          profileName: 'Profile Name',
+          endpoint: 'Endpoint (Optional)',
+          region: 'Region',
+          bucket: 'Bucket',
+          accessKeyID: 'Access Key ID',
+          secretAccessKey: 'Secret Access Key',
+          prefix: 'Object Prefix',
+          forcePathStyle: 'Force Path Style',
+          useSSL: 'Use SSL',
+          setActive: 'Set as active after creation'
+        REDACTED
+      REDACTED,
+      sourceProfiles: {
+        createTitle: 'Create Source Profile',
+        editTitle: 'Edit Source Profile',
+        empty: 'No source profiles yet, create one first',
+        deleteConfirm: 'Delete source profile {profileIDREDACTED?',
+        columns: {
+          profile: 'Profile',
+          active: 'Active',
+          connection: 'Connection',
+          database: 'Database',
+          updatedAt: 'Updated At',
+          actions: 'Actions'
+        REDACTED
+      REDACTED,
+      s3Profiles: {
+        createTitle: 'Create S3 Profile',
+        editTitle: 'Edit S3 Profile',
+        empty: 'No S3 profiles yet, create one first',
+        editHint: 'Click "Edit" to modify profile details in the right drawer.',
+        deleteConfirm: 'Delete S3 profile {profileIDREDACTED?',
+        columns: {
+          profile: 'Profile',
+          active: 'Active',
+          storage: 'Storage',
+          updatedAt: 'Updated At',
+          actions: 'Actions'
+        REDACTED
+      REDACTED,
+      history: {
+        total: '{countREDACTED jobs',
+        empty: 'No backup jobs yet',
+        columns: {
+          jobID: 'Job ID',
+          type: 'Type',
+          status: 'Status',
+          triggeredBy: 'Triggered By',
+          pgProfile: 'PostgreSQL Profile',
+          redisProfile: 'Redis Profile',
+          s3Profile: 'S3 Profile',
+          finishedAt: 'Finished At',
+          artifact: 'Artifact',
+          error: 'Error'
+        REDACTED,
+        status: {
+          queued: 'Queued',
+          running: 'Running',
+          succeeded: 'Succeeded',
+          failed: 'Failed',
+          partial_succeeded: 'Partial Succeeded'
+        REDACTED
+      REDACTED,
+      actions: {
+        refresh: 'Refresh Status',
+        disabledHint: 'Start datamanagementd first and ensure the socket is reachable.',
+        reloadConfig: 'Reload Config',
+        reloadSourceProfiles: 'Reload Source Profiles',
+        reloadProfiles: 'Reload Profiles',
+        newSourceProfile: 'New Source Profile',
+        saveConfig: 'Save Config',
+        configSaved: 'Configuration saved',
+        testS3: 'Test S3 Connection',
+        s3TestOK: 'S3 connection test succeeded',
+        s3TestFailed: 'S3 connection test failed',
+        newProfile: 'New Profile',
+        saveProfile: 'Save Profile',
+        activateProfile: 'Activate',
+        profileIDRequired: 'Profile ID is required',
+        profileNameRequired: 'Profile name is required',
+        profileSelectRequired: 'Select a profile to edit first',
+        profileCreated: 'S3 profile created',
+        profileSaved: 'S3 profile saved',
+        profileActivated: 'S3 profile activated',
+        profileDeleted: 'S3 profile deleted',
+        sourceProfileCreated: 'Source profile created',
+        sourceProfileSaved: 'Source profile saved',
+        sourceProfileActivated: 'Source profile activated',
+        sourceProfileDeleted: 'Source profile deleted',
+        createBackup: 'Create Backup Job',
+        jobCreated: 'Backup job created: {jobIDREDACTED ({statusREDACTED)',
+        refreshJobs: 'Refresh Jobs',
+        loadMore: 'Load More'
+      REDACTED
+    REDACTED,
+
     // Users
     users: {
       title: 'User Management',
@@ -912,6 +1091,8 @@ export default {
       failedToLoadApiKeys: 'Failed to load user API keys',
       emailRequired: 'Please enter email',
       concurrencyMin: 'Concurrency must be at least 1',
+      soraStorageQuota: 'Sora Storage Quota',
+      soraStorageQuotaHint: 'In GB, 0 means use group or system default quota',
       amountRequired: 'Please enter a valid amount',
       insufficientBalance: 'Insufficient balance',
       deleteConfirm: "Are you sure you want to delete '{emailREDACTED'? This action cannot be undone.",
@@ -1141,7 +1322,9 @@ export default {
         image360: 'Image 360px ($)',
         image540: 'Image 540px ($)',
         video: 'Video (standard) ($)',
-        videoHd: 'Video (Pro-HD) ($)'
+        videoHd: 'Video (Pro-HD) ($)',
+        storageQuota: 'Storage Quota',
+        storageQuotaHint: 'In GB, set the Sora storage quota for users in this group. 0 means use system default'
       REDACTED,
       claudeCode: {
         title: 'Claude Code Client Restriction',
@@ -1378,6 +1561,10 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         antigravityApikey: 'Connect via Base URL + API Key',
+        soraApiKey: 'API Key / Upstream',
+        soraApiKeyHint: 'Connect to another Sub2API or compatible API',
+        soraBaseUrlRequired: 'Sora API Key account requires a Base URL',
+        soraBaseUrlInvalidScheme: 'Base URL must start with http:// or https://',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
       REDACTED,
@@ -1543,6 +1730,24 @@ export default {
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
+        responsesWebsocketsV2: 'Responses WebSocket v2',
+        responsesWebsocketsV2Desc:
+          'Disabled by default. Enable to allow responses_websockets_v2 capability (still gated by global and account-type switches).',
+        wsMode: 'WS mode',
+        wsModeDesc: 'Only applies to the current OpenAI account type.',
+        wsModeOff: 'Off (off)',
+        wsModeShared: 'Shared (shared)',
+        wsModeDedicated: 'Dedicated (dedicated)',
+        wsModeConcurrencyHint:
+          'When WS mode is enabled, account concurrency becomes the WS connection pool limit for this account.',
+        oauthResponsesWebsocketsV2: 'OAuth WebSocket Mode',
+        oauthResponsesWebsocketsV2Desc:
+          'Only applies to OpenAI OAuth. This account can use OpenAI WebSocket Mode only when enabled.',
+        apiKeyResponsesWebsocketsV2: 'API Key WebSocket Mode',
+        apiKeyResponsesWebsocketsV2Desc:
+          'Only applies to OpenAI API Key. This account can use OpenAI WebSocket Mode only when enabled.',
+        responsesWebsocketsV2PassthroughHint:
+          'Automatic passthrough is currently enabled: it only affects HTTP passthrough and does not disable WS mode.',
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
@@ -1752,6 +1957,15 @@ export default {
           sessionTokenAuth: 'Manual ST Input',
           sessionTokenDesc: 'Enter your existing Sora Session Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
           sessionTokenPlaceholder: 'Paste your Sora Session Token...\nSupports multiple, one per line',
+          sessionTokenRawLabel: 'Raw Input',
+          sessionTokenRawPlaceholder: 'Paste /api/auth/session raw payload or Session Token...',
+          sessionTokenRawHint: 'You can paste full JSON. The system will auto-parse ST and AT.',
+          openSessionUrl: 'Open Fetch URL',
+          copySessionUrl: 'Copy URL',
+          sessionUrlHint: 'This URL usually returns AT. If sessionToken is absent, copy __Secure-next-auth.session-token from browser cookies as ST.',
+          parsedSessionTokensLabel: 'Parsed ST',
+          parsedSessionTokensEmpty: 'No ST parsed. Please check your input.',
+          parsedAccessTokensLabel: 'Parsed AT',
           validating: 'Validating...',
           validateAndCreate: 'Validate & Create Account',
           pleaseEnterRefreshToken: 'Please enter Refresh Token',
@@ -2002,6 +2216,7 @@ export default {
       selectTestModel: 'Select Test Model',
       testModel: 'Test model',
       testPrompt: 'Prompt: "hi"',
+      soraUpstreamBaseUrlHint: 'Upstream Sora service URL (another Sub2API instance or compatible API)',
       soraTestHint: 'Sora test runs connectivity and capability checks (/backend/me, subscription, Sora2 invite and remaining quota).',
       soraTestTarget: 'Target: Sora account capability',
       soraTestMode: 'Mode: Connectivity + Capability checks',
@@ -3345,6 +3560,12 @@ export default {
         iframeWarning:
           '⚠️ iframe note: Some websites block embedding via X-Frame-Options or CSP (frame-ancestors). If the page is blank, provide an "Open in new tab" alternative.'
       REDACTED,
+      soraClient: {
+        title: 'Sora Client',
+        description: 'Control whether to show the Sora client entry in the sidebar',
+        enabled: 'Enable Sora Client',
+        enabledHint: 'When enabled, the Sora entry will be shown in the sidebar for users to access Sora features'
+      REDACTED,
       smtp: {
         title: 'SMTP Settings',
         description: 'Configure email sending for verification codes',
@@ -3415,6 +3636,60 @@ export default {
         keyWarning: 'This key will only be shown once. Please copy it now.',
         securityWarning: 'Warning: This key provides full admin access. Keep it secure.',
         usage: 'Usage: Add to request header - x-api-key: <your-admin-api-key>'
+      REDACTED,
+      soraS3: {
+        title: 'Sora S3 Storage',
+        description: 'Manage multiple Sora S3 endpoints and switch the active profile',
+        newProfile: 'New Profile',
+        reloadProfiles: 'Reload Profiles',
+        empty: 'No Sora S3 profiles yet, create one first',
+        createTitle: 'Create Sora S3 Profile',
+        editTitle: 'Edit Sora S3 Profile',
+        profileID: 'Profile ID',
+        profileName: 'Profile Name',
+        setActive: 'Set as active after creation',
+        saveProfile: 'Save Profile',
+        activateProfile: 'Activate',
+        profileCreated: 'Sora S3 profile created',
+        profileSaved: 'Sora S3 profile saved',
+        profileDeleted: 'Sora S3 profile deleted',
+        profileActivated: 'Sora S3 active profile switched',
+        profileIDRequired: 'Profile ID is required',
+        profileNameRequired: 'Profile name is required',
+        profileSelectRequired: 'Please select a profile first',
+        endpointRequired: 'S3 endpoint is required when enabled',
+        bucketRequired: 'Bucket is required when enabled',
+        accessKeyRequired: 'Access Key ID is required when enabled',
+        deleteConfirm: 'Delete Sora S3 profile {profileIDREDACTED?',
+        columns: {
+          profile: 'Profile',
+          active: 'Active',
+          endpoint: 'Endpoint',
+          bucket: 'Bucket',
+          quota: 'Default Quota',
+          updatedAt: 'Updated At',
+          actions: 'Actions'
+        REDACTED,
+        enabled: 'Enable S3 Storage',
+        enabledHint: 'When enabled, Sora generated media files will be automatically uploaded to S3 storage',
+        endpoint: 'S3 Endpoint',
+        region: 'Region',
+        bucket: 'Bucket',
+        prefix: 'Object Prefix',
+        accessKeyId: 'Access Key ID',
+        secretAccessKey: 'Secret Access Key',
+        secretConfigured: '(Configured, leave blank to keep)',
+        cdnUrl: 'CDN URL',
+        cdnUrlHint: 'Optional. When configured, files are accessed via CDN URL instead of presigned URLs',
+        forcePathStyle: 'Force Path Style',
+        defaultQuota: 'Default Storage Quota',
+        defaultQuotaHint: 'Default quota when not specified at user or group level. 0 means unlimited',
+        testConnection: 'Test Connection',
+        testing: 'Testing...',
+        testSuccess: 'S3 connection test successful',
+        testFailed: 'S3 connection test failed',
+        saved: 'Sora S3 settings saved successfully',
+        saveFailed: 'Failed to save Sora S3 settings'
       REDACTED,
       streamTimeout: {
         title: 'Stream Timeout Handling',
@@ -3774,5 +4049,93 @@ export default {
         description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Click to confirm and create your API key.</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ Important:</b><ul style="margin: 8px 0 0 16px;"><li>Copy the key (sk-xxx) immediately after creation</li><li>Key is only shown once, need to regenerate if lost</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>🚀 How to Use:</b><br/>Configure the key in any OpenAI-compatible client (like ChatBox, OpenCat, etc.) and start using!</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 Click "Create" button</p></div>'
       REDACTED
     REDACTED
+  REDACTED,
+
+  // Sora Studio
+  sora: {
+    title: 'Sora Studio',
+    description: 'Generate videos and images with Sora AI',
+    notEnabled: 'Feature Not Available',
+    notEnabledDesc: 'The Sora Studio feature has not been enabled by the administrator. Please contact your admin.',
+    tabGenerate: 'Generate',
+    tabLibrary: 'Library',
+    noActiveGenerations: 'No active generations',
+    startGenerating: 'Enter a prompt below to start creating',
+    storage: 'Storage',
+    promptPlaceholder: 'Describe what you want to create...',
+    generate: 'Generate',
+    generating: 'Generating...',
+    selectModel: 'Select Model',
+    statusPending: 'Pending',
+    statusGenerating: 'Generating',
+    statusCompleted: 'Completed',
+    statusFailed: 'Failed',
+    statusCancelled: 'Cancelled',
+    cancel: 'Cancel',
+    delete: 'Delete',
+    save: 'Save to Cloud',
+    saved: 'Saved',
+    retry: 'Retry',
+    download: 'Download',
+    justNow: 'Just now',
+    minutesAgo: '{nREDACTED min ago',
+    hoursAgo: '{nREDACTED hr ago',
+    noSavedWorks: 'No saved works',
+    saveWorksHint: 'Save your completed generations to the library',
+    filterAll: 'All',
+    filterVideo: 'Video',
+    filterImage: 'Image',
+    confirmDelete: 'Are you sure you want to delete this work?',
+    loading: 'Loading...',
+    loadMore: 'Load More',
+    noStorageWarningTitle: 'No Storage Configured',
+    noStorageWarningDesc: 'Generated content is only available via temporary upstream links that expire in ~15 minutes. Consider configuring S3 storage.',
+    mediaTypeVideo: 'Video',
+    mediaTypeImage: 'Image',
+    notificationCompleted: 'Generation Complete',
+    notificationFailed: 'Generation Failed',
+    notificationCompletedBody: 'Your {modelREDACTED task has completed',
+    notificationFailedBody: 'Your {modelREDACTED task has failed',
+    upstreamExpiresSoon: 'Expiring soon',
+    upstreamExpired: 'Link expired',
+    upstreamCountdown: '{timeREDACTED remaining',
+    previewTitle: 'Preview',
+    closePreview: 'Close',
+    beforeUnloadWarning: 'You have unsaved generated content. Are you sure you want to leave?',
+    downloadTitle: 'Download Generated Content',
+    downloadExpirationWarning: 'This link expires in approximately 15 minutes. Please download and save promptly.',
+    downloadNow: 'Download Now',
+    referenceImage: 'Reference Image',
+    removeImage: 'Remove',
+    imageTooLarge: 'Image size cannot exceed 20MB',
+    // Sora dark theme additions
+    welcomeTitle: 'Turn your imagination into video',
+    welcomeSubtitle: 'Enter a description and Sora will create realistic videos or images for you. Try the examples below to get started.',
+    queueTasks: 'tasks',
+    queueWaiting: 'Queued',
+    waiting: 'Waiting',
+    waited: 'Waited',
+    errorCategory: 'Content Policy Violation',
+    savedToCloud: 'Saved to Cloud',
+    downloadLocal: 'Download',
+    canDownload: 'to download',
+    regenrate: 'Regenerate',
+    creatorPlaceholder: 'Describe the video or image you want to create...',
+    videoModels: 'Video Models',
+    imageModels: 'Image Models',
+    noStorageConfigured: 'No Storage',
+    selectCredential: 'Select Credential',
+    apiKeys: 'API Keys',
+    subscriptions: 'Subscriptions',
+    subscription: 'Subscription',
+    noCredentialHint: 'Please create an API Key or contact admin for subscription',
+    uploadReference: 'Upload reference image',
+    generatingCount: 'Generating {currentREDACTED/{maxREDACTED',
+    noStorageToastMessage: 'Cloud storage is not configured. Please use "Download" to save files after generation, otherwise they will be lost.',
+    galleryCount: '{countREDACTED works',
+    galleryEmptyTitle: 'No works yet',
+    galleryEmptyDesc: 'Your creations will be displayed here. Go to the generate page to start your first creation.',
+    startCreating: 'Start Creating',
+    yesterday: 'Yesterday'
   REDACTED
 REDACTED

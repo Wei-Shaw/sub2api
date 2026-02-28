@@ -9,7 +9,8 @@ import type {
   TrendDataPoint,
   ModelStat,
   ApiKeyUsageTrendPoint,
-  UserUsageTrendPoint
+  UserUsageTrendPoint,
+  UsageRequestType
 REDACTED from '@/types'
 
 /**
@@ -49,6 +50,7 @@ export interface TrendParams {
   model?: string
   account_id?: number
   group_id?: number
+  request_type?: UsageRequestType
   stream?: boolean
   billing_type?: number | null
 REDACTED
@@ -78,6 +80,7 @@ export interface ModelStatsParams {
   model?: string
   account_id?: number
   group_id?: number
+  request_type?: UsageRequestType
   stream?: boolean
   billing_type?: number | null
 REDACTED

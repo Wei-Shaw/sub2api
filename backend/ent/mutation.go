@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
@@ -52,6 +53,7 @@ const (
 	TypeAnnouncementRead        = "AnnouncementRead"
 	TypeErrorPassthroughRule    = "ErrorPassthroughRule"
 	TypeGroup                   = "Group"
+	TypeIdempotencyRecord       = "IdempotencyRecord"
 	TypePromoCode               = "PromoCode"
 	TypePromoCodeUsage          = "PromoCodeUsage"
 	TypeProxy                   = "Proxy"
@@ -1503,48 +1505,50 @@ REDACTED
 // AccountMutation represents an operation that mutates the Account nodes in the graph.
 type AccountMutation struct {
 	config
-	op                    Op
-	typ                   string
-	id                    *int64
-	created_at            *time.Time
-	updated_at            *time.Time
-	deleted_at            *time.Time
-	name                  *string
-	notes                 *string
-	platform              *string
-	_type                 *string
-	credentials           *map[string]interface{REDACTED
-	extra                 *map[string]interface{REDACTED
-	concurrency           *int
-	addconcurrency        *int
-	priority              *int
-	addpriority           *int
-	rate_multiplier       *float64
-	addrate_multiplier    *float64
-	status                *string
-	error_message         *string
-	last_used_at          *time.Time
-	expires_at            *time.Time
-	auto_pause_on_expired *bool
-	schedulable           *bool
-	rate_limited_at       *time.Time
-	rate_limit_reset_at   *time.Time
-	overload_until        *time.Time
-	session_window_start  *time.Time
-	session_window_end    *time.Time
-	session_window_status *string
-	clearedFields         map[string]struct{REDACTED
-	groups                map[int64]struct{REDACTED
-	removedgroups         map[int64]struct{REDACTED
-	clearedgroups         bool
-	proxy                 *int64
-	clearedproxy          bool
-	usage_logs            map[int64]struct{REDACTED
-	removedusage_logs     map[int64]struct{REDACTED
-	clearedusage_logs     bool
-	done                  bool
-	oldValue              func(context.Context) (*Account, error)
-	predicates            []predicate.Account
+	op                        Op
+	typ                       string
+	id                        *int64
+	created_at                *time.Time
+	updated_at                *time.Time
+	deleted_at                *time.Time
+	name                      *string
+	notes                     *string
+	platform                  *string
+	_type                     *string
+	credentials               *map[string]interface{REDACTED
+	extra                     *map[string]interface{REDACTED
+	concurrency               *int
+	addconcurrency            *int
+	priority                  *int
+	addpriority               *int
+	rate_multiplier           *float64
+	addrate_multiplier        *float64
+	status                    *string
+	error_message             *string
+	last_used_at              *time.Time
+	expires_at                *time.Time
+	auto_pause_on_expired     *bool
+	schedulable               *bool
+	rate_limited_at           *time.Time
+	rate_limit_reset_at       *time.Time
+	overload_until            *time.Time
+	temp_unschedulable_until  *time.Time
+	temp_unschedulable_reason *string
+	session_window_start      *time.Time
+	session_window_end        *time.Time
+	session_window_status     *string
+	clearedFields             map[string]struct{REDACTED
+	groups                    map[int64]struct{REDACTED
+	removedgroups             map[int64]struct{REDACTED
+	clearedgroups             bool
+	proxy                     *int64
+	clearedproxy              bool
+	usage_logs                map[int64]struct{REDACTED
+	removedusage_logs         map[int64]struct{REDACTED
+	clearedusage_logs         bool
+	done                      bool
+	oldValue                  func(context.Context) (*Account, error)
+	predicates                []predicate.Account
 REDACTED
 
 var _ ent.Mutation = (*AccountMutation)(nil)
@@ -2614,6 +2618,104 @@ func (m *AccountMutation) ResetOverloadUntil() {
 	delete(m.clearedFields, account.FieldOverloadUntil)
 REDACTED
 
+// SetTempUnschedulableUntil sets the "temp_unschedulable_until" field.
+func (m *AccountMutation) SetTempUnschedulableUntil(t time.Time) {
+	m.temp_unschedulable_until = &t
+REDACTED
+
+// TempUnschedulableUntil returns the value of the "temp_unschedulable_until" field in the mutation.
+func (m *AccountMutation) TempUnschedulableUntil() (r time.Time, exists bool) {
+	v := m.temp_unschedulable_until
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldTempUnschedulableUntil returns the old "temp_unschedulable_until" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldTempUnschedulableUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTempUnschedulableUntil is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTempUnschedulableUntil requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTempUnschedulableUntil: %w", err)
+REDACTED
+	return oldValue.TempUnschedulableUntil, nil
+REDACTED
+
+// ClearTempUnschedulableUntil clears the value of the "temp_unschedulable_until" field.
+func (m *AccountMutation) ClearTempUnschedulableUntil() {
+	m.temp_unschedulable_until = nil
+	m.clearedFields[account.FieldTempUnschedulableUntil] = struct{REDACTED{REDACTED
+REDACTED
+
+// TempUnschedulableUntilCleared returns if the "temp_unschedulable_until" field was cleared in this mutation.
+func (m *AccountMutation) TempUnschedulableUntilCleared() bool {
+	_, ok := m.clearedFields[account.FieldTempUnschedulableUntil]
+	return ok
+REDACTED
+
+// ResetTempUnschedulableUntil resets all changes to the "temp_unschedulable_until" field.
+func (m *AccountMutation) ResetTempUnschedulableUntil() {
+	m.temp_unschedulable_until = nil
+	delete(m.clearedFields, account.FieldTempUnschedulableUntil)
+REDACTED
+
+// SetTempUnschedulableReason sets the "temp_unschedulable_reason" field.
+func (m *AccountMutation) SetTempUnschedulableReason(s string) {
+	m.temp_unschedulable_reason = &s
+REDACTED
+
+// TempUnschedulableReason returns the value of the "temp_unschedulable_reason" field in the mutation.
+func (m *AccountMutation) TempUnschedulableReason() (r string, exists bool) {
+	v := m.temp_unschedulable_reason
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldTempUnschedulableReason returns the old "temp_unschedulable_reason" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldTempUnschedulableReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTempUnschedulableReason is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTempUnschedulableReason requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTempUnschedulableReason: %w", err)
+REDACTED
+	return oldValue.TempUnschedulableReason, nil
+REDACTED
+
+// ClearTempUnschedulableReason clears the value of the "temp_unschedulable_reason" field.
+func (m *AccountMutation) ClearTempUnschedulableReason() {
+	m.temp_unschedulable_reason = nil
+	m.clearedFields[account.FieldTempUnschedulableReason] = struct{REDACTED{REDACTED
+REDACTED
+
+// TempUnschedulableReasonCleared returns if the "temp_unschedulable_reason" field was cleared in this mutation.
+func (m *AccountMutation) TempUnschedulableReasonCleared() bool {
+	_, ok := m.clearedFields[account.FieldTempUnschedulableReason]
+	return ok
+REDACTED
+
+// ResetTempUnschedulableReason resets all changes to the "temp_unschedulable_reason" field.
+func (m *AccountMutation) ResetTempUnschedulableReason() {
+	m.temp_unschedulable_reason = nil
+	delete(m.clearedFields, account.FieldTempUnschedulableReason)
+REDACTED
+
 // SetSessionWindowStart sets the "session_window_start" field.
 func (m *AccountMutation) SetSessionWindowStart(t time.Time) {
 	m.session_window_start = &t
@@ -2930,7 +3032,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 27)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 REDACTED
@@ -2997,6 +3099,12 @@ REDACTED
 	if m.overload_until != nil {
 		fields = append(fields, account.FieldOverloadUntil)
 REDACTED
+	if m.temp_unschedulable_until != nil {
+		fields = append(fields, account.FieldTempUnschedulableUntil)
+REDACTED
+	if m.temp_unschedulable_reason != nil {
+		fields = append(fields, account.FieldTempUnschedulableReason)
+REDACTED
 	if m.session_window_start != nil {
 		fields = append(fields, account.FieldSessionWindowStart)
 REDACTED
@@ -3058,6 +3166,10 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.RateLimitResetAt()
 	case account.FieldOverloadUntil:
 		return m.OverloadUntil()
+	case account.FieldTempUnschedulableUntil:
+		return m.TempUnschedulableUntil()
+	case account.FieldTempUnschedulableReason:
+		return m.TempUnschedulableReason()
 	case account.FieldSessionWindowStart:
 		return m.SessionWindowStart()
 	case account.FieldSessionWindowEnd:
@@ -3117,6 +3229,10 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldRateLimitResetAt(ctx)
 	case account.FieldOverloadUntil:
 		return m.OldOverloadUntil(ctx)
+	case account.FieldTempUnschedulableUntil:
+		return m.OldTempUnschedulableUntil(ctx)
+	case account.FieldTempUnschedulableReason:
+		return m.OldTempUnschedulableReason(ctx)
 	case account.FieldSessionWindowStart:
 		return m.OldSessionWindowStart(ctx)
 	case account.FieldSessionWindowEnd:
@@ -3286,6 +3402,20 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 	REDACTED
 		m.SetOverloadUntil(v)
 		return nil
+	case account.FieldTempUnschedulableUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetTempUnschedulableUntil(v)
+		return nil
+	case account.FieldTempUnschedulableReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetTempUnschedulableReason(v)
+		return nil
 	case account.FieldSessionWindowStart:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -3403,6 +3533,12 @@ REDACTED
 	if m.FieldCleared(account.FieldOverloadUntil) {
 		fields = append(fields, account.FieldOverloadUntil)
 REDACTED
+	if m.FieldCleared(account.FieldTempUnschedulableUntil) {
+		fields = append(fields, account.FieldTempUnschedulableUntil)
+REDACTED
+	if m.FieldCleared(account.FieldTempUnschedulableReason) {
+		fields = append(fields, account.FieldTempUnschedulableReason)
+REDACTED
 	if m.FieldCleared(account.FieldSessionWindowStart) {
 		fields = append(fields, account.FieldSessionWindowStart)
 REDACTED
@@ -3452,6 +3588,12 @@ func (m *AccountMutation) ClearField(name string) error {
 		return nil
 	case account.FieldOverloadUntil:
 		m.ClearOverloadUntil()
+		return nil
+	case account.FieldTempUnschedulableUntil:
+		m.ClearTempUnschedulableUntil()
+		return nil
+	case account.FieldTempUnschedulableReason:
+		m.ClearTempUnschedulableReason()
 		return nil
 	case account.FieldSessionWindowStart:
 		m.ClearSessionWindowStart()
@@ -3535,6 +3677,12 @@ func (m *AccountMutation) ResetField(name string) error {
 		return nil
 	case account.FieldOverloadUntil:
 		m.ResetOverloadUntil()
+		return nil
+	case account.FieldTempUnschedulableUntil:
+		m.ResetTempUnschedulableUntil()
+		return nil
+	case account.FieldTempUnschedulableReason:
+		m.ResetTempUnschedulableReason()
 		return nil
 	case account.FieldSessionWindowStart:
 		m.ResetSessionWindowStart()
@@ -7186,6 +7334,8 @@ type GroupMutation struct {
 	addsora_video_price_per_request         *float64
 	sora_video_price_per_request_hd         *float64
 	addsora_video_price_per_request_hd      *float64
+	sora_storage_quota_bytes                *int64
+	addsora_storage_quota_bytes             *int64
 	claude_code_only                        *bool
 	fallback_group_id                       *int64
 	addfallback_group_id                    *int64
@@ -8482,6 +8632,62 @@ func (m *GroupMutation) ResetSoraVideoPricePerRequestHd() {
 	delete(m.clearedFields, group.FieldSoraVideoPricePerRequestHd)
 REDACTED
 
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (m *GroupMutation) SetSoraStorageQuotaBytes(i int64) {
+	m.sora_storage_quota_bytes = &i
+	m.addsora_storage_quota_bytes = nil
+REDACTED
+
+// SoraStorageQuotaBytes returns the value of the "sora_storage_quota_bytes" field in the mutation.
+func (m *GroupMutation) SoraStorageQuotaBytes() (r int64, exists bool) {
+	v := m.sora_storage_quota_bytes
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSoraStorageQuotaBytes returns the old "sora_storage_quota_bytes" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSoraStorageQuotaBytes(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSoraStorageQuotaBytes is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSoraStorageQuotaBytes requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSoraStorageQuotaBytes: %w", err)
+REDACTED
+	return oldValue.SoraStorageQuotaBytes, nil
+REDACTED
+
+// AddSoraStorageQuotaBytes adds i to the "sora_storage_quota_bytes" field.
+func (m *GroupMutation) AddSoraStorageQuotaBytes(i int64) {
+	if m.addsora_storage_quota_bytes != nil {
+		*m.addsora_storage_quota_bytes += i
+REDACTED else {
+		m.addsora_storage_quota_bytes = &i
+REDACTED
+REDACTED
+
+// AddedSoraStorageQuotaBytes returns the value that was added to the "sora_storage_quota_bytes" field in this mutation.
+func (m *GroupMutation) AddedSoraStorageQuotaBytes() (r int64, exists bool) {
+	v := m.addsora_storage_quota_bytes
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetSoraStorageQuotaBytes resets all changes to the "sora_storage_quota_bytes" field.
+func (m *GroupMutation) ResetSoraStorageQuotaBytes() {
+	m.sora_storage_quota_bytes = nil
+	m.addsora_storage_quota_bytes = nil
+REDACTED
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (m *GroupMutation) SetClaudeCodeOnly(b bool) {
 	m.claude_code_only = &b
@@ -9244,7 +9450,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 29)
+	fields := make([]string, 0, 30)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 REDACTED
@@ -9307,6 +9513,9 @@ REDACTED
 REDACTED
 	if m.sora_video_price_per_request_hd != nil {
 		fields = append(fields, group.FieldSoraVideoPricePerRequestHd)
+REDACTED
+	if m.sora_storage_quota_bytes != nil {
+		fields = append(fields, group.FieldSoraStorageQuotaBytes)
 REDACTED
 	if m.claude_code_only != nil {
 		fields = append(fields, group.FieldClaudeCodeOnly)
@@ -9382,6 +9591,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.SoraVideoPricePerRequest()
 	case group.FieldSoraVideoPricePerRequestHd:
 		return m.SoraVideoPricePerRequestHd()
+	case group.FieldSoraStorageQuotaBytes:
+		return m.SoraStorageQuotaBytes()
 	case group.FieldClaudeCodeOnly:
 		return m.ClaudeCodeOnly()
 	case group.FieldFallbackGroupID:
@@ -9449,6 +9660,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldSoraVideoPricePerRequest(ctx)
 	case group.FieldSoraVideoPricePerRequestHd:
 		return m.OldSoraVideoPricePerRequestHd(ctx)
+	case group.FieldSoraStorageQuotaBytes:
+		return m.OldSoraStorageQuotaBytes(ctx)
 	case group.FieldClaudeCodeOnly:
 		return m.OldClaudeCodeOnly(ctx)
 	case group.FieldFallbackGroupID:
@@ -9621,6 +9834,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 	REDACTED
 		m.SetSoraVideoPricePerRequestHd(v)
 		return nil
+	case group.FieldSoraStorageQuotaBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSoraStorageQuotaBytes(v)
+		return nil
 	case group.FieldClaudeCodeOnly:
 		v, ok := value.(bool)
 		if !ok {
@@ -9721,6 +9941,9 @@ REDACTED
 	if m.addsora_video_price_per_request_hd != nil {
 		fields = append(fields, group.FieldSoraVideoPricePerRequestHd)
 REDACTED
+	if m.addsora_storage_quota_bytes != nil {
+		fields = append(fields, group.FieldSoraStorageQuotaBytes)
+REDACTED
 	if m.addfallback_group_id != nil {
 		fields = append(fields, group.FieldFallbackGroupID)
 REDACTED
@@ -9762,6 +9985,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedSoraVideoPricePerRequest()
 	case group.FieldSoraVideoPricePerRequestHd:
 		return m.AddedSoraVideoPricePerRequestHd()
+	case group.FieldSoraStorageQuotaBytes:
+		return m.AddedSoraStorageQuotaBytes()
 	case group.FieldFallbackGroupID:
 		return m.AddedFallbackGroupID()
 	case group.FieldFallbackGroupIDOnInvalidRequest:
@@ -9860,6 +10085,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.AddSoraVideoPricePerRequestHd(v)
+		return nil
+	case group.FieldSoraStorageQuotaBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddSoraStorageQuotaBytes(v)
 		return nil
 	case group.FieldFallbackGroupID:
 		v, ok := value.(int64)
@@ -10064,6 +10296,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldSoraVideoPricePerRequestHd:
 		m.ResetSoraVideoPricePerRequestHd()
+		return nil
+	case group.FieldSoraStorageQuotaBytes:
+		m.ResetSoraStorageQuotaBytes()
 		return nil
 	case group.FieldClaudeCodeOnly:
 		m.ResetClaudeCodeOnly()
@@ -10305,6 +10540,988 @@ func (m *GroupMutation) ResetEdge(name string) error {
 		return nil
 REDACTED
 	return fmt.Errorf("unknown Group edge %s", name)
+REDACTED
+
+// IdempotencyRecordMutation represents an operation that mutates the IdempotencyRecord nodes in the graph.
+type IdempotencyRecordMutation struct {
+	config
+	op                   Op
+	typ                  string
+	id                   *int64
+	created_at           *time.Time
+	updated_at           *time.Time
+	scope                *string
+	idempotency_key_hash *string
+	request_fingerprint  *string
+	status               *string
+	response_status      *int
+	addresponse_status   *int
+	response_body        *string
+	error_reason         *string
+	locked_until         *time.Time
+	expires_at           *time.Time
+	clearedFields        map[string]struct{REDACTED
+	done                 bool
+	oldValue             func(context.Context) (*IdempotencyRecord, error)
+	predicates           []predicate.IdempotencyRecord
+REDACTED
+
+var _ ent.Mutation = (*IdempotencyRecordMutation)(nil)
+
+// idempotencyrecordOption allows management of the mutation configuration using functional options.
+type idempotencyrecordOption func(*IdempotencyRecordMutation)
+
+// newIdempotencyRecordMutation creates new mutation for the IdempotencyRecord entity.
+func newIdempotencyRecordMutation(c config, op Op, opts ...idempotencyrecordOption) *IdempotencyRecordMutation {
+	m := &IdempotencyRecordMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeIdempotencyRecord,
+		clearedFields: make(map[string]struct{REDACTED),
+REDACTED
+	for _, opt := range opts {
+		opt(m)
+REDACTED
+	return m
+REDACTED
+
+// withIdempotencyRecordID sets the ID field of the mutation.
+func withIdempotencyRecordID(id int64) idempotencyrecordOption {
+	return func(m *IdempotencyRecordMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *IdempotencyRecord
+		)
+		m.oldValue = func(ctx context.Context) (*IdempotencyRecord, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+			REDACTED else {
+					value, err = m.Client().IdempotencyRecord.Get(ctx, id)
+			REDACTED
+		REDACTED)
+			return value, err
+	REDACTED
+		m.id = &id
+REDACTED
+REDACTED
+
+// withIdempotencyRecord sets the old IdempotencyRecord of the mutation.
+func withIdempotencyRecord(node *IdempotencyRecord) idempotencyrecordOption {
+	return func(m *IdempotencyRecordMutation) {
+		m.oldValue = func(context.Context) (*IdempotencyRecord, error) {
+			return node, nil
+	REDACTED
+		m.id = &node.ID
+REDACTED
+REDACTED
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m IdempotencyRecordMutation) Client() *Client {
+	client := &Client{config: m.configREDACTED
+	client.init()
+	return client
+REDACTED
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m IdempotencyRecordMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+REDACTED
+	tx := &Tx{config: m.configREDACTED
+	tx.init()
+	return tx, nil
+REDACTED
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *IdempotencyRecordMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+REDACTED
+	return *m.id, true
+REDACTED
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *IdempotencyRecordMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{idREDACTED, nil
+	REDACTED
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().IdempotencyRecord.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+REDACTED
+REDACTED
+
+// SetCreatedAt sets the "created_at" field.
+func (m *IdempotencyRecordMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+REDACTED
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *IdempotencyRecordMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldCreatedAt returns the old "created_at" field's value of the IdempotencyRecord entity.
+// If the IdempotencyRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IdempotencyRecordMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+REDACTED
+	return oldValue.CreatedAt, nil
+REDACTED
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *IdempotencyRecordMutation) ResetCreatedAt() {
+	m.created_at = nil
+REDACTED
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *IdempotencyRecordMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+REDACTED
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *IdempotencyRecordMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldUpdatedAt returns the old "updated_at" field's value of the IdempotencyRecord entity.
+// If the IdempotencyRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IdempotencyRecordMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+REDACTED
+	return oldValue.UpdatedAt, nil
+REDACTED
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *IdempotencyRecordMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+REDACTED
+
+// SetScope sets the "scope" field.
+func (m *IdempotencyRecordMutation) SetScope(s string) {
+	m.scope = &s
+REDACTED
+
+// Scope returns the value of the "scope" field in the mutation.
+func (m *IdempotencyRecordMutation) Scope() (r string, exists bool) {
+	v := m.scope
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldScope returns the old "scope" field's value of the IdempotencyRecord entity.
+// If the IdempotencyRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IdempotencyRecordMutation) OldScope(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldScope is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldScope requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldScope: %w", err)
+REDACTED
+	return oldValue.Scope, nil
+REDACTED
+
+// ResetScope resets all changes to the "scope" field.
+func (m *IdempotencyRecordMutation) ResetScope() {
+	m.scope = nil
+REDACTED
+
+// SetIdempotencyKeyHash sets the "idempotency_key_hash" field.
+func (m *IdempotencyRecordMutation) SetIdempotencyKeyHash(s string) {
+	m.idempotency_key_hash = &s
+REDACTED
+
+// IdempotencyKeyHash returns the value of the "idempotency_key_hash" field in the mutation.
+func (m *IdempotencyRecordMutation) IdempotencyKeyHash() (r string, exists bool) {
+	v := m.idempotency_key_hash
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldIdempotencyKeyHash returns the old "idempotency_key_hash" field's value of the IdempotencyRecord entity.
+// If the IdempotencyRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IdempotencyRecordMutation) OldIdempotencyKeyHash(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIdempotencyKeyHash is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIdempotencyKeyHash requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIdempotencyKeyHash: %w", err)
+REDACTED
+	return oldValue.IdempotencyKeyHash, nil
+REDACTED
+
+// ResetIdempotencyKeyHash resets all changes to the "idempotency_key_hash" field.
+func (m *IdempotencyRecordMutation) ResetIdempotencyKeyHash() {
+	m.idempotency_key_hash = nil
+REDACTED
+
+// SetRequestFingerprint sets the "request_fingerprint" field.
+func (m *IdempotencyRecordMutation) SetRequestFingerprint(s string) {
+	m.request_fingerprint = &s
+REDACTED
+
+// RequestFingerprint returns the value of the "request_fingerprint" field in the mutation.
+func (m *IdempotencyRecordMutation) RequestFingerprint() (r string, exists bool) {
+	v := m.request_fingerprint
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldRequestFingerprint returns the old "request_fingerprint" field's value of the IdempotencyRecord entity.
+// If the IdempotencyRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IdempotencyRecordMutation) OldRequestFingerprint(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestFingerprint is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestFingerprint requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestFingerprint: %w", err)
+REDACTED
+	return oldValue.RequestFingerprint, nil
+REDACTED
+
+// ResetRequestFingerprint resets all changes to the "request_fingerprint" field.
+func (m *IdempotencyRecordMutation) ResetRequestFingerprint() {
+	m.request_fingerprint = nil
+REDACTED
+
+// SetStatus sets the "status" field.
+func (m *IdempotencyRecordMutation) SetStatus(s string) {
+	m.status = &s
+REDACTED
+
+// Status returns the value of the "status" field in the mutation.
+func (m *IdempotencyRecordMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldStatus returns the old "status" field's value of the IdempotencyRecord entity.
+// If the IdempotencyRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IdempotencyRecordMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+REDACTED
+	return oldValue.Status, nil
+REDACTED
+
+// ResetStatus resets all changes to the "status" field.
+func (m *IdempotencyRecordMutation) ResetStatus() {
+	m.status = nil
+REDACTED
+
+// SetResponseStatus sets the "response_status" field.
+func (m *IdempotencyRecordMutation) SetResponseStatus(i int) {
+	m.response_status = &i
+	m.addresponse_status = nil
+REDACTED
+
+// ResponseStatus returns the value of the "response_status" field in the mutation.
+func (m *IdempotencyRecordMutation) ResponseStatus() (r int, exists bool) {
+	v := m.response_status
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldResponseStatus returns the old "response_status" field's value of the IdempotencyRecord entity.
+// If the IdempotencyRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IdempotencyRecordMutation) OldResponseStatus(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResponseStatus is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResponseStatus requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResponseStatus: %w", err)
+REDACTED
+	return oldValue.ResponseStatus, nil
+REDACTED
+
+// AddResponseStatus adds i to the "response_status" field.
+func (m *IdempotencyRecordMutation) AddResponseStatus(i int) {
+	if m.addresponse_status != nil {
+		*m.addresponse_status += i
+REDACTED else {
+		m.addresponse_status = &i
+REDACTED
+REDACTED
+
+// AddedResponseStatus returns the value that was added to the "response_status" field in this mutation.
+func (m *IdempotencyRecordMutation) AddedResponseStatus() (r int, exists bool) {
+	v := m.addresponse_status
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ClearResponseStatus clears the value of the "response_status" field.
+func (m *IdempotencyRecordMutation) ClearResponseStatus() {
+	m.response_status = nil
+	m.addresponse_status = nil
+	m.clearedFields[idempotencyrecord.FieldResponseStatus] = struct{REDACTED{REDACTED
+REDACTED
+
+// ResponseStatusCleared returns if the "response_status" field was cleared in this mutation.
+func (m *IdempotencyRecordMutation) ResponseStatusCleared() bool {
+	_, ok := m.clearedFields[idempotencyrecord.FieldResponseStatus]
+	return ok
+REDACTED
+
+// ResetResponseStatus resets all changes to the "response_status" field.
+func (m *IdempotencyRecordMutation) ResetResponseStatus() {
+	m.response_status = nil
+	m.addresponse_status = nil
+	delete(m.clearedFields, idempotencyrecord.FieldResponseStatus)
+REDACTED
+
+// SetResponseBody sets the "response_body" field.
+func (m *IdempotencyRecordMutation) SetResponseBody(s string) {
+	m.response_body = &s
+REDACTED
+
+// ResponseBody returns the value of the "response_body" field in the mutation.
+func (m *IdempotencyRecordMutation) ResponseBody() (r string, exists bool) {
+	v := m.response_body
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldResponseBody returns the old "response_body" field's value of the IdempotencyRecord entity.
+// If the IdempotencyRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IdempotencyRecordMutation) OldResponseBody(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResponseBody is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResponseBody requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResponseBody: %w", err)
+REDACTED
+	return oldValue.ResponseBody, nil
+REDACTED
+
+// ClearResponseBody clears the value of the "response_body" field.
+func (m *IdempotencyRecordMutation) ClearResponseBody() {
+	m.response_body = nil
+	m.clearedFields[idempotencyrecord.FieldResponseBody] = struct{REDACTED{REDACTED
+REDACTED
+
+// ResponseBodyCleared returns if the "response_body" field was cleared in this mutation.
+func (m *IdempotencyRecordMutation) ResponseBodyCleared() bool {
+	_, ok := m.clearedFields[idempotencyrecord.FieldResponseBody]
+	return ok
+REDACTED
+
+// ResetResponseBody resets all changes to the "response_body" field.
+func (m *IdempotencyRecordMutation) ResetResponseBody() {
+	m.response_body = nil
+	delete(m.clearedFields, idempotencyrecord.FieldResponseBody)
+REDACTED
+
+// SetErrorReason sets the "error_reason" field.
+func (m *IdempotencyRecordMutation) SetErrorReason(s string) {
+	m.error_reason = &s
+REDACTED
+
+// ErrorReason returns the value of the "error_reason" field in the mutation.
+func (m *IdempotencyRecordMutation) ErrorReason() (r string, exists bool) {
+	v := m.error_reason
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldErrorReason returns the old "error_reason" field's value of the IdempotencyRecord entity.
+// If the IdempotencyRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IdempotencyRecordMutation) OldErrorReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorReason is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorReason requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorReason: %w", err)
+REDACTED
+	return oldValue.ErrorReason, nil
+REDACTED
+
+// ClearErrorReason clears the value of the "error_reason" field.
+func (m *IdempotencyRecordMutation) ClearErrorReason() {
+	m.error_reason = nil
+	m.clearedFields[idempotencyrecord.FieldErrorReason] = struct{REDACTED{REDACTED
+REDACTED
+
+// ErrorReasonCleared returns if the "error_reason" field was cleared in this mutation.
+func (m *IdempotencyRecordMutation) ErrorReasonCleared() bool {
+	_, ok := m.clearedFields[idempotencyrecord.FieldErrorReason]
+	return ok
+REDACTED
+
+// ResetErrorReason resets all changes to the "error_reason" field.
+func (m *IdempotencyRecordMutation) ResetErrorReason() {
+	m.error_reason = nil
+	delete(m.clearedFields, idempotencyrecord.FieldErrorReason)
+REDACTED
+
+// SetLockedUntil sets the "locked_until" field.
+func (m *IdempotencyRecordMutation) SetLockedUntil(t time.Time) {
+	m.locked_until = &t
+REDACTED
+
+// LockedUntil returns the value of the "locked_until" field in the mutation.
+func (m *IdempotencyRecordMutation) LockedUntil() (r time.Time, exists bool) {
+	v := m.locked_until
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldLockedUntil returns the old "locked_until" field's value of the IdempotencyRecord entity.
+// If the IdempotencyRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IdempotencyRecordMutation) OldLockedUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLockedUntil is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLockedUntil requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLockedUntil: %w", err)
+REDACTED
+	return oldValue.LockedUntil, nil
+REDACTED
+
+// ClearLockedUntil clears the value of the "locked_until" field.
+func (m *IdempotencyRecordMutation) ClearLockedUntil() {
+	m.locked_until = nil
+	m.clearedFields[idempotencyrecord.FieldLockedUntil] = struct{REDACTED{REDACTED
+REDACTED
+
+// LockedUntilCleared returns if the "locked_until" field was cleared in this mutation.
+func (m *IdempotencyRecordMutation) LockedUntilCleared() bool {
+	_, ok := m.clearedFields[idempotencyrecord.FieldLockedUntil]
+	return ok
+REDACTED
+
+// ResetLockedUntil resets all changes to the "locked_until" field.
+func (m *IdempotencyRecordMutation) ResetLockedUntil() {
+	m.locked_until = nil
+	delete(m.clearedFields, idempotencyrecord.FieldLockedUntil)
+REDACTED
+
+// SetExpiresAt sets the "expires_at" field.
+func (m *IdempotencyRecordMutation) SetExpiresAt(t time.Time) {
+	m.expires_at = &t
+REDACTED
+
+// ExpiresAt returns the value of the "expires_at" field in the mutation.
+func (m *IdempotencyRecordMutation) ExpiresAt() (r time.Time, exists bool) {
+	v := m.expires_at
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldExpiresAt returns the old "expires_at" field's value of the IdempotencyRecord entity.
+// If the IdempotencyRecord object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IdempotencyRecordMutation) OldExpiresAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExpiresAt is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExpiresAt requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExpiresAt: %w", err)
+REDACTED
+	return oldValue.ExpiresAt, nil
+REDACTED
+
+// ResetExpiresAt resets all changes to the "expires_at" field.
+func (m *IdempotencyRecordMutation) ResetExpiresAt() {
+	m.expires_at = nil
+REDACTED
+
+// Where appends a list predicates to the IdempotencyRecordMutation builder.
+func (m *IdempotencyRecordMutation) Where(ps ...predicate.IdempotencyRecord) {
+	m.predicates = append(m.predicates, ps...)
+REDACTED
+
+// WhereP appends storage-level predicates to the IdempotencyRecordMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *IdempotencyRecordMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.IdempotencyRecord, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+REDACTED
+	m.Where(p...)
+REDACTED
+
+// Op returns the operation name.
+func (m *IdempotencyRecordMutation) Op() Op {
+	return m.op
+REDACTED
+
+// SetOp allows setting the mutation operation.
+func (m *IdempotencyRecordMutation) SetOp(op Op) {
+	m.op = op
+REDACTED
+
+// Type returns the node type of this mutation (IdempotencyRecord).
+func (m *IdempotencyRecordMutation) Type() string {
+	return m.typ
+REDACTED
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *IdempotencyRecordMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.created_at != nil {
+		fields = append(fields, idempotencyrecord.FieldCreatedAt)
+REDACTED
+	if m.updated_at != nil {
+		fields = append(fields, idempotencyrecord.FieldUpdatedAt)
+REDACTED
+	if m.scope != nil {
+		fields = append(fields, idempotencyrecord.FieldScope)
+REDACTED
+	if m.idempotency_key_hash != nil {
+		fields = append(fields, idempotencyrecord.FieldIdempotencyKeyHash)
+REDACTED
+	if m.request_fingerprint != nil {
+		fields = append(fields, idempotencyrecord.FieldRequestFingerprint)
+REDACTED
+	if m.status != nil {
+		fields = append(fields, idempotencyrecord.FieldStatus)
+REDACTED
+	if m.response_status != nil {
+		fields = append(fields, idempotencyrecord.FieldResponseStatus)
+REDACTED
+	if m.response_body != nil {
+		fields = append(fields, idempotencyrecord.FieldResponseBody)
+REDACTED
+	if m.error_reason != nil {
+		fields = append(fields, idempotencyrecord.FieldErrorReason)
+REDACTED
+	if m.locked_until != nil {
+		fields = append(fields, idempotencyrecord.FieldLockedUntil)
+REDACTED
+	if m.expires_at != nil {
+		fields = append(fields, idempotencyrecord.FieldExpiresAt)
+REDACTED
+	return fields
+REDACTED
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *IdempotencyRecordMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case idempotencyrecord.FieldCreatedAt:
+		return m.CreatedAt()
+	case idempotencyrecord.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case idempotencyrecord.FieldScope:
+		return m.Scope()
+	case idempotencyrecord.FieldIdempotencyKeyHash:
+		return m.IdempotencyKeyHash()
+	case idempotencyrecord.FieldRequestFingerprint:
+		return m.RequestFingerprint()
+	case idempotencyrecord.FieldStatus:
+		return m.Status()
+	case idempotencyrecord.FieldResponseStatus:
+		return m.ResponseStatus()
+	case idempotencyrecord.FieldResponseBody:
+		return m.ResponseBody()
+	case idempotencyrecord.FieldErrorReason:
+		return m.ErrorReason()
+	case idempotencyrecord.FieldLockedUntil:
+		return m.LockedUntil()
+	case idempotencyrecord.FieldExpiresAt:
+		return m.ExpiresAt()
+REDACTED
+	return nil, false
+REDACTED
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *IdempotencyRecordMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case idempotencyrecord.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case idempotencyrecord.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case idempotencyrecord.FieldScope:
+		return m.OldScope(ctx)
+	case idempotencyrecord.FieldIdempotencyKeyHash:
+		return m.OldIdempotencyKeyHash(ctx)
+	case idempotencyrecord.FieldRequestFingerprint:
+		return m.OldRequestFingerprint(ctx)
+	case idempotencyrecord.FieldStatus:
+		return m.OldStatus(ctx)
+	case idempotencyrecord.FieldResponseStatus:
+		return m.OldResponseStatus(ctx)
+	case idempotencyrecord.FieldResponseBody:
+		return m.OldResponseBody(ctx)
+	case idempotencyrecord.FieldErrorReason:
+		return m.OldErrorReason(ctx)
+	case idempotencyrecord.FieldLockedUntil:
+		return m.OldLockedUntil(ctx)
+	case idempotencyrecord.FieldExpiresAt:
+		return m.OldExpiresAt(ctx)
+REDACTED
+	return nil, fmt.Errorf("unknown IdempotencyRecord field %s", name)
+REDACTED
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *IdempotencyRecordMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case idempotencyrecord.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetCreatedAt(v)
+		return nil
+	case idempotencyrecord.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetUpdatedAt(v)
+		return nil
+	case idempotencyrecord.FieldScope:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetScope(v)
+		return nil
+	case idempotencyrecord.FieldIdempotencyKeyHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetIdempotencyKeyHash(v)
+		return nil
+	case idempotencyrecord.FieldRequestFingerprint:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetRequestFingerprint(v)
+		return nil
+	case idempotencyrecord.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetStatus(v)
+		return nil
+	case idempotencyrecord.FieldResponseStatus:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetResponseStatus(v)
+		return nil
+	case idempotencyrecord.FieldResponseBody:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetResponseBody(v)
+		return nil
+	case idempotencyrecord.FieldErrorReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetErrorReason(v)
+		return nil
+	case idempotencyrecord.FieldLockedUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetLockedUntil(v)
+		return nil
+	case idempotencyrecord.FieldExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetExpiresAt(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown IdempotencyRecord field %s", name)
+REDACTED
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *IdempotencyRecordMutation) AddedFields() []string {
+	var fields []string
+	if m.addresponse_status != nil {
+		fields = append(fields, idempotencyrecord.FieldResponseStatus)
+REDACTED
+	return fields
+REDACTED
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *IdempotencyRecordMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case idempotencyrecord.FieldResponseStatus:
+		return m.AddedResponseStatus()
+REDACTED
+	return nil, false
+REDACTED
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *IdempotencyRecordMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case idempotencyrecord.FieldResponseStatus:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddResponseStatus(v)
+		return nil
+REDACTED
+	return fmt.Errorf("unknown IdempotencyRecord numeric field %s", name)
+REDACTED
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *IdempotencyRecordMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(idempotencyrecord.FieldResponseStatus) {
+		fields = append(fields, idempotencyrecord.FieldResponseStatus)
+REDACTED
+	if m.FieldCleared(idempotencyrecord.FieldResponseBody) {
+		fields = append(fields, idempotencyrecord.FieldResponseBody)
+REDACTED
+	if m.FieldCleared(idempotencyrecord.FieldErrorReason) {
+		fields = append(fields, idempotencyrecord.FieldErrorReason)
+REDACTED
+	if m.FieldCleared(idempotencyrecord.FieldLockedUntil) {
+		fields = append(fields, idempotencyrecord.FieldLockedUntil)
+REDACTED
+	return fields
+REDACTED
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *IdempotencyRecordMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+REDACTED
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *IdempotencyRecordMutation) ClearField(name string) error {
+	switch name {
+	case idempotencyrecord.FieldResponseStatus:
+		m.ClearResponseStatus()
+		return nil
+	case idempotencyrecord.FieldResponseBody:
+		m.ClearResponseBody()
+		return nil
+	case idempotencyrecord.FieldErrorReason:
+		m.ClearErrorReason()
+		return nil
+	case idempotencyrecord.FieldLockedUntil:
+		m.ClearLockedUntil()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown IdempotencyRecord nullable field %s", name)
+REDACTED
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *IdempotencyRecordMutation) ResetField(name string) error {
+	switch name {
+	case idempotencyrecord.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case idempotencyrecord.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case idempotencyrecord.FieldScope:
+		m.ResetScope()
+		return nil
+	case idempotencyrecord.FieldIdempotencyKeyHash:
+		m.ResetIdempotencyKeyHash()
+		return nil
+	case idempotencyrecord.FieldRequestFingerprint:
+		m.ResetRequestFingerprint()
+		return nil
+	case idempotencyrecord.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case idempotencyrecord.FieldResponseStatus:
+		m.ResetResponseStatus()
+		return nil
+	case idempotencyrecord.FieldResponseBody:
+		m.ResetResponseBody()
+		return nil
+	case idempotencyrecord.FieldErrorReason:
+		m.ResetErrorReason()
+		return nil
+	case idempotencyrecord.FieldLockedUntil:
+		m.ResetLockedUntil()
+		return nil
+	case idempotencyrecord.FieldExpiresAt:
+		m.ResetExpiresAt()
+		return nil
+REDACTED
+	return fmt.Errorf("unknown IdempotencyRecord field %s", name)
+REDACTED
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *IdempotencyRecordMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *IdempotencyRecordMutation) AddedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *IdempotencyRecordMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *IdempotencyRecordMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+REDACTED
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *IdempotencyRecordMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+REDACTED
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *IdempotencyRecordMutation) EdgeCleared(name string) bool {
+	return false
+REDACTED
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *IdempotencyRecordMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown IdempotencyRecord unique edge %s", name)
+REDACTED
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *IdempotencyRecordMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown IdempotencyRecord edge %s", name)
 REDACTED
 
 // PromoCodeMutation represents an operation that mutates the PromoCode nodes in the graph.
@@ -19038,6 +20255,10 @@ type UserMutation struct {
 	totp_secret_encrypted         *string
 	totp_enabled                  *bool
 	totp_enabled_at               *time.Time
+	sora_storage_quota_bytes      *int64
+	addsora_storage_quota_bytes   *int64
+	sora_storage_used_bytes       *int64
+	addsora_storage_used_bytes    *int64
 	clearedFields                 map[string]struct{REDACTED
 	api_keys                      map[int64]struct{REDACTED
 	removedapi_keys               map[int64]struct{REDACTED
@@ -19752,6 +20973,118 @@ func (m *UserMutation) ResetTotpEnabledAt() {
 	delete(m.clearedFields, user.FieldTotpEnabledAt)
 REDACTED
 
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (m *UserMutation) SetSoraStorageQuotaBytes(i int64) {
+	m.sora_storage_quota_bytes = &i
+	m.addsora_storage_quota_bytes = nil
+REDACTED
+
+// SoraStorageQuotaBytes returns the value of the "sora_storage_quota_bytes" field in the mutation.
+func (m *UserMutation) SoraStorageQuotaBytes() (r int64, exists bool) {
+	v := m.sora_storage_quota_bytes
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSoraStorageQuotaBytes returns the old "sora_storage_quota_bytes" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldSoraStorageQuotaBytes(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSoraStorageQuotaBytes is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSoraStorageQuotaBytes requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSoraStorageQuotaBytes: %w", err)
+REDACTED
+	return oldValue.SoraStorageQuotaBytes, nil
+REDACTED
+
+// AddSoraStorageQuotaBytes adds i to the "sora_storage_quota_bytes" field.
+func (m *UserMutation) AddSoraStorageQuotaBytes(i int64) {
+	if m.addsora_storage_quota_bytes != nil {
+		*m.addsora_storage_quota_bytes += i
+REDACTED else {
+		m.addsora_storage_quota_bytes = &i
+REDACTED
+REDACTED
+
+// AddedSoraStorageQuotaBytes returns the value that was added to the "sora_storage_quota_bytes" field in this mutation.
+func (m *UserMutation) AddedSoraStorageQuotaBytes() (r int64, exists bool) {
+	v := m.addsora_storage_quota_bytes
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetSoraStorageQuotaBytes resets all changes to the "sora_storage_quota_bytes" field.
+func (m *UserMutation) ResetSoraStorageQuotaBytes() {
+	m.sora_storage_quota_bytes = nil
+	m.addsora_storage_quota_bytes = nil
+REDACTED
+
+// SetSoraStorageUsedBytes sets the "sora_storage_used_bytes" field.
+func (m *UserMutation) SetSoraStorageUsedBytes(i int64) {
+	m.sora_storage_used_bytes = &i
+	m.addsora_storage_used_bytes = nil
+REDACTED
+
+// SoraStorageUsedBytes returns the value of the "sora_storage_used_bytes" field in the mutation.
+func (m *UserMutation) SoraStorageUsedBytes() (r int64, exists bool) {
+	v := m.sora_storage_used_bytes
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldSoraStorageUsedBytes returns the old "sora_storage_used_bytes" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldSoraStorageUsedBytes(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSoraStorageUsedBytes is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSoraStorageUsedBytes requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSoraStorageUsedBytes: %w", err)
+REDACTED
+	return oldValue.SoraStorageUsedBytes, nil
+REDACTED
+
+// AddSoraStorageUsedBytes adds i to the "sora_storage_used_bytes" field.
+func (m *UserMutation) AddSoraStorageUsedBytes(i int64) {
+	if m.addsora_storage_used_bytes != nil {
+		*m.addsora_storage_used_bytes += i
+REDACTED else {
+		m.addsora_storage_used_bytes = &i
+REDACTED
+REDACTED
+
+// AddedSoraStorageUsedBytes returns the value that was added to the "sora_storage_used_bytes" field in this mutation.
+func (m *UserMutation) AddedSoraStorageUsedBytes() (r int64, exists bool) {
+	v := m.addsora_storage_used_bytes
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetSoraStorageUsedBytes resets all changes to the "sora_storage_used_bytes" field.
+func (m *UserMutation) ResetSoraStorageUsedBytes() {
+	m.sora_storage_used_bytes = nil
+	m.addsora_storage_used_bytes = nil
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *UserMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -20272,7 +21605,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 16)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 REDACTED
@@ -20315,6 +21648,12 @@ REDACTED
 	if m.totp_enabled_at != nil {
 		fields = append(fields, user.FieldTotpEnabledAt)
 REDACTED
+	if m.sora_storage_quota_bytes != nil {
+		fields = append(fields, user.FieldSoraStorageQuotaBytes)
+REDACTED
+	if m.sora_storage_used_bytes != nil {
+		fields = append(fields, user.FieldSoraStorageUsedBytes)
+REDACTED
 	return fields
 REDACTED
 
@@ -20351,6 +21690,10 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.TotpEnabled()
 	case user.FieldTotpEnabledAt:
 		return m.TotpEnabledAt()
+	case user.FieldSoraStorageQuotaBytes:
+		return m.SoraStorageQuotaBytes()
+	case user.FieldSoraStorageUsedBytes:
+		return m.SoraStorageUsedBytes()
 REDACTED
 	return nil, false
 REDACTED
@@ -20388,6 +21731,10 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldTotpEnabled(ctx)
 	case user.FieldTotpEnabledAt:
 		return m.OldTotpEnabledAt(ctx)
+	case user.FieldSoraStorageQuotaBytes:
+		return m.OldSoraStorageQuotaBytes(ctx)
+	case user.FieldSoraStorageUsedBytes:
+		return m.OldSoraStorageUsedBytes(ctx)
 REDACTED
 	return nil, fmt.Errorf("unknown User field %s", name)
 REDACTED
@@ -20495,6 +21842,20 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 	REDACTED
 		m.SetTotpEnabledAt(v)
 		return nil
+	case user.FieldSoraStorageQuotaBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSoraStorageQuotaBytes(v)
+		return nil
+	case user.FieldSoraStorageUsedBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetSoraStorageUsedBytes(v)
+		return nil
 REDACTED
 	return fmt.Errorf("unknown User field %s", name)
 REDACTED
@@ -20509,6 +21870,12 @@ REDACTED
 	if m.addconcurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
 REDACTED
+	if m.addsora_storage_quota_bytes != nil {
+		fields = append(fields, user.FieldSoraStorageQuotaBytes)
+REDACTED
+	if m.addsora_storage_used_bytes != nil {
+		fields = append(fields, user.FieldSoraStorageUsedBytes)
+REDACTED
 	return fields
 REDACTED
 
@@ -20521,6 +21888,10 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedBalance()
 	case user.FieldConcurrency:
 		return m.AddedConcurrency()
+	case user.FieldSoraStorageQuotaBytes:
+		return m.AddedSoraStorageQuotaBytes()
+	case user.FieldSoraStorageUsedBytes:
+		return m.AddedSoraStorageUsedBytes()
 REDACTED
 	return nil, false
 REDACTED
@@ -20543,6 +21914,20 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.AddConcurrency(v)
+		return nil
+	case user.FieldSoraStorageQuotaBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddSoraStorageQuotaBytes(v)
+		return nil
+	case user.FieldSoraStorageUsedBytes:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddSoraStorageUsedBytes(v)
 		return nil
 REDACTED
 	return fmt.Errorf("unknown User numeric field %s", name)
@@ -20633,6 +22018,12 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldTotpEnabledAt:
 		m.ResetTotpEnabledAt()
+		return nil
+	case user.FieldSoraStorageQuotaBytes:
+		m.ResetSoraStorageQuotaBytes()
+		return nil
+	case user.FieldSoraStorageUsedBytes:
+		m.ResetSoraStorageUsedBytes()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown User field %s", name)

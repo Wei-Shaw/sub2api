@@ -293,6 +293,34 @@ REDACTED
 	return _c
 REDACTED
 
+// SetTempUnschedulableUntil sets the "temp_unschedulable_until" field.
+func (_c *AccountCreate) SetTempUnschedulableUntil(v time.Time) *AccountCreate {
+	_c.mutation.SetTempUnschedulableUntil(v)
+	return _c
+REDACTED
+
+// SetNillableTempUnschedulableUntil sets the "temp_unschedulable_until" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableTempUnschedulableUntil(v *time.Time) *AccountCreate {
+	if v != nil {
+		_c.SetTempUnschedulableUntil(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetTempUnschedulableReason sets the "temp_unschedulable_reason" field.
+func (_c *AccountCreate) SetTempUnschedulableReason(v string) *AccountCreate {
+	_c.mutation.SetTempUnschedulableReason(v)
+	return _c
+REDACTED
+
+// SetNillableTempUnschedulableReason sets the "temp_unschedulable_reason" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableTempUnschedulableReason(v *string) *AccountCreate {
+	if v != nil {
+		_c.SetTempUnschedulableReason(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetSessionWindowStart sets the "session_window_start" field.
 func (_c *AccountCreate) SetSessionWindowStart(v time.Time) *AccountCreate {
 	_c.mutation.SetSessionWindowStart(v)
@@ -638,6 +666,14 @@ REDACTED
 	if value, ok := _c.mutation.OverloadUntil(); ok {
 		_spec.SetField(account.FieldOverloadUntil, field.TypeTime, value)
 		_node.OverloadUntil = &value
+REDACTED
+	if value, ok := _c.mutation.TempUnschedulableUntil(); ok {
+		_spec.SetField(account.FieldTempUnschedulableUntil, field.TypeTime, value)
+		_node.TempUnschedulableUntil = &value
+REDACTED
+	if value, ok := _c.mutation.TempUnschedulableReason(); ok {
+		_spec.SetField(account.FieldTempUnschedulableReason, field.TypeString, value)
+		_node.TempUnschedulableReason = &value
 REDACTED
 	if value, ok := _c.mutation.SessionWindowStart(); ok {
 		_spec.SetField(account.FieldSessionWindowStart, field.TypeTime, value)
@@ -1077,6 +1113,42 @@ REDACTED
 // ClearOverloadUntil clears the value of the "overload_until" field.
 func (u *AccountUpsert) ClearOverloadUntil() *AccountUpsert {
 	u.SetNull(account.FieldOverloadUntil)
+	return u
+REDACTED
+
+// SetTempUnschedulableUntil sets the "temp_unschedulable_until" field.
+func (u *AccountUpsert) SetTempUnschedulableUntil(v time.Time) *AccountUpsert {
+	u.Set(account.FieldTempUnschedulableUntil, v)
+	return u
+REDACTED
+
+// UpdateTempUnschedulableUntil sets the "temp_unschedulable_until" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateTempUnschedulableUntil() *AccountUpsert {
+	u.SetExcluded(account.FieldTempUnschedulableUntil)
+	return u
+REDACTED
+
+// ClearTempUnschedulableUntil clears the value of the "temp_unschedulable_until" field.
+func (u *AccountUpsert) ClearTempUnschedulableUntil() *AccountUpsert {
+	u.SetNull(account.FieldTempUnschedulableUntil)
+	return u
+REDACTED
+
+// SetTempUnschedulableReason sets the "temp_unschedulable_reason" field.
+func (u *AccountUpsert) SetTempUnschedulableReason(v string) *AccountUpsert {
+	u.Set(account.FieldTempUnschedulableReason, v)
+	return u
+REDACTED
+
+// UpdateTempUnschedulableReason sets the "temp_unschedulable_reason" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateTempUnschedulableReason() *AccountUpsert {
+	u.SetExcluded(account.FieldTempUnschedulableReason)
+	return u
+REDACTED
+
+// ClearTempUnschedulableReason clears the value of the "temp_unschedulable_reason" field.
+func (u *AccountUpsert) ClearTempUnschedulableReason() *AccountUpsert {
+	u.SetNull(account.FieldTempUnschedulableReason)
 	return u
 REDACTED
 
@@ -1554,6 +1626,48 @@ REDACTED
 func (u *AccountUpsertOne) ClearOverloadUntil() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearOverloadUntil()
+REDACTED)
+REDACTED
+
+// SetTempUnschedulableUntil sets the "temp_unschedulable_until" field.
+func (u *AccountUpsertOne) SetTempUnschedulableUntil(v time.Time) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetTempUnschedulableUntil(v)
+REDACTED)
+REDACTED
+
+// UpdateTempUnschedulableUntil sets the "temp_unschedulable_until" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateTempUnschedulableUntil() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateTempUnschedulableUntil()
+REDACTED)
+REDACTED
+
+// ClearTempUnschedulableUntil clears the value of the "temp_unschedulable_until" field.
+func (u *AccountUpsertOne) ClearTempUnschedulableUntil() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearTempUnschedulableUntil()
+REDACTED)
+REDACTED
+
+// SetTempUnschedulableReason sets the "temp_unschedulable_reason" field.
+func (u *AccountUpsertOne) SetTempUnschedulableReason(v string) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetTempUnschedulableReason(v)
+REDACTED)
+REDACTED
+
+// UpdateTempUnschedulableReason sets the "temp_unschedulable_reason" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateTempUnschedulableReason() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateTempUnschedulableReason()
+REDACTED)
+REDACTED
+
+// ClearTempUnschedulableReason clears the value of the "temp_unschedulable_reason" field.
+func (u *AccountUpsertOne) ClearTempUnschedulableReason() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearTempUnschedulableReason()
 REDACTED)
 REDACTED
 
@@ -2206,6 +2320,48 @@ REDACTED
 func (u *AccountUpsertBulk) ClearOverloadUntil() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearOverloadUntil()
+REDACTED)
+REDACTED
+
+// SetTempUnschedulableUntil sets the "temp_unschedulable_until" field.
+func (u *AccountUpsertBulk) SetTempUnschedulableUntil(v time.Time) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetTempUnschedulableUntil(v)
+REDACTED)
+REDACTED
+
+// UpdateTempUnschedulableUntil sets the "temp_unschedulable_until" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateTempUnschedulableUntil() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateTempUnschedulableUntil()
+REDACTED)
+REDACTED
+
+// ClearTempUnschedulableUntil clears the value of the "temp_unschedulable_until" field.
+func (u *AccountUpsertBulk) ClearTempUnschedulableUntil() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearTempUnschedulableUntil()
+REDACTED)
+REDACTED
+
+// SetTempUnschedulableReason sets the "temp_unschedulable_reason" field.
+func (u *AccountUpsertBulk) SetTempUnschedulableReason(v string) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetTempUnschedulableReason(v)
+REDACTED)
+REDACTED
+
+// UpdateTempUnschedulableReason sets the "temp_unschedulable_reason" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateTempUnschedulableReason() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateTempUnschedulableReason()
+REDACTED)
+REDACTED
+
+// ClearTempUnschedulableReason clears the value of the "temp_unschedulable_reason" field.
+func (u *AccountUpsertBulk) ClearTempUnschedulableReason() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearTempUnschedulableReason()
 REDACTED)
 REDACTED
 

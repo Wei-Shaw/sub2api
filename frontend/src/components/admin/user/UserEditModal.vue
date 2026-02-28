@@ -37,6 +37,14 @@
         <label class="input-label">{{ t('admin.users.columns.concurrency') REDACTEDREDACTED</label>
         <input v-model.number="form.concurrency" type="number" class="input" />
       </div>
+      <div>
+        <label class="input-label">{{ t('admin.users.soraStorageQuota') REDACTEDREDACTED</label>
+        <div class="flex items-center gap-2">
+          <input v-model.number="form.sora_storage_quota_gb" type="number" min="0" step="0.1" class="input" placeholder="0" />
+          <span class="shrink-0 text-sm text-gray-500">GB</span>
+        </div>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.users.soraStorageQuotaHint') REDACTEDREDACTED</p>
+      </div>
       <UserAttributeForm v-model="form.customAttributes" :user-id="user?.id" />
     </form>
     <template #footer>
@@ -66,11 +74,11 @@ const emit = defineEmits(['close', 'success'])
 const { t REDACTED = useI18n(); const appStore = useAppStore(); const { copyToClipboard REDACTED = useClipboard()
 
 const submitting = ref(false); const passwordCopied = ref(false)
-const form = reactive({ email: '', password: '', username: '', notes: '', concurrency: 1, customAttributes: {REDACTED as UserAttributeValuesMap REDACTED)
+const form = reactive({ email: '', password: '', username: '', notes: '', concurrency: 1, sora_storage_quota_gb: 0, customAttributes: {REDACTED as UserAttributeValuesMap REDACTED)
 
 watch(() => props.user, (u) => {
   if (u) {
-    Object.assign(form, { email: u.email, password: '', username: u.username || '', notes: u.notes || '', concurrency: u.concurrency, customAttributes: {REDACTED REDACTED)
+    Object.assign(form, { email: u.email, password: '', username: u.username || '', notes: u.notes || '', concurrency: u.concurrency, sora_storage_quota_gb: Number(((u.sora_storage_quota_bytes || 0) / (1024 * 1024 * 1024)).toFixed(2)), customAttributes: {REDACTED REDACTED)
     passwordCopied.value = false
   REDACTED
 REDACTED, { immediate: true REDACTED)
@@ -97,7 +105,7 @@ const handleUpdateUser = async () => {
   REDACTED
   submitting.value = true
   try {
-    const data: any = { email: form.email, username: form.username, notes: form.notes, concurrency: form.concurrency REDACTED
+    const data: any = { email: form.email, username: form.username, notes: form.notes, concurrency: form.concurrency, sora_storage_quota_bytes: Math.round((form.sora_storage_quota_gb || 0) * 1024 * 1024 * 1024) REDACTED
     if (form.password.trim()) data.password = form.password.trim()
     await adminAPI.users.update(props.user.id, data)
     if (Object.keys(form.customAttributes).length > 0) await adminAPI.userAttributes.updateUserAttributeValues(props.user.id, form.customAttributes)

@@ -1,12 +1,19 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -105,6 +112,27 @@ REDACTED
 	assert.Equal(t, "test error", errorObj["message"])
 REDACTED
 
+func TestReadRequestBodyWithPrealloc(t *testing.T) {
+	payload := `{"model":"gpt-5","input":"hello"REDACTED`
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(payload))
+	req.ContentLength = int64(len(payload))
+
+	body, err := pkghttputil.ReadRequestBodyWithPrealloc(req)
+REDACTED
+	require.Equal(t, payload, string(body))
+REDACTED
+
+func TestReadRequestBodyWithPrealloc_MaxBytesError(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(strings.Repeat("x", 8)))
+	req.Body = http.MaxBytesReader(rec, req.Body, 4)
+
+	_, err := pkghttputil.ReadRequestBodyWithPrealloc(req)
+REDACTED
+	var maxErr *http.MaxBytesError
+	require.ErrorAs(t, err, &maxErr)
+REDACTED
+
 func TestOpenAIEnsureForwardErrorResponse_WritesFallbackWhenNotWritten(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
@@ -139,6 +167,387 @@ func TestOpenAIEnsureForwardErrorResponse_DoesNotOverrideWrittenResponse(t *test
 	require.False(t, wrote)
 	require.Equal(t, http.StatusTeapot, w.Code)
 	assert.Equal(t, "already written", w.Body.String())
+REDACTED
+
+func TestShouldLogOpenAIForwardFailureAsWarn(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("fallback_written_should_not_downgrade", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		require.False(t, shouldLogOpenAIForwardFailureAsWarn(c, true))
+REDACTED)
+
+	t.Run("context_nil_should_not_downgrade", func(t *testing.T) {
+		require.False(t, shouldLogOpenAIForwardFailureAsWarn(nil, false))
+REDACTED)
+
+	t.Run("response_not_written_should_not_downgrade", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		require.False(t, shouldLogOpenAIForwardFailureAsWarn(c, false))
+REDACTED)
+
+	t.Run("response_already_written_should_downgrade", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		c.String(http.StatusForbidden, "already written")
+		require.True(t, shouldLogOpenAIForwardFailureAsWarn(c, false))
+REDACTED)
+REDACTED
+
+func TestOpenAIRecoverResponsesPanic_WritesFallbackResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	h := &OpenAIGatewayHandler{REDACTED
+	streamStarted := false
+	require.NotPanics(t, func() {
+		func() {
+			defer h.recoverResponsesPanic(c, &streamStarted)
+			panic("test panic")
+	REDACTED()
+REDACTED)
+
+	require.Equal(t, http.StatusBadGateway, w.Code)
+
+	var parsed map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &parsed)
+REDACTED
+
+	errorObj, ok := parsed["error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "upstream_error", errorObj["type"])
+	assert.Equal(t, "Upstream request failed", errorObj["message"])
+REDACTED
+
+func TestOpenAIRecoverResponsesPanic_NoPanicNoWrite(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	h := &OpenAIGatewayHandler{REDACTED
+	streamStarted := false
+	require.NotPanics(t, func() {
+		func() {
+			defer h.recoverResponsesPanic(c, &streamStarted)
+	REDACTED()
+REDACTED)
+
+	require.False(t, c.Writer.Written())
+	assert.Equal(t, "", w.Body.String())
+REDACTED
+
+func TestOpenAIRecoverResponsesPanic_DoesNotOverrideWrittenResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.String(http.StatusTeapot, "already written")
+
+	h := &OpenAIGatewayHandler{REDACTED
+	streamStarted := false
+	require.NotPanics(t, func() {
+		func() {
+			defer h.recoverResponsesPanic(c, &streamStarted)
+			panic("test panic")
+	REDACTED()
+REDACTED)
+
+	require.Equal(t, http.StatusTeapot, w.Code)
+	assert.Equal(t, "already written", w.Body.String())
+REDACTED
+
+func TestOpenAIMissingResponsesDependencies(t *testing.T) {
+	t.Run("nil_handler", func(t *testing.T) {
+		var h *OpenAIGatewayHandler
+		require.Equal(t, []string{"handler"REDACTED, h.missingResponsesDependencies())
+REDACTED)
+
+	t.Run("all_dependencies_missing", func(t *testing.T) {
+		h := &OpenAIGatewayHandler{REDACTED
+		require.Equal(t,
+			[]string{"gatewayService", "billingCacheService", "apiKeyService", "concurrencyHelper"REDACTED,
+			h.missingResponsesDependencies(),
+		)
+REDACTED)
+
+	t.Run("all_dependencies_present", func(t *testing.T) {
+		h := &OpenAIGatewayHandler{
+			gatewayService:      &service.OpenAIGatewayService{REDACTED,
+			billingCacheService: &service.BillingCacheService{REDACTED,
+			apiKeyService:       &service.APIKeyService{REDACTED,
+			concurrencyHelper: &ConcurrencyHelper{
+				concurrencyService: &service.ConcurrencyService{REDACTED,
+		REDACTED,
+	REDACTED
+		require.Empty(t, h.missingResponsesDependencies())
+REDACTED)
+REDACTED
+
+func TestOpenAIEnsureResponsesDependencies(t *testing.T) {
+	t.Run("missing_dependencies_returns_503", func(t *testing.T) {
+		gin.SetMode(gin.TestMode)
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+		h := &OpenAIGatewayHandler{REDACTED
+		ok := h.ensureResponsesDependencies(c, nil)
+
+		require.False(t, ok)
+		require.Equal(t, http.StatusServiceUnavailable, w.Code)
+		var parsed map[string]any
+		err := json.Unmarshal(w.Body.Bytes(), &parsed)
+	REDACTED
+		errorObj, exists := parsed["error"].(map[string]any)
+		require.True(t, exists)
+		assert.Equal(t, "api_error", errorObj["type"])
+		assert.Equal(t, "Service temporarily unavailable", errorObj["message"])
+REDACTED)
+
+	t.Run("already_written_response_not_overridden", func(t *testing.T) {
+		gin.SetMode(gin.TestMode)
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+		c.String(http.StatusTeapot, "already written")
+
+		h := &OpenAIGatewayHandler{REDACTED
+		ok := h.ensureResponsesDependencies(c, nil)
+
+		require.False(t, ok)
+		require.Equal(t, http.StatusTeapot, w.Code)
+		assert.Equal(t, "already written", w.Body.String())
+REDACTED)
+
+	t.Run("dependencies_ready_returns_true_and_no_write", func(t *testing.T) {
+		gin.SetMode(gin.TestMode)
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+		h := &OpenAIGatewayHandler{
+			gatewayService:      &service.OpenAIGatewayService{REDACTED,
+			billingCacheService: &service.BillingCacheService{REDACTED,
+			apiKeyService:       &service.APIKeyService{REDACTED,
+			concurrencyHelper: &ConcurrencyHelper{
+				concurrencyService: &service.ConcurrencyService{REDACTED,
+		REDACTED,
+	REDACTED
+		ok := h.ensureResponsesDependencies(c, nil)
+
+		require.True(t, ok)
+		require.False(t, c.Writer.Written())
+		assert.Equal(t, "", w.Body.String())
+REDACTED)
+REDACTED
+
+func TestOpenAIResponses_MissingDependencies_ReturnsServiceUnavailable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5","stream":falseREDACTED`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	groupID := int64(2)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		ID:      10,
+		GroupID: &groupID,
+REDACTED)
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
+		UserID:      1,
+		Concurrency: 1,
+REDACTED)
+
+	// 故意使用未初始化依赖，验证快速失败而不是崩溃。
+	h := &OpenAIGatewayHandler{REDACTED
+	require.NotPanics(t, func() {
+		h.Responses(c)
+REDACTED)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+	var parsed map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &parsed)
+REDACTED
+
+	errorObj, ok := parsed["error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "api_error", errorObj["type"])
+	assert.Equal(t, "Service temporarily unavailable", errorObj["message"])
+REDACTED
+
+func TestOpenAIResponses_SetsClientTransportHTTP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-5"REDACTED`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h := &OpenAIGatewayHandler{REDACTED
+	h.Responses(c)
+
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+	require.Equal(t, service.OpenAIClientTransportHTTP, service.GetOpenAIClientTransport(c))
+REDACTED
+
+func TestOpenAIResponses_RejectsMessageIDAsPreviousResponseID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(
+		`{"model":"gpt-5.1","stream":false,"previous_response_id":"msg_123456","input":[{"type":"input_text","text":"hello"REDACTED]REDACTED`,
+	))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	groupID := int64(2)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		ID:      101,
+		GroupID: &groupID,
+		User:    &service.User{ID: 1REDACTED,
+REDACTED)
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
+		UserID:      1,
+		Concurrency: 1,
+REDACTED)
+
+	h := newOpenAIHandlerForPreviousResponseIDValidation(t, nil)
+	h.Responses(c)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "previous_response_id must be a response.id")
+REDACTED
+
+func TestOpenAIResponsesWebSocket_SetsClientTransportWSWhenUpgradeValid(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/openai/v1/responses", nil)
+	c.Request.Header.Set("Upgrade", "websocket")
+	c.Request.Header.Set("Connection", "Upgrade")
+
+	h := &OpenAIGatewayHandler{REDACTED
+	h.ResponsesWebSocket(c)
+
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+	require.Equal(t, service.OpenAIClientTransportWS, service.GetOpenAIClientTransport(c))
+REDACTED
+
+func TestOpenAIResponsesWebSocket_InvalidUpgradeDoesNotSetTransport(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/openai/v1/responses", nil)
+
+	h := &OpenAIGatewayHandler{REDACTED
+	h.ResponsesWebSocket(c)
+
+	require.Equal(t, http.StatusUpgradeRequired, w.Code)
+	require.Equal(t, service.OpenAIClientTransportUnknown, service.GetOpenAIClientTransport(c))
+REDACTED
+
+func TestOpenAIResponsesWebSocket_RejectsMessageIDAsPreviousResponseID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	h := newOpenAIHandlerForPreviousResponseIDValidation(t, nil)
+	wsServer := newOpenAIWSHandlerTestServer(t, h, middleware.AuthSubject{UserID: 1, Concurrency: 1REDACTED)
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http")+"/openai/v1/responses", nil)
+	cancelDial()
+REDACTED
+	defer func() {
+		_ = clientConn.CloseNow()
+REDACTED()
+
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(
+		`{"type":"response.create","model":"gpt-5.1","stream":false,"previous_response_id":"msg_abc123"REDACTED`,
+	))
+	cancelWrite()
+REDACTED
+
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+	_, _, err = clientConn.Read(readCtx)
+	cancelRead()
+REDACTED
+	var closeErr coderws.CloseError
+	require.ErrorAs(t, err, &closeErr)
+	require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
+	require.Contains(t, strings.ToLower(closeErr.Reason), "previous_response_id")
+REDACTED
+
+func TestOpenAIResponsesWebSocket_PreviousResponseIDKindLoggedBeforeAcquireFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cache := &concurrencyCacheMock{
+		acquireUserSlotFn: func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
+			return false, errors.New("user slot unavailable")
+	REDACTED,
+REDACTED
+	h := newOpenAIHandlerForPreviousResponseIDValidation(t, cache)
+	wsServer := newOpenAIWSHandlerTestServer(t, h, middleware.AuthSubject{UserID: 1, Concurrency: 1REDACTED)
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http")+"/openai/v1/responses", nil)
+	cancelDial()
+REDACTED
+	defer func() {
+		_ = clientConn.CloseNow()
+REDACTED()
+
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(
+		`{"type":"response.create","model":"gpt-5.1","stream":false,"previous_response_id":"resp_prev_123"REDACTED`,
+	))
+	cancelWrite()
+REDACTED
+
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+	_, _, err = clientConn.Read(readCtx)
+	cancelRead()
+REDACTED
+	var closeErr coderws.CloseError
+	require.ErrorAs(t, err, &closeErr)
+	require.Equal(t, coderws.StatusInternalError, closeErr.Code)
+	require.Contains(t, strings.ToLower(closeErr.Reason), "failed to acquire user concurrency slot")
+REDACTED
+
+func TestSetOpenAIClientTransportHTTP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	setOpenAIClientTransportHTTP(c)
+	require.Equal(t, service.OpenAIClientTransportHTTP, service.GetOpenAIClientTransport(c))
+REDACTED
+
+func TestSetOpenAIClientTransportWS(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	setOpenAIClientTransportWS(c)
+	require.Equal(t, service.OpenAIClientTransportWS, service.GetOpenAIClientTransport(c))
 REDACTED
 
 // TestOpenAIHandler_GjsonExtraction 验证 gjson 从请求体中提取 model/stream 的正确性
@@ -227,4 +636,42 @@ REDACTED
 	result, setErr := sjson.SetBytes(validBody, "instructions", "hello")
 	require.NoError(t, setErr)
 	require.True(t, gjson.ValidBytes(result))
+REDACTED
+
+func newOpenAIHandlerForPreviousResponseIDValidation(t *testing.T, cache *concurrencyCacheMock) *OpenAIGatewayHandler {
+REDACTED
+	if cache == nil {
+		cache = &concurrencyCacheMock{
+			acquireUserSlotFn: func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
+				return true, nil
+		REDACTED,
+			acquireAccountSlotFn: func(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
+				return true, nil
+		REDACTED,
+	REDACTED
+REDACTED
+	return &OpenAIGatewayHandler{
+		gatewayService:      &service.OpenAIGatewayService{REDACTED,
+		billingCacheService: &service.BillingCacheService{REDACTED,
+		apiKeyService:       &service.APIKeyService{REDACTED,
+		concurrencyHelper:   NewConcurrencyHelper(service.NewConcurrencyService(cache), SSEPingFormatNone, time.Second),
+REDACTED
+REDACTED
+
+func newOpenAIWSHandlerTestServer(t *testing.T, h *OpenAIGatewayHandler, subject middleware.AuthSubject) *httptest.Server {
+REDACTED
+	groupID := int64(2)
+	apiKey := &service.APIKey{
+		ID:      101,
+		GroupID: &groupID,
+		User:    &service.User{ID: subject.UserIDREDACTED,
+REDACTED
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+		c.Set(string(middleware.ContextKeyUser), subject)
+		c.Next()
+REDACTED)
+	router.GET("/openai/v1/responses", h.ResponsesWebSocket)
+	return httptest.NewServer(router)
 REDACTED

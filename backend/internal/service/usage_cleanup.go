@@ -33,6 +33,7 @@ type UsageCleanupFilters struct {
 	AccountID   *int64    `json:"account_id,omitempty"`
 	GroupID     *int64    `json:"group_id,omitempty"`
 	Model       *string   `json:"model,omitempty"`
+	RequestType *int16    `json:"request_type,omitempty"`
 	Stream      *bool     `json:"stream,omitempty"`
 	BillingType *int8     `json:"billing_type,omitempty"`
 REDACTED

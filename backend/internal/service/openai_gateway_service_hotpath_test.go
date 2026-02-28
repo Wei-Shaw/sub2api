@@ -123,3 +123,19 @@ func TestGetOpenAIRequestBodyMap_ParseErrorWithoutCache(t *testing.T) {
 REDACTED
 	require.Contains(t, err.Error(), "parse request")
 REDACTED
+
+func TestGetOpenAIRequestBodyMap_WriteBackContextCache(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	got, err := getOpenAIRequestBodyMap(c, []byte(`{"model":"gpt-5","stream":trueREDACTED`))
+REDACTED
+	require.Equal(t, "gpt-5", got["model"])
+
+	cached, ok := c.Get(OpenAIParsedRequestBodyKey)
+	require.True(t, ok)
+	cachedMap, ok := cached.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, got, cachedMap)
+REDACTED

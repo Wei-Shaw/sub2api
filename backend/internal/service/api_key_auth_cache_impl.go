@@ -298,5 +298,6 @@ REDACTED
 			SupportedModelScopes:            snapshot.Group.SupportedModelScopes,
 	REDACTED
 REDACTED
+	s.compileAPIKeyIPRules(apiKey)
 	return apiKey
 REDACTED

@@ -19,6 +19,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -139,6 +140,8 @@ REDACTED
 	sessionLimitCache := repository.ProvideSessionLimitCache(redisClient, configConfig)
 	accountHandler := admin.NewAccountHandler(adminService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, rateLimitService, accountUsageService, accountTestService, concurrencyService, crsSyncService, sessionLimitCache, compositeTokenCacheInvalidator)
 	adminAnnouncementHandler := admin.NewAnnouncementHandler(announcementService)
+	dataManagementService := service.NewDataManagementService()
+	dataManagementHandler := admin.NewDataManagementHandler(dataManagementService)
 	oAuthHandler := admin.NewOAuthHandler(oAuthService)
 	openAIOAuthHandler := admin.NewOpenAIOAuthHandler(openAIOAuthService, adminService)
 	geminiOAuthHandler := admin.NewGeminiOAuthHandler(geminiOAuthService)
@@ -163,7 +166,12 @@ REDACTED
 	geminiMessagesCompatService := service.NewGeminiMessagesCompatService(accountRepository, groupRepository, gatewayCache, schedulerSnapshotService, geminiTokenProvider, rateLimitService, httpUpstream, antigravityGatewayService, configConfig)
 	opsSystemLogSink := service.ProvideOpsSystemLogSink(opsRepository)
 	opsService := service.NewOpsService(opsRepository, settingRepository, configConfig, accountRepository, userRepository, concurrencyService, gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, opsSystemLogSink)
-	settingHandler := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService)
+	soraS3Storage := service.NewSoraS3Storage(settingService)
+	settingService.SetOnS3UpdateCallback(soraS3Storage.RefreshClient)
+	soraGenerationRepository := repository.NewSoraGenerationRepository(db)
+	soraQuotaService := service.NewSoraQuotaService(userRepository, groupRepository, settingService)
+	soraGenerationService := service.NewSoraGenerationService(soraGenerationRepository, soraS3Storage, soraQuotaService)
+	settingHandler := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService, soraS3Storage)
 	opsHandler := admin.NewOpsHandler(opsService)
 	updateCache := repository.NewUpdateCache(redisClient)
 	gitHubReleaseClient := repository.ProvideGitHubReleaseClient(configConfig)
@@ -184,19 +192,20 @@ REDACTED
 	errorPassthroughCache := repository.NewErrorPassthroughCache(redisClient)
 	errorPassthroughService := service.NewErrorPassthroughService(errorPassthroughRepository, errorPassthroughCache)
 	errorPassthroughHandler := admin.NewErrorPassthroughHandler(errorPassthroughService)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, geminiMessagesCompatService, antigravityGatewayService, userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, configConfig)
 	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, configConfig)
 	soraSDKClient := service.ProvideSoraSDKClient(configConfig, httpUpstream, openAITokenProvider, accountRepository, soraAccountRepository)
 	soraMediaStorage := service.ProvideSoraMediaStorage(configConfig)
-	soraGatewayService := service.NewSoraGatewayService(soraSDKClient, soraMediaStorage, rateLimitService, configConfig)
+	soraGatewayService := service.NewSoraGatewayService(soraSDKClient, rateLimitService, httpUpstream, configConfig)
+	soraClientHandler := handler.NewSoraClientHandler(soraGenerationService, soraQuotaService, soraS3Storage, soraGatewayService, gatewayService, soraMediaStorage, apiKeyService)
 	soraGatewayHandler := handler.NewSoraGatewayHandler(gatewayService, soraGatewayService, concurrencyService, billingCacheService, usageRecordWorkerPool, configConfig)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo)
 	totpHandler := handler.NewTotpHandler(totpService)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)
-	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, soraGatewayHandler, handlerSettingHandler, totpHandler, idempotencyCoordinator, idempotencyCleanupService)
+	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, soraGatewayHandler, soraClientHandler, handlerSettingHandler, totpHandler, idempotencyCoordinator, idempotencyCleanupService)
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService)
 	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)
@@ -211,7 +220,7 @@ REDACTED
 	tokenRefreshService := service.ProvideTokenRefreshService(accountRepository, soraAccountRepository, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, compositeTokenCacheInvalidator, schedulerCache, configConfig)
 	accountExpiryService := service.ProvideAccountExpiryService(accountRepository)
 	subscriptionExpiryService := service.ProvideSubscriptionExpiryService(userSubscriptionRepository)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, soraMediaCleanupService, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, soraMediaCleanupService, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -258,15 +267,18 @@ func provideCleanup(
 	openaiOAuth *service.OpenAIOAuthService,
 	geminiOAuth *service.GeminiOAuthService,
 	antigravityOAuth *service.AntigravityOAuthService,
+	openAIGateway *service.OpenAIGatewayService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		cleanupSteps := []struct {
+		type cleanupStep struct {
 			name string
 			fn   func() error
-	REDACTED{
+	REDACTED
+
+		parallelSteps := []cleanupStep{
 			{"OpsScheduledReportService", func() error {
 				if opsScheduledReport != nil {
 					opsScheduledReport.Stop()
@@ -379,22 +391,59 @@ func provideCleanup(
 				antigravityOAuth.Stop()
 				return nil
 	REDACTED
+			{"OpenAIWSPool", func() error {
+				if openAIGateway != nil {
+					openAIGateway.CloseOpenAIWSPool()
+			REDACTED
+				return nil
+	REDACTED
+	REDACTED
+
+		infraSteps := []cleanupStep{
 			{"Redis", func() error {
+				if rdb == nil {
+					return nil
+			REDACTED
 				return rdb.Close()
 	REDACTED
 			{"Ent", func() error {
+				if entClient == nil {
+					return nil
+			REDACTED
 				return entClient.Close()
 	REDACTED
 	REDACTED
 
-		for _, step := range cleanupSteps {
-			if err := step.fn(); err != nil {
-				log.Printf("[Cleanup] %s failed: %v", step.name, err)
+		runParallel := func(steps []cleanupStep) {
+			var wg sync.WaitGroup
+			for i := range steps {
+				step := steps[i]
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					if err := step.fn(); err != nil {
+						log.Printf("[Cleanup] %s failed: %v", step.name, err)
+						return
+				REDACTED
+					log.Printf("[Cleanup] %s succeeded", step.name)
+			REDACTED()
+		REDACTED
+			wg.Wait()
+	REDACTED
 
-		REDACTED else {
+		runSequential := func(steps []cleanupStep) {
+			for i := range steps {
+				step := steps[i]
+				if err := step.fn(); err != nil {
+					log.Printf("[Cleanup] %s failed: %v", step.name, err)
+					continue
+			REDACTED
 				log.Printf("[Cleanup] %s succeeded", step.name)
 		REDACTED
 	REDACTED
+
+		runParallel(parallelSteps)
+		runSequential(infraSteps)
 
 		select {
 		case <-ctx.Done():

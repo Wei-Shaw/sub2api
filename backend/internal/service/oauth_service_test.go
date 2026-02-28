@@ -14,10 +14,10 @@ import (
 // --- mock: ClaudeOAuthClient ---
 
 type mockClaudeOAuthClient struct {
-	getOrgUUIDFunc    func(ctx context.Context, sessionKey, proxyURL string) (string, error)
-	getAuthCodeFunc   func(ctx context.Context, sessionKey, orgUUID, scope, codeChallenge, state, proxyURL string) (string, error)
-	exchangeCodeFunc  func(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error)
-	refreshTokenFunc  func(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error)
+	getOrgUUIDFunc   func(ctx context.Context, sessionKey, proxyURL string) (string, error)
+	getAuthCodeFunc  func(ctx context.Context, sessionKey, orgUUID, scope, codeChallenge, state, proxyURL string) (string, error)
+	exchangeCodeFunc func(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error)
+	refreshTokenFunc func(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error)
 REDACTED
 
 func (m *mockClaudeOAuthClient) GetOrganizationUUID(ctx context.Context, sessionKey, proxyURL string) (string, error) {
@@ -437,9 +437,9 @@ func TestOAuthService_RefreshAccountToken_NoRefreshToken(t *testing.T) {
 
 	// 无 refresh_token 的账号
 	account := &Account{
-		ID:          1,
-		Platform:    PlatformAnthropic,
-		Type:        AccountTypeOAuth,
+		ID:       1,
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeOAuth,
 REDACTED
 			"access_token": "some-token",
 	REDACTED,
@@ -460,9 +460,9 @@ func TestOAuthService_RefreshAccountToken_EmptyRefreshToken(t *testing.T) {
 	defer svc.Stop()
 
 	account := &Account{
-		ID:          2,
-		Platform:    PlatformAnthropic,
-		Type:        AccountTypeOAuth,
+		ID:       2,
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeOAuth,
 REDACTED
 			"access_token":  "some-token",
 			"refresh_token": "",

@@ -134,3 +134,161 @@ REDACTED)
 		require.False(t, otherPlatform.IsCodexCLIOnlyEnabled())
 REDACTED)
 REDACTED
+
+func TestAccount_IsOpenAIResponsesWebSocketV2Enabled(t *testing.T) {
+	t.Run("OAuth使用OAuth专用开关", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				"openai_oauth_responses_websockets_v2_enabled": true,
+		REDACTED,
+	REDACTED
+		require.True(t, account.IsOpenAIResponsesWebSocketV2Enabled())
+REDACTED)
+
+	t.Run("API Key使用API Key专用开关", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Extra: map[string]any{
+				"openai_apikey_responses_websockets_v2_enabled": true,
+		REDACTED,
+	REDACTED
+		require.True(t, account.IsOpenAIResponsesWebSocketV2Enabled())
+REDACTED)
+
+	t.Run("OAuth账号不会读取API Key专用开关", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				"openai_apikey_responses_websockets_v2_enabled": true,
+		REDACTED,
+	REDACTED
+		require.False(t, account.IsOpenAIResponsesWebSocketV2Enabled())
+REDACTED)
+
+	t.Run("分类型新键优先于兼容键", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				"openai_oauth_responses_websockets_v2_enabled": false,
+				"responses_websockets_v2_enabled":              true,
+				"openai_ws_enabled":                            true,
+		REDACTED,
+	REDACTED
+		require.False(t, account.IsOpenAIResponsesWebSocketV2Enabled())
+REDACTED)
+
+	t.Run("分类型键缺失时回退兼容键", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Extra: map[string]any{
+				"responses_websockets_v2_enabled": true,
+		REDACTED,
+	REDACTED
+		require.True(t, account.IsOpenAIResponsesWebSocketV2Enabled())
+REDACTED)
+
+	t.Run("非OpenAI账号默认关闭", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeAPIKey,
+			Extra: map[string]any{
+				"responses_websockets_v2_enabled": true,
+		REDACTED,
+	REDACTED
+		require.False(t, account.IsOpenAIResponsesWebSocketV2Enabled())
+REDACTED)
+REDACTED
+
+func TestAccount_ResolveOpenAIResponsesWebSocketV2Mode(t *testing.T) {
+	t.Run("default fallback to shared", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra:    map[string]any{REDACTED,
+	REDACTED
+		require.Equal(t, OpenAIWSIngressModeShared, account.ResolveOpenAIResponsesWebSocketV2Mode(""))
+		require.Equal(t, OpenAIWSIngressModeShared, account.ResolveOpenAIResponsesWebSocketV2Mode("invalid"))
+REDACTED)
+
+	t.Run("oauth mode field has highest priority", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				"openai_oauth_responses_websockets_v2_mode":    OpenAIWSIngressModeDedicated,
+				"openai_oauth_responses_websockets_v2_enabled": false,
+				"responses_websockets_v2_enabled":              false,
+		REDACTED,
+	REDACTED
+		require.Equal(t, OpenAIWSIngressModeDedicated, account.ResolveOpenAIResponsesWebSocketV2Mode(OpenAIWSIngressModeShared))
+REDACTED)
+
+	t.Run("legacy enabled maps to shared", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Extra: map[string]any{
+				"responses_websockets_v2_enabled": true,
+		REDACTED,
+	REDACTED
+		require.Equal(t, OpenAIWSIngressModeShared, account.ResolveOpenAIResponsesWebSocketV2Mode(OpenAIWSIngressModeOff))
+REDACTED)
+
+	t.Run("legacy disabled maps to off", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Extra: map[string]any{
+				"openai_apikey_responses_websockets_v2_enabled": false,
+				"responses_websockets_v2_enabled":               true,
+		REDACTED,
+	REDACTED
+		require.Equal(t, OpenAIWSIngressModeOff, account.ResolveOpenAIResponsesWebSocketV2Mode(OpenAIWSIngressModeShared))
+REDACTED)
+
+	t.Run("non openai always off", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeOAuth,
+			Extra: map[string]any{
+				"openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModeDedicated,
+		REDACTED,
+	REDACTED
+		require.Equal(t, OpenAIWSIngressModeOff, account.ResolveOpenAIResponsesWebSocketV2Mode(OpenAIWSIngressModeDedicated))
+REDACTED)
+REDACTED
+
+func TestAccount_OpenAIWSExtraFlags(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"openai_ws_force_http":           true,
+			"openai_ws_allow_store_recovery": true,
+	REDACTED,
+REDACTED
+	require.True(t, account.IsOpenAIWSForceHTTPEnabled())
+	require.True(t, account.IsOpenAIWSAllowStoreRecoveryEnabled())
+
+	off := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{REDACTEDREDACTED
+	require.False(t, off.IsOpenAIWSForceHTTPEnabled())
+	require.False(t, off.IsOpenAIWSAllowStoreRecoveryEnabled())
+
+	var nilAccount *Account
+	require.False(t, nilAccount.IsOpenAIWSAllowStoreRecoveryEnabled())
+
+	nonOpenAI := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"openai_ws_allow_store_recovery": true,
+	REDACTED,
+REDACTED
+	require.False(t, nonOpenAI.IsOpenAIWSAllowStoreRecoveryEnabled())
+REDACTED

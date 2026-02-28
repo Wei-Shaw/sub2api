@@ -1,6 +1,10 @@
 package service
 
-import "time"
+import (
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+)
 
 // API Key status constants
 const (
@@ -19,11 +23,14 @@ type APIKey struct {
 	Status      string
 	IPWhitelist []string
 	IPBlacklist []string
-	LastUsedAt  *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	User        *User
-	Group       *Group
+	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
+	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
+	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`
+	LastUsedAt          *time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	User                *User
+	Group               *Group
 
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)

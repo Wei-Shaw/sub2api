@@ -48,16 +48,15 @@ func (h *slogZapHandler) Handle(_ context.Context, record slog.Record) error {
 		return true
 REDACTED)
 
-	entry := h.logger.With(fields...)
 	switch {
 	case record.Level >= slog.LevelError:
-		entry.Error(record.Message)
+		h.logger.Error(record.Message, fields...)
 	case record.Level >= slog.LevelWarn:
-		entry.Warn(record.Message)
+		h.logger.Warn(record.Message, fields...)
 	case record.Level <= slog.LevelDebug:
-		entry.Debug(record.Message)
+		h.logger.Debug(record.Message, fields...)
 	default:
-		entry.Info(record.Message)
+		h.logger.Info(record.Message, fields...)
 REDACTED
 	return nil
 REDACTED

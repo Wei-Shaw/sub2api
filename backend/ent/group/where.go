@@ -160,6 +160,11 @@ func SoraVideoPricePerRequestHd(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldSoraVideoPricePerRequestHd, v))
 REDACTED
 
+// SoraStorageQuotaBytes applies equality check predicate on the "sora_storage_quota_bytes" field. It's identical to SoraStorageQuotaBytesEQ.
+func SoraStorageQuotaBytes(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSoraStorageQuotaBytes, v))
+REDACTED
+
 // ClaudeCodeOnly applies equality check predicate on the "claude_code_only" field. It's identical to ClaudeCodeOnlyEQ.
 func ClaudeCodeOnly(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldClaudeCodeOnly, v))
@@ -1243,6 +1248,46 @@ REDACTED
 // SoraVideoPricePerRequestHdNotNil applies the NotNil predicate on the "sora_video_price_per_request_hd" field.
 func SoraVideoPricePerRequestHdNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldSoraVideoPricePerRequestHd))
+REDACTED
+
+// SoraStorageQuotaBytesEQ applies the EQ predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSoraStorageQuotaBytes, v))
+REDACTED
+
+// SoraStorageQuotaBytesNEQ applies the NEQ predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesNEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSoraStorageQuotaBytes, v))
+REDACTED
+
+// SoraStorageQuotaBytesIn applies the In predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldSoraStorageQuotaBytes, vs...))
+REDACTED
+
+// SoraStorageQuotaBytesNotIn applies the NotIn predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesNotIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldSoraStorageQuotaBytes, vs...))
+REDACTED
+
+// SoraStorageQuotaBytesGT applies the GT predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesGT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldSoraStorageQuotaBytes, v))
+REDACTED
+
+// SoraStorageQuotaBytesGTE applies the GTE predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesGTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldSoraStorageQuotaBytes, v))
+REDACTED
+
+// SoraStorageQuotaBytesLT applies the LT predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesLT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldSoraStorageQuotaBytes, v))
+REDACTED
+
+// SoraStorageQuotaBytesLTE applies the LTE predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesLTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldSoraStorageQuotaBytes, v))
 REDACTED
 
 // ClaudeCodeOnlyEQ applies the EQ predicate on the "claude_code_only" field.
