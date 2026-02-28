@@ -1274,6 +1274,12 @@ REDACTED
 REDACTED
 
 // parseExtraInt 从 extra 字段解析 int 值
+// ParseExtraInt 从 extra 字段的 any 值解析为 int。
+// 支持 int, int64, float64, json.Number, string 类型，无法解析时返回 0。
+func ParseExtraInt(value any) int {
+	return parseExtraInt(value)
+REDACTED
+
 func parseExtraInt(value any) int {
 	switch v := value.(type) {
 	case int:
