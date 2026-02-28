@@ -12,6 +12,7 @@ permissions:
 jobs:
   backend-security:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Set up Go
@@ -32,7 +33,8 @@ jobs:
         working-directory: backend
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
-          gosec -conf .gosec.json -severity high -confidence high ./...
+          # exclude ent/ — auto-generated ORM code, not subject to manual security review
+          gosec -conf .gosec.json -severity high -confidence high -exclude-dir=ent ./...
 
   frontend-security:
     runs-on: ubuntu-latest
