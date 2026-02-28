@@ -403,6 +403,15 @@ REDACTED
 				return
 		REDACTED
 
+			// RPM 计数递增（Forward 成功后）
+			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
+			// 在高并发下可能短暂超出 RPM 限制，但不会导致请求失败。
+			if account.IsAnthropicOAuthOrSetupToken() && account.GetBaseRPM() > 0 {
+				if err := h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID); err != nil {
+					reqLog.Warn("gateway.rpm_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			REDACTED
+		REDACTED
+
 			// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
@@ -595,7 +604,7 @@ REDACTED
 							h.handleStreamingAwareError(c, status, code, message, streamStarted)
 							return
 					REDACTED
-						// 兜底重试按“直接请求兜底分组”处理：清除强制平台，允许按分组平台调度
+						// 兜底重试按"直接请求兜底分组"处理：清除强制平台，允许按分组平台调度
 						ctx := context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, "")
 						c.Request = c.Request.WithContext(ctx)
 						currentAPIKey = fallbackAPIKey
@@ -627,6 +636,15 @@ REDACTED
 					zap.Error(err),
 				)
 				return
+		REDACTED
+
+			// RPM 计数递增（Forward 成功后）
+			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
+			// 在高并发下可能短暂超出 RPM 限制，但不会导致请求失败。
+			if account.IsAnthropicOAuthOrSetupToken() && account.GetBaseRPM() > 0 {
+				if err := h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID); err != nil {
+					reqLog.Warn("gateway.rpm_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			REDACTED
 		REDACTED
 
 			// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）

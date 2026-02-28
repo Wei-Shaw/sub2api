@@ -263,7 +263,7 @@
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @reauth="handleReAuth" @refresh-token="handleRefresh" @reset-status="handleResetStatus" @clear-rate-limit="handleClearRateLimit" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
-    <BulkEditAccountModal :show="showBulkEdit" :account-ids="selIds" :selected-platforms="selPlatforms" :proxies="proxies" :groups="groups" @close="showBulkEdit = false" @updated="handleBulkUpdated" />
+    <BulkEditAccountModal :show="showBulkEdit" :account-ids="selIds" :selected-platforms="selPlatforms" :selected-types="selTypes" :proxies="proxies" :groups="groups" @close="showBulkEdit = false" @updated="handleBulkUpdated" />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name REDACTED)" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
     <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
@@ -307,7 +307,7 @@ import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import { formatDateTime, formatRelativeTime REDACTED from '@/utils/format'
-import type { Account, AccountPlatform, Proxy, AdminGroup, WindowStats REDACTED from '@/types'
+import type { Account, AccountPlatform, AccountType, Proxy, AdminGroup, WindowStats REDACTED from '@/types'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -323,6 +323,14 @@ const selPlatforms = computed<AccountPlatform[]>(() => {
       .map(a => a.platform)
   )
   return [...platforms]
+REDACTED)
+const selTypes = computed<AccountType[]>(() => {
+  const types = new Set(
+    accounts.value
+      .filter(a => selIds.value.includes(a.id))
+      .map(a => a.type)
+  )
+  return [...types]
 REDACTED)
 const showCreate = ref(false)
 const showEdit = ref(false)

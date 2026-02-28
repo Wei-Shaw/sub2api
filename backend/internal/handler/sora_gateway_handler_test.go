@@ -426,7 +426,8 @@ REDACTED)
 		deferredService,
 		nil,
 		testutil.StubSessionLimitCache{REDACTED,
-		nil,
+		nil, // rpmCache
+		nil, // digestStore
 	)
 
 	soraClient := &stubSoraClient{imageURLs: []string{"https://example.com/a.png"REDACTEDREDACTED

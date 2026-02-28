@@ -28,6 +28,7 @@ func TestAccountHandler_Create_AnthropicAPIKeyPassthroughExtraForwarded(t *testi
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	router := gin.New()
