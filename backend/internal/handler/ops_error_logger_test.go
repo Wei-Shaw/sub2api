@@ -263,6 +263,9 @@ REDACTED{
 		{"empty type with balance code", "", "INSUFFICIENT_BALANCE", "billing_error"REDACTED,
 		{"empty type with subscription code", "", "SUBSCRIPTION_NOT_FOUND", "subscription_error"REDACTED,
 		{"empty type no code", "", "", "api_error"REDACTED,
+
+		// Known type overrides conflicting code-based mapping.
+		{"known type overrides conflicting code", "rate_limit_error", "INSUFFICIENT_BALANCE", "rate_limit_error"REDACTED,
 REDACTED
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

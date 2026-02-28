@@ -662,8 +662,10 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			requestID = c.Writer.Header().Get("x-request-id")
 	REDACTED
 
-		phase := classifyOpsPhase(parsed.ErrorType, parsed.Message, parsed.Code)
-		isBusinessLimited := classifyOpsIsBusinessLimited(parsed.ErrorType, phase, parsed.Code, status, parsed.Message)
+		normalizedType := normalizeOpsErrorType(parsed.ErrorType, parsed.Code)
+
+		phase := classifyOpsPhase(normalizedType, parsed.Message, parsed.Code)
+		isBusinessLimited := classifyOpsIsBusinessLimited(normalizedType, phase, parsed.Code, status, parsed.Message)
 
 		errorOwner := classifyOpsErrorOwner(phase, parsed.Message)
 		errorSource := classifyOpsErrorSource(phase, parsed.Message)
@@ -685,8 +687,8 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			UserAgent: c.GetHeader("User-Agent"),
 
 			ErrorPhase:        phase,
-			ErrorType:         normalizeOpsErrorType(parsed.ErrorType, parsed.Code),
-			Severity:          classifyOpsSeverity(parsed.ErrorType, status),
+			ErrorType:         normalizedType,
+			Severity:          classifyOpsSeverity(normalizedType, status),
 			StatusCode:        status,
 			IsBusinessLimited: isBusinessLimited,
 			IsCountTokens:     isCountTokensRequest(c),
@@ -698,7 +700,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			ErrorSource: errorSource,
 			ErrorOwner:  errorOwner,
 
-			IsRetryable: classifyOpsIsRetryable(parsed.ErrorType, status),
+			IsRetryable: classifyOpsIsRetryable(normalizedType, status),
 			RetryCount:  0,
 			CreatedAt:   time.Now(),
 	REDACTED
