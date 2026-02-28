@@ -429,6 +429,16 @@ func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool,
 	return r.client.User.Query().Where(dbuser.EmailEQ(email)).Exist(ctx)
 REDACTED
 
+func (r *userRepository) AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
+	client := clientFromContext(ctx, r.client)
+	return client.UserAllowedGroup.Create().
+		SetUserID(userID).
+		SetGroupID(groupID).
+		OnConflictColumns(userallowedgroup.FieldUserID, userallowedgroup.FieldGroupID).
+		DoNothing().
+		Exec(ctx)
+REDACTED
+
 func (r *userRepository) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
 	// 仅操作 user_allowed_groups 联接表，legacy users.allowed_groups 列已弃用。
 	affected, err := r.client.UserAllowedGroup.Delete().

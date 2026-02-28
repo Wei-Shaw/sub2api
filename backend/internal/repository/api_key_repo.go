@@ -171,8 +171,9 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 	// 则会更新已删除的记录。
 	// 这里选择 Update().Where()，确保只有未软删除记录能被更新。
 	// 同时显式设置 updated_at，避免二次查询带来的并发可见性问题。
+	client := clientFromContext(ctx, r.client)
 	now := time.Now()
-	builder := r.client.APIKey.Update().
+	builder := client.APIKey.Update().
 		Where(apikey.IDEQ(key.ID), apikey.DeletedAtIsNil()).
 		SetName(key.Name).
 		SetStatus(key.Status).

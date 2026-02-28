@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -41,6 +43,9 @@ type AdminService interface {
 	DeleteGroup(ctx context.Context, id int64) error
 	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error)
 	UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error
+
+	// API Key management (admin)
+	AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error)
 
 	// Account management
 	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64) ([]Account, int64, error)
@@ -242,6 +247,14 @@ type BulkUpdateAccountResult struct {
 	Error     string `json:"error,omitempty"`
 REDACTED
 
+// AdminUpdateAPIKeyGroupIDResult is the result of AdminUpdateAPIKeyGroupID.
+type AdminUpdateAPIKeyGroupIDResult struct {
+	APIKey                 *APIKey
+	AutoGrantedGroupAccess bool   // true if a new exclusive group permission was auto-added
+	GrantedGroupID         *int64 // the group ID that was auto-granted
+	GrantedGroupName       string // the group name that was auto-granted
+REDACTED
+
 // BulkUpdateAccountsResult is the aggregated response for bulk updates.
 type BulkUpdateAccountsResult struct {
 	Success    int                       `json:"success"`
@@ -406,6 +419,7 @@ type adminServiceImpl struct {
 	proxyProber          ProxyExitInfoProber
 	proxyLatencyCache    ProxyLatencyCache
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	entClient            *dbent.Client // 用于开启数据库事务
 REDACTED
 
 type userGroupRateBatchReader interface {
@@ -430,6 +444,7 @@ func NewAdminService(
 	proxyProber ProxyExitInfoProber,
 	proxyLatencyCache ProxyLatencyCache,
 	authCacheInvalidator APIKeyAuthCacheInvalidator,
+	entClient *dbent.Client,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -444,6 +459,7 @@ func NewAdminService(
 		proxyProber:          proxyProber,
 		proxyLatencyCache:    proxyLatencyCache,
 		authCacheInvalidator: authCacheInvalidator,
+		entClient:            entClient,
 REDACTED
 REDACTED
 
@@ -1183,6 +1199,103 @@ REDACTED
 
 func (s *adminServiceImpl) UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error {
 	return s.groupRepo.UpdateSortOrders(ctx, updates)
+REDACTED
+
+// AdminUpdateAPIKeyGroupID 管理员修改 API Key 分组绑定
+// groupID: nil=不修改, 指向0=解绑, 指向正整数=绑定到目标分组
+func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error) {
+	apiKey, err := s.apiKeyRepo.GetByID(ctx, keyID)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	if groupID == nil {
+		// nil 表示不修改，直接返回
+		return &AdminUpdateAPIKeyGroupIDResult{APIKey: apiKeyREDACTED, nil
+REDACTED
+
+	if *groupID < 0 {
+		return nil, infraerrors.BadRequest("INVALID_GROUP_ID", "group_id must be non-negative")
+REDACTED
+
+	result := &AdminUpdateAPIKeyGroupIDResult{REDACTED
+
+	if *groupID == 0 {
+		// 0 表示解绑分组（不修改 user_allowed_groups，避免影响用户其他 Key）
+		apiKey.GroupID = nil
+		apiKey.Group = nil
+REDACTED else {
+		// 验证目标分组存在且状态为 active
+		group, err := s.groupRepo.GetByID(ctx, *groupID)
+		if err != nil {
+			return nil, err
+	REDACTED
+		if group.Status != StatusActive {
+			return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "target group is not active")
+	REDACTED
+		// 订阅类型分组：不允许通过此 API 直接绑定，需通过订阅管理流程
+		if group.IsSubscriptionType() {
+			return nil, infraerrors.BadRequest("SUBSCRIPTION_GROUP_NOT_ALLOWED", "subscription groups must be managed through the subscription workflow")
+	REDACTED
+
+		gid := *groupID
+		apiKey.GroupID = &gid
+		apiKey.Group = group
+
+		// 专属标准分组：使用事务保证「添加分组权限」与「更新 API Key」的原子性
+		if group.IsExclusive {
+			opCtx := ctx
+			var tx *dbent.Tx
+			if s.entClient == nil {
+				logger.LegacyPrintf("service.admin", "Warning: entClient is nil, skipping transaction protection for exclusive group binding")
+		REDACTED else {
+				var txErr error
+				tx, txErr = s.entClient.Tx(ctx)
+				if txErr != nil {
+					return nil, fmt.Errorf("begin transaction: %w", txErr)
+			REDACTED
+				defer func() { _ = tx.Rollback() REDACTED()
+				opCtx = dbent.NewTxContext(ctx, tx)
+		REDACTED
+
+			if addErr := s.userRepo.AddGroupToAllowedGroups(opCtx, apiKey.UserID, gid); addErr != nil {
+				return nil, fmt.Errorf("add group to user allowed groups: %w", addErr)
+		REDACTED
+			if err := s.apiKeyRepo.Update(opCtx, apiKey); err != nil {
+				return nil, fmt.Errorf("update api key: %w", err)
+		REDACTED
+			if tx != nil {
+				if err := tx.Commit(); err != nil {
+					return nil, fmt.Errorf("commit transaction: %w", err)
+			REDACTED
+		REDACTED
+
+			result.AutoGrantedGroupAccess = true
+			result.GrantedGroupID = &gid
+			result.GrantedGroupName = group.Name
+
+			// 失效认证缓存（在事务提交后执行）
+			if s.authCacheInvalidator != nil {
+				s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+		REDACTED
+
+			result.APIKey = apiKey
+			return result, nil
+	REDACTED
+REDACTED
+
+	// 非专属分组 / 解绑：无需事务，单步更新即可
+	if err := s.apiKeyRepo.Update(ctx, apiKey); err != nil {
+		return nil, fmt.Errorf("update api key: %w", err)
+REDACTED
+
+	// 失效认证缓存
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+REDACTED
+
+	result.APIKey = apiKey
+	return result, nil
 REDACTED
 
 // Account management implementations
