@@ -501,6 +501,7 @@ export default {
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
         codexCli: 'Codex CLI',
+        codexCliWs: 'Codex CLI (WebSocket)',
         opencode: 'OpenCode',
       REDACTED,
       antigravity: {

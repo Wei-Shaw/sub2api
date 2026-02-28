@@ -268,6 +268,7 @@ const clientTabs = computed((): TabConfig[] => {
     case 'openai':
       return [
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon REDACTED,
+        { id: 'codex-ws', label: t('keys.useKeyModal.cliTabs.codexCliWs'), icon: TerminalIcon REDACTED,
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon REDACTED
       ]
     case 'gemini':
@@ -306,7 +307,7 @@ const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
 
 const currentTabs = computed(() => {
   if (!showShellTabs.value) return []
-  if (props.platform === 'openai') {
+  if (activeClientTab.value === 'codex' || activeClientTab.value === 'codex-ws') {
     return openaiTabs
   REDACTED
   return shellTabs
@@ -401,6 +402,9 @@ const currentFiles = computed((): FileConfig[] => {
 
   switch (props.platform) {
     case 'openai':
+      if (activeClientTab.value === 'codex-ws') {
+        return generateOpenAIWsFiles(baseUrl, apiKey)
+      REDACTED
       return generateOpenAIFiles(baseUrl, apiKey)
     case 'gemini':
       return [generateGeminiCliContent(baseUrl, apiKey)]
@@ -505,6 +509,47 @@ name = "sub2api"
 base_url = "${baseUrlREDACTED"
 wire_api = "responses"
 requires_openai_auth = true`
+
+  // auth.json content
+  const authContent = `{
+  "OPENAI_API_KEY": "${apiKeyREDACTED"
+REDACTED`
+
+  return [
+    {
+      path: `${configDirREDACTED/config.toml`,
+      content: configContent,
+      hint: t('keys.useKeyModal.openai.configTomlHint')
+    REDACTED,
+    {
+      path: `${configDirREDACTED/auth.json`,
+      content: authContent
+    REDACTED
+  ]
+REDACTED
+
+function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
+  const isWindows = activeTab.value === 'windows'
+  const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
+
+  // config.toml content with WebSocket v2
+  const configContent = `model_provider = "sub2api"
+model = "gpt-5.3-codex"
+model_reasoning_effort = "high"
+network_access = "enabled"
+disable_response_storage = true
+windows_wsl_setup_acknowledged = true
+model_verbosity = "high"
+
+[model_providers.sub2api]
+name = "sub2api"
+base_url = "${baseUrlREDACTED"
+wire_api = "responses"
+supports_websockets = true
+requires_openai_auth = true
+
+[features]
+responses_websockets_v2 = true`
 
   // auth.json content
   const authContent = `{
