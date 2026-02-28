@@ -117,17 +117,7 @@ function buildPurchaseUrl(
     url.searchParams.set(PURCHASE_UI_MODE_QUERY_KEY, PURCHASE_UI_MODE_EMBEDDED)
     return url.toString()
   REDACTED catch {
-    const params: string[] = []
-    if (userId) {
-      params.push(`${PURCHASE_USER_ID_QUERY_KEYREDACTED=${encodeURIComponent(String(userId))REDACTED`)
-    REDACTED
-    if (authToken) {
-      params.push(`${PURCHASE_AUTH_TOKEN_QUERY_KEYREDACTED=${encodeURIComponent(authToken)REDACTED`)
-    REDACTED
-    params.push(`${PURCHASE_THEME_QUERY_KEYREDACTED=${encodeURIComponent(theme)REDACTED`)
-    params.push(`${PURCHASE_UI_MODE_QUERY_KEYREDACTED=${encodeURIComponent(PURCHASE_UI_MODE_EMBEDDED)REDACTED`)
-    const separator = baseUrl.includes('?') ? '&' : '?'
-    return `${baseUrlREDACTED${separatorREDACTED${params.join('&')REDACTED`
+    return baseUrl
   REDACTED
 REDACTED
 
