@@ -612,14 +612,14 @@ REDACTED
 
 	expectedParams := map[string]string{
 		"client_id":              ClientID,
-		"redirect_uri":          RedirectURI,
-		"response_type":         "code",
-		"scope":                 Scopes,
-		"state":                 state,
-		"code_challenge":        codeChallenge,
-		"code_challenge_method": "S256",
-		"access_type":           "offline",
-		"prompt":                "consent",
+		"redirect_uri":           RedirectURI,
+		"response_type":          "code",
+		"scope":                  Scopes,
+		"state":                  state,
+		"code_challenge":         codeChallenge,
+		"code_challenge_method":  "S256",
+		"access_type":            "offline",
+		"prompt":                 "consent",
 		"include_granted_scopes": "true",
 REDACTED
 
@@ -684,7 +684,7 @@ REDACTED
 	if err != nil {
 		t.Fatalf("getClientSecret 应返回默认值，但报错: %v", err)
 REDACTED
-	if secret != "REDACTED" {
+	if secret != "GOCSPX-your-client-secret" {
 		t.Errorf("默认 client_secret 不匹配: got %s", secret)
 REDACTED
 	if RedirectURI != "http://localhost:8085/callback" {

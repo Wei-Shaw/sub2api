@@ -15,6 +15,7 @@ type accountRepoStubForBulkUpdate struct {
 	bulkUpdateErr    error
 	bulkUpdateIDs    []int64
 	bindGroupErrByID map[int64]error
+	bindGroupsCalls  []int64
 	getByIDsAccounts []*Account
 	getByIDsErr      error
 	getByIDsCalled   bool
@@ -22,6 +23,8 @@ type accountRepoStubForBulkUpdate struct {
 	getByIDAccounts  map[int64]*Account
 	getByIDErrByID   map[int64]error
 	getByIDCalled    []int64
+	listByGroupData  map[int64][]Account
+	listByGroupErr   map[int64]error
 REDACTED
 
 func (s *accountRepoStubForBulkUpdate) BulkUpdate(_ context.Context, ids []int64, _ AccountBulkUpdate) (int64, error) {
@@ -33,6 +36,7 @@ REDACTED
 REDACTED
 
 func (s *accountRepoStubForBulkUpdate) BindGroups(_ context.Context, accountID int64, _ []int64) error {
+	s.bindGroupsCalls = append(s.bindGroupsCalls, accountID)
 	if err, ok := s.bindGroupErrByID[accountID]; ok {
 		return err
 REDACTED
@@ -57,6 +61,16 @@ REDACTED
 		return account, nil
 REDACTED
 	return nil, errors.New("account not found")
+REDACTED
+
+func (s *accountRepoStubForBulkUpdate) ListByGroup(_ context.Context, groupID int64) ([]Account, error) {
+	if err, ok := s.listByGroupErr[groupID]; ok {
+		return nil, err
+REDACTED
+	if rows, ok := s.listByGroupData[groupID]; ok {
+		return rows, nil
+REDACTED
+	return nil, nil
 REDACTED
 
 // TestAdminService_BulkUpdateAccounts_AllSuccessIDs 验证批量更新成功时返回 success_ids/failed_ids。
@@ -86,7 +100,10 @@ func TestAdminService_BulkUpdateAccounts_PartialFailureIDs(t *testing.T) {
 			2: errors.New("bind failed"),
 	REDACTED,
 REDACTED
-	svc := &adminServiceImpl{accountRepo: repoREDACTED
+	svc := &adminServiceImpl{
+		accountRepo: repo,
+		groupRepo:   &groupRepoStubForAdmin{getByID: &Group{ID: 10, Name: "g10"REDACTEDREDACTED,
+REDACTED
 
 	groupIDs := []int64{10REDACTED
 	schedulable := false
@@ -104,4 +121,52 @@ REDACTED
 	require.ElementsMatch(t, []int64{1, 3REDACTED, result.SuccessIDs)
 	require.ElementsMatch(t, []int64{2REDACTED, result.FailedIDs)
 	require.Len(t, result.Results, 3)
+REDACTED
+
+func TestAdminService_BulkUpdateAccounts_NilGroupRepoReturnsError(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{REDACTED
+	svc := &adminServiceImpl{accountRepo: repoREDACTED
+
+	groupIDs := []int64{10REDACTED
+	input := &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1REDACTED,
+		GroupIDs:   &groupIDs,
+REDACTED
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), input)
+	require.Nil(t, result)
+REDACTED
+	require.Contains(t, err.Error(), "group repository not configured")
+REDACTED
+
+func TestAdminService_BulkUpdateAccounts_MixedChannelCheckUsesUpdatedSnapshot(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		getByIDsAccounts: []*Account{
+			{ID: 1, Platform: PlatformAnthropicREDACTED,
+			{ID: 2, Platform: PlatformAntigravityREDACTED,
+	REDACTED,
+		listByGroupData: map[int64][]Account{
+			10: {REDACTED,
+	REDACTED,
+REDACTED
+	svc := &adminServiceImpl{
+		accountRepo: repo,
+		groupRepo:   &groupRepoStubForAdmin{getByID: &Group{ID: 10, Name: "目标分组"REDACTEDREDACTED,
+REDACTED
+
+	groupIDs := []int64{10REDACTED
+	input := &BulkUpdateAccountsInput{
+		AccountIDs: []int64{1, 2REDACTED,
+		GroupIDs:   &groupIDs,
+REDACTED
+
+	result, err := svc.BulkUpdateAccounts(context.Background(), input)
+REDACTED
+	require.Equal(t, 1, result.Success)
+	require.Equal(t, 1, result.Failed)
+	require.ElementsMatch(t, []int64{1REDACTED, result.SuccessIDs)
+	require.ElementsMatch(t, []int64{2REDACTED, result.FailedIDs)
+	require.Len(t, result.Results, 2)
+	require.Contains(t, result.Results[1].Error, "mixed channel")
+	require.Equal(t, []int64{1REDACTED, repo.bindGroupsCalls)
 REDACTED

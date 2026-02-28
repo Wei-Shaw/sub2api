@@ -26,7 +26,9 @@ type AdminUser struct {
 	Notes string `json:"notes"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
-	GroupRates map[int64]float64 `json:"group_rates,omitempty"`
+	GroupRates            map[int64]float64 `json:"group_rates,omitempty"`
+	SoraStorageQuotaBytes int64             `json:"sora_storage_quota_bytes"`
+	SoraStorageUsedBytes  int64             `json:"sora_storage_used_bytes"`
 REDACTED
 
 type APIKey struct {
@@ -79,6 +81,9 @@ type Group struct {
 	FallbackGroupID *int64 `json:"fallback_group_id"`
 	// 无效请求兜底分组
 	FallbackGroupIDOnInvalidRequest *int64 `json:"fallback_group_id_on_invalid_request"`
+
+	// Sora 存储配额
+	SoraStorageQuotaBytes int64 `json:"sora_storage_quota_bytes"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -278,10 +283,12 @@ type UsageLog struct {
 	ActualCost        float64 `json:"actual_cost"`
 	RateMultiplier    float64 `json:"rate_multiplier"`
 
-	BillingType  int8 `json:"billing_type"`
-	Stream       bool `json:"stream"`
-	DurationMs   *int `json:"duration_ms"`
-	FirstTokenMs *int `json:"first_token_ms"`
+	BillingType  int8   `json:"billing_type"`
+	RequestType  string `json:"request_type"`
+	Stream       bool   `json:"stream"`
+	OpenAIWSMode bool   `json:"openai_ws_mode"`
+	DurationMs   *int   `json:"duration_ms"`
+	FirstTokenMs *int   `json:"first_token_ms"`
 
 	// 图片生成字段
 	ImageCount int     `json:"image_count"`
@@ -324,6 +331,7 @@ type UsageCleanupFilters struct {
 	AccountID   *int64    `json:"account_id,omitempty"`
 	GroupID     *int64    `json:"group_id,omitempty"`
 	Model       *string   `json:"model,omitempty"`
+	RequestType *string   `json:"request_type,omitempty"`
 	Stream      *bool     `json:"stream,omitempty"`
 	BillingType *int8     `json:"billing_type,omitempty"`
 REDACTED

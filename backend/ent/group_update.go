@@ -463,6 +463,27 @@ func (_u *GroupUpdate) ClearSoraVideoPricePerRequestHd() *GroupUpdate {
 	return _u
 REDACTED
 
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (_u *GroupUpdate) SetSoraStorageQuotaBytes(v int64) *GroupUpdate {
+	_u.mutation.ResetSoraStorageQuotaBytes()
+	_u.mutation.SetSoraStorageQuotaBytes(v)
+	return _u
+REDACTED
+
+// SetNillableSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableSoraStorageQuotaBytes(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetSoraStorageQuotaBytes(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddSoraStorageQuotaBytes adds value to the "sora_storage_quota_bytes" field.
+func (_u *GroupUpdate) AddSoraStorageQuotaBytes(v int64) *GroupUpdate {
+	_u.mutation.AddSoraStorageQuotaBytes(v)
+	return _u
+REDACTED
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdate) SetClaudeCodeOnly(v bool) *GroupUpdate {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -1035,6 +1056,12 @@ REDACTED
 REDACTED
 	if _u.mutation.SoraVideoPricePerRequestHdCleared() {
 		_spec.ClearField(group.FieldSoraVideoPricePerRequestHd, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.SoraStorageQuotaBytes(); ok {
+		_spec.SetField(group.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedSoraStorageQuotaBytes(); ok {
+		_spec.AddField(group.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
 REDACTED
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1825,6 +1852,27 @@ func (_u *GroupUpdateOne) ClearSoraVideoPricePerRequestHd() *GroupUpdateOne {
 	return _u
 REDACTED
 
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (_u *GroupUpdateOne) SetSoraStorageQuotaBytes(v int64) *GroupUpdateOne {
+	_u.mutation.ResetSoraStorageQuotaBytes()
+	_u.mutation.SetSoraStorageQuotaBytes(v)
+	return _u
+REDACTED
+
+// SetNillableSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableSoraStorageQuotaBytes(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetSoraStorageQuotaBytes(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddSoraStorageQuotaBytes adds value to the "sora_storage_quota_bytes" field.
+func (_u *GroupUpdateOne) AddSoraStorageQuotaBytes(v int64) *GroupUpdateOne {
+	_u.mutation.AddSoraStorageQuotaBytes(v)
+	return _u
+REDACTED
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdateOne) SetClaudeCodeOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -2427,6 +2475,12 @@ REDACTED
 REDACTED
 	if _u.mutation.SoraVideoPricePerRequestHdCleared() {
 		_spec.ClearField(group.FieldSoraVideoPricePerRequestHd, field.TypeFloat64)
+REDACTED
+	if value, ok := _u.mutation.SoraStorageQuotaBytes(); ok {
+		_spec.SetField(group.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedSoraStorageQuotaBytes(); ok {
+		_spec.AddField(group.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
 REDACTED
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)

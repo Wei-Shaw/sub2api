@@ -43,6 +43,7 @@ type SoraVideoRequest struct {
 	Frames        int
 	Model         string
 	Size          string
+	VideoCount    int
 	MediaID       string
 	RemixTargetID string
 	CameoIDs      []string

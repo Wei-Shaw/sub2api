@@ -5,6 +5,15 @@ import (
 	"testing"
 )
 
+func TestMayContainToolCallPayload(t *testing.T) {
+	if mayContainToolCallPayload([]byte(`{"type":"response.output_text.delta","delta":"hello"REDACTED`)) {
+		t.Fatalf("plain text event should not trigger tool-call parsing")
+REDACTED
+	if !mayContainToolCallPayload([]byte(`{"tool_calls":[{"function":{"name":"apply_patch"REDACTEDREDACTED]REDACTED`)) {
+		t.Fatalf("tool_calls event should trigger tool-call parsing")
+REDACTED
+REDACTED
+
 func TestCorrectToolCallsInSSEData(t *testing.T) {
 	corrector := NewCodexToolCorrector()
 

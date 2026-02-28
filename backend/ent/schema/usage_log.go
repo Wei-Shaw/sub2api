@@ -179,5 +179,7 @@ func (UsageLog) Indexes() []ent.Index {
 		// 复合索引用于时间范围查询
 		index.Fields("user_id", "created_at"),
 		index.Fields("api_key_id", "created_at"),
+		// 分组维度时间范围查询（线上由 SQL 迁移创建 group_id IS NOT NULL 的部分索引）
+		index.Fields("group_id", "created_at"),
 REDACTED
 REDACTED

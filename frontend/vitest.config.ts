@@ -1,7 +1,9 @@
 import { defineConfig REDACTED from 'vitest/config'
 import { resolve REDACTED from 'path'
+import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
+  plugins: [vue()],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

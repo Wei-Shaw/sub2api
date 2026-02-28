@@ -93,6 +93,18 @@ REDACTED
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GroupMutation", m)
 REDACTED
 
+// The IdempotencyRecordFunc type is an adapter to allow the use of ordinary
+// function as IdempotencyRecord mutator.
+type IdempotencyRecordFunc func(context.Context, *ent.IdempotencyRecordMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f IdempotencyRecordFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.IdempotencyRecordMutation); ok {
+		return f(ctx, mv)
+REDACTED
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IdempotencyRecordMutation", m)
+REDACTED
+
 // The PromoCodeFunc type is an adapter to allow the use of ordinary
 // function as PromoCode mutator.
 type PromoCodeFunc func(context.Context, *ent.PromoCodeMutation) (ent.Value, error)

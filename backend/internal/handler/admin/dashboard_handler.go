@@ -3,6 +3,7 @@ package admin
 import (
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -186,7 +187,7 @@ REDACTED
 
 // GetUsageTrend handles getting usage trend data
 // GET /api/v1/admin/dashboard/trend
-// Query params: start_date, end_date (YYYY-MM-DD), granularity (day/hour), user_id, api_key_id, model, account_id, group_id, stream, billing_type
+// Query params: start_date, end_date (YYYY-MM-DD), granularity (day/hour), user_id, api_key_id, model, account_id, group_id, request_type, stream, billing_type
 func (h *DashboardHandler) GetUsageTrend(c *gin.Context) {
 	startTime, endTime := parseTimeRange(c)
 	granularity := c.DefaultQuery("granularity", "day")
@@ -194,6 +195,7 @@ func (h *DashboardHandler) GetUsageTrend(c *gin.Context) {
 	// Parse optional filter params
 	var userID, apiKeyID, accountID, groupID int64
 	var model string
+	var requestType *int16
 	var stream *bool
 	var billingType *int8
 
@@ -220,9 +222,20 @@ REDACTED
 	if modelStr := c.Query("model"); modelStr != "" {
 		model = modelStr
 REDACTED
-	if streamStr := c.Query("stream"); streamStr != "" {
+	if requestTypeStr := strings.TrimSpace(c.Query("request_type")); requestTypeStr != "" {
+		parsed, err := service.ParseUsageRequestType(requestTypeStr)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+	REDACTED
+		value := int16(parsed)
+		requestType = &value
+REDACTED else if streamStr := c.Query("stream"); streamStr != "" {
 		if streamVal, err := strconv.ParseBool(streamStr); err == nil {
 			stream = &streamVal
+	REDACTED else {
+			response.BadRequest(c, "Invalid stream value, use true or false")
+			return
 	REDACTED
 REDACTED
 	if billingTypeStr := c.Query("billing_type"); billingTypeStr != "" {
@@ -235,7 +248,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	trend, err := h.dashboardService.GetUsageTrendWithFilters(c.Request.Context(), startTime, endTime, granularity, userID, apiKeyID, accountID, groupID, model, stream, billingType)
+	trend, err := h.dashboardService.GetUsageTrendWithFilters(c.Request.Context(), startTime, endTime, granularity, userID, apiKeyID, accountID, groupID, model, requestType, stream, billingType)
 	if err != nil {
 		response.Error(c, 500, "Failed to get usage trend")
 		return
@@ -251,12 +264,13 @@ REDACTED
 
 // GetModelStats handles getting model usage statistics
 // GET /api/v1/admin/dashboard/models
-// Query params: start_date, end_date (YYYY-MM-DD), user_id, api_key_id, account_id, group_id, stream, billing_type
+// Query params: start_date, end_date (YYYY-MM-DD), user_id, api_key_id, account_id, group_id, request_type, stream, billing_type
 func (h *DashboardHandler) GetModelStats(c *gin.Context) {
 	startTime, endTime := parseTimeRange(c)
 
 	// Parse optional filter params
 	var userID, apiKeyID, accountID, groupID int64
+	var requestType *int16
 	var stream *bool
 	var billingType *int8
 
@@ -280,9 +294,20 @@ REDACTED
 			groupID = id
 	REDACTED
 REDACTED
-	if streamStr := c.Query("stream"); streamStr != "" {
+	if requestTypeStr := strings.TrimSpace(c.Query("request_type")); requestTypeStr != "" {
+		parsed, err := service.ParseUsageRequestType(requestTypeStr)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+	REDACTED
+		value := int16(parsed)
+		requestType = &value
+REDACTED else if streamStr := c.Query("stream"); streamStr != "" {
 		if streamVal, err := strconv.ParseBool(streamStr); err == nil {
 			stream = &streamVal
+	REDACTED else {
+			response.BadRequest(c, "Invalid stream value, use true or false")
+			return
 	REDACTED
 REDACTED
 	if billingTypeStr := c.Query("billing_type"); billingTypeStr != "" {
@@ -295,7 +320,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	stats, err := h.dashboardService.GetModelStatsWithFilters(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, stream, billingType)
+	stats, err := h.dashboardService.GetModelStatsWithFilters(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType)
 	if err != nil {
 		response.Error(c, 500, "Failed to get model statistics")
 		return

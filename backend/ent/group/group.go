@@ -57,6 +57,8 @@ const (
 	FieldSoraVideoPricePerRequest = "sora_video_price_per_request"
 	// FieldSoraVideoPricePerRequestHd holds the string denoting the sora_video_price_per_request_hd field in the database.
 	FieldSoraVideoPricePerRequestHd = "sora_video_price_per_request_hd"
+	// FieldSoraStorageQuotaBytes holds the string denoting the sora_storage_quota_bytes field in the database.
+	FieldSoraStorageQuotaBytes = "sora_storage_quota_bytes"
 	// FieldClaudeCodeOnly holds the string denoting the claude_code_only field in the database.
 	FieldClaudeCodeOnly = "claude_code_only"
 	// FieldFallbackGroupID holds the string denoting the fallback_group_id field in the database.
@@ -169,6 +171,7 @@ var Columns = []string{
 	FieldSoraImagePrice540,
 	FieldSoraVideoPricePerRequest,
 	FieldSoraVideoPricePerRequestHd,
+	FieldSoraStorageQuotaBytes,
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
 	FieldFallbackGroupIDOnInvalidRequest,
@@ -232,6 +235,8 @@ var (
 	SubscriptionTypeValidator func(string) error
 	// DefaultDefaultValidityDays holds the default value on creation for the "default_validity_days" field.
 	DefaultDefaultValidityDays int
+	// DefaultSoraStorageQuotaBytes holds the default value on creation for the "sora_storage_quota_bytes" field.
+	DefaultSoraStorageQuotaBytes int64
 	// DefaultClaudeCodeOnly holds the default value on creation for the "claude_code_only" field.
 	DefaultClaudeCodeOnly bool
 	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.
@@ -355,6 +360,11 @@ REDACTED
 // BySoraVideoPricePerRequestHd orders the results by the sora_video_price_per_request_hd field.
 func BySoraVideoPricePerRequestHd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSoraVideoPricePerRequestHd, opts...).ToFunc()
+REDACTED
+
+// BySoraStorageQuotaBytes orders the results by the sora_storage_quota_bytes field.
+func BySoraStorageQuotaBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSoraStorageQuotaBytes, opts...).ToFunc()
 REDACTED
 
 // ByClaudeCodeOnly orders the results by the claude_code_only field.

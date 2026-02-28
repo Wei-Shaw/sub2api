@@ -34,13 +34,14 @@ REDACTED
 
 // CreateUserRequest represents admin create user request
 type CreateUserRequest struct {
-	Email         string  `json:"email" binding:"required,email"`
-	Password      string  `json:"password" binding:"required,min=6"`
-	Username      string  `json:"username"`
-	Notes         string  `json:"notes"`
-	Balance       float64 `json:"balance"`
-	Concurrency   int     `json:"concurrency"`
-	AllowedGroups []int64 `json:"allowed_groups"`
+	Email                 string  `json:"email" binding:"required,email"`
+	Password              string  `json:"password" binding:"required,min=6"`
+	Username              string  `json:"username"`
+	Notes                 string  `json:"notes"`
+	Balance               float64 `json:"balance"`
+	Concurrency           int     `json:"concurrency"`
+	AllowedGroups         []int64 `json:"allowed_groups"`
+	SoraStorageQuotaBytes int64   `json:"sora_storage_quota_bytes"`
 REDACTED
 
 // UpdateUserRequest represents admin update user request
@@ -56,7 +57,8 @@ type UpdateUserRequest struct {
 	AllowedGroups *[]int64 `json:"allowed_groups"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
-	GroupRates map[int64]*float64 `json:"group_rates"`
+	GroupRates            map[int64]*float64 `json:"group_rates"`
+	SoraStorageQuotaBytes *int64             `json:"sora_storage_quota_bytes"`
 REDACTED
 
 // UpdateBalanceRequest represents balance update request
@@ -174,13 +176,14 @@ func (h *UserHandler) Create(c *gin.Context) {
 REDACTED
 
 	user, err := h.adminService.CreateUser(c.Request.Context(), &service.CreateUserInput{
-		Email:         req.Email,
-		Password:      req.Password,
-		Username:      req.Username,
-		Notes:         req.Notes,
-		Balance:       req.Balance,
-		Concurrency:   req.Concurrency,
-		AllowedGroups: req.AllowedGroups,
+		Email:                 req.Email,
+		Password:              req.Password,
+		Username:              req.Username,
+		Notes:                 req.Notes,
+		Balance:               req.Balance,
+		Concurrency:           req.Concurrency,
+		AllowedGroups:         req.AllowedGroups,
+		SoraStorageQuotaBytes: req.SoraStorageQuotaBytes,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -207,15 +210,16 @@ REDACTED
 
 	// 使用指针类型直接传递，nil 表示未提供该字段
 	user, err := h.adminService.UpdateUser(c.Request.Context(), userID, &service.UpdateUserInput{
-		Email:         req.Email,
-		Password:      req.Password,
-		Username:      req.Username,
-		Notes:         req.Notes,
-		Balance:       req.Balance,
-		Concurrency:   req.Concurrency,
-		Status:        req.Status,
-		AllowedGroups: req.AllowedGroups,
-		GroupRates:    req.GroupRates,
+		Email:                 req.Email,
+		Password:              req.Password,
+		Username:              req.Username,
+		Notes:                 req.Notes,
+		Balance:               req.Balance,
+		Concurrency:           req.Concurrency,
+		Status:                req.Status,
+		AllowedGroups:         req.AllowedGroups,
+		GroupRates:            req.GroupRates,
+		SoraStorageQuotaBytes: req.SoraStorageQuotaBytes,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)

@@ -994,6 +994,31 @@
           </div>
         </div>
 
+        <!-- Sora Client Toggle -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.soraClient.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.soraClient.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="space-y-6 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.soraClient.enabled')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.soraClient.enabledHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.sora_client_enabled" />
+            </div>
+          </div>
+        </div>
+
         <!-- Send Test Email - Only show when email verification is enabled -->
         <div v-if="form.email_verify_enabled" class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -1145,6 +1170,7 @@ const form = reactive<SettingsForm>({
   hide_ccs_import_button: false,
   purchase_subscription_enabled: false,
   purchase_subscription_url: '',
+  sora_client_enabled: false,
   smtp_host: '',
   smtp_port: 587,
   smtp_username: '',
@@ -1273,6 +1299,7 @@ async function saveSettings() {
       hide_ccs_import_button: form.hide_ccs_import_button,
       purchase_subscription_enabled: form.purchase_subscription_enabled,
       purchase_subscription_url: form.purchase_subscription_url,
+      sora_client_enabled: form.sora_client_enabled,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,

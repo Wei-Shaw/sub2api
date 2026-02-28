@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
@@ -274,6 +275,33 @@ func (f TraverseGroup) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 REDACTED
 	return fmt.Errorf("unexpected query type %T. expect *ent.GroupQuery", q)
+REDACTED
+
+// The IdempotencyRecordFunc type is an adapter to allow the use of ordinary function as a Querier.
+type IdempotencyRecordFunc func(context.Context, *ent.IdempotencyRecordQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f IdempotencyRecordFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.IdempotencyRecordQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.IdempotencyRecordQuery", q)
+REDACTED
+
+// The TraverseIdempotencyRecord type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseIdempotencyRecord func(context.Context, *ent.IdempotencyRecordQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseIdempotencyRecord) Intercept(next ent.Querier) ent.Querier {
+	return next
+REDACTED
+
+// Traverse calls f(ctx, q).
+func (f TraverseIdempotencyRecord) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.IdempotencyRecordQuery); ok {
+		return f(ctx, q)
+REDACTED
+	return fmt.Errorf("unexpected query type %T. expect *ent.IdempotencyRecordQuery", q)
 REDACTED
 
 // The PromoCodeFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -644,6 +672,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.ErrorPassthroughRuleQuery, predicate.ErrorPassthroughRule, errorpassthroughrule.OrderOption]{typ: ent.TypeErrorPassthroughRule, tq: qREDACTED, nil
 	case *ent.GroupQuery:
 		return &query[*ent.GroupQuery, predicate.Group, group.OrderOption]{typ: ent.TypeGroup, tq: qREDACTED, nil
+	case *ent.IdempotencyRecordQuery:
+		return &query[*ent.IdempotencyRecordQuery, predicate.IdempotencyRecord, idempotencyrecord.OrderOption]{typ: ent.TypeIdempotencyRecord, tq: qREDACTED, nil
 	case *ent.PromoCodeQuery:
 		return &query[*ent.PromoCodeQuery, predicate.PromoCode, promocode.OrderOption]{typ: ent.TypePromoCode, tq: qREDACTED, nil
 	case *ent.PromoCodeUsageQuery:

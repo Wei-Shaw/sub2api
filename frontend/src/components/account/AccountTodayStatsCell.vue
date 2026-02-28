@@ -1,26 +1,26 @@
 <template>
   <div>
     <!-- Loading state -->
-    <div v-if="loading" class="space-y-0.5">
+    <div v-if="props.loading && !props.stats" class="space-y-0.5">
       <div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
       <div class="h-3 w-16 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
       <div class="h-3 w-10 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
     </div>
 
     <!-- Error state -->
-    <div v-else-if="error" class="text-xs text-red-500">
-      {{ error REDACTEDREDACTED
+    <div v-else-if="props.error && !props.stats" class="text-xs text-red-500">
+      {{ props.error REDACTEDREDACTED
     </div>
 
     <!-- Stats data -->
-    <div v-else-if="stats" class="space-y-0.5 text-xs">
+    <div v-else-if="props.stats" class="space-y-0.5 text-xs">
       <!-- Requests -->
       <div class="flex items-center gap-1">
         <span class="text-gray-500 dark:text-gray-400"
           >{{ t('admin.accounts.stats.requests') REDACTEDREDACTED:</span
         >
         <span class="font-medium text-gray-700 dark:text-gray-300">{{
-          formatNumber(stats.requests)
+          formatNumber(props.stats.requests)
         REDACTEDREDACTED</span>
       </div>
       <!-- Tokens -->
@@ -29,21 +29,21 @@
           >{{ t('admin.accounts.stats.tokens') REDACTEDREDACTED:</span
         >
         <span class="font-medium text-gray-700 dark:text-gray-300">{{
-          formatTokens(stats.tokens)
+          formatTokens(props.stats.tokens)
         REDACTEDREDACTED</span>
       </div>
       <!-- Cost (Account) -->
       <div class="flex items-center gap-1">
         <span class="text-gray-500 dark:text-gray-400">{{ t('usage.accountBilled') REDACTEDREDACTED:</span>
         <span class="font-medium text-emerald-600 dark:text-emerald-400">{{
-          formatCurrency(stats.cost)
+          formatCurrency(props.stats.cost)
         REDACTEDREDACTED</span>
       </div>
       <!-- Cost (User/API Key) -->
-      <div v-if="stats.user_cost != null" class="flex items-center gap-1">
+      <div v-if="props.stats.user_cost != null" class="flex items-center gap-1">
         <span class="text-gray-500 dark:text-gray-400">{{ t('usage.userBilled') REDACTEDREDACTED:</span>
         <span class="font-medium text-gray-700 dark:text-gray-300">{{
-          formatCurrency(stats.user_cost)
+          formatCurrency(props.stats.user_cost)
         REDACTEDREDACTED</span>
       </div>
     </div>
@@ -54,21 +54,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
-import { adminAPI REDACTED from '@/api/admin'
-import type { Account, WindowStats REDACTED from '@/types'
+import type { WindowStats REDACTED from '@/types'
 import { formatNumber, formatCurrency REDACTED from '@/utils/format'
 
-const props = defineProps<{
-  account: Account
-REDACTED>()
+const props = withDefaults(
+  defineProps<{
+    stats?: WindowStats | null
+    loading?: boolean
+    error?: string | null
+  REDACTED>(),
+  {
+    stats: null,
+    loading: false,
+    error: null
+  REDACTED
+)
 
 const { t REDACTED = useI18n()
-
-const loading = ref(false)
-const error = ref<string | null>(null)
-const stats = ref<WindowStats | null>(null)
 
 // Format large token numbers (e.g., 1234567 -> 1.23M)
 const formatTokens = (tokens: number): string => {
@@ -79,22 +82,4 @@ const formatTokens = (tokens: number): string => {
   REDACTED
   return tokens.toString()
 REDACTED
-
-const loadStats = async () => {
-  loading.value = true
-  error.value = null
-
-  try {
-    stats.value = await adminAPI.accounts.getTodayStats(props.account.id)
-  REDACTED catch (e: any) {
-    error.value = 'Failed'
-    console.error('Failed to load today stats:', e)
-  REDACTED finally {
-    loading.value = false
-  REDACTED
-REDACTED
-
-onMounted(() => {
-  loadStats()
-REDACTED)
 </script>

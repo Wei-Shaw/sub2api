@@ -61,6 +61,7 @@ REDACTED
 		SetBalance(userIn.Balance).
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
+		SetSoraStorageQuotaBytes(userIn.SoraStorageQuotaBytes).
 		Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrEmailExists)
@@ -143,6 +144,8 @@ REDACTED
 		SetBalance(userIn.Balance).
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
+		SetSoraStorageQuotaBytes(userIn.SoraStorageQuotaBytes).
+		SetSoraStorageUsedBytes(userIn.SoraStorageUsedBytes).
 		Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, service.ErrEmailExists)
@@ -361,6 +364,65 @@ REDACTED
 		return service.ErrUserNotFound
 REDACTED
 	return nil
+REDACTED
+
+// AddSoraStorageUsageWithQuota 原子累加 Sora 存储用量，并在有配额时校验不超额。
+func (r *userRepository) AddSoraStorageUsageWithQuota(ctx context.Context, userID int64, deltaBytes int64, effectiveQuota int64) (int64, error) {
+	if deltaBytes <= 0 {
+		user, err := r.GetByID(ctx, userID)
+		if err != nil {
+			return 0, err
+	REDACTED
+		return user.SoraStorageUsedBytes, nil
+REDACTED
+	var newUsed int64
+	err := scanSingleRow(ctx, r.sql, `
+		UPDATE users
+		SET sora_storage_used_bytes = sora_storage_used_bytes + $2
+		WHERE id = $1
+		  AND ($3 = 0 OR sora_storage_used_bytes + $2 <= $3)
+		RETURNING sora_storage_used_bytes
+	`, []any{userID, deltaBytes, effectiveQuotaREDACTED, &newUsed)
+	if err == nil {
+		return newUsed, nil
+REDACTED
+	if errors.Is(err, sql.ErrNoRows) {
+		// 区分用户不存在和配额冲突
+		exists, existsErr := r.client.User.Query().Where(dbuser.IDEQ(userID)).Exist(ctx)
+		if existsErr != nil {
+			return 0, existsErr
+	REDACTED
+		if !exists {
+			return 0, service.ErrUserNotFound
+	REDACTED
+		return 0, service.ErrSoraStorageQuotaExceeded
+REDACTED
+	return 0, err
+REDACTED
+
+// ReleaseSoraStorageUsageAtomic 原子释放 Sora 存储用量，并保证不低于 0。
+func (r *userRepository) ReleaseSoraStorageUsageAtomic(ctx context.Context, userID int64, deltaBytes int64) (int64, error) {
+	if deltaBytes <= 0 {
+		user, err := r.GetByID(ctx, userID)
+		if err != nil {
+			return 0, err
+	REDACTED
+		return user.SoraStorageUsedBytes, nil
+REDACTED
+	var newUsed int64
+	err := scanSingleRow(ctx, r.sql, `
+		UPDATE users
+		SET sora_storage_used_bytes = GREATEST(sora_storage_used_bytes - $2, 0)
+		WHERE id = $1
+		RETURNING sora_storage_used_bytes
+	`, []any{userID, deltaBytesREDACTED, &newUsed)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, service.ErrUserNotFound
+	REDACTED
+		return 0, err
+REDACTED
+	return newUsed, nil
 REDACTED
 
 func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {

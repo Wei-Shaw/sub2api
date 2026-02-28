@@ -43,6 +43,10 @@ const (
 	FieldTotpEnabled = "totp_enabled"
 	// FieldTotpEnabledAt holds the string denoting the totp_enabled_at field in the database.
 	FieldTotpEnabledAt = "totp_enabled_at"
+	// FieldSoraStorageQuotaBytes holds the string denoting the sora_storage_quota_bytes field in the database.
+	FieldSoraStorageQuotaBytes = "sora_storage_quota_bytes"
+	// FieldSoraStorageUsedBytes holds the string denoting the sora_storage_used_bytes field in the database.
+	FieldSoraStorageUsedBytes = "sora_storage_used_bytes"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -152,6 +156,8 @@ var Columns = []string{
 	FieldTotpSecretEncrypted,
 	FieldTotpEnabled,
 	FieldTotpEnabledAt,
+	FieldSoraStorageQuotaBytes,
+	FieldSoraStorageUsedBytes,
 REDACTED
 
 var (
@@ -208,6 +214,10 @@ var (
 	DefaultNotes string
 	// DefaultTotpEnabled holds the default value on creation for the "totp_enabled" field.
 	DefaultTotpEnabled bool
+	// DefaultSoraStorageQuotaBytes holds the default value on creation for the "sora_storage_quota_bytes" field.
+	DefaultSoraStorageQuotaBytes int64
+	// DefaultSoraStorageUsedBytes holds the default value on creation for the "sora_storage_used_bytes" field.
+	DefaultSoraStorageUsedBytes int64
 )
 
 // OrderOption defines the ordering options for the User queries.
@@ -286,6 +296,16 @@ REDACTED
 // ByTotpEnabledAt orders the results by the totp_enabled_at field.
 func ByTotpEnabledAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTotpEnabledAt, opts...).ToFunc()
+REDACTED
+
+// BySoraStorageQuotaBytes orders the results by the sora_storage_quota_bytes field.
+func BySoraStorageQuotaBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSoraStorageQuotaBytes, opts...).ToFunc()
+REDACTED
+
+// BySoraStorageUsedBytes orders the results by the sora_storage_used_bytes field.
+func BySoraStorageUsedBytes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSoraStorageUsedBytes, opts...).ToFunc()
 REDACTED
 
 // ByAPIKeysCount orders the results by api_keys count.

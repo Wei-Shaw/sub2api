@@ -136,3 +136,67 @@ func TestDroppedBetaSet(t *testing.T) {
 	require.Contains(t, extended, claude.BetaClaudeCode)
 	require.Len(t, extended, len(claude.DroppedBetas)+1)
 REDACTED
+
+func TestBuildBetaTokenSet(t *testing.T) {
+	got := buildBetaTokenSet([]string{"foo", "", "bar", "foo"REDACTED)
+	require.Len(t, got, 2)
+	require.Contains(t, got, "foo")
+	require.Contains(t, got, "bar")
+	require.NotContains(t, got, "")
+
+	empty := buildBetaTokenSet(nil)
+	require.Empty(t, empty)
+REDACTED
+
+func TestStripBetaTokensWithSet_EmptyDropSet(t *testing.T) {
+	header := "oauth-2025-04-20,REDACTED"
+	got := stripBetaTokensWithSet(header, map[string]struct{REDACTED{REDACTED)
+	require.Equal(t, header, got)
+REDACTED
+
+func TestIsCountTokensUnsupported404(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		want       bool
+REDACTED{
+		{
+			name:       "exact endpoint not found",
+			statusCode: 404,
+			body:       `{"error":{"message":"Not found: /v1/messages/count_tokens","type":"not_found_error"REDACTEDREDACTED`,
+			want:       true,
+	REDACTED,
+		{
+			name:       "contains count_tokens and not found",
+			statusCode: 404,
+			body:       `{"error":{"message":"count_tokens route not found","type":"not_found_error"REDACTEDREDACTED`,
+			want:       true,
+	REDACTED,
+		{
+			name:       "generic 404",
+			statusCode: 404,
+			body:       `{"error":{"message":"resource not found","type":"not_found_error"REDACTEDREDACTED`,
+			want:       false,
+	REDACTED,
+		{
+			name:       "404 with empty error message",
+			statusCode: 404,
+			body:       `{"error":{"message":"","type":"not_found_error"REDACTEDREDACTED`,
+			want:       false,
+	REDACTED,
+		{
+			name:       "non-404 status",
+			statusCode: 400,
+			body:       `{"error":{"message":"Not found: /v1/messages/count_tokens","type":"invalid_request_error"REDACTEDREDACTED`,
+			want:       false,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isCountTokensUnsupported404(tt.statusCode, []byte(tt.body))
+			require.Equal(t, tt.want, got)
+	REDACTED)
+REDACTED
+REDACTED

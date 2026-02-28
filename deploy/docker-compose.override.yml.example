@@ -128,6 +128,19 @@ services:
 #       - ./backups:/app/backups
 
 # =============================================================================
+# Scenario 6: 启用宿主机 datamanagementd（数据管理）
+# =============================================================================
+# 说明：
+# - datamanagementd 运行在宿主机（systemd 或手动）
+# - 主进程固定探测 /tmp/sub2api-datamanagement.sock
+# - 需要把宿主机 socket 挂载到容器内同路径
+#
+# services:
+#   sub2api:
+#     volumes:
+#       - /tmp/sub2api-datamanagement.sock:/tmp/sub2api-datamanagement.sock
+
+# =============================================================================
 # Additional Notes
 # =============================================================================
 # - This file overrides settings in docker-compose.yml

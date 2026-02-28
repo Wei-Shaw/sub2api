@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
@@ -480,7 +479,7 @@ REDACTED
 
 		attemptCtx := ctx
 		if switches > 0 {
-			attemptCtx = context.WithValue(attemptCtx, ctxkey.AccountSwitchCount, switches)
+			attemptCtx = WithAccountSwitchCount(attemptCtx, switches, false)
 	REDACTED
 		exec := func() *opsRetryExecution {
 			defer selection.ReleaseFunc()
@@ -675,6 +674,7 @@ REDACTED
 REDACTED
 
 	c.Request = req
+	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
 	return c, w
 REDACTED
 

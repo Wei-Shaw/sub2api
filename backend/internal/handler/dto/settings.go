@@ -37,6 +37,7 @@ type SystemSettings struct {
 	HideCcsImportButton         bool   `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled bool   `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     string `json:"purchase_subscription_url"`
+	SoraClientEnabled           bool   `json:"sora_client_enabled"`
 
 	DefaultConcurrency int     `json:"default_concurrency"`
 	DefaultBalance     float64 `json:"default_balance"`
@@ -79,7 +80,46 @@ type PublicSettings struct {
 	PurchaseSubscriptionEnabled bool   `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     string `json:"purchase_subscription_url"`
 	LinuxDoOAuthEnabled         bool   `json:"linuxdo_oauth_enabled"`
+	SoraClientEnabled           bool   `json:"sora_client_enabled"`
 	Version                     string `json:"version"`
+REDACTED
+
+// SoraS3Settings Sora S3 存储配置 DTO（响应用，不含敏感字段）
+type SoraS3Settings struct {
+	Enabled                   bool   `json:"enabled"`
+	Endpoint                  string `json:"endpoint"`
+	Region                    string `json:"region"`
+	Bucket                    string `json:"bucket"`
+	AccessKeyID               string `json:"access_key_id"`
+	SecretAccessKeyConfigured bool   `json:"secret_access_key_configured"`
+	Prefix                    string `json:"prefix"`
+	ForcePathStyle            bool   `json:"force_path_style"`
+	CDNURL                    string `json:"cdn_url"`
+	DefaultStorageQuotaBytes  int64  `json:"default_storage_quota_bytes"`
+REDACTED
+
+// SoraS3Profile Sora S3 存储配置项 DTO（响应用，不含敏感字段）
+type SoraS3Profile struct {
+	ProfileID                 string `json:"profile_id"`
+	Name                      string `json:"name"`
+	IsActive                  bool   `json:"is_active"`
+	Enabled                   bool   `json:"enabled"`
+	Endpoint                  string `json:"endpoint"`
+	Region                    string `json:"region"`
+	Bucket                    string `json:"bucket"`
+	AccessKeyID               string `json:"access_key_id"`
+	SecretAccessKeyConfigured bool   `json:"secret_access_key_configured"`
+	Prefix                    string `json:"prefix"`
+	ForcePathStyle            bool   `json:"force_path_style"`
+	CDNURL                    string `json:"cdn_url"`
+	DefaultStorageQuotaBytes  int64  `json:"default_storage_quota_bytes"`
+	UpdatedAt                 string `json:"updated_at"`
+REDACTED
+
+// ListSoraS3ProfilesResponse Sora S3 配置列表响应
+type ListSoraS3ProfilesResponse struct {
+	ActiveProfileID string          `json:"active_profile_id"`
+	Items           []SoraS3Profile `json:"items"`
 REDACTED
 
 // StreamTimeoutSettings 流超时处理配置 DTO

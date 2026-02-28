@@ -5,8 +5,12 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +19,13 @@ import (
 )
 
 var openAISoraSessionAuthURL = "https://sora.chatgpt.com/api/auth/session"
+
+var soraSessionCookiePattern = regexp.MustCompile(`(?i)(?:^|[\n\r;])\s*(?:(?:set-cookie|cookie)\s*:\s*)?__Secure-(?:next-auth|authjs)\.session-token(?:\.(\d+))?=([^;\r\n]+)`)
+
+type soraSessionChunk struct {
+	index int
+	value string
+REDACTED
 
 // OpenAIOAuthService handles OpenAI OAuth authentication flows
 type OpenAIOAuthService struct {
@@ -39,7 +50,7 @@ type OpenAIAuthURLResult struct {
 REDACTED
 
 // GenerateAuthURL generates an OpenAI OAuth authorization URL
-func (s *OpenAIOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64, redirectURI string) (*OpenAIAuthURLResult, error) {
+func (s *OpenAIOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64, redirectURI, platform string) (*OpenAIAuthURLResult, error) {
 	// Generate PKCE values
 	state, err := openai.GenerateState()
 	if err != nil {
@@ -75,11 +86,14 @@ REDACTED
 	if redirectURI == "" {
 		redirectURI = openai.DefaultRedirectURI
 REDACTED
+	normalizedPlatform := normalizeOpenAIOAuthPlatform(platform)
+	clientID, _ := openai.OAuthClientConfigByPlatform(normalizedPlatform)
 
 	// Store session
 	session := &openai.OAuthSession{
 		State:        state,
 		CodeVerifier: codeVerifier,
+		ClientID:     clientID,
 		RedirectURI:  redirectURI,
 		ProxyURL:     proxyURL,
 		CreatedAt:    time.Now(),
@@ -87,7 +101,7 @@ REDACTED
 	s.sessionStore.Set(sessionID, session)
 
 	// Build authorization URL
-	authURL := openai.BuildAuthorizationURL(state, codeChallenge, redirectURI)
+	authURL := openai.BuildAuthorizationURLForPlatform(state, codeChallenge, redirectURI, normalizedPlatform)
 
 	return &OpenAIAuthURLResult{
 		AuthURL:   authURL,
@@ -111,6 +125,7 @@ type OpenAITokenInfo struct {
 	IDToken          string `json:"id_token,omitempty"`
 	ExpiresIn        int64  `json:"expires_in"`
 	ExpiresAt        int64  `json:"expires_at"`
+	ClientID         string `json:"client_id,omitempty"`
 	Email            string `json:"email,omitempty"`
 	ChatGPTAccountID string `json:"chatgpt_account_id,omitempty"`
 	ChatGPTUserID    string `json:"chatgpt_user_id,omitempty"`
@@ -148,9 +163,13 @@ REDACTED
 	if input.RedirectURI != "" {
 		redirectURI = input.RedirectURI
 REDACTED
+	clientID := strings.TrimSpace(session.ClientID)
+	if clientID == "" {
+		clientID = openai.ClientID
+REDACTED
 
 	// Exchange code for token
-	tokenResp, err := s.oauthClient.ExchangeCode(ctx, input.Code, session.CodeVerifier, redirectURI, proxyURL)
+	tokenResp, err := s.oauthClient.ExchangeCode(ctx, input.Code, session.CodeVerifier, redirectURI, proxyURL, clientID)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -158,8 +177,10 @@ REDACTED
 	// Parse ID token to get user info
 	var userInfo *openai.UserInfo
 	if tokenResp.IDToken != "" {
-		claims, err := openai.ParseIDToken(tokenResp.IDToken)
-		if err == nil {
+		claims, parseErr := openai.ParseIDToken(tokenResp.IDToken)
+		if parseErr != nil {
+			slog.Warn("openai_oauth_id_token_parse_failed", "error", parseErr)
+	REDACTED else {
 			userInfo = claims.GetUserInfo()
 	REDACTED
 REDACTED
@@ -173,6 +194,7 @@ REDACTED
 		IDToken:      tokenResp.IDToken,
 		ExpiresIn:    int64(tokenResp.ExpiresIn),
 		ExpiresAt:    time.Now().Unix() + int64(tokenResp.ExpiresIn),
+		ClientID:     clientID,
 REDACTED
 
 	if userInfo != nil {
@@ -200,8 +222,10 @@ REDACTED
 	// Parse ID token to get user info
 	var userInfo *openai.UserInfo
 	if tokenResp.IDToken != "" {
-		claims, err := openai.ParseIDToken(tokenResp.IDToken)
-		if err == nil {
+		claims, parseErr := openai.ParseIDToken(tokenResp.IDToken)
+		if parseErr != nil {
+			slog.Warn("openai_oauth_id_token_parse_failed", "error", parseErr)
+	REDACTED else {
 			userInfo = claims.GetUserInfo()
 	REDACTED
 REDACTED
@@ -212,6 +236,9 @@ REDACTED
 		IDToken:      tokenResp.IDToken,
 		ExpiresIn:    int64(tokenResp.ExpiresIn),
 		ExpiresAt:    time.Now().Unix() + int64(tokenResp.ExpiresIn),
+REDACTED
+	if trimmed := strings.TrimSpace(clientID); trimmed != "" {
+		tokenInfo.ClientID = trimmed
 REDACTED
 
 	if userInfo != nil {
@@ -226,6 +253,7 @@ REDACTED
 
 // ExchangeSoraSessionToken exchanges Sora session_token to access_token.
 func (s *OpenAIOAuthService) ExchangeSoraSessionToken(ctx context.Context, sessionToken string, proxyID *int64) (*OpenAITokenInfo, error) {
+	sessionToken = normalizeSoraSessionTokenInput(sessionToken)
 	if strings.TrimSpace(sessionToken) == "" {
 		return nil, infraerrors.New(http.StatusBadRequest, "SORA_SESSION_TOKEN_REQUIRED", "session_token is required")
 REDACTED
@@ -287,8 +315,139 @@ REDACTED
 		AccessToken: strings.TrimSpace(sessionResp.AccessToken),
 		ExpiresIn:   expiresIn,
 		ExpiresAt:   expiresAt,
+		ClientID:    openai.SoraClientID,
 		Email:       strings.TrimSpace(sessionResp.User.Email),
 REDACTED, nil
+REDACTED
+
+func normalizeSoraSessionTokenInput(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+REDACTED
+
+	matches := soraSessionCookiePattern.FindAllStringSubmatch(trimmed, -1)
+	if len(matches) == 0 {
+		return sanitizeSessionToken(trimmed)
+REDACTED
+
+	chunkMatches := make([]soraSessionChunk, 0, len(matches))
+	singleValues := make([]string, 0, len(matches))
+
+	for _, match := range matches {
+		if len(match) < 3 {
+			continue
+	REDACTED
+
+		value := sanitizeSessionToken(match[2])
+		if value == "" {
+			continue
+	REDACTED
+
+		if strings.TrimSpace(match[1]) == "" {
+			singleValues = append(singleValues, value)
+			continue
+	REDACTED
+
+		idx, err := strconv.Atoi(strings.TrimSpace(match[1]))
+		if err != nil || idx < 0 {
+			continue
+	REDACTED
+		chunkMatches = append(chunkMatches, soraSessionChunk{
+			index: idx,
+			value: value,
+	REDACTED)
+REDACTED
+
+	if merged := mergeLatestSoraSessionChunks(chunkMatches); merged != "" {
+		return merged
+REDACTED
+
+	if len(singleValues) > 0 {
+		return singleValues[len(singleValues)-1]
+REDACTED
+
+	return ""
+REDACTED
+
+func mergeSoraSessionChunkSegment(chunks []soraSessionChunk, requiredMaxIndex int, requireComplete bool) string {
+	if len(chunks) == 0 {
+		return ""
+REDACTED
+
+	byIndex := make(map[int]string, len(chunks))
+	for _, chunk := range chunks {
+		byIndex[chunk.index] = chunk.value
+REDACTED
+
+	if _, ok := byIndex[0]; !ok {
+		return ""
+REDACTED
+	if requireComplete {
+		for idx := 0; idx <= requiredMaxIndex; idx++ {
+			if _, ok := byIndex[idx]; !ok {
+				return ""
+		REDACTED
+	REDACTED
+REDACTED
+
+	orderedIndexes := make([]int, 0, len(byIndex))
+	for idx := range byIndex {
+		orderedIndexes = append(orderedIndexes, idx)
+REDACTED
+	sort.Ints(orderedIndexes)
+
+	var builder strings.Builder
+	for _, idx := range orderedIndexes {
+		if _, err := builder.WriteString(byIndex[idx]); err != nil {
+			return ""
+	REDACTED
+REDACTED
+	return sanitizeSessionToken(builder.String())
+REDACTED
+
+func mergeLatestSoraSessionChunks(chunks []soraSessionChunk) string {
+	if len(chunks) == 0 {
+		return ""
+REDACTED
+
+	requiredMaxIndex := 0
+	for _, chunk := range chunks {
+		if chunk.index > requiredMaxIndex {
+			requiredMaxIndex = chunk.index
+	REDACTED
+REDACTED
+
+	groupStarts := make([]int, 0, len(chunks))
+	for idx, chunk := range chunks {
+		if chunk.index == 0 {
+			groupStarts = append(groupStarts, idx)
+	REDACTED
+REDACTED
+
+	if len(groupStarts) == 0 {
+		return mergeSoraSessionChunkSegment(chunks, requiredMaxIndex, false)
+REDACTED
+
+	for i := len(groupStarts) - 1; i >= 0; i-- {
+		start := groupStarts[i]
+		end := len(chunks)
+		if i+1 < len(groupStarts) {
+			end = groupStarts[i+1]
+	REDACTED
+		if merged := mergeSoraSessionChunkSegment(chunks[start:end], requiredMaxIndex, true); merged != "" {
+			return merged
+	REDACTED
+REDACTED
+
+	return mergeSoraSessionChunkSegment(chunks, requiredMaxIndex, false)
+REDACTED
+
+func sanitizeSessionToken(raw string) string {
+	token := strings.TrimSpace(raw)
+	token = strings.Trim(token, "\"'`")
+	token = strings.TrimSuffix(token, ";")
+	return strings.TrimSpace(token)
 REDACTED
 
 // RefreshAccountToken refreshes token for an OpenAI/Sora OAuth account
@@ -322,9 +481,12 @@ func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo)
 	expiresAt := time.Unix(tokenInfo.ExpiresAt, 0).Format(time.RFC3339)
 
 	creds := map[string]any{
-		"access_token":  tokenInfo.AccessToken,
-		"refresh_token": tokenInfo.RefreshToken,
-		"expires_at":    expiresAt,
+		"access_token": tokenInfo.AccessToken,
+		"expires_at":   expiresAt,
+REDACTED
+	// 仅在刷新响应返回了新的 refresh_token 时才更新，防止用空值覆盖已有令牌
+	if strings.TrimSpace(tokenInfo.RefreshToken) != "" {
+		creds["refresh_token"] = tokenInfo.RefreshToken
 REDACTED
 
 	if tokenInfo.IDToken != "" {
@@ -341,6 +503,9 @@ REDACTED
 REDACTED
 	if tokenInfo.OrganizationID != "" {
 		creds["organization_id"] = tokenInfo.OrganizationID
+REDACTED
+	if strings.TrimSpace(tokenInfo.ClientID) != "" {
+		creds["client_id"] = strings.TrimSpace(tokenInfo.ClientID)
 REDACTED
 
 	return creds
@@ -375,5 +540,14 @@ REDACTED
 	return &http.Client{
 		Timeout:   120 * time.Second,
 		Transport: transport,
+REDACTED
+REDACTED
+
+func normalizeOpenAIOAuthPlatform(platform string) string {
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case PlatformSora:
+		return openai.OAuthPlatformSora
+	default:
+		return openai.OAuthPlatformOpenAI
 REDACTED
 REDACTED

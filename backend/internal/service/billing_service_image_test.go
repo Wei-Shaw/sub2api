@@ -63,7 +63,7 @@ func TestCalculateImageCost_RateMultiplier(t *testing.T) {
 
 	// 费率倍数 1.5x
 	cost := svc.CalculateImageCost("gemini-3-pro-image", "2K", 1, nil, 1.5)
-	require.InDelta(t, 0.201, cost.TotalCost, 0.0001)  // TotalCost = 0.134 * 1.5
+	require.InDelta(t, 0.201, cost.TotalCost, 0.0001)   // TotalCost = 0.134 * 1.5
 	require.InDelta(t, 0.3015, cost.ActualCost, 0.0001) // ActualCost = 0.201 * 1.5
 
 	// 费率倍数 2.0x

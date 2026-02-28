@@ -179,6 +179,31 @@ REDACTED
 	require.True(t, client.storyboard)
 REDACTED
 
+func TestSoraGatewayService_ForwardVideoCount(t *testing.T) {
+	client := &stubSoraClientForPoll{
+		videoStatus: &SoraVideoTaskStatus{
+			Status: "completed",
+			URLs:   []string{"https://example.com/v.mp4"REDACTED,
+	REDACTED,
+REDACTED
+	cfg := &config.Config{
+		Sora: config.SoraConfig{
+			Client: config.SoraClientConfig{
+				PollIntervalSeconds: 1,
+				MaxPollAttempts:     1,
+		REDACTED,
+	REDACTED,
+REDACTED
+	svc := NewSoraGatewayService(client, nil, nil, cfg)
+	account := &Account{ID: 1, Platform: PlatformSora, Status: StatusActiveREDACTED
+	body := []byte(`{"model":"sora2-landscape-10s","messages":[{"role":"user","content":"cat running"REDACTED],"video_count":3,"stream":falseREDACTED`)
+
+	result, err := svc.Forward(context.Background(), nil, account, body, false)
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, 3, client.videoReq.VideoCount)
+REDACTED
+
 func TestSoraGatewayService_ForwardCharacterOnly(t *testing.T) {
 	client := &stubSoraClientForPoll{REDACTED
 	cfg := &config.Config{
@@ -523,4 +548,11 @@ REDACTED
 	opts := parseSoraWatermarkOptions(body)
 	require.True(t, opts.Enabled)
 	require.False(t, opts.FallbackOnFailure)
+REDACTED
+
+func TestParseSoraVideoCount(t *testing.T) {
+	require.Equal(t, 1, parseSoraVideoCount(nil))
+	require.Equal(t, 2, parseSoraVideoCount(map[string]any{"video_count": float64(2)REDACTED))
+	require.Equal(t, 3, parseSoraVideoCount(map[string]any{"videos": "5"REDACTED))
+	require.Equal(t, 1, parseSoraVideoCount(map[string]any{"n_variants": 0REDACTED))
 REDACTED

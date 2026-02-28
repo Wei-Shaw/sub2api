@@ -147,4 +147,3 @@ REDACTED
 	require.Equal(t, `{"ok":trueREDACTED`, *got.ResponseBody)
 	require.Nil(t, got.LockedUntil)
 REDACTED
-

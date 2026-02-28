@@ -1337,6 +1337,34 @@ REDACTED
 	response.Success(c, stats)
 REDACTED
 
+// BatchTodayStatsRequest 批量今日统计请求体。
+type BatchTodayStatsRequest struct {
+	AccountIDs []int64 `json:"account_ids" binding:"required"`
+REDACTED
+
+// GetBatchTodayStats 批量获取多个账号的今日统计。
+// POST /api/v1/admin/accounts/today-stats/batch
+func (h *AccountHandler) GetBatchTodayStats(c *gin.Context) {
+	var req BatchTodayStatsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	if len(req.AccountIDs) == 0 {
+		response.Success(c, gin.H{"stats": map[string]any{REDACTEDREDACTED)
+		return
+REDACTED
+
+	stats, err := h.accountUsageService.GetTodayStatsBatch(c.Request.Context(), req.AccountIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, gin.H{"stats": statsREDACTED)
+REDACTED
+
 // SetSchedulableRequest represents the request body for setting schedulable status
 type SetSchedulableRequest struct {
 	Schedulable bool `json:"schedulable"`

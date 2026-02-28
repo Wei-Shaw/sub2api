@@ -22,16 +22,20 @@ type openaiOAuthService struct {
 	tokenURL string
 REDACTED
 
-func (s *openaiOAuthService) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL string) (*openai.TokenResponse, error) {
+func (s *openaiOAuthService) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error) {
 	client := createOpenAIReqClient(proxyURL)
 
 	if redirectURI == "" {
 		redirectURI = openai.DefaultRedirectURI
 REDACTED
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		clientID = openai.ClientID
+REDACTED
 
 	formData := url.Values{REDACTED
 	formData.Set("grant_type", "authorization_code")
-	formData.Set("client_id", openai.ClientID)
+	formData.Set("client_id", clientID)
 	formData.Set("code", code)
 	formData.Set("redirect_uri", redirectURI)
 	formData.Set("code_verifier", codeVerifier)
@@ -61,36 +65,12 @@ func (s *openaiOAuthService) RefreshToken(ctx context.Context, refreshToken, pro
 REDACTED
 
 func (s *openaiOAuthService) RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string) (*openai.TokenResponse, error) {
-	if strings.TrimSpace(clientID) != "" {
-		return s.refreshTokenWithClientID(ctx, refreshToken, proxyURL, strings.TrimSpace(clientID))
+	// 调用方应始终传入正确的 client_id；为兼容旧数据，未指定时默认使用 OpenAI ClientID
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		clientID = openai.ClientID
 REDACTED
-
-	clientIDs := []string{
-		openai.ClientID,
-		openai.SoraClientID,
-REDACTED
-	seen := make(map[string]struct{REDACTED, len(clientIDs))
-	var lastErr error
-	for _, clientID := range clientIDs {
-		clientID = strings.TrimSpace(clientID)
-		if clientID == "" {
-			continue
-	REDACTED
-		if _, ok := seen[clientID]; ok {
-			continue
-	REDACTED
-		seen[clientID] = struct{REDACTED{REDACTED
-
-		tokenResp, err := s.refreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID)
-		if err == nil {
-			return tokenResp, nil
-	REDACTED
-		lastErr = err
-REDACTED
-	if lastErr != nil {
-		return nil, lastErr
-REDACTED
-	return nil, infraerrors.New(http.StatusBadGateway, "OPENAI_OAUTH_TOKEN_REFRESH_FAILED", "token refresh failed")
+	return s.refreshTokenWithClientID(ctx, refreshToken, proxyURL, clientID)
 REDACTED
 
 func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL, clientID string) (*openai.TokenResponse, error) {

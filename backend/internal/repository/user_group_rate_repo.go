@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 )
 
 type userGroupRateRepository struct {
@@ -41,6 +42,59 @@ REDACTED
 	return result, nil
 REDACTED
 
+// GetByUserIDs 批量获取多个用户的专属分组倍率。
+// 返回结构：map[userID]map[groupID]rate
+func (r *userGroupRateRepository) GetByUserIDs(ctx context.Context, userIDs []int64) (map[int64]map[int64]float64, error) {
+	result := make(map[int64]map[int64]float64, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+REDACTED
+
+	uniqueIDs := make([]int64, 0, len(userIDs))
+	seen := make(map[int64]struct{REDACTED, len(userIDs))
+	for _, userID := range userIDs {
+		if userID <= 0 {
+			continue
+	REDACTED
+		if _, exists := seen[userID]; exists {
+			continue
+	REDACTED
+		seen[userID] = struct{REDACTED{REDACTED
+		uniqueIDs = append(uniqueIDs, userID)
+		result[userID] = make(map[int64]float64)
+REDACTED
+	if len(uniqueIDs) == 0 {
+		return result, nil
+REDACTED
+
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT user_id, group_id, rate_multiplier
+		FROM user_group_rate_multipliers
+		WHERE user_id = ANY($1)
+	`, pq.Array(uniqueIDs))
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	for rows.Next() {
+		var userID int64
+		var groupID int64
+		var rate float64
+		if err := rows.Scan(&userID, &groupID, &rate); err != nil {
+			return nil, err
+	REDACTED
+		if _, ok := result[userID]; !ok {
+			result[userID] = make(map[int64]float64)
+	REDACTED
+		result[userID][groupID] = rate
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+	return result, nil
+REDACTED
+
 // GetByUserAndGroup 获取用户在特定分组的专属倍率
 func (r *userGroupRateRepository) GetByUserAndGroup(ctx context.Context, userID, groupID int64) (*float64, error) {
 	query := `SELECT rate_multiplier FROM user_group_rate_multipliers WHERE user_id = $1 AND group_id = $2`
@@ -65,33 +119,43 @@ REDACTED
 
 	// 分离需要删除和需要 upsert 的记录
 	var toDelete []int64
-	toUpsert := make(map[int64]float64)
+	upsertGroupIDs := make([]int64, 0, len(rates))
+	upsertRates := make([]float64, 0, len(rates))
 	for groupID, rate := range rates {
 		if rate == nil {
 			toDelete = append(toDelete, groupID)
 	REDACTED else {
-			toUpsert[groupID] = *rate
+			upsertGroupIDs = append(upsertGroupIDs, groupID)
+			upsertRates = append(upsertRates, *rate)
 	REDACTED
 REDACTED
 
 	// 删除指定的记录
-	for _, groupID := range toDelete {
-		_, err := r.sql.ExecContext(ctx,
-			`DELETE FROM user_group_rate_multipliers WHERE user_id = $1 AND group_id = $2`,
-			userID, groupID)
-		if err != nil {
+	if len(toDelete) > 0 {
+		if _, err := r.sql.ExecContext(ctx,
+			`DELETE FROM user_group_rate_multipliers WHERE user_id = $1 AND group_id = ANY($2)`,
+			userID, pq.Array(toDelete)); err != nil {
 			return err
 	REDACTED
 REDACTED
 
 	// Upsert 记录
 	now := time.Now()
-	for groupID, rate := range toUpsert {
+	if len(upsertGroupIDs) > 0 {
 		_, err := r.sql.ExecContext(ctx, `
 			INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $4)
-			ON CONFLICT (user_id, group_id) DO UPDATE SET rate_multiplier = $3, updated_at = $4
-		`, userID, groupID, rate, now)
+			SELECT
+				$1::bigint,
+				data.group_id,
+				data.rate_multiplier,
+				$2::timestamptz,
+				$2::timestamptz
+			FROM unnest($3::bigint[], $4::double precision[]) AS data(group_id, rate_multiplier)
+			ON CONFLICT (user_id, group_id)
+			DO UPDATE SET
+				rate_multiplier = EXCLUDED.rate_multiplier,
+				updated_at = EXCLUDED.updated_at
+		`, userID, now, pq.Array(upsertGroupIDs), pq.Array(upsertRates))
 		if err != nil {
 			return err
 	REDACTED

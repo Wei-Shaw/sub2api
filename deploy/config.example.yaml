@@ -27,11 +27,11 @@ server:
   # Trusted proxies for X-Forwarded-For parsing (CIDR/IP). Empty disables trusted proxies.
   # 信任的代理地址（CIDR/IP 格式），用于解析 X-Forwarded-For 头。留空则禁用代理信任。
   trusted_proxies: []
-  # Global max request body size in bytes (default: 100MB)
-  # 全局最大请求体大小（字节，默认 100MB）
+  # Global max request body size in bytes (default: 256MB)
+  # 全局最大请求体大小（字节，默认 256MB）
   # Applies to all requests, especially important for h2c first request memory protection
   # 适用于所有请求，对 h2c 第一请求的内存保护尤为重要
-  max_request_body_size: 104857600
+  max_request_body_size: 268435456
   # HTTP/2 Cleartext (h2c) configuration
   # HTTP/2 Cleartext (h2c) 配置
   h2c:
@@ -143,9 +143,9 @@ gateway:
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）
   response_header_timeout: 600
-  # Max request body size in bytes (default: 100MB)
-  # 请求体最大字节数（默认 100MB）
-  max_body_size: 104857600
+  # Max request body size in bytes (default: 256MB)
+  # 请求体最大字节数（默认 256MB）
+  max_body_size: 268435456
   # Max bytes to read for non-stream upstream responses (default: 8MB)
   # 非流式上游响应体读取上限（默认 8MB）
   upstream_response_read_max_bytes: 8388608
@@ -199,6 +199,83 @@ gateway:
   # OpenAI 透传模式是否放行客户端超时头（如 x-stainless-timeout）
   # 默认 false：过滤超时头，降低上游提前断流风险。
   openai_passthrough_allow_timeout_headers: false
+  # OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
+  openai_ws:
+    # 新版 WS mode 路由（默认关闭）。关闭时保持当前 legacy 实现行为。
+    mode_router_v2_enabled: false
+    # ingress 默认模式：off|shared|dedicated（仅 mode_router_v2_enabled=true 生效）
+    ingress_mode_default: shared
+    # 全局总开关，默认 true；关闭时所有请求保持原有 HTTP/SSE 路由
+    enabled: true
+    # 按账号类型细分开关
+    oauth_enabled: true
+    apikey_enabled: true
+    # 全局强制 HTTP（紧急回滚开关）
+    force_http: false
+    # 允许在 WSv2 下按策略恢复 store=true（默认 false）
+    allow_store_recovery: false
+    # ingress 模式收到 previous_response_not_found 时，自动去掉 previous_response_id 重试一次（默认 true）
+    ingress_previous_response_recovery_enabled: true
+    # store=false 且无可复用会话连接时的策略：
+    # strict=强制新建连接（隔离优先），adaptive=仅在高风险失败后强制新建，off=尽量复用（性能优先）
+    store_disabled_conn_mode: strict
+    # store=false 且无可复用会话连接时，是否强制新建连接（默认 true，优先会话隔离）
+    # 兼容旧配置：仅在 store_disabled_conn_mode 未配置时生效
+    store_disabled_force_new_conn: true
+    # 是否启用 WSv2 generate=false 预热（默认 false）
+    prewarm_generate_enabled: false
+    # 协议 feature 开关，v2 优先于 v1
+    responses_websockets: false
+    responses_websockets_v2: true
+    # 连接池参数（按账号池化复用）
+    max_conns_per_account: 128
+    min_idle_per_account: 4
+    max_idle_per_account: 12
+    # 是否按账号并发动态计算连接池上限：
+    # effective_max_conns = min(max_conns_per_account, ceil(account.concurrency * factor))
+    dynamic_max_conns_by_account_concurrency_enabled: true
+    # 按账号类型分别设置系数（OAuth / API Key）
+    oauth_max_conns_factor: 1.0
+    apikey_max_conns_factor: 1.0
+    dial_timeout_seconds: 10
+    read_timeout_seconds: 900
+    write_timeout_seconds: 120
+    pool_target_utilization: 0.7
+    queue_limit_per_conn: 64
+    # 流式写出批量 flush 参数
+    event_flush_batch_size: 1
+    event_flush_interval_ms: 10
+    # 预热触发冷却（毫秒）
+    prewarm_cooldown_ms: 300
+    # WS 回退到 HTTP 后的冷却时间（秒），用于避免 WS/HTTP 来回抖动；0 表示关闭冷却
+    fallback_cooldown_seconds: 30
+    # WS 重试退避参数（毫秒）
+    retry_backoff_initial_ms: 120
+    retry_backoff_max_ms: 2000
+    # 抖动比例（0-1）
+    retry_jitter_ratio: 0.2
+    # 单次请求 WS 重试总预算（毫秒）；建议设置为有限值，避免重试拉高 TTFT 长尾
+    retry_total_budget_ms: 5000
+    # payload_schema 日志采样率（0-1）；降低热路径日志放大
+    payload_log_sample_rate: 0.2
+    # 调度与粘连参数
+    lb_top_k: 7
+    sticky_session_ttl_seconds: 3600
+    # 会话哈希迁移兼容开关：新 key 未命中时回退读取旧 SHA-256 key
+    session_hash_read_old_fallback: true
+    # 会话哈希迁移兼容开关：写入时双写旧 SHA-256 key（短 TTL）
+    session_hash_dual_write_old: true
+    # context 元数据迁移兼容开关：保留旧 ctxkey.* 读取/注入桥接
+    metadata_bridge_enabled: true
+    sticky_response_id_ttl_seconds: 3600
+    # 兼容旧键：当 sticky_response_id_ttl_seconds 缺失时回退该值
+    sticky_previous_response_ttl_seconds: 3600
+    scheduler_score_weights:
+      priority: 1.0
+      load: 1.0
+      queue: 0.7
+      error_rate: 0.8
+      ttft: 0.5
   # HTTP upstream connection pool settings (HTTP/2 + multi-proxy scenario defaults)
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts
@@ -779,12 +856,12 @@ rate_limit:
 # 定价数据源（可选）
 # =============================================================================
 pricing:
-  # URL to fetch model pricing data (default: LiteLLM)
-  # 获取模型定价数据的 URL（默认：LiteLLM）
-  remote_url: "https://github.com/Wei-Shaw/model-price-repo/raw/refs/heads/main/model_prices_and_context_window.json"
+  # URL to fetch model pricing data (default: pinned model-price-repo commit)
+  # 获取模型定价数据的 URL（默认：固定 commit 的 model-price-repo）
+  remote_url: "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/c7947e9871687e664180bc971d4837f1fc2784a9/model_prices_and_context_window.json"
   # Hash verification URL (optional)
   # 哈希校验 URL（可选）
-  hash_url: "https://github.com/Wei-Shaw/model-price-repo/raw/refs/heads/main/model_prices_and_context_window.sha256"
+  hash_url: "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/c7947e9871687e664180bc971d4837f1fc2784a9/model_prices_and_context_window.sha256"
   # Local data directory for caching
   # 本地数据缓存目录
   data_dir: "./data"

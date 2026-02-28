@@ -532,6 +532,23 @@
               />
             </div>
           </div>
+          <div class="mt-3">
+            <label class="input-label">{{ t('admin.groups.soraPricing.storageQuota') REDACTEDREDACTED</label>
+            <div class="flex items-center gap-2">
+              <input
+                v-model.number="createForm.sora_storage_quota_gb"
+                type="number"
+                step="0.1"
+                min="0"
+                class="input"
+                placeholder="10"
+              />
+              <span class="shrink-0 text-sm text-gray-500">GB</span>
+            </div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.groups.soraPricing.storageQuotaHint') REDACTEDREDACTED
+            </p>
+          </div>
         </div>
 
         <!-- 支持的模型系列（仅 antigravity 平台） -->
@@ -1212,6 +1229,23 @@
               />
             </div>
           </div>
+          <div class="mt-3">
+            <label class="input-label">{{ t('admin.groups.soraPricing.storageQuota') REDACTEDREDACTED</label>
+            <div class="flex items-center gap-2">
+              <input
+                v-model.number="editForm.sora_storage_quota_gb"
+                type="number"
+                step="0.1"
+                min="0"
+                class="input"
+                placeholder="10"
+              />
+              <span class="shrink-0 text-sm text-gray-500">GB</span>
+            </div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.groups.soraPricing.storageQuotaHint') REDACTEDREDACTED
+            </p>
+          </div>
         </div>
 
         <!-- 支持的模型系列（仅 antigravity 平台） -->
@@ -1881,6 +1915,7 @@ const createForm = reactive({
   sora_image_price_540: null as number | null,
   sora_video_price_per_request: null as number | null,
   sora_video_price_per_request_hd: null as number | null,
+  sora_storage_quota_gb: null as number | null,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -2121,6 +2156,7 @@ const editForm = reactive({
   sora_image_price_540: null as number | null,
   sora_video_price_per_request: null as number | null,
   sora_video_price_per_request_hd: null as number | null,
+  sora_storage_quota_gb: null as number | null,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -2220,6 +2256,7 @@ const closeCreateModal = () => {
   createForm.sora_image_price_540 = null
   createForm.sora_video_price_per_request = null
   createForm.sora_video_price_per_request_hd = null
+  createForm.sora_storage_quota_gb = null
   createForm.claude_code_only = false
   createForm.fallback_group_id = null
   createForm.fallback_group_id_on_invalid_request = null
@@ -2237,8 +2274,10 @@ const handleCreateGroup = async () => {
   submitting.value = true
   try {
     // 构建请求数据，包含模型路由配置
+    const { sora_storage_quota_gb: createQuotaGb, ...createRest REDACTED = createForm
     const requestData = {
-      ...createForm,
+      ...createRest,
+      sora_storage_quota_bytes: createQuotaGb ? Math.round(createQuotaGb * 1024 * 1024 * 1024) : 0,
       model_routing: convertRoutingRulesToApiFormat(createModelRoutingRules.value)
     REDACTED
     await adminAPI.groups.create(requestData)
@@ -2277,6 +2316,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.sora_image_price_540 = group.sora_image_price_540
   editForm.sora_video_price_per_request = group.sora_video_price_per_request
   editForm.sora_video_price_per_request_hd = group.sora_video_price_per_request_hd
+  editForm.sora_storage_quota_gb = group.sora_storage_quota_bytes ? Number((group.sora_storage_quota_bytes / (1024 * 1024 * 1024)).toFixed(2)) : null
   editForm.claude_code_only = group.claude_code_only || false
   editForm.fallback_group_id = group.fallback_group_id
   editForm.fallback_group_id_on_invalid_request = group.fallback_group_id_on_invalid_request
@@ -2310,8 +2350,10 @@ const handleUpdateGroup = async () => {
   submitting.value = true
   try {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
+    const { sora_storage_quota_gb: editQuotaGb, ...editRest REDACTED = editForm
     const payload = {
-      ...editForm,
+      ...editRest,
+      sora_storage_quota_bytes: editQuotaGb ? Math.round(editQuotaGb * 1024 * 1024 * 1024) : 0,
       fallback_group_id: editForm.fallback_group_id === null ? 0 : editForm.fallback_group_id,
       fallback_group_id_on_invalid_request:
         editForm.fallback_group_id_on_invalid_request === null

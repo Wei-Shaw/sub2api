@@ -4,8 +4,6 @@ import (
 	"context"
 	"strings"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
 
 const modelRateLimitsKey = "model_rate_limits"
@@ -73,7 +71,7 @@ func resolveFinalAntigravityModelKey(ctx context.Context, account *Account, requ
 		return ""
 REDACTED
 	// thinking 会影响 Antigravity 最终模型名（例如 claude-sonnet-4-5 -> claude-sonnet-4-5-thinking）
-	if enabled, ok := ctx.Value(ctxkey.ThinkingEnabled).(bool); ok {
+	if enabled, ok := ThinkingEnabledFromContext(ctx); ok {
 		modelKey = applyThinkingModelSuffix(modelKey, enabled)
 REDACTED
 	return modelKey

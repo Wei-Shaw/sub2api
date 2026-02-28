@@ -158,6 +158,14 @@ REDACTED
 	return svc
 REDACTED
 
+func (s *APIKeyService) compileAPIKeyIPRules(apiKey *APIKey) {
+	if apiKey == nil {
+		return
+REDACTED
+	apiKey.CompiledIPWhitelist = ip.CompileIPRules(apiKey.IPWhitelist)
+	apiKey.CompiledIPBlacklist = ip.CompileIPRules(apiKey.IPBlacklist)
+REDACTED
+
 // GenerateKey 生成随机API Key
 func (s *APIKeyService) GenerateKey() (string, error) {
 	// 生成32字节随机数据
@@ -332,6 +340,7 @@ REDACTED
 REDACTED
 
 	s.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+	s.compileAPIKeyIPRules(apiKey)
 
 	return apiKey, nil
 REDACTED
@@ -363,6 +372,7 @@ func (s *APIKeyService) GetByID(ctx context.Context, id int64) (*APIKey, error) 
 	if err != nil {
 		return nil, fmt.Errorf("get api key: %w", err)
 REDACTED
+	s.compileAPIKeyIPRules(apiKey)
 	return apiKey, nil
 REDACTED
 
@@ -375,6 +385,7 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 			if err != nil {
 				return nil, fmt.Errorf("get api key: %w", err)
 		REDACTED
+			s.compileAPIKeyIPRules(apiKey)
 			return apiKey, nil
 	REDACTED
 REDACTED
@@ -391,6 +402,7 @@ REDACTED
 			if err != nil {
 				return nil, fmt.Errorf("get api key: %w", err)
 		REDACTED
+			s.compileAPIKeyIPRules(apiKey)
 			return apiKey, nil
 	REDACTED
 REDACTED else {
@@ -402,6 +414,7 @@ REDACTED else {
 			if err != nil {
 				return nil, fmt.Errorf("get api key: %w", err)
 		REDACTED
+			s.compileAPIKeyIPRules(apiKey)
 			return apiKey, nil
 	REDACTED
 REDACTED
@@ -411,6 +424,7 @@ REDACTED
 		return nil, fmt.Errorf("get api key: %w", err)
 REDACTED
 	apiKey.Key = key
+	s.compileAPIKeyIPRules(apiKey)
 	return apiKey, nil
 REDACTED
 
@@ -510,6 +524,7 @@ REDACTED
 REDACTED
 
 	s.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+	s.compileAPIKeyIPRules(apiKey)
 
 	return apiKey, nil
 REDACTED

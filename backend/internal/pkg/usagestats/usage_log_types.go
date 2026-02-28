@@ -139,6 +139,7 @@ type UsageLogFilters struct {
 	AccountID   int64
 	GroupID     int64
 	Model       string
+	RequestType *int16
 	Stream      *bool
 	BillingType *int8
 	StartTime   *time.Time

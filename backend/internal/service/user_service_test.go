@@ -21,12 +21,12 @@ type mockUserRepo struct {
 	updateBalanceFn  func(ctx context.Context, id int64, amount float64) error
 REDACTED
 
-func (m *mockUserRepo) Create(context.Context, *User) error                     { return nil REDACTED
-func (m *mockUserRepo) GetByID(context.Context, int64) (*User, error)           { return &User{REDACTED, nil REDACTED
-func (m *mockUserRepo) GetByEmail(context.Context, string) (*User, error)       { return &User{REDACTED, nil REDACTED
-func (m *mockUserRepo) GetFirstAdmin(context.Context) (*User, error)            { return &User{REDACTED, nil REDACTED
-func (m *mockUserRepo) Update(context.Context, *User) error                     { return nil REDACTED
-func (m *mockUserRepo) Delete(context.Context, int64) error                     { return nil REDACTED
+func (m *mockUserRepo) Create(context.Context, *User) error               { return nil REDACTED
+func (m *mockUserRepo) GetByID(context.Context, int64) (*User, error)     { return &User{REDACTED, nil REDACTED
+func (m *mockUserRepo) GetByEmail(context.Context, string) (*User, error) { return &User{REDACTED, nil REDACTED
+func (m *mockUserRepo) GetFirstAdmin(context.Context) (*User, error)      { return &User{REDACTED, nil REDACTED
+func (m *mockUserRepo) Update(context.Context, *User) error               { return nil REDACTED
+func (m *mockUserRepo) Delete(context.Context, int64) error               { return nil REDACTED
 func (m *mockUserRepo) List(context.Context, pagination.PaginationParams) ([]User, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 REDACTED
@@ -56,8 +56,8 @@ type mockAuthCacheInvalidator struct {
 	mu                 sync.Mutex
 REDACTED
 
-func (m *mockAuthCacheInvalidator) InvalidateAuthCacheByKey(context.Context, string)     {REDACTED
-func (m *mockAuthCacheInvalidator) InvalidateAuthCacheByGroupID(context.Context, int64)  {REDACTED
+func (m *mockAuthCacheInvalidator) InvalidateAuthCacheByKey(context.Context, string)    {REDACTED
+func (m *mockAuthCacheInvalidator) InvalidateAuthCacheByGroupID(context.Context, int64) {REDACTED
 func (m *mockAuthCacheInvalidator) InvalidateAuthCacheByUserID(_ context.Context, userID int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -73,9 +73,9 @@ type mockBillingCache struct {
 	mu                  sync.Mutex
 REDACTED
 
-func (m *mockBillingCache) GetUserBalance(context.Context, int64) (float64, error)   { return 0, nil REDACTED
-func (m *mockBillingCache) SetUserBalance(context.Context, int64, float64) error     { return nil REDACTED
-func (m *mockBillingCache) DeductUserBalance(context.Context, int64, float64) error  { return nil REDACTED
+func (m *mockBillingCache) GetUserBalance(context.Context, int64) (float64, error)  { return 0, nil REDACTED
+func (m *mockBillingCache) SetUserBalance(context.Context, int64, float64) error    { return nil REDACTED
+func (m *mockBillingCache) DeductUserBalance(context.Context, int64, float64) error { return nil REDACTED
 func (m *mockBillingCache) InvalidateUserBalance(_ context.Context, userID int64) error {
 	m.invalidateCallCount.Add(1)
 	m.mu.Lock()

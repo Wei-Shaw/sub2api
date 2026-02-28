@@ -12,6 +12,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
+const (
+	opsRawLatencyQueryTimeout = 2 * time.Second
+	opsRawPeakQueryTimeout    = 1500 * time.Millisecond
+)
+
 func (r *opsRepository) GetDashboardOverview(ctx context.Context, filter *service.OpsDashboardFilter) (*service.OpsDashboardOverview, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
@@ -45,15 +50,24 @@ REDACTED
 func (r *opsRepository) getDashboardOverviewRaw(ctx context.Context, filter *service.OpsDashboardFilter) (*service.OpsDashboardOverview, error) {
 	start := filter.StartTime.UTC()
 	end := filter.EndTime.UTC()
+	degraded := false
 
 	successCount, tokenConsumed, err := r.queryUsageCounts(ctx, filter, start, end)
 	if err != nil {
 		return nil, err
 REDACTED
 
-	duration, ttft, err := r.queryUsageLatency(ctx, filter, start, end)
+	latencyCtx, cancelLatency := context.WithTimeout(ctx, opsRawLatencyQueryTimeout)
+	duration, ttft, err := r.queryUsageLatency(latencyCtx, filter, start, end)
+	cancelLatency()
 	if err != nil {
-		return nil, err
+		if isQueryTimeoutErr(err) {
+			degraded = true
+			duration = service.OpsPercentiles{REDACTED
+			ttft = service.OpsPercentiles{REDACTED
+	REDACTED else {
+			return nil, err
+	REDACTED
 REDACTED
 
 	errorTotal, businessLimited, errorCountSLA, upstreamExcl, upstream429, upstream529, err := r.queryErrorCounts(ctx, filter, start, end)
@@ -75,20 +89,40 @@ REDACTED
 
 	qpsCurrent, tpsCurrent, err := r.queryCurrentRates(ctx, filter, end)
 	if err != nil {
-		return nil, err
+		if isQueryTimeoutErr(err) {
+			degraded = true
+	REDACTED else {
+			return nil, err
+	REDACTED
 REDACTED
 
-	qpsPeak, err := r.queryPeakQPS(ctx, filter, start, end)
+	peakCtx, cancelPeak := context.WithTimeout(ctx, opsRawPeakQueryTimeout)
+	qpsPeak, tpsPeak, err := r.queryPeakRates(peakCtx, filter, start, end)
+	cancelPeak()
 	if err != nil {
-		return nil, err
-REDACTED
-	tpsPeak, err := r.queryPeakTPS(ctx, filter, start, end)
-	if err != nil {
-		return nil, err
+		if isQueryTimeoutErr(err) {
+			degraded = true
+	REDACTED else {
+			return nil, err
+	REDACTED
 REDACTED
 
 	qpsAvg := roundTo1DP(float64(requestCountTotal) / windowSeconds)
 	tpsAvg := roundTo1DP(float64(tokenConsumed) / windowSeconds)
+	if degraded {
+		if qpsCurrent <= 0 {
+			qpsCurrent = qpsAvg
+	REDACTED
+		if tpsCurrent <= 0 {
+			tpsCurrent = tpsAvg
+	REDACTED
+		if qpsPeak <= 0 {
+			qpsPeak = roundTo1DP(math.Max(qpsCurrent, qpsAvg))
+	REDACTED
+		if tpsPeak <= 0 {
+			tpsPeak = roundTo1DP(math.Max(tpsCurrent, tpsAvg))
+	REDACTED
+REDACTED
 
 	return &service.OpsDashboardOverview{
 		StartTime: start,
@@ -230,26 +264,45 @@ REDACTED
 	sla := safeDivideFloat64(float64(successCount), float64(requestCountSLA))
 	errorRate := safeDivideFloat64(float64(errorCountSLA), float64(requestCountSLA))
 	upstreamErrorRate := safeDivideFloat64(float64(upstreamExcl), float64(requestCountSLA))
+	degraded := false
 
 	// Keep "current" rates as raw, to preserve realtime semantics.
 	qpsCurrent, tpsCurrent, err := r.queryCurrentRates(ctx, filter, end)
 	if err != nil {
-		return nil, err
+		if isQueryTimeoutErr(err) {
+			degraded = true
+	REDACTED else {
+			return nil, err
+	REDACTED
 REDACTED
 
-	// NOTE: peak still uses raw logs (minute granularity). This is typically cheaper than percentile_cont
-	// and keeps semantics consistent across modes.
-	qpsPeak, err := r.queryPeakQPS(ctx, filter, start, end)
+	peakCtx, cancelPeak := context.WithTimeout(ctx, opsRawPeakQueryTimeout)
+	qpsPeak, tpsPeak, err := r.queryPeakRates(peakCtx, filter, start, end)
+	cancelPeak()
 	if err != nil {
-		return nil, err
-REDACTED
-	tpsPeak, err := r.queryPeakTPS(ctx, filter, start, end)
-	if err != nil {
-		return nil, err
+		if isQueryTimeoutErr(err) {
+			degraded = true
+	REDACTED else {
+			return nil, err
+	REDACTED
 REDACTED
 
 	qpsAvg := roundTo1DP(float64(requestCountTotal) / windowSeconds)
 	tpsAvg := roundTo1DP(float64(tokenConsumed) / windowSeconds)
+	if degraded {
+		if qpsCurrent <= 0 {
+			qpsCurrent = qpsAvg
+	REDACTED
+		if tpsCurrent <= 0 {
+			tpsCurrent = tpsAvg
+	REDACTED
+		if qpsPeak <= 0 {
+			qpsPeak = roundTo1DP(math.Max(qpsCurrent, qpsAvg))
+	REDACTED
+		if tpsPeak <= 0 {
+			tpsPeak = roundTo1DP(math.Max(tpsCurrent, tpsAvg))
+	REDACTED
+REDACTED
 
 	return &service.OpsDashboardOverview{
 		StartTime: start,
@@ -577,9 +630,16 @@ func (r *opsRepository) queryRawPartial(ctx context.Context, filter *service.Ops
 		return nil, err
 REDACTED
 
-	duration, ttft, err := r.queryUsageLatency(ctx, filter, start, end)
+	latencyCtx, cancelLatency := context.WithTimeout(ctx, opsRawLatencyQueryTimeout)
+	duration, ttft, err := r.queryUsageLatency(latencyCtx, filter, start, end)
+	cancelLatency()
 	if err != nil {
-		return nil, err
+		if isQueryTimeoutErr(err) {
+			duration = service.OpsPercentiles{REDACTED
+			ttft = service.OpsPercentiles{REDACTED
+	REDACTED else {
+			return nil, err
+	REDACTED
 REDACTED
 
 	errorTotal, businessLimited, errorCountSLA, upstreamExcl, upstream429, upstream529, err := r.queryErrorCounts(ctx, filter, start, end)
@@ -735,68 +795,56 @@ REDACTED
 REDACTED
 
 func (r *opsRepository) queryUsageLatency(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (duration service.OpsPercentiles, ttft service.OpsPercentiles, err error) {
-	{
-		join, where, args, _ := buildUsageWhere(filter, start, end, 1)
-		q := `
+	join, where, args, _ := buildUsageWhere(filter, start, end, 1)
+	q := `
 SELECT
-  percentile_cont(0.50) WITHIN GROUP (ORDER BY duration_ms) AS p50,
-  percentile_cont(0.90) WITHIN GROUP (ORDER BY duration_ms) AS p90,
-  percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95,
-  percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms) AS p99,
-  AVG(duration_ms) AS avg_ms,
-  MAX(duration_ms) AS max_ms
+  percentile_cont(0.50) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_p50,
+  percentile_cont(0.90) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_p90,
+  percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_p95,
+  percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_p99,
+  AVG(duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_avg,
+  MAX(duration_ms) AS duration_max,
+  percentile_cont(0.50) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p50,
+  percentile_cont(0.90) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p90,
+  percentile_cont(0.95) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p95,
+  percentile_cont(0.99) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p99,
+  AVG(first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_avg,
+  MAX(first_token_ms) AS ttft_max
 FROM usage_logs ul
 ` + join + `
-` + where + `
-AND duration_ms IS NOT NULL`
+` + where
 
-		var p50, p90, p95, p99 sql.NullFloat64
-		var avg sql.NullFloat64
-		var max sql.NullInt64
-		if err := r.db.QueryRowContext(ctx, q, args...).Scan(&p50, &p90, &p95, &p99, &avg, &max); err != nil {
-			return service.OpsPercentiles{REDACTED, service.OpsPercentiles{REDACTED, err
-	REDACTED
-		duration.P50 = floatToIntPtr(p50)
-		duration.P90 = floatToIntPtr(p90)
-		duration.P95 = floatToIntPtr(p95)
-		duration.P99 = floatToIntPtr(p99)
-		duration.Avg = floatToIntPtr(avg)
-		if max.Valid {
-			v := int(max.Int64)
-			duration.Max = &v
-	REDACTED
+	var dP50, dP90, dP95, dP99 sql.NullFloat64
+	var dAvg sql.NullFloat64
+	var dMax sql.NullInt64
+	var tP50, tP90, tP95, tP99 sql.NullFloat64
+	var tAvg sql.NullFloat64
+	var tMax sql.NullInt64
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(
+		&dP50, &dP90, &dP95, &dP99, &dAvg, &dMax,
+		&tP50, &tP90, &tP95, &tP99, &tAvg, &tMax,
+	); err != nil {
+		return service.OpsPercentiles{REDACTED, service.OpsPercentiles{REDACTED, err
 REDACTED
 
-	{
-		join, where, args, _ := buildUsageWhere(filter, start, end, 1)
-		q := `
-SELECT
-  percentile_cont(0.50) WITHIN GROUP (ORDER BY first_token_ms) AS p50,
-  percentile_cont(0.90) WITHIN GROUP (ORDER BY first_token_ms) AS p90,
-  percentile_cont(0.95) WITHIN GROUP (ORDER BY first_token_ms) AS p95,
-  percentile_cont(0.99) WITHIN GROUP (ORDER BY first_token_ms) AS p99,
-  AVG(first_token_ms) AS avg_ms,
-  MAX(first_token_ms) AS max_ms
-FROM usage_logs ul
-` + join + `
-` + where + `
-AND first_token_ms IS NOT NULL`
+	duration.P50 = floatToIntPtr(dP50)
+	duration.P90 = floatToIntPtr(dP90)
+	duration.P95 = floatToIntPtr(dP95)
+	duration.P99 = floatToIntPtr(dP99)
+	duration.Avg = floatToIntPtr(dAvg)
+	if dMax.Valid {
+		v := int(dMax.Int64)
+		duration.Max = &v
+REDACTED
 
-		var p50, p90, p95, p99 sql.NullFloat64
-		var avg sql.NullFloat64
-		var max sql.NullInt64
-		if err := r.db.QueryRowContext(ctx, q, args...).Scan(&p50, &p90, &p95, &p99, &avg, &max); err != nil {
-			return service.OpsPercentiles{REDACTED, service.OpsPercentiles{REDACTED, err
-	REDACTED
-		ttft.P50 = floatToIntPtr(p50)
-		ttft.P90 = floatToIntPtr(p90)
-		ttft.P95 = floatToIntPtr(p95)
-		ttft.P99 = floatToIntPtr(p99)
-		ttft.Avg = floatToIntPtr(avg)
-		if max.Valid {
-			v := int(max.Int64)
-			ttft.Max = &v
-	REDACTED
+	ttft.P50 = floatToIntPtr(tP50)
+	ttft.P90 = floatToIntPtr(tP90)
+	ttft.P95 = floatToIntPtr(tP95)
+	ttft.P99 = floatToIntPtr(tP99)
+	ttft.Avg = floatToIntPtr(tAvg)
+	if tMax.Valid {
+		v := int(tMax.Int64)
+		ttft.Max = &v
 REDACTED
 
 	return duration, ttft, nil
@@ -854,20 +902,23 @@ REDACTED
 	return qpsCurrent, tpsCurrent, nil
 REDACTED
 
-func (r *opsRepository) queryPeakQPS(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (float64, error) {
+func (r *opsRepository) queryPeakRates(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (qpsPeak float64, tpsPeak float64, err error) {
 	usageJoin, usageWhere, usageArgs, next := buildUsageWhere(filter, start, end, 1)
 	errorWhere, errorArgs, _ := buildErrorWhere(filter, start, end, next)
 
 	q := `
 WITH usage_buckets AS (
-  SELECT date_trunc('minute', ul.created_at) AS bucket, COUNT(*) AS cnt
+  SELECT
+    date_trunc('minute', ul.created_at) AS bucket,
+    COUNT(*) AS req_cnt,
+    COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS token_cnt
   FROM usage_logs ul
   ` + usageJoin + `
   ` + usageWhere + `
   GROUP BY 1
 ),
 error_buckets AS (
-  SELECT date_trunc('minute', created_at) AS bucket, COUNT(*) AS cnt
+  SELECT date_trunc('minute', created_at) AS bucket, COUNT(*) AS err_cnt
   FROM ops_error_logs
   ` + errorWhere + `
     AND COALESCE(status_code, 0) >= 400
@@ -875,47 +926,33 @@ error_buckets AS (
 ),
 combined AS (
   SELECT COALESCE(u.bucket, e.bucket) AS bucket,
-         COALESCE(u.cnt, 0) + COALESCE(e.cnt, 0) AS total
+         COALESCE(u.req_cnt, 0) + COALESCE(e.err_cnt, 0) AS total_req,
+         COALESCE(u.token_cnt, 0) AS total_tokens
   FROM usage_buckets u
   FULL OUTER JOIN error_buckets e ON u.bucket = e.bucket
 )
-SELECT COALESCE(MAX(total), 0) FROM combined`
+SELECT
+  COALESCE(MAX(total_req), 0) AS max_req_per_min,
+  COALESCE(MAX(total_tokens), 0) AS max_tokens_per_min
+FROM combined`
 
 	args := append(usageArgs, errorArgs...)
 
-	var maxPerMinute sql.NullInt64
-	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&maxPerMinute); err != nil {
-		return 0, err
+	var maxReqPerMinute, maxTokensPerMinute sql.NullInt64
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&maxReqPerMinute, &maxTokensPerMinute); err != nil {
+		return 0, 0, err
 REDACTED
-	if !maxPerMinute.Valid || maxPerMinute.Int64 <= 0 {
-		return 0, nil
+	if maxReqPerMinute.Valid && maxReqPerMinute.Int64 > 0 {
+		qpsPeak = roundTo1DP(float64(maxReqPerMinute.Int64) / 60.0)
 REDACTED
-	return roundTo1DP(float64(maxPerMinute.Int64) / 60.0), nil
+	if maxTokensPerMinute.Valid && maxTokensPerMinute.Int64 > 0 {
+		tpsPeak = roundTo1DP(float64(maxTokensPerMinute.Int64) / 60.0)
+REDACTED
+	return qpsPeak, tpsPeak, nil
 REDACTED
 
-func (r *opsRepository) queryPeakTPS(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (float64, error) {
-	join, where, args, _ := buildUsageWhere(filter, start, end, 1)
-
-	q := `
-SELECT COALESCE(MAX(tokens_per_min), 0)
-FROM (
-  SELECT
-    date_trunc('minute', ul.created_at) AS bucket,
-    COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS tokens_per_min
-  FROM usage_logs ul
-  ` + join + `
-  ` + where + `
-  GROUP BY 1
-) t`
-
-	var maxPerMinute sql.NullInt64
-	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&maxPerMinute); err != nil {
-		return 0, err
-REDACTED
-	if !maxPerMinute.Valid || maxPerMinute.Int64 <= 0 {
-		return 0, nil
-REDACTED
-	return roundTo1DP(float64(maxPerMinute.Int64) / 60.0), nil
+func isQueryTimeoutErr(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded)
 REDACTED
 
 func buildUsageWhere(filter *service.OpsDashboardFilter, start, end time.Time, startIndex int) (join string, where string, args []any, nextIndex int) {

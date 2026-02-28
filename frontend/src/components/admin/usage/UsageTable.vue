@@ -35,8 +35,8 @@
         </template>
 
         <template #cell-stream="{ row REDACTED">
-          <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium" :class="row.stream ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'">
-            {{ row.stream ? t('usage.stream') : t('usage.sync') REDACTEDREDACTED
+          <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium" :class="getRequestTypeBadgeClass(row)">
+            {{ getRequestTypeLabel(row) REDACTEDREDACTED
           </span>
         </template>
 
@@ -271,6 +271,7 @@
 import { ref REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { formatDateTime, formatReasoningEffort REDACTED from '@/utils/format'
+import { resolveUsageRequestType REDACTED from '@/utils/usageRequestType'
 import DataTable from '@/components/common/DataTable.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -289,6 +290,21 @@ const tokenTooltipVisible = ref(false)
 const tokenTooltipPosition = ref({ x: 0, y: 0 REDACTED)
 const tokenTooltipData = ref<AdminUsageLog | null>(null)
 
+const getRequestTypeLabel = (row: AdminUsageLog): string => {
+  const requestType = resolveUsageRequestType(row)
+  if (requestType === 'ws_v2') return t('usage.ws')
+  if (requestType === 'stream') return t('usage.stream')
+  if (requestType === 'sync') return t('usage.sync')
+  return t('usage.unknown')
+REDACTED
+
+const getRequestTypeBadgeClass = (row: AdminUsageLog): string => {
+  const requestType = resolveUsageRequestType(row)
+  if (requestType === 'ws_v2') return 'bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200'
+  if (requestType === 'stream') return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+  if (requestType === 'sync') return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+  return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+REDACTED
 const formatCacheTokens = (tokens: number): string => {
   if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)REDACTEDM`
   if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)REDACTEDK`

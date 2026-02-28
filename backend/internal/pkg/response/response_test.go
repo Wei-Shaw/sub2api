@@ -29,10 +29,10 @@ func parsePaginatedBody(t *testing.T, w *httptest.ResponseRecorder) (Response, P
 REDACTED
 	// 先用 raw json 解析，因为 Data 是 any 类型
 	var raw struct {
-		Code    int               `json:"code"`
-		Message string            `json:"message"`
-		Reason  string            `json:"reason,omitempty"`
-		Data    json.RawMessage   `json:"data,omitempty"`
+		Code    int             `json:"code"`
+		Message string          `json:"message"`
+		Reason  string          `json:"reason,omitempty"`
+		Data    json.RawMessage `json:"data,omitempty"`
 REDACTED
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &raw))
 

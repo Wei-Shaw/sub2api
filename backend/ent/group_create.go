@@ -314,6 +314,20 @@ REDACTED
 	return _c
 REDACTED
 
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (_c *GroupCreate) SetSoraStorageQuotaBytes(v int64) *GroupCreate {
+	_c.mutation.SetSoraStorageQuotaBytes(v)
+	return _c
+REDACTED
+
+// SetNillableSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableSoraStorageQuotaBytes(v *int64) *GroupCreate {
+	if v != nil {
+		_c.SetSoraStorageQuotaBytes(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_c *GroupCreate) SetClaudeCodeOnly(v bool) *GroupCreate {
 	_c.mutation.SetClaudeCodeOnly(v)
@@ -575,6 +589,10 @@ REDACTED
 		v := group.DefaultDefaultValidityDays
 		_c.mutation.SetDefaultValidityDays(v)
 REDACTED
+	if _, ok := _c.mutation.SoraStorageQuotaBytes(); !ok {
+		v := group.DefaultSoraStorageQuotaBytes
+		_c.mutation.SetSoraStorageQuotaBytes(v)
+REDACTED
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
@@ -646,6 +664,9 @@ REDACTED
 REDACTED
 	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
 		return &ValidationError{Name: "default_validity_days", err: errors.New(`ent: missing required field "Group.default_validity_days"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.SoraStorageQuotaBytes(); !ok {
+		return &ValidationError{Name: "sora_storage_quota_bytes", err: errors.New(`ent: missing required field "Group.sora_storage_quota_bytes"`)REDACTED
 REDACTED
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)REDACTED
@@ -772,6 +793,10 @@ REDACTED
 	if value, ok := _c.mutation.SoraVideoPricePerRequestHd(); ok {
 		_spec.SetField(group.FieldSoraVideoPricePerRequestHd, field.TypeFloat64, value)
 		_node.SoraVideoPricePerRequestHd = &value
+REDACTED
+	if value, ok := _c.mutation.SoraStorageQuotaBytes(); ok {
+		_spec.SetField(group.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
+		_node.SoraStorageQuotaBytes = value
 REDACTED
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -1342,6 +1367,24 @@ REDACTED
 // ClearSoraVideoPricePerRequestHd clears the value of the "sora_video_price_per_request_hd" field.
 func (u *GroupUpsert) ClearSoraVideoPricePerRequestHd() *GroupUpsert {
 	u.SetNull(group.FieldSoraVideoPricePerRequestHd)
+	return u
+REDACTED
+
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (u *GroupUpsert) SetSoraStorageQuotaBytes(v int64) *GroupUpsert {
+	u.Set(group.FieldSoraStorageQuotaBytes, v)
+	return u
+REDACTED
+
+// UpdateSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateSoraStorageQuotaBytes() *GroupUpsert {
+	u.SetExcluded(group.FieldSoraStorageQuotaBytes)
+	return u
+REDACTED
+
+// AddSoraStorageQuotaBytes adds v to the "sora_storage_quota_bytes" field.
+func (u *GroupUpsert) AddSoraStorageQuotaBytes(v int64) *GroupUpsert {
+	u.Add(group.FieldSoraStorageQuotaBytes, v)
 	return u
 REDACTED
 
@@ -1967,6 +2010,27 @@ REDACTED
 func (u *GroupUpsertOne) ClearSoraVideoPricePerRequestHd() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearSoraVideoPricePerRequestHd()
+REDACTED)
+REDACTED
+
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (u *GroupUpsertOne) SetSoraStorageQuotaBytes(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSoraStorageQuotaBytes(v)
+REDACTED)
+REDACTED
+
+// AddSoraStorageQuotaBytes adds v to the "sora_storage_quota_bytes" field.
+func (u *GroupUpsertOne) AddSoraStorageQuotaBytes(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSoraStorageQuotaBytes(v)
+REDACTED)
+REDACTED
+
+// UpdateSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateSoraStorageQuotaBytes() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSoraStorageQuotaBytes()
 REDACTED)
 REDACTED
 
@@ -2780,6 +2844,27 @@ REDACTED
 func (u *GroupUpsertBulk) ClearSoraVideoPricePerRequestHd() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearSoraVideoPricePerRequestHd()
+REDACTED)
+REDACTED
+
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (u *GroupUpsertBulk) SetSoraStorageQuotaBytes(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetSoraStorageQuotaBytes(v)
+REDACTED)
+REDACTED
+
+// AddSoraStorageQuotaBytes adds v to the "sora_storage_quota_bytes" field.
+func (u *GroupUpsertBulk) AddSoraStorageQuotaBytes(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddSoraStorageQuotaBytes(v)
+REDACTED)
+REDACTED
+
+// UpdateSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateSoraStorageQuotaBytes() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateSoraStorageQuotaBytes()
 REDACTED)
 REDACTED
 

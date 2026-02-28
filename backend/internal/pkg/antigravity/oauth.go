@@ -53,7 +53,8 @@ const (
 var defaultUserAgentVersion = "1.19.6"
 
 // defaultClientSecret 可通过环境变量 ANTIGRAVITY_OAUTH_CLIENT_SECRET 配置
-var defaultClientSecret = "REDACTED"
+// 默认值使用占位符，生产环境请通过环境变量注入真实值。
+var defaultClientSecret = "GOCSPX-your-client-secret"
 
 func init() {
 	// 从环境变量读取版本号，未设置则使用默认值

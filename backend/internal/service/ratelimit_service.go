@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 // RateLimitService 处理限流和过载状态管理
@@ -31,6 +32,10 @@ type geminiUsageCacheEntry struct {
 	windowStart time.Time
 	cachedAt    time.Time
 	totals      GeminiUsageTotals
+REDACTED
+
+type geminiUsageTotalsBatchProvider interface {
+	GetGeminiUsageTotalsBatch(ctx context.Context, accountIDs []int64, startTime, endTime time.Time) (map[int64]GeminiUsageTotals, error)
 REDACTED
 
 const geminiPrecheckCacheTTL = time.Minute
@@ -162,6 +167,17 @@ REDACTED
 		if upstreamMsg != "" {
 			msg = "Access forbidden (403): " + upstreamMsg
 	REDACTED
+		logger.LegacyPrintf(
+			"service.ratelimit",
+			"[HandleUpstreamErrorRaw] account_id=%d platform=%s type=%s status=403 request_id=%s cf_ray=%s upstream_msg=%s raw_body=%s",
+			account.ID,
+			account.Platform,
+			account.Type,
+			strings.TrimSpace(headers.Get("x-request-id")),
+			strings.TrimSpace(headers.Get("cf-ray")),
+			upstreamMsg,
+			truncateForLog(responseBody, 1024),
+		)
 		s.handleAuthError(ctx, account, msg)
 		shouldDisable = true
 	case 429:
@@ -225,7 +241,7 @@ REDACTED
 			start := geminiDailyWindowStart(now)
 			totals, ok := s.getGeminiUsageTotals(account.ID, start, now)
 			if !ok {
-				stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID, 0, nil, nil)
+				stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID, 0, nil, nil, nil)
 				if err != nil {
 					return true, err
 			REDACTED
@@ -272,7 +288,7 @@ REDACTED
 
 		if limit > 0 {
 			start := now.Truncate(time.Minute)
-			stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID, 0, nil, nil)
+			stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID, 0, nil, nil, nil)
 			if err != nil {
 				return true, err
 		REDACTED
@@ -300,6 +316,218 @@ REDACTED
 REDACTED
 
 	return true, nil
+REDACTED
+
+// PreCheckUsageBatch performs quota precheck for multiple accounts in one request.
+// Returned map value=false means the account should be skipped.
+func (s *RateLimitService) PreCheckUsageBatch(ctx context.Context, accounts []*Account, requestedModel string) (map[int64]bool, error) {
+	result := make(map[int64]bool, len(accounts))
+	for _, account := range accounts {
+		if account == nil {
+			continue
+	REDACTED
+		result[account.ID] = true
+REDACTED
+
+	if len(accounts) == 0 || requestedModel == "" {
+		return result, nil
+REDACTED
+	if s.usageRepo == nil || s.geminiQuotaService == nil {
+		return result, nil
+REDACTED
+
+	modelClass := geminiModelClassFromName(requestedModel)
+	now := time.Now()
+	dailyStart := geminiDailyWindowStart(now)
+	minuteStart := now.Truncate(time.Minute)
+
+	type quotaAccount struct {
+		account *Account
+		quota   GeminiQuota
+REDACTED
+	quotaAccounts := make([]quotaAccount, 0, len(accounts))
+	for _, account := range accounts {
+		if account == nil || account.Platform != PlatformGemini {
+			continue
+	REDACTED
+		quota, ok := s.geminiQuotaService.QuotaForAccount(ctx, account)
+		if !ok {
+			continue
+	REDACTED
+		quotaAccounts = append(quotaAccounts, quotaAccount{
+			account: account,
+			quota:   quota,
+	REDACTED)
+REDACTED
+	if len(quotaAccounts) == 0 {
+		return result, nil
+REDACTED
+
+	// 1) Daily precheck (cached + batch DB fallback)
+	dailyTotalsByID := make(map[int64]GeminiUsageTotals, len(quotaAccounts))
+	dailyMissIDs := make([]int64, 0, len(quotaAccounts))
+	for _, item := range quotaAccounts {
+		limit := geminiDailyLimit(item.quota, modelClass)
+		if limit <= 0 {
+			continue
+	REDACTED
+		accountID := item.account.ID
+		if totals, ok := s.getGeminiUsageTotals(accountID, dailyStart, now); ok {
+			dailyTotalsByID[accountID] = totals
+			continue
+	REDACTED
+		dailyMissIDs = append(dailyMissIDs, accountID)
+REDACTED
+	if len(dailyMissIDs) > 0 {
+		totalsBatch, err := s.getGeminiUsageTotalsBatch(ctx, dailyMissIDs, dailyStart, now)
+		if err != nil {
+			return result, err
+	REDACTED
+		for _, accountID := range dailyMissIDs {
+			totals := totalsBatch[accountID]
+			dailyTotalsByID[accountID] = totals
+			s.setGeminiUsageTotals(accountID, dailyStart, now, totals)
+	REDACTED
+REDACTED
+	for _, item := range quotaAccounts {
+		limit := geminiDailyLimit(item.quota, modelClass)
+		if limit <= 0 {
+			continue
+	REDACTED
+		accountID := item.account.ID
+		used := geminiUsedRequests(item.quota, modelClass, dailyTotalsByID[accountID], true)
+		if used >= limit {
+			resetAt := geminiDailyResetTime(now)
+			slog.Info("gemini_precheck_daily_quota_reached_batch", "account_id", accountID, "used", used, "limit", limit, "reset_at", resetAt)
+			result[accountID] = false
+	REDACTED
+REDACTED
+
+	// 2) Minute precheck (batch DB)
+	minuteIDs := make([]int64, 0, len(quotaAccounts))
+	for _, item := range quotaAccounts {
+		accountID := item.account.ID
+		if !result[accountID] {
+			continue
+	REDACTED
+		if geminiMinuteLimit(item.quota, modelClass) <= 0 {
+			continue
+	REDACTED
+		minuteIDs = append(minuteIDs, accountID)
+REDACTED
+	if len(minuteIDs) == 0 {
+		return result, nil
+REDACTED
+
+	minuteTotalsByID, err := s.getGeminiUsageTotalsBatch(ctx, minuteIDs, minuteStart, now)
+	if err != nil {
+		return result, err
+REDACTED
+	for _, item := range quotaAccounts {
+		accountID := item.account.ID
+		if !result[accountID] {
+			continue
+	REDACTED
+
+		limit := geminiMinuteLimit(item.quota, modelClass)
+		if limit <= 0 {
+			continue
+	REDACTED
+
+		used := geminiUsedRequests(item.quota, modelClass, minuteTotalsByID[accountID], false)
+		if used >= limit {
+			resetAt := minuteStart.Add(time.Minute)
+			slog.Info("gemini_precheck_minute_quota_reached_batch", "account_id", accountID, "used", used, "limit", limit, "reset_at", resetAt)
+			result[accountID] = false
+	REDACTED
+REDACTED
+
+	return result, nil
+REDACTED
+
+func (s *RateLimitService) getGeminiUsageTotalsBatch(ctx context.Context, accountIDs []int64, start, end time.Time) (map[int64]GeminiUsageTotals, error) {
+	result := make(map[int64]GeminiUsageTotals, len(accountIDs))
+	if len(accountIDs) == 0 {
+		return result, nil
+REDACTED
+
+	ids := make([]int64, 0, len(accountIDs))
+	seen := make(map[int64]struct{REDACTED, len(accountIDs))
+	for _, accountID := range accountIDs {
+		if accountID <= 0 {
+			continue
+	REDACTED
+		if _, ok := seen[accountID]; ok {
+			continue
+	REDACTED
+		seen[accountID] = struct{REDACTED{REDACTED
+		ids = append(ids, accountID)
+REDACTED
+	if len(ids) == 0 {
+		return result, nil
+REDACTED
+
+	if batchReader, ok := s.usageRepo.(geminiUsageTotalsBatchProvider); ok {
+		stats, err := batchReader.GetGeminiUsageTotalsBatch(ctx, ids, start, end)
+		if err != nil {
+			return nil, err
+	REDACTED
+		for _, accountID := range ids {
+			result[accountID] = stats[accountID]
+	REDACTED
+		return result, nil
+REDACTED
+
+	for _, accountID := range ids {
+		stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, end, 0, 0, accountID, 0, nil, nil, nil)
+		if err != nil {
+			return nil, err
+	REDACTED
+		result[accountID] = geminiAggregateUsage(stats)
+REDACTED
+	return result, nil
+REDACTED
+
+func geminiDailyLimit(quota GeminiQuota, modelClass geminiModelClass) int64 {
+	if quota.SharedRPD > 0 {
+		return quota.SharedRPD
+REDACTED
+	switch modelClass {
+	case geminiModelFlash:
+		return quota.FlashRPD
+	default:
+		return quota.ProRPD
+REDACTED
+REDACTED
+
+func geminiMinuteLimit(quota GeminiQuota, modelClass geminiModelClass) int64 {
+	if quota.SharedRPM > 0 {
+		return quota.SharedRPM
+REDACTED
+	switch modelClass {
+	case geminiModelFlash:
+		return quota.FlashRPM
+	default:
+		return quota.ProRPM
+REDACTED
+REDACTED
+
+func geminiUsedRequests(quota GeminiQuota, modelClass geminiModelClass, totals GeminiUsageTotals, daily bool) int64 {
+	if daily {
+		if quota.SharedRPD > 0 {
+			return totals.ProRequests + totals.FlashRequests
+	REDACTED
+REDACTED else {
+		if quota.SharedRPM > 0 {
+			return totals.ProRequests + totals.FlashRequests
+	REDACTED
+REDACTED
+	switch modelClass {
+	case geminiModelFlash:
+		return totals.FlashRequests
+	default:
+		return totals.ProRequests
+REDACTED
 REDACTED
 
 func (s *RateLimitService) getGeminiUsageTotals(accountID int64, windowStart, now time.Time) (GeminiUsageTotals, bool) {

@@ -13,10 +13,12 @@ import (
 
 type openaiOAuthClientStateStub struct {
 	exchangeCalled int32
+	lastClientID   string
 REDACTED
 
-func (s *openaiOAuthClientStateStub) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL string) (*openai.TokenResponse, error) {
+func (s *openaiOAuthClientStateStub) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error) {
 	atomic.AddInt32(&s.exchangeCalled, 1)
+	s.lastClientID = clientID
 	return &openai.TokenResponse{
 		AccessToken:  "at",
 		RefreshToken: "rt",
@@ -95,6 +97,8 @@ REDACTED)
 REDACTED
 	require.NotNil(t, info)
 	require.Equal(t, "at", info.AccessToken)
+	require.Equal(t, openai.ClientID, info.ClientID)
+	require.Equal(t, openai.ClientID, client.lastClientID)
 	require.Equal(t, int32(1), atomic.LoadInt32(&client.exchangeCalled))
 
 	_, ok := svc.sessionStore.Get("sid")

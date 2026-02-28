@@ -5,6 +5,8 @@ package service
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,20 +14,20 @@ import (
 
 // stubConcurrencyCacheForTest 用于并发服务单元测试的缓存桩
 type stubConcurrencyCacheForTest struct {
-	acquireResult bool
-	acquireErr    error
-	releaseErr    error
-	concurrency   int
+	acquireResult  bool
+	acquireErr     error
+	releaseErr     error
+	concurrency    int
 	concurrencyErr error
-	waitAllowed   bool
-	waitErr       error
-	waitCount     int
-	waitCountErr  error
-	loadBatch     map[int64]*AccountLoadInfo
-	loadBatchErr  error
+	waitAllowed    bool
+	waitErr        error
+	waitCount      int
+	waitCountErr   error
+	loadBatch      map[int64]*AccountLoadInfo
+	loadBatchErr   error
 	usersLoadBatch map[int64]*UserLoadInfo
 	usersLoadErr   error
-	cleanupErr    error
+	cleanupErr     error
 
 	// 记录调用
 	releasedAccountIDs []int64
@@ -44,6 +46,16 @@ func (c *stubConcurrencyCacheForTest) ReleaseAccountSlot(_ context.Context, acco
 REDACTED
 func (c *stubConcurrencyCacheForTest) GetAccountConcurrency(_ context.Context, _ int64) (int, error) {
 	return c.concurrency, c.concurrencyErr
+REDACTED
+func (c *stubConcurrencyCacheForTest) GetAccountConcurrencyBatch(_ context.Context, accountIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int, len(accountIDs))
+	for _, accountID := range accountIDs {
+		if c.concurrencyErr != nil {
+			return nil, c.concurrencyErr
+	REDACTED
+		result[accountID] = c.concurrency
+REDACTED
+	return result, nil
 REDACTED
 func (c *stubConcurrencyCacheForTest) IncrementAccountWaitCount(_ context.Context, _ int64, _ int) (bool, error) {
 	return c.waitAllowed, c.waitErr
@@ -153,6 +165,25 @@ func TestAcquireUserSlot_UnlimitedConcurrency(t *testing.T) {
 	result, err := svc.AcquireUserSlot(context.Background(), 1, 0)
 REDACTED
 	require.True(t, result.Acquired)
+REDACTED
+
+func TestGenerateRequestID_UsesStablePrefixAndMonotonicCounter(t *testing.T) {
+	id1 := generateRequestID()
+	id2 := generateRequestID()
+	require.NotEmpty(t, id1)
+	require.NotEmpty(t, id2)
+
+	p1 := strings.Split(id1, "-")
+	p2 := strings.Split(id2, "-")
+	require.Len(t, p1, 2)
+	require.Len(t, p2, 2)
+	require.Equal(t, p1[0], p2[0], "同一进程前缀应保持一致")
+
+	n1, err := strconv.ParseUint(p1[1], 36, 64)
+REDACTED
+	n2, err := strconv.ParseUint(p2[1], 36, 64)
+REDACTED
+	require.Equal(t, n1+1, n2, "计数器应单调递增")
 REDACTED
 
 func TestGetAccountsLoadBatch_ReturnsCorrectData(t *testing.T) {

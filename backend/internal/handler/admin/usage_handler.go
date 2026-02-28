@@ -51,6 +51,7 @@ type CreateUsageCleanupTaskRequest struct {
 	AccountID   *int64  `json:"account_id"`
 	GroupID     *int64  `json:"group_id"`
 	Model       *string `json:"model"`
+	RequestType *string `json:"request_type"`
 	Stream      *bool   `json:"stream"`
 	BillingType *int8   `json:"billing_type"`
 	Timezone    string  `json:"timezone"`
@@ -101,8 +102,17 @@ REDACTED
 
 	model := c.Query("model")
 
+	var requestType *int16
 	var stream *bool
-	if streamStr := c.Query("stream"); streamStr != "" {
+	if requestTypeStr := strings.TrimSpace(c.Query("request_type")); requestTypeStr != "" {
+		parsed, err := service.ParseUsageRequestType(requestTypeStr)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+	REDACTED
+		value := int16(parsed)
+		requestType = &value
+REDACTED else if streamStr := c.Query("stream"); streamStr != "" {
 		val, err := strconv.ParseBool(streamStr)
 		if err != nil {
 			response.BadRequest(c, "Invalid stream value, use true or false")
@@ -152,6 +162,7 @@ REDACTED
 		AccountID:   accountID,
 		GroupID:     groupID,
 		Model:       model,
+		RequestType: requestType,
 		Stream:      stream,
 		BillingType: billingType,
 		StartTime:   startTime,
@@ -214,8 +225,17 @@ REDACTED
 
 	model := c.Query("model")
 
+	var requestType *int16
 	var stream *bool
-	if streamStr := c.Query("stream"); streamStr != "" {
+	if requestTypeStr := strings.TrimSpace(c.Query("request_type")); requestTypeStr != "" {
+		parsed, err := service.ParseUsageRequestType(requestTypeStr)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+	REDACTED
+		value := int16(parsed)
+		requestType = &value
+REDACTED else if streamStr := c.Query("stream"); streamStr != "" {
 		val, err := strconv.ParseBool(streamStr)
 		if err != nil {
 			response.BadRequest(c, "Invalid stream value, use true or false")
@@ -278,6 +298,7 @@ REDACTED
 		AccountID:   accountID,
 		GroupID:     groupID,
 		Model:       model,
+		RequestType: requestType,
 		Stream:      stream,
 		BillingType: billingType,
 		StartTime:   &startTime,
@@ -432,6 +453,19 @@ REDACTED
 REDACTED
 	endTime = endTime.Add(24*time.Hour - time.Nanosecond)
 
+	var requestType *int16
+	stream := req.Stream
+	if req.RequestType != nil {
+		parsed, err := service.ParseUsageRequestType(*req.RequestType)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+	REDACTED
+		value := int16(parsed)
+		requestType = &value
+		stream = nil
+REDACTED
+
 	filters := service.UsageCleanupFilters{
 		StartTime:   startTime,
 		EndTime:     endTime,
@@ -440,7 +474,8 @@ REDACTED
 		AccountID:   req.AccountID,
 		GroupID:     req.GroupID,
 		Model:       req.Model,
-		Stream:      req.Stream,
+		RequestType: requestType,
+		Stream:      stream,
 		BillingType: req.BillingType,
 REDACTED
 
@@ -464,9 +499,13 @@ REDACTED
 	if filters.Model != nil {
 		model = *filters.Model
 REDACTED
-	var stream any
+	var streamValue any
 	if filters.Stream != nil {
-		stream = *filters.Stream
+		streamValue = *filters.Stream
+REDACTED
+	var requestTypeName any
+	if filters.RequestType != nil {
+		requestTypeName = service.RequestTypeFromInt16(*filters.RequestType).String()
 REDACTED
 	var billingType any
 	if filters.BillingType != nil {
@@ -481,7 +520,7 @@ REDACTED{
 		Body:       req,
 REDACTED
 	executeAdminIdempotentJSON(c, "admin.usage.cleanup_tasks.create", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
-		logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 请求创建清理任务: operator=%d start=%s end=%s user_id=%v api_key_id=%v account_id=%v group_id=%v model=%v stream=%v billing_type=%v tz=%q",
+		logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 请求创建清理任务: operator=%d start=%s end=%s user_id=%v api_key_id=%v account_id=%v group_id=%v model=%v request_type=%v stream=%v billing_type=%v tz=%q",
 			subject.UserID,
 			filters.StartTime.Format(time.RFC3339),
 			filters.EndTime.Format(time.RFC3339),
@@ -490,7 +529,8 @@ REDACTED
 			accountID,
 			groupID,
 			model,
-			stream,
+			requestTypeName,
+			streamValue,
 			billingType,
 			req.Timezone,
 		)
