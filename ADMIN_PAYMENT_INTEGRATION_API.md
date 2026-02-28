@@ -1,41 +1,40 @@
-# Sub2API Admin API: Payment Integration / 支付集成接口文档
+﻿# ADMIN_PAYMENT_INTEGRATION_API
+
+> 单文件中英双语文档 / Single-file bilingual documentation (Chinese + English)
+
+---
 
 ## 中文
 
-### 概述
-
-本文档描述外部支付系统（例如 sub2apipay）对接 Sub2API 时的最小 Admin API 集合，用于完成充值发放与对账。
+### 目标
+本文档用于对接外部支付系统（如 `sub2apipay`）与 Sub2API 的 Admin API，覆盖：
+- 支付成功后充值
+- 用户查询
+- 人工余额修正
+- 前端购买页参数透传
 
 ### 基础地址
+- 生产：`https://<your-domain>`
+- Beta：`http://<your-server-ip>:8084`
 
-- 生产环境：`https://<your-domain>`
-- Beta 环境：`http://<your-server-ip>:8084`
+### 认证
+推荐使用：
+- `x-api-key: admin-<64hex>`
+- `Content-Type: application/json`
+- 幂等接口额外传：`Idempotency-Key`
 
-### 认证方式
+说明：管理员 JWT 也可访问 admin 路由，但服务间调用建议使用 Admin API Key。
 
-以下接口均建议使用：
-
-- 请求头：`x-api-key: admin-<64hex>`（服务间调用推荐）
-- 请求头：`Content-Type: application/json`
-
-说明：管理员 JWT 也可访问 admin 路由，但机器对机器调用建议使用 Admin API Key。
-
-### 1) 一步完成：创建兑换码并兑换
-
+### 1) 一步完成创建并兑换
 `POST /api/v1/admin/redeem-codes/create-and-redeem`
 
-用途：
+用途：原子完成“创建兑换码 + 兑换到指定用户”。
 
-- 原子化完成“创建固定兑换码 + 兑换给指定用户”。
-- 常用于支付回调成功后的自动充值。
-
-必需请求头：
-
+请求头：
 - `x-api-key`
 - `Idempotency-Key`
 
-请求体：
-
+请求体示例：
 ```json
 {
   "code": "s2p_REDACTED",
@@ -46,21 +45,12 @@
 REDACTED
 ```
 
-规则：
-
-- `code`：外部订单映射的确定性兑换码。
-- `type`：当前推荐使用 `balance`。
-- `value`：必须大于 0。
-- `user_id`：目标用户 ID。
-
 幂等语义：
+- 同 `code` 且 `used_by` 一致：`200`
+- 同 `code` 但 `used_by` 不一致：`409`
+- 缺少 `Idempotency-Key`：`400`（`IDEMPOTENCY_KEY_REQUIRED`）
 
-- 同一 `code` 且 `used_by` 一致：返回 `200`（幂等回放）。
-- 同一 `code` 但 `used_by` 不一致：返回 `409`（冲突）。
-- 缺少 `Idempotency-Key`：返回 `400`（`IDEMPOTENCY_KEY_REQUIRED`）。
-
-示例：
-
+curl 示例：
 ```bash
 curl -X POST "${BASEREDACTED/api/v1/admin/redeem-codes/create-and-redeem" \
   -H "x-api-key: ${KEYREDACTED" \
@@ -75,32 +65,20 @@ curl -X POST "${BASEREDACTED/api/v1/admin/redeem-codes/create-and-redeem" \
   REDACTED'
 ```
 
-### 2) 查询用户（可选前置检查）
-
+### 2) 查询用户（可选前置校验）
 `GET /api/v1/admin/users/:id`
-
-用途：
-
-- 支付成功后充值前，确认目标用户是否存在。
-
-示例：
 
 ```bash
 curl -s "${BASEREDACTED/api/v1/admin/users/123" \
   -H "x-api-key: ${KEYREDACTED"
 ```
 
-### 3) 余额调整（已存在接口）
-
+### 3) 余额调整（已有接口）
 `POST /api/v1/admin/users/:id/balance`
 
-用途：
+用途：人工补偿 / 扣减，支持 `set` / `add` / `subtract`。
 
-- 复用现有管理员接口做人工纠偏。
-- 支持 `set`、`add`、`subtract`。
-
-示例（扣减）：
-
+请求体示例（扣减）：
 ```json
 {
   "balance": 100.0,
@@ -121,36 +99,25 @@ curl -X POST "${BASEREDACTED/api/v1/admin/users/123/balance" \
   REDACTED'
 ```
 
-### 4) 购买页跳转 URL Query 参数（iframe 与新窗口统一）
-
-Sub2API 前端在打开 `purchase_subscription_url` 时，会给 iframe 和“新窗口打开”统一追加 query 参数，确保外部支付页拿到一致上下文。
-
-追加参数：
-
-- `user_id`：当前登录用户 ID
-- `token`：当前登录 JWT token
-- `theme`：当前主题（`light` / `dark`）
-- `ui_mode`：当前 UI 模式（固定 `embedded`）
+### 4) 购买页 URL Query 透传（iframe / 新窗口一致）
+当 Sub2API 打开 `purchase_subscription_url` 时，会统一追加：
+- `user_id`
+- `token`
+- `theme`（`light` / `dark`）
+- `ui_mode`（固定 `embedded`）
 
 示例：
-
 ```text
 https://pay.example.com/pay?user_id=123&token=<jwt>&theme=light&ui_mode=embedded
 ```
 
 ### 5) 失败处理建议
-
-- 支付状态与充值状态分开落库。
-- 收到并验证支付回调后，立即标记“支付成功”。
-- 支付成功但充值失败的订单应允许后续重试。
-- 重试时继续使用同一 `code`，并使用新的 `Idempotency-Key`。
+- 支付成功与充值成功分状态落库
+- 回调验签成功后立即标记“支付成功”
+- 支付成功但充值失败的订单允许后续重试
+- 重试保持相同 `code`，并使用新的 `Idempotency-Key`
 
 ### 6) `doc_url` 配置建议
-
-Sub2API 已支持系统设置中的 `doc_url` 字段。
-
-推荐配置：
-
 - 查看链接：`https://github.com/Wei-Shaw/sub2api/blob/main/ADMIN_PAYMENT_INTEGRATION_API.md`
 - 下载链接：`https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/ADMIN_PAYMENT_INTEGRATION_API.md`
 
@@ -158,40 +125,35 @@ Sub2API 已支持系统设置中的 `doc_url` 字段。
 
 ## English
 
-### Overview
-
-This document defines the minimum Admin API surface for integrating external payment systems (for example, sub2apipay) with Sub2API for recharge fulfillment and reconciliation.
+### Purpose
+This document describes the minimal Sub2API Admin API surface for external payment integrations (for example, `sub2apipay`), including:
+- Recharge after payment success
+- User lookup
+- Manual balance correction
+- Purchase page query parameter forwarding
 
 ### Base URL
-
 - Production: `https://<your-domain>`
 - Beta: `http://<your-server-ip>:8084`
 
 ### Authentication
-
 Recommended headers:
-
-- `x-api-key: admin-<64hex>` (recommended for server-to-server calls)
+- `x-api-key: admin-<64hex>`
 - `Content-Type: application/json`
+- `Idempotency-Key` for idempotent endpoints
 
-Note: Admin JWT is also accepted by admin routes, but Admin API key is recommended for machine integrations.
+Note: Admin JWT can also access admin routes, but Admin API Key is recommended for server-to-server integration.
 
-### 1) One-step Create + Redeem
-
+### 1) Create and Redeem in one step
 `POST /api/v1/admin/redeem-codes/create-and-redeem`
 
-Purpose:
+Use case: atomically create a redeem code and redeem it to a target user.
 
-- Atomically create a deterministic redeem code and redeem it to the target user.
-- Typical usage: called right after payment callback success.
-
-Required headers:
-
+Headers:
 - `x-api-key`
 - `Idempotency-Key`
 
 Request body:
-
 ```json
 {
   "code": "s2p_REDACTED",
@@ -202,21 +164,12 @@ Request body:
 REDACTED
 ```
 
-Rules:
-
-- `code`: deterministic code mapped from external order id.
-- `type`: `balance` is the recommended type.
-- `value`: must be greater than 0.
-- `user_id`: target user id.
-
 Idempotency behavior:
+- Same `code` and same `used_by`: `200`
+- Same `code` but different `used_by`: `409`
+- Missing `Idempotency-Key`: `400` (`IDEMPOTENCY_KEY_REQUIRED`)
 
-- Same `code` and same `used_by`: `200` (idempotent replay).
-- Same `code` and different `used_by`: `409` (conflict).
-- Missing `Idempotency-Key`: `400` (`IDEMPOTENCY_KEY_REQUIRED`).
-
-Example:
-
+curl example:
 ```bash
 curl -X POST "${BASEREDACTED/api/v1/admin/redeem-codes/create-and-redeem" \
   -H "x-api-key: ${KEYREDACTED" \
@@ -231,32 +184,20 @@ curl -X POST "${BASEREDACTED/api/v1/admin/redeem-codes/create-and-redeem" \
   REDACTED'
 ```
 
-### 2) Query User (Optional Pre-check)
-
+### 2) Query User (optional pre-check)
 `GET /api/v1/admin/users/:id`
-
-Purpose:
-
-- Verify target user existence before final recharge/retry.
-
-Example:
 
 ```bash
 curl -s "${BASEREDACTED/api/v1/admin/users/123" \
   -H "x-api-key: ${KEYREDACTED"
 ```
 
-### 3) Balance Adjustment (Existing API)
-
+### 3) Balance Adjustment (existing API)
 `POST /api/v1/admin/users/:id/balance`
 
-Purpose:
-
-- Reuse existing admin endpoint for manual reconciliation.
-- Supports `set`, `add`, `subtract`.
+Use case: manual correction with `set` / `add` / `subtract`.
 
 Request body example (`subtract`):
-
 ```json
 {
   "balance": 100.0,
@@ -264,8 +205,6 @@ Request body example (`subtract`):
   "notes": "manual correction"
 REDACTED
 ```
-
-Example:
 
 ```bash
 curl -X POST "${BASEREDACTED/api/v1/admin/users/123/balance" \
@@ -279,35 +218,24 @@ curl -X POST "${BASEREDACTED/api/v1/admin/users/123/balance" \
   REDACTED'
 ```
 
-### 4) Purchase URL Query Parameters (Iframe + New Tab)
-
-When Sub2API frontend opens `purchase_subscription_url`, it appends the same query parameters for both iframe and “open in new tab” to keep context consistent.
-
-Appended parameters:
-
-- `user_id`: current logged-in user id
-- `token`: current logged-in JWT token
-- `theme`: current theme (`light` / `dark`)
-- `ui_mode`: UI mode (fixed `embedded`)
+### 4) Purchase URL query forwarding (iframe and new tab)
+When Sub2API opens `purchase_subscription_url`, it appends:
+- `user_id`
+- `token`
+- `theme` (`light` / `dark`)
+- `ui_mode` (fixed: `embedded`)
 
 Example:
-
 ```text
 https://pay.example.com/pay?user_id=123&token=<jwt>&theme=light&ui_mode=embedded
 ```
 
-### 5) Failure Handling Recommendations
+### 5) Failure handling recommendations
+- Persist payment success and recharge success as separate states
+- Mark payment as successful immediately after verified callback
+- Allow retry for orders with payment success but recharge failure
+- Keep the same `code` for retry, and use a new `Idempotency-Key`
 
-- Store payment state and recharge state separately.
-- Mark payment success immediately after callback verification.
-- Keep orders retryable when payment succeeded but recharge failed.
-- Reuse the same deterministic `code` and a new `Idempotency-Key` when retrying.
-
-### 6) Suggested `doc_url` Value
-
-Sub2API already supports `doc_url` in system settings.
-
-Recommended values:
-
+### 6) Recommended `doc_url`
 - View URL: `https://github.com/Wei-Shaw/sub2api/blob/main/ADMIN_PAYMENT_INTEGRATION_API.md`
 - Download URL: `https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/ADMIN_PAYMENT_INTEGRATION_API.md`
