@@ -165,6 +165,9 @@ REDACTED
 func (r *stubUserRepoForQuota) UpdateTotpSecret(context.Context, int64, *string) error { return nil REDACTED
 func (r *stubUserRepoForQuota) EnableTotp(context.Context, int64) error                { return nil REDACTED
 func (r *stubUserRepoForQuota) DisableTotp(context.Context, int64) error               { return nil REDACTED
+func (r *stubUserRepoForQuota) AddGroupToAllowedGroups(context.Context, int64, int64) error {
+	return nil
+REDACTED
 
 // ==================== 辅助函数：构造带 CDN 缓存的 SoraS3Storage ====================
 
