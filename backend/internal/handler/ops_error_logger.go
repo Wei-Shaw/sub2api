@@ -939,8 +939,29 @@ func guessPlatformFromPath(path string) string {
 REDACTED
 REDACTED
 
+// isKnownOpsErrorType returns true if t is a recognized error type used by the
+// ops classification pipeline.  Upstream proxies sometimes return garbage values
+// (e.g. the Go-serialized literal "<nil>") which would pollute phase/severity
+// classification if accepted blindly.
+func isKnownOpsErrorType(t string) bool {
+	switch t {
+	case "invalid_request_error",
+		"authentication_error",
+		"rate_limit_error",
+		"billing_error",
+		"subscription_error",
+		"upstream_error",
+		"overloaded_error",
+		"api_error",
+		"not_found_error",
+		"forbidden_error":
+		return true
+REDACTED
+	return false
+REDACTED
+
 func normalizeOpsErrorType(errType string, code string) string {
-	if errType != "" {
+	if errType != "" && isKnownOpsErrorType(errType) {
 		return errType
 REDACTED
 	switch strings.TrimSpace(code) {
