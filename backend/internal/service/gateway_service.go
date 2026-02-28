@@ -2242,6 +2242,9 @@ REDACTED
 REDACTED
 
 // IncrementAccountRPM increments the RPM counter for the given account.
+// 已知 TOCTOU 竞态：调度时读取 RPM 计数与此处递增之间存在时间窗口，
+// 高并发下可能短暂超出 RPM 限制。这是与 WindowCost 一致的 soft-limit
+// 设计权衡——可接受的少量超额优于加锁带来的延迟和复杂度。
 func (s *GatewayService) IncrementAccountRPM(ctx context.Context, accountID int64) error {
 	if s.rpmCache == nil {
 		return nil
@@ -2444,7 +2447,7 @@ REDACTED
 // shuffleWithinPriorityAndLastUsed 对排序后的 []*Account 切片，按 (Priority, LastUsedAt) 分组后组内随机打乱。
 //
 // 注意：当 preferOAuth=true 时，需要保证 OAuth 账号在同组内仍然优先，否则会把排序时的偏好打散掉。
-// 因此这里采用“组内分区 + 分区内 shuffle”的方式：
+// 因此这里采用"组内分区 + 分区内 shuffle"的方式：
 // - 先把同组账号按 (OAuth / 非 OAuth) 拆成两段，保持 OAuth 段在前；
 // - 再分别在各段内随机打散，避免热点。
 func shuffleWithinPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
@@ -2584,7 +2587,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					REDACTED
-						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForRPM(ctx, account, true) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 						REDACTED
@@ -2607,7 +2610,8 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	REDACTED
 		accountsLoaded = true
 
-		// 提前预取 RPM 计数，确保 routing 段内的 isAccountSchedulableForRPM 调用能命中缓存
+		// 提前预取窗口费用+RPM 计数，确保 routing 段内的调度检查调用能命中缓存
+		ctx = s.withWindowCostPrefetch(ctx, accounts)
 		ctx = s.withRPMPrefetch(ctx, accounts)
 
 		routingSet := make(map[int64]struct{REDACTED, len(routingAccountIDs))
@@ -2690,7 +2694,7 @@ REDACTED
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 				REDACTED
-					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForRPM(ctx, account, true) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						return account, nil
 				REDACTED
 			REDACTED
@@ -2711,7 +2715,8 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 批量预取 RPM 计数，避免逐个账号查询（N+1）
+	// 批量预取窗口费用+RPM 计数，避免逐个账号查询（N+1）
+	ctx = s.withWindowCostPrefetch(ctx, accounts)
 	ctx = s.withRPMPrefetch(ctx, accounts)
 
 	// 3. 按优先级+最久未用选择（考虑模型支持）
@@ -2804,7 +2809,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					REDACTED
-						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForRPM(ctx, account, true) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 							if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 								if s.debugModelRoutingEnabled() {
 									logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
@@ -2825,7 +2830,8 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	REDACTED
 		accountsLoaded = true
 
-		// 提前预取 RPM 计数，确保 routing 段内的 isAccountSchedulableForRPM 调用能命中缓存
+		// 提前预取窗口费用+RPM 计数，确保 routing 段内的调度检查调用能命中缓存
+		ctx = s.withWindowCostPrefetch(ctx, accounts)
 		ctx = s.withRPMPrefetch(ctx, accounts)
 
 		routingSet := make(map[int64]struct{REDACTED, len(routingAccountIDs))
@@ -2912,7 +2918,7 @@ REDACTED
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 				REDACTED
-					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForRPM(ctx, account, true) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 							return account, nil
 					REDACTED
@@ -2931,7 +2937,8 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 批量预取 RPM 计数，避免逐个账号查询（N+1）
+	// 批量预取窗口费用+RPM 计数，避免逐个账号查询（N+1）
+	ctx = s.withWindowCostPrefetch(ctx, accounts)
 	ctx = s.withRPMPrefetch(ctx, accounts)
 
 	// 3. 按优先级+最久未用选择（考虑模型支持和混合调度）
@@ -5304,7 +5311,7 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) shouldFailoverOn400(respBody []byte) bool {
-	// 只对“可能是兼容性差异导致”的 400 允许切换，避免无意义重试。
+	// 只对"可能是兼容性差异导致"的 400 允许切换，避免无意义重试。
 	// 默认保守：无法识别则不切换。
 	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
 	if msg == "" {

@@ -483,6 +483,8 @@ REDACTED
 		response.BadRequest(c, "rate_multiplier must be >= 0")
 		return
 REDACTED
+	// base_rpm 输入校验：负值归零，超过 10000 截断
+	sanitizeExtraBaseRPM(req.Extra)
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -552,6 +554,8 @@ REDACTED
 		response.BadRequest(c, "rate_multiplier must be >= 0")
 		return
 REDACTED
+	// base_rpm 输入校验：负值归零，超过 10000 截断
+	sanitizeExtraBaseRPM(req.Extra)
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -1735,4 +1739,45 @@ REDACTED
 // GET /api/v1/admin/accounts/antigravity/default-model-mapping
 func (h *AccountHandler) GetAntigravityDefaultModelMapping(c *gin.Context) {
 	response.Success(c, domain.DefaultAntigravityModelMapping)
+REDACTED
+
+// sanitizeExtraBaseRPM 对 extra map 中的 base_rpm 值进行范围校验和归一化。
+// 负值归零，超过 10000 截断为 10000。extra 为 nil 或不含 base_rpm 时无操作。
+func sanitizeExtraBaseRPM(extra map[string]any) {
+	if extra == nil {
+		return
+REDACTED
+	raw, ok := extra["base_rpm"]
+	if !ok {
+		return
+REDACTED
+	v := parseExtraIntForValidation(raw)
+	if v < 0 {
+		v = 0
+REDACTED else if v > 10000 {
+		v = 10000
+REDACTED
+	extra["base_rpm"] = v
+REDACTED
+
+// parseExtraIntForValidation 从 extra 字段的 any 值解析为 int，用于输入校验。
+// 支持 int, int64, float64, json.Number, string 类型。
+func parseExtraIntForValidation(value any) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return int(i)
+	REDACTED
+	case string:
+		if i, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return i
+	REDACTED
+REDACTED
+	return 0
 REDACTED

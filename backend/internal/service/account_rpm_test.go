@@ -1,6 +1,9 @@
 package service
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestGetBaseRPM(t *testing.T) {
 	tests := []struct {
@@ -16,6 +19,7 @@ REDACTED{
 		{"string value", map[string]any{"base_rpm": "15"REDACTED, 15REDACTED,
 		{"negative value", map[string]any{"base_rpm": -5REDACTED, 0REDACTED,
 		{"int64 value", map[string]any{"base_rpm": int64(20)REDACTED, 20REDACTED,
+		{"json.Number value", map[string]any{"base_rpm": json.Number("25")REDACTED, 25REDACTED,
 REDACTED
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -103,6 +107,7 @@ REDACTED{
 		{"custom buffer=0 fallback to default", map[string]any{"base_rpm": 10, "rpm_sticky_buffer": 0REDACTED, 2REDACTED,
 		{"custom buffer negative fallback", map[string]any{"base_rpm": 10, "rpm_sticky_buffer": -1REDACTED, 2REDACTED,
 		{"custom buffer with float", map[string]any{"base_rpm": 10, "rpm_sticky_buffer": float64(7)REDACTED, 7REDACTED,
+		{"json.Number base_rpm", map[string]any{"base_rpm": json.Number("10")REDACTED, 2REDACTED,
 REDACTED
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -1224,8 +1224,12 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
         extra.rpm_sticky_buffer = bulkRpmStickyBuffer.value
       REDACTED
     REDACTED else {
-      // 关闭 RPM 限制 - 设置 base_rpm 为 0
+      // 关闭 RPM 限制 - 设置 base_rpm 为 0，并用空值覆盖关联字段
+      // 后端使用 JSONB || merge 语义，不会删除已有 key，
+      // 所以必须显式发送空值来重置（后端读取时会 fallback 到默认值）
       extra.base_rpm = 0
+      extra.rpm_strategy = ''
+      extra.rpm_sticky_buffer = 0
     REDACTED
     updates.extra = extra
   REDACTED
