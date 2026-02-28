@@ -29,12 +29,6 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
-      - name: Run gosec
-        working-directory: backend
-        run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
-          # exclude ent/ — auto-generated ORM code, not subject to manual security review
-          gosec -conf .gosec.json -severity high -confidence high -exclude-generated -exclude-dir=ent ./...
 
   frontend-security:
     runs-on: ubuntu-latest

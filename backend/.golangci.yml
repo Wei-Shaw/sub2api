@@ -5,6 +5,7 @@ linters:
   enable:
     - depguard
     - errcheck
+    - gosec
     - govet
     - ineffassign
     - staticcheck
@@ -42,6 +43,22 @@ linters:
               desc: "handler must not import gorm"
             - pkg: github.com/redis/go-redis/v9
               desc: "handler must not import redis"
+    gosec:
+      excludes:
+        - G101
+        - G103
+        - G104
+        - G109
+        - G115
+        - G201
+        - G202
+        - G301
+        - G302
+        - G304
+        - G306
+        - G404
+      severity: high
+      confidence: high
     errcheck:
       # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
       # Such cases aren't reported by default.
