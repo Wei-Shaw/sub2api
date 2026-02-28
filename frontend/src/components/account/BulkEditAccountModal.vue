@@ -1253,7 +1253,8 @@ const handleSubmit = async () => {
     enablePriority.value ||
     enableRateMultiplier.value ||
     enableStatus.value ||
-    enableGroups.value
+    enableGroups.value ||
+    enableRpmLimit.value
 
   if (!hasAnyFieldEnabled) {
     appStore.showError(t('admin.accounts.bulkEdit.noFieldsSelected'))
