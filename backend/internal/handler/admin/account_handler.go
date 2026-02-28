@@ -1122,6 +1122,14 @@ REDACTED
 		SkipMixedChannelCheck: skipCheck,
 REDACTED)
 	if err != nil {
+		var mixedErr *service.MixedChannelError
+		if errors.As(err, &mixedErr) {
+			c.JSON(409, gin.H{
+				"error":   "mixed_channel_warning",
+				"message": mixedErr.Error(),
+		REDACTED)
+			return
+	REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED

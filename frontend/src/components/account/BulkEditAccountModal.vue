@@ -756,6 +756,17 @@
       </div>
     </template>
   </BaseDialog>
+
+  <ConfirmDialog
+    :show="showMixedChannelWarning"
+    :title="t('admin.accounts.mixedChannelWarningTitle')"
+    :message="mixedChannelWarningMessage"
+    :confirm-text="t('common.confirm')"
+    :cancel-text="t('common.cancel')"
+    :danger="true"
+    @confirm="handleMixedChannelConfirm"
+    @cancel="handleMixedChannelCancel"
+  />
 </template>
 
 <script setup lang="ts">
@@ -765,6 +776,7 @@ import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform, AccountType REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
@@ -844,6 +856,9 @@ const enableRpmLimit = ref(false)
 
 // State - field values
 const submitting = ref(false)
+const showMixedChannelWarning = ref(false)
+const mixedChannelWarningMessage = ref('')
+const pendingUpdatesForConfirm = ref<Record<string, unknown> | null>(null)
 const baseUrl = ref('')
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
@@ -1238,10 +1253,13 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
 REDACTED
 
 const handleClose = () => {
+  showMixedChannelWarning.value = false
+  mixedChannelWarningMessage.value = ''
+  pendingUpdatesForConfirm.value = null
   emit('close')
 REDACTED
 
-const handleSubmit = async () => {
+const handleSubmit = async (confirmMixedChannel = false) => {
   if (props.accountIds.length === 0) {
     appStore.showError(t('admin.accounts.bulkEdit.noSelection'))
     return
@@ -1265,10 +1283,16 @@ const handleSubmit = async () => {
     return
   REDACTED
 
-  const updates = buildUpdatePayload()
-  if (!updates) {
-    appStore.showError(t('admin.accounts.bulkEdit.noFieldsSelected'))
-    return
+  let updates: Record<string, unknown>
+  if (confirmMixedChannel && pendingUpdatesForConfirm.value) {
+    updates = { ...pendingUpdatesForConfirm.value, confirm_mixed_channel_risk: true REDACTED
+  REDACTED else {
+    const built = buildUpdatePayload()
+    if (!built) {
+      appStore.showError(t('admin.accounts.bulkEdit.noFieldsSelected'))
+      return
+    REDACTED
+    updates = built
   REDACTED
 
   submitting.value = true
@@ -1287,15 +1311,32 @@ const handleSubmit = async () => {
     REDACTED
 
     if (success > 0) {
+      pendingUpdatesForConfirm.value = null
       emit('updated')
       handleClose()
     REDACTED
   REDACTED catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.accounts.bulkEdit.failed'))
-    console.error('Error bulk updating accounts:', error)
+    if (error.response?.status === 409 && error.response?.data?.error === 'mixed_channel_warning') {
+      pendingUpdatesForConfirm.value = updates
+      mixedChannelWarningMessage.value = error.response.data.message
+      showMixedChannelWarning.value = true
+    REDACTED else {
+      appStore.showError(error.response?.data?.detail || t('admin.accounts.bulkEdit.failed'))
+      console.error('Error bulk updating accounts:', error)
+    REDACTED
   REDACTED finally {
     submitting.value = false
   REDACTED
+REDACTED
+
+const handleMixedChannelConfirm = async () => {
+  showMixedChannelWarning.value = false
+  await handleSubmit(true)
+REDACTED
+
+const handleMixedChannelCancel = () => {
+  showMixedChannelWarning.value = false
+  pendingUpdatesForConfirm.value = null
 REDACTED
 
 // Reset form when modal closes
@@ -1330,10 +1371,11 @@ watch(
       rateMultiplier.value = 1
       status.value = 'active'
       groupIds.value = []
-      rpmLimitEnabled.value = false
-      bulkBaseRpm.value = null
-      bulkRpmStrategy.value = 'tiered'
-      bulkRpmStickyBuffer.value = null
+
+      // Reset mixed channel warning state
+      showMixedChannelWarning.value = false
+      mixedChannelWarningMessage.value = ''
+      pendingUpdatesForConfirm.value = null
     REDACTED
   REDACTED
 )

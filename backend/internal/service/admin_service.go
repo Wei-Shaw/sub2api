@@ -1565,6 +1565,19 @@ REDACTED
 		groupNameByID = loadedNames
 REDACTED
 
+	// 预检查混合渠道风险：在任何写操作之前，若发现风险立即返回错误。
+	if needMixedChannelCheck {
+		for _, accountID := range input.AccountIDs {
+			platform := platformByID[accountID]
+			if platform == "" {
+				continue
+		REDACTED
+			if err := s.checkMixedChannelRisk(ctx, accountID, platform, *input.GroupIDs); err != nil {
+				return nil, err
+		REDACTED
+	REDACTED
+REDACTED
+
 	if input.RateMultiplier != nil {
 		if *input.RateMultiplier < 0 {
 			return nil, errors.New("rate_multiplier must be >= 0")
@@ -1609,31 +1622,6 @@ REDACTED
 		platform := ""
 
 		if input.GroupIDs != nil {
-			// 检查混合渠道风险（除非用户已确认）
-			if !input.SkipMixedChannelCheck {
-				platform = platformByID[accountID]
-				if platform == "" {
-					account, err := s.accountRepo.GetByID(ctx, accountID)
-					if err != nil {
-						entry.Success = false
-						entry.Error = err.Error()
-						result.Failed++
-						result.FailedIDs = append(result.FailedIDs, accountID)
-						result.Results = append(result.Results, entry)
-						continue
-				REDACTED
-					platform = account.Platform
-			REDACTED
-				if err := s.checkMixedChannelRiskWithPreloaded(accountID, platform, *input.GroupIDs, groupAccountsByID, groupNameByID); err != nil {
-					entry.Success = false
-					entry.Error = err.Error()
-					result.Failed++
-					result.FailedIDs = append(result.FailedIDs, accountID)
-					result.Results = append(result.Results, entry)
-					continue
-			REDACTED
-		REDACTED
-
 			if err := s.accountRepo.BindGroups(ctx, accountID, *input.GroupIDs); err != nil {
 				entry.Success = false
 				entry.Error = err.Error()
@@ -2541,6 +2529,6 @@ type MixedChannelError struct {
 REDACTED
 
 func (e *MixedChannelError) Error() string {
-	return fmt.Sprintf("mixed_channel_warning: Group '%s' contains both %s and %s accounts. Using mixed channels in the same context may cause thinking block signature validation issues, which will fallback to non-thinking mode for historical messages.",
+	return fmt.Sprintf("警告：分组 \"%s\" 中同时包含 %s 和 %s 账号。混合使用不同渠道可能导致 thinking block 签名验证问题，会导致请求报错，请确认混合调用的 Anthropic 账号对应的是反重力反代的 Claude API。确定要继续吗？",
 		e.GroupName, e.CurrentPlatform, e.OtherPlatform)
 REDACTED
