@@ -1105,6 +1105,7 @@ export default {
       group: '分组',
       none: '无',
       groupChangedSuccess: '分组修改成功',
+      groupChangedWithGrant: '分组修改成功，已自动为用户添加「{groupREDACTED」分组权限',
       groupChangeFailed: '分组修改失败',
       noUsersYet: '暂无用户',
       createFirstUser: '创建您的第一个用户以开始使用系统',

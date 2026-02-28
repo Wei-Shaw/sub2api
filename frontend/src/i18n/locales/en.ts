@@ -1077,6 +1077,7 @@ export default {
       group: 'Group',
       none: 'None',
       groupChangedSuccess: 'Group updated successfully',
+      groupChangedWithGrant: 'Group updated. User auto-granted access to "{groupREDACTED"',
       groupChangeFailed: 'Failed to update group',
       noUsersYet: 'No users yet',
       createFirstUser: 'Create your first user to get started.',

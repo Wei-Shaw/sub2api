@@ -45,7 +45,8 @@ func (m *mockUserRepo) ExistsByEmail(context.Context, string) (bool, error) { re
 func (m *mockUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
 REDACTED
-func (m *mockUserRepo) UpdateTotpSecret(context.Context, int64, *string) error { return nil REDACTED
+func (m *mockUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) error { return nil REDACTED
+func (m *mockUserRepo) UpdateTotpSecret(context.Context, int64, *string) error      { return nil REDACTED
 func (m *mockUserRepo) EnableTotp(context.Context, int64) error                { return nil REDACTED
 func (m *mockUserRepo) DisableTotp(context.Context, int64) error               { return nil REDACTED
 

@@ -42,11 +42,22 @@ REDACTED
 		return
 REDACTED
 
-	apiKey, err := h.adminService.AdminUpdateAPIKeyGroupID(c.Request.Context(), keyID, req.GroupID)
+	result, err := h.adminService.AdminUpdateAPIKeyGroupID(c.Request.Context(), keyID, req.GroupID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	response.Success(c, dto.APIKeyFromService(apiKey))
+	resp := struct {
+		APIKey                 *dto.APIKey `json:"api_key"`
+		AutoGrantedGroupAccess bool        `json:"auto_granted_group_access"`
+		GrantedGroupID         *int64      `json:"granted_group_id,omitempty"`
+		GrantedGroupName       string      `json:"granted_group_name,omitempty"`
+REDACTED{
+		APIKey:                 dto.APIKeyFromService(result.APIKey),
+		AutoGrantedGroupAccess: result.AutoGrantedGroupAccess,
+		GrantedGroupID:         result.GrantedGroupID,
+		GrantedGroupName:       result.GrantedGroupName,
+REDACTED
+	response.Success(c, resp)
 REDACTED

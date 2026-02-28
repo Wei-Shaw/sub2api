@@ -181,6 +181,10 @@ func (s *stubUserRepo) RemoveGroupFromAllowedGroups(ctx context.Context, groupID
 	panic("unexpected RemoveGroupFromAllowedGroups call")
 REDACTED
 
+func (s *stubUserRepo) AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
+	panic("unexpected AddGroupToAllowedGroups call")
+REDACTED
+
 func (s *stubUserRepo) UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error {
 	panic("unexpected UpdateTotpSecret call")
 REDACTED

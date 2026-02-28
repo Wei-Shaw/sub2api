@@ -21,7 +21,7 @@
             <div class="flex items-center gap-1">
               <span>{{ t('admin.users.group') REDACTEDREDACTED:</span>
               <button
-                :ref="(el) => setGroupButtonRef(key.id, el as HTMLElement)"
+                :ref="(el) => setGroupButtonRef(key.id, el)"
                 @click="openGroupSelector(key)"
                 class="-mx-1 -my-0.5 flex cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
                 :disabled="updatingKeyIds.has(key.id)"
@@ -98,7 +98,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted REDACTED from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, type ComponentPublicInstance REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
@@ -128,8 +128,8 @@ const selectedKeyForGroup = computed(() => {
   return apiKeys.value.find((k) => k.id === groupSelectorKeyId.value) || null
 REDACTED)
 
-const setGroupButtonRef = (keyId: number, el: HTMLElement | null) => {
-  if (el) {
+const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance | null) => {
+  if (el instanceof HTMLElement) {
     groupButtonRefs.value.set(keyId, el)
   REDACTED else {
     groupButtonRefs.value.delete(keyId)
@@ -162,7 +162,8 @@ REDACTED
 const loadGroups = async () => {
   try {
     const groups = await adminAPI.groups.getAll()
-    allGroups.value = groups
+    // 过滤掉订阅类型分组（需通过订阅管理流程绑定）
+    allGroups.value = groups.filter((g) => g.subscription_type !== 'subscription')
   REDACTED catch (error) {
     console.error('Failed to load groups:', error)
   REDACTED
@@ -200,15 +201,19 @@ const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
 
   updatingKeyIds.value.add(key.id)
   try {
-    const updated = await adminAPI.apiKeys.updateApiKeyGroup(key.id, newGroupId)
+    const result = await adminAPI.apiKeys.updateApiKeyGroup(key.id, newGroupId)
     // Update local data
     const idx = apiKeys.value.findIndex((k) => k.id === key.id)
     if (idx !== -1) {
-      apiKeys.value[idx] = updated
+      apiKeys.value[idx] = result.api_key
     REDACTED
-    appStore.showSuccess(t('admin.users.groupChangedSuccess'))
-  REDACTED catch (error) {
-    appStore.showError(t('admin.users.groupChangeFailed'))
+    if (result.auto_granted_group_access && result.granted_group_name) {
+      appStore.showSuccess(t('admin.users.groupChangedWithGrant', { group: result.granted_group_name REDACTED))
+    REDACTED else {
+      appStore.showSuccess(t('admin.users.groupChangedSuccess'))
+    REDACTED
+  REDACTED catch (error: any) {
+    appStore.showError(error?.message || t('admin.users.groupChangeFailed'))
   REDACTED finally {
     updatingKeyIds.value.delete(key.id)
   REDACTED
