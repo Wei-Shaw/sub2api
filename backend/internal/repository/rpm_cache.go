@@ -2,78 +2,130 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
 
-const rpmKeyPrefix = "rpm:"
+// RPM 计数器缓存常量定义
+//
+// 设计说明：
+// 使用 Redis 简单计数器跟踪每个账号每分钟的请求数：
+// - Key: rpm:{accountIDREDACTED:{minuteTimestampREDACTED
+// - Value: 当前分钟内的请求计数
+// - TTL: 120 秒（覆盖当前分钟 + 一定冗余）
+//
+// 使用 TxPipeline（MULTI/EXEC）执行 INCR + EXPIRE，保证原子性且兼容 Redis Cluster。
+// 通过 rdb.Time() 获取服务端时间，避免多实例时钟不同步。
+//
+// 设计决策：
+// - TxPipeline vs Pipeline：Pipeline 仅合并发送但不保证原子，TxPipeline 使用 MULTI/EXEC 事务保证原子执行。
+// - rdb.Time() 单独调用：Pipeline/TxPipeline 中无法引用前一命令的结果，因此 TIME 必须单独调用（2 RTT）。
+//   Lua 脚本可以做到 1 RTT，但在 Redis Cluster 中动态拼接 key 存在 CROSSSLOT 风险，选择安全性优先。
+const (
+	// RPM 计数器键前缀
+	// 格式: rpm:{accountIDREDACTED:{minuteTimestampREDACTED
+	rpmKeyPrefix = "rpm:"
 
-// Lua scripts use Redis TIME for server-side minute key calculation
-var rpmIncrScript = redis.NewScript(`
-local timeResult = redis.call('TIME')
-local minuteKey = math.floor(tonumber(timeResult[1]) / 60)
-local key = ARGV[1] .. ':' .. minuteKey
-local count = redis.call('INCR', key)
-if count == 1 then
-    redis.call('EXPIRE', key, 120)
-end
-return count
-`)
+	// RPM 计数器 TTL（120 秒，覆盖当前分钟窗口 + 冗余）
+	rpmKeyTTL = 120 * time.Second
+)
 
-var rpmGetScript = redis.NewScript(`
-local timeResult = redis.call('TIME')
-local minuteKey = math.floor(tonumber(timeResult[1]) / 60)
-local key = ARGV[1] .. ':' .. minuteKey
-local count = redis.call('GET', key)
-if count == false then
-    return 0
-end
-return tonumber(count)
-`)
-
+// RPMCacheImpl RPM 计数器缓存 Redis 实现
 type RPMCacheImpl struct {
 	rdb *redis.Client
 REDACTED
 
+// NewRPMCache 创建 RPM 计数器缓存
 func NewRPMCache(rdb *redis.Client) service.RPMCache {
 	return &RPMCacheImpl{rdb: rdbREDACTED
 REDACTED
 
-func rpmKeyBase(accountID int64) string {
-	return fmt.Sprintf("%s%d", rpmKeyPrefix, accountID)
+// currentMinuteKey 获取当前分钟的完整 Redis key
+// 使用 rdb.Time() 获取 Redis 服务端时间，避免多实例时钟偏差
+func (c *RPMCacheImpl) currentMinuteKey(ctx context.Context, accountID int64) (string, error) {
+	serverTime, err := c.rdb.Time(ctx).Result()
+	if err != nil {
+		return "", fmt.Errorf("redis TIME: %w", err)
+REDACTED
+	minuteTS := serverTime.Unix() / 60
+	return fmt.Sprintf("%s%d:%d", rpmKeyPrefix, accountID, minuteTS), nil
 REDACTED
 
+// currentMinuteSuffix 获取当前分钟时间戳后缀（供批量操作使用）
+// 使用 rdb.Time() 获取 Redis 服务端时间
+func (c *RPMCacheImpl) currentMinuteSuffix(ctx context.Context) (string, error) {
+	serverTime, err := c.rdb.Time(ctx).Result()
+	if err != nil {
+		return "", fmt.Errorf("redis TIME: %w", err)
+REDACTED
+	minuteTS := serverTime.Unix() / 60
+	return strconv.FormatInt(minuteTS, 10), nil
+REDACTED
+
+// IncrementRPM 原子递增并返回当前分钟的计数
+// 使用 TxPipeline (MULTI/EXEC) 执行 INCR + EXPIRE，保证原子性且兼容 Redis Cluster
 func (c *RPMCacheImpl) IncrementRPM(ctx context.Context, accountID int64) (int, error) {
-	result, err := rpmIncrScript.Run(ctx, c.rdb, nil, rpmKeyBase(accountID)).Int()
+	key, err := c.currentMinuteKey(ctx, accountID)
 	if err != nil {
 		return 0, fmt.Errorf("rpm increment: %w", err)
 REDACTED
-	return result, nil
+
+	// 使用 TxPipeline (MULTI/EXEC) 保证 INCR + EXPIRE 原子执行
+	// EXPIRE 幂等，每次都设置不影响正确性
+	pipe := c.rdb.TxPipeline()
+	incrCmd := pipe.Incr(ctx, key)
+	pipe.Expire(ctx, key, rpmKeyTTL)
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return 0, fmt.Errorf("rpm increment: %w", err)
 REDACTED
 
+	return int(incrCmd.Val()), nil
+REDACTED
+
+// GetRPM 获取当前分钟的 RPM 计数
 func (c *RPMCacheImpl) GetRPM(ctx context.Context, accountID int64) (int, error) {
-	result, err := rpmGetScript.Run(ctx, c.rdb, nil, rpmKeyBase(accountID)).Int()
+	key, err := c.currentMinuteKey(ctx, accountID)
 	if err != nil {
 		return 0, fmt.Errorf("rpm get: %w", err)
 REDACTED
-	return result, nil
+
+	val, err := c.rdb.Get(ctx, key).Int()
+	if errors.Is(err, redis.Nil) {
+		return 0, nil // 当前分钟无记录
+REDACTED
+	if err != nil {
+		return 0, fmt.Errorf("rpm get: %w", err)
+REDACTED
+	return val, nil
 REDACTED
 
+// GetRPMBatch 批量获取多个账号的 RPM 计数（使用 Pipeline）
 func (c *RPMCacheImpl) GetRPMBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error) {
 	if len(accountIDs) == 0 {
 		return map[int64]int{REDACTED, nil
 REDACTED
 
-	pipe := c.rdb.Pipeline()
-	cmds := make(map[int64]*redis.Cmd, len(accountIDs))
-	for _, id := range accountIDs {
-		cmds[id] = rpmGetScript.Run(ctx, pipe, nil, rpmKeyBase(id))
+	// 获取当前分钟后缀
+	minuteSuffix, err := c.currentMinuteSuffix(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("rpm batch get: %w", err)
 REDACTED
 
-	_, err := pipe.Exec(ctx)
-	if err != nil && err != redis.Nil {
+	// 使用 Pipeline 批量 GET
+	pipe := c.rdb.Pipeline()
+	cmds := make(map[int64]*redis.StringCmd, len(accountIDs))
+	for _, id := range accountIDs {
+		key := fmt.Sprintf("%s%d:%s", rpmKeyPrefix, id, minuteSuffix)
+		cmds[id] = pipe.Get(ctx, key)
+REDACTED
+
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
 		return nil, fmt.Errorf("rpm batch get: %w", err)
 REDACTED
 

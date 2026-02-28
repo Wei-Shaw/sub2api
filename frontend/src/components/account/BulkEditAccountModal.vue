@@ -585,6 +585,111 @@
         </div>
       </div>
 
+      <!-- RPM Limit (仅全部为 Anthropic OAuth/SetupToken 时显示) -->
+      <div v-if="allAnthropicOAuthOrSetupToken" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <label
+            id="bulk-edit-rpm-limit-label"
+            class="input-label mb-0"
+            for="bulk-edit-rpm-limit-enabled"
+          >
+            {{ t('admin.accounts.quotaControl.rpmLimit.label') REDACTEDREDACTED
+          </label>
+          <input
+            v-model="enableRpmLimit"
+            id="bulk-edit-rpm-limit-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-rpm-limit-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+
+        <div
+          id="bulk-edit-rpm-limit-body"
+          :class="!enableRpmLimit && 'pointer-events-none opacity-50'"
+          role="group"
+          aria-labelledby="bulk-edit-rpm-limit-label"
+        >
+          <div class="mb-3 flex items-center justify-between">
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.quotaControl.rpmLimit.hint') REDACTEDREDACTED</span>
+            <button
+              type="button"
+              @click="rpmLimitEnabled = !rpmLimitEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                rpmLimitEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  rpmLimitEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <div v-if="rpmLimitEnabled" class="space-y-3">
+            <div>
+              <label class="input-label text-xs">{{ t('admin.accounts.quotaControl.rpmLimit.baseRpm') REDACTEDREDACTED</label>
+              <input
+                v-model.number="bulkBaseRpm"
+                type="number"
+                min="1"
+                max="1000"
+                step="1"
+                class="input"
+                :placeholder="t('admin.accounts.quotaControl.rpmLimit.baseRpmPlaceholder')"
+              />
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.rpmLimit.baseRpmHint') REDACTEDREDACTED</p>
+            </div>
+
+            <div>
+              <label class="input-label text-xs">{{ t('admin.accounts.quotaControl.rpmLimit.strategy') REDACTEDREDACTED</label>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  @click="bulkRpmStrategy = 'tiered'"
+                  :class="[
+                    'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all',
+                    bulkRpmStrategy === 'tiered'
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                  ]"
+                >
+                  {{ t('admin.accounts.quotaControl.rpmLimit.strategyTiered') REDACTEDREDACTED
+                </button>
+                <button
+                  type="button"
+                  @click="bulkRpmStrategy = 'sticky_exempt'"
+                  :class="[
+                    'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all',
+                    bulkRpmStrategy === 'sticky_exempt'
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                  ]"
+                >
+                  {{ t('admin.accounts.quotaControl.rpmLimit.strategyStickyExempt') REDACTEDREDACTED
+                </button>
+              </div>
+            </div>
+
+            <div v-if="bulkRpmStrategy === 'tiered'">
+              <label class="input-label text-xs">{{ t('admin.accounts.quotaControl.rpmLimit.stickyBuffer') REDACTEDREDACTED</label>
+              <input
+                v-model.number="bulkRpmStickyBuffer"
+                type="number"
+                min="1"
+                step="1"
+                class="input"
+                :placeholder="t('admin.accounts.quotaControl.rpmLimit.stickyBufferPlaceholder')"
+              />
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.rpmLimit.stickyBufferHint') REDACTEDREDACTED</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Groups -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -658,7 +763,7 @@ import { ref, watch, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
-import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform REDACTED from '@/types'
+import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform, AccountType REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -670,6 +775,7 @@ interface Props {
   show: boolean
   accountIds: number[]
   selectedPlatforms: AccountPlatform[]
+  selectedTypes: AccountType[]
   proxies: ProxyConfig[]
   groups: AdminGroup[]
 REDACTED
@@ -685,6 +791,15 @@ const appStore = useAppStore()
 
 // Platform awareness
 const isMixedPlatform = computed(() => props.selectedPlatforms.length > 1)
+
+// 是否全部为 Anthropic OAuth/SetupToken（RPM 配置仅在此条件下显示）
+const allAnthropicOAuthOrSetupToken = computed(() => {
+  return (
+    props.selectedPlatforms.length === 1 &&
+    props.selectedPlatforms[0] === 'anthropic' &&
+    props.selectedTypes.every(t => t === 'oauth' || t === 'setup-token')
+  )
+REDACTED)
 
 const platformModelPrefix: Record<string, string[]> = {
   anthropic: ['claude-'],
@@ -725,6 +840,7 @@ const enablePriority = ref(false)
 const enableRateMultiplier = ref(false)
 const enableStatus = ref(false)
 const enableGroups = ref(false)
+const enableRpmLimit = ref(false)
 
 // State - field values
 const submitting = ref(false)
@@ -741,6 +857,10 @@ const priority = ref(1)
 const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
 const groupIds = ref<number[]>([])
+const rpmLimitEnabled = ref(false)
+const bulkBaseRpm = ref<number | null>(null)
+const bulkRpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
+const bulkRpmStickyBuffer = ref<number | null>(null)
 
 // All models list (combined Anthropic + OpenAI + Gemini)
 const allModels = [
@@ -1094,6 +1214,22 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.credentials = credentials
   REDACTED
 
+  // RPM limit settings (写入 extra 字段)
+  if (enableRpmLimit.value) {
+    const extra: Record<string, unknown> = {REDACTED
+    if (rpmLimitEnabled.value && bulkBaseRpm.value != null && bulkBaseRpm.value > 0) {
+      extra.base_rpm = bulkBaseRpm.value
+      extra.rpm_strategy = bulkRpmStrategy.value
+      if (bulkRpmStickyBuffer.value != null && bulkRpmStickyBuffer.value > 0) {
+        extra.rpm_sticky_buffer = bulkRpmStickyBuffer.value
+      REDACTED
+    REDACTED else {
+      // 关闭 RPM 限制 - 设置 base_rpm 为 0
+      extra.base_rpm = 0
+    REDACTED
+    updates.extra = extra
+  REDACTED
+
   return Object.keys(updates).length > 0 ? updates : null
 REDACTED
 
@@ -1173,6 +1309,7 @@ watch(
       enableRateMultiplier.value = false
       enableStatus.value = false
       enableGroups.value = false
+      enableRpmLimit.value = false
 
       // Reset all values
       baseUrl.value = ''
@@ -1188,6 +1325,10 @@ watch(
       rateMultiplier.value = 1
       status.value = 'active'
       groupIds.value = []
+      rpmLimitEnabled.value = false
+      bulkBaseRpm.value = null
+      bulkRpmStrategy.value = 'tiered'
+      bulkRpmStickyBuffer.value = null
     REDACTED
   REDACTED
 )

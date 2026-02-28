@@ -1562,26 +1562,68 @@
             </button>
           </div>
 
-          <div v-if="rpmLimitEnabled" class="grid grid-cols-2 gap-4">
+          <div v-if="rpmLimitEnabled" class="space-y-4">
             <div>
               <label class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.baseRpm') REDACTEDREDACTED</label>
               <input
                 v-model.number="baseRpm"
                 type="number"
                 min="1"
+                max="1000"
                 step="1"
                 class="input"
                 :placeholder="t('admin.accounts.quotaControl.rpmLimit.baseRpmPlaceholder')"
               />
               <p class="input-hint">{{ t('admin.accounts.quotaControl.rpmLimit.baseRpmHint') REDACTEDREDACTED</p>
             </div>
+
             <div>
               <label class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.strategy') REDACTEDREDACTED</label>
-              <select v-model="rpmStrategy" class="input">
-                <option value="tiered">{{ t('admin.accounts.quotaControl.rpmLimit.strategyTiered') REDACTEDREDACTED</option>
-                <option value="sticky_exempt">{{ t('admin.accounts.quotaControl.rpmLimit.strategyStickyExempt') REDACTEDREDACTED</option>
-              </select>
-              <p class="input-hint">{{ t('admin.accounts.quotaControl.rpmLimit.strategyHint') REDACTEDREDACTED</p>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  @click="rpmStrategy = 'tiered'"
+                  :class="[
+                    'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all',
+                    rpmStrategy === 'tiered'
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                  ]"
+                >
+                  <div class="text-center">
+                    <div>{{ t('admin.accounts.quotaControl.rpmLimit.strategyTiered') REDACTEDREDACTED</div>
+                    <div class="mt-0.5 text-[10px] opacity-70">{{ t('admin.accounts.quotaControl.rpmLimit.strategyTieredHint') REDACTEDREDACTED</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  @click="rpmStrategy = 'sticky_exempt'"
+                  :class="[
+                    'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all',
+                    rpmStrategy === 'sticky_exempt'
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                  ]"
+                >
+                  <div class="text-center">
+                    <div>{{ t('admin.accounts.quotaControl.rpmLimit.strategyStickyExempt') REDACTEDREDACTED</div>
+                    <div class="mt-0.5 text-[10px] opacity-70">{{ t('admin.accounts.quotaControl.rpmLimit.strategyStickyExemptHint') REDACTEDREDACTED</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div v-if="rpmStrategy === 'tiered'">
+              <label class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.stickyBuffer') REDACTEDREDACTED</label>
+              <input
+                v-model.number="rpmStickyBuffer"
+                type="number"
+                min="1"
+                step="1"
+                class="input"
+                :placeholder="t('admin.accounts.quotaControl.rpmLimit.stickyBufferPlaceholder')"
+              />
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.rpmLimit.stickyBufferHint') REDACTEDREDACTED</p>
             </div>
           </div>
         </div>
@@ -2445,7 +2487,8 @@ const maxSessions = ref<number | null>(null)
 const sessionIdleTimeout = ref<number | null>(null)
 const rpmLimitEnabled = ref(false)
 const baseRpm = ref<number | null>(null)
-const rpmStrategy = ref<string>('tiered')
+const rpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
+const rpmStickyBuffer = ref<number | null>(null)
 const tlsFingerprintEnabled = ref(false)
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
@@ -3073,6 +3116,7 @@ const resetForm = () => {
   rpmLimitEnabled.value = false
   baseRpm.value = null
   rpmStrategy.value = 'tiered'
+  rpmStickyBuffer.value = null
   tlsFingerprintEnabled.value = false
   sessionIdMaskingEnabled.value = false
   cacheTTLOverrideEnabled.value = false
@@ -3986,6 +4030,9 @@ const handleAnthropicExchange = async (authCode: string) => {
     if (rpmLimitEnabled.value && baseRpm.value != null && baseRpm.value > 0) {
       extra.base_rpm = baseRpm.value
       extra.rpm_strategy = rpmStrategy.value
+      if (rpmStickyBuffer.value != null && rpmStickyBuffer.value > 0) {
+        extra.rpm_sticky_buffer = rpmStickyBuffer.value
+      REDACTED
     REDACTED
 
     // Add TLS fingerprint settings
@@ -4090,6 +4137,9 @@ const handleCookieAuth = async (sessionKey: string) => {
         if (rpmLimitEnabled.value && baseRpm.value != null && baseRpm.value > 0) {
           extra.base_rpm = baseRpm.value
           extra.rpm_strategy = rpmStrategy.value
+          if (rpmStickyBuffer.value != null && rpmStickyBuffer.value > 0) {
+            extra.rpm_sticky_buffer = rpmStickyBuffer.value
+          REDACTED
         REDACTED
 
         // Add TLS fingerprint settings

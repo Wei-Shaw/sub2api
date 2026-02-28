@@ -1138,13 +1138,16 @@ REDACTED
 REDACTED
 
 // GetBaseRPM 获取基础 RPM 限制
-// 返回 0 表示未启用
+// 返回 0 表示未启用（负数视为无效配置，按 0 处理）
 func (a *Account) GetBaseRPM() int {
 	if a.Extra == nil {
 		return 0
 REDACTED
 	if v, ok := a.Extra["base_rpm"]; ok {
-		return parseExtraInt(v)
+		val := parseExtraInt(v)
+		if val > 0 {
+			return val
+	REDACTED
 REDACTED
 	return 0
 REDACTED

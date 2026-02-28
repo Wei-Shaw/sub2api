@@ -241,9 +241,10 @@ REDACTED
 		concurrencyCounts = make(map[int64]int)
 REDACTED
 
-	// 识别需要查询窗口费用和会话数的账号（Anthropic OAuth/SetupToken 且启用了相应功能）
+	// 识别需要查询窗口费用、会话数和 RPM 的账号（Anthropic OAuth/SetupToken 且启用了相应功能）
 	windowCostAccountIDs := make([]int64, 0)
 	sessionLimitAccountIDs := make([]int64, 0)
+	rpmAccountIDs := make([]int64, 0)
 	sessionIdleTimeouts := make(map[int64]time.Duration) // 各账号的会话空闲超时配置
 	for i := range accounts {
 		acc := &accounts[i]
@@ -255,12 +256,24 @@ REDACTED
 				sessionLimitAccountIDs = append(sessionLimitAccountIDs, acc.ID)
 				sessionIdleTimeouts[acc.ID] = time.Duration(acc.GetSessionIdleTimeoutMinutes()) * time.Minute
 		REDACTED
+			if acc.GetBaseRPM() > 0 {
+				rpmAccountIDs = append(rpmAccountIDs, acc.ID)
+		REDACTED
 	REDACTED
 REDACTED
 
-	// 并行获取窗口费用和活跃会话数
+	// 并行获取窗口费用、活跃会话数和 RPM 计数
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
+	var rpmCounts map[int64]int
+
+	// 获取 RPM 计数（批量查询）
+	if len(rpmAccountIDs) > 0 && h.rpmCache != nil {
+		rpmCounts, _ = h.rpmCache.GetRPMBatch(c.Request.Context(), rpmAccountIDs)
+		if rpmCounts == nil {
+			rpmCounts = make(map[int64]int)
+	REDACTED
+REDACTED
 
 	// 获取活跃会话数（批量查询，传入各账号的 idleTimeout 配置）
 	if len(sessionLimitAccountIDs) > 0 && h.sessionLimitCache != nil {
@@ -318,6 +331,13 @@ REDACTED
 		if activeSessions != nil {
 			if count, ok := activeSessions[acc.ID]; ok {
 				item.ActiveSessions = &count
+		REDACTED
+	REDACTED
+
+		// 添加 RPM 计数（仅当启用时）
+		if rpmCounts != nil {
+			if rpm, ok := rpmCounts[acc.ID]; ok {
+				item.CurrentRPM = &rpm
 		REDACTED
 	REDACTED
 

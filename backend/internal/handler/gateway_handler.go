@@ -368,8 +368,8 @@ REDACTED
 
 			// RPM 计数递增（调度成功后、Forward 前）
 			if account.IsAnthropicOAuthOrSetupToken() && account.GetBaseRPM() > 0 {
-				if h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID) != nil {
-					// 失败开放：不阻塞请求
+				if err := h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID); err != nil {
+					reqLog.Warn("gateway.rpm_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			REDACTED
 		REDACTED
 
@@ -558,8 +558,8 @@ REDACTED
 
 			// RPM 计数递增（调度成功后、Forward 前）
 			if account.IsAnthropicOAuthOrSetupToken() && account.GetBaseRPM() > 0 {
-				if h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID) != nil {
-					// 失败开放：不阻塞请求
+				if err := h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID); err != nil {
+					reqLog.Warn("gateway.rpm_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 			REDACTED
 		REDACTED
 

@@ -2708,6 +2708,9 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// 批量预取 RPM 计数，避免逐个账号查询（N+1）
+	ctx = s.withRPMPrefetch(ctx, accounts)
+
 	// 3. 按优先级+最久未用选择（考虑模型支持）
 	var selected *Account
 	for i := range accounts {
@@ -2921,6 +2924,9 @@ REDACTED
 			return nil, fmt.Errorf("query accounts failed: %w", err)
 	REDACTED
 REDACTED
+
+	// 批量预取 RPM 计数，避免逐个账号查询（N+1）
+	ctx = s.withRPMPrefetch(ctx, accounts)
 
 	// 3. 按优先级+最久未用选择（考虑模型支持和混合调度）
 	var selected *Account
