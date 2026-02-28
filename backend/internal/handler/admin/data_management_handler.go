@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"strconv"
 	"strings"
 
@@ -13,11 +14,32 @@ import (
 )
 
 type DataManagementHandler struct {
-	dataManagementService *service.DataManagementService
+	dataManagementService dataManagementService
 REDACTED
 
 func NewDataManagementHandler(dataManagementService *service.DataManagementService) *DataManagementHandler {
 	return &DataManagementHandler{dataManagementService: dataManagementServiceREDACTED
+REDACTED
+
+type dataManagementService interface {
+	GetConfig(ctx context.Context) (service.DataManagementConfig, error)
+	UpdateConfig(ctx context.Context, cfg service.DataManagementConfig) (service.DataManagementConfig, error)
+	ValidateS3(ctx context.Context, cfg service.DataManagementS3Config) (service.DataManagementTestS3Result, error)
+	CreateBackupJob(ctx context.Context, input service.DataManagementCreateBackupJobInput) (service.DataManagementBackupJob, error)
+	ListSourceProfiles(ctx context.Context, sourceType string) ([]service.DataManagementSourceProfile, error)
+	CreateSourceProfile(ctx context.Context, input service.DataManagementCreateSourceProfileInput) (service.DataManagementSourceProfile, error)
+	UpdateSourceProfile(ctx context.Context, input service.DataManagementUpdateSourceProfileInput) (service.DataManagementSourceProfile, error)
+	DeleteSourceProfile(ctx context.Context, sourceType, profileID string) error
+	SetActiveSourceProfile(ctx context.Context, sourceType, profileID string) (service.DataManagementSourceProfile, error)
+	ListS3Profiles(ctx context.Context) ([]service.DataManagementS3Profile, error)
+	CreateS3Profile(ctx context.Context, input service.DataManagementCreateS3ProfileInput) (service.DataManagementS3Profile, error)
+	UpdateS3Profile(ctx context.Context, input service.DataManagementUpdateS3ProfileInput) (service.DataManagementS3Profile, error)
+	DeleteS3Profile(ctx context.Context, profileID string) error
+	SetActiveS3Profile(ctx context.Context, profileID string) (service.DataManagementS3Profile, error)
+	ListBackupJobs(ctx context.Context, input service.DataManagementListBackupJobsInput) (service.DataManagementListBackupJobsResult, error)
+	GetBackupJob(ctx context.Context, jobID string) (service.DataManagementBackupJob, error)
+	EnsureAgentEnabled(ctx context.Context) error
+	GetAgentHealth(ctx context.Context) service.DataManagementAgentHealth
 REDACTED
 
 type TestS3ConnectionRequest struct {
