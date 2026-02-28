@@ -2607,6 +2607,9 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	REDACTED
 		accountsLoaded = true
 
+		// 提前预取 RPM 计数，确保 routing 段内的 isAccountSchedulableForRPM 调用能命中缓存
+		ctx = s.withRPMPrefetch(ctx, accounts)
+
 		routingSet := make(map[int64]struct{REDACTED, len(routingAccountIDs))
 		for _, id := range routingAccountIDs {
 			if id > 0 {
@@ -2821,6 +2824,9 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			return nil, fmt.Errorf("query accounts failed: %w", err)
 	REDACTED
 		accountsLoaded = true
+
+		// 提前预取 RPM 计数，确保 routing 段内的 isAccountSchedulableForRPM 调用能命中缓存
+		ctx = s.withRPMPrefetch(ctx, accounts)
 
 		routingSet := make(map[int64]struct{REDACTED, len(routingAccountIDs))
 		for _, id := range routingAccountIDs {
