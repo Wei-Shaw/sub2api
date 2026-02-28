@@ -54,6 +54,7 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 ## Documentation
 
 - Dependency Security: `docs/dependency-security.md`
+- Admin Payment Integration API: `ADMIN_PAYMENT_INTEGRATION_API.md`
 
 ---
 
