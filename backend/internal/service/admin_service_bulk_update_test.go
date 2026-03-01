@@ -139,34 +139,34 @@ REDACTED
 	require.Contains(t, err.Error(), "group repository not configured")
 REDACTED
 
-func TestAdminService_BulkUpdateAccounts_MixedChannelCheckUsesUpdatedSnapshot(t *testing.T) {
+// TestAdminService_BulkUpdateAccounts_MixedChannelPreCheckBlocksOnExistingConflict verifies
+// that the global pre-check detects a conflict with existing group members and returns an
+// error before any DB write is performed.
+func TestAdminService_BulkUpdateAccounts_MixedChannelPreCheckBlocksOnExistingConflict(t *testing.T) {
 	repo := &accountRepoStubForBulkUpdate{
 		getByIDsAccounts: []*Account{
-			{ID: 1, Platform: PlatformAnthropicREDACTED,
-			{ID: 2, Platform: PlatformAntigravityREDACTED,
+			{ID: 1, Platform: PlatformAntigravityREDACTED,
 	REDACTED,
+		// Group 10 already contains an Anthropic account.
 		listByGroupData: map[int64][]Account{
-			10: {REDACTED,
+			10: {{ID: 99, Platform: PlatformAnthropicREDACTEDREDACTED,
 	REDACTED,
 REDACTED
 	svc := &adminServiceImpl{
 		accountRepo: repo,
-		groupRepo:   &groupRepoStubForAdmin{getByID: &Group{ID: 10, Name: "目标分组"REDACTEDREDACTED,
+		groupRepo:   &groupRepoStubForAdmin{getByID: &Group{ID: 10, Name: "target-group"REDACTEDREDACTED,
 REDACTED
 
 	groupIDs := []int64{10REDACTED
 	input := &BulkUpdateAccountsInput{
-		AccountIDs: []int64{1, 2REDACTED,
+		AccountIDs: []int64{1REDACTED,
 		GroupIDs:   &groupIDs,
 REDACTED
 
 	result, err := svc.BulkUpdateAccounts(context.Background(), input)
+	require.Nil(t, result)
 REDACTED
-	require.Equal(t, 1, result.Success)
-	require.Equal(t, 1, result.Failed)
-	require.ElementsMatch(t, []int64{1REDACTED, result.SuccessIDs)
-	require.ElementsMatch(t, []int64{2REDACTED, result.FailedIDs)
-	require.Len(t, result.Results, 2)
-	require.Contains(t, result.Results[1].Error, "mixed channel")
-	require.Equal(t, []int64{1REDACTED, repo.bindGroupsCalls)
+	require.Contains(t, err.Error(), "mixed channel")
+	// No BindGroups should have been called since the check runs before any write.
+	require.Empty(t, repo.bindGroupsCalls)
 REDACTED

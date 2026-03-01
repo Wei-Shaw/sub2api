@@ -1542,27 +1542,16 @@ REDACTED
 	// 预加载账号平台信息（混合渠道检查或 Sora 同步需要）。
 	platformByID := map[int64]string{REDACTED
 	groupAccountsByID := map[int64][]Account{REDACTED
-	groupNameByID := map[int64]string{REDACTED
 	if needMixedChannelCheck {
 		accounts, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
-			if needMixedChannelCheck {
-				return nil, err
-		REDACTED
-	REDACTED else {
-			for _, account := range accounts {
-				if account != nil {
-					platformByID[account.ID] = account.Platform
-			REDACTED
-		REDACTED
-	REDACTED
-
-		loadedAccounts, loadedNames, err := s.preloadMixedChannelRiskData(ctx, *input.GroupIDs)
-		if err != nil {
 			return nil, err
 	REDACTED
-		groupAccountsByID = loadedAccounts
-		groupNameByID = loadedNames
+		for _, account := range accounts {
+			if account != nil {
+				platformByID[account.ID] = account.Platform
+		REDACTED
+	REDACTED
 REDACTED
 
 	// 预检查混合渠道风险：在任何写操作之前，若发现风险立即返回错误。
@@ -2529,6 +2518,6 @@ type MixedChannelError struct {
 REDACTED
 
 func (e *MixedChannelError) Error() string {
-	return fmt.Sprintf("警告：分组 \"%s\" 中同时包含 %s 和 %s 账号。混合使用不同渠道可能导致 thinking block 签名验证问题，请确保 Anthropic 账号是 Antigravity 反代暴露的 api。确定要继续吗？",
+	return fmt.Sprintf("mixed_channel_warning: Group '%s' contains both %s and %s accounts. Using mixed channels in the same context may cause thinking block signature validation issues, which will fallback to non-thinking mode for historical messages.",
 		e.GroupName, e.CurrentPlatform, e.OtherPlatform)
 REDACTED
