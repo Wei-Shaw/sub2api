@@ -2459,6 +2459,7 @@ export default {
         name: '名称',
         protocol: '协议',
         address: '地址',
+        auth: '认证',
         location: '地理位置',
         status: '状态',
         accounts: '账号数',
@@ -2486,6 +2487,8 @@ export default {
         allStatuses: '全部状态'
       REDACTED,
       // Additional keys used in ProxiesView
+      copyProxyUrl: '复制代理 URL',
+      urlCopied: '代理 URL 已复制',
       allProtocols: '全部协议',
       allStatus: '全部状态',
       searchProxies: '搜索代理...',
