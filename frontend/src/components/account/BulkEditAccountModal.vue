@@ -1283,11 +1283,7 @@ const preCheckMixedChannelRisk = async (built: Record<string, unknown>): Promise
     if (!result.has_risk) return true
 
     pendingUpdatesForConfirm.value = built
-    mixedChannelWarningMessage.value = t('admin.accounts.mixedChannelWarning', {
-      groupName: result.details?.group_name,
-      currentPlatform: result.details?.current_platform,
-      otherPlatform: result.details?.other_platform
-    REDACTED)
+    mixedChannelWarningMessage.value = result.message || t('admin.accounts.bulkEdit.failed')
     showMixedChannelWarning.value = true
     return false
   REDACTED catch (error: any) {
@@ -1362,11 +1358,7 @@ const submitBulkUpdate = async (baseUpdates: Record<string, unknown>) => {
     // 兜底：多平台混合场景下，预检查跳过，由后端 409 触发确认框
     if (error.status === 409 && error.error === 'mixed_channel_warning') {
       pendingUpdatesForConfirm.value = baseUpdates
-      mixedChannelWarningMessage.value = t('admin.accounts.mixedChannelWarning', {
-        groupName: error.details?.group_name,
-        currentPlatform: error.details?.current_platform,
-        otherPlatform: error.details?.other_platform
-      REDACTED)
+      mixedChannelWarningMessage.value = error.message
       showMixedChannelWarning.value = true
     REDACTED else {
       appStore.showError(error.message || t('admin.accounts.bulkEdit.failed'))
