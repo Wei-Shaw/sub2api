@@ -67,6 +67,9 @@ export interface SystemSettings {
   ops_realtime_monitoring_enabled: boolean
   ops_query_mode_default: 'auto' | 'raw' | 'preagg' | string
   ops_metrics_interval_seconds: number
+
+  // Claude Code version check
+  min_claude_code_version: string
 REDACTED
 
 export interface UpdateSettingsRequest {
@@ -114,6 +117,7 @@ export interface UpdateSettingsRequest {
   ops_realtime_monitoring_enabled?: boolean
   ops_query_mode_default?: 'auto' | 'raw' | 'preagg' | string
   ops_metrics_interval_seconds?: number
+  min_claude_code_version?: string
 REDACTED
 
 /**

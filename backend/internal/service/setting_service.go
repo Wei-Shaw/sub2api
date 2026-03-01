@@ -7,12 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"golang.org/x/sync/singleflight"
 )
 
 var (
@@ -31,6 +34,27 @@ type SettingRepository interface {
 	GetAll(ctx context.Context) (map[string]string, error)
 	Delete(ctx context.Context, key string) error
 REDACTED
+
+// cachedMinVersion 缓存最低 Claude Code 版本号（进程内缓存，60s TTL）
+type cachedMinVersion struct {
+	value     string // 空字符串 = 不检查
+	expiresAt int64  // unix nano
+REDACTED
+
+// minVersionCache 最低版本号进程内缓存
+var minVersionCache atomic.Value // *cachedMinVersion
+
+// minVersionSF 防止缓存过期时 thundering herd
+var minVersionSF singleflight.Group
+
+// minVersionCacheTTL 缓存有效期
+const minVersionCacheTTL = 60 * time.Second
+
+// minVersionErrorTTL DB 错误时的短缓存，快速重试
+const minVersionErrorTTL = 5 * time.Second
+
+// minVersionDBTimeout singleflight 内 DB 查询超时，独立于请求 context
+const minVersionDBTimeout = 5 * time.Second
 
 // SettingService 系统设置服务
 type SettingService struct {
@@ -270,9 +294,20 @@ REDACTED
 		updates[SettingKeyOpsMetricsIntervalSeconds] = strconv.Itoa(settings.OpsMetricsIntervalSeconds)
 REDACTED
 
+	// Claude Code version check
+	updates[SettingKeyMinClaudeCodeVersion] = settings.MinClaudeCodeVersion
+
 	err := s.settingRepo.SetMultiple(ctx, updates)
-	if err == nil && s.onUpdate != nil {
-		s.onUpdate() // Invalidate cache after settings update
+	if err == nil {
+		// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
+		minVersionSF.Forget("min_version")
+		minVersionCache.Store(&cachedMinVersion{
+			value:     settings.MinClaudeCodeVersion,
+			expiresAt: time.Now().Add(minVersionCacheTTL).UnixNano(),
+	REDACTED)
+		if s.onUpdate != nil {
+			s.onUpdate() // Invalidate cache after settings update
+	REDACTED
 REDACTED
 	return err
 REDACTED
@@ -417,6 +452,9 @@ REDACTED
 		SettingKeyOpsRealtimeMonitoringEnabled: "true",
 		SettingKeyOpsQueryModeDefault:          "auto",
 		SettingKeyOpsMetricsIntervalSeconds:    "60",
+
+		// Claude Code version check (default: empty = disabled)
+		SettingKeyMinClaudeCodeVersion: "",
 REDACTED
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -541,6 +579,9 @@ REDACTED
 			result.OpsMetricsIntervalSeconds = v
 	REDACTED
 REDACTED
+
+	// Claude Code version check
+	result.MinClaudeCodeVersion = settings[SettingKeyMinClaudeCodeVersion]
 
 	return result
 REDACTED
@@ -837,6 +878,46 @@ REDACTED
 REDACTED
 
 	return &settings, nil
+REDACTED
+
+// GetMinClaudeCodeVersion 获取最低 Claude Code 版本号要求
+// 使用进程内 atomic.Value 缓存，60 秒 TTL，热路径零锁开销
+// singleflight 防止缓存过期时 thundering herd
+// 返回空字符串表示不做版本检查
+func (s *SettingService) GetMinClaudeCodeVersion(ctx context.Context) string {
+	if cached, ok := minVersionCache.Load().(*cachedMinVersion); ok {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.value
+	REDACTED
+REDACTED
+	// singleflight: 同一时刻只有一个 goroutine 查询 DB，其余复用结果
+	result, _, _ := minVersionSF.Do("min_version", func() (interface{REDACTED, error) {
+		// 二次检查，避免排队的 goroutine 重复查询
+		if cached, ok := minVersionCache.Load().(*cachedMinVersion); ok {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.value, nil
+		REDACTED
+	REDACTED
+		// 使用独立 context：断开请求取消链，避免客户端断连导致空值被长期缓存
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), minVersionDBTimeout)
+		defer cancel()
+		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyMinClaudeCodeVersion)
+		if err != nil {
+			// fail-open: DB 错误时不阻塞请求，但记录日志并使用短 TTL 快速重试
+			slog.Warn("failed to get min claude code version setting, skipping version check", "error", err)
+			minVersionCache.Store(&cachedMinVersion{
+				value:     "",
+				expiresAt: time.Now().Add(minVersionErrorTTL).UnixNano(),
+		REDACTED)
+			return "", nil
+	REDACTED
+		minVersionCache.Store(&cachedMinVersion{
+			value:     value,
+			expiresAt: time.Now().Add(minVersionCacheTTL).UnixNano(),
+	REDACTED)
+		return value, nil
+REDACTED)
+	return result.(string)
 REDACTED
 
 // SetStreamTimeoutSettings 设置流超时处理配置

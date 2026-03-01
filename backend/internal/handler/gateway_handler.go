@@ -48,6 +48,7 @@ type GatewayHandler struct {
 	maxAccountSwitches        int
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
+	settingService            *service.SettingService
 REDACTED
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -63,6 +64,7 @@ func NewGatewayHandler(
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
 	cfg *config.Config,
+	settingService *service.SettingService,
 ) *GatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 10
@@ -90,6 +92,7 @@ REDACTED
 		maxAccountSwitches:        maxAccountSwitches,
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
 		cfg:                       cfg,
+		settingService:            settingService,
 REDACTED
 REDACTED
 
@@ -154,6 +157,11 @@ REDACTED
 	// 检查是否为 Claude Code 客户端，设置到 context 中（复用已解析请求，避免二次反序列化）。
 	SetClaudeCodeClientContext(c, body, parsedReq)
 	isClaudeCodeClient := service.IsClaudeCodeClient(c.Request.Context())
+
+	// 版本检查：仅对 Claude Code 客户端，拒绝低于最低版本的请求
+	if !h.checkClaudeCodeVersion(c) {
+		return
+REDACTED
 
 	// 在请求上下文中记录 thinking 状态，供 Antigravity 最终模型 key 推导/模型维度限流使用
 	c.Request = c.Request.WithContext(service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled()))
@@ -1000,6 +1008,41 @@ func (h *GatewayHandler) ensureForwardErrorResponse(c *gin.Context, streamStarte
 		return false
 REDACTED
 	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", streamStarted)
+	return true
+REDACTED
+
+// checkClaudeCodeVersion 检查 Claude Code 客户端版本是否满足最低要求
+// 仅对已识别的 Claude Code 客户端执行，count_tokens 路径除外
+func (h *GatewayHandler) checkClaudeCodeVersion(c *gin.Context) bool {
+	ctx := c.Request.Context()
+	if !service.IsClaudeCodeClient(ctx) {
+		return true
+REDACTED
+
+	// 排除 count_tokens 子路径
+	if strings.HasSuffix(c.Request.URL.Path, "/count_tokens") {
+		return true
+REDACTED
+
+	minVersion := h.settingService.GetMinClaudeCodeVersion(ctx)
+	if minVersion == "" {
+		return true // 未设置，不检查
+REDACTED
+
+	clientVersion := service.GetClaudeCodeVersion(ctx)
+	if clientVersion == "" {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error",
+			"Unable to determine Claude Code version. Please update Claude Code: npm update -g @anthropic-ai/claude-code")
+		return false
+REDACTED
+
+	if service.CompareVersions(clientVersion, minVersion) < 0 {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error",
+			fmt.Sprintf("Your Claude Code version (%s) is below the minimum required version (%s). Please update: npm update -g @anthropic-ai/claude-code",
+				clientVersion, minVersion))
+		return false
+REDACTED
+
 	return true
 REDACTED
 
