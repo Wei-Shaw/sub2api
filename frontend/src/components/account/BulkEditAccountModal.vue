@@ -756,6 +756,17 @@
       </div>
     </template>
   </BaseDialog>
+
+  <ConfirmDialog
+    :show="showMixedChannelWarning"
+    :title="t('admin.accounts.mixedChannelWarningTitle')"
+    :message="mixedChannelWarningMessage"
+    :confirm-text="t('common.confirm')"
+    :cancel-text="t('common.cancel')"
+    :danger="true"
+    @confirm="handleMixedChannelConfirm"
+    @cancel="handleMixedChannelCancel"
+  />
 </template>
 
 <script setup lang="ts">
@@ -765,6 +776,7 @@ import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Proxy as ProxyConfig, AdminGroup, AccountPlatform, AccountType REDACTED from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
@@ -844,6 +856,9 @@ const enableRpmLimit = ref(false)
 
 // State - field values
 const submitting = ref(false)
+const showMixedChannelWarning = ref(false)
+const mixedChannelWarningMessage = ref('')
+const pendingUpdatesForConfirm = ref<Record<string, unknown> | null>(null)
 const baseUrl = ref('')
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
@@ -1237,8 +1252,44 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   return Object.keys(updates).length > 0 ? updates : null
 REDACTED
 
+const mixedChannelConfirmed = ref(false)
+
+// 是否需要预检查：改了分组 + 全是单一的 antigravity 或 anthropic 平台
+// 多平台混合的情况由 submitBulkUpdate 的 409 catch 兜底
+const canPreCheck = () =>
+  enableGroups.value &&
+  groupIds.value.length > 0 &&
+  props.selectedPlatforms.length === 1 &&
+  (props.selectedPlatforms[0] === 'antigravity' || props.selectedPlatforms[0] === 'anthropic')
+
 const handleClose = () => {
+  showMixedChannelWarning.value = false
+  mixedChannelWarningMessage.value = ''
+  pendingUpdatesForConfirm.value = null
+  mixedChannelConfirmed.value = false
   emit('close')
+REDACTED
+
+// 预检查：提交前调接口检测，有风险就弹窗阻止，返回 false 表示需要用户确认
+const preCheckMixedChannelRisk = async (built: Record<string, unknown>): Promise<boolean> => {
+  if (!canPreCheck()) return true
+  if (mixedChannelConfirmed.value) return true
+
+  try {
+    const result = await adminAPI.accounts.checkMixedChannelRisk({
+      platform: props.selectedPlatforms[0],
+      group_ids: groupIds.value
+    REDACTED)
+    if (!result.has_risk) return true
+
+    pendingUpdatesForConfirm.value = built
+    mixedChannelWarningMessage.value = result.message || t('admin.accounts.bulkEdit.failed')
+    showMixedChannelWarning.value = true
+    return false
+  REDACTED catch (error: any) {
+    appStore.showError(error.message || t('admin.accounts.bulkEdit.failed'))
+    return false
+  REDACTED
 REDACTED
 
 const handleSubmit = async () => {
@@ -1265,11 +1316,23 @@ const handleSubmit = async () => {
     return
   REDACTED
 
-  const updates = buildUpdatePayload()
-  if (!updates) {
+  const built = buildUpdatePayload()
+  if (!built) {
     appStore.showError(t('admin.accounts.bulkEdit.noFieldsSelected'))
     return
   REDACTED
+
+  const canContinue = await preCheckMixedChannelRisk(built)
+  if (!canContinue) return
+
+  await submitBulkUpdate(built)
+REDACTED
+
+const submitBulkUpdate = async (baseUpdates: Record<string, unknown>) => {
+  // 无论是预检查确认还是 409 兜底确认，只要 mixedChannelConfirmed 为 true 就带上 flag
+  const updates = mixedChannelConfirmed.value
+    ? { ...baseUpdates, confirm_mixed_channel_risk: true REDACTED
+    : baseUpdates
 
   submitting.value = true
 
@@ -1287,15 +1350,36 @@ const handleSubmit = async () => {
     REDACTED
 
     if (success > 0) {
+      pendingUpdatesForConfirm.value = null
       emit('updated')
       handleClose()
     REDACTED
   REDACTED catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.accounts.bulkEdit.failed'))
-    console.error('Error bulk updating accounts:', error)
+    // 兜底：多平台混合场景下，预检查跳过，由后端 409 触发确认框
+    if (error.status === 409 && error.error === 'mixed_channel_warning') {
+      pendingUpdatesForConfirm.value = baseUpdates
+      mixedChannelWarningMessage.value = error.message
+      showMixedChannelWarning.value = true
+    REDACTED else {
+      appStore.showError(error.message || t('admin.accounts.bulkEdit.failed'))
+      console.error('Error bulk updating accounts:', error)
+    REDACTED
   REDACTED finally {
     submitting.value = false
   REDACTED
+REDACTED
+
+const handleMixedChannelConfirm = async () => {
+  showMixedChannelWarning.value = false
+  mixedChannelConfirmed.value = true
+  if (pendingUpdatesForConfirm.value) {
+    await submitBulkUpdate(pendingUpdatesForConfirm.value)
+  REDACTED
+REDACTED
+
+const handleMixedChannelCancel = () => {
+  showMixedChannelWarning.value = false
+  pendingUpdatesForConfirm.value = null
 REDACTED
 
 // Reset form when modal closes
@@ -1330,10 +1414,12 @@ watch(
       rateMultiplier.value = 1
       status.value = 'active'
       groupIds.value = []
-      rpmLimitEnabled.value = false
-      bulkBaseRpm.value = null
-      bulkRpmStrategy.value = 'tiered'
-      bulkRpmStickyBuffer.value = null
+
+      // Reset mixed channel warning state
+      showMixedChannelWarning.value = false
+      mixedChannelWarningMessage.value = ''
+      pendingUpdatesForConfirm.value = null
+      mixedChannelConfirmed.value = false
     REDACTED
   REDACTED
 )

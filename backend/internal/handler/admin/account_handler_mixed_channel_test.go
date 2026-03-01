@@ -19,6 +19,7 @@ func setupAccountMixedChannelRouter(adminSvc *stubAdminService) *gin.Engine {
 	router.POST("/api/v1/admin/accounts/check-mixed-channel", accountHandler.CheckMixedChannel)
 	router.POST("/api/v1/admin/accounts", accountHandler.Create)
 	router.PUT("/api/v1/admin/accounts/:id", accountHandler.Update)
+	router.POST("/api/v1/admin/accounts/bulk-update", accountHandler.BulkUpdate)
 	return router
 REDACTED
 
@@ -144,4 +145,54 @@ REDACTED)
 	_, hasRequireConfirmation := resp["require_confirmation"]
 	require.False(t, hasDetails)
 	require.False(t, hasRequireConfirmation)
+REDACTED
+
+func TestAccountHandlerBulkUpdateMixedChannelConflict(t *testing.T) {
+	adminSvc := newStubAdminService()
+	adminSvc.bulkUpdateAccountErr = &service.MixedChannelError{
+		GroupID:         27,
+		GroupName:       "claude-max",
+		CurrentPlatform: "Antigravity",
+		OtherPlatform:   "Anthropic",
+REDACTED
+	router := setupAccountMixedChannelRouter(adminSvc)
+
+	body, _ := json.Marshal(map[string]any{
+		"account_ids": []int64{1, 2, 3REDACTED,
+		"group_ids":   []int64{27REDACTED,
+REDACTED)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/bulk-update", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "mixed_channel_warning", resp["error"])
+	require.Contains(t, resp["message"], "claude-max")
+REDACTED
+
+func TestAccountHandlerBulkUpdateMixedChannelConfirmSkips(t *testing.T) {
+	adminSvc := newStubAdminService()
+	router := setupAccountMixedChannelRouter(adminSvc)
+
+	body, _ := json.Marshal(map[string]any{
+		"account_ids":                []int64{1, 2REDACTED,
+		"group_ids":                  []int64{27REDACTED,
+		"confirm_mixed_channel_risk": true,
+REDACTED)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/bulk-update", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, float64(0), resp["code"])
+	data, ok := resp["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(2), data["success"])
+	require.Equal(t, float64(0), data["failed"])
 REDACTED

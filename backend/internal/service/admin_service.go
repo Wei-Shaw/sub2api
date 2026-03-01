@@ -1539,30 +1539,31 @@ REDACTED
 
 	needMixedChannelCheck := input.GroupIDs != nil && !input.SkipMixedChannelCheck
 
-	// 预加载账号平台信息（混合渠道检查或 Sora 同步需要）。
+	// 预加载账号平台信息（混合渠道检查需要）。
 	platformByID := map[int64]string{REDACTED
-	groupAccountsByID := map[int64][]Account{REDACTED
-	groupNameByID := map[int64]string{REDACTED
 	if needMixedChannelCheck {
 		accounts, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
-			if needMixedChannelCheck {
-				return nil, err
-		REDACTED
-	REDACTED else {
-			for _, account := range accounts {
-				if account != nil {
-					platformByID[account.ID] = account.Platform
-			REDACTED
-		REDACTED
-	REDACTED
-
-		loadedAccounts, loadedNames, err := s.preloadMixedChannelRiskData(ctx, *input.GroupIDs)
-		if err != nil {
 			return nil, err
 	REDACTED
-		groupAccountsByID = loadedAccounts
-		groupNameByID = loadedNames
+		for _, account := range accounts {
+			if account != nil {
+				platformByID[account.ID] = account.Platform
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 预检查混合渠道风险：在任何写操作之前，若发现风险立即返回错误。
+	if needMixedChannelCheck {
+		for _, accountID := range input.AccountIDs {
+			platform := platformByID[accountID]
+			if platform == "" {
+				continue
+		REDACTED
+			if err := s.checkMixedChannelRisk(ctx, accountID, platform, *input.GroupIDs); err != nil {
+				return nil, err
+		REDACTED
+	REDACTED
 REDACTED
 
 	if input.RateMultiplier != nil {
@@ -1606,34 +1607,8 @@ REDACTED
 	// Handle group bindings per account (requires individual operations).
 	for _, accountID := range input.AccountIDs {
 		entry := BulkUpdateAccountResult{AccountID: accountIDREDACTED
-		platform := ""
 
 		if input.GroupIDs != nil {
-			// 检查混合渠道风险（除非用户已确认）
-			if !input.SkipMixedChannelCheck {
-				platform = platformByID[accountID]
-				if platform == "" {
-					account, err := s.accountRepo.GetByID(ctx, accountID)
-					if err != nil {
-						entry.Success = false
-						entry.Error = err.Error()
-						result.Failed++
-						result.FailedIDs = append(result.FailedIDs, accountID)
-						result.Results = append(result.Results, entry)
-						continue
-				REDACTED
-					platform = account.Platform
-			REDACTED
-				if err := s.checkMixedChannelRiskWithPreloaded(accountID, platform, *input.GroupIDs, groupAccountsByID, groupNameByID); err != nil {
-					entry.Success = false
-					entry.Error = err.Error()
-					result.Failed++
-					result.FailedIDs = append(result.FailedIDs, accountID)
-					result.Results = append(result.Results, entry)
-					continue
-			REDACTED
-		REDACTED
-
 			if err := s.accountRepo.BindGroups(ctx, accountID, *input.GroupIDs); err != nil {
 				entry.Success = false
 				entry.Error = err.Error()
@@ -1641,9 +1616,6 @@ REDACTED
 				result.FailedIDs = append(result.FailedIDs, accountID)
 				result.Results = append(result.Results, entry)
 				continue
-		REDACTED
-			if !input.SkipMixedChannelCheck && platform != "" {
-				updateMixedChannelPreloadedAccounts(groupAccountsByID, *input.GroupIDs, accountID, platform)
 		REDACTED
 	REDACTED
 
@@ -2316,41 +2288,6 @@ REDACTED
 	return nil
 REDACTED
 
-func (s *adminServiceImpl) preloadMixedChannelRiskData(ctx context.Context, groupIDs []int64) (map[int64][]Account, map[int64]string, error) {
-	accountsByGroup := make(map[int64][]Account)
-	groupNameByID := make(map[int64]string)
-	if len(groupIDs) == 0 {
-		return accountsByGroup, groupNameByID, nil
-REDACTED
-
-	seen := make(map[int64]struct{REDACTED, len(groupIDs))
-	for _, groupID := range groupIDs {
-		if groupID <= 0 {
-			continue
-	REDACTED
-		if _, ok := seen[groupID]; ok {
-			continue
-	REDACTED
-		seen[groupID] = struct{REDACTED{REDACTED
-
-		accounts, err := s.accountRepo.ListByGroup(ctx, groupID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("get accounts in group %d: %w", groupID, err)
-	REDACTED
-		accountsByGroup[groupID] = accounts
-
-		group, err := s.groupRepo.GetByID(ctx, groupID)
-		if err != nil {
-			continue
-	REDACTED
-		if group != nil {
-			groupNameByID[groupID] = group.Name
-	REDACTED
-REDACTED
-
-	return accountsByGroup, groupNameByID, nil
-REDACTED
-
 func (s *adminServiceImpl) validateGroupIDsExist(ctx context.Context, groupIDs []int64) error {
 	if len(groupIDs) == 0 {
 		return nil
@@ -2378,71 +2315,6 @@ REDACTED
 	REDACTED
 REDACTED
 	return nil
-REDACTED
-
-func (s *adminServiceImpl) checkMixedChannelRiskWithPreloaded(currentAccountID int64, currentAccountPlatform string, groupIDs []int64, accountsByGroup map[int64][]Account, groupNameByID map[int64]string) error {
-	currentPlatform := getAccountPlatform(currentAccountPlatform)
-	if currentPlatform == "" {
-		return nil
-REDACTED
-
-	for _, groupID := range groupIDs {
-		accounts := accountsByGroup[groupID]
-		for _, account := range accounts {
-			if currentAccountID > 0 && account.ID == currentAccountID {
-				continue
-		REDACTED
-
-			otherPlatform := getAccountPlatform(account.Platform)
-			if otherPlatform == "" {
-				continue
-		REDACTED
-
-			if currentPlatform != otherPlatform {
-				groupName := fmt.Sprintf("Group %d", groupID)
-				if name := strings.TrimSpace(groupNameByID[groupID]); name != "" {
-					groupName = name
-			REDACTED
-
-				return &MixedChannelError{
-					GroupID:         groupID,
-					GroupName:       groupName,
-					CurrentPlatform: currentPlatform,
-					OtherPlatform:   otherPlatform,
-			REDACTED
-		REDACTED
-	REDACTED
-REDACTED
-
-	return nil
-REDACTED
-
-func updateMixedChannelPreloadedAccounts(accountsByGroup map[int64][]Account, groupIDs []int64, accountID int64, platform string) {
-	if len(groupIDs) == 0 || accountID <= 0 || platform == "" {
-		return
-REDACTED
-	for _, groupID := range groupIDs {
-		if groupID <= 0 {
-			continue
-	REDACTED
-		accounts := accountsByGroup[groupID]
-		found := false
-		for i := range accounts {
-			if accounts[i].ID != accountID {
-				continue
-		REDACTED
-			accounts[i].Platform = platform
-			found = true
-			break
-	REDACTED
-		if !found {
-			accounts = append(accounts, Account{
-				ID:       accountID,
-				Platform: platform,
-		REDACTED)
-	REDACTED
-		accountsByGroup[groupID] = accounts
-REDACTED
 REDACTED
 
 // CheckMixedChannelRisk checks whether target groups contain mixed channels for the current account platform.
