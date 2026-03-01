@@ -3590,7 +3590,9 @@ export default {
         urlPlaceholder: 'https://example.com/purchase',
         urlHint: 'Must be an absolute http(s) URL',
         iframeWarning:
-          '⚠️ iframe note: Some websites block embedding via X-Frame-Options or CSP (frame-ancestors). If the page is blank, provide an "Open in new tab" alternative.'
+          '⚠️ iframe note: Some websites block embedding via X-Frame-Options or CSP (frame-ancestors). If the page is blank, provide an "Open in new tab" alternative.',
+        integrationDoc: 'Payment Integration Docs',
+        integrationDocHint: 'Covers endpoint specs, idempotency semantics, and code samples'
       REDACTED,
       soraClient: {
         title: 'Sora Client',
