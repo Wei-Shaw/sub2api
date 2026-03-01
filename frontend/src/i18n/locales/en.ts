@@ -3548,6 +3548,14 @@ export default {
         defaultConcurrency: 'Default Concurrency',
         defaultConcurrencyHint: 'Maximum concurrent requests for new users'
       REDACTED,
+      claudeCode: {
+        title: 'Claude Code Settings',
+        description: 'Control Claude Code client access requirements',
+        minVersion: 'Minimum Version',
+        minVersionPlaceholder: 'e.g. 2.1.63',
+        minVersionHint:
+          'Reject Claude Code clients below this version (semver format). Leave empty to disable version check.'
+      REDACTED,
       site: {
         title: 'Site Settings',
         description: 'Customize site branding',

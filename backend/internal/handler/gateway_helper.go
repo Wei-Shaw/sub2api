@@ -29,8 +29,10 @@ REDACTED
 	if parsedReq != nil {
 		c.Set(claudeCodeParsedRequestContextKey, parsedReq)
 REDACTED
+
+	ua := c.GetHeader("User-Agent")
 	// Fast path：非 Claude CLI UA 直接判定 false，避免热路径二次 JSON 反序列化。
-	if !claudeCodeValidator.ValidateUserAgent(c.GetHeader("User-Agent")) {
+	if !claudeCodeValidator.ValidateUserAgent(ua) {
 		ctx := service.SetClaudeCodeClient(c.Request.Context(), false)
 		c.Request = c.Request.WithContext(ctx)
 		return
@@ -54,6 +56,14 @@ REDACTED
 
 	// 更新 request context
 	ctx := service.SetClaudeCodeClient(c.Request.Context(), isClaudeCode)
+
+	// 仅在确认为 Claude Code 客户端时提取版本号写入 context
+	if isClaudeCode {
+		if version := claudeCodeValidator.ExtractVersion(ua); version != "" {
+			ctx = service.SetClaudeCodeVersion(ctx, version)
+	REDACTED
+REDACTED
+
 	c.Request = c.Request.WithContext(ctx)
 REDACTED
 

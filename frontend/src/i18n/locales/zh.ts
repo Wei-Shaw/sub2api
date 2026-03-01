@@ -3718,6 +3718,13 @@ export default {
         defaultConcurrency: '默认并发数',
         defaultConcurrencyHint: '新用户的最大并发请求数'
       REDACTED,
+      claudeCode: {
+        title: 'Claude Code 设置',
+        description: '控制 Claude Code 客户端访问要求',
+        minVersion: '最低版本号',
+        minVersionPlaceholder: '例如 2.1.63',
+        minVersionHint: '拒绝低于此版本的 Claude Code 客户端请求（semver 格式）。留空则不检查版本。'
+      REDACTED,
       site: {
         title: '站点设置',
         description: '自定义站点品牌',
