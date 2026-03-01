@@ -173,7 +173,7 @@ jobs:
         run: echo "owner=$(echo '${{ github.repository_owner REDACTEDREDACTED' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: '~> v2'
           args: release --clean --skip=validate ${{ env.SIMPLE_RELEASE == 'true' && '--config=.goreleaser.simple.yaml' || '' REDACTEDREDACTED
@@ -188,7 +188,7 @@ jobs:
       # Update DockerHub description
       - name: Update DockerHub description
         if: ${{ env.SIMPLE_RELEASE != 'true' && env.DOCKERHUB_USERNAME != '' REDACTEDREDACTED
-        uses: peter-evans/dockerhub-description@v4
+        uses: peter-evans/dockerhub-description@v5
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME REDACTEDREDACTED
         with:
