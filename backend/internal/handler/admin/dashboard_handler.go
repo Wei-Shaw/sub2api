@@ -333,6 +333,76 @@ REDACTED
 REDACTED)
 REDACTED
 
+// GetGroupStats handles getting group usage statistics
+// GET /api/v1/admin/dashboard/groups
+// Query params: start_date, end_date (YYYY-MM-DD), user_id, api_key_id, account_id, group_id, request_type, stream, billing_type
+func (h *DashboardHandler) GetGroupStats(c *gin.Context) {
+	startTime, endTime := parseTimeRange(c)
+
+	var userID, apiKeyID, accountID, groupID int64
+	var requestType *int16
+	var stream *bool
+	var billingType *int8
+
+	if userIDStr := c.Query("user_id"); userIDStr != "" {
+		if id, err := strconv.ParseInt(userIDStr, 10, 64); err == nil {
+			userID = id
+	REDACTED
+REDACTED
+	if apiKeyIDStr := c.Query("api_key_id"); apiKeyIDStr != "" {
+		if id, err := strconv.ParseInt(apiKeyIDStr, 10, 64); err == nil {
+			apiKeyID = id
+	REDACTED
+REDACTED
+	if accountIDStr := c.Query("account_id"); accountIDStr != "" {
+		if id, err := strconv.ParseInt(accountIDStr, 10, 64); err == nil {
+			accountID = id
+	REDACTED
+REDACTED
+	if groupIDStr := c.Query("group_id"); groupIDStr != "" {
+		if id, err := strconv.ParseInt(groupIDStr, 10, 64); err == nil {
+			groupID = id
+	REDACTED
+REDACTED
+	if requestTypeStr := strings.TrimSpace(c.Query("request_type")); requestTypeStr != "" {
+		parsed, err := service.ParseUsageRequestType(requestTypeStr)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+	REDACTED
+		value := int16(parsed)
+		requestType = &value
+REDACTED else if streamStr := c.Query("stream"); streamStr != "" {
+		if streamVal, err := strconv.ParseBool(streamStr); err == nil {
+			stream = &streamVal
+	REDACTED else {
+			response.BadRequest(c, "Invalid stream value, use true or false")
+			return
+	REDACTED
+REDACTED
+	if billingTypeStr := c.Query("billing_type"); billingTypeStr != "" {
+		if v, err := strconv.ParseInt(billingTypeStr, 10, 8); err == nil {
+			bt := int8(v)
+			billingType = &bt
+	REDACTED else {
+			response.BadRequest(c, "Invalid billing_type")
+			return
+	REDACTED
+REDACTED
+
+	stats, err := h.dashboardService.GetGroupStatsWithFilters(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType)
+	if err != nil {
+		response.Error(c, 500, "Failed to get group statistics")
+		return
+REDACTED
+
+	response.Success(c, gin.H{
+		"groups":     stats,
+		"start_date": startTime.Format("2006-01-02"),
+		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+REDACTED)
+REDACTED
+
 // GetAPIKeyUsageTrend handles getting API key usage trend data
 // GET /api/v1/admin/dashboard/api-keys-trend
 // Query params: start_date, end_date (YYYY-MM-DD), granularity (day/hour), limit (default 5)

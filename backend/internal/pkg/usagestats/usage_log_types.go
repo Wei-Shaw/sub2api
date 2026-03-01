@@ -78,6 +78,16 @@ type ModelStat struct {
 	ActualCost   float64 `json:"actual_cost"` // 实际扣除
 REDACTED
 
+// GroupStat represents usage statistics for a single group
+type GroupStat struct {
+	GroupID     int64   `json:"group_id"`
+	GroupName   string  `json:"group_name"`
+	Requests    int64   `json:"requests"`
+	TotalTokens int64   `json:"total_tokens"`
+	Cost        float64 `json:"cost"`        // 标准计费
+	ActualCost  float64 `json:"actual_cost"` // 实际扣除
+REDACTED
+
 // UserUsageTrendPoint represents user usage trend data point
 type UserUsageTrendPoint struct {
 	Date       string  `json:"date"`
