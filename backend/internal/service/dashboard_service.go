@@ -140,6 +140,14 @@ REDACTED
 	return stats, nil
 REDACTED
 
+func (s *DashboardService) GetGroupStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8) ([]usagestats.GroupStat, error) {
+	stats, err := s.usageRepo.GetGroupStatsWithFilters(ctx, startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType)
+	if err != nil {
+		return nil, fmt.Errorf("get group stats with filters: %w", err)
+REDACTED
+	return stats, nil
+REDACTED
+
 func (s *DashboardService) getCachedDashboardStats(ctx context.Context) (*usagestats.DashboardStats, bool, error) {
 	data, err := s.cache.GetDashboardStats(ctx)
 	if err != nil {

@@ -8,6 +8,7 @@ import type {
   DashboardStats,
   TrendDataPoint,
   ModelStat,
+  GroupStat,
   ApiKeyUsageTrendPoint,
   UserUsageTrendPoint,
   UsageRequestType
@@ -98,6 +99,34 @@ REDACTED
  */
 export async function getModelStats(params?: ModelStatsParams): Promise<ModelStatsResponse> {
   const { data REDACTED = await apiClient.get<ModelStatsResponse>('/admin/dashboard/models', { params REDACTED)
+  return data
+REDACTED
+
+export interface GroupStatsParams {
+  start_date?: string
+  end_date?: string
+  user_id?: number
+  api_key_id?: number
+  account_id?: number
+  group_id?: number
+  request_type?: UsageRequestType
+  stream?: boolean
+  billing_type?: number | null
+REDACTED
+
+export interface GroupStatsResponse {
+  groups: GroupStat[]
+  start_date: string
+  end_date: string
+REDACTED
+
+/**
+ * Get group usage statistics
+ * @param params - Query parameters for filtering
+ * @returns Group usage statistics
+ */
+export async function getGroupStats(params?: GroupStatsParams): Promise<GroupStatsResponse> {
+  const { data REDACTED = await apiClient.get<GroupStatsResponse>('/admin/dashboard/groups', { params REDACTED)
   return data
 REDACTED
 
@@ -203,6 +232,7 @@ export const dashboardAPI = {
   getRealtimeMetrics,
   getUsageTrend,
   getModelStats,
+  getGroupStats,
   getApiKeyUsageTrend,
   getUserUsageTrend,
   getBatchUsersUsage,
