@@ -64,9 +64,9 @@ REDACTED
 		return
 REDACTED
 
-	out := make([]dto.ProxyWithAccountCount, 0, len(proxies))
+	out := make([]dto.AdminProxyWithAccountCount, 0, len(proxies))
 	for i := range proxies {
-		out = append(out, *dto.ProxyWithAccountCountFromService(&proxies[i]))
+		out = append(out, *dto.ProxyWithAccountCountFromServiceAdmin(&proxies[i]))
 REDACTED
 	response.Paginated(c, out, total, page, pageSize)
 REDACTED
@@ -83,9 +83,9 @@ func (h *ProxyHandler) GetAll(c *gin.Context) {
 			response.ErrorFrom(c, err)
 			return
 	REDACTED
-		out := make([]dto.ProxyWithAccountCount, 0, len(proxies))
+		out := make([]dto.AdminProxyWithAccountCount, 0, len(proxies))
 		for i := range proxies {
-			out = append(out, *dto.ProxyWithAccountCountFromService(&proxies[i]))
+			out = append(out, *dto.ProxyWithAccountCountFromServiceAdmin(&proxies[i]))
 	REDACTED
 		response.Success(c, out)
 		return
@@ -97,9 +97,9 @@ REDACTED
 		return
 REDACTED
 
-	out := make([]dto.Proxy, 0, len(proxies))
+	out := make([]dto.AdminProxy, 0, len(proxies))
 	for i := range proxies {
-		out = append(out, *dto.ProxyFromService(&proxies[i]))
+		out = append(out, *dto.ProxyFromServiceAdmin(&proxies[i]))
 REDACTED
 	response.Success(c, out)
 REDACTED
@@ -119,7 +119,7 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.ProxyFromService(proxy))
+	response.Success(c, dto.ProxyFromServiceAdmin(proxy))
 REDACTED
 
 // Create handles creating a new proxy
@@ -143,7 +143,7 @@ REDACTED
 		if err != nil {
 			return nil, err
 	REDACTED
-		return dto.ProxyFromService(proxy), nil
+		return dto.ProxyFromServiceAdmin(proxy), nil
 REDACTED)
 REDACTED
 
@@ -176,7 +176,7 @@ REDACTED)
 		return
 REDACTED
 
-	response.Success(c, dto.ProxyFromService(proxy))
+	response.Success(c, dto.ProxyFromServiceAdmin(proxy))
 REDACTED
 
 // Delete handles deleting a proxy
