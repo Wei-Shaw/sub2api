@@ -366,6 +366,11 @@ const lineOptions = computed(() => ({
       REDACTED
     REDACTED,
     tooltip: {
+      itemSort: (a: any, b: any) => {
+        const aValue = typeof a?.raw === 'number' ? a.raw : Number(a?.parsed?.y ?? 0)
+        const bValue = typeof b?.raw === 'number' ? b.raw : Number(b?.parsed?.y ?? 0)
+        return bValue - aValue
+      REDACTED,
       callbacks: {
         label: (context: any) => {
           return `${context.dataset.labelREDACTED: ${formatTokens(context.raw)REDACTED`
