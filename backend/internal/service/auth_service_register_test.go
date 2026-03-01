@@ -56,6 +56,21 @@ type emailCacheStub struct {
 	err  error
 REDACTED
 
+type defaultSubscriptionAssignerStub struct {
+	calls []AssignSubscriptionInput
+	err   error
+REDACTED
+
+func (s *defaultSubscriptionAssignerStub) AssignOrExtendSubscription(_ context.Context, input *AssignSubscriptionInput) (*UserSubscription, bool, error) {
+	if input != nil {
+		s.calls = append(s.calls, *input)
+REDACTED
+	if s.err != nil {
+		return nil, false, s.err
+REDACTED
+	return &UserSubscription{UserID: input.UserID, GroupID: input.GroupIDREDACTED, false, nil
+REDACTED
+
 func (s *emailCacheStub) GetVerificationCode(ctx context.Context, email string) (*VerificationCodeData, error) {
 	if s.err != nil {
 		return nil, s.err
@@ -123,6 +138,7 @@ REDACTED
 		nil,
 		nil,
 		nil, // promoService
+		nil, // defaultSubAssigner
 	)
 REDACTED
 
@@ -380,4 +396,24 @@ REDACTED
 	require.NotNil(t, claims.ExpiresAt)
 
 	require.WithinDuration(t, claims.IssuedAt.Time.Add(90*time.Minute), claims.ExpiresAt.Time, 2*time.Second)
+REDACTED
+
+func TestAuthService_Register_AssignsDefaultSubscriptions(t *testing.T) {
+	repo := &userRepoStub{nextID: 42REDACTED
+	assigner := &defaultSubscriptionAssignerStub{REDACTED
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+		SettingKeyDefaultSubscriptions: `[{"group_id":11,"validity_days":30REDACTED,{"group_id":12,"validity_days":7REDACTED]`,
+REDACTED, nil)
+	service.defaultSubAssigner = assigner
+
+	_, user, err := service.Register(context.Background(), "default-sub@test.com", "password")
+REDACTED
+	require.NotNil(t, user)
+	require.Len(t, assigner.calls, 2)
+	require.Equal(t, int64(42), assigner.calls[0].UserID)
+	require.Equal(t, int64(11), assigner.calls[0].GroupID)
+	require.Equal(t, 30, assigner.calls[0].ValidityDays)
+	require.Equal(t, int64(12), assigner.calls[1].GroupID)
+	require.Equal(t, 7, assigner.calls[1].ValidityDays)
 REDACTED

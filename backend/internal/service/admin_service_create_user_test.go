@@ -7,6 +7,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -64,4 +65,33 @@ func TestAdminService_CreateUser_CreateError(t *testing.T) {
 REDACTED)
 	require.ErrorIs(t, err, createErr)
 	require.Empty(t, repo.created)
+REDACTED
+
+func TestAdminService_CreateUser_AssignsDefaultSubscriptions(t *testing.T) {
+	repo := &userRepoStub{nextID: 21REDACTED
+	assigner := &defaultSubscriptionAssignerStub{REDACTED
+	cfg := &config.Config{
+		Default: config.DefaultConfig{
+			UserBalance:     0,
+			UserConcurrency: 1,
+	REDACTED,
+REDACTED
+	settingService := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyDefaultSubscriptions: `[{"group_id":5,"validity_days":30REDACTED]`,
+REDACTEDREDACTED, cfg)
+	svc := &adminServiceImpl{
+		userRepo:           repo,
+		settingService:     settingService,
+		defaultSubAssigner: assigner,
+REDACTED
+
+	_, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:    "new-user@test.com",
+		Password: "password",
+REDACTED)
+REDACTED
+	require.Len(t, assigner.calls, 1)
+	require.Equal(t, int64(21), assigner.calls[0].UserID)
+	require.Equal(t, int64(5), assigner.calls[0].GroupID)
+	require.Equal(t, 30, assigner.calls[0].ValidityDays)
 REDACTED

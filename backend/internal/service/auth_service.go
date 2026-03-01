@@ -65,6 +65,11 @@ type AuthService struct {
 	turnstileService  *TurnstileService
 	emailQueueService *EmailQueueService
 	promoService      *PromoService
+	defaultSubAssigner DefaultSubscriptionAssigner
+REDACTED
+
+type DefaultSubscriptionAssigner interface {
+	AssignOrExtendSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, bool, error)
 REDACTED
 
 // NewAuthService 创建认证服务实例
@@ -78,6 +83,7 @@ func NewAuthService(
 	turnstileService *TurnstileService,
 	emailQueueService *EmailQueueService,
 	promoService *PromoService,
+	defaultSubAssigner DefaultSubscriptionAssigner,
 ) *AuthService {
 	return &AuthService{
 		userRepo:          userRepo,
@@ -89,6 +95,7 @@ func NewAuthService(
 		turnstileService:  turnstileService,
 		emailQueueService: emailQueueService,
 		promoService:      promoService,
+		defaultSubAssigner: defaultSubAssigner,
 REDACTED
 REDACTED
 
@@ -188,6 +195,7 @@ REDACTED
 		logger.LegacyPrintf("service.auth", "[Auth] Database error creating user: %v", err)
 		return "", nil, ErrServiceUnavailable
 REDACTED
+	s.assignDefaultSubscriptions(ctx, user.ID)
 
 	// 标记邀请码为已使用（如果使用了邀请码）
 	if invitationRedeemCode != nil {
@@ -477,6 +485,7 @@ REDACTED
 			REDACTED
 		REDACTED else {
 				user = newUser
+				s.assignDefaultSubscriptions(ctx, user.ID)
 		REDACTED
 	REDACTED else {
 			logger.LegacyPrintf("service.auth", "[Auth] Database error during oauth login: %v", err)
@@ -572,6 +581,7 @@ REDACTED
 			REDACTED
 		REDACTED else {
 				user = newUser
+				s.assignDefaultSubscriptions(ctx, user.ID)
 		REDACTED
 	REDACTED else {
 			logger.LegacyPrintf("service.auth", "[Auth] Database error during oauth login: %v", err)
@@ -595,6 +605,23 @@ REDACTED
 		return nil, nil, fmt.Errorf("generate token pair: %w", err)
 REDACTED
 	return tokenPair, user, nil
+REDACTED
+
+func (s *AuthService) assignDefaultSubscriptions(ctx context.Context, userID int64) {
+	if s.settingService == nil || s.defaultSubAssigner == nil || userID <= 0 {
+		return
+REDACTED
+	items := s.settingService.GetDefaultSubscriptions(ctx)
+	for _, item := range items {
+		if _, _, err := s.defaultSubAssigner.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+			UserID:       userID,
+			GroupID:      item.GroupID,
+			ValidityDays: item.ValidityDays,
+			Notes:        "auto assigned by default user subscriptions setting",
+	REDACTED); err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to assign default subscription: user_id=%d group_id=%d err=%v", userID, item.GroupID, err)
+	REDACTED
+REDACTED
 REDACTED
 
 // ValidateToken 验证JWT token并返回用户声明
