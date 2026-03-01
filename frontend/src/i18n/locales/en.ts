@@ -280,7 +280,7 @@ export default {
     logout: 'Logout',
     github: 'GitHub',
     mySubscriptions: 'My Subscriptions',
-    buySubscription: 'Purchase Subscription',
+    buySubscription: 'Recharge / Subscription',
     docs: 'Docs',
     sora: 'Sora Studio'
   REDACTED,
@@ -3590,15 +3590,17 @@ export default {
         hideCcsImportButtonHint: 'When enabled, the "Import to CCS" button will be hidden on the API Keys page'
       REDACTED,
       purchase: {
-        title: 'Purchase Page',
-        description: 'Show a "Purchase Subscription" entry in the sidebar and open the configured URL in an iframe',
-        enabled: 'Show Purchase Entry',
+        title: 'Recharge / Subscription Page',
+        description: 'Show a "Recharge / Subscription" entry in the sidebar and open the configured URL in an iframe',
+        enabled: 'Show Recharge / Subscription Entry',
         enabledHint: 'Only shown in standard mode (not simple mode)',
-        url: 'Purchase URL',
+        url: 'Recharge / Subscription URL',
         urlPlaceholder: 'https://example.com/purchase',
         urlHint: 'Must be an absolute http(s) URL',
         iframeWarning:
-          '⚠️ iframe note: Some websites block embedding via X-Frame-Options or CSP (frame-ancestors). If the page is blank, provide an "Open in new tab" alternative.'
+          '⚠️ iframe note: Some websites block embedding via X-Frame-Options or CSP (frame-ancestors). If the page is blank, provide an "Open in new tab" alternative.',
+        integrationDoc: 'Payment Integration Docs',
+        integrationDocHint: 'Covers endpoint specs, idempotency semantics, and code samples'
       REDACTED,
       soraClient: {
         title: 'Sora Client',
@@ -3882,16 +3884,16 @@ export default {
     retry: 'Retry'
   REDACTED,
 
-  // Purchase Subscription Page
+  // Recharge / Subscription Page
   purchase: {
-    title: 'Purchase Subscription',
-    description: 'Purchase a subscription via the embedded page',
+    title: 'Recharge / Subscription',
+    description: 'Recharge balance or purchase subscription via the embedded page',
     openInNewTab: 'Open in new tab',
     notEnabledTitle: 'Feature not enabled',
-    notEnabledDesc: 'The administrator has not enabled the purchase page. Please contact admin.',
-    notConfiguredTitle: 'Purchase URL not configured',
+    notEnabledDesc: 'The administrator has not enabled the recharge/subscription entry. Please contact admin.',
+    notConfiguredTitle: 'Recharge / Subscription URL not configured',
     notConfiguredDesc:
-      'The administrator enabled the entry but has not configured a purchase URL. Please contact admin.'
+      'The administrator enabled the entry but has not configured a recharge/subscription URL. Please contact admin.'
   REDACTED,
 
   // Announcements Page

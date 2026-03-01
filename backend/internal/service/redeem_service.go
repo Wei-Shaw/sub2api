@@ -174,6 +174,33 @@ REDACTED
 	return codes, nil
 REDACTED
 
+// CreateCode creates a redeem code with caller-provided code value.
+// It is primarily used by admin integrations that require an external order ID
+// to be mapped to a deterministic redeem code.
+func (s *RedeemService) CreateCode(ctx context.Context, code *RedeemCode) error {
+	if code == nil {
+		return errors.New("redeem code is required")
+REDACTED
+	code.Code = strings.TrimSpace(code.Code)
+	if code.Code == "" {
+		return errors.New("code is required")
+REDACTED
+	if code.Type == "" {
+		code.Type = RedeemTypeBalance
+REDACTED
+	if code.Type != RedeemTypeInvitation && code.Value <= 0 {
+		return errors.New("value must be greater than 0")
+REDACTED
+	if code.Status == "" {
+		code.Status = StatusUnused
+REDACTED
+
+	if err := s.redeemRepo.Create(ctx, code); err != nil {
+		return fmt.Errorf("create redeem code: %w", err)
+REDACTED
+	return nil
+REDACTED
+
 // checkRedeemRateLimit 检查用户兑换错误次数是否超限
 func (s *RedeemService) checkRedeemRateLimit(ctx context.Context, userID int64) error {
 	if s.cache == nil {

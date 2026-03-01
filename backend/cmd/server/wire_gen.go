@@ -148,7 +148,7 @@ REDACTED
 	geminiOAuthHandler := admin.NewGeminiOAuthHandler(geminiOAuthService)
 	antigravityOAuthHandler := admin.NewAntigravityOAuthHandler(antigravityOAuthService)
 	proxyHandler := admin.NewProxyHandler(adminService)
-	adminRedeemHandler := admin.NewRedeemHandler(adminService)
+	adminRedeemHandler := admin.NewRedeemHandler(adminService, redeemService)
 	promoHandler := admin.NewPromoHandler(promoService)
 	opsRepository := repository.NewOpsRepository(db)
 	pricingRemoteClient := repository.ProvidePricingRemoteClient(configConfig)
