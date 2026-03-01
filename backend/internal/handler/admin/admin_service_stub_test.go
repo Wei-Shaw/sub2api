@@ -10,23 +10,23 @@ import (
 )
 
 type stubAdminService struct {
-	users            []service.User
-	apiKeys          []service.APIKey
-	groups           []service.Group
-	accounts         []service.Account
-	proxies          []service.Proxy
-	proxyCounts      []service.ProxyWithAccountCount
-	redeems          []service.RedeemCode
-	createdAccounts  []*service.CreateAccountInput
-	createdProxies   []*service.CreateProxyInput
-	updatedProxyIDs  []int64
-	updatedProxies   []*service.UpdateProxyInput
-	testedProxyIDs   []int64
+	users                []service.User
+	apiKeys              []service.APIKey
+	groups               []service.Group
+	accounts             []service.Account
+	proxies              []service.Proxy
+	proxyCounts          []service.ProxyWithAccountCount
+	redeems              []service.RedeemCode
+	createdAccounts      []*service.CreateAccountInput
+	createdProxies       []*service.CreateProxyInput
+	updatedProxyIDs      []int64
+	updatedProxies       []*service.UpdateProxyInput
+	testedProxyIDs       []int64
 	createAccountErr     error
 	updateAccountErr     error
 	bulkUpdateAccountErr error
 	checkMixedErr        error
-	lastMixedCheck   struct {
+	lastMixedCheck       struct {
 		accountID int64
 		platform  string
 		groupIDs  []int64
