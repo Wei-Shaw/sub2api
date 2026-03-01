@@ -2529,6 +2529,6 @@ type MixedChannelError struct {
 REDACTED
 
 func (e *MixedChannelError) Error() string {
-	return fmt.Sprintf("警告：分组 \"%s\" 中同时包含 %s 和 %s 账号。混合使用不同渠道可能导致 thinking block 签名验证问题，会导致请求报错，请确认混合调用的 Anthropic 账号对应的是反重力反代的 Claude API。确定要继续吗？",
+	return fmt.Sprintf("警告：分组 \"%s\" 中同时包含 %s 和 %s 账号。混合使用不同渠道可能导致 thinking block 签名验证问题，请确保 Anthropic 账号是 Antigravity 反代暴露的 api。确定要继续吗？",
 		e.GroupName, e.CurrentPlatform, e.OtherPlatform)
 REDACTED
