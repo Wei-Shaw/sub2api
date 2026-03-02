@@ -47,7 +47,8 @@
             "
             @click="handleMenuItemClick(item.path)"
           >
-            <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+            <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="item.iconSvg"></span>
+            <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <transition name="fade">
               <span v-if="!sidebarCollapsed">{{ item.label REDACTEDREDACTED</span>
             </transition>
@@ -71,7 +72,8 @@
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
             @click="handleMenuItemClick(item.path)"
           >
-            <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+            <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="item.iconSvg"></span>
+            <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <transition name="fade">
               <span v-if="!sidebarCollapsed">{{ item.label REDACTEDREDACTED</span>
             </transition>
@@ -92,7 +94,8 @@
             :data-tour="item.path === '/keys' ? 'sidebar-my-keys' : undefined"
             @click="handleMenuItemClick(item.path)"
           >
-            <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+            <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="item.iconSvg"></span>
+            <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <transition name="fade">
               <span v-if="!sidebarCollapsed">{{ item.label REDACTEDREDACTED</span>
             </transition>
@@ -149,6 +152,14 @@ import { useRoute REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore REDACTED from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
+
+interface NavItem {
+  path: string
+  label: string
+  icon: unknown
+  iconSvg?: string
+  hideInSimpleMode?: boolean
+REDACTED
 
 const { t REDACTED = useI18n()
 
@@ -496,8 +507,8 @@ const ChevronDoubleRightIcon = {
 REDACTED
 
 // User navigation items (for regular users)
-const userNavItems = computed(() => {
-  const items = [
+const userNavItems = computed((): NavItem[] => {
+  const items: NavItem[] = [
     { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon REDACTED,
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true REDACTED,
@@ -515,6 +526,13 @@ const userNavItems = computed(() => {
           REDACTED
         ]
       : []),
+    ...customMenuItemsForUser.value.map((item): NavItem => ({
+      path: `/custom/${item.idREDACTED`,
+      label: item.label,
+      icon: null,
+      iconSvg: item.icon_svg,
+      hideInSimpleMode: true,
+    REDACTED)),
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true REDACTED,
     { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED
   ]
@@ -522,8 +540,8 @@ const userNavItems = computed(() => {
 REDACTED)
 
 // Personal navigation items (for admin's "My Account" section, without Dashboard)
-const personalNavItems = computed(() => {
-  const items = [
+const personalNavItems = computed((): NavItem[] => {
+  const items: NavItem[] = [
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true REDACTED,
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
@@ -540,15 +558,37 @@ const personalNavItems = computed(() => {
           REDACTED
         ]
       : []),
+    ...customMenuItemsForUser.value.map((item): NavItem => ({
+      path: `/custom/${item.idREDACTED`,
+      label: item.label,
+      icon: null,
+      iconSvg: item.icon_svg,
+      hideInSimpleMode: true,
+    REDACTED)),
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true REDACTED,
     { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED
   ]
   return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
 REDACTED)
 
+// Custom menu items filtered by visibility
+const customMenuItemsForUser = computed(() => {
+  const items = appStore.cachedPublicSettings?.custom_menu_items ?? []
+  return items
+    .filter((item) => item.visibility === 'user')
+    .sort((a, b) => a.sort_order - b.sort_order)
+REDACTED)
+
+const customMenuItemsForAdmin = computed(() => {
+  const items = appStore.cachedPublicSettings?.custom_menu_items ?? []
+  return items
+    .filter((item) => item.visibility === 'admin')
+    .sort((a, b) => a.sort_order - b.sort_order)
+REDACTED)
+
 // Admin navigation items
-const adminNavItems = computed(() => {
-  const baseItems = [
+const adminNavItems = computed((): NavItem[] => {
+  const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon REDACTED,
     ...(adminSettingsStore.opsMonitoringEnabled
       ? [{ path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon REDACTED]
@@ -567,6 +607,10 @@ const adminNavItems = computed(() => {
   // 简单模式下，在系统设置前插入 API密钥
   if (authStore.isSimpleMode) {
     const filtered = baseItems.filter(item => !item.hideInSimpleMode)
+    // Add admin custom menu items
+    for (const cm of customMenuItemsForAdmin.value) {
+      filtered.push({ path: `/custom/${cm.idREDACTED`, label: cm.label, icon: null, iconSvg: cm.icon_svg REDACTED)
+    REDACTED
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED)
     filtered.push({ path: '/admin/data-management', label: t('nav.dataManagement'), icon: DatabaseIcon REDACTED)
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon REDACTED)
@@ -574,6 +618,10 @@ const adminNavItems = computed(() => {
   REDACTED
 
   baseItems.push({ path: '/admin/data-management', label: t('nav.dataManagement'), icon: DatabaseIcon REDACTED)
+  // Add admin custom menu items before settings
+  for (const cm of customMenuItemsForAdmin.value) {
+    baseItems.push({ path: `/custom/${cm.idREDACTED`, label: cm.label, icon: null, iconSvg: cm.icon_svg REDACTED)
+  REDACTED
   baseItems.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon REDACTED)
   return baseItems
 REDACTED)
@@ -653,5 +701,13 @@ REDACTED
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+REDACTED
+
+/* Custom SVG icon in sidebar: inherit color, constrain size */
+.sidebar-svg-icon :deep(svg) {
+  width: 1.25rem;
+  height: 1.25rem;
+  stroke: currentColor;
+  fill: none;
 REDACTED
 </style>

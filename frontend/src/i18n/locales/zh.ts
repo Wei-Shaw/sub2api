@@ -3795,6 +3795,25 @@ export default {
         enabled: '启用 Sora 客户端',
         enabledHint: '开启后，侧边栏将显示 Sora 入口，用户可访问 Sora 功能'
       REDACTED,
+      customMenu: {
+        title: '自定义菜单页面',
+        description: '添加自定义 iframe 页面到侧边栏导航。每个页面可以设置为普通用户或管理员可见。',
+        itemLabel: '菜单项 #{nREDACTED',
+        name: '菜单名称',
+        namePlaceholder: '如：帮助中心',
+        url: '页面 URL',
+        urlPlaceholder: 'https://example.com/page',
+        iconSvg: 'SVG 图标',
+        iconSvgPlaceholder: '<svg>...</svg>',
+        iconPreview: '图标预览',
+        visibility: '可见角色',
+        visibilityUser: '普通用户',
+        visibilityAdmin: '管理员',
+        add: '添加菜单项',
+        remove: '删除',
+        moveUp: '上移',
+        moveDown: '下移',
+      REDACTED,
       smtp: {
         title: 'SMTP 设置',
         description: '配置用于发送验证码的邮件服务',
@@ -4079,6 +4098,16 @@ export default {
     notEnabledDesc: '管理员暂未开启充值/订阅入口，请联系管理员。',
     notConfiguredTitle: '充值/订阅链接未配置',
     notConfiguredDesc: '管理员已开启入口，但尚未配置充值/订阅链接，请联系管理员。'
+  REDACTED,
+
+  // Custom Page (iframe embed)
+  customPage: {
+    title: '自定义页面',
+    openInNewTab: '新窗口打开',
+    notFoundTitle: '页面不存在',
+    notFoundDesc: '该自定义页面不存在或已被删除。',
+    notConfiguredTitle: '页面链接未配置',
+    notConfiguredDesc: '该自定义页面的 URL 未正确配置。',
   REDACTED,
 
   // Announcements Page

@@ -124,6 +124,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyPurchaseSubscriptionEnabled,
 		SettingKeyPurchaseSubscriptionURL,
 		SettingKeySoraClientEnabled,
+		SettingKeyCustomMenuItems,
 		SettingKeyLinuxDoConnectEnabled,
 REDACTED
 
@@ -163,6 +164,7 @@ REDACTED
 		PurchaseSubscriptionEnabled: settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:     strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		SoraClientEnabled:           settings[SettingKeySoraClientEnabled] == "true",
+		CustomMenuItems:             settings[SettingKeyCustomMenuItems],
 		LinuxDoOAuthEnabled:         linuxDoEnabled,
 REDACTED, nil
 REDACTED
@@ -293,6 +295,7 @@ REDACTED
 	updates[SettingKeyPurchaseSubscriptionEnabled] = strconv.FormatBool(settings.PurchaseSubscriptionEnabled)
 	updates[SettingKeyPurchaseSubscriptionURL] = strings.TrimSpace(settings.PurchaseSubscriptionURL)
 	updates[SettingKeySoraClientEnabled] = strconv.FormatBool(settings.SoraClientEnabled)
+	updates[SettingKeyCustomMenuItems] = settings.CustomMenuItems
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -509,6 +512,7 @@ REDACTED
 		SettingKeyPurchaseSubscriptionEnabled: "false",
 		SettingKeyPurchaseSubscriptionURL:     "",
 		SettingKeySoraClientEnabled:           "false",
+		SettingKeyCustomMenuItems:             "[]",
 		SettingKeyDefaultConcurrency:          strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:              strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyDefaultSubscriptions:        "[]",
@@ -567,6 +571,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		PurchaseSubscriptionEnabled:  settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:      strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		SoraClientEnabled:            settings[SettingKeySoraClientEnabled] == "true",
+		CustomMenuItems:              settings[SettingKeyCustomMenuItems],
 REDACTED
 
 	// 解析整数类型

@@ -1,6 +1,9 @@
 package admin
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -19,6 +22,27 @@ import (
 
 // semverPattern 预编译 semver 格式校验正则
 var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+// generateMenuItemID generates a short random hex ID for a custom menu item.
+func generateMenuItemID() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+REDACTED
+
+// parseCustomMenuItems parses a JSON string into a slice of CustomMenuItem.
+// Returns empty slice on empty/invalid input.
+func parseCustomMenuItems(raw string) []dto.CustomMenuItem {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "[]" {
+		return []dto.CustomMenuItem{REDACTED
+REDACTED
+	var items []dto.CustomMenuItem
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return []dto.CustomMenuItem{REDACTED
+REDACTED
+	return items
+REDACTED
 
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
@@ -92,6 +116,7 @@ REDACTED
 		PurchaseSubscriptionEnabled:          settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:              settings.PurchaseSubscriptionURL,
 		SoraClientEnabled:                    settings.SoraClientEnabled,
+		CustomMenuItems:                      parseCustomMenuItems(settings.CustomMenuItems),
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
 		DefaultSubscriptions:                 defaultSubscriptions,
@@ -152,6 +177,7 @@ type UpdateSettingsRequest struct {
 	PurchaseSubscriptionEnabled *bool   `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     *string `json:"purchase_subscription_url"`
 	SoraClientEnabled           bool    `json:"sora_client_enabled"`
+	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
 
 	// 默认配置
 	DefaultConcurrency   int                              `json:"default_concurrency"`
@@ -299,6 +325,40 @@ REDACTED else if purchaseURL != "" {
 	REDACTED
 REDACTED
 
+	// 自定义菜单项验证
+	customMenuJSON := previousSettings.CustomMenuItems
+	if req.CustomMenuItems != nil {
+		items := *req.CustomMenuItems
+		for i, item := range items {
+			if strings.TrimSpace(item.Label) == "" {
+				response.BadRequest(c, "Custom menu item label is required")
+				return
+		REDACTED
+			if strings.TrimSpace(item.URL) == "" {
+				response.BadRequest(c, "Custom menu item URL is required")
+				return
+		REDACTED
+			if err := config.ValidateAbsoluteHTTPURL(strings.TrimSpace(item.URL)); err != nil {
+				response.BadRequest(c, "Custom menu item URL must be an absolute http(s) URL")
+				return
+		REDACTED
+			if item.Visibility != "user" && item.Visibility != "admin" {
+				response.BadRequest(c, "Custom menu item visibility must be 'user' or 'admin'")
+				return
+		REDACTED
+			// Auto-generate ID if missing
+			if strings.TrimSpace(item.ID) == "" {
+				items[i].ID = generateMenuItemID()
+		REDACTED
+	REDACTED
+		menuBytes, err := json.Marshal(items)
+		if err != nil {
+			response.BadRequest(c, "Failed to serialize custom menu items")
+			return
+	REDACTED
+		customMenuJSON = string(menuBytes)
+REDACTED
+
 	// Ops metrics collector interval validation (seconds).
 	if req.OpsMetricsIntervalSeconds != nil {
 		v := *req.OpsMetricsIntervalSeconds
@@ -358,6 +418,7 @@ REDACTED
 		PurchaseSubscriptionEnabled: purchaseEnabled,
 		PurchaseSubscriptionURL:     purchaseURL,
 		SoraClientEnabled:           req.SoraClientEnabled,
+		CustomMenuItems:             customMenuJSON,
 		DefaultConcurrency:          req.DefaultConcurrency,
 		DefaultBalance:              req.DefaultBalance,
 		DefaultSubscriptions:        defaultSubscriptions,
@@ -449,6 +510,7 @@ REDACTED
 		PurchaseSubscriptionEnabled:          updatedSettings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:              updatedSettings.PurchaseSubscriptionURL,
 		SoraClientEnabled:                    updatedSettings.SoraClientEnabled,
+		CustomMenuItems:                      parseCustomMenuItems(updatedSettings.CustomMenuItems),
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
 		DefaultSubscriptions:                 updatedDefaultSubscriptions,

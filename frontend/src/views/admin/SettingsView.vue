@@ -1160,6 +1160,135 @@
           </div>
         </div>
 
+        <!-- Custom Menu Items -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.customMenu.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.customMenu.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="space-y-4 p-6">
+            <!-- Existing menu items -->
+            <div
+              v-for="(item, index) in form.custom_menu_items"
+              :key="item.id || index"
+              class="rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+            >
+              <div class="mb-3 flex items-center justify-between">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.customMenu.itemLabel', { n: index + 1 REDACTED) REDACTEDREDACTED
+                </span>
+                <div class="flex items-center gap-2">
+                  <!-- Move up -->
+                  <button
+                    v-if="index > 0"
+                    type="button"
+                    class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700"
+                    :title="t('admin.settings.customMenu.moveUp')"
+                    @click="moveMenuItem(index, -1)"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" /></svg>
+                  </button>
+                  <!-- Move down -->
+                  <button
+                    v-if="index < form.custom_menu_items.length - 1"
+                    type="button"
+                    class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700"
+                    :title="t('admin.settings.customMenu.moveDown')"
+                    @click="moveMenuItem(index, 1)"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                  </button>
+                  <!-- Delete -->
+                  <button
+                    type="button"
+                    class="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    :title="t('admin.settings.customMenu.remove')"
+                    @click="removeMenuItem(index)"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <!-- Label -->
+                <div>
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.customMenu.name') REDACTEDREDACTED
+                  </label>
+                  <input
+                    v-model="item.label"
+                    type="text"
+                    class="input text-sm"
+                    :placeholder="t('admin.settings.customMenu.namePlaceholder')"
+                  />
+                </div>
+
+                <!-- Visibility -->
+                <div>
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.customMenu.visibility') REDACTEDREDACTED
+                  </label>
+                  <select v-model="item.visibility" class="input text-sm">
+                    <option value="user">{{ t('admin.settings.customMenu.visibilityUser') REDACTEDREDACTED</option>
+                    <option value="admin">{{ t('admin.settings.customMenu.visibilityAdmin') REDACTEDREDACTED</option>
+                  </select>
+                </div>
+
+                <!-- URL (full width) -->
+                <div class="sm:col-span-2">
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.customMenu.url') REDACTEDREDACTED
+                  </label>
+                  <input
+                    v-model="item.url"
+                    type="url"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.customMenu.urlPlaceholder')"
+                  />
+                </div>
+
+                <!-- SVG Icon (full width) -->
+                <div class="sm:col-span-2">
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.customMenu.iconSvg') REDACTEDREDACTED
+                  </label>
+                  <div class="flex items-start gap-3">
+                    <textarea
+                      v-model="item.icon_svg"
+                      rows="2"
+                      class="input flex-1 font-mono text-xs"
+                      :placeholder="t('admin.settings.customMenu.iconSvgPlaceholder')"
+                    ></textarea>
+                    <!-- SVG Preview -->
+                    <div
+                      v-if="item.icon_svg"
+                      class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-600 dark:bg-dark-800"
+                      :title="t('admin.settings.customMenu.iconPreview')"
+                    >
+                      <span class="h-5 w-5 text-gray-600 dark:text-gray-300 [&>svg]:h-5 [&>svg]:w-5 [&>svg]:stroke-current" v-html="item.icon_svg"></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Add button -->
+            <button
+              type="button"
+              class="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-3 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+              @click="addMenuItem"
+            >
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+              {{ t('admin.settings.customMenu.add') REDACTEDREDACTED
+            </button>
+          </div>
+        </div>
+
         <!-- Send Test Email - Only show when email verification is enabled -->
         <div v-if="form.email_verify_enabled" class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -1332,6 +1461,7 @@ const form = reactive<SettingsForm>({
   purchase_subscription_enabled: false,
   purchase_subscription_url: '',
   sora_client_enabled: false,
+  custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: numberREDACTED>,
   smtp_host: '',
   smtp_port: 587,
   smtp_username: '',
@@ -1394,6 +1524,39 @@ async function setAndCopyLinuxdoRedirectUrl() {
 
   form.linuxdo_connect_redirect_url = url
   await copyToClipboard(url, t('admin.settings.linuxdo.redirectUrlSetAndCopied'))
+REDACTED
+
+// Custom menu item management
+function addMenuItem() {
+  form.custom_menu_items.push({
+    id: '',
+    label: '',
+    icon_svg: '',
+    url: '',
+    visibility: 'user',
+    sort_order: form.custom_menu_items.length,
+  REDACTED)
+REDACTED
+
+function removeMenuItem(index: number) {
+  form.custom_menu_items.splice(index, 1)
+  // Re-index sort_order
+  form.custom_menu_items.forEach((item, i) => {
+    item.sort_order = i
+  REDACTED)
+REDACTED
+
+function moveMenuItem(index: number, direction: -1 | 1) {
+  const targetIndex = index + direction
+  if (targetIndex < 0 || targetIndex >= form.custom_menu_items.length) return
+  const items = form.custom_menu_items
+  const temp = items[index]
+  items[index] = items[targetIndex]
+  items[targetIndex] = temp
+  // Re-index sort_order
+  items.forEach((item, i) => {
+    item.sort_order = i
+  REDACTED)
 REDACTED
 
 function handleLogoUpload(event: Event) {
@@ -1534,6 +1697,7 @@ async function saveSettings() {
       purchase_subscription_enabled: form.purchase_subscription_enabled,
       purchase_subscription_url: form.purchase_subscription_url,
       sora_client_enabled: form.sora_client_enabled,
+      custom_menu_items: form.custom_menu_items,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,

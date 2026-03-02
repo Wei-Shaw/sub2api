@@ -41,7 +41,9 @@ REDACTED
 REDACTED
 
 // SecurityHeaders sets baseline security headers for all responses.
-func SecurityHeaders(cfg config.CSPConfig) gin.HandlerFunc {
+// getFrameSrcOrigins is an optional function that returns extra origins to inject into frame-src;
+// pass nil to disable dynamic frame-src injection.
+func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) gin.HandlerFunc {
 	policy := strings.TrimSpace(cfg.Policy)
 	if policy == "" {
 		policy = config.DefaultCSPPolicy
@@ -51,6 +53,15 @@ REDACTED
 	policy = enhanceCSPPolicy(policy)
 
 	return func(c *gin.Context) {
+		finalPolicy := policy
+		if getFrameSrcOrigins != nil {
+			for _, origin := range getFrameSrcOrigins() {
+				if origin != "" {
+					finalPolicy = addToDirective(finalPolicy, "frame-src", origin)
+			REDACTED
+		REDACTED
+	REDACTED
+
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -65,12 +76,10 @@ REDACTED
 			if err != nil {
 				// crypto/rand 失败时降级为无 nonce 的 CSP 策略
 				log.Printf("[SecurityHeaders] %v — 降级为无 nonce 的 CSP", err)
-				finalPolicy := strings.ReplaceAll(policy, NonceTemplate, "'unsafe-inline'")
-				c.Header("Content-Security-Policy", finalPolicy)
+				c.Header("Content-Security-Policy", strings.ReplaceAll(finalPolicy, NonceTemplate, "'unsafe-inline'"))
 		REDACTED else {
 				c.Set(CSPNonceKey, nonce)
-				finalPolicy := strings.ReplaceAll(policy, NonceTemplate, "'nonce-"+nonce+"'")
-				c.Header("Content-Security-Policy", finalPolicy)
+				c.Header("Content-Security-Policy", strings.ReplaceAll(finalPolicy, NonceTemplate, "'nonce-"+nonce+"'"))
 		REDACTED
 	REDACTED
 		c.Next()

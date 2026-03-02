@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"encoding/json"
+	"strings"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -50,8 +53,22 @@ REDACTED
 		HideCcsImportButton:         settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled: settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:     settings.PurchaseSubscriptionURL,
+		CustomMenuItems:             parsePublicCustomMenuItems(settings.CustomMenuItems),
 		LinuxDoOAuthEnabled:         settings.LinuxDoOAuthEnabled,
 		SoraClientEnabled:           settings.SoraClientEnabled,
 		Version:                     h.version,
 REDACTED)
+REDACTED
+
+// parsePublicCustomMenuItems parses a JSON string into a slice of CustomMenuItem.
+func parsePublicCustomMenuItems(raw string) []dto.CustomMenuItem {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "[]" {
+		return []dto.CustomMenuItem{REDACTED
+REDACTED
+	var items []dto.CustomMenuItem
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return []dto.CustomMenuItem{REDACTED
+REDACTED
+	return items
 REDACTED

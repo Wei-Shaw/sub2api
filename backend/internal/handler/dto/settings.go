@@ -1,5 +1,15 @@
 package dto
 
+// CustomMenuItem represents a user-configured custom menu entry.
+type CustomMenuItem struct {
+	ID         string `json:"id"`
+	Label      string `json:"label"`
+	IconSVG    string `json:"icon_svg"`
+	URL        string `json:"url"`
+	Visibility string `json:"visibility"` // "user" or "admin"
+	SortOrder  int    `json:"sort_order"`
+REDACTED
+
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
 	RegistrationEnabled         bool `json:"registration_enabled"`
@@ -38,6 +48,7 @@ type SystemSettings struct {
 	PurchaseSubscriptionEnabled bool   `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     string `json:"purchase_subscription_url"`
 	SoraClientEnabled           bool   `json:"sora_client_enabled"`
+	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 
 	DefaultConcurrency   int                          `json:"default_concurrency"`
 	DefaultBalance       float64                      `json:"default_balance"`
@@ -87,6 +98,7 @@ type PublicSettings struct {
 	HideCcsImportButton         bool   `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled bool   `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     string `json:"purchase_subscription_url"`
+	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	LinuxDoOAuthEnabled         bool   `json:"linuxdo_oauth_enabled"`
 	SoraClientEnabled           bool   `json:"sora_client_enabled"`
 	Version                     string `json:"version"`
