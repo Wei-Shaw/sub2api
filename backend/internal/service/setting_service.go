@@ -195,21 +195,21 @@ REDACTED
 
 	// Return a struct that matches the frontend's expected format
 	return &struct {
-		RegistrationEnabled         bool   `json:"registration_enabled"`
-		EmailVerifyEnabled          bool   `json:"email_verify_enabled"`
-		PromoCodeEnabled            bool   `json:"promo_code_enabled"`
-		PasswordResetEnabled        bool   `json:"password_reset_enabled"`
-		InvitationCodeEnabled       bool   `json:"invitation_code_enabled"`
-		TotpEnabled                 bool   `json:"totp_enabled"`
-		TurnstileEnabled            bool   `json:"turnstile_enabled"`
-		TurnstileSiteKey            string `json:"turnstile_site_key,omitempty"`
-		SiteName                    string `json:"site_name"`
-		SiteLogo                    string `json:"site_logo,omitempty"`
-		SiteSubtitle                string `json:"site_subtitle,omitempty"`
-		APIBaseURL                  string `json:"api_base_url,omitempty"`
-		ContactInfo                 string `json:"contact_info,omitempty"`
-		DocURL                      string `json:"doc_url,omitempty"`
-		HomeContent                 string `json:"home_content,omitempty"`
+		RegistrationEnabled         bool            `json:"registration_enabled"`
+		EmailVerifyEnabled          bool            `json:"email_verify_enabled"`
+		PromoCodeEnabled            bool            `json:"promo_code_enabled"`
+		PasswordResetEnabled        bool            `json:"password_reset_enabled"`
+		InvitationCodeEnabled       bool            `json:"invitation_code_enabled"`
+		TotpEnabled                 bool            `json:"totp_enabled"`
+		TurnstileEnabled            bool            `json:"turnstile_enabled"`
+		TurnstileSiteKey            string          `json:"turnstile_site_key,omitempty"`
+		SiteName                    string          `json:"site_name"`
+		SiteLogo                    string          `json:"site_logo,omitempty"`
+		SiteSubtitle                string          `json:"site_subtitle,omitempty"`
+		APIBaseURL                  string          `json:"api_base_url,omitempty"`
+		ContactInfo                 string          `json:"contact_info,omitempty"`
+		DocURL                      string          `json:"doc_url,omitempty"`
+		HomeContent                 string          `json:"home_content,omitempty"`
 		HideCcsImportButton         bool            `json:"hide_ccs_import_button"`
 		PurchaseSubscriptionEnabled bool            `json:"purchase_subscription_enabled"`
 		PurchaseSubscriptionURL     string          `json:"purchase_subscription_url,omitempty"`
