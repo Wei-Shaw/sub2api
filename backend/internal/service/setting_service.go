@@ -244,22 +244,6 @@ REDACTED{
 REDACTED, nil
 REDACTED
 
-// sanitizeCustomMenuItemsJSON validates a raw JSON string is a valid JSON array
-// and returns it as json.RawMessage. Returns "[]" if the input is empty, not a
-// valid JSON array, or is a non-array JSON value (e.g. object, string).
-func sanitizeCustomMenuItemsJSON(raw string) json.RawMessage {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "[]" {
-		return json.RawMessage("[]")
-REDACTED
-	// Verify it's actually a JSON array, not an object or other type
-	var arr []json.RawMessage
-	if err := json.Unmarshal([]byte(raw), &arr); err != nil {
-		return json.RawMessage("[]")
-REDACTED
-	return json.RawMessage(raw)
-REDACTED
-
 // filterUserVisibleMenuItems filters out admin-only menu items from a raw JSON
 // array string, returning only items with visibility != "admin".
 func filterUserVisibleMenuItems(raw string) json.RawMessage {
