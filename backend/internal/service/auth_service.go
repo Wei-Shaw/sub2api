@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +34,7 @@ var (
 	ErrRefreshTokenExpired    = infraerrors.Unauthorized("REFRESH_TOKEN_EXPIRED", "refresh token has expired")
 	ErrRefreshTokenReused     = infraerrors.Unauthorized("REFRESH_TOKEN_REUSED", "refresh token has been reused")
 	ErrEmailVerifyRequired    = infraerrors.BadRequest("EMAIL_VERIFY_REQUIRED", "email verification is required")
+	ErrEmailSuffixNotAllowed  = infraerrors.BadRequest("EMAIL_SUFFIX_NOT_ALLOWED", "email suffix is not allowed")
 	ErrRegDisabled            = infraerrors.Forbidden("REGISTRATION_DISABLED", "registration is currently disabled")
 	ErrServiceUnavailable     = infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable")
 	ErrInvitationCodeRequired = infraerrors.BadRequest("INVITATION_CODE_REQUIRED", "invitation code is required")
@@ -114,6 +116,9 @@ REDACTED
 	// 防止用户注册 LinuxDo OAuth 合成邮箱，避免第三方登录与本地账号发生碰撞。
 	if isReservedEmail(email) {
 		return "", nil, ErrEmailReserved
+REDACTED
+	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+		return "", nil, err
 REDACTED
 
 	// 检查是否需要邀请码
@@ -241,6 +246,9 @@ REDACTED
 	if isReservedEmail(email) {
 		return ErrEmailReserved
 REDACTED
+	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+		return err
+REDACTED
 
 	// 检查邮箱是否已存在
 	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
@@ -278,6 +286,9 @@ REDACTED
 
 	if isReservedEmail(email) {
 		return nil, ErrEmailReserved
+REDACTED
+	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+		return nil, err
 REDACTED
 
 	// 检查邮箱是否已存在
@@ -622,6 +633,32 @@ REDACTED
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to assign default subscription: user_id=%d group_id=%d err=%v", userID, item.GroupID, err)
 	REDACTED
 REDACTED
+REDACTED
+
+func (s *AuthService) validateRegistrationEmailPolicy(ctx context.Context, email string) error {
+	if s.settingService == nil {
+		return nil
+REDACTED
+	whitelist := s.settingService.GetRegistrationEmailSuffixWhitelist(ctx)
+	if !IsRegistrationEmailSuffixAllowed(email, whitelist) {
+		return buildEmailSuffixNotAllowedError(whitelist)
+REDACTED
+	return nil
+REDACTED
+
+func buildEmailSuffixNotAllowedError(whitelist []string) error {
+	if len(whitelist) == 0 {
+		return ErrEmailSuffixNotAllowed
+REDACTED
+
+	allowed := strings.Join(whitelist, ", ")
+	return infraerrors.BadRequest(
+		"EMAIL_SUFFIX_NOT_ALLOWED",
+		fmt.Sprintf("email suffix is not allowed, allowed suffixes: %s", allowed),
+	).WithMetadata(map[string]string{
+		"allowed_suffixes":     strings.Join(whitelist, ","),
+		"allowed_suffix_count": strconv.Itoa(len(whitelist)),
+REDACTED)
 REDACTED
 
 // ValidateToken 验证JWT token并返回用户声明

@@ -17,13 +17,14 @@ REDACTED
 
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
-	RegistrationEnabled         bool `json:"registration_enabled"`
-	EmailVerifyEnabled          bool `json:"email_verify_enabled"`
-	PromoCodeEnabled            bool `json:"promo_code_enabled"`
-	PasswordResetEnabled        bool `json:"password_reset_enabled"`
-	InvitationCodeEnabled       bool `json:"invitation_code_enabled"`
-	TotpEnabled                 bool `json:"totp_enabled"`                   // TOTP 双因素认证
-	TotpEncryptionKeyConfigured bool `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
+	RegistrationEnabled              bool     `json:"registration_enabled"`
+	EmailVerifyEnabled               bool     `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist []string `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                 bool     `json:"promo_code_enabled"`
+	PasswordResetEnabled             bool     `json:"password_reset_enabled"`
+	InvitationCodeEnabled            bool     `json:"invitation_code_enabled"`
+	TotpEnabled                      bool     `json:"totp_enabled"`                   // TOTP 双因素认证
+	TotpEncryptionKeyConfigured      bool     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
 
 	SMTPHost               string `json:"smtp_host"`
 	SMTPPort               int    `json:"smtp_port"`
@@ -88,28 +89,29 @@ type DefaultSubscriptionSetting struct {
 REDACTED
 
 type PublicSettings struct {
-	RegistrationEnabled         bool             `json:"registration_enabled"`
-	EmailVerifyEnabled          bool             `json:"email_verify_enabled"`
-	PromoCodeEnabled            bool             `json:"promo_code_enabled"`
-	PasswordResetEnabled        bool             `json:"password_reset_enabled"`
-	InvitationCodeEnabled       bool             `json:"invitation_code_enabled"`
-	TotpEnabled                 bool             `json:"totp_enabled"` // TOTP 双因素认证
-	TurnstileEnabled            bool             `json:"turnstile_enabled"`
-	TurnstileSiteKey            string           `json:"turnstile_site_key"`
-	SiteName                    string           `json:"site_name"`
-	SiteLogo                    string           `json:"site_logo"`
-	SiteSubtitle                string           `json:"site_subtitle"`
-	APIBaseURL                  string           `json:"api_base_url"`
-	ContactInfo                 string           `json:"contact_info"`
-	DocURL                      string           `json:"doc_url"`
-	HomeContent                 string           `json:"home_content"`
-	HideCcsImportButton         bool             `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled bool             `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL     string           `json:"purchase_subscription_url"`
-	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
-	LinuxDoOAuthEnabled         bool             `json:"linuxdo_oauth_enabled"`
-	SoraClientEnabled           bool             `json:"sora_client_enabled"`
-	Version                     string           `json:"version"`
+	RegistrationEnabled              bool             `json:"registration_enabled"`
+	EmailVerifyEnabled               bool             `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist []string         `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                 bool             `json:"promo_code_enabled"`
+	PasswordResetEnabled             bool             `json:"password_reset_enabled"`
+	InvitationCodeEnabled            bool             `json:"invitation_code_enabled"`
+	TotpEnabled                      bool             `json:"totp_enabled"` // TOTP 双因素认证
+	TurnstileEnabled                 bool             `json:"turnstile_enabled"`
+	TurnstileSiteKey                 string           `json:"turnstile_site_key"`
+	SiteName                         string           `json:"site_name"`
+	SiteLogo                         string           `json:"site_logo"`
+	SiteSubtitle                     string           `json:"site_subtitle"`
+	APIBaseURL                       string           `json:"api_base_url"`
+	ContactInfo                      string           `json:"contact_info"`
+	DocURL                           string           `json:"doc_url"`
+	HomeContent                      string           `json:"home_content"`
+	HideCcsImportButton              bool             `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled      bool             `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL          string           `json:"purchase_subscription_url"`
+	CustomMenuItems                  []CustomMenuItem `json:"custom_menu_items"`
+	LinuxDoOAuthEnabled              bool             `json:"linuxdo_oauth_enabled"`
+	SoraClientEnabled                bool             `json:"sora_client_enabled"`
+	Version                          string           `json:"version"`
 REDACTED
 
 // SoraS3Settings Sora S3 存储配置 DTO（响应用，不含敏感字段）

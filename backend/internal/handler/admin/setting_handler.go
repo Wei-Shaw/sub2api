@@ -77,6 +77,7 @@ REDACTED
 	response.Success(c, dto.SystemSettings{
 		RegistrationEnabled:                  settings.RegistrationEnabled,
 		EmailVerifyEnabled:                   settings.EmailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist:     settings.RegistrationEmailSuffixWhitelist,
 		PromoCodeEnabled:                     settings.PromoCodeEnabled,
 		PasswordResetEnabled:                 settings.PasswordResetEnabled,
 		InvitationCodeEnabled:                settings.InvitationCodeEnabled,
@@ -130,12 +131,13 @@ REDACTED
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
 	// 注册设置
-	RegistrationEnabled   bool `json:"registration_enabled"`
-	EmailVerifyEnabled    bool `json:"email_verify_enabled"`
-	PromoCodeEnabled      bool `json:"promo_code_enabled"`
-	PasswordResetEnabled  bool `json:"password_reset_enabled"`
-	InvitationCodeEnabled bool `json:"invitation_code_enabled"`
-	TotpEnabled           bool `json:"totp_enabled"` // TOTP 双因素认证
+	RegistrationEnabled              bool     `json:"registration_enabled"`
+	EmailVerifyEnabled               bool     `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist []string `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                 bool     `json:"promo_code_enabled"`
+	PasswordResetEnabled             bool     `json:"password_reset_enabled"`
+	InvitationCodeEnabled            bool     `json:"invitation_code_enabled"`
+	TotpEnabled                      bool     `json:"totp_enabled"` // TOTP 双因素认证
 
 	// 邮件服务设置
 	SMTPHost     string `json:"smtp_host"`
@@ -426,50 +428,51 @@ REDACTED
 REDACTED
 
 	settings := &service.SystemSettings{
-		RegistrationEnabled:         req.RegistrationEnabled,
-		EmailVerifyEnabled:          req.EmailVerifyEnabled,
-		PromoCodeEnabled:            req.PromoCodeEnabled,
-		PasswordResetEnabled:        req.PasswordResetEnabled,
-		InvitationCodeEnabled:       req.InvitationCodeEnabled,
-		TotpEnabled:                 req.TotpEnabled,
-		SMTPHost:                    req.SMTPHost,
-		SMTPPort:                    req.SMTPPort,
-		SMTPUsername:                req.SMTPUsername,
-		SMTPPassword:                req.SMTPPassword,
-		SMTPFrom:                    req.SMTPFrom,
-		SMTPFromName:                req.SMTPFromName,
-		SMTPUseTLS:                  req.SMTPUseTLS,
-		TurnstileEnabled:            req.TurnstileEnabled,
-		TurnstileSiteKey:            req.TurnstileSiteKey,
-		TurnstileSecretKey:          req.TurnstileSecretKey,
-		LinuxDoConnectEnabled:       req.LinuxDoConnectEnabled,
-		LinuxDoConnectClientID:      req.LinuxDoConnectClientID,
-		LinuxDoConnectClientSecret:  req.LinuxDoConnectClientSecret,
-		LinuxDoConnectRedirectURL:   req.LinuxDoConnectRedirectURL,
-		SiteName:                    req.SiteName,
-		SiteLogo:                    req.SiteLogo,
-		SiteSubtitle:                req.SiteSubtitle,
-		APIBaseURL:                  req.APIBaseURL,
-		ContactInfo:                 req.ContactInfo,
-		DocURL:                      req.DocURL,
-		HomeContent:                 req.HomeContent,
-		HideCcsImportButton:         req.HideCcsImportButton,
-		PurchaseSubscriptionEnabled: purchaseEnabled,
-		PurchaseSubscriptionURL:     purchaseURL,
-		SoraClientEnabled:           req.SoraClientEnabled,
-		CustomMenuItems:             customMenuJSON,
-		DefaultConcurrency:          req.DefaultConcurrency,
-		DefaultBalance:              req.DefaultBalance,
-		DefaultSubscriptions:        defaultSubscriptions,
-		EnableModelFallback:         req.EnableModelFallback,
-		FallbackModelAnthropic:      req.FallbackModelAnthropic,
-		FallbackModelOpenAI:         req.FallbackModelOpenAI,
-		FallbackModelGemini:         req.FallbackModelGemini,
-		FallbackModelAntigravity:    req.FallbackModelAntigravity,
-		EnableIdentityPatch:         req.EnableIdentityPatch,
-		IdentityPatchPrompt:         req.IdentityPatchPrompt,
-		MinClaudeCodeVersion:        req.MinClaudeCodeVersion,
-		AllowUngroupedKeyScheduling: req.AllowUngroupedKeyScheduling,
+		RegistrationEnabled:              req.RegistrationEnabled,
+		EmailVerifyEnabled:               req.EmailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist: req.RegistrationEmailSuffixWhitelist,
+		PromoCodeEnabled:                 req.PromoCodeEnabled,
+		PasswordResetEnabled:             req.PasswordResetEnabled,
+		InvitationCodeEnabled:            req.InvitationCodeEnabled,
+		TotpEnabled:                      req.TotpEnabled,
+		SMTPHost:                         req.SMTPHost,
+		SMTPPort:                         req.SMTPPort,
+		SMTPUsername:                     req.SMTPUsername,
+		SMTPPassword:                     req.SMTPPassword,
+		SMTPFrom:                         req.SMTPFrom,
+		SMTPFromName:                     req.SMTPFromName,
+		SMTPUseTLS:                       req.SMTPUseTLS,
+		TurnstileEnabled:                 req.TurnstileEnabled,
+		TurnstileSiteKey:                 req.TurnstileSiteKey,
+		TurnstileSecretKey:               req.TurnstileSecretKey,
+		LinuxDoConnectEnabled:            req.LinuxDoConnectEnabled,
+		LinuxDoConnectClientID:           req.LinuxDoConnectClientID,
+		LinuxDoConnectClientSecret:       req.LinuxDoConnectClientSecret,
+		LinuxDoConnectRedirectURL:        req.LinuxDoConnectRedirectURL,
+		SiteName:                         req.SiteName,
+		SiteLogo:                         req.SiteLogo,
+		SiteSubtitle:                     req.SiteSubtitle,
+		APIBaseURL:                       req.APIBaseURL,
+		ContactInfo:                      req.ContactInfo,
+		DocURL:                           req.DocURL,
+		HomeContent:                      req.HomeContent,
+		HideCcsImportButton:              req.HideCcsImportButton,
+		PurchaseSubscriptionEnabled:      purchaseEnabled,
+		PurchaseSubscriptionURL:          purchaseURL,
+		SoraClientEnabled:                req.SoraClientEnabled,
+		CustomMenuItems:                  customMenuJSON,
+		DefaultConcurrency:               req.DefaultConcurrency,
+		DefaultBalance:                   req.DefaultBalance,
+		DefaultSubscriptions:             defaultSubscriptions,
+		EnableModelFallback:              req.EnableModelFallback,
+		FallbackModelAnthropic:           req.FallbackModelAnthropic,
+		FallbackModelOpenAI:              req.FallbackModelOpenAI,
+		FallbackModelGemini:              req.FallbackModelGemini,
+		FallbackModelAntigravity:         req.FallbackModelAntigravity,
+		EnableIdentityPatch:              req.EnableIdentityPatch,
+		IdentityPatchPrompt:              req.IdentityPatchPrompt,
+		MinClaudeCodeVersion:             req.MinClaudeCodeVersion,
+		AllowUngroupedKeyScheduling:      req.AllowUngroupedKeyScheduling,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -520,6 +523,7 @@ REDACTED
 	response.Success(c, dto.SystemSettings{
 		RegistrationEnabled:                  updatedSettings.RegistrationEnabled,
 		EmailVerifyEnabled:                   updatedSettings.EmailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist:     updatedSettings.RegistrationEmailSuffixWhitelist,
 		PromoCodeEnabled:                     updatedSettings.PromoCodeEnabled,
 		PasswordResetEnabled:                 updatedSettings.PasswordResetEnabled,
 		InvitationCodeEnabled:                updatedSettings.InvitationCodeEnabled,
@@ -597,6 +601,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 REDACTED
 	if before.EmailVerifyEnabled != after.EmailVerifyEnabled {
 		changed = append(changed, "email_verify_enabled")
+REDACTED
+	if !equalStringSlice(before.RegistrationEmailSuffixWhitelist, after.RegistrationEmailSuffixWhitelist) {
+		changed = append(changed, "registration_email_suffix_whitelist")
 REDACTED
 	if before.PasswordResetEnabled != after.PasswordResetEnabled {
 		changed = append(changed, "password_reset_enabled")
@@ -745,6 +752,18 @@ REDACTED
 		normalized = append(normalized, item)
 REDACTED
 	return normalized
+REDACTED
+
+func equalStringSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+REDACTED
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+	REDACTED
+REDACTED
+	return true
 REDACTED
 
 func equalDefaultSubscriptions(a, b []service.DefaultSubscriptionSetting) bool {
