@@ -210,12 +210,13 @@ REDACTED
 		ContactInfo                 string `json:"contact_info,omitempty"`
 		DocURL                      string `json:"doc_url,omitempty"`
 		HomeContent                 string `json:"home_content,omitempty"`
-		HideCcsImportButton         bool   `json:"hide_ccs_import_button"`
-		PurchaseSubscriptionEnabled bool   `json:"purchase_subscription_enabled"`
-		PurchaseSubscriptionURL     string `json:"purchase_subscription_url,omitempty"`
-		SoraClientEnabled           bool   `json:"sora_client_enabled"`
-		LinuxDoOAuthEnabled         bool   `json:"linuxdo_oauth_enabled"`
-		Version                     string `json:"version,omitempty"`
+		HideCcsImportButton         bool            `json:"hide_ccs_import_button"`
+		PurchaseSubscriptionEnabled bool            `json:"purchase_subscription_enabled"`
+		PurchaseSubscriptionURL     string          `json:"purchase_subscription_url,omitempty"`
+		SoraClientEnabled           bool            `json:"sora_client_enabled"`
+		CustomMenuItems             json.RawMessage `json:"custom_menu_items"`
+		LinuxDoOAuthEnabled         bool            `json:"linuxdo_oauth_enabled"`
+		Version                     string          `json:"version,omitempty"`
 REDACTED{
 		RegistrationEnabled:         settings.RegistrationEnabled,
 		EmailVerifyEnabled:          settings.EmailVerifyEnabled,
@@ -236,9 +237,23 @@ REDACTED{
 		PurchaseSubscriptionEnabled: settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:     settings.PurchaseSubscriptionURL,
 		SoraClientEnabled:           settings.SoraClientEnabled,
+		CustomMenuItems:             sanitizeCustomMenuItemsJSON(settings.CustomMenuItems),
 		LinuxDoOAuthEnabled:         settings.LinuxDoOAuthEnabled,
 		Version:                     s.version,
 REDACTED, nil
+REDACTED
+
+// sanitizeCustomMenuItemsJSON validates a raw JSON string and returns it as json.RawMessage.
+// Returns "[]" if the input is empty or invalid JSON.
+func sanitizeCustomMenuItemsJSON(raw string) json.RawMessage {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "[]" {
+		return json.RawMessage("[]")
+REDACTED
+	if json.Valid([]byte(raw)) {
+		return json.RawMessage(raw)
+REDACTED
+	return json.RawMessage("[]")
 REDACTED
 
 // UpdateSettings 更新系统设置
