@@ -52,6 +52,7 @@ REDACTED
 		turnstileService,
 		nil, // emailQueueService
 		nil, // promoService
+		nil, // defaultSubAssigner
 	)
 REDACTED
 
