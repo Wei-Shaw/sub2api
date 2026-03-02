@@ -3806,6 +3806,8 @@ export default {
         iconSvg: 'SVG 图标',
         iconSvgPlaceholder: '<svg>...</svg>',
         iconPreview: '图标预览',
+        uploadSvg: '上传 SVG',
+        removeSvg: '清除',
         visibility: '可见角色',
         visibilityUser: '普通用户',
         visibilityAdmin: '管理员',

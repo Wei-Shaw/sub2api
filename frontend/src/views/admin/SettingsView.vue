@@ -832,64 +832,14 @@
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 {{ t('admin.settings.site.siteLogo') REDACTEDREDACTED
               </label>
-              <div class="flex items-start gap-6">
-                <!-- Logo Preview -->
-                <div class="flex-shrink-0">
-                  <div
-                    class="flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 dark:border-dark-600 dark:bg-dark-800"
-                    :class="{ 'border-solid': form.site_logo REDACTED"
-                  >
-                    <img
-                      v-if="form.site_logo"
-                      :src="form.site_logo"
-                      alt="Site Logo"
-                      class="h-full w-full object-contain"
-                    />
-                    <svg
-                      v-else
-                      class="h-8 w-8 text-gray-400 dark:text-dark-500"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="1.5"
-                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                      />
-                    </svg>
-                  </div>
-                </div>
-                <!-- Upload Controls -->
-                <div class="flex-1 space-y-3">
-                  <div class="flex items-center gap-3">
-                    <label class="btn btn-secondary btn-sm cursor-pointer">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        class="hidden"
-                        @change="handleLogoUpload"
-                      />
-                      <Icon name="upload" size="sm" class="mr-1.5" :stroke-width="2" />
-                      {{ t('admin.settings.site.uploadImage') REDACTEDREDACTED
-                    </label>
-                    <button
-                      v-if="form.site_logo"
-                      type="button"
-                      @click="form.site_logo = ''"
-                      class="btn btn-secondary btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
-                    >
-                      <Icon name="trash" size="sm" class="mr-1.5" :stroke-width="2" />
-                      {{ t('admin.settings.site.remove') REDACTEDREDACTED
-                    </button>
-                  </div>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.settings.site.logoHint') REDACTEDREDACTED
-                  </p>
-                  <p v-if="logoError" class="text-xs text-red-500">{{ logoError REDACTEDREDACTED</p>
-                </div>
-              </div>
+              <ImageUpload
+                v-model="form.site_logo"
+                mode="image"
+                :upload-label="t('admin.settings.site.uploadImage')"
+                :remove-label="t('admin.settings.site.remove')"
+                :hint="t('admin.settings.site.logoHint')"
+                :max-size="300 * 1024"
+              />
             </div>
 
             <!-- Home Content -->
@@ -1257,22 +1207,14 @@
                   <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                     {{ t('admin.settings.customMenu.iconSvg') REDACTEDREDACTED
                   </label>
-                  <div class="flex items-start gap-3">
-                    <textarea
-                      v-model="item.icon_svg"
-                      rows="2"
-                      class="input flex-1 font-mono text-xs"
-                      :placeholder="t('admin.settings.customMenu.iconSvgPlaceholder')"
-                    ></textarea>
-                    <!-- SVG Preview -->
-                    <div
-                      v-if="item.icon_svg"
-                      class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-600 dark:bg-dark-800"
-                      :title="t('admin.settings.customMenu.iconPreview')"
-                    >
-                      <span class="h-5 w-5 text-gray-600 dark:text-gray-300 [&>svg]:h-5 [&>svg]:w-5 [&>svg]:stroke-current" v-html="item.icon_svg"></span>
-                    </div>
-                  </div>
+                  <ImageUpload
+                    :model-value="item.icon_svg"
+                    mode="svg"
+                    size="sm"
+                    :upload-label="t('admin.settings.customMenu.uploadSvg')"
+                    :remove-label="t('admin.settings.customMenu.removeSvg')"
+                    @update:model-value="(v: string) => item.icon_svg = v"
+                  />
                 </div>
               </div>
             </div>
@@ -1390,6 +1332,7 @@ import Select from '@/components/common/Select.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import ImageUpload from '@/components/common/ImageUpload.vue'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 import { useAppStore REDACTED from '@/stores'
 
@@ -1402,7 +1345,6 @@ const saving = ref(false)
 const testingSmtp = ref(false)
 const sendingTestEmail = ref(false)
 const testEmailAddress = ref('')
-const logoError = ref('')
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true)
@@ -1557,44 +1499,6 @@ function moveMenuItem(index: number, direction: -1 | 1) {
   items.forEach((item, i) => {
     item.sort_order = i
   REDACTED)
-REDACTED
-
-function handleLogoUpload(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  logoError.value = ''
-
-  if (!file) return
-
-  // Check file size (300KB = 307200 bytes)
-  const maxSize = 300 * 1024
-  if (file.size > maxSize) {
-    logoError.value = t('admin.settings.site.logoSizeError', {
-      size: (file.size / 1024).toFixed(1)
-    REDACTED)
-    input.value = ''
-    return
-  REDACTED
-
-  // Check file type
-  if (!file.type.startsWith('image/')) {
-    logoError.value = t('admin.settings.site.logoTypeError')
-    input.value = ''
-    return
-  REDACTED
-
-  // Convert to base64
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    form.site_logo = e.target?.result as string
-  REDACTED
-  reader.onerror = () => {
-    logoError.value = t('admin.settings.site.logoReadError')
-  REDACTED
-  reader.readAsDataURL(file)
-
-  // Reset input
-  input.value = ''
 REDACTED
 
 async function loadSettings() {

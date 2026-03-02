@@ -526,15 +526,14 @@ const userNavItems = computed((): NavItem[] => {
           REDACTED
         ]
       : []),
+    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true REDACTED,
+    { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED,
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.idREDACTED`,
       label: item.label,
       icon: null,
       iconSvg: item.icon_svg,
-      hideInSimpleMode: true,
     REDACTED)),
-    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true REDACTED,
-    { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED
   ]
   return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
 REDACTED)
@@ -558,15 +557,14 @@ const personalNavItems = computed((): NavItem[] => {
           REDACTED
         ]
       : []),
+    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true REDACTED,
+    { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED,
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.idREDACTED`,
       label: item.label,
       icon: null,
       iconSvg: item.icon_svg,
-      hideInSimpleMode: true,
     REDACTED)),
-    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true REDACTED,
-    { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED
   ]
   return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
 REDACTED)
@@ -607,22 +605,22 @@ const adminNavItems = computed((): NavItem[] => {
   // 简单模式下，在系统设置前插入 API密钥
   if (authStore.isSimpleMode) {
     const filtered = baseItems.filter(item => !item.hideInSimpleMode)
-    // Add admin custom menu items
-    for (const cm of customMenuItemsForAdmin.value) {
-      filtered.push({ path: `/custom/${cm.idREDACTED`, label: cm.label, icon: null, iconSvg: cm.icon_svg REDACTED)
-    REDACTED
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED)
     filtered.push({ path: '/admin/data-management', label: t('nav.dataManagement'), icon: DatabaseIcon REDACTED)
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon REDACTED)
+    // Add admin custom menu items after settings
+    for (const cm of customMenuItemsForAdmin.value) {
+      filtered.push({ path: `/custom/${cm.idREDACTED`, label: cm.label, icon: null, iconSvg: cm.icon_svg REDACTED)
+    REDACTED
     return filtered
   REDACTED
 
   baseItems.push({ path: '/admin/data-management', label: t('nav.dataManagement'), icon: DatabaseIcon REDACTED)
-  // Add admin custom menu items before settings
+  baseItems.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon REDACTED)
+  // Add admin custom menu items after settings
   for (const cm of customMenuItemsForAdmin.value) {
     baseItems.push({ path: `/custom/${cm.idREDACTED`, label: cm.label, icon: null, iconSvg: cm.icon_svg REDACTED)
   REDACTED
-  baseItems.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon REDACTED)
   return baseItems
 REDACTED)
 

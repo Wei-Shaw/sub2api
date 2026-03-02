@@ -3636,6 +3636,8 @@ export default {
         iconSvg: 'SVG Icon',
         iconSvgPlaceholder: '<svg>...</svg>',
         iconPreview: 'Icon Preview',
+        uploadSvg: 'Upload SVG',
+        removeSvg: 'Remove',
         visibility: 'Visible To',
         visibilityUser: 'Regular Users',
         visibilityAdmin: 'Administrators',
