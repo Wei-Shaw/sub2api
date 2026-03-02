@@ -2028,7 +2028,6 @@ REDACTED)
 		ProxyURL:              proxyURL,
 		Timeout:               proxyQualityRequestTimeout,
 		ResponseHeaderTimeout: proxyQualityResponseHeaderTimeout,
-		ProxyStrict:           true,
 REDACTED)
 	if err != nil {
 		result.Items = append(result.Items, ProxyQualityCheckItem{

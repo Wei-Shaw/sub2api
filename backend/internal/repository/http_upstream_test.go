@@ -44,7 +44,7 @@ REDACTED
 // 验证未配置时使用 300 秒默认值
 func (s *HTTPUpstreamSuite) TestDefaultResponseHeaderTimeout() {
 	svc := s.newService()
-	entry := svc.getOrCreateClient("", 0, 0)
+	entry := mustGetOrCreateClient(s.T(), svc, "", 0, 0)
 	transport, ok := entry.client.Transport.(*http.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), 300*time.Second, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout mismatch")
@@ -55,25 +55,27 @@ REDACTED
 func (s *HTTPUpstreamSuite) TestCustomResponseHeaderTimeout() {
 	s.cfg.Gateway = config.GatewayConfig{ResponseHeaderTimeout: 7REDACTED
 	svc := s.newService()
-	entry := svc.getOrCreateClient("", 0, 0)
+	entry := mustGetOrCreateClient(s.T(), svc, "", 0, 0)
 	transport, ok := entry.client.Transport.(*http.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), 7*time.Second, transport.ResponseHeaderTimeout, "ResponseHeaderTimeout mismatch")
 REDACTED
 
-// TestGetOrCreateClient_InvalidURLFallsBackToDirect 测试无效代理 URL 回退
-// 验证解析失败时回退到直连模式
-func (s *HTTPUpstreamSuite) TestGetOrCreateClient_InvalidURLFallsBackToDirect() {
+// TestGetOrCreateClient_InvalidURLReturnsError 测试无效代理 URL 返回错误
+// 验证解析失败时拒绝回退到直连模式
+func (s *HTTPUpstreamSuite) TestGetOrCreateClient_InvalidURLReturnsError() {
 	svc := s.newService()
-	entry := svc.getOrCreateClient("://bad-proxy-url", 1, 1)
-	require.Equal(s.T(), directProxyKey, entry.proxyKey, "expected direct proxy fallback")
+	_, err := svc.getClientEntry("://bad-proxy-url", 1, 1, false, false)
+	require.Error(s.T(), err, "expected error for invalid proxy URL")
 REDACTED
 
 // TestNormalizeProxyURL_Canonicalizes 测试代理 URL 规范化
 // 验证等价地址能够映射到同一缓存键
 func (s *HTTPUpstreamSuite) TestNormalizeProxyURL_Canonicalizes() {
-	key1, _ := normalizeProxyURL("http://proxy.local:8080")
-	key2, _ := normalizeProxyURL("http://proxy.local:8080/")
+	key1, _, err1 := normalizeProxyURL("http://proxy.local:8080")
+	require.NoError(s.T(), err1)
+	key2, _, err2 := normalizeProxyURL("http://proxy.local:8080/")
+	require.NoError(s.T(), err2)
 	require.Equal(s.T(), key1, key2, "expected normalized proxy keys to match")
 REDACTED
 
@@ -171,8 +173,8 @@ func (s *HTTPUpstreamSuite) TestAccountIsolation_DifferentAccounts() {
 	s.cfg.Gateway = config.GatewayConfig{ConnectionPoolIsolation: config.ConnectionPoolIsolationAccountREDACTED
 	svc := s.newService()
 	// 同一代理，不同账户
-	entry1 := svc.getOrCreateClient("http://proxy.local:8080", 1, 3)
-	entry2 := svc.getOrCreateClient("http://proxy.local:8080", 2, 3)
+	entry1 := mustGetOrCreateClient(s.T(), svc, "http://proxy.local:8080", 1, 3)
+	entry2 := mustGetOrCreateClient(s.T(), svc, "http://proxy.local:8080", 2, 3)
 	require.NotSame(s.T(), entry1, entry2, "不同账号不应共享连接池")
 	require.Equal(s.T(), 2, len(svc.clients), "账号隔离应缓存两个客户端")
 REDACTED
@@ -183,8 +185,8 @@ func (s *HTTPUpstreamSuite) TestAccountProxyIsolation_DifferentProxy() {
 	s.cfg.Gateway = config.GatewayConfig{ConnectionPoolIsolation: config.ConnectionPoolIsolationAccountProxyREDACTED
 	svc := s.newService()
 	// 同一账户，不同代理
-	entry1 := svc.getOrCreateClient("http://proxy-a:8080", 1, 3)
-	entry2 := svc.getOrCreateClient("http://proxy-b:8080", 1, 3)
+	entry1 := mustGetOrCreateClient(s.T(), svc, "http://proxy-a:8080", 1, 3)
+	entry2 := mustGetOrCreateClient(s.T(), svc, "http://proxy-b:8080", 1, 3)
 	require.NotSame(s.T(), entry1, entry2, "账号+代理隔离应区分不同代理")
 	require.Equal(s.T(), 2, len(svc.clients), "账号+代理隔离应缓存两个客户端")
 REDACTED
@@ -195,8 +197,8 @@ func (s *HTTPUpstreamSuite) TestAccountModeProxyChangeClearsPool() {
 	s.cfg.Gateway = config.GatewayConfig{ConnectionPoolIsolation: config.ConnectionPoolIsolationAccountREDACTED
 	svc := s.newService()
 	// 同一账户，先后使用不同代理
-	entry1 := svc.getOrCreateClient("http://proxy-a:8080", 1, 3)
-	entry2 := svc.getOrCreateClient("http://proxy-b:8080", 1, 3)
+	entry1 := mustGetOrCreateClient(s.T(), svc, "http://proxy-a:8080", 1, 3)
+	entry2 := mustGetOrCreateClient(s.T(), svc, "http://proxy-b:8080", 1, 3)
 	require.NotSame(s.T(), entry1, entry2, "账号切换代理应创建新连接池")
 	require.Equal(s.T(), 1, len(svc.clients), "账号模式下应仅保留一个连接池")
 	require.False(s.T(), hasEntry(svc, entry1), "旧连接池应被清理")
@@ -208,7 +210,7 @@ func (s *HTTPUpstreamSuite) TestAccountConcurrencyOverridesPoolSettings() {
 	s.cfg.Gateway = config.GatewayConfig{ConnectionPoolIsolation: config.ConnectionPoolIsolationAccountREDACTED
 	svc := s.newService()
 	// 账户并发数为 12
-	entry := svc.getOrCreateClient("", 1, 12)
+	entry := mustGetOrCreateClient(s.T(), svc, "", 1, 12)
 	transport, ok := entry.client.Transport.(*http.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	// 连接池参数应与并发数一致
@@ -228,7 +230,7 @@ func (s *HTTPUpstreamSuite) TestAccountConcurrencyFallbackToDefault() {
 REDACTED
 	svc := s.newService()
 	// 账户并发数为 0，应使用全局配置
-	entry := svc.getOrCreateClient("", 1, 0)
+	entry := mustGetOrCreateClient(s.T(), svc, "", 1, 0)
 	transport, ok := entry.client.Transport.(*http.Transport)
 	require.True(s.T(), ok, "expected *http.Transport")
 	require.Equal(s.T(), 66, transport.MaxConnsPerHost, "MaxConnsPerHost fallback mismatch")
@@ -245,12 +247,12 @@ func (s *HTTPUpstreamSuite) TestEvictOverLimitRemovesOldestIdle() {
 REDACTED
 	svc := s.newService()
 	// 创建两个客户端，设置不同的最后使用时间
-	entry1 := svc.getOrCreateClient("http://proxy-a:8080", 1, 1)
-	entry2 := svc.getOrCreateClient("http://proxy-b:8080", 2, 1)
+	entry1 := mustGetOrCreateClient(s.T(), svc, "http://proxy-a:8080", 1, 1)
+	entry2 := mustGetOrCreateClient(s.T(), svc, "http://proxy-b:8080", 2, 1)
 	atomic.StoreInt64(&entry1.lastUsed, time.Now().Add(-2*time.Hour).UnixNano()) // 最久
 	atomic.StoreInt64(&entry2.lastUsed, time.Now().Add(-time.Hour).UnixNano())
 	// 创建第三个客户端，触发淘汰
-	_ = svc.getOrCreateClient("http://proxy-c:8080", 3, 1)
+	_ = mustGetOrCreateClient(s.T(), svc, "http://proxy-c:8080", 3, 1)
 
 	require.LessOrEqual(s.T(), len(svc.clients), 2, "应保持在缓存上限内")
 	require.False(s.T(), hasEntry(svc, entry1), "最久未使用的连接池应被清理")
@@ -264,12 +266,12 @@ func (s *HTTPUpstreamSuite) TestIdleTTLDoesNotEvictActive() {
 		ClientIdleTTLSeconds:    1, // 1 秒空闲超时
 REDACTED
 	svc := s.newService()
-	entry1 := svc.getOrCreateClient("", 1, 1)
+	entry1 := mustGetOrCreateClient(s.T(), svc, "", 1, 1)
 	// 设置为很久之前使用，但有活跃请求
 	atomic.StoreInt64(&entry1.lastUsed, time.Now().Add(-2*time.Minute).UnixNano())
 	atomic.StoreInt64(&entry1.inFlight, 1) // 模拟有活跃请求
 	// 创建新客户端，触发淘汰检查
-	_ = svc.getOrCreateClient("", 2, 1)
+	_, _ = svc.getOrCreateClient("", 2, 1)
 
 	require.True(s.T(), hasEntry(svc, entry1), "有活跃请求时不应回收")
 REDACTED
@@ -277,6 +279,14 @@ REDACTED
 // TestHTTPUpstreamSuite 运行测试套件
 func TestHTTPUpstreamSuite(t *testing.T) {
 	suite.Run(t, new(HTTPUpstreamSuite))
+REDACTED
+
+// mustGetOrCreateClient 测试辅助函数，调用 getOrCreateClient 并断言无错误
+func mustGetOrCreateClient(t *testing.T, svc *httpUpstreamService, proxyURL string, accountID int64, concurrency int) *upstreamClientEntry {
+REDACTED
+	entry, err := svc.getOrCreateClient(proxyURL, accountID, concurrency)
+	require.NoError(t, err, "getOrCreateClient(%q, %d, %d)", proxyURL, accountID, concurrency)
+	return entry
 REDACTED
 
 // hasEntry 检查客户端是否存在于缓存中

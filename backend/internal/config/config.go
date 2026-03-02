@@ -265,8 +265,13 @@ type CSPConfig struct {
 REDACTED
 
 type ProxyFallbackConfig struct {
-	// AllowDirectOnError 当代理初始化失败时是否允许回退直连。
-	// 默认 false：避免因代理配置错误导致 IP 泄露/关联。
+	// AllowDirectOnError 当辅助服务的代理初始化失败时是否允许回退直连。
+	// 仅影响以下非 AI 账号连接的辅助服务：
+	//   - GitHub Release 更新检查
+	//   - 定价数据拉取
+	// 不影响 AI 账号网关连接（Claude/OpenAI/Gemini/Antigravity），
+	// 这些关键路径的代理失败始终返回错误，不会回退直连。
+	// 默认 false：避免因代理配置错误导致服务器真实 IP 泄露。
 	AllowDirectOnError bool `mapstructure:"allow_direct_on_error"`
 REDACTED
 
@@ -1105,6 +1110,9 @@ REDACTED)
 	viper.SetDefault("security.csp.policy", DefaultCSPPolicy)
 	viper.SetDefault("security.proxy_probe.insecure_skip_verify", false)
 
+	// Security - disable direct fallback on proxy error
+	viper.SetDefault("security.proxy_fallback.allow_direct_on_error", false)
+
 	// Billing
 	viper.SetDefault("billing.circuit_breaker.enabled", true)
 	viper.SetDefault("billing.circuit_breaker.failure_threshold", 5)
@@ -1414,9 +1422,6 @@ REDACTED)
 	viper.SetDefault("gemini.oauth.client_secret", "")
 	viper.SetDefault("gemini.oauth.scopes", "")
 	viper.SetDefault("gemini.quota.policy", "")
-
-	// Security - proxy fallback
-	viper.SetDefault("security.proxy_fallback.allow_direct_on_error", false)
 
 	// Subscription Maintenance (bounded queue + worker pool)
 	viper.SetDefault("subscription_maintenance.worker_count", 2)

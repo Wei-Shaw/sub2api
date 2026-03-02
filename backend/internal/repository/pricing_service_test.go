@@ -19,7 +19,7 @@ REDACTED
 
 func (s *PricingServiceSuite) SetupTest() {
 	s.ctx = context.Background()
-	client, ok := NewPricingRemoteClient("").(*pricingRemoteClient)
+	client, ok := NewPricingRemoteClient("", false).(*pricingRemoteClient)
 	require.True(s.T(), ok, "type assertion failed")
 	s.client = client
 REDACTED
@@ -138,6 +138,22 @@ REDACTED()
 
 	err := <-done
 	require.Error(s.T(), err)
+REDACTED
+
+func TestNewPricingRemoteClient_InvalidProxy_NoFallback(t *testing.T) {
+	client := NewPricingRemoteClient("://bad", false)
+	_, ok := client.(*pricingRemoteClientError)
+	require.True(t, ok, "should return error client when proxy is invalid and fallback disabled")
+
+	_, err := client.FetchPricingJSON(context.Background(), "http://example.com")
+REDACTED
+	require.Contains(t, err.Error(), "proxy client init failed")
+REDACTED
+
+func TestNewPricingRemoteClient_InvalidProxy_WithFallback(t *testing.T) {
+	client := NewPricingRemoteClient("://bad", true)
+	_, ok := client.(*pricingRemoteClient)
+	require.True(t, ok, "should fallback to direct client when allowed")
 REDACTED
 
 func TestPricingServiceSuite(t *testing.T) {

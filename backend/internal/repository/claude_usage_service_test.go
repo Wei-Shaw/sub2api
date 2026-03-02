@@ -50,7 +50,7 @@ REDACTED))
 		allowPrivateHosts: true,
 REDACTED
 
-	resp, err := s.fetcher.FetchUsage(context.Background(), "at", "://bad-proxy-url")
+	resp, err := s.fetcher.FetchUsage(context.Background(), "at", "")
 	require.NoError(s.T(), err, "FetchUsage")
 	require.Equal(s.T(), 12.5, resp.FiveHour.Utilization, "FiveHour utilization mismatch")
 	require.Equal(s.T(), 34.0, resp.SevenDay.Utilization, "SevenDay utilization mismatch")
@@ -110,6 +110,17 @@ REDACTED
 
 	_, err := s.fetcher.FetchUsage(ctx, "at", "")
 	require.Error(s.T(), err, "expected error for cancelled context")
+REDACTED
+
+func (s *ClaudeUsageServiceSuite) TestFetchUsage_InvalidProxyReturnsError() {
+	s.fetcher = &claudeUsageService{
+		usageURL:          "http://example.com",
+		allowPrivateHosts: true,
+REDACTED
+
+	_, err := s.fetcher.FetchUsage(context.Background(), "at", "://bad-proxy-url")
+	require.Error(s.T(), err)
+	require.ErrorContains(s.T(), err, "create http client failed")
 REDACTED
 
 func TestClaudeUsageServiceSuite(t *testing.T) {
