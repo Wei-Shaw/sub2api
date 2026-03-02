@@ -14,6 +14,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 )
 
 // NewAPIRequestWithURL 使用指定的 base URL 创建 Antigravity API 请求（v1internal 端点）
@@ -149,22 +152,26 @@ type Client struct {
 	httpClient *http.Client
 REDACTED
 
-func NewClient(proxyURL string) *Client {
+func NewClient(proxyURL string) (*Client, error) {
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 REDACTED
 
-	if strings.TrimSpace(proxyURL) != "" {
-		if proxyURLParsed, err := url.Parse(proxyURL); err == nil {
-			client.Transport = &http.Transport{
-				Proxy: http.ProxyURL(proxyURLParsed),
-		REDACTED
+	_, parsed, err := proxyurl.Parse(proxyURL)
+	if err != nil {
+		return nil, err
+REDACTED
+	if parsed != nil {
+		transport := &http.Transport{REDACTED
+		if err := proxyutil.ConfigureTransportProxy(transport, parsed); err != nil {
+			return nil, fmt.Errorf("configure proxy: %w", err)
 	REDACTED
+		client.Transport = transport
 REDACTED
 
 	return &Client{
 		httpClient: client,
-REDACTED
+REDACTED, nil
 REDACTED
 
 // isConnectionError 判断是否为连接错误（网络超时、DNS 失败、连接拒绝）

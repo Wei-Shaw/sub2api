@@ -221,7 +221,7 @@ REDACTED
 		AllowPrivateHosts:  s.cfg.Security.URLAllowlist.AllowPrivateHosts,
 REDACTED)
 	if err != nil {
-		client = &http.Client{Timeout: 20 * time.SecondREDACTED
+		return nil, fmt.Errorf("create http client failed: %w", err)
 REDACTED
 
 	adminToken, err := crsLogin(ctx, client, normalizedURL, username, password)

@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
@@ -24,13 +26,19 @@ REDACTED
 
 // NewGitHubReleaseClient 创建 GitHub Release 客户端
 // proxyURL 为空时直连 GitHub，支持 http/https/socks5/socks5h 协议
+// 代理配置失败时行为由 allowDirectOnProxyError 控制：
+//   - false（默认）：返回错误占位客户端，禁止回退到直连
+//   - true：回退到直连（仅限管理员显式开启）
 func NewGitHubReleaseClient(proxyURL string, allowDirectOnProxyError bool) service.GitHubReleaseClient {
+	// 安全说明：httpclient.GetClient 的错误链（url.Parse / proxyutil）不含明文代理凭据，
+	// 但仍通过 slog 仅在服务端日志记录，不会暴露给 HTTP 响应。
 	sharedClient, err := httpclient.GetClient(httpclient.Options{
 		Timeout:  30 * time.Second,
 		ProxyURL: proxyURL,
 REDACTED)
 	if err != nil {
-		if proxyURL != "" && !allowDirectOnProxyError {
+		if strings.TrimSpace(proxyURL) != "" && !allowDirectOnProxyError {
+			slog.Warn("proxy client init failed, all requests will fail", "service", "github_release", "error", err)
 			return &githubReleaseClientError{err: fmt.Errorf("proxy client init failed and direct fallback is disabled; set security.proxy_fallback.allow_direct_on_error=true to allow fallback: %w", err)REDACTED
 	REDACTED
 		sharedClient = &http.Client{Timeout: 30 * time.SecondREDACTED
@@ -42,7 +50,8 @@ REDACTED
 		ProxyURL: proxyURL,
 REDACTED)
 	if err != nil {
-		if proxyURL != "" && !allowDirectOnProxyError {
+		if strings.TrimSpace(proxyURL) != "" && !allowDirectOnProxyError {
+			slog.Warn("proxy download client init failed, all requests will fail", "service", "github_release", "error", err)
 			return &githubReleaseClientError{err: fmt.Errorf("proxy client init failed and direct fallback is disabled; set security.proxy_fallback.allow_direct_on_error=true to allow fallback: %w", err)REDACTED
 	REDACTED
 		downloadClient = &http.Client{Timeout: 10 * time.MinuteREDACTED

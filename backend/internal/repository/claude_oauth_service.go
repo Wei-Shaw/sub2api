@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 
@@ -28,11 +29,14 @@ REDACTED
 type claudeOAuthService struct {
 	baseURL       string
 	tokenURL      string
-	clientFactory func(proxyURL string) *req.Client
+	clientFactory func(proxyURL string) (*req.Client, error)
 REDACTED
 
 func (s *claudeOAuthService) GetOrganizationUUID(ctx context.Context, sessionKey, proxyURL string) (string, error) {
-	client := s.clientFactory(proxyURL)
+	client, err := s.clientFactory(proxyURL)
+	if err != nil {
+		return "", fmt.Errorf("create HTTP client: %w", err)
+REDACTED
 
 	var orgs []struct {
 		UUID      string  `json:"uuid"`
@@ -88,7 +92,10 @@ REDACTED
 REDACTED
 
 func (s *claudeOAuthService) GetAuthorizationCode(ctx context.Context, sessionKey, orgUUID, scope, codeChallenge, state, proxyURL string) (string, error) {
-	client := s.clientFactory(proxyURL)
+	client, err := s.clientFactory(proxyURL)
+	if err != nil {
+		return "", fmt.Errorf("create HTTP client: %w", err)
+REDACTED
 
 	authURL := fmt.Sprintf("%s/v1/oauth/%s/authorize", s.baseURL, orgUUID)
 
@@ -165,7 +172,10 @@ REDACTED
 REDACTED
 
 func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, codeVerifier, state, proxyURL string, isSetupToken bool) (*oauth.TokenResponse, error) {
-	client := s.clientFactory(proxyURL)
+	client, err := s.clientFactory(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("create HTTP client: %w", err)
+REDACTED
 
 	// Parse code which may contain state in format "authCode#state"
 	authCode := code
@@ -223,7 +233,10 @@ REDACTED
 REDACTED
 
 func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*oauth.TokenResponse, error) {
-	client := s.clientFactory(proxyURL)
+	client, err := s.clientFactory(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("create HTTP client: %w", err)
+REDACTED
 
 	reqBody := map[string]any{
 		"grant_type":    "refresh_token",
@@ -253,16 +266,20 @@ REDACTED
 	return &tokenResp, nil
 REDACTED
 
-func createReqClient(proxyURL string) *req.Client {
+func createReqClient(proxyURL string) (*req.Client, error) {
 	// 禁用 CookieJar，确保每次授权都是干净的会话
 	client := req.C().
 		SetTimeout(60 * time.Second).
 		ImpersonateChrome().
 		SetCookieJar(nil) // 禁用 CookieJar
 
-	if strings.TrimSpace(proxyURL) != "" {
-		client.SetProxyURL(strings.TrimSpace(proxyURL))
+	trimmed, _, err := proxyurl.Parse(proxyURL)
+	if err != nil {
+		return nil, err
+REDACTED
+	if trimmed != "" {
+		client.SetProxyURL(trimmed)
 REDACTED
 
-	return client
+	return client, nil
 REDACTED

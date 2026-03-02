@@ -23,7 +23,10 @@ type openaiOAuthService struct {
 REDACTED
 
 func (s *openaiOAuthService) ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error) {
-	client := createOpenAIReqClient(proxyURL)
+	client, err := createOpenAIReqClient(proxyURL)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
+REDACTED
 
 	if redirectURI == "" {
 		redirectURI = openai.DefaultRedirectURI
@@ -74,7 +77,10 @@ REDACTED
 REDACTED
 
 func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL, clientID string) (*openai.TokenResponse, error) {
-	client := createOpenAIReqClient(proxyURL)
+	client, err := createOpenAIReqClient(proxyURL)
+	if err != nil {
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
+REDACTED
 
 	formData := url.Values{REDACTED
 	formData.Set("grant_type", "refresh_token")
@@ -102,7 +108,7 @@ REDACTED
 	return &tokenResp, nil
 REDACTED
 
-func createOpenAIReqClient(proxyURL string) *req.Client {
+func createOpenAIReqClient(proxyURL string) (*req.Client, error) {
 	return getSharedReqClient(reqClientOptions{
 		ProxyURL: proxyURL,
 		Timeout:  120 * time.Second,

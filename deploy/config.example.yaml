@@ -134,6 +134,12 @@ security:
     # Allow skipping TLS verification for proxy probe (debug only)
     # 允许代理探测时跳过 TLS 证书验证（仅用于调试）
     insecure_skip_verify: false
+  proxy_fallback:
+    # Allow auxiliary services (update check, pricing data) to fallback to direct
+    # connection when proxy initialization fails. Does NOT affect AI gateway connections.
+    # 辅助服务（更新检查、定价数据拉取）代理初始化失败时是否允许回退直连。
+    # 不影响 AI 账号网关连接。默认 false：fail-fast 防止 IP 泄露。
+    allow_direct_on_error: false
 
 # =============================================================================
 # Gateway Configuration
