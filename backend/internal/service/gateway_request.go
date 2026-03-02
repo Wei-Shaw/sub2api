@@ -61,6 +61,10 @@ type ParsedRequest struct {
 	ThinkingEnabled bool            // 是否开启 thinking（部分平台会影响最终模型名）
 	MaxTokens       int             // max_tokens 值（用于探测请求拦截）
 	SessionContext  *SessionContext // 可选：请求上下文区分因子（nil 时行为不变）
+
+	// OnUpstreamAccepted 上游接受请求后立即调用（用于提前释放串行锁）
+	// 流式请求在收到 2xx 响应头后调用，避免持锁等流完成
+	OnUpstreamAccepted func()
 REDACTED
 
 // ParseGatewayRequest 解析网关请求体并返回结构化结果。

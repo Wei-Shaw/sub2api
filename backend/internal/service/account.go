@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
@@ -1030,6 +1031,26 @@ REDACTED
 	REDACTED
 REDACTED
 	return false
+REDACTED
+
+// GetUserMsgQueueMode 获取用户消息队列模式
+// "serialize" = 串行队列, "throttle" = 软性限速, "" = 未设置（使用全局配置）
+func (a *Account) GetUserMsgQueueMode() string {
+	if a.Extra == nil {
+		return ""
+REDACTED
+	// 优先读取新字段 user_msg_queue_mode（白名单校验，非法值视为未设置）
+	if mode, ok := a.Extra["user_msg_queue_mode"].(string); ok && mode != "" {
+		if mode == config.UMQModeSerialize || mode == config.UMQModeThrottle {
+			return mode
+	REDACTED
+		return "" // 非法值 fallback 到全局配置
+REDACTED
+	// 向后兼容: user_msg_queue_enabled: true → "serialize"
+	if enabled, ok := a.Extra["user_msg_queue_enabled"].(bool); ok && enabled {
+		return config.UMQModeSerialize
+REDACTED
+	return ""
 REDACTED
 
 // IsSessionIDMaskingEnabled 检查是否启用会话ID伪装

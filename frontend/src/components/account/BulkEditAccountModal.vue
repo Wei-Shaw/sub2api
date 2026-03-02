@@ -686,6 +686,27 @@
               />
               <p class="input-hint">{{ t('admin.accounts.quotaControl.rpmLimit.stickyBufferHint') REDACTEDREDACTED</p>
             </div>
+
+            </div>
+          </div>
+
+        <!-- 用户消息限速模式（独立于 RPM 开关，始终可见） -->
+        <div class="mt-4">
+          <label class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.userMsgQueue') REDACTEDREDACTED</label>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400 mb-2">
+            {{ t('admin.accounts.quotaControl.rpmLimit.userMsgQueueHint') REDACTEDREDACTED
+          </p>
+          <div class="flex space-x-2">
+            <button type="button" v-for="opt in umqModeOptions" :key="opt.value"
+              @click="userMsgQueueMode = userMsgQueueMode === opt.value ? null : opt.value"
+              :class="[
+                'px-3 py-1.5 text-sm rounded-md border transition-colors',
+                userMsgQueueMode === opt.value
+                  ? 'bg-primary-600 text-white border-primary-600'
+                  : 'bg-white dark:bg-dark-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-dark-500 hover:bg-gray-50 dark:hover:bg-dark-600'
+              ]">
+              {{ opt.label REDACTEDREDACTED
+            </button>
           </div>
         </div>
       </div>
@@ -876,6 +897,12 @@ const rpmLimitEnabled = ref(false)
 const bulkBaseRpm = ref<number | null>(null)
 const bulkRpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
 const bulkRpmStickyBuffer = ref<number | null>(null)
+const userMsgQueueMode = ref<string | null>(null)
+const umqModeOptions = computed(() => [
+  { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') REDACTED,
+  { value: 'throttle', label: t('admin.accounts.quotaControl.rpmLimit.umqModeThrottle') REDACTED,
+  { value: 'serialize', label: t('admin.accounts.quotaControl.rpmLimit.umqModeSerialize') REDACTED,
+])
 
 // All models list (combined Anthropic + OpenAI + Gemini)
 const allModels = [
@@ -1249,6 +1276,14 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.extra = extra
   REDACTED
 
+  // UMQ mode（独立于 RPM 保存）
+  if (userMsgQueueMode.value !== null) {
+    if (!updates.extra) updates.extra = {REDACTED
+    const umqExtra = updates.extra as Record<string, unknown>
+    umqExtra.user_msg_queue_mode = userMsgQueueMode.value  // '' = 清除账号级覆盖
+    umqExtra.user_msg_queue_enabled = false  // 清理旧字段（JSONB merge）
+  REDACTED
+
   return Object.keys(updates).length > 0 ? updates : null
 REDACTED
 
@@ -1309,7 +1344,8 @@ const handleSubmit = async () => {
     enableRateMultiplier.value ||
     enableStatus.value ||
     enableGroups.value ||
-    enableRpmLimit.value
+    enableRpmLimit.value ||
+    userMsgQueueMode.value !== null
 
   if (!hasAnyFieldEnabled) {
     appStore.showError(t('admin.accounts.bulkEdit.noFieldsSelected'))
@@ -1414,6 +1450,11 @@ watch(
       rateMultiplier.value = 1
       status.value = 'active'
       groupIds.value = []
+      rpmLimitEnabled.value = false
+      bulkBaseRpm.value = null
+      bulkRpmStrategy.value = 'tiered'
+      bulkRpmStickyBuffer.value = null
+      userMsgQueueMode.value = null
 
       // Reset mixed channel warning state
       showMixedChannelWarning.value = false

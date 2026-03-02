@@ -45,6 +45,7 @@ type GatewayHandler struct {
 	usageRecordWorkerPool     *service.UsageRecordWorkerPool
 	errorPassthroughService   *service.ErrorPassthroughService
 	concurrencyHelper         *ConcurrencyHelper
+	userMsgQueueHelper        *UserMsgQueueHelper
 	maxAccountSwitches        int
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
@@ -63,6 +64,7 @@ func NewGatewayHandler(
 	apiKeyService *service.APIKeyService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
+	userMsgQueueService *service.UserMessageQueueService,
 	cfg *config.Config,
 	settingService *service.SettingService,
 ) *GatewayHandler {
@@ -78,6 +80,13 @@ func NewGatewayHandler(
 			maxAccountSwitchesGemini = cfg.Gateway.MaxAccountSwitchesGemini
 	REDACTED
 REDACTED
+
+	// 初始化用户消息串行队列 helper
+	var umqHelper *UserMsgQueueHelper
+	if userMsgQueueService != nil && cfg != nil {
+		umqHelper = NewUserMsgQueueHelper(userMsgQueueService, SSEPingFormatClaude, pingInterval)
+REDACTED
+
 	return &GatewayHandler{
 		gatewayService:            gatewayService,
 		geminiCompatService:       geminiCompatService,
@@ -89,6 +98,7 @@ REDACTED
 		usageRecordWorkerPool:     usageRecordWorkerPool,
 		errorPassthroughService:   errorPassthroughService,
 		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
+		userMsgQueueHelper:        umqHelper,
 		maxAccountSwitches:        maxAccountSwitches,
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
 		cfg:                       cfg,
@@ -566,6 +576,58 @@ REDACTED
 			// 账号槽位/等待计数需要在超时或断开时安全回收
 			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
+			// ===== 用户消息串行队列 START =====
+			var queueRelease func()
+			umqMode := h.getUserMsgQueueMode(account, parsedReq)
+
+			switch umqMode {
+			case config.UMQModeSerialize:
+				// 串行模式：获取锁 + RPM 延迟 + 释放（当前行为不变）
+				baseRPM := account.GetBaseRPM()
+				release, qErr := h.userMsgQueueHelper.AcquireWithWait(
+					c, account.ID, baseRPM, reqStream, &streamStarted,
+					h.cfg.Gateway.UserMessageQueue.WaitTimeout(),
+					reqLog,
+				)
+				if qErr != nil {
+					// fail-open: 记录 warn，不阻止请求
+					reqLog.Warn("gateway.umq_acquire_failed",
+						zap.Int64("account_id", account.ID),
+						zap.Error(qErr),
+					)
+			REDACTED else {
+					queueRelease = release
+			REDACTED
+
+			case config.UMQModeThrottle:
+				// 软性限速：仅施加 RPM 自适应延迟，不阻塞并发
+				baseRPM := account.GetBaseRPM()
+				if tErr := h.userMsgQueueHelper.ThrottleWithPing(
+					c, account.ID, baseRPM, reqStream, &streamStarted,
+					h.cfg.Gateway.UserMessageQueue.WaitTimeout(),
+					reqLog,
+				); tErr != nil {
+					reqLog.Warn("gateway.umq_throttle_failed",
+						zap.Int64("account_id", account.ID),
+						zap.Error(tErr),
+					)
+			REDACTED
+
+			default:
+				if umqMode != "" {
+					reqLog.Warn("gateway.umq_unknown_mode",
+						zap.String("mode", umqMode),
+						zap.Int64("account_id", account.ID),
+					)
+			REDACTED
+		REDACTED
+
+			// 用 wrapReleaseOnDone 确保 context 取消时自动释放（仅 serialize 模式有 queueRelease）
+			queueRelease = wrapReleaseOnDone(c.Request.Context(), queueRelease)
+			// 注入回调到 ParsedRequest：使用外层 wrapper 以便提前清理 AfterFunc
+			parsedReq.OnUpstreamAccepted = queueRelease
+			// ===== 用户消息串行队列 END =====
+
 			// 转发请求 - 根据账号平台分流
 			var result *service.ForwardResult
 			requestCtx := c.Request.Context()
@@ -577,6 +639,14 @@ REDACTED
 		REDACTED else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, parsedReq)
 		REDACTED
+
+			// 兜底释放串行锁（正常情况已通过回调提前释放）
+			if queueRelease != nil {
+				queueRelease()
+		REDACTED
+			// 清理回调引用，防止 failover 重试时旧回调被错误调用
+			parsedReq.OnUpstreamAccepted = nil
+
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
 		REDACTED
@@ -1430,4 +1500,25 @@ REDACTED
 	REDACTED
 REDACTED()
 	task(ctx)
+REDACTED
+
+// getUserMsgQueueMode 获取当前请求的 UMQ 模式
+// 返回 "serialize" | "throttle" | ""
+func (h *GatewayHandler) getUserMsgQueueMode(account *service.Account, parsed *service.ParsedRequest) string {
+	if h.userMsgQueueHelper == nil {
+		return ""
+REDACTED
+	// 仅适用于 Anthropic OAuth/SetupToken 账号
+	if !account.IsAnthropicOAuthOrSetupToken() {
+		return ""
+REDACTED
+	if !service.IsRealUserMessage(parsed) {
+		return ""
+REDACTED
+	// 账号级模式优先，fallback 到全局配置
+	mode := account.GetUserMsgQueueMode()
+	if mode == "" {
+		mode = h.cfg.Gateway.UserMessageQueue.GetEffectiveMode()
+REDACTED
+	return mode
 REDACTED

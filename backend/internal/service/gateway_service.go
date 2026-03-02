@@ -4305,6 +4305,12 @@ REDACTED
 REDACTED
 
 	// 处理正常响应
+
+	// 触发上游接受回调（提前释放串行锁，不等流完成）
+	if parsed.OnUpstreamAccepted != nil {
+		parsed.OnUpstreamAccepted()
+REDACTED
+
 	var usage *ClaudeUsage
 	var firstTokenMs *int
 	var clientDisconnect bool
