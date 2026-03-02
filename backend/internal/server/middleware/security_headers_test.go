@@ -84,7 +84,7 @@ REDACTED
 func TestSecurityHeaders(t *testing.T) {
 	t.Run("sets_basic_security_headers", func(t *testing.T) {
 		cfg := config.CSPConfig{Enabled: falseREDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -99,7 +99,7 @@ REDACTED)
 
 	t.Run("csp_disabled_no_csp_header", func(t *testing.T) {
 		cfg := config.CSPConfig{Enabled: falseREDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -115,7 +115,7 @@ REDACTED)
 			Enabled: true,
 			Policy:  "default-src 'self'",
 	REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -136,7 +136,7 @@ REDACTED)
 			Enabled: true,
 			Policy:  "default-src 'self'; script-src 'self' __CSP_NONCE__",
 	REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -156,7 +156,7 @@ REDACTED)
 			Enabled: true,
 			Policy:  "script-src 'self' __CSP_NONCE__",
 	REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -180,7 +180,7 @@ REDACTED)
 			Enabled: true,
 			Policy:  "",
 	REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -199,7 +199,7 @@ REDACTED)
 			Enabled: true,
 			Policy:  "   \t\n  ",
 	REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -217,7 +217,7 @@ REDACTED)
 			Enabled: true,
 			Policy:  "script-src __CSP_NONCE__; style-src __CSP_NONCE__",
 	REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -235,7 +235,7 @@ REDACTED)
 
 	t.Run("calls_next_handler", func(t *testing.T) {
 		cfg := config.CSPConfig{Enabled: true, Policy: "default-src 'self'"REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		nextCalled := false
 		router := gin.New()
@@ -258,7 +258,7 @@ REDACTED)
 			Enabled: true,
 			Policy:  "script-src __CSP_NONCE__",
 	REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		nonces := make(map[string]bool)
 		for i := 0; i < 10; i++ {
@@ -376,7 +376,7 @@ func BenchmarkSecurityHeadersMiddleware(b *testing.B) {
 		Enabled: true,
 		Policy:  "script-src 'self' __CSP_NONCE__",
 REDACTED
-	middleware := SecurityHeaders(cfg)
+	middleware := SecurityHeaders(cfg, nil)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
