@@ -87,7 +87,11 @@ const menuItemId = computed(() => route.params.id as string)
 
 const menuItem = computed(() => {
   const items = appStore.cachedPublicSettings?.custom_menu_items ?? []
-  return items.find((item) => item.id === menuItemId.value) ?? null
+  const found = items.find((item) => item.id === menuItemId.value) ?? null
+  if (found && found.visibility === 'admin' && !authStore.isAdmin) {
+    return null
+  REDACTED
+  return found
 REDACTED)
 
 const embeddedUrl = computed(() => {

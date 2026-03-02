@@ -513,7 +513,8 @@ REDACTED{
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
-					"min_claude_code_version": ""
+					"min_claude_code_version": "",
+					"custom_menu_items": []
 			REDACTED
 		REDACTED`,
 	REDACTED,
