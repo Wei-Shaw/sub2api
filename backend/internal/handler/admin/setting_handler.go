@@ -23,11 +23,16 @@ import (
 // semverPattern 预编译 semver 格式校验正则
 var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
+// menuItemIDPattern validates custom menu item IDs: alphanumeric, hyphens, underscores only.
+var menuItemIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
 // generateMenuItemID generates a short random hex ID for a custom menu item.
-func generateMenuItemID() string {
+func generateMenuItemID() (string, error) {
 	b := make([]byte, 8)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate menu item ID: %w", err)
+REDACTED
+	return hex.EncodeToString(b), nil
 REDACTED
 
 // SettingHandler 系统设置处理器
@@ -358,9 +363,17 @@ REDACTED
 		REDACTED
 			// Auto-generate ID if missing
 			if strings.TrimSpace(item.ID) == "" {
-				items[i].ID = generateMenuItemID()
+				id, err := generateMenuItemID()
+				if err != nil {
+					response.Error(c, http.StatusInternalServerError, "Failed to generate menu item ID")
+					return
+			REDACTED
+				items[i].ID = id
 		REDACTED else if len(item.ID) > maxMenuItemIDLen {
 				response.BadRequest(c, "Custom menu item ID is too long (max 32 characters)")
+				return
+		REDACTED else if !menuItemIDPattern.MatchString(item.ID) {
+				response.BadRequest(c, "Custom menu item ID contains invalid characters (only a-z, A-Z, 0-9, - and _ are allowed)")
 				return
 		REDACTED
 	REDACTED
