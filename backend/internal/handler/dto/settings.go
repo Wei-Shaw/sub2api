@@ -39,8 +39,8 @@ type SystemSettings struct {
 	PurchaseSubscriptionURL     string `json:"purchase_subscription_url"`
 	SoraClientEnabled           bool   `json:"sora_client_enabled"`
 
-	DefaultConcurrency   int     `json:"default_concurrency"`
-	DefaultBalance       float64 `json:"default_balance"`
+	DefaultConcurrency   int                          `json:"default_concurrency"`
+	DefaultBalance       float64                      `json:"default_balance"`
 	DefaultSubscriptions []DefaultSubscriptionSetting `json:"default_subscriptions"`
 
 	// Model fallback configuration

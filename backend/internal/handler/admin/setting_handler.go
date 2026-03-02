@@ -154,8 +154,8 @@ type UpdateSettingsRequest struct {
 	SoraClientEnabled           bool    `json:"sora_client_enabled"`
 
 	// 默认配置
-	DefaultConcurrency   int     `json:"default_concurrency"`
-	DefaultBalance       float64 `json:"default_balance"`
+	DefaultConcurrency   int                              `json:"default_concurrency"`
+	DefaultBalance       float64                          `json:"default_balance"`
 	DefaultSubscriptions []dto.DefaultSubscriptionSetting `json:"default_subscriptions"`
 
 	// Model fallback configuration

@@ -41,8 +41,8 @@ type SystemSettings struct {
 	PurchaseSubscriptionURL     string
 	SoraClientEnabled           bool
 
-	DefaultConcurrency int
-	DefaultBalance     float64
+	DefaultConcurrency   int
+	DefaultBalance       float64
 	DefaultSubscriptions []DefaultSubscriptionSetting
 
 	// Model fallback configuration
