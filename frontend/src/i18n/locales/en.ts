@@ -3591,6 +3591,12 @@ export default {
         minVersionHint:
           'Reject Claude Code clients below this version (semver format). Leave empty to disable version check.'
       REDACTED,
+      scheduling: {
+        title: 'Gateway Scheduling Settings',
+        description: 'Control API Key scheduling behavior',
+        allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
+        allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
+      REDACTED,
       site: {
         title: 'Site Settings',
         description: 'Customize site branding',

@@ -77,6 +77,9 @@ type SystemSettings struct {
 	OpsMetricsIntervalSeconds    int    `json:"ops_metrics_interval_seconds"`
 
 	MinClaudeCodeVersion string `json:"min_claude_code_version"`
+
+	// 分组隔离
+	AllowUngroupedKeyScheduling bool `json:"allow_ungrouped_key_scheduling"`
 REDACTED
 
 type DefaultSubscriptionSetting struct {

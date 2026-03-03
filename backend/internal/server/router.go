@@ -81,7 +81,7 @@ REDACTED else {
 REDACTED
 
 	// 注册路由
-	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, cfg, redisClient)
+	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient)
 
 	return r
 REDACTED
@@ -96,6 +96,7 @@ func registerRoutes(
 	apiKeyService *service.APIKeyService,
 	subscriptionService *service.SubscriptionService,
 	opsService *service.OpsService,
+	settingService *service.SettingService,
 	cfg *config.Config,
 	redisClient *redis.Client,
 ) {
@@ -110,5 +111,5 @@ func registerRoutes(
 	routes.RegisterUserRoutes(v1, h, jwtAuth)
 	routes.RegisterSoraClientRoutes(v1, h, jwtAuth)
 	routes.RegisterAdminRoutes(v1, h, adminAuth)
-	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, cfg)
+	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
 REDACTED
