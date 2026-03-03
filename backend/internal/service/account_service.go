@@ -54,6 +54,8 @@ type AccountRepository interface {
 	ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error)
 	ListSchedulableByPlatforms(ctx context.Context, platforms []string) ([]Account, error)
 	ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]Account, error)
+	ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error)
+	ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]Account, error)
 
 	SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error
 	SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error

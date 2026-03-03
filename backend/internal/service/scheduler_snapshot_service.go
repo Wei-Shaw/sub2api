@@ -605,8 +605,10 @@ REDACTED
 		var err error
 		if groupID > 0 {
 			accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, groupID, platforms)
-	REDACTED else {
+	REDACTED else if s.isRunModeSimple() {
 			accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
+	REDACTED else {
+			accounts, err = s.accountRepo.ListSchedulableUngroupedByPlatforms(ctx, platforms)
 	REDACTED
 		if err != nil {
 			return nil, err
@@ -624,7 +626,10 @@ REDACTED
 	if groupID > 0 {
 		return s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, groupID, bucket.Platform)
 REDACTED
-	return s.accountRepo.ListSchedulableByPlatform(ctx, bucket.Platform)
+	if s.isRunModeSimple() {
+		return s.accountRepo.ListSchedulableByPlatform(ctx, bucket.Platform)
+REDACTED
+	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, bucket.Platform)
 REDACTED
 
 func (s *SchedulerSnapshotService) bucketFor(groupID *int64, platform string, mode string) SchedulerBucket {

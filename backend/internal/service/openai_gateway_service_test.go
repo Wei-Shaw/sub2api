@@ -57,6 +57,10 @@ REDACTED
 	return result, nil
 REDACTED
 
+func (r stubOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error) {
+	return r.ListSchedulableByPlatform(ctx, platform)
+REDACTED
+
 type stubConcurrencyCache struct {
 	ConcurrencyCache
 	loadBatchErr    error

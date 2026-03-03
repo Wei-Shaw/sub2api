@@ -431,7 +431,10 @@ REDACTED
 	if groupID != nil {
 		return s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, queryPlatforms)
 REDACTED
-	return s.accountRepo.ListSchedulableByPlatforms(ctx, queryPlatforms)
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		return s.accountRepo.ListSchedulableByPlatforms(ctx, queryPlatforms)
+REDACTED
+	return s.accountRepo.ListSchedulableUngroupedByPlatforms(ctx, queryPlatforms)
 REDACTED
 
 func (s *GeminiMessagesCompatService) validateUpstreamBaseURL(raw string) (string, error) {
