@@ -3625,6 +3625,27 @@ export default {
         enabled: 'Enable Sora Client',
         enabledHint: 'When enabled, the Sora entry will be shown in the sidebar for users to access Sora features'
       REDACTED,
+      customMenu: {
+        title: 'Custom Menu Pages',
+        description: 'Add custom iframe pages to the sidebar navigation. Each page can be visible to regular users or administrators.',
+        itemLabel: 'Menu Item #{nREDACTED',
+        name: 'Menu Name',
+        namePlaceholder: 'e.g. Help Center',
+        url: 'Page URL',
+        urlPlaceholder: 'https://example.com/page',
+        iconSvg: 'SVG Icon',
+        iconSvgPlaceholder: '<svg>...</svg>',
+        iconPreview: 'Icon Preview',
+        uploadSvg: 'Upload SVG',
+        removeSvg: 'Remove',
+        visibility: 'Visible To',
+        visibilityUser: 'Regular Users',
+        visibilityAdmin: 'Administrators',
+        add: 'Add Menu Item',
+        remove: 'Remove',
+        moveUp: 'Move Up',
+        moveDown: 'Move Down',
+      REDACTED,
       smtp: {
         title: 'SMTP Settings',
         description: 'Configure email sending for verification codes',
@@ -3911,6 +3932,16 @@ export default {
     notConfiguredTitle: 'Recharge / Subscription URL not configured',
     notConfiguredDesc:
       'The administrator enabled the entry but has not configured a recharge/subscription URL. Please contact admin.'
+  REDACTED,
+
+  // Custom Page (iframe embed)
+  customPage: {
+    title: 'Custom Page',
+    openInNewTab: 'Open in new tab',
+    notFoundTitle: 'Page not found',
+    notFoundDesc: 'This custom page does not exist or has been removed.',
+    notConfiguredTitle: 'Page URL not configured',
+    notConfiguredDesc: 'The URL for this custom page has not been properly configured.',
   REDACTED,
 
   // Announcements Page

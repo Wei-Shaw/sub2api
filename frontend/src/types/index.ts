@@ -75,6 +75,15 @@ export interface SendVerifyCodeResponse {
   countdown: number
 REDACTED
 
+export interface CustomMenuItem {
+  id: string
+  label: string
+  icon_svg: string
+  url: string
+  visibility: 'user' | 'admin'
+  sort_order: number
+REDACTED
+
 export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
@@ -93,6 +102,7 @@ export interface PublicSettings {
   hide_ccs_import_button: boolean
   purchase_subscription_enabled: boolean
   purchase_subscription_url: string
+  custom_menu_items: CustomMenuItem[]
   linuxdo_oauth_enabled: boolean
   sora_client_enabled: boolean
   version: string

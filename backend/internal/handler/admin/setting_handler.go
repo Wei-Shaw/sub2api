@@ -1,6 +1,9 @@
 package admin
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -19,6 +22,18 @@ import (
 
 // semverPattern 预编译 semver 格式校验正则
 var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+// menuItemIDPattern validates custom menu item IDs: alphanumeric, hyphens, underscores only.
+var menuItemIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// generateMenuItemID generates a short random hex ID for a custom menu item.
+func generateMenuItemID() (string, error) {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate menu item ID: %w", err)
+REDACTED
+	return hex.EncodeToString(b), nil
+REDACTED
 
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
@@ -92,6 +107,7 @@ REDACTED
 		PurchaseSubscriptionEnabled:          settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:              settings.PurchaseSubscriptionURL,
 		SoraClientEnabled:                    settings.SoraClientEnabled,
+		CustomMenuItems:                      dto.ParseCustomMenuItems(settings.CustomMenuItems),
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
 		DefaultSubscriptions:                 defaultSubscriptions,
@@ -141,17 +157,18 @@ type UpdateSettingsRequest struct {
 	LinuxDoConnectRedirectURL  string `json:"linuxdo_connect_redirect_url"`
 
 	// OEM设置
-	SiteName                    string  `json:"site_name"`
-	SiteLogo                    string  `json:"site_logo"`
-	SiteSubtitle                string  `json:"site_subtitle"`
-	APIBaseURL                  string  `json:"api_base_url"`
-	ContactInfo                 string  `json:"contact_info"`
-	DocURL                      string  `json:"doc_url"`
-	HomeContent                 string  `json:"home_content"`
-	HideCcsImportButton         bool    `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled *bool   `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL     *string `json:"purchase_subscription_url"`
-	SoraClientEnabled           bool    `json:"sora_client_enabled"`
+	SiteName                    string                `json:"site_name"`
+	SiteLogo                    string                `json:"site_logo"`
+	SiteSubtitle                string                `json:"site_subtitle"`
+	APIBaseURL                  string                `json:"api_base_url"`
+	ContactInfo                 string                `json:"contact_info"`
+	DocURL                      string                `json:"doc_url"`
+	HomeContent                 string                `json:"home_content"`
+	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
+	SoraClientEnabled           bool                  `json:"sora_client_enabled"`
+	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
 
 	// 默认配置
 	DefaultConcurrency   int                              `json:"default_concurrency"`
@@ -299,6 +316,84 @@ REDACTED else if purchaseURL != "" {
 	REDACTED
 REDACTED
 
+	// 自定义菜单项验证
+	const (
+		maxCustomMenuItems    = 20
+		maxMenuItemLabelLen   = 50
+		maxMenuItemURLLen     = 2048
+		maxMenuItemIconSVGLen = 10 * 1024 // 10KB
+		maxMenuItemIDLen      = 32
+	)
+
+	customMenuJSON := previousSettings.CustomMenuItems
+	if req.CustomMenuItems != nil {
+		items := *req.CustomMenuItems
+		if len(items) > maxCustomMenuItems {
+			response.BadRequest(c, "Too many custom menu items (max 20)")
+			return
+	REDACTED
+		for i, item := range items {
+			if strings.TrimSpace(item.Label) == "" {
+				response.BadRequest(c, "Custom menu item label is required")
+				return
+		REDACTED
+			if len(item.Label) > maxMenuItemLabelLen {
+				response.BadRequest(c, "Custom menu item label is too long (max 50 characters)")
+				return
+		REDACTED
+			if strings.TrimSpace(item.URL) == "" {
+				response.BadRequest(c, "Custom menu item URL is required")
+				return
+		REDACTED
+			if len(item.URL) > maxMenuItemURLLen {
+				response.BadRequest(c, "Custom menu item URL is too long (max 2048 characters)")
+				return
+		REDACTED
+			if err := config.ValidateAbsoluteHTTPURL(strings.TrimSpace(item.URL)); err != nil {
+				response.BadRequest(c, "Custom menu item URL must be an absolute http(s) URL")
+				return
+		REDACTED
+			if item.Visibility != "user" && item.Visibility != "admin" {
+				response.BadRequest(c, "Custom menu item visibility must be 'user' or 'admin'")
+				return
+		REDACTED
+			if len(item.IconSVG) > maxMenuItemIconSVGLen {
+				response.BadRequest(c, "Custom menu item icon SVG is too large (max 10KB)")
+				return
+		REDACTED
+			// Auto-generate ID if missing
+			if strings.TrimSpace(item.ID) == "" {
+				id, err := generateMenuItemID()
+				if err != nil {
+					response.Error(c, http.StatusInternalServerError, "Failed to generate menu item ID")
+					return
+			REDACTED
+				items[i].ID = id
+		REDACTED else if len(item.ID) > maxMenuItemIDLen {
+				response.BadRequest(c, "Custom menu item ID is too long (max 32 characters)")
+				return
+		REDACTED else if !menuItemIDPattern.MatchString(item.ID) {
+				response.BadRequest(c, "Custom menu item ID contains invalid characters (only a-z, A-Z, 0-9, - and _ are allowed)")
+				return
+		REDACTED
+	REDACTED
+		// ID uniqueness check
+		seen := make(map[string]struct{REDACTED, len(items))
+		for _, item := range items {
+			if _, exists := seen[item.ID]; exists {
+				response.BadRequest(c, "Duplicate custom menu item ID: "+item.ID)
+				return
+		REDACTED
+			seen[item.ID] = struct{REDACTED{REDACTED
+	REDACTED
+		menuBytes, err := json.Marshal(items)
+		if err != nil {
+			response.BadRequest(c, "Failed to serialize custom menu items")
+			return
+	REDACTED
+		customMenuJSON = string(menuBytes)
+REDACTED
+
 	// Ops metrics collector interval validation (seconds).
 	if req.OpsMetricsIntervalSeconds != nil {
 		v := *req.OpsMetricsIntervalSeconds
@@ -358,6 +453,7 @@ REDACTED
 		PurchaseSubscriptionEnabled: purchaseEnabled,
 		PurchaseSubscriptionURL:     purchaseURL,
 		SoraClientEnabled:           req.SoraClientEnabled,
+		CustomMenuItems:             customMenuJSON,
 		DefaultConcurrency:          req.DefaultConcurrency,
 		DefaultBalance:              req.DefaultBalance,
 		DefaultSubscriptions:        defaultSubscriptions,
@@ -449,6 +545,7 @@ REDACTED
 		PurchaseSubscriptionEnabled:          updatedSettings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:              updatedSettings.PurchaseSubscriptionURL,
 		SoraClientEnabled:                    updatedSettings.SoraClientEnabled,
+		CustomMenuItems:                      dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
 		DefaultSubscriptions:                 updatedDefaultSubscriptions,
@@ -611,6 +708,15 @@ REDACTED
 REDACTED
 	if before.MinClaudeCodeVersion != after.MinClaudeCodeVersion {
 		changed = append(changed, "min_claude_code_version")
+REDACTED
+	if before.PurchaseSubscriptionEnabled != after.PurchaseSubscriptionEnabled {
+		changed = append(changed, "purchase_subscription_enabled")
+REDACTED
+	if before.PurchaseSubscriptionURL != after.PurchaseSubscriptionURL {
+		changed = append(changed, "purchase_subscription_url")
+REDACTED
+	if before.CustomMenuItems != after.CustomMenuItems {
+		changed = append(changed, "custom_menu_items")
 REDACTED
 	return changed
 REDACTED

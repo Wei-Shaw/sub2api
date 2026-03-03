@@ -40,6 +40,7 @@ type SystemSettings struct {
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
 	SoraClientEnabled           bool
+	CustomMenuItems             string // JSON array of custom menu items
 
 	DefaultConcurrency   int
 	DefaultBalance       float64
@@ -92,6 +93,7 @@ type PublicSettings struct {
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
 	SoraClientEnabled           bool
+	CustomMenuItems             string // JSON array of custom menu items
 
 	LinuxDoOAuthEnabled bool
 	Version             string
