@@ -66,6 +66,12 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 			"182c193f3359946cf094090cd9e57d5c3fd9abaffbc1e8fc378646b8a6fa12b4": {REDACTED,
 	REDACTED,
 REDACTED,
+	"061_add_usage_log_request_type.sql": {
+		fileChecksum: "97bdd9a32d921986f74a0231ab90735567a9234fb7062f4d9d1baf108ba59769",
+		acceptedDBChecksum: map[string]struct{REDACTED{
+			"08a248652cbab7cfde147fc6ef8cda464f2477674e20b718312faa252e0481c0": {REDACTED,
+	REDACTED,
+REDACTED,
 REDACTED
 
 // ApplyMigrations 将嵌入的 SQL 迁移文件应用到指定的数据库。
