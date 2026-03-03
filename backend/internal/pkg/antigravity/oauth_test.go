@@ -684,7 +684,7 @@ REDACTED
 	if err != nil {
 		t.Fatalf("getClientSecret 应返回默认值，但报错: %v", err)
 REDACTED
-	if secret != "GOCSPX-your-client-secret" {
+	if secret != "REDACTED" {
 		t.Errorf("默认 client_secret 不匹配: got %s", secret)
 REDACTED
 	if RedirectURI != "http://localhost:8085/callback" {
