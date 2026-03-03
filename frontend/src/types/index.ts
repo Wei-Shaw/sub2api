@@ -675,6 +675,7 @@ export interface Account {
   base_rpm?: number | null
   rpm_strategy?: string | null
   rpm_sticky_buffer?: number | null
+  user_msg_queue_mode?: string | null  // "serialize" | "throttle" | null
 
   // TLS指纹伪装（仅 Anthropic OAuth/SetupToken 账号有效）
   enable_tls_fingerprint?: boolean | null

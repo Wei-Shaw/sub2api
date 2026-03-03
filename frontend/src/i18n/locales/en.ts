@@ -1864,7 +1864,12 @@ export default {
           strategyHint: 'Tiered: gradually restrict when exceeded; Sticky Exempt: existing sessions unrestricted',
           stickyBuffer: 'Sticky Buffer',
           stickyBufferPlaceholder: 'Default: 20% of base RPM',
-          stickyBufferHint: 'Extra requests allowed for sticky sessions after exceeding base RPM. Leave empty to use default (20% of base RPM, min 1)'
+          stickyBufferHint: 'Extra requests allowed for sticky sessions after exceeding base RPM. Leave empty to use default (20% of base RPM, min 1)',
+          userMsgQueue: 'User Message Rate Control',
+          userMsgQueueHint: 'Rate-limit user messages to avoid triggering upstream RPM limits',
+          umqModeOff: 'Off',
+          umqModeThrottle: 'Throttle',
+          umqModeSerialize: 'Serialize',
         REDACTED,
         tlsFingerprint: {
           label: 'TLS Fingerprint Simulation',

@@ -35,12 +35,12 @@ func latencyHistogramRangeCaseExpr(column string) string {
 		if b.upperMs <= 0 {
 			continue
 	REDACTED
-		_, _ = sb.WriteString(fmt.Sprintf("\tWHEN %s < %d THEN '%s'\n", column, b.upperMs, b.label))
+		fmt.Fprintf(&sb, "\tWHEN %s < %d THEN '%s'\n", column, b.upperMs, b.label)
 REDACTED
 
 	// Default bucket.
 	last := latencyHistogramBuckets[len(latencyHistogramBuckets)-1]
-	_, _ = sb.WriteString(fmt.Sprintf("\tELSE '%s'\n", last.label))
+	fmt.Fprintf(&sb, "\tELSE '%s'\n", last.label)
 	_, _ = sb.WriteString("END")
 	return sb.String()
 REDACTED
@@ -54,11 +54,11 @@ func latencyHistogramRangeOrderCaseExpr(column string) string {
 		if b.upperMs <= 0 {
 			continue
 	REDACTED
-		_, _ = sb.WriteString(fmt.Sprintf("\tWHEN %s < %d THEN %d\n", column, b.upperMs, order))
+		fmt.Fprintf(&sb, "\tWHEN %s < %d THEN %d\n", column, b.upperMs, order)
 		order++
 REDACTED
 
-	_, _ = sb.WriteString(fmt.Sprintf("\tELSE %d\n", order))
+	fmt.Fprintf(&sb, "\tELSE %d\n", order)
 	_, _ = sb.WriteString("END")
 	return sb.String()
 REDACTED

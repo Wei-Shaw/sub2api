@@ -2007,7 +2007,12 @@ export default {
           strategyHint: '三区模型: 超限后逐步限制; 粘性豁免: 已有会话不受限',
           stickyBuffer: '粘性缓冲区',
           stickyBufferPlaceholder: '默认: base RPM 的 20%',
-          stickyBufferHint: '超过 base RPM 后，粘性会话额外允许的请求数。为空则使用默认值（base RPM 的 20%，最小为 1）'
+          stickyBufferHint: '超过 base RPM 后，粘性会话额外允许的请求数。为空则使用默认值（base RPM 的 20%，最小为 1）',
+          userMsgQueue: '用户消息限速',
+          userMsgQueueHint: '对用户消息施加发送限制，避免触发上游 RPM 限制',
+          umqModeOff: '关闭',
+          umqModeThrottle: '软性限速',
+          umqModeSerialize: '串行队列',
         REDACTED,
         tlsFingerprint: {
           label: 'TLS 指纹模拟',

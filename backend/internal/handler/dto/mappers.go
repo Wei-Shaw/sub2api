@@ -216,6 +216,10 @@ REDACTED
 			buffer := a.GetRPMStickyBuffer()
 			out.RPMStickyBuffer = &buffer
 	REDACTED
+		// 用户消息队列模式
+		if mode := a.GetUserMsgQueueMode(); mode != "" {
+			out.UserMsgQueueMode = &mode
+	REDACTED
 		// TLS指纹伪装开关
 		if a.IsTLSFingerprintEnabled() {
 			enabled := true

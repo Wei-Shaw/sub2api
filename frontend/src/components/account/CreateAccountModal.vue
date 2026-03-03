@@ -1625,6 +1625,27 @@
               />
               <p class="input-hint">{{ t('admin.accounts.quotaControl.rpmLimit.stickyBufferHint') REDACTEDREDACTED</p>
             </div>
+
+          </div>
+
+          <!-- 用户消息限速模式（独立于 RPM 开关，始终可见） -->
+          <div class="mt-4">
+            <label class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.userMsgQueue') REDACTEDREDACTED</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400 mb-2">
+              {{ t('admin.accounts.quotaControl.rpmLimit.userMsgQueueHint') REDACTEDREDACTED
+            </p>
+            <div class="flex space-x-2">
+              <button type="button" v-for="opt in umqModeOptions" :key="opt.value"
+                @click="userMsgQueueMode = opt.value"
+                :class="[
+                  'px-3 py-1.5 text-sm rounded-md border transition-colors',
+                  userMsgQueueMode === opt.value
+                    ? 'bg-primary-600 text-white border-primary-600'
+                    : 'bg-white dark:bg-dark-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-dark-500 hover:bg-gray-50 dark:hover:bg-dark-600'
+                ]">
+                {{ opt.label REDACTEDREDACTED
+              </button>
+            </div>
           </div>
         </div>
 
@@ -2489,6 +2510,12 @@ const rpmLimitEnabled = ref(false)
 const baseRpm = ref<number | null>(null)
 const rpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
 const rpmStickyBuffer = ref<number | null>(null)
+const userMsgQueueMode = ref('')
+const umqModeOptions = computed(() => [
+  { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') REDACTED,
+  { value: 'throttle', label: t('admin.accounts.quotaControl.rpmLimit.umqModeThrottle') REDACTED,
+  { value: 'serialize', label: t('admin.accounts.quotaControl.rpmLimit.umqModeSerialize') REDACTED,
+])
 const tlsFingerprintEnabled = ref(false)
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
@@ -3117,6 +3144,7 @@ const resetForm = () => {
   baseRpm.value = null
   rpmStrategy.value = 'tiered'
   rpmStickyBuffer.value = null
+  userMsgQueueMode.value = ''
   tlsFingerprintEnabled.value = false
   sessionIdMaskingEnabled.value = false
   cacheTTLOverrideEnabled.value = false
@@ -4035,6 +4063,11 @@ const handleAnthropicExchange = async (authCode: string) => {
       REDACTED
     REDACTED
 
+    // UMQ mode（独立于 RPM）
+    if (userMsgQueueMode.value) {
+      extra.user_msg_queue_mode = userMsgQueueMode.value
+    REDACTED
+
     // Add TLS fingerprint settings
     if (tlsFingerprintEnabled.value) {
       extra.enable_tls_fingerprint = true
@@ -4140,6 +4173,11 @@ const handleCookieAuth = async (sessionKey: string) => {
           if (rpmStickyBuffer.value != null && rpmStickyBuffer.value > 0) {
             extra.rpm_sticky_buffer = rpmStickyBuffer.value
           REDACTED
+        REDACTED
+
+        // UMQ mode（独立于 RPM）
+        if (userMsgQueueMode.value) {
+          extra.user_msg_queue_mode = userMsgQueueMode.value
         REDACTED
 
         // Add TLS fingerprint settings
