@@ -18,7 +18,8 @@ type TokenRefreshService struct {
 	refreshers       []TokenRefresher
 	cfg              *config.TokenRefreshConfig
 	cacheInvalidator TokenCacheInvalidator
-	schedulerCache   SchedulerCache // 用于同步更新调度器缓存，解决 token 刷新后缓存不一致问题
+	schedulerCache   SchedulerCache    // 用于同步更新调度器缓存，解决 token 刷新后缓存不一致问题
+	tempUnschedCache TempUnschedCache  // 用于清除 Redis 中的临时不可调度缓存
 
 	stopCh chan struct{REDACTED
 	wg     sync.WaitGroup
@@ -34,12 +35,14 @@ func NewTokenRefreshService(
 	cacheInvalidator TokenCacheInvalidator,
 	schedulerCache SchedulerCache,
 	cfg *config.Config,
+	tempUnschedCache TempUnschedCache,
 ) *TokenRefreshService {
 	s := &TokenRefreshService{
 		accountRepo:      accountRepo,
 		cfg:              &cfg.TokenRefresh,
 		cacheInvalidator: cacheInvalidator,
 		schedulerCache:   schedulerCache,
+		tempUnschedCache: tempUnschedCache,
 		stopCh:           make(chan struct{REDACTED),
 REDACTED
 
@@ -231,6 +234,26 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 					slog.Info("token_refresh.cleared_missing_project_id_error", "account_id", account.ID)
 			REDACTED
 		REDACTED
+			// 刷新成功后清除临时不可调度状态（处理 OAuth 401 恢复场景）
+			if account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) {
+				if clearErr := s.accountRepo.ClearTempUnschedulable(ctx, account.ID); clearErr != nil {
+					slog.Warn("token_refresh.clear_temp_unschedulable_failed",
+						"account_id", account.ID,
+						"error", clearErr,
+					)
+			REDACTED else {
+					slog.Info("token_refresh.cleared_temp_unschedulable", "account_id", account.ID)
+			REDACTED
+				// 同步清除 Redis 缓存，避免调度器读到过期的临时不可调度状态
+				if s.tempUnschedCache != nil {
+					if clearErr := s.tempUnschedCache.DeleteTempUnsched(ctx, account.ID); clearErr != nil {
+						slog.Warn("token_refresh.clear_temp_unsched_cache_failed",
+							"account_id", account.ID,
+							"error", clearErr,
+						)
+				REDACTED
+			REDACTED
+		REDACTED
 			// 对所有 OAuth 账号调用缓存失效（InvalidateToken 内部根据平台判断是否需要处理）
 			if s.cacheInvalidator != nil && account.Type == AccountTypeOAuth {
 				if err := s.cacheInvalidator.InvalidateToken(ctx, account); err != nil {
@@ -257,8 +280,8 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 			return nil
 	REDACTED
 
-		// Antigravity 账户：不可重试错误直接标记 error 状态并返回
-		if account.Platform == PlatformAntigravity && isNonRetryableRefreshError(err) {
+		// 不可重试错误（invalid_grant/invalid_client 等）直接标记 error 状态并返回
+		if isNonRetryableRefreshError(err) {
 			errorMsg := fmt.Sprintf("Token refresh failed (non-retryable): %v", err)
 			if setErr := s.accountRepo.SetError(ctx, account.ID, errorMsg); setErr != nil {
 				slog.Error("token_refresh.set_error_status_failed",
@@ -285,23 +308,13 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 	REDACTED
 REDACTED
 
-	// Antigravity 账户：其他错误仅记录日志，不标记 error（可能是临时网络问题）
-	// 其他平台账户：重试失败后标记 error
-	if account.Platform == PlatformAntigravity {
-		slog.Warn("token_refresh.retry_exhausted_antigravity",
-			"account_id", account.ID,
-			"max_retries", s.cfg.MaxRetries,
-			"error", lastErr,
-		)
-REDACTED else {
-		errorMsg := fmt.Sprintf("Token refresh failed after %d retries: %v", s.cfg.MaxRetries, lastErr)
-		if err := s.accountRepo.SetError(ctx, account.ID, errorMsg); err != nil {
-			slog.Error("token_refresh.set_error_status_failed",
-				"account_id", account.ID,
-				"error", err,
-			)
-	REDACTED
-REDACTED
+	// 可重试错误耗尽：仅记录日志，不标记 error（可能是临时网络问题，下个周期继续重试）
+	slog.Warn("token_refresh.retry_exhausted",
+		"account_id", account.ID,
+		"platform", account.Platform,
+		"max_retries", s.cfg.MaxRetries,
+		"error", lastErr,
+	)
 
 	return lastErr
 REDACTED
