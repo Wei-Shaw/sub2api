@@ -18,8 +18,8 @@ type TokenRefreshService struct {
 	refreshers       []TokenRefresher
 	cfg              *config.TokenRefreshConfig
 	cacheInvalidator TokenCacheInvalidator
-	schedulerCache   SchedulerCache    // 用于同步更新调度器缓存，解决 token 刷新后缓存不一致问题
-	tempUnschedCache TempUnschedCache  // 用于清除 Redis 中的临时不可调度缓存
+	schedulerCache   SchedulerCache   // 用于同步更新调度器缓存，解决 token 刷新后缓存不一致问题
+	tempUnschedCache TempUnschedCache // 用于清除 Redis 中的临时不可调度缓存
 
 	stopCh chan struct{REDACTED
 	wg     sync.WaitGroup
