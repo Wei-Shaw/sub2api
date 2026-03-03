@@ -1,6 +1,7 @@
 import { defineStore REDACTED from 'pinia'
 import { ref REDACTED from 'vue'
 import { adminAPI REDACTED from '@/api'
+import type { CustomMenuItem REDACTED from '@/types'
 
 export const useAdminSettingsStore = defineStore('adminSettings', () => {
   const loaded = ref(false)
@@ -43,6 +44,9 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
     REDACTED
   REDACTED
 
+  // Custom menu items (all items including admin-only, loaded from admin settings API)
+  const customMenuItems = ref<CustomMenuItem[]>([])
+
   // Default open, but honor cached value to reduce UI flicker on first paint.
   const opsMonitoringEnabled = ref(readCachedBool('ops_monitoring_enabled_cached', true))
   const opsRealtimeMonitoringEnabled = ref(readCachedBool('ops_realtime_monitoring_enabled_cached', true))
@@ -63,6 +67,8 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
 
       opsQueryModeDefault.value = settings.ops_query_mode_default || 'auto'
       writeCachedString('ops_query_mode_default_cached', opsQueryModeDefault.value)
+
+      customMenuItems.value = settings.custom_menu_items ?? []
 
       loaded.value = true
     REDACTED catch (err) {
@@ -122,6 +128,7 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
     opsMonitoringEnabled,
     opsRealtimeMonitoringEnabled,
     opsQueryModeDefault,
+    customMenuItems,
     fetch,
     setOpsMonitoringEnabledLocal,
     setOpsRealtimeMonitoringEnabledLocal,
