@@ -829,6 +829,51 @@ REDACTED
 	return r.accountsToService(ctx, accounts)
 REDACTED
 
+func (r *accountRepository) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
+	now := time.Now()
+	accounts, err := r.client.Account.Query().
+		Where(
+			dbaccount.PlatformEQ(platform),
+			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.SchedulableEQ(true),
+			dbaccount.Not(dbaccount.HasAccountGroups()),
+			tempUnschedulablePredicate(),
+			notExpiredPredicate(now),
+			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
+			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
+		).
+		Order(dbent.Asc(dbaccount.FieldPriority)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+	return r.accountsToService(ctx, accounts)
+REDACTED
+
+func (r *accountRepository) ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]service.Account, error) {
+	if len(platforms) == 0 {
+		return nil, nil
+REDACTED
+	now := time.Now()
+	accounts, err := r.client.Account.Query().
+		Where(
+			dbaccount.PlatformIn(platforms...),
+			dbaccount.StatusEQ(service.StatusActive),
+			dbaccount.SchedulableEQ(true),
+			dbaccount.Not(dbaccount.HasAccountGroups()),
+			tempUnschedulablePredicate(),
+			notExpiredPredicate(now),
+			dbaccount.Or(dbaccount.OverloadUntilIsNil(), dbaccount.OverloadUntilLTE(now)),
+			dbaccount.Or(dbaccount.RateLimitResetAtIsNil(), dbaccount.RateLimitResetAtLTE(now)),
+		).
+		Order(dbent.Asc(dbaccount.FieldPriority)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+	return r.accountsToService(ctx, accounts)
+REDACTED
+
 func (r *accountRepository) ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]service.Account, error) {
 	if len(platforms) == 0 {
 		return nil, nil

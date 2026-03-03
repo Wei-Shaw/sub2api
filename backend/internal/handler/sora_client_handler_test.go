@@ -2089,6 +2089,12 @@ REDACTED
 func (r *stubAccountRepoForHandler) ListSchedulableByGroupIDAndPlatforms(context.Context, int64, []string) ([]service.Account, error) {
 	return r.accounts, nil
 REDACTED
+func (r *stubAccountRepoForHandler) ListSchedulableUngroupedByPlatform(_ context.Context, _ string) ([]service.Account, error) {
+	return r.accounts, nil
+REDACTED
+func (r *stubAccountRepoForHandler) ListSchedulableUngroupedByPlatforms(_ context.Context, _ []string) ([]service.Account, error) {
+	return r.accounts, nil
+REDACTED
 func (r *stubAccountRepoForHandler) SetRateLimited(context.Context, int64, time.Time) error {
 	return nil
 REDACTED

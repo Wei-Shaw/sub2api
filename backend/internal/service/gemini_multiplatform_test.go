@@ -138,6 +138,12 @@ func (m *mockAccountRepoForGemini) ListSchedulableByGroupIDAndPlatforms(ctx cont
 REDACTED
 	return m.ListSchedulableByPlatforms(ctx, platforms)
 REDACTED
+func (m *mockAccountRepoForGemini) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error) {
+	return m.ListSchedulableByPlatform(ctx, platform)
+REDACTED
+func (m *mockAccountRepoForGemini) ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]Account, error) {
+	return m.ListSchedulableByPlatforms(ctx, platforms)
+REDACTED
 func (m *mockAccountRepoForGemini) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	return nil
 REDACTED

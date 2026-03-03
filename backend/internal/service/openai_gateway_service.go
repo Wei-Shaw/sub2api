@@ -1343,7 +1343,7 @@ REDACTED
 REDACTED else if groupID != nil {
 		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
 REDACTED else {
-		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, PlatformOpenAI)
+		accounts, err = s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, PlatformOpenAI)
 REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)

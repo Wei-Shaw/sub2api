@@ -1782,8 +1782,10 @@ REDACTED
 		var err error
 		if groupID != nil {
 			accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatforms(ctx, *groupID, platforms)
-	REDACTED else {
+	REDACTED else if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 			accounts, err = s.accountRepo.ListSchedulableByPlatforms(ctx, platforms)
+	REDACTED else {
+			accounts, err = s.accountRepo.ListSchedulableUngroupedByPlatforms(ctx, platforms)
 	REDACTED
 		if err != nil {
 			slog.Debug("account_scheduling_list_failed",
@@ -1824,7 +1826,7 @@ REDACTED else if groupID != nil {
 		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, platform)
 		// 分组内无账号则返回空列表，由上层处理错误，不再回退到全平台查询
 REDACTED else {
-		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, platform)
+		accounts, err = s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, platform)
 REDACTED
 	if err != nil {
 		slog.Debug("account_scheduling_list_failed",
@@ -1964,13 +1966,14 @@ REDACTED
 REDACTED
 
 // isAccountInGroup checks if the account belongs to the specified group.
-// Returns true if groupID is nil (no group restriction) or account belongs to the group.
+// When groupID is nil, returns true only for ungrouped accounts (no group assignments).
 func (s *GatewayService) isAccountInGroup(account *Account, groupID *int64) bool {
-	if groupID == nil {
-		return true // 无分组限制
-REDACTED
 	if account == nil {
 		return false
+REDACTED
+	if groupID == nil {
+		// 无分组的 API Key 只能使用未分组的账号
+		return len(account.AccountGroups) == 0
 REDACTED
 	for _, ag := range account.AccountGroups {
 		if ag.GroupID == *groupID {
