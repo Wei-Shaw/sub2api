@@ -2,8 +2,11 @@ package middleware
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -70,4 +73,49 @@ REDACTED
 func AbortWithError(c *gin.Context, statusCode int, code, message string) {
 	c.JSON(statusCode, NewErrorResponse(code, message))
 	c.Abort()
+REDACTED
+
+// ──────────────────────────────────────────────────────────
+// RequireGroupAssignment — 未分组 Key 拦截中间件
+// ──────────────────────────────────────────────────────────
+
+// GatewayErrorWriter 定义网关错误响应格式（不同协议使用不同格式）
+type GatewayErrorWriter func(c *gin.Context, status int, message string)
+
+// AnthropicErrorWriter 按 Anthropic API 规范输出错误
+func AnthropicErrorWriter(c *gin.Context, status int, message string) {
+	c.JSON(status, gin.H{
+		"type":  "error",
+		"error": gin.H{"type": "permission_error", "message": messageREDACTED,
+REDACTED)
+REDACTED
+
+// GoogleErrorWriter 按 Google API 规范输出错误
+func GoogleErrorWriter(c *gin.Context, status int, message string) {
+	c.JSON(status, gin.H{
+		"error": gin.H{
+			"code":    status,
+			"message": message,
+			"status":  googleapi.HTTPStatusToGoogleStatus(status),
+	REDACTED,
+REDACTED)
+REDACTED
+
+// RequireGroupAssignment 检查 API Key 是否已分配到分组，
+// 如果未分组且系统设置不允许未分组 Key 调度则返回 403。
+func RequireGroupAssignment(settingService *service.SettingService, writeError GatewayErrorWriter) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		apiKey, ok := GetAPIKeyFromContext(c)
+		if !ok || apiKey.GroupID != nil {
+			c.Next()
+			return
+	REDACTED
+		// 未分组 Key — 检查系统设置
+		if settingService.IsUngroupedKeySchedulingAllowed(c.Request.Context()) {
+			c.Next()
+			return
+	REDACTED
+		writeError(c, http.StatusForbidden, "API Key is not assigned to any group and cannot be used. Please contact the administrator to assign it to a group.")
+		c.Abort()
+REDACTED
 REDACTED

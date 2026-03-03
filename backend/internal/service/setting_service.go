@@ -438,6 +438,9 @@ REDACTED
 	// Claude Code version check
 	updates[SettingKeyMinClaudeCodeVersion] = settings.MinClaudeCodeVersion
 
+	// 分组隔离
+	updates[SettingKeyAllowUngroupedKeyScheduling] = strconv.FormatBool(settings.AllowUngroupedKeyScheduling)
+
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
 		// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
@@ -646,6 +649,9 @@ REDACTED
 
 		// Claude Code version check (default: empty = disabled)
 		SettingKeyMinClaudeCodeVersion: "",
+
+		// 分组隔离（默认不允许未分组 Key 调度）
+		SettingKeyAllowUngroupedKeyScheduling: "false",
 REDACTED
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -775,6 +781,9 @@ REDACTED
 
 	// Claude Code version check
 	result.MinClaudeCodeVersion = settings[SettingKeyMinClaudeCodeVersion]
+
+	// 分组隔离
+	result.AllowUngroupedKeyScheduling = settings[SettingKeyAllowUngroupedKeyScheduling] == "true"
 
 	return result
 REDACTED
@@ -1096,6 +1105,15 @@ REDACTED
 REDACTED
 
 	return &settings, nil
+REDACTED
+
+// IsUngroupedKeySchedulingAllowed 查询是否允许未分组 Key 调度
+func (s *SettingService) IsUngroupedKeySchedulingAllowed(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAllowUngroupedKeyScheduling)
+	if err != nil {
+		return false // fail-closed: 查询失败时默认不允许
+REDACTED
+	return value == "true"
 REDACTED
 
 // GetMinClaudeCodeVersion 获取最低 Claude Code 版本号要求

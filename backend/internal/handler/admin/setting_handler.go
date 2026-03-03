@@ -123,6 +123,7 @@ REDACTED
 		OpsQueryModeDefault:                  settings.OpsQueryModeDefault,
 		OpsMetricsIntervalSeconds:            settings.OpsMetricsIntervalSeconds,
 		MinClaudeCodeVersion:                 settings.MinClaudeCodeVersion,
+		AllowUngroupedKeyScheduling:          settings.AllowUngroupedKeyScheduling,
 REDACTED)
 REDACTED
 
@@ -193,6 +194,9 @@ type UpdateSettingsRequest struct {
 	OpsMetricsIntervalSeconds    *int    `json:"ops_metrics_interval_seconds"`
 
 	MinClaudeCodeVersion string `json:"min_claude_code_version"`
+
+	// 分组隔离
+	AllowUngroupedKeyScheduling bool `json:"allow_ungrouped_key_scheduling"`
 REDACTED
 
 // UpdateSettings 更新系统设置
@@ -465,6 +469,7 @@ REDACTED
 		EnableIdentityPatch:         req.EnableIdentityPatch,
 		IdentityPatchPrompt:         req.IdentityPatchPrompt,
 		MinClaudeCodeVersion:        req.MinClaudeCodeVersion,
+		AllowUngroupedKeyScheduling: req.AllowUngroupedKeyScheduling,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -561,6 +566,7 @@ REDACTED
 		OpsQueryModeDefault:                  updatedSettings.OpsQueryModeDefault,
 		OpsMetricsIntervalSeconds:            updatedSettings.OpsMetricsIntervalSeconds,
 		MinClaudeCodeVersion:                 updatedSettings.MinClaudeCodeVersion,
+		AllowUngroupedKeyScheduling:          updatedSettings.AllowUngroupedKeyScheduling,
 REDACTED)
 REDACTED
 
@@ -708,6 +714,9 @@ REDACTED
 REDACTED
 	if before.MinClaudeCodeVersion != after.MinClaudeCodeVersion {
 		changed = append(changed, "min_claude_code_version")
+REDACTED
+	if before.AllowUngroupedKeyScheduling != after.AllowUngroupedKeyScheduling {
+		changed = append(changed, "allow_ungrouped_key_scheduling")
 REDACTED
 	if before.PurchaseSubscriptionEnabled != after.PurchaseSubscriptionEnabled {
 		changed = append(changed, "purchase_subscription_enabled")

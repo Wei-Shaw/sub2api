@@ -3759,6 +3759,12 @@ export default {
         minVersionPlaceholder: '例如 2.1.63',
         minVersionHint: '拒绝低于此版本的 Claude Code 客户端请求（semver 格式）。留空则不检查版本。'
       REDACTED,
+      scheduling: {
+        title: '网关调度设置',
+        description: '控制 API Key 的调度行为',
+        allowUngroupedKey: '允许未分组 Key 调度',
+        allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。'
+      REDACTED,
       site: {
         title: '站点设置',
         description: '自定义站点品牌',
