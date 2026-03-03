@@ -36,6 +36,11 @@ type CreateAPIKeyRequest struct {
 	IPBlacklist   []string `json:"ip_blacklist"`    // IP 黑名单
 	Quota         *float64 `json:"quota"`           // 配额限制 (USD)
 	ExpiresInDays *int     `json:"expires_in_days"` // 过期天数
+
+	// Rate limit fields (0 = unlimited)
+	RateLimit5h *float64 `json:"rate_limit_5h"`
+	RateLimit1d *float64 `json:"rate_limit_1d"`
+	RateLimit7d *float64 `json:"rate_limit_7d"`
 REDACTED
 
 // UpdateAPIKeyRequest represents the update API key request payload
@@ -48,6 +53,12 @@ type UpdateAPIKeyRequest struct {
 	Quota       *float64 `json:"quota"`        // 配额限制 (USD), 0=无限制
 	ExpiresAt   *string  `json:"expires_at"`   // 过期时间 (ISO 8601)
 	ResetQuota  *bool    `json:"reset_quota"`  // 重置已用配额
+
+	// Rate limit fields (nil = no change, 0 = unlimited)
+	RateLimit5h         *float64 `json:"rate_limit_5h"`
+	RateLimit1d         *float64 `json:"rate_limit_1d"`
+	RateLimit7d         *float64 `json:"rate_limit_7d"`
+	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // 重置限速用量
 REDACTED
 
 // List handles listing user's API keys with pagination
@@ -131,6 +142,15 @@ REDACTED
 	if req.Quota != nil {
 		svcReq.Quota = *req.Quota
 REDACTED
+	if req.RateLimit5h != nil {
+		svcReq.RateLimit5h = *req.RateLimit5h
+REDACTED
+	if req.RateLimit1d != nil {
+		svcReq.RateLimit1d = *req.RateLimit1d
+REDACTED
+	if req.RateLimit7d != nil {
+		svcReq.RateLimit7d = *req.RateLimit7d
+REDACTED
 
 	executeUserIdempotentJSON(c, "user.api_keys.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		key, err := h.apiKeyService.Create(ctx, subject.UserID, svcReq)
@@ -163,10 +183,14 @@ REDACTED
 REDACTED
 
 	svcReq := service.UpdateAPIKeyRequest{
-		IPWhitelist: req.IPWhitelist,
-		IPBlacklist: req.IPBlacklist,
-		Quota:       req.Quota,
-		ResetQuota:  req.ResetQuota,
+		IPWhitelist:         req.IPWhitelist,
+		IPBlacklist:         req.IPBlacklist,
+		Quota:               req.Quota,
+		ResetQuota:          req.ResetQuota,
+		RateLimit5h:         req.RateLimit5h,
+		RateLimit1d:         req.RateLimit1d,
+		RateLimit7d:         req.RateLimit7d,
+		ResetRateLimitUsage: req.ResetRateLimitUsage,
 REDACTED
 	if req.Name != "" {
 		svcReq.Name = &req.Name

@@ -19,6 +19,11 @@ type APIKeyAuthSnapshot struct {
 
 	// Expiration field for API Key expiration feature
 	ExpiresAt *time.Time `json:"expires_at,omitempty"` // Expiration time (nil = never expires)
+
+	// Rate limit configuration (only limits, not usage - usage read from Redis at check time)
+	RateLimit5h float64 `json:"rate_limit_5h"`
+	RateLimit1d float64 `json:"rate_limit_1d"`
+	RateLimit7d float64 `json:"rate_limit_7d"`
 REDACTED
 
 // APIKeyAuthUserSnapshot 用户快照

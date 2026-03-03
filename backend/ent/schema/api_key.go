@@ -74,6 +74,47 @@ func (APIKey) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("Expiration time for this API key (null = never expires)"),
+
+		// ========== Rate limit fields ==========
+		// Rate limit configuration (0 = unlimited)
+		field.Float("rate_limit_5h").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Rate limit in USD per 5 hours (0 = unlimited)"),
+		field.Float("rate_limit_1d").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Rate limit in USD per day (0 = unlimited)"),
+		field.Float("rate_limit_7d").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Rate limit in USD per 7 days (0 = unlimited)"),
+		// Rate limit usage tracking
+		field.Float("usage_5h").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Used amount in USD for the current 5h window"),
+		field.Float("usage_1d").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Used amount in USD for the current 1d window"),
+		field.Float("usage_7d").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Used amount in USD for the current 7d window"),
+		// Window start times
+		field.Time("window_5h_start").
+			Optional().
+			Nillable().
+			Comment("Start time of the current 5h rate limit window"),
+		field.Time("window_1d_start").
+			Optional().
+			Nillable().
+			Comment("Start time of the current 1d rate limit window"),
+		field.Time("window_7d_start").
+			Optional().
+			Nillable().
+			Comment("Start time of the current 7d rate limit window"),
 REDACTED
 REDACTED
 

@@ -14,10 +14,12 @@ import (
 )
 
 const (
-	billingBalanceKeyPrefix = "billing:balance:"
-	billingSubKeyPrefix     = "billing:sub:"
-	billingCacheTTL         = 5 * time.Minute
-	billingCacheJitter      = 30 * time.Second
+	billingBalanceKeyPrefix  = "billing:balance:"
+	billingSubKeyPrefix      = "billing:sub:"
+	billingRateLimitKeyPrefix = "apikey:rate:"
+	billingCacheTTL          = 5 * time.Minute
+	billingCacheJitter       = 30 * time.Second
+	rateLimitCacheTTL        = 7 * 24 * time.Hour // 7 days matches the longest window
 )
 
 // jitteredTTL 返回带随机抖动的 TTL，防止缓存雪崩
@@ -49,6 +51,20 @@ const (
 	subFieldVersion      = "version"
 )
 
+// billingRateLimitKey generates the Redis key for API key rate limit cache.
+func billingRateLimitKey(keyID int64) string {
+	return fmt.Sprintf("%s%d", billingRateLimitKeyPrefix, keyID)
+REDACTED
+
+const (
+	rateLimitFieldUsage5h  = "usage_5h"
+	rateLimitFieldUsage1d  = "usage_1d"
+	rateLimitFieldUsage7d  = "usage_7d"
+	rateLimitFieldWindow5h = "window_5h"
+	rateLimitFieldWindow1d = "window_1d"
+	rateLimitFieldWindow7d = "window_7d"
+)
+
 var (
 	deductBalanceScript = redis.NewScript(`
 		local current = redis.call('GET', KEYS[1])
@@ -70,6 +86,21 @@ var (
 		redis.call('HINCRBYFLOAT', KEYS[1], 'daily_usage', cost)
 		redis.call('HINCRBYFLOAT', KEYS[1], 'weekly_usage', cost)
 		redis.call('HINCRBYFLOAT', KEYS[1], 'monthly_usage', cost)
+		redis.call('EXPIRE', KEYS[1], ARGV[2])
+		return 1
+	`)
+
+	// updateRateLimitUsageScript atomically increments all three rate limit usage counters.
+	// Returns 0 if the key doesn't exist (cache miss), 1 on success.
+	updateRateLimitUsageScript = redis.NewScript(`
+		local exists = redis.call('EXISTS', KEYS[1])
+		if exists == 0 then
+			return 0
+		end
+		local cost = tonumber(ARGV[1])
+		redis.call('HINCRBYFLOAT', KEYS[1], 'usage_5h', cost)
+		redis.call('HINCRBYFLOAT', KEYS[1], 'usage_1d', cost)
+		redis.call('HINCRBYFLOAT', KEYS[1], 'usage_7d', cost)
 		redis.call('EXPIRE', KEYS[1], ARGV[2])
 		return 1
 	`)
@@ -193,5 +224,71 @@ REDACTED
 
 func (c *billingCache) InvalidateSubscriptionCache(ctx context.Context, userID, groupID int64) error {
 	key := billingSubKey(userID, groupID)
+	return c.rdb.Del(ctx, key).Err()
+REDACTED
+
+func (c *billingCache) GetAPIKeyRateLimit(ctx context.Context, keyID int64) (*service.APIKeyRateLimitCacheData, error) {
+	key := billingRateLimitKey(keyID)
+	result, err := c.rdb.HGetAll(ctx, key).Result()
+	if err != nil {
+		return nil, err
+REDACTED
+	if len(result) == 0 {
+		return nil, redis.Nil
+REDACTED
+	data := &service.APIKeyRateLimitCacheData{REDACTED
+	if v, ok := result[rateLimitFieldUsage5h]; ok {
+		data.Usage5h, _ = strconv.ParseFloat(v, 64)
+REDACTED
+	if v, ok := result[rateLimitFieldUsage1d]; ok {
+		data.Usage1d, _ = strconv.ParseFloat(v, 64)
+REDACTED
+	if v, ok := result[rateLimitFieldUsage7d]; ok {
+		data.Usage7d, _ = strconv.ParseFloat(v, 64)
+REDACTED
+	if v, ok := result[rateLimitFieldWindow5h]; ok {
+		data.Window5h, _ = strconv.ParseInt(v, 10, 64)
+REDACTED
+	if v, ok := result[rateLimitFieldWindow1d]; ok {
+		data.Window1d, _ = strconv.ParseInt(v, 10, 64)
+REDACTED
+	if v, ok := result[rateLimitFieldWindow7d]; ok {
+		data.Window7d, _ = strconv.ParseInt(v, 10, 64)
+REDACTED
+	return data, nil
+REDACTED
+
+func (c *billingCache) SetAPIKeyRateLimit(ctx context.Context, keyID int64, data *service.APIKeyRateLimitCacheData) error {
+	if data == nil {
+		return nil
+REDACTED
+	key := billingRateLimitKey(keyID)
+	fields := map[string]any{
+		rateLimitFieldUsage5h:  data.Usage5h,
+		rateLimitFieldUsage1d:  data.Usage1d,
+		rateLimitFieldUsage7d:  data.Usage7d,
+		rateLimitFieldWindow5h: data.Window5h,
+		rateLimitFieldWindow1d: data.Window1d,
+		rateLimitFieldWindow7d: data.Window7d,
+REDACTED
+	pipe := c.rdb.Pipeline()
+	pipe.HSet(ctx, key, fields)
+	pipe.Expire(ctx, key, rateLimitCacheTTL)
+	_, err := pipe.Exec(ctx)
+	return err
+REDACTED
+
+func (c *billingCache) UpdateAPIKeyRateLimitUsage(ctx context.Context, keyID int64, cost float64) error {
+	key := billingRateLimitKey(keyID)
+	_, err := updateRateLimitUsageScript.Run(ctx, c.rdb, []string{keyREDACTED, cost, int(rateLimitCacheTTL.Seconds())).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		log.Printf("Warning: update rate limit usage cache failed for api key %d: %v", keyID, err)
+		return err
+REDACTED
+	return nil
+REDACTED
+
+func (c *billingCache) InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error {
+	key := billingRateLimitKey(keyID)
 	return c.rdb.Del(ctx, key).Err()
 REDACTED

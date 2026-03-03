@@ -24,6 +24,15 @@ var (
 		{Name: "quota", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "quota_used", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "expires_at", Type: field.TypeTime, Nullable: trueREDACTED,
+		{Name: "rate_limit_5h", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "rate_limit_1d", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "rate_limit_7d", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "usage_5h", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "usage_1d", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "usage_7d", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "window_5h_start", Type: field.TypeTime, Nullable: trueREDACTED,
+		{Name: "window_1d_start", Type: field.TypeTime, Nullable: trueREDACTED,
+		{Name: "window_7d_start", Type: field.TypeTime, Nullable: trueREDACTED,
 		{Name: "group_id", Type: field.TypeInt64, Nullable: trueREDACTED,
 		{Name: "user_id", Type: field.TypeInt64REDACTED,
 REDACTED
@@ -35,13 +44,13 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "api_keys_groups_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[13]REDACTED,
+				Columns:    []*schema.Column{APIKeysColumns[22]REDACTED,
 				RefColumns: []*schema.Column{GroupsColumns[0]REDACTED,
 				OnDelete:   schema.SetNull,
 		REDACTED,
 			{
 				Symbol:     "api_keys_users_api_keys",
-				Columns:    []*schema.Column{APIKeysColumns[14]REDACTED,
+				Columns:    []*schema.Column{APIKeysColumns[23]REDACTED,
 				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
@@ -50,12 +59,12 @@ REDACTED
 			{
 				Name:    "apikey_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[14]REDACTED,
+				Columns: []*schema.Column{APIKeysColumns[23]REDACTED,
 		REDACTED,
 			{
 				Name:    "apikey_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[13]REDACTED,
+				Columns: []*schema.Column{APIKeysColumns[22]REDACTED,
 		REDACTED,
 			{
 				Name:    "apikey_status",

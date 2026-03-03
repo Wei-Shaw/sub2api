@@ -48,6 +48,24 @@ type APIKey struct {
 	QuotaUsed float64 `json:"quota_used,omitempty"`
 	// Expiration time for this API key (null = never expires)
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	// Rate limit in USD per 5 hours (0 = unlimited)
+	RateLimit5h float64 `json:"rate_limit_5h,omitempty"`
+	// Rate limit in USD per day (0 = unlimited)
+	RateLimit1d float64 `json:"rate_limit_1d,omitempty"`
+	// Rate limit in USD per 7 days (0 = unlimited)
+	RateLimit7d float64 `json:"rate_limit_7d,omitempty"`
+	// Used amount in USD for the current 5h window
+	Usage5h float64 `json:"usage_5h,omitempty"`
+	// Used amount in USD for the current 1d window
+	Usage1d float64 `json:"usage_1d,omitempty"`
+	// Used amount in USD for the current 7d window
+	Usage7d float64 `json:"usage_7d,omitempty"`
+	// Start time of the current 5h rate limit window
+	Window5hStart *time.Time `json:"window_5h_start,omitempty"`
+	// Start time of the current 1d rate limit window
+	Window1dStart *time.Time `json:"window_1d_start,omitempty"`
+	// Start time of the current 7d rate limit window
+	Window7dStart *time.Time `json:"window_7d_start,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the APIKeyQuery when eager-loading is set.
 	Edges        APIKeyEdges `json:"edges"`
@@ -105,13 +123,13 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case apikey.FieldIPWhitelist, apikey.FieldIPBlacklist:
 			values[i] = new([]byte)
-		case apikey.FieldQuota, apikey.FieldQuotaUsed:
+		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
 		case apikey.FieldID, apikey.FieldUserID, apikey.FieldGroupID:
 			values[i] = new(sql.NullInt64)
 		case apikey.FieldKey, apikey.FieldName, apikey.FieldStatus:
 			values[i] = new(sql.NullString)
-		case apikey.FieldCreatedAt, apikey.FieldUpdatedAt, apikey.FieldDeletedAt, apikey.FieldLastUsedAt, apikey.FieldExpiresAt:
+		case apikey.FieldCreatedAt, apikey.FieldUpdatedAt, apikey.FieldDeletedAt, apikey.FieldLastUsedAt, apikey.FieldExpiresAt, apikey.FieldWindow5hStart, apikey.FieldWindow1dStart, apikey.FieldWindow7dStart:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -226,6 +244,63 @@ REDACTED
 				_m.ExpiresAt = new(time.Time)
 				*_m.ExpiresAt = value.Time
 		REDACTED
+		case apikey.FieldRateLimit5h:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field rate_limit_5h", values[i])
+		REDACTED else if value.Valid {
+				_m.RateLimit5h = value.Float64
+		REDACTED
+		case apikey.FieldRateLimit1d:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field rate_limit_1d", values[i])
+		REDACTED else if value.Valid {
+				_m.RateLimit1d = value.Float64
+		REDACTED
+		case apikey.FieldRateLimit7d:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field rate_limit_7d", values[i])
+		REDACTED else if value.Valid {
+				_m.RateLimit7d = value.Float64
+		REDACTED
+		case apikey.FieldUsage5h:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field usage_5h", values[i])
+		REDACTED else if value.Valid {
+				_m.Usage5h = value.Float64
+		REDACTED
+		case apikey.FieldUsage1d:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field usage_1d", values[i])
+		REDACTED else if value.Valid {
+				_m.Usage1d = value.Float64
+		REDACTED
+		case apikey.FieldUsage7d:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field usage_7d", values[i])
+		REDACTED else if value.Valid {
+				_m.Usage7d = value.Float64
+		REDACTED
+		case apikey.FieldWindow5hStart:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field window_5h_start", values[i])
+		REDACTED else if value.Valid {
+				_m.Window5hStart = new(time.Time)
+				*_m.Window5hStart = value.Time
+		REDACTED
+		case apikey.FieldWindow1dStart:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field window_1d_start", values[i])
+		REDACTED else if value.Valid {
+				_m.Window1dStart = new(time.Time)
+				*_m.Window1dStart = value.Time
+		REDACTED
+		case apikey.FieldWindow7dStart:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field window_7d_start", values[i])
+		REDACTED else if value.Valid {
+				_m.Window7dStart = new(time.Time)
+				*_m.Window7dStart = value.Time
+		REDACTED
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 	REDACTED
@@ -324,6 +399,39 @@ REDACTED
 	builder.WriteString(", ")
 	if v := _m.ExpiresAt; v != nil {
 		builder.WriteString("expires_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+REDACTED
+	builder.WriteString(", ")
+	builder.WriteString("rate_limit_5h=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RateLimit5h))
+	builder.WriteString(", ")
+	builder.WriteString("rate_limit_1d=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RateLimit1d))
+	builder.WriteString(", ")
+	builder.WriteString("rate_limit_7d=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RateLimit7d))
+	builder.WriteString(", ")
+	builder.WriteString("usage_5h=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Usage5h))
+	builder.WriteString(", ")
+	builder.WriteString("usage_1d=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Usage1d))
+	builder.WriteString(", ")
+	builder.WriteString("usage_7d=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Usage7d))
+	builder.WriteString(", ")
+	if v := _m.Window5hStart; v != nil {
+		builder.WriteString("window_5h_start=")
+		builder.WriteString(v.Format(time.ANSIC))
+REDACTED
+	builder.WriteString(", ")
+	if v := _m.Window1dStart; v != nil {
+		builder.WriteString("window_1d_start=")
+		builder.WriteString(v.Format(time.ANSIC))
+REDACTED
+	builder.WriteString(", ")
+	if v := _m.Window7dStart; v != nil {
+		builder.WriteString("window_7d_start=")
 		builder.WriteString(v.Format(time.ANSIC))
 REDACTED
 	builder.WriteByte(')')

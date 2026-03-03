@@ -43,6 +43,24 @@ const (
 	FieldQuotaUsed = "quota_used"
 	// FieldExpiresAt holds the string denoting the expires_at field in the database.
 	FieldExpiresAt = "expires_at"
+	// FieldRateLimit5h holds the string denoting the rate_limit_5h field in the database.
+	FieldRateLimit5h = "rate_limit_5h"
+	// FieldRateLimit1d holds the string denoting the rate_limit_1d field in the database.
+	FieldRateLimit1d = "rate_limit_1d"
+	// FieldRateLimit7d holds the string denoting the rate_limit_7d field in the database.
+	FieldRateLimit7d = "rate_limit_7d"
+	// FieldUsage5h holds the string denoting the usage_5h field in the database.
+	FieldUsage5h = "usage_5h"
+	// FieldUsage1d holds the string denoting the usage_1d field in the database.
+	FieldUsage1d = "usage_1d"
+	// FieldUsage7d holds the string denoting the usage_7d field in the database.
+	FieldUsage7d = "usage_7d"
+	// FieldWindow5hStart holds the string denoting the window_5h_start field in the database.
+	FieldWindow5hStart = "window_5h_start"
+	// FieldWindow1dStart holds the string denoting the window_1d_start field in the database.
+	FieldWindow1dStart = "window_1d_start"
+	// FieldWindow7dStart holds the string denoting the window_7d_start field in the database.
+	FieldWindow7dStart = "window_7d_start"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
@@ -91,6 +109,15 @@ var Columns = []string{
 	FieldQuota,
 	FieldQuotaUsed,
 	FieldExpiresAt,
+	FieldRateLimit5h,
+	FieldRateLimit1d,
+	FieldRateLimit7d,
+	FieldUsage5h,
+	FieldUsage1d,
+	FieldUsage7d,
+	FieldWindow5hStart,
+	FieldWindow1dStart,
+	FieldWindow7dStart,
 REDACTED
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -129,6 +156,18 @@ var (
 	DefaultQuota float64
 	// DefaultQuotaUsed holds the default value on creation for the "quota_used" field.
 	DefaultQuotaUsed float64
+	// DefaultRateLimit5h holds the default value on creation for the "rate_limit_5h" field.
+	DefaultRateLimit5h float64
+	// DefaultRateLimit1d holds the default value on creation for the "rate_limit_1d" field.
+	DefaultRateLimit1d float64
+	// DefaultRateLimit7d holds the default value on creation for the "rate_limit_7d" field.
+	DefaultRateLimit7d float64
+	// DefaultUsage5h holds the default value on creation for the "usage_5h" field.
+	DefaultUsage5h float64
+	// DefaultUsage1d holds the default value on creation for the "usage_1d" field.
+	DefaultUsage1d float64
+	// DefaultUsage7d holds the default value on creation for the "usage_7d" field.
+	DefaultUsage7d float64
 )
 
 // OrderOption defines the ordering options for the APIKey queries.
@@ -197,6 +236,51 @@ REDACTED
 // ByExpiresAt orders the results by the expires_at field.
 func ByExpiresAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldExpiresAt, opts...).ToFunc()
+REDACTED
+
+// ByRateLimit5h orders the results by the rate_limit_5h field.
+func ByRateLimit5h(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRateLimit5h, opts...).ToFunc()
+REDACTED
+
+// ByRateLimit1d orders the results by the rate_limit_1d field.
+func ByRateLimit1d(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRateLimit1d, opts...).ToFunc()
+REDACTED
+
+// ByRateLimit7d orders the results by the rate_limit_7d field.
+func ByRateLimit7d(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRateLimit7d, opts...).ToFunc()
+REDACTED
+
+// ByUsage5h orders the results by the usage_5h field.
+func ByUsage5h(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsage5h, opts...).ToFunc()
+REDACTED
+
+// ByUsage1d orders the results by the usage_1d field.
+func ByUsage1d(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsage1d, opts...).ToFunc()
+REDACTED
+
+// ByUsage7d orders the results by the usage_7d field.
+func ByUsage7d(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsage7d, opts...).ToFunc()
+REDACTED
+
+// ByWindow5hStart orders the results by the window_5h_start field.
+func ByWindow5hStart(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWindow5hStart, opts...).ToFunc()
+REDACTED
+
+// ByWindow1dStart orders the results by the window_1d_start field.
+func ByWindow1dStart(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWindow1dStart, opts...).ToFunc()
+REDACTED
+
+// ByWindow7dStart orders the results by the window_7d_start field.
+func ByWindow7dStart(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWindow7dStart, opts...).ToFunc()
 REDACTED
 
 // ByUserField orders the results by user field.

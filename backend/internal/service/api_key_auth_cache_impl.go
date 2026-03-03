@@ -209,6 +209,9 @@ REDACTED
 		Quota:       apiKey.Quota,
 		QuotaUsed:   apiKey.QuotaUsed,
 		ExpiresAt:   apiKey.ExpiresAt,
+		RateLimit5h: apiKey.RateLimit5h,
+		RateLimit1d: apiKey.RateLimit1d,
+		RateLimit7d: apiKey.RateLimit7d,
 		User: APIKeyAuthUserSnapshot{
 			ID:          apiKey.User.ID,
 			Status:      apiKey.User.Status,
@@ -262,6 +265,9 @@ REDACTED
 		Quota:       snapshot.Quota,
 		QuotaUsed:   snapshot.QuotaUsed,
 		ExpiresAt:   snapshot.ExpiresAt,
+		RateLimit5h: snapshot.RateLimit5h,
+		RateLimit1d: snapshot.RateLimit1d,
+		RateLimit7d: snapshot.RateLimit7d,
 		User: &User{
 			ID:          snapshot.User.ID,
 			Status:      snapshot.User.Status,

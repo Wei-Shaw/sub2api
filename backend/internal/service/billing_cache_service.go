@@ -40,6 +40,7 @@ const (
 	cacheWriteSetSubscription
 	cacheWriteUpdateSubscriptionUsage
 	cacheWriteDeductBalance
+	cacheWriteUpdateRateLimitUsage
 )
 
 // 异步缓存写入工作池配置
@@ -68,19 +69,26 @@ type cacheWriteTask struct {
 	kind             cacheWriteKind
 	userID           int64
 	groupID          int64
+	apiKeyID         int64
 	balance          float64
 	amount           float64
 	subscriptionData *subscriptionCacheData
 REDACTED
 
+// apiKeyRateLimitLoader defines the interface for loading rate limit data from DB.
+type apiKeyRateLimitLoader interface {
+	GetRateLimitData(ctx context.Context, keyID int64) (*APIKeyRateLimitData, error)
+REDACTED
+
 // BillingCacheService 计费缓存服务
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {
-	cache          BillingCache
-	userRepo       UserRepository
-	subRepo        UserSubscriptionRepository
-	cfg            *config.Config
-	circuitBreaker *billingCircuitBreaker
+	cache                  BillingCache
+	userRepo               UserRepository
+	subRepo                UserSubscriptionRepository
+	apiKeyRateLimitLoader  apiKeyRateLimitLoader
+	cfg                    *config.Config
+	circuitBreaker         *billingCircuitBreaker
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -96,12 +104,13 @@ type BillingCacheService struct {
 REDACTED
 
 // NewBillingCacheService 创建计费缓存服务
-func NewBillingCacheService(cache BillingCache, userRepo UserRepository, subRepo UserSubscriptionRepository, cfg *config.Config) *BillingCacheService {
+func NewBillingCacheService(cache BillingCache, userRepo UserRepository, subRepo UserSubscriptionRepository, apiKeyRepo APIKeyRepository, cfg *config.Config) *BillingCacheService {
 	svc := &BillingCacheService{
-		cache:    cache,
-		userRepo: userRepo,
-		subRepo:  subRepo,
-		cfg:      cfg,
+		cache:                  cache,
+		userRepo:               userRepo,
+		subRepo:                subRepo,
+		apiKeyRateLimitLoader:  apiKeyRepo,
+		cfg:                    cfg,
 REDACTED
 	svc.circuitBreaker = newBillingCircuitBreaker(cfg.Billing.CircuitBreaker)
 	svc.startCacheWriteWorkers()
@@ -188,6 +197,12 @@ func (s *BillingCacheService) cacheWriteWorker(ch <-chan cacheWriteTask) {
 					logger.LegacyPrintf("service.billing_cache", "Warning: deduct balance cache failed for user %d: %v", task.userID, err)
 			REDACTED
 		REDACTED
+		case cacheWriteUpdateRateLimitUsage:
+			if s.cache != nil {
+				if err := s.cache.UpdateAPIKeyRateLimitUsage(ctx, task.apiKeyID, task.amount); err != nil {
+					logger.LegacyPrintf("service.billing_cache", "Warning: update rate limit usage cache failed for api key %d: %v", task.apiKeyID, err)
+			REDACTED
+		REDACTED
 	REDACTED
 		cancel()
 REDACTED
@@ -204,6 +219,8 @@ func cacheWriteKindName(kind cacheWriteKind) string {
 		return "update_subscription_usage"
 	case cacheWriteDeductBalance:
 		return "deduct_balance"
+	case cacheWriteUpdateRateLimitUsage:
+		return "update_rate_limit_usage"
 	default:
 		return "unknown"
 REDACTED
@@ -477,6 +494,137 @@ REDACTED
 REDACTED
 
 // ============================================
+// API Key 限速缓存方法
+// ============================================
+
+// checkAPIKeyRateLimits checks rate limit windows for an API key.
+// It loads usage from Redis cache (falling back to DB on cache miss),
+// resets expired windows in-memory and triggers async DB reset,
+// and returns an error if any window limit is exceeded.
+func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey *APIKey) error {
+	if s.cache == nil {
+		// No cache: fall back to reading from DB directly
+		if s.apiKeyRateLimitLoader == nil {
+			return nil
+	REDACTED
+		data, err := s.apiKeyRateLimitLoader.GetRateLimitData(ctx, apiKey.ID)
+		if err != nil {
+			return nil // Don't block requests on DB errors
+	REDACTED
+		return s.evaluateRateLimits(ctx, apiKey, data.Usage5h, data.Usage1d, data.Usage7d,
+			data.Window5hStart, data.Window1dStart, data.Window7dStart)
+REDACTED
+
+	cacheData, err := s.cache.GetAPIKeyRateLimit(ctx, apiKey.ID)
+	if err != nil {
+		// Cache miss: load from DB and populate cache
+		if s.apiKeyRateLimitLoader == nil {
+			return nil
+	REDACTED
+		dbData, dbErr := s.apiKeyRateLimitLoader.GetRateLimitData(ctx, apiKey.ID)
+		if dbErr != nil {
+			return nil // Don't block requests on DB errors
+	REDACTED
+		// Build cache entry from DB data
+		cacheEntry := &APIKeyRateLimitCacheData{
+			Usage5h: dbData.Usage5h,
+			Usage1d: dbData.Usage1d,
+			Usage7d: dbData.Usage7d,
+	REDACTED
+		if dbData.Window5hStart != nil {
+			cacheEntry.Window5h = dbData.Window5hStart.Unix()
+	REDACTED
+		if dbData.Window1dStart != nil {
+			cacheEntry.Window1d = dbData.Window1dStart.Unix()
+	REDACTED
+		if dbData.Window7dStart != nil {
+			cacheEntry.Window7d = dbData.Window7dStart.Unix()
+	REDACTED
+		_ = s.cache.SetAPIKeyRateLimit(ctx, apiKey.ID, cacheEntry)
+		cacheData = cacheEntry
+REDACTED
+
+	var w5h, w1d, w7d *time.Time
+	if cacheData.Window5h > 0 {
+		t := time.Unix(cacheData.Window5h, 0)
+		w5h = &t
+REDACTED
+	if cacheData.Window1d > 0 {
+		t := time.Unix(cacheData.Window1d, 0)
+		w1d = &t
+REDACTED
+	if cacheData.Window7d > 0 {
+		t := time.Unix(cacheData.Window7d, 0)
+		w7d = &t
+REDACTED
+	return s.evaluateRateLimits(ctx, apiKey, cacheData.Usage5h, cacheData.Usage1d, cacheData.Usage7d, w5h, w1d, w7d)
+REDACTED
+
+// evaluateRateLimits checks usage against limits, triggering async resets for expired windows.
+func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *APIKey, usage5h, usage1d, usage7d float64, w5h, w1d, w7d *time.Time) error {
+	needsReset := false
+
+	// Reset expired windows in-memory for check purposes
+	if w5h != nil && time.Since(*w5h) >= 5*time.Hour {
+		usage5h = 0
+		needsReset = true
+REDACTED
+	if w1d != nil && time.Since(*w1d) >= 24*time.Hour {
+		usage1d = 0
+		needsReset = true
+REDACTED
+	if w7d != nil && time.Since(*w7d) >= 7*24*time.Hour {
+		usage7d = 0
+		needsReset = true
+REDACTED
+
+	// Trigger async DB reset if any window expired
+	if needsReset {
+		keyID := apiKey.ID
+		go func() {
+			resetCtx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
+			defer cancel()
+			if s.apiKeyRateLimitLoader != nil {
+				// Use the repo directly - reset then reload cache
+				if loader, ok := s.apiKeyRateLimitLoader.(interface {
+					ResetRateLimitWindows(ctx context.Context, id int64) error
+			REDACTED); ok {
+					_ = loader.ResetRateLimitWindows(resetCtx, keyID)
+			REDACTED
+		REDACTED
+			// Invalidate cache so next request loads fresh data
+			if s.cache != nil {
+				_ = s.cache.InvalidateAPIKeyRateLimit(resetCtx, keyID)
+		REDACTED
+	REDACTED()
+REDACTED
+
+	// Check limits
+	if apiKey.RateLimit5h > 0 && usage5h >= apiKey.RateLimit5h {
+		return ErrAPIKeyRateLimit5hExceeded
+REDACTED
+	if apiKey.RateLimit1d > 0 && usage1d >= apiKey.RateLimit1d {
+		return ErrAPIKeyRateLimit1dExceeded
+REDACTED
+	if apiKey.RateLimit7d > 0 && usage7d >= apiKey.RateLimit7d {
+		return ErrAPIKeyRateLimit7dExceeded
+REDACTED
+	return nil
+REDACTED
+
+// QueueUpdateAPIKeyRateLimitUsage asynchronously updates rate limit usage in the cache.
+func (s *BillingCacheService) QueueUpdateAPIKeyRateLimitUsage(apiKeyID int64, cost float64) {
+	if s.cache == nil {
+		return
+REDACTED
+	s.enqueueCacheWrite(cacheWriteTask{
+		kind:     cacheWriteUpdateRateLimitUsage,
+		apiKeyID: apiKeyID,
+		amount:   cost,
+REDACTED)
+REDACTED
+
+// ============================================
 // 统一检查方法
 // ============================================
 
@@ -496,10 +644,23 @@ REDACTED
 	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
 
 	if isSubscriptionMode {
-		return s.checkSubscriptionEligibility(ctx, user.ID, group, subscription)
+		if err := s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
+			return err
+	REDACTED
+REDACTED else {
+		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
+			return err
+	REDACTED
 REDACTED
 
-	return s.checkBalanceEligibility(ctx, user.ID)
+	// Check API Key rate limits (applies to both billing modes)
+	if apiKey != nil && apiKey.HasRateLimits() {
+		if err := s.checkAPIKeyRateLimits(ctx, apiKey); err != nil {
+			return err
+	REDACTED
+REDACTED
+
+	return nil
 REDACTED
 
 // checkBalanceEligibility 检查余额模式资格

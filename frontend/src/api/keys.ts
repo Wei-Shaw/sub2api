@@ -46,6 +46,7 @@ REDACTED
  * @param ipBlacklist - Optional IP blacklist
  * @param quota - Optional quota limit in USD (0 = unlimited)
  * @param expiresInDays - Optional days until expiry (undefined = never expires)
+ * @param rateLimitData - Optional rate limit fields
  * @returns Created API key
  */
 export async function create(
@@ -55,7 +56,8 @@ export async function create(
   ipWhitelist?: string[],
   ipBlacklist?: string[],
   quota?: number,
-  expiresInDays?: number
+  expiresInDays?: number,
+  rateLimitData?: { rate_limit_5h?: number; rate_limit_1d?: number; rate_limit_7d?: number REDACTED
 ): Promise<ApiKey> {
   const payload: CreateApiKeyRequest = { name REDACTED
   if (groupId !== undefined) {
@@ -75,6 +77,15 @@ export async function create(
   REDACTED
   if (expiresInDays !== undefined && expiresInDays > 0) {
     payload.expires_in_days = expiresInDays
+  REDACTED
+  if (rateLimitData?.rate_limit_5h && rateLimitData.rate_limit_5h > 0) {
+    payload.rate_limit_5h = rateLimitData.rate_limit_5h
+  REDACTED
+  if (rateLimitData?.rate_limit_1d && rateLimitData.rate_limit_1d > 0) {
+    payload.rate_limit_1d = rateLimitData.rate_limit_1d
+  REDACTED
+  if (rateLimitData?.rate_limit_7d && rateLimitData.rate_limit_7d > 0) {
+    payload.rate_limit_7d = rateLimitData.rate_limit_7d
   REDACTED
 
   const { data REDACTED = await apiClient.post<ApiKey>('/keys', payload)

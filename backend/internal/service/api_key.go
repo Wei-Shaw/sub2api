@@ -36,10 +36,26 @@ type APIKey struct {
 	Quota     float64    // Quota limit in USD (0 = unlimited)
 	QuotaUsed float64    // Used quota amount
 	ExpiresAt *time.Time // Expiration time (nil = never expires)
+
+	// Rate limit fields
+	RateLimit5h   float64    // Rate limit in USD per 5h (0 = unlimited)
+	RateLimit1d   float64    // Rate limit in USD per 1d (0 = unlimited)
+	RateLimit7d   float64    // Rate limit in USD per 7d (0 = unlimited)
+	Usage5h       float64    // Used amount in current 5h window
+	Usage1d       float64    // Used amount in current 1d window
+	Usage7d       float64    // Used amount in current 7d window
+	Window5hStart *time.Time // Start of current 5h window
+	Window1dStart *time.Time // Start of current 1d window
+	Window7dStart *time.Time // Start of current 7d window
 REDACTED
 
 func (k *APIKey) IsActive() bool {
 	return k.Status == StatusActive
+REDACTED
+
+// HasRateLimits returns true if any rate limit window is configured
+func (k *APIKey) HasRateLimits() bool {
+	return k.RateLimit5h > 0 || k.RateLimit1d > 0 || k.RateLimit7d > 0
 REDACTED
 
 // IsExpired checks if the API key has expired
