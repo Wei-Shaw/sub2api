@@ -29,7 +29,16 @@ REDACTED)
 		ok := isMigrationChecksumCompatible(
 			"061_add_usage_log_request_type.sql",
 			"08a248652cbab7cfde147fc6ef8cda464f2477674e20b718312faa252e0481c0",
-			"97bdd9a32d921986f74a0231ab90735567a9234fb7062f4d9d1baf108ba59769",
+			"66207e7aa5dd0429c2e2c0fabdaf79783ff157fa0af2e81adff2ee03790ec65c",
+		)
+		require.True(t, ok)
+REDACTED)
+
+	t.Run("061第二个历史checksum可兼容", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"061_add_usage_log_request_type.sql",
+			"222b4a09c797c22e5922b6b172327c824f5463aaa8760e4f621bc5c22e2be0f3",
+			"66207e7aa5dd0429c2e2c0fabdaf79783ff157fa0af2e81adff2ee03790ec65c",
 		)
 		require.True(t, ok)
 REDACTED)

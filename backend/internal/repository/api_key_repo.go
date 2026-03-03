@@ -21,7 +21,11 @@ type apiKeyRepository struct {
 REDACTED
 
 func NewAPIKeyRepository(client *dbent.Client, sqlDB *sql.DB) service.APIKeyRepository {
-	return &apiKeyRepository{client: client, sql: sqlDBREDACTED
+	return newAPIKeyRepositoryWithSQL(client, sqlDB)
+REDACTED
+
+func newAPIKeyRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *apiKeyRepository {
+	return &apiKeyRepository{client: client, sql: sqlqREDACTED
 REDACTED
 
 func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {

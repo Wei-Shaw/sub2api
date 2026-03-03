@@ -96,6 +96,18 @@ REDACTED
 func (m *mockBillingCache) InvalidateSubscriptionCache(context.Context, int64, int64) error {
 	return nil
 REDACTED
+func (m *mockBillingCache) GetAPIKeyRateLimit(context.Context, int64) (*APIKeyRateLimitCacheData, error) {
+	return nil, nil
+REDACTED
+func (m *mockBillingCache) SetAPIKeyRateLimit(context.Context, int64, *APIKeyRateLimitCacheData) error {
+	return nil
+REDACTED
+func (m *mockBillingCache) UpdateAPIKeyRateLimitUsage(context.Context, int64, float64) error {
+	return nil
+REDACTED
+func (m *mockBillingCache) InvalidateAPIKeyRateLimit(context.Context, int64) error {
+	return nil
+REDACTED
 
 // --- 测试 ---
 

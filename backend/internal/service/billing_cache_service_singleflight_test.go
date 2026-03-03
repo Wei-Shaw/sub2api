@@ -51,6 +51,22 @@ func (s *billingCacheMissStub) InvalidateSubscriptionCache(ctx context.Context, 
 	return nil
 REDACTED
 
+func (s *billingCacheMissStub) GetAPIKeyRateLimit(ctx context.Context, keyID int64) (*APIKeyRateLimitCacheData, error) {
+	return nil, errors.New("cache miss")
+REDACTED
+
+func (s *billingCacheMissStub) SetAPIKeyRateLimit(ctx context.Context, keyID int64, data *APIKeyRateLimitCacheData) error {
+	return nil
+REDACTED
+
+func (s *billingCacheMissStub) UpdateAPIKeyRateLimitUsage(ctx context.Context, keyID int64, cost float64) error {
+	return nil
+REDACTED
+
+func (s *billingCacheMissStub) InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error {
+	return nil
+REDACTED
+
 type balanceLoadUserRepoStub struct {
 	mockUserRepo
 	calls   atomic.Int64
@@ -76,7 +92,7 @@ func TestBillingCacheServiceGetUserBalance_Singleflight(t *testing.T) {
 		delay:   80 * time.Millisecond,
 		balance: 12.34,
 REDACTED
-	svc := NewBillingCacheService(cache, userRepo, nil, &config.Config{REDACTED)
+	svc := NewBillingCacheService(cache, userRepo, nil, nil, &config.Config{REDACTED)
 	t.Cleanup(svc.Stop)
 
 	const goroutines = 16
