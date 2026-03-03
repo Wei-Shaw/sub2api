@@ -14,12 +14,12 @@ import (
 )
 
 const (
-	billingBalanceKeyPrefix  = "billing:balance:"
-	billingSubKeyPrefix      = "billing:sub:"
+	billingBalanceKeyPrefix   = "billing:balance:"
+	billingSubKeyPrefix       = "billing:sub:"
 	billingRateLimitKeyPrefix = "apikey:rate:"
-	billingCacheTTL          = 5 * time.Minute
-	billingCacheJitter       = 30 * time.Second
-	rateLimitCacheTTL        = 7 * 24 * time.Hour // 7 days matches the longest window
+	billingCacheTTL           = 5 * time.Minute
+	billingCacheJitter        = 30 * time.Second
+	rateLimitCacheTTL         = 7 * 24 * time.Hour // 7 days matches the longest window
 )
 
 // jitteredTTL 返回带随机抖动的 TTL，防止缓存雪崩

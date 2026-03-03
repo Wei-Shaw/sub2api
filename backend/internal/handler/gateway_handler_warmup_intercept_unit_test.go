@@ -159,7 +159,7 @@ REDACTED
 
 	// RunModeSimple：跳过计费检查，避免引入 repo/cache 依赖。
 	cfg := &config.Config{RunMode: config.RunModeSimpleREDACTED
-	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, cfg)
+	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, cfg)
 
 	concurrencySvc := service.NewConcurrencyService(&fakeConcurrencyCache{REDACTED)
 	concurrencyHelper := NewConcurrencyHelper(concurrencySvc, SSEPingFormatClaude, 0)

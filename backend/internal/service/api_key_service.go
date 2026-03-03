@@ -144,10 +144,10 @@ type UpdateAPIKeyRequest struct {
 	ResetQuota      *bool      `json:"reset_quota"` // Reset quota_used to 0
 
 	// Rate limit fields (nil = no change, 0 = unlimited)
-	RateLimit5h        *float64 `json:"rate_limit_5h"`
-	RateLimit1d        *float64 `json:"rate_limit_1d"`
-	RateLimit7d        *float64 `json:"rate_limit_7d"`
-	ResetRateLimitUsage *bool   `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
+	RateLimit5h         *float64 `json:"rate_limit_5h"`
+	RateLimit1d         *float64 `json:"rate_limit_1d"`
+	RateLimit7d         *float64 `json:"rate_limit_7d"`
+	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"` // Reset all usage counters to 0
 REDACTED
 
 // APIKeyService API Key服务
@@ -157,19 +157,19 @@ type RateLimitCacheInvalidator interface {
 REDACTED
 
 type APIKeyService struct {
-	apiKeyRepo             APIKeyRepository
-	userRepo               UserRepository
-	groupRepo              GroupRepository
-	userSubRepo            UserSubscriptionRepository
-	userGroupRateRepo      UserGroupRateRepository
-	cache                  APIKeyCache
-	rateLimitCacheInvalid  RateLimitCacheInvalidator // optional: invalidate Redis rate limit cache
-	cfg                    *config.Config
-	authCacheL1            *ristretto.Cache
-	authCfg                apiKeyAuthCacheConfig
-	authGroup              singleflight.Group
-	lastUsedTouchL1        sync.Map // keyID -> nextAllowedAt(time.Time)
-	lastUsedTouchSF        singleflight.Group
+	apiKeyRepo            APIKeyRepository
+	userRepo              UserRepository
+	groupRepo             GroupRepository
+	userSubRepo           UserSubscriptionRepository
+	userGroupRateRepo     UserGroupRateRepository
+	cache                 APIKeyCache
+	rateLimitCacheInvalid RateLimitCacheInvalidator // optional: invalidate Redis rate limit cache
+	cfg                   *config.Config
+	authCacheL1           *ristretto.Cache
+	authCfg               apiKeyAuthCacheConfig
+	authGroup             singleflight.Group
+	lastUsedTouchL1       sync.Map // keyID -> nextAllowedAt(time.Time)
+	lastUsedTouchSF       singleflight.Group
 REDACTED
 
 // NewAPIKeyService 创建API Key服务实例

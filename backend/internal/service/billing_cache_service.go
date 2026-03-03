@@ -83,12 +83,12 @@ REDACTED
 // BillingCacheService 计费缓存服务
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {
-	cache                  BillingCache
-	userRepo               UserRepository
-	subRepo                UserSubscriptionRepository
-	apiKeyRateLimitLoader  apiKeyRateLimitLoader
-	cfg                    *config.Config
-	circuitBreaker         *billingCircuitBreaker
+	cache                 BillingCache
+	userRepo              UserRepository
+	subRepo               UserSubscriptionRepository
+	apiKeyRateLimitLoader apiKeyRateLimitLoader
+	cfg                   *config.Config
+	circuitBreaker        *billingCircuitBreaker
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -106,11 +106,11 @@ REDACTED
 // NewBillingCacheService 创建计费缓存服务
 func NewBillingCacheService(cache BillingCache, userRepo UserRepository, subRepo UserSubscriptionRepository, apiKeyRepo APIKeyRepository, cfg *config.Config) *BillingCacheService {
 	svc := &BillingCacheService{
-		cache:                  cache,
-		userRepo:               userRepo,
-		subRepo:                subRepo,
-		apiKeyRateLimitLoader:  apiKeyRepo,
-		cfg:                    cfg,
+		cache:                 cache,
+		userRepo:              userRepo,
+		subRepo:               subRepo,
+		apiKeyRateLimitLoader: apiKeyRepo,
+		cfg:                   cfg,
 REDACTED
 	svc.circuitBreaker = newBillingCircuitBreaker(cfg.Billing.CircuitBreaker)
 	svc.startCacheWriteWorkers()
