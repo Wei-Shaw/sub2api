@@ -25,6 +25,15 @@ REDACTED)
 		require.False(t, ok)
 REDACTED)
 
+	t.Run("061历史checksum可兼容", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"061_add_usage_log_request_type.sql",
+			"08a248652cbab7cfde147fc6ef8cda464f2477674e20b718312faa252e0481c0",
+			"97bdd9a32d921986f74a0231ab90735567a9234fb7062f4d9d1baf108ba59769",
+		)
+		require.True(t, ok)
+REDACTED)
+
 	t.Run("非白名单迁移不兼容", func(t *testing.T) {
 		ok := isMigrationChecksumCompatible(
 			"001_init.sql",
