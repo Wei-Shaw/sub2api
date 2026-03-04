@@ -6,6 +6,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw REDACTED from 'vue-router'
 import { useAuthStore REDACTED from '@/stores/auth'
 import { useAppStore REDACTED from '@/stores/app'
+import { useAdminSettingsStore REDACTED from '@/stores/adminSettings'
 import { useNavigationLoadingState REDACTED from '@/composables/useNavigationLoading'
 import { useRoutePrefetch REDACTED from '@/composables/useRoutePrefetch'
 import { resolveDocumentTitle REDACTED from './title'
@@ -431,8 +432,10 @@ router.beforeEach((to, _from, next) => {
   // For custom pages, use menu item label as document title
   if (to.name === 'CustomPage') {
     const id = to.params.id as string
-    const items = appStore.cachedPublicSettings?.custom_menu_items ?? []
-    const menuItem = items.find((item) => item.id === id)
+    const publicItems = appStore.cachedPublicSettings?.custom_menu_items ?? []
+    const adminSettingsStore = useAdminSettingsStore()
+    const menuItem = publicItems.find((item) => item.id === id)
+      ?? (authStore.isAdmin ? adminSettingsStore.customMenuItems.find((item) => item.id === id) : undefined)
     if (menuItem?.label) {
       const siteName = appStore.siteName || 'Sub2API'
       document.title = `${menuItem.labelREDACTED - ${siteNameREDACTED`

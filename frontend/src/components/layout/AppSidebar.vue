@@ -579,8 +579,7 @@ const customMenuItemsForUser = computed(() => {
 REDACTED)
 
 const customMenuItemsForAdmin = computed(() => {
-  const items = appStore.cachedPublicSettings?.custom_menu_items ?? []
-  return items
+  return adminSettingsStore.customMenuItems
     .filter((item) => item.visibility === 'admin')
     .sort((a, b) => a.sort_order - b.sort_order)
 REDACTED)
