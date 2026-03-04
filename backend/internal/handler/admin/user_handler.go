@@ -91,6 +91,10 @@ REDACTED
 		Search:     search,
 		Attributes: parseAttributeFilters(c),
 REDACTED
+	if raw, ok := c.GetQuery("include_subscriptions"); ok {
+		includeSubscriptions := parseBoolQueryWithDefault(raw, true)
+		filters.IncludeSubscriptions = &includeSubscriptions
+REDACTED
 
 	users, total, err := h.adminService.ListUsers(c.Request.Context(), page, pageSize, filters)
 	if err != nil {

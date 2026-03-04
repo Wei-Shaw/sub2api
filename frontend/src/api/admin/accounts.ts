@@ -36,6 +36,7 @@ export async function list(
     status?: string
     group?: string
     search?: string
+    lite?: string
   REDACTED,
   options?: {
     signal?: AbortSignal
@@ -66,6 +67,7 @@ export async function listWithEtag(
     type?: string
     status?: string
     search?: string
+    lite?: string
   REDACTED,
   options?: {
     signal?: AbortSignal
