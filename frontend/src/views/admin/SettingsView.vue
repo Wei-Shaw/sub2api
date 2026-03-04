@@ -8,6 +8,26 @@
 
       <!-- Settings Form -->
       <form v-else @submit.prevent="saveSettings" class="space-y-6">
+        <!-- Tab Navigation -->
+        <div class="sticky top-0 z-10 overflow-x-auto scrollbar-hide">
+          <nav class="settings-tabs">
+            <button
+              v-for="tab in settingsTabs"
+              :key="tab.key"
+              type="button"
+              :class="['settings-tab', activeTab === tab.key && 'settings-tab-active']"
+              @click="activeTab = tab.key"
+            >
+              <span class="settings-tab-icon">
+                <Icon :name="tab.icon" size="sm" />
+              </span>
+              <span>{{ t(`admin.settings.tabs.${tab.keyREDACTED`) REDACTEDREDACTED</span>
+            </button>
+          </nav>
+        </div>
+
+        <!-- Tab: Security — Admin API Key -->
+        <div v-show="activeTab === 'security'" class="space-y-6">
         <!-- Admin API Key Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -146,7 +166,10 @@
             </div>
           </div>
         </div>
+        </div><!-- /Tab: Security — Admin API Key -->
 
+        <!-- Tab: Gateway — Stream Timeout -->
+        <div v-show="activeTab === 'gateway'" class="space-y-6">
         <!-- Stream Timeout Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -284,7 +307,10 @@
             </template>
           </div>
         </div>
+        </div><!-- /Tab: Gateway — Stream Timeout (continued below with Claude Code & Scheduling) -->
 
+        <!-- Tab: Security — Registration, Turnstile, LinuxDo -->
+        <div v-show="activeTab === 'security'" class="space-y-6">
         <!-- Registration Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -618,7 +644,10 @@
             </div>
           </div>
         </div>
+        </div><!-- /Tab: Security — Registration, Turnstile, LinuxDo -->
 
+        <!-- Tab: Users -->
+        <div v-show="activeTab === 'users'" class="space-y-6">
         <!-- Default Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -757,7 +786,10 @@
             </div>
           </div>
         </div>
+        </div><!-- /Tab: Users -->
 
+        <!-- Tab: Gateway — Claude Code, Scheduling -->
+        <div v-show="activeTab === 'gateway'" class="space-y-6">
         <!-- Claude Code Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -814,7 +846,10 @@
             </div>
           </div>
         </div>
+        </div><!-- /Tab: Gateway — Claude Code, Scheduling -->
 
+        <!-- Tab: General -->
+        <div v-show="activeTab === 'general'" class="space-y-6">
         <!-- Site Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -953,147 +988,6 @@
                 </p>
               </div>
               <Toggle v-model="form.hide_ccs_import_button" />
-            </div>
-          </div>
-        </div>
-
-        <!-- SMTP Settings - Only show when email verification is enabled -->
-        <div v-if="form.email_verify_enabled" class="card">
-          <div
-            class="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-dark-700"
-          >
-            <div>
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t('admin.settings.smtp.title') REDACTEDREDACTED
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t('admin.settings.smtp.description') REDACTEDREDACTED
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="testSmtpConnection"
-              :disabled="testingSmtp"
-              class="btn btn-secondary btn-sm"
-            >
-              <svg v-if="testingSmtp" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              {{
-                testingSmtp
-                  ? t('admin.settings.smtp.testing')
-                  : t('admin.settings.smtp.testConnection')
-              REDACTEDREDACTED
-            </button>
-          </div>
-          <div class="space-y-6 p-6">
-            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.smtp.host') REDACTEDREDACTED
-                </label>
-                <input
-                  v-model="form.smtp_host"
-                  type="text"
-                  class="input"
-                  :placeholder="t('admin.settings.smtp.hostPlaceholder')"
-                />
-              </div>
-              <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.smtp.port') REDACTEDREDACTED
-                </label>
-                <input
-                  v-model.number="form.smtp_port"
-                  type="number"
-                  min="1"
-                  max="65535"
-                  class="input"
-                  :placeholder="t('admin.settings.smtp.portPlaceholder')"
-                />
-              </div>
-              <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.smtp.username') REDACTEDREDACTED
-                </label>
-                <input
-                  v-model="form.smtp_username"
-                  type="text"
-                  class="input"
-                  :placeholder="t('admin.settings.smtp.usernamePlaceholder')"
-                />
-              </div>
-              <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.smtp.password') REDACTEDREDACTED
-                </label>
-                <input
-                  v-model="form.smtp_password"
-                  type="password"
-                  class="input"
-                  :placeholder="
-                    form.smtp_password_configured
-                      ? t('admin.settings.smtp.passwordConfiguredPlaceholder')
-                      : t('admin.settings.smtp.passwordPlaceholder')
-                  "
-                />
-                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{
-                    form.smtp_password_configured
-                      ? t('admin.settings.smtp.passwordConfiguredHint')
-                      : t('admin.settings.smtp.passwordHint')
-                  REDACTEDREDACTED
-                </p>
-              </div>
-              <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.smtp.fromEmail') REDACTEDREDACTED
-                </label>
-                <input
-                  v-model="form.smtp_from_email"
-                  type="email"
-                  class="input"
-                  :placeholder="t('admin.settings.smtp.fromEmailPlaceholder')"
-                />
-              </div>
-              <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.smtp.fromName') REDACTEDREDACTED
-                </label>
-                <input
-                  v-model="form.smtp_from_name"
-                  type="text"
-                  class="input"
-                  :placeholder="t('admin.settings.smtp.fromNamePlaceholder')"
-                />
-              </div>
-            </div>
-
-            <!-- Use TLS Toggle -->
-            <div
-              class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
-            >
-              <div>
-                <label class="font-medium text-gray-900 dark:text-white">{{
-                  t('admin.settings.smtp.useTls')
-                REDACTEDREDACTED</label>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.smtp.useTlsHint') REDACTEDREDACTED
-                </p>
-              </div>
-              <Toggle v-model="form.smtp_use_tls" />
             </div>
           </div>
         </div>
@@ -1309,6 +1203,168 @@
           </div>
         </div>
 
+        </div><!-- /Tab: General -->
+
+        <!-- Tab: Email -->
+        <div v-show="activeTab === 'email'" class="space-y-6">
+        <!-- Email disabled hint - show when email_verify_enabled is off -->
+        <div v-if="!form.email_verify_enabled" class="card">
+          <div class="p-6">
+            <div class="flex items-start gap-3">
+              <Icon name="mail" size="md" class="mt-0.5 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+              <div>
+                <h3 class="font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.settings.emailTabDisabledTitle') REDACTEDREDACTED
+                </h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.emailTabDisabledHint') REDACTEDREDACTED
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SMTP Settings - Only show when email verification is enabled -->
+        <div v-if="form.email_verify_enabled" class="card">
+          <div
+            class="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+          >
+            <div>
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t('admin.settings.smtp.title') REDACTEDREDACTED
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.smtp.description') REDACTEDREDACTED
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="testSmtpConnection"
+              :disabled="testingSmtp"
+              class="btn btn-secondary btn-sm"
+            >
+              <svg v-if="testingSmtp" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              {{
+                testingSmtp
+                  ? t('admin.settings.smtp.testing')
+                  : t('admin.settings.smtp.testConnection')
+              REDACTEDREDACTED
+            </button>
+          </div>
+          <div class="space-y-6 p-6">
+            <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.smtp.host') REDACTEDREDACTED
+                </label>
+                <input
+                  v-model="form.smtp_host"
+                  type="text"
+                  class="input"
+                  :placeholder="t('admin.settings.smtp.hostPlaceholder')"
+                />
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.smtp.port') REDACTEDREDACTED
+                </label>
+                <input
+                  v-model.number="form.smtp_port"
+                  type="number"
+                  min="1"
+                  max="65535"
+                  class="input"
+                  :placeholder="t('admin.settings.smtp.portPlaceholder')"
+                />
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.smtp.username') REDACTEDREDACTED
+                </label>
+                <input
+                  v-model="form.smtp_username"
+                  type="text"
+                  class="input"
+                  :placeholder="t('admin.settings.smtp.usernamePlaceholder')"
+                />
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.smtp.password') REDACTEDREDACTED
+                </label>
+                <input
+                  v-model="form.smtp_password"
+                  type="password"
+                  class="input"
+                  :placeholder="
+                    form.smtp_password_configured
+                      ? t('admin.settings.smtp.passwordConfiguredPlaceholder')
+                      : t('admin.settings.smtp.passwordPlaceholder')
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    form.smtp_password_configured
+                      ? t('admin.settings.smtp.passwordConfiguredHint')
+                      : t('admin.settings.smtp.passwordHint')
+                  REDACTEDREDACTED
+                </p>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.smtp.fromEmail') REDACTEDREDACTED
+                </label>
+                <input
+                  v-model="form.smtp_from_email"
+                  type="email"
+                  class="input"
+                  :placeholder="t('admin.settings.smtp.fromEmailPlaceholder')"
+                />
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.smtp.fromName') REDACTEDREDACTED
+                </label>
+                <input
+                  v-model="form.smtp_from_name"
+                  type="text"
+                  class="input"
+                  :placeholder="t('admin.settings.smtp.fromNamePlaceholder')"
+                />
+              </div>
+            </div>
+
+            <!-- Use TLS Toggle -->
+            <div
+              class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
+            >
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.smtp.useTls')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.smtp.useTlsHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.smtp_use_tls" />
+            </div>
+          </div>
+        </div>
+
         <!-- Send Test Email - Only show when email verification is enabled -->
         <div v-if="form.email_verify_enabled" class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -1367,6 +1423,7 @@
             </div>
           </div>
         </div>
+        </div><!-- /Tab: Email -->
 
         <!-- Save Button -->
         <div class="flex justify-end">
@@ -1424,6 +1481,16 @@ REDACTED from '@/utils/registrationEmailPolicy'
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
 const adminSettingsStore = useAdminSettingsStore()
+
+type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'email'
+const activeTab = ref<SettingsTab>('general')
+const settingsTabs = [
+  { key: 'general'  as SettingsTab, icon: 'home'   as const REDACTED,
+  { key: 'security' as SettingsTab, icon: 'shield' as const REDACTED,
+  { key: 'users'    as SettingsTab, icon: 'user'   as const REDACTED,
+  { key: 'gateway'  as SettingsTab, icon: 'server' as const REDACTED,
+  { key: 'email'    as SettingsTab, icon: 'mail'   as const REDACTED,
+]
 const { copyToClipboard REDACTED = useClipboard()
 
 const loading = ref(true)
@@ -1974,5 +2041,57 @@ REDACTED
 
 .default-sub-delete-btn {
   @apply h-[42px];
+REDACTED
+
+/* ============ Settings Tab Navigation ============ */
+.settings-tabs {
+  @apply inline-flex min-w-full gap-1 rounded-2xl
+         border border-gray-100 bg-white/80 p-1.5 backdrop-blur-sm
+         dark:border-dark-700/50 dark:bg-dark-800/80;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.04), 0 1px 2px rgb(0 0 0 / 0.02);
+REDACTED
+
+@media (min-width: 640px) {
+  .settings-tabs {
+    @apply flex;
+  REDACTED
+REDACTED
+
+.settings-tab {
+  @apply relative flex flex-1 items-center justify-center gap-2
+         whitespace-nowrap rounded-xl px-4 py-2.5
+         text-sm font-medium
+         text-gray-500 dark:text-dark-400
+         transition-all duration-200 ease-out;
+REDACTED
+
+.settings-tab:hover:not(.settings-tab-active) {
+  @apply text-gray-700 dark:text-gray-300;
+  background: rgb(0 0 0 / 0.03);
+REDACTED
+
+:root.dark .settings-tab:hover:not(.settings-tab-active) {
+  background: rgb(255 255 255 / 0.04);
+REDACTED
+
+.settings-tab-active {
+  @apply text-primary-600 dark:text-primary-400;
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.08), rgba(20, 184, 166, 0.03));
+  box-shadow: 0 1px 2px rgba(20, 184, 166, 0.1);
+REDACTED
+
+:root.dark .settings-tab-active {
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.12), rgba(45, 212, 191, 0.05));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+REDACTED
+
+.settings-tab-icon {
+  @apply flex h-7 w-7 items-center justify-center rounded-lg
+         transition-all duration-200;
+REDACTED
+
+.settings-tab-active .settings-tab-icon {
+  @apply bg-primary-500/15 text-primary-600
+         dark:bg-primary-400/15 dark:text-primary-400;
 REDACTED
 </style>

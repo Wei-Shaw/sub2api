@@ -3703,6 +3703,15 @@ export default {
     settings: {
       title: '系统设置',
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
+      tabs: {
+        general: '通用设置',
+        security: '安全与认证',
+        users: '用户默认值',
+        gateway: '网关服务',
+        email: '邮件设置',
+      REDACTED,
+      emailTabDisabledTitle: '邮箱验证未启用',
+      emailTabDisabledHint: '请在「安全与认证」选项卡中启用邮箱验证后，再配置 SMTP 设置。',
       registration: {
         title: '注册设置',
         description: '控制用户注册和验证',
@@ -3712,7 +3721,7 @@ export default {
         emailVerificationHint: '新用户注册时需要验证邮箱',
         emailSuffixWhitelist: '邮箱域名白名单',
         emailSuffixWhitelistHint:
-          '仅允许使用指定域名的邮箱注册账号（例如 @qq.com, @gmail.com）',
+          "仅允许使用指定域名的邮箱注册账号（例如 {'@'REDACTEDqq.com, {'@'REDACTEDgmail.com）",
         emailSuffixWhitelistPlaceholder: 'example.com',
         emailSuffixWhitelistInputHint: '留空则不限制',
         promoCode: '优惠码',
