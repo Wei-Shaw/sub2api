@@ -154,6 +154,8 @@ type UsageLogFilters struct {
 	BillingType *int8
 	StartTime   *time.Time
 	EndTime     *time.Time
+	// ExactTotal requests exact COUNT(*) for pagination. Default false for fast large-table paging.
+	ExactTotal bool
 REDACTED
 
 // UsageStats represents usage statistics
