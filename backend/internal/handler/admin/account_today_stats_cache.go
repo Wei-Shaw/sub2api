@@ -1,33 +1,12 @@
 package admin
 
 import (
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
 var accountTodayStatsBatchCache = newSnapshotCache(30 * time.Second)
-
-func normalizeAccountIDList(accountIDs []int64) []int64 {
-	if len(accountIDs) == 0 {
-		return nil
-REDACTED
-	seen := make(map[int64]struct{REDACTED, len(accountIDs))
-	out := make([]int64, 0, len(accountIDs))
-	for _, id := range accountIDs {
-		if id <= 0 {
-			continue
-	REDACTED
-		if _, ok := seen[id]; ok {
-			continue
-	REDACTED
-		seen[id] = struct{REDACTED{REDACTED
-		out = append(out, id)
-REDACTED
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] REDACTED)
-	return out
-REDACTED
 
 func buildAccountTodayStatsBatchCacheKey(accountIDs []int64) string {
 	if len(accountIDs) == 0 {

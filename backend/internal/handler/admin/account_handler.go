@@ -1403,7 +1403,7 @@ func (h *AccountHandler) GetBatchTodayStats(c *gin.Context) {
 		return
 REDACTED
 
-	accountIDs := normalizeAccountIDList(req.AccountIDs)
+	accountIDs := normalizeInt64IDList(req.AccountIDs)
 	if len(accountIDs) == 0 {
 		response.Success(c, gin.H{"stats": map[string]any{REDACTEDREDACTED)
 		return
