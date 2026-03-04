@@ -243,21 +243,23 @@ REDACTED
 		userMap[u.ID] = &outUsers[len(outUsers)-1]
 REDACTED
 
-	// Batch load active subscriptions with groups to avoid N+1.
-	subs, err := r.client.UserSubscription.Query().
-		Where(
-			usersubscription.UserIDIn(userIDs...),
-			usersubscription.StatusEQ(service.SubscriptionStatusActive),
-		).
-		WithGroup().
-		All(ctx)
-	if err != nil {
-		return nil, nil, err
-REDACTED
+	if filters.IncludeSubscriptions {
+		// Batch load active subscriptions with groups to avoid N+1.
+		subs, err := r.client.UserSubscription.Query().
+			Where(
+				usersubscription.UserIDIn(userIDs...),
+				usersubscription.StatusEQ(service.SubscriptionStatusActive),
+			).
+			WithGroup().
+			All(ctx)
+		if err != nil {
+			return nil, nil, err
+	REDACTED
 
-	for i := range subs {
-		if u, ok := userMap[subs[i].UserID]; ok {
-			u.Subscriptions = append(u.Subscriptions, *userSubscriptionEntityToService(subs[i]))
+		for i := range subs {
+			if u, ok := userMap[subs[i].UserID]; ok {
+				u.Subscriptions = append(u.Subscriptions, *userSubscriptionEntityToService(subs[i]))
+		REDACTED
 	REDACTED
 REDACTED
 

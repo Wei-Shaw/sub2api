@@ -217,6 +217,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	if len(search) > 100 {
 		search = search[:100]
 REDACTED
+	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
 
 	var groupID int64
 	if groupIDStr := c.Query("group"); groupIDStr != "" {
@@ -235,80 +236,81 @@ REDACTED
 		accountIDs[i] = acc.ID
 REDACTED
 
-	concurrencyCounts, err := h.concurrencyService.GetAccountConcurrencyBatch(c.Request.Context(), accountIDs)
-	if err != nil {
-		// Log error but don't fail the request, just use 0 for all
-		concurrencyCounts = make(map[int64]int)
-REDACTED
-
-	// 识别需要查询窗口费用、会话数和 RPM 的账号（Anthropic OAuth/SetupToken 且启用了相应功能）
-	windowCostAccountIDs := make([]int64, 0)
-	sessionLimitAccountIDs := make([]int64, 0)
-	rpmAccountIDs := make([]int64, 0)
-	sessionIdleTimeouts := make(map[int64]time.Duration) // 各账号的会话空闲超时配置
-	for i := range accounts {
-		acc := &accounts[i]
-		if acc.IsAnthropicOAuthOrSetupToken() {
-			if acc.GetWindowCostLimit() > 0 {
-				windowCostAccountIDs = append(windowCostAccountIDs, acc.ID)
-		REDACTED
-			if acc.GetMaxSessions() > 0 {
-				sessionLimitAccountIDs = append(sessionLimitAccountIDs, acc.ID)
-				sessionIdleTimeouts[acc.ID] = time.Duration(acc.GetSessionIdleTimeoutMinutes()) * time.Minute
-		REDACTED
-			if acc.GetBaseRPM() > 0 {
-				rpmAccountIDs = append(rpmAccountIDs, acc.ID)
-		REDACTED
-	REDACTED
-REDACTED
-
-	// 并行获取窗口费用、活跃会话数和 RPM 计数
+	concurrencyCounts := make(map[int64]int)
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 	var rpmCounts map[int64]int
-
-	// 获取 RPM 计数（批量查询）
-	if len(rpmAccountIDs) > 0 && h.rpmCache != nil {
-		rpmCounts, _ = h.rpmCache.GetRPMBatch(c.Request.Context(), rpmAccountIDs)
-		if rpmCounts == nil {
-			rpmCounts = make(map[int64]int)
+	if !lite {
+		// Get current concurrency counts for all accounts
+		if h.concurrencyService != nil {
+			if cc, ccErr := h.concurrencyService.GetAccountConcurrencyBatch(c.Request.Context(), accountIDs); ccErr == nil && cc != nil {
+				concurrencyCounts = cc
+		REDACTED
 	REDACTED
-REDACTED
-
-	// 获取活跃会话数（批量查询，传入各账号的 idleTimeout 配置）
-	if len(sessionLimitAccountIDs) > 0 && h.sessionLimitCache != nil {
-		activeSessions, _ = h.sessionLimitCache.GetActiveSessionCountBatch(c.Request.Context(), sessionLimitAccountIDs, sessionIdleTimeouts)
-		if activeSessions == nil {
-			activeSessions = make(map[int64]int)
-	REDACTED
-REDACTED
-
-	// 获取窗口费用（并行查询）
-	if len(windowCostAccountIDs) > 0 {
-		windowCosts = make(map[int64]float64)
-		var mu sync.Mutex
-		g, gctx := errgroup.WithContext(c.Request.Context())
-		g.SetLimit(10) // 限制并发数
-
+		// 识别需要查询窗口费用、会话数和 RPM 的账号（Anthropic OAuth/SetupToken 且启用了相应功能）
+		windowCostAccountIDs := make([]int64, 0)
+		sessionLimitAccountIDs := make([]int64, 0)
+		rpmAccountIDs := make([]int64, 0)
+		sessionIdleTimeouts := make(map[int64]time.Duration) // 各账号的会话空闲超时配置
 		for i := range accounts {
 			acc := &accounts[i]
-			if !acc.IsAnthropicOAuthOrSetupToken() || acc.GetWindowCostLimit() <= 0 {
-				continue
-		REDACTED
-			accCopy := acc // 闭包捕获
-			g.Go(func() error {
-				// 使用统一的窗口开始时间计算逻辑（考虑窗口过期情况）
-				startTime := accCopy.GetCurrentWindowStartTime()
-				stats, err := h.accountUsageService.GetAccountWindowStats(gctx, accCopy.ID, startTime)
-				if err == nil && stats != nil {
-					mu.Lock()
-					windowCosts[accCopy.ID] = stats.StandardCost // 使用标准费用
-					mu.Unlock()
+			if acc.IsAnthropicOAuthOrSetupToken() {
+				if acc.GetWindowCostLimit() > 0 {
+					windowCostAccountIDs = append(windowCostAccountIDs, acc.ID)
 			REDACTED
-				return nil // 不返回错误，允许部分失败
-		REDACTED)
+				if acc.GetMaxSessions() > 0 {
+					sessionLimitAccountIDs = append(sessionLimitAccountIDs, acc.ID)
+					sessionIdleTimeouts[acc.ID] = time.Duration(acc.GetSessionIdleTimeoutMinutes()) * time.Minute
+			REDACTED
+				if acc.GetBaseRPM() > 0 {
+					rpmAccountIDs = append(rpmAccountIDs, acc.ID)
+			REDACTED
+		REDACTED
 	REDACTED
-		_ = g.Wait()
+
+		// 获取 RPM 计数（批量查询）
+		if len(rpmAccountIDs) > 0 && h.rpmCache != nil {
+			rpmCounts, _ = h.rpmCache.GetRPMBatch(c.Request.Context(), rpmAccountIDs)
+			if rpmCounts == nil {
+				rpmCounts = make(map[int64]int)
+		REDACTED
+	REDACTED
+
+		// 获取活跃会话数（批量查询，传入各账号的 idleTimeout 配置）
+		if len(sessionLimitAccountIDs) > 0 && h.sessionLimitCache != nil {
+			activeSessions, _ = h.sessionLimitCache.GetActiveSessionCountBatch(c.Request.Context(), sessionLimitAccountIDs, sessionIdleTimeouts)
+			if activeSessions == nil {
+				activeSessions = make(map[int64]int)
+		REDACTED
+	REDACTED
+
+		// 获取窗口费用（并行查询）
+		if len(windowCostAccountIDs) > 0 {
+			windowCosts = make(map[int64]float64)
+			var mu sync.Mutex
+			g, gctx := errgroup.WithContext(c.Request.Context())
+			g.SetLimit(10) // 限制并发数
+
+			for i := range accounts {
+				acc := &accounts[i]
+				if !acc.IsAnthropicOAuthOrSetupToken() || acc.GetWindowCostLimit() <= 0 {
+					continue
+			REDACTED
+				accCopy := acc // 闭包捕获
+				g.Go(func() error {
+					// 使用统一的窗口开始时间计算逻辑（考虑窗口过期情况）
+					startTime := accCopy.GetCurrentWindowStartTime()
+					stats, err := h.accountUsageService.GetAccountWindowStats(gctx, accCopy.ID, startTime)
+					if err == nil && stats != nil {
+						mu.Lock()
+						windowCosts[accCopy.ID] = stats.StandardCost // 使用标准费用
+						mu.Unlock()
+				REDACTED
+					return nil // 不返回错误，允许部分失败
+			REDACTED)
+		REDACTED
+			_ = g.Wait()
+	REDACTED
 REDACTED
 
 	// Build response with concurrency info
@@ -344,7 +346,7 @@ REDACTED
 		result[i] = item
 REDACTED
 
-	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search)
+	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, lite)
 	if etag != "" {
 		c.Header("ETag", etag)
 		c.Header("Vary", "If-None-Match")
@@ -362,6 +364,7 @@ func buildAccountsListETag(
 	total int64,
 	page, pageSize int,
 	platform, accountType, status, search string,
+	lite bool,
 ) string {
 	payload := struct {
 		Total       int64                    `json:"total"`
@@ -371,6 +374,7 @@ func buildAccountsListETag(
 		AccountType string                   `json:"type"`
 		Status      string                   `json:"status"`
 		Search      string                   `json:"search"`
+		Lite        bool                     `json:"lite"`
 		Items       []AccountWithConcurrency `json:"items"`
 REDACTED{
 		Total:       total,
@@ -380,6 +384,7 @@ REDACTED{
 		AccountType: accountType,
 		Status:      status,
 		Search:      search,
+		Lite:        lite,
 		Items:       items,
 REDACTED
 	raw, err := json.Marshal(payload)
@@ -1398,18 +1403,41 @@ func (h *AccountHandler) GetBatchTodayStats(c *gin.Context) {
 		return
 REDACTED
 
-	if len(req.AccountIDs) == 0 {
+	accountIDs := normalizeAccountIDList(req.AccountIDs)
+	if len(accountIDs) == 0 {
 		response.Success(c, gin.H{"stats": map[string]any{REDACTEDREDACTED)
 		return
 REDACTED
 
-	stats, err := h.accountUsageService.GetTodayStatsBatch(c.Request.Context(), req.AccountIDs)
+	cacheKey := buildAccountTodayStatsBatchCacheKey(accountIDs)
+	if cached, ok := accountTodayStatsBatchCache.Get(cacheKey); ok {
+		if cached.ETag != "" {
+			c.Header("ETag", cached.ETag)
+			c.Header("Vary", "If-None-Match")
+			if ifNoneMatchMatched(c.GetHeader("If-None-Match"), cached.ETag) {
+				c.Status(http.StatusNotModified)
+				return
+		REDACTED
+	REDACTED
+		c.Header("X-Snapshot-Cache", "hit")
+		response.Success(c, cached.Payload)
+		return
+REDACTED
+
+	stats, err := h.accountUsageService.GetTodayStatsBatch(c.Request.Context(), accountIDs)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	response.Success(c, gin.H{"stats": statsREDACTED)
+	payload := gin.H{"stats": statsREDACTED
+	cached := accountTodayStatsBatchCache.Set(cacheKey, payload)
+	if cached.ETag != "" {
+		c.Header("ETag", cached.ETag)
+		c.Header("Vary", "If-None-Match")
+REDACTED
+	c.Header("X-Snapshot-Cache", "miss")
+	response.Success(c, payload)
 REDACTED
 
 // SetSchedulableRequest represents the request body for setting schedulable status

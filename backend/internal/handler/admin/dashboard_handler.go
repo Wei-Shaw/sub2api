@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -460,6 +461,9 @@ type BatchUsersUsageRequest struct {
 	UserIDs []int64 `json:"user_ids" binding:"required"`
 REDACTED
 
+var dashboardBatchUsersUsageCache = newSnapshotCache(30 * time.Second)
+var dashboardBatchAPIKeysUsageCache = newSnapshotCache(30 * time.Second)
+
 // GetBatchUsersUsage handles getting usage stats for multiple users
 // POST /api/v1/admin/dashboard/users-usage
 func (h *DashboardHandler) GetBatchUsersUsage(c *gin.Context) {
@@ -469,18 +473,34 @@ func (h *DashboardHandler) GetBatchUsersUsage(c *gin.Context) {
 		return
 REDACTED
 
-	if len(req.UserIDs) == 0 {
+	userIDs := normalizeInt64IDList(req.UserIDs)
+	if len(userIDs) == 0 {
 		response.Success(c, gin.H{"stats": map[string]any{REDACTEDREDACTED)
 		return
 REDACTED
 
-	stats, err := h.dashboardService.GetBatchUserUsageStats(c.Request.Context(), req.UserIDs, time.Time{REDACTED, time.Time{REDACTED)
+	keyRaw, _ := json.Marshal(struct {
+		UserIDs []int64 `json:"user_ids"`
+REDACTED{
+		UserIDs: userIDs,
+REDACTED)
+	cacheKey := string(keyRaw)
+	if cached, ok := dashboardBatchUsersUsageCache.Get(cacheKey); ok {
+		c.Header("X-Snapshot-Cache", "hit")
+		response.Success(c, cached.Payload)
+		return
+REDACTED
+
+	stats, err := h.dashboardService.GetBatchUserUsageStats(c.Request.Context(), userIDs, time.Time{REDACTED, time.Time{REDACTED)
 	if err != nil {
 		response.Error(c, 500, "Failed to get user usage stats")
 		return
 REDACTED
 
-	response.Success(c, gin.H{"stats": statsREDACTED)
+	payload := gin.H{"stats": statsREDACTED
+	dashboardBatchUsersUsageCache.Set(cacheKey, payload)
+	c.Header("X-Snapshot-Cache", "miss")
+	response.Success(c, payload)
 REDACTED
 
 // BatchAPIKeysUsageRequest represents the request body for batch api key usage stats
@@ -497,16 +517,32 @@ func (h *DashboardHandler) GetBatchAPIKeysUsage(c *gin.Context) {
 		return
 REDACTED
 
-	if len(req.APIKeyIDs) == 0 {
+	apiKeyIDs := normalizeInt64IDList(req.APIKeyIDs)
+	if len(apiKeyIDs) == 0 {
 		response.Success(c, gin.H{"stats": map[string]any{REDACTEDREDACTED)
 		return
 REDACTED
 
-	stats, err := h.dashboardService.GetBatchAPIKeyUsageStats(c.Request.Context(), req.APIKeyIDs, time.Time{REDACTED, time.Time{REDACTED)
+	keyRaw, _ := json.Marshal(struct {
+		APIKeyIDs []int64 `json:"api_key_ids"`
+REDACTED{
+		APIKeyIDs: apiKeyIDs,
+REDACTED)
+	cacheKey := string(keyRaw)
+	if cached, ok := dashboardBatchAPIKeysUsageCache.Get(cacheKey); ok {
+		c.Header("X-Snapshot-Cache", "hit")
+		response.Success(c, cached.Payload)
+		return
+REDACTED
+
+	stats, err := h.dashboardService.GetBatchAPIKeyUsageStats(c.Request.Context(), apiKeyIDs, time.Time{REDACTED, time.Time{REDACTED)
 	if err != nil {
 		response.Error(c, 500, "Failed to get API key usage stats")
 		return
 REDACTED
 
-	response.Success(c, gin.H{"stats": statsREDACTED)
+	payload := gin.H{"stats": statsREDACTED
+	dashboardBatchAPIKeysUsageCache.Set(cacheKey, payload)
+	c.Header("X-Snapshot-Cache", "miss")
+	response.Success(c, payload)
 REDACTED

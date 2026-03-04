@@ -22,6 +22,9 @@ type UserListFilters struct {
 	Role       string           // User role filter
 	Search     string           // Search in email, username
 	Attributes map[int64]string // Custom attribute filters: attributeID -> value
+	// IncludeSubscriptions controls whether ListWithFilters should load active subscriptions.
+	// For large datasets this can be expensive; admin list pages should enable it on demand.
+	IncludeSubscriptions bool
 REDACTED
 
 type UserRepository interface {

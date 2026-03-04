@@ -359,7 +359,7 @@ const exportingData = ref(false)
 const showColumnDropdown = ref(false)
 const columnDropdownRef = ref<HTMLElement | null>(null)
 const hiddenColumns = reactive<Set<string>>(new Set())
-const DEFAULT_HIDDEN_COLUMNS = ['proxy', 'notes', 'priority', 'rate_multiplier']
+const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'rate_multiplier']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 
 // Sorting settings
@@ -546,7 +546,7 @@ const {
   handlePageSizeChange: baseHandlePageSizeChange
 REDACTED = useTableLoader<Account, any>({
   fetchFn: adminAPI.accounts.list,
-  initialParams: { platform: '', type: '', status: '', group: '', search: '' REDACTED
+  initialParams: { platform: '', type: '', status: '', group: '', search: '', lite: '1' REDACTED
 REDACTED)
 
 const resetAutoRefreshCache = () => {
@@ -689,6 +689,7 @@ const refreshAccountsIncrementally = async () => {
         type?: string
         status?: string
         search?: string
+        lite?: string
       REDACTED,
       { etag: autoRefreshETag.value REDACTED
     )

@@ -22,6 +22,7 @@ export async function list(
     role?: 'admin' | 'user'
     search?: string
     attributes?: Record<number, string>  // attributeId -> value
+    include_subscriptions?: boolean
   REDACTED,
   options?: {
     signal?: AbortSignal
@@ -33,7 +34,8 @@ export async function list(
     page_size: pageSize,
     status: filters?.status,
     role: filters?.role,
-    search: filters?.search
+    search: filters?.search,
+    include_subscriptions: filters?.include_subscriptions
   REDACTED
 
   // Add attribute filters as attr[id]=value
