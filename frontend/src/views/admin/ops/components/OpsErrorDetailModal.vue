@@ -167,6 +167,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { useAppStore REDACTED from '@/stores'
 import { opsAPI, type OpsErrorDetail REDACTED from '@/api/admin/ops'
 import { formatDateTime REDACTED from '@/utils/format'
+import { resolvePrimaryResponseBody, resolveUpstreamPayload REDACTED from '../utils/errorDetailResponse'
 
 interface Props {
   show: boolean
@@ -192,11 +193,7 @@ const showUpstreamList = computed(() => props.errorType === 'request')
 const requestId = computed(() => detail.value?.request_id || detail.value?.client_request_id || '')
 
 const primaryResponseBody = computed(() => {
-  if (!detail.value) return ''
-  if (props.errorType === 'upstream') {
-    return detail.value.upstream_error_detail || detail.value.upstream_errors || detail.value.upstream_error_message || detail.value.error_body || ''
-  REDACTED
-  return detail.value.error_body || ''
+  return resolvePrimaryResponseBody(detail.value, props.errorType)
 REDACTED)
 
 
@@ -224,7 +221,9 @@ const correlatedUpstreamErrors = computed<OpsErrorDetail[]>(() => correlatedUpst
 const expandedUpstreamDetailIds = ref(new Set<number>())
 
 function getUpstreamResponsePreview(ev: OpsErrorDetail): string {
-  return String(ev.upstream_error_detail || ev.error_body || ev.upstream_error_message || '').trim()
+  const upstreamPayload = resolveUpstreamPayload(ev)
+  if (upstreamPayload) return upstreamPayload
+  return String(ev.error_body || '').trim()
 REDACTED
 
 function toggleUpstreamDetail(id: number) {
