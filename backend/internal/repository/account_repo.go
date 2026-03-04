@@ -437,6 +437,14 @@ REDACTED
 		switch status {
 		case "rate_limited":
 			q = q.Where(dbaccount.RateLimitResetAtGT(time.Now()))
+		case "temp_unschedulable":
+			q = q.Where(dbpredicate.Account(func(s *entsql.Selector) {
+				col := s.C("temp_unschedulable_until")
+				s.Where(entsql.And(
+					entsql.Not(entsql.IsNull(col)),
+					entsql.GT(col, entsql.Expr("NOW()")),
+				))
+		REDACTED))
 		default:
 			q = q.Where(dbaccount.StatusEQ(status))
 	REDACTED
@@ -640,7 +648,17 @@ func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
 		SetStatus(service.StatusActive).
 		SetErrorMessage("").
 		Save(ctx)
-	return err
+	if err != nil {
+		return err
+REDACTED
+	// 清除临时不可调度状态，重置 401 升级链
+	_, _ = r.sql.ExecContext(ctx, `
+		UPDATE accounts
+		SET temp_unschedulable_until = NULL,
+		    temp_unschedulable_reason = NULL
+		WHERE id = $1 AND deleted_at IS NULL
+	`, id)
+	return nil
 REDACTED
 
 func (r *accountRepository) AddToGroup(ctx context.Context, accountID, groupID int64, priority int) error {

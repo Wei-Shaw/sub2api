@@ -1091,6 +1091,22 @@ REDACTED
 	if !account.IsTempUnschedulableEnabled() {
 		return false
 REDACTED
+	// 401 首次命中可临时不可调度（给 token 刷新窗口）；
+	// 若历史上已因 401 进入过临时不可调度，则本次应升级为 error（返回 false 交由默认错误逻辑处理）。
+	if statusCode == http.StatusUnauthorized {
+		reason := account.TempUnschedulableReason
+		// 缓存可能没有 reason，从 DB 回退读取
+		if reason == "" {
+			if dbAcc, err := s.accountRepo.GetByID(ctx, account.ID); err == nil && dbAcc != nil {
+				reason = dbAcc.TempUnschedulableReason
+		REDACTED
+	REDACTED
+		if wasTempUnschedByStatusCode(reason, statusCode) {
+			slog.Info("401_escalated_to_error", "account_id", account.ID,
+				"reason", "previous temp-unschedulable was also 401")
+			return false
+	REDACTED
+REDACTED
 	rules := account.GetTempUnschedulableRules()
 	if len(rules) == 0 {
 		return false
@@ -1120,6 +1136,22 @@ REDACTED
 REDACTED
 
 	return false
+REDACTED
+
+func wasTempUnschedByStatusCode(reason string, statusCode int) bool {
+	if statusCode <= 0 {
+		return false
+REDACTED
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return false
+REDACTED
+
+	var state TempUnschedState
+	if err := json.Unmarshal([]byte(reason), &state); err != nil {
+		return false
+REDACTED
+	return state.StatusCode == statusCode
 REDACTED
 
 func matchTempUnschedKeyword(bodyLower string, keywords []string) string {

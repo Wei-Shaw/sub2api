@@ -1,0 +1,119 @@
+//go:build unit
+
+package service
+
+import (
+	"context"
+	"net/http"
+	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/stretchr/testify/require"
+)
+
+// dbFallbackRepoStub extends errorPolicyRepoStub with a configurable DB account
+// returned by GetByID, simulating cache miss + DB fallback.
+type dbFallbackRepoStub struct {
+	errorPolicyRepoStub
+	dbAccount *Account // returned by GetByID when non-nil
+REDACTED
+
+func (r *dbFallbackRepoStub) GetByID(ctx context.Context, id int64) (*Account, error) {
+	if r.dbAccount != nil && r.dbAccount.ID == id {
+		return r.dbAccount, nil
+REDACTED
+	return nil, nil // not found, no error
+REDACTED
+
+func TestCheckErrorPolicy_401_DBFallback_Escalates(t *testing.T) {
+	// Scenario: cache account has empty TempUnschedulableReason (cache miss),
+	// but DB account has a previous 401 record → should escalate to ErrorPolicyNone.
+	repo := &dbFallbackRepoStub{
+		dbAccount: &Account{
+			ID:                      20,
+			TempUnschedulableReason: `{"status_code":401,"until_unix":1735689600REDACTED`,
+	REDACTED,
+REDACTED
+	svc := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+
+	account := &Account{
+		ID:                      20,
+		Type:                    AccountTypeOAuth,
+		Platform:                PlatformAntigravity,
+		TempUnschedulableReason: "", // cache miss — reason is empty
+REDACTED
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{
+				map[string]any{
+					"error_code":       float64(401),
+					"keywords":         []any{"unauthorized"REDACTED,
+					"duration_minutes": float64(10),
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	result := svc.CheckErrorPolicy(context.Background(), account, http.StatusUnauthorized, []byte(`unauthorized`))
+	require.Equal(t, ErrorPolicyNone, result, "401 with DB fallback showing previous 401 should escalate to ErrorPolicyNone")
+REDACTED
+
+func TestCheckErrorPolicy_401_DBFallback_NoDBRecord_FirstHit(t *testing.T) {
+	// Scenario: cache account has empty TempUnschedulableReason,
+	// DB also has no previous 401 record → should NOT escalate (first hit → temp unscheduled).
+	repo := &dbFallbackRepoStub{
+		dbAccount: &Account{
+			ID:                      21,
+			TempUnschedulableReason: "", // DB also empty
+	REDACTED,
+REDACTED
+	svc := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+
+	account := &Account{
+		ID:                      21,
+		Type:                    AccountTypeOAuth,
+		Platform:                PlatformAntigravity,
+		TempUnschedulableReason: "",
+REDACTED
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{
+				map[string]any{
+					"error_code":       float64(401),
+					"keywords":         []any{"unauthorized"REDACTED,
+					"duration_minutes": float64(10),
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	result := svc.CheckErrorPolicy(context.Background(), account, http.StatusUnauthorized, []byte(`unauthorized`))
+	require.Equal(t, ErrorPolicyTempUnscheduled, result, "401 first hit with no DB record should temp-unschedule")
+REDACTED
+
+func TestCheckErrorPolicy_401_DBFallback_DBError_FirstHit(t *testing.T) {
+	// Scenario: cache account has empty TempUnschedulableReason,
+	// DB lookup returns nil (not found) → should treat as first hit → temp unscheduled.
+	repo := &dbFallbackRepoStub{
+		dbAccount: nil, // GetByID returns nil, nil
+REDACTED
+	svc := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+
+	account := &Account{
+		ID:                      22,
+		Type:                    AccountTypeOAuth,
+		Platform:                PlatformAntigravity,
+		TempUnschedulableReason: "",
+REDACTED
+			"temp_unschedulable_enabled": true,
+			"temp_unschedulable_rules": []any{
+				map[string]any{
+					"error_code":       float64(401),
+					"keywords":         []any{"unauthorized"REDACTED,
+					"duration_minutes": float64(10),
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	result := svc.CheckErrorPolicy(context.Background(), account, http.StatusUnauthorized, []byte(`unauthorized`))
+	require.Equal(t, ErrorPolicyTempUnscheduled, result, "401 first hit with DB not found should temp-unschedule")
+REDACTED
