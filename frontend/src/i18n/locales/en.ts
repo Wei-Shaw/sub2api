@@ -312,6 +312,9 @@ export default {
     passwordMinLength: 'Password must be at least 6 characters',
     loginFailed: 'Login failed. Please check your credentials and try again.',
     registrationFailed: 'Registration failed. Please try again.',
+    emailSuffixNotAllowed: 'This email domain is not allowed for registration.',
+    emailSuffixNotAllowedWithAllowed:
+      'This email domain is not allowed. Allowed domains: {suffixesREDACTED',
     loginSuccess: 'Login successful! Welcome back.',
     accountCreatedSuccess: 'Account created successfully! Welcome to {siteNameREDACTED.',
     reloginRequired: 'Session expired. Please log in again.',
@@ -3528,6 +3531,11 @@ export default {
         enableRegistrationHint: 'Allow new users to register',
         emailVerification: 'Email Verification',
         emailVerificationHint: 'Require email verification for new registrations',
+        emailSuffixWhitelist: 'Email Domain Whitelist',
+        emailSuffixWhitelistHint:
+          'Only email addresses from the specified domains can register (for example, @qq.com, @gmail.com)',
+        emailSuffixWhitelistPlaceholder: 'example.com',
+        emailSuffixWhitelistInputHint: 'Leave empty for no restriction',
         promoCode: 'Promo Code',
         promoCodeHint: 'Allow users to use promo codes during registration',
         invitationCode: 'Invitation Code Registration',
