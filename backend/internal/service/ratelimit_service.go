@@ -676,7 +676,17 @@ REDACTED
 		REDACTED
 	REDACTED
 
-		// 没有重置时间，使用默认5分钟
+		// Anthropic 平台：没有限流重置时间的 429 可能是非真实限流（如 Extra usage required），
+		// 不标记账号限流状态，直接透传错误给客户端
+		if account.Platform == PlatformAnthropic {
+			slog.Warn("rate_limit_429_no_reset_time_skipped",
+				"account_id", account.ID,
+				"platform", account.Platform,
+				"reason", "no rate limit reset time in headers, likely not a real rate limit")
+			return
+	REDACTED
+
+		// 其他平台：没有重置时间，使用默认5分钟
 		resetAt := time.Now().Add(5 * time.Minute)
 		slog.Warn("rate_limit_no_reset_time", "account_id", account.ID, "platform", account.Platform, "using_default", "5m")
 		if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
