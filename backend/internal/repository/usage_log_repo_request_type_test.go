@@ -96,6 +96,7 @@ func TestUsageLogRepositoryListWithFiltersRequestTypePriority(t *testing.T) {
 	filters := usagestats.UsageLogFilters{
 		RequestType: &requestType,
 		Stream:      &stream,
+		ExactTotal:  true,
 REDACTED
 
 	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM usage_logs WHERE \\(request_type = \\$1 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\)").

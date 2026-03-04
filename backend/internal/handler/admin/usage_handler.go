@@ -61,6 +61,15 @@ REDACTED
 // GET /api/v1/admin/usage
 func (h *UsageHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
+	exactTotal := false
+	if exactTotalRaw := strings.TrimSpace(c.Query("exact_total")); exactTotalRaw != "" {
+		parsed, err := strconv.ParseBool(exactTotalRaw)
+		if err != nil {
+			response.BadRequest(c, "Invalid exact_total value, use true or false")
+			return
+	REDACTED
+		exactTotal = parsed
+REDACTED
 
 	// Parse filters
 	var userID, apiKeyID, accountID, groupID int64
@@ -167,6 +176,7 @@ REDACTED
 		BillingType: billingType,
 		StartTime:   startTime,
 		EndTime:     endTime,
+		ExactTotal:  exactTotal,
 REDACTED
 
 	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)

@@ -80,6 +80,29 @@ func TestAdminUsageListInvalidStream(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 REDACTED
 
+func TestAdminUsageListExactTotalTrue(t *testing.T) {
+	repo := &adminUsageRepoCapture{REDACTED
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage?exact_total=true", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, repo.listFilters.ExactTotal)
+REDACTED
+
+func TestAdminUsageListInvalidExactTotal(t *testing.T) {
+	repo := &adminUsageRepoCapture{REDACTED
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage?exact_total=oops", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+REDACTED
+
 func TestAdminUsageStatsRequestTypePriority(t *testing.T) {
 	repo := &adminUsageRepoCapture{REDACTED
 	router := newAdminUsageRequestTypeTestRouter(repo)

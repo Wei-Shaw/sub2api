@@ -88,6 +88,7 @@ const appStore = useAppStore()
 const usageStats = ref<AdminUsageStatsResponse | null>(null); const usageLogs = ref<AdminUsageLog[]>([]); const loading = ref(false); const exporting = ref(false)
 const trendData = ref<TrendDataPoint[]>([]); const modelStats = ref<ModelStat[]>([]); const groupStats = ref<GroupStat[]>([]); const chartsLoading = ref(false); const granularity = ref<'day' | 'hour'>('day')
 let abortController: AbortController | null = null; let exportAbortController: AbortController | null = null
+let chartReqSeq = 0
 const exportProgress = reactive({ show: false, progress: 0, current: 0, total: 0, estimatedTime: '' REDACTED)
 const cleanupDialogVisible = ref(false)
 
@@ -109,7 +110,7 @@ const loadLogs = async () => {
   try {
     const requestType = filters.value.request_type
     const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
-    const res = await adminAPI.usage.list({ page: pagination.page, page_size: pagination.page_size, ...filters.value, stream: legacyStream === null ? undefined : legacyStream REDACTED, { signal: c.signal REDACTED)
+    const res = await adminAPI.usage.list({ page: pagination.page, page_size: pagination.page_size, exact_total: false, ...filters.value, stream: legacyStream === null ? undefined : legacyStream REDACTED, { signal: c.signal REDACTED)
     if(!c.signal.aborted) { usageLogs.value = res.items; pagination.total = res.total REDACTED
   REDACTED catch (error: any) { if(error?.name !== 'AbortError') console.error('Failed to load usage logs:', error) REDACTED finally { if(abortController === c) loading.value = false REDACTED
 REDACTED
@@ -124,15 +125,34 @@ const loadStats = async () => {
   REDACTED
 REDACTED
 const loadChartData = async () => {
+  const seq = ++chartReqSeq
   chartsLoading.value = true
   try {
     const requestType = filters.value.request_type
     const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
-    const params = { start_date: filters.value.start_date || startDate.value, end_date: filters.value.end_date || endDate.value, granularity: granularity.value, user_id: filters.value.user_id, model: filters.value.model, api_key_id: filters.value.api_key_id, account_id: filters.value.account_id, group_id: filters.value.group_id, request_type: requestType, stream: legacyStream === null ? undefined : legacyStream, billing_type: filters.value.billing_type REDACTED
-    const statsParams = { start_date: params.start_date, end_date: params.end_date, user_id: params.user_id, model: params.model, api_key_id: params.api_key_id, account_id: params.account_id, group_id: params.group_id, request_type: params.request_type, stream: params.stream, billing_type: params.billing_type REDACTED
-    const [trendRes, modelRes, groupRes] = await Promise.all([adminAPI.dashboard.getUsageTrend(params), adminAPI.dashboard.getModelStats(statsParams), adminAPI.dashboard.getGroupStats(statsParams)])
-    trendData.value = trendRes.trend || []; modelStats.value = modelRes.models || []; groupStats.value = groupRes.groups || []
-  REDACTED catch (error) { console.error('Failed to load chart data:', error) REDACTED finally { chartsLoading.value = false REDACTED
+    const snapshot = await adminAPI.dashboard.getSnapshotV2({
+      start_date: filters.value.start_date || startDate.value,
+      end_date: filters.value.end_date || endDate.value,
+      granularity: granularity.value,
+      user_id: filters.value.user_id,
+      model: filters.value.model,
+      api_key_id: filters.value.api_key_id,
+      account_id: filters.value.account_id,
+      group_id: filters.value.group_id,
+      request_type: requestType,
+      stream: legacyStream === null ? undefined : legacyStream,
+      billing_type: filters.value.billing_type,
+      include_stats: false,
+      include_trend: true,
+      include_model_stats: true,
+      include_group_stats: true,
+      include_users_trend: false
+    REDACTED)
+    if (seq !== chartReqSeq) return
+    trendData.value = snapshot.trend || []
+    modelStats.value = snapshot.models || []
+    groupStats.value = snapshot.groups || []
+  REDACTED catch (error) { console.error('Failed to load chart data:', error) REDACTED finally { if (seq === chartReqSeq) chartsLoading.value = false REDACTED
 REDACTED
 const applyFilters = () => { pagination.page = 1; loadLogs(); loadStats(); loadChartData() REDACTED
 const refreshData = () => { loadLogs(); loadStats(); loadChartData() REDACTED
@@ -171,7 +191,7 @@ const exportToExcel = async () => {
     while (true) {
       const requestType = filters.value.request_type
       const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
-      const res = await adminUsageAPI.list({ page: p, page_size: 100, ...filters.value, stream: legacyStream === null ? undefined : legacyStream REDACTED, { signal: c.signal REDACTED)
+      const res = await adminUsageAPI.list({ page: p, page_size: 100, exact_total: true, ...filters.value, stream: legacyStream === null ? undefined : legacyStream REDACTED, { signal: c.signal REDACTED)
       if (c.signal.aborted) break; if (p === 1) { total = res.total; exportProgress.total = total REDACTED
       const rows = (res.items || []).map((log: AdminUsageLog) => [
         log.created_at, log.user?.email || '', log.api_key?.name || '', log.account?.name || '', log.model,
@@ -273,6 +293,14 @@ const handleColumnClickOutside = (event: MouseEvent) => {
   REDACTED
 REDACTED
 
-onMounted(() => { loadLogs(); loadStats(); loadChartData(); loadSavedColumns(); document.addEventListener('click', handleColumnClickOutside) REDACTED)
+onMounted(() => {
+  loadLogs()
+  loadStats()
+  window.setTimeout(() => {
+    void loadChartData()
+  REDACTED, 120)
+  loadSavedColumns()
+  document.addEventListener('click', handleColumnClickOutside)
+REDACTED)
 onUnmounted(() => { abortController?.abort(); exportAbortController?.abort(); document.removeEventListener('click', handleColumnClickOutside) REDACTED)
 </script>
