@@ -1,6 +1,29 @@
 <template>
   <AppLayout>
     <TablePageLayout>
+      <template #filters>
+        <div class="flex flex-wrap items-center gap-3">
+          <SearchInput
+            v-model="filterSearch"
+            :placeholder="t('keys.searchPlaceholder')"
+            class="w-full sm:w-64"
+            @search="onFilterChange"
+          />
+          <Select
+            :model-value="filterGroupId"
+            class="w-40"
+            :options="groupFilterOptions"
+            @update:model-value="onGroupFilterChange"
+          />
+          <Select
+            :model-value="filterStatus"
+            class="w-40"
+            :options="statusFilterOptions"
+            @update:model-value="onStatusFilterChange"
+          />
+        </div>
+      </template>
+
       <template #actions>
         <div class="flex justify-end gap-3">
         <button
@@ -985,6 +1008,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 	import EmptyState from '@/components/common/EmptyState.vue'
 	import Select from '@/components/common/Select.vue'
+	import SearchInput from '@/components/common/SearchInput.vue'
 	import Icon from '@/components/icons/Icon.vue'
 	import UseKeyModal from '@/components/keys/UseKeyModal.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
@@ -1041,6 +1065,11 @@ const pagination = ref({
   total: 0,
   pages: 0
 REDACTED)
+
+// Filter state
+const filterSearch = ref('')
+const filterStatus = ref('')
+const filterGroupId = ref<string | number>('')
 
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
@@ -1116,6 +1145,36 @@ const statusOptions = computed(() => [
   { value: 'inactive', label: t('common.inactive') REDACTED
 ])
 
+// Filter dropdown options
+const groupFilterOptions = computed(() => [
+  { value: '', label: t('keys.allGroups') REDACTED,
+  { value: 0, label: t('keys.noGroup') REDACTED,
+  ...groups.value.map((g) => ({ value: g.id, label: g.name REDACTED))
+])
+
+const statusFilterOptions = computed(() => [
+  { value: '', label: t('keys.allStatus') REDACTED,
+  { value: 'active', label: t('keys.status.active') REDACTED,
+  { value: 'inactive', label: t('keys.status.inactive') REDACTED,
+  { value: 'quota_exhausted', label: t('keys.status.quota_exhausted') REDACTED,
+  { value: 'expired', label: t('keys.status.expired') REDACTED
+])
+
+const onFilterChange = () => {
+  pagination.value.page = 1
+  loadApiKeys()
+REDACTED
+
+const onGroupFilterChange = (value: string | number | boolean | null) => {
+  filterGroupId.value = value as string | number
+  onFilterChange()
+REDACTED
+
+const onStatusFilterChange = (value: string | number | boolean | null) => {
+  filterStatus.value = value as string
+  onFilterChange()
+REDACTED
+
 // Convert groups to Select options format with rate multiplier and subscription type
 const groupOptions = computed(() =>
   groups.value.map((group) => ({
@@ -1157,7 +1216,13 @@ const loadApiKeys = async () => {
   const { signal REDACTED = controller
   loading.value = true
   try {
-    const response = await keysAPI.list(pagination.value.page, pagination.value.page_size, {
+    // Build filters
+    const filters: { search?: string; status?: string; group_id?: number | string REDACTED = {REDACTED
+    if (filterSearch.value) filters.search = filterSearch.value
+    if (filterStatus.value) filters.status = filterStatus.value
+    if (filterGroupId.value !== '') filters.group_id = filterGroupId.value
+
+    const response = await keysAPI.list(pagination.value.page, pagination.value.page_size, filters, {
       signal
     REDACTED)
     if (signal.aborted) return

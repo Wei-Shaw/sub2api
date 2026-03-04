@@ -158,7 +158,7 @@ func (s *APIKeyRepoSuite) TestListByUserID() {
 	s.mustCreateApiKey(user.ID, "sk-list-1", "Key 1", nil)
 	s.mustCreateApiKey(user.ID, "sk-list-2", "Key 2", nil)
 
-	keys, page, err := s.repo.ListByUserID(s.ctx, user.ID, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
+	keys, page, err := s.repo.ListByUserID(s.ctx, user.ID, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.APIKeyListFilters{REDACTED)
 	s.Require().NoError(err, "ListByUserID")
 	s.Require().Len(keys, 2)
 	s.Require().Equal(int64(2), page.Total)
@@ -170,7 +170,7 @@ func (s *APIKeyRepoSuite) TestListByUserID_Pagination() {
 		s.mustCreateApiKey(user.ID, "sk-page-"+string(rune('a'+i)), "Key", nil)
 REDACTED
 
-	keys, page, err := s.repo.ListByUserID(s.ctx, user.ID, pagination.PaginationParams{Page: 1, PageSize: 2REDACTED)
+	keys, page, err := s.repo.ListByUserID(s.ctx, user.ID, pagination.PaginationParams{Page: 1, PageSize: 2REDACTED, service.APIKeyListFilters{REDACTED)
 	s.Require().NoError(err)
 	s.Require().Len(keys, 2)
 	s.Require().Equal(int64(5), page.Total)
@@ -314,7 +314,7 @@ func (s *APIKeyRepoSuite) TestCRUD_Search_ClearGroupID() {
 	s.Require().Equal(service.StatusDisabled, got2.Status)
 	s.Require().Nil(got2.GroupID)
 
-	keys, page, err := s.repo.ListByUserID(s.ctx, user.ID, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
+	keys, page, err := s.repo.ListByUserID(s.ctx, user.ID, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, service.APIKeyListFilters{REDACTED)
 	s.Require().NoError(err, "ListByUserID")
 	s.Require().Equal(int64(1), page.Total)
 	s.Require().Len(keys, 1)

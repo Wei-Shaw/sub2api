@@ -10,18 +10,20 @@ import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedRespons
  * List all API keys for current user
  * @param page - Page number (default: 1)
  * @param pageSize - Items per page (default: 10)
+ * @param filters - Optional filter parameters
  * @param options - Optional request options
  * @returns Paginated list of API keys
  */
 export async function list(
   page: number = 1,
   pageSize: number = 10,
+  filters?: { search?: string; status?: string; group_id?: number | string REDACTED,
   options?: {
     signal?: AbortSignal
   REDACTED
 ): Promise<PaginatedResponse<ApiKey>> {
   const { data REDACTED = await apiClient.get<PaginatedResponse<ApiKey>>('/keys', {
-    params: { page, page_size: pageSize REDACTED,
+    params: { page, page_size: pageSize, ...filters REDACTED,
     signal: options?.signal
   REDACTED)
   return data

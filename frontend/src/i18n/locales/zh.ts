@@ -445,6 +445,9 @@ export default {
   keys: {
     title: 'API 密钥',
     description: '管理您的 API 密钥和访问令牌',
+    searchPlaceholder: '搜索名称或Key...',
+    allGroups: '全部分组',
+    allStatus: '全部状态',
     createKey: '创建密钥',
     editKey: '编辑密钥',
     deleteKey: '删除密钥',

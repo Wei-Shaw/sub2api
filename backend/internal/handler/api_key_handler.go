@@ -4,6 +4,7 @@ package handler
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -73,7 +74,23 @@ REDACTED
 	page, pageSize := response.ParsePagination(c)
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 
-	keys, result, err := h.apiKeyService.List(c.Request.Context(), subject.UserID, params)
+	// Parse filter parameters
+	var filters service.APIKeyListFilters
+	if search := strings.TrimSpace(c.Query("search")); search != "" {
+		if len(search) > 100 {
+			search = search[:100]
+	REDACTED
+		filters.Search = search
+REDACTED
+	filters.Status = c.Query("status")
+	if groupIDStr := c.Query("group_id"); groupIDStr != "" {
+		gid, err := strconv.ParseInt(groupIDStr, 10, 64)
+		if err == nil {
+			filters.GroupID = &gid
+	REDACTED
+REDACTED
+
+	keys, result, err := h.apiKeyService.List(c.Request.Context(), subject.UserID, params, filters)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

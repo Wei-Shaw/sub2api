@@ -444,6 +444,9 @@ export default {
   keys: {
     title: 'API Keys',
     description: 'Manage your API keys and access tokens',
+    searchPlaceholder: 'Search name or key...',
+    allGroups: 'All Groups',
+    allStatus: 'All Status',
     createKey: 'Create API Key',
     editKey: 'Edit API Key',
     deleteKey: 'Delete API Key',
