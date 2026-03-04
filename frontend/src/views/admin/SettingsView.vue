@@ -1431,7 +1431,6 @@ const saving = ref(false)
 const testingSmtp = ref(false)
 const sendingTestEmail = ref(false)
 const testEmailAddress = ref('')
-const logoError = ref('')
 const registrationEmailSuffixWhitelistTags = ref<string[]>([])
 const registrationEmailSuffixWhitelistDraft = ref('')
 
