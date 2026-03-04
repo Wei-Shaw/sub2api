@@ -24,7 +24,8 @@ type UserListFilters struct {
 	Attributes map[int64]string // Custom attribute filters: attributeID -> value
 	// IncludeSubscriptions controls whether ListWithFilters should load active subscriptions.
 	// For large datasets this can be expensive; admin list pages should enable it on demand.
-	IncludeSubscriptions bool
+	// nil means not specified (default: load subscriptions for backward compatibility).
+	IncludeSubscriptions *bool
 REDACTED
 
 type UserRepository interface {

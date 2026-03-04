@@ -86,11 +86,14 @@ func (h *UserHandler) List(c *gin.Context) {
 REDACTED
 
 	filters := service.UserListFilters{
-		Status:               c.Query("status"),
-		Role:                 c.Query("role"),
-		Search:               search,
-		Attributes:           parseAttributeFilters(c),
-		IncludeSubscriptions: parseBoolQueryWithDefault(c.Query("include_subscriptions"), true),
+		Status:     c.Query("status"),
+		Role:       c.Query("role"),
+		Search:     search,
+		Attributes: parseAttributeFilters(c),
+REDACTED
+	if raw, ok := c.GetQuery("include_subscriptions"); ok {
+		includeSubscriptions := parseBoolQueryWithDefault(raw, true)
+		filters.IncludeSubscriptions = &includeSubscriptions
 REDACTED
 
 	users, total, err := h.adminService.ListUsers(c.Request.Context(), page, pageSize, filters)

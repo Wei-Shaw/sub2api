@@ -35,12 +35,12 @@ func buildAccountTodayStatsBatchCacheKey(accountIDs []int64) string {
 REDACTED
 	var b strings.Builder
 	b.Grow(len(accountIDs) * 6)
-	b.WriteString("accounts_today_stats:")
+	_, _ = b.WriteString("accounts_today_stats:")
 	for i, id := range accountIDs {
 		if i > 0 {
-			b.WriteByte(',')
+			_ = b.WriteByte(',')
 	REDACTED
-		b.WriteString(strconv.FormatInt(id, 10))
+		_, _ = b.WriteString(strconv.FormatInt(id, 10))
 REDACTED
 	return b.String()
 REDACTED
