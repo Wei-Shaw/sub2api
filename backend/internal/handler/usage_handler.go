@@ -2,6 +2,7 @@ package handler
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -65,8 +66,17 @@ REDACTED
 	// Parse additional filters
 	model := c.Query("model")
 
+	var requestType *int16
 	var stream *bool
-	if streamStr := c.Query("stream"); streamStr != "" {
+	if requestTypeStr := strings.TrimSpace(c.Query("request_type")); requestTypeStr != "" {
+		parsed, err := service.ParseUsageRequestType(requestTypeStr)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+	REDACTED
+		value := int16(parsed)
+		requestType = &value
+REDACTED else if streamStr := c.Query("stream"); streamStr != "" {
 		val, err := strconv.ParseBool(streamStr)
 		if err != nil {
 			response.BadRequest(c, "Invalid stream value, use true or false")
@@ -114,6 +124,7 @@ REDACTED
 		UserID:      subject.UserID, // Always filter by current user for security
 		APIKeyID:    apiKeyID,
 		Model:       model,
+		RequestType: requestType,
 		Stream:      stream,
 		BillingType: billingType,
 		StartTime:   startTime,
@@ -392,7 +403,7 @@ REDACTED
 		return
 REDACTED
 
-	stats, err := h.usageService.GetBatchAPIKeyUsageStats(c.Request.Context(), validAPIKeyIDs)
+	stats, err := h.usageService.GetBatchAPIKeyUsageStats(c.Request.Context(), validAPIKeyIDs, time.Time{REDACTED, time.Time{REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

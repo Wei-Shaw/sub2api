@@ -77,6 +77,11 @@ REDACTED
 func (m *mockAccountRepoForPlatform) GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error) {
 	return nil, nil
 REDACTED
+
+func (m *mockAccountRepoForPlatform) FindByExtraField(ctx context.Context, key string, value any) ([]Account, error) {
+	return nil, nil
+REDACTED
+
 func (m *mockAccountRepoForPlatform) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
 	return nil, nil
 REDACTED
@@ -140,6 +145,12 @@ REDACTED
 	return result, nil
 REDACTED
 func (m *mockAccountRepoForPlatform) ListSchedulableByGroupIDAndPlatforms(ctx context.Context, groupID int64, platforms []string) ([]Account, error) {
+	return m.ListSchedulableByPlatforms(ctx, platforms)
+REDACTED
+func (m *mockAccountRepoForPlatform) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error) {
+	return m.ListSchedulableByPlatform(ctx, platform)
+REDACTED
+func (m *mockAccountRepoForPlatform) ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]Account, error) {
 	return m.ListSchedulableByPlatforms(ctx, platforms)
 REDACTED
 func (m *mockAccountRepoForPlatform) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
@@ -890,6 +901,55 @@ REDACTED
 	require.Equal(t, int64(2), acc.ID)
 REDACTED
 
+func TestGatewayService_SelectAccountForModelWithPlatform_GeminiAPIKeyModelMappingFilter(t *testing.T) {
+	ctx := context.Background()
+
+	repo := &mockAccountRepoForPlatform{
+		accounts: []Account{
+			{
+				ID:          1,
+				Platform:    PlatformGemini,
+				Type:        AccountTypeAPIKey,
+				Priority:    1,
+				Status:      StatusActive,
+				Schedulable: true,
+		REDACTED"model_mapping": map[string]any{"gemini-2.5-pro": "gemini-2.5-pro"REDACTEDREDACTED,
+		REDACTED,
+			{
+				ID:          2,
+				Platform:    PlatformGemini,
+				Type:        AccountTypeAPIKey,
+				Priority:    2,
+				Status:      StatusActive,
+				Schedulable: true,
+		REDACTED"model_mapping": map[string]any{"gemini-2.5-flash": "gemini-2.5-flash"REDACTEDREDACTED,
+		REDACTED,
+	REDACTED,
+		accountsByID: map[int64]*Account{REDACTED,
+REDACTED
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+REDACTED
+
+	cache := &mockGatewayCacheForPlatform{REDACTED
+
+	svc := &GatewayService{
+		accountRepo: repo,
+		cache:       cache,
+		cfg:         testConfig(),
+REDACTED
+
+	acc, err := svc.selectAccountForModelWithPlatform(ctx, nil, "", "gemini-2.5-flash", nil, PlatformGemini)
+REDACTED
+	require.NotNil(t, acc)
+	require.Equal(t, int64(2), acc.ID, "应过滤不支持请求模型的 APIKey 账号")
+
+	acc, err = svc.selectAccountForModelWithPlatform(ctx, nil, "", "gemini-3-pro-preview", nil, PlatformGemini)
+REDACTED
+	require.Nil(t, acc)
+	require.Contains(t, err.Error(), "supporting model")
+REDACTED
+
 func TestGatewayService_SelectAccountForModelWithPlatform_StickyInGroup(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(50)
@@ -1063,6 +1123,36 @@ REDACTED{
 		REDACTED"model_mapping": map[string]any{"claude-3-5-sonnet-20241022": "x"REDACTEDREDACTED,
 		REDACTED,
 			model:    "claude-3-5-sonnet-20241022",
+			expected: true,
+	REDACTED,
+		{
+			name:     "Gemini平台-无映射配置-支持所有模型",
+			account:  &Account{Platform: PlatformGemini, Type: AccountTypeAPIKeyREDACTED,
+			model:    "gemini-2.5-flash",
+			expected: true,
+	REDACTED,
+		{
+			name: "Gemini平台-有映射配置-只支持配置的模型",
+			account: &Account{
+		REDACTED
+				Type:     AccountTypeAPIKey,
+		REDACTED
+					"model_mapping": map[string]any{"gemini-2.5-pro": "gemini-2.5-pro"REDACTED,
+			REDACTED,
+		REDACTED,
+			model:    "gemini-2.5-flash",
+			expected: false,
+	REDACTED,
+		{
+			name: "Gemini平台-有映射配置-支持配置的模型",
+			account: &Account{
+		REDACTED
+				Type:     AccountTypeAPIKey,
+		REDACTED
+					"model_mapping": map[string]any{"gemini-2.5-pro": "gemini-2.5-pro"REDACTED,
+			REDACTED,
+		REDACTED,
+			model:    "gemini-2.5-pro",
 			expected: true,
 	REDACTED,
 REDACTED
@@ -1806,6 +1896,14 @@ REDACTED
 
 func (m *mockConcurrencyCache) GetAccountConcurrency(ctx context.Context, accountID int64) (int, error) {
 	return 0, nil
+REDACTED
+
+func (m *mockConcurrencyCache) GetAccountConcurrencyBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int, len(accountIDs))
+	for _, accountID := range accountIDs {
+		result[accountID] = 0
+REDACTED
+	return result, nil
 REDACTED
 
 func (m *mockConcurrencyCache) IncrementAccountWaitCount(ctx context.Context, accountID int64, maxWait int) (bool, error) {

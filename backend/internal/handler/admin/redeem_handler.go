@@ -2,12 +2,15 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -16,13 +19,15 @@ import (
 
 // RedeemHandler handles admin redeem code management
 type RedeemHandler struct {
-	adminService service.AdminService
+	adminService  service.AdminService
+	redeemService *service.RedeemService
 REDACTED
 
 // NewRedeemHandler creates a new admin redeem handler
-func NewRedeemHandler(adminService service.AdminService) *RedeemHandler {
+func NewRedeemHandler(adminService service.AdminService, redeemService *service.RedeemService) *RedeemHandler {
 	return &RedeemHandler{
-		adminService: adminService,
+		adminService:  adminService,
+		redeemService: redeemService,
 REDACTED
 REDACTED
 
@@ -33,6 +38,15 @@ type GenerateRedeemCodesRequest struct {
 	Value        float64 `json:"value" binding:"min=0"`
 	GroupID      *int64  `json:"group_id"`                                    // 订阅类型必填
 	ValidityDays int     `json:"validity_days" binding:"omitempty,max=36500"` // 订阅类型使用，默认30天，最大100年
+REDACTED
+
+// CreateAndRedeemCodeRequest represents creating a fixed code and redeeming it for a target user.
+type CreateAndRedeemCodeRequest struct {
+	Code   string  `json:"code" binding:"required,min=3,max=128"`
+	Type   string  `json:"type" binding:"required,oneof=balance concurrency subscription invitation"`
+	Value  float64 `json:"value" binding:"required,gt=0"`
+	UserID int64   `json:"user_id" binding:"required,gt=0"`
+	Notes  string  `json:"notes"`
 REDACTED
 
 // List handles listing all redeem codes with pagination
@@ -88,23 +102,99 @@ func (h *RedeemHandler) Generate(c *gin.Context) {
 		return
 REDACTED
 
-	codes, err := h.adminService.GenerateRedeemCodes(c.Request.Context(), &service.GenerateRedeemCodesInput{
-		Count:        req.Count,
-		Type:         req.Type,
-		Value:        req.Value,
-		GroupID:      req.GroupID,
-		ValidityDays: req.ValidityDays,
+	executeAdminIdempotentJSON(c, "admin.redeem_codes.generate", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		codes, execErr := h.adminService.GenerateRedeemCodes(ctx, &service.GenerateRedeemCodesInput{
+			Count:        req.Count,
+			Type:         req.Type,
+			Value:        req.Value,
+			GroupID:      req.GroupID,
+			ValidityDays: req.ValidityDays,
+	REDACTED)
+		if execErr != nil {
+			return nil, execErr
+	REDACTED
+
+		out := make([]dto.AdminRedeemCode, 0, len(codes))
+		for i := range codes {
+			out = append(out, *dto.RedeemCodeFromServiceAdmin(&codes[i]))
+	REDACTED
+		return out, nil
 REDACTED)
-	if err != nil {
-		response.ErrorFrom(c, err)
+REDACTED
+
+// CreateAndRedeem creates a fixed redeem code and redeems it for a target user in one step.
+// POST /api/v1/admin/redeem-codes/create-and-redeem
+func (h *RedeemHandler) CreateAndRedeem(c *gin.Context) {
+	if h.redeemService == nil {
+		response.InternalError(c, "redeem service not configured")
 		return
 REDACTED
 
-	out := make([]dto.AdminRedeemCode, 0, len(codes))
-	for i := range codes {
-		out = append(out, *dto.RedeemCodeFromServiceAdmin(&codes[i]))
+	var req CreateAndRedeemCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
 REDACTED
-	response.Success(c, out)
+	req.Code = strings.TrimSpace(req.Code)
+
+	executeAdminIdempotentJSON(c, "admin.redeem_codes.create_and_redeem", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		existing, err := h.redeemService.GetByCode(ctx, req.Code)
+		if err == nil {
+			return h.resolveCreateAndRedeemExisting(ctx, existing, req.UserID)
+	REDACTED
+		if !errors.Is(err, service.ErrRedeemCodeNotFound) {
+			return nil, err
+	REDACTED
+
+		createErr := h.redeemService.CreateCode(ctx, &service.RedeemCode{
+			Code:   req.Code,
+			Type:   req.Type,
+			Value:  req.Value,
+			Status: service.StatusUnused,
+			Notes:  req.Notes,
+	REDACTED)
+		if createErr != nil {
+			// Unique code race: if code now exists, use idempotent semantics by used_by.
+			existingAfterCreateErr, getErr := h.redeemService.GetByCode(ctx, req.Code)
+			if getErr == nil {
+				return h.resolveCreateAndRedeemExisting(ctx, existingAfterCreateErr, req.UserID)
+		REDACTED
+			return nil, createErr
+	REDACTED
+
+		redeemed, redeemErr := h.redeemService.Redeem(ctx, req.UserID, req.Code)
+		if redeemErr != nil {
+			return nil, redeemErr
+	REDACTED
+		return gin.H{"redeem_code": dto.RedeemCodeFromServiceAdmin(redeemed)REDACTED, nil
+REDACTED)
+REDACTED
+
+func (h *RedeemHandler) resolveCreateAndRedeemExisting(ctx context.Context, existing *service.RedeemCode, userID int64) (any, error) {
+	if existing == nil {
+		return nil, infraerrors.Conflict("REDEEM_CODE_CONFLICT", "redeem code conflict")
+REDACTED
+
+	// If previous run created the code but crashed before redeem, redeem it now.
+	if existing.CanUse() {
+		redeemed, err := h.redeemService.Redeem(ctx, userID, existing.Code)
+		if err == nil {
+			return gin.H{"redeem_code": dto.RedeemCodeFromServiceAdmin(redeemed)REDACTED, nil
+	REDACTED
+		if !errors.Is(err, service.ErrRedeemCodeUsed) {
+			return nil, err
+	REDACTED
+		latest, getErr := h.redeemService.GetByCode(ctx, existing.Code)
+		if getErr == nil {
+			existing = latest
+	REDACTED
+REDACTED
+
+	if existing.UsedBy != nil && *existing.UsedBy == userID {
+		return gin.H{"redeem_code": dto.RedeemCodeFromServiceAdmin(existing)REDACTED, nil
+REDACTED
+
+	return nil, infraerrors.Conflict("REDEEM_CODE_CONFLICT", "redeem code already used by another user")
 REDACTED
 
 // Delete handles deleting a redeem code

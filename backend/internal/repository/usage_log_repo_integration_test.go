@@ -130,6 +130,62 @@ REDACTED
 	s.Require().InEpsilon(0.5, *got.AccountRateMultiplier, 0.0001)
 REDACTED
 
+func (s *UsageLogRepoSuite) TestGetByID_ReturnsOpenAIWSMode() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "getbyid-ws@test.com"REDACTED)
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-getbyid-ws", Name: "k"REDACTED)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-getbyid-ws"REDACTED)
+
+	log := &service.UsageLog{
+		UserID:       user.ID,
+		APIKeyID:     apiKey.ID,
+		AccountID:    account.ID,
+		RequestID:    uuid.New().String(),
+		Model:        "gpt-5.3-codex",
+		InputTokens:  10,
+		OutputTokens: 20,
+		TotalCost:    1.0,
+		ActualCost:   1.0,
+		OpenAIWSMode: true,
+		CreatedAt:    timezone.Today().Add(3 * time.Hour),
+REDACTED
+	_, err := s.repo.Create(s.ctx, log)
+	s.Require().NoError(err)
+
+	got, err := s.repo.GetByID(s.ctx, log.ID)
+	s.Require().NoError(err)
+	s.Require().True(got.OpenAIWSMode)
+REDACTED
+
+func (s *UsageLogRepoSuite) TestGetByID_ReturnsRequestTypeAndLegacyFallback() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "getbyid-request-type@test.com"REDACTED)
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-getbyid-request-type", Name: "k"REDACTED)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-getbyid-request-type"REDACTED)
+
+	log := &service.UsageLog{
+		UserID:       user.ID,
+		APIKeyID:     apiKey.ID,
+		AccountID:    account.ID,
+		RequestID:    uuid.New().String(),
+		Model:        "gpt-5.3-codex",
+		RequestType:  service.RequestTypeWSV2,
+		Stream:       true,
+		OpenAIWSMode: false,
+		InputTokens:  10,
+		OutputTokens: 20,
+		TotalCost:    1.0,
+		ActualCost:   1.0,
+		CreatedAt:    timezone.Today().Add(4 * time.Hour),
+REDACTED
+	_, err := s.repo.Create(s.ctx, log)
+	s.Require().NoError(err)
+
+	got, err := s.repo.GetByID(s.ctx, log.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.RequestTypeWSV2, got.RequestType)
+	s.Require().True(got.Stream)
+	s.Require().True(got.OpenAIWSMode)
+REDACTED
+
 // --- Delete ---
 
 func (s *UsageLogRepoSuite) TestDelete() {
@@ -648,7 +704,7 @@ func (s *UsageLogRepoSuite) TestGetBatchUserUsageStats() {
 	s.createUsageLog(user1, apiKey1, account, 10, 20, 0.5, time.Now())
 	s.createUsageLog(user2, apiKey2, account, 15, 25, 0.6, time.Now())
 
-	stats, err := s.repo.GetBatchUserUsageStats(s.ctx, []int64{user1.ID, user2.IDREDACTED)
+	stats, err := s.repo.GetBatchUserUsageStats(s.ctx, []int64{user1.ID, user2.IDREDACTED, time.Time{REDACTED, time.Time{REDACTED)
 	s.Require().NoError(err, "GetBatchUserUsageStats")
 	s.Require().Len(stats, 2)
 	s.Require().NotNil(stats[user1.ID])
@@ -656,7 +712,7 @@ func (s *UsageLogRepoSuite) TestGetBatchUserUsageStats() {
 REDACTED
 
 func (s *UsageLogRepoSuite) TestGetBatchUserUsageStats_Empty() {
-	stats, err := s.repo.GetBatchUserUsageStats(s.ctx, []int64{REDACTED)
+	stats, err := s.repo.GetBatchUserUsageStats(s.ctx, []int64{REDACTED, time.Time{REDACTED, time.Time{REDACTED)
 	s.Require().NoError(err)
 	s.Require().Empty(stats)
 REDACTED
@@ -672,13 +728,13 @@ func (s *UsageLogRepoSuite) TestGetBatchApiKeyUsageStats() {
 	s.createUsageLog(user, apiKey1, account, 10, 20, 0.5, time.Now())
 	s.createUsageLog(user, apiKey2, account, 15, 25, 0.6, time.Now())
 
-	stats, err := s.repo.GetBatchAPIKeyUsageStats(s.ctx, []int64{apiKey1.ID, apiKey2.IDREDACTED)
+	stats, err := s.repo.GetBatchAPIKeyUsageStats(s.ctx, []int64{apiKey1.ID, apiKey2.IDREDACTED, time.Time{REDACTED, time.Time{REDACTED)
 	s.Require().NoError(err, "GetBatchAPIKeyUsageStats")
 	s.Require().Len(stats, 2)
 REDACTED
 
 func (s *UsageLogRepoSuite) TestGetBatchApiKeyUsageStats_Empty() {
-	stats, err := s.repo.GetBatchAPIKeyUsageStats(s.ctx, []int64{REDACTED)
+	stats, err := s.repo.GetBatchAPIKeyUsageStats(s.ctx, []int64{REDACTED, time.Time{REDACTED, time.Time{REDACTED)
 	s.Require().NoError(err)
 	s.Require().Empty(stats)
 REDACTED
@@ -944,17 +1000,17 @@ func (s *UsageLogRepoSuite) TestGetUsageTrendWithFilters() {
 	endTime := base.Add(48 * time.Hour)
 
 	// Test with user filter
-	trend, err := s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "day", user.ID, 0, 0, 0, "", nil, nil)
+	trend, err := s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "day", user.ID, 0, 0, 0, "", nil, nil, nil)
 	s.Require().NoError(err, "GetUsageTrendWithFilters user filter")
 	s.Require().Len(trend, 2)
 
 	// Test with apiKey filter
-	trend, err = s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "day", 0, apiKey.ID, 0, 0, "", nil, nil)
+	trend, err = s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "day", 0, apiKey.ID, 0, 0, "", nil, nil, nil)
 	s.Require().NoError(err, "GetUsageTrendWithFilters apiKey filter")
 	s.Require().Len(trend, 2)
 
 	// Test with both filters
-	trend, err = s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "day", user.ID, apiKey.ID, 0, 0, "", nil, nil)
+	trend, err = s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "day", user.ID, apiKey.ID, 0, 0, "", nil, nil, nil)
 	s.Require().NoError(err, "GetUsageTrendWithFilters both filters")
 	s.Require().Len(trend, 2)
 REDACTED
@@ -971,7 +1027,7 @@ func (s *UsageLogRepoSuite) TestGetUsageTrendWithFilters_HourlyGranularity() {
 	startTime := base.Add(-1 * time.Hour)
 	endTime := base.Add(3 * time.Hour)
 
-	trend, err := s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "hour", user.ID, 0, 0, 0, "", nil, nil)
+	trend, err := s.repo.GetUsageTrendWithFilters(s.ctx, startTime, endTime, "hour", user.ID, 0, 0, 0, "", nil, nil, nil)
 	s.Require().NoError(err, "GetUsageTrendWithFilters hourly")
 	s.Require().Len(trend, 2)
 REDACTED
@@ -1017,17 +1073,17 @@ REDACTED
 	endTime := base.Add(2 * time.Hour)
 
 	// Test with user filter
-	stats, err := s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, user.ID, 0, 0, 0, nil, nil)
+	stats, err := s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, user.ID, 0, 0, 0, nil, nil, nil)
 	s.Require().NoError(err, "GetModelStatsWithFilters user filter")
 	s.Require().Len(stats, 2)
 
 	// Test with apiKey filter
-	stats, err = s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, 0, apiKey.ID, 0, 0, nil, nil)
+	stats, err = s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, 0, apiKey.ID, 0, 0, nil, nil, nil)
 	s.Require().NoError(err, "GetModelStatsWithFilters apiKey filter")
 	s.Require().Len(stats, 2)
 
 	// Test with account filter
-	stats, err = s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, 0, 0, account.ID, 0, nil, nil)
+	stats, err = s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, 0, 0, account.ID, 0, nil, nil, nil)
 	s.Require().NoError(err, "GetModelStatsWithFilters account filter")
 	s.Require().Len(stats, 2)
 REDACTED

@@ -1,0 +1,328 @@
+package repository
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"reflect"
+	"testing"
+	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/stretchr/testify/require"
+)
+
+func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: dbREDACTED
+
+	createdAt := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	log := &service.UsageLog{
+		UserID:       1,
+		APIKeyID:     2,
+		AccountID:    3,
+		RequestID:    "req-1",
+		Model:        "gpt-5",
+		InputTokens:  10,
+		OutputTokens: 20,
+		TotalCost:    1,
+		ActualCost:   1,
+		BillingType:  service.BillingTypeBalance,
+		RequestType:  service.RequestTypeWSV2,
+		Stream:       false,
+		OpenAIWSMode: false,
+		CreatedAt:    createdAt,
+REDACTED
+
+	mock.ExpectQuery("INSERT INTO usage_logs").
+		WithArgs(
+			log.UserID,
+			log.APIKeyID,
+			log.AccountID,
+			log.RequestID,
+			log.Model,
+			sqlmock.AnyArg(), // group_id
+			sqlmock.AnyArg(), // subscription_id
+			log.InputTokens,
+			log.OutputTokens,
+			log.CacheCreationTokens,
+			log.CacheReadTokens,
+			log.CacheCreation5mTokens,
+			log.CacheCreation1hTokens,
+			log.InputCost,
+			log.OutputCost,
+			log.CacheCreationCost,
+			log.CacheReadCost,
+			log.TotalCost,
+			log.ActualCost,
+			log.RateMultiplier,
+			log.AccountRateMultiplier,
+			log.BillingType,
+			int16(service.RequestTypeWSV2),
+			true,
+			true,
+			sqlmock.AnyArg(), // duration_ms
+			sqlmock.AnyArg(), // first_token_ms
+			sqlmock.AnyArg(), // user_agent
+			sqlmock.AnyArg(), // ip_address
+			log.ImageCount,
+			sqlmock.AnyArg(), // image_size
+			sqlmock.AnyArg(), // media_type
+			sqlmock.AnyArg(), // reasoning_effort
+			log.CacheTTLOverridden,
+			createdAt,
+		).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"REDACTED).AddRow(int64(99), createdAt))
+
+	inserted, err := repo.Create(context.Background(), log)
+REDACTED
+	require.True(t, inserted)
+	require.Equal(t, int64(99), log.ID)
+	require.Equal(t, service.RequestTypeWSV2, log.RequestType)
+	require.True(t, log.Stream)
+	require.True(t, log.OpenAIWSMode)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestUsageLogRepositoryListWithFiltersRequestTypePriority(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: dbREDACTED
+
+	requestType := int16(service.RequestTypeWSV2)
+	stream := false
+	filters := usagestats.UsageLogFilters{
+		RequestType: &requestType,
+		Stream:      &stream,
+		ExactTotal:  true,
+REDACTED
+
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM usage_logs WHERE \\(request_type = \\$1 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\)").
+		WithArgs(requestType).
+		WillReturnRows(sqlmock.NewRows([]string{"count"REDACTED).AddRow(int64(0)))
+	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE \\(request_type = \\$1 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\) ORDER BY id DESC LIMIT \\$2 OFFSET \\$3").
+		WithArgs(requestType, 20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"id"REDACTED))
+
+	logs, page, err := repo.ListWithFilters(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20REDACTED, filters)
+REDACTED
+	require.Empty(t, logs)
+	require.NotNil(t, page)
+	require.Equal(t, int64(0), page.Total)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestUsageLogRepositoryGetUsageTrendWithFiltersRequestTypePriority(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: dbREDACTED
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	requestType := int16(service.RequestTypeStream)
+	stream := true
+
+	mock.ExpectQuery("AND \\(request_type = \\$3 OR \\(request_type = 0 AND stream = TRUE AND openai_ws_mode = FALSE\\)\\)").
+		WithArgs(start, end, requestType).
+		WillReturnRows(sqlmock.NewRows([]string{"date", "requests", "input_tokens", "output_tokens", "cache_tokens", "total_tokens", "cost", "actual_cost"REDACTED))
+
+	trend, err := repo.GetUsageTrendWithFilters(context.Background(), start, end, "day", 0, 0, 0, 0, "", &requestType, &stream, nil)
+REDACTED
+	require.Empty(t, trend)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestUsageLogRepositoryGetModelStatsWithFiltersRequestTypePriority(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: dbREDACTED
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	requestType := int16(service.RequestTypeWSV2)
+	stream := false
+
+	mock.ExpectQuery("AND \\(request_type = \\$3 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\)").
+		WithArgs(start, end, requestType).
+		WillReturnRows(sqlmock.NewRows([]string{"model", "requests", "input_tokens", "output_tokens", "total_tokens", "cost", "actual_cost"REDACTED))
+
+	stats, err := repo.GetModelStatsWithFilters(context.Background(), start, end, 0, 0, 0, 0, &requestType, &stream, nil)
+REDACTED
+	require.Empty(t, stats)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestUsageLogRepositoryGetStatsWithFiltersRequestTypePriority(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: dbREDACTED
+
+	requestType := int16(service.RequestTypeSync)
+	stream := true
+	filters := usagestats.UsageLogFilters{
+		RequestType: &requestType,
+		Stream:      &stream,
+REDACTED
+
+	mock.ExpectQuery("FROM usage_logs\\s+WHERE \\(request_type = \\$1 OR \\(request_type = 0 AND stream = FALSE AND openai_ws_mode = FALSE\\)\\)").
+		WithArgs(requestType).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"total_requests",
+			"total_input_tokens",
+			"total_output_tokens",
+			"total_cache_tokens",
+			"total_cost",
+			"total_actual_cost",
+			"total_account_cost",
+			"avg_duration_ms",
+	REDACTED).AddRow(int64(1), int64(2), int64(3), int64(4), 1.2, 1.0, 1.2, 20.0))
+
+	stats, err := repo.GetStatsWithFilters(context.Background(), filters)
+REDACTED
+	require.Equal(t, int64(1), stats.TotalRequests)
+	require.Equal(t, int64(9), stats.TotalTokens)
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestBuildRequestTypeFilterConditionLegacyFallback(t *testing.T) {
+	tests := []struct {
+		name      string
+		request   int16
+		wantWhere string
+		wantArg   int16
+REDACTED{
+		{
+			name:      "sync_with_legacy_fallback",
+			request:   int16(service.RequestTypeSync),
+			wantWhere: "(request_type = $3 OR (request_type = 0 AND stream = FALSE AND openai_ws_mode = FALSE))",
+			wantArg:   int16(service.RequestTypeSync),
+	REDACTED,
+		{
+			name:      "stream_with_legacy_fallback",
+			request:   int16(service.RequestTypeStream),
+			wantWhere: "(request_type = $3 OR (request_type = 0 AND stream = TRUE AND openai_ws_mode = FALSE))",
+			wantArg:   int16(service.RequestTypeStream),
+	REDACTED,
+		{
+			name:      "ws_v2_with_legacy_fallback",
+			request:   int16(service.RequestTypeWSV2),
+			wantWhere: "(request_type = $3 OR (request_type = 0 AND openai_ws_mode = TRUE))",
+			wantArg:   int16(service.RequestTypeWSV2),
+	REDACTED,
+		{
+			name:      "invalid_request_type_normalized_to_unknown",
+			request:   int16(99),
+			wantWhere: "request_type = $3",
+			wantArg:   int16(service.RequestTypeUnknown),
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			where, args := buildRequestTypeFilterCondition(3, tt.request)
+			require.Equal(t, tt.wantWhere, where)
+			require.Equal(t, []any{tt.wantArgREDACTED, args)
+	REDACTED)
+REDACTED
+REDACTED
+
+type usageLogScannerStub struct {
+	values []any
+REDACTED
+
+func (s usageLogScannerStub) Scan(dest ...any) error {
+	if len(dest) != len(s.values) {
+		return fmt.Errorf("scan arg count mismatch: got %d want %d", len(dest), len(s.values))
+REDACTED
+	for i := range dest {
+		dv := reflect.ValueOf(dest[i])
+		if dv.Kind() != reflect.Ptr {
+			return fmt.Errorf("dest[%d] is not pointer", i)
+	REDACTED
+		dv.Elem().Set(reflect.ValueOf(s.values[i]))
+REDACTED
+	return nil
+REDACTED
+
+func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
+	t.Run("request_type_ws_v2_overrides_legacy", func(t *testing.T) {
+		now := time.Now().UTC()
+		log, err := scanUsageLog(usageLogScannerStub{values: []any{
+			int64(1),  // id
+			int64(10), // user_id
+			int64(20), // api_key_id
+			int64(30), // account_id
+			sql.NullString{Valid: true, String: "req-1"REDACTED,
+			"gpt-5",           // model
+			sql.NullInt64{REDACTED,   // group_id
+			sql.NullInt64{REDACTED,   // subscription_id
+			1,                 // input_tokens
+			2,                 // output_tokens
+			3,                 // cache_creation_tokens
+			4,                 // cache_read_tokens
+			5,                 // cache_creation_5m_tokens
+			6,                 // cache_creation_1h_tokens
+			0.1,               // input_cost
+			0.2,               // output_cost
+			0.3,               // cache_creation_cost
+			0.4,               // cache_read_cost
+			1.0,               // total_cost
+			0.9,               // actual_cost
+			1.0,               // rate_multiplier
+			sql.NullFloat64{REDACTED, // account_rate_multiplier
+			int16(service.BillingTypeBalance),
+			int16(service.RequestTypeWSV2),
+			false, // legacy stream
+			false, // legacy openai ws
+			sql.NullInt64{REDACTED,
+			sql.NullInt64{REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			0,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			false,
+			now,
+	REDACTEDREDACTED)
+	REDACTED
+		require.Equal(t, service.RequestTypeWSV2, log.RequestType)
+		require.True(t, log.Stream)
+		require.True(t, log.OpenAIWSMode)
+REDACTED)
+
+	t.Run("request_type_unknown_falls_back_to_legacy", func(t *testing.T) {
+		now := time.Now().UTC()
+		log, err := scanUsageLog(usageLogScannerStub{values: []any{
+			int64(2),
+			int64(11),
+			int64(21),
+			int64(31),
+			sql.NullString{Valid: true, String: "req-2"REDACTED,
+			"gpt-5",
+			sql.NullInt64{REDACTED,
+			sql.NullInt64{REDACTED,
+			1, 2, 3, 4, 5, 6,
+			0.1, 0.2, 0.3, 0.4, 1.0, 0.9,
+			1.0,
+			sql.NullFloat64{REDACTED,
+			int16(service.BillingTypeBalance),
+			int16(service.RequestTypeUnknown),
+			true,
+			false,
+			sql.NullInt64{REDACTED,
+			sql.NullInt64{REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			0,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			false,
+			now,
+	REDACTEDREDACTED)
+	REDACTED
+		require.Equal(t, service.RequestTypeStream, log.RequestType)
+		require.True(t, log.Stream)
+		require.False(t, log.OpenAIWSMode)
+REDACTED)
+REDACTED

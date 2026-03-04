@@ -140,6 +140,31 @@ func ImagePrice4k(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldImagePrice4k, v))
 REDACTED
 
+// SoraImagePrice360 applies equality check predicate on the "sora_image_price_360" field. It's identical to SoraImagePrice360EQ.
+func SoraImagePrice360(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSoraImagePrice360, v))
+REDACTED
+
+// SoraImagePrice540 applies equality check predicate on the "sora_image_price_540" field. It's identical to SoraImagePrice540EQ.
+func SoraImagePrice540(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSoraImagePrice540, v))
+REDACTED
+
+// SoraVideoPricePerRequest applies equality check predicate on the "sora_video_price_per_request" field. It's identical to SoraVideoPricePerRequestEQ.
+func SoraVideoPricePerRequest(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSoraVideoPricePerRequest, v))
+REDACTED
+
+// SoraVideoPricePerRequestHd applies equality check predicate on the "sora_video_price_per_request_hd" field. It's identical to SoraVideoPricePerRequestHdEQ.
+func SoraVideoPricePerRequestHd(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSoraVideoPricePerRequestHd, v))
+REDACTED
+
+// SoraStorageQuotaBytes applies equality check predicate on the "sora_storage_quota_bytes" field. It's identical to SoraStorageQuotaBytesEQ.
+func SoraStorageQuotaBytes(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSoraStorageQuotaBytes, v))
+REDACTED
+
 // ClaudeCodeOnly applies equality check predicate on the "claude_code_only" field. It's identical to ClaudeCodeOnlyEQ.
 func ClaudeCodeOnly(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldClaudeCodeOnly, v))
@@ -1023,6 +1048,246 @@ REDACTED
 // ImagePrice4kNotNil applies the NotNil predicate on the "image_price_4k" field.
 func ImagePrice4kNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldImagePrice4k))
+REDACTED
+
+// SoraImagePrice360EQ applies the EQ predicate on the "sora_image_price_360" field.
+func SoraImagePrice360EQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSoraImagePrice360, v))
+REDACTED
+
+// SoraImagePrice360NEQ applies the NEQ predicate on the "sora_image_price_360" field.
+func SoraImagePrice360NEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSoraImagePrice360, v))
+REDACTED
+
+// SoraImagePrice360In applies the In predicate on the "sora_image_price_360" field.
+func SoraImagePrice360In(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldSoraImagePrice360, vs...))
+REDACTED
+
+// SoraImagePrice360NotIn applies the NotIn predicate on the "sora_image_price_360" field.
+func SoraImagePrice360NotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldSoraImagePrice360, vs...))
+REDACTED
+
+// SoraImagePrice360GT applies the GT predicate on the "sora_image_price_360" field.
+func SoraImagePrice360GT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldSoraImagePrice360, v))
+REDACTED
+
+// SoraImagePrice360GTE applies the GTE predicate on the "sora_image_price_360" field.
+func SoraImagePrice360GTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldSoraImagePrice360, v))
+REDACTED
+
+// SoraImagePrice360LT applies the LT predicate on the "sora_image_price_360" field.
+func SoraImagePrice360LT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldSoraImagePrice360, v))
+REDACTED
+
+// SoraImagePrice360LTE applies the LTE predicate on the "sora_image_price_360" field.
+func SoraImagePrice360LTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldSoraImagePrice360, v))
+REDACTED
+
+// SoraImagePrice360IsNil applies the IsNil predicate on the "sora_image_price_360" field.
+func SoraImagePrice360IsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldSoraImagePrice360))
+REDACTED
+
+// SoraImagePrice360NotNil applies the NotNil predicate on the "sora_image_price_360" field.
+func SoraImagePrice360NotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldSoraImagePrice360))
+REDACTED
+
+// SoraImagePrice540EQ applies the EQ predicate on the "sora_image_price_540" field.
+func SoraImagePrice540EQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSoraImagePrice540, v))
+REDACTED
+
+// SoraImagePrice540NEQ applies the NEQ predicate on the "sora_image_price_540" field.
+func SoraImagePrice540NEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSoraImagePrice540, v))
+REDACTED
+
+// SoraImagePrice540In applies the In predicate on the "sora_image_price_540" field.
+func SoraImagePrice540In(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldSoraImagePrice540, vs...))
+REDACTED
+
+// SoraImagePrice540NotIn applies the NotIn predicate on the "sora_image_price_540" field.
+func SoraImagePrice540NotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldSoraImagePrice540, vs...))
+REDACTED
+
+// SoraImagePrice540GT applies the GT predicate on the "sora_image_price_540" field.
+func SoraImagePrice540GT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldSoraImagePrice540, v))
+REDACTED
+
+// SoraImagePrice540GTE applies the GTE predicate on the "sora_image_price_540" field.
+func SoraImagePrice540GTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldSoraImagePrice540, v))
+REDACTED
+
+// SoraImagePrice540LT applies the LT predicate on the "sora_image_price_540" field.
+func SoraImagePrice540LT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldSoraImagePrice540, v))
+REDACTED
+
+// SoraImagePrice540LTE applies the LTE predicate on the "sora_image_price_540" field.
+func SoraImagePrice540LTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldSoraImagePrice540, v))
+REDACTED
+
+// SoraImagePrice540IsNil applies the IsNil predicate on the "sora_image_price_540" field.
+func SoraImagePrice540IsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldSoraImagePrice540))
+REDACTED
+
+// SoraImagePrice540NotNil applies the NotNil predicate on the "sora_image_price_540" field.
+func SoraImagePrice540NotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldSoraImagePrice540))
+REDACTED
+
+// SoraVideoPricePerRequestEQ applies the EQ predicate on the "sora_video_price_per_request" field.
+func SoraVideoPricePerRequestEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSoraVideoPricePerRequest, v))
+REDACTED
+
+// SoraVideoPricePerRequestNEQ applies the NEQ predicate on the "sora_video_price_per_request" field.
+func SoraVideoPricePerRequestNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSoraVideoPricePerRequest, v))
+REDACTED
+
+// SoraVideoPricePerRequestIn applies the In predicate on the "sora_video_price_per_request" field.
+func SoraVideoPricePerRequestIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldSoraVideoPricePerRequest, vs...))
+REDACTED
+
+// SoraVideoPricePerRequestNotIn applies the NotIn predicate on the "sora_video_price_per_request" field.
+func SoraVideoPricePerRequestNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldSoraVideoPricePerRequest, vs...))
+REDACTED
+
+// SoraVideoPricePerRequestGT applies the GT predicate on the "sora_video_price_per_request" field.
+func SoraVideoPricePerRequestGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldSoraVideoPricePerRequest, v))
+REDACTED
+
+// SoraVideoPricePerRequestGTE applies the GTE predicate on the "sora_video_price_per_request" field.
+func SoraVideoPricePerRequestGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldSoraVideoPricePerRequest, v))
+REDACTED
+
+// SoraVideoPricePerRequestLT applies the LT predicate on the "sora_video_price_per_request" field.
+func SoraVideoPricePerRequestLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldSoraVideoPricePerRequest, v))
+REDACTED
+
+// SoraVideoPricePerRequestLTE applies the LTE predicate on the "sora_video_price_per_request" field.
+func SoraVideoPricePerRequestLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldSoraVideoPricePerRequest, v))
+REDACTED
+
+// SoraVideoPricePerRequestIsNil applies the IsNil predicate on the "sora_video_price_per_request" field.
+func SoraVideoPricePerRequestIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldSoraVideoPricePerRequest))
+REDACTED
+
+// SoraVideoPricePerRequestNotNil applies the NotNil predicate on the "sora_video_price_per_request" field.
+func SoraVideoPricePerRequestNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldSoraVideoPricePerRequest))
+REDACTED
+
+// SoraVideoPricePerRequestHdEQ applies the EQ predicate on the "sora_video_price_per_request_hd" field.
+func SoraVideoPricePerRequestHdEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSoraVideoPricePerRequestHd, v))
+REDACTED
+
+// SoraVideoPricePerRequestHdNEQ applies the NEQ predicate on the "sora_video_price_per_request_hd" field.
+func SoraVideoPricePerRequestHdNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSoraVideoPricePerRequestHd, v))
+REDACTED
+
+// SoraVideoPricePerRequestHdIn applies the In predicate on the "sora_video_price_per_request_hd" field.
+func SoraVideoPricePerRequestHdIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldSoraVideoPricePerRequestHd, vs...))
+REDACTED
+
+// SoraVideoPricePerRequestHdNotIn applies the NotIn predicate on the "sora_video_price_per_request_hd" field.
+func SoraVideoPricePerRequestHdNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldSoraVideoPricePerRequestHd, vs...))
+REDACTED
+
+// SoraVideoPricePerRequestHdGT applies the GT predicate on the "sora_video_price_per_request_hd" field.
+func SoraVideoPricePerRequestHdGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldSoraVideoPricePerRequestHd, v))
+REDACTED
+
+// SoraVideoPricePerRequestHdGTE applies the GTE predicate on the "sora_video_price_per_request_hd" field.
+func SoraVideoPricePerRequestHdGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldSoraVideoPricePerRequestHd, v))
+REDACTED
+
+// SoraVideoPricePerRequestHdLT applies the LT predicate on the "sora_video_price_per_request_hd" field.
+func SoraVideoPricePerRequestHdLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldSoraVideoPricePerRequestHd, v))
+REDACTED
+
+// SoraVideoPricePerRequestHdLTE applies the LTE predicate on the "sora_video_price_per_request_hd" field.
+func SoraVideoPricePerRequestHdLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldSoraVideoPricePerRequestHd, v))
+REDACTED
+
+// SoraVideoPricePerRequestHdIsNil applies the IsNil predicate on the "sora_video_price_per_request_hd" field.
+func SoraVideoPricePerRequestHdIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldSoraVideoPricePerRequestHd))
+REDACTED
+
+// SoraVideoPricePerRequestHdNotNil applies the NotNil predicate on the "sora_video_price_per_request_hd" field.
+func SoraVideoPricePerRequestHdNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldSoraVideoPricePerRequestHd))
+REDACTED
+
+// SoraStorageQuotaBytesEQ applies the EQ predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSoraStorageQuotaBytes, v))
+REDACTED
+
+// SoraStorageQuotaBytesNEQ applies the NEQ predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesNEQ(v int64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSoraStorageQuotaBytes, v))
+REDACTED
+
+// SoraStorageQuotaBytesIn applies the In predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldSoraStorageQuotaBytes, vs...))
+REDACTED
+
+// SoraStorageQuotaBytesNotIn applies the NotIn predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesNotIn(vs ...int64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldSoraStorageQuotaBytes, vs...))
+REDACTED
+
+// SoraStorageQuotaBytesGT applies the GT predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesGT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldSoraStorageQuotaBytes, v))
+REDACTED
+
+// SoraStorageQuotaBytesGTE applies the GTE predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesGTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldSoraStorageQuotaBytes, v))
+REDACTED
+
+// SoraStorageQuotaBytesLT applies the LT predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesLT(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldSoraStorageQuotaBytes, v))
+REDACTED
+
+// SoraStorageQuotaBytesLTE applies the LTE predicate on the "sora_storage_quota_bytes" field.
+func SoraStorageQuotaBytesLTE(v int64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldSoraStorageQuotaBytes, v))
 REDACTED
 
 // ClaudeCodeOnlyEQ applies the EQ predicate on the "claude_code_only" field.

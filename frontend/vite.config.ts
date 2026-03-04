@@ -10,6 +10,7 @@ import { resolve REDACTED from 'path'
 function injectPublicSettings(backendUrl: string): Plugin {
   return {
     name: 'inject-public-settings',
+    apply: 'serve',
     transformIndexHtml: {
       order: 'pre',
       async handler(html) {

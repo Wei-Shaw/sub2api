@@ -1,10 +1,15 @@
 package service
 
 import (
-	"encoding/json"
+	"bytes"
 	"fmt"
-	"log"
+	"strconv"
+	"strings"
 	"sync"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // codexToolNameMapping 定义 Codex 原生工具名称到 OpenCode 工具名称的映射
@@ -61,237 +66,273 @@ func (c *CodexToolCorrector) CorrectToolCallsInSSEData(data string) (string, boo
 	if data == "" || data == "\n" {
 		return data, false
 REDACTED
+	correctedBytes, corrected := c.CorrectToolCallsInSSEBytes([]byte(data))
+	if !corrected {
+		return data, false
+REDACTED
+	return string(correctedBytes), true
+REDACTED
 
-	// 尝试解析 JSON
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(data), &payload); err != nil {
-		// 不是有效的 JSON，直接返回原数据
+// CorrectToolCallsInSSEBytes 修正 SSE JSON 数据中的工具调用（字节路径）。
+// 返回修正后的数据和是否进行了修正。
+func (c *CodexToolCorrector) CorrectToolCallsInSSEBytes(data []byte) ([]byte, bool) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return data, false
+REDACTED
+	if !mayContainToolCallPayload(data) {
+		return data, false
+REDACTED
+	if !gjson.ValidBytes(data) {
+		// 不是有效 JSON，直接返回原数据
 		return data, false
 REDACTED
 
+	updated := data
 	corrected := false
-
-	// 处理 tool_calls 数组
-	if toolCalls, ok := payload["tool_calls"].([]any); ok {
-		if c.correctToolCallsArray(toolCalls) {
+	collect := func(changed bool, next []byte) {
+		if changed {
 			corrected = true
+			updated = next
 	REDACTED
 REDACTED
 
-	// 处理 function_call 对象
-	if functionCall, ok := payload["function_call"].(map[string]any); ok {
-		if c.correctFunctionCall(functionCall) {
-			corrected = true
-	REDACTED
+	if next, changed := c.correctToolCallsArrayAtPath(updated, "tool_calls"); changed {
+		collect(changed, next)
+REDACTED
+	if next, changed := c.correctFunctionAtPath(updated, "function_call"); changed {
+		collect(changed, next)
+REDACTED
+	if next, changed := c.correctToolCallsArrayAtPath(updated, "delta.tool_calls"); changed {
+		collect(changed, next)
+REDACTED
+	if next, changed := c.correctFunctionAtPath(updated, "delta.function_call"); changed {
+		collect(changed, next)
 REDACTED
 
-	// 处理 delta.tool_calls
-	if delta, ok := payload["delta"].(map[string]any); ok {
-		if toolCalls, ok := delta["tool_calls"].([]any); ok {
-			if c.correctToolCallsArray(toolCalls) {
-				corrected = true
-		REDACTED
+	choicesCount := int(gjson.GetBytes(updated, "choices.#").Int())
+	for i := 0; i < choicesCount; i++ {
+		prefix := "choices." + strconv.Itoa(i)
+		if next, changed := c.correctToolCallsArrayAtPath(updated, prefix+".message.tool_calls"); changed {
+			collect(changed, next)
 	REDACTED
-		if functionCall, ok := delta["function_call"].(map[string]any); ok {
-			if c.correctFunctionCall(functionCall) {
-				corrected = true
-		REDACTED
+		if next, changed := c.correctFunctionAtPath(updated, prefix+".message.function_call"); changed {
+			collect(changed, next)
 	REDACTED
-REDACTED
-
-	// 处理 choices[].message.tool_calls 和 choices[].delta.tool_calls
-	if choices, ok := payload["choices"].([]any); ok {
-		for _, choice := range choices {
-			if choiceMap, ok := choice.(map[string]any); ok {
-				// 处理 message 中的工具调用
-				if message, ok := choiceMap["message"].(map[string]any); ok {
-					if toolCalls, ok := message["tool_calls"].([]any); ok {
-						if c.correctToolCallsArray(toolCalls) {
-							corrected = true
-					REDACTED
-				REDACTED
-					if functionCall, ok := message["function_call"].(map[string]any); ok {
-						if c.correctFunctionCall(functionCall) {
-							corrected = true
-					REDACTED
-				REDACTED
-			REDACTED
-				// 处理 delta 中的工具调用
-				if delta, ok := choiceMap["delta"].(map[string]any); ok {
-					if toolCalls, ok := delta["tool_calls"].([]any); ok {
-						if c.correctToolCallsArray(toolCalls) {
-							corrected = true
-					REDACTED
-				REDACTED
-					if functionCall, ok := delta["function_call"].(map[string]any); ok {
-						if c.correctFunctionCall(functionCall) {
-							corrected = true
-					REDACTED
-				REDACTED
-			REDACTED
-		REDACTED
+		if next, changed := c.correctToolCallsArrayAtPath(updated, prefix+".delta.tool_calls"); changed {
+			collect(changed, next)
+	REDACTED
+		if next, changed := c.correctFunctionAtPath(updated, prefix+".delta.function_call"); changed {
+			collect(changed, next)
 	REDACTED
 REDACTED
 
 	if !corrected {
 		return data, false
 REDACTED
+	return updated, true
+REDACTED
 
-	// 序列化回 JSON
-	correctedBytes, err := json.Marshal(payload)
-	if err != nil {
-		log.Printf("[CodexToolCorrector] Failed to marshal corrected data: %v", err)
+func mayContainToolCallPayload(data []byte) bool {
+	// 快速路径：多数 token / 文本事件不包含工具字段，避免进入 JSON 解析热路径。
+	return bytes.Contains(data, []byte(`"tool_calls"`)) ||
+		bytes.Contains(data, []byte(`"function_call"`)) ||
+		bytes.Contains(data, []byte(`"function":{"name"`))
+REDACTED
+
+// correctToolCallsArrayAtPath 修正指定路径下 tool_calls 数组中的工具名称。
+func (c *CodexToolCorrector) correctToolCallsArrayAtPath(data []byte, toolCallsPath string) ([]byte, bool) {
+	count := int(gjson.GetBytes(data, toolCallsPath+".#").Int())
+	if count <= 0 {
 		return data, false
 REDACTED
-
-	return string(correctedBytes), true
-REDACTED
-
-// correctToolCallsArray 修正工具调用数组中的工具名称
-func (c *CodexToolCorrector) correctToolCallsArray(toolCalls []any) bool {
+	updated := data
 	corrected := false
-	for _, toolCall := range toolCalls {
-		if toolCallMap, ok := toolCall.(map[string]any); ok {
-			if function, ok := toolCallMap["function"].(map[string]any); ok {
-				if c.correctFunctionCall(function) {
-					corrected = true
-			REDACTED
-		REDACTED
+	for i := 0; i < count; i++ {
+		functionPath := toolCallsPath + "." + strconv.Itoa(i) + ".function"
+		if next, changed := c.correctFunctionAtPath(updated, functionPath); changed {
+			updated = next
+			corrected = true
 	REDACTED
 REDACTED
-	return corrected
+	return updated, corrected
 REDACTED
 
-// correctFunctionCall 修正单个函数调用的工具名称和参数
-func (c *CodexToolCorrector) correctFunctionCall(functionCall map[string]any) bool {
-	name, ok := functionCall["name"].(string)
-	if !ok || name == "" {
-		return false
+// correctFunctionAtPath 修正指定路径下单个函数调用的工具名称和参数。
+func (c *CodexToolCorrector) correctFunctionAtPath(data []byte, functionPath string) ([]byte, bool) {
+	namePath := functionPath + ".name"
+	nameResult := gjson.GetBytes(data, namePath)
+	if !nameResult.Exists() || nameResult.Type != gjson.String {
+		return data, false
 REDACTED
-
+	name := strings.TrimSpace(nameResult.Str)
+	if name == "" {
+		return data, false
+REDACTED
+	updated := data
 	corrected := false
 
 	// 查找并修正工具名称
 	if correctName, found := codexToolNameMapping[name]; found {
-		functionCall["name"] = correctName
-		c.recordCorrection(name, correctName)
-		corrected = true
-		name = correctName // 使用修正后的名称进行参数修正
+		if next, err := sjson.SetBytes(updated, namePath, correctName); err == nil {
+			updated = next
+			c.recordCorrection(name, correctName)
+			corrected = true
+			name = correctName // 使用修正后的名称进行参数修正
+	REDACTED
 REDACTED
 
 	// 修正工具参数（基于工具名称）
-	if c.correctToolParameters(name, functionCall) {
+	if next, changed := c.correctToolParametersAtPath(updated, functionPath+".arguments", name); changed {
+		updated = next
 		corrected = true
 REDACTED
-
-	return corrected
+	return updated, corrected
 REDACTED
 
-// correctToolParameters 修正工具参数以符合 OpenCode 规范
-func (c *CodexToolCorrector) correctToolParameters(toolName string, functionCall map[string]any) bool {
-	arguments, ok := functionCall["arguments"]
-	if !ok {
-		return false
+// correctToolParametersAtPath 修正指定路径下 arguments 参数。
+func (c *CodexToolCorrector) correctToolParametersAtPath(data []byte, argumentsPath, toolName string) ([]byte, bool) {
+	if toolName != "bash" && toolName != "edit" {
+		return data, false
 REDACTED
 
-	// arguments 可能是字符串（JSON）或已解析的 map
-	var argsMap map[string]any
-	switch v := arguments.(type) {
-	case string:
-		// 解析 JSON 字符串
-		if err := json.Unmarshal([]byte(v), &argsMap); err != nil {
-			return false
+	args := gjson.GetBytes(data, argumentsPath)
+	if !args.Exists() {
+		return data, false
+REDACTED
+
+	switch args.Type {
+	case gjson.String:
+		argsJSON := strings.TrimSpace(args.Str)
+		if !gjson.Valid(argsJSON) {
+			return data, false
 	REDACTED
-	case map[string]any:
-		argsMap = v
+		if !gjson.Parse(argsJSON).IsObject() {
+			return data, false
+	REDACTED
+		nextArgsJSON, corrected := c.correctToolArgumentsJSON(argsJSON, toolName)
+		if !corrected {
+			return data, false
+	REDACTED
+		next, err := sjson.SetBytes(data, argumentsPath, nextArgsJSON)
+		if err != nil {
+			return data, false
+	REDACTED
+		return next, true
+	case gjson.JSON:
+		if !args.IsObject() || !gjson.Valid(args.Raw) {
+			return data, false
+	REDACTED
+		nextArgsJSON, corrected := c.correctToolArgumentsJSON(args.Raw, toolName)
+		if !corrected {
+			return data, false
+	REDACTED
+		next, err := sjson.SetRawBytes(data, argumentsPath, []byte(nextArgsJSON))
+		if err != nil {
+			return data, false
+	REDACTED
+		return next, true
 	default:
-		return false
+		return data, false
+REDACTED
 REDACTED
 
+// correctToolArgumentsJSON 修正工具参数 JSON（对象字符串），返回修正后的 JSON 与是否变更。
+func (c *CodexToolCorrector) correctToolArgumentsJSON(argsJSON, toolName string) (string, bool) {
+	if !gjson.Valid(argsJSON) {
+		return argsJSON, false
+REDACTED
+	if !gjson.Parse(argsJSON).IsObject() {
+		return argsJSON, false
+REDACTED
+
+	updated := argsJSON
 	corrected := false
 
 	// 根据工具名称应用特定的参数修正规则
 	switch toolName {
 	case "bash":
 		// OpenCode bash 支持 workdir；有些来源会输出 work_dir。
-		if _, hasWorkdir := argsMap["workdir"]; !hasWorkdir {
-			if workDir, exists := argsMap["work_dir"]; exists {
-				argsMap["workdir"] = workDir
-				delete(argsMap, "work_dir")
+		if !gjson.Get(updated, "workdir").Exists() {
+			if next, changed := moveJSONField(updated, "work_dir", "workdir"); changed {
+				updated = next
 				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'work_dir' to 'workdir' in bash tool")
+				logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'work_dir' to 'workdir' in bash tool")
 		REDACTED
 	REDACTED else {
-			if _, exists := argsMap["work_dir"]; exists {
-				delete(argsMap, "work_dir")
+			if next, changed := deleteJSONField(updated, "work_dir"); changed {
+				updated = next
 				corrected = true
-				log.Printf("[CodexToolCorrector] Removed duplicate 'work_dir' parameter from bash tool")
+				logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Removed duplicate 'work_dir' parameter from bash tool")
 		REDACTED
 	REDACTED
 
 	case "edit":
 		// OpenCode edit 参数为 filePath/oldString/newString（camelCase）。
-		if _, exists := argsMap["filePath"]; !exists {
-			if filePath, exists := argsMap["file_path"]; exists {
-				argsMap["filePath"] = filePath
-				delete(argsMap, "file_path")
+		if !gjson.Get(updated, "filePath").Exists() {
+			if next, changed := moveJSONField(updated, "file_path", "filePath"); changed {
+				updated = next
 				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'file_path' to 'filePath' in edit tool")
-		REDACTED else if filePath, exists := argsMap["path"]; exists {
-				argsMap["filePath"] = filePath
-				delete(argsMap, "path")
+				logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'file_path' to 'filePath' in edit tool")
+		REDACTED else if next, changed := moveJSONField(updated, "path", "filePath"); changed {
+				updated = next
 				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'path' to 'filePath' in edit tool")
-		REDACTED else if filePath, exists := argsMap["file"]; exists {
-				argsMap["filePath"] = filePath
-				delete(argsMap, "file")
+				logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'path' to 'filePath' in edit tool")
+		REDACTED else if next, changed := moveJSONField(updated, "file", "filePath"); changed {
+				updated = next
 				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'file' to 'filePath' in edit tool")
+				logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'file' to 'filePath' in edit tool")
 		REDACTED
 	REDACTED
 
-		if _, exists := argsMap["oldString"]; !exists {
-			if oldString, exists := argsMap["old_string"]; exists {
-				argsMap["oldString"] = oldString
-				delete(argsMap, "old_string")
-				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'old_string' to 'oldString' in edit tool")
-		REDACTED
+		if next, changed := moveJSONField(updated, "old_string", "oldString"); changed {
+			updated = next
+			corrected = true
+			logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'old_string' to 'oldString' in edit tool")
 	REDACTED
 
-		if _, exists := argsMap["newString"]; !exists {
-			if newString, exists := argsMap["new_string"]; exists {
-				argsMap["newString"] = newString
-				delete(argsMap, "new_string")
-				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'new_string' to 'newString' in edit tool")
-		REDACTED
+		if next, changed := moveJSONField(updated, "new_string", "newString"); changed {
+			updated = next
+			corrected = true
+			logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'new_string' to 'newString' in edit tool")
 	REDACTED
 
-		if _, exists := argsMap["replaceAll"]; !exists {
-			if replaceAll, exists := argsMap["replace_all"]; exists {
-				argsMap["replaceAll"] = replaceAll
-				delete(argsMap, "replace_all")
-				corrected = true
-				log.Printf("[CodexToolCorrector] Renamed 'replace_all' to 'replaceAll' in edit tool")
-		REDACTED
+		if next, changed := moveJSONField(updated, "replace_all", "replaceAll"); changed {
+			updated = next
+			corrected = true
+			logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Renamed 'replace_all' to 'replaceAll' in edit tool")
 	REDACTED
 REDACTED
-
-	// 如果修正了参数，需要重新序列化
-	if corrected {
-		if _, wasString := arguments.(string); wasString {
-			// 原本是字符串，序列化回字符串
-			if newArgsJSON, err := json.Marshal(argsMap); err == nil {
-				functionCall["arguments"] = string(newArgsJSON)
-		REDACTED
-	REDACTED else {
-			// 原本是 map，直接赋值
-			functionCall["arguments"] = argsMap
-	REDACTED
+	return updated, corrected
 REDACTED
 
-	return corrected
+func moveJSONField(input, from, to string) (string, bool) {
+	if gjson.Get(input, to).Exists() {
+		return input, false
+REDACTED
+	src := gjson.Get(input, from)
+	if !src.Exists() {
+		return input, false
+REDACTED
+	next, err := sjson.SetRaw(input, to, src.Raw)
+	if err != nil {
+		return input, false
+REDACTED
+	next, err = sjson.Delete(next, from)
+	if err != nil {
+		return input, false
+REDACTED
+	return next, true
+REDACTED
+
+func deleteJSONField(input, path string) (string, bool) {
+	if !gjson.Get(input, path).Exists() {
+		return input, false
+REDACTED
+	next, err := sjson.Delete(input, path)
+	if err != nil {
+		return input, false
+REDACTED
+	return next, true
 REDACTED
 
 // recordCorrection 记录一次工具名称修正
@@ -303,7 +344,7 @@ func (c *CodexToolCorrector) recordCorrection(from, to string) {
 	key := fmt.Sprintf("%s->%s", from, to)
 	c.stats.CorrectionsByTool[key]++
 
-	log.Printf("[CodexToolCorrector] Corrected tool call: %s -> %s (total: %d)",
+	logger.LegacyPrintf("service.openai_tool_corrector", "[CodexToolCorrector] Corrected tool call: %s -> %s (total: %d)",
 		from, to, c.stats.TotalCorrected)
 REDACTED
 

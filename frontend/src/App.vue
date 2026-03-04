@@ -39,16 +39,6 @@ watch(
   { immediate: true REDACTED
 )
 
-watch(
-  () => appStore.siteName,
-  (newName) => {
-    if (newName) {
-      document.title = `${newNameREDACTED - AI API Gateway`
-    REDACTED
-  REDACTED,
-  { immediate: true REDACTED
-)
-
 // Watch for authentication state and manage subscription data
 watch(
   () => authStore.isAuthenticated,

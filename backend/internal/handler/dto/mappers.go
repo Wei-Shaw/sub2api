@@ -2,6 +2,7 @@
 package dto
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -58,9 +59,11 @@ REDACTED
 		return nil
 REDACTED
 	return &AdminUser{
-		User:       *base,
-		Notes:      u.Notes,
-		GroupRates: u.GroupRates,
+		User:                  *base,
+		Notes:                 u.Notes,
+		GroupRates:            u.GroupRates,
+		SoraStorageQuotaBytes: u.SoraStorageQuotaBytes,
+		SoraStorageUsedBytes:  u.SoraStorageUsedBytes,
 REDACTED
 REDACTED
 
@@ -69,21 +72,31 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		return nil
 REDACTED
 	return &APIKey{
-		ID:          k.ID,
-		UserID:      k.UserID,
-		Key:         k.Key,
-		Name:        k.Name,
-		GroupID:     k.GroupID,
-		Status:      k.Status,
-		IPWhitelist: k.IPWhitelist,
-		IPBlacklist: k.IPBlacklist,
-		Quota:       k.Quota,
-		QuotaUsed:   k.QuotaUsed,
-		ExpiresAt:   k.ExpiresAt,
-		CreatedAt:   k.CreatedAt,
-		UpdatedAt:   k.UpdatedAt,
-		User:        UserFromServiceShallow(k.User),
-		Group:       GroupFromServiceShallow(k.Group),
+		ID:            k.ID,
+		UserID:        k.UserID,
+		Key:           k.Key,
+		Name:          k.Name,
+		GroupID:       k.GroupID,
+		Status:        k.Status,
+		IPWhitelist:   k.IPWhitelist,
+		IPBlacklist:   k.IPBlacklist,
+		LastUsedAt:    k.LastUsedAt,
+		Quota:         k.Quota,
+		QuotaUsed:     k.QuotaUsed,
+		ExpiresAt:     k.ExpiresAt,
+		CreatedAt:     k.CreatedAt,
+		UpdatedAt:     k.UpdatedAt,
+		RateLimit5h:   k.RateLimit5h,
+		RateLimit1d:   k.RateLimit1d,
+		RateLimit7d:   k.RateLimit7d,
+		Usage5h:       k.Usage5h,
+		Usage1d:       k.Usage1d,
+		Usage7d:       k.Usage7d,
+		Window5hStart: k.Window5hStart,
+		Window1dStart: k.Window1dStart,
+		Window7dStart: k.Window7dStart,
+		User:          UserFromServiceShallow(k.User),
+		Group:         GroupFromServiceShallow(k.Group),
 REDACTED
 REDACTED
 
@@ -129,24 +142,28 @@ REDACTED
 
 func groupFromServiceBase(g *service.Group) Group {
 	return Group{
-		ID:               g.ID,
-		Name:             g.Name,
-		Description:      g.Description,
-		Platform:         g.Platform,
-		RateMultiplier:   g.RateMultiplier,
-		IsExclusive:      g.IsExclusive,
-		Status:           g.Status,
-		SubscriptionType: g.SubscriptionType,
-		DailyLimitUSD:    g.DailyLimitUSD,
-		WeeklyLimitUSD:   g.WeeklyLimitUSD,
-		MonthlyLimitUSD:  g.MonthlyLimitUSD,
-		ImagePrice1K:     g.ImagePrice1K,
-		ImagePrice2K:     g.ImagePrice2K,
-		ImagePrice4K:     g.ImagePrice4K,
-		ClaudeCodeOnly:   g.ClaudeCodeOnly,
-		FallbackGroupID:  g.FallbackGroupID,
-		// 无效请求兜底分组
+		ID:                              g.ID,
+		Name:                            g.Name,
+		Description:                     g.Description,
+		Platform:                        g.Platform,
+		RateMultiplier:                  g.RateMultiplier,
+		IsExclusive:                     g.IsExclusive,
+		Status:                          g.Status,
+		SubscriptionType:                g.SubscriptionType,
+		DailyLimitUSD:                   g.DailyLimitUSD,
+		WeeklyLimitUSD:                  g.WeeklyLimitUSD,
+		MonthlyLimitUSD:                 g.MonthlyLimitUSD,
+		ImagePrice1K:                    g.ImagePrice1K,
+		ImagePrice2K:                    g.ImagePrice2K,
+		ImagePrice4K:                    g.ImagePrice4K,
+		SoraImagePrice360:               g.SoraImagePrice360,
+		SoraImagePrice540:               g.SoraImagePrice540,
+		SoraVideoPricePerRequest:        g.SoraVideoPricePerRequest,
+		SoraVideoPricePerRequestHD:      g.SoraVideoPricePerRequestHD,
+		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
+		FallbackGroupID:                 g.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
+		SoraStorageQuotaBytes:           g.SoraStorageQuotaBytes,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 REDACTED
@@ -201,6 +218,17 @@ REDACTED
 		if idleTimeout := a.GetSessionIdleTimeoutMinutes(); idleTimeout > 0 {
 			out.SessionIdleTimeoutMin = &idleTimeout
 	REDACTED
+		if rpm := a.GetBaseRPM(); rpm > 0 {
+			out.BaseRPM = &rpm
+			strategy := a.GetRPMStrategy()
+			out.RPMStrategy = &strategy
+			buffer := a.GetRPMStickyBuffer()
+			out.RPMStickyBuffer = &buffer
+	REDACTED
+		// 用户消息队列模式
+		if mode := a.GetUserMsgQueueMode(); mode != "" {
+			out.UserMsgQueueMode = &mode
+	REDACTED
 		// TLS指纹伪装开关
 		if a.IsTLSFingerprintEnabled() {
 			enabled := true
@@ -210,6 +238,13 @@ REDACTED
 		if a.IsSessionIDMaskingEnabled() {
 			enabled := true
 			out.EnableSessionIDMasking = &enabled
+	REDACTED
+		// 缓存 TTL 强制替换
+		if a.IsCacheTTLOverrideEnabled() {
+			enabled := true
+			out.CacheTTLOverrideEnabled = &enabled
+			target := a.GetCacheTTLOverrideTarget()
+			out.CacheTTLOverrideTarget = &target
 	REDACTED
 REDACTED
 
@@ -271,7 +306,6 @@ REDACTED
 		Host:      p.Host,
 		Port:      p.Port,
 		Username:  p.Username,
-		Password:  p.Password,
 		Status:    p.Status,
 		CreatedAt: p.CreatedAt,
 		UpdatedAt: p.UpdatedAt,
@@ -293,6 +327,56 @@ REDACTED
 		CountryCode:    p.CountryCode,
 		Region:         p.Region,
 		City:           p.City,
+		QualityStatus:  p.QualityStatus,
+		QualityScore:   p.QualityScore,
+		QualityGrade:   p.QualityGrade,
+		QualitySummary: p.QualitySummary,
+		QualityChecked: p.QualityChecked,
+REDACTED
+REDACTED
+
+// ProxyFromServiceAdmin converts a service Proxy to AdminProxy DTO for admin users.
+// It includes the password field - user-facing endpoints must not use this.
+func ProxyFromServiceAdmin(p *service.Proxy) *AdminProxy {
+	if p == nil {
+		return nil
+REDACTED
+	base := ProxyFromService(p)
+	if base == nil {
+		return nil
+REDACTED
+	return &AdminProxy{
+		Proxy:    *base,
+		Password: p.Password,
+REDACTED
+REDACTED
+
+// ProxyWithAccountCountFromServiceAdmin converts a service ProxyWithAccountCount to AdminProxyWithAccountCount DTO.
+// It includes the password field - user-facing endpoints must not use this.
+func ProxyWithAccountCountFromServiceAdmin(p *service.ProxyWithAccountCount) *AdminProxyWithAccountCount {
+	if p == nil {
+		return nil
+REDACTED
+	admin := ProxyFromServiceAdmin(&p.Proxy)
+	if admin == nil {
+		return nil
+REDACTED
+	return &AdminProxyWithAccountCount{
+		AdminProxy:     *admin,
+		AccountCount:   p.AccountCount,
+		LatencyMs:      p.LatencyMs,
+		LatencyStatus:  p.LatencyStatus,
+		LatencyMessage: p.LatencyMessage,
+		IPAddress:      p.IPAddress,
+		Country:        p.Country,
+		CountryCode:    p.CountryCode,
+		Region:         p.Region,
+		City:           p.City,
+		QualityStatus:  p.QualityStatus,
+		QualityScore:   p.QualityScore,
+		QualityGrade:   p.QualityGrade,
+		QualitySummary: p.QualitySummary,
+		QualityChecked: p.QualityChecked,
 REDACTED
 REDACTED
 
@@ -368,6 +452,8 @@ REDACTED
 
 func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 	// 普通用户 DTO：严禁包含管理员字段（例如 account_rate_multiplier、ip_address、account）。
+	requestType := l.EffectiveRequestType()
+	stream, openAIWSMode := service.ApplyLegacyRequestFields(requestType, l.Stream, l.OpenAIWSMode)
 	return UsageLog{
 		ID:                    l.ID,
 		UserID:                l.UserID,
@@ -392,12 +478,16 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		ActualCost:            l.ActualCost,
 		RateMultiplier:        l.RateMultiplier,
 		BillingType:           l.BillingType,
-		Stream:                l.Stream,
+		RequestType:           requestType.String(),
+		Stream:                stream,
+		OpenAIWSMode:          openAIWSMode,
 		DurationMs:            l.DurationMs,
 		FirstTokenMs:          l.FirstTokenMs,
 		ImageCount:            l.ImageCount,
 		ImageSize:             l.ImageSize,
+		MediaType:             l.MediaType,
 		UserAgent:             l.UserAgent,
+		CacheTTLOverridden:    l.CacheTTLOverridden,
 		CreatedAt:             l.CreatedAt,
 		User:                  UserFromServiceShallow(l.User),
 		APIKey:                APIKeyFromService(l.APIKey),
@@ -445,6 +535,7 @@ REDACTED
 			AccountID:   task.Filters.AccountID,
 			GroupID:     task.Filters.GroupID,
 			Model:       task.Filters.Model,
+			RequestType: requestTypeStringPtr(task.Filters.RequestType),
 			Stream:      task.Filters.Stream,
 			BillingType: task.Filters.BillingType,
 	REDACTED,
@@ -458,6 +549,14 @@ REDACTED
 		CreatedAt:    task.CreatedAt,
 		UpdatedAt:    task.UpdatedAt,
 REDACTED
+REDACTED
+
+func requestTypeStringPtr(requestType *int16) *string {
+	if requestType == nil {
+		return nil
+REDACTED
+	value := service.RequestTypeFromInt16(*requestType).String()
+	return &value
 REDACTED
 
 func SettingFromService(s *service.Setting) *Setting {
@@ -524,11 +623,18 @@ REDACTED
 	for i := range r.Subscriptions {
 		subs = append(subs, *UserSubscriptionFromServiceAdmin(&r.Subscriptions[i]))
 REDACTED
+	statuses := make(map[string]string, len(r.Statuses))
+	for userID, status := range r.Statuses {
+		statuses[strconv.FormatInt(userID, 10)] = status
+REDACTED
 	return &BulkAssignResult{
 		SuccessCount:  r.SuccessCount,
+		CreatedCount:  r.CreatedCount,
+		ReusedCount:   r.ReusedCount,
 		FailedCount:   r.FailedCount,
 		Subscriptions: subs,
 		Errors:        r.Errors,
+		Statuses:      statuses,
 REDACTED
 REDACTED
 

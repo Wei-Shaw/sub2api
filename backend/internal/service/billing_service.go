@@ -10,6 +10,16 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
+// APIKeyRateLimitCacheData holds rate limit usage data cached in Redis.
+type APIKeyRateLimitCacheData struct {
+	Usage5h  float64 `json:"usage_5h"`
+	Usage1d  float64 `json:"usage_1d"`
+	Usage7d  float64 `json:"usage_7d"`
+	Window5h int64   `json:"window_5h"` // unix timestamp, 0 = not started
+	Window1d int64   `json:"window_1d"`
+	Window7d int64   `json:"window_7d"`
+REDACTED
+
 // BillingCache defines cache operations for billing service
 type BillingCache interface {
 	// Balance operations
@@ -23,6 +33,12 @@ type BillingCache interface {
 	SetSubscriptionCache(ctx context.Context, userID, groupID int64, data *SubscriptionCacheData) error
 	UpdateSubscriptionUsage(ctx context.Context, userID, groupID int64, cost float64) error
 	InvalidateSubscriptionCache(ctx context.Context, userID, groupID int64) error
+
+	// API Key rate limit operations
+	GetAPIKeyRateLimit(ctx context.Context, keyID int64) (*APIKeyRateLimitCacheData, error)
+	SetAPIKeyRateLimit(ctx context.Context, keyID int64, data *APIKeyRateLimitCacheData) error
+	UpdateAPIKeyRateLimitUsage(ctx context.Context, keyID int64, cost float64) error
+	InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error
 REDACTED
 
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）
@@ -31,8 +47,8 @@ type ModelPricing struct {
 	OutputPricePerToken        float64 // 每token输出价格 (USD)
 	CacheCreationPricePerToken float64 // 缓存创建每token价格 (USD)
 	CacheReadPricePerToken     float64 // 缓存读取每token价格 (USD)
-	CacheCreation5mPrice       float64 // 5分钟缓存创建价格（每百万token）- 仅用于硬编码回退
-	CacheCreation1hPrice       float64 // 1小时缓存创建价格（每百万token）- 仅用于硬编码回退
+	CacheCreation5mPrice       float64 // 5分钟缓存创建每token价格 (USD)
+	CacheCreation1hPrice       float64 // 1小时缓存创建每token价格 (USD)
 	SupportsCacheBreakdown     bool    // 是否支持详细的缓存分类
 REDACTED
 
@@ -133,6 +149,18 @@ REDACTED
 		CacheReadPricePerToken:     0.03e-6, // $0.03 per MTok
 		SupportsCacheBreakdown:     false,
 REDACTED
+
+	// Claude 4.6 Opus (与4.5同价)
+	s.fallbackPrices["claude-opus-4.6"] = s.fallbackPrices["claude-opus-4.5"]
+
+	// Gemini 3.1 Pro
+	s.fallbackPrices["gemini-3.1-pro"] = &ModelPricing{
+		InputPricePerToken:         2e-6,   // $2 per MTok
+		OutputPricePerToken:        12e-6,  // $12 per MTok
+		CacheCreationPricePerToken: 2e-6,   // $2 per MTok
+		CacheReadPricePerToken:     0.2e-6, // $0.20 per MTok
+		SupportsCacheBreakdown:     false,
+REDACTED
 REDACTED
 
 // getFallbackPricing 根据模型系列获取回退价格
@@ -141,6 +169,9 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 
 	// 按模型系列匹配
 	if strings.Contains(modelLower, "opus") {
+		if strings.Contains(modelLower, "4.6") || strings.Contains(modelLower, "4-6") {
+			return s.fallbackPrices["claude-opus-4.6"]
+	REDACTED
 		if strings.Contains(modelLower, "4.5") || strings.Contains(modelLower, "4-5") {
 			return s.fallbackPrices["claude-opus-4.5"]
 	REDACTED
@@ -158,6 +189,9 @@ REDACTED
 	REDACTED
 		return s.fallbackPrices["claude-3-haiku"]
 REDACTED
+	if strings.Contains(modelLower, "gemini-3.1-pro") || strings.Contains(modelLower, "gemini-3-1-pro") {
+		return s.fallbackPrices["gemini-3.1-pro"]
+REDACTED
 
 	// 默认使用Sonnet价格
 	return s.fallbackPrices["claude-sonnet-4"]
@@ -172,12 +206,20 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 	if s.pricingService != nil {
 		litellmPricing := s.pricingService.GetModelPricing(model)
 		if litellmPricing != nil {
+			// 启用 5m/1h 分类计费的条件：
+			// 1. 存在 1h 价格
+			// 2. 1h 价格 > 5m 价格（防止 LiteLLM 数据错误导致少收费）
+			price5m := litellmPricing.CacheCreationInputTokenCost
+			price1h := litellmPricing.CacheCreationInputTokenCostAbove1hr
+			enableBreakdown := price1h > 0 && price1h > price5m
 			return &ModelPricing{
 				InputPricePerToken:         litellmPricing.InputCostPerToken,
 				OutputPricePerToken:        litellmPricing.OutputCostPerToken,
 				CacheCreationPricePerToken: litellmPricing.CacheCreationInputTokenCost,
 				CacheReadPricePerToken:     litellmPricing.CacheReadInputTokenCost,
-				SupportsCacheBreakdown:     false,
+				CacheCreation5mPrice:       price5m,
+				CacheCreation1hPrice:       price1h,
+				SupportsCacheBreakdown:     enableBreakdown,
 		REDACTED, nil
 	REDACTED
 REDACTED
@@ -209,9 +251,14 @@ REDACTED
 
 	// 计算缓存费用
 	if pricing.SupportsCacheBreakdown && (pricing.CacheCreation5mPrice > 0 || pricing.CacheCreation1hPrice > 0) {
-		// 支持详细缓存分类的模型（5分钟/1小时缓存）
-		breakdown.CacheCreationCost = float64(tokens.CacheCreation5mTokens)/1_000_000*pricing.CacheCreation5mPrice +
-			float64(tokens.CacheCreation1hTokens)/1_000_000*pricing.CacheCreation1hPrice
+		// 支持详细缓存分类的模型（5分钟/1小时缓存，价格为 per-token）
+		if tokens.CacheCreation5mTokens == 0 && tokens.CacheCreation1hTokens == 0 && tokens.CacheCreationTokens > 0 {
+			// API 未返回 ephemeral 明细，回退到全部按 5m 单价计费
+			breakdown.CacheCreationCost = float64(tokens.CacheCreationTokens) * pricing.CacheCreation5mPrice
+	REDACTED else {
+			breakdown.CacheCreationCost = float64(tokens.CacheCreation5mTokens)*pricing.CacheCreation5mPrice +
+				float64(tokens.CacheCreation1hTokens)*pricing.CacheCreation1hPrice
+	REDACTED
 REDACTED else {
 		// 标准缓存创建价格（per-token）
 		breakdown.CacheCreationCost = float64(tokens.CacheCreationTokens) * pricing.CacheCreationPricePerToken
@@ -280,10 +327,12 @@ REDACTED
 
 	// 范围内部分：正常计费
 	inRangeTokens := UsageTokens{
-		InputTokens:         inRangeInputTokens,
-		OutputTokens:        tokens.OutputTokens, // 输出只算一次
-		CacheCreationTokens: tokens.CacheCreationTokens,
-		CacheReadTokens:     inRangeCacheTokens,
+		InputTokens:           inRangeInputTokens,
+		OutputTokens:          tokens.OutputTokens, // 输出只算一次
+		CacheCreationTokens:   tokens.CacheCreationTokens,
+		CacheReadTokens:       inRangeCacheTokens,
+		CacheCreation5mTokens: tokens.CacheCreation5mTokens,
+		CacheCreation1hTokens: tokens.CacheCreation1hTokens,
 REDACTED
 	inRangeCost, err := s.CalculateCost(model, inRangeTokens, rateMultiplier)
 	if err != nil {
@@ -297,7 +346,7 @@ REDACTED
 REDACTED
 	outRangeCost, err := s.CalculateCost(model, outRangeTokens, rateMultiplier*extraMultiplier)
 	if err != nil {
-		return inRangeCost, nil // 出错时返回范围内成本
+		return inRangeCost, fmt.Errorf("out-range cost: %w", err)
 REDACTED
 
 	// 合并成本
@@ -373,6 +422,14 @@ type ImagePriceConfig struct {
 	Price4K *float64 // 4K 尺寸价格（nil 表示使用默认值）
 REDACTED
 
+// SoraPriceConfig Sora 按次计费配置
+type SoraPriceConfig struct {
+	ImagePrice360          *float64
+	ImagePrice540          *float64
+	VideoPricePerRequest   *float64
+	VideoPricePerRequestHD *float64
+REDACTED
+
 // CalculateImageCost 计算图片生成费用
 // model: 请求的模型名称（用于获取 LiteLLM 默认价格）
 // imageSize: 图片尺寸 "1K", "2K", "4K"
@@ -391,6 +448,65 @@ REDACTED
 	totalCost := unitPrice * float64(imageCount)
 
 	// 应用倍率
+	if rateMultiplier <= 0 {
+		rateMultiplier = 1.0
+REDACTED
+	actualCost := totalCost * rateMultiplier
+
+	return &CostBreakdown{
+		TotalCost:  totalCost,
+		ActualCost: actualCost,
+REDACTED
+REDACTED
+
+// CalculateSoraImageCost 计算 Sora 图片按次费用
+func (s *BillingService) CalculateSoraImageCost(imageSize string, imageCount int, groupConfig *SoraPriceConfig, rateMultiplier float64) *CostBreakdown {
+	if imageCount <= 0 {
+		return &CostBreakdown{REDACTED
+REDACTED
+
+	unitPrice := 0.0
+	if groupConfig != nil {
+		switch imageSize {
+		case "540":
+			if groupConfig.ImagePrice540 != nil {
+				unitPrice = *groupConfig.ImagePrice540
+		REDACTED
+		default:
+			if groupConfig.ImagePrice360 != nil {
+				unitPrice = *groupConfig.ImagePrice360
+		REDACTED
+	REDACTED
+REDACTED
+
+	totalCost := unitPrice * float64(imageCount)
+	if rateMultiplier <= 0 {
+		rateMultiplier = 1.0
+REDACTED
+	actualCost := totalCost * rateMultiplier
+
+	return &CostBreakdown{
+		TotalCost:  totalCost,
+		ActualCost: actualCost,
+REDACTED
+REDACTED
+
+// CalculateSoraVideoCost 计算 Sora 视频按次费用
+func (s *BillingService) CalculateSoraVideoCost(model string, groupConfig *SoraPriceConfig, rateMultiplier float64) *CostBreakdown {
+	unitPrice := 0.0
+	if groupConfig != nil {
+		modelLower := strings.ToLower(model)
+		if strings.Contains(modelLower, "sora2pro-hd") {
+			if groupConfig.VideoPricePerRequestHD != nil {
+				unitPrice = *groupConfig.VideoPricePerRequestHD
+		REDACTED
+	REDACTED
+		if unitPrice <= 0 && groupConfig.VideoPricePerRequest != nil {
+			unitPrice = *groupConfig.VideoPricePerRequest
+	REDACTED
+REDACTED
+
+	totalCost := unitPrice
 	if rateMultiplier <= 0 {
 		rateMultiplier = 1.0
 REDACTED
@@ -443,7 +559,10 @@ REDACTED
 		basePrice = 0.134
 REDACTED
 
-	// 4K 尺寸翻倍
+	// 2K 尺寸 1.5 倍，4K 尺寸翻倍
+	if imageSize == "2K" {
+		return basePrice * 1.5
+REDACTED
 	if imageSize == "4K" {
 		return basePrice * 2
 REDACTED

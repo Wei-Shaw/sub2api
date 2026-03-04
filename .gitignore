@@ -116,17 +116,20 @@ backend/.installed
 # ===================
 tests
 CLAUDE.md
-AGENTS.md
 .claude
 scripts
 .code-review-state
-openspec/
-docs/
+#openspec/
 code-reviews/
-AGENTS.md
+#AGENTS.md
 backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
 .serena/
+.codex/
+frontend/coverage/
+aicodex
+output/
+

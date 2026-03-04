@@ -26,7 +26,10 @@ REDACTED
 REDACTED
 
 func (c *geminiOAuthClient) ExchangeCode(ctx context.Context, oauthType, code, codeVerifier, redirectURI, proxyURL string) (*geminicli.TokenResponse, error) {
-	client := createGeminiReqClient(proxyURL)
+	client, err := createGeminiReqClient(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("create HTTP client: %w", err)
+REDACTED
 
 	// Use different OAuth clients based on oauthType:
 	// - code_assist: always use built-in Gemini CLI OAuth client (public)
@@ -72,7 +75,10 @@ REDACTED
 REDACTED
 
 func (c *geminiOAuthClient) RefreshToken(ctx context.Context, oauthType, refreshToken, proxyURL string) (*geminicli.TokenResponse, error) {
-	client := createGeminiReqClient(proxyURL)
+	client, err := createGeminiReqClient(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("create HTTP client: %w", err)
+REDACTED
 
 	oauthCfgInput := geminicli.OAuthConfig{
 		ClientID:     c.cfg.Gemini.OAuth.ClientID,
@@ -111,7 +117,7 @@ REDACTED
 	return &tokenResp, nil
 REDACTED
 
-func createGeminiReqClient(proxyURL string) *req.Client {
+func createGeminiReqClient(proxyURL string) (*req.Client, error) {
 	return getSharedReqClient(reqClientOptions{
 		ProxyURL: proxyURL,
 		Timeout:  60 * time.Second,

@@ -38,3 +38,18 @@ func (m OpsQueryMode) IsValid() bool {
 		return false
 REDACTED
 REDACTED
+
+func shouldFallbackOpsPreagg(filter *OpsDashboardFilter, err error) bool {
+	return filter != nil &&
+		filter.QueryMode == OpsQueryModeAuto &&
+		errors.Is(err, ErrOpsPreaggregatedNotPopulated)
+REDACTED
+
+func cloneOpsFilterWithMode(filter *OpsDashboardFilter, mode OpsQueryMode) *OpsDashboardFilter {
+	if filter == nil {
+		return nil
+REDACTED
+	cloned := *filter
+	cloned.QueryMode = mode
+	return &cloned
+REDACTED

@@ -20,7 +20,7 @@ func TestFilterHeadersDisabledUsesDefaultAllowlist(t *testing.T) {
 		ForceRemove: []string{"x-request-id"REDACTED,
 REDACTED
 
-	filtered := FilterHeaders(src, cfg)
+	filtered := FilterHeaders(src, CompileHeaderFilter(cfg))
 	if filtered.Get("Content-Type") != "application/json" {
 		t.Fatalf("expected Content-Type passthrough, got %q", filtered.Get("Content-Type"))
 REDACTED
@@ -51,7 +51,7 @@ func TestFilterHeadersEnabledUsesAllowlist(t *testing.T) {
 		ForceRemove:       []string{"x-remove"REDACTED,
 REDACTED
 
-	filtered := FilterHeaders(src, cfg)
+	filtered := FilterHeaders(src, CompileHeaderFilter(cfg))
 	if filtered.Get("Content-Type") != "application/json" {
 		t.Fatalf("expected Content-Type allowed, got %q", filtered.Get("Content-Type"))
 REDACTED

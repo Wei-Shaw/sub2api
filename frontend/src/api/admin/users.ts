@@ -4,7 +4,7 @@
  */
 
 import { apiClient REDACTED from '../client'
-import type { AdminUser, UpdateUserRequest, PaginatedResponse REDACTED from '@/types'
+import type { AdminUser, UpdateUserRequest, PaginatedResponse, ApiKey REDACTED from '@/types'
 
 /**
  * List all users with pagination
@@ -22,6 +22,7 @@ export async function list(
     role?: 'admin' | 'user'
     search?: string
     attributes?: Record<number, string>  // attributeId -> value
+    include_subscriptions?: boolean
   REDACTED,
   options?: {
     signal?: AbortSignal
@@ -33,7 +34,8 @@ export async function list(
     page_size: pageSize,
     status: filters?.status,
     role: filters?.role,
-    search: filters?.search
+    search: filters?.search,
+    include_subscriptions: filters?.include_subscriptions
   REDACTED
 
   // Add attribute filters as attr[id]=value
@@ -145,8 +147,8 @@ REDACTED
  * @param id - User ID
  * @returns List of user's API keys
  */
-export async function getUserApiKeys(id: number): Promise<PaginatedResponse<any>> {
-  const { data REDACTED = await apiClient.get<PaginatedResponse<any>>(`/admin/users/${idREDACTED/api-keys`)
+export async function getUserApiKeys(id: number): Promise<PaginatedResponse<ApiKey>> {
+  const { data REDACTED = await apiClient.get<PaginatedResponse<ApiKey>>(`/admin/users/${idREDACTED/api-keys`)
   return data
 REDACTED
 

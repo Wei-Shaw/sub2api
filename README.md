@@ -54,6 +54,7 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 ## Documentation
 
 - Dependency Security: `docs/dependency-security.md`
+- Admin Payment Integration API: `docs/ADMIN_PAYMENT_INTEGRATION_API.md`
 
 ---
 
@@ -362,6 +363,12 @@ default:
   api_key_prefix: "sk-"
   rate_multiplier: 1.0
 ```
+
+### Sora Status (Temporarily Unavailable)
+
+> ⚠️ Sora-related features are temporarily unavailable due to technical issues in upstream integration and media delivery.
+> Please do not rely on Sora in production at this time.
+> Existing `gateway.sora_*` configuration keys are reserved and may not take effect until these issues are resolved.
 
 Additional security-related options are available in `config.yaml`:
 

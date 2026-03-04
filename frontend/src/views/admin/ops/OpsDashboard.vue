@@ -84,8 +84,24 @@
         />
       </div>
 
+      <!-- Row: OpenAI Token Stats -->
+      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
+        <OpsOpenAITokenStatsCard
+          :platform-filter="platform"
+          :group-id-filter="groupId"
+          :refresh-token="dashboardRefreshToken"
+        />
+      </div>
+
       <!-- Alert Events -->
       <OpsAlertEventsCard v-if="opsEnabled && !(loading && !hasLoadedOnce)" />
+
+      <!-- System Logs -->
+      <OpsSystemLogTable
+        v-if="opsEnabled && !(loading && !hasLoadedOnce)"
+        :platform-filter="platform"
+        :refresh-token="dashboardRefreshToken"
+      />
 
       <!-- Settings Dialog (hidden in fullscreen mode) -->
       <template v-if="!isFullscreen">
@@ -148,6 +164,8 @@ import OpsLatencyChart from './components/OpsLatencyChart.vue'
 import OpsThroughputTrendChart from './components/OpsThroughputTrendChart.vue'
 import OpsSwitchRateTrendChart from './components/OpsSwitchRateTrendChart.vue'
 import OpsAlertEventsCard from './components/OpsAlertEventsCard.vue'
+import OpsOpenAITokenStatsCard from './components/OpsOpenAITokenStatsCard.vue'
+import OpsSystemLogTable from './components/OpsSystemLogTable.vue'
 import OpsRequestDetailsModal, { type OpsRequestDetailsPreset REDACTED from './components/OpsRequestDetailsModal.vue'
 import OpsSettingsDialog from './components/OpsSettingsDialog.vue'
 import OpsAlertRulesCard from './components/OpsAlertRulesCard.vue'
@@ -568,6 +586,32 @@ async function refreshThroughputTrendWithCancel(fetchSeq: number, signal: AbortS
   REDACTED
 REDACTED
 
+async function refreshCoreSnapshotWithCancel(fetchSeq: number, signal: AbortSignal) {
+  if (!opsEnabled.value) return
+  loadingTrend.value = true
+  loadingErrorTrend.value = true
+  try {
+    const data = await opsAPI.getDashboardSnapshotV2(buildApiParams(), { signal REDACTED)
+    if (fetchSeq !== dashboardFetchSeq) return
+    overview.value = data.overview
+    throughputTrend.value = data.throughput_trend
+    errorTrend.value = data.error_trend
+  REDACTED catch (err: any) {
+    if (fetchSeq !== dashboardFetchSeq || isCanceledRequest(err)) return
+    // Fallback to legacy split endpoints when snapshot endpoint is unavailable.
+    await Promise.all([
+      refreshOverviewWithCancel(fetchSeq, signal),
+      refreshThroughputTrendWithCancel(fetchSeq, signal),
+      refreshErrorTrendWithCancel(fetchSeq, signal)
+    ])
+  REDACTED finally {
+    if (fetchSeq === dashboardFetchSeq) {
+      loadingTrend.value = false
+      loadingErrorTrend.value = false
+    REDACTED
+  REDACTED
+REDACTED
+
 async function refreshLatencyHistogramWithCancel(fetchSeq: number, signal: AbortSignal) {
   if (!opsEnabled.value) return
   loadingLatency.value = true
@@ -622,6 +666,14 @@ async function refreshErrorDistributionWithCancel(fetchSeq: number, signal: Abor
   REDACTED
 REDACTED
 
+async function refreshDeferredPanels(fetchSeq: number, signal: AbortSignal) {
+  if (!opsEnabled.value) return
+  await Promise.all([
+    refreshLatencyHistogramWithCancel(fetchSeq, signal),
+    refreshErrorDistributionWithCancel(fetchSeq, signal)
+  ])
+REDACTED
+
 function isOpsDisabledError(err: unknown): boolean {
   return (
     !!err &&
@@ -644,12 +696,8 @@ async function fetchData() {
   errorMessage.value = ''
   try {
     await Promise.all([
-      refreshOverviewWithCancel(fetchSeq, dashboardFetchController.signal),
-      refreshThroughputTrendWithCancel(fetchSeq, dashboardFetchController.signal),
+      refreshCoreSnapshotWithCancel(fetchSeq, dashboardFetchController.signal),
       refreshSwitchTrendWithCancel(fetchSeq, dashboardFetchController.signal),
-      refreshLatencyHistogramWithCancel(fetchSeq, dashboardFetchController.signal),
-      refreshErrorTrendWithCancel(fetchSeq, dashboardFetchController.signal),
-      refreshErrorDistributionWithCancel(fetchSeq, dashboardFetchController.signal)
     ])
     if (fetchSeq !== dashboardFetchSeq) return
 
@@ -662,6 +710,9 @@ async function fetchData() {
     if (autoRefreshEnabled.value) {
       autoRefreshCountdown.value = Math.floor(autoRefreshIntervalMs.value / 1000)
     REDACTED
+
+    // Defer non-core visual panels to reduce initial blocking.
+    void refreshDeferredPanels(fetchSeq, dashboardFetchController.signal)
   REDACTED catch (err) {
     if (!isOpsDisabledError(err)) {
       console.error('[ops] failed to fetch dashboard data', err)

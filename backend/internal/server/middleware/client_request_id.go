@@ -2,10 +2,13 @@ package middleware
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // ClientRequestID ensures every request has a unique client_request_id in request.Context().
@@ -24,7 +27,10 @@ func ClientRequestID() gin.HandlerFunc {
 	REDACTED
 
 		id := uuid.New().String()
-		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.ClientRequestID, id))
+		ctx := context.WithValue(c.Request.Context(), ctxkey.ClientRequestID, id)
+		requestLogger := logger.FromContext(ctx).With(zap.String("client_request_id", strings.TrimSpace(id)))
+		ctx = logger.IntoContext(ctx, requestLogger)
+		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 REDACTED
 REDACTED

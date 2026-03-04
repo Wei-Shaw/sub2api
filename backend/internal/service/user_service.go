@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -20,6 +22,10 @@ type UserListFilters struct {
 	Role       string           // User role filter
 	Search     string           // Search in email, username
 	Attributes map[int64]string // Custom attribute filters: attributeID -> value
+	// IncludeSubscriptions controls whether ListWithFilters should load active subscriptions.
+	// For large datasets this can be expensive; admin list pages should enable it on demand.
+	// nil means not specified (default: load subscriptions for backward compatibility).
+	IncludeSubscriptions *bool
 REDACTED
 
 type UserRepository interface {
@@ -38,6 +44,8 @@ type UserRepository interface {
 	UpdateConcurrency(ctx context.Context, id int64, amount int) error
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
 	RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error)
+	// AddGroupToAllowedGroups 将指定分组增量添加到用户的 allowed_groups（幂等，冲突忽略）
+	AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error
 
 	// TOTP 双因素认证
 	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
@@ -62,13 +70,15 @@ REDACTED
 type UserService struct {
 	userRepo             UserRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	billingCache         BillingCache
 REDACTED
 
 // NewUserService 创建用户服务实例
-func NewUserService(userRepo UserRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *UserService {
+func NewUserService(userRepo UserRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCache BillingCache) *UserService {
 	return &UserService{
 		userRepo:             userRepo,
 		authCacheInvalidator: authCacheInvalidator,
+		billingCache:         billingCache,
 REDACTED
 REDACTED
 
@@ -182,6 +192,15 @@ func (s *UserService) UpdateBalance(ctx context.Context, userID int64, amount fl
 REDACTED
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+REDACTED
+	if s.billingCache != nil {
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := s.billingCache.InvalidateUserBalance(cacheCtx, userID); err != nil {
+				log.Printf("invalidate user balance cache failed: user_id=%d err=%v", userID, err)
+		REDACTED
+	REDACTED()
 REDACTED
 	return nil
 REDACTED

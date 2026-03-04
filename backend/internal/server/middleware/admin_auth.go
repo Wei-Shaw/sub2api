@@ -58,8 +58,13 @@ func adminAuth(
 		authHeader := c.GetHeader("Authorization")
 		if authHeader != "" {
 			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) == 2 && parts[0] == "Bearer" {
-				if !validateJWTForAdmin(c, parts[1], authService, userService) {
+			if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+				token := strings.TrimSpace(parts[1])
+				if token == "" {
+					AbortWithError(c, 401, "UNAUTHORIZED", "Authorization required")
+					return
+			REDACTED
+				if !validateJWTForAdmin(c, token, authService, userService) {
 					return
 			REDACTED
 				c.Next()
@@ -173,6 +178,12 @@ REDACTED
 	// 检查用户状态
 	if !user.IsActive() {
 		AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
+		return false
+REDACTED
+
+	// 校验 TokenVersion，确保管理员改密后旧 token 失效
+	if claims.TokenVersion != user.TokenVersion {
+		AbortWithError(c, 401, "TOKEN_REVOKED", "Token has been revoked (password changed)")
 		return false
 REDACTED
 

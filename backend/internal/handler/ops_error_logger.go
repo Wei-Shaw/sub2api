@@ -41,9 +41,8 @@ const (
 )
 
 type opsErrorLogJob struct {
-	ops         *service.OpsService
-	entry       *service.OpsInsertErrorLogInput
-	requestBody []byte
+	ops   *service.OpsService
+	entry *service.OpsInsertErrorLogInput
 REDACTED
 
 var (
@@ -58,6 +57,7 @@ var (
 	opsErrorLogEnqueued  atomic.Int64
 	opsErrorLogDropped   atomic.Int64
 	opsErrorLogProcessed atomic.Int64
+	opsErrorLogSanitized atomic.Int64
 
 	opsErrorLogLastDropLogAt atomic.Int64
 
@@ -94,7 +94,7 @@ REDACTED
 					REDACTED
 				REDACTED()
 					ctx, cancel := context.WithTimeout(context.Background(), opsErrorLogTimeout)
-					_ = job.ops.RecordError(ctx, job.entry, job.requestBody)
+					_ = job.ops.RecordError(ctx, job.entry, nil)
 					cancel()
 					opsErrorLogProcessed.Add(1)
 			REDACTED()
@@ -103,7 +103,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func enqueueOpsErrorLog(ops *service.OpsService, entry *service.OpsInsertErrorLogInput, requestBody []byte) {
+func enqueueOpsErrorLog(ops *service.OpsService, entry *service.OpsInsertErrorLogInput) {
 	if ops == nil || entry == nil {
 		return
 REDACTED
@@ -129,7 +129,7 @@ REDACTED
 REDACTED
 
 	select {
-	case opsErrorLogQueue <- opsErrorLogJob{ops: ops, entry: entry, requestBody: requestBodyREDACTED:
+	case opsErrorLogQueue <- opsErrorLogJob{ops: ops, entry: entryREDACTED:
 		opsErrorLogQueueLen.Add(1)
 		opsErrorLogEnqueued.Add(1)
 	default:
@@ -205,6 +205,10 @@ func OpsErrorLogProcessedTotal() int64 {
 	return opsErrorLogProcessed.Load()
 REDACTED
 
+func OpsErrorLogSanitizedTotal() int64 {
+	return opsErrorLogSanitized.Load()
+REDACTED
+
 func maybeLogOpsErrorLogDrop() {
 	now := time.Now().Unix()
 
@@ -222,12 +226,13 @@ REDACTED
 	queueCap := OpsErrorLogQueueCapacity()
 
 	log.Printf(
-		"[OpsErrorLogger] queue is full; dropping logs (queued=%d cap=%d enqueued_total=%d dropped_total=%d processed_total=%d)",
+		"[OpsErrorLogger] queue is full; dropping logs (queued=%d cap=%d enqueued_total=%d dropped_total=%d processed_total=%d sanitized_total=%d)",
 		queued,
 		queueCap,
 		opsErrorLogEnqueued.Load(),
 		opsErrorLogDropped.Load(),
 		opsErrorLogProcessed.Load(),
+		opsErrorLogSanitized.Load(),
 	)
 REDACTED
 
@@ -255,24 +260,84 @@ func setOpsRequestContext(c *gin.Context, model string, stream bool, requestBody
 	if c == nil {
 		return
 REDACTED
+	model = strings.TrimSpace(model)
 	c.Set(opsModelKey, model)
 	c.Set(opsStreamKey, stream)
 	if len(requestBody) > 0 {
 		c.Set(opsRequestBodyKey, requestBody)
 REDACTED
+	if c.Request != nil && model != "" {
+		ctx := context.WithValue(c.Request.Context(), ctxkey.Model, model)
+		c.Request = c.Request.WithContext(ctx)
+REDACTED
 REDACTED
 
-func setOpsSelectedAccount(c *gin.Context, accountID int64) {
+func attachOpsRequestBodyToEntry(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
+	if c == nil || entry == nil {
+		return
+REDACTED
+	v, ok := c.Get(opsRequestBodyKey)
+	if !ok {
+		return
+REDACTED
+	raw, ok := v.([]byte)
+	if !ok || len(raw) == 0 {
+		return
+REDACTED
+	entry.RequestBodyJSON, entry.RequestBodyTruncated, entry.RequestBodyBytes = service.PrepareOpsRequestBodyForQueue(raw)
+	opsErrorLogSanitized.Add(1)
+REDACTED
+
+func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) {
 	if c == nil || accountID <= 0 {
 		return
 REDACTED
 	c.Set(opsAccountIDKey, accountID)
+	if c.Request != nil {
+		ctx := context.WithValue(c.Request.Context(), ctxkey.AccountID, accountID)
+		if len(platform) > 0 {
+			p := strings.TrimSpace(platform[0])
+			if p != "" {
+				ctx = context.WithValue(ctx, ctxkey.Platform, p)
+		REDACTED
+	REDACTED
+		c.Request = c.Request.WithContext(ctx)
+REDACTED
 REDACTED
 
 type opsCaptureWriter struct {
 	gin.ResponseWriter
 	limit int
 	buf   bytes.Buffer
+REDACTED
+
+const opsCaptureWriterLimit = 64 * 1024
+
+var opsCaptureWriterPool = sync.Pool{
+	New: func() any {
+		return &opsCaptureWriter{limit: opsCaptureWriterLimitREDACTED
+REDACTED,
+REDACTED
+
+func acquireOpsCaptureWriter(rw gin.ResponseWriter) *opsCaptureWriter {
+	w, ok := opsCaptureWriterPool.Get().(*opsCaptureWriter)
+	if !ok || w == nil {
+		w = &opsCaptureWriter{REDACTED
+REDACTED
+	w.ResponseWriter = rw
+	w.limit = opsCaptureWriterLimit
+	w.buf.Reset()
+	return w
+REDACTED
+
+func releaseOpsCaptureWriter(w *opsCaptureWriter) {
+	if w == nil {
+		return
+REDACTED
+	w.ResponseWriter = nil
+	w.limit = opsCaptureWriterLimit
+	w.buf.Reset()
+	opsCaptureWriterPool.Put(w)
 REDACTED
 
 func (w *opsCaptureWriter) Write(b []byte) (int, error) {
@@ -306,7 +371,16 @@ REDACTED
 // - Streaming errors after the response has started (SSE) may still need explicit logging.
 func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		w := &opsCaptureWriter{ResponseWriter: c.Writer, limit: 64 * 1024REDACTED
+		originalWriter := c.Writer
+		w := acquireOpsCaptureWriter(originalWriter)
+		defer func() {
+			// Restore the original writer before returning so outer middlewares
+			// don't observe a pooled wrapper that has been released.
+			if c.Writer == w {
+				c.Writer = originalWriter
+		REDACTED
+			releaseOpsCaptureWriter(w)
+	REDACTED()
 		c.Writer = w
 		c.Next()
 
@@ -507,6 +581,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				RetryCount:  0,
 				CreatedAt:   time.Now(),
 		REDACTED
+			applyOpsLatencyFieldsFromContext(c, entry)
 
 			if apiKey != nil {
 				entry.APIKeyID = &apiKey.ID
@@ -528,14 +603,9 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				entry.ClientIP = &clientIP
 		REDACTED
 
-			var requestBody []byte
-			if v, ok := c.Get(opsRequestBodyKey); ok {
-				if b, ok := v.([]byte); ok && len(b) > 0 {
-					requestBody = b
-			REDACTED
-		REDACTED
 			// Store request headers/body only when an upstream error occurred to keep overhead minimal.
 			entry.RequestHeadersJSON = extractOpsRetryRequestHeaders(c)
+			attachOpsRequestBodyToEntry(c, entry)
 
 			// Skip logging if a passthrough rule with skip_monitoring=true matched.
 			if v, ok := c.Get(service.OpsSkipPassthroughKey); ok {
@@ -544,7 +614,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			REDACTED
 		REDACTED
 
-			enqueueOpsErrorLog(ops, entry, requestBody)
+			enqueueOpsErrorLog(ops, entry)
 			return
 	REDACTED
 
@@ -592,8 +662,10 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			requestID = c.Writer.Header().Get("x-request-id")
 	REDACTED
 
-		phase := classifyOpsPhase(parsed.ErrorType, parsed.Message, parsed.Code)
-		isBusinessLimited := classifyOpsIsBusinessLimited(parsed.ErrorType, phase, parsed.Code, status, parsed.Message)
+		normalizedType := normalizeOpsErrorType(parsed.ErrorType, parsed.Code)
+
+		phase := classifyOpsPhase(normalizedType, parsed.Message, parsed.Code)
+		isBusinessLimited := classifyOpsIsBusinessLimited(normalizedType, phase, parsed.Code, status, parsed.Message)
 
 		errorOwner := classifyOpsErrorOwner(phase, parsed.Message)
 		errorSource := classifyOpsErrorSource(phase, parsed.Message)
@@ -615,8 +687,8 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			UserAgent: c.GetHeader("User-Agent"),
 
 			ErrorPhase:        phase,
-			ErrorType:         normalizeOpsErrorType(parsed.ErrorType, parsed.Code),
-			Severity:          classifyOpsSeverity(parsed.ErrorType, status),
+			ErrorType:         normalizedType,
+			Severity:          classifyOpsSeverity(normalizedType, status),
 			StatusCode:        status,
 			IsBusinessLimited: isBusinessLimited,
 			IsCountTokens:     isCountTokensRequest(c),
@@ -628,10 +700,11 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			ErrorSource: errorSource,
 			ErrorOwner:  errorOwner,
 
-			IsRetryable: classifyOpsIsRetryable(parsed.ErrorType, status),
+			IsRetryable: classifyOpsIsRetryable(normalizedType, status),
 			RetryCount:  0,
 			CreatedAt:   time.Now(),
 	REDACTED
+		applyOpsLatencyFieldsFromContext(c, entry)
 
 		// Capture upstream error context set by gateway services (if present).
 		// This does NOT affect the client response; it enriches Ops troubleshooting data.
@@ -707,17 +780,12 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			entry.ClientIP = &clientIP
 	REDACTED
 
-		var requestBody []byte
-		if v, ok := c.Get(opsRequestBodyKey); ok {
-			if b, ok := v.([]byte); ok && len(b) > 0 {
-				requestBody = b
-		REDACTED
-	REDACTED
 		// Persist only a minimal, whitelisted set of request headers to improve retry fidelity.
 		// Do NOT store Authorization/Cookie/etc.
 		entry.RequestHeadersJSON = extractOpsRetryRequestHeaders(c)
+		attachOpsRequestBodyToEntry(c, entry)
 
-		enqueueOpsErrorLog(ops, entry, requestBody)
+		enqueueOpsErrorLog(ops, entry)
 REDACTED
 REDACTED
 
@@ -758,6 +826,44 @@ REDACTED
 REDACTED
 	s := string(raw)
 	return &s
+REDACTED
+
+func applyOpsLatencyFieldsFromContext(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
+	if c == nil || entry == nil {
+		return
+REDACTED
+	entry.AuthLatencyMs = getContextLatencyMs(c, service.OpsAuthLatencyMsKey)
+	entry.RoutingLatencyMs = getContextLatencyMs(c, service.OpsRoutingLatencyMsKey)
+	entry.UpstreamLatencyMs = getContextLatencyMs(c, service.OpsUpstreamLatencyMsKey)
+	entry.ResponseLatencyMs = getContextLatencyMs(c, service.OpsResponseLatencyMsKey)
+	entry.TimeToFirstTokenMs = getContextLatencyMs(c, service.OpsTimeToFirstTokenMsKey)
+REDACTED
+
+func getContextLatencyMs(c *gin.Context, key string) *int64 {
+	if c == nil || strings.TrimSpace(key) == "" {
+		return nil
+REDACTED
+	v, ok := c.Get(key)
+	if !ok {
+		return nil
+REDACTED
+	var ms int64
+	switch t := v.(type) {
+	case int:
+		ms = int64(t)
+	case int32:
+		ms = int64(t)
+	case int64:
+		ms = t
+	case float64:
+		ms = int64(t)
+	default:
+		return nil
+REDACTED
+	if ms < 0 {
+		return nil
+REDACTED
+	return &ms
 REDACTED
 
 type parsedOpsError struct {
@@ -835,8 +941,29 @@ func guessPlatformFromPath(path string) string {
 REDACTED
 REDACTED
 
+// isKnownOpsErrorType returns true if t is a recognized error type used by the
+// ops classification pipeline.  Upstream proxies sometimes return garbage values
+// (e.g. the Go-serialized literal "<nil>") which would pollute phase/severity
+// classification if accepted blindly.
+func isKnownOpsErrorType(t string) bool {
+	switch t {
+	case "invalid_request_error",
+		"authentication_error",
+		"rate_limit_error",
+		"billing_error",
+		"subscription_error",
+		"upstream_error",
+		"overloaded_error",
+		"api_error",
+		"not_found_error",
+		"forbidden_error":
+		return true
+REDACTED
+	return false
+REDACTED
+
 func normalizeOpsErrorType(errType string, code string) string {
-	if errType != "" {
+	if errType != "" && isKnownOpsErrorType(errType) {
 		return errType
 REDACTED
 	switch strings.TrimSpace(code) {

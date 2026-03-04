@@ -8,6 +8,26 @@
 
       <!-- Settings Form -->
       <form v-else @submit.prevent="saveSettings" class="space-y-6">
+        <!-- Tab Navigation -->
+        <div class="sticky top-0 z-10 overflow-x-auto scrollbar-hide">
+          <nav class="settings-tabs">
+            <button
+              v-for="tab in settingsTabs"
+              :key="tab.key"
+              type="button"
+              :class="['settings-tab', activeTab === tab.key && 'settings-tab-active']"
+              @click="activeTab = tab.key"
+            >
+              <span class="settings-tab-icon">
+                <Icon :name="tab.icon" size="sm" />
+              </span>
+              <span>{{ t(`admin.settings.tabs.${tab.keyREDACTED`) REDACTEDREDACTED</span>
+            </button>
+          </nav>
+        </div>
+
+        <!-- Tab: Security — Admin API Key -->
+        <div v-show="activeTab === 'security'" class="space-y-6">
         <!-- Admin API Key Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -146,7 +166,10 @@
             </div>
           </div>
         </div>
+        </div><!-- /Tab: Security — Admin API Key -->
 
+        <!-- Tab: Gateway — Stream Timeout -->
+        <div v-show="activeTab === 'gateway'" class="space-y-6">
         <!-- Stream Timeout Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -284,7 +307,10 @@
             </template>
           </div>
         </div>
+        </div><!-- /Tab: Gateway — Stream Timeout (continued below with Claude Code & Scheduling) -->
 
+        <!-- Tab: Security — Registration, Turnstile, LinuxDo -->
+        <div v-show="activeTab === 'security'" class="space-y-6">
         <!-- Registration Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -322,6 +348,56 @@
                 </p>
               </div>
               <Toggle v-model="form.email_verify_enabled" />
+            </div>
+
+            <!-- Email Suffix Whitelist -->
+            <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+              <label class="font-medium text-gray-900 dark:text-white">{{
+                t('admin.settings.registration.emailSuffixWhitelist')
+              REDACTEDREDACTED</label>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.registration.emailSuffixWhitelistHint') REDACTEDREDACTED
+              </p>
+              <div
+                class="mt-3 rounded-lg border border-gray-300 bg-white p-2 dark:border-dark-500 dark:bg-dark-700"
+              >
+                <div class="flex flex-wrap items-center gap-2">
+                  <span
+                    v-for="suffix in registrationEmailSuffixWhitelistTags"
+                    :key="suffix"
+                    class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs font-mono text-gray-700 dark:bg-dark-600 dark:text-gray-200"
+                  >
+                    <span class="text-gray-400 dark:text-gray-500">@</span>
+                    <span>{{ suffix REDACTEDREDACTED</span>
+                    <button
+                      type="button"
+                      class="rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-dark-500 dark:hover:text-white"
+                      @click="removeRegistrationEmailSuffixWhitelistTag(suffix)"
+                    >
+                      <Icon name="x" size="xs" class="h-3.5 w-3.5" :stroke-width="2" />
+                    </button>
+                  </span>
+
+                  <div
+                    class="flex min-w-[220px] flex-1 items-center gap-1 rounded border border-transparent px-2 py-1 focus-within:border-primary-300 dark:focus-within:border-primary-700"
+                  >
+                    <span class="font-mono text-sm text-gray-400 dark:text-gray-500">@</span>
+                    <input
+                      v-model="registrationEmailSuffixWhitelistDraft"
+                      type="text"
+                      class="w-full bg-transparent text-sm font-mono text-gray-900 outline-none placeholder:text-gray-400 dark:text-white dark:placeholder:text-gray-500"
+                      :placeholder="t('admin.settings.registration.emailSuffixWhitelistPlaceholder')"
+                      @input="handleRegistrationEmailSuffixWhitelistDraftInput"
+                      @keydown="handleRegistrationEmailSuffixWhitelistDraftKeydown"
+                      @blur="commitRegistrationEmailSuffixWhitelistDraft"
+                      @paste="handleRegistrationEmailSuffixWhitelistPaste"
+                    />
+                  </div>
+                </div>
+              </div>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.registration.emailSuffixWhitelistInputHint') REDACTEDREDACTED
+              </p>
             </div>
 
             <!-- Promo Code -->
@@ -568,7 +644,10 @@
             </div>
           </div>
         </div>
+        </div><!-- /Tab: Security — Registration, Turnstile, LinuxDo -->
 
+        <!-- Tab: Users -->
+        <div v-show="activeTab === 'users'" class="space-y-6">
         <!-- Default Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -579,7 +658,7 @@
               {{ t('admin.settings.defaults.description') REDACTEDREDACTED
             </p>
           </div>
-          <div class="p-6">
+          <div class="space-y-6 p-6">
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div>
                 <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -613,9 +692,164 @@
                 </p>
               </div>
             </div>
+
+            <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+              <div class="mb-3 flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t('admin.settings.defaults.defaultSubscriptions') REDACTEDREDACTED
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.defaults.defaultSubscriptionsHint') REDACTEDREDACTED
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  @click="addDefaultSubscription"
+                  :disabled="subscriptionGroups.length === 0"
+                >
+                  {{ t('admin.settings.defaults.addDefaultSubscription') REDACTEDREDACTED
+                </button>
+              </div>
+
+              <div
+                v-if="form.default_subscriptions.length === 0"
+                class="rounded border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+              >
+                {{ t('admin.settings.defaults.defaultSubscriptionsEmpty') REDACTEDREDACTED
+              </div>
+
+              <div v-else class="space-y-3">
+                <div
+                  v-for="(item, index) in form.default_subscriptions"
+                  :key="`default-sub-${indexREDACTED`"
+                  class="grid grid-cols-1 gap-3 rounded border border-gray-200 p-3 md:grid-cols-[1fr_160px_auto] dark:border-dark-600"
+                >
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                      {{ t('admin.settings.defaults.subscriptionGroup') REDACTEDREDACTED
+                    </label>
+                    <Select
+                      v-model="item.group_id"
+                      class="default-sub-group-select"
+                      :options="defaultSubscriptionGroupOptions"
+                      :placeholder="t('admin.settings.defaults.subscriptionGroup')"
+                    >
+                      <template #selected="{ option REDACTED">
+                        <GroupBadge
+                          v-if="option"
+                          :name="(option as unknown as DefaultSubscriptionGroupOption).label"
+                          :platform="(option as unknown as DefaultSubscriptionGroupOption).platform"
+                          :subscription-type="(option as unknown as DefaultSubscriptionGroupOption).subscriptionType"
+                          :rate-multiplier="(option as unknown as DefaultSubscriptionGroupOption).rate"
+                        />
+                        <span v-else class="text-gray-400">
+                          {{ t('admin.settings.defaults.subscriptionGroup') REDACTEDREDACTED
+                        </span>
+                      </template>
+                      <template #option="{ option, selected REDACTED">
+                        <GroupOptionItem
+                          :name="(option as unknown as DefaultSubscriptionGroupOption).label"
+                          :platform="(option as unknown as DefaultSubscriptionGroupOption).platform"
+                          :subscription-type="(option as unknown as DefaultSubscriptionGroupOption).subscriptionType"
+                          :rate-multiplier="(option as unknown as DefaultSubscriptionGroupOption).rate"
+                          :description="(option as unknown as DefaultSubscriptionGroupOption).description"
+                          :selected="selected"
+                        />
+                      </template>
+                    </Select>
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                      {{ t('admin.settings.defaults.subscriptionValidityDays') REDACTEDREDACTED
+                    </label>
+                    <input
+                      v-model.number="item.validity_days"
+                      type="number"
+                      min="1"
+                      max="36500"
+                      class="input h-[42px]"
+                    />
+                  </div>
+                  <div class="flex items-end">
+                    <button
+                      type="button"
+                      class="btn btn-secondary default-sub-delete-btn w-full text-red-600 hover:text-red-700 dark:text-red-400"
+                      @click="removeDefaultSubscription(index)"
+                    >
+                      {{ t('common.delete') REDACTEDREDACTED
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div><!-- /Tab: Users -->
+
+        <!-- Tab: Gateway — Claude Code, Scheduling -->
+        <div v-show="activeTab === 'gateway'" class="space-y-6">
+        <!-- Claude Code Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.claudeCode.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.claudeCode.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="p-6">
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.claudeCode.minVersion') REDACTEDREDACTED
+              </label>
+              <input
+                v-model="form.min_claude_code_version"
+                type="text"
+                class="input max-w-xs font-mono text-sm"
+                :placeholder="t('admin.settings.claudeCode.minVersionPlaceholder')"
+                pattern="\d+\.\d+\.\d+"
+              />
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.claudeCode.minVersionHint') REDACTEDREDACTED
+              </p>
+            </div>
           </div>
         </div>
 
+        <!-- Gateway Scheduling Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.scheduling.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.scheduling.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.scheduling.allowUngroupedKey') REDACTEDREDACTED
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.scheduling.allowUngroupedKeyHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <label class="toggle">
+                <input v-model="form.allow_ungrouped_key_scheduling" type="checkbox" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+        </div><!-- /Tab: Gateway — Claude Code, Scheduling -->
+
+        <!-- Tab: General -->
+        <div v-show="activeTab === 'general'" class="space-y-6">
         <!-- Site Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -711,64 +945,14 @@
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 {{ t('admin.settings.site.siteLogo') REDACTEDREDACTED
               </label>
-              <div class="flex items-start gap-6">
-                <!-- Logo Preview -->
-                <div class="flex-shrink-0">
-                  <div
-                    class="flex h-20 w-20 items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 dark:border-dark-600 dark:bg-dark-800"
-                    :class="{ 'border-solid': form.site_logo REDACTED"
-                  >
-                    <img
-                      v-if="form.site_logo"
-                      :src="form.site_logo"
-                      alt="Site Logo"
-                      class="h-full w-full object-contain"
-                    />
-                    <svg
-                      v-else
-                      class="h-8 w-8 text-gray-400 dark:text-dark-500"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="1.5"
-                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                      />
-                    </svg>
-                  </div>
-                </div>
-                <!-- Upload Controls -->
-                <div class="flex-1 space-y-3">
-                  <div class="flex items-center gap-3">
-                    <label class="btn btn-secondary btn-sm cursor-pointer">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        class="hidden"
-                        @change="handleLogoUpload"
-                      />
-                      <Icon name="upload" size="sm" class="mr-1.5" :stroke-width="2" />
-                      {{ t('admin.settings.site.uploadImage') REDACTEDREDACTED
-                    </label>
-                    <button
-                      v-if="form.site_logo"
-                      type="button"
-                      @click="form.site_logo = ''"
-                      class="btn btn-secondary btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
-                    >
-                      <Icon name="trash" size="sm" class="mr-1.5" :stroke-width="2" />
-                      {{ t('admin.settings.site.remove') REDACTEDREDACTED
-                    </button>
-                  </div>
-                  <p class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.settings.site.logoHint') REDACTEDREDACTED
-                  </p>
-                  <p v-if="logoError" class="text-xs text-red-500">{{ logoError REDACTEDREDACTED</p>
-                </div>
-              </div>
+              <ImageUpload
+                v-model="form.site_logo"
+                mode="image"
+                :upload-label="t('admin.settings.site.uploadImage')"
+                :remove-label="t('admin.settings.site.remove')"
+                :hint="t('admin.settings.site.logoHint')"
+                :max-size="300 * 1024"
+              />
             </div>
 
             <!-- Home Content -->
@@ -804,6 +988,238 @@
                 </p>
               </div>
               <Toggle v-model="form.hide_ccs_import_button" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Purchase Subscription Page -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.purchase.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.purchase.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="space-y-6 p-6">
+            <!-- Enable Toggle -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.purchase.enabled')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.purchase.enabledHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.purchase_subscription_enabled" />
+            </div>
+
+            <!-- URL -->
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.purchase.url') REDACTEDREDACTED
+              </label>
+              <input
+                v-model="form.purchase_subscription_url"
+                type="url"
+                class="input font-mono text-sm"
+                :placeholder="t('admin.settings.purchase.urlPlaceholder')"
+              />
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.purchase.urlHint') REDACTEDREDACTED
+              </p>
+              <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                {{ t('admin.settings.purchase.iframeWarning') REDACTEDREDACTED
+              </p>
+            </div>
+
+            <!-- Integration Docs -->
+            <div class="flex items-center gap-2 text-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <a
+                href="https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/docs/ADMIN_PAYMENT_INTEGRATION_API.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-blue-600 hover:underline dark:text-blue-400"
+                download="ADMIN_PAYMENT_INTEGRATION_API.md"
+              >
+                {{ t('admin.settings.purchase.integrationDoc') REDACTEDREDACTED
+              </a>
+              <span class="text-gray-400 dark:text-gray-500">—</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.purchase.integrationDocHint') REDACTEDREDACTED
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sora Client Toggle -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.soraClient.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.soraClient.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="space-y-6 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.soraClient.enabled')
+                REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.soraClient.enabledHint') REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.sora_client_enabled" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Custom Menu Items -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.customMenu.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.customMenu.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="space-y-4 p-6">
+            <!-- Existing menu items -->
+            <div
+              v-for="(item, index) in form.custom_menu_items"
+              :key="item.id || index"
+              class="rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+            >
+              <div class="mb-3 flex items-center justify-between">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.customMenu.itemLabel', { n: index + 1 REDACTED) REDACTEDREDACTED
+                </span>
+                <div class="flex items-center gap-2">
+                  <!-- Move up -->
+                  <button
+                    v-if="index > 0"
+                    type="button"
+                    class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700"
+                    :title="t('admin.settings.customMenu.moveUp')"
+                    @click="moveMenuItem(index, -1)"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" /></svg>
+                  </button>
+                  <!-- Move down -->
+                  <button
+                    v-if="index < form.custom_menu_items.length - 1"
+                    type="button"
+                    class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700"
+                    :title="t('admin.settings.customMenu.moveDown')"
+                    @click="moveMenuItem(index, 1)"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                  </button>
+                  <!-- Delete -->
+                  <button
+                    type="button"
+                    class="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    :title="t('admin.settings.customMenu.remove')"
+                    @click="removeMenuItem(index)"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <!-- Label -->
+                <div>
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.customMenu.name') REDACTEDREDACTED
+                  </label>
+                  <input
+                    v-model="item.label"
+                    type="text"
+                    class="input text-sm"
+                    :placeholder="t('admin.settings.customMenu.namePlaceholder')"
+                  />
+                </div>
+
+                <!-- Visibility -->
+                <div>
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.customMenu.visibility') REDACTEDREDACTED
+                  </label>
+                  <select v-model="item.visibility" class="input text-sm">
+                    <option value="user">{{ t('admin.settings.customMenu.visibilityUser') REDACTEDREDACTED</option>
+                    <option value="admin">{{ t('admin.settings.customMenu.visibilityAdmin') REDACTEDREDACTED</option>
+                  </select>
+                </div>
+
+                <!-- URL (full width) -->
+                <div class="sm:col-span-2">
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.customMenu.url') REDACTEDREDACTED
+                  </label>
+                  <input
+                    v-model="item.url"
+                    type="url"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.customMenu.urlPlaceholder')"
+                  />
+                </div>
+
+                <!-- SVG Icon (full width) -->
+                <div class="sm:col-span-2">
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.customMenu.iconSvg') REDACTEDREDACTED
+                  </label>
+                  <ImageUpload
+                    :model-value="item.icon_svg"
+                    mode="svg"
+                    size="sm"
+                    :upload-label="t('admin.settings.customMenu.uploadSvg')"
+                    :remove-label="t('admin.settings.customMenu.removeSvg')"
+                    @update:model-value="(v: string) => item.icon_svg = v"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Add button -->
+            <button
+              type="button"
+              class="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-3 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+              @click="addMenuItem"
+            >
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+              {{ t('admin.settings.customMenu.add') REDACTEDREDACTED
+            </button>
+          </div>
+        </div>
+
+        </div><!-- /Tab: General -->
+
+        <!-- Tab: Email -->
+        <div v-show="activeTab === 'email'" class="space-y-6">
+        <!-- Email disabled hint - show when email_verify_enabled is off -->
+        <div v-if="!form.email_verify_enabled" class="card">
+          <div class="p-6">
+            <div class="flex items-start gap-3">
+              <Icon name="mail" size="md" class="mt-0.5 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+              <div>
+                <h3 class="font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.settings.emailTabDisabledTitle') REDACTEDREDACTED
+                </h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.emailTabDisabledHint') REDACTEDREDACTED
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -949,51 +1365,6 @@
           </div>
         </div>
 
-        <!-- Purchase Subscription Page -->
-        <div class="card">
-          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('admin.settings.purchase.title') REDACTEDREDACTED
-            </h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {{ t('admin.settings.purchase.description') REDACTEDREDACTED
-            </p>
-          </div>
-          <div class="space-y-6 p-6">
-            <!-- Enable Toggle -->
-            <div class="flex items-center justify-between">
-              <div>
-                <label class="font-medium text-gray-900 dark:text-white">{{
-                  t('admin.settings.purchase.enabled')
-                REDACTEDREDACTED</label>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.purchase.enabledHint') REDACTEDREDACTED
-                </p>
-              </div>
-              <Toggle v-model="form.purchase_subscription_enabled" />
-            </div>
-
-            <!-- URL -->
-            <div>
-              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                {{ t('admin.settings.purchase.url') REDACTEDREDACTED
-              </label>
-              <input
-                v-model="form.purchase_subscription_url"
-                type="url"
-                class="input font-mono text-sm"
-                :placeholder="t('admin.settings.purchase.urlPlaceholder')"
-              />
-              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.settings.purchase.urlHint') REDACTEDREDACTED
-              </p>
-              <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                {{ t('admin.settings.purchase.iframeWarning') REDACTEDREDACTED
-              </p>
-            </div>
-          </div>
-        </div>
-
         <!-- Send Test Email - Only show when email verification is enabled -->
         <div v-if="form.email_verify_enabled" class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -1052,6 +1423,7 @@
             </div>
           </div>
         </div>
+        </div><!-- /Tab: Email -->
 
         <!-- Save Button -->
         <div class="flex justify-end">
@@ -1083,15 +1455,42 @@
 import { ref, reactive, computed, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api'
-import type { SystemSettings, UpdateSettingsRequest REDACTED from '@/api/admin/settings'
+import type {
+  SystemSettings,
+  UpdateSettingsRequest,
+  DefaultSubscriptionSetting
+REDACTED from '@/api/admin/settings'
+import type { AdminGroup REDACTED from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import Select from '@/components/common/Select.vue'
+import GroupBadge from '@/components/common/GroupBadge.vue'
+import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import ImageUpload from '@/components/common/ImageUpload.vue'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 import { useAppStore REDACTED from '@/stores'
+import { useAdminSettingsStore REDACTED from '@/stores/adminSettings'
+import {
+  isRegistrationEmailSuffixDomainValid,
+  normalizeRegistrationEmailSuffixDomain,
+  normalizeRegistrationEmailSuffixDomains,
+  parseRegistrationEmailSuffixWhitelistInput
+REDACTED from '@/utils/registrationEmailPolicy'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+const adminSettingsStore = useAdminSettingsStore()
+
+type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'email'
+const activeTab = ref<SettingsTab>('general')
+const settingsTabs = [
+  { key: 'general'  as SettingsTab, icon: 'home'   as const REDACTED,
+  { key: 'security' as SettingsTab, icon: 'shield' as const REDACTED,
+  { key: 'users'    as SettingsTab, icon: 'user'   as const REDACTED,
+  { key: 'gateway'  as SettingsTab, icon: 'server' as const REDACTED,
+  { key: 'email'    as SettingsTab, icon: 'mail'   as const REDACTED,
+]
 const { copyToClipboard REDACTED = useClipboard()
 
 const loading = ref(true)
@@ -1099,7 +1498,8 @@ const saving = ref(false)
 const testingSmtp = ref(false)
 const sendingTestEmail = ref(false)
 const testEmailAddress = ref('')
-const logoError = ref('')
+const registrationEmailSuffixWhitelistTags = ref<string[]>([])
+const registrationEmailSuffixWhitelistDraft = ref('')
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true)
@@ -1107,6 +1507,7 @@ const adminApiKeyExists = ref(false)
 const adminApiKeyMasked = ref('')
 const adminApiKeyOperating = ref(false)
 const newAdminApiKey = ref('')
+const subscriptionGroups = ref<AdminGroup[]>([])
 
 // Stream Timeout 状态
 const streamTimeoutLoading = ref(true)
@@ -1119,6 +1520,16 @@ const streamTimeoutForm = reactive({
   threshold_window_minutes: 10
 REDACTED)
 
+interface DefaultSubscriptionGroupOption {
+  value: number
+  label: string
+  description: string | null
+  platform: AdminGroup['platform']
+  subscriptionType: AdminGroup['subscription_type']
+  rate: number
+  [key: string]: unknown
+REDACTED
+
 type SettingsForm = SystemSettings & {
   smtp_password: string
   turnstile_secret_key: string
@@ -1128,6 +1539,7 @@ REDACTED
 const form = reactive<SettingsForm>({
   registration_enabled: true,
   email_verify_enabled: false,
+  registration_email_suffix_whitelist: [],
   promo_code_enabled: true,
   invitation_code_enabled: false,
   password_reset_enabled: false,
@@ -1135,6 +1547,7 @@ const form = reactive<SettingsForm>({
   totp_encryption_key_configured: false,
   default_balance: 0,
   default_concurrency: 1,
+  default_subscriptions: [],
   site_name: 'Sub2API',
   site_logo: '',
   site_subtitle: 'Subscription to API Conversion Platform',
@@ -1145,6 +1558,8 @@ const form = reactive<SettingsForm>({
   hide_ccs_import_button: false,
   purchase_subscription_enabled: false,
   purchase_subscription_url: '',
+  sora_client_enabled: false,
+  custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: numberREDACTED>,
   smtp_host: '',
   smtp_port: 587,
   smtp_username: '',
@@ -1177,8 +1592,91 @@ const form = reactive<SettingsForm>({
   ops_monitoring_enabled: true,
   ops_realtime_monitoring_enabled: true,
   ops_query_mode_default: 'auto',
-  ops_metrics_interval_seconds: 60
+  ops_metrics_interval_seconds: 60,
+  // Claude Code version check
+  min_claude_code_version: '',
+  // 分组隔离
+  allow_ungrouped_key_scheduling: false
 REDACTED)
+
+const defaultSubscriptionGroupOptions = computed<DefaultSubscriptionGroupOption[]>(() =>
+  subscriptionGroups.value.map((group) => ({
+    value: group.id,
+    label: group.name,
+    description: group.description,
+    platform: group.platform,
+    subscriptionType: group.subscription_type,
+    rate: group.rate_multiplier
+  REDACTED))
+)
+
+const registrationEmailSuffixWhitelistSeparatorKeys = new Set([' ', ',', '，', 'Enter', 'Tab'])
+
+function removeRegistrationEmailSuffixWhitelistTag(suffix: string) {
+  registrationEmailSuffixWhitelistTags.value = registrationEmailSuffixWhitelistTags.value.filter(
+    (item) => item !== suffix
+  )
+REDACTED
+
+function addRegistrationEmailSuffixWhitelistTag(raw: string) {
+  const suffix = normalizeRegistrationEmailSuffixDomain(raw)
+  if (
+    !isRegistrationEmailSuffixDomainValid(suffix) ||
+    registrationEmailSuffixWhitelistTags.value.includes(suffix)
+  ) {
+    return
+  REDACTED
+  registrationEmailSuffixWhitelistTags.value = [
+    ...registrationEmailSuffixWhitelistTags.value,
+    suffix
+  ]
+REDACTED
+
+function commitRegistrationEmailSuffixWhitelistDraft() {
+  if (!registrationEmailSuffixWhitelistDraft.value) {
+    return
+  REDACTED
+  addRegistrationEmailSuffixWhitelistTag(registrationEmailSuffixWhitelistDraft.value)
+  registrationEmailSuffixWhitelistDraft.value = ''
+REDACTED
+
+function handleRegistrationEmailSuffixWhitelistDraftInput() {
+  registrationEmailSuffixWhitelistDraft.value = normalizeRegistrationEmailSuffixDomain(
+    registrationEmailSuffixWhitelistDraft.value
+  )
+REDACTED
+
+function handleRegistrationEmailSuffixWhitelistDraftKeydown(event: KeyboardEvent) {
+  if (event.isComposing) {
+    return
+  REDACTED
+
+  if (registrationEmailSuffixWhitelistSeparatorKeys.has(event.key)) {
+    event.preventDefault()
+    commitRegistrationEmailSuffixWhitelistDraft()
+    return
+  REDACTED
+
+  if (
+    event.key === 'Backspace' &&
+    !registrationEmailSuffixWhitelistDraft.value &&
+    registrationEmailSuffixWhitelistTags.value.length > 0
+  ) {
+    registrationEmailSuffixWhitelistTags.value.pop()
+  REDACTED
+REDACTED
+
+function handleRegistrationEmailSuffixWhitelistPaste(event: ClipboardEvent) {
+  const text = event.clipboardData?.getData('text') || ''
+  if (!text.trim()) {
+    return
+  REDACTED
+  event.preventDefault()
+  const tokens = parseRegistrationEmailSuffixWhitelistInput(text)
+  for (const token of tokens) {
+    addRegistrationEmailSuffixWhitelistTag(token)
+  REDACTED
+REDACTED
 
 // LinuxDo OAuth redirect URL suggestion
 const linuxdoRedirectUrlSuggestion = computed(() => {
@@ -1196,42 +1694,37 @@ async function setAndCopyLinuxdoRedirectUrl() {
   await copyToClipboard(url, t('admin.settings.linuxdo.redirectUrlSetAndCopied'))
 REDACTED
 
-function handleLogoUpload(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  logoError.value = ''
+// Custom menu item management
+function addMenuItem() {
+  form.custom_menu_items.push({
+    id: '',
+    label: '',
+    icon_svg: '',
+    url: '',
+    visibility: 'user',
+    sort_order: form.custom_menu_items.length,
+  REDACTED)
+REDACTED
 
-  if (!file) return
+function removeMenuItem(index: number) {
+  form.custom_menu_items.splice(index, 1)
+  // Re-index sort_order
+  form.custom_menu_items.forEach((item, i) => {
+    item.sort_order = i
+  REDACTED)
+REDACTED
 
-  // Check file size (300KB = 307200 bytes)
-  const maxSize = 300 * 1024
-  if (file.size > maxSize) {
-    logoError.value = t('admin.settings.site.logoSizeError', {
-      size: (file.size / 1024).toFixed(1)
-    REDACTED)
-    input.value = ''
-    return
-  REDACTED
-
-  // Check file type
-  if (!file.type.startsWith('image/')) {
-    logoError.value = t('admin.settings.site.logoTypeError')
-    input.value = ''
-    return
-  REDACTED
-
-  // Convert to base64
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    form.site_logo = e.target?.result as string
-  REDACTED
-  reader.onerror = () => {
-    logoError.value = t('admin.settings.site.logoReadError')
-  REDACTED
-  reader.readAsDataURL(file)
-
-  // Reset input
-  input.value = ''
+function moveMenuItem(index: number, direction: -1 | 1) {
+  const targetIndex = index + direction
+  if (targetIndex < 0 || targetIndex >= form.custom_menu_items.length) return
+  const items = form.custom_menu_items
+  const temp = items[index]
+  items[index] = items[targetIndex]
+  items[targetIndex] = temp
+  // Re-index sort_order
+  items.forEach((item, i) => {
+    item.sort_order = i
+  REDACTED)
 REDACTED
 
 async function loadSettings() {
@@ -1239,6 +1732,18 @@ async function loadSettings() {
   try {
     const settings = await adminAPI.settings.getSettings()
     Object.assign(form, settings)
+    form.default_subscriptions = Array.isArray(settings.default_subscriptions)
+      ? settings.default_subscriptions
+          .filter((item) => item.group_id > 0 && item.validity_days > 0)
+          .map((item) => ({
+            group_id: item.group_id,
+            validity_days: item.validity_days
+          REDACTED))
+      : []
+    registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
+      settings.registration_email_suffix_whitelist
+    )
+    registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
@@ -1251,18 +1756,73 @@ async function loadSettings() {
   REDACTED
 REDACTED
 
+async function loadSubscriptionGroups() {
+  try {
+    const groups = await adminAPI.groups.getAll()
+    subscriptionGroups.value = groups.filter(
+      (group) => group.subscription_type === 'subscription' && group.status === 'active'
+    )
+  REDACTED catch (error) {
+    console.error('Failed to load subscription groups:', error)
+    subscriptionGroups.value = []
+  REDACTED
+REDACTED
+
+function addDefaultSubscription() {
+  if (subscriptionGroups.value.length === 0) return
+  const existing = new Set(form.default_subscriptions.map((item) => item.group_id))
+  const candidate = subscriptionGroups.value.find((group) => !existing.has(group.id))
+  if (!candidate) return
+  form.default_subscriptions.push({
+    group_id: candidate.id,
+    validity_days: 30
+  REDACTED)
+REDACTED
+
+function removeDefaultSubscription(index: number) {
+  form.default_subscriptions.splice(index, 1)
+REDACTED
+
 async function saveSettings() {
   saving.value = true
   try {
+    const normalizedDefaultSubscriptions = form.default_subscriptions
+      .filter((item) => item.group_id > 0 && item.validity_days > 0)
+      .map((item: DefaultSubscriptionSetting) => ({
+        group_id: item.group_id,
+        validity_days: Math.min(36500, Math.max(1, Math.floor(item.validity_days)))
+      REDACTED))
+
+    const seenGroupIDs = new Set<number>()
+    const duplicateDefaultSubscription = normalizedDefaultSubscriptions.find((item) => {
+      if (seenGroupIDs.has(item.group_id)) {
+        return true
+      REDACTED
+      seenGroupIDs.add(item.group_id)
+      return false
+    REDACTED)
+    if (duplicateDefaultSubscription) {
+      appStore.showError(
+        t('admin.settings.defaults.defaultSubscriptionsDuplicate', {
+          groupId: duplicateDefaultSubscription.group_id
+        REDACTED)
+      )
+      return
+    REDACTED
+
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
+      registration_email_suffix_whitelist: registrationEmailSuffixWhitelistTags.value.map(
+        (suffix) => `@${suffixREDACTED`
+      ),
       promo_code_enabled: form.promo_code_enabled,
       invitation_code_enabled: form.invitation_code_enabled,
       password_reset_enabled: form.password_reset_enabled,
       totp_enabled: form.totp_enabled,
       default_balance: form.default_balance,
       default_concurrency: form.default_concurrency,
+      default_subscriptions: normalizedDefaultSubscriptions,
       site_name: form.site_name,
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,
@@ -1273,6 +1833,8 @@ async function saveSettings() {
       hide_ccs_import_button: form.hide_ccs_import_button,
       purchase_subscription_enabled: form.purchase_subscription_enabled,
       purchase_subscription_url: form.purchase_subscription_url,
+      sora_client_enabled: form.sora_client_enabled,
+      custom_menu_items: form.custom_menu_items,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,
@@ -1293,15 +1855,22 @@ async function saveSettings() {
       fallback_model_gemini: form.fallback_model_gemini,
       fallback_model_antigravity: form.fallback_model_antigravity,
       enable_identity_patch: form.enable_identity_patch,
-      identity_patch_prompt: form.identity_patch_prompt
+      identity_patch_prompt: form.identity_patch_prompt,
+      min_claude_code_version: form.min_claude_code_version,
+      allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling
     REDACTED
     const updated = await adminAPI.settings.updateSettings(payload)
     Object.assign(form, updated)
+    registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
+      updated.registration_email_suffix_whitelist
+    )
+    registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
-    // Refresh cached public settings so sidebar/header update immediately
+    // Refresh cached settings so sidebar/header update immediately
     await appStore.fetchPublicSettings(true)
+    await adminSettingsStore.fetch(true)
     appStore.showSuccess(t('admin.settings.settingsSaved'))
   REDACTED catch (error: any) {
     appStore.showError(
@@ -1459,7 +2028,70 @@ REDACTED
 
 onMounted(() => {
   loadSettings()
+  loadSubscriptionGroups()
   loadAdminApiKey()
   loadStreamTimeoutSettings()
 REDACTED)
 </script>
+
+<style scoped>
+.default-sub-group-select :deep(.select-trigger) {
+  @apply h-[42px];
+REDACTED
+
+.default-sub-delete-btn {
+  @apply h-[42px];
+REDACTED
+
+/* ============ Settings Tab Navigation ============ */
+.settings-tabs {
+  @apply inline-flex min-w-full gap-1 rounded-2xl
+         border border-gray-100 bg-white/80 p-1.5 backdrop-blur-sm
+         dark:border-dark-700/50 dark:bg-dark-800/80;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.04), 0 1px 2px rgb(0 0 0 / 0.02);
+REDACTED
+
+@media (min-width: 640px) {
+  .settings-tabs {
+    @apply flex;
+  REDACTED
+REDACTED
+
+.settings-tab {
+  @apply relative flex flex-1 items-center justify-center gap-2
+         whitespace-nowrap rounded-xl px-4 py-2.5
+         text-sm font-medium
+         text-gray-500 dark:text-dark-400
+         transition-all duration-200 ease-out;
+REDACTED
+
+.settings-tab:hover:not(.settings-tab-active) {
+  @apply text-gray-700 dark:text-gray-300;
+  background: rgb(0 0 0 / 0.03);
+REDACTED
+
+:root.dark .settings-tab:hover:not(.settings-tab-active) {
+  background: rgb(255 255 255 / 0.04);
+REDACTED
+
+.settings-tab-active {
+  @apply text-primary-600 dark:text-primary-400;
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.08), rgba(20, 184, 166, 0.03));
+  box-shadow: 0 1px 2px rgba(20, 184, 166, 0.1);
+REDACTED
+
+:root.dark .settings-tab-active {
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.12), rgba(45, 212, 191, 0.05));
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+REDACTED
+
+.settings-tab-icon {
+  @apply flex h-7 w-7 items-center justify-center rounded-lg
+         transition-all duration-200;
+REDACTED
+
+.settings-tab-active .settings-tab-icon {
+  @apply bg-primary-500/15 text-primary-600
+         dark:bg-primary-400/15 dark:text-primary-400;
+REDACTED
+</style>

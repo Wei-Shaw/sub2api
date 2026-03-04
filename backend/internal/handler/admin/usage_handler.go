@@ -1,13 +1,14 @@
 package admin
 
 import (
-	"log"
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -50,6 +51,7 @@ type CreateUsageCleanupTaskRequest struct {
 	AccountID   *int64  `json:"account_id"`
 	GroupID     *int64  `json:"group_id"`
 	Model       *string `json:"model"`
+	RequestType *string `json:"request_type"`
 	Stream      *bool   `json:"stream"`
 	BillingType *int8   `json:"billing_type"`
 	Timezone    string  `json:"timezone"`
@@ -59,6 +61,15 @@ REDACTED
 // GET /api/v1/admin/usage
 func (h *UsageHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
+	exactTotal := false
+	if exactTotalRaw := strings.TrimSpace(c.Query("exact_total")); exactTotalRaw != "" {
+		parsed, err := strconv.ParseBool(exactTotalRaw)
+		if err != nil {
+			response.BadRequest(c, "Invalid exact_total value, use true or false")
+			return
+	REDACTED
+		exactTotal = parsed
+REDACTED
 
 	// Parse filters
 	var userID, apiKeyID, accountID, groupID int64
@@ -100,8 +111,17 @@ REDACTED
 
 	model := c.Query("model")
 
+	var requestType *int16
 	var stream *bool
-	if streamStr := c.Query("stream"); streamStr != "" {
+	if requestTypeStr := strings.TrimSpace(c.Query("request_type")); requestTypeStr != "" {
+		parsed, err := service.ParseUsageRequestType(requestTypeStr)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+	REDACTED
+		value := int16(parsed)
+		requestType = &value
+REDACTED else if streamStr := c.Query("stream"); streamStr != "" {
 		val, err := strconv.ParseBool(streamStr)
 		if err != nil {
 			response.BadRequest(c, "Invalid stream value, use true or false")
@@ -151,10 +171,12 @@ REDACTED
 		AccountID:   accountID,
 		GroupID:     groupID,
 		Model:       model,
+		RequestType: requestType,
 		Stream:      stream,
 		BillingType: billingType,
 		StartTime:   startTime,
 		EndTime:     endTime,
+		ExactTotal:  exactTotal,
 REDACTED
 
 	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
@@ -213,8 +235,17 @@ REDACTED
 
 	model := c.Query("model")
 
+	var requestType *int16
 	var stream *bool
-	if streamStr := c.Query("stream"); streamStr != "" {
+	if requestTypeStr := strings.TrimSpace(c.Query("request_type")); requestTypeStr != "" {
+		parsed, err := service.ParseUsageRequestType(requestTypeStr)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+	REDACTED
+		value := int16(parsed)
+		requestType = &value
+REDACTED else if streamStr := c.Query("stream"); streamStr != "" {
 		val, err := strconv.ParseBool(streamStr)
 		if err != nil {
 			response.BadRequest(c, "Invalid stream value, use true or false")
@@ -277,6 +308,7 @@ REDACTED
 		AccountID:   accountID,
 		GroupID:     groupID,
 		Model:       model,
+		RequestType: requestType,
 		Stream:      stream,
 		BillingType: billingType,
 		StartTime:   &startTime,
@@ -378,11 +410,11 @@ REDACTED
 		operator = subject.UserID
 REDACTED
 	page, pageSize := response.ParsePagination(c)
-	log.Printf("[UsageCleanup] 请求清理任务列表: operator=%d page=%d page_size=%d", operator, page, pageSize)
+	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 请求清理任务列表: operator=%d page=%d page_size=%d", operator, page, pageSize)
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
 	tasks, result, err := h.cleanupService.ListTasks(c.Request.Context(), params)
 	if err != nil {
-		log.Printf("[UsageCleanup] 查询清理任务列表失败: operator=%d page=%d page_size=%d err=%v", operator, page, pageSize, err)
+		logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 查询清理任务列表失败: operator=%d page=%d page_size=%d err=%v", operator, page, pageSize, err)
 		response.ErrorFrom(c, err)
 		return
 REDACTED
@@ -390,7 +422,7 @@ REDACTED
 	for i := range tasks {
 		out = append(out, *dto.UsageCleanupTaskFromService(&tasks[i]))
 REDACTED
-	log.Printf("[UsageCleanup] 返回清理任务列表: operator=%d total=%d items=%d page=%d page_size=%d", operator, result.Total, len(out), page, pageSize)
+	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 返回清理任务列表: operator=%d total=%d items=%d page=%d page_size=%d", operator, result.Total, len(out), page, pageSize)
 	response.Paginated(c, out, result.Total, page, pageSize)
 REDACTED
 
@@ -431,6 +463,19 @@ REDACTED
 REDACTED
 	endTime = endTime.Add(24*time.Hour - time.Nanosecond)
 
+	var requestType *int16
+	stream := req.Stream
+	if req.RequestType != nil {
+		parsed, err := service.ParseUsageRequestType(*req.RequestType)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+	REDACTED
+		value := int16(parsed)
+		requestType = &value
+		stream = nil
+REDACTED
+
 	filters := service.UsageCleanupFilters{
 		StartTime:   startTime,
 		EndTime:     endTime,
@@ -439,7 +484,8 @@ REDACTED
 		AccountID:   req.AccountID,
 		GroupID:     req.GroupID,
 		Model:       req.Model,
-		Stream:      req.Stream,
+		RequestType: requestType,
+		Stream:      stream,
 		BillingType: req.BillingType,
 REDACTED
 
@@ -463,38 +509,50 @@ REDACTED
 	if filters.Model != nil {
 		model = *filters.Model
 REDACTED
-	var stream any
+	var streamValue any
 	if filters.Stream != nil {
-		stream = *filters.Stream
+		streamValue = *filters.Stream
+REDACTED
+	var requestTypeName any
+	if filters.RequestType != nil {
+		requestTypeName = service.RequestTypeFromInt16(*filters.RequestType).String()
 REDACTED
 	var billingType any
 	if filters.BillingType != nil {
 		billingType = *filters.BillingType
 REDACTED
 
-	log.Printf("[UsageCleanup] 请求创建清理任务: operator=%d start=%s end=%s user_id=%v api_key_id=%v account_id=%v group_id=%v model=%v stream=%v billing_type=%v tz=%q",
-		subject.UserID,
-		filters.StartTime.Format(time.RFC3339),
-		filters.EndTime.Format(time.RFC3339),
-		userID,
-		apiKeyID,
-		accountID,
-		groupID,
-		model,
-		stream,
-		billingType,
-		req.Timezone,
-	)
-
-	task, err := h.cleanupService.CreateTask(c.Request.Context(), filters, subject.UserID)
-	if err != nil {
-		log.Printf("[UsageCleanup] 创建清理任务失败: operator=%d err=%v", subject.UserID, err)
-		response.ErrorFrom(c, err)
-		return
+	idempotencyPayload := struct {
+		OperatorID int64                         `json:"operator_id"`
+		Body       CreateUsageCleanupTaskRequest `json:"body"`
+REDACTED{
+		OperatorID: subject.UserID,
+		Body:       req,
 REDACTED
+	executeAdminIdempotentJSON(c, "admin.usage.cleanup_tasks.create", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 请求创建清理任务: operator=%d start=%s end=%s user_id=%v api_key_id=%v account_id=%v group_id=%v model=%v request_type=%v stream=%v billing_type=%v tz=%q",
+			subject.UserID,
+			filters.StartTime.Format(time.RFC3339),
+			filters.EndTime.Format(time.RFC3339),
+			userID,
+			apiKeyID,
+			accountID,
+			groupID,
+			model,
+			requestTypeName,
+			streamValue,
+			billingType,
+			req.Timezone,
+		)
 
-	log.Printf("[UsageCleanup] 清理任务已创建: task=%d operator=%d status=%s", task.ID, subject.UserID, task.Status)
-	response.Success(c, dto.UsageCleanupTaskFromService(task))
+		task, err := h.cleanupService.CreateTask(ctx, filters, subject.UserID)
+		if err != nil {
+			logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 创建清理任务失败: operator=%d err=%v", subject.UserID, err)
+			return nil, err
+	REDACTED
+		logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 清理任务已创建: task=%d operator=%d status=%s", task.ID, subject.UserID, task.Status)
+		return dto.UsageCleanupTaskFromService(task), nil
+REDACTED)
 REDACTED
 
 // CancelCleanupTask handles canceling a usage cleanup task
@@ -515,12 +573,12 @@ REDACTED
 		response.BadRequest(c, "Invalid task id")
 		return
 REDACTED
-	log.Printf("[UsageCleanup] 请求取消清理任务: task=%d operator=%d", taskID, subject.UserID)
+	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 请求取消清理任务: task=%d operator=%d", taskID, subject.UserID)
 	if err := h.cleanupService.CancelTask(c.Request.Context(), taskID, subject.UserID); err != nil {
-		log.Printf("[UsageCleanup] 取消清理任务失败: task=%d operator=%d err=%v", taskID, subject.UserID, err)
+		logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 取消清理任务失败: task=%d operator=%d err=%v", taskID, subject.UserID, err)
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	log.Printf("[UsageCleanup] 清理任务已取消: task=%d operator=%d", taskID, subject.UserID)
+	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 清理任务已取消: task=%d operator=%d", taskID, subject.UserID)
 	response.Success(c, gin.H{"id": taskID, "status": service.UsageCleanupStatusCanceledREDACTED)
 REDACTED

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 // RateLimitService 处理限流和过载状态管理
@@ -31,6 +32,10 @@ type geminiUsageCacheEntry struct {
 	windowStart time.Time
 	cachedAt    time.Time
 	totals      GeminiUsageTotals
+REDACTED
+
+type geminiUsageTotalsBatchProvider interface {
+	GetGeminiUsageTotalsBatch(ctx context.Context, accountIDs []int64, startTime, endTime time.Time) (map[int64]GeminiUsageTotals, error)
 REDACTED
 
 const geminiPrecheckCacheTTL = time.Minute
@@ -141,13 +146,29 @@ REDACTED
 		REDACTED else {
 				slog.Info("oauth_401_force_refresh_set", "account_id", account.ID, "platform", account.Platform)
 		REDACTED
+			// 3. 临时不可调度，替代 SetError（保持 status=active 让刷新服务能拾取）
+			msg := "Authentication failed (401): invalid or expired credentials"
+			if upstreamMsg != "" {
+				msg = "OAuth 401: " + upstreamMsg
+		REDACTED
+			cooldownMinutes := s.cfg.RateLimit.OAuth401CooldownMinutes
+			if cooldownMinutes <= 0 {
+				cooldownMinutes = 10
+		REDACTED
+			until := time.Now().Add(time.Duration(cooldownMinutes) * time.Minute)
+			if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, msg); err != nil {
+				slog.Warn("oauth_401_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
+		REDACTED
+			shouldDisable = true
+	REDACTED else {
+			// 非 OAuth 账号（APIKey）：保持原有 SetError 行为
+			msg := "Authentication failed (401): invalid or expired credentials"
+			if upstreamMsg != "" {
+				msg = "Authentication failed (401): " + upstreamMsg
+		REDACTED
+			s.handleAuthError(ctx, account, msg)
+			shouldDisable = true
 	REDACTED
-		msg := "Authentication failed (401): invalid or expired credentials"
-		if upstreamMsg != "" {
-			msg = "Authentication failed (401): " + upstreamMsg
-	REDACTED
-		s.handleAuthError(ctx, account, msg)
-		shouldDisable = true
 	case 402:
 		// 支付要求：余额不足或计费问题，停止调度
 		msg := "Payment required (402): insufficient balance or billing issue"
@@ -162,6 +183,17 @@ REDACTED
 		if upstreamMsg != "" {
 			msg = "Access forbidden (403): " + upstreamMsg
 	REDACTED
+		logger.LegacyPrintf(
+			"service.ratelimit",
+			"[HandleUpstreamErrorRaw] account_id=%d platform=%s type=%s status=403 request_id=%s cf_ray=%s upstream_msg=%s raw_body=%s",
+			account.ID,
+			account.Platform,
+			account.Type,
+			strings.TrimSpace(headers.Get("x-request-id")),
+			strings.TrimSpace(headers.Get("cf-ray")),
+			upstreamMsg,
+			truncateForLog(responseBody, 1024),
+		)
 		s.handleAuthError(ctx, account, msg)
 		shouldDisable = true
 	case 429:
@@ -225,7 +257,7 @@ REDACTED
 			start := geminiDailyWindowStart(now)
 			totals, ok := s.getGeminiUsageTotals(account.ID, start, now)
 			if !ok {
-				stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID, 0, nil, nil)
+				stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID, 0, nil, nil, nil)
 				if err != nil {
 					return true, err
 			REDACTED
@@ -272,7 +304,7 @@ REDACTED
 
 		if limit > 0 {
 			start := now.Truncate(time.Minute)
-			stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID, 0, nil, nil)
+			stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, now, 0, 0, account.ID, 0, nil, nil, nil)
 			if err != nil {
 				return true, err
 		REDACTED
@@ -300,6 +332,218 @@ REDACTED
 REDACTED
 
 	return true, nil
+REDACTED
+
+// PreCheckUsageBatch performs quota precheck for multiple accounts in one request.
+// Returned map value=false means the account should be skipped.
+func (s *RateLimitService) PreCheckUsageBatch(ctx context.Context, accounts []*Account, requestedModel string) (map[int64]bool, error) {
+	result := make(map[int64]bool, len(accounts))
+	for _, account := range accounts {
+		if account == nil {
+			continue
+	REDACTED
+		result[account.ID] = true
+REDACTED
+
+	if len(accounts) == 0 || requestedModel == "" {
+		return result, nil
+REDACTED
+	if s.usageRepo == nil || s.geminiQuotaService == nil {
+		return result, nil
+REDACTED
+
+	modelClass := geminiModelClassFromName(requestedModel)
+	now := time.Now()
+	dailyStart := geminiDailyWindowStart(now)
+	minuteStart := now.Truncate(time.Minute)
+
+	type quotaAccount struct {
+		account *Account
+		quota   GeminiQuota
+REDACTED
+	quotaAccounts := make([]quotaAccount, 0, len(accounts))
+	for _, account := range accounts {
+		if account == nil || account.Platform != PlatformGemini {
+			continue
+	REDACTED
+		quota, ok := s.geminiQuotaService.QuotaForAccount(ctx, account)
+		if !ok {
+			continue
+	REDACTED
+		quotaAccounts = append(quotaAccounts, quotaAccount{
+			account: account,
+			quota:   quota,
+	REDACTED)
+REDACTED
+	if len(quotaAccounts) == 0 {
+		return result, nil
+REDACTED
+
+	// 1) Daily precheck (cached + batch DB fallback)
+	dailyTotalsByID := make(map[int64]GeminiUsageTotals, len(quotaAccounts))
+	dailyMissIDs := make([]int64, 0, len(quotaAccounts))
+	for _, item := range quotaAccounts {
+		limit := geminiDailyLimit(item.quota, modelClass)
+		if limit <= 0 {
+			continue
+	REDACTED
+		accountID := item.account.ID
+		if totals, ok := s.getGeminiUsageTotals(accountID, dailyStart, now); ok {
+			dailyTotalsByID[accountID] = totals
+			continue
+	REDACTED
+		dailyMissIDs = append(dailyMissIDs, accountID)
+REDACTED
+	if len(dailyMissIDs) > 0 {
+		totalsBatch, err := s.getGeminiUsageTotalsBatch(ctx, dailyMissIDs, dailyStart, now)
+		if err != nil {
+			return result, err
+	REDACTED
+		for _, accountID := range dailyMissIDs {
+			totals := totalsBatch[accountID]
+			dailyTotalsByID[accountID] = totals
+			s.setGeminiUsageTotals(accountID, dailyStart, now, totals)
+	REDACTED
+REDACTED
+	for _, item := range quotaAccounts {
+		limit := geminiDailyLimit(item.quota, modelClass)
+		if limit <= 0 {
+			continue
+	REDACTED
+		accountID := item.account.ID
+		used := geminiUsedRequests(item.quota, modelClass, dailyTotalsByID[accountID], true)
+		if used >= limit {
+			resetAt := geminiDailyResetTime(now)
+			slog.Info("gemini_precheck_daily_quota_reached_batch", "account_id", accountID, "used", used, "limit", limit, "reset_at", resetAt)
+			result[accountID] = false
+	REDACTED
+REDACTED
+
+	// 2) Minute precheck (batch DB)
+	minuteIDs := make([]int64, 0, len(quotaAccounts))
+	for _, item := range quotaAccounts {
+		accountID := item.account.ID
+		if !result[accountID] {
+			continue
+	REDACTED
+		if geminiMinuteLimit(item.quota, modelClass) <= 0 {
+			continue
+	REDACTED
+		minuteIDs = append(minuteIDs, accountID)
+REDACTED
+	if len(minuteIDs) == 0 {
+		return result, nil
+REDACTED
+
+	minuteTotalsByID, err := s.getGeminiUsageTotalsBatch(ctx, minuteIDs, minuteStart, now)
+	if err != nil {
+		return result, err
+REDACTED
+	for _, item := range quotaAccounts {
+		accountID := item.account.ID
+		if !result[accountID] {
+			continue
+	REDACTED
+
+		limit := geminiMinuteLimit(item.quota, modelClass)
+		if limit <= 0 {
+			continue
+	REDACTED
+
+		used := geminiUsedRequests(item.quota, modelClass, minuteTotalsByID[accountID], false)
+		if used >= limit {
+			resetAt := minuteStart.Add(time.Minute)
+			slog.Info("gemini_precheck_minute_quota_reached_batch", "account_id", accountID, "used", used, "limit", limit, "reset_at", resetAt)
+			result[accountID] = false
+	REDACTED
+REDACTED
+
+	return result, nil
+REDACTED
+
+func (s *RateLimitService) getGeminiUsageTotalsBatch(ctx context.Context, accountIDs []int64, start, end time.Time) (map[int64]GeminiUsageTotals, error) {
+	result := make(map[int64]GeminiUsageTotals, len(accountIDs))
+	if len(accountIDs) == 0 {
+		return result, nil
+REDACTED
+
+	ids := make([]int64, 0, len(accountIDs))
+	seen := make(map[int64]struct{REDACTED, len(accountIDs))
+	for _, accountID := range accountIDs {
+		if accountID <= 0 {
+			continue
+	REDACTED
+		if _, ok := seen[accountID]; ok {
+			continue
+	REDACTED
+		seen[accountID] = struct{REDACTED{REDACTED
+		ids = append(ids, accountID)
+REDACTED
+	if len(ids) == 0 {
+		return result, nil
+REDACTED
+
+	if batchReader, ok := s.usageRepo.(geminiUsageTotalsBatchProvider); ok {
+		stats, err := batchReader.GetGeminiUsageTotalsBatch(ctx, ids, start, end)
+		if err != nil {
+			return nil, err
+	REDACTED
+		for _, accountID := range ids {
+			result[accountID] = stats[accountID]
+	REDACTED
+		return result, nil
+REDACTED
+
+	for _, accountID := range ids {
+		stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, start, end, 0, 0, accountID, 0, nil, nil, nil)
+		if err != nil {
+			return nil, err
+	REDACTED
+		result[accountID] = geminiAggregateUsage(stats)
+REDACTED
+	return result, nil
+REDACTED
+
+func geminiDailyLimit(quota GeminiQuota, modelClass geminiModelClass) int64 {
+	if quota.SharedRPD > 0 {
+		return quota.SharedRPD
+REDACTED
+	switch modelClass {
+	case geminiModelFlash:
+		return quota.FlashRPD
+	default:
+		return quota.ProRPD
+REDACTED
+REDACTED
+
+func geminiMinuteLimit(quota GeminiQuota, modelClass geminiModelClass) int64 {
+	if quota.SharedRPM > 0 {
+		return quota.SharedRPM
+REDACTED
+	switch modelClass {
+	case geminiModelFlash:
+		return quota.FlashRPM
+	default:
+		return quota.ProRPM
+REDACTED
+REDACTED
+
+func geminiUsedRequests(quota GeminiQuota, modelClass geminiModelClass, totals GeminiUsageTotals, daily bool) int64 {
+	if daily {
+		if quota.SharedRPD > 0 {
+			return totals.ProRequests + totals.FlashRequests
+	REDACTED
+REDACTED else {
+		if quota.SharedRPM > 0 {
+			return totals.ProRequests + totals.FlashRequests
+	REDACTED
+REDACTED
+	switch modelClass {
+	case geminiModelFlash:
+		return totals.FlashRequests
+	default:
+		return totals.ProRequests
+REDACTED
 REDACTED
 
 func (s *RateLimitService) getGeminiUsageTotals(accountID int64, windowStart, now time.Time) (GeminiUsageTotals, bool) {
@@ -381,10 +625,31 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	REDACTED
 REDACTED
 
-	// 2. 尝试从响应头解析重置时间（Anthropic）
+	// 2. Anthropic 平台：尝试解析 per-window 头（5h / 7d），选择实际触发的窗口
+	if result := calculateAnthropic429ResetTime(headers); result != nil {
+		if err := s.accountRepo.SetRateLimited(ctx, account.ID, result.resetAt); err != nil {
+			slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
+			return
+	REDACTED
+
+		// 更新 session window：优先使用 5h-reset 头精确计算，否则从 resetAt 反推
+		windowEnd := result.resetAt
+		if result.fiveHourReset != nil {
+			windowEnd = *result.fiveHourReset
+	REDACTED
+		windowStart := windowEnd.Add(-5 * time.Hour)
+		if err := s.accountRepo.UpdateSessionWindow(ctx, account.ID, &windowStart, &windowEnd, "rejected"); err != nil {
+			slog.Warn("rate_limit_update_session_window_failed", "account_id", account.ID, "error", err)
+	REDACTED
+
+		slog.Info("anthropic_account_rate_limited", "account_id", account.ID, "reset_at", result.resetAt, "reset_in", time.Until(result.resetAt).Truncate(time.Second))
+		return
+REDACTED
+
+	// 3. 尝试从响应头解析重置时间（Anthropic 聚合头，向后兼容）
 	resetTimestamp := headers.Get("anthropic-ratelimit-unified-reset")
 
-	// 3. 如果响应头没有，尝试从响应体解析（OpenAI usage_limit_reached, Gemini）
+	// 4. 如果响应头没有，尝试从响应体解析（OpenAI usage_limit_reached, Gemini）
 	if resetTimestamp == "" {
 		switch account.Platform {
 		case PlatformOpenAI:
@@ -411,7 +676,17 @@ REDACTED
 		REDACTED
 	REDACTED
 
-		// 没有重置时间，使用默认5分钟
+		// Anthropic 平台：没有限流重置时间的 429 可能是非真实限流（如 Extra usage required），
+		// 不标记账号限流状态，直接透传错误给客户端
+		if account.Platform == PlatformAnthropic {
+			slog.Warn("rate_limit_429_no_reset_time_skipped",
+				"account_id", account.ID,
+				"platform", account.Platform,
+				"reason", "no rate limit reset time in headers, likely not a real rate limit")
+			return
+	REDACTED
+
+		// 其他平台：没有重置时间，使用默认5分钟
 		resetAt := time.Now().Add(5 * time.Minute)
 		slog.Warn("rate_limit_no_reset_time", "account_id", account.ID, "platform", account.Platform, "using_default", "5m")
 		if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
@@ -495,6 +770,112 @@ REDACTED
 REDACTED
 
 	return nil
+REDACTED
+
+// anthropic429Result holds the parsed Anthropic 429 rate-limit information.
+type anthropic429Result struct {
+	resetAt       time.Time  // The correct reset time to use for SetRateLimited
+	fiveHourReset *time.Time // 5h window reset timestamp (for session window calculation), nil if not available
+REDACTED
+
+// calculateAnthropic429ResetTime parses Anthropic's per-window rate-limit headers
+// to determine which window (5h or 7d) actually triggered the 429.
+//
+// Headers used:
+//   - anthropic-ratelimit-unified-5h-utilization / anthropic-ratelimit-unified-5h-surpassed-threshold
+//   - anthropic-ratelimit-unified-5h-reset
+//   - anthropic-ratelimit-unified-7d-utilization / anthropic-ratelimit-unified-7d-surpassed-threshold
+//   - anthropic-ratelimit-unified-7d-reset
+//
+// Returns nil when the per-window headers are absent (caller should fall back to
+// the aggregated anthropic-ratelimit-unified-reset header).
+func calculateAnthropic429ResetTime(headers http.Header) *anthropic429Result {
+	reset5hStr := headers.Get("anthropic-ratelimit-unified-5h-reset")
+	reset7dStr := headers.Get("anthropic-ratelimit-unified-7d-reset")
+
+	if reset5hStr == "" && reset7dStr == "" {
+		return nil
+REDACTED
+
+	var reset5h, reset7d *time.Time
+	if ts, err := strconv.ParseInt(reset5hStr, 10, 64); err == nil {
+		t := time.Unix(ts, 0)
+		reset5h = &t
+REDACTED
+	if ts, err := strconv.ParseInt(reset7dStr, 10, 64); err == nil {
+		t := time.Unix(ts, 0)
+		reset7d = &t
+REDACTED
+
+	is5hExceeded := isAnthropicWindowExceeded(headers, "5h")
+	is7dExceeded := isAnthropicWindowExceeded(headers, "7d")
+
+	slog.Info("anthropic_429_window_analysis",
+		"is_5h_exceeded", is5hExceeded,
+		"is_7d_exceeded", is7dExceeded,
+		"reset_5h", reset5hStr,
+		"reset_7d", reset7dStr,
+	)
+
+	// Select the correct reset time based on which window(s) are exceeded.
+	var chosen *time.Time
+	switch {
+	case is5hExceeded && is7dExceeded:
+		// Both exceeded → prefer 7d (longer cooldown), fall back to 5h
+		chosen = reset7d
+		if chosen == nil {
+			chosen = reset5h
+	REDACTED
+	case is5hExceeded:
+		chosen = reset5h
+	case is7dExceeded:
+		chosen = reset7d
+	default:
+		// Neither flag clearly exceeded — pick the sooner reset as best guess
+		chosen = pickSooner(reset5h, reset7d)
+REDACTED
+
+	if chosen == nil {
+		return nil
+REDACTED
+	return &anthropic429Result{resetAt: *chosen, fiveHourReset: reset5hREDACTED
+REDACTED
+
+// isAnthropicWindowExceeded checks whether a given Anthropic rate-limit window
+// (e.g. "5h" or "7d") has been exceeded, using utilization and surpassed-threshold headers.
+func isAnthropicWindowExceeded(headers http.Header, window string) bool {
+	prefix := "anthropic-ratelimit-unified-" + window + "-"
+
+	// Check surpassed-threshold first (most explicit signal)
+	if st := headers.Get(prefix + "surpassed-threshold"); strings.EqualFold(st, "true") {
+		return true
+REDACTED
+
+	// Fall back to utilization >= 1.0
+	if utilStr := headers.Get(prefix + "utilization"); utilStr != "" {
+		if util, err := strconv.ParseFloat(utilStr, 64); err == nil && util >= 1.0-1e-9 {
+			// Use a small epsilon to handle floating point: treat 0.9999999... as >= 1.0
+			return true
+	REDACTED
+REDACTED
+
+	return false
+REDACTED
+
+// pickSooner returns whichever of the two time pointers is earlier.
+// If only one is non-nil, it is returned. If both are nil, returns nil.
+func pickSooner(a, b *time.Time) *time.Time {
+	switch {
+	case a != nil && b != nil:
+		if a.Before(*b) {
+			return a
+	REDACTED
+		return b
+	case a != nil:
+		return a
+	default:
+		return b
+REDACTED
 REDACTED
 
 // parseOpenAIRateLimitResetTime 解析 OpenAI 格式的 429 响应，返回重置时间的 Unix 时间戳
@@ -611,7 +992,19 @@ REDACTED
 	if err := s.accountRepo.ClearAntigravityQuotaScopes(ctx, accountID); err != nil {
 		return err
 REDACTED
-	return s.accountRepo.ClearModelRateLimits(ctx, accountID)
+	if err := s.accountRepo.ClearModelRateLimits(ctx, accountID); err != nil {
+		return err
+REDACTED
+	// 清除限流时一并清理临时不可调度状态，避免周限/窗口重置后仍被本地临时状态阻断。
+	if err := s.accountRepo.ClearTempUnschedulable(ctx, accountID); err != nil {
+		return err
+REDACTED
+	if s.tempUnschedCache != nil {
+		if err := s.tempUnschedCache.DeleteTempUnsched(ctx, accountID); err != nil {
+			slog.Warn("temp_unsched_cache_delete_failed", "account_id", accountID, "error", err)
+	REDACTED
+REDACTED
+	return nil
 REDACTED
 
 func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID int64) error {

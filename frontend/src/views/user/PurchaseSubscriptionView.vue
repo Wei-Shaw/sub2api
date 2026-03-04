@@ -1,30 +1,6 @@
 <template>
   <AppLayout>
     <div class="purchase-page-layout">
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ t('purchase.title') REDACTEDREDACTED
-          </h2>
-          <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
-            {{ t('purchase.description') REDACTEDREDACTED
-          </p>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <a
-            v-if="isValidUrl"
-            :href="purchaseUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="btn btn-secondary btn-sm"
-          >
-            <Icon name="externalLink" size="sm" class="mr-1.5" :stroke-width="2" />
-            {{ t('purchase.openInNewTab') REDACTEDREDACTED
-          </a>
-        </div>
-      </div>
-
       <div class="card flex-1 min-h-0 overflow-hidden">
         <div v-if="loading" class="flex h-full items-center justify-center py-12">
           <div
@@ -70,30 +46,51 @@
           </div>
         </div>
 
-        <iframe v-else :src="purchaseUrl" class="h-full w-full border-0" allowfullscreen></iframe>
+        <div v-else class="purchase-embed-shell">
+          <a
+            :href="purchaseUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-secondary btn-sm purchase-open-fab"
+          >
+            <Icon name="externalLink" size="sm" class="mr-1.5" :stroke-width="2" />
+            {{ t('purchase.openInNewTab') REDACTEDREDACTED
+          </a>
+          <iframe
+            :src="purchaseUrl"
+            class="purchase-embed-frame"
+            allowfullscreen
+          ></iframe>
+        </div>
       </div>
     </div>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref REDACTED from 'vue'
+import { computed, onMounted, onUnmounted, ref REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores'
+import { useAuthStore REDACTED from '@/stores/auth'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { buildEmbeddedUrl, detectTheme REDACTED from '@/utils/embedded-url'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const loading = ref(false)
+const purchaseTheme = ref<'light' | 'dark'>('light')
+let themeObserver: MutationObserver | null = null
 
 const purchaseEnabled = computed(() => {
   return appStore.cachedPublicSettings?.purchase_subscription_enabled ?? false
 REDACTED)
 
 const purchaseUrl = computed(() => {
-  return (appStore.cachedPublicSettings?.purchase_subscription_url || '').trim()
+  const baseUrl = (appStore.cachedPublicSettings?.purchase_subscription_url || '').trim()
+  return buildEmbeddedUrl(baseUrl, authStore.user?.id, authStore.token, purchaseTheme.value)
 REDACTED)
 
 const isValidUrl = computed(() => {
@@ -102,6 +99,18 @@ const isValidUrl = computed(() => {
 REDACTED)
 
 onMounted(async () => {
+  purchaseTheme.value = detectTheme()
+
+  if (typeof document !== 'undefined') {
+    themeObserver = new MutationObserver(() => {
+      purchaseTheme.value = detectTheme()
+    REDACTED)
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    REDACTED)
+  REDACTED
+
   if (appStore.publicSettingsLoaded) return
   loading.value = true
   try {
@@ -110,12 +119,41 @@ onMounted(async () => {
     loading.value = false
   REDACTED
 REDACTED)
+
+onUnmounted(() => {
+  if (themeObserver) {
+    themeObserver.disconnect()
+    themeObserver = null
+  REDACTED
+REDACTED)
 </script>
 
 <style scoped>
 .purchase-page-layout {
-  @apply flex flex-col gap-6;
-  height: calc(100vh - 64px - 4rem); /* 减去 header + lg:p-8 的上下padding */
+  @apply flex flex-col;
+  height: calc(100vh - 64px - 4rem);
+REDACTED
+
+.purchase-embed-shell {
+  @apply relative;
+  @apply h-full w-full overflow-hidden rounded-2xl;
+  @apply bg-gradient-to-b from-gray-50 to-white dark:from-dark-900 dark:to-dark-950;
+  @apply p-0;
+REDACTED
+
+.purchase-open-fab {
+  @apply absolute right-3 top-3 z-10;
+  @apply shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80;
+REDACTED
+
+.purchase-embed-frame {
+  display: block;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
 REDACTED
 </style>
-

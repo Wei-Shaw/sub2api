@@ -1,7 +1,11 @@
+//go:build unit
+
 package service
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -433,4 +437,342 @@ REDACTED`)
 	require.Equal(t, "text", content1["type"])
 	require.Contains(t, content0["text"], "tool_use")
 	require.Contains(t, content1["text"], "tool_result")
+REDACTED
+
+// ============ Group 7: ParseGatewayRequest 补充单元测试 ============
+
+// Task 7.1 — 类型校验边界测试
+func TestParseGatewayRequest_TypeValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		wantErr   bool
+		errSubstr string // 期望的错误信息子串（为空则不检查）
+REDACTED{
+		{
+			name:      "model 为 int",
+			body:      `{"model":123REDACTED`,
+			wantErr:   true,
+			errSubstr: "invalid model field type",
+	REDACTED,
+		{
+			name:      "model 为 array",
+			body:      `{"model":[]REDACTED`,
+			wantErr:   true,
+			errSubstr: "invalid model field type",
+	REDACTED,
+		{
+			name:      "model 为 bool",
+			body:      `{"model":trueREDACTED`,
+			wantErr:   true,
+			errSubstr: "invalid model field type",
+	REDACTED,
+		{
+			name:      "model 为 null — gjson Null 类型触发类型校验错误",
+			body:      `{"model":nullREDACTED`,
+			wantErr:   true, // gjson: Exists()=true, Type=Null != String → 返回错误
+			errSubstr: "invalid model field type",
+	REDACTED,
+		{
+			name:      "stream 为 string",
+			body:      `{"stream":"true"REDACTED`,
+			wantErr:   true,
+			errSubstr: "invalid stream field type",
+	REDACTED,
+		{
+			name:      "stream 为 int",
+			body:      `{"stream":1REDACTED`,
+			wantErr:   true,
+			errSubstr: "invalid stream field type",
+	REDACTED,
+		{
+			name:      "stream 为 null — gjson Null 类型触发类型校验错误",
+			body:      `{"stream":nullREDACTED`,
+			wantErr:   true, // gjson: Exists()=true, Type=Null != True && != False → 返回错误
+			errSubstr: "invalid stream field type",
+	REDACTED,
+		{
+			name:      "model 为 object",
+			body:      `{"model":{REDACTEDREDACTED`,
+			wantErr:   true,
+			errSubstr: "invalid model field type",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseGatewayRequest([]byte(tt.body), "")
+			if tt.wantErr {
+			REDACTED
+				if tt.errSubstr != "" {
+					require.Contains(t, err.Error(), tt.errSubstr)
+			REDACTED
+		REDACTED else {
+			REDACTED
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+// Task 7.2 — 可选字段缺失测试
+func TestParseGatewayRequest_OptionalFieldsMissing(t *testing.T) {
+	tests := []struct {
+		name            string
+		body            string
+		wantModel       string
+		wantStream      bool
+		wantMetadataUID string
+		wantHasSystem   bool
+		wantThinking    bool
+		wantMaxTokens   int
+		wantMessagesNil bool
+		wantMessagesLen int
+REDACTED{
+		{
+			name:            "完全空 JSON — 所有字段零值",
+			body:            `{REDACTED`,
+			wantModel:       "",
+			wantStream:      false,
+			wantMetadataUID: "",
+			wantHasSystem:   false,
+			wantThinking:    false,
+			wantMaxTokens:   0,
+			wantMessagesNil: true,
+	REDACTED,
+		{
+			name:            "metadata 无 user_id",
+			body:            `{"model":"test"REDACTED`,
+			wantModel:       "test",
+			wantMetadataUID: "",
+			wantHasSystem:   false,
+			wantThinking:    false,
+	REDACTED,
+		{
+			name:         "thinking 非 enabled（type=disabled）",
+			body:         `{"model":"test","thinking":{"type":"disabled"REDACTEDREDACTED`,
+			wantModel:    "test",
+			wantThinking: false,
+	REDACTED,
+		{
+			name:         "thinking 字段缺失",
+			body:         `{"model":"test"REDACTED`,
+			wantModel:    "test",
+			wantThinking: false,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, err := ParseGatewayRequest([]byte(tt.body), "")
+		REDACTED
+
+			require.Equal(t, tt.wantModel, parsed.Model)
+			require.Equal(t, tt.wantStream, parsed.Stream)
+			require.Equal(t, tt.wantMetadataUID, parsed.MetadataUserID)
+			require.Equal(t, tt.wantHasSystem, parsed.HasSystem)
+			require.Equal(t, tt.wantThinking, parsed.ThinkingEnabled)
+			require.Equal(t, tt.wantMaxTokens, parsed.MaxTokens)
+
+			if tt.wantMessagesNil {
+				require.Nil(t, parsed.Messages)
+		REDACTED
+			if tt.wantMessagesLen > 0 {
+				require.Len(t, parsed.Messages, tt.wantMessagesLen)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+// Task 7.3 — Gemini 协议分支测试
+// 已有测试覆盖：
+// - TestParseGatewayRequest_GeminiSystemInstruction: 正常 systemInstruction+contents
+// - TestParseGatewayRequest_GeminiNoContents: 缺失 contents
+// - TestParseGatewayRequest_GeminiContents: 正常 contents（无 systemInstruction）
+// 因此跳过。
+
+// Task 7.4 — max_tokens 边界测试
+func TestParseGatewayRequest_MaxTokensBoundary(t *testing.T) {
+	tests := []struct {
+		name          string
+		body          string
+		wantMaxTokens int
+		wantErr       bool
+REDACTED{
+		{
+			name:          "正常整数",
+			body:          `{"max_tokens":1024REDACTED`,
+			wantMaxTokens: 1024,
+	REDACTED,
+		{
+			name:          "浮点数（非整数）被忽略",
+			body:          `{"max_tokens":10.5REDACTED`,
+			wantMaxTokens: 0,
+	REDACTED,
+		{
+			name:          "负整数可以通过",
+			body:          `{"max_tokens":-1REDACTED`,
+			wantMaxTokens: -1,
+	REDACTED,
+		{
+			name:          "超大值不 panic",
+			body:          `{"max_tokens":9999999999999999REDACTED`,
+			wantMaxTokens: 10000000000000000, // float64 精度导致 9999999999999999 → 1e16
+	REDACTED,
+		{
+			name:          "null 值被忽略",
+			body:          `{"max_tokens":nullREDACTED`,
+			wantMaxTokens: 0, // gjson Type=Null != Number → 条件不满足，跳过
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, err := ParseGatewayRequest([]byte(tt.body), "")
+			if tt.wantErr {
+			REDACTED
+				return
+		REDACTED
+		REDACTED
+			require.Equal(t, tt.wantMaxTokens, parsed.MaxTokens)
+	REDACTED)
+REDACTED
+REDACTED
+
+// ============ Task 7.5: Benchmark 测试 ============
+
+// parseGatewayRequestOld 是基于完整 json.Unmarshal 的旧实现，用于 benchmark 对比基线。
+// 核心路径：先 Unmarshal 到 map[string]any，再逐字段提取。
+func parseGatewayRequestOld(body []byte, protocol string) (*ParsedRequest, error) {
+	parsed := &ParsedRequest{
+		Body: body,
+REDACTED
+
+	var req map[string]any
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil, err
+REDACTED
+
+	// model
+	if raw, ok := req["model"]; ok {
+		s, ok := raw.(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid model field type")
+	REDACTED
+		parsed.Model = s
+REDACTED
+
+	// stream
+	if raw, ok := req["stream"]; ok {
+		b, ok := raw.(bool)
+		if !ok {
+			return nil, fmt.Errorf("invalid stream field type")
+	REDACTED
+		parsed.Stream = b
+REDACTED
+
+	// metadata.user_id
+	if meta, ok := req["metadata"].(map[string]any); ok {
+		if uid, ok := meta["user_id"].(string); ok {
+			parsed.MetadataUserID = uid
+	REDACTED
+REDACTED
+
+	// thinking.type
+	if thinking, ok := req["thinking"].(map[string]any); ok {
+		if thinkType, ok := thinking["type"].(string); ok && thinkType == "enabled" {
+			parsed.ThinkingEnabled = true
+	REDACTED
+REDACTED
+
+	// max_tokens
+	if raw, ok := req["max_tokens"]; ok {
+		if n, ok := parseIntegralNumber(raw); ok {
+			parsed.MaxTokens = n
+	REDACTED
+REDACTED
+
+	// system / messages（按协议分支）
+	switch protocol {
+	case domain.PlatformGemini:
+		if sysInst, ok := req["systemInstruction"].(map[string]any); ok {
+			if parts, ok := sysInst["parts"].([]any); ok {
+				parsed.System = parts
+		REDACTED
+	REDACTED
+		if contents, ok := req["contents"].([]any); ok {
+			parsed.Messages = contents
+	REDACTED
+	default:
+		if system, ok := req["system"]; ok {
+			parsed.HasSystem = true
+			parsed.System = system
+	REDACTED
+		if messages, ok := req["messages"].([]any); ok {
+			parsed.Messages = messages
+	REDACTED
+REDACTED
+
+	return parsed, nil
+REDACTED
+
+// buildSmallJSON 构建 ~500B 的小型测试 JSON
+func buildSmallJSON() []byte {
+	return []byte(`{"model":"claude-sonnet-4-5","stream":true,"max_tokens":4096,"metadata":{"user_id":"user-abc123"REDACTED,"thinking":{"type":"enabled","budget_tokens":2048REDACTED,"system":"You are a helpful assistant.","messages":[{"role":"user","content":"What is the meaning of life?"REDACTED,{"role":"assistant","content":"The meaning of life is a philosophical question."REDACTED,{"role":"user","content":"Can you elaborate?"REDACTED]REDACTED`)
+REDACTED
+
+// buildLargeJSON 构建 ~50KB 的大型测试 JSON（大量 messages）
+func buildLargeJSON() []byte {
+	var b strings.Builder
+	b.WriteString(`{"model":"claude-sonnet-4-5","stream":true,"max_tokens":8192,"metadata":{"user_id":"user-xyz789"REDACTED,"system":[{"type":"text","text":"You are a detailed assistant.","cache_control":{"type":"ephemeral"REDACTEDREDACTED],"messages":[`)
+
+	msgCount := 200
+	for i := 0; i < msgCount; i++ {
+		if i > 0 {
+			b.WriteByte(',')
+	REDACTED
+		if i%2 == 0 {
+			b.WriteString(fmt.Sprintf(`{"role":"user","content":"This is user message number %d with some extra padding text to make the message reasonably long for benchmarking purposes. Lorem ipsum dolor sit amet."REDACTED`, i))
+	REDACTED else {
+			b.WriteString(fmt.Sprintf(`{"role":"assistant","content":[{"type":"text","text":"This is assistant response number %d. I will provide a detailed answer with multiple sentences to simulate real conversation content for benchmark testing."REDACTED]REDACTED`, i))
+	REDACTED
+REDACTED
+
+	b.WriteString(`]REDACTED`)
+	return []byte(b.String())
+REDACTED
+
+func BenchmarkParseGatewayRequest_Old_Small(b *testing.B) {
+	data := buildSmallJSON()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = parseGatewayRequestOld(data, "")
+REDACTED
+REDACTED
+
+func BenchmarkParseGatewayRequest_New_Small(b *testing.B) {
+	data := buildSmallJSON()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = ParseGatewayRequest(data, "")
+REDACTED
+REDACTED
+
+func BenchmarkParseGatewayRequest_Old_Large(b *testing.B) {
+	data := buildLargeJSON()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = parseGatewayRequestOld(data, "")
+REDACTED
+REDACTED
+
+func BenchmarkParseGatewayRequest_New_Large(b *testing.B) {
+	data := buildLargeJSON()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = ParseGatewayRequest(data, "")
+REDACTED
 REDACTED

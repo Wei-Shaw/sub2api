@@ -8,8 +8,10 @@ import type {
   DashboardStats,
   TrendDataPoint,
   ModelStat,
+  GroupStat,
   ApiKeyUsageTrendPoint,
-  UserUsageTrendPoint
+  UserUsageTrendPoint,
+  UsageRequestType
 REDACTED from '@/types'
 
 /**
@@ -49,6 +51,7 @@ export interface TrendParams {
   model?: string
   account_id?: number
   group_id?: number
+  request_type?: UsageRequestType
   stream?: boolean
   billing_type?: number | null
 REDACTED
@@ -78,6 +81,7 @@ export interface ModelStatsParams {
   model?: string
   account_id?: number
   group_id?: number
+  request_type?: UsageRequestType
   stream?: boolean
   billing_type?: number | null
 REDACTED
@@ -95,6 +99,69 @@ REDACTED
  */
 export async function getModelStats(params?: ModelStatsParams): Promise<ModelStatsResponse> {
   const { data REDACTED = await apiClient.get<ModelStatsResponse>('/admin/dashboard/models', { params REDACTED)
+  return data
+REDACTED
+
+export interface GroupStatsParams {
+  start_date?: string
+  end_date?: string
+  user_id?: number
+  api_key_id?: number
+  account_id?: number
+  group_id?: number
+  request_type?: UsageRequestType
+  stream?: boolean
+  billing_type?: number | null
+REDACTED
+
+export interface GroupStatsResponse {
+  groups: GroupStat[]
+  start_date: string
+  end_date: string
+REDACTED
+
+export interface DashboardSnapshotV2Params extends TrendParams {
+  include_stats?: boolean
+  include_trend?: boolean
+  include_model_stats?: boolean
+  include_group_stats?: boolean
+  include_users_trend?: boolean
+  users_trend_limit?: number
+REDACTED
+
+export interface DashboardSnapshotV2Stats extends DashboardStats {
+  uptime: number
+REDACTED
+
+export interface DashboardSnapshotV2Response {
+  generated_at: string
+  start_date: string
+  end_date: string
+  granularity: string
+  stats?: DashboardSnapshotV2Stats
+  trend?: TrendDataPoint[]
+  models?: ModelStat[]
+  groups?: GroupStat[]
+  users_trend?: UserUsageTrendPoint[]
+REDACTED
+
+/**
+ * Get group usage statistics
+ * @param params - Query parameters for filtering
+ * @returns Group usage statistics
+ */
+export async function getGroupStats(params?: GroupStatsParams): Promise<GroupStatsResponse> {
+  const { data REDACTED = await apiClient.get<GroupStatsResponse>('/admin/dashboard/groups', { params REDACTED)
+  return data
+REDACTED
+
+/**
+ * Get dashboard snapshot v2 (aggregated response for heavy admin pages).
+ */
+export async function getSnapshotV2(params?: DashboardSnapshotV2Params): Promise<DashboardSnapshotV2Response> {
+  const { data REDACTED = await apiClient.get<DashboardSnapshotV2Response>('/admin/dashboard/snapshot-v2', {
+    params
+  REDACTED)
   return data
 REDACTED
 
@@ -200,6 +267,8 @@ export const dashboardAPI = {
   getRealtimeMetrics,
   getUsageTrend,
   getModelStats,
+  getGroupStats,
+  getSnapshotV2,
   getApiKeyUsageTrend,
   getUserUsageTrend,
   getBatchUsersUsage,

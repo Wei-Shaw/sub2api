@@ -10,7 +10,13 @@ const (
 	BetaInterleavedThinking      = "REDACTED"
 	BetaFineGrainedToolStreaming = "fine-grained-tool-streaming-2025-05-14"
 	BetaTokenCounting            = "token-counting-2024-11-01"
+	BetaContext1M                = "context-1m-2025-08-07"
+	BetaFastMode                 = "fast-mode-2026-02-01"
 )
+
+// DroppedBetas 是转发时需要从 anthropic-beta header 中移除的 beta token 列表。
+// 这些 token 是客户端特有的，不应透传给上游 API。
+var DroppedBetas = []string{BetaContext1M, BetaFastModeREDACTED
 
 // DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
 const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
@@ -76,6 +82,12 @@ REDACTED,
 		Type:        "model",
 		DisplayName: "Claude Opus 4.6",
 		CreatedAt:   "2026-02-06T00:00:00Z",
+REDACTED,
+	{
+		ID:          "claude-sonnet-4-6",
+		Type:        "model",
+		DisplayName: "Claude Sonnet 4.6",
+		CreatedAt:   "2026-02-18T00:00:00Z",
 REDACTED,
 	{
 		ID:          "claude-sonnet-4-5-20250929",

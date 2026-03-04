@@ -200,6 +200,16 @@ func ImageSize(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldImageSize, v))
 REDACTED
 
+// MediaType applies equality check predicate on the "media_type" field. It's identical to MediaTypeEQ.
+func MediaType(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldMediaType, v))
+REDACTED
+
+// CacheTTLOverridden applies equality check predicate on the "cache_ttl_overridden" field. It's identical to CacheTTLOverriddenEQ.
+func CacheTTLOverridden(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheTTLOverridden, v))
+REDACTED
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCreatedAt, v))
@@ -1438,6 +1448,91 @@ REDACTED
 // ImageSizeContainsFold applies the ContainsFold predicate on the "image_size" field.
 func ImageSizeContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldImageSize, v))
+REDACTED
+
+// MediaTypeEQ applies the EQ predicate on the "media_type" field.
+func MediaTypeEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldMediaType, v))
+REDACTED
+
+// MediaTypeNEQ applies the NEQ predicate on the "media_type" field.
+func MediaTypeNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldMediaType, v))
+REDACTED
+
+// MediaTypeIn applies the In predicate on the "media_type" field.
+func MediaTypeIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldMediaType, vs...))
+REDACTED
+
+// MediaTypeNotIn applies the NotIn predicate on the "media_type" field.
+func MediaTypeNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldMediaType, vs...))
+REDACTED
+
+// MediaTypeGT applies the GT predicate on the "media_type" field.
+func MediaTypeGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldMediaType, v))
+REDACTED
+
+// MediaTypeGTE applies the GTE predicate on the "media_type" field.
+func MediaTypeGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldMediaType, v))
+REDACTED
+
+// MediaTypeLT applies the LT predicate on the "media_type" field.
+func MediaTypeLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldMediaType, v))
+REDACTED
+
+// MediaTypeLTE applies the LTE predicate on the "media_type" field.
+func MediaTypeLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldMediaType, v))
+REDACTED
+
+// MediaTypeContains applies the Contains predicate on the "media_type" field.
+func MediaTypeContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldMediaType, v))
+REDACTED
+
+// MediaTypeHasPrefix applies the HasPrefix predicate on the "media_type" field.
+func MediaTypeHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldMediaType, v))
+REDACTED
+
+// MediaTypeHasSuffix applies the HasSuffix predicate on the "media_type" field.
+func MediaTypeHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldMediaType, v))
+REDACTED
+
+// MediaTypeIsNil applies the IsNil predicate on the "media_type" field.
+func MediaTypeIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldMediaType))
+REDACTED
+
+// MediaTypeNotNil applies the NotNil predicate on the "media_type" field.
+func MediaTypeNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldMediaType))
+REDACTED
+
+// MediaTypeEqualFold applies the EqualFold predicate on the "media_type" field.
+func MediaTypeEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldMediaType, v))
+REDACTED
+
+// MediaTypeContainsFold applies the ContainsFold predicate on the "media_type" field.
+func MediaTypeContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldMediaType, v))
+REDACTED
+
+// CacheTTLOverriddenEQ applies the EQ predicate on the "cache_ttl_overridden" field.
+func CacheTTLOverriddenEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldCacheTTLOverridden, v))
+REDACTED
+
+// CacheTTLOverriddenNEQ applies the NEQ predicate on the "cache_ttl_overridden" field.
+func CacheTTLOverriddenNEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldCacheTTLOverridden, v))
 REDACTED
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -246,7 +246,10 @@
               {{ t('admin.dashboard.recentUsage') REDACTEDREDACTED (Top 12)
             </h3>
             <div class="h-64">
-              <Line v-if="userTrendChartData" :data="userTrendChartData" :options="lineOptions" />
+              <div v-if="userTrendLoading" class="flex h-full items-center justify-center">
+                <LoadingSpinner size="md" />
+              </div>
+              <Line v-else-if="userTrendChartData" :data="userTrendChartData" :options="lineOptions" />
               <div
                 v-else
                 class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400"
@@ -306,11 +309,14 @@ const appStore = useAppStore()
 const stats = ref<DashboardStats | null>(null)
 const loading = ref(false)
 const chartsLoading = ref(false)
+const userTrendLoading = ref(false)
 
 // Chart data
 const trendData = ref<TrendDataPoint[]>([])
 const modelStats = ref<ModelStat[]>([])
 const userTrend = ref<UserUsageTrendPoint[]>([])
+let chartLoadSeq = 0
+let usersTrendLoadSeq = 0
 
 // Helper function to format date in local timezone
 const formatLocalDate = (date: Date): string => {
@@ -366,6 +372,11 @@ const lineOptions = computed(() => ({
       REDACTED
     REDACTED,
     tooltip: {
+      itemSort: (a: any, b: any) => {
+        const aValue = typeof a?.raw === 'number' ? a.raw : Number(a?.parsed?.y ?? 0)
+        const bValue = typeof b?.raw === 'number' ? b.raw : Number(b?.parsed?.y ?? 0)
+        return bValue - aValue
+      REDACTED,
       callbacks: {
         label: (context: any) => {
           return `${context.dataset.labelREDACTED: ${formatTokens(context.raw)REDACTED`
@@ -513,46 +524,74 @@ REDACTED) => {
 REDACTED
 
 // Load data
-const loadDashboardStats = async () => {
-  loading.value = true
-  try {
-    stats.value = await adminAPI.dashboard.getStats()
-  REDACTED catch (error) {
-    appStore.showError(t('admin.dashboard.failedToLoad'))
-    console.error('Error loading dashboard stats:', error)
-  REDACTED finally {
-    loading.value = false
+const loadDashboardSnapshot = async (includeStats: boolean) => {
+  const currentSeq = ++chartLoadSeq
+  if (includeStats && !stats.value) {
+    loading.value = true
   REDACTED
-REDACTED
-
-const loadChartData = async () => {
   chartsLoading.value = true
   try {
-    const params = {
+    const response = await adminAPI.dashboard.getSnapshotV2({
       start_date: startDate.value,
       end_date: endDate.value,
-      granularity: granularity.value
+      granularity: granularity.value,
+      include_stats: includeStats,
+      include_trend: true,
+      include_model_stats: true,
+      include_group_stats: false,
+      include_users_trend: false
+    REDACTED)
+    if (currentSeq !== chartLoadSeq) return
+    if (includeStats && response.stats) {
+      stats.value = response.stats
     REDACTED
-
-    const [trendResponse, modelResponse, userResponse] = await Promise.all([
-      adminAPI.dashboard.getUsageTrend(params),
-      adminAPI.dashboard.getModelStats({ start_date: startDate.value, end_date: endDate.value REDACTED),
-      adminAPI.dashboard.getUserUsageTrend({ ...params, limit: 12 REDACTED)
-    ])
-
-    trendData.value = trendResponse.trend || []
-    modelStats.value = modelResponse.models || []
-    userTrend.value = userResponse.trend || []
+    trendData.value = response.trend || []
+    modelStats.value = response.models || []
   REDACTED catch (error) {
-    console.error('Error loading chart data:', error)
+    if (currentSeq !== chartLoadSeq) return
+    appStore.showError(t('admin.dashboard.failedToLoad'))
+    console.error('Error loading dashboard snapshot:', error)
   REDACTED finally {
+    if (currentSeq !== chartLoadSeq) return
+    loading.value = false
     chartsLoading.value = false
   REDACTED
 REDACTED
 
+const loadUsersTrend = async () => {
+  const currentSeq = ++usersTrendLoadSeq
+  userTrendLoading.value = true
+  try {
+    const response = await adminAPI.dashboard.getUserUsageTrend({
+      start_date: startDate.value,
+      end_date: endDate.value,
+      granularity: granularity.value,
+      limit: 12
+    REDACTED)
+    if (currentSeq !== usersTrendLoadSeq) return
+    userTrend.value = response.trend || []
+  REDACTED catch (error) {
+    if (currentSeq !== usersTrendLoadSeq) return
+    console.error('Error loading users trend:', error)
+    userTrend.value = []
+  REDACTED finally {
+    if (currentSeq !== usersTrendLoadSeq) return
+    userTrendLoading.value = false
+  REDACTED
+REDACTED
+
+const loadDashboardStats = async () => {
+  await loadDashboardSnapshot(true)
+  void loadUsersTrend()
+REDACTED
+
+const loadChartData = async () => {
+  await loadDashboardSnapshot(false)
+  void loadUsersTrend()
+REDACTED
+
 onMounted(() => {
   loadDashboardStats()
-  loadChartData()
 REDACTED)
 </script>
 

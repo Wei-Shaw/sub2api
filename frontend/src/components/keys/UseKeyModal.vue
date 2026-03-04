@@ -268,6 +268,7 @@ const clientTabs = computed((): TabConfig[] => {
     case 'openai':
       return [
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon REDACTED,
+        { id: 'codex-ws', label: t('keys.useKeyModal.cliTabs.codexCliWs'), icon: TerminalIcon REDACTED,
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon REDACTED
       ]
     case 'gemini':
@@ -306,7 +307,7 @@ const showShellTabs = computed(() => activeClientTab.value !== 'opencode')
 
 const currentTabs = computed(() => {
   if (!showShellTabs.value) return []
-  if (props.platform === 'openai') {
+  if (activeClientTab.value === 'codex' || activeClientTab.value === 'codex-ws') {
     return openaiTabs
   REDACTED
   return shellTabs
@@ -401,6 +402,9 @@ const currentFiles = computed((): FileConfig[] => {
 
   switch (props.platform) {
     case 'openai':
+      if (activeClientTab.value === 'codex-ws') {
+        return generateOpenAIWsFiles(baseUrl, apiKey)
+      REDACTED
       return generateOpenAIFiles(baseUrl, apiKey)
     case 'gemini':
       return [generateGeminiCliContent(baseUrl, apiKey)]
@@ -524,6 +528,47 @@ REDACTED`
   ]
 REDACTED
 
+function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
+  const isWindows = activeTab.value === 'windows'
+  const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
+
+  // config.toml content with WebSocket v2
+  const configContent = `model_provider = "sub2api"
+model = "gpt-5.3-codex"
+model_reasoning_effort = "high"
+network_access = "enabled"
+disable_response_storage = true
+windows_wsl_setup_acknowledged = true
+model_verbosity = "high"
+
+[model_providers.sub2api]
+name = "sub2api"
+base_url = "${baseUrlREDACTED"
+wire_api = "responses"
+supports_websockets = true
+requires_openai_auth = true
+
+[features]
+responses_websockets_v2 = true`
+
+  // auth.json content
+  const authContent = `{
+  "OPENAI_API_KEY": "${apiKeyREDACTED"
+REDACTED`
+
+  return [
+    {
+      path: `${configDirREDACTED/config.toml`,
+      content: configContent,
+      hint: t('keys.useKeyModal.openai.configTomlHint')
+    REDACTED,
+    {
+      path: `${configDirREDACTED/auth.json`,
+      content: authContent
+    REDACTED
+  ]
+REDACTED
+
 function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: string, pathLabel?: string): FileConfig {
   const provider: Record<string, any> = {
     [platform]: {
@@ -534,8 +579,72 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     REDACTED
   REDACTED
   const openaiModels = {
-    'gpt-5.2-codex': {
-      name: 'GPT-5.2 Codex',
+    'gpt-5-codex': {
+      name: 'GPT-5 Codex',
+      limit: {
+        context: 400000,
+        output: 128000
+      REDACTED,
+      options: {
+        store: false
+      REDACTED,
+      variants: {
+        low: {REDACTED,
+        medium: {REDACTED,
+        high: {REDACTED
+      REDACTED
+    REDACTED,
+    'gpt-5.1-codex': {
+      name: 'GPT-5.1 Codex',
+      limit: {
+        context: 400000,
+        output: 128000
+      REDACTED,
+      options: {
+        store: false
+      REDACTED,
+      variants: {
+        low: {REDACTED,
+        medium: {REDACTED,
+        high: {REDACTED
+      REDACTED
+    REDACTED,
+    'gpt-5.1-codex-max': {
+      name: 'GPT-5.1 Codex Max',
+      limit: {
+        context: 400000,
+        output: 128000
+      REDACTED,
+      options: {
+        store: false
+      REDACTED,
+      variants: {
+        low: {REDACTED,
+        medium: {REDACTED,
+        high: {REDACTED
+      REDACTED
+    REDACTED,
+    'gpt-5.1-codex-mini': {
+      name: 'GPT-5.1 Codex Mini',
+      limit: {
+        context: 400000,
+        output: 128000
+      REDACTED,
+      options: {
+        store: false
+      REDACTED,
+      variants: {
+        low: {REDACTED,
+        medium: {REDACTED,
+        high: {REDACTED
+      REDACTED
+    REDACTED,
+    'gpt-5.2': {
+      name: 'GPT-5.2',
+      limit: {
+        context: 400000,
+        output: 128000
+      REDACTED,
       options: {
         store: false
       REDACTED,
@@ -545,30 +654,314 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         high: {REDACTED,
         xhigh: {REDACTED
       REDACTED
+    REDACTED,
+    'gpt-5.3-codex-spark': {
+      name: 'GPT-5.3 Codex Spark',
+      limit: {
+        context: 128000,
+        output: 32000
+      REDACTED,
+      options: {
+        store: false
+      REDACTED,
+      variants: {
+        low: {REDACTED,
+        medium: {REDACTED,
+        high: {REDACTED,
+        xhigh: {REDACTED
+      REDACTED
+    REDACTED,
+    'gpt-5.3-codex': {
+      name: 'GPT-5.3 Codex',
+      limit: {
+        context: 400000,
+        output: 128000
+      REDACTED,
+      options: {
+        store: false
+      REDACTED,
+      variants: {
+        low: {REDACTED,
+        medium: {REDACTED,
+        high: {REDACTED,
+        xhigh: {REDACTED
+      REDACTED
+    REDACTED,
+    'gpt-5.2-codex': {
+      name: 'GPT-5.2 Codex',
+      limit: {
+        context: 400000,
+        output: 128000
+      REDACTED,
+      options: {
+        store: false
+      REDACTED,
+      variants: {
+        low: {REDACTED,
+        medium: {REDACTED,
+        high: {REDACTED,
+        xhigh: {REDACTED
+      REDACTED
+    REDACTED,
+    'codex-mini-latest': {
+      name: 'Codex Mini',
+      limit: {
+        context: 200000,
+        output: 100000
+      REDACTED,
+      options: {
+        store: false
+      REDACTED,
+      variants: {
+        low: {REDACTED,
+        medium: {REDACTED,
+        high: {REDACTED
+      REDACTED
     REDACTED
   REDACTED
   const geminiModels = {
-    'gemini-2.0-flash': { name: 'Gemini 2.0 Flash' REDACTED,
-    'gemini-2.5-flash': { name: 'Gemini 2.5 Flash' REDACTED,
-    'gemini-2.5-pro': { name: 'Gemini 2.5 Pro' REDACTED,
-    'gemini-3-flash-preview': { name: 'Gemini 3 Flash Preview' REDACTED,
-    'gemini-3-pro-preview': { name: 'Gemini 3 Pro Preview' REDACTED
+    'gemini-2.0-flash': {
+      name: 'Gemini 2.0 Flash',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED
+    REDACTED,
+    'gemini-2.5-flash': {
+      name: 'Gemini 2.5 Flash',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED
+    REDACTED,
+    'gemini-2.5-pro': {
+      name: 'Gemini 2.5 Pro',
+      limit: {
+        context: 2097152,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED,
+    'gemini-3-flash-preview': {
+      name: 'Gemini 3 Flash Preview',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED
+    REDACTED,
+    'gemini-3-pro-preview': {
+      name: 'Gemini 3 Pro Preview',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED,
+    'gemini-3.1-pro-preview': {
+      name: 'Gemini 3.1 Pro Preview',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED
   REDACTED
 
   const antigravityGeminiModels = {
-    'gemini-2.5-flash': { name: 'Gemini 2.5 Flash' REDACTED,
-    'gemini-2.5-flash-lite': { name: 'Gemini 2.5 Flash Lite' REDACTED,
-    'gemini-2.5-flash-thinking': { name: 'Gemini 2.5 Flash Thinking' REDACTED,
-    'gemini-3-flash': { name: 'Gemini 3 Flash' REDACTED,
-    'gemini-3-pro-low': { name: 'Gemini 3 Pro Low' REDACTED,
-    'gemini-3-pro-high': { name: 'Gemini 3 Pro High' REDACTED,
-    'gemini-3-pro-preview': { name: 'Gemini 3 Pro Preview' REDACTED,
-    'gemini-3-pro-image': { name: 'Gemini 3 Pro Image' REDACTED
+    'gemini-2.5-flash': {
+      name: 'Gemini 2.5 Flash',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'disable'
+        REDACTED
+      REDACTED
+    REDACTED,
+    'gemini-2.5-flash-lite': {
+      name: 'Gemini 2.5 Flash Lite',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED,
+    'gemini-2.5-flash-thinking': {
+      name: 'Gemini 2.5 Flash (Thinking)',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED,
+    'gemini-3-flash': {
+      name: 'Gemini 3 Flash',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED,
+    'gemini-3.1-pro-low': {
+      name: 'Gemini 3.1 Pro Low',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED,
+    'gemini-3.1-pro-high': {
+      name: 'Gemini 3.1 Pro High',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED,
+    'gemini-3.1-flash-image': {
+      name: 'Gemini 3.1 Flash Image',
+      limit: {
+        context: 1048576,
+        output: 65536
+      REDACTED,
+      modalities: {
+        input: ['text', 'image'],
+        output: ['image']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED
   REDACTED
   const claudeModels = {
-    'claude-opus-4-5-thinking': { name: 'Claude Opus 4.5 Thinking' REDACTED,
-    'claude-sonnet-4-5-thinking': { name: 'Claude Sonnet 4.5 Thinking' REDACTED,
-    'claude-sonnet-4-5': { name: 'Claude Sonnet 4.5' REDACTED
+    'claude-opus-4-6-thinking': {
+      name: 'Claude 4.6 Opus (Thinking)',
+      limit: {
+        context: 200000,
+        output: 128000
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED,
+    'claude-sonnet-4-6': {
+      name: 'Claude 4.6 Sonnet',
+      limit: {
+        context: 200000,
+        output: 64000
+      REDACTED,
+      modalities: {
+        input: ['text', 'image', 'pdf'],
+        output: ['text']
+      REDACTED,
+      options: {
+        thinking: {
+          budgetTokens: 24576,
+          type: 'enabled'
+        REDACTED
+      REDACTED
+    REDACTED
   REDACTED
 
   if (platform === 'gemini') {

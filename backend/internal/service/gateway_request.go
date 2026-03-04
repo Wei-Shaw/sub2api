@@ -5,9 +5,28 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
+)
+
+var (
+	// 这些字节模式用于 fast-path 判断，避免每次 []byte("...") 产生临时分配。
+	patternTypeThinking         = []byte(`"type":"thinking"`)
+	patternTypeThinkingSpaced   = []byte(`"type": "thinking"`)
+	patternTypeRedactedThinking = []byte(`"type":"redacted_thinking"`)
+	patternTypeRedactedSpaced   = []byte(`"type": "redacted_thinking"`)
+
+	patternThinkingField       = []byte(`"thinking":`)
+	patternThinkingFieldSpaced = []byte(`"thinking" :`)
+
+	patternEmptyContent       = []byte(`"content":[]`)
+	patternEmptyContentSpaced = []byte(`"content": []`)
+	patternEmptyContentSp1    = []byte(`"content" : []`)
+	patternEmptyContentSp2    = []byte(`"content" :[]`)
 )
 
 // SessionContext 粘性会话上下文，用于区分不同来源的请求。
@@ -42,119 +61,137 @@ type ParsedRequest struct {
 	ThinkingEnabled bool            // 是否开启 thinking（部分平台会影响最终模型名）
 	MaxTokens       int             // max_tokens 值（用于探测请求拦截）
 	SessionContext  *SessionContext // 可选：请求上下文区分因子（nil 时行为不变）
+
+	// OnUpstreamAccepted 上游接受请求后立即调用（用于提前释放串行锁）
+	// 流式请求在收到 2xx 响应头后调用，避免持锁等流完成
+	OnUpstreamAccepted func()
 REDACTED
 
 // ParseGatewayRequest 解析网关请求体并返回结构化结果。
 // protocol 指定请求协议格式（domain.PlatformAnthropic / domain.PlatformGemini），
 // 不同协议使用不同的 system/messages 字段名。
 func ParseGatewayRequest(body []byte, protocol string) (*ParsedRequest, error) {
-	var req map[string]any
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, err
+	// 保持与旧实现一致：请求体必须是合法 JSON。
+	// 注意：gjson.GetBytes 对非法 JSON 不会报错，因此需要显式校验。
+	if !gjson.ValidBytes(body) {
+		return nil, fmt.Errorf("invalid json")
 REDACTED
+
+	// 性能：
+	// - gjson.GetBytes 会把匹配的 Raw/Str 安全复制成 string（对于巨大 messages 会产生额外拷贝）。
+	// - 这里将 body 通过 unsafe 零拷贝视为 string，仅在本函数内使用，且 body 不会被修改。
+	jsonStr := *(*string)(unsafe.Pointer(&body))
 
 	parsed := &ParsedRequest{
 		Body: body,
 REDACTED
 
-	if rawModel, exists := req["model"]; exists {
-		model, ok := rawModel.(string)
-		if !ok {
+	// --- gjson 提取简单字段（避免完整 Unmarshal） ---
+
+	// model: 需要严格类型校验，非 string 返回错误
+	modelResult := gjson.Get(jsonStr, "model")
+	if modelResult.Exists() {
+		if modelResult.Type != gjson.String {
 			return nil, fmt.Errorf("invalid model field type")
 	REDACTED
-		parsed.Model = model
+		parsed.Model = modelResult.String()
 REDACTED
-	if rawStream, exists := req["stream"]; exists {
-		stream, ok := rawStream.(bool)
-		if !ok {
+
+	// stream: 需要严格类型校验，非 bool 返回错误
+	streamResult := gjson.Get(jsonStr, "stream")
+	if streamResult.Exists() {
+		if streamResult.Type != gjson.True && streamResult.Type != gjson.False {
 			return nil, fmt.Errorf("invalid stream field type")
 	REDACTED
-		parsed.Stream = stream
+		parsed.Stream = streamResult.Bool()
 REDACTED
-	if metadata, ok := req["metadata"].(map[string]any); ok {
-		if userID, ok := metadata["user_id"].(string); ok {
-			parsed.MetadataUserID = userID
+
+	// metadata.user_id: 直接路径提取，不需要严格类型校验
+	parsed.MetadataUserID = gjson.Get(jsonStr, "metadata.user_id").String()
+
+	// thinking.type: enabled/adaptive 都视为开启
+	thinkingType := gjson.Get(jsonStr, "thinking.type").String()
+	if thinkingType == "enabled" || thinkingType == "adaptive" {
+		parsed.ThinkingEnabled = true
+REDACTED
+
+	// max_tokens: 仅接受整数值
+	maxTokensResult := gjson.Get(jsonStr, "max_tokens")
+	if maxTokensResult.Exists() && maxTokensResult.Type == gjson.Number {
+		f := maxTokensResult.Float()
+		if !math.IsNaN(f) && !math.IsInf(f, 0) && f == math.Trunc(f) &&
+			f <= float64(math.MaxInt) && f >= float64(math.MinInt) {
+			parsed.MaxTokens = int(f)
 	REDACTED
 REDACTED
+
+	// --- system/messages 提取 ---
+	// 避免把整个 body Unmarshal 到 map（会产生大量 map/接口分配）。
+	// 使用 gjson 抽取目标字段的 Raw，再对该子树进行 Unmarshal。
 
 	switch protocol {
 	case domain.PlatformGemini:
 		// Gemini 原生格式: systemInstruction.parts / contents
-		if sysInst, ok := req["systemInstruction"].(map[string]any); ok {
-			if parts, ok := sysInst["parts"].([]any); ok {
-				parsed.System = parts
+		if sysParts := gjson.Get(jsonStr, "systemInstruction.parts"); sysParts.Exists() && sysParts.IsArray() {
+			var parts []any
+			if err := json.Unmarshal(sliceRawFromBody(body, sysParts), &parts); err != nil {
+				return nil, err
 		REDACTED
+			parsed.System = parts
 	REDACTED
-		if contents, ok := req["contents"].([]any); ok {
-			parsed.Messages = contents
+
+		if contents := gjson.Get(jsonStr, "contents"); contents.Exists() && contents.IsArray() {
+			var msgs []any
+			if err := json.Unmarshal(sliceRawFromBody(body, contents), &msgs); err != nil {
+				return nil, err
+		REDACTED
+			parsed.Messages = msgs
 	REDACTED
 	default:
 		// Anthropic / OpenAI 格式: system / messages
 		// system 字段只要存在就视为显式提供（即使为 null），
 		// 以避免客户端传 null 时被默认 system 误注入。
-		if system, ok := req["system"]; ok {
+		if sys := gjson.Get(jsonStr, "system"); sys.Exists() {
 			parsed.HasSystem = true
-			parsed.System = system
+			switch sys.Type {
+			case gjson.Null:
+				parsed.System = nil
+			case gjson.String:
+				// 与 encoding/json 的 Unmarshal 行为一致：返回解码后的字符串。
+				parsed.System = sys.String()
+			default:
+				var system any
+				if err := json.Unmarshal(sliceRawFromBody(body, sys), &system); err != nil {
+					return nil, err
+			REDACTED
+				parsed.System = system
+		REDACTED
 	REDACTED
-		if messages, ok := req["messages"].([]any); ok {
+
+		if msgs := gjson.Get(jsonStr, "messages"); msgs.Exists() && msgs.IsArray() {
+			var messages []any
+			if err := json.Unmarshal(sliceRawFromBody(body, msgs), &messages); err != nil {
+				return nil, err
+		REDACTED
 			parsed.Messages = messages
-	REDACTED
-REDACTED
-
-	// thinking: {type: "enabled" | "adaptive"REDACTED
-	if rawThinking, ok := req["thinking"].(map[string]any); ok {
-		if t, ok := rawThinking["type"].(string); ok && (t == "enabled" || t == "adaptive") {
-			parsed.ThinkingEnabled = true
-	REDACTED
-REDACTED
-
-	// max_tokens
-	if rawMaxTokens, exists := req["max_tokens"]; exists {
-		if maxTokens, ok := parseIntegralNumber(rawMaxTokens); ok {
-			parsed.MaxTokens = maxTokens
 	REDACTED
 REDACTED
 
 	return parsed, nil
 REDACTED
 
-// parseIntegralNumber 将 JSON 解码后的数字安全转换为 int。
-// 仅接受“整数值”的输入，小数/NaN/Inf/越界值都会返回 false。
-func parseIntegralNumber(raw any) (int, bool) {
-	switch v := raw.(type) {
-	case float64:
-		if math.IsNaN(v) || math.IsInf(v, 0) || v != math.Trunc(v) {
-			return 0, false
+// sliceRawFromBody 返回 Result.Raw 对应的原始字节切片。
+// 优先使用 Result.Index 直接从 body 切片，避免对大字段（如 messages）产生额外拷贝。
+// 当 Index 不可用时，退化为复制（理论上极少发生）。
+func sliceRawFromBody(body []byte, r gjson.Result) []byte {
+	if r.Index > 0 {
+		end := r.Index + len(r.Raw)
+		if end <= len(body) {
+			return body[r.Index:end]
 	REDACTED
-		if v > float64(math.MaxInt) || v < float64(math.MinInt) {
-			return 0, false
-	REDACTED
-		return int(v), true
-	case int:
-		return v, true
-	case int8:
-		return int(v), true
-	case int16:
-		return int(v), true
-	case int32:
-		return int(v), true
-	case int64:
-		if v > int64(math.MaxInt) || v < int64(math.MinInt) {
-			return 0, false
-	REDACTED
-		return int(v), true
-	case json.Number:
-		i64, err := v.Int64()
-		if err != nil {
-			return 0, false
-	REDACTED
-		if i64 > int64(math.MaxInt) || i64 < int64(math.MinInt) {
-			return 0, false
-	REDACTED
-		return int(i64), true
-	default:
-		return 0, false
 REDACTED
+	// fallback: 不影响正确性，但会产生一次拷贝
+	return []byte(r.Raw)
 REDACTED
 
 // FilterThinkingBlocks removes thinking blocks from request body
@@ -184,49 +221,63 @@ REDACTED
 //   - Remove `redacted_thinking` blocks (cannot be converted to text).
 //   - Ensure no message ends up with empty content.
 func FilterThinkingBlocksForRetry(body []byte) []byte {
-	hasThinkingContent := bytes.Contains(body, []byte(`"type":"thinking"`)) ||
-		bytes.Contains(body, []byte(`"type": "thinking"`)) ||
-		bytes.Contains(body, []byte(`"type":"redacted_thinking"`)) ||
-		bytes.Contains(body, []byte(`"type": "redacted_thinking"`)) ||
-		bytes.Contains(body, []byte(`"thinking":`)) ||
-		bytes.Contains(body, []byte(`"thinking" :`))
+	hasThinkingContent := bytes.Contains(body, patternTypeThinking) ||
+		bytes.Contains(body, patternTypeThinkingSpaced) ||
+		bytes.Contains(body, patternTypeRedactedThinking) ||
+		bytes.Contains(body, patternTypeRedactedSpaced) ||
+		bytes.Contains(body, patternThinkingField) ||
+		bytes.Contains(body, patternThinkingFieldSpaced)
 
 	// Also check for empty content arrays that need fixing.
 	// Note: This is a heuristic check; the actual empty content handling is done below.
-	hasEmptyContent := bytes.Contains(body, []byte(`"content":[]`)) ||
-		bytes.Contains(body, []byte(`"content": []`)) ||
-		bytes.Contains(body, []byte(`"content" : []`)) ||
-		bytes.Contains(body, []byte(`"content" :[]`))
+	hasEmptyContent := bytes.Contains(body, patternEmptyContent) ||
+		bytes.Contains(body, patternEmptyContentSpaced) ||
+		bytes.Contains(body, patternEmptyContentSp1) ||
+		bytes.Contains(body, patternEmptyContentSp2)
 
 	// Fast path: nothing to process
 	if !hasThinkingContent && !hasEmptyContent {
 		return body
 REDACTED
 
-	var req map[string]any
-	if err := json.Unmarshal(body, &req); err != nil {
+	// 尽量避免把整个 body Unmarshal 成 map（会产生大量 map/接口分配）。
+	// 这里先用 gjson 把 messages 子树摘出来，后续只对 messages 做 Unmarshal/Marshal。
+	jsonStr := *(*string)(unsafe.Pointer(&body))
+	msgsRes := gjson.Get(jsonStr, "messages")
+	if !msgsRes.Exists() || !msgsRes.IsArray() {
+		return body
+REDACTED
+
+	// Fast path：只需要删除顶层 thinking，不需要改 messages。
+	// 注意：patternThinkingField 可能来自嵌套字段（如 tool_use.input.thinking），因此必须用 gjson 判断顶层字段是否存在。
+	containsThinkingBlocks := bytes.Contains(body, patternTypeThinking) ||
+		bytes.Contains(body, patternTypeThinkingSpaced) ||
+		bytes.Contains(body, patternTypeRedactedThinking) ||
+		bytes.Contains(body, patternTypeRedactedSpaced) ||
+		bytes.Contains(body, patternThinkingFieldSpaced)
+	if !hasEmptyContent && !containsThinkingBlocks {
+		if topThinking := gjson.Get(jsonStr, "thinking"); topThinking.Exists() {
+			if out, err := sjson.DeleteBytes(body, "thinking"); err == nil {
+				return out
+		REDACTED
+			return body
+	REDACTED
+		return body
+REDACTED
+
+	var messages []any
+	if err := json.Unmarshal(sliceRawFromBody(body, msgsRes), &messages); err != nil {
 		return body
 REDACTED
 
 	modified := false
 
-	messages, ok := req["messages"].([]any)
-	if !ok {
-		return body
-REDACTED
-
 	// Disable top-level thinking mode for retry to avoid structural/signature constraints upstream.
-	if _, exists := req["thinking"]; exists {
-		delete(req, "thinking")
-		modified = true
-REDACTED
+	deleteTopLevelThinking := gjson.Get(jsonStr, "thinking").Exists()
 
-	newMessages := make([]any, 0, len(messages))
-
-	for _, msg := range messages {
-		msgMap, ok := msg.(map[string]any)
+	for i := 0; i < len(messages); i++ {
+		msgMap, ok := messages[i].(map[string]any)
 		if !ok {
-			newMessages = append(newMessages, msg)
 			continue
 	REDACTED
 
@@ -234,17 +285,30 @@ REDACTED
 		content, ok := msgMap["content"].([]any)
 		if !ok {
 			// String content or other format - keep as is
-			newMessages = append(newMessages, msg)
 			continue
 	REDACTED
 
-		newContent := make([]any, 0, len(content))
+		// 延迟分配：只有检测到需要修改的块，才构建新 slice。
+		var newContent []any
 		modifiedThisMsg := false
 
-		for _, block := range content {
+		ensureNewContent := func(prefixLen int) {
+			if newContent != nil {
+				return
+		REDACTED
+			newContent = make([]any, 0, len(content))
+			if prefixLen > 0 {
+				newContent = append(newContent, content[:prefixLen]...)
+		REDACTED
+	REDACTED
+
+		for bi := 0; bi < len(content); bi++ {
+			block := content[bi]
 			blockMap, ok := block.(map[string]any)
 			if !ok {
-				newContent = append(newContent, block)
+				if newContent != nil {
+					newContent = append(newContent, block)
+			REDACTED
 				continue
 		REDACTED
 
@@ -254,17 +318,15 @@ REDACTED
 			switch blockType {
 			case "thinking":
 				modifiedThisMsg = true
+				ensureNewContent(bi)
 				thinkingText, _ := blockMap["thinking"].(string)
-				if thinkingText == "" {
-					continue
+				if thinkingText != "" {
+					newContent = append(newContent, map[string]any{"type": "text", "text": thinkingTextREDACTED)
 			REDACTED
-				newContent = append(newContent, map[string]any{
-					"type": "text",
-					"text": thinkingText,
-			REDACTED)
 				continue
 			case "redacted_thinking":
 				modifiedThisMsg = true
+				ensureNewContent(bi)
 				continue
 		REDACTED
 
@@ -272,6 +334,7 @@ REDACTED
 			if blockType == "" {
 				if rawThinking, hasThinking := blockMap["thinking"]; hasThinking {
 					modifiedThisMsg = true
+					ensureNewContent(bi)
 					switch v := rawThinking.(type) {
 					case string:
 						if v != "" {
@@ -286,40 +349,64 @@ REDACTED
 			REDACTED
 		REDACTED
 
-			newContent = append(newContent, block)
+			if newContent != nil {
+				newContent = append(newContent, block)
+		REDACTED
 	REDACTED
 
 		// Handle empty content: either from filtering or originally empty
+		if newContent == nil {
+			if len(content) == 0 {
+				modified = true
+				placeholder := "(content removed)"
+				if role == "assistant" {
+					placeholder = "(assistant content removed)"
+			REDACTED
+				msgMap["content"] = []any{map[string]any{"type": "text", "text": placeholderREDACTEDREDACTED
+		REDACTED
+			continue
+	REDACTED
+
 		if len(newContent) == 0 {
 			modified = true
 			placeholder := "(content removed)"
 			if role == "assistant" {
 				placeholder = "(assistant content removed)"
 		REDACTED
-			newContent = append(newContent, map[string]any{
-				"type": "text",
-				"text": placeholder,
-		REDACTED)
-			msgMap["content"] = newContent
-	REDACTED else if modifiedThisMsg {
+			msgMap["content"] = []any{map[string]any{"type": "text", "text": placeholderREDACTEDREDACTED
+			continue
+	REDACTED
+
+		if modifiedThisMsg {
 			modified = true
 			msgMap["content"] = newContent
 	REDACTED
-		newMessages = append(newMessages, msgMap)
 REDACTED
 
-	if modified {
-		req["messages"] = newMessages
-REDACTED else {
+	if !modified && !deleteTopLevelThinking {
 		// Avoid rewriting JSON when no changes are needed.
 		return body
 REDACTED
 
-	newBody, err := json.Marshal(req)
-	if err != nil {
-		return body
+	out := body
+	if deleteTopLevelThinking {
+		if b, err := sjson.DeleteBytes(out, "thinking"); err == nil {
+			out = b
+	REDACTED else {
+			return body
+	REDACTED
 REDACTED
-	return newBody
+	if modified {
+		msgsBytes, err := json.Marshal(messages)
+		if err != nil {
+			return body
+	REDACTED
+		out, err = sjson.SetRawBytes(out, "messages", msgsBytes)
+		if err != nil {
+			return body
+	REDACTED
+REDACTED
+	return out
 REDACTED
 
 // FilterSignatureSensitiveBlocksForRetry is a stronger retry filter for cases where upstream errors indicate

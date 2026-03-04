@@ -91,7 +91,7 @@ REDACTED
 			require.True(s.T(), ok, "type assertion failed")
 			s.client = client
 			s.client.baseURL = "http://in-process"
-			s.client.clientFactory = func(string) *req.Client { return newTestReqClient(rt) REDACTED
+			s.client.clientFactory = func(string) (*req.Client, error) { return newTestReqClient(rt), nil REDACTED
 
 			got, err := s.client.GetOrganizationUUID(context.Background(), "sess", "")
 
@@ -169,7 +169,7 @@ REDACTED
 			require.True(s.T(), ok, "type assertion failed")
 			s.client = client
 			s.client.baseURL = "http://in-process"
-			s.client.clientFactory = func(string) *req.Client { return newTestReqClient(rt) REDACTED
+			s.client.clientFactory = func(string) (*req.Client, error) { return newTestReqClient(rt), nil REDACTED
 
 			code, err := s.client.GetAuthorizationCode(context.Background(), "sess", "org-1", oauth.ScopeInference, "cc", "st", "")
 
@@ -276,7 +276,7 @@ REDACTED
 			require.True(s.T(), ok, "type assertion failed")
 			s.client = client
 			s.client.tokenURL = "http://in-process/token"
-			s.client.clientFactory = func(string) *req.Client { return newTestReqClient(rt) REDACTED
+			s.client.clientFactory = func(string) (*req.Client, error) { return newTestReqClient(rt), nil REDACTED
 
 			resp, err := s.client.ExchangeCodeForToken(context.Background(), tt.code, "ver", "", "", tt.isSetupToken)
 
@@ -372,7 +372,7 @@ REDACTED
 			require.True(s.T(), ok, "type assertion failed")
 			s.client = client
 			s.client.tokenURL = "http://in-process/token"
-			s.client.clientFactory = func(string) *req.Client { return newTestReqClient(rt) REDACTED
+			s.client.clientFactory = func(string) (*req.Client, error) { return newTestReqClient(rt), nil REDACTED
 
 			resp, err := s.client.RefreshToken(context.Background(), "rt", "")
 

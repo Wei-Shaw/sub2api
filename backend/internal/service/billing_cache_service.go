@@ -3,13 +3,15 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"golang.org/x/sync/singleflight"
 )
 
 // 错误定义
@@ -38,6 +40,7 @@ const (
 	cacheWriteSetSubscription
 	cacheWriteUpdateSubscriptionUsage
 	cacheWriteDeductBalance
+	cacheWriteUpdateRateLimitUsage
 )
 
 // 异步缓存写入工作池配置
@@ -58,6 +61,7 @@ const (
 	cacheWriteBufferSize      = 1000            // 任务队列缓冲大小
 	cacheWriteTimeout         = 2 * time.Second // 单个写入操作超时
 	cacheWriteDropLogInterval = 5 * time.Second // 丢弃日志节流间隔
+	balanceLoadTimeout        = 3 * time.Second
 )
 
 // cacheWriteTask 缓存写入任务
@@ -65,23 +69,33 @@ type cacheWriteTask struct {
 	kind             cacheWriteKind
 	userID           int64
 	groupID          int64
+	apiKeyID         int64
 	balance          float64
 	amount           float64
 	subscriptionData *subscriptionCacheData
 REDACTED
 
+// apiKeyRateLimitLoader defines the interface for loading rate limit data from DB.
+type apiKeyRateLimitLoader interface {
+	GetRateLimitData(ctx context.Context, keyID int64) (*APIKeyRateLimitData, error)
+REDACTED
+
 // BillingCacheService 计费缓存服务
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {
-	cache          BillingCache
-	userRepo       UserRepository
-	subRepo        UserSubscriptionRepository
-	cfg            *config.Config
-	circuitBreaker *billingCircuitBreaker
+	cache                 BillingCache
+	userRepo              UserRepository
+	subRepo               UserSubscriptionRepository
+	apiKeyRateLimitLoader apiKeyRateLimitLoader
+	cfg                   *config.Config
+	circuitBreaker        *billingCircuitBreaker
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
 	cacheWriteStopOnce sync.Once
+	cacheWriteMu       sync.RWMutex
+	stopped            atomic.Bool
+	balanceLoadSF      singleflight.Group
 	// 丢弃日志节流计数器（减少高负载下日志噪音）
 	cacheWriteDropFullCount     uint64
 	cacheWriteDropFullLastLog   int64
@@ -90,12 +104,13 @@ type BillingCacheService struct {
 REDACTED
 
 // NewBillingCacheService 创建计费缓存服务
-func NewBillingCacheService(cache BillingCache, userRepo UserRepository, subRepo UserSubscriptionRepository, cfg *config.Config) *BillingCacheService {
+func NewBillingCacheService(cache BillingCache, userRepo UserRepository, subRepo UserSubscriptionRepository, apiKeyRepo APIKeyRepository, cfg *config.Config) *BillingCacheService {
 	svc := &BillingCacheService{
-		cache:    cache,
-		userRepo: userRepo,
-		subRepo:  subRepo,
-		cfg:      cfg,
+		cache:                 cache,
+		userRepo:              userRepo,
+		subRepo:               subRepo,
+		apiKeyRateLimitLoader: apiKeyRepo,
+		cfg:                   cfg,
 REDACTED
 	svc.circuitBreaker = newBillingCircuitBreaker(cfg.Billing.CircuitBreaker)
 	svc.startCacheWriteWorkers()
@@ -105,35 +120,52 @@ REDACTED
 // Stop 关闭缓存写入工作池
 func (s *BillingCacheService) Stop() {
 	s.cacheWriteStopOnce.Do(func() {
-		if s.cacheWriteChan == nil {
+		s.stopped.Store(true)
+
+		s.cacheWriteMu.Lock()
+		ch := s.cacheWriteChan
+		if ch != nil {
+			close(ch)
+	REDACTED
+		s.cacheWriteMu.Unlock()
+
+		if ch == nil {
 			return
 	REDACTED
-		close(s.cacheWriteChan)
 		s.cacheWriteWg.Wait()
-		s.cacheWriteChan = nil
+
+		s.cacheWriteMu.Lock()
+		if s.cacheWriteChan == ch {
+			s.cacheWriteChan = nil
+	REDACTED
+		s.cacheWriteMu.Unlock()
 REDACTED)
 REDACTED
 
 func (s *BillingCacheService) startCacheWriteWorkers() {
-	s.cacheWriteChan = make(chan cacheWriteTask, cacheWriteBufferSize)
+	ch := make(chan cacheWriteTask, cacheWriteBufferSize)
+	s.cacheWriteChan = ch
 	for i := 0; i < cacheWriteWorkerCount; i++ {
 		s.cacheWriteWg.Add(1)
-		go s.cacheWriteWorker()
+		go s.cacheWriteWorker(ch)
 REDACTED
 REDACTED
 
 // enqueueCacheWrite 尝试将任务入队，队列满时返回 false（并记录告警）。
 func (s *BillingCacheService) enqueueCacheWrite(task cacheWriteTask) (enqueued bool) {
-	if s.cacheWriteChan == nil {
+	if s.stopped.Load() {
+		s.logCacheWriteDrop(task, "closed")
 		return false
 REDACTED
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			// 队列已关闭时可能触发 panic，记录后静默失败。
-			s.logCacheWriteDrop(task, "closed")
-			enqueued = false
-	REDACTED
-REDACTED()
+
+	s.cacheWriteMu.RLock()
+	defer s.cacheWriteMu.RUnlock()
+
+	if s.cacheWriteChan == nil {
+		s.logCacheWriteDrop(task, "closed")
+		return false
+REDACTED
+
 	select {
 	case s.cacheWriteChan <- task:
 		return true
@@ -144,9 +176,9 @@ REDACTED()
 REDACTED
 REDACTED
 
-func (s *BillingCacheService) cacheWriteWorker() {
+func (s *BillingCacheService) cacheWriteWorker(ch <-chan cacheWriteTask) {
 	defer s.cacheWriteWg.Done()
-	for task := range s.cacheWriteChan {
+	for task := range ch {
 		ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 		switch task.kind {
 		case cacheWriteSetBalance:
@@ -156,13 +188,19 @@ func (s *BillingCacheService) cacheWriteWorker() {
 		case cacheWriteUpdateSubscriptionUsage:
 			if s.cache != nil {
 				if err := s.cache.UpdateSubscriptionUsage(ctx, task.userID, task.groupID, task.amount); err != nil {
-					log.Printf("Warning: update subscription cache failed for user %d group %d: %v", task.userID, task.groupID, err)
+					logger.LegacyPrintf("service.billing_cache", "Warning: update subscription cache failed for user %d group %d: %v", task.userID, task.groupID, err)
 			REDACTED
 		REDACTED
 		case cacheWriteDeductBalance:
 			if s.cache != nil {
 				if err := s.cache.DeductUserBalance(ctx, task.userID, task.amount); err != nil {
-					log.Printf("Warning: deduct balance cache failed for user %d: %v", task.userID, err)
+					logger.LegacyPrintf("service.billing_cache", "Warning: deduct balance cache failed for user %d: %v", task.userID, err)
+			REDACTED
+		REDACTED
+		case cacheWriteUpdateRateLimitUsage:
+			if s.cache != nil {
+				if err := s.cache.UpdateAPIKeyRateLimitUsage(ctx, task.apiKeyID, task.amount); err != nil {
+					logger.LegacyPrintf("service.billing_cache", "Warning: update rate limit usage cache failed for api key %d: %v", task.apiKeyID, err)
 			REDACTED
 		REDACTED
 	REDACTED
@@ -181,6 +219,8 @@ func cacheWriteKindName(kind cacheWriteKind) string {
 		return "update_subscription_usage"
 	case cacheWriteDeductBalance:
 		return "deduct_balance"
+	case cacheWriteUpdateRateLimitUsage:
+		return "update_rate_limit_usage"
 	default:
 		return "unknown"
 REDACTED
@@ -216,7 +256,7 @@ REDACTED
 	if dropped == 0 {
 		return
 REDACTED
-	log.Printf("Warning: cache write queue %s, dropped %d tasks in last %s (latest kind=%s user %d group %d)",
+	logger.LegacyPrintf("service.billing_cache", "Warning: cache write queue %s, dropped %d tasks in last %s (latest kind=%s user %d group %d)",
 		reason,
 		dropped,
 		cacheWriteDropLogInterval,
@@ -243,19 +283,31 @@ REDACTED
 		return balance, nil
 REDACTED
 
-	// 缓存未命中，从数据库读取
-	balance, err = s.getUserBalanceFromDB(ctx, userID)
+	// 缓存未命中：singleflight 合并同一 userID 的并发回源请求。
+	value, err, _ := s.balanceLoadSF.Do(strconv.FormatInt(userID, 10), func() (any, error) {
+		loadCtx, cancel := context.WithTimeout(context.Background(), balanceLoadTimeout)
+		defer cancel()
+
+		balance, err := s.getUserBalanceFromDB(loadCtx, userID)
+		if err != nil {
+			return nil, err
+	REDACTED
+
+		// 异步建立缓存
+		_ = s.enqueueCacheWrite(cacheWriteTask{
+			kind:    cacheWriteSetBalance,
+			userID:  userID,
+			balance: balance,
+	REDACTED)
+		return balance, nil
+REDACTED)
 	if err != nil {
 		return 0, err
 REDACTED
-
-	// 异步建立缓存
-	_ = s.enqueueCacheWrite(cacheWriteTask{
-		kind:    cacheWriteSetBalance,
-		userID:  userID,
-		balance: balance,
-REDACTED)
-
+	balance, ok := value.(float64)
+	if !ok {
+		return 0, fmt.Errorf("unexpected balance type: %T", value)
+REDACTED
 	return balance, nil
 REDACTED
 
@@ -274,7 +326,7 @@ func (s *BillingCacheService) setBalanceCache(ctx context.Context, userID int64,
 		return
 REDACTED
 	if err := s.cache.SetUserBalance(ctx, userID, balance); err != nil {
-		log.Printf("Warning: set balance cache failed for user %d: %v", userID, err)
+		logger.LegacyPrintf("service.billing_cache", "Warning: set balance cache failed for user %d: %v", userID, err)
 REDACTED
 REDACTED
 
@@ -302,7 +354,7 @@ REDACTED
 	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 	defer cancel()
 	if err := s.DeductBalanceCache(ctx, userID, amount); err != nil {
-		log.Printf("Warning: deduct balance cache fallback failed for user %d: %v", userID, err)
+		logger.LegacyPrintf("service.billing_cache", "Warning: deduct balance cache fallback failed for user %d: %v", userID, err)
 REDACTED
 REDACTED
 
@@ -312,7 +364,7 @@ func (s *BillingCacheService) InvalidateUserBalance(ctx context.Context, userID 
 		return nil
 REDACTED
 	if err := s.cache.InvalidateUserBalance(ctx, userID); err != nil {
-		log.Printf("Warning: invalidate balance cache failed for user %d: %v", userID, err)
+		logger.LegacyPrintf("service.billing_cache", "Warning: invalidate balance cache failed for user %d: %v", userID, err)
 		return err
 REDACTED
 	return nil
@@ -396,7 +448,7 @@ func (s *BillingCacheService) setSubscriptionCache(ctx context.Context, userID, 
 		return
 REDACTED
 	if err := s.cache.SetSubscriptionCache(ctx, userID, groupID, s.convertToPortsData(data)); err != nil {
-		log.Printf("Warning: set subscription cache failed for user %d group %d: %v", userID, groupID, err)
+		logger.LegacyPrintf("service.billing_cache", "Warning: set subscription cache failed for user %d group %d: %v", userID, groupID, err)
 REDACTED
 REDACTED
 
@@ -425,7 +477,7 @@ REDACTED
 	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 	defer cancel()
 	if err := s.UpdateSubscriptionUsage(ctx, userID, groupID, costUSD); err != nil {
-		log.Printf("Warning: update subscription cache fallback failed for user %d group %d: %v", userID, groupID, err)
+		logger.LegacyPrintf("service.billing_cache", "Warning: update subscription cache fallback failed for user %d group %d: %v", userID, groupID, err)
 REDACTED
 REDACTED
 
@@ -435,10 +487,141 @@ func (s *BillingCacheService) InvalidateSubscription(ctx context.Context, userID
 		return nil
 REDACTED
 	if err := s.cache.InvalidateSubscriptionCache(ctx, userID, groupID); err != nil {
-		log.Printf("Warning: invalidate subscription cache failed for user %d group %d: %v", userID, groupID, err)
+		logger.LegacyPrintf("service.billing_cache", "Warning: invalidate subscription cache failed for user %d group %d: %v", userID, groupID, err)
 		return err
 REDACTED
 	return nil
+REDACTED
+
+// ============================================
+// API Key 限速缓存方法
+// ============================================
+
+// checkAPIKeyRateLimits checks rate limit windows for an API key.
+// It loads usage from Redis cache (falling back to DB on cache miss),
+// resets expired windows in-memory and triggers async DB reset,
+// and returns an error if any window limit is exceeded.
+func (s *BillingCacheService) checkAPIKeyRateLimits(ctx context.Context, apiKey *APIKey) error {
+	if s.cache == nil {
+		// No cache: fall back to reading from DB directly
+		if s.apiKeyRateLimitLoader == nil {
+			return nil
+	REDACTED
+		data, err := s.apiKeyRateLimitLoader.GetRateLimitData(ctx, apiKey.ID)
+		if err != nil {
+			return nil // Don't block requests on DB errors
+	REDACTED
+		return s.evaluateRateLimits(ctx, apiKey, data.Usage5h, data.Usage1d, data.Usage7d,
+			data.Window5hStart, data.Window1dStart, data.Window7dStart)
+REDACTED
+
+	cacheData, err := s.cache.GetAPIKeyRateLimit(ctx, apiKey.ID)
+	if err != nil {
+		// Cache miss: load from DB and populate cache
+		if s.apiKeyRateLimitLoader == nil {
+			return nil
+	REDACTED
+		dbData, dbErr := s.apiKeyRateLimitLoader.GetRateLimitData(ctx, apiKey.ID)
+		if dbErr != nil {
+			return nil // Don't block requests on DB errors
+	REDACTED
+		// Build cache entry from DB data
+		cacheEntry := &APIKeyRateLimitCacheData{
+			Usage5h: dbData.Usage5h,
+			Usage1d: dbData.Usage1d,
+			Usage7d: dbData.Usage7d,
+	REDACTED
+		if dbData.Window5hStart != nil {
+			cacheEntry.Window5h = dbData.Window5hStart.Unix()
+	REDACTED
+		if dbData.Window1dStart != nil {
+			cacheEntry.Window1d = dbData.Window1dStart.Unix()
+	REDACTED
+		if dbData.Window7dStart != nil {
+			cacheEntry.Window7d = dbData.Window7dStart.Unix()
+	REDACTED
+		_ = s.cache.SetAPIKeyRateLimit(ctx, apiKey.ID, cacheEntry)
+		cacheData = cacheEntry
+REDACTED
+
+	var w5h, w1d, w7d *time.Time
+	if cacheData.Window5h > 0 {
+		t := time.Unix(cacheData.Window5h, 0)
+		w5h = &t
+REDACTED
+	if cacheData.Window1d > 0 {
+		t := time.Unix(cacheData.Window1d, 0)
+		w1d = &t
+REDACTED
+	if cacheData.Window7d > 0 {
+		t := time.Unix(cacheData.Window7d, 0)
+		w7d = &t
+REDACTED
+	return s.evaluateRateLimits(ctx, apiKey, cacheData.Usage5h, cacheData.Usage1d, cacheData.Usage7d, w5h, w1d, w7d)
+REDACTED
+
+// evaluateRateLimits checks usage against limits, triggering async resets for expired windows.
+func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *APIKey, usage5h, usage1d, usage7d float64, w5h, w1d, w7d *time.Time) error {
+	needsReset := false
+
+	// Reset expired windows in-memory for check purposes
+	if w5h != nil && time.Since(*w5h) >= 5*time.Hour {
+		usage5h = 0
+		needsReset = true
+REDACTED
+	if w1d != nil && time.Since(*w1d) >= 24*time.Hour {
+		usage1d = 0
+		needsReset = true
+REDACTED
+	if w7d != nil && time.Since(*w7d) >= 7*24*time.Hour {
+		usage7d = 0
+		needsReset = true
+REDACTED
+
+	// Trigger async DB reset if any window expired
+	if needsReset {
+		keyID := apiKey.ID
+		go func() {
+			resetCtx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
+			defer cancel()
+			if s.apiKeyRateLimitLoader != nil {
+				// Use the repo directly - reset then reload cache
+				if loader, ok := s.apiKeyRateLimitLoader.(interface {
+					ResetRateLimitWindows(ctx context.Context, id int64) error
+			REDACTED); ok {
+					_ = loader.ResetRateLimitWindows(resetCtx, keyID)
+			REDACTED
+		REDACTED
+			// Invalidate cache so next request loads fresh data
+			if s.cache != nil {
+				_ = s.cache.InvalidateAPIKeyRateLimit(resetCtx, keyID)
+		REDACTED
+	REDACTED()
+REDACTED
+
+	// Check limits
+	if apiKey.RateLimit5h > 0 && usage5h >= apiKey.RateLimit5h {
+		return ErrAPIKeyRateLimit5hExceeded
+REDACTED
+	if apiKey.RateLimit1d > 0 && usage1d >= apiKey.RateLimit1d {
+		return ErrAPIKeyRateLimit1dExceeded
+REDACTED
+	if apiKey.RateLimit7d > 0 && usage7d >= apiKey.RateLimit7d {
+		return ErrAPIKeyRateLimit7dExceeded
+REDACTED
+	return nil
+REDACTED
+
+// QueueUpdateAPIKeyRateLimitUsage asynchronously updates rate limit usage in the cache.
+func (s *BillingCacheService) QueueUpdateAPIKeyRateLimitUsage(apiKeyID int64, cost float64) {
+	if s.cache == nil {
+		return
+REDACTED
+	s.enqueueCacheWrite(cacheWriteTask{
+		kind:     cacheWriteUpdateRateLimitUsage,
+		apiKeyID: apiKeyID,
+		amount:   cost,
+REDACTED)
 REDACTED
 
 // ============================================
@@ -461,10 +644,23 @@ REDACTED
 	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
 
 	if isSubscriptionMode {
-		return s.checkSubscriptionEligibility(ctx, user.ID, group, subscription)
+		if err := s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
+			return err
+	REDACTED
+REDACTED else {
+		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
+			return err
+	REDACTED
 REDACTED
 
-	return s.checkBalanceEligibility(ctx, user.ID)
+	// Check API Key rate limits (applies to both billing modes)
+	if apiKey != nil && apiKey.HasRateLimits() {
+		if err := s.checkAPIKeyRateLimits(ctx, apiKey); err != nil {
+			return err
+	REDACTED
+REDACTED
+
+	return nil
 REDACTED
 
 // checkBalanceEligibility 检查余额模式资格
@@ -474,7 +670,7 @@ func (s *BillingCacheService) checkBalanceEligibility(ctx context.Context, userI
 		if s.circuitBreaker != nil {
 			s.circuitBreaker.OnFailure(err)
 	REDACTED
-		log.Printf("ALERT: billing balance check failed for user %d: %v", userID, err)
+		logger.LegacyPrintf("service.billing_cache", "ALERT: billing balance check failed for user %d: %v", userID, err)
 		return ErrBillingServiceUnavailable.WithCause(err)
 REDACTED
 	if s.circuitBreaker != nil {
@@ -496,7 +692,7 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		if s.circuitBreaker != nil {
 			s.circuitBreaker.OnFailure(err)
 	REDACTED
-		log.Printf("ALERT: billing subscription check failed for user %d group %d: %v", userID, group.ID, err)
+		logger.LegacyPrintf("service.billing_cache", "ALERT: billing subscription check failed for user %d group %d: %v", userID, group.ID, err)
 		return ErrBillingServiceUnavailable.WithCause(err)
 REDACTED
 	if s.circuitBreaker != nil {
@@ -585,7 +781,7 @@ func (b *billingCircuitBreaker) Allow() bool {
 	REDACTED
 		b.state = billingCircuitHalfOpen
 		b.halfOpenRemaining = b.halfOpenRequests
-		log.Printf("ALERT: billing circuit breaker entering half-open state")
+		logger.LegacyPrintf("service.billing_cache", "ALERT: billing circuit breaker entering half-open state")
 		fallthrough
 	case billingCircuitHalfOpen:
 		if b.halfOpenRemaining <= 0 {
@@ -612,7 +808,7 @@ REDACTED
 		b.state = billingCircuitOpen
 		b.openedAt = time.Now()
 		b.halfOpenRemaining = 0
-		log.Printf("ALERT: billing circuit breaker opened after half-open failure: %v", err)
+		logger.LegacyPrintf("service.billing_cache", "ALERT: billing circuit breaker opened after half-open failure: %v", err)
 		return
 	default:
 		b.failures++
@@ -620,7 +816,7 @@ REDACTED
 			b.state = billingCircuitOpen
 			b.openedAt = time.Now()
 			b.halfOpenRemaining = 0
-			log.Printf("ALERT: billing circuit breaker opened after %d failures: %v", b.failures, err)
+			logger.LegacyPrintf("service.billing_cache", "ALERT: billing circuit breaker opened after %d failures: %v", b.failures, err)
 	REDACTED
 REDACTED
 REDACTED
@@ -641,9 +837,9 @@ REDACTED
 
 	// 只有状态真正发生变化时才记录日志
 	if previousState != billingCircuitClosed {
-		log.Printf("ALERT: billing circuit breaker closed (was %s)", circuitStateString(previousState))
+		logger.LegacyPrintf("service.billing_cache", "ALERT: billing circuit breaker closed (was %s)", circuitStateString(previousState))
 REDACTED else if previousFailures > 0 {
-		log.Printf("INFO: billing circuit breaker failures reset from %d", previousFailures)
+		logger.LegacyPrintf("service.billing_cache", "INFO: billing circuit breaker failures reset from %d", previousFailures)
 REDACTED
 REDACTED
 

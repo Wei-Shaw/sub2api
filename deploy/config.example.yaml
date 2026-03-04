@@ -20,14 +20,18 @@ server:
   # Mode: "debug" for development, "release" for production
   # 运行模式："debug" 用于开发，"release" 用于生产环境
   mode: "release"
+  # Frontend base URL used to generate external links in emails (e.g. password reset)
+  # 用于生成邮件中的外部链接（例如：重置密码链接）的前端基础地址
+  # Example: "https://example.com"
+  frontend_url: ""
   # Trusted proxies for X-Forwarded-For parsing (CIDR/IP). Empty disables trusted proxies.
   # 信任的代理地址（CIDR/IP 格式），用于解析 X-Forwarded-For 头。留空则禁用代理信任。
   trusted_proxies: []
-  # Global max request body size in bytes (default: 100MB)
-  # 全局最大请求体大小（字节，默认 100MB）
+  # Global max request body size in bytes (default: 256MB)
+  # 全局最大请求体大小（字节，默认 256MB）
   # Applies to all requests, especially important for h2c first request memory protection
   # 适用于所有请求，对 h2c 第一请求的内存保护尤为重要
-  max_request_body_size: 104857600
+  max_request_body_size: 268435456
   # HTTP/2 Cleartext (h2c) configuration
   # HTTP/2 Cleartext (h2c) 配置
   h2c:
@@ -108,9 +112,9 @@ security:
     # 白名单禁用时是否允许 http:// URL（默认: false，要求 https）
     allow_insecure_http: true
   response_headers:
-    # Enable configurable response header filtering (disable to use default allowlist)
-    # 启用可配置的响应头过滤（禁用则使用默认白名单）
-    enabled: false
+    # Enable configurable response header filtering (default: true)
+    # 启用可配置的响应头过滤（默认启用，过滤上游敏感响应头）
+    enabled: true
     # Extra allowed response headers from upstream
     # 额外允许的上游响应头
     additional_allowed: []
@@ -130,6 +134,12 @@ security:
     # Allow skipping TLS verification for proxy probe (debug only)
     # 允许代理探测时跳过 TLS 证书验证（仅用于调试）
     insecure_skip_verify: false
+  proxy_fallback:
+    # Allow auxiliary services (update check, pricing data) to fallback to direct
+    # connection when proxy initialization fails. Does NOT affect AI gateway connections.
+    # 辅助服务（更新检查、定价数据拉取）代理初始化失败时是否允许回退直连。
+    # 不影响 AI 账号网关连接。默认 false：fail-fast 防止 IP 泄露。
+    allow_direct_on_error: false
 
 # =============================================================================
 # Gateway Configuration
@@ -139,9 +149,45 @@ gateway:
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）
   response_header_timeout: 600
-  # Max request body size in bytes (default: 100MB)
-  # 请求体最大字节数（默认 100MB）
-  max_body_size: 104857600
+  # Max request body size in bytes (default: 256MB)
+  # 请求体最大字节数（默认 256MB）
+  max_body_size: 268435456
+  # Max bytes to read for non-stream upstream responses (default: 8MB)
+  # 非流式上游响应体读取上限（默认 8MB）
+  upstream_response_read_max_bytes: 8388608
+  # Max bytes to read for proxy probe responses (default: 1MB)
+  # 代理探测响应体读取上限（默认 1MB）
+  proxy_probe_response_read_max_bytes: 1048576
+  # Enable Gemini upstream response header debug logs (default: false)
+  # 是否开启 Gemini 上游响应头调试日志（默认 false）
+  gemini_debug_response_headers: false
+  # Sora max request body size in bytes (0=use max_body_size)
+  # Sora 请求体最大字节数（0=使用 max_body_size）
+  sora_max_body_size: 268435456
+  # Sora stream timeout (seconds, 0=disable)
+  # Sora 流式请求总超时（秒，0=禁用）
+  sora_stream_timeout_seconds: 900
+  # Sora non-stream timeout (seconds, 0=disable)
+  # Sora 非流式请求超时（秒，0=禁用）
+  sora_request_timeout_seconds: 180
+  # Sora stream enforcement mode: force/error
+  # Sora stream 强制策略：force/error
+  sora_stream_mode: "force"
+  # Sora model filters
+  # Sora 模型过滤配置
+  sora_model_filters:
+    # Hide prompt-enhance models by default
+    # 默认隐藏 prompt-enhance 模型
+    hide_prompt_enhance: true
+  # Require API key for /sora/media proxy (default: false)
+  # /sora/media 是否强制要求 API Key（默认 true）
+  sora_media_require_api_key: true
+  # Sora media temporary signing key (empty disables signed URL)
+  # Sora 媒体临时签名密钥（为空则禁用签名）
+  sora_media_signing_key: ""
+  # Signed URL TTL seconds (<=0 disables)
+  # 临时签名 URL 有效期（秒，<=0 表示禁用）
+  sora_media_signed_url_ttl_seconds: 900
   # Connection pool isolation strategy:
   # 连接池隔离策略：
   # - proxy: Isolate by proxy, same proxy shares connection pool (suitable for few proxies, many accounts)
@@ -151,17 +197,102 @@ gateway:
   # - account_proxy: Isolate by account+proxy combination (default, finest granularity)
   # - account_proxy: 按账户+代理组合隔离（默认，最细粒度）
   connection_pool_isolation: "account_proxy"
+  # Force Codex CLI mode: treat all /openai/v1/responses requests as Codex CLI.
+  # 强制按 Codex CLI 处理 /openai/v1/responses 请求（用于网关未透传/改写 User-Agent 的兜底）。
+  #
+  # 注意：开启后会影响所有客户端的行为（不仅限于 VS Code / Codex CLI），请谨慎开启。
+  force_codex_cli: false
+  # OpenAI 透传模式是否放行客户端超时头（如 x-stainless-timeout）
+  # 默认 false：过滤超时头，降低上游提前断流风险。
+  openai_passthrough_allow_timeout_headers: false
+  # OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
+  openai_ws:
+    # 新版 WS mode 路由（默认关闭）。关闭时保持当前 legacy 实现行为。
+    mode_router_v2_enabled: false
+    # ingress 默认模式：off|shared|dedicated（仅 mode_router_v2_enabled=true 生效）
+    ingress_mode_default: shared
+    # 全局总开关，默认 true；关闭时所有请求保持原有 HTTP/SSE 路由
+    enabled: true
+    # 按账号类型细分开关
+    oauth_enabled: true
+    apikey_enabled: true
+    # 全局强制 HTTP（紧急回滚开关）
+    force_http: false
+    # 允许在 WSv2 下按策略恢复 store=true（默认 false）
+    allow_store_recovery: false
+    # ingress 模式收到 previous_response_not_found 时，自动去掉 previous_response_id 重试一次（默认 true）
+    ingress_previous_response_recovery_enabled: true
+    # store=false 且无可复用会话连接时的策略：
+    # strict=强制新建连接（隔离优先），adaptive=仅在高风险失败后强制新建，off=尽量复用（性能优先）
+    store_disabled_conn_mode: strict
+    # store=false 且无可复用会话连接时，是否强制新建连接（默认 true，优先会话隔离）
+    # 兼容旧配置：仅在 store_disabled_conn_mode 未配置时生效
+    store_disabled_force_new_conn: true
+    # 是否启用 WSv2 generate=false 预热（默认 false）
+    prewarm_generate_enabled: false
+    # 协议 feature 开关，v2 优先于 v1
+    responses_websockets: false
+    responses_websockets_v2: true
+    # 连接池参数（按账号池化复用）
+    max_conns_per_account: 128
+    min_idle_per_account: 4
+    max_idle_per_account: 12
+    # 是否按账号并发动态计算连接池上限：
+    # effective_max_conns = min(max_conns_per_account, ceil(account.concurrency * factor))
+    dynamic_max_conns_by_account_concurrency_enabled: true
+    # 按账号类型分别设置系数（OAuth / API Key）
+    oauth_max_conns_factor: 1.0
+    apikey_max_conns_factor: 1.0
+    dial_timeout_seconds: 10
+    read_timeout_seconds: 900
+    write_timeout_seconds: 120
+    pool_target_utilization: 0.7
+    queue_limit_per_conn: 64
+    # 流式写出批量 flush 参数
+    event_flush_batch_size: 1
+    event_flush_interval_ms: 10
+    # 预热触发冷却（毫秒）
+    prewarm_cooldown_ms: 300
+    # WS 回退到 HTTP 后的冷却时间（秒），用于避免 WS/HTTP 来回抖动；0 表示关闭冷却
+    fallback_cooldown_seconds: 30
+    # WS 重试退避参数（毫秒）
+    retry_backoff_initial_ms: 120
+    retry_backoff_max_ms: 2000
+    # 抖动比例（0-1）
+    retry_jitter_ratio: 0.2
+    # 单次请求 WS 重试总预算（毫秒）；建议设置为有限值，避免重试拉高 TTFT 长尾
+    retry_total_budget_ms: 5000
+    # payload_schema 日志采样率（0-1）；降低热路径日志放大
+    payload_log_sample_rate: 0.2
+    # 调度与粘连参数
+    lb_top_k: 7
+    sticky_session_ttl_seconds: 3600
+    # 会话哈希迁移兼容开关：新 key 未命中时回退读取旧 SHA-256 key
+    session_hash_read_old_fallback: true
+    # 会话哈希迁移兼容开关：写入时双写旧 SHA-256 key（短 TTL）
+    session_hash_dual_write_old: true
+    # context 元数据迁移兼容开关：保留旧 ctxkey.* 读取/注入桥接
+    metadata_bridge_enabled: true
+    sticky_response_id_ttl_seconds: 3600
+    # 兼容旧键：当 sticky_response_id_ttl_seconds 缺失时回退该值
+    sticky_previous_response_ttl_seconds: 3600
+    scheduler_score_weights:
+      priority: 1.0
+      load: 1.0
+      queue: 0.7
+      error_rate: 0.8
+      ttft: 0.5
   # HTTP upstream connection pool settings (HTTP/2 + multi-proxy scenario defaults)
   # HTTP 上游连接池配置（HTTP/2 + 多代理场景默认值）
   # Max idle connections across all hosts
   # 所有主机的最大空闲连接数
-  max_idle_conns: 240
+  max_idle_conns: 2560
   # Max idle connections per host
   # 每个主机的最大空闲连接数
   max_idle_conns_per_host: 120
   # Max connections per host
   # 每个主机的最大连接数
-  max_conns_per_host: 240
+  max_conns_per_host: 1024
   # Idle connection timeout (seconds)
   # 空闲连接超时时间（秒）
   idle_conn_timeout_seconds: 90
@@ -246,9 +377,177 @@ gateway:
     #     name: "Custom Profile 1"
     #   profile_2:
     #     name: "Custom Profile 2"
-    #     cipher_suites: [4866, 4867, 4865, 49199, 49195, 49200, 49196]
-    #     curves: [29, 23, 24]
-    #     point_formats: [0]
+
+# =============================================================================
+# Logging Configuration
+# 日志配置
+# =============================================================================
+log:
+  # Log level: debug/info/warn/error
+  # 日志级别：debug/info/warn/error
+  level: "info"
+  # Log format: json/console
+  # 日志格式：json/console
+  format: "console"
+  # Service name field written into each log line
+  # 每条日志都会附带 service 字段
+  service_name: "sub2api"
+  # Environment field written into each log line
+  # 每条日志都会附带 env 字段
+  env: "production"
+  # Include caller information
+  # 是否输出调用方位置信息
+  caller: true
+  # Stacktrace threshold: none/error/fatal
+  # 堆栈输出阈值：none/error/fatal
+  stacktrace_level: "error"
+  output:
+    # Keep stdout/stderr output for container log collection
+    # 保持标准输出用于容器日志采集
+    to_stdout: true
+    # Enable file output (default path auto-derived)
+    # 启用文件输出（默认路径自动推导）
+    to_file: true
+    # Empty means:
+    # - DATA_DIR set: {{DATA_DIRREDACTEDREDACTED/logs/sub2api.log
+    # - otherwise: /app/data/logs/sub2api.log
+    # 留空时：
+    # - 设置 DATA_DIR：{{DATA_DIRREDACTEDREDACTED/logs/sub2api.log
+    # - 否则：/app/data/logs/sub2api.log
+    file_path: ""
+  rotation:
+    # Max file size before rotation (MB)
+    # 单文件滚动阈值（MB）
+    max_size_mb: 100
+    # Number of rotated files to keep (0 means unlimited)
+    # 保留历史文件数量（0 表示不限制）
+    max_backups: 10
+    # Number of days to keep old log files (0 means unlimited)
+    # 历史日志保留天数（0 表示不限制）
+    max_age_days: 7
+    # Compress rotated files
+    # 是否压缩历史日志
+    compress: true
+    # Use local time for timestamp in rotated filename
+    # 滚动文件名时间戳使用本地时区
+    local_time: true
+  sampling:
+    # Enable zap sampler (reduce high-frequency repetitive logs)
+    # 启用 zap 采样（减少高频重复日志）
+    enabled: false
+    # Number of first entries per second to always log
+    # 每秒无采样保留的前 N 条日志
+    initial: 100
+    # Thereafter keep 1 out of N entries per second
+    # 之后每 N 条保留 1 条
+    thereafter: 100
+
+# =============================================================================
+# Sora Direct Client Configuration
+# Sora 直连配置
+# =============================================================================
+sora:
+  client:
+    # Sora backend base URL
+    # Sora 上游 Base URL
+    base_url: "https://sora.chatgpt.com/backend"
+    # Request timeout (seconds)
+    # 请求超时（秒）
+    timeout_seconds: 120
+    # Max retries for upstream requests
+    # 上游请求最大重试次数
+    max_retries: 3
+    # Account+proxy cooldown window after Cloudflare challenge (seconds, 0 to disable)
+    # Cloudflare challenge 后按账号+代理冷却窗口（秒，0 表示关闭）
+    cloudflare_challenge_cooldown_seconds: 900
+    # Poll interval (seconds)
+    # 轮询间隔（秒）
+    poll_interval_seconds: 2
+    # Max poll attempts
+    # 最大轮询次数
+    max_poll_attempts: 600
+    # Recent task query limit (image)
+    # 最近任务查询数量（图片轮询）
+    recent_task_limit: 50
+    # Recent task query max limit (fallback)
+    # 最近任务查询最大数量（回退）
+    recent_task_limit_max: 200
+    # Enable debug logs for Sora upstream requests
+    # 启用 Sora 直连调试日志
+    # 调试日志会输出上游请求尝试、重试、响应摘要；Authorization/openai-sentinel-token 等敏感头会自动脱敏
+    debug: false
+    # Allow Sora client to fetch token via OpenAI token provider
+    # 是否允许 Sora 客户端通过 OpenAI token provider 取 token（默认 false，避免误走 OpenAI 刷新链路）
+    use_openai_token_provider: false
+    # Optional custom headers (key-value)
+    # 额外请求头（键值对）
+    headers: {REDACTED
+    # Default User-Agent for Sora requests
+    # Sora 默认 User-Agent
+    user_agent: "Sora/1.2026.007 (Android 15; 24122RKC7C; build 2600700)"
+    # Disable TLS fingerprint for Sora upstream
+    # 关闭 Sora 上游 TLS 指纹伪装
+    disable_tls_fingerprint: false
+    # curl_cffi sidecar for Sora only (required)
+    # 仅 Sora 链路使用的 curl_cffi sidecar（必需）
+    curl_cffi_sidecar:
+      # Sora 强制通过 sidecar 请求，必须启用
+      # Sora is forced to use sidecar only; keep enabled=true
+      enabled: true
+      # Sidecar base URL (default endpoint: /request)
+      # sidecar 基础地址（默认请求端点：/request）
+      base_url: "http://sora-curl-cffi-sidecar:8080"
+      # curl_cffi impersonate profile, e.g. chrome131/chrome124/safari18_0
+      # curl_cffi 指纹伪装 profile，例如 chrome131/chrome124/safari18_0
+      impersonate: "chrome131"
+      # Sidecar request timeout (seconds)
+      # sidecar 请求超时（秒）
+      timeout_seconds: 60
+      # Reuse session key per account+proxy to let sidecar persist cookies/session
+      # 按账号+代理复用 session key，让 sidecar 持久化 cookies/session
+      session_reuse_enabled: true
+      # Session TTL in sidecar (seconds)
+      # sidecar 会话 TTL（秒）
+      session_ttl_seconds: 3600
+  storage:
+    # Storage type (local only for now)
+    # 存储类型（首发仅支持 local）
+    type: "local"
+    # Local base path; empty uses /app/data/sora
+    # 本地存储基础路径；为空使用 /app/data/sora
+    local_path: ""
+    # Fallback to upstream URL when download fails
+    # 下载失败时回退到上游 URL
+    fallback_to_upstream: true
+    # Max concurrent downloads
+    # 并发下载上限
+    max_concurrent_downloads: 4
+    # Download timeout (seconds)
+    # 下载超时（秒）
+    download_timeout_seconds: 120
+    # Max download bytes
+    # 最大下载字节数
+    max_download_bytes: 209715200
+    # Enable debug logs for media storage
+    # 启用媒体存储调试日志
+    debug: false
+    cleanup:
+      # Enable cleanup task
+      # 启用清理任务
+      enabled: true
+      # Retention days
+      # 保留天数
+      retention_days: 7
+      # Cron schedule
+      # Cron 调度表达式
+      schedule: "0 3 * * *"
+
+# Token refresh behavior
+# token 刷新行为控制
+token_refresh:
+  # Whether OpenAI refresh flow is allowed to sync linked Sora accounts
+  # 是否允许 OpenAI 刷新流程同步覆盖 linked_openai_account_id 关联的 Sora 账号 token
+  sync_linked_sora_accounts: false
 
 # =============================================================================
 # API Key Auth Cache Configuration
@@ -353,6 +652,30 @@ usage_cleanup:
   task_timeout_seconds: 1800
 
 # =============================================================================
+# HTTP 写接口幂等配置
+# Idempotency Configuration
+# =============================================================================
+idempotency:
+  # Observe-only 模式：
+  # true: 观察期，不带 Idempotency-Key 仍放行（但会记录）
+  # false: 强制期，不带 Idempotency-Key 直接拒绝（仅对接入幂等保护的接口生效）
+  observe_only: true
+  # 关键写接口幂等记录 TTL（秒）
+  default_ttl_seconds: 86400
+  # 系统操作接口（update/rollback/restart）幂等记录 TTL（秒）
+  system_operation_ttl_seconds: 3600
+  # processing 锁超时（秒）
+  processing_timeout_seconds: 30
+  # 可重试失败退避窗口（秒）
+  failed_retry_backoff_seconds: 5
+  # 持久化响应体最大长度（字节）
+  max_stored_response_len: 65536
+  # 过期幂等记录清理周期（秒）
+  cleanup_interval_seconds: 60
+  # 每轮清理最大删除条数
+  cleanup_batch_size: 500
+
+# =============================================================================
 # Concurrency Wait Configuration
 # 并发等待配置
 # =============================================================================
@@ -381,9 +704,22 @@ database:
   # Database name
   # 数据库名称
   dbname: "sub2api"
-  # SSL mode: disable, require, verify-ca, verify-full
-  # SSL 模式：disable（禁用）, require（要求）, verify-ca（验证CA）, verify-full（完全验证）
-  sslmode: "disable"
+  # SSL mode: disable, prefer, require, verify-ca, verify-full
+  # SSL 模式：disable（禁用）, prefer（优先加密，默认）, require（要求）, verify-ca（验证CA）, verify-full（完全验证）
+  # 默认值为 "prefer"，数据库支持 SSL 时自动使用加密连接，不支持时回退明文
+  sslmode: "prefer"
+  # Max open connections (高并发场景建议 256+，需配合 PostgreSQL max_connections 调整)
+  # 最大打开连接数
+  max_open_conns: 256
+  # Max idle connections (建议为 max_open_conns 的 50%，减少频繁建连开销)
+  # 最大空闲连接数
+  max_idle_conns: 128
+  # Connection max lifetime (minutes)
+  # 连接最大存活时间（分钟）
+  conn_max_lifetime_minutes: 30
+  # Connection max idle time (minutes)
+  # 空闲连接最大存活时间（分钟）
+  conn_max_idle_time_minutes: 5
 
 # =============================================================================
 # Redis Configuration
@@ -402,6 +738,12 @@ redis:
   # Database number (0-15)
   # 数据库编号（0-15）
   db: 0
+  # Connection pool size (max concurrent connections)
+  # 连接池大小（最大并发连接数）
+  pool_size: 1024
+  # Minimum number of idle connections (高并发场景建议 128+，保持足够热连接)
+  # 最小空闲连接数
+  min_idle_conns: 128
   # Enable TLS/SSL connection
   # 是否启用 TLS/SSL 连接
   enable_tls: false
@@ -428,9 +770,14 @@ jwt:
   # 重要：生产环境中请更改为随机字符串！
   # Generate with / 生成命令: openssl rand -hex 32
   secret: "change-this-to-a-secure-random-string"
-  # Token expiration time in hours (max 24)
-  # 令牌过期时间（小时，最大 24）
+  # Token expiration time in hours (max 168)
+  # 令牌过期时间（小时，最大 168）
   expire_hour: 24
+  # Access Token 过期时间（分钟）
+  # 优先级说明：
+  # - >0: 按分钟生效（优先于 expire_hour）
+  # - =0: 回退使用 expire_hour
+  access_token_expire_minutes: 0
 
 # =============================================================================
 # TOTP (2FA) Configuration
@@ -515,12 +862,12 @@ rate_limit:
 # 定价数据源（可选）
 # =============================================================================
 pricing:
-  # URL to fetch model pricing data (default: LiteLLM)
-  # 获取模型定价数据的 URL（默认：LiteLLM）
-  remote_url: "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+  # URL to fetch model pricing data (default: pinned model-price-repo commit)
+  # 获取模型定价数据的 URL（默认：固定 commit 的 model-price-repo）
+  remote_url: "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/c7947e9871687e664180bc971d4837f1fc2784a9/model_prices_and_context_window.json"
   # Hash verification URL (optional)
   # 哈希校验 URL（可选）
-  hash_url: ""
+  hash_url: "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/c7947e9871687e664180bc971d4837f1fc2784a9/model_prices_and_context_window.sha256"
   # Local data directory for caching
   # 本地数据缓存目录
   data_dir: "./data"
@@ -583,10 +930,14 @@ turnstile:
 # 默认：使用 Gemini CLI 的公开 OAuth 凭证（与 Google 官方 CLI 工具相同）
 gemini:
   oauth:
-    # Gemini CLI public OAuth credentials (works for both Code Assist and AI Studio)
-    # Gemini CLI 公开 OAuth 凭证（适用于 Code Assist 和 AI Studio）
-    client_id: "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
-    client_secret: "REDACTED"
+    # OAuth 客户端配置说明：
+    # 1) 留空 client_id/client_secret：使用 Gemini CLI 内置 OAuth Client（其 client_secret 需通过环境变量注入）
+    #    - GEMINI_CLI_OAUTH_CLIENT_SECRET
+    # 2) 同时设置 client_id/client_secret：使用你自建的 OAuth Client（推荐，权限更完整）
+    #
+    # 注意：client_id 与 client_secret 必须同时为空或同时非空。
+    client_id: ""
+    client_secret: ""
     # Optional scopes (space-separated). Leave empty to auto-select based on oauth_type.
     # 可选的权限范围（空格分隔）。留空则根据 oauth_type 自动选择。
     scopes: ""

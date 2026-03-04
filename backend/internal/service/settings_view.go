@@ -1,12 +1,13 @@
 package service
 
 type SystemSettings struct {
-	RegistrationEnabled   bool
-	EmailVerifyEnabled    bool
-	PromoCodeEnabled      bool
-	PasswordResetEnabled  bool
-	InvitationCodeEnabled bool
-	TotpEnabled           bool // TOTP 双因素认证
+	RegistrationEnabled              bool
+	EmailVerifyEnabled               bool
+	RegistrationEmailSuffixWhitelist []string
+	PromoCodeEnabled                 bool
+	PasswordResetEnabled             bool
+	InvitationCodeEnabled            bool
+	TotpEnabled                      bool // TOTP 双因素认证
 
 	SMTPHost               string
 	SMTPPort               int
@@ -39,9 +40,12 @@ type SystemSettings struct {
 	HideCcsImportButton         bool
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
+	SoraClientEnabled           bool
+	CustomMenuItems             string // JSON array of custom menu items
 
-	DefaultConcurrency int
-	DefaultBalance     float64
+	DefaultConcurrency   int
+	DefaultBalance       float64
+	DefaultSubscriptions []DefaultSubscriptionSetting
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -59,31 +63,85 @@ type SystemSettings struct {
 	OpsRealtimeMonitoringEnabled bool
 	OpsQueryModeDefault          string
 	OpsMetricsIntervalSeconds    int
+
+	// Claude Code version check
+	MinClaudeCodeVersion string
+
+	// 分组隔离：允许未分组 Key 调度（默认 false → 403）
+	AllowUngroupedKeyScheduling bool
+REDACTED
+
+type DefaultSubscriptionSetting struct {
+	GroupID      int64 `json:"group_id"`
+	ValidityDays int   `json:"validity_days"`
 REDACTED
 
 type PublicSettings struct {
-	RegistrationEnabled   bool
-	EmailVerifyEnabled    bool
-	PromoCodeEnabled      bool
-	PasswordResetEnabled  bool
-	InvitationCodeEnabled bool
-	TotpEnabled           bool // TOTP 双因素认证
-	TurnstileEnabled      bool
-	TurnstileSiteKey      string
-	SiteName              string
-	SiteLogo              string
-	SiteSubtitle          string
-	APIBaseURL            string
-	ContactInfo           string
-	DocURL                string
-	HomeContent           string
-	HideCcsImportButton   bool
+	RegistrationEnabled              bool
+	EmailVerifyEnabled               bool
+	RegistrationEmailSuffixWhitelist []string
+	PromoCodeEnabled                 bool
+	PasswordResetEnabled             bool
+	InvitationCodeEnabled            bool
+	TotpEnabled                      bool // TOTP 双因素认证
+	TurnstileEnabled                 bool
+	TurnstileSiteKey                 string
+	SiteName                         string
+	SiteLogo                         string
+	SiteSubtitle                     string
+	APIBaseURL                       string
+	ContactInfo                      string
+	DocURL                           string
+	HomeContent                      string
+	HideCcsImportButton              bool
 
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
+	SoraClientEnabled           bool
+	CustomMenuItems             string // JSON array of custom menu items
 
 	LinuxDoOAuthEnabled bool
 	Version             string
+REDACTED
+
+// SoraS3Settings Sora S3 存储配置
+type SoraS3Settings struct {
+	Enabled                   bool   `json:"enabled"`
+	Endpoint                  string `json:"endpoint"`
+	Region                    string `json:"region"`
+	Bucket                    string `json:"bucket"`
+	AccessKeyID               string `json:"access_key_id"`
+	SecretAccessKey           string `json:"secret_access_key"`            // 仅内部使用，不直接返回前端
+	SecretAccessKeyConfigured bool   `json:"secret_access_key_configured"` // 前端展示用
+	Prefix                    string `json:"prefix"`
+	ForcePathStyle            bool   `json:"force_path_style"`
+	CDNURL                    string `json:"cdn_url"`
+	DefaultStorageQuotaBytes  int64  `json:"default_storage_quota_bytes"`
+REDACTED
+
+// SoraS3Profile Sora S3 多配置项（服务内部模型）
+type SoraS3Profile struct {
+	ProfileID                 string `json:"profile_id"`
+	Name                      string `json:"name"`
+	IsActive                  bool   `json:"is_active"`
+	Enabled                   bool   `json:"enabled"`
+	Endpoint                  string `json:"endpoint"`
+	Region                    string `json:"region"`
+	Bucket                    string `json:"bucket"`
+	AccessKeyID               string `json:"access_key_id"`
+	SecretAccessKey           string `json:"-"`                            // 仅内部使用，不直接返回前端
+	SecretAccessKeyConfigured bool   `json:"secret_access_key_configured"` // 前端展示用
+	Prefix                    string `json:"prefix"`
+	ForcePathStyle            bool   `json:"force_path_style"`
+	CDNURL                    string `json:"cdn_url"`
+	DefaultStorageQuotaBytes  int64  `json:"default_storage_quota_bytes"`
+	UpdatedAt                 string `json:"updated_at"`
+REDACTED
+
+// SoraS3ProfileList Sora S3 多配置列表
+type SoraS3ProfileList struct {
+	ActiveProfileID string          `json:"active_profile_id"`
+	Items           []SoraS3Profile `json:"items"`
 REDACTED
 
 // StreamTimeoutSettings 流超时处理配置（仅控制超时后的处理方式，超时判定由网关配置控制）

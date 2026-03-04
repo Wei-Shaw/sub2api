@@ -2,7 +2,11 @@
 //
 // 支持的代理协议：
 //   - HTTP/HTTPS: 通过 Transport.Proxy 设置
-//   - SOCKS5/SOCKS5H: 通过 Transport.DialContext 设置（服务端解析 DNS）
+//   - SOCKS5: 通过 Transport.DialContext 设置（客户端本地解析 DNS）
+//   - SOCKS5H: 通过 Transport.DialContext 设置（代理端远程解析 DNS，推荐）
+//
+// 注意：proxyurl.Parse() 会自动将 socks5:// 升级为 socks5h://，
+// 确保 DNS 也由代理端解析，防止 DNS 泄漏。
 package proxyutil
 
 import (
@@ -20,7 +24,8 @@ import (
 //
 // 支持的协议：
 //   - http/https: 设置 transport.Proxy
-//   - socks5/socks5h: 设置 transport.DialContext（由代理服务端解析 DNS）
+//   - socks5: 设置 transport.DialContext（客户端本地解析 DNS）
+//   - socks5h: 设置 transport.DialContext（代理端远程解析 DNS，推荐）
 //
 // 参数：
 //   - transport: 需要配置的 http.Transport

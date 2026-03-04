@@ -211,6 +211,7 @@ import { ref, computed, onMounted, onBeforeUnmount REDACTED from 'vue'
 import { useRouter, useRoute REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore, useAuthStore, useOnboardingStore REDACTED from '@/stores'
+import { useAdminSettingsStore REDACTED from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
@@ -221,6 +222,7 @@ const route = useRoute()
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const adminSettingsStore = useAdminSettingsStore()
 const onboardingStore = useOnboardingStore()
 
 const user = computed(() => authStore.user)
@@ -254,6 +256,14 @@ const displayName = computed(() => {
 REDACTED)
 
 const pageTitle = computed(() => {
+  // For custom pages, use the menu item's label instead of generic "自定义页面"
+  if (route.name === 'CustomPage') {
+    const id = route.params.id as string
+    const publicItems = appStore.cachedPublicSettings?.custom_menu_items ?? []
+    const menuItem = publicItems.find((item) => item.id === id)
+      ?? (authStore.isAdmin ? adminSettingsStore.customMenuItems.find((item) => item.id === id) : undefined)
+    if (menuItem?.label) return menuItem.label
+  REDACTED
   const titleKey = route.meta.titleKey as string
   if (titleKey) {
     return t(titleKey)

@@ -17,6 +17,8 @@ import (
 const (
 	// OAuth Client ID for OpenAI (Codex CLI official)
 	ClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
+	// OAuth Client ID for Sora mobile flow (aligned with sora2api)
+	SoraClientID = "app_LlGpXReQgckcGGUo2JrYvtJK"
 
 	// OAuth endpoints
 	AuthorizeURL = "https://auth.openai.com/oauth/authorize"
@@ -34,10 +36,18 @@ const (
 	SessionTTL = 30 * time.Minute
 )
 
+const (
+	// OAuthPlatformOpenAI uses OpenAI Codex-compatible OAuth client.
+	OAuthPlatformOpenAI = "openai"
+	// OAuthPlatformSora uses Sora OAuth client.
+	OAuthPlatformSora = "sora"
+)
+
 // OAuthSession stores OAuth flow state for OpenAI
 type OAuthSession struct {
 	State        string    `json:"state"`
 	CodeVerifier string    `json:"code_verifier"`
+	ClientID     string    `json:"client_id,omitempty"`
 	ProxyURL     string    `json:"proxy_url,omitempty"`
 	RedirectURI  string    `json:"redirect_uri"`
 	CreatedAt    time.Time `json:"created_at"`
@@ -47,6 +57,7 @@ REDACTED
 type SessionStore struct {
 	mu       sync.RWMutex
 	sessions map[string]*OAuthSession
+	stopOnce sync.Once
 	stopCh   chan struct{REDACTED
 REDACTED
 
@@ -92,7 +103,9 @@ REDACTED
 
 // Stop stops the cleanup goroutine
 func (s *SessionStore) Stop() {
-	close(s.stopCh)
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+REDACTED)
 REDACTED
 
 // cleanup removes expired sessions periodically
@@ -169,13 +182,20 @@ REDACTED
 
 // BuildAuthorizationURL builds the OpenAI OAuth authorization URL
 func BuildAuthorizationURL(state, codeChallenge, redirectURI string) string {
+	return BuildAuthorizationURLForPlatform(state, codeChallenge, redirectURI, OAuthPlatformOpenAI)
+REDACTED
+
+// BuildAuthorizationURLForPlatform builds authorization URL by platform.
+func BuildAuthorizationURLForPlatform(state, codeChallenge, redirectURI, platform string) string {
 	if redirectURI == "" {
 		redirectURI = DefaultRedirectURI
 REDACTED
 
+	clientID, codexFlow := OAuthClientConfigByPlatform(platform)
+
 	params := url.Values{REDACTED
 	params.Set("response_type", "code")
-	params.Set("client_id", ClientID)
+	params.Set("client_id", clientID)
 	params.Set("redirect_uri", redirectURI)
 	params.Set("scope", DefaultScopes)
 	params.Set("state", state)
@@ -183,9 +203,23 @@ REDACTED
 	params.Set("code_challenge_method", "S256")
 	// OpenAI specific parameters
 	params.Set("id_token_add_organizations", "true")
-	params.Set("codex_cli_simplified_flow", "true")
+	if codexFlow {
+		params.Set("codex_cli_simplified_flow", "true")
+REDACTED
 
 	return fmt.Sprintf("%s?%s", AuthorizeURL, params.Encode())
+REDACTED
+
+// OAuthClientConfigByPlatform returns oauth client_id and whether codex simplified flow should be enabled.
+// Sora 授权流程复用 Codex CLI 的 client_id（支持 localhost redirect_uri），
+// 但不启用 codex_cli_simplified_flow；拿到的 access_token 绑定同一 OpenAI 账号，对 Sora API 同样可用。
+func OAuthClientConfigByPlatform(platform string) (clientID string, codexFlow bool) {
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case OAuthPlatformSora:
+		return ClientID, false
+	default:
+		return ClientID, true
+REDACTED
 REDACTED
 
 // TokenRequest represents the token exchange request body
@@ -291,9 +325,11 @@ func (r *RefreshTokenRequest) ToFormData() string {
 	return params.Encode()
 REDACTED
 
-// ParseIDToken parses the ID Token JWT and extracts claims
-// Note: This does NOT verify the signature - it only decodes the payload
-// For production, you should verify the token signature using OpenAI's public keys
+// ParseIDToken parses the ID Token JWT and extracts claims.
+// 注意：当前仅解码 payload 并校验 exp，未验证 JWT 签名。
+// 生产环境如需用 ID Token 做授权决策，应通过 OpenAI 的 JWKS 端点验证签名：
+//
+//	https://auth.openai.com/.well-known/jwks.json
 func ParseIDToken(idToken string) (*IDTokenClaims, error) {
 	parts := strings.Split(idToken, ".")
 	if len(parts) != 3 {
@@ -322,6 +358,13 @@ REDACTED
 	var claims IDTokenClaims
 	if err := json.Unmarshal(decoded, &claims); err != nil {
 		return nil, fmt.Errorf("failed to parse JWT claims: %w", err)
+REDACTED
+
+	// 校验 ID Token 是否已过期（允许 2 分钟时钟偏差，防止因服务器时钟略有差异误判刚颁发的令牌）
+	const clockSkewTolerance = 120 // 秒
+	now := time.Now().Unix()
+	if claims.Exp > 0 && now > claims.Exp+clockSkewTolerance {
+		return nil, fmt.Errorf("id_token has expired (exp: %d, now: %d, skew_tolerance: %ds)", claims.Exp, now, clockSkewTolerance)
 REDACTED
 
 	return &claims, nil

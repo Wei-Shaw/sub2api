@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"strconv"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -199,13 +200,20 @@ REDACTED
 		return
 REDACTED
 
-	subscription, err := h.subscriptionService.ExtendSubscription(c.Request.Context(), subscriptionID, req.Days)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
+	idempotencyPayload := struct {
+		SubscriptionID int64                     `json:"subscription_id"`
+		Body           AdjustSubscriptionRequest `json:"body"`
+REDACTED{
+		SubscriptionID: subscriptionID,
+		Body:           req,
 REDACTED
-
-	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
+	executeAdminIdempotentJSON(c, "admin.subscriptions.extend", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		subscription, execErr := h.subscriptionService.ExtendSubscription(ctx, subscriptionID, req.Days)
+		if execErr != nil {
+			return nil, execErr
+	REDACTED
+		return dto.UserSubscriptionFromServiceAdmin(subscription), nil
+REDACTED)
 REDACTED
 
 // Revoke handles revoking a subscription

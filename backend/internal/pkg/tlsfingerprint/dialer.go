@@ -268,8 +268,8 @@ REDACTED
 		"cipher_suites", len(spec.CipherSuites),
 		"extensions", len(spec.Extensions),
 		"compression_methods", spec.CompressionMethods,
-		"tls_vers_max", fmt.Sprintf("0x%04x", spec.TLSVersMax),
-		"tls_vers_min", fmt.Sprintf("0x%04x", spec.TLSVersMin))
+		"tls_vers_max", spec.TLSVersMax,
+		"tls_vers_min", spec.TLSVersMin)
 
 	if d.profile != nil {
 		slog.Debug("tls_fingerprint_socks5_using_profile", "name", d.profile.Name, "grease", d.profile.EnableGREASE)
@@ -286,7 +286,7 @@ REDACTED, utls.HelloCustom)
 		return nil, fmt.Errorf("apply TLS preset: %w", err)
 REDACTED
 
-	if err := tlsConn.Handshake(); err != nil {
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		slog.Debug("tls_fingerprint_socks5_handshake_failed", "error", err)
 		_ = conn.Close()
 		return nil, fmt.Errorf("TLS handshake failed: %w", err)
@@ -294,8 +294,8 @@ REDACTED
 
 	state := tlsConn.ConnectionState()
 	slog.Debug("tls_fingerprint_socks5_handshake_success",
-		"version", fmt.Sprintf("0x%04x", state.Version),
-		"cipher_suite", fmt.Sprintf("0x%04x", state.CipherSuite),
+		"version", state.Version,
+		"cipher_suite", state.CipherSuite,
 		"alpn", state.NegotiatedProtocol)
 
 	return tlsConn, nil
@@ -404,8 +404,8 @@ REDACTED
 
 	state := tlsConn.ConnectionState()
 	slog.Debug("tls_fingerprint_http_proxy_handshake_success",
-		"version", fmt.Sprintf("0x%04x", state.Version),
-		"cipher_suite", fmt.Sprintf("0x%04x", state.CipherSuite),
+		"version", state.Version,
+		"cipher_suite", state.CipherSuite,
 		"alpn", state.NegotiatedProtocol)
 
 	return tlsConn, nil
@@ -470,8 +470,8 @@ REDACTED
 	// Log successful handshake details
 	state := tlsConn.ConnectionState()
 	slog.Debug("tls_fingerprint_handshake_success",
-		"version", fmt.Sprintf("0x%04x", state.Version),
-		"cipher_suite", fmt.Sprintf("0x%04x", state.CipherSuite),
+		"version", state.Version,
+		"cipher_suite", state.CipherSuite,
 		"alpn", state.NegotiatedProtocol)
 
 	return tlsConn, nil

@@ -17,7 +17,7 @@ func main() {
 	email := flag.String("email", "", "Admin email to issue a JWT for (defaults to first active admin)")
 	flag.Parse()
 
-	cfg, err := config.Load()
+	cfg, err := config.LoadForBootstrap()
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 REDACTED
@@ -33,7 +33,7 @@ REDACTED
 REDACTED()
 
 	userRepo := repository.NewUserRepository(client, sqlDB)
-	authService := service.NewAuthService(userRepo, nil, nil, cfg, nil, nil, nil, nil, nil)
+	authService := service.NewAuthService(userRepo, nil, nil, cfg, nil, nil, nil, nil, nil, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

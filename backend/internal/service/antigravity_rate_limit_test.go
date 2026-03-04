@@ -15,6 +15,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// 编译期接口断言
+var _ HTTPUpstream = (*stubAntigravityUpstream)(nil)
+var _ HTTPUpstream = (*recordingOKUpstream)(nil)
+var _ AccountRepository = (*stubAntigravityAccountRepo)(nil)
+var _ SchedulerCache = (*stubSchedulerCache)(nil)
+
 type stubAntigravityUpstream struct {
 	firstBase  string
 	secondBase string
@@ -189,6 +195,22 @@ func TestHandleUpstreamError_429_NonModelRateLimit(t *testing.T) {
 	require.Nil(t, result)
 	require.Len(t, repo.modelRateLimitCalls, 1)
 	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
+REDACTED
+
+// TestHandleUpstreamError_429_NonModelRateLimit_UsesMappedModelKey 测试 429 非模型限流场景
+// 验证：requestedModel 会被映射到 Antigravity 最终模型（例如 claude-opus-4-6 -> claude-opus-4-6-thinking）
+func TestHandleUpstreamError_429_NonModelRateLimit_UsesMappedModelKey(t *testing.T) {
+	repo := &stubAntigravityAccountRepo{REDACTED
+	svc := &AntigravityGatewayService{accountRepo: repoREDACTED
+	account := &Account{ID: 20, Name: "acc-20", Platform: PlatformAntigravityREDACTED
+
+	body := buildGeminiRateLimitBody("5s")
+
+	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusTooManyRequests, http.Header{REDACTED, body, "claude-opus-4-6", 0, "", false)
+
+	require.Nil(t, result)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "claude-opus-4-6-thinking", repo.modelRateLimitCalls[0].modelKey)
 REDACTED
 
 // TestHandleUpstreamError_503_ModelCapacityExhausted 测试 503 模型容量不足场景

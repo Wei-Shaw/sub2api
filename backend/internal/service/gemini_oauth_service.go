@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -16,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 const (
@@ -54,6 +54,7 @@ type GeminiOAuthService struct {
 	proxyRepo    ProxyRepository
 	oauthClient  GeminiOAuthClient
 	codeAssist   GeminiCliCodeAssistClient
+	driveClient  geminicli.DriveClient
 	cfg          *config.Config
 REDACTED
 
@@ -66,6 +67,7 @@ func NewGeminiOAuthService(
 	proxyRepo ProxyRepository,
 	oauthClient GeminiOAuthClient,
 	codeAssist GeminiCliCodeAssistClient,
+	driveClient geminicli.DriveClient,
 	cfg *config.Config,
 ) *GeminiOAuthService {
 	return &GeminiOAuthService{
@@ -73,6 +75,7 @@ func NewGeminiOAuthService(
 		proxyRepo:    proxyRepo,
 		oauthClient:  oauthClient,
 		codeAssist:   codeAssist,
+		driveClient:  driveClient,
 		cfg:          cfg,
 REDACTED
 REDACTED
@@ -81,8 +84,7 @@ func (s *GeminiOAuthService) GetOAuthConfig() *GeminiOAuthCapabilities {
 	// AI Studio OAuth is only enabled when the operator configures a custom OAuth client.
 	clientID := strings.TrimSpace(s.cfg.Gemini.OAuth.ClientID)
 	clientSecret := strings.TrimSpace(s.cfg.Gemini.OAuth.ClientSecret)
-	enabled := clientID != "" && clientSecret != "" &&
-		(clientID != geminicli.GeminiCLIOAuthClientID || clientSecret != geminicli.GeminiCLIOAuthClientSecret)
+	enabled := clientID != "" && clientSecret != "" && clientID != geminicli.GeminiCLIOAuthClientID
 
 	return &GeminiOAuthCapabilities{
 		AIStudioOAuthEnabled: enabled,
@@ -151,8 +153,7 @@ REDACTED
 		return nil, err
 REDACTED
 
-	isBuiltinClient := effectiveCfg.ClientID == geminicli.GeminiCLIOAuthClientID &&
-		effectiveCfg.ClientSecret == geminicli.GeminiCLIOAuthClientSecret
+	isBuiltinClient := effectiveCfg.ClientID == geminicli.GeminiCLIOAuthClientID
 
 	// AI Studio OAuth requires a user-provided OAuth client (built-in Gemini CLI client is scope-restricted).
 	if oauthType == "ai_studio" && isBuiltinClient {
@@ -330,27 +331,27 @@ REDACTED
 
 // inferGoogleOneTier infers Google One tier from Drive storage limit
 func inferGoogleOneTier(storageBytes int64) string {
-	log.Printf("[GeminiOAuth] inferGoogleOneTier - input: %d bytes (%.2f TB)", storageBytes, float64(storageBytes)/float64(TB))
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - input: %d bytes (%.2f TB)", storageBytes, float64(storageBytes)/float64(TB))
 
 	if storageBytes <= 0 {
-		log.Printf("[GeminiOAuth] inferGoogleOneTier - storageBytes <= 0, returning UNKNOWN")
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - storageBytes <= 0, returning UNKNOWN")
 		return GeminiTierGoogleOneUnknown
 REDACTED
 
 	if storageBytes > StorageTierUnlimited {
-		log.Printf("[GeminiOAuth] inferGoogleOneTier - > %d bytes (100TB), returning UNLIMITED", StorageTierUnlimited)
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - > %d bytes (100TB), returning UNLIMITED", StorageTierUnlimited)
 		return GeminiTierGoogleAIUltra
 REDACTED
 	if storageBytes >= StorageTierAIPremium {
-		log.Printf("[GeminiOAuth] inferGoogleOneTier - >= %d bytes (2TB), returning google_ai_pro", StorageTierAIPremium)
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - >= %d bytes (2TB), returning google_ai_pro", StorageTierAIPremium)
 		return GeminiTierGoogleAIPro
 REDACTED
 	if storageBytes >= StorageTierFree {
-		log.Printf("[GeminiOAuth] inferGoogleOneTier - >= %d bytes (15GB), returning FREE", StorageTierFree)
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - >= %d bytes (15GB), returning FREE", StorageTierFree)
 		return GeminiTierGoogleOneFree
 REDACTED
 
-	log.Printf("[GeminiOAuth] inferGoogleOneTier - < %d bytes (15GB), returning UNKNOWN", StorageTierFree)
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] inferGoogleOneTier - < %d bytes (15GB), returning UNKNOWN", StorageTierFree)
 	return GeminiTierGoogleOneUnknown
 REDACTED
 
@@ -360,30 +361,29 @@ REDACTED
 // 2. Personal accounts will get 403/404 from cloudaicompanion.googleapis.com
 // 3. Google consumer (Google One) and enterprise (GCP) systems are physically isolated
 func (s *GeminiOAuthService) FetchGoogleOneTier(ctx context.Context, accessToken, proxyURL string) (string, *geminicli.DriveStorageInfo, error) {
-	log.Printf("[GeminiOAuth] Starting FetchGoogleOneTier (Google One personal account)")
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Starting FetchGoogleOneTier (Google One personal account)")
 
 	// Use Drive API to infer tier from storage quota (requires drive.readonly scope)
-	log.Printf("[GeminiOAuth] Calling Drive API for storage quota...")
-	driveClient := geminicli.NewDriveClient()
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Calling Drive API for storage quota...")
 
-	storageInfo, err := driveClient.GetStorageQuota(ctx, accessToken, proxyURL)
+	storageInfo, err := s.driveClient.GetStorageQuota(ctx, accessToken, proxyURL)
 	if err != nil {
 		// Check if it's a 403 (scope not granted)
 		if strings.Contains(err.Error(), "status 403") {
-			log.Printf("[GeminiOAuth] Drive API scope not available (403): %v", err)
+			logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Drive API scope not available (403): %v", err)
 			return GeminiTierGoogleOneUnknown, nil, err
 	REDACTED
 		// Other errors
-		log.Printf("[GeminiOAuth] Failed to fetch Drive storage: %v", err)
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Failed to fetch Drive storage: %v", err)
 		return GeminiTierGoogleOneUnknown, nil, err
 REDACTED
 
-	log.Printf("[GeminiOAuth] Drive API response - Limit: %d bytes (%.2f TB), Usage: %d bytes (%.2f GB)",
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Drive API response - Limit: %d bytes (%.2f TB), Usage: %d bytes (%.2f GB)",
 		storageInfo.Limit, float64(storageInfo.Limit)/float64(TB),
 		storageInfo.Usage, float64(storageInfo.Usage)/float64(GB))
 
 	tierID := inferGoogleOneTier(storageInfo.Limit)
-	log.Printf("[GeminiOAuth] Inferred tier from storage: %s", tierID)
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Inferred tier from storage: %s", tierID)
 
 	return tierID, storageInfo, nil
 REDACTED
@@ -443,16 +443,16 @@ REDACTED
 REDACTED
 
 func (s *GeminiOAuthService) ExchangeCode(ctx context.Context, input *GeminiExchangeCodeInput) (*GeminiTokenInfo, error) {
-	log.Printf("[GeminiOAuth] ========== ExchangeCode START ==========")
-	log.Printf("[GeminiOAuth] SessionID: %s", input.SessionID)
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ========== ExchangeCode START ==========")
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] SessionID: %s", input.SessionID)
 
 	session, ok := s.sessionStore.Get(input.SessionID)
 	if !ok {
-		log.Printf("[GeminiOAuth] ERROR: Session not found or expired")
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ERROR: Session not found or expired")
 		return nil, fmt.Errorf("session not found or expired")
 REDACTED
 	if strings.TrimSpace(input.State) == "" || input.State != session.State {
-		log.Printf("[GeminiOAuth] ERROR: Invalid state")
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ERROR: Invalid state")
 		return nil, fmt.Errorf("invalid state")
 REDACTED
 
@@ -463,7 +463,7 @@ REDACTED
 			proxyURL = proxy.URL()
 	REDACTED
 REDACTED
-	log.Printf("[GeminiOAuth] ProxyURL: %s", proxyURL)
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ProxyURL: %s", proxyURL)
 
 	redirectURI := session.RedirectURI
 
@@ -472,8 +472,8 @@ REDACTED
 	if oauthType == "" {
 		oauthType = "code_assist"
 REDACTED
-	log.Printf("[GeminiOAuth] OAuth Type: %s", oauthType)
-	log.Printf("[GeminiOAuth] Project ID from session: %s", session.ProjectID)
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] OAuth Type: %s", oauthType)
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Project ID from session: %s", session.ProjectID)
 
 	// If the session was created for AI Studio OAuth, ensure a custom OAuth client is configured.
 	if oauthType == "ai_studio" {
@@ -485,26 +485,25 @@ REDACTED
 		if err != nil {
 			return nil, err
 	REDACTED
-		isBuiltinClient := effectiveCfg.ClientID == geminicli.GeminiCLIOAuthClientID &&
-			effectiveCfg.ClientSecret == geminicli.GeminiCLIOAuthClientSecret
+		isBuiltinClient := effectiveCfg.ClientID == geminicli.GeminiCLIOAuthClientID
 		if isBuiltinClient {
 			return nil, fmt.Errorf("AI Studio OAuth requires a custom OAuth Client. Please use an AI Studio API Key account, or configure GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET and re-authorize")
 	REDACTED
 REDACTED
 
-	// code_assist always uses the built-in client and its fixed redirect URI.
-	if oauthType == "code_assist" {
+	// code_assist/google_one always uses the built-in client and its fixed redirect URI.
+	if oauthType == "code_assist" || oauthType == "google_one" {
 		redirectURI = geminicli.GeminiCLIRedirectURI
 REDACTED
 
 	tokenResp, err := s.oauthClient.ExchangeCode(ctx, oauthType, input.Code, session.CodeVerifier, redirectURI, proxyURL)
 	if err != nil {
-		log.Printf("[GeminiOAuth] ERROR: Failed to exchange code: %v", err)
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ERROR: Failed to exchange code: %v", err)
 		return nil, fmt.Errorf("failed to exchange code: %w", err)
 REDACTED
-	log.Printf("[GeminiOAuth] Token exchange successful")
-	log.Printf("[GeminiOAuth] Token scope: %s", tokenResp.Scope)
-	log.Printf("[GeminiOAuth] Token expires_in: %d seconds", tokenResp.ExpiresIn)
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Token exchange successful")
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Token scope: %s", tokenResp.Scope)
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Token expires_in: %d seconds", tokenResp.ExpiresIn)
 
 	sessionProjectID := strings.TrimSpace(session.ProjectID)
 	s.sessionStore.Delete(input.SessionID)
@@ -526,40 +525,40 @@ REDACTED
 		fallbackTierID = canonicalGeminiTierIDForOAuthType(oauthType, session.TierID)
 REDACTED
 
-	log.Printf("[GeminiOAuth] ========== Account Type Detection START ==========")
-	log.Printf("[GeminiOAuth] OAuth Type: %s", oauthType)
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ========== Account Type Detection START ==========")
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] OAuth Type: %s", oauthType)
 
 	// 对于 code_assist 模式，project_id 是必需的，需要调用 Code Assist API
 	// 对于 google_one 模式，使用个人 Google 账号，不需要 project_id，配额由 Google 网关自动识别
 	// 对于 ai_studio 模式，project_id 是可选的（不影响使用 AI Studio API）
 	switch oauthType {
 	case "code_assist":
-		log.Printf("[GeminiOAuth] Processing code_assist OAuth type")
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Processing code_assist OAuth type")
 		if projectID == "" {
-			log.Printf("[GeminiOAuth] No project_id provided, attempting to fetch from LoadCodeAssist API...")
+			logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] No project_id provided, attempting to fetch from LoadCodeAssist API...")
 			var err error
 			projectID, tierID, err = s.fetchProjectID(ctx, tokenResp.AccessToken, proxyURL)
 			if err != nil {
 				// 记录警告但不阻断流程，允许后续补充 project_id
 				fmt.Printf("[GeminiOAuth] Warning: Failed to fetch project_id during token exchange: %v\n", err)
-				log.Printf("[GeminiOAuth] WARNING: Failed to fetch project_id: %v", err)
+				logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] WARNING: Failed to fetch project_id: %v", err)
 		REDACTED else {
-				log.Printf("[GeminiOAuth] Successfully fetched project_id: %s, tier_id: %s", projectID, tierID)
+				logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Successfully fetched project_id: %s, tier_id: %s", projectID, tierID)
 		REDACTED
 	REDACTED else {
-			log.Printf("[GeminiOAuth] User provided project_id: %s, fetching tier_id...", projectID)
+			logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] User provided project_id: %s, fetching tier_id...", projectID)
 			// 用户手动填了 project_id，仍需调用 LoadCodeAssist 获取 tierID
 			_, fetchedTierID, err := s.fetchProjectID(ctx, tokenResp.AccessToken, proxyURL)
 			if err != nil {
 				fmt.Printf("[GeminiOAuth] Warning: Failed to fetch tierID: %v\n", err)
-				log.Printf("[GeminiOAuth] WARNING: Failed to fetch tier_id: %v", err)
+				logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] WARNING: Failed to fetch tier_id: %v", err)
 		REDACTED else {
 				tierID = fetchedTierID
-				log.Printf("[GeminiOAuth] Successfully fetched tier_id: %s", tierID)
+				logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Successfully fetched tier_id: %s", tierID)
 		REDACTED
 	REDACTED
 		if strings.TrimSpace(projectID) == "" {
-			log.Printf("[GeminiOAuth] ERROR: Missing project_id for Code Assist OAuth")
+			logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ERROR: Missing project_id for Code Assist OAuth")
 			return nil, fmt.Errorf("missing project_id for Code Assist OAuth: please fill Project ID (optional field) and regenerate the auth URL, or ensure your Google account has an ACTIVE GCP project")
 	REDACTED
 		// Prefer auto-detected tier; fall back to user-selected tier.
@@ -567,31 +566,31 @@ REDACTED
 		if tierID == "" {
 			if fallbackTierID != "" {
 				tierID = fallbackTierID
-				log.Printf("[GeminiOAuth] Using fallback tier_id from user/session: %s", tierID)
+				logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Using fallback tier_id from user/session: %s", tierID)
 		REDACTED else {
 				tierID = GeminiTierGCPStandard
-				log.Printf("[GeminiOAuth] Using default tier_id: %s", tierID)
+				logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Using default tier_id: %s", tierID)
 		REDACTED
 	REDACTED
-		log.Printf("[GeminiOAuth] Final code_assist result - project_id: %s, tier_id: %s", projectID, tierID)
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Final code_assist result - project_id: %s, tier_id: %s", projectID, tierID)
 
 	case "google_one":
-		log.Printf("[GeminiOAuth] Processing google_one OAuth type")
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Processing google_one OAuth type")
 
 		// Google One accounts use cloudaicompanion API, which requires a project_id.
 		// For personal accounts, Google auto-assigns a project_id via the LoadCodeAssist API.
 		if projectID == "" {
-			log.Printf("[GeminiOAuth] No project_id provided, attempting to fetch from LoadCodeAssist API...")
+			logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] No project_id provided, attempting to fetch from LoadCodeAssist API...")
 			var err error
 			projectID, _, err = s.fetchProjectID(ctx, tokenResp.AccessToken, proxyURL)
 			if err != nil {
-				log.Printf("[GeminiOAuth] ERROR: Failed to fetch project_id: %v", err)
+				logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ERROR: Failed to fetch project_id: %v", err)
 				return nil, fmt.Errorf("google One accounts require a project_id, failed to auto-detect: %w", err)
 		REDACTED
-			log.Printf("[GeminiOAuth] Successfully fetched project_id: %s", projectID)
+			logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Successfully fetched project_id: %s", projectID)
 	REDACTED
 
-		log.Printf("[GeminiOAuth] Attempting to fetch Google One tier from Drive API...")
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Attempting to fetch Google One tier from Drive API...")
 		// Attempt to fetch Drive storage tier
 		var storageInfo *geminicli.DriveStorageInfo
 		var err error
@@ -599,12 +598,12 @@ REDACTED
 		if err != nil {
 			// Log warning but don't block - use fallback
 			fmt.Printf("[GeminiOAuth] Warning: Failed to fetch Drive tier: %v\n", err)
-			log.Printf("[GeminiOAuth] WARNING: Failed to fetch Drive tier: %v", err)
+			logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] WARNING: Failed to fetch Drive tier: %v", err)
 			tierID = ""
 	REDACTED else {
-			log.Printf("[GeminiOAuth] Successfully fetched Drive tier: %s", tierID)
+			logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Successfully fetched Drive tier: %s", tierID)
 			if storageInfo != nil {
-				log.Printf("[GeminiOAuth] Drive storage - Limit: %d bytes (%.2f TB), Usage: %d bytes (%.2f GB)",
+				logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Drive storage - Limit: %d bytes (%.2f TB), Usage: %d bytes (%.2f GB)",
 					storageInfo.Limit, float64(storageInfo.Limit)/float64(TB),
 					storageInfo.Usage, float64(storageInfo.Usage)/float64(GB))
 		REDACTED
@@ -613,10 +612,10 @@ REDACTED
 		if tierID == "" || tierID == GeminiTierGoogleOneUnknown {
 			if fallbackTierID != "" {
 				tierID = fallbackTierID
-				log.Printf("[GeminiOAuth] Using fallback tier_id from user/session: %s", tierID)
+				logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Using fallback tier_id from user/session: %s", tierID)
 		REDACTED else {
 				tierID = GeminiTierGoogleOneFree
-				log.Printf("[GeminiOAuth] Using default tier_id: %s", tierID)
+				logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Using default tier_id: %s", tierID)
 		REDACTED
 	REDACTED
 		fmt.Printf("[GeminiOAuth] Google One tierID after normalization: %s\n", tierID)
@@ -639,7 +638,7 @@ REDACTED
 					"drive_tier_updated_at": time.Now().Format(time.RFC3339),
 			REDACTED,
 		REDACTED
-			log.Printf("[GeminiOAuth] ========== ExchangeCode END (google_one with storage info) ==========")
+			logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ========== ExchangeCode END (google_one with storage info) ==========")
 			return tokenInfo, nil
 	REDACTED
 
@@ -652,10 +651,10 @@ REDACTED
 	REDACTED
 
 	default:
-		log.Printf("[GeminiOAuth] Processing %s OAuth type (no tier detection)", oauthType)
+		logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Processing %s OAuth type (no tier detection)", oauthType)
 REDACTED
 
-	log.Printf("[GeminiOAuth] ========== Account Type Detection END ==========")
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ========== Account Type Detection END ==========")
 
 	result := &GeminiTokenInfo{
 		AccessToken:  tokenResp.AccessToken,
@@ -668,8 +667,8 @@ REDACTED
 		TierID:       tierID,
 		OAuthType:    oauthType,
 REDACTED
-	log.Printf("[GeminiOAuth] Final result - OAuth Type: %s, Project ID: %s, Tier ID: %s", result.OAuthType, result.ProjectID, result.TierID)
-	log.Printf("[GeminiOAuth] ========== ExchangeCode END ==========")
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Final result - OAuth Type: %s, Project ID: %s, Tier ID: %s", result.OAuthType, result.ProjectID, result.TierID)
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ========== ExchangeCode END ==========")
 	return result, nil
 REDACTED
 
@@ -952,23 +951,23 @@ REDACTED
 		registeredTierID := strings.TrimSpace(loadResp.GetTier())
 		if registeredTierID != "" {
 			// 已注册但未返回 cloudaicompanionProject，这在 Google One 用户中较常见：需要用户自行提供 project_id。
-			log.Printf("[GeminiOAuth] User has tier (%s) but no cloudaicompanionProject, trying Cloud Resource Manager...", registeredTierID)
+			logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] User has tier (%s) but no cloudaicompanionProject, trying Cloud Resource Manager...", registeredTierID)
 
 			// Try to get project from Cloud Resource Manager
 			fallback, fbErr := fetchProjectIDFromResourceManager(ctx, accessToken, proxyURL)
 			if fbErr == nil && strings.TrimSpace(fallback) != "" {
-				log.Printf("[GeminiOAuth] Found project from Cloud Resource Manager: %s", fallback)
+				logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] Found project from Cloud Resource Manager: %s", fallback)
 				return strings.TrimSpace(fallback), tierID, nil
 		REDACTED
 
 			// No project found - user must provide project_id manually
-			log.Printf("[GeminiOAuth] No project found from Cloud Resource Manager, user must provide project_id manually")
+			logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] No project found from Cloud Resource Manager, user must provide project_id manually")
 			return "", tierID, fmt.Errorf("user is registered (tier: %s) but no project_id available. Please provide Project ID manually in the authorization form, or create a project at https://console.cloud.google.com", registeredTierID)
 	REDACTED
 REDACTED
 
 	// 未检测到 currentTier/paidTier，视为新用户，继续调用 onboardUser
-	log.Printf("[GeminiOAuth] No currentTier/paidTier found, proceeding with onboardUser (tierID: %s)", tierID)
+	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] No currentTier/paidTier found, proceeding with onboardUser (tierID: %s)", tierID)
 
 	req := &geminicli.OnboardUserRequest{
 		TierID: tierID,
@@ -1046,7 +1045,7 @@ REDACTED
 		ValidateResolvedIP: true,
 REDACTED)
 	if err != nil {
-		client = &http.Client{Timeout: 30 * time.SecondREDACTED
+		return "", fmt.Errorf("create http client failed: %w", err)
 REDACTED
 
 	resp, err := client.Do(req)

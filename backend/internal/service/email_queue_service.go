@@ -3,9 +3,10 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 // Task type constants
@@ -56,7 +57,7 @@ func (s *EmailQueueService) start() {
 		s.wg.Add(1)
 		go s.worker(i)
 REDACTED
-	log.Printf("[EmailQueue] Started %d workers", s.workers)
+	logger.LegacyPrintf("service.email_queue", "[EmailQueue] Started %d workers", s.workers)
 REDACTED
 
 // worker 工作协程
@@ -68,7 +69,7 @@ func (s *EmailQueueService) worker(id int) {
 		case task := <-s.taskChan:
 			s.processTask(id, task)
 		case <-s.stopChan:
-			log.Printf("[EmailQueue] Worker %d stopping", id)
+			logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d stopping", id)
 			return
 	REDACTED
 REDACTED
@@ -82,18 +83,18 @@ func (s *EmailQueueService) processTask(workerID int, task EmailTask) {
 	switch task.TaskType {
 	case TaskTypeVerifyCode:
 		if err := s.emailService.SendVerifyCode(ctx, task.Email, task.SiteName); err != nil {
-			log.Printf("[EmailQueue] Worker %d failed to send verify code to %s: %v", workerID, task.Email, err)
+			logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d failed to send verify code to %s: %v", workerID, task.Email, err)
 	REDACTED else {
-			log.Printf("[EmailQueue] Worker %d sent verify code to %s", workerID, task.Email)
+			logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d sent verify code to %s", workerID, task.Email)
 	REDACTED
 	case TaskTypePasswordReset:
 		if err := s.emailService.SendPasswordResetEmailWithCooldown(ctx, task.Email, task.SiteName, task.ResetURL); err != nil {
-			log.Printf("[EmailQueue] Worker %d failed to send password reset to %s: %v", workerID, task.Email, err)
+			logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d failed to send password reset to %s: %v", workerID, task.Email, err)
 	REDACTED else {
-			log.Printf("[EmailQueue] Worker %d sent password reset to %s", workerID, task.Email)
+			logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d sent password reset to %s", workerID, task.Email)
 	REDACTED
 	default:
-		log.Printf("[EmailQueue] Worker %d unknown task type: %s", workerID, task.TaskType)
+		logger.LegacyPrintf("service.email_queue", "[EmailQueue] Worker %d unknown task type: %s", workerID, task.TaskType)
 REDACTED
 REDACTED
 
@@ -107,7 +108,7 @@ REDACTED
 
 	select {
 	case s.taskChan <- task:
-		log.Printf("[EmailQueue] Enqueued verify code task for %s", email)
+		logger.LegacyPrintf("service.email_queue", "[EmailQueue] Enqueued verify code task for %s", email)
 		return nil
 	default:
 		return fmt.Errorf("email queue is full")
@@ -125,7 +126,7 @@ REDACTED
 
 	select {
 	case s.taskChan <- task:
-		log.Printf("[EmailQueue] Enqueued password reset task for %s", email)
+		logger.LegacyPrintf("service.email_queue", "[EmailQueue] Enqueued password reset task for %s", email)
 		return nil
 	default:
 		return fmt.Errorf("email queue is full")
@@ -136,5 +137,5 @@ REDACTED
 func (s *EmailQueueService) Stop() {
 	close(s.stopChan)
 	s.wg.Wait()
-	log.Println("[EmailQueue] All workers stopped")
+	logger.LegacyPrintf("service.email_queue", "%s", "[EmailQueue] All workers stopped")
 REDACTED

@@ -42,11 +42,18 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// usage_logs: billing_type used by filters/stats
 	requireColumn(t, tx, "usage_logs", "billing_type", "smallint", 0, false)
+	requireColumn(t, tx, "usage_logs", "request_type", "smallint", 0, false)
+	requireColumn(t, tx, "usage_logs", "openai_ws_mode", "boolean", 0, false)
 
 	// settings table should exist
 	var settingsRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.settings')").Scan(&settingsRegclass))
 	require.True(t, settingsRegclass.Valid, "expected settings table to exist")
+
+	// security_secrets table should exist
+	var securitySecretsRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.security_secrets')").Scan(&securitySecretsRegclass))
+	require.True(t, securitySecretsRegclass.Valid, "expected security_secrets table to exist")
 
 	// user_allowed_groups table should exist
 	var uagRegclass sql.NullString

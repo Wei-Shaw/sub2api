@@ -172,12 +172,12 @@
           color="purple"
         />
 
-        <!-- Claude 4.5 -->
+        <!-- Claude -->
         <UsageProgressBar
-          v-if="antigravityClaude45UsageFromAPI !== null"
-          :label="t('admin.accounts.usageWindow.claude45')"
-          :utilization="antigravityClaude45UsageFromAPI.utilization"
-          :resets-at="antigravityClaude45UsageFromAPI.resetTime"
+          v-if="antigravityClaudeUsageFromAPI !== null"
+          :label="t('admin.accounts.usageWindow.claude')"
+          :utilization="antigravityClaudeUsageFromAPI.utilization"
+          :resets-at="antigravityClaudeUsageFromAPI.resetTime"
           color="amber"
         />
       </div>
@@ -282,6 +282,7 @@ import { ref, computed, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats REDACTED from '@/types'
+import { resolveCodexUsageWindow REDACTED from '@/utils/codexUsage'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 
@@ -326,153 +327,18 @@ const geminiUsageAvailable = computed(() => {
   )
 REDACTED)
 
+const codex5hWindow = computed(() => resolveCodexUsageWindow(props.account.extra, '5h'))
+const codex7dWindow = computed(() => resolveCodexUsageWindow(props.account.extra, '7d'))
+
 // OpenAI Codex usage computed properties
 const hasCodexUsage = computed(() => {
-  const extra = props.account.extra
-  return (
-    extra &&
-    // Check for new canonical fields first
-    (extra.codex_5h_used_percent !== undefined ||
-      extra.codex_7d_used_percent !== undefined ||
-      // Fallback to legacy fields
-      extra.codex_primary_used_percent !== undefined ||
-      extra.codex_secondary_used_percent !== undefined)
-  )
+  return codex5hWindow.value.usedPercent !== null || codex7dWindow.value.usedPercent !== null
 REDACTED)
 
-// 5h window usage (prefer canonical field)
-const codex5hUsedPercent = computed(() => {
-  const extra = props.account.extra
-  if (!extra) return null
-
-  // Prefer canonical field
-  if (extra.codex_5h_used_percent !== undefined) {
-    return extra.codex_5h_used_percent
-  REDACTED
-
-  // Fallback: detect from legacy fields using window_minutes
-  if (
-    extra.codex_primary_window_minutes !== undefined &&
-    extra.codex_primary_window_minutes <= 360
-  ) {
-    return extra.codex_primary_used_percent ?? null
-  REDACTED
-  if (
-    extra.codex_secondary_window_minutes !== undefined &&
-    extra.codex_secondary_window_minutes <= 360
-  ) {
-    return extra.codex_secondary_used_percent ?? null
-  REDACTED
-
-  // Legacy assumption: secondary = 5h (may be incorrect)
-  return extra.codex_secondary_used_percent ?? null
-REDACTED)
-
-const codex5hResetAt = computed(() => {
-  const extra = props.account.extra
-  if (!extra) return null
-
-  // Prefer canonical field
-  if (extra.codex_5h_reset_after_seconds !== undefined) {
-    const resetTime = new Date(Date.now() + extra.codex_5h_reset_after_seconds * 1000)
-    return resetTime.toISOString()
-  REDACTED
-
-  // Fallback: detect from legacy fields using window_minutes
-  if (
-    extra.codex_primary_window_minutes !== undefined &&
-    extra.codex_primary_window_minutes <= 360
-  ) {
-    if (extra.codex_primary_reset_after_seconds !== undefined) {
-      const resetTime = new Date(Date.now() + extra.codex_primary_reset_after_seconds * 1000)
-      return resetTime.toISOString()
-    REDACTED
-  REDACTED
-  if (
-    extra.codex_secondary_window_minutes !== undefined &&
-    extra.codex_secondary_window_minutes <= 360
-  ) {
-    if (extra.codex_secondary_reset_after_seconds !== undefined) {
-      const resetTime = new Date(Date.now() + extra.codex_secondary_reset_after_seconds * 1000)
-      return resetTime.toISOString()
-    REDACTED
-  REDACTED
-
-  // Legacy assumption: secondary = 5h
-  if (extra.codex_secondary_reset_after_seconds !== undefined) {
-    const resetTime = new Date(Date.now() + extra.codex_secondary_reset_after_seconds * 1000)
-    return resetTime.toISOString()
-  REDACTED
-
-  return null
-REDACTED)
-
-// 7d window usage (prefer canonical field)
-const codex7dUsedPercent = computed(() => {
-  const extra = props.account.extra
-  if (!extra) return null
-
-  // Prefer canonical field
-  if (extra.codex_7d_used_percent !== undefined) {
-    return extra.codex_7d_used_percent
-  REDACTED
-
-  // Fallback: detect from legacy fields using window_minutes
-  if (
-    extra.codex_primary_window_minutes !== undefined &&
-    extra.codex_primary_window_minutes >= 10000
-  ) {
-    return extra.codex_primary_used_percent ?? null
-  REDACTED
-  if (
-    extra.codex_secondary_window_minutes !== undefined &&
-    extra.codex_secondary_window_minutes >= 10000
-  ) {
-    return extra.codex_secondary_used_percent ?? null
-  REDACTED
-
-  // Legacy assumption: primary = 7d (may be incorrect)
-  return extra.codex_primary_used_percent ?? null
-REDACTED)
-
-const codex7dResetAt = computed(() => {
-  const extra = props.account.extra
-  if (!extra) return null
-
-  // Prefer canonical field
-  if (extra.codex_7d_reset_after_seconds !== undefined) {
-    const resetTime = new Date(Date.now() + extra.codex_7d_reset_after_seconds * 1000)
-    return resetTime.toISOString()
-  REDACTED
-
-  // Fallback: detect from legacy fields using window_minutes
-  if (
-    extra.codex_primary_window_minutes !== undefined &&
-    extra.codex_primary_window_minutes >= 10000
-  ) {
-    if (extra.codex_primary_reset_after_seconds !== undefined) {
-      const resetTime = new Date(Date.now() + extra.codex_primary_reset_after_seconds * 1000)
-      return resetTime.toISOString()
-    REDACTED
-  REDACTED
-  if (
-    extra.codex_secondary_window_minutes !== undefined &&
-    extra.codex_secondary_window_minutes >= 10000
-  ) {
-    if (extra.codex_secondary_reset_after_seconds !== undefined) {
-      const resetTime = new Date(Date.now() + extra.codex_secondary_reset_after_seconds * 1000)
-      return resetTime.toISOString()
-    REDACTED
-  REDACTED
-
-  // Legacy assumption: primary = 7d
-  if (extra.codex_primary_reset_after_seconds !== undefined) {
-    const resetTime = new Date(Date.now() + extra.codex_primary_reset_after_seconds * 1000)
-    return resetTime.toISOString()
-  REDACTED
-
-  return null
-REDACTED)
+const codex5hUsedPercent = computed(() => codex5hWindow.value.usedPercent)
+const codex5hResetAt = computed(() => codex5hWindow.value.resetAt)
+const codex7dUsedPercent = computed(() => codex7dWindow.value.usedPercent)
+const codex7dResetAt = computed(() => codex7dWindow.value.resetAt)
 
 // Antigravity quota types (用于 API 返回的数据)
 interface AntigravityUsageResult {
@@ -531,12 +397,17 @@ const antigravity3ProUsageFromAPI = computed(() =>
 // Gemini 3 Flash from API
 const antigravity3FlashUsageFromAPI = computed(() => getAntigravityUsageFromAPI(['gemini-3-flash']))
 
-// Gemini 3 Image from API
-const antigravity3ImageUsageFromAPI = computed(() => getAntigravityUsageFromAPI(['gemini-3-pro-image']))
+// Gemini Image from API
+const antigravity3ImageUsageFromAPI = computed(() =>
+  getAntigravityUsageFromAPI(['gemini-3.1-flash-image', 'gemini-3-pro-image'])
+)
 
-// Claude 4.5 from API
-const antigravityClaude45UsageFromAPI = computed(() =>
-  getAntigravityUsageFromAPI(['claude-sonnet-4-5', 'claude-opus-4-5-thinking'])
+// Claude from API (all Claude model variants)
+const antigravityClaudeUsageFromAPI = computed(() =>
+  getAntigravityUsageFromAPI([
+    'claude-sonnet-4-5', 'claude-opus-4-5-thinking',
+    'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-opus-4-6-thinking',
+  ])
 )
 
 // Antigravity 账户类型（从 load_code_assist 响应中提取）

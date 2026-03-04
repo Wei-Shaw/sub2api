@@ -19,7 +19,8 @@ REDACTED
 
 func TestGenerateNonce(t *testing.T) {
 	t.Run("generates_valid_base64_string", func(t *testing.T) {
-		nonce := GenerateNonce()
+		nonce, err := GenerateNonce()
+	REDACTED
 
 		// Should be valid base64
 		decoded, err := base64.StdEncoding.DecodeString(nonce)
@@ -32,14 +33,16 @@ REDACTED)
 	t.Run("generates_unique_nonces", func(t *testing.T) {
 		nonces := make(map[string]bool)
 		for i := 0; i < 100; i++ {
-			nonce := GenerateNonce()
+			nonce, err := GenerateNonce()
+		REDACTED
 			assert.False(t, nonces[nonce], "nonce should be unique")
 			nonces[nonce] = true
 	REDACTED
 REDACTED)
 
 	t.Run("nonce_has_expected_length", func(t *testing.T) {
-		nonce := GenerateNonce()
+		nonce, err := GenerateNonce()
+	REDACTED
 		// 16 bytes -> 24 chars in base64 (with padding)
 		assert.Len(t, nonce, 24)
 REDACTED)
@@ -81,7 +84,7 @@ REDACTED
 func TestSecurityHeaders(t *testing.T) {
 	t.Run("sets_basic_security_headers", func(t *testing.T) {
 		cfg := config.CSPConfig{Enabled: falseREDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -96,7 +99,7 @@ REDACTED)
 
 	t.Run("csp_disabled_no_csp_header", func(t *testing.T) {
 		cfg := config.CSPConfig{Enabled: falseREDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -112,7 +115,7 @@ REDACTED)
 			Enabled: true,
 			Policy:  "default-src 'self'",
 	REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -128,12 +131,32 @@ REDACTED)
 		assert.Contains(t, csp, CloudflareInsightsDomain)
 REDACTED)
 
+	t.Run("api_route_skips_csp_nonce_generation", func(t *testing.T) {
+		cfg := config.CSPConfig{
+			Enabled: true,
+			Policy:  "default-src 'self'; script-src 'self' __CSP_NONCE__",
+	REDACTED
+		middleware := SecurityHeaders(cfg, nil)
+
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+		middleware(c)
+
+		assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"))
+		assert.Equal(t, "DENY", w.Header().Get("X-Frame-Options"))
+		assert.Equal(t, "strict-origin-when-cross-origin", w.Header().Get("Referrer-Policy"))
+		assert.Empty(t, w.Header().Get("Content-Security-Policy"))
+		assert.Empty(t, GetNonceFromContext(c))
+REDACTED)
+
 	t.Run("csp_enabled_with_nonce_placeholder", func(t *testing.T) {
 		cfg := config.CSPConfig{
 			Enabled: true,
 			Policy:  "script-src 'self' __CSP_NONCE__",
 	REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -157,7 +180,7 @@ REDACTED)
 			Enabled: true,
 			Policy:  "",
 	REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -176,7 +199,7 @@ REDACTED)
 			Enabled: true,
 			Policy:  "   \t\n  ",
 	REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -194,7 +217,7 @@ REDACTED)
 			Enabled: true,
 			Policy:  "script-src __CSP_NONCE__; style-src __CSP_NONCE__",
 	REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -212,7 +235,7 @@ REDACTED)
 
 	t.Run("calls_next_handler", func(t *testing.T) {
 		cfg := config.CSPConfig{Enabled: true, Policy: "default-src 'self'"REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		nextCalled := false
 		router := gin.New()
@@ -235,7 +258,7 @@ REDACTED)
 			Enabled: true,
 			Policy:  "script-src __CSP_NONCE__",
 	REDACTED
-		middleware := SecurityHeaders(cfg)
+		middleware := SecurityHeaders(cfg, nil)
 
 		nonces := make(map[string]bool)
 		for i := 0; i < 10; i++ {
@@ -344,7 +367,7 @@ REDACTED
 // Benchmark tests
 func BenchmarkGenerateNonce(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		GenerateNonce()
+		_, _ = GenerateNonce()
 REDACTED
 REDACTED
 
@@ -353,7 +376,7 @@ func BenchmarkSecurityHeadersMiddleware(b *testing.B) {
 		Enabled: true,
 		Policy:  "script-src 'self' __CSP_NONCE__",
 REDACTED
-	middleware := SecurityHeaders(cfg)
+	middleware := SecurityHeaders(cfg, nil)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

@@ -1,7 +1,13 @@
 package admin
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"log"
+	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -14,21 +20,38 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// semverPattern 预编译 semver 格式校验正则
+var semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+// menuItemIDPattern validates custom menu item IDs: alphanumeric, hyphens, underscores only.
+var menuItemIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// generateMenuItemID generates a short random hex ID for a custom menu item.
+func generateMenuItemID() (string, error) {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate menu item ID: %w", err)
+REDACTED
+	return hex.EncodeToString(b), nil
+REDACTED
+
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
 	settingService   *service.SettingService
 	emailService     *service.EmailService
 	turnstileService *service.TurnstileService
 	opsService       *service.OpsService
+	soraS3Storage    *service.SoraS3Storage
 REDACTED
 
 // NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService) *SettingHandler {
+func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, soraS3Storage *service.SoraS3Storage) *SettingHandler {
 	return &SettingHandler{
 		settingService:   settingService,
 		emailService:     emailService,
 		turnstileService: turnstileService,
 		opsService:       opsService,
+		soraS3Storage:    soraS3Storage,
 REDACTED
 REDACTED
 
@@ -43,10 +66,18 @@ REDACTED
 
 	// Check if ops monitoring is enabled (respects config.ops.enabled)
 	opsEnabled := h.opsService != nil && h.opsService.IsMonitoringEnabled(c.Request.Context())
+	defaultSubscriptions := make([]dto.DefaultSubscriptionSetting, 0, len(settings.DefaultSubscriptions))
+	for _, sub := range settings.DefaultSubscriptions {
+		defaultSubscriptions = append(defaultSubscriptions, dto.DefaultSubscriptionSetting{
+			GroupID:      sub.GroupID,
+			ValidityDays: sub.ValidityDays,
+	REDACTED)
+REDACTED
 
 	response.Success(c, dto.SystemSettings{
 		RegistrationEnabled:                  settings.RegistrationEnabled,
 		EmailVerifyEnabled:                   settings.EmailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist:     settings.RegistrationEmailSuffixWhitelist,
 		PromoCodeEnabled:                     settings.PromoCodeEnabled,
 		PasswordResetEnabled:                 settings.PasswordResetEnabled,
 		InvitationCodeEnabled:                settings.InvitationCodeEnabled,
@@ -76,8 +107,11 @@ REDACTED
 		HideCcsImportButton:                  settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:          settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:              settings.PurchaseSubscriptionURL,
+		SoraClientEnabled:                    settings.SoraClientEnabled,
+		CustomMenuItems:                      dto.ParseCustomMenuItems(settings.CustomMenuItems),
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
+		DefaultSubscriptions:                 defaultSubscriptions,
 		EnableModelFallback:                  settings.EnableModelFallback,
 		FallbackModelAnthropic:               settings.FallbackModelAnthropic,
 		FallbackModelOpenAI:                  settings.FallbackModelOpenAI,
@@ -89,18 +123,21 @@ REDACTED
 		OpsRealtimeMonitoringEnabled:         settings.OpsRealtimeMonitoringEnabled,
 		OpsQueryModeDefault:                  settings.OpsQueryModeDefault,
 		OpsMetricsIntervalSeconds:            settings.OpsMetricsIntervalSeconds,
+		MinClaudeCodeVersion:                 settings.MinClaudeCodeVersion,
+		AllowUngroupedKeyScheduling:          settings.AllowUngroupedKeyScheduling,
 REDACTED)
 REDACTED
 
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
 	// 注册设置
-	RegistrationEnabled   bool `json:"registration_enabled"`
-	EmailVerifyEnabled    bool `json:"email_verify_enabled"`
-	PromoCodeEnabled      bool `json:"promo_code_enabled"`
-	PasswordResetEnabled  bool `json:"password_reset_enabled"`
-	InvitationCodeEnabled bool `json:"invitation_code_enabled"`
-	TotpEnabled           bool `json:"totp_enabled"` // TOTP 双因素认证
+	RegistrationEnabled              bool     `json:"registration_enabled"`
+	EmailVerifyEnabled               bool     `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist []string `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                 bool     `json:"promo_code_enabled"`
+	PasswordResetEnabled             bool     `json:"password_reset_enabled"`
+	InvitationCodeEnabled            bool     `json:"invitation_code_enabled"`
+	TotpEnabled                      bool     `json:"totp_enabled"` // TOTP 双因素认证
 
 	// 邮件服务设置
 	SMTPHost     string `json:"smtp_host"`
@@ -123,20 +160,23 @@ type UpdateSettingsRequest struct {
 	LinuxDoConnectRedirectURL  string `json:"linuxdo_connect_redirect_url"`
 
 	// OEM设置
-	SiteName                    string  `json:"site_name"`
-	SiteLogo                    string  `json:"site_logo"`
-	SiteSubtitle                string  `json:"site_subtitle"`
-	APIBaseURL                  string  `json:"api_base_url"`
-	ContactInfo                 string  `json:"contact_info"`
-	DocURL                      string  `json:"doc_url"`
-	HomeContent                 string  `json:"home_content"`
-	HideCcsImportButton         bool    `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled *bool   `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL     *string `json:"purchase_subscription_url"`
+	SiteName                    string                `json:"site_name"`
+	SiteLogo                    string                `json:"site_logo"`
+	SiteSubtitle                string                `json:"site_subtitle"`
+	APIBaseURL                  string                `json:"api_base_url"`
+	ContactInfo                 string                `json:"contact_info"`
+	DocURL                      string                `json:"doc_url"`
+	HomeContent                 string                `json:"home_content"`
+	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
+	SoraClientEnabled           bool                  `json:"sora_client_enabled"`
+	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
 
 	// 默认配置
-	DefaultConcurrency int     `json:"default_concurrency"`
-	DefaultBalance     float64 `json:"default_balance"`
+	DefaultConcurrency   int                              `json:"default_concurrency"`
+	DefaultBalance       float64                          `json:"default_balance"`
+	DefaultSubscriptions []dto.DefaultSubscriptionSetting `json:"default_subscriptions"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -154,6 +194,11 @@ type UpdateSettingsRequest struct {
 	OpsRealtimeMonitoringEnabled *bool   `json:"ops_realtime_monitoring_enabled"`
 	OpsQueryModeDefault          *string `json:"ops_query_mode_default"`
 	OpsMetricsIntervalSeconds    *int    `json:"ops_metrics_interval_seconds"`
+
+	MinClaudeCodeVersion string `json:"min_claude_code_version"`
+
+	// 分组隔离
+	AllowUngroupedKeyScheduling bool `json:"allow_ungrouped_key_scheduling"`
 REDACTED
 
 // UpdateSettings 更新系统设置
@@ -181,6 +226,7 @@ REDACTED
 	if req.SMTPPort <= 0 {
 		req.SMTPPort = 587
 REDACTED
+	req.DefaultSubscriptions = normalizeDefaultSubscriptions(req.DefaultSubscriptions)
 
 	// Turnstile 参数验证
 	if req.TurnstileEnabled {
@@ -276,6 +322,84 @@ REDACTED else if purchaseURL != "" {
 	REDACTED
 REDACTED
 
+	// 自定义菜单项验证
+	const (
+		maxCustomMenuItems    = 20
+		maxMenuItemLabelLen   = 50
+		maxMenuItemURLLen     = 2048
+		maxMenuItemIconSVGLen = 10 * 1024 // 10KB
+		maxMenuItemIDLen      = 32
+	)
+
+	customMenuJSON := previousSettings.CustomMenuItems
+	if req.CustomMenuItems != nil {
+		items := *req.CustomMenuItems
+		if len(items) > maxCustomMenuItems {
+			response.BadRequest(c, "Too many custom menu items (max 20)")
+			return
+	REDACTED
+		for i, item := range items {
+			if strings.TrimSpace(item.Label) == "" {
+				response.BadRequest(c, "Custom menu item label is required")
+				return
+		REDACTED
+			if len(item.Label) > maxMenuItemLabelLen {
+				response.BadRequest(c, "Custom menu item label is too long (max 50 characters)")
+				return
+		REDACTED
+			if strings.TrimSpace(item.URL) == "" {
+				response.BadRequest(c, "Custom menu item URL is required")
+				return
+		REDACTED
+			if len(item.URL) > maxMenuItemURLLen {
+				response.BadRequest(c, "Custom menu item URL is too long (max 2048 characters)")
+				return
+		REDACTED
+			if err := config.ValidateAbsoluteHTTPURL(strings.TrimSpace(item.URL)); err != nil {
+				response.BadRequest(c, "Custom menu item URL must be an absolute http(s) URL")
+				return
+		REDACTED
+			if item.Visibility != "user" && item.Visibility != "admin" {
+				response.BadRequest(c, "Custom menu item visibility must be 'user' or 'admin'")
+				return
+		REDACTED
+			if len(item.IconSVG) > maxMenuItemIconSVGLen {
+				response.BadRequest(c, "Custom menu item icon SVG is too large (max 10KB)")
+				return
+		REDACTED
+			// Auto-generate ID if missing
+			if strings.TrimSpace(item.ID) == "" {
+				id, err := generateMenuItemID()
+				if err != nil {
+					response.Error(c, http.StatusInternalServerError, "Failed to generate menu item ID")
+					return
+			REDACTED
+				items[i].ID = id
+		REDACTED else if len(item.ID) > maxMenuItemIDLen {
+				response.BadRequest(c, "Custom menu item ID is too long (max 32 characters)")
+				return
+		REDACTED else if !menuItemIDPattern.MatchString(item.ID) {
+				response.BadRequest(c, "Custom menu item ID contains invalid characters (only a-z, A-Z, 0-9, - and _ are allowed)")
+				return
+		REDACTED
+	REDACTED
+		// ID uniqueness check
+		seen := make(map[string]struct{REDACTED, len(items))
+		for _, item := range items {
+			if _, exists := seen[item.ID]; exists {
+				response.BadRequest(c, "Duplicate custom menu item ID: "+item.ID)
+				return
+		REDACTED
+			seen[item.ID] = struct{REDACTED{REDACTED
+	REDACTED
+		menuBytes, err := json.Marshal(items)
+		if err != nil {
+			response.BadRequest(c, "Failed to serialize custom menu items")
+			return
+	REDACTED
+		customMenuJSON = string(menuBytes)
+REDACTED
+
 	// Ops metrics collector interval validation (seconds).
 	if req.OpsMetricsIntervalSeconds != nil {
 		v := *req.OpsMetricsIntervalSeconds
@@ -287,47 +411,68 @@ REDACTED
 	REDACTED
 		req.OpsMetricsIntervalSeconds = &v
 REDACTED
+	defaultSubscriptions := make([]service.DefaultSubscriptionSetting, 0, len(req.DefaultSubscriptions))
+	for _, sub := range req.DefaultSubscriptions {
+		defaultSubscriptions = append(defaultSubscriptions, service.DefaultSubscriptionSetting{
+			GroupID:      sub.GroupID,
+			ValidityDays: sub.ValidityDays,
+	REDACTED)
+REDACTED
+
+	// 验证最低版本号格式（空字符串=禁用，或合法 semver）
+	if req.MinClaudeCodeVersion != "" {
+		if !semverPattern.MatchString(req.MinClaudeCodeVersion) {
+			response.Error(c, http.StatusBadRequest, "min_claude_code_version must be empty or a valid semver (e.g. 2.1.63)")
+			return
+	REDACTED
+REDACTED
 
 	settings := &service.SystemSettings{
-		RegistrationEnabled:         req.RegistrationEnabled,
-		EmailVerifyEnabled:          req.EmailVerifyEnabled,
-		PromoCodeEnabled:            req.PromoCodeEnabled,
-		PasswordResetEnabled:        req.PasswordResetEnabled,
-		InvitationCodeEnabled:       req.InvitationCodeEnabled,
-		TotpEnabled:                 req.TotpEnabled,
-		SMTPHost:                    req.SMTPHost,
-		SMTPPort:                    req.SMTPPort,
-		SMTPUsername:                req.SMTPUsername,
-		SMTPPassword:                req.SMTPPassword,
-		SMTPFrom:                    req.SMTPFrom,
-		SMTPFromName:                req.SMTPFromName,
-		SMTPUseTLS:                  req.SMTPUseTLS,
-		TurnstileEnabled:            req.TurnstileEnabled,
-		TurnstileSiteKey:            req.TurnstileSiteKey,
-		TurnstileSecretKey:          req.TurnstileSecretKey,
-		LinuxDoConnectEnabled:       req.LinuxDoConnectEnabled,
-		LinuxDoConnectClientID:      req.LinuxDoConnectClientID,
-		LinuxDoConnectClientSecret:  req.LinuxDoConnectClientSecret,
-		LinuxDoConnectRedirectURL:   req.LinuxDoConnectRedirectURL,
-		SiteName:                    req.SiteName,
-		SiteLogo:                    req.SiteLogo,
-		SiteSubtitle:                req.SiteSubtitle,
-		APIBaseURL:                  req.APIBaseURL,
-		ContactInfo:                 req.ContactInfo,
-		DocURL:                      req.DocURL,
-		HomeContent:                 req.HomeContent,
-		HideCcsImportButton:         req.HideCcsImportButton,
-		PurchaseSubscriptionEnabled: purchaseEnabled,
-		PurchaseSubscriptionURL:     purchaseURL,
-		DefaultConcurrency:          req.DefaultConcurrency,
-		DefaultBalance:              req.DefaultBalance,
-		EnableModelFallback:         req.EnableModelFallback,
-		FallbackModelAnthropic:      req.FallbackModelAnthropic,
-		FallbackModelOpenAI:         req.FallbackModelOpenAI,
-		FallbackModelGemini:         req.FallbackModelGemini,
-		FallbackModelAntigravity:    req.FallbackModelAntigravity,
-		EnableIdentityPatch:         req.EnableIdentityPatch,
-		IdentityPatchPrompt:         req.IdentityPatchPrompt,
+		RegistrationEnabled:              req.RegistrationEnabled,
+		EmailVerifyEnabled:               req.EmailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist: req.RegistrationEmailSuffixWhitelist,
+		PromoCodeEnabled:                 req.PromoCodeEnabled,
+		PasswordResetEnabled:             req.PasswordResetEnabled,
+		InvitationCodeEnabled:            req.InvitationCodeEnabled,
+		TotpEnabled:                      req.TotpEnabled,
+		SMTPHost:                         req.SMTPHost,
+		SMTPPort:                         req.SMTPPort,
+		SMTPUsername:                     req.SMTPUsername,
+		SMTPPassword:                     req.SMTPPassword,
+		SMTPFrom:                         req.SMTPFrom,
+		SMTPFromName:                     req.SMTPFromName,
+		SMTPUseTLS:                       req.SMTPUseTLS,
+		TurnstileEnabled:                 req.TurnstileEnabled,
+		TurnstileSiteKey:                 req.TurnstileSiteKey,
+		TurnstileSecretKey:               req.TurnstileSecretKey,
+		LinuxDoConnectEnabled:            req.LinuxDoConnectEnabled,
+		LinuxDoConnectClientID:           req.LinuxDoConnectClientID,
+		LinuxDoConnectClientSecret:       req.LinuxDoConnectClientSecret,
+		LinuxDoConnectRedirectURL:        req.LinuxDoConnectRedirectURL,
+		SiteName:                         req.SiteName,
+		SiteLogo:                         req.SiteLogo,
+		SiteSubtitle:                     req.SiteSubtitle,
+		APIBaseURL:                       req.APIBaseURL,
+		ContactInfo:                      req.ContactInfo,
+		DocURL:                           req.DocURL,
+		HomeContent:                      req.HomeContent,
+		HideCcsImportButton:              req.HideCcsImportButton,
+		PurchaseSubscriptionEnabled:      purchaseEnabled,
+		PurchaseSubscriptionURL:          purchaseURL,
+		SoraClientEnabled:                req.SoraClientEnabled,
+		CustomMenuItems:                  customMenuJSON,
+		DefaultConcurrency:               req.DefaultConcurrency,
+		DefaultBalance:                   req.DefaultBalance,
+		DefaultSubscriptions:             defaultSubscriptions,
+		EnableModelFallback:              req.EnableModelFallback,
+		FallbackModelAnthropic:           req.FallbackModelAnthropic,
+		FallbackModelOpenAI:              req.FallbackModelOpenAI,
+		FallbackModelGemini:              req.FallbackModelGemini,
+		FallbackModelAntigravity:         req.FallbackModelAntigravity,
+		EnableIdentityPatch:              req.EnableIdentityPatch,
+		IdentityPatchPrompt:              req.IdentityPatchPrompt,
+		MinClaudeCodeVersion:             req.MinClaudeCodeVersion,
+		AllowUngroupedKeyScheduling:      req.AllowUngroupedKeyScheduling,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -367,10 +512,18 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
+	updatedDefaultSubscriptions := make([]dto.DefaultSubscriptionSetting, 0, len(updatedSettings.DefaultSubscriptions))
+	for _, sub := range updatedSettings.DefaultSubscriptions {
+		updatedDefaultSubscriptions = append(updatedDefaultSubscriptions, dto.DefaultSubscriptionSetting{
+			GroupID:      sub.GroupID,
+			ValidityDays: sub.ValidityDays,
+	REDACTED)
+REDACTED
 
 	response.Success(c, dto.SystemSettings{
 		RegistrationEnabled:                  updatedSettings.RegistrationEnabled,
 		EmailVerifyEnabled:                   updatedSettings.EmailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist:     updatedSettings.RegistrationEmailSuffixWhitelist,
 		PromoCodeEnabled:                     updatedSettings.PromoCodeEnabled,
 		PasswordResetEnabled:                 updatedSettings.PasswordResetEnabled,
 		InvitationCodeEnabled:                updatedSettings.InvitationCodeEnabled,
@@ -400,8 +553,11 @@ REDACTED
 		HideCcsImportButton:                  updatedSettings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:          updatedSettings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:              updatedSettings.PurchaseSubscriptionURL,
+		SoraClientEnabled:                    updatedSettings.SoraClientEnabled,
+		CustomMenuItems:                      dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
+		DefaultSubscriptions:                 updatedDefaultSubscriptions,
 		EnableModelFallback:                  updatedSettings.EnableModelFallback,
 		FallbackModelAnthropic:               updatedSettings.FallbackModelAnthropic,
 		FallbackModelOpenAI:                  updatedSettings.FallbackModelOpenAI,
@@ -413,6 +569,8 @@ REDACTED
 		OpsRealtimeMonitoringEnabled:         updatedSettings.OpsRealtimeMonitoringEnabled,
 		OpsQueryModeDefault:                  updatedSettings.OpsQueryModeDefault,
 		OpsMetricsIntervalSeconds:            updatedSettings.OpsMetricsIntervalSeconds,
+		MinClaudeCodeVersion:                 updatedSettings.MinClaudeCodeVersion,
+		AllowUngroupedKeyScheduling:          updatedSettings.AllowUngroupedKeyScheduling,
 REDACTED)
 REDACTED
 
@@ -443,6 +601,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 REDACTED
 	if before.EmailVerifyEnabled != after.EmailVerifyEnabled {
 		changed = append(changed, "email_verify_enabled")
+REDACTED
+	if !equalStringSlice(before.RegistrationEmailSuffixWhitelist, after.RegistrationEmailSuffixWhitelist) {
+		changed = append(changed, "registration_email_suffix_whitelist")
 REDACTED
 	if before.PasswordResetEnabled != after.PasswordResetEnabled {
 		changed = append(changed, "password_reset_enabled")
@@ -522,6 +683,9 @@ REDACTED
 	if before.DefaultBalance != after.DefaultBalance {
 		changed = append(changed, "default_balance")
 REDACTED
+	if !equalDefaultSubscriptions(before.DefaultSubscriptions, after.DefaultSubscriptions) {
+		changed = append(changed, "default_subscriptions")
+REDACTED
 	if before.EnableModelFallback != after.EnableModelFallback {
 		changed = append(changed, "enable_model_fallback")
 REDACTED
@@ -555,7 +719,63 @@ REDACTED
 	if before.OpsMetricsIntervalSeconds != after.OpsMetricsIntervalSeconds {
 		changed = append(changed, "ops_metrics_interval_seconds")
 REDACTED
+	if before.MinClaudeCodeVersion != after.MinClaudeCodeVersion {
+		changed = append(changed, "min_claude_code_version")
+REDACTED
+	if before.AllowUngroupedKeyScheduling != after.AllowUngroupedKeyScheduling {
+		changed = append(changed, "allow_ungrouped_key_scheduling")
+REDACTED
+	if before.PurchaseSubscriptionEnabled != after.PurchaseSubscriptionEnabled {
+		changed = append(changed, "purchase_subscription_enabled")
+REDACTED
+	if before.PurchaseSubscriptionURL != after.PurchaseSubscriptionURL {
+		changed = append(changed, "purchase_subscription_url")
+REDACTED
+	if before.CustomMenuItems != after.CustomMenuItems {
+		changed = append(changed, "custom_menu_items")
+REDACTED
 	return changed
+REDACTED
+
+func normalizeDefaultSubscriptions(input []dto.DefaultSubscriptionSetting) []dto.DefaultSubscriptionSetting {
+	if len(input) == 0 {
+		return nil
+REDACTED
+	normalized := make([]dto.DefaultSubscriptionSetting, 0, len(input))
+	for _, item := range input {
+		if item.GroupID <= 0 || item.ValidityDays <= 0 {
+			continue
+	REDACTED
+		if item.ValidityDays > service.MaxValidityDays {
+			item.ValidityDays = service.MaxValidityDays
+	REDACTED
+		normalized = append(normalized, item)
+REDACTED
+	return normalized
+REDACTED
+
+func equalStringSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+REDACTED
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+	REDACTED
+REDACTED
+	return true
+REDACTED
+
+func equalDefaultSubscriptions(a, b []service.DefaultSubscriptionSetting) bool {
+	if len(a) != len(b) {
+		return false
+REDACTED
+	for i := range a {
+		if a[i].GroupID != b[i].GroupID || a[i].ValidityDays != b[i].ValidityDays {
+			return false
+	REDACTED
+REDACTED
+	return true
 REDACTED
 
 // TestSMTPRequest 测试SMTP连接请求
@@ -748,6 +968,384 @@ REDACTED
 		ThresholdCount:         settings.ThresholdCount,
 		ThresholdWindowMinutes: settings.ThresholdWindowMinutes,
 REDACTED)
+REDACTED
+
+func toSoraS3SettingsDTO(settings *service.SoraS3Settings) dto.SoraS3Settings {
+	if settings == nil {
+		return dto.SoraS3Settings{REDACTED
+REDACTED
+	return dto.SoraS3Settings{
+		Enabled:                   settings.Enabled,
+		Endpoint:                  settings.Endpoint,
+		Region:                    settings.Region,
+		Bucket:                    settings.Bucket,
+		AccessKeyID:               settings.AccessKeyID,
+		SecretAccessKeyConfigured: settings.SecretAccessKeyConfigured,
+		Prefix:                    settings.Prefix,
+		ForcePathStyle:            settings.ForcePathStyle,
+		CDNURL:                    settings.CDNURL,
+		DefaultStorageQuotaBytes:  settings.DefaultStorageQuotaBytes,
+REDACTED
+REDACTED
+
+func toSoraS3ProfileDTO(profile service.SoraS3Profile) dto.SoraS3Profile {
+	return dto.SoraS3Profile{
+		ProfileID:                 profile.ProfileID,
+		Name:                      profile.Name,
+		IsActive:                  profile.IsActive,
+		Enabled:                   profile.Enabled,
+		Endpoint:                  profile.Endpoint,
+		Region:                    profile.Region,
+		Bucket:                    profile.Bucket,
+		AccessKeyID:               profile.AccessKeyID,
+		SecretAccessKeyConfigured: profile.SecretAccessKeyConfigured,
+		Prefix:                    profile.Prefix,
+		ForcePathStyle:            profile.ForcePathStyle,
+		CDNURL:                    profile.CDNURL,
+		DefaultStorageQuotaBytes:  profile.DefaultStorageQuotaBytes,
+		UpdatedAt:                 profile.UpdatedAt,
+REDACTED
+REDACTED
+
+func validateSoraS3RequiredWhenEnabled(enabled bool, endpoint, bucket, accessKeyID, secretAccessKey string, hasStoredSecret bool) error {
+	if !enabled {
+		return nil
+REDACTED
+	if strings.TrimSpace(endpoint) == "" {
+		return fmt.Errorf("S3 Endpoint is required when enabled")
+REDACTED
+	if strings.TrimSpace(bucket) == "" {
+		return fmt.Errorf("S3 Bucket is required when enabled")
+REDACTED
+	if strings.TrimSpace(accessKeyID) == "" {
+		return fmt.Errorf("S3 Access Key ID is required when enabled")
+REDACTED
+	if strings.TrimSpace(secretAccessKey) != "" || hasStoredSecret {
+		return nil
+REDACTED
+	return fmt.Errorf("S3 Secret Access Key is required when enabled")
+REDACTED
+
+func findSoraS3ProfileByID(items []service.SoraS3Profile, profileID string) *service.SoraS3Profile {
+	for idx := range items {
+		if items[idx].ProfileID == profileID {
+			return &items[idx]
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+// GetSoraS3Settings 获取 Sora S3 存储配置（兼容旧单配置接口）
+// GET /api/v1/admin/settings/sora-s3
+func (h *SettingHandler) GetSoraS3Settings(c *gin.Context) {
+	settings, err := h.settingService.GetSoraS3Settings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, toSoraS3SettingsDTO(settings))
+REDACTED
+
+// ListSoraS3Profiles 获取 Sora S3 多配置
+// GET /api/v1/admin/settings/sora-s3/profiles
+func (h *SettingHandler) ListSoraS3Profiles(c *gin.Context) {
+	result, err := h.settingService.ListSoraS3Profiles(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	items := make([]dto.SoraS3Profile, 0, len(result.Items))
+	for idx := range result.Items {
+		items = append(items, toSoraS3ProfileDTO(result.Items[idx]))
+REDACTED
+	response.Success(c, dto.ListSoraS3ProfilesResponse{
+		ActiveProfileID: result.ActiveProfileID,
+		Items:           items,
+REDACTED)
+REDACTED
+
+// UpdateSoraS3SettingsRequest 更新/测试 Sora S3 配置请求（兼容旧接口）
+type UpdateSoraS3SettingsRequest struct {
+	ProfileID                string `json:"profile_id"`
+	Enabled                  bool   `json:"enabled"`
+	Endpoint                 string `json:"endpoint"`
+	Region                   string `json:"region"`
+	Bucket                   string `json:"bucket"`
+	AccessKeyID              string `json:"access_key_id"`
+	SecretAccessKey          string `json:"secret_access_key"`
+	Prefix                   string `json:"prefix"`
+	ForcePathStyle           bool   `json:"force_path_style"`
+	CDNURL                   string `json:"cdn_url"`
+	DefaultStorageQuotaBytes int64  `json:"default_storage_quota_bytes"`
+REDACTED
+
+type CreateSoraS3ProfileRequest struct {
+	ProfileID                string `json:"profile_id"`
+	Name                     string `json:"name"`
+	SetActive                bool   `json:"set_active"`
+	Enabled                  bool   `json:"enabled"`
+	Endpoint                 string `json:"endpoint"`
+	Region                   string `json:"region"`
+	Bucket                   string `json:"bucket"`
+	AccessKeyID              string `json:"access_key_id"`
+	SecretAccessKey          string `json:"secret_access_key"`
+	Prefix                   string `json:"prefix"`
+	ForcePathStyle           bool   `json:"force_path_style"`
+	CDNURL                   string `json:"cdn_url"`
+	DefaultStorageQuotaBytes int64  `json:"default_storage_quota_bytes"`
+REDACTED
+
+type UpdateSoraS3ProfileRequest struct {
+	Name                     string `json:"name"`
+	Enabled                  bool   `json:"enabled"`
+	Endpoint                 string `json:"endpoint"`
+	Region                   string `json:"region"`
+	Bucket                   string `json:"bucket"`
+	AccessKeyID              string `json:"access_key_id"`
+	SecretAccessKey          string `json:"secret_access_key"`
+	Prefix                   string `json:"prefix"`
+	ForcePathStyle           bool   `json:"force_path_style"`
+	CDNURL                   string `json:"cdn_url"`
+	DefaultStorageQuotaBytes int64  `json:"default_storage_quota_bytes"`
+REDACTED
+
+// CreateSoraS3Profile 创建 Sora S3 配置
+// POST /api/v1/admin/settings/sora-s3/profiles
+func (h *SettingHandler) CreateSoraS3Profile(c *gin.Context) {
+	var req CreateSoraS3ProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	if req.DefaultStorageQuotaBytes < 0 {
+		req.DefaultStorageQuotaBytes = 0
+REDACTED
+	if strings.TrimSpace(req.Name) == "" {
+		response.BadRequest(c, "Name is required")
+		return
+REDACTED
+	if strings.TrimSpace(req.ProfileID) == "" {
+		response.BadRequest(c, "Profile ID is required")
+		return
+REDACTED
+	if err := validateSoraS3RequiredWhenEnabled(req.Enabled, req.Endpoint, req.Bucket, req.AccessKeyID, req.SecretAccessKey, false); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+REDACTED
+
+	created, err := h.settingService.CreateSoraS3Profile(c.Request.Context(), &service.SoraS3Profile{
+		ProfileID:                req.ProfileID,
+		Name:                     req.Name,
+		Enabled:                  req.Enabled,
+		Endpoint:                 req.Endpoint,
+		Region:                   req.Region,
+		Bucket:                   req.Bucket,
+		AccessKeyID:              req.AccessKeyID,
+		SecretAccessKey:          req.SecretAccessKey,
+		Prefix:                   req.Prefix,
+		ForcePathStyle:           req.ForcePathStyle,
+		CDNURL:                   req.CDNURL,
+		DefaultStorageQuotaBytes: req.DefaultStorageQuotaBytes,
+REDACTED, req.SetActive)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, toSoraS3ProfileDTO(*created))
+REDACTED
+
+// UpdateSoraS3Profile 更新 Sora S3 配置
+// PUT /api/v1/admin/settings/sora-s3/profiles/:profile_id
+func (h *SettingHandler) UpdateSoraS3Profile(c *gin.Context) {
+	profileID := strings.TrimSpace(c.Param("profile_id"))
+	if profileID == "" {
+		response.BadRequest(c, "Profile ID is required")
+		return
+REDACTED
+
+	var req UpdateSoraS3ProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	if req.DefaultStorageQuotaBytes < 0 {
+		req.DefaultStorageQuotaBytes = 0
+REDACTED
+	if strings.TrimSpace(req.Name) == "" {
+		response.BadRequest(c, "Name is required")
+		return
+REDACTED
+
+	existingList, err := h.settingService.ListSoraS3Profiles(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	existing := findSoraS3ProfileByID(existingList.Items, profileID)
+	if existing == nil {
+		response.ErrorFrom(c, service.ErrSoraS3ProfileNotFound)
+		return
+REDACTED
+	if err := validateSoraS3RequiredWhenEnabled(req.Enabled, req.Endpoint, req.Bucket, req.AccessKeyID, req.SecretAccessKey, existing.SecretAccessKeyConfigured); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+REDACTED
+
+	updated, updateErr := h.settingService.UpdateSoraS3Profile(c.Request.Context(), profileID, &service.SoraS3Profile{
+		Name:                     req.Name,
+		Enabled:                  req.Enabled,
+		Endpoint:                 req.Endpoint,
+		Region:                   req.Region,
+		Bucket:                   req.Bucket,
+		AccessKeyID:              req.AccessKeyID,
+		SecretAccessKey:          req.SecretAccessKey,
+		Prefix:                   req.Prefix,
+		ForcePathStyle:           req.ForcePathStyle,
+		CDNURL:                   req.CDNURL,
+		DefaultStorageQuotaBytes: req.DefaultStorageQuotaBytes,
+REDACTED)
+	if updateErr != nil {
+		response.ErrorFrom(c, updateErr)
+		return
+REDACTED
+
+	response.Success(c, toSoraS3ProfileDTO(*updated))
+REDACTED
+
+// DeleteSoraS3Profile 删除 Sora S3 配置
+// DELETE /api/v1/admin/settings/sora-s3/profiles/:profile_id
+func (h *SettingHandler) DeleteSoraS3Profile(c *gin.Context) {
+	profileID := strings.TrimSpace(c.Param("profile_id"))
+	if profileID == "" {
+		response.BadRequest(c, "Profile ID is required")
+		return
+REDACTED
+	if err := h.settingService.DeleteSoraS3Profile(c.Request.Context(), profileID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, gin.H{"deleted": trueREDACTED)
+REDACTED
+
+// SetActiveSoraS3Profile 切换激活 Sora S3 配置
+// POST /api/v1/admin/settings/sora-s3/profiles/:profile_id/activate
+func (h *SettingHandler) SetActiveSoraS3Profile(c *gin.Context) {
+	profileID := strings.TrimSpace(c.Param("profile_id"))
+	if profileID == "" {
+		response.BadRequest(c, "Profile ID is required")
+		return
+REDACTED
+	active, err := h.settingService.SetActiveSoraS3Profile(c.Request.Context(), profileID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, toSoraS3ProfileDTO(*active))
+REDACTED
+
+// UpdateSoraS3Settings 更新 Sora S3 存储配置（兼容旧单配置接口）
+// PUT /api/v1/admin/settings/sora-s3
+func (h *SettingHandler) UpdateSoraS3Settings(c *gin.Context) {
+	var req UpdateSoraS3SettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	existing, err := h.settingService.GetSoraS3Settings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	if req.DefaultStorageQuotaBytes < 0 {
+		req.DefaultStorageQuotaBytes = 0
+REDACTED
+	if err := validateSoraS3RequiredWhenEnabled(req.Enabled, req.Endpoint, req.Bucket, req.AccessKeyID, req.SecretAccessKey, existing.SecretAccessKeyConfigured); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+REDACTED
+
+	settings := &service.SoraS3Settings{
+		Enabled:                  req.Enabled,
+		Endpoint:                 req.Endpoint,
+		Region:                   req.Region,
+		Bucket:                   req.Bucket,
+		AccessKeyID:              req.AccessKeyID,
+		SecretAccessKey:          req.SecretAccessKey,
+		Prefix:                   req.Prefix,
+		ForcePathStyle:           req.ForcePathStyle,
+		CDNURL:                   req.CDNURL,
+		DefaultStorageQuotaBytes: req.DefaultStorageQuotaBytes,
+REDACTED
+	if err := h.settingService.SetSoraS3Settings(c.Request.Context(), settings); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	updatedSettings, err := h.settingService.GetSoraS3Settings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, toSoraS3SettingsDTO(updatedSettings))
+REDACTED
+
+// TestSoraS3Connection 测试 Sora S3 连接（HeadBucket）
+// POST /api/v1/admin/settings/sora-s3/test
+func (h *SettingHandler) TestSoraS3Connection(c *gin.Context) {
+	if h.soraS3Storage == nil {
+		response.Error(c, 500, "S3 存储服务未初始化")
+		return
+REDACTED
+
+	var req UpdateSoraS3SettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+	if !req.Enabled {
+		response.BadRequest(c, "S3 未启用，无法测试连接")
+		return
+REDACTED
+
+	if req.SecretAccessKey == "" {
+		if req.ProfileID != "" {
+			profiles, err := h.settingService.ListSoraS3Profiles(c.Request.Context())
+			if err == nil {
+				profile := findSoraS3ProfileByID(profiles.Items, req.ProfileID)
+				if profile != nil {
+					req.SecretAccessKey = profile.SecretAccessKey
+			REDACTED
+		REDACTED
+	REDACTED
+		if req.SecretAccessKey == "" {
+			existing, err := h.settingService.GetSoraS3Settings(c.Request.Context())
+			if err == nil {
+				req.SecretAccessKey = existing.SecretAccessKey
+		REDACTED
+	REDACTED
+REDACTED
+
+	testCfg := &service.SoraS3Settings{
+		Enabled:         true,
+		Endpoint:        req.Endpoint,
+		Region:          req.Region,
+		Bucket:          req.Bucket,
+		AccessKeyID:     req.AccessKeyID,
+		SecretAccessKey: req.SecretAccessKey,
+		Prefix:          req.Prefix,
+		ForcePathStyle:  req.ForcePathStyle,
+		CDNURL:          req.CDNURL,
+REDACTED
+	if err := h.soraS3Storage.TestConnectionWithSettings(c.Request.Context(), testCfg); err != nil {
+		response.Error(c, 400, "S3 连接测试失败: "+err.Error())
+		return
+REDACTED
+	response.Success(c, gin.H{"message": "S3 连接成功"REDACTED)
 REDACTED
 
 // UpdateStreamTimeoutSettingsRequest 更新流超时配置请求

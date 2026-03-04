@@ -242,6 +242,48 @@ func (_u *UserUpdate) ClearTotpEnabledAt() *UserUpdate {
 	return _u
 REDACTED
 
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (_u *UserUpdate) SetSoraStorageQuotaBytes(v int64) *UserUpdate {
+	_u.mutation.ResetSoraStorageQuotaBytes()
+	_u.mutation.SetSoraStorageQuotaBytes(v)
+	return _u
+REDACTED
+
+// SetNillableSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableSoraStorageQuotaBytes(v *int64) *UserUpdate {
+	if v != nil {
+		_u.SetSoraStorageQuotaBytes(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddSoraStorageQuotaBytes adds value to the "sora_storage_quota_bytes" field.
+func (_u *UserUpdate) AddSoraStorageQuotaBytes(v int64) *UserUpdate {
+	_u.mutation.AddSoraStorageQuotaBytes(v)
+	return _u
+REDACTED
+
+// SetSoraStorageUsedBytes sets the "sora_storage_used_bytes" field.
+func (_u *UserUpdate) SetSoraStorageUsedBytes(v int64) *UserUpdate {
+	_u.mutation.ResetSoraStorageUsedBytes()
+	_u.mutation.SetSoraStorageUsedBytes(v)
+	return _u
+REDACTED
+
+// SetNillableSoraStorageUsedBytes sets the "sora_storage_used_bytes" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableSoraStorageUsedBytes(v *int64) *UserUpdate {
+	if v != nil {
+		_u.SetSoraStorageUsedBytes(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddSoraStorageUsedBytes adds value to the "sora_storage_used_bytes" field.
+func (_u *UserUpdate) AddSoraStorageUsedBytes(v int64) *UserUpdate {
+	_u.mutation.AddSoraStorageUsedBytes(v)
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdate) AddAPIKeyIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -708,6 +750,18 @@ REDACTED
 REDACTED
 	if _u.mutation.TotpEnabledAtCleared() {
 		_spec.ClearField(user.FieldTotpEnabledAt, field.TypeTime)
+REDACTED
+	if value, ok := _u.mutation.SoraStorageQuotaBytes(); ok {
+		_spec.SetField(user.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedSoraStorageQuotaBytes(); ok {
+		_spec.AddField(user.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
+REDACTED
+	if value, ok := _u.mutation.SoraStorageUsedBytes(); ok {
+		_spec.SetField(user.FieldSoraStorageUsedBytes, field.TypeInt64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedSoraStorageUsedBytes(); ok {
+		_spec.AddField(user.FieldSoraStorageUsedBytes, field.TypeInt64, value)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1352,6 +1406,48 @@ func (_u *UserUpdateOne) ClearTotpEnabledAt() *UserUpdateOne {
 	return _u
 REDACTED
 
+// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
+func (_u *UserUpdateOne) SetSoraStorageQuotaBytes(v int64) *UserUpdateOne {
+	_u.mutation.ResetSoraStorageQuotaBytes()
+	_u.mutation.SetSoraStorageQuotaBytes(v)
+	return _u
+REDACTED
+
+// SetNillableSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableSoraStorageQuotaBytes(v *int64) *UserUpdateOne {
+	if v != nil {
+		_u.SetSoraStorageQuotaBytes(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddSoraStorageQuotaBytes adds value to the "sora_storage_quota_bytes" field.
+func (_u *UserUpdateOne) AddSoraStorageQuotaBytes(v int64) *UserUpdateOne {
+	_u.mutation.AddSoraStorageQuotaBytes(v)
+	return _u
+REDACTED
+
+// SetSoraStorageUsedBytes sets the "sora_storage_used_bytes" field.
+func (_u *UserUpdateOne) SetSoraStorageUsedBytes(v int64) *UserUpdateOne {
+	_u.mutation.ResetSoraStorageUsedBytes()
+	_u.mutation.SetSoraStorageUsedBytes(v)
+	return _u
+REDACTED
+
+// SetNillableSoraStorageUsedBytes sets the "sora_storage_used_bytes" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableSoraStorageUsedBytes(v *int64) *UserUpdateOne {
+	if v != nil {
+		_u.SetSoraStorageUsedBytes(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddSoraStorageUsedBytes adds value to the "sora_storage_used_bytes" field.
+func (_u *UserUpdateOne) AddSoraStorageUsedBytes(v int64) *UserUpdateOne {
+	_u.mutation.AddSoraStorageUsedBytes(v)
+	return _u
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdateOne) AddAPIKeyIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1848,6 +1944,18 @@ REDACTED
 REDACTED
 	if _u.mutation.TotpEnabledAtCleared() {
 		_spec.ClearField(user.FieldTotpEnabledAt, field.TypeTime)
+REDACTED
+	if value, ok := _u.mutation.SoraStorageQuotaBytes(); ok {
+		_spec.SetField(user.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedSoraStorageQuotaBytes(); ok {
+		_spec.AddField(user.FieldSoraStorageQuotaBytes, field.TypeInt64, value)
+REDACTED
+	if value, ok := _u.mutation.SoraStorageUsedBytes(); ok {
+		_spec.SetField(user.FieldSoraStorageUsedBytes, field.TypeInt64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedSoraStorageUsedBytes(); ok {
+		_spec.AddField(user.FieldSoraStorageUsedBytes, field.TypeInt64, value)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

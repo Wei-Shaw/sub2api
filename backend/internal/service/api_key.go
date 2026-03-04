@@ -1,6 +1,10 @@
 package service
 
-import "time"
+import (
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+)
 
 // API Key status constants
 const (
@@ -19,19 +23,39 @@ type APIKey struct {
 	Status      string
 	IPWhitelist []string
 	IPBlacklist []string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	User        *User
-	Group       *Group
+	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
+	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
+	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`
+	LastUsedAt          *time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	User                *User
+	Group               *Group
 
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)
 	QuotaUsed float64    // Used quota amount
 	ExpiresAt *time.Time // Expiration time (nil = never expires)
+
+	// Rate limit fields
+	RateLimit5h   float64    // Rate limit in USD per 5h (0 = unlimited)
+	RateLimit1d   float64    // Rate limit in USD per 1d (0 = unlimited)
+	RateLimit7d   float64    // Rate limit in USD per 7d (0 = unlimited)
+	Usage5h       float64    // Used amount in current 5h window
+	Usage1d       float64    // Used amount in current 1d window
+	Usage7d       float64    // Used amount in current 7d window
+	Window5hStart *time.Time // Start of current 5h window
+	Window1dStart *time.Time // Start of current 1d window
+	Window7dStart *time.Time // Start of current 7d window
 REDACTED
 
 func (k *APIKey) IsActive() bool {
 	return k.Status == StatusActive
+REDACTED
+
+// HasRateLimits returns true if any rate limit window is configured
+func (k *APIKey) HasRateLimits() bool {
+	return k.RateLimit5h > 0 || k.RateLimit1d > 0 || k.RateLimit7d > 0
 REDACTED
 
 // IsExpired checks if the API key has expired
@@ -72,4 +96,11 @@ REDACTED
 		return 0
 REDACTED
 	return int(duration.Hours() / 24)
+REDACTED
+
+// APIKeyListFilters holds optional filtering parameters for listing API keys.
+type APIKeyListFilters struct {
+	Search  string
+	Status  string
+	GroupID *int64 // nil=不筛选, 0=无分组, >0=指定分组
 REDACTED

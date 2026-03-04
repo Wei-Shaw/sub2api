@@ -17,6 +17,58 @@ type ValidationOptions struct {
 	AllowPrivate     bool
 REDACTED
 
+// ValidateHTTPURL validates an outbound HTTP/HTTPS URL.
+//
+// It provides a single validation entry point that supports:
+// - scheme 校验（https 或可选允许 http）
+// - 可选 allowlist（支持 *.example.com 通配）
+// - allow_private_hosts 策略（阻断 localhost/私网字面量 IP）
+//
+// 注意：DNS Rebinding 防护（解析后 IP 校验）应在实际发起请求时执行，避免 TOCTOU。
+func ValidateHTTPURL(raw string, allowInsecureHTTP bool, opts ValidationOptions) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", errors.New("url is required")
+REDACTED
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("invalid url: %s", trimmed)
+REDACTED
+
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "https" && (!allowInsecureHTTP || scheme != "http") {
+		return "", fmt.Errorf("invalid url scheme: %s", parsed.Scheme)
+REDACTED
+
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "" {
+		return "", errors.New("invalid host")
+REDACTED
+	if !opts.AllowPrivate && isBlockedHost(host) {
+		return "", fmt.Errorf("host is not allowed: %s", host)
+REDACTED
+
+	if port := parsed.Port(); port != "" {
+		num, err := strconv.Atoi(port)
+		if err != nil || num <= 0 || num > 65535 {
+			return "", fmt.Errorf("invalid port: %s", port)
+	REDACTED
+REDACTED
+
+	allowlist := normalizeAllowlist(opts.AllowedHosts)
+	if opts.RequireAllowlist && len(allowlist) == 0 {
+		return "", errors.New("allowlist is not configured")
+REDACTED
+	if len(allowlist) > 0 && !isAllowedHost(host, allowlist) {
+		return "", fmt.Errorf("host is not allowed: %s", host)
+REDACTED
+
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	parsed.RawPath = ""
+	return strings.TrimRight(parsed.String(), "/"), nil
+REDACTED
+
 func ValidateURLFormat(raw string, allowInsecureHTTP bool) (string, error) {
 	// 最小格式校验：仅保证 URL 可解析且 scheme 合规，不做白名单/私网/SSRF 校验
 	trimmed := strings.TrimSpace(raw)
@@ -50,38 +102,7 @@ REDACTED
 REDACTED
 
 func ValidateHTTPSURL(raw string, opts ValidationOptions) (string, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return "", errors.New("url is required")
-REDACTED
-
-	parsed, err := url.Parse(trimmed)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return "", fmt.Errorf("invalid url: %s", trimmed)
-REDACTED
-	if !strings.EqualFold(parsed.Scheme, "https") {
-		return "", fmt.Errorf("invalid url scheme: %s", parsed.Scheme)
-REDACTED
-
-	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
-	if host == "" {
-		return "", errors.New("invalid host")
-REDACTED
-	if !opts.AllowPrivate && isBlockedHost(host) {
-		return "", fmt.Errorf("host is not allowed: %s", host)
-REDACTED
-
-	allowlist := normalizeAllowlist(opts.AllowedHosts)
-	if opts.RequireAllowlist && len(allowlist) == 0 {
-		return "", errors.New("allowlist is not configured")
-REDACTED
-	if len(allowlist) > 0 && !isAllowedHost(host, allowlist) {
-		return "", fmt.Errorf("host is not allowed: %s", host)
-REDACTED
-
-	parsed.Path = strings.TrimRight(parsed.Path, "/")
-	parsed.RawPath = ""
-	return strings.TrimRight(parsed.String(), "/"), nil
+	return ValidateHTTPURL(raw, false, opts)
 REDACTED
 
 // ValidateResolvedIP 验证 DNS 解析后的 IP 地址是否安全

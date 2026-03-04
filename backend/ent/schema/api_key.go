@@ -47,6 +47,10 @@ func (APIKey) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.Time("last_used_at").
+			Optional().
+			Nillable().
+			Comment("Last usage time of this API key"),
 		field.JSON("ip_whitelist", []string{REDACTED).
 			Optional().
 			Comment("Allowed IPs/CIDRs, e.g. [\"192.168.1.100\", \"10.0.0.0/8\"]"),
@@ -70,6 +74,47 @@ func (APIKey) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("Expiration time for this API key (null = never expires)"),
+
+		// ========== Rate limit fields ==========
+		// Rate limit configuration (0 = unlimited)
+		field.Float("rate_limit_5h").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Rate limit in USD per 5 hours (0 = unlimited)"),
+		field.Float("rate_limit_1d").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Rate limit in USD per day (0 = unlimited)"),
+		field.Float("rate_limit_7d").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Rate limit in USD per 7 days (0 = unlimited)"),
+		// Rate limit usage tracking
+		field.Float("usage_5h").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Used amount in USD for the current 5h window"),
+		field.Float("usage_1d").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Used amount in USD for the current 1d window"),
+		field.Float("usage_7d").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"REDACTED).
+			Default(0).
+			Comment("Used amount in USD for the current 7d window"),
+		// Window start times
+		field.Time("window_5h_start").
+			Optional().
+			Nillable().
+			Comment("Start time of the current 5h rate limit window"),
+		field.Time("window_1d_start").
+			Optional().
+			Nillable().
+			Comment("Start time of the current 1d rate limit window"),
+		field.Time("window_7d_start").
+			Optional().
+			Nillable().
+			Comment("Start time of the current 7d rate limit window"),
 REDACTED
 REDACTED
 
@@ -95,6 +140,7 @@ func (APIKey) Indexes() []ent.Index {
 		index.Fields("group_id"),
 		index.Fields("status"),
 		index.Fields("deleted_at"),
+		index.Fields("last_used_at"),
 		// Index for quota queries
 		index.Fields("quota", "quota_used"),
 		index.Fields("expires_at"),

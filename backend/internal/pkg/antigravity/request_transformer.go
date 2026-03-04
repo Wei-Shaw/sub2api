@@ -206,6 +206,7 @@ REDACTED
 var modelInfoMap = map[string]modelInfo{
 	"claude-opus-4-5":   {DisplayName: "Claude Opus 4.5", CanonicalID: "claude-opus-4-5-20250929"REDACTED,
 	"claude-opus-4-6":   {DisplayName: "Claude Opus 4.6", CanonicalID: "claude-opus-4-6"REDACTED,
+	"claude-sonnet-4-6": {DisplayName: "Claude Sonnet 4.6", CanonicalID: "claude-sonnet-4-6"REDACTED,
 	"claude-sonnet-4-5": {DisplayName: "Claude Sonnet 4.5", CanonicalID: "claude-sonnet-4-5-20250929"REDACTED,
 	"claude-haiku-4-5":  {DisplayName: "Claude Haiku 4.5", CanonicalID: "REDACTED"REDACTED,
 REDACTED

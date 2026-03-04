@@ -2,6 +2,24 @@ package service
 
 import "strings"
 
+// ToolContinuationSignals 聚合工具续链相关信号，避免重复遍历 input。
+type ToolContinuationSignals struct {
+	HasFunctionCallOutput              bool
+	HasFunctionCallOutputMissingCallID bool
+	HasToolCallContext                 bool
+	HasItemReference                   bool
+	HasItemReferenceForAllCallIDs      bool
+	FunctionCallOutputCallIDs          []string
+REDACTED
+
+// FunctionCallOutputValidation 汇总 function_call_output 关联性校验结果。
+type FunctionCallOutputValidation struct {
+	HasFunctionCallOutput              bool
+	HasToolCallContext                 bool
+	HasFunctionCallOutputMissingCallID bool
+	HasItemReferenceForAllCallIDs      bool
+REDACTED
+
 // NeedsToolContinuation 判定请求是否需要工具调用续链处理。
 // 满足以下任一信号即视为续链：previous_response_id、input 内包含 function_call_output/item_reference、
 // 或显式声明 tools/tool_choice。
@@ -18,107 +36,191 @@ REDACTED
 	if hasToolChoiceSignal(reqBody) {
 		return true
 REDACTED
-	if inputHasType(reqBody, "function_call_output") {
-		return true
+	input, ok := reqBody["input"].([]any)
+	if !ok {
+		return false
 REDACTED
-	if inputHasType(reqBody, "item_reference") {
-		return true
+	for _, item := range input {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		itemType, _ := itemMap["type"].(string)
+		if itemType == "function_call_output" || itemType == "item_reference" {
+			return true
+	REDACTED
 REDACTED
 	return false
 REDACTED
 
+// AnalyzeToolContinuationSignals 单次遍历 input，提取 function_call_output/tool_call/item_reference 相关信号。
+func AnalyzeToolContinuationSignals(reqBody map[string]any) ToolContinuationSignals {
+	signals := ToolContinuationSignals{REDACTED
+	if reqBody == nil {
+		return signals
+REDACTED
+	input, ok := reqBody["input"].([]any)
+	if !ok {
+		return signals
+REDACTED
+
+	var callIDs map[string]struct{REDACTED
+	var referenceIDs map[string]struct{REDACTED
+
+	for _, item := range input {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		itemType, _ := itemMap["type"].(string)
+		switch itemType {
+		case "tool_call", "function_call":
+			callID, _ := itemMap["call_id"].(string)
+			if strings.TrimSpace(callID) != "" {
+				signals.HasToolCallContext = true
+		REDACTED
+		case "function_call_output":
+			signals.HasFunctionCallOutput = true
+			callID, _ := itemMap["call_id"].(string)
+			callID = strings.TrimSpace(callID)
+			if callID == "" {
+				signals.HasFunctionCallOutputMissingCallID = true
+				continue
+		REDACTED
+			if callIDs == nil {
+				callIDs = make(map[string]struct{REDACTED)
+		REDACTED
+			callIDs[callID] = struct{REDACTED{REDACTED
+		case "item_reference":
+			signals.HasItemReference = true
+			idValue, _ := itemMap["id"].(string)
+			idValue = strings.TrimSpace(idValue)
+			if idValue == "" {
+				continue
+		REDACTED
+			if referenceIDs == nil {
+				referenceIDs = make(map[string]struct{REDACTED)
+		REDACTED
+			referenceIDs[idValue] = struct{REDACTED{REDACTED
+	REDACTED
+REDACTED
+
+	if len(callIDs) == 0 {
+		return signals
+REDACTED
+	signals.FunctionCallOutputCallIDs = make([]string, 0, len(callIDs))
+	allReferenced := len(referenceIDs) > 0
+	for callID := range callIDs {
+		signals.FunctionCallOutputCallIDs = append(signals.FunctionCallOutputCallIDs, callID)
+		if allReferenced {
+			if _, ok := referenceIDs[callID]; !ok {
+				allReferenced = false
+		REDACTED
+	REDACTED
+REDACTED
+	signals.HasItemReferenceForAllCallIDs = allReferenced
+	return signals
+REDACTED
+
+// ValidateFunctionCallOutputContext 为 handler 提供低开销校验结果：
+// 1) 无 function_call_output 直接返回
+// 2) 若已存在 tool_call/function_call 上下文则提前返回
+// 3) 仅在无工具上下文时才构建 call_id / item_reference 集合
+func ValidateFunctionCallOutputContext(reqBody map[string]any) FunctionCallOutputValidation {
+	result := FunctionCallOutputValidation{REDACTED
+	if reqBody == nil {
+		return result
+REDACTED
+	input, ok := reqBody["input"].([]any)
+	if !ok {
+		return result
+REDACTED
+
+	for _, item := range input {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		itemType, _ := itemMap["type"].(string)
+		switch itemType {
+		case "function_call_output":
+			result.HasFunctionCallOutput = true
+		case "tool_call", "function_call":
+			callID, _ := itemMap["call_id"].(string)
+			if strings.TrimSpace(callID) != "" {
+				result.HasToolCallContext = true
+		REDACTED
+	REDACTED
+		if result.HasFunctionCallOutput && result.HasToolCallContext {
+			return result
+	REDACTED
+REDACTED
+
+	if !result.HasFunctionCallOutput || result.HasToolCallContext {
+		return result
+REDACTED
+
+	callIDs := make(map[string]struct{REDACTED)
+	referenceIDs := make(map[string]struct{REDACTED)
+	for _, item := range input {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		itemType, _ := itemMap["type"].(string)
+		switch itemType {
+		case "function_call_output":
+			callID, _ := itemMap["call_id"].(string)
+			callID = strings.TrimSpace(callID)
+			if callID == "" {
+				result.HasFunctionCallOutputMissingCallID = true
+				continue
+		REDACTED
+			callIDs[callID] = struct{REDACTED{REDACTED
+		case "item_reference":
+			idValue, _ := itemMap["id"].(string)
+			idValue = strings.TrimSpace(idValue)
+			if idValue == "" {
+				continue
+		REDACTED
+			referenceIDs[idValue] = struct{REDACTED{REDACTED
+	REDACTED
+REDACTED
+
+	if len(callIDs) == 0 || len(referenceIDs) == 0 {
+		return result
+REDACTED
+	allReferenced := true
+	for callID := range callIDs {
+		if _, ok := referenceIDs[callID]; !ok {
+			allReferenced = false
+			break
+	REDACTED
+REDACTED
+	result.HasItemReferenceForAllCallIDs = allReferenced
+	return result
+REDACTED
+
 // HasFunctionCallOutput 判断 input 是否包含 function_call_output，用于触发续链校验。
 func HasFunctionCallOutput(reqBody map[string]any) bool {
-	if reqBody == nil {
-		return false
-REDACTED
-	return inputHasType(reqBody, "function_call_output")
+	return AnalyzeToolContinuationSignals(reqBody).HasFunctionCallOutput
 REDACTED
 
 // HasToolCallContext 判断 input 是否包含带 call_id 的 tool_call/function_call，
 // 用于判断 function_call_output 是否具备可关联的上下文。
 func HasToolCallContext(reqBody map[string]any) bool {
-	if reqBody == nil {
-		return false
-REDACTED
-	input, ok := reqBody["input"].([]any)
-	if !ok {
-		return false
-REDACTED
-	for _, item := range input {
-		itemMap, ok := item.(map[string]any)
-		if !ok {
-			continue
-	REDACTED
-		itemType, _ := itemMap["type"].(string)
-		if itemType != "tool_call" && itemType != "function_call" {
-			continue
-	REDACTED
-		if callID, ok := itemMap["call_id"].(string); ok && strings.TrimSpace(callID) != "" {
-			return true
-	REDACTED
-REDACTED
-	return false
+	return AnalyzeToolContinuationSignals(reqBody).HasToolCallContext
 REDACTED
 
 // FunctionCallOutputCallIDs 提取 input 中 function_call_output 的 call_id 集合。
 // 仅返回非空 call_id，用于与 item_reference.id 做匹配校验。
 func FunctionCallOutputCallIDs(reqBody map[string]any) []string {
-	if reqBody == nil {
-		return nil
-REDACTED
-	input, ok := reqBody["input"].([]any)
-	if !ok {
-		return nil
-REDACTED
-	ids := make(map[string]struct{REDACTED)
-	for _, item := range input {
-		itemMap, ok := item.(map[string]any)
-		if !ok {
-			continue
-	REDACTED
-		itemType, _ := itemMap["type"].(string)
-		if itemType != "function_call_output" {
-			continue
-	REDACTED
-		if callID, ok := itemMap["call_id"].(string); ok && strings.TrimSpace(callID) != "" {
-			ids[callID] = struct{REDACTED{REDACTED
-	REDACTED
-REDACTED
-	if len(ids) == 0 {
-		return nil
-REDACTED
-	result := make([]string, 0, len(ids))
-	for id := range ids {
-		result = append(result, id)
-REDACTED
-	return result
+	return AnalyzeToolContinuationSignals(reqBody).FunctionCallOutputCallIDs
 REDACTED
 
 // HasFunctionCallOutputMissingCallID 判断是否存在缺少 call_id 的 function_call_output。
 func HasFunctionCallOutputMissingCallID(reqBody map[string]any) bool {
-	if reqBody == nil {
-		return false
-REDACTED
-	input, ok := reqBody["input"].([]any)
-	if !ok {
-		return false
-REDACTED
-	for _, item := range input {
-		itemMap, ok := item.(map[string]any)
-		if !ok {
-			continue
-	REDACTED
-		itemType, _ := itemMap["type"].(string)
-		if itemType != "function_call_output" {
-			continue
-	REDACTED
-		callID, _ := itemMap["call_id"].(string)
-		if strings.TrimSpace(callID) == "" {
-			return true
-	REDACTED
-REDACTED
-	return false
+	return AnalyzeToolContinuationSignals(reqBody).HasFunctionCallOutputMissingCallID
 REDACTED
 
 // HasItemReferenceForCallIDs 判断 item_reference.id 是否覆盖所有 call_id。
@@ -152,30 +254,11 @@ REDACTED
 		return false
 REDACTED
 	for _, callID := range callIDs {
-		if _, ok := referenceIDs[callID]; !ok {
+		if _, ok := referenceIDs[strings.TrimSpace(callID)]; !ok {
 			return false
 	REDACTED
 REDACTED
 	return true
-REDACTED
-
-// inputHasType 判断 input 中是否存在指定类型的 item。
-func inputHasType(reqBody map[string]any, want string) bool {
-	input, ok := reqBody["input"].([]any)
-	if !ok {
-		return false
-REDACTED
-	for _, item := range input {
-		itemMap, ok := item.(map[string]any)
-		if !ok {
-			continue
-	REDACTED
-		itemType, _ := itemMap["type"].(string)
-		if itemType == want {
-			return true
-	REDACTED
-REDACTED
-	return false
 REDACTED
 
 // hasNonEmptyString 判断字段是否为非空字符串。

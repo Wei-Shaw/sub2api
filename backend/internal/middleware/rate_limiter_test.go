@@ -60,6 +60,49 @@ REDACTED)
 	require.Equal(t, http.StatusTooManyRequests, recorder.Code)
 REDACTED
 
+func TestRateLimiterDifferentIPsIndependent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	callCounts := make(map[string]int64)
+	originalRun := rateLimitRun
+	rateLimitRun = func(ctx context.Context, client *redis.Client, key string, windowMillis int64) (int64, bool, error) {
+		callCounts[key]++
+		return callCounts[key], false, nil
+REDACTED
+	t.Cleanup(func() {
+		rateLimitRun = originalRun
+REDACTED)
+
+	limiter := NewRateLimiter(redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"REDACTED))
+
+	router := gin.New()
+	router.Use(limiter.Limit("api", 1, time.Second))
+	router.GET("/test", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": trueREDACTED)
+REDACTED)
+
+	// 第一个 IP 的请求应通过
+	req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req1.RemoteAddr = "10.0.0.1:1234"
+	rec1 := httptest.NewRecorder()
+	router.ServeHTTP(rec1, req1)
+	require.Equal(t, http.StatusOK, rec1.Code, "第一个 IP 的第一次请求应通过")
+
+	// 第二个 IP 的请求应独立通过（不受第一个 IP 的计数影响）
+	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req2.RemoteAddr = "10.0.0.2:5678"
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, req2)
+	require.Equal(t, http.StatusOK, rec2.Code, "第二个 IP 的第一次请求应独立通过")
+
+	// 第一个 IP 的第二次请求应被限流
+	req3 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req3.RemoteAddr = "10.0.0.1:1234"
+	rec3 := httptest.NewRecorder()
+	router.ServeHTTP(rec3, req3)
+	require.Equal(t, http.StatusTooManyRequests, rec3.Code, "第一个 IP 的第二次请求应被限流")
+REDACTED
+
 func TestRateLimiterSuccessAndLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

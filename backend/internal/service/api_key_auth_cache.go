@@ -19,6 +19,11 @@ type APIKeyAuthSnapshot struct {
 
 	// Expiration field for API Key expiration feature
 	ExpiresAt *time.Time `json:"expires_at,omitempty"` // Expiration time (nil = never expires)
+
+	// Rate limit configuration (only limits, not usage - usage read from Redis at check time)
+	RateLimit5h float64 `json:"rate_limit_5h"`
+	RateLimit1d float64 `json:"rate_limit_1d"`
+	RateLimit7d float64 `json:"rate_limit_7d"`
 REDACTED
 
 // APIKeyAuthUserSnapshot 用户快照
@@ -44,6 +49,10 @@ type APIKeyAuthGroupSnapshot struct {
 	ImagePrice1K                    *float64 `json:"image_price_1k,omitempty"`
 	ImagePrice2K                    *float64 `json:"image_price_2k,omitempty"`
 	ImagePrice4K                    *float64 `json:"image_price_4k,omitempty"`
+	SoraImagePrice360               *float64 `json:"sora_image_price_360,omitempty"`
+	SoraImagePrice540               *float64 `json:"sora_image_price_540,omitempty"`
+	SoraVideoPricePerRequest        *float64 `json:"sora_video_price_per_request,omitempty"`
+	SoraVideoPricePerRequestHD      *float64 `json:"sora_video_price_per_request_hd,omitempty"`
 	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
 	FallbackGroupID                 *int64   `json:"fallback_group_id,omitempty"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request,omitempty"`

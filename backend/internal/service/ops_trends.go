@@ -22,5 +22,13 @@ REDACTED
 	if filter.StartTime.After(filter.EndTime) {
 		return nil, infraerrors.BadRequest("OPS_TIME_RANGE_INVALID", "start_time must be <= end_time")
 REDACTED
-	return s.opsRepo.GetThroughputTrend(ctx, filter, bucketSeconds)
+
+	filter.QueryMode = s.resolveOpsQueryMode(ctx, filter.QueryMode)
+
+	result, err := s.opsRepo.GetThroughputTrend(ctx, filter, bucketSeconds)
+	if err != nil && shouldFallbackOpsPreagg(filter, err) {
+		rawFilter := cloneOpsFilterWithMode(filter, OpsQueryModeRaw)
+		return s.opsRepo.GetThroughputTrend(ctx, rawFilter, bucketSeconds)
+REDACTED
+	return result, err
 REDACTED

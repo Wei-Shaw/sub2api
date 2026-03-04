@@ -12,8 +12,9 @@ import (
 
 // OpenAIOAuthClient interface for OpenAI OAuth operations
 type OpenAIOAuthClient interface {
-	ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL string) (*openai.TokenResponse, error)
+	ExchangeCode(ctx context.Context, code, codeVerifier, redirectURI, proxyURL, clientID string) (*openai.TokenResponse, error)
 	RefreshToken(ctx context.Context, refreshToken, proxyURL string) (*openai.TokenResponse, error)
+	RefreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL string, clientID string) (*openai.TokenResponse, error)
 REDACTED
 
 // ClaudeOAuthClient handles HTTP requests for Claude OAuth flows
@@ -217,7 +218,7 @@ REDACTED
 	// Ensure org_uuid is set (from step 1 if not from token response)
 	if tokenInfo.OrgUUID == "" && orgUUID != "" {
 		tokenInfo.OrgUUID = orgUUID
-		log.Printf("[OAuth] Set org_uuid from cookie auth: %s", orgUUID)
+		log.Printf("[OAuth] Set org_uuid from cookie auth")
 REDACTED
 
 	return tokenInfo, nil
@@ -251,16 +252,16 @@ REDACTED
 
 	if tokenResp.Organization != nil && tokenResp.Organization.UUID != "" {
 		tokenInfo.OrgUUID = tokenResp.Organization.UUID
-		log.Printf("[OAuth] Got org_uuid: %s", tokenInfo.OrgUUID)
+		log.Printf("[OAuth] Got org_uuid")
 REDACTED
 	if tokenResp.Account != nil {
 		if tokenResp.Account.UUID != "" {
 			tokenInfo.AccountUUID = tokenResp.Account.UUID
-			log.Printf("[OAuth] Got account_uuid: %s", tokenInfo.AccountUUID)
+			log.Printf("[OAuth] Got account_uuid")
 	REDACTED
 		if tokenResp.Account.EmailAddress != "" {
 			tokenInfo.EmailAddress = tokenResp.Account.EmailAddress
-			log.Printf("[OAuth] Got email_address: %s", tokenInfo.EmailAddress)
+			log.Printf("[OAuth] Got email_address")
 	REDACTED
 REDACTED
 

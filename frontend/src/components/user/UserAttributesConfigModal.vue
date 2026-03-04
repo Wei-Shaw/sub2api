@@ -143,7 +143,7 @@
       <!-- Options (for select/multi_select) -->
       <div v-if="form.type === 'select' || form.type === 'multi_select'" class="space-y-2">
         <label class="input-label">{{ t('admin.users.attributes.options') REDACTEDREDACTED</label>
-        <div v-for="(option, index) in form.options" :key="index" class="flex items-center gap-2">
+        <div v-for="(option, index) in form.options" :key="getOptionKey(option)" class="flex items-center gap-2">
           <input
             v-model="option.value"
             type="text"
@@ -246,6 +246,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
+import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -270,6 +271,7 @@ const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
 const editingAttribute = ref<UserAttributeDefinition | null>(null)
 const deletingAttribute = ref<UserAttributeDefinition | null>(null)
+const getOptionKey = createStableObjectKeyResolver<UserAttributeOption>('user-attr-option')
 
 const form = reactive({
   key: '',
@@ -315,7 +317,7 @@ const openEditModal = (attr: UserAttributeDefinition) => {
   form.placeholder = attr.placeholder || ''
   form.required = attr.required
   form.enabled = attr.enabled
-  form.options = attr.options ? [...attr.options] : []
+  form.options = attr.options ? attr.options.map((opt) => ({ ...opt REDACTED)) : []
   showEditModal.value = true
 REDACTED
 

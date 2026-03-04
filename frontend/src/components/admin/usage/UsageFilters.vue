@@ -121,10 +121,10 @@
           </div>
         </div>
 
-        <!-- Stream Type Filter -->
+        <!-- Request Type Filter -->
         <div class="w-full sm:w-auto sm:min-w-[180px]">
           <label class="input-label">{{ t('usage.type') REDACTEDREDACTED</label>
-          <Select v-model="filters.stream" :options="streamTypeOptions" @change="emitChange" />
+          <Select v-model="filters.request_type" :options="requestTypeOptions" @change="emitChange" />
         </div>
 
         <!-- Billing Type Filter -->
@@ -160,6 +160,7 @@
         <button type="button" @click="$emit('reset')" class="btn btn-secondary">
           {{ t('common.reset') REDACTEDREDACTED
         </button>
+        <slot name="after-reset" />
         <button type="button" @click="$emit('cleanup')" class="btn btn-danger">
           {{ t('admin.usage.cleanup.button') REDACTEDREDACTED
         </button>
@@ -232,10 +233,11 @@ let accountSearchTimeout: ReturnType<typeof setTimeout> | null = null
 const modelOptions = ref<SelectOption[]>([{ value: null, label: t('admin.usage.allModels') REDACTED])
 const groupOptions = ref<SelectOption[]>([{ value: null, label: t('admin.usage.allGroups') REDACTED])
 
-const streamTypeOptions = ref<SelectOption[]>([
+const requestTypeOptions = ref<SelectOption[]>([
   { value: null, label: t('admin.usage.allTypes') REDACTED,
-  { value: true, label: t('usage.stream') REDACTED,
-  { value: false, label: t('usage.sync') REDACTED
+  { value: 'ws_v2', label: t('usage.ws') REDACTED,
+  { value: 'stream', label: t('usage.stream') REDACTED,
+  { value: 'sync', label: t('usage.sync') REDACTED
 ])
 
 const billingTypeOptions = ref<SelectOption[]>([

@@ -270,6 +270,7 @@ export default {
     redeemCodes: 'Redeem Codes',
     ops: 'Ops',
     promoCodes: 'Promo Codes',
+    dataManagement: 'Data Management',
     settings: 'Settings',
     myAccount: 'My Account',
     lightMode: 'Light Mode',
@@ -279,8 +280,9 @@ export default {
     logout: 'Logout',
     github: 'GitHub',
     mySubscriptions: 'My Subscriptions',
-    buySubscription: 'Purchase Subscription',
-    docs: 'Docs'
+    buySubscription: 'Recharge / Subscription',
+    docs: 'Docs',
+    sora: 'Sora Studio'
   REDACTED,
 
   // Auth
@@ -310,6 +312,9 @@ export default {
     passwordMinLength: 'Password must be at least 6 characters',
     loginFailed: 'Login failed. Please check your credentials and try again.',
     registrationFailed: 'Registration failed. Please try again.',
+    emailSuffixNotAllowed: 'This email domain is not allowed for registration.',
+    emailSuffixNotAllowedWithAllowed:
+      'This email domain is not allowed. Allowed domains: {suffixesREDACTED',
     loginSuccess: 'Login successful! Welcome back.',
     accountCreatedSuccess: 'Account created successfully! Welcome to {siteNameREDACTED.',
     reloginRequired: 'Session expired. Please log in again.',
@@ -324,6 +329,16 @@ export default {
     sendingCode: 'Sending...',
     clickToResend: 'Click to resend code',
     resendCode: 'Resend verification code',
+    sendCodeDesc: "We'll send a verification code to",
+    codeSentSuccess: 'Verification code sent! Please check your inbox.',
+    verifying: 'Verifying...',
+    verifyAndCreate: 'Verify & Create Account',
+    resendCountdown: 'Resend code in {countdownREDACTEDs',
+    backToRegistration: 'Back to registration',
+    sendCodeFailed: 'Failed to send verification code. Please try again.',
+    verifyFailed: 'Verification failed. Please try again.',
+    codeRequired: 'Verification code is required',
+    invalidCode: 'Please enter a valid 6-digit code',
     promoCodeLabel: 'Promo Code',
     promoCodePlaceholder: 'Enter promo code (optional)',
     promoCodeValid: 'Valid! You will receive ${amountREDACTED bonus balance',
@@ -406,9 +421,12 @@ export default {
     day: 'Day',
     hour: 'Hour',
     modelDistribution: 'Model Distribution',
+    groupDistribution: 'Group Usage Distribution',
     tokenUsageTrend: 'Token Usage Trend',
     noDataAvailable: 'No data available',
     model: 'Model',
+    group: 'Group',
+    noGroup: 'No Group',
     requests: 'Requests',
     tokens: 'Tokens',
     actual: 'Actual',
@@ -439,6 +457,9 @@ export default {
   keys: {
     title: 'API Keys',
     description: 'Manage your API keys and access tokens',
+    searchPlaceholder: 'Search name or key...',
+    allGroups: 'All Groups',
+    allStatus: 'All Status',
     createKey: 'Create API Key',
     editKey: 'Edit API Key',
     deleteKey: 'Delete API Key',
@@ -478,6 +499,7 @@ export default {
     today: 'Today',
     total: 'Total',
     quota: 'Quota',
+    lastUsedAt: 'Last Used',
     useKey: 'Use Key',
     useKeyModal: {
       title: 'Use API Key',
@@ -498,6 +520,7 @@ export default {
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
         codexCli: 'Codex CLI',
+        codexCliWs: 'Codex CLI (WebSocket)',
         opencode: 'OpenCode',
       REDACTED,
       antigravity: {
@@ -553,6 +576,19 @@ export default {
     resetQuotaConfirmMessage: 'Are you sure you want to reset the used quota (${usedREDACTED) for key "{nameREDACTED" to 0? This action cannot be undone.',
     quotaResetSuccess: 'Quota reset successfully',
     failedToResetQuota: 'Failed to reset quota',
+    rateLimitColumn: 'Rate Limit',
+    rateLimitSection: 'Rate Limit',
+    resetUsage: 'Reset',
+    rateLimit5h: '5-Hour Limit (USD)',
+    rateLimit1d: 'Daily Limit (USD)',
+    rateLimit7d: '7-Day Limit (USD)',
+    rateLimitHint: 'Set the maximum spending for this key within each time window. 0 = unlimited.',
+    rateLimitUsage: 'Rate Limit Usage',
+    resetRateLimitUsage: 'Reset Rate Limit Usage',
+    resetRateLimitTitle: 'Confirm Reset Rate Limit',
+    resetRateLimitConfirmMessage: 'Are you sure you want to reset the rate limit usage for key "{nameREDACTED"? All time window usage will be reset to zero. This action cannot be undone.',
+    rateLimitResetSuccess: 'Rate limit usage reset successfully',
+    failedToResetRateLimit: 'Failed to reset rate limit usage',
     expiration: 'Expiration',
     expiresInDays: '{daysREDACTED days',
     extendDays: '+{daysREDACTED days',
@@ -576,6 +612,10 @@ export default {
     description: 'View and analyze your API usage history',
     costDetails: 'Cost Breakdown',
     tokenDetails: 'Token Breakdown',
+    cacheTtlOverriddenHint: 'Cache TTL Override enabled',
+    cacheTtlOverriddenLabel: 'TTL Override',
+    cacheTtlOverridden5m: 'Billed as 5m',
+    cacheTtlOverridden1h: 'Billed as 1h',
     totalRequests: 'Total Requests',
     totalTokens: 'Total Tokens',
     totalCost: 'Total Cost',
@@ -607,8 +647,10 @@ export default {
     firstToken: 'First Token',
     duration: 'Duration',
     time: 'Time',
+    ws: 'WS',
     stream: 'Stream',
     sync: 'Sync',
+    unknown: 'Unknown',
     in: 'In',
     out: 'Out',
     cacheRead: 'Read',
@@ -822,9 +864,12 @@ export default {
       day: 'Day',
       hour: 'Hour',
       modelDistribution: 'Model Distribution',
+      groupDistribution: 'Group Usage Distribution',
       tokenUsageTrend: 'Token Usage Trend',
       userUsageTrend: 'User Usage Trend (Top 12)',
       model: 'Model',
+      group: 'Group',
+      noGroup: 'No Group',
       requests: 'Requests',
       tokens: 'Tokens',
       actual: 'Actual',
@@ -832,6 +877,181 @@ export default {
       noDataAvailable: 'No data available',
       recentUsage: 'Recent Usage',
       failedToLoad: 'Failed to load dashboard statistics'
+    REDACTED,
+
+    dataManagement: {
+      title: 'Data Management',
+      description: 'Manage data management agent status, object storage settings, and backup jobs in one place',
+      agent: {
+        title: 'Data Management Agent Status',
+        description: 'The system probes a fixed Unix socket and enables data management only when reachable.',
+        enabled: 'Data management agent is ready. Data management operations are available.',
+        disabled: 'Data management agent is unavailable. Only diagnostic information is available now.',
+        socketPath: 'Socket Path',
+        version: 'Version',
+        status: 'Status',
+        uptime: 'Uptime',
+        reasonLabel: 'Unavailable Reason',
+        reason: {
+          DATA_MANAGEMENT_AGENT_SOCKET_MISSING: 'Data management socket file is missing',
+          DATA_MANAGEMENT_AGENT_UNAVAILABLE: 'Data management agent is unreachable',
+          BACKUP_AGENT_SOCKET_MISSING: 'Backup socket file is missing',
+          BACKUP_AGENT_UNAVAILABLE: 'Backup agent is unreachable',
+          UNKNOWN: 'Unknown reason'
+        REDACTED
+      REDACTED,
+      sections: {
+        config: {
+          title: 'Backup Configuration',
+          description: 'Configure backup source, retention policy, and S3 settings.'
+        REDACTED,
+        s3: {
+          title: 'S3 Object Storage',
+          description: 'Configure and test uploads of backup artifacts to a standard S3-compatible storage.'
+        REDACTED,
+        backup: {
+          title: 'Backup Operations',
+          description: 'Trigger PostgreSQL, Redis, and full backup jobs.'
+        REDACTED,
+        history: {
+          title: 'Backup History',
+          description: 'Review backup job status, errors, and artifact metadata.'
+        REDACTED
+      REDACTED,
+      form: {
+        sourceMode: 'Source Mode',
+        backupRoot: 'Backup Root',
+        activePostgresProfile: 'Active PostgreSQL Profile',
+        activeRedisProfile: 'Active Redis Profile',
+        activeS3Profile: 'Active S3 Profile',
+        retentionDays: 'Retention Days',
+        keepLast: 'Keep Last Jobs',
+        uploadToS3: 'Upload to S3',
+        useActivePostgresProfile: 'Use Active PostgreSQL Profile',
+        useActiveRedisProfile: 'Use Active Redis Profile',
+        useActiveS3Profile: 'Use Active Profile',
+        idempotencyKey: 'Idempotency Key (Optional)',
+        secretConfigured: 'Configured already, leave empty to keep unchanged',
+        source: {
+          profileID: 'Profile ID (Unique)',
+          profileName: 'Profile Name',
+          setActive: 'Set as active after creation'
+        REDACTED,
+        postgres: {
+          title: 'PostgreSQL',
+          host: 'Host',
+          port: 'Port',
+          user: 'User',
+          password: 'Password',
+          database: 'Database',
+          sslMode: 'SSL Mode',
+          containerName: 'Container Name (docker_exec mode)'
+        REDACTED,
+        redis: {
+          title: 'Redis',
+          addr: 'Address (host:port)',
+          username: 'Username',
+          password: 'Password',
+          db: 'Database Index',
+          containerName: 'Container Name (docker_exec mode)'
+        REDACTED,
+        s3: {
+          enabled: 'Enable S3 Upload',
+          profileID: 'Profile ID (Unique)',
+          profileName: 'Profile Name',
+          endpoint: 'Endpoint (Optional)',
+          region: 'Region',
+          bucket: 'Bucket',
+          accessKeyID: 'Access Key ID',
+          secretAccessKey: 'Secret Access Key',
+          prefix: 'Object Prefix',
+          forcePathStyle: 'Force Path Style',
+          useSSL: 'Use SSL',
+          setActive: 'Set as active after creation'
+        REDACTED
+      REDACTED,
+      sourceProfiles: {
+        createTitle: 'Create Source Profile',
+        editTitle: 'Edit Source Profile',
+        empty: 'No source profiles yet, create one first',
+        deleteConfirm: 'Delete source profile {profileIDREDACTED?',
+        columns: {
+          profile: 'Profile',
+          active: 'Active',
+          connection: 'Connection',
+          database: 'Database',
+          updatedAt: 'Updated At',
+          actions: 'Actions'
+        REDACTED
+      REDACTED,
+      s3Profiles: {
+        createTitle: 'Create S3 Profile',
+        editTitle: 'Edit S3 Profile',
+        empty: 'No S3 profiles yet, create one first',
+        editHint: 'Click "Edit" to modify profile details in the right drawer.',
+        deleteConfirm: 'Delete S3 profile {profileIDREDACTED?',
+        columns: {
+          profile: 'Profile',
+          active: 'Active',
+          storage: 'Storage',
+          updatedAt: 'Updated At',
+          actions: 'Actions'
+        REDACTED
+      REDACTED,
+      history: {
+        total: '{countREDACTED jobs',
+        empty: 'No backup jobs yet',
+        columns: {
+          jobID: 'Job ID',
+          type: 'Type',
+          status: 'Status',
+          triggeredBy: 'Triggered By',
+          pgProfile: 'PostgreSQL Profile',
+          redisProfile: 'Redis Profile',
+          s3Profile: 'S3 Profile',
+          finishedAt: 'Finished At',
+          artifact: 'Artifact',
+          error: 'Error'
+        REDACTED,
+        status: {
+          queued: 'Queued',
+          running: 'Running',
+          succeeded: 'Succeeded',
+          failed: 'Failed',
+          partial_succeeded: 'Partial Succeeded'
+        REDACTED
+      REDACTED,
+      actions: {
+        refresh: 'Refresh Status',
+        disabledHint: 'Start datamanagementd first and ensure the socket is reachable.',
+        reloadConfig: 'Reload Config',
+        reloadSourceProfiles: 'Reload Source Profiles',
+        reloadProfiles: 'Reload Profiles',
+        newSourceProfile: 'New Source Profile',
+        saveConfig: 'Save Config',
+        configSaved: 'Configuration saved',
+        testS3: 'Test S3 Connection',
+        s3TestOK: 'S3 connection test succeeded',
+        s3TestFailed: 'S3 connection test failed',
+        newProfile: 'New Profile',
+        saveProfile: 'Save Profile',
+        activateProfile: 'Activate',
+        profileIDRequired: 'Profile ID is required',
+        profileNameRequired: 'Profile name is required',
+        profileSelectRequired: 'Select a profile to edit first',
+        profileCreated: 'S3 profile created',
+        profileSaved: 'S3 profile saved',
+        profileActivated: 'S3 profile activated',
+        profileDeleted: 'S3 profile deleted',
+        sourceProfileCreated: 'Source profile created',
+        sourceProfileSaved: 'Source profile saved',
+        sourceProfileActivated: 'Source profile activated',
+        sourceProfileDeleted: 'Source profile deleted',
+        createBackup: 'Create Backup Job',
+        jobCreated: 'Backup job created: {jobIDREDACTED ({statusREDACTED)',
+        refreshJobs: 'Refresh Jobs',
+        loadMore: 'Load More'
+      REDACTED
     REDACTED,
 
     // Users
@@ -892,6 +1112,9 @@ export default {
       noApiKeys: 'This user has no API keys',
       group: 'Group',
       none: 'None',
+      groupChangedSuccess: 'Group updated successfully',
+      groupChangedWithGrant: 'Group updated. User auto-granted access to "{groupREDACTED"',
+      groupChangeFailed: 'Failed to update group',
       noUsersYet: 'No users yet',
       createFirstUser: 'Create your first user to get started.',
       userCreated: 'User created successfully',
@@ -907,6 +1130,8 @@ export default {
       failedToLoadApiKeys: 'Failed to load user API keys',
       emailRequired: 'Please enter email',
       concurrencyMin: 'Concurrency must be at least 1',
+      soraStorageQuota: 'Sora Storage Quota',
+      soraStorageQuotaHint: 'In GB, 0 means use group or system default quota',
       amountRequired: 'Please enter a valid amount',
       insufficientBalance: 'Insufficient balance',
       deleteConfirm: "Are you sure you want to delete '{emailREDACTED'? This action cannot be undone.",
@@ -1104,7 +1329,8 @@ export default {
         anthropic: 'Anthropic',
         openai: 'OpenAI',
         gemini: 'Gemini',
-        antigravity: 'Antigravity'
+        antigravity: 'Antigravity',
+        sora: 'Sora'
       REDACTED,
       deleteConfirm:
         "Are you sure you want to delete '{nameREDACTED'? All associated API keys will no longer belong to any group.",
@@ -1127,7 +1353,17 @@ export default {
       REDACTED,
       imagePricing: {
         title: 'Image Generation Pricing',
-        description: 'Configure pricing for gemini-3-pro-image model. Leave empty to use default prices.'
+        description: 'Configure pricing for image generation models. Leave empty to use default prices.'
+      REDACTED,
+      soraPricing: {
+        title: 'Sora Per-Request Pricing',
+        description: 'Configure per-request pricing for Sora image/video generation. Leave empty to disable billing.',
+        image360: 'Image 360px ($)',
+        image540: 'Image 540px ($)',
+        video: 'Video (standard) ($)',
+        videoHd: 'Video (Pro-HD) ($)',
+        storageQuota: 'Storage Quota',
+        storageQuotaHint: 'In GB, set the Sora storage quota for users in this group. 0 means use system default'
       REDACTED,
       claudeCode: {
         title: 'Claude Code Client Restriction',
@@ -1271,6 +1507,8 @@ export default {
       refreshInterval15s: '15 seconds',
       refreshInterval30s: '30 seconds',
       autoRefreshCountdown: 'Auto refresh: {secondsREDACTEDs',
+      listPendingSyncHint: 'List changes are pending sync. Click sync to load latest rows.',
+      listPendingSyncAction: 'Sync now',
       syncFromCrs: 'Sync from CRS',
       dataExport: 'Export',
       dataExportSelected: 'Export Selected',
@@ -1351,7 +1589,8 @@ export default {
         claude: 'Claude',
         openai: 'OpenAI',
         gemini: 'Gemini',
-        antigravity: 'Antigravity'
+        antigravity: 'Antigravity',
+        sora: 'Sora'
       REDACTED,
       types: {
         oauth: 'OAuth',
@@ -1361,6 +1600,10 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         antigravityApikey: 'Connect via Base URL + API Key',
+        soraApiKey: 'API Key / Upstream',
+        soraApiKeyHint: 'Connect to another Sub2API or compatible API',
+        soraBaseUrlRequired: 'Sora API Key account requires a Base URL',
+        soraBaseUrlInvalidScheme: 'Base URL must start with http:// or https://',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
       REDACTED,
@@ -1409,7 +1652,19 @@ export default {
         sessions: {
           full: 'Active sessions full, new sessions must wait (idle timeout: {idleREDACTED min)',
           normal: 'Active sessions normal (idle timeout: {idleREDACTED min)'
-        REDACTED
+        REDACTED,
+        rpm: {
+          full: 'RPM limit reached',
+          warning: 'RPM approaching limit',
+          normal: 'RPM normal',
+          tieredNormal: 'RPM limit (Tiered) - Normal',
+          tieredWarning: 'RPM limit (Tiered) - Approaching limit',
+          tieredStickyOnly: 'RPM limit (Tiered) - Sticky only | Buffer: {bufferREDACTED',
+          tieredBlocked: 'RPM limit (Tiered) - Blocked | Buffer: {bufferREDACTED',
+          stickyExemptNormal: 'RPM limit (Sticky Exempt) - Normal',
+          stickyExemptWarning: 'RPM limit (Sticky Exempt) - Approaching limit',
+          stickyExemptOver: 'RPM limit (Sticky Exempt) - Over limit, sticky only'
+        REDACTED,
       REDACTED,
       tempUnschedulable: {
         title: 'Temp Unschedulable',
@@ -1488,7 +1743,8 @@ export default {
         partialSuccess: 'Partially updated: {successREDACTED succeeded, {failedREDACTED failed',
         failed: 'Bulk update failed',
         noSelection: 'Please select accounts to edit',
-        noFieldsSelected: 'Select at least one field to update'
+        noFieldsSelected: 'Select at least one field to update',
+        mixedPlatformWarning: 'Selected accounts span multiple platforms ({platformsREDACTED). Model mapping presets shown are combined — ensure mappings are appropriate for each platform.'
       REDACTED,
       bulkDeleteTitle: 'Bulk Delete Accounts',
       bulkDeleteConfirm: 'Delete the selected {countREDACTED account(s)? This action cannot be undone.',
@@ -1521,7 +1777,39 @@ export default {
       // OpenAI specific hints
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',
-        apiKeyHint: 'Your OpenAI API Key'
+        apiKeyHint: 'Your OpenAI API Key',
+        oauthPassthrough: 'Auto passthrough (auth only)',
+        oauthPassthroughDesc:
+          'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
+        responsesWebsocketsV2: 'Responses WebSocket v2',
+        responsesWebsocketsV2Desc:
+          'Disabled by default. Enable to allow responses_websockets_v2 capability (still gated by global and account-type switches).',
+        wsMode: 'WS mode',
+        wsModeDesc: 'Only applies to the current OpenAI account type.',
+        wsModeOff: 'Off (off)',
+        wsModeShared: 'Shared (shared)',
+        wsModeDedicated: 'Dedicated (dedicated)',
+        wsModeConcurrencyHint:
+          'When WS mode is enabled, account concurrency becomes the WS connection pool limit for this account.',
+        oauthResponsesWebsocketsV2: 'OAuth WebSocket Mode',
+        oauthResponsesWebsocketsV2Desc:
+          'Only applies to OpenAI OAuth. This account can use OpenAI WebSocket Mode only when enabled.',
+        apiKeyResponsesWebsocketsV2: 'API Key WebSocket Mode',
+        apiKeyResponsesWebsocketsV2Desc:
+          'Only applies to OpenAI API Key. This account can use OpenAI WebSocket Mode only when enabled.',
+        responsesWebsocketsV2PassthroughHint:
+          'Automatic passthrough is currently enabled: it only affects HTTP passthrough and does not disable WS mode.',
+        codexCLIOnly: 'Codex official clients only',
+        codexCLIOnlyDesc:
+          'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
+        modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
+        enableSora: 'Enable Sora simultaneously',
+        enableSoraHint: 'Sora uses the same OpenAI account. Enable to create Sora account simultaneously.'
+      REDACTED,
+      anthropic: {
+        apiKeyPassthrough: 'Auto passthrough (auth only)',
+        apiKeyPassthroughDesc:
+          'Only applies to Anthropic API Key accounts. When enabled, messages/count_tokens are forwarded in passthrough mode with auth replacement only, while billing/concurrency/audit and safety filtering are preserved. Disable to roll back immediately.'
       REDACTED,
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
@@ -1531,6 +1819,9 @@ export default {
         'Map request models to actual models. Left is the requested model, right is the actual model sent to API.',
       selectedModels: 'Selected {countREDACTED model(s)',
       supportsAllModels: '(supports all models)',
+      soraModelsLoadFailed: 'Failed to load Sora models, fallback to default list',
+      soraModelsLoading: 'Loading Sora models...',
+      soraModelsRetry: 'Load failed, click to retry',
       requestModel: 'Request model',
       actualModel: 'Actual model',
       addMapping: 'Add Mapping',
@@ -1588,6 +1879,27 @@ export default {
           idleTimeoutPlaceholder: '5',
           idleTimeoutHint: 'Sessions will be released after idle timeout'
         REDACTED,
+        rpmLimit: {
+          label: 'RPM Limit',
+          hint: 'Limit requests per minute to protect upstream accounts',
+          baseRpm: 'Base RPM',
+          baseRpmPlaceholder: '15',
+          baseRpmHint: 'Max requests per minute, 0 or empty means no limit',
+          strategy: 'RPM Strategy',
+          strategyTiered: 'Tiered Model',
+          strategyStickyExempt: 'Sticky Exempt',
+          strategyTieredHint: 'Green → Yellow → Sticky only → Blocked, progressive throttling',
+          strategyStickyExemptHint: 'Only sticky sessions allowed when over limit',
+          strategyHint: 'Tiered: gradually restrict when exceeded; Sticky Exempt: existing sessions unrestricted',
+          stickyBuffer: 'Sticky Buffer',
+          stickyBufferPlaceholder: 'Default: 20% of base RPM',
+          stickyBufferHint: 'Extra requests allowed for sticky sessions after exceeding base RPM. Leave empty to use default (20% of base RPM, min 1)',
+          userMsgQueue: 'User Message Rate Control',
+          userMsgQueueHint: 'Rate-limit user messages to avoid triggering upstream RPM limits',
+          umqModeOff: 'Off',
+          umqModeThrottle: 'Throttle',
+          umqModeSerialize: 'Serialize',
+        REDACTED,
         tlsFingerprint: {
           label: 'TLS Fingerprint Simulation',
           hint: 'Simulate Node.js/Claude Code client TLS fingerprint'
@@ -1595,6 +1907,12 @@ export default {
         sessionIdMasking: {
           label: 'Session ID Masking',
           hint: 'When enabled, fixes the session ID in metadata.user_id for 15 minutes, making upstream think requests come from the same session'
+        REDACTED,
+        cacheTTLOverride: {
+          label: 'Cache TTL Override',
+          hint: 'Force all cache creation tokens to be billed as the selected TTL tier (5m or 1h)',
+          target: 'Target TTL',
+          targetHint: 'Select the TTL tier for billing'
         REDACTED
       REDACTED,
       expired: 'Expired',
@@ -1615,6 +1933,8 @@ export default {
       creating: 'Creating...',
       updating: 'Updating...',
       accountCreated: 'Account created successfully',
+      soraAccountCreated: 'Sora account created simultaneously',
+      soraAccountFailed: 'Failed to create Sora account, please add manually later',
       accountUpdated: 'Account updated successfully',
       failedToCreate: 'Failed to create account',
       failedToUpdate: 'Failed to update account',
@@ -1706,9 +2026,22 @@ export default {
           refreshTokenAuth: 'Manual RT Input',
           refreshTokenDesc: 'Enter your existing OpenAI Refresh Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
           refreshTokenPlaceholder: 'Paste your OpenAI Refresh Token...\nSupports multiple, one per line',
+          sessionTokenAuth: 'Manual ST Input',
+          sessionTokenDesc: 'Enter your existing Sora Session Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
+          sessionTokenPlaceholder: 'Paste your Sora Session Token...\nSupports multiple, one per line',
+          sessionTokenRawLabel: 'Raw Input',
+          sessionTokenRawPlaceholder: 'Paste /api/auth/session raw payload or Session Token...',
+          sessionTokenRawHint: 'You can paste full JSON. The system will auto-parse ST and AT.',
+          openSessionUrl: 'Open Fetch URL',
+          copySessionUrl: 'Copy URL',
+          sessionUrlHint: 'This URL usually returns AT. If sessionToken is absent, copy __Secure-next-auth.session-token from browser cookies as ST.',
+          parsedSessionTokensLabel: 'Parsed ST',
+          parsedSessionTokensEmpty: 'No ST parsed. Please check your input.',
+          parsedAccessTokensLabel: 'Parsed AT',
           validating: 'Validating...',
           validateAndCreate: 'Validate & Create Account',
-          pleaseEnterRefreshToken: 'Please enter Refresh Token'
+          pleaseEnterRefreshToken: 'Please enter Refresh Token',
+          pleaseEnterSessionToken: 'Please enter Session Token'
         REDACTED,
         // Gemini specific
 	        gemini: {
@@ -1929,6 +2262,7 @@ export default {
       reAuthorizeAccount: 'Re-Authorize Account',
       claudeCodeAccount: 'Claude Code Account',
       openaiAccount: 'OpenAI Account',
+      soraAccount: 'Sora Account',
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
       inputMethod: 'Input Method',
@@ -1954,6 +2288,11 @@ export default {
       selectTestModel: 'Select Test Model',
       testModel: 'Test model',
       testPrompt: 'Prompt: "hi"',
+      soraUpstreamBaseUrlHint: 'Upstream Sora service URL (another Sub2API instance or compatible API)',
+      soraTestHint: 'Sora test runs connectivity and capability checks (/backend/me, subscription, Sora2 invite and remaining quota).',
+      soraTestTarget: 'Target: Sora account capability',
+      soraTestMode: 'Mode: Connectivity + Capability checks',
+      soraTestingFlow: 'Running Sora connectivity and capability checks...',
       // Stats Modal
       viewStats: 'View Stats',
       usageStatistics: 'Usage Statistics',
@@ -1995,8 +2334,8 @@ export default {
         geminiFlashDaily: 'Flash',
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
-        gemini3Image: 'G3I',
-        claude45: 'C4.5'
+        gemini3Image: 'GImage',
+        claude: 'Claude'
       REDACTED,
       tier: {
         free: 'Free',
@@ -2040,6 +2379,8 @@ export default {
       dataExportConfirm: 'Confirm Export',
       dataExported: 'Data exported successfully',
       dataExportFailed: 'Failed to export data',
+      copyProxyUrl: 'Copy Proxy URL',
+      urlCopied: 'Proxy URL copied',
       searchProxies: 'Search proxies...',
       allProtocols: 'All Protocols',
       allStatus: 'All Status',
@@ -2053,6 +2394,7 @@ export default {
         name: 'Name',
         protocol: 'Protocol',
         address: 'Address',
+        auth: 'Auth',
         location: 'Location',
         status: 'Status',
         accounts: 'Accounts',
@@ -2060,6 +2402,8 @@ export default {
         actions: 'Actions'
       REDACTED,
       testConnection: 'Test Connection',
+      qualityCheck: 'Quality Check',
+      batchQualityCheck: 'Batch Quality Check',
       batchTest: 'Test All Proxies',
       testFailed: 'Failed',
       latencyFailed: 'Connection failed',
@@ -2120,6 +2464,29 @@ export default {
       proxyWorking: 'Proxy is working!',
       proxyWorkingWithLatency: 'Proxy is working! Latency: {latencyREDACTEDms',
       proxyTestFailed: 'Proxy test failed',
+      qualityCheckDone: 'Quality check completed: score {scoreREDACTED ({gradeREDACTED)',
+      qualityCheckFailed: 'Failed to run proxy quality check',
+      batchQualityDone:
+        'Batch quality check completed for {countREDACTED proxies: healthy {healthyREDACTED, warn {warnREDACTED, challenge {challengeREDACTED, abnormal {failedREDACTED',
+      batchQualityFailed: 'Batch quality check failed',
+      batchQualityEmpty: 'No proxies available for quality check',
+      qualityReportTitle: 'Proxy Quality Report',
+      qualityGrade: 'Grade {gradeREDACTED',
+      qualityExitIP: 'Exit IP',
+      qualityCountry: 'Exit Region',
+      qualityBaseLatency: 'Base Latency',
+      qualityCheckedAt: 'Checked At',
+      qualityTableTarget: 'Target',
+      qualityTableStatus: 'Status',
+      qualityTableLatency: 'Latency',
+      qualityTableMessage: 'Message',
+      qualityInline: 'Quality {gradeREDACTED/{scoreREDACTED',
+      qualityStatusHealthy: 'Healthy',
+      qualityStatusPass: 'Pass',
+      qualityStatusWarn: 'Warn',
+      qualityStatusFail: 'Fail',
+      qualityStatusChallenge: 'Challenge',
+      qualityTargetBase: 'Base Connectivity',
       failedToLoad: 'Failed to load proxies',
       failedToCreate: 'Failed to create proxy',
       failedToUpdate: 'Failed to update proxy',
@@ -2360,6 +2727,8 @@ export default {
       inputTokens: 'Input Tokens',
       outputTokens: 'Output Tokens',
       cacheCreationTokens: 'Cache Creation Tokens',
+      cacheCreation5mTokens: 'Cache Write',
+      cacheCreation1hTokens: 'Cache Write',
       cacheReadTokens: 'Cache Read Tokens',
       failedToLoad: 'Failed to load usage records',
       billingType: 'Billing Type',
@@ -2495,10 +2864,32 @@ export default {
         '5m': 'Last 5 minutes',
         '30m': 'Last 30 minutes',
         '1h': 'Last 1 hour',
+        '1d': 'Last 1 day',
+        '15d': 'Last 15 days',
         '6h': 'Last 6 hours',
         '24h': 'Last 24 hours',
         '7d': 'Last 7 days',
         '30d': 'Last 30 days'
+      REDACTED,
+      openaiTokenStats: {
+        title: 'OpenAI Token Request Stats',
+        viewModeTopN: 'TopN',
+        viewModePagination: 'Pagination',
+        prevPage: 'Previous',
+        nextPage: 'Next',
+        pageInfo: 'Page {pageREDACTED/{totalREDACTED',
+        totalModels: 'Total models: {totalREDACTED',
+        failedToLoad: 'Failed to load OpenAI token stats',
+        empty: 'No OpenAI token stats for the current filters',
+        table: {
+          model: 'Model',
+          requestCount: 'Requests',
+          avgTokensPerSec: 'Avg Tokens/sec',
+          avgFirstTokenMs: 'Avg First Token Latency (ms)',
+          totalOutputTokens: 'Total Output Tokens',
+          avgDurationMs: 'Avg Duration (ms)',
+          requestsWithFirstToken: 'Requests With First Token'
+        REDACTED
       REDACTED,
       fullscreen: {
         enter: 'Enter Fullscreen'
@@ -3143,6 +3534,15 @@ export default {
     settings: {
       title: 'System Settings',
       description: 'Manage registration, email verification, default values, and SMTP settings',
+      tabs: {
+        general: 'General',
+        security: 'Security',
+        users: 'Users',
+        gateway: 'Gateway',
+        email: 'Email',
+      REDACTED,
+      emailTabDisabledTitle: 'Email Verification Not Enabled',
+      emailTabDisabledHint: 'Enable email verification in the Security tab to configure SMTP settings.',
       registration: {
         title: 'Registration Settings',
         description: 'Control user registration and verification',
@@ -3150,6 +3550,11 @@ export default {
         enableRegistrationHint: 'Allow new users to register',
         emailVerification: 'Email Verification',
         emailVerificationHint: 'Require email verification for new registrations',
+        emailSuffixWhitelist: 'Email Domain Whitelist',
+        emailSuffixWhitelistHint:
+          "Only email addresses from the specified domains can register (for example, {'@'REDACTEDqq.com, {'@'REDACTEDgmail.com)",
+        emailSuffixWhitelistPlaceholder: 'example.com',
+        emailSuffixWhitelistInputHint: 'Leave empty for no restriction',
         promoCode: 'Promo Code',
         promoCodeHint: 'Allow users to use promo codes during registration',
         invitationCode: 'Invitation Code Registration',
@@ -3198,7 +3603,29 @@ export default {
         defaultBalance: 'Default Balance',
         defaultBalanceHint: 'Initial balance for new users',
         defaultConcurrency: 'Default Concurrency',
-        defaultConcurrencyHint: 'Maximum concurrent requests for new users'
+        defaultConcurrencyHint: 'Maximum concurrent requests for new users',
+        defaultSubscriptions: 'Default Subscriptions',
+        defaultSubscriptionsHint: 'Auto-assign these subscriptions when a new user is created or registered',
+        addDefaultSubscription: 'Add Default Subscription',
+        defaultSubscriptionsEmpty: 'No default subscriptions configured.',
+        defaultSubscriptionsDuplicate:
+          'Duplicate subscription group: {groupIdREDACTED. Each group can only appear once.',
+        subscriptionGroup: 'Subscription Group',
+        subscriptionValidityDays: 'Validity (days)'
+      REDACTED,
+      claudeCode: {
+        title: 'Claude Code Settings',
+        description: 'Control Claude Code client access requirements',
+        minVersion: 'Minimum Version',
+        minVersionPlaceholder: 'e.g. 2.1.63',
+        minVersionHint:
+          'Reject Claude Code clients below this version (semver format). Leave empty to disable version check.'
+      REDACTED,
+      scheduling: {
+        title: 'Gateway Scheduling Settings',
+        description: 'Control API Key scheduling behavior',
+        allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
+        allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
       REDACTED,
       site: {
         title: 'Site Settings',
@@ -3234,15 +3661,44 @@ export default {
         hideCcsImportButtonHint: 'When enabled, the "Import to CCS" button will be hidden on the API Keys page'
       REDACTED,
       purchase: {
-        title: 'Purchase Page',
-        description: 'Show a "Purchase Subscription" entry in the sidebar and open the configured URL in an iframe',
-        enabled: 'Show Purchase Entry',
+        title: 'Recharge / Subscription Page',
+        description: 'Show a "Recharge / Subscription" entry in the sidebar and open the configured URL in an iframe',
+        enabled: 'Show Recharge / Subscription Entry',
         enabledHint: 'Only shown in standard mode (not simple mode)',
-        url: 'Purchase URL',
+        url: 'Recharge / Subscription URL',
         urlPlaceholder: 'https://example.com/purchase',
         urlHint: 'Must be an absolute http(s) URL',
         iframeWarning:
-          '⚠️ iframe note: Some websites block embedding via X-Frame-Options or CSP (frame-ancestors). If the page is blank, provide an "Open in new tab" alternative.'
+          '⚠️ iframe note: Some websites block embedding via X-Frame-Options or CSP (frame-ancestors). If the page is blank, provide an "Open in new tab" alternative.',
+        integrationDoc: 'Payment Integration Docs',
+        integrationDocHint: 'Covers endpoint specs, idempotency semantics, and code samples'
+      REDACTED,
+      soraClient: {
+        title: 'Sora Client',
+        description: 'Control whether to show the Sora client entry in the sidebar',
+        enabled: 'Enable Sora Client',
+        enabledHint: 'When enabled, the Sora entry will be shown in the sidebar for users to access Sora features'
+      REDACTED,
+      customMenu: {
+        title: 'Custom Menu Pages',
+        description: 'Add custom iframe pages to the sidebar navigation. Each page can be visible to regular users or administrators.',
+        itemLabel: 'Menu Item #{nREDACTED',
+        name: 'Menu Name',
+        namePlaceholder: 'e.g. Help Center',
+        url: 'Page URL',
+        urlPlaceholder: 'https://example.com/page',
+        iconSvg: 'SVG Icon',
+        iconSvgPlaceholder: '<svg>...</svg>',
+        iconPreview: 'Icon Preview',
+        uploadSvg: 'Upload SVG',
+        removeSvg: 'Remove',
+        visibility: 'Visible To',
+        visibilityUser: 'Regular Users',
+        visibilityAdmin: 'Administrators',
+        add: 'Add Menu Item',
+        remove: 'Remove',
+        moveUp: 'Move Up',
+        moveDown: 'Move Down',
       REDACTED,
       smtp: {
         title: 'SMTP Settings',
@@ -3314,6 +3770,60 @@ export default {
         keyWarning: 'This key will only be shown once. Please copy it now.',
         securityWarning: 'Warning: This key provides full admin access. Keep it secure.',
         usage: 'Usage: Add to request header - x-api-key: <your-admin-api-key>'
+      REDACTED,
+      soraS3: {
+        title: 'Sora S3 Storage',
+        description: 'Manage multiple Sora S3 endpoints and switch the active profile',
+        newProfile: 'New Profile',
+        reloadProfiles: 'Reload Profiles',
+        empty: 'No Sora S3 profiles yet, create one first',
+        createTitle: 'Create Sora S3 Profile',
+        editTitle: 'Edit Sora S3 Profile',
+        profileID: 'Profile ID',
+        profileName: 'Profile Name',
+        setActive: 'Set as active after creation',
+        saveProfile: 'Save Profile',
+        activateProfile: 'Activate',
+        profileCreated: 'Sora S3 profile created',
+        profileSaved: 'Sora S3 profile saved',
+        profileDeleted: 'Sora S3 profile deleted',
+        profileActivated: 'Sora S3 active profile switched',
+        profileIDRequired: 'Profile ID is required',
+        profileNameRequired: 'Profile name is required',
+        profileSelectRequired: 'Please select a profile first',
+        endpointRequired: 'S3 endpoint is required when enabled',
+        bucketRequired: 'Bucket is required when enabled',
+        accessKeyRequired: 'Access Key ID is required when enabled',
+        deleteConfirm: 'Delete Sora S3 profile {profileIDREDACTED?',
+        columns: {
+          profile: 'Profile',
+          active: 'Active',
+          endpoint: 'Endpoint',
+          bucket: 'Bucket',
+          quota: 'Default Quota',
+          updatedAt: 'Updated At',
+          actions: 'Actions'
+        REDACTED,
+        enabled: 'Enable S3 Storage',
+        enabledHint: 'When enabled, Sora generated media files will be automatically uploaded to S3 storage',
+        endpoint: 'S3 Endpoint',
+        region: 'Region',
+        bucket: 'Bucket',
+        prefix: 'Object Prefix',
+        accessKeyId: 'Access Key ID',
+        secretAccessKey: 'Secret Access Key',
+        secretConfigured: '(Configured, leave blank to keep)',
+        cdnUrl: 'CDN URL',
+        cdnUrlHint: 'Optional. When configured, files are accessed via CDN URL instead of presigned URLs',
+        forcePathStyle: 'Force Path Style',
+        defaultQuota: 'Default Storage Quota',
+        defaultQuotaHint: 'Default quota when not specified at user or group level. 0 means unlimited',
+        testConnection: 'Test Connection',
+        testing: 'Testing...',
+        testSuccess: 'S3 connection test successful',
+        testFailed: 'S3 connection test failed',
+        saved: 'Sora S3 settings saved successfully',
+        saveFailed: 'Failed to save Sora S3 settings'
       REDACTED,
       streamTimeout: {
         title: 'Stream Timeout Handling',
@@ -3466,16 +3976,26 @@ export default {
     retry: 'Retry'
   REDACTED,
 
-  // Purchase Subscription Page
+  // Recharge / Subscription Page
   purchase: {
-    title: 'Purchase Subscription',
-    description: 'Purchase a subscription via the embedded page',
+    title: 'Recharge / Subscription',
+    description: 'Recharge balance or purchase subscription via the embedded page',
     openInNewTab: 'Open in new tab',
     notEnabledTitle: 'Feature not enabled',
-    notEnabledDesc: 'The administrator has not enabled the purchase page. Please contact admin.',
-    notConfiguredTitle: 'Purchase URL not configured',
+    notEnabledDesc: 'The administrator has not enabled the recharge/subscription entry. Please contact admin.',
+    notConfiguredTitle: 'Recharge / Subscription URL not configured',
     notConfiguredDesc:
-      'The administrator enabled the entry but has not configured a purchase URL. Please contact admin.'
+      'The administrator enabled the entry but has not configured a recharge/subscription URL. Please contact admin.'
+  REDACTED,
+
+  // Custom Page (iframe embed)
+  customPage: {
+    title: 'Custom Page',
+    openInNewTab: 'Open in new tab',
+    notFoundTitle: 'Page not found',
+    notFoundDesc: 'This custom page does not exist or has been removed.',
+    notConfiguredTitle: 'Page URL not configured',
+    notConfiguredDesc: 'The URL for this custom page has not been properly configured.',
   REDACTED,
 
   // Announcements Page
@@ -3673,5 +4193,93 @@ export default {
         description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Click to confirm and create your API key.</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ Important:</b><ul style="margin: 8px 0 0 16px;"><li>Copy the key (sk-xxx) immediately after creation</li><li>Key is only shown once, need to regenerate if lost</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>🚀 How to Use:</b><br/>Configure the key in any OpenAI-compatible client (like ChatBox, OpenCat, etc.) and start using!</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 Click "Create" button</p></div>'
       REDACTED
     REDACTED
+  REDACTED,
+
+  // Sora Studio
+  sora: {
+    title: 'Sora Studio',
+    description: 'Generate videos and images with Sora AI',
+    notEnabled: 'Feature Not Available',
+    notEnabledDesc: 'The Sora Studio feature has not been enabled by the administrator. Please contact your admin.',
+    tabGenerate: 'Generate',
+    tabLibrary: 'Library',
+    noActiveGenerations: 'No active generations',
+    startGenerating: 'Enter a prompt below to start creating',
+    storage: 'Storage',
+    promptPlaceholder: 'Describe what you want to create...',
+    generate: 'Generate',
+    generating: 'Generating...',
+    selectModel: 'Select Model',
+    statusPending: 'Pending',
+    statusGenerating: 'Generating',
+    statusCompleted: 'Completed',
+    statusFailed: 'Failed',
+    statusCancelled: 'Cancelled',
+    cancel: 'Cancel',
+    delete: 'Delete',
+    save: 'Save to Cloud',
+    saved: 'Saved',
+    retry: 'Retry',
+    download: 'Download',
+    justNow: 'Just now',
+    minutesAgo: '{nREDACTED min ago',
+    hoursAgo: '{nREDACTED hr ago',
+    noSavedWorks: 'No saved works',
+    saveWorksHint: 'Save your completed generations to the library',
+    filterAll: 'All',
+    filterVideo: 'Video',
+    filterImage: 'Image',
+    confirmDelete: 'Are you sure you want to delete this work?',
+    loading: 'Loading...',
+    loadMore: 'Load More',
+    noStorageWarningTitle: 'No Storage Configured',
+    noStorageWarningDesc: 'Generated content is only available via temporary upstream links that expire in ~15 minutes. Consider configuring S3 storage.',
+    mediaTypeVideo: 'Video',
+    mediaTypeImage: 'Image',
+    notificationCompleted: 'Generation Complete',
+    notificationFailed: 'Generation Failed',
+    notificationCompletedBody: 'Your {modelREDACTED task has completed',
+    notificationFailedBody: 'Your {modelREDACTED task has failed',
+    upstreamExpiresSoon: 'Expiring soon',
+    upstreamExpired: 'Link expired',
+    upstreamCountdown: '{timeREDACTED remaining',
+    previewTitle: 'Preview',
+    closePreview: 'Close',
+    beforeUnloadWarning: 'You have unsaved generated content. Are you sure you want to leave?',
+    downloadTitle: 'Download Generated Content',
+    downloadExpirationWarning: 'This link expires in approximately 15 minutes. Please download and save promptly.',
+    downloadNow: 'Download Now',
+    referenceImage: 'Reference Image',
+    removeImage: 'Remove',
+    imageTooLarge: 'Image size cannot exceed 20MB',
+    // Sora dark theme additions
+    welcomeTitle: 'Turn your imagination into video',
+    welcomeSubtitle: 'Enter a description and Sora will create realistic videos or images for you. Try the examples below to get started.',
+    queueTasks: 'tasks',
+    queueWaiting: 'Queued',
+    waiting: 'Waiting',
+    waited: 'Waited',
+    errorCategory: 'Content Policy Violation',
+    savedToCloud: 'Saved to Cloud',
+    downloadLocal: 'Download',
+    canDownload: 'to download',
+    regenrate: 'Regenerate',
+    creatorPlaceholder: 'Describe the video or image you want to create...',
+    videoModels: 'Video Models',
+    imageModels: 'Image Models',
+    noStorageConfigured: 'No Storage',
+    selectCredential: 'Select Credential',
+    apiKeys: 'API Keys',
+    subscriptions: 'Subscriptions',
+    subscription: 'Subscription',
+    noCredentialHint: 'Please create an API Key or contact admin for subscription',
+    uploadReference: 'Upload reference image',
+    generatingCount: 'Generating {currentREDACTED/{maxREDACTED',
+    noStorageToastMessage: 'Cloud storage is not configured. Please use "Download" to save files after generation, otherwise they will be lost.',
+    galleryCount: '{countREDACTED works',
+    galleryEmptyTitle: 'No works yet',
+    galleryEmptyDesc: 'Your creations will be displayed here. Go to the generate page to start your first creation.',
+    startCreating: 'Start Creating',
+    yesterday: 'Yesterday'
   REDACTED
 REDACTED

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -94,6 +95,84 @@ REDACTED
 REDACTED
 
 	updated, err := h.opsService.UpdateOpsAlertRuntimeSettings(c.Request.Context(), &req)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+REDACTED
+	response.Success(c, updated)
+REDACTED
+
+// GetRuntimeLogConfig returns runtime log config (DB-backed).
+// GET /api/v1/admin/ops/runtime/logging
+func (h *OpsHandler) GetRuntimeLogConfig(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+REDACTED
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	cfg, err := h.opsService.GetRuntimeLogConfig(c.Request.Context())
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "Failed to get runtime log config")
+		return
+REDACTED
+	response.Success(c, cfg)
+REDACTED
+
+// UpdateRuntimeLogConfig updates runtime log config and applies changes immediately.
+// PUT /api/v1/admin/ops/runtime/logging
+func (h *OpsHandler) UpdateRuntimeLogConfig(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+REDACTED
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	var req service.OpsRuntimeLogConfig
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+REDACTED
+
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Error(c, http.StatusUnauthorized, "Unauthorized")
+		return
+REDACTED
+
+	updated, err := h.opsService.UpdateRuntimeLogConfig(c.Request.Context(), &req, subject.UserID)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+REDACTED
+	response.Success(c, updated)
+REDACTED
+
+// ResetRuntimeLogConfig removes runtime override and falls back to env/yaml baseline.
+// POST /api/v1/admin/ops/runtime/logging/reset
+func (h *OpsHandler) ResetRuntimeLogConfig(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+REDACTED
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Error(c, http.StatusUnauthorized, "Unauthorized")
+		return
+REDACTED
+
+	updated, err := h.opsService.ResetRuntimeLogConfig(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
