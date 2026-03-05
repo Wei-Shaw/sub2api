@@ -496,7 +496,7 @@
             class="input"
             :class="!enableConcurrency && 'cursor-not-allowed opacity-50'"
             aria-labelledby="bulk-edit-concurrency-label"
-            @input="if (concurrency < 1) concurrency = 1"
+            @input="concurrency = Math.max(1, concurrency || 1)"
           />
         </div>
         <div>
@@ -525,7 +525,7 @@
             class="input"
             :class="!enableLoadFactor && 'cursor-not-allowed opacity-50'"
             aria-labelledby="bulk-edit-load-factor-label"
-            @input="if (loadFactor != null && loadFactor < 1) loadFactor = null"
+            @input="loadFactor = (loadFactor &amp;&amp; loadFactor >= 1) ? loadFactor : null"
           />
           <p class="input-hint">{{ t('admin.accounts.loadFactorHint') REDACTEDREDACTED</p>
         </div>
