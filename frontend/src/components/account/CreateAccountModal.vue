@@ -1227,6 +1227,9 @@
 
       </div>
 
+      <!-- API Key 账号配额限制 -->
+      <QuotaLimitCard v-if="form.type === 'apikey'" v-model="editQuotaLimit" />
+
       <!-- Temp Unschedulable Rules -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3 flex items-center justify-between">
@@ -2337,6 +2340,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup REDACTED from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput REDACTED from '@/utils/format'
 import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
@@ -2460,6 +2464,7 @@ const accountCategory = ref<'oauth-based' | 'apikey'>('oauth-based') // UI selec
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const editQuotaLimit = ref<number | null>(null)
 const modelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
@@ -3120,6 +3125,7 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  editQuotaLimit.value = null
   modelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
@@ -3533,13 +3539,18 @@ const createAccountAndFinish = async (
   if (!applyTempUnschedConfig(credentials)) {
     return
   REDACTED
+  // Inject quota_limit for apikey accounts
+  let finalExtra = extra
+  if (type === 'apikey' && editQuotaLimit.value != null && editQuotaLimit.value > 0) {
+    finalExtra = { ...(extra || {REDACTED), quota_limit: editQuotaLimit.value REDACTED
+  REDACTED
   await doCreateAccount({
     name: form.name,
     notes: form.notes,
     platform,
     type,
     credentials,
-    extra,
+    extra: finalExtra,
     proxy_id: form.proxy_id,
     concurrency: form.concurrency,
     priority: form.priority,
