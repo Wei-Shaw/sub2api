@@ -1564,7 +1564,7 @@ REDACTED
 
 // RunTestBackground executes an account test in-memory (no real HTTP client),
 // capturing SSE output via httptest.NewRecorder, then parses the result.
-func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestOutcome, error) {
+func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error) {
 	startedAt := time.Now()
 
 	w := httptest.NewRecorder()
@@ -1574,28 +1574,25 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 	testErr := s.TestAccountConnection(ginCtx, accountID, modelID)
 
 	finishedAt := time.Now()
-	latencyMs := finishedAt.Sub(startedAt).Milliseconds()
-
 	body := w.Body.String()
 	responseText, errMsg := parseTestSSEOutput(body)
 
-	outcome := &ScheduledTestOutcome{
-		Status:       "success",
-		ResponseText: responseText,
-		ErrorMessage: errMsg,
-		LatencyMs:    latencyMs,
-		StartedAt:    startedAt,
-		FinishedAt:   finishedAt,
-REDACTED
-
+	status := "success"
 	if testErr != nil || errMsg != "" {
-		outcome.Status = "failed"
+		status = "failed"
 		if errMsg == "" && testErr != nil {
-			outcome.ErrorMessage = testErr.Error()
+			errMsg = testErr.Error()
 	REDACTED
 REDACTED
 
-	return outcome, nil
+	return &ScheduledTestResult{
+		Status:       status,
+		ResponseText: responseText,
+		ErrorMessage: errMsg,
+		LatencyMs:    finishedAt.Sub(startedAt).Milliseconds(),
+		StartedAt:    startedAt,
+		FinishedAt:   finishedAt,
+REDACTED, nil
 REDACTED
 
 // parseTestSSEOutput extracts response text and error message from captured SSE output.

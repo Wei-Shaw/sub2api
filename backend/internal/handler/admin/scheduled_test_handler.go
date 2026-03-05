@@ -47,9 +47,6 @@ REDACTED
 		response.InternalError(c, err.Error())
 		return
 REDACTED
-	if plans == nil {
-		plans = []*service.ScheduledTestPlan{REDACTED
-REDACTED
 	c.JSON(http.StatusOK, plans)
 REDACTED
 
@@ -153,9 +150,6 @@ REDACTED
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return
-REDACTED
-	if results == nil {
-		results = []*service.ScheduledTestResult{REDACTED
 REDACTED
 	c.JSON(http.StatusOK, results)
 REDACTED

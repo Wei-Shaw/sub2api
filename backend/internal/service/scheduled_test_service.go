@@ -77,16 +77,8 @@ REDACTED
 REDACTED
 
 // SaveResult inserts a result and prunes old entries beyond maxResults.
-func (s *ScheduledTestService) SaveResult(ctx context.Context, planID int64, maxResults int, outcome *ScheduledTestOutcome) error {
-	result := &ScheduledTestResult{
-		PlanID:       planID,
-		Status:       outcome.Status,
-		ResponseText: outcome.ResponseText,
-		ErrorMessage: outcome.ErrorMessage,
-		LatencyMs:    outcome.LatencyMs,
-		StartedAt:    outcome.StartedAt,
-		FinishedAt:   outcome.FinishedAt,
-REDACTED
+func (s *ScheduledTestService) SaveResult(ctx context.Context, planID int64, maxResults int, result *ScheduledTestResult) error {
+	result.PlanID = planID
 	if _, err := s.resultRepo.Create(ctx, result); err != nil {
 		return err
 REDACTED

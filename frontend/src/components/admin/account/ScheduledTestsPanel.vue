@@ -469,8 +469,8 @@ const handleCreate = async () => {
     const maxResults = Number(newPlan.max_results) || 100
     await adminAPI.scheduledTests.create({
       account_id: props.accountId,
-      model_id: String(newPlan.model_id),
-      cron_expression: String(newPlan.cron_expression),
+      model_id: newPlan.model_id,
+      cron_expression: newPlan.cron_expression,
       enabled: newPlan.enabled,
       max_results: maxResults
     REDACTED)
@@ -515,8 +515,8 @@ const handleEdit = async () => {
   updating.value = true
   try {
     const updated = await adminAPI.scheduledTests.update(editingPlanId.value, {
-      model_id: String(editForm.model_id),
-      cron_expression: String(editForm.cron_expression),
+      model_id: editForm.model_id,
+      cron_expression: editForm.cron_expression,
       max_results: Number(editForm.max_results) || 100,
       enabled: editForm.enabled
     REDACTED)
