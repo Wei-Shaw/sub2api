@@ -171,8 +171,7 @@ REDACTED
 	require.NotNil(t, result)
 	require.True(t, result.Stream)
 
-	require.Equal(t, body, upstream.lastBody, "透传模式不应改写上游请求体")
-	require.Equal(t, "claude-3-7-sonnet-20250219", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "claude-3-haiku-20240307", gjson.GetBytes(upstream.lastBody, "model").String(), "透传模式应应用账号级模型映射")
 
 	require.Equal(t, "upstream-anthropic-key", upstream.lastReq.Header.Get("x-api-key"))
 	require.Empty(t, upstream.lastReq.Header.Get("authorization"))
@@ -190,7 +189,7 @@ REDACTED
 	require.True(t, ok)
 	bodyBytes, ok := rawBody.([]byte)
 	require.True(t, ok, "应以 []byte 形式缓存上游请求体，避免重复 string 拷贝")
-	require.Equal(t, body, bodyBytes)
+	require.Equal(t, "claude-3-haiku-20240307", gjson.GetBytes(bodyBytes, "model").String(), "缓存的上游请求体应包含映射后的模型")
 REDACTED
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardCountTokensPreservesBody(t *testing.T) {
@@ -253,14 +252,280 @@ REDACTED
 	err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
 REDACTED
 
-	require.Equal(t, body, upstream.lastBody, "count_tokens 透传模式不应改写请求体")
-	require.Equal(t, "claude-3-5-sonnet-latest", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "claude-3-opus-20240229", gjson.GetBytes(upstream.lastBody, "model").String(), "count_tokens 透传模式应应用账号级模型映射")
 	require.Equal(t, "upstream-anthropic-key", upstream.lastReq.Header.Get("x-api-key"))
 	require.Empty(t, upstream.lastReq.Header.Get("authorization"))
 	require.Empty(t, upstream.lastReq.Header.Get("cookie"))
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.JSONEq(t, upstreamRespBody, rec.Body.String())
 	require.Empty(t, rec.Header().Get("Set-Cookie"))
+REDACTED
+
+// TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingEdgeCases 覆盖透传模式下模型映射的各种边界情况
+func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingEdgeCases(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name          string
+		model         string
+		modelMapping  map[string]any // nil = 不配置映射
+		expectedModel string
+		endpoint      string // "messages" or "count_tokens"
+REDACTED{
+		{
+			name:          "Forward: 无映射配置时不改写模型",
+			model:         "claude-sonnet-4-20250514",
+			modelMapping:  nil,
+			expectedModel: "claude-sonnet-4-20250514",
+			endpoint:      "messages",
+	REDACTED,
+		{
+			name:          "Forward: 空映射配置时不改写模型",
+			model:         "claude-sonnet-4-20250514",
+			modelMapping:  map[string]any{REDACTED,
+			expectedModel: "claude-sonnet-4-20250514",
+			endpoint:      "messages",
+	REDACTED,
+		{
+			name:          "Forward: 模型不在映射表中时不改写",
+			model:         "claude-sonnet-4-20250514",
+			modelMapping:  map[string]any{"claude-3-haiku-20240307": "claude-3-opus-20240229"REDACTED,
+			expectedModel: "claude-sonnet-4-20250514",
+			endpoint:      "messages",
+	REDACTED,
+		{
+			name:          "Forward: 精确匹配映射应改写模型",
+			model:         "claude-sonnet-4-20250514",
+			modelMapping:  map[string]any{"claude-sonnet-4-20250514": "claude-sonnet-4-5-20241022"REDACTED,
+			expectedModel: "claude-sonnet-4-5-20241022",
+			endpoint:      "messages",
+	REDACTED,
+		{
+			name:          "Forward: 通配符映射应改写模型",
+			model:         "claude-sonnet-4-20250514",
+			modelMapping:  map[string]any{"claude-sonnet-4-*": "claude-sonnet-4-5-20241022"REDACTED,
+			expectedModel: "claude-sonnet-4-5-20241022",
+			endpoint:      "messages",
+	REDACTED,
+		{
+			name:          "CountTokens: 无映射配置时不改写模型",
+			model:         "claude-sonnet-4-20250514",
+			modelMapping:  nil,
+			expectedModel: "claude-sonnet-4-20250514",
+			endpoint:      "count_tokens",
+	REDACTED,
+		{
+			name:          "CountTokens: 模型不在映射表中时不改写",
+			model:         "claude-sonnet-4-20250514",
+			modelMapping:  map[string]any{"claude-3-haiku-20240307": "claude-3-opus-20240229"REDACTED,
+			expectedModel: "claude-sonnet-4-20250514",
+			endpoint:      "count_tokens",
+	REDACTED,
+		{
+			name:          "CountTokens: 精确匹配映射应改写模型",
+			model:         "claude-sonnet-4-20250514",
+			modelMapping:  map[string]any{"claude-sonnet-4-20250514": "claude-sonnet-4-5-20241022"REDACTED,
+			expectedModel: "claude-sonnet-4-5-20241022",
+			endpoint:      "count_tokens",
+	REDACTED,
+		{
+			name:          "CountTokens: 通配符映射应改写模型",
+			model:         "claude-sonnet-4-20250514",
+			modelMapping:  map[string]any{"claude-sonnet-4-*": "claude-sonnet-4-5-20241022"REDACTED,
+			expectedModel: "claude-sonnet-4-5-20241022",
+			endpoint:      "count_tokens",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+
+			body := []byte(`{"model":"` + tt.model + `","messages":[{"role":"user","content":[{"type":"text","text":"hello"REDACTED]REDACTED]REDACTED`)
+			parsed := &ParsedRequest{
+				Body:  body,
+				Model: tt.model,
+		REDACTED
+
+			credentials := map[string]any{
+				"api_key":  "upstream-key",
+				"base_url": "https://api.anthropic.com",
+		REDACTED
+			if tt.modelMapping != nil {
+				credentials["model_mapping"] = tt.modelMapping
+		REDACTED
+
+			account := &Account{
+				ID:          300,
+				Name:        "edge-case-test",
+				Platform:    PlatformAnthropic,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+				Credentials: credentials,
+				Extra:       map[string]any{"anthropic_passthrough": trueREDACTED,
+				Status:      StatusActive,
+				Schedulable: true,
+		REDACTED
+
+			if tt.endpoint == "messages" {
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+				parsed.Stream = false
+
+				upstreamJSON := `{"id":"msg_1","type":"message","usage":{"input_tokens":5,"output_tokens":3REDACTEDREDACTED`
+				upstream := &anthropicHTTPUpstreamRecorder{
+					resp: &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+						Body:       io.NopCloser(strings.NewReader(upstreamJSON)),
+				REDACTED,
+			REDACTED
+				svc := &GatewayService{
+					cfg:              &config.Config{REDACTED,
+					httpUpstream:     upstream,
+					rateLimitService: &RateLimitService{REDACTED,
+			REDACTED
+
+				result, err := svc.Forward(context.Background(), c, account, parsed)
+			REDACTED
+				require.NotNil(t, result)
+				require.Equal(t, tt.expectedModel, gjson.GetBytes(upstream.lastBody, "model").String(),
+					"Forward 上游请求体中的模型应为: %s", tt.expectedModel)
+		REDACTED else {
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
+
+				upstreamRespBody := `{"input_tokens":42REDACTED`
+				upstream := &anthropicHTTPUpstreamRecorder{
+					resp: &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+						Body:       io.NopCloser(strings.NewReader(upstreamRespBody)),
+				REDACTED,
+			REDACTED
+				svc := &GatewayService{
+					cfg:              &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTEDREDACTED,
+					httpUpstream:     upstream,
+					rateLimitService: &RateLimitService{REDACTED,
+			REDACTED
+
+				err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
+			REDACTED
+				require.Equal(t, tt.expectedModel, gjson.GetBytes(upstream.lastBody, "model").String(),
+					"CountTokens 上游请求体中的模型应为: %s", tt.expectedModel)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+// TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFields
+// 确保模型映射只替换 model 字段，不影响请求体中的其他字段
+func TestGatewayService_AnthropicAPIKeyPassthrough_ModelMappingPreservesOtherFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
+
+	// 包含复杂字段的请求体：system、thinking、messages
+	body := []byte(`{"model":"claude-sonnet-4-20250514","system":[{"type":"text","text":"You are a helpful assistant."REDACTED],"messages":[{"role":"user","content":[{"type":"text","text":"hello world"REDACTED]REDACTED],"thinking":{"type":"enabled","budget_tokens":5000REDACTED,"max_tokens":1024REDACTED`)
+	parsed := &ParsedRequest{
+		Body:  body,
+		Model: "claude-sonnet-4-20250514",
+REDACTED
+
+	upstreamRespBody := `{"input_tokens":42REDACTED`
+	upstream := &anthropicHTTPUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+			Body:       io.NopCloser(strings.NewReader(upstreamRespBody)),
+	REDACTED,
+REDACTED
+
+	svc := &GatewayService{
+		cfg:              &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTEDREDACTED,
+		httpUpstream:     upstream,
+		rateLimitService: &RateLimitService{REDACTED,
+REDACTED
+
+	account := &Account{
+		ID:          301,
+		Name:        "preserve-fields-test",
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":       "upstream-key",
+			"base_url":      "https://api.anthropic.com",
+			"model_mapping": map[string]any{"claude-sonnet-4-20250514": "claude-sonnet-4-5-20241022"REDACTED,
+	REDACTED,
+		Extra:       map[string]any{"anthropic_passthrough": trueREDACTED,
+		Status:      StatusActive,
+		Schedulable: true,
+REDACTED
+
+	err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
+REDACTED
+
+	sentBody := upstream.lastBody
+	require.Equal(t, "claude-sonnet-4-5-20241022", gjson.GetBytes(sentBody, "model").String(), "model 应被映射")
+	require.Equal(t, "You are a helpful assistant.", gjson.GetBytes(sentBody, "system.0.text").String(), "system 字段不应被修改")
+	require.Equal(t, "hello world", gjson.GetBytes(sentBody, "messages.0.content.0.text").String(), "messages 字段不应被修改")
+	require.Equal(t, "enabled", gjson.GetBytes(sentBody, "thinking.type").String(), "thinking 字段不应被修改")
+	require.Equal(t, int64(5000), gjson.GetBytes(sentBody, "thinking.budget_tokens").Int(), "thinking.budget_tokens 不应被修改")
+	require.Equal(t, int64(1024), gjson.GetBytes(sentBody, "max_tokens").Int(), "max_tokens 不应被修改")
+REDACTED
+
+// TestGatewayService_AnthropicAPIKeyPassthrough_EmptyModelSkipsMapping
+// 确保空模型名不会触发映射逻辑
+func TestGatewayService_AnthropicAPIKeyPassthrough_EmptyModelSkipsMapping(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages/count_tokens", nil)
+
+	body := []byte(`{"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`)
+	parsed := &ParsedRequest{
+		Body:  body,
+		Model: "", // 空模型
+REDACTED
+
+	upstreamRespBody := `{"input_tokens":10REDACTED`
+	upstream := &anthropicHTTPUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"REDACTEDREDACTED,
+			Body:       io.NopCloser(strings.NewReader(upstreamRespBody)),
+	REDACTED,
+REDACTED
+
+	svc := &GatewayService{
+		cfg:              &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTEDREDACTED,
+		httpUpstream:     upstream,
+		rateLimitService: &RateLimitService{REDACTED,
+REDACTED
+
+	account := &Account{
+		ID:          302,
+		Name:        "empty-model-test",
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+REDACTED
+			"api_key":       "upstream-key",
+			"base_url":      "https://api.anthropic.com",
+			"model_mapping": map[string]any{"*": "claude-3-opus-20240229"REDACTED,
+	REDACTED,
+		Extra:       map[string]any{"anthropic_passthrough": trueREDACTED,
+		Status:      StatusActive,
+		Schedulable: true,
+REDACTED
+
+	err := svc.ForwardCountTokens(context.Background(), c, account, parsed)
+REDACTED
+	// 空模型名时，body 应原样透传，不应触发映射
+	require.Equal(t, body, upstream.lastBody, "空模型名时请求体不应被修改")
 REDACTED
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_CountTokens404PassthroughNotError(t *testing.T) {
