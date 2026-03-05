@@ -1787,10 +1787,13 @@ export default {
         wsMode: 'WS mode',
         wsModeDesc: 'Only applies to the current OpenAI account type.',
         wsModeOff: 'Off (off)',
+        wsModeCtxPool: 'Context Pool (ctx_pool)',
+        wsModePassthrough: 'Passthrough (passthrough)',
         wsModeShared: 'Shared (shared)',
         wsModeDedicated: 'Dedicated (dedicated)',
         wsModeConcurrencyHint:
           'When WS mode is enabled, account concurrency becomes the WS connection pool limit for this account.',
+        wsModePassthroughHint: 'Passthrough mode does not use the WS connection pool.',
         oauthResponsesWebsocketsV2: 'OAuth WebSocket Mode',
         oauthResponsesWebsocketsV2Desc:
           'Only applies to OpenAI OAuth. This account can use OpenAI WebSocket Mode only when enabled.',

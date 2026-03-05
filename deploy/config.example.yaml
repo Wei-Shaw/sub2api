@@ -209,8 +209,9 @@ gateway:
   openai_ws:
     # 新版 WS mode 路由（默认关闭）。关闭时保持当前 legacy 实现行为。
     mode_router_v2_enabled: false
-    # ingress 默认模式：off|shared|dedicated（仅 mode_router_v2_enabled=true 生效）
-    ingress_mode_default: shared
+    # ingress 默认模式：off|ctx_pool|passthrough（仅 mode_router_v2_enabled=true 生效）
+    # 兼容旧值：shared/dedicated 会按 ctx_pool 处理。
+    ingress_mode_default: ctx_pool
     # 全局总开关，默认 true；关闭时所有请求保持原有 HTTP/SSE 路由
     enabled: true
     # 按账号类型细分开关

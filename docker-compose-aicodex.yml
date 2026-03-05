@@ -1,0 +1,263 @@
+# =============================================================================
+# aicodex2api Docker Compose Host Configuration (Local Build)
+# =============================================================================
+# Quick Start:
+#   1. Copy .env.example to .env and configure
+#   2. docker-compose -f docker-compose-host.yml up -d --build
+#   3. Check logs: docker-compose -f docker-compose-host.yml logs -f aicodex2api
+#   4. Access: http://localhost:8080
+#
+# This configuration builds the image from source (Dockerfile in project root).
+# All configuration is done via environment variables.
+# No Setup Wizard needed - the system auto-initializes on first run.
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # aicodex2api Application
+  # ===========================================================================
+  aicodex2api:
+    image: yangjianbo/aicodex2api:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: aicodex2api
+    restart: unless-stopped
+    network_mode: host
+    ulimits:
+      nofile:
+        soft: 800000
+        hard: 800000
+    volumes:
+      # Data persistence (config.yaml will be auto-generated here)
+      - aicodex2api_data:/app/data
+      # Mount custom config.yaml (optional, overrides auto-generated config)
+      #- ./config.yaml:/app/data/config.yaml:ro
+    environment:
+      # =======================================================================
+      # Auto Setup (REQUIRED for Docker deployment)
+      # =======================================================================
+      - AUTO_SETUP=true
+
+      # =======================================================================
+      # Server Configuration
+      # =======================================================================
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_MODE=${SERVER_MODE:-releaseREDACTED
+      - RUN_MODE=${RUN_MODE:-standardREDACTED
+      # 新用户默认并发（仅影响新注册用户；已有用户请在后台或数据库单独调整）
+      - DEFAULT_USER_CONCURRENCY=${DEFAULT_USER_CONCURRENCY:-12REDACTED
+
+      # =======================================================================
+      # Database Configuration (PostgreSQL)
+      # =======================================================================
+      # Using host network: point to host/external DB by DATABASE_HOST/DATABASE_PORT
+      - DATABASE_HOST=${DATABASE_HOST:-127.0.0.1REDACTED
+      - DATABASE_PORT=${DATABASE_PORT:-5432REDACTED
+      - DATABASE_USER=${POSTGRES_USER:-aicodex2apiREDACTED
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is requiredREDACTED
+      - DATABASE_DBNAME=${POSTGRES_DB:-aicodex2apiREDACTED
+      - DATABASE_SSLMODE=disable
+      - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50REDACTED
+      - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-10REDACTED
+      - DATABASE_CONN_MAX_LIFETIME_MINUTES=${DATABASE_CONN_MAX_LIFETIME_MINUTES:-30REDACTED
+      - DATABASE_CONN_MAX_IDLE_TIME_MINUTES=${DATABASE_CONN_MAX_IDLE_TIME_MINUTES:-5REDACTED
+
+      # =======================================================================
+      # Gateway Configuration
+      # =======================================================================
+      - GATEWAY_FORCE_CODEX_CLI=${GATEWAY_FORCE_CODEX_CLI:-falseREDACTED
+      - GATEWAY_OPENAI_WS_ENABLED=${GATEWAY_OPENAI_WS_ENABLED:-trueREDACTED
+      - GATEWAY_OPENAI_WS_OAUTH_ENABLED=${GATEWAY_OPENAI_WS_OAUTH_ENABLED:-trueREDACTED
+      - GATEWAY_OPENAI_WS_APIKEY_ENABLED=${GATEWAY_OPENAI_WS_APIKEY_ENABLED:-trueREDACTED
+      - GATEWAY_OPENAI_WS_FORCE_HTTP=${GATEWAY_OPENAI_WS_FORCE_HTTP:-falseREDACTED
+      - GATEWAY_OPENAI_WS_RESPONSES_WEBSOCKETS_V2=${GATEWAY_OPENAI_WS_RESPONSES_WEBSOCKETS_V2:-trueREDACTED
+      # 多窗口场景建议 adaptive：兼顾会话隔离与连接复用
+      - GATEWAY_OPENAI_WS_STORE_DISABLED_CONN_MODE=${GATEWAY_OPENAI_WS_STORE_DISABLED_CONN_MODE:-adaptiveREDACTED
+      - GATEWAY_OPENAI_WS_MAX_CONNS_PER_ACCOUNT=${GATEWAY_OPENAI_WS_MAX_CONNS_PER_ACCOUNT:-128REDACTED
+      - GATEWAY_OPENAI_WS_MIN_IDLE_PER_ACCOUNT=${GATEWAY_OPENAI_WS_MIN_IDLE_PER_ACCOUNT:-4REDACTED
+      - GATEWAY_OPENAI_WS_MAX_IDLE_PER_ACCOUNT=${GATEWAY_OPENAI_WS_MAX_IDLE_PER_ACCOUNT:-16REDACTED
+      - GATEWAY_OPENAI_WS_DYNAMIC_MAX_CONNS_BY_ACCOUNT_CONCURRENCY_ENABLED=${GATEWAY_OPENAI_WS_DYNAMIC_MAX_CONNS_BY_ACCOUNT_CONCURRENCY_ENABLED:-trueREDACTED
+      - GATEWAY_OPENAI_WS_OAUTH_MAX_CONNS_FACTOR=${GATEWAY_OPENAI_WS_OAUTH_MAX_CONNS_FACTOR:-1.5REDACTED
+      - GATEWAY_OPENAI_WS_APIKEY_MAX_CONNS_FACTOR=${GATEWAY_OPENAI_WS_APIKEY_MAX_CONNS_FACTOR:-1.5REDACTED
+      - GATEWAY_OPENAI_WS_DIAL_TIMEOUT_SECONDS=${GATEWAY_OPENAI_WS_DIAL_TIMEOUT_SECONDS:-15REDACTED
+      - GATEWAY_OPENAI_WS_READ_TIMEOUT_SECONDS=${GATEWAY_OPENAI_WS_READ_TIMEOUT_SECONDS:-900REDACTED
+      - GATEWAY_OPENAI_WS_WRITE_TIMEOUT_SECONDS=${GATEWAY_OPENAI_WS_WRITE_TIMEOUT_SECONDS:-120REDACTED
+      - GATEWAY_OPENAI_WS_QUEUE_LIMIT_PER_CONN=${GATEWAY_OPENAI_WS_QUEUE_LIMIT_PER_CONN:-128REDACTED
+      - GATEWAY_OPENAI_WS_RETRY_BACKOFF_INITIAL_MS=${GATEWAY_OPENAI_WS_RETRY_BACKOFF_INITIAL_MS:-150REDACTED
+      - GATEWAY_OPENAI_WS_RETRY_BACKOFF_MAX_MS=${GATEWAY_OPENAI_WS_RETRY_BACKOFF_MAX_MS:-3000REDACTED
+      - GATEWAY_OPENAI_WS_RETRY_TOTAL_BUDGET_MS=${GATEWAY_OPENAI_WS_RETRY_TOTAL_BUDGET_MS:-15000REDACTED
+      - GATEWAY_MAX_IDLE_CONNS=${GATEWAY_MAX_IDLE_CONNS:-2560REDACTED
+      - GATEWAY_MAX_IDLE_CONNS_PER_HOST=${GATEWAY_MAX_IDLE_CONNS_PER_HOST:-120REDACTED
+      - GATEWAY_MAX_CONNS_PER_HOST=${GATEWAY_MAX_CONNS_PER_HOST:-8192REDACTED
+
+      # =======================================================================
+      # Redis Configuration
+      # =======================================================================
+      # Using host network: point to host/external Redis by REDIS_HOST/REDIS_PORT
+      - REDIS_HOST=${REDIS_HOST:-127.0.0.1REDACTED
+      - REDIS_PORT=${REDIS_PORT:-6379REDACTED
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-REDACTED
+      - REDIS_DB=${REDIS_DB:-0REDACTED
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-1024REDACTED
+      - REDIS_MIN_IDLE_CONNS=${REDIS_MIN_IDLE_CONNS:-10REDACTED
+      - REDIS_ENABLE_TLS=${REDIS_ENABLE_TLS:-falseREDACTED
+
+      # =======================================================================
+      # Admin Account (auto-created on first run)
+      # =======================================================================
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@aicodex2api.localREDACTED
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-REDACTED
+
+      # =======================================================================
+      # JWT Configuration
+      # =======================================================================
+      # Leave empty to auto-generate (recommended)
+      - JWT_SECRET=${JWT_SECRET:-REDACTED
+      - JWT_EXPIRE_HOUR=${JWT_EXPIRE_HOUR:-24REDACTED
+
+      # =======================================================================
+      # TOTP (2FA) Configuration
+      # =======================================================================
+      # IMPORTANT: Set a fixed encryption key for TOTP secrets. If left empty,
+      # a random key will be generated on each startup, causing all existing
+      # TOTP configurations to become invalid (users won't be able to login
+      # with 2FA).
+      # Generate a secure key: openssl rand -hex 32
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-REDACTED
+
+      # =======================================================================
+      # Timezone Configuration
+      # This affects ALL time operations in the application:
+      # - Database timestamps
+      # - Usage statistics "today" boundary
+      # - Subscription expiry times
+      # - Log timestamps
+      # Common values: Asia/Shanghai, America/New_York, Europe/London, UTC
+      # =======================================================================
+      - TZ=${TZ:-Asia/ShanghaiREDACTED
+
+      # =======================================================================
+      # Gemini OAuth Configuration (for Gemini accounts)
+      # =======================================================================
+      - GEMINI_OAUTH_CLIENT_ID=${GEMINI_OAUTH_CLIENT_ID:-REDACTED
+      - GEMINI_OAUTH_CLIENT_SECRET=${GEMINI_OAUTH_CLIENT_SECRET:-REDACTED
+      - GEMINI_OAUTH_SCOPES=${GEMINI_OAUTH_SCOPES:-REDACTED
+      - GEMINI_QUOTA_POLICY=${GEMINI_QUOTA_POLICY:-REDACTED
+
+      # Built-in OAuth client secrets (optional)
+      # SECURITY: This repo does not embed third-party client_secret.
+      - GEMINI_CLI_OAUTH_CLIENT_SECRET=${GEMINI_CLI_OAUTH_CLIENT_SECRET:-REDACTED
+      - ANTIGRAVITY_OAUTH_CLIENT_SECRET=${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-REDACTED
+
+      # =======================================================================
+      # Security Configuration (URL Allowlist)
+      # =======================================================================
+      # Allow private IP addresses for CRS sync (for internal deployments)
+      - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-trueREDACTED
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  # PostgreSQL Database
+  # ===========================================================================
+  postgres:
+    image: postgres:18-alpine
+    container_name: aicodex2api-postgres
+    restart: unless-stopped
+    network_mode: host
+    ulimits:
+      nofile:
+        soft: 800000
+        hard: 800000
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      # postgres:18-alpine 默认 PGDATA=/var/lib/postgresql/18/docker（位于镜像声明的匿名卷 /var/lib/postgresql 内）。
+      # 若不显式设置 PGDATA，则即使挂载了 postgres_data 到 /var/lib/postgresql/data，数据也不会落盘到该命名卷，
+      # docker compose down/up 后会触发 initdb 重新初始化，导致用户/密码等数据丢失。
+      - PGDATA=/var/lib/postgresql/data
+      - POSTGRES_USER=${POSTGRES_USER:-aicodex2apiREDACTED
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is requiredREDACTED
+      - POSTGRES_DB=${POSTGRES_DB:-aicodex2apiREDACTED
+      - TZ=${TZ:-Asia/ShanghaiREDACTED
+    command:
+      - "postgres"
+      - "-c"
+      - "listen_addresses=127.0.0.1"
+      # 监听端口：与应用侧 DATABASE_PORT 保持一致。
+      - "-c"
+      - "port=${DATABASE_PORT:-5432REDACTED"
+      # 连接数上限：需要结合应用侧 DATABASE_MAX_OPEN_CONNS 调整。
+      # 注意：max_connections 过大可能导致内存占用与上下文切换开销显著上升。
+      - "-c"
+      - "max_connections=${POSTGRES_MAX_CONNECTIONS:-1024REDACTED"
+      # 典型内存参数（建议结合机器内存调优；不确定就保持默认或小步调大）。
+      - "-c"
+      - "shared_buffers=${POSTGRES_SHARED_BUFFERS:-1GBREDACTED"
+      - "-c"
+      - "effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-6GBREDACTED"
+      - "-c"
+      - "maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-128MBREDACTED"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aicodex2apiREDACTED -d ${POSTGRES_DB:-aicodex2apiREDACTED -p ${DATABASE_PORT:-5432REDACTED"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # Note: bound to localhost only; not exposed to external network by default.
+
+  # ===========================================================================
+  # Redis Cache
+  # ===========================================================================
+  redis:
+    image: redis:8-alpine
+    container_name: aicodex2api-redis
+    restart: unless-stopped
+    network_mode: host
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --bind 127.0.0.1
+      --port ${REDIS_PORT:-6379REDACTED
+      --maxclients ${REDIS_MAXCLIENTS:-50000REDACTED
+      --save 60 1
+      --appendonly yes
+      --appendfsync everysec
+      ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORDREDACTEDREDACTED
+    environment:
+      - TZ=${TZ:-Asia/ShanghaiREDACTED
+      # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)
+      - REDISCLI_AUTH=${REDIS_PASSWORD:-REDACTED
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p ${REDIS_PORT:-6379REDACTED -a \"$REDISCLI_AUTH\" ping | grep -q PONG || redis-cli -p ${REDIS_PORT:-6379REDACTED ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  aicodex2api_data:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

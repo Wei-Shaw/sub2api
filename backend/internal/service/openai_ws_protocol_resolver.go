@@ -69,8 +69,11 @@ REDACTED
 		switch mode {
 		case OpenAIWSIngressModeOff:
 			return openAIWSHTTPDecision("account_mode_off")
-		case OpenAIWSIngressModeShared, OpenAIWSIngressModeDedicated:
+		case OpenAIWSIngressModeCtxPool, OpenAIWSIngressModePassthrough:
 			// continue
+		case OpenAIWSIngressModeShared, OpenAIWSIngressModeDedicated:
+			// 历史值兼容：按 ctx_pool 处理。
+			mode = OpenAIWSIngressModeCtxPool
 		default:
 			return openAIWSHTTPDecision("account_mode_off")
 	REDACTED

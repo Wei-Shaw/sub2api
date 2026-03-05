@@ -708,7 +708,7 @@
         </div>
       </div>
 
-      <!-- OpenAI WS Mode 三态（off/shared/dedicated） -->
+      <!-- OpenAI WS Mode 三态（off/ctx_pool/passthrough） -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'apikey')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -720,7 +720,7 @@
               {{ t('admin.accounts.openai.wsModeDesc') REDACTEDREDACTED
             </p>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.openai.wsModeConcurrencyHint') REDACTEDREDACTED
+              {{ t(openAIWSModeConcurrencyHintKey) REDACTEDREDACTED
             </p>
           </div>
           <div class="w-52">
@@ -1273,10 +1273,11 @@ import { applyInterceptWarmup REDACTED from '@/components/account/credentialsBui
 import { formatDateTimeLocalInput, parseDateTimeLocalInput REDACTED from '@/utils/format'
 import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
 import {
-  OPENAI_WS_MODE_DEDICATED,
+  OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
-  OPENAI_WS_MODE_SHARED,
+  OPENAI_WS_MODE_PASSTHROUGH,
   isOpenAIWSModeEnabled,
+  resolveOpenAIWSModeConcurrencyHintKey,
   type OpenAIWSMode,
   resolveOpenAIWSModeFromExtra
 REDACTED from '@/utils/openaiWsMode'
@@ -1387,8 +1388,8 @@ const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') REDACTED,
-  { value: OPENAI_WS_MODE_SHARED, label: t('admin.accounts.openai.wsModeShared') REDACTED,
-  { value: OPENAI_WS_MODE_DEDICATED, label: t('admin.accounts.openai.wsModeDedicated') REDACTED
+  { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') REDACTED,
+  { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') REDACTED
 ])
 const openaiResponsesWebSocketV2Mode = computed({
   get: () => {
@@ -1405,6 +1406,9 @@ const openaiResponsesWebSocketV2Mode = computed({
     openaiOAuthResponsesWebSocketV2Mode.value = mode
   REDACTED
 REDACTED)
+const openAIWSModeConcurrencyHintKey = computed(() =>
+  resolveOpenAIWSModeConcurrencyHintKey(openaiResponsesWebSocketV2Mode.value)
+)
 const isOpenAIModelRestrictionDisabled = computed(() =>
   props.account?.platform === 'openai' && openaiPassthroughEnabled.value
 )
@@ -2248,10 +2252,13 @@ const handleSubmit = async () => {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {REDACTED
       const newExtra: Record<string, unknown> = { ...currentExtra REDACTED
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
-      newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
-      newExtra.openai_apikey_responses_websockets_v2_mode = openaiAPIKeyResponsesWebSocketV2Mode.value
-      newExtra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
-      newExtra.openai_apikey_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiAPIKeyResponsesWebSocketV2Mode.value)
+      if (props.account.type === 'oauth') {
+        newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
+        newExtra.openai_oauth_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiOAuthResponsesWebSocketV2Mode.value)
+      REDACTED else if (props.account.type === 'apikey') {
+        newExtra.openai_apikey_responses_websockets_v2_mode = openaiAPIKeyResponsesWebSocketV2Mode.value
+        newExtra.openai_apikey_responses_websockets_v2_enabled = isOpenAIWSModeEnabled(openaiAPIKeyResponsesWebSocketV2Mode.value)
+      REDACTED
       delete newExtra.responses_websockets_v2_enabled
       delete newExtra.openai_ws_enabled
       if (openaiPassthroughEnabled.value) {

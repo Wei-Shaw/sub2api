@@ -1935,9 +1935,12 @@ export default {
         wsMode: 'WS mode',
         wsModeDesc: '仅对当前 OpenAI 账号类型生效。',
         wsModeOff: '关闭（off）',
+        wsModeCtxPool: '上下文池（ctx_pool）',
+        wsModePassthrough: '透传（passthrough）',
         wsModeShared: '共享（shared）',
         wsModeDedicated: '独享（dedicated）',
         wsModeConcurrencyHint: '启用 WS mode 后，该账号并发数将作为该账号 WS 连接池上限。',
+        wsModePassthroughHint: 'passthrough 模式不使用 WS 连接池。',
         oauthResponsesWebsocketsV2: 'OAuth WebSocket Mode',
         oauthResponsesWebsocketsV2Desc:
           '仅对 OpenAI OAuth 生效。开启后该账号才允许使用 OpenAI WebSocket Mode 协议。',

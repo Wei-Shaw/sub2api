@@ -1,0 +1,222 @@
+# =============================================================================
+# Sub2API Caddy Reverse Proxy Configuration (宿主机部署)
+# =============================================================================
+# 使用方法:
+#   1. 安装 Caddy: https://caddyserver.com/docs/install
+#   2. 修改下方 example.com 为你的域名
+#   3. 确保域名 DNS 已指向服务器
+#   4. 复制配置: sudo cp Caddyfile /etc/caddy/Caddyfile
+#   5. 重载配置: sudo systemctl reload caddy
+#
+# Caddy 会自动申请和续期 Let's Encrypt SSL 证书
+# =============================================================================
+
+# 全局配置
+{
+	# Let's Encrypt 邮箱通知
+	email mt21625457@gmail.com
+
+	# 服务器配置
+	servers {
+		# 启用 HTTP/2 和 HTTP/3
+		protocols h1 h2 h3
+
+		# 超时配置
+		timeouts {
+			read_body 30s
+			read_header 10s
+			# WebSocket/流式场景下，延长写入与空闲超时，避免长会话被过早回收
+			write 3600s
+			idle 3600s
+	REDACTED
+REDACTED
+REDACTED
+
+# 修改为你的域名
+dmit.leagsoft.ai {
+	# =========================================================================
+	# 静态资源长期缓存（高优先级，放在最前面）
+	# 带 hash 的文件可以永久缓存，浏览器和 CDN 都会缓存
+	# =========================================================================
+	@static {
+		path /assets/*
+		path /logo.png
+		path /favicon.ico
+REDACTED
+	header @static {
+		Cache-Control "public, max-age=31536000, immutable"
+		# 移除可能干扰缓存的头
+		-Pragma
+		-Expires
+REDACTED
+	# =========================================================================
+	# TLS 安全配置
+	# =========================================================================
+	tls {
+		# 仅使用 TLS 1.2 和 1.3
+		protocols tls1.2 tls1.3
+
+		# 优先使用的加密套件
+		ciphers TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+REDACTED
+
+	# =========================================================================
+	# 反向代理配置
+	# =========================================================================
+	# OpenAI Responses（含 WebSocket/SSE）专用代理：
+	# 1) 禁用流式缓冲，降低中间层等待导致的断流概率
+	# 2) 上游强制 HTTP/1.1，保证 Upgrade 行为稳定
+	# 3) 放宽流生命周期，避免长会话被代理提前切断
+	@openai_responses {
+		path /openai/v1/responses*
+REDACTED
+	reverse_proxy @openai_responses localhost:8080 {
+		flush_interval -1
+		stream_timeout 24h
+		stream_close_delay 5m
+
+		# 传递真实客户端信息
+		header_up X-Real-IP {remote_hostREDACTED
+		header_up X-Forwarded-For {remote_hostREDACTED
+		header_up X-Forwarded-Proto {schemeREDACTED
+		header_up X-Forwarded-Host {hostREDACTED
+		header_up CF-Connecting-IP {http.request.header.CF-Connecting-IPREDACTED
+
+		transport http {
+			versions 1.1
+			keepalive 120s
+			keepalive_idle_conns 256
+			read_buffer 32KB
+			write_buffer 32KB
+			compression off
+	REDACTED
+REDACTED
+
+	reverse_proxy localhost:8080 {
+		# 健康检查
+		health_uri /health
+		health_interval 30s
+		health_timeout 10s
+		health_status 200
+
+		# 负载均衡策略（单节点可忽略，多节点时有用）
+		lb_policy round_robin
+		lb_try_duration 5s
+		lb_try_interval 250ms
+
+		# 传递真实客户端信息
+		# 兼容 Cloudflare 和直连：后端应优先读取 CF-Connecting-IP，其次 X-Real-IP
+		header_up X-Real-IP {remote_hostREDACTED
+		header_up X-Forwarded-For {remote_hostREDACTED
+		header_up X-Forwarded-Proto {schemeREDACTED
+		header_up X-Forwarded-Host {hostREDACTED
+		# 保留 Cloudflare 原始头（如果存在）
+		# 后端获取 IP 的优先级建议: CF-Connecting-IP → X-Real-IP → X-Forwarded-For
+		header_up CF-Connecting-IP {http.request.header.CF-Connecting-IPREDACTED
+
+		# 连接池优化
+		transport http {
+			keepalive 120s
+			keepalive_idle_conns 256
+			read_buffer 16KB
+			write_buffer 16KB
+			compression off
+	REDACTED
+
+		# 故障转移
+		fail_duration 30s
+		max_fails 3
+		unhealthy_status 500 502 503 504
+REDACTED
+
+	# =========================================================================
+	# 压缩配置
+	# =========================================================================
+	encode {
+		zstd
+		gzip 6
+		minimum_length 256
+		match {
+			header Content-Type text/*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type application/xml*
+			header Content-Type application/rss+xml*
+			header Content-Type image/svg+xml*
+	REDACTED
+REDACTED
+
+	# =========================================================================
+	# 速率限制 (需要 caddy-ratelimit 插件)
+	# 如未安装插件，请注释掉此段
+	# =========================================================================
+	# rate_limit {
+	# 	zone api {
+	# 		key {remote_hostREDACTED
+	# 		events 100
+	# 		window 1m
+	# REDACTED
+	# REDACTED
+
+	# =========================================================================
+	# 安全响应头
+	# =========================================================================
+	header {
+		# 防止点击劫持
+		X-Frame-Options "SAMEORIGIN"
+
+		# XSS 保护
+		X-XSS-Protection "1; mode=block"
+
+		# 防止 MIME 类型嗅探
+		X-Content-Type-Options "nosniff"
+
+		# 引用策略
+		Referrer-Policy "strict-origin-when-cross-origin"
+
+		# HSTS - 强制 HTTPS (max-age=1年)
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+		# 内容安全策略 (根据需要调整)
+		# Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:;"
+
+		# 权限策略
+		Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+
+		# 跨域资源策略
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Embedder-Policy "require-corp"
+		Cross-Origin-Resource-Policy "same-origin"
+
+		# 移除敏感头
+		-Server
+		-X-Powered-By
+REDACTED
+
+	# =========================================================================
+	# 请求大小限制 (防止大文件攻击)
+	# =========================================================================
+	request_body {
+		max_size 100MB
+REDACTED
+
+	# =========================================================================
+	# 日志配置
+	# =========================================================================
+	log {
+		output file /var/log/caddy/sub2api.log {
+			roll_size 50mb
+			roll_keep 10
+			roll_keep_for 720h
+	REDACTED
+		format json
+		level INFO
+REDACTED
+
+	# =========================================================================
+	# 错误处理
+	# =========================================================================
+	handle_errors {
+		respond "{err.status_codeREDACTED {err.status_textREDACTED"
+REDACTED
+REDACTED
