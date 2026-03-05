@@ -100,6 +100,11 @@ func Concurrency(v int) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldConcurrency, v))
 REDACTED
 
+// LoadFactor applies equality check predicate on the "load_factor" field. It's identical to LoadFactorEQ.
+func LoadFactor(v int) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldLoadFactor, v))
+REDACTED
+
 // Priority applies equality check predicate on the "priority" field. It's identical to PriorityEQ.
 func Priority(v int) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldPriority, v))
@@ -648,6 +653,56 @@ REDACTED
 // ConcurrencyLTE applies the LTE predicate on the "concurrency" field.
 func ConcurrencyLTE(v int) predicate.Account {
 	return predicate.Account(sql.FieldLTE(FieldConcurrency, v))
+REDACTED
+
+// LoadFactorEQ applies the EQ predicate on the "load_factor" field.
+func LoadFactorEQ(v int) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldLoadFactor, v))
+REDACTED
+
+// LoadFactorNEQ applies the NEQ predicate on the "load_factor" field.
+func LoadFactorNEQ(v int) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldLoadFactor, v))
+REDACTED
+
+// LoadFactorIn applies the In predicate on the "load_factor" field.
+func LoadFactorIn(vs ...int) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldLoadFactor, vs...))
+REDACTED
+
+// LoadFactorNotIn applies the NotIn predicate on the "load_factor" field.
+func LoadFactorNotIn(vs ...int) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldLoadFactor, vs...))
+REDACTED
+
+// LoadFactorGT applies the GT predicate on the "load_factor" field.
+func LoadFactorGT(v int) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldLoadFactor, v))
+REDACTED
+
+// LoadFactorGTE applies the GTE predicate on the "load_factor" field.
+func LoadFactorGTE(v int) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldLoadFactor, v))
+REDACTED
+
+// LoadFactorLT applies the LT predicate on the "load_factor" field.
+func LoadFactorLT(v int) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldLoadFactor, v))
+REDACTED
+
+// LoadFactorLTE applies the LTE predicate on the "load_factor" field.
+func LoadFactorLTE(v int) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldLoadFactor, v))
+REDACTED
+
+// LoadFactorIsNil applies the IsNil predicate on the "load_factor" field.
+func LoadFactorIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldLoadFactor))
+REDACTED
+
+// LoadFactorNotNil applies the NotNil predicate on the "load_factor" field.
+func LoadFactorNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldLoadFactor))
 REDACTED
 
 // PriorityEQ applies the EQ predicate on the "priority" field.

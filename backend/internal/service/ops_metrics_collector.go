@@ -389,13 +389,9 @@ REDACTED
 		if acc.ID <= 0 {
 			continue
 	REDACTED
-		maxConc := acc.Concurrency
-		if maxConc < 0 {
-			maxConc = 0
-	REDACTED
 		batch = append(batch, AccountWithConcurrency{
 			ID:             acc.ID,
-			MaxConcurrency: maxConc,
+			MaxConcurrency: acc.EffectiveLoadFactor(),
 	REDACTED)
 REDACTED
 	if len(batch) == 0 {

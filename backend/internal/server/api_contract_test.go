@@ -1096,6 +1096,14 @@ func (s *stubAccountRepo) UpdateExtra(ctx context.Context, id int64, updates map
 	return errors.New("not implemented")
 REDACTED
 
+func (s *stubAccountRepo) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error {
+	return errors.New("not implemented")
+REDACTED
+
+func (s *stubAccountRepo) ResetQuotaUsed(ctx context.Context, id int64) error {
+	return errors.New("not implemented")
+REDACTED
+
 func (s *stubAccountRepo) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
 	s.bulkUpdateIDs = append([]int64{REDACTED, ids...)
 	return int64(len(ids)), nil

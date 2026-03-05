@@ -1242,7 +1242,7 @@ REDACTED
 	for _, acc := range candidates {
 		accountLoads = append(accountLoads, AccountWithConcurrency{
 			ID:             acc.ID,
-			MaxConcurrency: acc.Concurrency,
+			MaxConcurrency: acc.EffectiveLoadFactor(),
 	REDACTED)
 REDACTED
 

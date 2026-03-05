@@ -650,10 +650,16 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') REDACTEDREDACTED</label>
           <input v-model.number="form.concurrency" type="number" min="1" class="input" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.loadFactor') REDACTEDREDACTED</label>
+          <input v-model.number="form.load_factor" type="number" min="1"
+            class="input" :placeholder="String(form.concurrency || 1)" />
+          <p class="input-hint">{{ t('admin.accounts.loadFactorHint') REDACTEDREDACTED</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.priority') REDACTEDREDACTED</label>
@@ -1465,6 +1471,7 @@ const form = reactive({
   notes: '',
   proxy_id: null as number | null,
   concurrency: 1,
+  load_factor: null as number | null,
   priority: 1,
   rate_multiplier: 1,
   status: 'active' as 'active' | 'inactive',
@@ -1498,6 +1505,7 @@ watch(
       form.notes = newAccount.notes || ''
       form.proxy_id = newAccount.proxy_id
       form.concurrency = newAccount.concurrency
+      form.load_factor = newAccount.load_factor ?? null
       form.priority = newAccount.priority
       form.rate_multiplier = newAccount.rate_multiplier ?? 1
       form.status = newAccount.status as 'active' | 'inactive'
@@ -2049,6 +2057,10 @@ const handleSubmit = async () => {
     if (form.expires_at === null) {
       updatePayload.expires_at = 0
     REDACTED
+    // load_factor: 空值/0/NaN 时发送 0（后端约定 0 = 清除）
+    if (!form.load_factor || form.load_factor <= 0) {
+      updatePayload.load_factor = 0
+    REDACTED
     updatePayload.auto_pause_on_expired = autoPauseOnExpired.value
 
     // For apikey type, handle credentials update
@@ -2188,8 +2200,11 @@ const handleSubmit = async () => {
       REDACTED
 
       // RPM limit settings
-      if (rpmLimitEnabled.value && baseRpm.value != null && baseRpm.value > 0) {
-        newExtra.base_rpm = baseRpm.value
+      if (rpmLimitEnabled.value) {
+        const DEFAULT_BASE_RPM = 15
+        newExtra.base_rpm = (baseRpm.value != null && baseRpm.value > 0)
+          ? baseRpm.value
+          : DEFAULT_BASE_RPM
         newExtra.rpm_strategy = rpmStrategy.value
         if (rpmStickyBuffer.value != null && rpmStickyBuffer.value > 0) {
           newExtra.rpm_sticky_buffer = rpmStickyBuffer.value

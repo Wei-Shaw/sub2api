@@ -1311,7 +1311,7 @@ REDACTED
 			for _, acc := range routingCandidates {
 				routingLoads = append(routingLoads, AccountWithConcurrency{
 					ID:             acc.ID,
-					MaxConcurrency: acc.Concurrency,
+					MaxConcurrency: acc.EffectiveLoadFactor(),
 			REDACTED)
 		REDACTED
 			routingLoadMap, _ := s.concurrencyService.GetAccountsLoadBatch(ctx, routingLoads)
@@ -1499,7 +1499,7 @@ REDACTED
 	for _, acc := range candidates {
 		accountLoads = append(accountLoads, AccountWithConcurrency{
 			ID:             acc.ID,
-			MaxConcurrency: acc.Concurrency,
+			MaxConcurrency: acc.EffectiveLoadFactor(),
 	REDACTED)
 REDACTED
 

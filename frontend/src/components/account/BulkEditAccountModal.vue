@@ -469,7 +469,7 @@
       </div>
 
       <!-- Concurrency & Priority -->
-      <div class="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4 dark:border-dark-600 lg:grid-cols-3">
+      <div class="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4 dark:border-dark-600 lg:grid-cols-4">
         <div>
           <div class="mb-3 flex items-center justify-between">
             <label
@@ -497,6 +497,35 @@
             :class="!enableConcurrency && 'cursor-not-allowed opacity-50'"
             aria-labelledby="bulk-edit-concurrency-label"
           />
+        </div>
+        <div>
+          <div class="mb-3 flex items-center justify-between">
+            <label
+              id="bulk-edit-load-factor-label"
+              class="input-label mb-0"
+              for="bulk-edit-load-factor-enabled"
+            >
+              {{ t('admin.accounts.loadFactor') REDACTEDREDACTED
+            </label>
+            <input
+              v-model="enableLoadFactor"
+              id="bulk-edit-load-factor-enabled"
+              type="checkbox"
+              aria-controls="bulk-edit-load-factor"
+              class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+          </div>
+          <input
+            v-model.number="loadFactor"
+            id="bulk-edit-load-factor"
+            type="number"
+            min="1"
+            :disabled="!enableLoadFactor"
+            class="input"
+            :class="!enableLoadFactor && 'cursor-not-allowed opacity-50'"
+            aria-labelledby="bulk-edit-load-factor-label"
+          />
+          <p class="input-hint">{{ t('admin.accounts.loadFactorHint') REDACTEDREDACTED</p>
         </div>
         <div>
           <div class="mb-3 flex items-center justify-between">
@@ -869,6 +898,7 @@ const enableCustomErrorCodes = ref(false)
 const enableInterceptWarmup = ref(false)
 const enableProxy = ref(false)
 const enableConcurrency = ref(false)
+const enableLoadFactor = ref(false)
 const enablePriority = ref(false)
 const enableRateMultiplier = ref(false)
 const enableStatus = ref(false)
@@ -889,6 +919,7 @@ const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const proxyId = ref<number | null>(null)
 const concurrency = ref(1)
+const loadFactor = ref<number | null>(null)
 const priority = ref(1)
 const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
@@ -1195,6 +1226,10 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.concurrency = concurrency.value
   REDACTED
 
+  if (enableLoadFactor.value) {
+    updates.load_factor = loadFactor.value
+  REDACTED
+
   if (enablePriority.value) {
     updates.priority = priority.value
   REDACTED
@@ -1340,6 +1375,7 @@ const handleSubmit = async () => {
     enableInterceptWarmup.value ||
     enableProxy.value ||
     enableConcurrency.value ||
+    enableLoadFactor.value ||
     enablePriority.value ||
     enableRateMultiplier.value ||
     enableStatus.value ||
@@ -1430,6 +1466,7 @@ watch(
       enableInterceptWarmup.value = false
       enableProxy.value = false
       enableConcurrency.value = false
+      enableLoadFactor.value = false
       enablePriority.value = false
       enableRateMultiplier.value = false
       enableStatus.value = false
@@ -1446,6 +1483,7 @@ watch(
       interceptWarmupRequests.value = false
       proxyId.value = null
       concurrency.value = 1
+      loadFactor.value = null
       priority.value = 1
       rateMultiplier.value = 1
       status.value = 'active'

@@ -2260,6 +2260,8 @@ type AccountMutation struct {
 	extra                     *map[string]interface{REDACTED
 	concurrency               *int
 	addconcurrency            *int
+	load_factor               *int
+	addload_factor            *int
 	priority                  *int
 	addpriority               *int
 	rate_multiplier           *float64
@@ -2843,6 +2845,76 @@ REDACTED
 func (m *AccountMutation) ResetConcurrency() {
 	m.concurrency = nil
 	m.addconcurrency = nil
+REDACTED
+
+// SetLoadFactor sets the "load_factor" field.
+func (m *AccountMutation) SetLoadFactor(i int) {
+	m.load_factor = &i
+	m.addload_factor = nil
+REDACTED
+
+// LoadFactor returns the value of the "load_factor" field in the mutation.
+func (m *AccountMutation) LoadFactor() (r int, exists bool) {
+	v := m.load_factor
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldLoadFactor returns the old "load_factor" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldLoadFactor(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLoadFactor is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLoadFactor requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLoadFactor: %w", err)
+REDACTED
+	return oldValue.LoadFactor, nil
+REDACTED
+
+// AddLoadFactor adds i to the "load_factor" field.
+func (m *AccountMutation) AddLoadFactor(i int) {
+	if m.addload_factor != nil {
+		*m.addload_factor += i
+REDACTED else {
+		m.addload_factor = &i
+REDACTED
+REDACTED
+
+// AddedLoadFactor returns the value that was added to the "load_factor" field in this mutation.
+func (m *AccountMutation) AddedLoadFactor() (r int, exists bool) {
+	v := m.addload_factor
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ClearLoadFactor clears the value of the "load_factor" field.
+func (m *AccountMutation) ClearLoadFactor() {
+	m.load_factor = nil
+	m.addload_factor = nil
+	m.clearedFields[account.FieldLoadFactor] = struct{REDACTED{REDACTED
+REDACTED
+
+// LoadFactorCleared returns if the "load_factor" field was cleared in this mutation.
+func (m *AccountMutation) LoadFactorCleared() bool {
+	_, ok := m.clearedFields[account.FieldLoadFactor]
+	return ok
+REDACTED
+
+// ResetLoadFactor resets all changes to the "load_factor" field.
+func (m *AccountMutation) ResetLoadFactor() {
+	m.load_factor = nil
+	m.addload_factor = nil
+	delete(m.clearedFields, account.FieldLoadFactor)
 REDACTED
 
 // SetPriority sets the "priority" field.
@@ -3773,7 +3845,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 27)
+	fields := make([]string, 0, 28)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 REDACTED
@@ -3806,6 +3878,9 @@ REDACTED
 REDACTED
 	if m.concurrency != nil {
 		fields = append(fields, account.FieldConcurrency)
+REDACTED
+	if m.load_factor != nil {
+		fields = append(fields, account.FieldLoadFactor)
 REDACTED
 	if m.priority != nil {
 		fields = append(fields, account.FieldPriority)
@@ -3885,6 +3960,8 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.ProxyID()
 	case account.FieldConcurrency:
 		return m.Concurrency()
+	case account.FieldLoadFactor:
+		return m.LoadFactor()
 	case account.FieldPriority:
 		return m.Priority()
 	case account.FieldRateMultiplier:
@@ -3948,6 +4025,8 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldProxyID(ctx)
 	case account.FieldConcurrency:
 		return m.OldConcurrency(ctx)
+	case account.FieldLoadFactor:
+		return m.OldLoadFactor(ctx)
 	case account.FieldPriority:
 		return m.OldPriority(ctx)
 	case account.FieldRateMultiplier:
@@ -4065,6 +4144,13 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetConcurrency(v)
+		return nil
+	case account.FieldLoadFactor:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetLoadFactor(v)
 		return nil
 	case account.FieldPriority:
 		v, ok := value.(int)
@@ -4189,6 +4275,9 @@ func (m *AccountMutation) AddedFields() []string {
 	if m.addconcurrency != nil {
 		fields = append(fields, account.FieldConcurrency)
 REDACTED
+	if m.addload_factor != nil {
+		fields = append(fields, account.FieldLoadFactor)
+REDACTED
 	if m.addpriority != nil {
 		fields = append(fields, account.FieldPriority)
 REDACTED
@@ -4205,6 +4294,8 @@ func (m *AccountMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case account.FieldConcurrency:
 		return m.AddedConcurrency()
+	case account.FieldLoadFactor:
+		return m.AddedLoadFactor()
 	case account.FieldPriority:
 		return m.AddedPriority()
 	case account.FieldRateMultiplier:
@@ -4224,6 +4315,13 @@ func (m *AccountMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.AddConcurrency(v)
+		return nil
+	case account.FieldLoadFactor:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddLoadFactor(v)
 		return nil
 	case account.FieldPriority:
 		v, ok := value.(int)
@@ -4255,6 +4353,9 @@ REDACTED
 REDACTED
 	if m.FieldCleared(account.FieldProxyID) {
 		fields = append(fields, account.FieldProxyID)
+REDACTED
+	if m.FieldCleared(account.FieldLoadFactor) {
+		fields = append(fields, account.FieldLoadFactor)
 REDACTED
 	if m.FieldCleared(account.FieldErrorMessage) {
 		fields = append(fields, account.FieldErrorMessage)
@@ -4311,6 +4412,9 @@ func (m *AccountMutation) ClearField(name string) error {
 		return nil
 	case account.FieldProxyID:
 		m.ClearProxyID()
+		return nil
+	case account.FieldLoadFactor:
+		m.ClearLoadFactor()
 		return nil
 	case account.FieldErrorMessage:
 		m.ClearErrorMessage()
@@ -4385,6 +4489,9 @@ func (m *AccountMutation) ResetField(name string) error {
 		return nil
 	case account.FieldConcurrency:
 		m.ResetConcurrency()
+		return nil
+	case account.FieldLoadFactor:
+		m.ResetLoadFactor()
 		return nil
 	case account.FieldPriority:
 		m.ResetPriority()
@@ -10191,7 +10298,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 30)
+	fields := make([]string, 0, 31)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 REDACTED

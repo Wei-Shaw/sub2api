@@ -64,8 +64,9 @@ REDACTED
 		if acc.ID <= 0 {
 			continue
 	REDACTED
-		if prev, ok := unique[acc.ID]; !ok || acc.Concurrency > prev {
-			unique[acc.ID] = acc.Concurrency
+		lf := acc.EffectiveLoadFactor()
+		if prev, ok := unique[acc.ID]; !ok || lf > prev {
+			unique[acc.ID] = lf
 	REDACTED
 REDACTED
 

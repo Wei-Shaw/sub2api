@@ -183,6 +183,7 @@ REDACTED
 		Extra:                   a.Extra,
 		ProxyID:                 a.ProxyID,
 		Concurrency:             a.Concurrency,
+		LoadFactor:              a.LoadFactor,
 		Priority:                a.Priority,
 		RateMultiplier:          a.BillingRateMultiplier(),
 		Status:                  a.Status,
