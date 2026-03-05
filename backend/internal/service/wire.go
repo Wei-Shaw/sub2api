@@ -287,11 +287,10 @@ func ProvideScheduledTestRunnerService(
 	planRepo ScheduledTestPlanRepository,
 	scheduledSvc *ScheduledTestService,
 	accountTestSvc *AccountTestService,
-	db *sql.DB,
-	redisClient *redis.Client,
+	locker LeaderLocker,
 	cfg *config.Config,
 ) *ScheduledTestRunnerService {
-	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, db, redisClient, cfg)
+	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, locker, cfg)
 	svc.Start()
 	return svc
 REDACTED
