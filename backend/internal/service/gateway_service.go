@@ -6410,6 +6410,89 @@ type APIKeyQuotaUpdater interface {
 	UpdateRateLimitUsage(ctx context.Context, apiKeyID int64, cost float64) error
 REDACTED
 
+// postUsageBillingParams 统一扣费所需的参数
+type postUsageBillingParams struct {
+	Cost                  *CostBreakdown
+	User                  *User
+	APIKey                *APIKey
+	Account               *Account
+	Subscription          *UserSubscription
+	IsSubscriptionBill    bool
+	AccountRateMultiplier float64
+	APIKeyService         APIKeyQuotaUpdater
+REDACTED
+
+// postUsageBilling 统一处理使用量记录后的扣费逻辑：
+//   - 订阅/余额扣费
+//   - API Key 配额更新
+//   - API Key 限速用量更新
+//   - 账号配额用量更新（账号口径：TotalCost × 账号计费倍率）
+func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps) {
+	cost := p.Cost
+
+	// 1. 订阅 / 余额扣费
+	if p.IsSubscriptionBill {
+		if cost.TotalCost > 0 {
+			if err := deps.userSubRepo.IncrementUsage(ctx, p.Subscription.ID, cost.TotalCost); err != nil {
+				slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
+		REDACTED
+			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, cost.TotalCost)
+	REDACTED
+REDACTED else {
+		if cost.ActualCost > 0 {
+			if err := deps.userRepo.DeductBalance(ctx, p.User.ID, cost.ActualCost); err != nil {
+				slog.Error("deduct balance failed", "user_id", p.User.ID, "error", err)
+		REDACTED
+			deps.billingCacheService.QueueDeductBalance(p.User.ID, cost.ActualCost)
+	REDACTED
+REDACTED
+
+	// 2. API Key 配额
+	if cost.ActualCost > 0 && p.APIKey.Quota > 0 && p.APIKeyService != nil {
+		if err := p.APIKeyService.UpdateQuotaUsed(ctx, p.APIKey.ID, cost.ActualCost); err != nil {
+			slog.Error("update api key quota failed", "api_key_id", p.APIKey.ID, "error", err)
+	REDACTED
+REDACTED
+
+	// 3. API Key 限速用量
+	if cost.ActualCost > 0 && p.APIKey.HasRateLimits() && p.APIKeyService != nil {
+		if err := p.APIKeyService.UpdateRateLimitUsage(ctx, p.APIKey.ID, cost.ActualCost); err != nil {
+			slog.Error("update api key rate limit usage failed", "api_key_id", p.APIKey.ID, "error", err)
+	REDACTED
+		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, cost.ActualCost)
+REDACTED
+
+	// 4. 账号配额用量（账号口径：TotalCost × 账号计费倍率）
+	if cost.TotalCost > 0 && p.Account.Type == AccountTypeAPIKey && p.Account.GetQuotaLimit() > 0 {
+		accountCost := cost.TotalCost * p.AccountRateMultiplier
+		if err := deps.accountRepo.IncrementQuotaUsed(ctx, p.Account.ID, accountCost); err != nil {
+			slog.Error("increment account quota used failed", "account_id", p.Account.ID, "cost", accountCost, "error", err)
+	REDACTED
+REDACTED
+
+	// 5. 更新账号最近使用时间
+	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
+REDACTED
+
+// billingDeps 扣费逻辑依赖的服务（由各 gateway service 提供）
+type billingDeps struct {
+	accountRepo         AccountRepository
+	userRepo            UserRepository
+	userSubRepo         UserSubscriptionRepository
+	billingCacheService *BillingCacheService
+	deferredService     *DeferredService
+REDACTED
+
+func (s *GatewayService) billingDeps() *billingDeps {
+	return &billingDeps{
+		accountRepo:         s.accountRepo,
+		userRepo:            s.userRepo,
+		userSubRepo:         s.userSubRepo,
+		billingCacheService: s.billingCacheService,
+		deferredService:     s.deferredService,
+REDACTED
+REDACTED
+
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
 func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) error {
 	result := input.Result
@@ -6573,51 +6656,20 @@ REDACTED
 
 	shouldBill := inserted || err != nil
 
-	// 根据计费类型执行扣费
-	if isSubscriptionBilling {
-		// 订阅模式：更新订阅用量（使用 TotalCost 原始费用，不考虑倍率）
-		if shouldBill && cost.TotalCost > 0 {
-			if err := s.userSubRepo.IncrementUsage(ctx, subscription.ID, cost.TotalCost); err != nil {
-				logger.LegacyPrintf("service.gateway", "Increment subscription usage failed: %v", err)
-		REDACTED
-			// 异步更新订阅缓存
-			s.billingCacheService.QueueUpdateSubscriptionUsage(user.ID, *apiKey.GroupID, cost.TotalCost)
-	REDACTED
+	if shouldBill {
+		postUsageBilling(ctx, &postUsageBillingParams{
+			Cost:                  cost,
+			User:                  user,
+			APIKey:                apiKey,
+			Account:               account,
+			Subscription:          subscription,
+			IsSubscriptionBill:    isSubscriptionBilling,
+			AccountRateMultiplier: accountRateMultiplier,
+			APIKeyService:         input.APIKeyService,
+	REDACTED, s.billingDeps())
 REDACTED else {
-		// 余额模式：扣除用户余额（使用 ActualCost 考虑倍率后的费用）
-		if shouldBill && cost.ActualCost > 0 {
-			if err := s.userRepo.DeductBalance(ctx, user.ID, cost.ActualCost); err != nil {
-				logger.LegacyPrintf("service.gateway", "Deduct balance failed: %v", err)
-		REDACTED
-			// 异步更新余额缓存
-			s.billingCacheService.QueueDeductBalance(user.ID, cost.ActualCost)
-	REDACTED
+		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 REDACTED
-
-	// 更新 API Key 配额（如果设置了配额限制）
-	if shouldBill && cost.ActualCost > 0 && apiKey.Quota > 0 && input.APIKeyService != nil {
-		if err := input.APIKeyService.UpdateQuotaUsed(ctx, apiKey.ID, cost.ActualCost); err != nil {
-			logger.LegacyPrintf("service.gateway", "Update API key quota failed: %v", err)
-	REDACTED
-REDACTED
-
-	// Update API Key rate limit usage
-	if shouldBill && cost.ActualCost > 0 && apiKey.HasRateLimits() && input.APIKeyService != nil {
-		if err := input.APIKeyService.UpdateRateLimitUsage(ctx, apiKey.ID, cost.ActualCost); err != nil {
-			logger.LegacyPrintf("service.gateway", "Update API key rate limit usage failed: %v", err)
-	REDACTED
-		s.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(apiKey.ID, cost.ActualCost)
-REDACTED
-
-	// 更新 API Key 账号配额用量
-	if shouldBill && cost.TotalCost > 0 && account.Type == AccountTypeAPIKey && account.GetQuotaLimit() > 0 {
-		if err := s.accountRepo.IncrementQuotaUsed(ctx, account.ID, cost.TotalCost); err != nil {
-			slog.Error("increment account quota used failed", "account_id", account.ID, "cost", cost.TotalCost, "error", err)
-	REDACTED
-REDACTED
-
-	// Schedule batch update for account last_used_at
-	s.deferredService.ScheduleLastUsedUpdate(account.ID)
 
 	return nil
 REDACTED
@@ -6778,50 +6830,20 @@ REDACTED
 
 	shouldBill := inserted || err != nil
 
-	// 根据计费类型执行扣费
-	if isSubscriptionBilling {
-		// 订阅模式：更新订阅用量（使用 TotalCost 原始费用，不考虑倍率）
-		if shouldBill && cost.TotalCost > 0 {
-			if err := s.userSubRepo.IncrementUsage(ctx, subscription.ID, cost.TotalCost); err != nil {
-				logger.LegacyPrintf("service.gateway", "Increment subscription usage failed: %v", err)
-		REDACTED
-			// 异步更新订阅缓存
-			s.billingCacheService.QueueUpdateSubscriptionUsage(user.ID, *apiKey.GroupID, cost.TotalCost)
-	REDACTED
+	if shouldBill {
+		postUsageBilling(ctx, &postUsageBillingParams{
+			Cost:                  cost,
+			User:                  user,
+			APIKey:                apiKey,
+			Account:               account,
+			Subscription:          subscription,
+			IsSubscriptionBill:    isSubscriptionBilling,
+			AccountRateMultiplier: accountRateMultiplier,
+			APIKeyService:         input.APIKeyService,
+	REDACTED, s.billingDeps())
 REDACTED else {
-		// 余额模式：扣除用户余额（使用 ActualCost 考虑倍率后的费用）
-		if shouldBill && cost.ActualCost > 0 {
-			if err := s.userRepo.DeductBalance(ctx, user.ID, cost.ActualCost); err != nil {
-				logger.LegacyPrintf("service.gateway", "Deduct balance failed: %v", err)
-		REDACTED
-			// 异步更新余额缓存
-			s.billingCacheService.QueueDeductBalance(user.ID, cost.ActualCost)
-			// API Key 独立配额扣费
-			if input.APIKeyService != nil && apiKey.Quota > 0 {
-				if err := input.APIKeyService.UpdateQuotaUsed(ctx, apiKey.ID, cost.ActualCost); err != nil {
-					logger.LegacyPrintf("service.gateway", "Add API key quota used failed: %v", err)
-			REDACTED
-		REDACTED
-	REDACTED
+		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 REDACTED
-
-	// Update API Key rate limit usage
-	if shouldBill && cost.ActualCost > 0 && apiKey.HasRateLimits() && input.APIKeyService != nil {
-		if err := input.APIKeyService.UpdateRateLimitUsage(ctx, apiKey.ID, cost.ActualCost); err != nil {
-			logger.LegacyPrintf("service.gateway", "Update API key rate limit usage failed: %v", err)
-	REDACTED
-		s.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(apiKey.ID, cost.ActualCost)
-REDACTED
-
-	// 更新 API Key 账号配额用量
-	if shouldBill && cost.TotalCost > 0 && account.Type == AccountTypeAPIKey && account.GetQuotaLimit() > 0 {
-		if err := s.accountRepo.IncrementQuotaUsed(ctx, account.ID, cost.TotalCost); err != nil {
-			slog.Error("increment account quota used failed", "account_id", account.ID, "cost", cost.TotalCost, "error", err)
-	REDACTED
-REDACTED
-
-	// Schedule batch update for account last_used_at
-	s.deferredService.ScheduleLastUsedUpdate(account.ID)
 
 	return nil
 REDACTED
