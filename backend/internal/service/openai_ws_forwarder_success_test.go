@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/require"
@@ -1280,6 +1281,18 @@ REDACTED
 	REDACTED
 REDACTED
 	return event, nil
+REDACTED
+
+func (c *openAIWSCaptureConn) ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error) {
+	payload, err := c.ReadMessage(ctx)
+	if err != nil {
+		return coderws.MessageText, nil, err
+REDACTED
+	return coderws.MessageText, payload, nil
+REDACTED
+
+func (c *openAIWSCaptureConn) WriteFrame(ctx context.Context, _ coderws.MessageType, payload []byte) error {
+	return c.WriteJSON(ctx, json.RawMessage(payload))
 REDACTED
 
 func (c *openAIWSCaptureConn) Ping(ctx context.Context) error {
