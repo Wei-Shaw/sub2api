@@ -115,6 +115,10 @@ export default defineConfig(({ mode REDACTED) => {
           target: backendUrl,
           changeOrigin: true
         REDACTED,
+        '/v1': {
+          target: backendUrl,
+          changeOrigin: true
+        REDACTED,
         '/setup': {
           target: backendUrl,
           changeOrigin: true

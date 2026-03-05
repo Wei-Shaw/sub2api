@@ -110,6 +110,65 @@ export default {
     REDACTED
   REDACTED,
 
+  // Key Usage Query Page
+  keyUsage: {
+    title: 'API Key Usage',
+    subtitle: 'Enter your API Key to view real-time spending and usage status',
+    placeholder: 'sk-ant-mirror-xxxxxxxxxxxx',
+    query: 'Query',
+    querying: 'Querying...',
+    privacyNote: 'Your Key is processed locally in the browser and will not be stored',
+    dateRange: 'Date Range:',
+    dateRangeToday: 'Today',
+    dateRange7d: '7 Days',
+    dateRange30d: '30 Days',
+    dateRangeCustom: 'Custom',
+    apply: 'Apply',
+    used: 'Used',
+    detailInfo: 'Detail Information',
+    tokenStats: 'Token Statistics',
+    modelStats: 'Model Usage Statistics',
+    // Table headers
+    model: 'Model',
+    requests: 'Requests',
+    inputTokens: 'Input Tokens',
+    outputTokens: 'Output Tokens',
+    totalTokens: 'Total Tokens',
+    cost: 'Cost',
+    // Status
+    quotaMode: 'Key Quota Mode',
+    walletBalance: 'Wallet Balance',
+    // Ring card titles
+    totalQuota: 'Total Quota',
+    limit5h: '5-Hour Limit',
+    limitDaily: 'Daily Limit',
+    limit7d: '7-Day Limit',
+    limitWeekly: 'Weekly Limit',
+    limitMonthly: 'Monthly Limit',
+    // Detail rows
+    remainingQuota: 'Remaining Quota',
+    expiresAt: 'Expires At',
+    todayExpires: '(expires today)',
+    daysLeft: '({daysREDACTED days)',
+    usedQuota: 'Used Quota',
+    subscriptionType: 'Subscription Type',
+    subscriptionExpires: 'Subscription Expires',
+    // Usage stat cells
+    todayRequests: 'Today Requests',
+    todayTokens: 'Today Tokens',
+    todayCost: 'Today Cost',
+    rpmTpm: 'RPM / TPM',
+    totalRequests: 'Total Requests',
+    totalTokensLabel: 'Total Tokens',
+    totalCost: 'Total Cost',
+    avgDuration: 'Avg Duration',
+    // Messages
+    enterApiKey: 'Please enter an API Key',
+    querySuccess: 'Query successful',
+    queryFailed: 'Query failed',
+    queryFailedRetry: 'Query failed, please try again later',
+  REDACTED,
+
   // Setup Wizard
   setup: {
     title: 'Sub2API Setup',
