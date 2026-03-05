@@ -1508,7 +1508,9 @@ watch(
       form.load_factor = newAccount.load_factor ?? null
       form.priority = newAccount.priority
       form.rate_multiplier = newAccount.rate_multiplier ?? 1
-      form.status = newAccount.status as 'active' | 'inactive'
+      form.status = (newAccount.status === 'active' || newAccount.status === 'inactive')
+        ? newAccount.status
+        : 'active'
       form.group_ids = newAccount.group_ids || []
       form.expires_at = newAccount.expires_at ?? null
 
@@ -2047,6 +2049,11 @@ REDACTED
 const handleSubmit = async () => {
   if (!props.account) return
   const accountID = props.account.id
+
+  if (form.status !== 'active' && form.status !== 'inactive') {
+    appStore.showError(t('admin.accounts.pleaseSelectStatus'))
+    return
+  REDACTED
 
   const updatePayload: Record<string, unknown> = { ...form REDACTED
   try {
