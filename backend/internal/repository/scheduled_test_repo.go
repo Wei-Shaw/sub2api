@@ -3,14 +3,9 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"hash/fnv"
-	"sync"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 )
 
 // --- Plan Repository ---
@@ -185,84 +180,4 @@ func scanPlans(rows *sql.Rows) ([]*service.ScheduledTestPlan, error) {
 		plans = append(plans, p)
 REDACTED
 	return plans, rows.Err()
-REDACTED
-
-// --- LeaderLocker ---
-
-var redisReleaseScript = redis.NewScript(`
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-  return redis.call("DEL", KEYS[1])
-end
-return 0
-`)
-
-type leaderLocker struct {
-	db              *sql.DB
-	redisClient     *redis.Client
-	instanceID      string
-	warnNoRedisOnce sync.Once
-REDACTED
-
-// NewLeaderLocker creates a LeaderLocker that tries Redis first, then falls back to pg advisory lock.
-func NewLeaderLocker(db *sql.DB, redisClient *redis.Client) service.LeaderLocker {
-	return &leaderLocker{
-		db:          db,
-		redisClient: redisClient,
-		instanceID:  uuid.NewString(),
-REDACTED
-REDACTED
-
-func (l *leaderLocker) TryAcquire(ctx context.Context, key string, ttl time.Duration) (func(), bool) {
-	if l.redisClient != nil {
-		ok, err := l.redisClient.SetNX(ctx, key, l.instanceID, ttl).Result()
-		if err == nil {
-			if !ok {
-				return nil, false
-		REDACTED
-			return func() {
-				_, _ = redisReleaseScript.Run(ctx, l.redisClient, []string{keyREDACTED, l.instanceID).Result()
-		REDACTED, true
-	REDACTED
-		l.warnNoRedisOnce.Do(func() {
-			logger.LegacyPrintf("repository.leader_locker", "[LeaderLocker] Redis SetNX failed; falling back to DB advisory lock: %v", err)
-	REDACTED)
-REDACTED else {
-		l.warnNoRedisOnce.Do(func() {
-			logger.LegacyPrintf("repository.leader_locker", "[LeaderLocker] Redis not configured; using DB advisory lock")
-	REDACTED)
-REDACTED
-
-	// Fallback: pg_try_advisory_lock
-	return tryAdvisoryLock(ctx, l.db, hashLockID(key))
-REDACTED
-
-func tryAdvisoryLock(ctx context.Context, db *sql.DB, lockID int64) (func(), bool) {
-	if db == nil {
-		return nil, false
-REDACTED
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return nil, false
-REDACTED
-	acquired := false
-	if err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", lockID).Scan(&acquired); err != nil {
-		_ = conn.Close()
-		return nil, false
-REDACTED
-	if !acquired {
-		_ = conn.Close()
-		return nil, false
-REDACTED
-	return func() {
-		unlockCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_, _ = conn.ExecContext(unlockCtx, "SELECT pg_advisory_unlock($1)", lockID)
-		_ = conn.Close()
-REDACTED, true
-REDACTED
-
-func hashLockID(key string) int64 {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(key))
-	return int64(h.Sum64())
 REDACTED

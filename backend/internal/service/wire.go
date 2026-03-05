@@ -287,10 +287,9 @@ func ProvideScheduledTestRunnerService(
 	planRepo ScheduledTestPlanRepository,
 	scheduledSvc *ScheduledTestService,
 	accountTestSvc *AccountTestService,
-	locker LeaderLocker,
 	cfg *config.Config,
 ) *ScheduledTestRunnerService {
-	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, locker, cfg)
+	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, cfg)
 	svc.Start()
 	return svc
 REDACTED

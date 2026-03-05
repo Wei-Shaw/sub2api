@@ -56,7 +56,6 @@ var ProviderSet = wire.NewSet(
 	NewSoraAccountRepository,         // Sora 账号扩展表仓储
 	NewScheduledTestPlanRepository,   // 定时测试计划仓储
 	NewScheduledTestResultRepository, // 定时测试结果仓储
-	NewLeaderLocker,                  // 分布式 leader 选举
 	NewProxyRepository,
 	NewRedeemCodeRepository,
 	NewPromoCodeRepository,

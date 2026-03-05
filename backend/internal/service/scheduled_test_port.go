@@ -59,10 +59,3 @@ type ScheduledTestResultRepository interface {
 	ListByPlanID(ctx context.Context, planID int64, limit int) ([]*ScheduledTestResult, error)
 	PruneOldResults(ctx context.Context, planID int64, keepCount int) error
 REDACTED
-
-// LeaderLocker provides distributed leader election for background runners.
-// TryAcquire attempts to acquire a named lock and returns a release function
-// and true if successful, or nil and false if the lock is held by another instance.
-type LeaderLocker interface {
-	TryAcquire(ctx context.Context, key string, ttl time.Duration) (release func(), ok bool)
-REDACTED
