@@ -2520,6 +2520,34 @@ export default {
       REDACTED
     REDACTED,
 
+    // Scheduled Tests
+    scheduledTests: {
+      title: '定时测试',
+      addPlan: '添加计划',
+      editPlan: '编辑计划',
+      deletePlan: '删除计划',
+      model: '模型',
+      cronExpression: 'Cron 表达式',
+      enabled: '启用',
+      lastRun: '上次运行',
+      nextRun: '下次运行',
+      maxResults: '最大结果数',
+      noPlans: '暂无定时测试计划',
+      confirmDelete: '确定要删除此计划吗？',
+      createSuccess: '计划创建成功',
+      updateSuccess: '计划更新成功',
+      deleteSuccess: '计划删除成功',
+      results: '测试结果',
+      noResults: '暂无测试结果',
+      responseText: '响应',
+      errorMessage: '错误',
+      success: '成功',
+      failed: '失败',
+      running: '运行中',
+      schedule: '定时测试',
+      cronHelp: '标准 5 字段 cron 表达式（例如 */30 * * * *）'
+    REDACTED,
+
     // Proxies Management
     proxies: {
       title: 'IP管理',

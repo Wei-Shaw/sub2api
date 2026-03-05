@@ -78,6 +78,9 @@ func RegisterAdminRoutes(
 
 		// API Key 管理
 		registerAdminAPIKeyRoutes(admin, h)
+
+		// 定时测试计划
+		registerScheduledTestRoutes(admin, h)
 REDACTED
 REDACTED
 
@@ -476,6 +479,18 @@ func registerUserAttributeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		attrs.PUT("/:id", h.Admin.UserAttribute.UpdateDefinition)
 		attrs.DELETE("/:id", h.Admin.UserAttribute.DeleteDefinition)
 REDACTED
+REDACTED
+
+func registerScheduledTestRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	plans := admin.Group("/scheduled-test-plans")
+	{
+		plans.POST("", h.Admin.ScheduledTest.Create)
+		plans.PUT("/:id", h.Admin.ScheduledTest.Update)
+		plans.DELETE("/:id", h.Admin.ScheduledTest.Delete)
+		plans.GET("/:id/results", h.Admin.ScheduledTest.ListResults)
+REDACTED
+	// Nested under accounts
+	admin.GET("/accounts/:id/scheduled-test-plans", h.Admin.ScheduledTest.ListByAccount)
 REDACTED
 
 func registerErrorPassthroughRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
