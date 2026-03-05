@@ -1227,7 +1227,9 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   REDACTED
 
   if (enableLoadFactor.value) {
-    updates.load_factor = loadFactor.value
+    // 空值/NaN/0 时发送 0（后端约定 <= 0 表示清除）
+    const lf = loadFactor.value
+    updates.load_factor = (lf != null && !Number.isNaN(lf) && lf > 0) ? lf : 0
   REDACTED
 
   if (enablePriority.value) {

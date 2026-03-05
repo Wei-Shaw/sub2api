@@ -1417,6 +1417,9 @@ REDACTED
 		account.RateMultiplier = input.RateMultiplier
 REDACTED
 	if input.LoadFactor != nil && *input.LoadFactor > 0 {
+		if *input.LoadFactor > 10000 {
+			return nil, errors.New("load_factor must be <= 10000")
+	REDACTED
 		account.LoadFactor = input.LoadFactor
 REDACTED
 	if err := s.accountRepo.Create(ctx, account); err != nil {
@@ -1492,6 +1495,8 @@ REDACTED
 	if input.LoadFactor != nil {
 		if *input.LoadFactor <= 0 {
 			account.LoadFactor = nil // 0 或负数表示清除
+	REDACTED else if *input.LoadFactor > 10000 {
+			return nil, errors.New("load_factor must be <= 10000")
 	REDACTED else {
 			account.LoadFactor = input.LoadFactor
 	REDACTED

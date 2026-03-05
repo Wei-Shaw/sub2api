@@ -2064,8 +2064,9 @@ const handleSubmit = async () => {
     if (form.expires_at === null) {
       updatePayload.expires_at = 0
     REDACTED
-    // load_factor: 空值/0/NaN 时发送 0（后端约定 0 = 清除）
-    if (!form.load_factor || form.load_factor <= 0) {
+    // load_factor: 空值/NaN/0/负数 时发送 0（后端约定 <= 0 = 清除）
+    const lf = form.load_factor
+    if (lf == null || Number.isNaN(lf) || lf <= 0) {
       updatePayload.load_factor = 0
     REDACTED
     updatePayload.auto_pause_on_expired = autoPauseOnExpired.value
