@@ -443,7 +443,22 @@ $env:ANTHROPIC_AUTH_TOKEN="${apiKeyREDACTED"`
       content = ''
   REDACTED
 
-  return [{ path, content REDACTED]
+  const vscodeSettingsPath = activeTab.value === 'unix'
+    ? '~/.claude/settings.json'
+    : '%userprofile%\\.claude\\settings.json'
+
+  const vscodeContent = `{
+  "env": {
+    "ANTHROPIC_BASE_URL": "${baseUrlREDACTED",
+    "ANTHROPIC_AUTH_TOKEN": "${apiKeyREDACTED",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
+  REDACTED
+REDACTED`
+
+  return [
+    { path, content REDACTED,
+    { path: vscodeSettingsPath, content: vscodeContent, hint: 'VSCode Claude Code' REDACTED
+  ]
 REDACTED
 
 function generateGeminiCliContent(baseUrl: string, apiKey: string): FileConfig {
@@ -496,16 +511,16 @@ function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
 
   // config.toml content
-  const configContent = `model_provider = "sub2api"
+  const configContent = `model_provider = "OpenAI"
 model = "gpt-5.3-codex"
-model_reasoning_effort = "high"
-network_access = "enabled"
+review_model = "gpt-5.3-codex"
+model_reasoning_effort = "xhigh"
 disable_response_storage = true
+network_access = "enabled"
 windows_wsl_setup_acknowledged = true
-model_verbosity = "high"
 
-[model_providers.sub2api]
-name = "sub2api"
+[model_providers.OpenAI]
+name = "OpenAI"
 base_url = "${baseUrlREDACTED"
 wire_api = "responses"
 requires_openai_auth = true`
@@ -533,16 +548,16 @@ function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
 
   // config.toml content with WebSocket v2
-  const configContent = `model_provider = "sub2api"
+  const configContent = `model_provider = "OpenAI"
 model = "gpt-5.3-codex"
-model_reasoning_effort = "high"
-network_access = "enabled"
+review_model = "gpt-5.3-codex"
+model_reasoning_effort = "xhigh"
 disable_response_storage = true
+network_access = "enabled"
 windows_wsl_setup_acknowledged = true
-model_verbosity = "high"
 
-[model_providers.sub2api]
-name = "sub2api"
+[model_providers.OpenAI]
+name = "OpenAI"
 base_url = "${baseUrlREDACTED"
 wire_api = "responses"
 supports_websockets = true
