@@ -33,6 +33,7 @@ type OpenAIGatewayHandler struct {
 	errorPassthroughService *service.ErrorPassthroughService
 	concurrencyHelper       *ConcurrencyHelper
 	maxAccountSwitches      int
+	cfg                     *config.Config
 REDACTED
 
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
@@ -61,6 +62,7 @@ REDACTED
 		errorPassthroughService: errorPassthroughService,
 		concurrencyHelper:       NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
 		maxAccountSwitches:      maxAccountSwitches,
+		cfg:                     cfg,
 REDACTED
 REDACTED
 
@@ -70,6 +72,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 局部兜底：确保该 handler 内部任何 panic 都不会击穿到进程级。
 	streamStarted := false
 	defer h.recoverResponsesPanic(c, &streamStarted)
+	compactStartedAt := time.Now()
+	defer h.logOpenAIRemoteCompactOutcome(c, compactStartedAt)
 	setOpenAIClientTransportHTTP(c)
 
 	requestStart := time.Now()
@@ -338,6 +342,86 @@ REDACTED
 		)
 		return
 REDACTED
+REDACTED
+
+func isOpenAIRemoteCompactPath(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+REDACTED
+	normalizedPath := strings.TrimRight(strings.TrimSpace(c.Request.URL.Path), "/")
+	return strings.HasSuffix(normalizedPath, "/responses/compact")
+REDACTED
+
+func (h *OpenAIGatewayHandler) logOpenAIRemoteCompactOutcome(c *gin.Context, startedAt time.Time) {
+	if !isOpenAIRemoteCompactPath(c) {
+		return
+REDACTED
+
+	var (
+		ctx    = context.Background()
+		path   string
+		status int
+	)
+	if c != nil {
+		if c.Request != nil {
+			ctx = c.Request.Context()
+			if c.Request.URL != nil {
+				path = strings.TrimSpace(c.Request.URL.Path)
+		REDACTED
+	REDACTED
+		if c.Writer != nil {
+			status = c.Writer.Status()
+	REDACTED
+REDACTED
+
+	outcome := "failed"
+	if status >= 200 && status < 300 {
+		outcome = "succeeded"
+REDACTED
+	latencyMs := time.Since(startedAt).Milliseconds()
+	if latencyMs < 0 {
+		latencyMs = 0
+REDACTED
+
+	fields := []zap.Field{
+		zap.String("component", "handler.openai_gateway.responses"),
+		zap.Bool("remote_compact", true),
+		zap.String("compact_outcome", outcome),
+		zap.Int("status_code", status),
+		zap.Int64("latency_ms", latencyMs),
+		zap.String("path", path),
+		zap.Bool("force_codex_cli", h != nil && h.cfg != nil && h.cfg.Gateway.ForceCodexCLI),
+REDACTED
+
+	if c != nil {
+		if userAgent := strings.TrimSpace(c.GetHeader("User-Agent")); userAgent != "" {
+			fields = append(fields, zap.String("request_user_agent", userAgent))
+	REDACTED
+		if v, ok := c.Get(opsModelKey); ok {
+			if model, ok := v.(string); ok && strings.TrimSpace(model) != "" {
+				fields = append(fields, zap.String("request_model", strings.TrimSpace(model)))
+		REDACTED
+	REDACTED
+		if v, ok := c.Get(opsAccountIDKey); ok {
+			if accountID, ok := v.(int64); ok && accountID > 0 {
+				fields = append(fields, zap.Int64("account_id", accountID))
+		REDACTED
+	REDACTED
+		if c.Writer != nil {
+			if upstreamRequestID := strings.TrimSpace(c.Writer.Header().Get("x-request-id")); upstreamRequestID != "" {
+				fields = append(fields, zap.String("upstream_request_id", upstreamRequestID))
+		REDACTED else if upstreamRequestID := strings.TrimSpace(c.Writer.Header().Get("X-Request-Id")); upstreamRequestID != "" {
+				fields = append(fields, zap.String("upstream_request_id", upstreamRequestID))
+		REDACTED
+	REDACTED
+REDACTED
+
+	log := logger.FromContext(ctx).With(fields...)
+	if outcome == "succeeded" {
+		log.Info("codex.remote_compact.succeeded")
+		return
+REDACTED
+	log.Warn("codex.remote_compact.failed")
 REDACTED
 
 func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context, body []byte, reqLog *zap.Logger) bool {
