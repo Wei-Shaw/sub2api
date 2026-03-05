@@ -4583,7 +4583,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 		if err != nil {
 			return nil, err
 	REDACTED
-		targetURL = validatedURL + "/v1/messages"
+		targetURL = validatedURL + "/v1/messages?beta=true"
 REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
@@ -4963,7 +4963,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			if err != nil {
 				return nil, err
 		REDACTED
-			targetURL = validatedURL + "/v1/messages"
+			targetURL = validatedURL + "/v1/messages?beta=true"
 	REDACTED
 REDACTED
 
@@ -7088,7 +7088,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 		if err != nil {
 			return nil, err
 	REDACTED
-		targetURL = validatedURL + "/v1/messages/count_tokens"
+		targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
 REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
@@ -7135,7 +7135,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 			if err != nil {
 				return nil, err
 		REDACTED
-			targetURL = validatedURL + "/v1/messages/count_tokens"
+			targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
 	REDACTED
 REDACTED
 
