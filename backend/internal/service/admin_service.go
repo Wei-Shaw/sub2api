@@ -1635,7 +1635,13 @@ REDACTED
 		repoUpdates.RateMultiplier = input.RateMultiplier
 REDACTED
 	if input.LoadFactor != nil {
-		repoUpdates.LoadFactor = input.LoadFactor
+		if *input.LoadFactor <= 0 {
+			repoUpdates.LoadFactor = nil // 0 或负数表示清除
+	REDACTED else if *input.LoadFactor > 10000 {
+			return nil, errors.New("load_factor must be <= 10000")
+	REDACTED else {
+			repoUpdates.LoadFactor = input.LoadFactor
+	REDACTED
 REDACTED
 	if input.Status != "" {
 		repoUpdates.Status = &input.Status
