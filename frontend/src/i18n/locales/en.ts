@@ -133,6 +133,8 @@ export default {
     requests: 'Requests',
     inputTokens: 'Input Tokens',
     outputTokens: 'Output Tokens',
+    cacheCreationTokens: 'Cache Creation',
+    cacheReadTokens: 'Cache Read',
     totalTokens: 'Total Tokens',
     cost: 'Cost',
     // Status
@@ -155,11 +157,19 @@ export default {
     subscriptionExpires: 'Subscription Expires',
     // Usage stat cells
     todayRequests: 'Today Requests',
+    todayInputTokens: 'Today Input',
+    todayOutputTokens: 'Today Output',
     todayTokens: 'Today Tokens',
+    todayCacheCreation: 'Today Cache Creation',
+    todayCacheRead: 'Today Cache Read',
     todayCost: 'Today Cost',
     rpmTpm: 'RPM / TPM',
     totalRequests: 'Total Requests',
+    totalInputTokens: 'Total Input',
+    totalOutputTokens: 'Total Output',
     totalTokensLabel: 'Total Tokens',
+    totalCacheCreation: 'Total Cache Creation',
+    totalCacheRead: 'Total Cache Read',
     totalCost: 'Total Cost',
     avgDuration: 'Avg Duration',
     // Messages

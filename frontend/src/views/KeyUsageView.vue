@@ -302,6 +302,8 @@
                     <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.requests') REDACTEDREDACTED</th>
                     <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.inputTokens') REDACTEDREDACTED</th>
                     <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.outputTokens') REDACTEDREDACTED</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheCreationTokens') REDACTEDREDACTED</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheReadTokens') REDACTEDREDACTED</th>
                     <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.totalTokens') REDACTEDREDACTED</th>
                     <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cost') REDACTEDREDACTED</th>
                   </tr>
@@ -316,6 +318,8 @@
                     <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.requests) REDACTEDREDACTED</td>
                     <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.input_tokens) REDACTEDREDACTED</td>
                     <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.output_tokens) REDACTEDREDACTED</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.cache_creation_tokens) REDACTEDREDACTED</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.cache_read_tokens) REDACTEDREDACTED</td>
                     <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.total_tokens) REDACTEDREDACTED</td>
                     <td class="px-4 py-3 text-sm tabular-nums text-right font-medium text-gray-900 dark:text-white">{{ usd(m.actual_cost != null ? m.actual_cost : m.cost) REDACTEDREDACTED</td>
                   </tr>
@@ -694,11 +698,19 @@ const usageStatCells = computed<StatCell[]>(() => {
 
   return [
     { label: t('keyUsage.todayRequests'), value: fmtNum(today.requests) REDACTED,
+    { label: t('keyUsage.todayInputTokens'), value: fmtNum(today.input_tokens) REDACTED,
+    { label: t('keyUsage.todayOutputTokens'), value: fmtNum(today.output_tokens) REDACTED,
     { label: t('keyUsage.todayTokens'), value: fmtNum(today.total_tokens) REDACTED,
+    { label: t('keyUsage.todayCacheCreation'), value: fmtNum(today.cache_creation_tokens) REDACTED,
+    { label: t('keyUsage.todayCacheRead'), value: fmtNum(today.cache_read_tokens) REDACTED,
     { label: t('keyUsage.todayCost'), value: usd(today.actual_cost) REDACTED,
     { label: t('keyUsage.rpmTpm'), value: `${usage.rpm || 0REDACTED / ${usage.tpm || 0REDACTED` REDACTED,
     { label: t('keyUsage.totalRequests'), value: fmtNum(total.requests) REDACTED,
+    { label: t('keyUsage.totalInputTokens'), value: fmtNum(total.input_tokens) REDACTED,
+    { label: t('keyUsage.totalOutputTokens'), value: fmtNum(total.output_tokens) REDACTED,
     { label: t('keyUsage.totalTokensLabel'), value: fmtNum(total.total_tokens) REDACTED,
+    { label: t('keyUsage.totalCacheCreation'), value: fmtNum(total.cache_creation_tokens) REDACTED,
+    { label: t('keyUsage.totalCacheRead'), value: fmtNum(total.cache_read_tokens) REDACTED,
     { label: t('keyUsage.totalCost'), value: usd(total.actual_cost) REDACTED,
     { label: t('keyUsage.avgDuration'), value: usage.average_duration_ms ? `${Math.round(usage.average_duration_ms)REDACTED ms` : '-' REDACTED,
   ]

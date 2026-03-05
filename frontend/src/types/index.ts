@@ -1098,7 +1098,8 @@ export interface TrendDataPoint {
   requests: number
   input_tokens: number
   output_tokens: number
-  cache_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
   total_tokens: number
   cost: number // 标准计费
   actual_cost: number // 实际扣除
@@ -1109,6 +1110,8 @@ export interface ModelStat {
   requests: number
   input_tokens: number
   output_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
   total_tokens: number
   cost: number // 标准计费
   actual_cost: number // 实际扣除
