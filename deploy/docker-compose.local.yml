@@ -24,7 +24,8 @@ services:
   # Sub2API Application
   # ===========================================================================
   sub2api:
-    image: weishaw/sub2api:latest
+    image: sub2api:local
+    # image: weishaw/sub2api:latest  # 远程镜像（注释掉）
     container_name: sub2api
     restart: unless-stopped
     ulimits:

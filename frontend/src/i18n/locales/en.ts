@@ -2413,6 +2413,34 @@ export default {
         'This account is not eligible for Antigravity, but API forwarding still works. Use at your own risk.'
     REDACTED,
 
+    // Scheduled Tests
+    scheduledTests: {
+      title: 'Scheduled Tests',
+      addPlan: 'Add Plan',
+      editPlan: 'Edit Plan',
+      deletePlan: 'Delete Plan',
+      model: 'Model',
+      cronExpression: 'Cron Expression',
+      enabled: 'Enabled',
+      lastRun: 'Last Run',
+      nextRun: 'Next Run',
+      maxResults: 'Max Results',
+      noPlans: 'No scheduled test plans',
+      confirmDelete: 'Are you sure you want to delete this plan?',
+      createSuccess: 'Plan created successfully',
+      updateSuccess: 'Plan updated successfully',
+      deleteSuccess: 'Plan deleted successfully',
+      results: 'Test Results',
+      noResults: 'No test results yet',
+      responseText: 'Response',
+      errorMessage: 'Error',
+      success: 'Success',
+      failed: 'Failed',
+      running: 'Running',
+      schedule: 'Schedule',
+      cronHelp: 'Standard 5-field cron expression (e.g., */30 * * * *)'
+    REDACTED,
+
     // Proxies
     proxies: {
       title: 'Proxy Management',

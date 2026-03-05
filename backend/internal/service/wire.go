@@ -274,6 +274,28 @@ func ProvideIdempotencyCleanupService(repo IdempotencyRepository, cfg *config.Co
 	return svc
 REDACTED
 
+// ProvideScheduledTestService creates ScheduledTestService.
+func ProvideScheduledTestService(
+	planRepo ScheduledTestPlanRepository,
+	resultRepo ScheduledTestResultRepository,
+) *ScheduledTestService {
+	return NewScheduledTestService(planRepo, resultRepo)
+REDACTED
+
+// ProvideScheduledTestRunnerService creates and starts ScheduledTestRunnerService.
+func ProvideScheduledTestRunnerService(
+	planRepo ScheduledTestPlanRepository,
+	scheduledSvc *ScheduledTestService,
+	accountTestSvc *AccountTestService,
+	db *sql.DB,
+	redisClient *redis.Client,
+	cfg *config.Config,
+) *ScheduledTestRunnerService {
+	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, db, redisClient, cfg)
+	svc.Start()
+	return svc
+REDACTED
+
 // ProvideOpsScheduledReportService creates and starts OpsScheduledReportService.
 func ProvideOpsScheduledReportService(
 	opsService *OpsService,
@@ -380,4 +402,6 @@ var ProviderSet = wire.NewSet(
 	ProvideIdempotencyCoordinator,
 	ProvideSystemOperationLockService,
 	ProvideIdempotencyCleanupService,
+	ProvideScheduledTestService,
+	ProvideScheduledTestRunnerService,
 )
