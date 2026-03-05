@@ -762,21 +762,58 @@
       <!-- API Key 账号配额限制 -->
       <div
         v-if="account?.type === 'apikey'"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
-        <label class="input-label">{{ t('admin.accounts.quotaLimit') REDACTEDREDACTED</label>
-        <div class="flex items-center gap-2">
-          <span class="text-gray-500">$</span>
-          <input
-            v-model.number="editQuotaLimit"
-            type="number"
-            min="0"
-            step="0.01"
-            class="input"
-            :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
-          />
+        <div class="mb-3">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaLimit') REDACTEDREDACTED</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.quotaLimitHint') REDACTEDREDACTED
+          </p>
         </div>
-        <p class="input-hint">{{ t('admin.accounts.quotaLimitHint') REDACTEDREDACTED</p>
+
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaLimitToggle') REDACTEDREDACTED</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaLimitToggleHint') REDACTEDREDACTED
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="quotaLimitEnabled = !quotaLimitEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                quotaLimitEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  quotaLimitEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <div v-if="quotaLimitEnabled" class="space-y-3">
+            <div>
+              <label class="input-label">{{ t('admin.accounts.quotaLimitAmount') REDACTEDREDACTED</label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
+                <input
+                  v-model.number="editQuotaLimit"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="input pl-7"
+                  :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
+                />
+              </div>
+              <p class="input-hint">{{ t('admin.accounts.quotaLimitAmountHint') REDACTEDREDACTED</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- OpenAI OAuth Codex 官方客户端限制开关 -->
@@ -1407,6 +1444,7 @@ const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OF
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const editQuotaLimit = ref<number | null>(null)
+const quotaLimitEnabled = ref(false)
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') REDACTED,
   // TODO: ctx_pool 选项暂时隐藏，待测试完成后恢复
@@ -1434,6 +1472,13 @@ const openAIWSModeConcurrencyHintKey = computed(() =>
 const isOpenAIModelRestrictionDisabled = computed(() =>
   props.account?.platform === 'openai' && openaiPassthroughEnabled.value
 )
+
+// When quota limit toggle is turned off, clear the value
+watch(quotaLimitEnabled, (enabled) => {
+  if (!enabled) {
+    editQuotaLimit.value = null
+  REDACTED
+REDACTED)
 
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(props.account?.platform || 'anthropic'))
@@ -1565,8 +1610,10 @@ watch(
       // Load quota limit for apikey accounts
       if (newAccount.type === 'apikey') {
         const quotaVal = extra?.quota_limit as number | undefined
+        quotaLimitEnabled.value = !!(quotaVal && quotaVal > 0)
         editQuotaLimit.value = (quotaVal && quotaVal > 0) ? quotaVal : null
       REDACTED else {
+        quotaLimitEnabled.value = false
         editQuotaLimit.value = null
       REDACTED
 
@@ -2317,7 +2364,7 @@ const handleSubmit = async () => {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
         (props.account.extra as Record<string, unknown>) || {REDACTED
       const newExtra: Record<string, unknown> = { ...currentExtra REDACTED
-      if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
+      if (quotaLimitEnabled.value && editQuotaLimit.value != null && editQuotaLimit.value > 0) {
         newExtra.quota_limit = editQuotaLimit.value
       REDACTED else {
         delete newExtra.quota_limit
