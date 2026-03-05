@@ -653,12 +653,14 @@
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') REDACTEDREDACTED</label>
-          <input v-model.number="form.concurrency" type="number" min="1" class="input" />
+          <input v-model.number="form.concurrency" type="number" min="1" class="input"
+            @input="if (form.concurrency < 1) form.concurrency = 1" />
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.loadFactor') REDACTEDREDACTED</label>
           <input v-model.number="form.load_factor" type="number" min="1"
-            class="input" :placeholder="String(form.concurrency || 1)" />
+            class="input" :placeholder="String(form.concurrency || 1)"
+            @input="if (form.load_factor != null && form.load_factor < 1) form.load_factor = null" />
           <p class="input-hint">{{ t('admin.accounts.loadFactorHint') REDACTEDREDACTED</p>
         </div>
         <div>
