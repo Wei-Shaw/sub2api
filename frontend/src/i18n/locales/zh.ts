@@ -1784,8 +1784,16 @@ export default {
           stickyExemptWarning: 'RPM 限制 (粘性豁免) - 接近阈值',
           stickyExemptOver: 'RPM 限制 (粘性豁免) - 超限，仅粘性会话'
         REDACTED,
+        quota: {
+          exceeded: '配额已用完，账号暂停调度',
+          normal: '配额正常'
+        REDACTED,
       REDACTED,
       clearRateLimit: '清除速率限制',
+      resetQuota: '重置配额',
+      quotaLimit: '配额限制',
+      quotaLimitPlaceholder: '0 表示不限制',
+      quotaLimitHint: '设置最大使用额度（美元），达到后账号暂停调度。修改限额不会重置已用额度。',
       testConnection: '测试连接',
       reAuthorize: '重新授权',
       refreshToken: '刷新令牌',

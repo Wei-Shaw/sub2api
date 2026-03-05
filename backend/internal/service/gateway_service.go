@@ -1228,6 +1228,10 @@ REDACTED
 				modelScopeSkippedIDs = append(modelScopeSkippedIDs, account.ID)
 				continue
 		REDACTED
+			// 配额检查
+			if !s.isAccountSchedulableForQuota(account) {
+				continue
+		REDACTED
 			// 窗口费用检查（非粘性会话路径）
 			if !s.isAccountSchedulableForWindowCost(ctx, account, false) {
 				filteredWindowCost++
@@ -1260,6 +1264,7 @@ REDACTED
 							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
 							(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel)) &&
 							s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
+							s.isAccountSchedulableForQuota(stickyAccount) &&
 							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true) &&
 
 							s.isAccountSchedulableForRPM(ctx, stickyAccount, true) { // 粘性会话窗口费用+RPM 检查
@@ -1416,6 +1421,7 @@ REDACTED
 					s.isAccountAllowedForPlatform(account, platform, useMixed) &&
 					(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) &&
 					s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) &&
+					s.isAccountSchedulableForQuota(account) &&
 					s.isAccountSchedulableForWindowCost(ctx, account, true) &&
 
 					s.isAccountSchedulableForRPM(ctx, account, true) { // 粘性会话窗口费用+RPM 检查
@@ -1478,6 +1484,10 @@ REDACTED
 			continue
 	REDACTED
 		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+			continue
+	REDACTED
+		// 配额检查
+		if !s.isAccountSchedulableForQuota(acc) {
 			continue
 	REDACTED
 		// 窗口费用检查（非粘性会话路径）
@@ -2113,6 +2123,15 @@ REDACTED
 	return context.WithValue(ctx, windowCostPrefetchContextKey, costs)
 REDACTED
 
+// isAccountSchedulableForQuota 检查 API Key 账号是否在配额限制内
+// 仅适用于配置了 quota_limit 的 apikey 类型账号
+func (s *GatewayService) isAccountSchedulableForQuota(account *Account) bool {
+	if account.Type != AccountTypeAPIKey {
+		return true
+REDACTED
+	return !account.IsQuotaExceeded()
+REDACTED
+
 // isAccountSchedulableForWindowCost 检查账号是否可根据窗口费用进行调度
 // 仅适用于 Anthropic OAuth/SetupToken 账号
 // 返回 true 表示可调度，false 表示不可调度
@@ -2590,7 +2609,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					REDACTED
-						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 						REDACTED
@@ -2642,6 +2661,9 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 				continue
 		REDACTED
 			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+				continue
+		REDACTED
+			if !s.isAccountSchedulableForQuota(acc) {
 				continue
 		REDACTED
 			if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
@@ -2700,7 +2722,7 @@ REDACTED
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 				REDACTED
-					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						return account, nil
 				REDACTED
 			REDACTED
@@ -2741,6 +2763,9 @@ REDACTED
 			continue
 	REDACTED
 		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+			continue
+	REDACTED
+		if !s.isAccountSchedulableForQuota(acc) {
 			continue
 	REDACTED
 		if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
@@ -2818,7 +2843,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					REDACTED
-						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 							if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 								if s.debugModelRoutingEnabled() {
 									logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
@@ -2872,6 +2897,9 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 				continue
 		REDACTED
 			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+				continue
+		REDACTED
+			if !s.isAccountSchedulableForQuota(acc) {
 				continue
 		REDACTED
 			if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
@@ -2930,7 +2958,7 @@ REDACTED
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 				REDACTED
-					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 							return account, nil
 					REDACTED
@@ -2973,6 +3001,9 @@ REDACTED
 			continue
 	REDACTED
 		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+			continue
+	REDACTED
+		if !s.isAccountSchedulableForQuota(acc) {
 			continue
 	REDACTED
 		if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
@@ -6578,6 +6609,13 @@ REDACTED
 		s.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(apiKey.ID, cost.ActualCost)
 REDACTED
 
+	// 更新 API Key 账号配额用量
+	if shouldBill && cost.TotalCost > 0 && account.Type == AccountTypeAPIKey && account.GetQuotaLimit() > 0 {
+		if err := s.accountRepo.IncrementQuotaUsed(ctx, account.ID, cost.TotalCost); err != nil {
+			slog.Error("increment account quota used failed", "account_id", account.ID, "cost", cost.TotalCost, "error", err)
+	REDACTED
+REDACTED
+
 	// Schedule batch update for account last_used_at
 	s.deferredService.ScheduleLastUsedUpdate(account.ID)
 
@@ -6773,6 +6811,13 @@ REDACTED
 			logger.LegacyPrintf("service.gateway", "Update API key rate limit usage failed: %v", err)
 	REDACTED
 		s.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(apiKey.ID, cost.ActualCost)
+REDACTED
+
+	// 更新 API Key 账号配额用量
+	if shouldBill && cost.TotalCost > 0 && account.Type == AccountTypeAPIKey && account.GetQuotaLimit() > 0 {
+		if err := s.accountRepo.IncrementQuotaUsed(ctx, account.ID, cost.TotalCost); err != nil {
+			slog.Error("increment account quota used failed", "account_id", account.ID, "cost", cost.TotalCost, "error", err)
+	REDACTED
 REDACTED
 
 	// Schedule batch update for account last_used_at

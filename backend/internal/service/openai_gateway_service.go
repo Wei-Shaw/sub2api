@@ -3502,6 +3502,13 @@ REDACTED
 		s.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(apiKey.ID, cost.ActualCost)
 REDACTED
 
+	// 更新 API Key 账号配额用量
+	if shouldBill && cost.TotalCost > 0 && account.Type == AccountTypeAPIKey && account.GetQuotaLimit() > 0 {
+		if err := s.accountRepo.IncrementQuotaUsed(ctx, account.ID, cost.TotalCost); err != nil {
+			logger.LegacyPrintf("service.openai_gateway", "increment account quota used failed: account_id=%d cost=%f error=%v", account.ID, cost.TotalCost, err)
+	REDACTED
+REDACTED
+
 	// Schedule batch update for account last_used_at
 	s.deferredService.ScheduleLastUsedUpdate(account.ID)
 

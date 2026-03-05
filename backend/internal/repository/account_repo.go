@@ -1657,3 +1657,60 @@ REDACTED
 
 	return r.accountsToService(ctx, accounts)
 REDACTED
+
+// IncrementQuotaUsed 原子递增账号的 extra.quota_used 字段
+func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error {
+	rows, err := r.sql.QueryContext(ctx,
+		`UPDATE accounts SET extra = jsonb_set(
+			COALESCE(extra, '{REDACTED'::jsonb),
+			'{quota_usedREDACTED',
+			to_jsonb(COALESCE((extra->>'quota_used')::numeric, 0) + $1)
+		), updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+		RETURNING
+			COALESCE((extra->>'quota_used')::numeric, 0),
+			COALESCE((extra->>'quota_limit')::numeric, 0)`,
+		amount, id)
+	if err != nil {
+		return err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	var newUsed, limit float64
+	if rows.Next() {
+		if err := rows.Scan(&newUsed, &limit); err != nil {
+			return err
+	REDACTED
+REDACTED
+	if err := rows.Err(); err != nil {
+		return err
+REDACTED
+
+	// 配额刚超限时触发调度快照刷新，使账号及时从调度候选中移除
+	if limit > 0 && newUsed >= limit && (newUsed-amount) < limit {
+		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue quota exceeded failed: account=%d err=%v", id, err)
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+// ResetQuotaUsed 重置账号的 extra.quota_used 为 0
+func (r *accountRepository) ResetQuotaUsed(ctx context.Context, id int64) error {
+	_, err := r.sql.ExecContext(ctx,
+		`UPDATE accounts SET extra = jsonb_set(
+			COALESCE(extra, '{REDACTED'::jsonb),
+			'{quota_usedREDACTED',
+			'0'::jsonb
+		), updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`,
+		id)
+	if err != nil {
+		return err
+REDACTED
+	// 重置配额后触发调度快照刷新，使账号重新参与调度
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue quota reset failed: account=%d err=%v", id, err)
+REDACTED
+	return nil
+REDACTED

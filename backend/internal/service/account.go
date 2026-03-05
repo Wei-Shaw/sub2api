@@ -1117,6 +1117,38 @@ REDACTED
 	return "5m"
 REDACTED
 
+// GetQuotaLimit 获取 API Key 账号的配额限制（美元）
+// 返回 0 表示未启用
+func (a *Account) GetQuotaLimit() float64 {
+	if a.Extra == nil {
+		return 0
+REDACTED
+	if v, ok := a.Extra["quota_limit"]; ok {
+		return parseExtraFloat64(v)
+REDACTED
+	return 0
+REDACTED
+
+// GetQuotaUsed 获取 API Key 账号的已用配额（美元）
+func (a *Account) GetQuotaUsed() float64 {
+	if a.Extra == nil {
+		return 0
+REDACTED
+	if v, ok := a.Extra["quota_used"]; ok {
+		return parseExtraFloat64(v)
+REDACTED
+	return 0
+REDACTED
+
+// IsQuotaExceeded 检查 API Key 账号配额是否已超限
+func (a *Account) IsQuotaExceeded() bool {
+	limit := a.GetQuotaLimit()
+	if limit <= 0 {
+		return false
+REDACTED
+	return a.GetQuotaUsed() >= limit
+REDACTED
+
 // GetWindowCostLimit 获取 5h 窗口费用阈值（美元）
 // 返回 0 表示未启用
 func (a *Account) GetWindowCostLimit() float64 {

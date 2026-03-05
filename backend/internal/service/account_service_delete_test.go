@@ -199,6 +199,14 @@ func (s *accountRepoStub) BulkUpdate(ctx context.Context, ids []int64, updates A
 	panic("unexpected BulkUpdate call")
 REDACTED
 
+func (s *accountRepoStub) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error {
+	return nil
+REDACTED
+
+func (s *accountRepoStub) ResetQuotaUsed(ctx context.Context, id int64) error {
+	return nil
+REDACTED
+
 // TestAccountService_Delete_NotFound 测试删除不存在的账号时返回正确的错误。
 // 预期行为：
 //   - ExistsByID 返回 false（账号不存在）

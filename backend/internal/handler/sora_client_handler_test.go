@@ -2132,6 +2132,14 @@ func (r *stubAccountRepoForHandler) BulkUpdate(context.Context, []int64, service
 	return 0, nil
 REDACTED
 
+func (r *stubAccountRepoForHandler) IncrementQuotaUsed(context.Context, int64, float64) error {
+	return nil
+REDACTED
+
+func (r *stubAccountRepoForHandler) ResetQuotaUsed(context.Context, int64) error {
+	return nil
+REDACTED
+
 // ==================== Stub: SoraClient (用于 SoraGatewayService) ====================
 
 var _ service.SoraClient = (*stubSoraClientForHandler)(nil)
