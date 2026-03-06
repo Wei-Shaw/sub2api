@@ -196,6 +196,7 @@ type CreateAccountInput struct {
 	Concurrency        int
 	Priority           int
 	RateMultiplier     *float64 // 账号计费倍率（>=0，允许 0）
+	LoadFactor         *int
 	GroupIDs           []int64
 	ExpiresAt          *int64
 	AutoPauseOnExpired *bool
@@ -216,6 +217,7 @@ type UpdateAccountInput struct {
 	Concurrency           *int     // 使用指针区分"未提供"和"设置为0"
 	Priority              *int     // 使用指针区分"未提供"和"设置为0"
 	RateMultiplier        *float64 // 账号计费倍率（>=0，允许 0）
+	LoadFactor            *int
 	Status                string
 	GroupIDs              *[]int64
 	ExpiresAt             *int64
@@ -231,6 +233,7 @@ type BulkUpdateAccountsInput struct {
 	Concurrency    *int
 	Priority       *int
 	RateMultiplier *float64 // 账号计费倍率（>=0，允许 0）
+	LoadFactor     *int
 	Status         string
 	Schedulable    *bool
 	GroupIDs       *[]int64
@@ -1414,6 +1417,12 @@ REDACTED
 	REDACTED
 		account.RateMultiplier = input.RateMultiplier
 REDACTED
+	if input.LoadFactor != nil && *input.LoadFactor > 0 {
+		if *input.LoadFactor > 10000 {
+			return nil, errors.New("load_factor must be <= 10000")
+	REDACTED
+		account.LoadFactor = input.LoadFactor
+REDACTED
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, err
 REDACTED
@@ -1487,6 +1496,15 @@ REDACTED
 			return nil, errors.New("rate_multiplier must be >= 0")
 	REDACTED
 		account.RateMultiplier = input.RateMultiplier
+REDACTED
+	if input.LoadFactor != nil {
+		if *input.LoadFactor <= 0 {
+			account.LoadFactor = nil // 0 或负数表示清除
+	REDACTED else if *input.LoadFactor > 10000 {
+			return nil, errors.New("load_factor must be <= 10000")
+	REDACTED else {
+			account.LoadFactor = input.LoadFactor
+	REDACTED
 REDACTED
 	if input.Status != "" {
 		account.Status = input.Status
@@ -1620,6 +1638,15 @@ REDACTED
 REDACTED
 	if input.RateMultiplier != nil {
 		repoUpdates.RateMultiplier = input.RateMultiplier
+REDACTED
+	if input.LoadFactor != nil {
+		if *input.LoadFactor <= 0 {
+			repoUpdates.LoadFactor = nil // 0 或负数表示清除
+	REDACTED else if *input.LoadFactor > 10000 {
+			return nil, errors.New("load_factor must be <= 10000")
+	REDACTED else {
+			repoUpdates.LoadFactor = input.LoadFactor
+	REDACTED
 REDACTED
 	if input.Status != "" {
 		repoUpdates.Status = &input.Status

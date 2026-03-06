@@ -1752,10 +1752,18 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') REDACTEDREDACTED</label>
-          <input v-model.number="form.concurrency" type="number" min="1" class="input" />
+          <input v-model.number="form.concurrency" type="number" min="1" class="input"
+            @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.loadFactor') REDACTEDREDACTED</label>
+          <input v-model.number="form.load_factor" type="number" min="1"
+            class="input" :placeholder="String(form.concurrency || 1)"
+            @input="form.load_factor = (form.load_factor &amp;&amp; form.load_factor >= 1) ? form.load_factor : null" />
+          <p class="input-hint">{{ t('admin.accounts.loadFactorHint') REDACTEDREDACTED</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.priority') REDACTEDREDACTED</label>
@@ -2638,6 +2646,7 @@ const form = reactive({
   credentials: {REDACTED as Record<string, unknown>,
   proxy_id: null as number | null,
   concurrency: 10,
+  load_factor: null as number | null,
   priority: 1,
   rate_multiplier: 1,
   group_ids: [] as number[],
@@ -3117,6 +3126,7 @@ const resetForm = () => {
   form.credentials = {REDACTED
   form.proxy_id = null
   form.concurrency = 10
+  form.load_factor = null
   form.priority = 1
   form.rate_multiplier = 1
   form.group_ids = []
@@ -3489,6 +3499,7 @@ const handleImportAccessToken = async (accessTokenInput: string) => {
           extra: soraExtra,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
+          load_factor: form.load_factor ?? undefined,
           priority: form.priority,
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
@@ -3553,6 +3564,7 @@ const createAccountAndFinish = async (
     extra: finalExtra,
     proxy_id: form.proxy_id,
     concurrency: form.concurrency,
+    load_factor: form.load_factor ?? undefined,
     priority: form.priority,
     rate_multiplier: form.rate_multiplier,
     group_ids: form.group_ids,
@@ -3608,6 +3620,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         extra,
         proxy_id: form.proxy_id,
         concurrency: form.concurrency,
+        load_factor: form.load_factor ?? undefined,
         priority: form.priority,
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
@@ -3637,6 +3650,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         extra: soraExtra,
         proxy_id: form.proxy_id,
         concurrency: form.concurrency,
+        load_factor: form.load_factor ?? undefined,
         priority: form.priority,
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
@@ -3714,6 +3728,7 @@ const handleOpenAIValidateRT = async (refreshTokenInput: string) => {
             extra,
             proxy_id: form.proxy_id,
             concurrency: form.concurrency,
+            load_factor: form.load_factor ?? undefined,
             priority: form.priority,
             rate_multiplier: form.rate_multiplier,
             group_ids: form.group_ids,
@@ -3741,6 +3756,7 @@ const handleOpenAIValidateRT = async (refreshTokenInput: string) => {
             extra: soraExtra,
             proxy_id: form.proxy_id,
             concurrency: form.concurrency,
+            load_factor: form.load_factor ?? undefined,
             priority: form.priority,
             rate_multiplier: form.rate_multiplier,
             group_ids: form.group_ids,
@@ -3829,6 +3845,7 @@ const handleSoraValidateST = async (sessionTokenInput: string) => {
           extra: soraExtra,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
+          load_factor: form.load_factor ?? undefined,
           priority: form.priority,
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
@@ -3917,6 +3934,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           extra: {REDACTED,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
+          load_factor: form.load_factor ?? undefined,
           priority: form.priority,
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
@@ -4075,8 +4093,11 @@ const handleAnthropicExchange = async (authCode: string) => {
     REDACTED
 
     // Add RPM limit settings
-    if (rpmLimitEnabled.value && baseRpm.value != null && baseRpm.value > 0) {
-      extra.base_rpm = baseRpm.value
+    if (rpmLimitEnabled.value) {
+      const DEFAULT_BASE_RPM = 15
+      extra.base_rpm = (baseRpm.value != null && baseRpm.value > 0)
+        ? baseRpm.value
+        : DEFAULT_BASE_RPM
       extra.rpm_strategy = rpmStrategy.value
       if (rpmStickyBuffer.value != null && rpmStickyBuffer.value > 0) {
         extra.rpm_sticky_buffer = rpmStickyBuffer.value
@@ -4187,8 +4208,11 @@ const handleCookieAuth = async (sessionKey: string) => {
         REDACTED
 
         // Add RPM limit settings
-        if (rpmLimitEnabled.value && baseRpm.value != null && baseRpm.value > 0) {
-          extra.base_rpm = baseRpm.value
+        if (rpmLimitEnabled.value) {
+          const DEFAULT_BASE_RPM = 15
+          extra.base_rpm = (baseRpm.value != null && baseRpm.value > 0)
+            ? baseRpm.value
+            : DEFAULT_BASE_RPM
           extra.rpm_strategy = rpmStrategy.value
           if (rpmStickyBuffer.value != null && rpmStickyBuffer.value > 0) {
             extra.rpm_sticky_buffer = rpmStickyBuffer.value
@@ -4234,6 +4258,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           extra,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
+          load_factor: form.load_factor ?? undefined,
           priority: form.priority,
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,

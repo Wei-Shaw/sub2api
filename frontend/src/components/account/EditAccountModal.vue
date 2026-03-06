@@ -650,10 +650,18 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') REDACTEDREDACTED</label>
-          <input v-model.number="form.concurrency" type="number" min="1" class="input" />
+          <input v-model.number="form.concurrency" type="number" min="1" class="input"
+            @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.loadFactor') REDACTEDREDACTED</label>
+          <input v-model.number="form.load_factor" type="number" min="1"
+            class="input" :placeholder="String(form.concurrency || 1)"
+            @input="form.load_factor = (form.load_factor &amp;&amp; form.load_factor >= 1) ? form.load_factor : null" />
+          <p class="input-hint">{{ t('admin.accounts.loadFactorHint') REDACTEDREDACTED</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.priority') REDACTEDREDACTED</label>
@@ -1470,6 +1478,7 @@ const form = reactive({
   notes: '',
   proxy_id: null as number | null,
   concurrency: 1,
+  load_factor: null as number | null,
   priority: 1,
   rate_multiplier: 1,
   status: 'active' as 'active' | 'inactive',
@@ -1503,9 +1512,12 @@ watch(
       form.notes = newAccount.notes || ''
       form.proxy_id = newAccount.proxy_id
       form.concurrency = newAccount.concurrency
+      form.load_factor = newAccount.load_factor ?? null
       form.priority = newAccount.priority
       form.rate_multiplier = newAccount.rate_multiplier ?? 1
-      form.status = newAccount.status as 'active' | 'inactive'
+      form.status = (newAccount.status === 'active' || newAccount.status === 'inactive')
+        ? newAccount.status
+        : 'active'
       form.group_ids = newAccount.group_ids || []
       form.expires_at = newAccount.expires_at ?? null
 
@@ -2053,6 +2065,11 @@ const handleSubmit = async () => {
   if (!props.account) return
   const accountID = props.account.id
 
+  if (form.status !== 'active' && form.status !== 'inactive') {
+    appStore.showError(t('admin.accounts.pleaseSelectStatus'))
+    return
+  REDACTED
+
   const updatePayload: Record<string, unknown> = { ...form REDACTED
   try {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
@@ -2061,6 +2078,11 @@ const handleSubmit = async () => {
     REDACTED
     if (form.expires_at === null) {
       updatePayload.expires_at = 0
+    REDACTED
+    // load_factor: 空值/NaN/0/负数 时发送 0（后端约定 <= 0 = 清除）
+    const lf = form.load_factor
+    if (lf == null || Number.isNaN(lf) || lf <= 0) {
+      updatePayload.load_factor = 0
     REDACTED
     updatePayload.auto_pause_on_expired = autoPauseOnExpired.value
 
@@ -2201,8 +2223,11 @@ const handleSubmit = async () => {
       REDACTED
 
       // RPM limit settings
-      if (rpmLimitEnabled.value && baseRpm.value != null && baseRpm.value > 0) {
-        newExtra.base_rpm = baseRpm.value
+      if (rpmLimitEnabled.value) {
+        const DEFAULT_BASE_RPM = 15
+        newExtra.base_rpm = (baseRpm.value != null && baseRpm.value > 0)
+          ? baseRpm.value
+          : DEFAULT_BASE_RPM
         newExtra.rpm_strategy = rpmStrategy.value
         if (rpmStickyBuffer.value != null && rpmStickyBuffer.value > 0) {
           newExtra.rpm_sticky_buffer = rpmStickyBuffer.value

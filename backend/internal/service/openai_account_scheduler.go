@@ -342,6 +342,7 @@ REDACTED
 REDACTED
 
 	cfg := s.service.schedulingConfig()
+	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	if s.service.concurrencyService != nil {
 		return &AccountSelectionResult{
 			Account: account,
@@ -590,7 +591,7 @@ REDACTED
 		filtered = append(filtered, account)
 		loadReq = append(loadReq, AccountWithConcurrency{
 			ID:             account.ID,
-			MaxConcurrency: account.Concurrency,
+			MaxConcurrency: account.EffectiveLoadFactor(),
 	REDACTED)
 REDACTED
 	if len(filtered) == 0 {
@@ -703,6 +704,7 @@ REDACTED
 REDACTED
 
 	cfg := s.service.schedulingConfig()
+	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	candidate := selectionOrder[0]
 	return &AccountSelectionResult{
 		Account: candidate.account,

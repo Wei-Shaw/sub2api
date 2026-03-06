@@ -41,6 +41,8 @@ type Account struct {
 	ProxyID *int64 `json:"proxy_id,omitempty"`
 	// Concurrency holds the value of the "concurrency" field.
 	Concurrency int `json:"concurrency,omitempty"`
+	// LoadFactor holds the value of the "load_factor" field.
+	LoadFactor *int `json:"load_factor,omitempty"`
 	// Priority holds the value of the "priority" field.
 	Priority int `json:"priority,omitempty"`
 	// RateMultiplier holds the value of the "rate_multiplier" field.
@@ -143,7 +145,7 @@ func (*Account) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case account.FieldRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case account.FieldID, account.FieldProxyID, account.FieldConcurrency, account.FieldPriority:
+		case account.FieldID, account.FieldProxyID, account.FieldConcurrency, account.FieldLoadFactor, account.FieldPriority:
 			values[i] = new(sql.NullInt64)
 		case account.FieldName, account.FieldNotes, account.FieldPlatform, account.FieldType, account.FieldStatus, account.FieldErrorMessage, account.FieldTempUnschedulableReason, account.FieldSessionWindowStatus:
 			values[i] = new(sql.NullString)
@@ -242,6 +244,13 @@ REDACTED
 				return fmt.Errorf("unexpected type %T for field concurrency", values[i])
 		REDACTED else if value.Valid {
 				_m.Concurrency = int(value.Int64)
+		REDACTED
+		case account.FieldLoadFactor:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field load_factor", values[i])
+		REDACTED else if value.Valid {
+				_m.LoadFactor = new(int)
+				*_m.LoadFactor = int(value.Int64)
 		REDACTED
 		case account.FieldPriority:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -444,6 +453,11 @@ REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("concurrency=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Concurrency))
+	builder.WriteString(", ")
+	if v := _m.LoadFactor; v != nil {
+		builder.WriteString("load_factor=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("priority=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Priority))

@@ -102,6 +102,7 @@ type CreateAccountRequest struct {
 	Concurrency             int            `json:"concurrency"`
 	Priority                int            `json:"priority"`
 	RateMultiplier          *float64       `json:"rate_multiplier"`
+	LoadFactor              *int           `json:"load_factor"`
 	GroupIDs                []int64        `json:"group_ids"`
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
@@ -120,6 +121,7 @@ type UpdateAccountRequest struct {
 	Concurrency             *int           `json:"concurrency"`
 	Priority                *int           `json:"priority"`
 	RateMultiplier          *float64       `json:"rate_multiplier"`
+	LoadFactor              *int           `json:"load_factor"`
 	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive"`
 	GroupIDs                *[]int64       `json:"group_ids"`
 	ExpiresAt               *int64         `json:"expires_at"`
@@ -135,6 +137,7 @@ type BulkUpdateAccountsRequest struct {
 	Concurrency             *int           `json:"concurrency"`
 	Priority                *int           `json:"priority"`
 	RateMultiplier          *float64       `json:"rate_multiplier"`
+	LoadFactor              *int           `json:"load_factor"`
 	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
 	Schedulable             *bool          `json:"schedulable"`
 	GroupIDs                *[]int64       `json:"group_ids"`
@@ -506,6 +509,7 @@ REDACTED
 			Concurrency:           req.Concurrency,
 			Priority:              req.Priority,
 			RateMultiplier:        req.RateMultiplier,
+			LoadFactor:            req.LoadFactor,
 			GroupIDs:              req.GroupIDs,
 			ExpiresAt:             req.ExpiresAt,
 			AutoPauseOnExpired:    req.AutoPauseOnExpired,
@@ -575,6 +579,7 @@ REDACTED
 		Concurrency:           req.Concurrency, // 指针类型，nil 表示未提供
 		Priority:              req.Priority,    // 指针类型，nil 表示未提供
 		RateMultiplier:        req.RateMultiplier,
+		LoadFactor:            req.LoadFactor,
 		Status:                req.Status,
 		GroupIDs:              req.GroupIDs,
 		ExpiresAt:             req.ExpiresAt,
@@ -1101,6 +1106,7 @@ REDACTED
 		req.Concurrency != nil ||
 		req.Priority != nil ||
 		req.RateMultiplier != nil ||
+		req.LoadFactor != nil ||
 		req.Status != "" ||
 		req.Schedulable != nil ||
 		req.GroupIDs != nil ||
@@ -1119,6 +1125,7 @@ REDACTED
 		Concurrency:           req.Concurrency,
 		Priority:              req.Priority,
 		RateMultiplier:        req.RateMultiplier,
+		LoadFactor:            req.LoadFactor,
 		Status:                req.Status,
 		Schedulable:           req.Schedulable,
 		GroupIDs:              req.GroupIDs,
