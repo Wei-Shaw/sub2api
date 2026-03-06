@@ -1647,10 +1647,12 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
       REDACTED;
     REDACTED
   REDACTED)`
+  const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
+
   const params = new URLSearchParams({
     resource: 'provider',
     app: app,
-    name: 'sub2api',
+    name: providerName,
     homepage: baseUrl,
     endpoint: endpoint,
     apiKey: row.key,
