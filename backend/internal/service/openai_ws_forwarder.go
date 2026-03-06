@@ -2309,6 +2309,7 @@ REDACTED
 		ReasoningEffort: extractOpenAIReasoningEffort(reqBody, originalModel),
 		Stream:          reqStream,
 		OpenAIWSMode:    true,
+		ResponseHeaders: lease.HandshakeHeaders(),
 		Duration:        time.Since(startTime),
 		FirstTokenMs:    firstTokenMs,
 REDACTED, nil
@@ -2919,6 +2920,7 @@ REDACTED
 					ReasoningEffort: extractOpenAIReasoningEffortFromBody(payload, originalModel),
 					Stream:          reqStream,
 					OpenAIWSMode:    true,
+					ResponseHeaders: lease.HandshakeHeaders(),
 					Duration:        time.Since(turnStart),
 					FirstTokenMs:    firstTokenMs,
 			REDACTED, nil
