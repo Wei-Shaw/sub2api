@@ -24,6 +24,8 @@ const openaiModels = [
   // GPT-5.2 系列
   'gpt-5.2', 'gpt-5.2-2025-12-11', 'gpt-5.2-chat-latest',
   'gpt-5.2-codex', 'gpt-5.2-pro', 'gpt-5.2-pro-2025-12-11',
+  // GPT-5.4 系列
+  'gpt-5.4',
   // GPT-5.3 系列
   'gpt-5.3-codex', 'gpt-5.3-codex-spark',
   'chatgpt-4o-latest',
@@ -277,6 +279,7 @@ const openaiPresetMappings = [
   { label: 'GPT-5.3 Codex Spark', from: 'gpt-5.3-codex-spark', to: 'gpt-5.3-codex-spark', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' REDACTED,
   { label: 'GPT-5.1', from: 'gpt-5.1', to: 'gpt-5.1', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' REDACTED,
   { label: 'GPT-5.2', from: 'gpt-5.2', to: 'gpt-5.2', color: 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400' REDACTED,
+  { label: 'GPT-5.4', from: 'gpt-5.4', to: 'gpt-5.4', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400' REDACTED,
   { label: 'GPT-5.1 Codex', from: 'gpt-5.1-codex', to: 'gpt-5.1-codex', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' REDACTED
 ]
 

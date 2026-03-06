@@ -161,6 +161,32 @@ REDACTED
 		CacheReadPricePerToken:     0.2e-6, // $0.20 per MTok
 		SupportsCacheBreakdown:     false,
 REDACTED
+
+	// OpenAI GPT-5.1（本地兜底，防止动态定价不可用时拒绝计费）
+	s.fallbackPrices["gpt-5.1"] = &ModelPricing{
+		InputPricePerToken:         1.25e-6, // $1.25 per MTok
+		OutputPricePerToken:        10e-6,   // $10 per MTok
+		CacheCreationPricePerToken: 1.25e-6, // $1.25 per MTok
+		CacheReadPricePerToken:     0.125e-6,
+		SupportsCacheBreakdown:     false,
+REDACTED
+	// OpenAI GPT-5.4（业务指定价格）
+	s.fallbackPrices["gpt-5.4"] = &ModelPricing{
+		InputPricePerToken:         2.5e-6,  // $2.5 per MTok
+		OutputPricePerToken:        15e-6,   // $15 per MTok
+		CacheCreationPricePerToken: 2.5e-6,  // $2.5 per MTok
+		CacheReadPricePerToken:     0.25e-6, // $0.25 per MTok
+		SupportsCacheBreakdown:     false,
+REDACTED
+	// Codex 族兜底统一按 GPT-5.1 Codex 价格计费
+	s.fallbackPrices["gpt-5.1-codex"] = &ModelPricing{
+		InputPricePerToken:         1.5e-6, // $1.5 per MTok
+		OutputPricePerToken:        12e-6,  // $12 per MTok
+		CacheCreationPricePerToken: 1.5e-6, // $1.5 per MTok
+		CacheReadPricePerToken:     0.15e-6,
+		SupportsCacheBreakdown:     false,
+REDACTED
+	s.fallbackPrices["gpt-5.3-codex"] = s.fallbackPrices["gpt-5.1-codex"]
 REDACTED
 
 // getFallbackPricing 根据模型系列获取回退价格
@@ -189,12 +215,30 @@ REDACTED
 	REDACTED
 		return s.fallbackPrices["claude-3-haiku"]
 REDACTED
+	// Claude 未知型号统一回退到 Sonnet，避免计费中断。
+	if strings.Contains(modelLower, "claude") {
+		return s.fallbackPrices["claude-sonnet-4"]
+REDACTED
 	if strings.Contains(modelLower, "gemini-3.1-pro") || strings.Contains(modelLower, "gemini-3-1-pro") {
 		return s.fallbackPrices["gemini-3.1-pro"]
 REDACTED
 
-	// 默认使用Sonnet价格
-	return s.fallbackPrices["claude-sonnet-4"]
+	// OpenAI 仅匹配已知 GPT-5/Codex 族，避免未知 OpenAI 型号误计价。
+	if strings.Contains(modelLower, "gpt-5") || strings.Contains(modelLower, "codex") {
+		normalized := normalizeCodexModel(modelLower)
+		switch normalized {
+		case "gpt-5.4":
+			return s.fallbackPrices["gpt-5.4"]
+		case "gpt-5.3-codex":
+			return s.fallbackPrices["gpt-5.3-codex"]
+		case "gpt-5.1-codex", "gpt-5.1-codex-max", "gpt-5.1-codex-mini", "codex-mini-latest":
+			return s.fallbackPrices["gpt-5.1-codex"]
+		case "gpt-5.1":
+			return s.fallbackPrices["gpt-5.1"]
+	REDACTED
+REDACTED
+
+	return nil
 REDACTED
 
 // GetModelPricing 获取模型价格配置

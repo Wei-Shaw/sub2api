@@ -951,6 +951,7 @@ const allModels = [
   { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' REDACTED,
   { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' REDACTED,
   { value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark' REDACTED,
+  { value: 'gpt-5.4', label: 'GPT-5.4' REDACTED,
   { value: 'gpt-5.2-2025-12-11', label: 'GPT-5.2' REDACTED,
   { value: 'gpt-5.2-codex', label: 'GPT-5.2 Codex' REDACTED,
   { value: 'gpt-5.1-codex-max', label: 'GPT-5.1 Codex Max' REDACTED,
@@ -1064,6 +1065,12 @@ const presetMappings = [
     from: 'gpt-5.3-codex-spark',
     to: 'gpt-5.3-codex-spark',
     color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
+  REDACTED,
+  {
+    label: 'GPT-5.4',
+    from: 'gpt-5.4',
+    to: 'gpt-5.4',
+    color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400'
   REDACTED,
   {
     label: '5.2→5.3',

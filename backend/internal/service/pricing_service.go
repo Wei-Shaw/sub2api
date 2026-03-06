@@ -21,8 +21,16 @@ import (
 )
 
 var (
-	openAIModelDatePattern = regexp.MustCompile(`-\d{8REDACTED$`)
-	openAIModelBasePattern = regexp.MustCompile(`^(gpt-\d+(?:\.\d+)?)(?:-|$)`)
+	openAIModelDatePattern     = regexp.MustCompile(`-\d{8REDACTED$`)
+	openAIModelBasePattern     = regexp.MustCompile(`^(gpt-\d+(?:\.\d+)?)(?:-|$)`)
+	openAIGPT54FallbackPricing = &LiteLLMModelPricing{
+		InputCostPerToken:       2.5e-06, // $2.5 per MTok
+		OutputCostPerToken:      1.5e-05, // $15 per MTok
+		CacheReadInputTokenCost: 2.5e-07, // $0.25 per MTok
+		LiteLLMProvider:         "openai",
+		Mode:                    "chat",
+		SupportsPromptCaching:   true,
+REDACTED
 )
 
 // LiteLLMModelPricing LiteLLM价格数据结构
@@ -660,7 +668,8 @@ REDACTED
 // 2. gpt-5.2-codex -> gpt-5.2（去掉后缀如 -codex, -mini, -max 等）
 // 3. gpt-5.2-20251222 -> gpt-5.2（去掉日期版本号）
 // 4. gpt-5.3-codex -> gpt-5.2-codex
-// 5. 最终回退到 DefaultTestModel (gpt-5.1-codex)
+// 5. gpt-5.4* -> 业务静态兜底价
+// 6. 最终回退到 DefaultTestModel (gpt-5.1-codex)
 func (s *PricingService) matchOpenAIModel(model string) *LiteLLMModelPricing {
 	if strings.HasPrefix(model, "gpt-5.3-codex-spark") {
 		if pricing, ok := s.pricingData["gpt-5.1-codex"]; ok {
@@ -688,6 +697,12 @@ REDACTED
 				Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.2-codex"))
 			return pricing
 	REDACTED
+REDACTED
+
+	if strings.HasPrefix(model, "gpt-5.4") {
+		logger.With(zap.String("component", "service.pricing")).
+			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.4(static)"))
+		return openAIGPT54FallbackPricing
 REDACTED
 
 	// 最终回退到 DefaultTestModel
