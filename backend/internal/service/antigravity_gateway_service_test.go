@@ -998,6 +998,46 @@ REDACTED
 	require.True(t, result.clientDisconnect)
 REDACTED
 
+// TestHandleClaudeStreamingResponse_EmptyStream
+// 验证：上游只返回无法解析的 SSE 行时，触发 UpstreamFailoverError 而不是向客户端发出残缺流
+func TestHandleClaudeStreamingResponse_EmptyStream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newAntigravityTestService(&config.Config{
+		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTED,
+REDACTED)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Body: pr, Header: http.Header{REDACTEDREDACTED
+
+	go func() {
+		defer func() { _ = pw.Close() REDACTED()
+		// 所有行均为无法 JSON 解析的内容，ProcessLine 全部返回 nil
+		fmt.Fprintln(pw, "data: not-valid-json")
+		fmt.Fprintln(pw, "")
+		fmt.Fprintln(pw, "data: also-invalid")
+		fmt.Fprintln(pw, "")
+REDACTED()
+
+	_, err := svc.handleClaudeStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5")
+	_ = pr.Close()
+
+	// 应当返回 UpstreamFailoverError 而非 nil，以便上层触发 failover
+REDACTED
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+
+	// 客户端不应收到任何 SSE 事件（既无 message_start 也无 message_stop）
+	body := rec.Body.String()
+	require.NotContains(t, body, "event: message_start")
+	require.NotContains(t, body, "event: message_stop")
+	require.NotContains(t, body, "event: message_delta")
+REDACTED
+
 // TestHandleClaudeStreamingResponse_ContextCanceled
 // 验证：context 取消时不注入错误事件
 func TestHandleClaudeStreamingResponse_ContextCanceled(t *testing.T) {
