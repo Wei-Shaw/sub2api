@@ -139,6 +139,20 @@ REDACTED
 	return _c
 REDACTED
 
+// SetLoadFactor sets the "load_factor" field.
+func (_c *AccountCreate) SetLoadFactor(v int) *AccountCreate {
+	_c.mutation.SetLoadFactor(v)
+	return _c
+REDACTED
+
+// SetNillableLoadFactor sets the "load_factor" field if the given value is not nil.
+func (_c *AccountCreate) SetNillableLoadFactor(v *int) *AccountCreate {
+	if v != nil {
+		_c.SetLoadFactor(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetPriority sets the "priority" field.
 func (_c *AccountCreate) SetPriority(v int) *AccountCreate {
 	_c.mutation.SetPriority(v)
@@ -623,6 +637,10 @@ REDACTED
 		_spec.SetField(account.FieldConcurrency, field.TypeInt, value)
 		_node.Concurrency = value
 REDACTED
+	if value, ok := _c.mutation.LoadFactor(); ok {
+		_spec.SetField(account.FieldLoadFactor, field.TypeInt, value)
+		_node.LoadFactor = &value
+REDACTED
 	if value, ok := _c.mutation.Priority(); ok {
 		_spec.SetField(account.FieldPriority, field.TypeInt, value)
 		_node.Priority = value
@@ -933,6 +951,30 @@ REDACTED
 // AddConcurrency adds v to the "concurrency" field.
 func (u *AccountUpsert) AddConcurrency(v int) *AccountUpsert {
 	u.Add(account.FieldConcurrency, v)
+	return u
+REDACTED
+
+// SetLoadFactor sets the "load_factor" field.
+func (u *AccountUpsert) SetLoadFactor(v int) *AccountUpsert {
+	u.Set(account.FieldLoadFactor, v)
+	return u
+REDACTED
+
+// UpdateLoadFactor sets the "load_factor" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateLoadFactor() *AccountUpsert {
+	u.SetExcluded(account.FieldLoadFactor)
+	return u
+REDACTED
+
+// AddLoadFactor adds v to the "load_factor" field.
+func (u *AccountUpsert) AddLoadFactor(v int) *AccountUpsert {
+	u.Add(account.FieldLoadFactor, v)
+	return u
+REDACTED
+
+// ClearLoadFactor clears the value of the "load_factor" field.
+func (u *AccountUpsert) ClearLoadFactor() *AccountUpsert {
+	u.SetNull(account.FieldLoadFactor)
 	return u
 REDACTED
 
@@ -1416,6 +1458,34 @@ REDACTED
 func (u *AccountUpsertOne) UpdateConcurrency() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateConcurrency()
+REDACTED)
+REDACTED
+
+// SetLoadFactor sets the "load_factor" field.
+func (u *AccountUpsertOne) SetLoadFactor(v int) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLoadFactor(v)
+REDACTED)
+REDACTED
+
+// AddLoadFactor adds v to the "load_factor" field.
+func (u *AccountUpsertOne) AddLoadFactor(v int) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddLoadFactor(v)
+REDACTED)
+REDACTED
+
+// UpdateLoadFactor sets the "load_factor" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateLoadFactor() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLoadFactor()
+REDACTED)
+REDACTED
+
+// ClearLoadFactor clears the value of the "load_factor" field.
+func (u *AccountUpsertOne) ClearLoadFactor() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLoadFactor()
 REDACTED)
 REDACTED
 
@@ -2110,6 +2180,34 @@ REDACTED
 func (u *AccountUpsertBulk) UpdateConcurrency() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.UpdateConcurrency()
+REDACTED)
+REDACTED
+
+// SetLoadFactor sets the "load_factor" field.
+func (u *AccountUpsertBulk) SetLoadFactor(v int) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetLoadFactor(v)
+REDACTED)
+REDACTED
+
+// AddLoadFactor adds v to the "load_factor" field.
+func (u *AccountUpsertBulk) AddLoadFactor(v int) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddLoadFactor(v)
+REDACTED)
+REDACTED
+
+// UpdateLoadFactor sets the "load_factor" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateLoadFactor() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateLoadFactor()
+REDACTED)
+REDACTED
+
+// ClearLoadFactor clears the value of the "load_factor" field.
+func (u *AccountUpsertBulk) ClearLoadFactor() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearLoadFactor()
 REDACTED)
 REDACTED
 

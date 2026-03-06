@@ -425,5 +425,9 @@ REDACTED
 	return nil, service.ErrAPIKeyNotFound
 REDACTED
 
+func (s *stubAdminService) ResetAccountQuota(ctx context.Context, id int64) error {
+	return nil
+REDACTED
+
 // Ensure stub implements interface.
 var _ service.AdminService = (*stubAdminService)(nil)

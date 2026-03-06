@@ -653,6 +653,7 @@ export interface Account {
   REDACTED & Record<string, unknown>)
   proxy_id: number | null
   concurrency: number
+  load_factor?: number | null
   current_concurrency?: number // Real-time concurrency count from Redis
   priority: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
@@ -704,6 +705,10 @@ export interface Account {
   // 缓存 TTL 强制替换（仅 Anthropic OAuth/SetupToken 账号有效）
   cache_ttl_override_enabled?: boolean | null
   cache_ttl_override_target?: string | null
+
+  // API Key 账号配额限制
+  quota_limit?: number | null
+  quota_used?: number | null
 
   // 运行时状态（仅当启用对应限制时返回）
   current_window_cost?: number | null // 当前窗口费用
@@ -783,6 +788,7 @@ export interface CreateAccountRequest {
   extra?: Record<string, unknown>
   proxy_id?: number | null
   concurrency?: number
+  load_factor?: number | null
   priority?: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
   group_ids?: number[]
@@ -799,6 +805,7 @@ export interface UpdateAccountRequest {
   extra?: Record<string, unknown>
   proxy_id?: number | null
   concurrency?: number
+  load_factor?: number | null
   priority?: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
   schedulable?: boolean
@@ -1098,7 +1105,8 @@ export interface TrendDataPoint {
   requests: number
   input_tokens: number
   output_tokens: number
-  cache_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
   total_tokens: number
   cost: number // 标准计费
   actual_cost: number // 实际扣除
@@ -1109,6 +1117,8 @@ export interface ModelStat {
   requests: number
   input_tokens: number
   output_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
   total_tokens: number
   cost: number // 标准计费
   actual_cost: number // 实际扣除

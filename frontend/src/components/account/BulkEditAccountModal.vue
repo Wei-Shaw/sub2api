@@ -469,7 +469,7 @@
       </div>
 
       <!-- Concurrency & Priority -->
-      <div class="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4 dark:border-dark-600 lg:grid-cols-3">
+      <div class="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4 dark:border-dark-600 lg:grid-cols-4">
         <div>
           <div class="mb-3 flex items-center justify-between">
             <label
@@ -496,7 +496,38 @@
             class="input"
             :class="!enableConcurrency && 'cursor-not-allowed opacity-50'"
             aria-labelledby="bulk-edit-concurrency-label"
+            @input="concurrency = Math.max(1, concurrency || 1)"
           />
+        </div>
+        <div>
+          <div class="mb-3 flex items-center justify-between">
+            <label
+              id="bulk-edit-load-factor-label"
+              class="input-label mb-0"
+              for="bulk-edit-load-factor-enabled"
+            >
+              {{ t('admin.accounts.loadFactor') REDACTEDREDACTED
+            </label>
+            <input
+              v-model="enableLoadFactor"
+              id="bulk-edit-load-factor-enabled"
+              type="checkbox"
+              aria-controls="bulk-edit-load-factor"
+              class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+          </div>
+          <input
+            v-model.number="loadFactor"
+            id="bulk-edit-load-factor"
+            type="number"
+            min="1"
+            :disabled="!enableLoadFactor"
+            class="input"
+            :class="!enableLoadFactor && 'cursor-not-allowed opacity-50'"
+            aria-labelledby="bulk-edit-load-factor-label"
+            @input="loadFactor = (loadFactor &amp;&amp; loadFactor >= 1) ? loadFactor : null"
+          />
+          <p class="input-hint">{{ t('admin.accounts.loadFactorHint') REDACTEDREDACTED</p>
         </div>
         <div>
           <div class="mb-3 flex items-center justify-between">
@@ -869,6 +900,7 @@ const enableCustomErrorCodes = ref(false)
 const enableInterceptWarmup = ref(false)
 const enableProxy = ref(false)
 const enableConcurrency = ref(false)
+const enableLoadFactor = ref(false)
 const enablePriority = ref(false)
 const enableRateMultiplier = ref(false)
 const enableStatus = ref(false)
@@ -889,6 +921,7 @@ const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const proxyId = ref<number | null>(null)
 const concurrency = ref(1)
+const loadFactor = ref<number | null>(null)
 const priority = ref(1)
 const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
@@ -918,6 +951,7 @@ const allModels = [
   { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' REDACTED,
   { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' REDACTED,
   { value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark' REDACTED,
+  { value: 'gpt-5.4', label: 'GPT-5.4' REDACTED,
   { value: 'gpt-5.2-2025-12-11', label: 'GPT-5.2' REDACTED,
   { value: 'gpt-5.2-codex', label: 'GPT-5.2 Codex' REDACTED,
   { value: 'gpt-5.1-codex-max', label: 'GPT-5.1 Codex Max' REDACTED,
@@ -1031,6 +1065,12 @@ const presetMappings = [
     from: 'gpt-5.3-codex-spark',
     to: 'gpt-5.3-codex-spark',
     color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
+  REDACTED,
+  {
+    label: 'GPT-5.4',
+    from: 'gpt-5.4',
+    to: 'gpt-5.4',
+    color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400'
   REDACTED,
   {
     label: '5.2→5.3',
@@ -1195,6 +1235,12 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.concurrency = concurrency.value
   REDACTED
 
+  if (enableLoadFactor.value) {
+    // 空值/NaN/0 时发送 0（后端约定 <= 0 表示清除）
+    const lf = loadFactor.value
+    updates.load_factor = (lf != null && !Number.isNaN(lf) && lf > 0) ? lf : 0
+  REDACTED
+
   if (enablePriority.value) {
     updates.priority = priority.value
   REDACTED
@@ -1340,6 +1386,7 @@ const handleSubmit = async () => {
     enableInterceptWarmup.value ||
     enableProxy.value ||
     enableConcurrency.value ||
+    enableLoadFactor.value ||
     enablePriority.value ||
     enableRateMultiplier.value ||
     enableStatus.value ||
@@ -1430,6 +1477,7 @@ watch(
       enableInterceptWarmup.value = false
       enableProxy.value = false
       enableConcurrency.value = false
+      enableLoadFactor.value = false
       enablePriority.value = false
       enableRateMultiplier.value = false
       enableStatus.value = false
@@ -1446,6 +1494,7 @@ watch(
       interceptWarmupRequests.value = false
       proxyId.value = null
       concurrency.value = 1
+      loadFactor.value = null
       priority.value = 1
       rateMultiplier.value = 1
       status.value = 'active'

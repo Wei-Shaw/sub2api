@@ -102,6 +102,7 @@ type CreateAccountRequest struct {
 	Concurrency             int            `json:"concurrency"`
 	Priority                int            `json:"priority"`
 	RateMultiplier          *float64       `json:"rate_multiplier"`
+	LoadFactor              *int           `json:"load_factor"`
 	GroupIDs                []int64        `json:"group_ids"`
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
@@ -120,6 +121,7 @@ type UpdateAccountRequest struct {
 	Concurrency             *int           `json:"concurrency"`
 	Priority                *int           `json:"priority"`
 	RateMultiplier          *float64       `json:"rate_multiplier"`
+	LoadFactor              *int           `json:"load_factor"`
 	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive"`
 	GroupIDs                *[]int64       `json:"group_ids"`
 	ExpiresAt               *int64         `json:"expires_at"`
@@ -135,6 +137,7 @@ type BulkUpdateAccountsRequest struct {
 	Concurrency             *int           `json:"concurrency"`
 	Priority                *int           `json:"priority"`
 	RateMultiplier          *float64       `json:"rate_multiplier"`
+	LoadFactor              *int           `json:"load_factor"`
 	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
 	Schedulable             *bool          `json:"schedulable"`
 	GroupIDs                *[]int64       `json:"group_ids"`
@@ -285,32 +288,48 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 仅非 lite 模式获取窗口费用（PostgreSQL 聚合查询，高开销）
-	if !lite && len(windowCostAccountIDs) > 0 {
-		windowCosts = make(map[int64]float64)
-		var mu sync.Mutex
-		g, gctx := errgroup.WithContext(c.Request.Context())
-		g.SetLimit(10) // 限制并发数
-
-		for i := range accounts {
-			acc := &accounts[i]
-			if !acc.IsAnthropicOAuthOrSetupToken() || acc.GetWindowCostLimit() <= 0 {
-				continue
-		REDACTED
-			accCopy := acc // 闭包捕获
-			g.Go(func() error {
-				// 使用统一的窗口开始时间计算逻辑（考虑窗口过期情况）
-				startTime := accCopy.GetCurrentWindowStartTime()
-				stats, err := h.accountUsageService.GetAccountWindowStats(gctx, accCopy.ID, startTime)
-				if err == nil && stats != nil {
-					mu.Lock()
-					windowCosts[accCopy.ID] = stats.StandardCost // 使用标准费用
-					mu.Unlock()
+	// 窗口费用获取：lite 模式从快照缓存读取，非 lite 模式执行 PostgreSQL 查询后写入缓存
+	if len(windowCostAccountIDs) > 0 {
+		if lite {
+			// lite 模式：尝试从快照缓存读取
+			cacheKey := buildWindowCostCacheKey(windowCostAccountIDs)
+			if cached, ok := accountWindowCostCache.Get(cacheKey); ok {
+				if costs, ok := cached.Payload.(map[int64]float64); ok {
+					windowCosts = costs
 			REDACTED
-				return nil // 不返回错误，允许部分失败
-		REDACTED)
+		REDACTED
+			// 缓存未命中则 windowCosts 保持 nil（仅发生在服务刚启动时）
+	REDACTED else {
+			// 非 lite 模式：执行 PostgreSQL 聚合查询（高开销）
+			windowCosts = make(map[int64]float64)
+			var mu sync.Mutex
+			g, gctx := errgroup.WithContext(c.Request.Context())
+			g.SetLimit(10) // 限制并发数
+
+			for i := range accounts {
+				acc := &accounts[i]
+				if !acc.IsAnthropicOAuthOrSetupToken() || acc.GetWindowCostLimit() <= 0 {
+					continue
+			REDACTED
+				accCopy := acc // 闭包捕获
+				g.Go(func() error {
+					// 使用统一的窗口开始时间计算逻辑（考虑窗口过期情况）
+					startTime := accCopy.GetCurrentWindowStartTime()
+					stats, err := h.accountUsageService.GetAccountWindowStats(gctx, accCopy.ID, startTime)
+					if err == nil && stats != nil {
+						mu.Lock()
+						windowCosts[accCopy.ID] = stats.StandardCost // 使用标准费用
+						mu.Unlock()
+				REDACTED
+					return nil // 不返回错误，允许部分失败
+			REDACTED)
+		REDACTED
+			_ = g.Wait()
+
+			// 查询完毕后写入快照缓存，供 lite 模式使用
+			cacheKey := buildWindowCostCacheKey(windowCostAccountIDs)
+			accountWindowCostCache.Set(cacheKey, windowCosts)
 	REDACTED
-		_ = g.Wait()
 REDACTED
 
 	// Build response with concurrency info
@@ -506,6 +525,7 @@ REDACTED
 			Concurrency:           req.Concurrency,
 			Priority:              req.Priority,
 			RateMultiplier:        req.RateMultiplier,
+			LoadFactor:            req.LoadFactor,
 			GroupIDs:              req.GroupIDs,
 			ExpiresAt:             req.ExpiresAt,
 			AutoPauseOnExpired:    req.AutoPauseOnExpired,
@@ -575,6 +595,7 @@ REDACTED
 		Concurrency:           req.Concurrency, // 指针类型，nil 表示未提供
 		Priority:              req.Priority,    // 指针类型，nil 表示未提供
 		RateMultiplier:        req.RateMultiplier,
+		LoadFactor:            req.LoadFactor,
 		Status:                req.Status,
 		GroupIDs:              req.GroupIDs,
 		ExpiresAt:             req.ExpiresAt,
@@ -1101,6 +1122,7 @@ REDACTED
 		req.Concurrency != nil ||
 		req.Priority != nil ||
 		req.RateMultiplier != nil ||
+		req.LoadFactor != nil ||
 		req.Status != "" ||
 		req.Schedulable != nil ||
 		req.GroupIDs != nil ||
@@ -1119,6 +1141,7 @@ REDACTED
 		Concurrency:           req.Concurrency,
 		Priority:              req.Priority,
 		RateMultiplier:        req.RateMultiplier,
+		LoadFactor:            req.LoadFactor,
 		Status:                req.Status,
 		Schedulable:           req.Schedulable,
 		GroupIDs:              req.GroupIDs,
@@ -1316,6 +1339,29 @@ REDACTED
 	err = h.rateLimitService.ClearRateLimit(c.Request.Context(), accountID)
 	if err != nil {
 		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+REDACTED
+
+// ResetQuota handles resetting account quota usage
+// POST /api/v1/admin/accounts/:id/reset-quota
+func (h *AccountHandler) ResetQuota(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+REDACTED
+
+	if err := h.adminService.ResetAccountQuota(c.Request.Context(), accountID); err != nil {
+		response.InternalError(c, "Failed to reset account quota: "+err.Error())
 		return
 REDACTED
 

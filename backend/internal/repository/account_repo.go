@@ -84,6 +84,9 @@ REDACTED
 	if account.RateMultiplier != nil {
 		builder.SetRateMultiplier(*account.RateMultiplier)
 REDACTED
+	if account.LoadFactor != nil {
+		builder.SetLoadFactor(*account.LoadFactor)
+REDACTED
 
 	if account.ProxyID != nil {
 		builder.SetProxyID(*account.ProxyID)
@@ -317,6 +320,11 @@ REDACTED
 
 	if account.RateMultiplier != nil {
 		builder.SetRateMultiplier(*account.RateMultiplier)
+REDACTED
+	if account.LoadFactor != nil {
+		builder.SetLoadFactor(*account.LoadFactor)
+REDACTED else {
+		builder.ClearLoadFactor()
 REDACTED
 
 	if account.ProxyID != nil {
@@ -1223,6 +1231,15 @@ REDACTED
 		args = append(args, *updates.RateMultiplier)
 		idx++
 REDACTED
+	if updates.LoadFactor != nil {
+		if *updates.LoadFactor <= 0 {
+			setClauses = append(setClauses, "load_factor = NULL")
+	REDACTED else {
+			setClauses = append(setClauses, "load_factor = $"+itoa(idx))
+			args = append(args, *updates.LoadFactor)
+			idx++
+	REDACTED
+REDACTED
 	if updates.Status != nil {
 		setClauses = append(setClauses, "status = $"+itoa(idx))
 		args = append(args, *updates.Status)
@@ -1545,6 +1562,7 @@ REDACTED
 		Concurrency:             m.Concurrency,
 		Priority:                m.Priority,
 		RateMultiplier:          &rateMultiplier,
+		LoadFactor:              m.LoadFactor,
 		Status:                  m.Status,
 		ErrorMessage:            derefString(m.ErrorMessage),
 		LastUsedAt:              m.LastUsedAt,
@@ -1656,4 +1674,61 @@ func (r *accountRepository) FindByExtraField(ctx context.Context, key string, va
 REDACTED
 
 	return r.accountsToService(ctx, accounts)
+REDACTED
+
+// IncrementQuotaUsed 原子递增账号的 extra.quota_used 字段
+func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error {
+	rows, err := r.sql.QueryContext(ctx,
+		`UPDATE accounts SET extra = jsonb_set(
+			COALESCE(extra, '{REDACTED'::jsonb),
+			'{quota_usedREDACTED',
+			to_jsonb(COALESCE((extra->>'quota_used')::numeric, 0) + $1)
+		), updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+		RETURNING
+			COALESCE((extra->>'quota_used')::numeric, 0),
+			COALESCE((extra->>'quota_limit')::numeric, 0)`,
+		amount, id)
+	if err != nil {
+		return err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	var newUsed, limit float64
+	if rows.Next() {
+		if err := rows.Scan(&newUsed, &limit); err != nil {
+			return err
+	REDACTED
+REDACTED
+	if err := rows.Err(); err != nil {
+		return err
+REDACTED
+
+	// 配额刚超限时触发调度快照刷新，使账号及时从调度候选中移除
+	if limit > 0 && newUsed >= limit && (newUsed-amount) < limit {
+		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue quota exceeded failed: account=%d err=%v", id, err)
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+// ResetQuotaUsed 重置账号的 extra.quota_used 为 0
+func (r *accountRepository) ResetQuotaUsed(ctx context.Context, id int64) error {
+	_, err := r.sql.ExecContext(ctx,
+		`UPDATE accounts SET extra = jsonb_set(
+			COALESCE(extra, '{REDACTED'::jsonb),
+			'{quota_usedREDACTED',
+			'0'::jsonb
+		), updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`,
+		id)
+	if err != nil {
+		return err
+REDACTED
+	// 重置配额后触发调度快照刷新，使账号重新参与调度
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue quota reset failed: account=%d err=%v", id, err)
+REDACTED
+	return nil
 REDACTED

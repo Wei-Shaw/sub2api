@@ -113,6 +113,9 @@
 
             <!-- Actions -->
             <div class="ml-auto flex items-center gap-3">
+              <button @click="applyFilters" :disabled="loading" class="btn btn-secondary">
+                {{ t('common.refresh') REDACTEDREDACTED
+              </button>
               <button @click="resetFilters" class="btn btn-secondary">
                 {{ t('common.reset') REDACTEDREDACTED
               </button>

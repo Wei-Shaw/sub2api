@@ -1227,6 +1227,9 @@
 
       </div>
 
+      <!-- API Key 账号配额限制 -->
+      <QuotaLimitCard v-if="form.type === 'apikey'" v-model="editQuotaLimit" />
+
       <!-- Temp Unschedulable Rules -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3 flex items-center justify-between">
@@ -1749,10 +1752,18 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') REDACTEDREDACTED</label>
-          <input v-model.number="form.concurrency" type="number" min="1" class="input" />
+          <input v-model.number="form.concurrency" type="number" min="1" class="input"
+            @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.loadFactor') REDACTEDREDACTED</label>
+          <input v-model.number="form.load_factor" type="number" min="1"
+            class="input" :placeholder="String(form.concurrency || 1)"
+            @input="form.load_factor = (form.load_factor &amp;&amp; form.load_factor >= 1) ? form.load_factor : null" />
+          <p class="input-hint">{{ t('admin.accounts.loadFactorHint') REDACTEDREDACTED</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.priority') REDACTEDREDACTED</label>
@@ -2337,11 +2348,12 @@ import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup REDACTED from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput REDACTED from '@/utils/format'
 import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
 import {
-  OPENAI_WS_MODE_CTX_POOL,
+  // OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
   isOpenAIWSModeEnabled,
@@ -2460,6 +2472,7 @@ const accountCategory = ref<'oauth-based' | 'apikey'>('oauth-based') // UI selec
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const editQuotaLimit = ref<number | null>(null)
 const modelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
@@ -2542,7 +2555,8 @@ REDACTED)
 
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') REDACTED,
-  { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') REDACTED,
+  // TODO: ctx_pool 选项暂时隐藏，待测试完成后恢复
+  // { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') REDACTED,
   { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') REDACTED
 ])
 
@@ -2632,6 +2646,7 @@ const form = reactive({
   credentials: {REDACTED as Record<string, unknown>,
   proxy_id: null as number | null,
   concurrency: 10,
+  load_factor: null as number | null,
   priority: 1,
   rate_multiplier: 1,
   group_ids: [] as number[],
@@ -3111,6 +3126,7 @@ const resetForm = () => {
   form.credentials = {REDACTED
   form.proxy_id = null
   form.concurrency = 10
+  form.load_factor = null
   form.priority = 1
   form.rate_multiplier = 1
   form.group_ids = []
@@ -3119,6 +3135,7 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  editQuotaLimit.value = null
   modelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
@@ -3482,6 +3499,7 @@ const handleImportAccessToken = async (accessTokenInput: string) => {
           extra: soraExtra,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
+          load_factor: form.load_factor ?? undefined,
           priority: form.priority,
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
@@ -3532,15 +3550,21 @@ const createAccountAndFinish = async (
   if (!applyTempUnschedConfig(credentials)) {
     return
   REDACTED
+  // Inject quota_limit for apikey accounts
+  let finalExtra = extra
+  if (type === 'apikey' && editQuotaLimit.value != null && editQuotaLimit.value > 0) {
+    finalExtra = { ...(extra || {REDACTED), quota_limit: editQuotaLimit.value REDACTED
+  REDACTED
   await doCreateAccount({
     name: form.name,
     notes: form.notes,
     platform,
     type,
     credentials,
-    extra,
+    extra: finalExtra,
     proxy_id: form.proxy_id,
     concurrency: form.concurrency,
+    load_factor: form.load_factor ?? undefined,
     priority: form.priority,
     rate_multiplier: form.rate_multiplier,
     group_ids: form.group_ids,
@@ -3596,6 +3620,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         extra,
         proxy_id: form.proxy_id,
         concurrency: form.concurrency,
+        load_factor: form.load_factor ?? undefined,
         priority: form.priority,
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
@@ -3625,6 +3650,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         extra: soraExtra,
         proxy_id: form.proxy_id,
         concurrency: form.concurrency,
+        load_factor: form.load_factor ?? undefined,
         priority: form.priority,
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
@@ -3702,6 +3728,7 @@ const handleOpenAIValidateRT = async (refreshTokenInput: string) => {
             extra,
             proxy_id: form.proxy_id,
             concurrency: form.concurrency,
+            load_factor: form.load_factor ?? undefined,
             priority: form.priority,
             rate_multiplier: form.rate_multiplier,
             group_ids: form.group_ids,
@@ -3729,6 +3756,7 @@ const handleOpenAIValidateRT = async (refreshTokenInput: string) => {
             extra: soraExtra,
             proxy_id: form.proxy_id,
             concurrency: form.concurrency,
+            load_factor: form.load_factor ?? undefined,
             priority: form.priority,
             rate_multiplier: form.rate_multiplier,
             group_ids: form.group_ids,
@@ -3817,6 +3845,7 @@ const handleSoraValidateST = async (sessionTokenInput: string) => {
           extra: soraExtra,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
+          load_factor: form.load_factor ?? undefined,
           priority: form.priority,
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
@@ -3905,6 +3934,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           extra: {REDACTED,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
+          load_factor: form.load_factor ?? undefined,
           priority: form.priority,
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
@@ -4063,8 +4093,11 @@ const handleAnthropicExchange = async (authCode: string) => {
     REDACTED
 
     // Add RPM limit settings
-    if (rpmLimitEnabled.value && baseRpm.value != null && baseRpm.value > 0) {
-      extra.base_rpm = baseRpm.value
+    if (rpmLimitEnabled.value) {
+      const DEFAULT_BASE_RPM = 15
+      extra.base_rpm = (baseRpm.value != null && baseRpm.value > 0)
+        ? baseRpm.value
+        : DEFAULT_BASE_RPM
       extra.rpm_strategy = rpmStrategy.value
       if (rpmStickyBuffer.value != null && rpmStickyBuffer.value > 0) {
         extra.rpm_sticky_buffer = rpmStickyBuffer.value
@@ -4175,8 +4208,11 @@ const handleCookieAuth = async (sessionKey: string) => {
         REDACTED
 
         // Add RPM limit settings
-        if (rpmLimitEnabled.value && baseRpm.value != null && baseRpm.value > 0) {
-          extra.base_rpm = baseRpm.value
+        if (rpmLimitEnabled.value) {
+          const DEFAULT_BASE_RPM = 15
+          extra.base_rpm = (baseRpm.value != null && baseRpm.value > 0)
+            ? baseRpm.value
+            : DEFAULT_BASE_RPM
           extra.rpm_strategy = rpmStrategy.value
           if (rpmStickyBuffer.value != null && rpmStickyBuffer.value > 0) {
             extra.rpm_sticky_buffer = rpmStickyBuffer.value
@@ -4222,6 +4258,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           extra,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
+          load_factor: form.load_factor ?? undefined,
           priority: form.priority,
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,

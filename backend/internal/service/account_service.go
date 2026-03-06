@@ -68,6 +68,10 @@ type AccountRepository interface {
 	UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error
 	UpdateExtra(ctx context.Context, id int64, updates map[string]any) error
 	BulkUpdate(ctx context.Context, ids []int64, updates AccountBulkUpdate) (int64, error)
+	// IncrementQuotaUsed 原子递增 API Key 账号的配额用量
+	IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error
+	// ResetQuotaUsed 重置 API Key 账号的配额用量为 0
+	ResetQuotaUsed(ctx context.Context, id int64) error
 REDACTED
 
 // AccountBulkUpdate describes the fields that can be updated in a bulk operation.
@@ -78,6 +82,7 @@ type AccountBulkUpdate struct {
 	Concurrency    *int
 	Priority       *int
 	RateMultiplier *float64
+	LoadFactor     *int
 	Status         *string
 	Schedulable    *bool
 	Credentials    map[string]any

@@ -443,7 +443,22 @@ $env:ANTHROPIC_AUTH_TOKEN="${apiKeyREDACTED"`
       content = ''
   REDACTED
 
-  return [{ path, content REDACTED]
+  const vscodeSettingsPath = activeTab.value === 'unix'
+    ? '~/.claude/settings.json'
+    : '%userprofile%\\.claude\\settings.json'
+
+  const vscodeContent = `{
+  "env": {
+    "ANTHROPIC_BASE_URL": "${baseUrlREDACTED",
+    "ANTHROPIC_AUTH_TOKEN": "${apiKeyREDACTED",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
+  REDACTED
+REDACTED`
+
+  return [
+    { path, content REDACTED,
+    { path: vscodeSettingsPath, content: vscodeContent, hint: 'VSCode Claude Code' REDACTED
+  ]
 REDACTED
 
 function generateGeminiCliContent(baseUrl: string, apiKey: string): FileConfig {
@@ -496,16 +511,18 @@ function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
 
   // config.toml content
-  const configContent = `model_provider = "sub2api"
-model = "gpt-5.3-codex"
-model_reasoning_effort = "high"
-network_access = "enabled"
+  const configContent = `model_provider = "OpenAI"
+model = "gpt-5.4"
+review_model = "gpt-5.4"
+model_reasoning_effort = "xhigh"
 disable_response_storage = true
+network_access = "enabled"
 windows_wsl_setup_acknowledged = true
-model_verbosity = "high"
+model_context_window = 1000000
+model_auto_compact_token_limit = 900000
 
-[model_providers.sub2api]
-name = "sub2api"
+[model_providers.OpenAI]
+name = "OpenAI"
 base_url = "${baseUrlREDACTED"
 wire_api = "responses"
 requires_openai_auth = true`
@@ -533,16 +550,18 @@ function generateOpenAIWsFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
 
   // config.toml content with WebSocket v2
-  const configContent = `model_provider = "sub2api"
-model = "gpt-5.3-codex"
-model_reasoning_effort = "high"
-network_access = "enabled"
+  const configContent = `model_provider = "OpenAI"
+model = "gpt-5.4"
+review_model = "gpt-5.4"
+model_reasoning_effort = "xhigh"
 disable_response_storage = true
+network_access = "enabled"
 windows_wsl_setup_acknowledged = true
-model_verbosity = "high"
+model_context_window = 1000000
+model_auto_compact_token_limit = 900000
 
-[model_providers.sub2api]
-name = "sub2api"
+[model_providers.OpenAI]
+name = "OpenAI"
 base_url = "${baseUrlREDACTED"
 wire_api = "responses"
 supports_websockets = true
@@ -643,6 +662,22 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       name: 'GPT-5.2',
       limit: {
         context: 400000,
+        output: 128000
+      REDACTED,
+      options: {
+        store: false
+      REDACTED,
+      variants: {
+        low: {REDACTED,
+        medium: {REDACTED,
+        high: {REDACTED,
+        xhigh: {REDACTED
+      REDACTED
+    REDACTED,
+    'gpt-5.4': {
+      name: 'GPT-5.4',
+      limit: {
+        context: 1050000,
         output: 128000
       REDACTED,
       options: {

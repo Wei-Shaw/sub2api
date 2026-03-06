@@ -319,6 +319,16 @@ REDACTED
 	return svc
 REDACTED
 
+func (s *OpenAIGatewayService) billingDeps() *billingDeps {
+	return &billingDeps{
+		accountRepo:         s.accountRepo,
+		userRepo:            s.userRepo,
+		userSubRepo:         s.userSubRepo,
+		billingCacheService: s.billingCacheService,
+		deferredService:     s.deferredService,
+REDACTED
+REDACTED
+
 // CloseOpenAIWSPool 关闭 OpenAI WebSocket 连接池的后台 worker 和空闲连接。
 // 应在应用优雅关闭时调用。
 func (s *OpenAIGatewayService) CloseOpenAIWSPool() {
@@ -1242,7 +1252,7 @@ REDACTED
 	for _, acc := range candidates {
 		accountLoads = append(accountLoads, AccountWithConcurrency{
 			ID:             acc.ID,
-			MaxConcurrency: acc.Concurrency,
+			MaxConcurrency: acc.EffectiveLoadFactor(),
 	REDACTED)
 REDACTED
 
@@ -3474,36 +3484,20 @@ REDACTED
 
 	shouldBill := inserted || err != nil
 
-	// Deduct based on billing type
-	if isSubscriptionBilling {
-		if shouldBill && cost.TotalCost > 0 {
-			_ = s.userSubRepo.IncrementUsage(ctx, subscription.ID, cost.TotalCost)
-			s.billingCacheService.QueueUpdateSubscriptionUsage(user.ID, *apiKey.GroupID, cost.TotalCost)
-	REDACTED
+	if shouldBill {
+		postUsageBilling(ctx, &postUsageBillingParams{
+			Cost:                  cost,
+			User:                  user,
+			APIKey:                apiKey,
+			Account:               account,
+			Subscription:          subscription,
+			IsSubscriptionBill:    isSubscriptionBilling,
+			AccountRateMultiplier: accountRateMultiplier,
+			APIKeyService:         input.APIKeyService,
+	REDACTED, s.billingDeps())
 REDACTED else {
-		if shouldBill && cost.ActualCost > 0 {
-			_ = s.userRepo.DeductBalance(ctx, user.ID, cost.ActualCost)
-			s.billingCacheService.QueueDeductBalance(user.ID, cost.ActualCost)
-	REDACTED
+		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 REDACTED
-
-	// Update API key quota if applicable (only for balance mode with quota set)
-	if shouldBill && cost.ActualCost > 0 && apiKey.Quota > 0 && input.APIKeyService != nil {
-		if err := input.APIKeyService.UpdateQuotaUsed(ctx, apiKey.ID, cost.ActualCost); err != nil {
-			logger.LegacyPrintf("service.openai_gateway", "Update API key quota failed: %v", err)
-	REDACTED
-REDACTED
-
-	// Update API Key rate limit usage
-	if shouldBill && cost.ActualCost > 0 && apiKey.HasRateLimits() && input.APIKeyService != nil {
-		if err := input.APIKeyService.UpdateRateLimitUsage(ctx, apiKey.ID, cost.ActualCost); err != nil {
-			logger.LegacyPrintf("service.openai_gateway", "Update API key rate limit usage failed: %v", err)
-	REDACTED
-		s.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(apiKey.ID, cost.ActualCost)
-REDACTED
-
-	// Schedule batch update for account last_used_at
-	s.deferredService.ScheduleLastUsedUpdate(account.ID)
 
 	return nil
 REDACTED

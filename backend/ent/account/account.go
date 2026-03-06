@@ -37,6 +37,8 @@ const (
 	FieldProxyID = "proxy_id"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
 	FieldConcurrency = "concurrency"
+	// FieldLoadFactor holds the string denoting the load_factor field in the database.
+	FieldLoadFactor = "load_factor"
 	// FieldPriority holds the string denoting the priority field in the database.
 	FieldPriority = "priority"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
@@ -121,6 +123,7 @@ var Columns = []string{
 	FieldExtra,
 	FieldProxyID,
 	FieldConcurrency,
+	FieldLoadFactor,
 	FieldPriority,
 	FieldRateMultiplier,
 	FieldStatus,
@@ -248,6 +251,11 @@ REDACTED
 // ByConcurrency orders the results by the concurrency field.
 func ByConcurrency(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldConcurrency, opts...).ToFunc()
+REDACTED
+
+// ByLoadFactor orders the results by the load_factor field.
+func ByLoadFactor(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLoadFactor, opts...).ToFunc()
 REDACTED
 
 // ByPriority orders the results by the priority field.

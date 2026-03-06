@@ -180,7 +180,7 @@ REDACTED
 REDACTED
 
 	if account.Platform == PlatformAntigravity {
-		return s.testAntigravityAccountConnection(c, account, modelID)
+		return s.routeAntigravityTest(c, account, modelID)
 REDACTED
 
 	if account.Platform == PlatformSora {
@@ -1175,6 +1175,18 @@ REDACTED
 
 func truncateSoraErrorBody(body []byte, max int) string {
 	return soraerror.TruncateBody(body, max)
+REDACTED
+
+// routeAntigravityTest 路由 Antigravity 账号的测试请求。
+// APIKey 类型走原生协议（与 gateway_handler 路由一致），OAuth/Upstream 走 CRS 中转。
+func (s *AccountTestService) routeAntigravityTest(c *gin.Context, account *Account, modelID string) error {
+	if account.Type == AccountTypeAPIKey {
+		if strings.HasPrefix(modelID, "gemini-") {
+			return s.testGeminiAccountConnection(c, account, modelID)
+	REDACTED
+		return s.testClaudeAccountConnection(c, account, modelID)
+REDACTED
+	return s.testAntigravityAccountConnection(c, account, modelID)
 REDACTED
 
 // testAntigravityAccountConnection tests an Antigravity account's connection
