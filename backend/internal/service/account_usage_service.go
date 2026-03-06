@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 )
 
 type UsageLogRepository interface {
@@ -70,8 +72,10 @@ type accountWindowStatsBatchReader interface {
 REDACTED
 
 // apiUsageCache 缓存从 Anthropic API 获取的使用率数据（utilization, resets_at）
+// 同时支持缓存错误响应（负缓存），防止 429 等错误导致的重试风暴
 type apiUsageCache struct {
 	response  *ClaudeUsageResponse
+	err       error // 非 nil 表示缓存的错误（负缓存）
 	timestamp time.Time
 REDACTED
 
@@ -89,6 +93,8 @@ REDACTED
 
 const (
 	apiCacheTTL         = 3 * time.Minute
+	apiErrorCacheTTL    = 1 * time.Minute  // 负缓存 TTL：429 等错误缓存 1 分钟，防止重试风暴
+	apiQueryMaxJitter   = 800 * time.Millisecond // 用量查询最大随机延迟，打散并发请求避免反滥用检测
 	windowStatsCacheTTL = 1 * time.Minute
 )
 
@@ -97,6 +103,7 @@ type UsageCache struct {
 	apiCache         sync.Map // accountID -> *apiUsageCache
 	windowStatsCache sync.Map // accountID -> *windowStatsCache
 	antigravityCache sync.Map // accountID -> *antigravityUsageCache
+	apiFlight        singleflight.Group // 防止同一账号的并发请求击穿缓存
 REDACTED
 
 // NewUsageCache 创建 UsageCache 实例
@@ -245,24 +252,65 @@ REDACTED
 	if account.CanGetUsage() {
 		var apiResp *ClaudeUsageResponse
 
-		// 1. 检查 API 缓存（10 分钟）
+		// 1. 检查缓存（成功响应 3 分钟 / 错误响应 1 分钟）
 		if cached, ok := s.cache.apiCache.Load(accountID); ok {
-			if cache, ok := cached.(*apiUsageCache); ok && time.Since(cache.timestamp) < apiCacheTTL {
-				apiResp = cache.response
+			if cache, ok := cached.(*apiUsageCache); ok {
+				age := time.Since(cache.timestamp)
+				if cache.err != nil && age < apiErrorCacheTTL {
+					// 负缓存命中：返回缓存的错误，避免重试风暴
+					return nil, cache.err
+			REDACTED
+				if cache.response != nil && age < apiCacheTTL {
+					apiResp = cache.response
+			REDACTED
 		REDACTED
 	REDACTED
 
-		// 2. 如果没有缓存，从 API 获取
+		// 2. 如果没有有效缓存，通过 singleflight 从 API 获取（防止并发击穿）
 		if apiResp == nil {
-			apiResp, err = s.fetchOAuthUsageRaw(ctx, account)
-			if err != nil {
-				return nil, err
+			// 随机延迟：打散多账号并发请求，避免同一时刻大量相同 TLS 指纹请求
+			// 触发上游反滥用检测。延迟范围 0~800ms，仅在缓存未命中时生效。
+			jitter := time.Duration(rand.Int64N(int64(apiQueryMaxJitter)))
+			select {
+			case <-time.After(jitter):
+			case <-ctx.Done():
+				return nil, ctx.Err()
 		REDACTED
-			// 缓存 API 响应
-			s.cache.apiCache.Store(accountID, &apiUsageCache{
-				response:  apiResp,
-				timestamp: time.Now(),
+
+			flightKey := fmt.Sprintf("usage:%d", accountID)
+			result, flightErr, _ := s.cache.apiFlight.Do(flightKey, func() (any, error) {
+				// 再次检查缓存（可能在等待 singleflight 期间被其他请求填充）
+				if cached, ok := s.cache.apiCache.Load(accountID); ok {
+					if cache, ok := cached.(*apiUsageCache); ok {
+						age := time.Since(cache.timestamp)
+						if cache.err != nil && age < apiErrorCacheTTL {
+							return nil, cache.err
+					REDACTED
+						if cache.response != nil && age < apiCacheTTL {
+							return cache.response, nil
+					REDACTED
+				REDACTED
+			REDACTED
+				resp, fetchErr := s.fetchOAuthUsageRaw(ctx, account)
+				if fetchErr != nil {
+					// 负缓存：缓存错误响应，防止后续请求重复触发 429
+					s.cache.apiCache.Store(accountID, &apiUsageCache{
+						err:       fetchErr,
+						timestamp: time.Now(),
+				REDACTED)
+					return nil, fetchErr
+			REDACTED
+				// 缓存成功响应
+				s.cache.apiCache.Store(accountID, &apiUsageCache{
+					response:  resp,
+					timestamp: time.Now(),
+			REDACTED)
+				return resp, nil
 		REDACTED)
+			if flightErr != nil {
+				return nil, flightErr
+		REDACTED
+			apiResp = result.(*ClaudeUsageResponse)
 	REDACTED
 
 		// 3. 构建 UsageInfo（每次都重新计算 RemainingSeconds）
