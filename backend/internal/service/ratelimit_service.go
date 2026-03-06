@@ -970,10 +970,25 @@ REDACTED
 		windowStart = &start
 		windowEnd = &end
 		slog.Info("account_session_window_initialized", "account_id", account.ID, "window_start", start, "window_end", end, "status", status)
+		// 窗口重置时清除旧的 utilization，避免残留上个窗口的数据
+		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+			"session_window_utilization": nil,
+	REDACTED)
 REDACTED
 
 	if err := s.accountRepo.UpdateSessionWindow(ctx, account.ID, windowStart, windowEnd, status); err != nil {
 		slog.Warn("session_window_update_failed", "account_id", account.ID, "error", err)
+REDACTED
+
+	// 存储真实的 utilization 值（0-1 小数），供 estimateSetupTokenUsage 使用
+	if utilStr := headers.Get("anthropic-ratelimit-unified-5h-utilization"); utilStr != "" {
+		if util, err := strconv.ParseFloat(utilStr, 64); err == nil {
+			if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+				"session_window_utilization": util,
+		REDACTED); err != nil {
+				slog.Warn("session_window_utilization_update_failed", "account_id", account.ID, "error", err)
+		REDACTED
+	REDACTED
 REDACTED
 
 	// 如果状态为allowed且之前有限流，说明窗口已重置，清除限流状态

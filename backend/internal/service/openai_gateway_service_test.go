@@ -28,6 +28,22 @@ type stubOpenAIAccountRepo struct {
 	accounts []Account
 REDACTED
 
+type snapshotUpdateAccountRepo struct {
+	stubOpenAIAccountRepo
+	updateExtraCalls chan map[string]any
+REDACTED
+
+func (r *snapshotUpdateAccountRepo) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	if r.updateExtraCalls != nil {
+		copied := make(map[string]any, len(updates))
+		for k, v := range updates {
+			copied[k] = v
+	REDACTED
+		r.updateExtraCalls <- copied
+REDACTED
+	return nil
+REDACTED
+
 func (r stubOpenAIAccountRepo) GetByID(ctx context.Context, id int64) (*Account, error) {
 	for i := range r.accounts {
 		if r.accounts[i].ID == id {
@@ -1248,6 +1264,30 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestOpenAIUpdateCodexUsageSnapshotFromHeaders(t *testing.T) {
+	repo := &snapshotUpdateAccountRepo{updateExtraCalls: make(chan map[string]any, 1)REDACTED
+	svc := &OpenAIGatewayService{accountRepo: repoREDACTED
+	headers := http.Header{REDACTED
+	headers.Set("x-codex-primary-used-percent", "12")
+	headers.Set("x-codex-secondary-used-percent", "34")
+	headers.Set("x-codex-primary-window-minutes", "300")
+	headers.Set("x-codex-secondary-window-minutes", "10080")
+	headers.Set("x-codex-primary-reset-after-seconds", "600")
+	headers.Set("x-codex-secondary-reset-after-seconds", "86400")
+
+	svc.UpdateCodexUsageSnapshotFromHeaders(context.Background(), 123, headers)
+
+	select {
+	case updates := <-repo.updateExtraCalls:
+		require.Equal(t, 12.0, updates["codex_5h_used_percent"])
+		require.Equal(t, 34.0, updates["codex_7d_used_percent"])
+		require.Equal(t, 600, updates["codex_5h_reset_after_seconds"])
+		require.Equal(t, 86400, updates["codex_7d_reset_after_seconds"])
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected UpdateExtra to be called")
+REDACTED
+REDACTED
+
 func TestOpenAIResponsesRequestPathSuffix(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -1334,6 +1374,7 @@ REDACTED
 
 // ==================== P1-08 修复：model 替换性能优化测试 ====================
 
+// ==================== P1-08 修复：model 替换性能优化测试 =============
 func TestReplaceModelInSSELine(t *testing.T) {
 	svc := &OpenAIGatewayService{REDACTED
 
