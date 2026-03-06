@@ -207,7 +207,12 @@ REDACTED
 type OpenAIForwardResult struct {
 	RequestID string
 	Usage     OpenAIUsage
-	Model     string
+	Model     string // 原始模型（用于响应和日志显示）
+	// BillingModel is the model used for cost calculation.
+	// When non-empty, CalculateCost uses this instead of Model.
+	// This is set by the Anthropic Messages conversion path where
+	// the mapped upstream model differs from the client-facing model.
+	BillingModel string
 	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
 	// Stored for usage records display; nil means not provided / not applicable.
 	ReasoningEffort *string
@@ -3610,7 +3615,11 @@ REDACTED
 		multiplier = resolver.Resolve(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
 REDACTED
 
-	cost, err := s.billingService.CalculateCost(result.Model, tokens, multiplier)
+	billingModel := result.Model
+	if result.BillingModel != "" {
+		billingModel = result.BillingModel
+REDACTED
+	cost, err := s.billingService.CalculateCost(billingModel, tokens, multiplier)
 	if err != nil {
 		cost = &CostBreakdown{ActualCost: 0REDACTED
 REDACTED
@@ -3630,7 +3639,7 @@ REDACTED
 		APIKeyID:              apiKey.ID,
 		AccountID:             account.ID,
 		RequestID:             result.RequestID,
-		Model:                 result.Model,
+		Model:                 billingModel,
 		ReasoningEffort:       result.ReasoningEffort,
 		InputTokens:           actualInputTokens,
 		OutputTokens:          result.Usage.OutputTokens,

@@ -2,6 +2,7 @@ package apicompat
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -44,7 +45,63 @@ REDACTED
 		out.Tools = convertAnthropicToolsToResponses(req.Tools)
 REDACTED
 
+	// Convert thinking → reasoning.
+	// generate_summary="auto" causes the upstream to emit reasoning_summary_text
+	// streaming events; the include array only needs reasoning.encrypted_content
+	// (already set above) for content continuity.
+	if req.Thinking != nil {
+		switch req.Thinking.Type {
+		case "enabled":
+			out.Reasoning = &ResponsesReasoning{Effort: "high", Summary: "auto"REDACTED
+		case "adaptive":
+			out.Reasoning = &ResponsesReasoning{Effort: "medium", Summary: "auto"REDACTED
+	REDACTED
+		// "disabled" or unknown → omit reasoning
+REDACTED
+
+	// Convert tool_choice
+	if len(req.ToolChoice) > 0 {
+		tc, err := convertAnthropicToolChoiceToResponses(req.ToolChoice)
+		if err != nil {
+			return nil, fmt.Errorf("convert tool_choice: %w", err)
+	REDACTED
+		out.ToolChoice = tc
+REDACTED
+
 	return out, nil
+REDACTED
+
+// convertAnthropicToolChoiceToResponses maps Anthropic tool_choice to Responses format.
+//
+//	{"type":"auto"REDACTED            → "auto"
+//	{"type":"any"REDACTED             → "required"
+//	{"type":"none"REDACTED            → "none"
+//	{"type":"tool","name":"X"REDACTED → {"type":"function","function":{"name":"X"REDACTEDREDACTED
+func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage, error) {
+	var tc struct {
+		Type string `json:"type"`
+		Name string `json:"name"`
+REDACTED
+	if err := json.Unmarshal(raw, &tc); err != nil {
+		return nil, err
+REDACTED
+
+	switch tc.Type {
+	case "auto":
+		return json.Marshal("auto")
+	case "any":
+		return json.Marshal("required")
+	case "none":
+		return json.Marshal("none")
+	case "tool":
+		return json.Marshal(map[string]any{
+			"type":     "function",
+			"function": map[string]string{"name": tc.NameREDACTED,
+	REDACTED)
+	default:
+		// Pass through unknown types as-is
+		return raw, nil
+REDACTED
 REDACTED
 
 // convertAnthropicToResponsesInput builds the Responses API input items array
