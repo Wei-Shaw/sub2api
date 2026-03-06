@@ -670,6 +670,22 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         xhigh: {REDACTED
       REDACTED
     REDACTED,
+    'gpt-5.4': {
+      name: 'GPT-5.4',
+      limit: {
+        context: 1050000,
+        output: 128000
+      REDACTED,
+      options: {
+        store: false
+      REDACTED,
+      variants: {
+        low: {REDACTED,
+        medium: {REDACTED,
+        high: {REDACTED,
+        xhigh: {REDACTED
+      REDACTED
+    REDACTED,
     'gpt-5.3-codex-spark': {
       name: 'GPT-5.3 Codex Spark',
       limit: {
