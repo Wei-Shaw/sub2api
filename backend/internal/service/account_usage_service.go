@@ -1,13 +1,18 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	httppool "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
+	openaipkg "github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
@@ -88,8 +93,10 @@ type antigravityUsageCache struct {
 REDACTED
 
 const (
-	apiCacheTTL         = 3 * time.Minute
-	windowStatsCacheTTL = 1 * time.Minute
+	apiCacheTTL             = 3 * time.Minute
+	windowStatsCacheTTL     = 1 * time.Minute
+	openAIProbeCacheTTL     = 10 * time.Minute
+	openAICodexProbeVersion = "0.104.0"
 )
 
 // UsageCache 封装账户使用量相关的缓存
@@ -97,6 +104,7 @@ type UsageCache struct {
 	apiCache         sync.Map // accountID -> *apiUsageCache
 	windowStatsCache sync.Map // accountID -> *windowStatsCache
 	antigravityCache sync.Map // accountID -> *antigravityUsageCache
+	openAIProbeCache sync.Map // accountID -> time.Time
 REDACTED
 
 // NewUsageCache 创建 UsageCache 实例
@@ -224,6 +232,14 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*U
 		return nil, fmt.Errorf("get account failed: %w", err)
 REDACTED
 
+	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
+		usage, err := s.getOpenAIUsage(ctx, account)
+		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+	REDACTED
+		return usage, err
+REDACTED
+
 	if account.Platform == PlatformGemini {
 		usage, err := s.getGeminiUsage(ctx, account)
 		if err == nil {
@@ -286,6 +302,161 @@ REDACTED
 
 	// API Key账号不支持usage查询
 	return nil, fmt.Errorf("account type %s does not support usage query", account.Type)
+REDACTED
+
+func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+	now := time.Now()
+	usage := &UsageInfo{UpdatedAt: &nowREDACTED
+
+	if account == nil {
+		return usage, nil
+REDACTED
+
+	if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
+		usage.FiveHour = progress
+REDACTED
+	if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
+		usage.SevenDay = progress
+REDACTED
+
+	if (usage.FiveHour == nil || usage.SevenDay == nil) && s.shouldProbeOpenAICodexSnapshot(account.ID, now) {
+		if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
+			mergeAccountExtra(account, updates)
+			if usage.UpdatedAt == nil {
+				usage.UpdatedAt = &now
+		REDACTED
+			if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
+				usage.FiveHour = progress
+		REDACTED
+			if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
+				usage.SevenDay = progress
+		REDACTED
+	REDACTED
+REDACTED
+
+	if s.usageLogRepo == nil {
+		return usage, nil
+REDACTED
+
+	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, now.Add(-5*time.Hour)); err == nil {
+		windowStats := windowStatsFromAccountStats(stats)
+		if hasMeaningfulWindowStats(windowStats) {
+			if usage.FiveHour == nil {
+				usage.FiveHour = &UsageProgress{Utilization: 0REDACTED
+		REDACTED
+			usage.FiveHour.WindowStats = windowStats
+	REDACTED
+REDACTED
+
+	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, now.Add(-7*24*time.Hour)); err == nil {
+		windowStats := windowStatsFromAccountStats(stats)
+		if hasMeaningfulWindowStats(windowStats) {
+			if usage.SevenDay == nil {
+				usage.SevenDay = &UsageProgress{Utilization: 0REDACTED
+		REDACTED
+			usage.SevenDay.WindowStats = windowStats
+	REDACTED
+REDACTED
+
+	return usage, nil
+REDACTED
+
+func (s *AccountUsageService) shouldProbeOpenAICodexSnapshot(accountID int64, now time.Time) bool {
+	if s == nil || s.cache == nil || accountID <= 0 {
+		return true
+REDACTED
+	if cached, ok := s.cache.openAIProbeCache.Load(accountID); ok {
+		if ts, ok := cached.(time.Time); ok && now.Sub(ts) < openAIProbeCacheTTL {
+			return false
+	REDACTED
+REDACTED
+	s.cache.openAIProbeCache.Store(accountID, now)
+	return true
+REDACTED
+
+func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, account *Account) (map[string]any, error) {
+	if account == nil || !account.IsOAuth() {
+		return nil, nil
+REDACTED
+	accessToken := account.GetOpenAIAccessToken()
+	if accessToken == "" {
+		return nil, fmt.Errorf("no access token available")
+REDACTED
+	modelID := openaipkg.DefaultTestModel
+	payload := createOpenAITestPayload(modelID, true)
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal openai probe payload: %w", err)
+REDACTED
+
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, chatgptCodexURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return nil, fmt.Errorf("create openai probe request: %w", err)
+REDACTED
+	req.Host = "chatgpt.com"
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("OpenAI-Beta", "responses=experimental")
+	req.Header.Set("Originator", "codex_cli_rs")
+	req.Header.Set("Version", openAICodexProbeVersion)
+	req.Header.Set("User-Agent", codexCLIUserAgent)
+	if s.identityCache != nil {
+		if fp, fpErr := s.identityCache.GetFingerprint(reqCtx, account.ID); fpErr == nil && fp != nil && strings.TrimSpace(fp.UserAgent) != "" {
+			req.Header.Set("User-Agent", strings.TrimSpace(fp.UserAgent))
+	REDACTED
+REDACTED
+	if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
+		req.Header.Set("chatgpt-account-id", chatgptAccountID)
+REDACTED
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+	client, err := httppool.GetClient(httppool.Options{
+		ProxyURL:              proxyURL,
+		Timeout:               15 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+REDACTED)
+	if err != nil {
+		return nil, fmt.Errorf("build openai probe client: %w", err)
+REDACTED
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("openai codex probe request failed: %w", err)
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("openai codex probe returned status %d", resp.StatusCode)
+REDACTED
+	if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
+		updates := buildCodexUsageExtraUpdates(snapshot, time.Now())
+		if len(updates) > 0 {
+			go func(accountID int64, updates map[string]any) {
+				updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer updateCancel()
+				_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
+		REDACTED(account.ID, updates)
+			return updates, nil
+	REDACTED
+REDACTED
+	return nil, nil
+REDACTED
+
+func mergeAccountExtra(account *Account, updates map[string]any) {
+	if account == nil || len(updates) == 0 {
+		return
+REDACTED
+	if account.Extra == nil {
+		account.Extra = make(map[string]any, len(updates))
+REDACTED
+	for k, v := range updates {
+		account.Extra[k] = v
+REDACTED
 REDACTED
 
 func (s *AccountUsageService) getGeminiUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
@@ -517,6 +688,72 @@ REDACTED
 		StandardCost: stats.StandardCost,
 		UserCost:     stats.UserCost,
 REDACTED
+REDACTED
+
+func hasMeaningfulWindowStats(stats *WindowStats) bool {
+	if stats == nil {
+		return false
+REDACTED
+	return stats.Requests > 0 || stats.Tokens > 0 || stats.Cost > 0 || stats.StandardCost > 0 || stats.UserCost > 0
+REDACTED
+
+func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now time.Time) *UsageProgress {
+	if len(extra) == 0 {
+		return nil
+REDACTED
+
+	var (
+		usedPercentKey string
+		resetAfterKey  string
+		resetAtKey     string
+	)
+
+	switch window {
+	case "5h":
+		usedPercentKey = "codex_5h_used_percent"
+		resetAfterKey = "codex_5h_reset_after_seconds"
+		resetAtKey = "codex_5h_reset_at"
+	case "7d":
+		usedPercentKey = "codex_7d_used_percent"
+		resetAfterKey = "codex_7d_reset_after_seconds"
+		resetAtKey = "codex_7d_reset_at"
+	default:
+		return nil
+REDACTED
+
+	usedRaw, ok := extra[usedPercentKey]
+	if !ok {
+		return nil
+REDACTED
+
+	progress := &UsageProgress{Utilization: parseExtraFloat64(usedRaw)REDACTED
+	if resetAtRaw, ok := extra[resetAtKey]; ok {
+		if resetAt, err := parseTime(fmt.Sprint(resetAtRaw)); err == nil {
+			progress.ResetsAt = &resetAt
+			progress.RemainingSeconds = int(time.Until(resetAt).Seconds())
+			if progress.RemainingSeconds < 0 {
+				progress.RemainingSeconds = 0
+		REDACTED
+	REDACTED
+REDACTED
+	if progress.ResetsAt == nil {
+		if resetAfterSeconds := parseExtraInt(extra[resetAfterKey]); resetAfterSeconds > 0 {
+			base := now
+			if updatedAtRaw, ok := extra["codex_usage_updated_at"]; ok {
+				if updatedAt, err := parseTime(fmt.Sprint(updatedAtRaw)); err == nil {
+					base = updatedAt
+			REDACTED
+		REDACTED
+			resetAt := base.Add(time.Duration(resetAfterSeconds) * time.Second)
+			progress.ResetsAt = &resetAt
+			progress.RemainingSeconds = int(time.Until(resetAt).Seconds())
+			if progress.RemainingSeconds < 0 {
+				progress.RemainingSeconds = 0
+		REDACTED
+	REDACTED
+REDACTED
+
+	return progress
 REDACTED
 
 func (s *AccountUsageService) GetAccountUsageStats(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.AccountUsageStatsResponse, error) {
