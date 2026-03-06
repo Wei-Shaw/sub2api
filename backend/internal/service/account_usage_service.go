@@ -98,8 +98,8 @@ REDACTED
 
 const (
 	apiCacheTTL             = 3 * time.Minute
-	apiErrorCacheTTL        = 1 * time.Minute            // 负缓存 TTL：429 等错误缓存 1 分钟，防止重试风暴
-	apiQueryMaxJitter       = 800 * time.Millisecond     // 用量查询最大随机延迟，打散并发请求避免反滥用检测
+	apiErrorCacheTTL        = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
+	apiQueryMaxJitter       = 800 * time.Millisecond // 用量查询最大随机延迟
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
 	openAICodexProbeVersion = "0.104.0"
@@ -107,11 +107,11 @@ const (
 
 // UsageCache 封装账户使用量相关的缓存
 type UsageCache struct {
-	apiCache         sync.Map // accountID -> *apiUsageCache
-	windowStatsCache sync.Map // accountID -> *windowStatsCache
-	antigravityCache sync.Map // accountID -> *antigravityUsageCache
+	apiCache         sync.Map           // accountID -> *apiUsageCache
+	windowStatsCache sync.Map           // accountID -> *windowStatsCache
+	antigravityCache sync.Map           // accountID -> *antigravityUsageCache
 	apiFlight        singleflight.Group // 防止同一账号的并发请求击穿缓存
-	openAIProbeCache sync.Map // accountID -> time.Time
+	openAIProbeCache sync.Map           // accountID -> time.Time
 REDACTED
 
 // NewUsageCache 创建 UsageCache 实例
@@ -326,7 +326,7 @@ REDACTED
 			if flightErr != nil {
 				return nil, flightErr
 		REDACTED
-			apiResp = result.(*ClaudeUsageResponse)
+			apiResp, _ = result.(*ClaudeUsageResponse)
 	REDACTED
 
 		// 3. 构建 UsageInfo（每次都重新计算 RemainingSeconds）
