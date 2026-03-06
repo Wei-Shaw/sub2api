@@ -288,32 +288,48 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 仅非 lite 模式获取窗口费用（PostgreSQL 聚合查询，高开销）
-	if !lite && len(windowCostAccountIDs) > 0 {
-		windowCosts = make(map[int64]float64)
-		var mu sync.Mutex
-		g, gctx := errgroup.WithContext(c.Request.Context())
-		g.SetLimit(10) // 限制并发数
-
-		for i := range accounts {
-			acc := &accounts[i]
-			if !acc.IsAnthropicOAuthOrSetupToken() || acc.GetWindowCostLimit() <= 0 {
-				continue
-		REDACTED
-			accCopy := acc // 闭包捕获
-			g.Go(func() error {
-				// 使用统一的窗口开始时间计算逻辑（考虑窗口过期情况）
-				startTime := accCopy.GetCurrentWindowStartTime()
-				stats, err := h.accountUsageService.GetAccountWindowStats(gctx, accCopy.ID, startTime)
-				if err == nil && stats != nil {
-					mu.Lock()
-					windowCosts[accCopy.ID] = stats.StandardCost // 使用标准费用
-					mu.Unlock()
+	// 窗口费用获取：lite 模式从快照缓存读取，非 lite 模式执行 PostgreSQL 查询后写入缓存
+	if len(windowCostAccountIDs) > 0 {
+		if lite {
+			// lite 模式：尝试从快照缓存读取
+			cacheKey := buildWindowCostCacheKey(windowCostAccountIDs)
+			if cached, ok := accountWindowCostCache.Get(cacheKey); ok {
+				if costs, ok := cached.Payload.(map[int64]float64); ok {
+					windowCosts = costs
 			REDACTED
-				return nil // 不返回错误，允许部分失败
-		REDACTED)
+		REDACTED
+			// 缓存未命中则 windowCosts 保持 nil（仅发生在服务刚启动时）
+	REDACTED else {
+			// 非 lite 模式：执行 PostgreSQL 聚合查询（高开销）
+			windowCosts = make(map[int64]float64)
+			var mu sync.Mutex
+			g, gctx := errgroup.WithContext(c.Request.Context())
+			g.SetLimit(10) // 限制并发数
+
+			for i := range accounts {
+				acc := &accounts[i]
+				if !acc.IsAnthropicOAuthOrSetupToken() || acc.GetWindowCostLimit() <= 0 {
+					continue
+			REDACTED
+				accCopy := acc // 闭包捕获
+				g.Go(func() error {
+					// 使用统一的窗口开始时间计算逻辑（考虑窗口过期情况）
+					startTime := accCopy.GetCurrentWindowStartTime()
+					stats, err := h.accountUsageService.GetAccountWindowStats(gctx, accCopy.ID, startTime)
+					if err == nil && stats != nil {
+						mu.Lock()
+						windowCosts[accCopy.ID] = stats.StandardCost // 使用标准费用
+						mu.Unlock()
+				REDACTED
+					return nil // 不返回错误，允许部分失败
+			REDACTED)
+		REDACTED
+			_ = g.Wait()
+
+			// 查询完毕后写入快照缓存，供 lite 模式使用
+			cacheKey := buildWindowCostCacheKey(windowCostAccountIDs)
+			accountWindowCostCache.Set(cacheKey, windowCosts)
 	REDACTED
-		_ = g.Wait()
 REDACTED
 
 	// Build response with concurrency info
