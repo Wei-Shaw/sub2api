@@ -236,6 +236,60 @@ REDACTED
 	require.NotContains(t, body, "\"name\":\"edit\"")
 REDACTED
 
+func TestOpenAIGatewayService_OAuthPassthrough_CompactUsesJSONAndKeepsNonStreaming(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	originalBody := []byte(`{"model":"gpt-5.1-codex","stream":true,"store":true,"instructions":"local-test-instructions","input":[{"type":"text","text":"compact me"REDACTED]REDACTED`)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "x-request-id": []string{"rid-compact"REDACTEDREDACTED,
+		Body:       io.NopCloser(strings.NewReader(`{"id":"cmp_123","usage":{"input_tokens":11,"output_tokens":22REDACTEDREDACTED`)),
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: respREDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: falseREDACTEDREDACTED,
+		httpUpstream: upstream,
+REDACTED
+
+	account := &Account{
+		ID:             123,
+		Name:           "acc",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeOAuth,
+		Concurrency:    1,
+		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
+		Extra:          map[string]any{"openai_passthrough": trueREDACTED,
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+REDACTED
+
+	result, err := svc.Forward(context.Background(), c, account, originalBody)
+REDACTED
+	require.NotNil(t, result)
+	require.False(t, result.Stream)
+
+	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "stream").Exists())
+	require.Equal(t, "gpt-5.1-codex", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "compact me", gjson.GetBytes(upstream.lastBody, "input.0.text").String())
+	require.Equal(t, "local-test-instructions", strings.TrimSpace(gjson.GetBytes(upstream.lastBody, "instructions").String()))
+	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Accept"))
+	require.Equal(t, codexCLIVersion, upstream.lastReq.Header.Get("Version"))
+	require.NotEmpty(t, upstream.lastReq.Header.Get("Session_Id"))
+	require.Equal(t, "chatgpt.com", upstream.lastReq.Host)
+	require.Equal(t, "chatgpt-acc", upstream.lastReq.Header.Get("chatgpt-account-id"))
+	require.Contains(t, rec.Body.String(), `"id":"cmp_123"`)
+REDACTED
+
 func TestOpenAIGatewayService_OAuthPassthrough_CodexMissingInstructionsRejectedBeforeUpstream(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	logSink, restore := captureStructuredLog(t)

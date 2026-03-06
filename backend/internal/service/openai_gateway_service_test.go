@@ -1248,6 +1248,90 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestOpenAIResponsesRequestPathSuffix(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	tests := []struct {
+		name string
+		path string
+		want string
+REDACTED{
+		{name: "exact v1 responses", path: "/v1/responses", want: ""REDACTED,
+		{name: "compact v1 responses", path: "/v1/responses/compact", want: "/compact"REDACTED,
+		{name: "compact alias responses", path: "/responses/compact/", want: "/compact"REDACTED,
+		{name: "nested suffix", path: "/openai/v1/responses/compact/detail", want: "/compact/detail"REDACTED,
+		{name: "unrelated path", path: "/v1/chat/completions", want: ""REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c.Request = httptest.NewRequest(http.MethodPost, tt.path, nil)
+			require.Equal(t, tt.want, openAIResponsesRequestPathSuffix(c))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestOpenAIBuildUpstreamRequestOpenAIPassthroughPreservesCompactPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader([]byte(`{"model":"gpt-5"REDACTED`)))
+
+	svc := &OpenAIGatewayService{REDACTED
+	account := &Account{Type: AccountTypeOAuthREDACTED
+
+	req, err := svc.buildUpstreamRequestOpenAIPassthrough(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"REDACTED`), "token")
+REDACTED
+	require.Equal(t, chatgptCodexURL+"/compact", req.URL.String())
+	require.Equal(t, "application/json", req.Header.Get("Accept"))
+	require.Equal(t, codexCLIVersion, req.Header.Get("Version"))
+	require.NotEmpty(t, req.Header.Get("Session_Id"))
+REDACTED
+
+func TestOpenAIBuildUpstreamRequestCompactForcesJSONAcceptForOAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader([]byte(`{"model":"gpt-5"REDACTED`)))
+
+	svc := &OpenAIGatewayService{REDACTED
+	account := &Account{
+		Type:        AccountTypeOAuth,
+REDACTED"chatgpt_account_id": "chatgpt-acc"REDACTED,
+REDACTED
+
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"REDACTED`), "token", false, "", true)
+REDACTED
+	require.Equal(t, chatgptCodexURL+"/compact", req.URL.String())
+	require.Equal(t, "application/json", req.Header.Get("Accept"))
+	require.Equal(t, codexCLIVersion, req.Header.Get("Version"))
+	require.NotEmpty(t, req.Header.Get("Session_Id"))
+REDACTED
+
+func TestOpenAIBuildUpstreamRequestPreservesCompactPathForAPIKeyBaseURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/responses/compact", bytes.NewReader([]byte(`{"model":"gpt-5"REDACTED`)))
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{
+		Security: config.SecurityConfig{
+			URLAllowlist: config.URLAllowlistConfig{Enabled: falseREDACTED,
+	REDACTED,
+REDACTEDREDACTED
+	account := &Account{
+		Type:        AccountTypeAPIKey,
+		Platform:    PlatformOpenAI,
+REDACTED"base_url": "https://example.com/v1"REDACTED,
+REDACTED
+
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"REDACTED`), "token", false, "", false)
+REDACTED
+	require.Equal(t, "https://example.com/v1/responses/compact", req.URL.String())
+REDACTED
+
 // ==================== P1-08 修复：model 替换性能优化测试 ====================
 
 func TestReplaceModelInSSELine(t *testing.T) {

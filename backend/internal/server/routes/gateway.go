@@ -49,6 +49,7 @@ REDACTED
 		gateway.GET("/usage", h.Gateway.Usage)
 		// OpenAI Responses API
 		gateway.POST("/responses", h.OpenAIGateway.Responses)
+		gateway.POST("/responses/*subpath", h.OpenAIGateway.Responses)
 		gateway.GET("/responses", h.OpenAIGateway.ResponsesWebSocket)
 		// 明确阻止旧协议入口：OpenAI 仅支持 Responses API，避免客户端误解为会自动路由到其它平台。
 		gateway.POST("/chat/completions", func(c *gin.Context) {
@@ -77,6 +78,7 @@ REDACTED
 
 	// OpenAI Responses API（不带v1前缀的别名）
 	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.Responses)
+	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.Responses)
 	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.ResponsesWebSocket)
 
 	// Antigravity 模型列表
