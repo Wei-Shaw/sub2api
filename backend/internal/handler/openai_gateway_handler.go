@@ -118,6 +118,20 @@ REDACTED
 REDACTED
 
 	setOpsRequestContext(c, "", false, body)
+	sessionHashBody := body
+	if service.IsOpenAIResponsesCompactPathForTest(c) {
+		if compactSeed := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String()); compactSeed != "" {
+			c.Set(service.OpenAICompactSessionSeedKeyForTest(), compactSeed)
+	REDACTED
+		normalizedCompactBody, normalizedCompact, compactErr := service.NormalizeOpenAICompactRequestBodyForTest(body)
+		if compactErr != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to normalize compact request body")
+			return
+	REDACTED
+		if normalizedCompact {
+			body = normalizedCompactBody
+	REDACTED
+REDACTED
 
 	// 校验请求体 JSON 合法性
 	if !gjson.ValidBytes(body) {
@@ -193,7 +207,7 @@ REDACTED
 REDACTED
 
 	// Generate session hash (header first; fallback to prompt_cache_key)
-	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
+	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -425,6 +439,262 @@ REDACTED
 		return
 REDACTED
 	log.Warn("codex.remote_compact.failed")
+REDACTED
+
+// Messages handles Anthropic Messages API requests routed to OpenAI platform.
+// POST /v1/messages (when group platform is OpenAI)
+func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
+	streamStarted := false
+	defer h.recoverAnthropicMessagesPanic(c, &streamStarted)
+
+	requestStart := time.Now()
+
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok {
+		h.anthropicErrorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
+		return
+REDACTED
+
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		h.anthropicErrorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
+		return
+REDACTED
+	reqLog := requestLogger(
+		c,
+		"handler.openai_gateway.messages",
+		zap.Int64("user_id", subject.UserID),
+		zap.Int64("api_key_id", apiKey.ID),
+		zap.Any("group_id", apiKey.GroupID),
+	)
+	if !h.ensureResponsesDependencies(c, reqLog) {
+		return
+REDACTED
+
+	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	if err != nil {
+		if maxErr, ok := extractMaxBytesError(err); ok {
+			h.anthropicErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+			return
+	REDACTED
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		return
+REDACTED
+	if len(body) == 0 {
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
+		return
+REDACTED
+
+	if !gjson.ValidBytes(body) {
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		return
+REDACTED
+
+	modelResult := gjson.GetBytes(body, "model")
+	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+		return
+REDACTED
+	reqModel := modelResult.String()
+	reqStream := gjson.GetBytes(body, "stream").Bool()
+
+	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+
+	setOpsRequestContext(c, reqModel, reqStream, body)
+
+	subscription, _ := middleware2.GetSubscriptionFromContext(c)
+
+	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
+	routingStart := time.Now()
+
+	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted, reqLog)
+	if !acquired {
+		return
+REDACTED
+	if userReleaseFunc != nil {
+		defer userReleaseFunc()
+REDACTED
+
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+		reqLog.Info("openai_messages.billing_eligibility_check_failed", zap.Error(err))
+		status, code, message := billingErrorDetails(err)
+		h.anthropicStreamingAwareError(c, status, code, message, streamStarted)
+		return
+REDACTED
+
+	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
+	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
+
+	maxAccountSwitches := h.maxAccountSwitches
+	switchCount := 0
+	failedAccountIDs := make(map[int64]struct{REDACTED)
+	var lastFailoverErr *service.UpstreamFailoverError
+
+	for {
+		reqLog.Debug("openai_messages.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
+		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithScheduler(
+			c.Request.Context(),
+			apiKey.GroupID,
+			"", // no previous_response_id
+			sessionHash,
+			reqModel,
+			failedAccountIDs,
+			service.OpenAIUpstreamTransportAny,
+		)
+		if err != nil {
+			reqLog.Warn("openai_messages.account_select_failed",
+				zap.Error(err),
+				zap.Int("excluded_account_count", len(failedAccountIDs)),
+			)
+			if len(failedAccountIDs) == 0 {
+				h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+				return
+		REDACTED
+			if lastFailoverErr != nil {
+				h.handleAnthropicFailoverExhausted(c, lastFailoverErr, streamStarted)
+		REDACTED else {
+				h.anthropicStreamingAwareError(c, http.StatusBadGateway, "api_error", "Upstream request failed", streamStarted)
+		REDACTED
+			return
+	REDACTED
+		if selection == nil || selection.Account == nil {
+			h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
+			return
+	REDACTED
+		account := selection.Account
+		reqLog.Debug("openai_messages.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
+		_ = scheduleDecision
+		setOpsSelectedAccount(c, account.ID, account.Platform)
+
+		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
+		if !acquired {
+			return
+	REDACTED
+
+		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
+		forwardStart := time.Now()
+
+		result, err := h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, body, promptCacheKey)
+
+		forwardDurationMs := time.Since(forwardStart).Milliseconds()
+		if accountReleaseFunc != nil {
+			accountReleaseFunc()
+	REDACTED
+		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
+		responseLatencyMs := forwardDurationMs
+		if upstreamLatencyMs > 0 && forwardDurationMs > upstreamLatencyMs {
+			responseLatencyMs = forwardDurationMs - upstreamLatencyMs
+	REDACTED
+		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
+		if err == nil && result != nil && result.FirstTokenMs != nil {
+			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
+	REDACTED
+		if err != nil {
+			var failoverErr *service.UpstreamFailoverError
+			if errors.As(err, &failoverErr) {
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+				h.gatewayService.RecordOpenAIAccountSwitch()
+				failedAccountIDs[account.ID] = struct{REDACTED{REDACTED
+				lastFailoverErr = failoverErr
+				if switchCount >= maxAccountSwitches {
+					h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
+					return
+			REDACTED
+				switchCount++
+				reqLog.Warn("openai_messages.upstream_failover_switching",
+					zap.Int64("account_id", account.ID),
+					zap.Int("upstream_status", failoverErr.StatusCode),
+					zap.Int("switch_count", switchCount),
+					zap.Int("max_switches", maxAccountSwitches),
+				)
+				continue
+		REDACTED
+			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+			wroteFallback := h.ensureAnthropicErrorResponse(c, streamStarted)
+			reqLog.Warn("openai_messages.forward_failed",
+				zap.Int64("account_id", account.ID),
+				zap.Bool("fallback_error_response_written", wroteFallback),
+				zap.Error(err),
+			)
+			return
+	REDACTED
+		if result != nil {
+			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
+	REDACTED else {
+			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
+	REDACTED
+
+		userAgent := c.GetHeader("User-Agent")
+		clientIP := ip.GetClientIP(c)
+
+		h.submitUsageRecordTask(func(ctx context.Context) {
+			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
+				Result:        result,
+				APIKey:        apiKey,
+				User:          apiKey.User,
+				Account:       account,
+				Subscription:  subscription,
+				UserAgent:     userAgent,
+				IPAddress:     clientIP,
+				APIKeyService: h.apiKeyService,
+		REDACTED); err != nil {
+				logger.L().With(
+					zap.String("component", "handler.openai_gateway.messages"),
+					zap.Int64("user_id", subject.UserID),
+					zap.Int64("api_key_id", apiKey.ID),
+					zap.Any("group_id", apiKey.GroupID),
+					zap.String("model", reqModel),
+					zap.Int64("account_id", account.ID),
+				).Error("openai_messages.record_usage_failed", zap.Error(err))
+		REDACTED
+	REDACTED)
+		reqLog.Debug("openai_messages.request_completed",
+			zap.Int64("account_id", account.ID),
+			zap.Int("switch_count", switchCount),
+		)
+		return
+REDACTED
+REDACTED
+
+// anthropicErrorResponse writes an error in Anthropic Messages API format.
+func (h *OpenAIGatewayHandler) anthropicErrorResponse(c *gin.Context, status int, errType, message string) {
+	c.JSON(status, gin.H{
+		"type": "error",
+		"error": gin.H{
+			"type":    errType,
+			"message": message,
+	REDACTED,
+REDACTED)
+REDACTED
+
+// anthropicStreamingAwareError handles errors that may occur during streaming,
+// using Anthropic SSE error format.
+func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
+	if streamStarted {
+		flusher, ok := c.Writer.(http.Flusher)
+		if ok {
+			errorEvent := "event: error\ndata: " + `{"type":"error","error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message) + `REDACTEDREDACTED` + "\n\n"
+			fmt.Fprint(c.Writer, errorEvent) //nolint:errcheck
+			flusher.Flush()
+	REDACTED
+		return
+REDACTED
+	h.anthropicErrorResponse(c, status, errType, message)
+REDACTED
+
+// handleAnthropicFailoverExhausted maps upstream failover errors to Anthropic format.
+func (h *OpenAIGatewayHandler) handleAnthropicFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
+	status, errType, errMsg := h.mapUpstreamError(failoverErr.StatusCode)
+	h.anthropicStreamingAwareError(c, status, errType, errMsg, streamStarted)
+REDACTED
+
+// ensureAnthropicErrorResponse writes a fallback Anthropic error if no response was written.
+func (h *OpenAIGatewayHandler) ensureAnthropicErrorResponse(c *gin.Context, streamStarted bool) bool {
+	if c == nil || c.Writer == nil || c.Writer.Written() {
+		return false
+REDACTED
+	h.anthropicStreamingAwareError(c, http.StatusBadGateway, "api_error", "Upstream request failed", streamStarted)
+	return true
 REDACTED
 
 func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context, body []byte, reqLog *zap.Logger) bool {
@@ -905,6 +1175,26 @@ REDACTED
 		zap.Any("panic", recovered),
 		zap.ByteString("stack", debug.Stack()),
 	)
+REDACTED
+
+// recoverAnthropicMessagesPanic recovers from panics in the Anthropic Messages
+// handler and returns an Anthropic-formatted error response.
+func (h *OpenAIGatewayHandler) recoverAnthropicMessagesPanic(c *gin.Context, streamStarted *bool) {
+	recovered := recover()
+	if recovered == nil {
+		return
+REDACTED
+
+	started := streamStarted != nil && *streamStarted
+	requestLogger(c, "handler.openai_gateway.messages").Error(
+		"openai.messages_panic_recovered",
+		zap.Bool("stream_started", started),
+		zap.Any("panic", recovered),
+		zap.ByteString("stack", debug.Stack()),
+	)
+	if !started {
+		h.anthropicErrorResponse(c, http.StatusInternalServerError, "api_error", "Internal server error")
+REDACTED
 REDACTED
 
 func (h *OpenAIGatewayHandler) ensureResponsesDependencies(c *gin.Context, reqLog *zap.Logger) bool {

@@ -25,6 +25,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
@@ -49,6 +50,8 @@ const (
 	openAIWSRetryBackoffInitialDefault = 120 * time.Millisecond
 	openAIWSRetryBackoffMaxDefault     = 2 * time.Second
 	openAIWSRetryJitterRatioDefault    = 0.2
+	openAICompactSessionSeedKey        = "openai_compact_session_seed"
+	codexCLIVersion                    = "0.104.0"
 )
 
 // OpenAI allowed headers whitelist (for non-passthrough).
@@ -898,6 +901,22 @@ REDACTED
 	return false
 REDACTED
 
+// ExtractSessionID extracts the raw session ID from headers or body without hashing.
+// Used by ForwardAsAnthropic to pass as prompt_cache_key for upstream cache.
+func (s *OpenAIGatewayService) ExtractSessionID(c *gin.Context, body []byte) string {
+	if c == nil {
+		return ""
+REDACTED
+	sessionID := strings.TrimSpace(c.GetHeader("session_id"))
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(c.GetHeader("conversation_id"))
+REDACTED
+	if sessionID == "" && len(body) > 0 {
+		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
+REDACTED
+	return sessionID
+REDACTED
+
 // GenerateSessionHash generates a sticky-session hash for OpenAI requests.
 //
 // Priority:
@@ -1615,7 +1634,7 @@ REDACTED
 REDACTED
 
 	if account.Type == AccountTypeOAuth {
-		codexResult := applyCodexOAuthTransform(reqBody, isCodexCLI)
+		codexResult := applyCodexOAuthTransform(reqBody, isCodexCLI, isOpenAIResponsesCompactPath(c))
 		if codexResult.Modified {
 			bodyModified = true
 			disablePatch()
@@ -2047,14 +2066,14 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			return nil, fmt.Errorf("openai passthrough rejected before upstream: %s", rejectReason)
 	REDACTED
 
-		normalizedBody, normalized, err := normalizeOpenAIPassthroughOAuthBody(body)
+		normalizedBody, normalized, err := normalizeOpenAIPassthroughOAuthBody(body, isOpenAIResponsesCompactPath(c))
 		if err != nil {
 			return nil, err
 	REDACTED
 		if normalized {
 			body = normalizedBody
-			reqStream = true
 	REDACTED
+		reqStream = gjson.GetBytes(body, "stream").Bool()
 REDACTED
 
 	logger.LegacyPrintf("service.openai_gateway",
@@ -2219,6 +2238,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 			targetURL = buildOpenAIResponsesURL(validatedURL)
 	REDACTED
 REDACTED
+	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
@@ -2252,7 +2272,15 @@ REDACTED
 		if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
 			req.Header.Set("chatgpt-account-id", chatgptAccountID)
 	REDACTED
-		if req.Header.Get("accept") == "" {
+		if isOpenAIResponsesCompactPath(c) {
+			req.Header.Set("accept", "application/json")
+			if req.Header.Get("version") == "" {
+				req.Header.Set("version", codexCLIVersion)
+		REDACTED
+			if req.Header.Get("session_id") == "" {
+				req.Header.Set("session_id", resolveOpenAICompactSessionID(c))
+		REDACTED
+	REDACTED else if req.Header.Get("accept") == "" {
 			req.Header.Set("accept", "text/event-stream")
 	REDACTED
 		if req.Header.Get("OpenAI-Beta") == "" {
@@ -2599,6 +2627,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	default:
 		targetURL = openaiPlatformAPIURL
 REDACTED
+	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
@@ -2635,7 +2664,17 @@ REDACTED
 	REDACTED else {
 			req.Header.Set("originator", "opencode")
 	REDACTED
-		req.Header.Set("accept", "text/event-stream")
+		if isOpenAIResponsesCompactPath(c) {
+			req.Header.Set("accept", "application/json")
+			if req.Header.Get("version") == "" {
+				req.Header.Set("version", codexCLIVersion)
+		REDACTED
+			if req.Header.Get("session_id") == "" {
+				req.Header.Set("session_id", resolveOpenAICompactSessionID(c))
+		REDACTED
+	REDACTED else {
+			req.Header.Set("accept", "text/event-stream")
+	REDACTED
 		if promptCacheKey != "" {
 			req.Header.Set("conversation_id", promptCacheKey)
 			req.Header.Set("session_id", promptCacheKey)
@@ -3426,6 +3465,95 @@ REDACTED
 	return normalized + "/v1/responses"
 REDACTED
 
+func IsOpenAIResponsesCompactPathForTest(c *gin.Context) bool {
+	return isOpenAIResponsesCompactPath(c)
+REDACTED
+
+func OpenAICompactSessionSeedKeyForTest() string {
+	return openAICompactSessionSeedKey
+REDACTED
+
+func NormalizeOpenAICompactRequestBodyForTest(body []byte) ([]byte, bool, error) {
+	return normalizeOpenAICompactRequestBody(body)
+REDACTED
+
+func isOpenAIResponsesCompactPath(c *gin.Context) bool {
+	suffix := strings.TrimSpace(openAIResponsesRequestPathSuffix(c))
+	return suffix == "/compact" || strings.HasPrefix(suffix, "/compact/")
+REDACTED
+
+func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
+	if len(body) == 0 {
+		return body, false, nil
+REDACTED
+
+	normalized := []byte(`{REDACTED`)
+	for _, field := range []string{"model", "input", "instructions", "previous_response_id"REDACTED {
+		value := gjson.GetBytes(body, field)
+		if !value.Exists() {
+			continue
+	REDACTED
+		next, err := sjson.SetRawBytes(normalized, field, []byte(value.Raw))
+		if err != nil {
+			return body, false, fmt.Errorf("normalize compact body %s: %w", field, err)
+	REDACTED
+		normalized = next
+REDACTED
+
+	if bytes.Equal(bytes.TrimSpace(body), bytes.TrimSpace(normalized)) {
+		return body, false, nil
+REDACTED
+	return normalized, true, nil
+REDACTED
+
+func resolveOpenAICompactSessionID(c *gin.Context) string {
+	if c != nil {
+		if sessionID := strings.TrimSpace(c.GetHeader("session_id")); sessionID != "" {
+			return sessionID
+	REDACTED
+		if conversationID := strings.TrimSpace(c.GetHeader("conversation_id")); conversationID != "" {
+			return conversationID
+	REDACTED
+		if seed, ok := c.Get(openAICompactSessionSeedKey); ok {
+			if seedStr, ok := seed.(string); ok && strings.TrimSpace(seedStr) != "" {
+				return strings.TrimSpace(seedStr)
+		REDACTED
+	REDACTED
+REDACTED
+	return uuid.NewString()
+REDACTED
+
+func openAIResponsesRequestPathSuffix(c *gin.Context) string {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return ""
+REDACTED
+	normalizedPath := strings.TrimRight(strings.TrimSpace(c.Request.URL.Path), "/")
+	if normalizedPath == "" {
+		return ""
+REDACTED
+	idx := strings.LastIndex(normalizedPath, "/responses")
+	if idx < 0 {
+		return ""
+REDACTED
+	suffix := normalizedPath[idx+len("/responses"):]
+	if suffix == "" || suffix == "/" {
+		return ""
+REDACTED
+	if !strings.HasPrefix(suffix, "/") {
+		return ""
+REDACTED
+	return suffix
+REDACTED
+
+func appendOpenAIResponsesRequestPathSuffix(baseURL, suffix string) string {
+	trimmedBase := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	trimmedSuffix := strings.TrimSpace(suffix)
+	if trimmedBase == "" || trimmedSuffix == "" {
+		return trimmedBase
+REDACTED
+	return trimmedBase + trimmedSuffix
+REDACTED
+
 func (s *OpenAIGatewayService) replaceModelInResponseBody(body []byte, fromModel, toModel string) []byte {
 	// 使用 gjson/sjson 精确替换 model 字段，避免全量 JSON 反序列化
 	if m := gjson.GetBytes(body, "model"); m.Exists() && m.Str == fromModel {
@@ -3815,8 +3943,8 @@ REDACTED
 REDACTED
 
 // normalizeOpenAIPassthroughOAuthBody 将透传 OAuth 请求体收敛为旧链路关键行为：
-// 1) store=false 2) stream=true
-func normalizeOpenAIPassthroughOAuthBody(body []byte) ([]byte, bool, error) {
+// 1) store=false 2) 非 compact 保持 stream=true；compact 强制 stream=false
+func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, bool, error) {
 	if len(body) == 0 {
 		return body, false, nil
 REDACTED
@@ -3824,22 +3952,40 @@ REDACTED
 	normalized := body
 	changed := false
 
-	if store := gjson.GetBytes(normalized, "store"); !store.Exists() || store.Type != gjson.False {
-		next, err := sjson.SetBytes(normalized, "store", false)
-		if err != nil {
-			return body, false, fmt.Errorf("normalize passthrough body store=false: %w", err)
+	if compact {
+		if store := gjson.GetBytes(normalized, "store"); store.Exists() {
+			next, err := sjson.DeleteBytes(normalized, "store")
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body delete store: %w", err)
+		REDACTED
+			normalized = next
+			changed = true
 	REDACTED
-		normalized = next
-		changed = true
-REDACTED
-
-	if stream := gjson.GetBytes(normalized, "stream"); !stream.Exists() || stream.Type != gjson.True {
-		next, err := sjson.SetBytes(normalized, "stream", true)
-		if err != nil {
-			return body, false, fmt.Errorf("normalize passthrough body stream=true: %w", err)
+		if stream := gjson.GetBytes(normalized, "stream"); stream.Exists() {
+			next, err := sjson.DeleteBytes(normalized, "stream")
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body delete stream: %w", err)
+		REDACTED
+			normalized = next
+			changed = true
 	REDACTED
-		normalized = next
-		changed = true
+REDACTED else {
+		if store := gjson.GetBytes(normalized, "store"); !store.Exists() || store.Type != gjson.False {
+			next, err := sjson.SetBytes(normalized, "store", false)
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body store=false: %w", err)
+		REDACTED
+			normalized = next
+			changed = true
+	REDACTED
+		if stream := gjson.GetBytes(normalized, "stream"); !stream.Exists() || stream.Type != gjson.True {
+			next, err := sjson.SetBytes(normalized, "stream", true)
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body stream=true: %w", err)
+		REDACTED
+			normalized = next
+			changed = true
+	REDACTED
 REDACTED
 
 	return normalized, changed, nil

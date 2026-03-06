@@ -77,7 +77,7 @@ type codexTransformResult struct {
 	PromptCacheKey  string
 REDACTED
 
-func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool) codexTransformResult {
+func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact bool) codexTransformResult {
 	result := codexTransformResult{REDACTED
 	// 工具续链需求会影响存储策略与 input 过滤逻辑。
 	needsToolContinuation := NeedsToolContinuation(reqBody)
@@ -95,15 +95,26 @@ REDACTED
 		result.NormalizedModel = normalizedModel
 REDACTED
 
-	// OAuth 走 ChatGPT internal API 时，store 必须为 false；显式 true 也会强制覆盖。
-	// 避免上游返回 "Store must be set to false"。
-	if v, ok := reqBody["store"].(bool); !ok || v {
-		reqBody["store"] = false
-		result.Modified = true
-REDACTED
-	if v, ok := reqBody["stream"].(bool); !ok || !v {
-		reqBody["stream"] = true
-		result.Modified = true
+	if isCompact {
+		if _, ok := reqBody["store"]; ok {
+			delete(reqBody, "store")
+			result.Modified = true
+	REDACTED
+		if _, ok := reqBody["stream"]; ok {
+			delete(reqBody, "stream")
+			result.Modified = true
+	REDACTED
+REDACTED else {
+		// OAuth 走 ChatGPT internal API 时，store 必须为 false；显式 true 也会强制覆盖。
+		// 避免上游返回 "Store must be set to false"。
+		if v, ok := reqBody["store"].(bool); !ok || v {
+			reqBody["store"] = false
+			result.Modified = true
+	REDACTED
+		if v, ok := reqBody["stream"].(bool); !ok || !v {
+			reqBody["stream"] = true
+			result.Modified = true
+	REDACTED
 REDACTED
 
 	// Strip parameters unsupported by codex models via the Responses API.

@@ -43,12 +43,33 @@ REDACTED
 	gateway.Use(gin.HandlerFunc(apiKeyAuth))
 	gateway.Use(requireGroupAnthropic)
 	{
-		gateway.POST("/messages", h.Gateway.Messages)
-		gateway.POST("/messages/count_tokens", h.Gateway.CountTokens)
+		// /v1/messages: auto-route based on group platform
+		gateway.POST("/messages", func(c *gin.Context) {
+			if getGroupPlatform(c) == service.PlatformOpenAI {
+				h.OpenAIGateway.Messages(c)
+				return
+		REDACTED
+			h.Gateway.Messages(c)
+	REDACTED)
+		// /v1/messages/count_tokens: OpenAI groups get 404
+		gateway.POST("/messages/count_tokens", func(c *gin.Context) {
+			if getGroupPlatform(c) == service.PlatformOpenAI {
+				c.JSON(http.StatusNotFound, gin.H{
+					"type": "error",
+					"error": gin.H{
+						"type":    "not_found_error",
+						"message": "Token counting is not supported for this platform",
+				REDACTED,
+			REDACTED)
+				return
+		REDACTED
+			h.Gateway.CountTokens(c)
+	REDACTED)
 		gateway.GET("/models", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
 		// OpenAI Responses API
 		gateway.POST("/responses", h.OpenAIGateway.Responses)
+		gateway.POST("/responses/*subpath", h.OpenAIGateway.Responses)
 		gateway.GET("/responses", h.OpenAIGateway.ResponsesWebSocket)
 		// 明确阻止旧协议入口：OpenAI 仅支持 Responses API，避免客户端误解为会自动路由到其它平台。
 		gateway.POST("/chat/completions", func(c *gin.Context) {
@@ -77,6 +98,7 @@ REDACTED
 
 	// OpenAI Responses API（不带v1前缀的别名）
 	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.Responses)
+	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.Responses)
 	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.ResponsesWebSocket)
 
 	// Antigravity 模型列表
@@ -131,4 +153,13 @@ REDACTED else {
 REDACTED
 	// Sora 媒体代理（签名 URL，无需 API Key）
 	r.GET("/sora/media-signed/*filepath", h.SoraGateway.MediaProxySigned)
+REDACTED
+
+// getGroupPlatform extracts the group platform from the API Key stored in context.
+func getGroupPlatform(c *gin.Context) string {
+	apiKey, ok := middleware.GetAPIKeyFromContext(c)
+	if !ok || apiKey.Group == nil {
+		return ""
+REDACTED
+	return apiKey.Group.Platform
 REDACTED
