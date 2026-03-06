@@ -137,7 +137,9 @@ REDACTED
 				Message:            upstreamMsg,
 				Detail:             upstreamDetail,
 		REDACTED)
-			s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+			if s.rateLimitService != nil {
+				s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+		REDACTED
 			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 	REDACTED
 		// Non-failover error: return Anthropic-formatted error to client
