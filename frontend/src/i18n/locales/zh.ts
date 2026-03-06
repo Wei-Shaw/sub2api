@@ -2640,6 +2640,12 @@ export default {
       allProtocols: '全部协议',
       allStatus: '全部状态',
       searchProxies: '搜索代理...',
+      protocols: {
+        http: 'HTTP',
+        https: 'HTTPS',
+        socks5: 'SOCKS5',
+        socks5h: 'SOCKS5H (远程 DNS)',
+      REDACTED,
       name: '名称',
       protocol: '协议',
       host: '主机',
