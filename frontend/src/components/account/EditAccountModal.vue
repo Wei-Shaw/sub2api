@@ -759,6 +759,9 @@
         </div>
       </div>
 
+      <!-- API Key 账号配额限制 -->
+      <QuotaLimitCard v-if="account?.type === 'apikey'" v-model="editQuotaLimit" />
+
       <!-- OpenAI OAuth Codex 官方客户端限制开关 -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
@@ -1269,6 +1272,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup REDACTED from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput REDACTED from '@/utils/format'
 import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
@@ -1386,6 +1390,7 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
+const editQuotaLimit = ref<number | null>(null)
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') REDACTED,
   // TODO: ctx_pool 选项暂时隐藏，待测试完成后恢复
@@ -1539,6 +1544,14 @@ watch(
       REDACTED
       if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
         anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
+      REDACTED
+
+      // Load quota limit for apikey accounts
+      if (newAccount.type === 'apikey') {
+        const quotaVal = extra?.quota_limit as number | undefined
+        editQuotaLimit.value = (quotaVal && quotaVal > 0) ? quotaVal : null
+      REDACTED else {
+        editQuotaLimit.value = null
       REDACTED
 
       // Load antigravity model mapping (Antigravity 只支持映射模式)
@@ -2280,6 +2293,19 @@ const handleSubmit = async () => {
         REDACTED
       REDACTED
 
+      updatePayload.extra = newExtra
+    REDACTED
+
+    // For apikey accounts, handle quota_limit in extra
+    if (props.account.type === 'apikey') {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) || {REDACTED
+      const newExtra: Record<string, unknown> = { ...currentExtra REDACTED
+      if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
+        newExtra.quota_limit = editQuotaLimit.value
+      REDACTED else {
+        delete newExtra.quota_limit
+      REDACTED
       updatePayload.extra = newExtra
     REDACTED
 

@@ -176,6 +176,14 @@ func (m *mockAccountRepoForGemini) BulkUpdate(ctx context.Context, ids []int64, 
 	return 0, nil
 REDACTED
 
+func (m *mockAccountRepoForGemini) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error {
+	return nil
+REDACTED
+
+func (m *mockAccountRepoForGemini) ResetQuotaUsed(ctx context.Context, id int64) error {
+	return nil
+REDACTED
+
 // Verify interface implementation
 var _ AccountRepository = (*mockAccountRepoForGemini)(nil)
 

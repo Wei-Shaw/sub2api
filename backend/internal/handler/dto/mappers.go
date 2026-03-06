@@ -248,6 +248,17 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// 提取 API Key 账号配额限制（仅 apikey 类型有效）
+	if a.Type == service.AccountTypeAPIKey {
+		if limit := a.GetQuotaLimit(); limit > 0 {
+			out.QuotaLimit = &limit
+	REDACTED
+		used := a.GetQuotaUsed()
+		if out.QuotaLimit != nil {
+			out.QuotaUsed = &used
+	REDACTED
+REDACTED
+
 	return out
 REDACTED
 

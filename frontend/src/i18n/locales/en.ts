@@ -1734,6 +1734,10 @@ export default {
           stickyExemptWarning: 'RPM limit (Sticky Exempt) - Approaching limit',
           stickyExemptOver: 'RPM limit (Sticky Exempt) - Over limit, sticky only'
         REDACTED,
+        quota: {
+          exceeded: 'Quota exceeded, account paused',
+          normal: 'Quota normal'
+        REDACTED,
       REDACTED,
       tempUnschedulable: {
         title: 'Temp Unschedulable',
@@ -1779,6 +1783,14 @@ export default {
         REDACTED
       REDACTED,
       clearRateLimit: 'Clear Rate Limit',
+      resetQuota: 'Reset Quota',
+      quotaLimit: 'Quota Limit',
+      quotaLimitPlaceholder: '0 means unlimited',
+      quotaLimitHint: 'Set max spending limit (USD). Account will be paused when reached. Changing limit won\'t reset usage.',
+      quotaLimitToggle: 'Enable Quota Limit',
+      quotaLimitToggleHint: 'When enabled, account will be paused when usage reaches the set limit',
+      quotaLimitAmount: 'Limit Amount',
+      quotaLimitAmountHint: 'Maximum spending limit (USD). Account will be auto-paused when reached. Changing limit won\'t reset usage.',
       testConnection: 'Test Connection',
       reAuthorize: 'Re-Authorize',
       refreshToken: 'Refresh Token',

@@ -41,6 +41,10 @@
               <Icon name="clock" size="sm" />
               {{ t('admin.accounts.clearRateLimit') REDACTEDREDACTED
             </button>
+            <button v-if="hasQuotaLimit" @click="$emit('reset-quota', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-teal-600 hover:bg-gray-100 dark:hover:bg-dark-700">
+              <Icon name="refresh" size="sm" />
+              {{ t('admin.accounts.resetQuota') REDACTEDREDACTED
+            </button>
           </template>
         </div>
       </div>
@@ -55,7 +59,7 @@ import { Icon REDACTED from '@/components/icons'
 import type { Account REDACTED from '@/types'
 
 const props = defineProps<{ show: boolean; account: Account | null; position: { top: number; left: number REDACTED | null REDACTED>()
-const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'reauth', 'refresh-token', 'reset-status', 'clear-rate-limit'])
+const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'reauth', 'refresh-token', 'reset-status', 'clear-rate-limit', 'reset-quota'])
 const { t REDACTED = useI18n()
 const isRateLimited = computed(() => {
   if (props.account?.rate_limit_reset_at && new Date(props.account.rate_limit_reset_at) > new Date()) {
@@ -71,6 +75,12 @@ const isRateLimited = computed(() => {
   return false
 REDACTED)
 const isOverloaded = computed(() => props.account?.overload_until && new Date(props.account.overload_until) > new Date())
+const hasQuotaLimit = computed(() => {
+  return props.account?.type === 'apikey' &&
+    props.account?.quota_limit !== undefined &&
+    props.account?.quota_limit !== null &&
+    props.account?.quota_limit > 0
+REDACTED)
 
 const handleKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape') emit('close')

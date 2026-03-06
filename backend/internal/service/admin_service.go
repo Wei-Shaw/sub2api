@@ -84,6 +84,7 @@ type AdminService interface {
 	DeleteRedeemCode(ctx context.Context, id int64) error
 	BatchDeleteRedeemCodes(ctx context.Context, ids []int64) (int64, error)
 	ExpireRedeemCode(ctx context.Context, id int64) (*RedeemCode, error)
+	ResetAccountQuota(ctx context.Context, id int64) error
 REDACTED
 
 // CreateUserInput represents input for creating a new user via admin operations.
@@ -1458,6 +1459,10 @@ REDACTED
 		account.Credentials = input.Credentials
 REDACTED
 	if len(input.Extra) > 0 {
+		// 保留 quota_used，防止编辑账号时意外重置配额用量
+		if oldQuotaUsed, ok := account.Extra["quota_used"]; ok {
+			input.Extra["quota_used"] = oldQuotaUsed
+	REDACTED
 		account.Extra = input.Extra
 REDACTED
 	if input.ProxyID != nil {
@@ -2438,4 +2443,8 @@ REDACTED
 func (e *MixedChannelError) Error() string {
 	return fmt.Sprintf("mixed_channel_warning: Group '%s' contains both %s and %s accounts. Using mixed channels in the same context may cause thinking block signature validation issues, which will fallback to non-thinking mode for historical messages.",
 		e.GroupName, e.CurrentPlatform, e.OtherPlatform)
+REDACTED
+
+func (s *adminServiceImpl) ResetAccountQuota(ctx context.Context, id int64) error {
+	return s.accountRepo.ResetQuotaUsed(ctx, id)
 REDACTED
