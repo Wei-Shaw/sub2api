@@ -1576,3 +1576,27 @@ REDACTED
 	require.Contains(t, rec.Header().Get("Content-Type"), "text/event-stream")
 	require.Contains(t, rec.Body.String(), `data: {"type":"response.in_progress"`)
 REDACTED
+
+func TestHandleOAuthSSEToJSON_ResponseFailedReturnsProtocolError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{REDACTEDREDACTED
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+REDACTED
+	body := []byte(strings.Join([]string{
+		`data: {"type":"response.failed","error":{"message":"upstream rejected request"REDACTEDREDACTED`,
+		`data: [DONE]`,
+REDACTED, "\n"))
+
+	usage, err := svc.handleOAuthSSEToJSON(resp, c, body, "gpt-4o", "gpt-4o")
+	require.Nil(t, usage)
+REDACTED
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Contains(t, rec.Body.String(), "upstream rejected request")
+	require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+REDACTED
