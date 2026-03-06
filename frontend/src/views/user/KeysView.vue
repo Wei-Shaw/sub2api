@@ -1638,10 +1638,12 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
       headers: { "Authorization": "Bearer {{apiKeyREDACTEDREDACTED" REDACTED
     REDACTED,
     extractor: function(response) {
+      const remaining = response?.remaining ?? response?.quota?.remaining ?? response?.balance;
+      const unit = response?.unit ?? response?.quota?.unit ?? "USD";
       return {
-        isValid: response.is_active || true,
-        remaining: response.balance,
-        unit: "USD"
+        isValid: response?.is_active ?? response?.isValid ?? true,
+        remaining,
+        unit
       REDACTED;
     REDACTED
   REDACTED)`
