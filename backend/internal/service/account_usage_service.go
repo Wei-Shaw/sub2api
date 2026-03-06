@@ -93,9 +93,9 @@ type antigravityUsageCache struct {
 REDACTED
 
 const (
-	apiCacheTTL         = 3 * time.Minute
-	windowStatsCacheTTL = 1 * time.Minute
-	openAIProbeCacheTTL = 10 * time.Minute
+	apiCacheTTL             = 3 * time.Minute
+	windowStatsCacheTTL     = 1 * time.Minute
+	openAIProbeCacheTTL     = 10 * time.Minute
 	openAICodexProbeVersion = "0.104.0"
 )
 
