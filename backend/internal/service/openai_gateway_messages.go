@@ -67,7 +67,7 @@ REDACTED
 		if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
 	REDACTED
-		applyCodexOAuthTransform(reqBody, false)
+		applyCodexOAuthTransform(reqBody, false, false)
 		// OAuth codex transform forces stream=true upstream, so always use
 		// the streaming response handler regardless of what the client asked.
 		isStream = true
