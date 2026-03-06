@@ -2254,6 +2254,7 @@ const handleSubmit = async () => {
 
       // Always update credentials for apikey type to handle model mapping changes
       const newCredentials: Record<string, unknown> = {
+        ...currentCredentials,
         base_url: newBaseUrl
       REDACTED
 
