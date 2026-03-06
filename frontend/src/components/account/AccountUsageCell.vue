@@ -90,6 +90,36 @@
           color="emerald"
         />
       </div>
+      <div v-else-if="loading" class="space-y-1.5">
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else-if="hasOpenAIUsageFallback" class="space-y-1">
+        <UsageProgressBar
+          v-if="usageInfo?.five_hour"
+          label="5h"
+          :utilization="usageInfo.five_hour.utilization"
+          :resets-at="usageInfo.five_hour.resets_at"
+          :window-stats="usageInfo.five_hour.window_stats"
+          color="indigo"
+        />
+        <UsageProgressBar
+          v-if="usageInfo?.seven_day"
+          label="7d"
+          :utilization="usageInfo.seven_day.utilization"
+          :resets-at="usageInfo.seven_day.resets_at"
+          :window-stats="usageInfo.seven_day.window_stats"
+          color="emerald"
+        />
+      </div>
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
@@ -313,6 +343,9 @@ const shouldFetchUsage = computed(() => {
   if (props.account.platform === 'antigravity') {
     return props.account.type === 'oauth'
   REDACTED
+  if (props.account.platform === 'openai') {
+    return props.account.type === 'oauth'
+  REDACTED
   return false
 REDACTED)
 
@@ -333,6 +366,11 @@ const codex7dWindow = computed(() => resolveCodexUsageWindow(props.account.extra
 // OpenAI Codex usage computed properties
 const hasCodexUsage = computed(() => {
   return codex5hWindow.value.usedPercent !== null || codex7dWindow.value.usedPercent !== null
+REDACTED)
+
+const hasOpenAIUsageFallback = computed(() => {
+  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
+  return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
 REDACTED)
 
 const codex5hUsedPercent = computed(() => codex5hWindow.value.usedPercent)

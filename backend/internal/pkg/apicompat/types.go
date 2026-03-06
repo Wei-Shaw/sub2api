@@ -1,7 +1,7 @@
 // Package apicompat provides type definitions and conversion utilities for
-// translating between Anthropic Messages, OpenAI Chat Completions, and OpenAI
-// Responses API formats. It enables multi-protocol support so that clients
-// using different API formats can be served through a unified gateway.
+// translating between Anthropic Messages and OpenAI Responses API formats.
+// It enables multi-protocol support so that clients using different API
+// formats can be served through a unified gateway.
 package apicompat
 
 import "encoding/json"
@@ -21,6 +21,14 @@ type AnthropicRequest struct {
 	Temperature *float64           `json:"temperature,omitempty"`
 	TopP        *float64           `json:"top_p,omitempty"`
 	StopSeqs    []string           `json:"stop_sequences,omitempty"`
+	Thinking    *AnthropicThinking `json:"thinking,omitempty"`
+	ToolChoice  json.RawMessage    `json:"tool_choice,omitempty"`
+REDACTED
+
+// AnthropicThinking configures extended thinking in the Anthropic API.
+type AnthropicThinking struct {
+	Type         string `json:"type"`                    // "enabled" | "adaptive" | "disabled"
+	BudgetTokens int    `json:"budget_tokens,omitempty"` // max thinking tokens
 REDACTED
 
 // AnthropicMessage is a single message in the Anthropic conversation.
@@ -121,142 +129,28 @@ type AnthropicDelta struct {
 REDACTED
 
 // ---------------------------------------------------------------------------
-// OpenAI Chat Completions API types
-// ---------------------------------------------------------------------------
-
-// ChatRequest is the request body for POST /v1/chat/completions.
-type ChatRequest struct {
-	Model       string          `json:"model"`
-	Messages    []ChatMessage   `json:"messages"`
-	MaxTokens   *int            `json:"max_tokens,omitempty"`
-	Temperature *float64        `json:"temperature,omitempty"`
-	TopP        *float64        `json:"top_p,omitempty"`
-	Stream      bool            `json:"stream,omitempty"`
-	Tools       []ChatTool      `json:"tools,omitempty"`
-	Stop        json.RawMessage `json:"stop,omitempty"` // string or []string
-REDACTED
-
-// ChatMessage is a single message in the Chat Completions conversation.
-type ChatMessage struct {
-	Role    string          `json:"role"`              // "system" | "user" | "assistant" | "tool"
-	Content json.RawMessage `json:"content,omitempty"` // string or []ChatContentPart
-
-	// assistant fields
-	ToolCalls []ChatToolCall `json:"tool_calls,omitempty"`
-
-	// tool fields
-	ToolCallID string `json:"tool_call_id,omitempty"`
-
-	// Copilot-specific reasoning passthrough
-	ReasoningText   string `json:"reasoning_text,omitempty"`
-	ReasoningOpaque string `json:"reasoning_opaque,omitempty"`
-REDACTED
-
-// ChatContentPart is a typed content part in a multi-part message.
-type ChatContentPart struct {
-	Type string `json:"type"` // "text" | "image_url"
-	Text string `json:"text,omitempty"`
-REDACTED
-
-// ChatToolCall represents a tool invocation in an assistant message.
-// In streaming deltas, Index identifies which tool call is being updated.
-type ChatToolCall struct {
-	Index    int              `json:"index"`
-	ID       string           `json:"id,omitempty"`
-	Type     string           `json:"type,omitempty"` // "function"
-	Function ChatFunctionCall `json:"function"`
-REDACTED
-
-// ChatFunctionCall holds the function name and arguments.
-type ChatFunctionCall struct {
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-REDACTED
-
-// ChatTool describes a tool available to the model.
-type ChatTool struct {
-	Type     string       `json:"type"` // "function"
-	Function ChatFunction `json:"function"`
-REDACTED
-
-// ChatFunction is the function definition inside a ChatTool.
-type ChatFunction struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Parameters  json.RawMessage `json:"parameters,omitempty"` // JSON Schema
-REDACTED
-
-// ChatResponse is the non-streaming response from POST /v1/chat/completions.
-type ChatResponse struct {
-	ID      string       `json:"id"`
-	Object  string       `json:"object"` // "chat.completion"
-	Created int64        `json:"created"`
-	Model   string       `json:"model"`
-	Choices []ChatChoice `json:"choices"`
-	Usage   *ChatUsage   `json:"usage,omitempty"`
-REDACTED
-
-// ChatChoice is one completion choice.
-type ChatChoice struct {
-	Index        int         `json:"index"`
-	Message      ChatMessage `json:"message"`
-	FinishReason string      `json:"finish_reason"`
-REDACTED
-
-// ChatUsage holds token counts in Chat Completions format.
-type ChatUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
-REDACTED
-
-// ---------------------------------------------------------------------------
-// Chat Completions SSE types
-// ---------------------------------------------------------------------------
-
-// ChatStreamChunk is a single SSE chunk in the Chat Completions streaming protocol.
-type ChatStreamChunk struct {
-	ID      string             `json:"id"`
-	Object  string             `json:"object"` // "chat.completion.chunk"
-	Created int64              `json:"created"`
-	Model   string             `json:"model"`
-	Choices []ChatStreamChoice `json:"choices"`
-	Usage   *ChatUsage         `json:"usage,omitempty"`
-REDACTED
-
-// ChatStreamChoice is one choice inside a streaming chunk.
-type ChatStreamChoice struct {
-	Index        int             `json:"index"`
-	Delta        ChatStreamDelta `json:"delta"`
-	FinishReason *string         `json:"finish_reason"`
-REDACTED
-
-// ChatStreamDelta carries incremental content in a streaming chunk.
-type ChatStreamDelta struct {
-	Role      string         `json:"role,omitempty"`
-	Content   string         `json:"content,omitempty"`
-	ToolCalls []ChatToolCall `json:"tool_calls,omitempty"`
-
-	// Copilot-specific reasoning passthrough (streaming)
-	ReasoningText   string `json:"reasoning_text,omitempty"`
-	ReasoningOpaque string `json:"reasoning_opaque,omitempty"`
-REDACTED
-
-// ---------------------------------------------------------------------------
 // OpenAI Responses API types
 // ---------------------------------------------------------------------------
 
 // ResponsesRequest is the request body for POST /v1/responses.
 type ResponsesRequest struct {
-	Model           string          `json:"model"`
-	Input           json.RawMessage `json:"input"` // string or []ResponsesInputItem
-	MaxOutputTokens *int            `json:"max_output_tokens,omitempty"`
-	Temperature     *float64        `json:"temperature,omitempty"`
-	TopP            *float64        `json:"top_p,omitempty"`
-	Stream          bool            `json:"stream,omitempty"`
-	Tools           []ResponsesTool `json:"tools,omitempty"`
-	Include         []string        `json:"include,omitempty"`
-	Store           *bool           `json:"store,omitempty"`
+	Model           string              `json:"model"`
+	Input           json.RawMessage     `json:"input"` // string or []ResponsesInputItem
+	MaxOutputTokens *int                `json:"max_output_tokens,omitempty"`
+	Temperature     *float64            `json:"temperature,omitempty"`
+	TopP            *float64            `json:"top_p,omitempty"`
+	Stream          bool                `json:"stream,omitempty"`
+	Tools           []ResponsesTool     `json:"tools,omitempty"`
+	Include         []string            `json:"include,omitempty"`
+	Store           *bool               `json:"store,omitempty"`
+	Reasoning       *ResponsesReasoning `json:"reasoning,omitempty"`
+	ToolChoice      json.RawMessage     `json:"tool_choice,omitempty"`
+REDACTED
+
+// ResponsesReasoning configures reasoning effort in the Responses API.
+type ResponsesReasoning struct {
+	Effort  string `json:"effort"`            // "low" | "medium" | "high"
+	Summary string `json:"summary,omitempty"` // "auto" | "concise" | "detailed"
 REDACTED
 
 // ResponsesInputItem is one item in the Responses API input array.
@@ -305,6 +199,15 @@ type ResponsesResponse struct {
 
 	// incomplete_details is present when status="incomplete"
 	IncompleteDetails *ResponsesIncompleteDetails `json:"incomplete_details,omitempty"`
+
+	// Error is present when status="failed"
+	Error *ResponsesError `json:"error,omitempty"`
+REDACTED
+
+// ResponsesError describes an error in a failed response.
+type ResponsesError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 REDACTED
 
 // ResponsesIncompleteDetails explains why a response is incomplete.
@@ -349,6 +252,16 @@ type ResponsesUsage struct {
 	OutputTokensDetails *ResponsesOutputTokensDetails `json:"output_tokens_details,omitempty"`
 REDACTED
 
+// ResponsesInputTokensDetails breaks down input token usage.
+type ResponsesInputTokensDetails struct {
+	CachedTokens int `json:"cached_tokens,omitempty"`
+REDACTED
+
+// ResponsesOutputTokensDetails breaks down output token usage.
+type ResponsesOutputTokensDetails struct {
+	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
+REDACTED
+
 // ---------------------------------------------------------------------------
 // Responses SSE event types
 // ---------------------------------------------------------------------------
@@ -386,153 +299,6 @@ type ResponsesStreamEvent struct {
 
 	// Sequence number for ordering events
 	SequenceNumber int `json:"sequence_number,omitempty"`
-REDACTED
-
-// ResponsesOutputReasoning is a reasoning output item in the Responses API.
-// This type represents the "type":"reasoning" output item that contains
-// extended thinking from the model.
-type ResponsesOutputReasoning struct {
-	ID               string                      `json:"id,omitempty"`
-	Type             string                      `json:"type"`             // "reasoning"
-	Status           string                      `json:"status,omitempty"` // "in_progress" | "completed" | "incomplete"
-	EncryptedContent string                      `json:"encrypted_content,omitempty"`
-	Summary          []ResponsesReasoningSummary `json:"summary,omitempty"`
-REDACTED
-
-// ResponsesReasoningSummary is a summary text block inside a reasoning output.
-type ResponsesReasoningSummary struct {
-	Type string `json:"type"` // "summary_text"
-	Text string `json:"text"`
-REDACTED
-
-// ResponsesStreamState maintains the state for converting Responses streaming
-// events to Chat Completions format. It tracks content blocks, tool calls,
-// reasoning blocks, and other streaming artifacts.
-type ResponsesStreamState struct {
-	// Response metadata
-	ID      string
-	Model   string
-	Created int64
-
-	// Content tracking
-	ContentIndex  int
-	CurrentText   string
-	CurrentItemID string
-	PendingText   []string // Text to accumulate before emitting
-
-	// Tool call tracking
-	ToolCalls       []ResponsesToolCallState
-	CurrentToolCall *ResponsesToolCallState
-
-	// Reasoning tracking
-	ReasoningBlocks  []ResponsesReasoningState
-	CurrentReasoning *ResponsesReasoningState
-
-	// Usage tracking
-	InputTokens  int
-	OutputTokens int
-
-	// Status tracking
-	Status       string
-	FinishReason string
-REDACTED
-
-// ResponsesToolCallState tracks a single tool call during streaming.
-type ResponsesToolCallState struct {
-	Index      int
-	ItemID     string
-	CallID     string
-	Name       string
-	Arguments  string
-	Status     string
-	IsComplete bool
-REDACTED
-
-// ResponsesReasoningState tracks a reasoning block during streaming.
-type ResponsesReasoningState struct {
-	ItemID       string
-	SummaryIndex int
-	SummaryText  string
-	Status       string
-	IsComplete   bool
-REDACTED
-
-// ResponsesUsageDetail provides additional token usage details in Responses format.
-type ResponsesUsageDetail struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-	TotalTokens  int `json:"total_tokens"`
-
-	// Optional detailed breakdown
-	InputTokensDetails  *ResponsesInputTokensDetails  `json:"input_tokens_details,omitempty"`
-	OutputTokensDetails *ResponsesOutputTokensDetails `json:"output_tokens_details,omitempty"`
-REDACTED
-
-// ResponsesInputTokensDetails breaks down input token usage.
-type ResponsesInputTokensDetails struct {
-	CachedTokens int `json:"cached_tokens,omitempty"`
-REDACTED
-
-// ResponsesOutputTokensDetails breaks down output token usage.
-type ResponsesOutputTokensDetails struct {
-	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
-REDACTED
-
-// ---------------------------------------------------------------------------
-// Finish reason mapping helpers
-// ---------------------------------------------------------------------------
-
-// ChatFinishToAnthropic maps a Chat Completions finish_reason to an Anthropic stop_reason.
-func ChatFinishToAnthropic(reason string) string {
-	switch reason {
-	case "stop":
-		return "end_turn"
-	case "tool_calls":
-		return "tool_use"
-	case "length":
-		return "max_tokens"
-	default:
-		return "end_turn"
-REDACTED
-REDACTED
-
-// AnthropicStopToChat maps an Anthropic stop_reason to a Chat Completions finish_reason.
-func AnthropicStopToChat(reason string) string {
-	switch reason {
-	case "end_turn":
-		return "stop"
-	case "tool_use":
-		return "tool_calls"
-	case "max_tokens":
-		return "length"
-	default:
-		return "stop"
-REDACTED
-REDACTED
-
-// ResponsesStatusToChat maps a Responses API status to a Chat Completions finish_reason.
-func ResponsesStatusToChat(status string, details *ResponsesIncompleteDetails) string {
-	switch status {
-	case "completed":
-		return "stop"
-	case "incomplete":
-		if details != nil && details.Reason == "max_output_tokens" {
-			return "length"
-	REDACTED
-		return "stop"
-	default:
-		return "stop"
-REDACTED
-REDACTED
-
-// ChatFinishToResponsesStatus maps a Chat Completions finish_reason to a Responses status.
-func ChatFinishToResponsesStatus(reason string) string {
-	switch reason {
-	case "length":
-		return "incomplete"
-	default:
-		return "completed"
-REDACTED
 REDACTED
 
 // ---------------------------------------------------------------------------

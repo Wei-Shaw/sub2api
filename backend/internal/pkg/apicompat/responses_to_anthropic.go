@@ -153,7 +153,7 @@ func ResponsesEventToAnthropicEvents(
 		return resToAnthHandleReasoningDelta(evt, state)
 	case "response.reasoning_summary_text.done":
 		return resToAnthHandleBlockDone(state)
-	case "response.completed", "response.incomplete":
+	case "response.completed", "response.incomplete", "response.failed":
 		return resToAnthHandleCompleted(evt, state)
 	default:
 		return nil

@@ -126,6 +126,13 @@ REDACTED
 	return l.conn.handshakeHeader(name)
 REDACTED
 
+func (l *openAIWSConnLease) HandshakeHeaders() http.Header {
+	if l == nil || l.conn == nil {
+		return nil
+REDACTED
+	return cloneHeader(l.conn.handshakeHeaders)
+REDACTED
+
 func (l *openAIWSConnLease) IsPrewarmed() bool {
 	if l == nil || l.conn == nil {
 		return false

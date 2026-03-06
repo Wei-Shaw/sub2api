@@ -532,3 +532,204 @@ REDACTED
 	assert.Contains(t, sse, "data: ")
 	assert.Contains(t, sse, `"resp_1"`)
 REDACTED
+
+// ---------------------------------------------------------------------------
+// response.failed tests
+// ---------------------------------------------------------------------------
+
+func TestStreamingFailed(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+
+	// 1. response.created
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_fail_1", Model: "gpt-5.2"REDACTED,
+REDACTED, state)
+
+	// 2. Some text output before failure
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:  "response.output_text.delta",
+		Delta: "Partial output before failure",
+REDACTED, state)
+
+	// 3. response.failed
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.failed",
+		Response: &ResponsesResponse{
+			Status: "failed",
+			Error:  &ResponsesError{Code: "server_error", Message: "Internal error"REDACTED,
+			Usage:  &ResponsesUsage{InputTokens: 50, OutputTokens: 10REDACTED,
+	REDACTED,
+REDACTED, state)
+
+	// Should close text block + message_delta + message_stop
+	require.Len(t, events, 3)
+	assert.Equal(t, "content_block_stop", events[0].Type)
+	assert.Equal(t, "message_delta", events[1].Type)
+	assert.Equal(t, "end_turn", events[1].Delta.StopReason)
+	assert.Equal(t, 50, events[1].Usage.InputTokens)
+	assert.Equal(t, 10, events[1].Usage.OutputTokens)
+	assert.Equal(t, "message_stop", events[2].Type)
+REDACTED
+
+func TestStreamingFailedNoOutput(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+
+	// 1. response.created
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_fail_2", Model: "gpt-5.2"REDACTED,
+REDACTED, state)
+
+	// 2. response.failed with no prior output
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.failed",
+		Response: &ResponsesResponse{
+			Status: "failed",
+			Error:  &ResponsesError{Code: "rate_limit_error", Message: "Too many requests"REDACTED,
+			Usage:  &ResponsesUsage{InputTokens: 20, OutputTokens: 0REDACTED,
+	REDACTED,
+REDACTED, state)
+
+	// Should emit message_delta + message_stop (no block to close)
+	require.Len(t, events, 2)
+	assert.Equal(t, "message_delta", events[0].Type)
+	assert.Equal(t, "end_turn", events[0].Delta.StopReason)
+	assert.Equal(t, "message_stop", events[1].Type)
+REDACTED
+
+func TestResponsesToAnthropic_Failed(t *testing.T) {
+	resp := &ResponsesResponse{
+		ID:     "resp_fail_3",
+		Model:  "gpt-5.2",
+		Status: "failed",
+		Error:  &ResponsesError{Code: "server_error", Message: "Something went wrong"REDACTED,
+		Output: []ResponsesOutput{REDACTED,
+		Usage:  &ResponsesUsage{InputTokens: 30, OutputTokens: 0REDACTED,
+REDACTED
+
+	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
+	// Failed status defaults to "end_turn" stop reason
+	assert.Equal(t, "end_turn", anth.StopReason)
+	// Should have at least an empty text block
+	require.Len(t, anth.Content, 1)
+	assert.Equal(t, "text", anth.Content[0].Type)
+REDACTED
+
+// ---------------------------------------------------------------------------
+// thinking → reasoning conversion tests
+// ---------------------------------------------------------------------------
+
+func TestAnthropicToResponses_ThinkingEnabled(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)REDACTEDREDACTED,
+		Thinking:  &AnthropicThinking{Type: "enabled", BudgetTokens: 10000REDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+	require.NotNil(t, resp.Reasoning)
+	assert.Equal(t, "high", resp.Reasoning.Effort)
+	assert.Equal(t, "auto", resp.Reasoning.Summary)
+	assert.Contains(t, resp.Include, "reasoning.encrypted_content")
+	assert.NotContains(t, resp.Include, "reasoning.summary")
+REDACTED
+
+func TestAnthropicToResponses_ThinkingAdaptive(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)REDACTEDREDACTED,
+		Thinking:  &AnthropicThinking{Type: "adaptive", BudgetTokens: 5000REDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+	require.NotNil(t, resp.Reasoning)
+	assert.Equal(t, "medium", resp.Reasoning.Effort)
+	assert.Equal(t, "auto", resp.Reasoning.Summary)
+	assert.NotContains(t, resp.Include, "reasoning.summary")
+REDACTED
+
+func TestAnthropicToResponses_ThinkingDisabled(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)REDACTEDREDACTED,
+		Thinking:  &AnthropicThinking{Type: "disabled"REDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+	assert.Nil(t, resp.Reasoning)
+	assert.NotContains(t, resp.Include, "reasoning.summary")
+REDACTED
+
+func TestAnthropicToResponses_NoThinking(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)REDACTEDREDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+	assert.Nil(t, resp.Reasoning)
+REDACTED
+
+// ---------------------------------------------------------------------------
+// tool_choice conversion tests
+// ---------------------------------------------------------------------------
+
+func TestAnthropicToResponses_ToolChoiceAuto(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:      "gpt-5.2",
+		MaxTokens:  1024,
+		Messages:   []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)REDACTEDREDACTED,
+		ToolChoice: json.RawMessage(`{"type":"auto"REDACTED`),
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+
+	var tc string
+	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
+	assert.Equal(t, "auto", tc)
+REDACTED
+
+func TestAnthropicToResponses_ToolChoiceAny(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:      "gpt-5.2",
+		MaxTokens:  1024,
+		Messages:   []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)REDACTEDREDACTED,
+		ToolChoice: json.RawMessage(`{"type":"any"REDACTED`),
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+
+	var tc string
+	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
+	assert.Equal(t, "required", tc)
+REDACTED
+
+func TestAnthropicToResponses_ToolChoiceSpecific(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:      "gpt-5.2",
+		MaxTokens:  1024,
+		Messages:   []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)REDACTEDREDACTED,
+		ToolChoice: json.RawMessage(`{"type":"tool","name":"get_weather"REDACTED`),
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+
+	var tc map[string]any
+	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
+	assert.Equal(t, "function", tc["type"])
+	fn, ok := tc["function"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "get_weather", fn["name"])
+REDACTED
