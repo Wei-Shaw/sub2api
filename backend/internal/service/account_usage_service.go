@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -666,15 +667,30 @@ func (s *AccountUsageService) estimateSetupTokenUsage(account *Account) *UsageIn
 			remaining = 0
 	REDACTED
 
-		// 根据状态估算使用率 (百分比形式，100 = 100%)
+		// 优先使用响应头中存储的真实 utilization 值（0-1 小数，转为 0-100 百分比）
 		var utilization float64
-		switch account.SessionWindowStatus {
-		case "rejected":
-			utilization = 100.0
-		case "allowed_warning":
-			utilization = 80.0
-		default:
-			utilization = 0.0
+		var found bool
+		if stored, ok := account.Extra["session_window_utilization"]; ok {
+			switch v := stored.(type) {
+			case float64:
+				utilization = v * 100
+				found = true
+			case json.Number:
+				if f, err := v.Float64(); err == nil {
+					utilization = f * 100
+					found = true
+			REDACTED
+		REDACTED
+	REDACTED
+
+		// 如果没有存储的 utilization，回退到状态估算
+		if !found {
+			switch account.SessionWindowStatus {
+			case "rejected":
+				utilization = 100.0
+			case "allowed_warning":
+				utilization = 80.0
+		REDACTED
 	REDACTED
 
 		info.FiveHour = &UsageProgress{
