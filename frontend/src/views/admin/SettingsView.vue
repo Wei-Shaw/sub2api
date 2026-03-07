@@ -307,7 +307,105 @@
             </template>
           </div>
         </div>
-        </div><!-- /Tab: Gateway — Stream Timeout (continued below with Claude Code & Scheduling) -->
+
+        <!-- Request Rectifier Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.rectifier.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.rectifier.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <!-- Loading State -->
+            <div v-if="rectifierLoading" class="flex items-center gap-2 text-gray-500">
+              <div class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"></div>
+              {{ t('common.loading') REDACTEDREDACTED
+            </div>
+
+            <template v-else>
+              <!-- Master Toggle -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t('admin.settings.rectifier.enabled')
+                  REDACTEDREDACTED</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.rectifier.enabledHint') REDACTEDREDACTED
+                  </p>
+                </div>
+                <Toggle v-model="rectifierForm.enabled" />
+              </div>
+
+              <!-- Sub-toggles (only show when master is enabled) -->
+              <div
+                v-if="rectifierForm.enabled"
+                class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <!-- Thinking Signature Rectifier -->
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{
+                      t('admin.settings.rectifier.thinkingSignature')
+                    REDACTEDREDACTED</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.rectifier.thinkingSignatureHint') REDACTEDREDACTED
+                    </p>
+                  </div>
+                  <Toggle v-model="rectifierForm.thinking_signature_enabled" />
+                </div>
+
+                <!-- Thinking Budget Rectifier -->
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{
+                      t('admin.settings.rectifier.thinkingBudget')
+                    REDACTEDREDACTED</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ t('admin.settings.rectifier.thinkingBudgetHint') REDACTEDREDACTED
+                    </p>
+                  </div>
+                  <Toggle v-model="rectifierForm.thinking_budget_enabled" />
+                </div>
+              </div>
+
+              <!-- Save Button -->
+              <div class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700">
+                <button
+                  type="button"
+                  @click="saveRectifierSettings"
+                  :disabled="rectifierSaving"
+                  class="btn btn-primary btn-sm"
+                >
+                  <svg
+                    v-if="rectifierSaving"
+                    class="mr-1 h-4 w-4 animate-spin"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      class="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      stroke-width="4"
+                    ></circle>
+                    <path
+                      class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  {{ rectifierSaving ? t('common.saving') : t('common.save') REDACTEDREDACTED
+                </button>
+              </div>
+            </template>
+          </div>
+        </div>
+        </div><!-- /Tab: Gateway -->
 
         <!-- Tab: Security — Registration, Turnstile, LinuxDo -->
         <div v-show="activeTab === 'security'" class="space-y-6">
@@ -1520,6 +1618,15 @@ const streamTimeoutForm = reactive({
   threshold_window_minutes: 10
 REDACTED)
 
+// Rectifier 状态
+const rectifierLoading = ref(true)
+const rectifierSaving = ref(false)
+const rectifierForm = reactive({
+  enabled: true,
+  thinking_signature_enabled: true,
+  thinking_budget_enabled: true
+REDACTED)
+
 interface DefaultSubscriptionGroupOption {
   value: number
   label: string
@@ -2026,11 +2133,44 @@ async function saveStreamTimeoutSettings() {
   REDACTED
 REDACTED
 
+// Rectifier 方法
+async function loadRectifierSettings() {
+  rectifierLoading.value = true
+  try {
+    const settings = await adminAPI.settings.getRectifierSettings()
+    Object.assign(rectifierForm, settings)
+  REDACTED catch (error: any) {
+    console.error('Failed to load rectifier settings:', error)
+  REDACTED finally {
+    rectifierLoading.value = false
+  REDACTED
+REDACTED
+
+async function saveRectifierSettings() {
+  rectifierSaving.value = true
+  try {
+    const updated = await adminAPI.settings.updateRectifierSettings({
+      enabled: rectifierForm.enabled,
+      thinking_signature_enabled: rectifierForm.thinking_signature_enabled,
+      thinking_budget_enabled: rectifierForm.thinking_budget_enabled
+    REDACTED)
+    Object.assign(rectifierForm, updated)
+    appStore.showSuccess(t('admin.settings.rectifier.saved'))
+  REDACTED catch (error: any) {
+    appStore.showError(
+      t('admin.settings.rectifier.saveFailed') + ': ' + (error.message || t('common.unknownError'))
+    )
+  REDACTED finally {
+    rectifierSaving.value = false
+  REDACTED
+REDACTED
+
 onMounted(() => {
   loadSettings()
   loadSubscriptionGroups()
   loadAdminApiKey()
   loadStreamTimeoutSettings()
+  loadRectifierSettings()
 REDACTED)
 </script>
 
