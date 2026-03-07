@@ -2254,6 +2254,7 @@ const handleSubmit = async () => {
 
       // Always update credentials for apikey type to handle model mapping changes
       const newCredentials: Record<string, unknown> = {
+        ...currentCredentials,
         base_url: newBaseUrl
       REDACTED
 
@@ -2274,6 +2275,8 @@ const handleSubmit = async () => {
         const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
         if (modelMapping) {
           newCredentials.model_mapping = modelMapping
+        REDACTED else {
+          delete newCredentials.model_mapping
         REDACTED
       REDACTED else if (currentCredentials.model_mapping) {
         newCredentials.model_mapping = currentCredentials.model_mapping
@@ -2283,6 +2286,9 @@ const handleSubmit = async () => {
       if (customErrorCodesEnabled.value) {
         newCredentials.custom_error_codes_enabled = true
         newCredentials.custom_error_codes = [...selectedErrorCodes.value]
+      REDACTED else {
+        delete newCredentials.custom_error_codes_enabled
+        delete newCredentials.custom_error_codes
       REDACTED
 
       // Add intercept warmup requests setting
