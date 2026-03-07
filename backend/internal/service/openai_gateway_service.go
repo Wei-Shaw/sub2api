@@ -1026,7 +1026,7 @@ REDACTED
 
 	// 3. 按优先级 + LRU 选择最佳账号
 	// Select by priority + LRU
-	selected := s.selectBestAccount(accounts, requestedModel, excludedIDs)
+	selected := s.selectBestAccount(ctx, accounts, requestedModel, excludedIDs)
 
 	if selected == nil {
 		if requestedModel != "" {
@@ -1099,7 +1099,7 @@ REDACTED
 //
 // selectBestAccount selects the best account from candidates (priority + LRU).
 // Returns nil if no available account.
-func (s *OpenAIGatewayService) selectBestAccount(accounts []Account, requestedModel string, excludedIDs map[int64]struct{REDACTED) *Account {
+func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, accounts []Account, requestedModel string, excludedIDs map[int64]struct{REDACTED) *Account {
 	var selected *Account
 
 	for i := range accounts {
@@ -1111,27 +1111,20 @@ func (s *OpenAIGatewayService) selectBestAccount(accounts []Account, requestedMo
 			continue
 	REDACTED
 
-		// 调度器快照可能暂时过时，这里重新检查可调度性和平台
-		// Scheduler snapshots can be temporarily stale; re-check schedulability and platform
-		if !acc.IsSchedulable() || !acc.IsOpenAI() {
-			continue
-	REDACTED
-
-		// 检查模型支持
-		// Check model support
-		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
+		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel)
+		if fresh == nil {
 			continue
 	REDACTED
 
 		// 选择优先级最高且最久未使用的账号
 		// Select highest priority and least recently used
 		if selected == nil {
-			selected = acc
+			selected = fresh
 			continue
 	REDACTED
 
-		if s.isBetterAccount(acc, selected) {
-			selected = acc
+		if s.isBetterAccount(fresh, selected) {
+			selected = fresh
 	REDACTED
 REDACTED
 
@@ -1309,13 +1302,17 @@ REDACTED
 		ordered := append([]*Account(nil), candidates...)
 		sortAccountsByPriorityAndLastUsed(ordered, false)
 		for _, acc := range ordered {
-			result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
+			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel)
+			if fresh == nil {
+				continue
+		REDACTED
+			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
 			if err == nil && result.Acquired {
 				if sessionHash != "" {
-					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, acc.ID, openaiStickySessionTTL)
+					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
 			REDACTED
 				return &AccountSelectionResult{
-					Account:     acc,
+					Account:     fresh,
 					Acquired:    true,
 					ReleaseFunc: result.ReleaseFunc,
 			REDACTED, nil
@@ -1359,13 +1356,17 @@ REDACTED else {
 			shuffleWithinSortGroups(available)
 
 			for _, item := range available {
-				result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
+				fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, item.account, requestedModel)
+				if fresh == nil {
+					continue
+			REDACTED
+				result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
 				if err == nil && result.Acquired {
 					if sessionHash != "" {
-						_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, item.account.ID, openaiStickySessionTTL)
+						_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, fresh.ID, openaiStickySessionTTL)
 				REDACTED
 					return &AccountSelectionResult{
-						Account:     item.account,
+						Account:     fresh,
 						Acquired:    true,
 						ReleaseFunc: result.ReleaseFunc,
 				REDACTED, nil
@@ -1377,11 +1378,15 @@ REDACTED
 	// ============ Layer 3: Fallback wait ============
 	sortAccountsByPriorityAndLastUsed(candidates, false)
 	for _, acc := range candidates {
+		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel)
+		if fresh == nil {
+			continue
+	REDACTED
 		return &AccountSelectionResult{
-			Account: acc,
+			Account: fresh,
 			WaitPlan: &AccountWaitPlan{
-				AccountID:      acc.ID,
-				MaxConcurrency: acc.Concurrency,
+				AccountID:      fresh.ID,
+				MaxConcurrency: fresh.Concurrency,
 				Timeout:        cfg.FallbackWaitTimeout,
 				MaxWaiting:     cfg.FallbackMaxWaiting,
 		REDACTED,
@@ -1416,6 +1421,29 @@ func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accoun
 		return &AcquireResult{Acquired: true, ReleaseFunc: func() {REDACTEDREDACTED, nil
 REDACTED
 	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+REDACTED
+
+func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.Context, account *Account, requestedModel string) *Account {
+	if account == nil {
+		return nil
+REDACTED
+
+	fresh := account
+	if s.schedulerSnapshot != nil {
+		current, err := s.getSchedulableAccount(ctx, account.ID)
+		if err != nil || current == nil {
+			return nil
+	REDACTED
+		fresh = current
+REDACTED
+
+	if !fresh.IsSchedulable() || !fresh.IsOpenAI() {
+		return nil
+REDACTED
+	if requestedModel != "" && !fresh.IsModelSupported(requestedModel) {
+		return nil
+REDACTED
+	return fresh
 REDACTED
 
 func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {

@@ -12,6 +12,78 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type openAISnapshotCacheStub struct {
+	SchedulerCache
+	snapshotAccounts []*Account
+	accountsByID     map[int64]*Account
+REDACTED
+
+func (s *openAISnapshotCacheStub) GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error) {
+	if len(s.snapshotAccounts) == 0 {
+		return nil, false, nil
+REDACTED
+	out := make([]*Account, 0, len(s.snapshotAccounts))
+	for _, account := range s.snapshotAccounts {
+		if account == nil {
+			continue
+	REDACTED
+		cloned := *account
+		out = append(out, &cloned)
+REDACTED
+	return out, true, nil
+REDACTED
+
+func (s *openAISnapshotCacheStub) GetAccount(ctx context.Context, accountID int64) (*Account, error) {
+	if s.accountsByID == nil {
+		return nil, nil
+REDACTED
+	account := s.accountsByID[accountID]
+	if account == nil {
+		return nil, nil
+REDACTED
+	cloned := *account
+	return &cloned, nil
+REDACTED
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyRateLimitedAccountFallsBackToFreshCandidate(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10101)
+	rateLimitedUntil := time.Now().Add(30 * time.Minute)
+	staleSticky := &Account{ID: 31001, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0REDACTED
+	staleBackup := &Account{ID: 31002, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
+	freshSticky := &Account{ID: 31001, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, RateLimitResetAt: &rateLimitedUntilREDACTED
+	freshBackup := &Account{ID: 31002, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
+	cache := &stubGatewayCache{sessionBindings: map[string]int64{"openai:session_hash_rate_limited": 31001REDACTEDREDACTED
+	snapshotCache := &openAISnapshotCacheStub{snapshotAccounts: []*Account{staleSticky, staleBackupREDACTED, accountsByID: map[int64]*Account{31001: freshSticky, 31002: freshBackupREDACTEDREDACTED
+	snapshotService := &SchedulerSnapshotService{cache: snapshotCacheREDACTED
+	svc := &OpenAIGatewayService{accountRepo: stubOpenAIAccountRepo{accounts: []Account{*freshSticky, *freshBackupREDACTEDREDACTED, cache: cache, cfg: &config.Config{REDACTED, schedulerSnapshot: snapshotService, concurrencyService: NewConcurrencyService(stubConcurrencyCache{REDACTED)REDACTED
+
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "session_hash_rate_limited", "gpt-5.1", nil, OpenAIUpstreamTransportAny)
+REDACTED
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(31002), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+REDACTED
+
+func TestOpenAIGatewayService_SelectAccountForModelWithExclusions_SkipsFreshlyRateLimitedSnapshotCandidate(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10102)
+	rateLimitedUntil := time.Now().Add(30 * time.Minute)
+	stalePrimary := &Account{ID: 32001, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0REDACTED
+	staleSecondary := &Account{ID: 32002, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
+	freshPrimary := &Account{ID: 32001, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0, RateLimitResetAt: &rateLimitedUntilREDACTED
+	freshSecondary := &Account{ID: 32002, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 5REDACTED
+	snapshotCache := &openAISnapshotCacheStub{snapshotAccounts: []*Account{stalePrimary, staleSecondaryREDACTED, accountsByID: map[int64]*Account{32001: freshPrimary, 32002: freshSecondaryREDACTEDREDACTED
+	snapshotService := &SchedulerSnapshotService{cache: snapshotCacheREDACTED
+	svc := &OpenAIGatewayService{accountRepo: stubOpenAIAccountRepo{accounts: []Account{*freshPrimary, *freshSecondaryREDACTEDREDACTED, cfg: &config.Config{REDACTED, schedulerSnapshot: snapshotServiceREDACTED
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "gpt-5.1", nil)
+REDACTED
+	require.NotNil(t, account)
+	require.Equal(t, int64(32002), account.ID)
+REDACTED
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseSticky(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(9)

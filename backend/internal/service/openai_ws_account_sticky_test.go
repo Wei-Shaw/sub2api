@@ -48,6 +48,43 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_RateLimitedMiss(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(23)
+	rateLimitedUntil := time.Now().Add(30 * time.Minute)
+	account := Account{
+		ID:               12,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeAPIKey,
+		Status:           StatusActive,
+		Schedulable:      true,
+		Concurrency:      1,
+		RateLimitResetAt: &rateLimitedUntil,
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_enabled": true,
+	REDACTED,
+REDACTED
+	cache := &stubGatewayCache{REDACTED
+	store := NewOpenAIWSStateStore(cache)
+	cfg := newOpenAIWSV2TestConfig()
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{accountREDACTEDREDACTED,
+		cache:              cache,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{REDACTED),
+		openaiWSStateStore: store,
+REDACTED
+
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_rl", account.ID, time.Hour))
+
+	selection, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_rl", "gpt-5.1", nil)
+REDACTED
+	require.Nil(t, selection, "限额中的账号不应继续命中 previous_response_id 粘连")
+	boundAccountID, getErr := store.GetResponseAccount(ctx, groupID, "resp_prev_rl")
+	require.NoError(t, getErr)
+	require.Zero(t, boundAccountID)
+REDACTED
+
 func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_Excluded(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(23)
