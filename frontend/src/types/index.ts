@@ -809,7 +809,7 @@ export interface UpdateAccountRequest {
   priority?: number
   rate_multiplier?: number // Account billing multiplier (>=0, 0 means free)
   schedulable?: boolean
-  status?: 'active' | 'inactive'
+  status?: 'active' | 'inactive' | 'error'
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean

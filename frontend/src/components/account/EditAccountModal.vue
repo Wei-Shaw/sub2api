@@ -1617,15 +1617,21 @@ const form = reactive({
   load_factor: null as number | null,
   priority: 1,
   rate_multiplier: 1,
-  status: 'active' as 'active' | 'inactive',
+  status: 'active' as 'active' | 'inactive' | 'error',
   group_ids: [] as number[],
   expires_at: null as number | null
 REDACTED)
 
-const statusOptions = computed(() => [
-  { value: 'active', label: t('common.active') REDACTED,
-  { value: 'inactive', label: t('common.inactive') REDACTED
-])
+const statusOptions = computed(() => {
+  const options = [
+    { value: 'active', label: t('common.active') REDACTED,
+    { value: 'inactive', label: t('common.inactive') REDACTED
+  ]
+  if (form.status === 'error') {
+    options.push({ value: 'error', label: t('admin.accounts.status.error') REDACTED)
+  REDACTED
+  return options
+REDACTED)
 
 const expiresAtInput = computed({
   get: () => formatDateTimeLocal(form.expires_at),
@@ -1651,7 +1657,7 @@ watch(
       form.load_factor = newAccount.load_factor ?? null
       form.priority = newAccount.priority
       form.rate_multiplier = newAccount.rate_multiplier ?? 1
-      form.status = (newAccount.status === 'active' || newAccount.status === 'inactive')
+      form.status = (newAccount.status === 'active' || newAccount.status === 'inactive' || newAccount.status === 'error')
         ? newAccount.status
         : 'active'
       form.group_ids = newAccount.group_ids || []
@@ -2225,7 +2231,7 @@ const handleSubmit = async () => {
   if (!props.account) return
   const accountID = props.account.id
 
-  if (form.status !== 'active' && form.status !== 'inactive') {
+  if (form.status !== 'active' && form.status !== 'inactive' && form.status !== 'error') {
     appStore.showError(t('admin.accounts.pleaseSelectStatus'))
     return
   REDACTED
