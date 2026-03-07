@@ -88,6 +88,7 @@
       </template>
 
       <template #table>
+        <div ref="proxyTableRef">
         <DataTable :columns="columns" :data="proxies" :loading="loading">
           <template #header-select>
             <input
@@ -325,6 +326,7 @@
             />
           </template>
         </DataTable>
+        </div>
       </template>
 
       <template #pagination>
@@ -880,6 +882,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import { useClipboard REDACTED from '@/composables/useClipboard'
+import { useSwipeSelect REDACTED from '@/composables/useSwipeSelect'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -959,6 +962,12 @@ const qualityCheckingProxyIds = ref<Set<number>>(new Set())
 const batchTesting = ref(false)
 const batchQualityChecking = ref(false)
 const selectedProxyIds = ref<Set<number>>(new Set())
+const proxyTableRef = ref<HTMLElement | null>(null)
+useSwipeSelect(proxyTableRef, {
+  isSelected: (id) => selectedProxyIds.value.has(id),
+  select: (id) => { const next = new Set(selectedProxyIds.value); next.add(id); selectedProxyIds.value = next REDACTED,
+  deselect: (id) => { const next = new Set(selectedProxyIds.value); next.delete(id); selectedProxyIds.value = next REDACTED
+REDACTED)
 const accountsProxy = ref<Proxy | null>(null)
 const proxyAccounts = ref<ProxyAccountSummary[]>([])
 const accountsLoading = ref(false)

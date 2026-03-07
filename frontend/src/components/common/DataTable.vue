@@ -152,6 +152,7 @@
           v-else
           v-for="(row, index) in sortedData"
           :key="resolveRowKey(row, index)"
+          :data-row-id="resolveRowKey(row, index)"
           class="hover:bg-gray-50 dark:hover:bg-dark-800"
         >
           <td

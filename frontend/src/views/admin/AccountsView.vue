@@ -132,6 +132,7 @@
       </template>
       <template #table>
         <AccountBulkActionsBar :selected-ids="selIds" @delete="handleBulkDelete" @edit="showBulkEdit = true" @clear="selIds = []" @select-page="selectPage" @toggle-schedulable="handleBulkToggleSchedulable" />
+        <div ref="accountTableRef">
         <DataTable
           :columns="cols"
           :data="accounts"
@@ -252,6 +253,7 @@
             </div>
           </template>
         </DataTable>
+        </div>
       </template>
       <template #pagination><Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" /></template>
     </TablePageLayout>
@@ -285,6 +287,7 @@ import { useAppStore REDACTED from '@/stores/app'
 import { useAuthStore REDACTED from '@/stores/auth'
 import { adminAPI REDACTED from '@/api/admin'
 import { useTableLoader REDACTED from '@/composables/useTableLoader'
+import { useSwipeSelect REDACTED from '@/composables/useSwipeSelect'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -319,6 +322,12 @@ const authStore = useAuthStore()
 const proxies = ref<Proxy[]>([])
 const groups = ref<AdminGroup[]>([])
 const selIds = ref<number[]>([])
+const accountTableRef = ref<HTMLElement | null>(null)
+useSwipeSelect(accountTableRef, {
+  isSelected: (id) => selIds.value.includes(id),
+  select: (id) => { if (!selIds.value.includes(id)) selIds.value.push(id) REDACTED,
+  deselect: (id) => { selIds.value = selIds.value.filter(x => x !== id) REDACTED
+REDACTED)
 const selPlatforms = computed<AccountPlatform[]>(() => {
   const platforms = new Set(
     accounts.value
