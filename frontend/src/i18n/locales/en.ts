@@ -1443,6 +1443,14 @@ export default {
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
         noFallback: 'No Fallback (Reject)'
       REDACTED,
+      openaiMessages: {
+        title: 'OpenAI Messages Dispatch',
+        allowDispatch: 'Allow /v1/messages dispatch',
+        allowDispatchHint: 'When enabled, API keys in this OpenAI group can dispatch requests through /v1/messages endpoint',
+        defaultModel: 'Default mapped model',
+        defaultModelPlaceholder: 'e.g., gpt-4.1',
+        defaultModelHint: 'When account has no model mapping configured, all request models will be mapped to this model'
+      REDACTED,
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',
         hint: 'Triggered only when upstream explicitly returns prompt too long. Leave empty to disable fallback.',

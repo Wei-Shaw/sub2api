@@ -146,6 +146,7 @@ interface Props {
   apiKey: string
   baseUrl: string
   platform: GroupPlatform | null
+  allowMessagesDispatch?: boolean
 REDACTED
 
 interface Emits {
@@ -265,13 +266,17 @@ REDACTED
 const clientTabs = computed((): TabConfig[] => {
   if (!props.platform) return []
   switch (props.platform) {
-    case 'openai':
-      return [
+    case 'openai': {
+      const tabs: TabConfig[] = [
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon REDACTED,
         { id: 'codex-ws', label: t('keys.useKeyModal.cliTabs.codexCliWs'), icon: TerminalIcon REDACTED,
-        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon REDACTED,
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon REDACTED
       ]
+      if (props.allowMessagesDispatch) {
+        tabs.push({ id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon REDACTED)
+      REDACTED
+      tabs.push({ id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon REDACTED)
+      return tabs
+    REDACTED
     case 'gemini':
       return [
         { id: 'gemini', label: t('keys.useKeyModal.cliTabs.geminiCli'), icon: SparkleIcon REDACTED,

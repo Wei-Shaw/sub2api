@@ -8250,6 +8250,8 @@ type GroupMutation struct {
 	appendsupported_model_scopes            []string
 	sort_order                              *int
 	addsort_order                           *int
+	allow_messages_dispatch                 *bool
+	default_mapped_model                    *string
 	clearedFields                           map[string]struct{REDACTED
 	api_keys                                map[int64]struct{REDACTED
 	removedapi_keys                         map[int64]struct{REDACTED
@@ -9994,6 +9996,78 @@ func (m *GroupMutation) ResetSortOrder() {
 	m.addsort_order = nil
 REDACTED
 
+// SetAllowMessagesDispatch sets the "allow_messages_dispatch" field.
+func (m *GroupMutation) SetAllowMessagesDispatch(b bool) {
+	m.allow_messages_dispatch = &b
+REDACTED
+
+// AllowMessagesDispatch returns the value of the "allow_messages_dispatch" field in the mutation.
+func (m *GroupMutation) AllowMessagesDispatch() (r bool, exists bool) {
+	v := m.allow_messages_dispatch
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldAllowMessagesDispatch returns the old "allow_messages_dispatch" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAllowMessagesDispatch(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowMessagesDispatch is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowMessagesDispatch requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowMessagesDispatch: %w", err)
+REDACTED
+	return oldValue.AllowMessagesDispatch, nil
+REDACTED
+
+// ResetAllowMessagesDispatch resets all changes to the "allow_messages_dispatch" field.
+func (m *GroupMutation) ResetAllowMessagesDispatch() {
+	m.allow_messages_dispatch = nil
+REDACTED
+
+// SetDefaultMappedModel sets the "default_mapped_model" field.
+func (m *GroupMutation) SetDefaultMappedModel(s string) {
+	m.default_mapped_model = &s
+REDACTED
+
+// DefaultMappedModel returns the value of the "default_mapped_model" field in the mutation.
+func (m *GroupMutation) DefaultMappedModel() (r string, exists bool) {
+	v := m.default_mapped_model
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldDefaultMappedModel returns the old "default_mapped_model" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldDefaultMappedModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDefaultMappedModel is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDefaultMappedModel requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDefaultMappedModel: %w", err)
+REDACTED
+	return oldValue.DefaultMappedModel, nil
+REDACTED
+
+// ResetDefaultMappedModel resets all changes to the "default_mapped_model" field.
+func (m *GroupMutation) ResetDefaultMappedModel() {
+	m.default_mapped_model = nil
+REDACTED
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -10352,7 +10426,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 30)
+	fields := make([]string, 0, 32)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 REDACTED
@@ -10443,6 +10517,12 @@ REDACTED
 	if m.sort_order != nil {
 		fields = append(fields, group.FieldSortOrder)
 REDACTED
+	if m.allow_messages_dispatch != nil {
+		fields = append(fields, group.FieldAllowMessagesDispatch)
+REDACTED
+	if m.default_mapped_model != nil {
+		fields = append(fields, group.FieldDefaultMappedModel)
+REDACTED
 	return fields
 REDACTED
 
@@ -10511,6 +10591,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.SupportedModelScopes()
 	case group.FieldSortOrder:
 		return m.SortOrder()
+	case group.FieldAllowMessagesDispatch:
+		return m.AllowMessagesDispatch()
+	case group.FieldDefaultMappedModel:
+		return m.DefaultMappedModel()
 REDACTED
 	return nil, false
 REDACTED
@@ -10580,6 +10664,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldSupportedModelScopes(ctx)
 	case group.FieldSortOrder:
 		return m.OldSortOrder(ctx)
+	case group.FieldAllowMessagesDispatch:
+		return m.OldAllowMessagesDispatch(ctx)
+	case group.FieldDefaultMappedModel:
+		return m.OldDefaultMappedModel(ctx)
 REDACTED
 	return nil, fmt.Errorf("unknown Group field %s", name)
 REDACTED
@@ -10798,6 +10886,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetSortOrder(v)
+		return nil
+	case group.FieldAllowMessagesDispatch:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetAllowMessagesDispatch(v)
+		return nil
+	case group.FieldDefaultMappedModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetDefaultMappedModel(v)
 		return nil
 REDACTED
 	return fmt.Errorf("unknown Group field %s", name)
@@ -11225,6 +11327,12 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldSortOrder:
 		m.ResetSortOrder()
+		return nil
+	case group.FieldAllowMessagesDispatch:
+		m.ResetAllowMessagesDispatch()
+		return nil
+	case group.FieldDefaultMappedModel:
+		m.ResetDefaultMappedModel()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown Group field %s", name)

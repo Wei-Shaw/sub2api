@@ -65,6 +65,10 @@ type APIKeyAuthGroupSnapshot struct {
 
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string `json:"supported_model_scopes,omitempty"`
+
+	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	AllowMessagesDispatch bool   `json:"allow_messages_dispatch"`
+	DefaultMappedModel    string `json:"default_mapped_model,omitempty"`
 REDACTED
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

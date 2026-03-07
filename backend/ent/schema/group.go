@@ -148,6 +148,15 @@ func (Group) Fields() []ent.Field {
 		field.Int("sort_order").
 			Default(0).
 			Comment("分组显示排序，数值越小越靠前"),
+
+		// OpenAI Messages 调度配置 (added by migration 069)
+		field.Bool("allow_messages_dispatch").
+			Default(false).
+			Comment("是否允许 /v1/messages 调度到此 OpenAI 分组"),
+		field.String("default_mapped_model").
+			MaxLen(100).
+			Default("").
+			Comment("默认映射模型 ID，当账号级映射找不到时使用此值"),
 REDACTED
 REDACTED
 

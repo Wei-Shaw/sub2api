@@ -245,6 +245,8 @@ REDACTED
 			ModelRoutingEnabled:             apiKey.Group.ModelRoutingEnabled,
 			MCPXMLInject:                    apiKey.Group.MCPXMLInject,
 			SupportedModelScopes:            apiKey.Group.SupportedModelScopes,
+			AllowMessagesDispatch:           apiKey.Group.AllowMessagesDispatch,
+			DefaultMappedModel:              apiKey.Group.DefaultMappedModel,
 	REDACTED
 REDACTED
 	return snapshot
@@ -302,6 +304,8 @@ REDACTED
 			ModelRoutingEnabled:             snapshot.Group.ModelRoutingEnabled,
 			MCPXMLInject:                    snapshot.Group.MCPXMLInject,
 			SupportedModelScopes:            snapshot.Group.SupportedModelScopes,
+			AllowMessagesDispatch:           snapshot.Group.AllowMessagesDispatch,
+			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 	REDACTED
 REDACTED
 	s.compileAPIKeyIPRules(apiKey)

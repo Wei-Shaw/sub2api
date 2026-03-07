@@ -165,6 +165,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldModelRouting,
 				group.FieldMcpXMLInject,
 				group.FieldSupportedModelScopes,
+			group.FieldAllowMessagesDispatch,
+			group.FieldDefaultMappedModel,
 			)
 	REDACTED).
 		Only(ctx)
@@ -619,6 +621,8 @@ REDACTED
 		MCPXMLInject:                    g.McpXMLInject,
 		SupportedModelScopes:            g.SupportedModelScopes,
 		SortOrder:                       g.SortOrder,
+		AllowMessagesDispatch:           g.AllowMessagesDispatch,
+		DefaultMappedModel:              g.DefaultMappedModel,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 REDACTED

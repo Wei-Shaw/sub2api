@@ -96,6 +96,9 @@ type Group struct {
 	// Sora 存储配额
 	SoraStorageQuotaBytes int64 `json:"sora_storage_quota_bytes"`
 
+	// OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
+	AllowMessagesDispatch bool `json:"allow_messages_dispatch"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 REDACTED
@@ -111,6 +114,9 @@ type AdminGroup struct {
 
 	// MCP XML 协议注入（仅 antigravity 平台使用）
 	MCPXMLInject bool `json:"mcp_xml_inject"`
+
+	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	DefaultMappedModel string `json:"default_mapped_model"`
 
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string       `json:"supported_model_scopes"`

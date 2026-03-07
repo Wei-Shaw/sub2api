@@ -389,6 +389,8 @@ export interface Group {
   claude_code_only: boolean
   fallback_group_id: number | null
   fallback_group_id_on_invalid_request: number | null
+  // OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
+  allow_messages_dispatch?: boolean
   created_at: string
   updated_at: string
 REDACTED
@@ -406,6 +408,9 @@ export interface AdminGroup extends Group {
 
   // 分组下账号数量（仅管理员可见）
   account_count?: number
+
+  // OpenAI Messages 调度配置（仅 openai 平台使用）
+  default_mapped_model?: string
 
   // 分组排序
   sort_order: number

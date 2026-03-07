@@ -453,6 +453,16 @@ REDACTED()
 	groupDescSortOrder := groupFields[26].Descriptor()
 	// group.DefaultSortOrder holds the default value on creation for the sort_order field.
 	group.DefaultSortOrder = groupDescSortOrder.Default.(int)
+	// groupDescAllowMessagesDispatch is the schema descriptor for allow_messages_dispatch field.
+	groupDescAllowMessagesDispatch := groupFields[27].Descriptor()
+	// group.DefaultAllowMessagesDispatch holds the default value on creation for the allow_messages_dispatch field.
+	group.DefaultAllowMessagesDispatch = groupDescAllowMessagesDispatch.Default.(bool)
+	// groupDescDefaultMappedModel is the schema descriptor for default_mapped_model field.
+	groupDescDefaultMappedModel := groupFields[28].Descriptor()
+	// group.DefaultDefaultMappedModel holds the default value on creation for the default_mapped_model field.
+	group.DefaultDefaultMappedModel = groupDescDefaultMappedModel.Default.(string)
+	// group.DefaultMappedModelValidator is a validator for the "default_mapped_model" field. It is called by the builders before save.
+	group.DefaultMappedModelValidator = groupDescDefaultMappedModel.Validators[0].(func(string) error)
 	idempotencyrecordMixin := schema.IdempotencyRecord{REDACTED.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

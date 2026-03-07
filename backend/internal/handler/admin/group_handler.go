@@ -53,6 +53,9 @@ type CreateGroupRequest struct {
 	SupportedModelScopes []string `json:"supported_model_scopes"`
 	// Sora 存储配额
 	SoraStorageQuotaBytes int64 `json:"sora_storage_quota_bytes"`
+	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	AllowMessagesDispatch bool   `json:"allow_messages_dispatch"`
+	DefaultMappedModel    string `json:"default_mapped_model"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 REDACTED
@@ -88,6 +91,9 @@ type UpdateGroupRequest struct {
 	SupportedModelScopes *[]string `json:"supported_model_scopes"`
 	// Sora 存储配额
 	SoraStorageQuotaBytes *int64 `json:"sora_storage_quota_bytes"`
+	// OpenAI Messages 调度配置（仅 openai 平台使用）
+	AllowMessagesDispatch *bool   `json:"allow_messages_dispatch"`
+	DefaultMappedModel    *string `json:"default_mapped_model"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 REDACTED
@@ -203,6 +209,8 @@ REDACTED
 		MCPXMLInject:                    req.MCPXMLInject,
 		SupportedModelScopes:            req.SupportedModelScopes,
 		SoraStorageQuotaBytes:           req.SoraStorageQuotaBytes,
+		AllowMessagesDispatch:           req.AllowMessagesDispatch,
+		DefaultMappedModel:              req.DefaultMappedModel,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 REDACTED)
 	if err != nil {
@@ -254,6 +262,8 @@ REDACTED
 		MCPXMLInject:                    req.MCPXMLInject,
 		SupportedModelScopes:            req.SupportedModelScopes,
 		SoraStorageQuotaBytes:           req.SoraStorageQuotaBytes,
+		AllowMessagesDispatch:           req.AllowMessagesDispatch,
+		DefaultMappedModel:              req.DefaultMappedModel,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 REDACTED)
 	if err != nil {
