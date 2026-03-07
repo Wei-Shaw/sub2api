@@ -143,14 +143,26 @@ REDACTED
 			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
 	REDACTED
 		// Non-failover error: return Anthropic-formatted error to client
-		return s.handleAnthropicErrorResponse(resp, c)
+		return s.handleAnthropicErrorResponse(resp, c, account)
 REDACTED
 
 	// 9. Handle normal response
+	var result *OpenAIForwardResult
+	var handleErr error
 	if isStream {
-		return s.handleAnthropicStreamingResponse(resp, c, originalModel, mappedModel, startTime)
+		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, originalModel, mappedModel, startTime)
+REDACTED else {
+		result, handleErr = s.handleAnthropicNonStreamingResponse(resp, c, originalModel, mappedModel, startTime)
 REDACTED
-	return s.handleAnthropicNonStreamingResponse(resp, c, originalModel, mappedModel, startTime)
+
+	// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
+	if handleErr == nil && account.Type == AccountTypeOAuth {
+		if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
+			s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
+	REDACTED
+REDACTED
+
+	return result, handleErr
 REDACTED
 
 // handleAnthropicErrorResponse reads an upstream error and returns it in
@@ -158,6 +170,7 @@ REDACTED
 func (s *OpenAIGatewayService) handleAnthropicErrorResponse(
 	resp *http.Response,
 	c *gin.Context,
+	account *Account,
 ) (*OpenAIForwardResult, error) {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
@@ -177,6 +190,21 @@ REDACTED
 		upstreamDetail = truncateString(string(body), maxBytes)
 REDACTED
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+
+	// Apply error passthrough rules (matches handleErrorResponse pattern in openai_gateway_service.go)
+	if status, errType, errMsg, matched := applyErrorPassthroughRule(
+		c, account.Platform, resp.StatusCode, body,
+		http.StatusBadGateway, "api_error", "Upstream request failed",
+	); matched {
+		writeAnthropicError(c, status, errType, errMsg)
+		if upstreamMsg == "" {
+			upstreamMsg = errMsg
+	REDACTED
+		if upstreamMsg == "" {
+			return nil, fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
+	REDACTED
+		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
+REDACTED
 
 	errType := "api_error"
 	switch {
