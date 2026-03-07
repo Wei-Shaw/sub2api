@@ -33,23 +33,25 @@ REDACTED
 REDACTED
 
 type CreateAnnouncementInput struct {
-	Title     string
-	Content   string
-	Status    string
-	Targeting AnnouncementTargeting
-	StartsAt  *time.Time
-	EndsAt    *time.Time
-	ActorID   *int64 // 管理员用户ID
+	Title      string
+	Content    string
+	Status     string
+	NotifyMode string
+	Targeting  AnnouncementTargeting
+	StartsAt   *time.Time
+	EndsAt     *time.Time
+	ActorID    *int64 // 管理员用户ID
 REDACTED
 
 type UpdateAnnouncementInput struct {
-	Title     *string
-	Content   *string
-	Status    *string
-	Targeting *AnnouncementTargeting
-	StartsAt  **time.Time
-	EndsAt    **time.Time
-	ActorID   *int64 // 管理员用户ID
+	Title      *string
+	Content    *string
+	Status     *string
+	NotifyMode *string
+	Targeting  *AnnouncementTargeting
+	StartsAt   **time.Time
+	EndsAt     **time.Time
+	ActorID    *int64 // 管理员用户ID
 REDACTED
 
 type UserAnnouncement struct {
@@ -93,6 +95,14 @@ REDACTED
 		return nil, err
 REDACTED
 
+	notifyMode := strings.TrimSpace(input.NotifyMode)
+	if notifyMode == "" {
+		notifyMode = AnnouncementNotifyModeSilent
+REDACTED
+	if !isValidAnnouncementNotifyMode(notifyMode) {
+		return nil, fmt.Errorf("create announcement: invalid notify_mode")
+REDACTED
+
 	if input.StartsAt != nil && input.EndsAt != nil {
 		if !input.StartsAt.Before(*input.EndsAt) {
 			return nil, fmt.Errorf("create announcement: starts_at must be before ends_at")
@@ -100,12 +110,13 @@ REDACTED
 REDACTED
 
 	a := &Announcement{
-		Title:     title,
-		Content:   content,
-		Status:    status,
-		Targeting: targeting,
-		StartsAt:  input.StartsAt,
-		EndsAt:    input.EndsAt,
+		Title:      title,
+		Content:    content,
+		Status:     status,
+		NotifyMode: notifyMode,
+		Targeting:  targeting,
+		StartsAt:   input.StartsAt,
+		EndsAt:     input.EndsAt,
 REDACTED
 	if input.ActorID != nil && *input.ActorID > 0 {
 		a.CreatedBy = input.ActorID
@@ -148,6 +159,14 @@ REDACTED
 			return nil, fmt.Errorf("update announcement: invalid status")
 	REDACTED
 		a.Status = status
+REDACTED
+
+	if input.NotifyMode != nil {
+		notifyMode := strings.TrimSpace(*input.NotifyMode)
+		if !isValidAnnouncementNotifyMode(notifyMode) {
+			return nil, fmt.Errorf("update announcement: invalid notify_mode")
+	REDACTED
+		a.NotifyMode = notifyMode
 REDACTED
 
 	if input.Targeting != nil {
@@ -371,6 +390,15 @@ REDACTED
 func isValidAnnouncementStatus(status string) bool {
 	switch status {
 	case AnnouncementStatusDraft, AnnouncementStatusActive, AnnouncementStatusArchived:
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
+func isValidAnnouncementNotifyMode(mode string) bool {
+	switch mode {
+	case AnnouncementNotifyModeSilent, AnnouncementNotifyModePopup:
 		return true
 	default:
 		return false

@@ -251,6 +251,7 @@ REDACTED
 		{Name: "title", Type: field.TypeString, Size: 200REDACTED,
 		{Name: "content", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "status", Type: field.TypeString, Size: 20, Default: "draft"REDACTED,
+		{Name: "notify_mode", Type: field.TypeString, Size: 20, Default: "silent"REDACTED,
 		{Name: "targeting", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
 		{Name: "starts_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "ends_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
@@ -273,17 +274,17 @@ REDACTED
 			{
 				Name:    "announcement_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{AnnouncementsColumns[9]REDACTED,
+				Columns: []*schema.Column{AnnouncementsColumns[10]REDACTED,
 		REDACTED,
 			{
 				Name:    "announcement_starts_at",
 				Unique:  false,
-				Columns: []*schema.Column{AnnouncementsColumns[5]REDACTED,
+				Columns: []*schema.Column{AnnouncementsColumns[6]REDACTED,
 		REDACTED,
 			{
 				Name:    "announcement_ends_at",
 				Unique:  false,
-				Columns: []*schema.Column{AnnouncementsColumns[6]REDACTED,
+				Columns: []*schema.Column{AnnouncementsColumns[7]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED

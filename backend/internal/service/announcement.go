@@ -15,6 +15,11 @@ const (
 )
 
 const (
+	AnnouncementNotifyModeSilent = domain.AnnouncementNotifyModeSilent
+	AnnouncementNotifyModePopup  = domain.AnnouncementNotifyModePopup
+)
+
+const (
 	AnnouncementConditionTypeSubscription = domain.AnnouncementConditionTypeSubscription
 	AnnouncementConditionTypeBalance      = domain.AnnouncementConditionTypeBalance
 )

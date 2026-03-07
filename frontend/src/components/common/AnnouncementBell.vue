@@ -314,16 +314,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
+import { storeToRefs REDACTED from 'pinia'
 import { marked REDACTED from 'marked'
 import DOMPurify from 'dompurify'
-import { announcementsAPI REDACTED from '@/api'
 import { useAppStore REDACTED from '@/stores/app'
+import { useAnnouncementStore REDACTED from '@/stores/announcements'
 import { formatRelativeTime, formatRelativeWithDateTime REDACTED from '@/utils/format'
 import type { UserAnnouncement REDACTED from '@/types'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+const announcementStore = useAnnouncementStore()
 
 // Configure marked
 marked.setOptions({
@@ -331,17 +333,14 @@ marked.setOptions({
   gfm: true,
 REDACTED)
 
-// State
-const announcements = ref<UserAnnouncement[]>([])
+// Use store state (storeToRefs for reactivity)
+const { announcements, loading REDACTED = storeToRefs(announcementStore)
+const unreadCount = computed(() => announcementStore.unreadCount)
+
+// Local modal state
 const isModalOpen = ref(false)
 const detailModalOpen = ref(false)
 const selectedAnnouncement = ref<UserAnnouncement | null>(null)
-const loading = ref(false)
-
-// Computed
-const unreadCount = computed(() =>
-  announcements.value.filter((a) => !a.read_at).length
-)
 
 // Methods
 function renderMarkdown(content: string): string {
@@ -350,24 +349,8 @@ function renderMarkdown(content: string): string {
   return DOMPurify.sanitize(html)
 REDACTED
 
-async function loadAnnouncements() {
-  try {
-    loading.value = true
-    const allAnnouncements = await announcementsAPI.list(false)
-    announcements.value = allAnnouncements.slice(0, 20)
-  REDACTED catch (err: any) {
-    console.error('Failed to load announcements:', err)
-    appStore.showError(err?.message || t('common.unknownError'))
-  REDACTED finally {
-    loading.value = false
-  REDACTED
-REDACTED
-
 function openModal() {
   isModalOpen.value = true
-  if (announcements.value.length === 0) {
-    loadAnnouncements()
-  REDACTED
 REDACTED
 
 function closeModal() {
@@ -389,14 +372,7 @@ REDACTED
 
 async function markAsRead(id: number) {
   try {
-    await announcementsAPI.markRead(id)
-    const announcement = announcements.value.find((a) => a.id === id)
-    if (announcement) {
-      announcement.read_at = new Date().toISOString()
-    REDACTED
-    if (selectedAnnouncement.value?.id === id) {
-      selectedAnnouncement.value.read_at = new Date().toISOString()
-    REDACTED
+    await announcementStore.markAsRead(id)
   REDACTED catch (err: any) {
     appStore.showError(err?.message || t('common.unknownError'))
   REDACTED
@@ -410,19 +386,10 @@ REDACTED
 
 async function markAllAsRead() {
   try {
-    loading.value = true
-    const unreadAnnouncements = announcements.value.filter((a) => !a.read_at)
-    await Promise.all(unreadAnnouncements.map((a) => announcementsAPI.markRead(a.id)))
-    announcements.value.forEach((a) => {
-      if (!a.read_at) {
-        a.read_at = new Date().toISOString()
-      REDACTED
-    REDACTED)
+    await announcementStore.markAllAsRead()
     appStore.showSuccess(t('announcements.allMarkedAsRead'))
   REDACTED catch (err: any) {
     appStore.showError(err?.message || t('common.unknownError'))
-  REDACTED finally {
-    loading.value = false
   REDACTED
 REDACTED
 
@@ -438,22 +405,19 @@ REDACTED
 
 onMounted(() => {
   document.addEventListener('keydown', handleEscape)
-  loadAnnouncements()
 REDACTED)
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleEscape)
-  // Restore body overflow in case component is unmounted while modals are open
   document.body.style.overflow = ''
 REDACTED)
 
-watch([isModalOpen, detailModalOpen], ([modal, detail]) => {
-  if (modal || detail) {
-    document.body.style.overflow = 'hidden'
-  REDACTED else {
-    document.body.style.overflow = ''
+watch(
+  [isModalOpen, detailModalOpen, () => announcementStore.currentPopup],
+  ([modal, detail, popup]) => {
+    document.body.style.overflow = (modal || detail || popup) ? 'hidden' : ''
   REDACTED
-REDACTED)
+)
 </script>
 
 <style scoped>

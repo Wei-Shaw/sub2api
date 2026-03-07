@@ -50,6 +50,20 @@ REDACTED
 	return _c
 REDACTED
 
+// SetNotifyMode sets the "notify_mode" field.
+func (_c *AnnouncementCreate) SetNotifyMode(v string) *AnnouncementCreate {
+	_c.mutation.SetNotifyMode(v)
+	return _c
+REDACTED
+
+// SetNillableNotifyMode sets the "notify_mode" field if the given value is not nil.
+func (_c *AnnouncementCreate) SetNillableNotifyMode(v *string) *AnnouncementCreate {
+	if v != nil {
+		_c.SetNotifyMode(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetTargeting sets the "targeting" field.
 func (_c *AnnouncementCreate) SetTargeting(v domain.AnnouncementTargeting) *AnnouncementCreate {
 	_c.mutation.SetTargeting(v)
@@ -202,6 +216,10 @@ func (_c *AnnouncementCreate) defaults() {
 		v := announcement.DefaultStatus
 		_c.mutation.SetStatus(v)
 REDACTED
+	if _, ok := _c.mutation.NotifyMode(); !ok {
+		v := announcement.DefaultNotifyMode
+		_c.mutation.SetNotifyMode(v)
+REDACTED
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := announcement.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -236,6 +254,14 @@ REDACTED
 	if v, ok := _c.mutation.Status(); ok {
 		if err := announcement.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Announcement.status": %w`, err)REDACTED
+	REDACTED
+REDACTED
+	if _, ok := _c.mutation.NotifyMode(); !ok {
+		return &ValidationError{Name: "notify_mode", err: errors.New(`ent: missing required field "Announcement.notify_mode"`)REDACTED
+REDACTED
+	if v, ok := _c.mutation.NotifyMode(); ok {
+		if err := announcement.NotifyModeValidator(v); err != nil {
+			return &ValidationError{Name: "notify_mode", err: fmt.Errorf(`ent: validator failed for field "Announcement.notify_mode": %w`, err)REDACTED
 	REDACTED
 REDACTED
 	if _, ok := _c.mutation.CreatedAt(); !ok {
@@ -282,6 +308,10 @@ REDACTED
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(announcement.FieldStatus, field.TypeString, value)
 		_node.Status = value
+REDACTED
+	if value, ok := _c.mutation.NotifyMode(); ok {
+		_spec.SetField(announcement.FieldNotifyMode, field.TypeString, value)
+		_node.NotifyMode = value
 REDACTED
 	if value, ok := _c.mutation.Targeting(); ok {
 		_spec.SetField(announcement.FieldTargeting, field.TypeJSON, value)
@@ -412,6 +442,18 @@ REDACTED
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *AnnouncementUpsert) UpdateStatus() *AnnouncementUpsert {
 	u.SetExcluded(announcement.FieldStatus)
+	return u
+REDACTED
+
+// SetNotifyMode sets the "notify_mode" field.
+func (u *AnnouncementUpsert) SetNotifyMode(v string) *AnnouncementUpsert {
+	u.Set(announcement.FieldNotifyMode, v)
+	return u
+REDACTED
+
+// UpdateNotifyMode sets the "notify_mode" field to the value that was provided on create.
+func (u *AnnouncementUpsert) UpdateNotifyMode() *AnnouncementUpsert {
+	u.SetExcluded(announcement.FieldNotifyMode)
 	return u
 REDACTED
 
@@ -613,6 +655,20 @@ REDACTED
 func (u *AnnouncementUpsertOne) UpdateStatus() *AnnouncementUpsertOne {
 	return u.Update(func(s *AnnouncementUpsert) {
 		s.UpdateStatus()
+REDACTED)
+REDACTED
+
+// SetNotifyMode sets the "notify_mode" field.
+func (u *AnnouncementUpsertOne) SetNotifyMode(v string) *AnnouncementUpsertOne {
+	return u.Update(func(s *AnnouncementUpsert) {
+		s.SetNotifyMode(v)
+REDACTED)
+REDACTED
+
+// UpdateNotifyMode sets the "notify_mode" field to the value that was provided on create.
+func (u *AnnouncementUpsertOne) UpdateNotifyMode() *AnnouncementUpsertOne {
+	return u.Update(func(s *AnnouncementUpsert) {
+		s.UpdateNotifyMode()
 REDACTED)
 REDACTED
 
@@ -999,6 +1055,20 @@ REDACTED
 func (u *AnnouncementUpsertBulk) UpdateStatus() *AnnouncementUpsertBulk {
 	return u.Update(func(s *AnnouncementUpsert) {
 		s.UpdateStatus()
+REDACTED)
+REDACTED
+
+// SetNotifyMode sets the "notify_mode" field.
+func (u *AnnouncementUpsertBulk) SetNotifyMode(v string) *AnnouncementUpsertBulk {
+	return u.Update(func(s *AnnouncementUpsert) {
+		s.SetNotifyMode(v)
+REDACTED)
+REDACTED
+
+// UpdateNotifyMode sets the "notify_mode" field to the value that was provided on create.
+func (u *AnnouncementUpsertBulk) UpdateNotifyMode() *AnnouncementUpsertBulk {
+	return u.Update(func(s *AnnouncementUpsert) {
+		s.UpdateNotifyMode()
 REDACTED)
 REDACTED
 

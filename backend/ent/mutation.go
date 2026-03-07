@@ -5167,6 +5167,7 @@ type AnnouncementMutation struct {
 	title         *string
 	content       *string
 	status        *string
+	notify_mode   *string
 	targeting     *domain.AnnouncementTargeting
 	starts_at     *time.Time
 	ends_at       *time.Time
@@ -5389,6 +5390,42 @@ REDACTED
 // ResetStatus resets all changes to the "status" field.
 func (m *AnnouncementMutation) ResetStatus() {
 	m.status = nil
+REDACTED
+
+// SetNotifyMode sets the "notify_mode" field.
+func (m *AnnouncementMutation) SetNotifyMode(s string) {
+	m.notify_mode = &s
+REDACTED
+
+// NotifyMode returns the value of the "notify_mode" field in the mutation.
+func (m *AnnouncementMutation) NotifyMode() (r string, exists bool) {
+	v := m.notify_mode
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldNotifyMode returns the old "notify_mode" field's value of the Announcement entity.
+// If the Announcement object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AnnouncementMutation) OldNotifyMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNotifyMode is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNotifyMode requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNotifyMode: %w", err)
+REDACTED
+	return oldValue.NotifyMode, nil
+REDACTED
+
+// ResetNotifyMode resets all changes to the "notify_mode" field.
+func (m *AnnouncementMutation) ResetNotifyMode() {
+	m.notify_mode = nil
 REDACTED
 
 // SetTargeting sets the "targeting" field.
@@ -5838,7 +5875,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AnnouncementMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.title != nil {
 		fields = append(fields, announcement.FieldTitle)
 REDACTED
@@ -5847,6 +5884,9 @@ REDACTED
 REDACTED
 	if m.status != nil {
 		fields = append(fields, announcement.FieldStatus)
+REDACTED
+	if m.notify_mode != nil {
+		fields = append(fields, announcement.FieldNotifyMode)
 REDACTED
 	if m.targeting != nil {
 		fields = append(fields, announcement.FieldTargeting)
@@ -5883,6 +5923,8 @@ func (m *AnnouncementMutation) Field(name string) (ent.Value, bool) {
 		return m.Content()
 	case announcement.FieldStatus:
 		return m.Status()
+	case announcement.FieldNotifyMode:
+		return m.NotifyMode()
 	case announcement.FieldTargeting:
 		return m.Targeting()
 	case announcement.FieldStartsAt:
@@ -5912,6 +5954,8 @@ func (m *AnnouncementMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldContent(ctx)
 	case announcement.FieldStatus:
 		return m.OldStatus(ctx)
+	case announcement.FieldNotifyMode:
+		return m.OldNotifyMode(ctx)
 	case announcement.FieldTargeting:
 		return m.OldTargeting(ctx)
 	case announcement.FieldStartsAt:
@@ -5955,6 +5999,13 @@ func (m *AnnouncementMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetStatus(v)
+		return nil
+	case announcement.FieldNotifyMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetNotifyMode(v)
 		return nil
 	case announcement.FieldTargeting:
 		v, ok := value.(domain.AnnouncementTargeting)
@@ -6122,6 +6173,9 @@ func (m *AnnouncementMutation) ResetField(name string) error {
 		return nil
 	case announcement.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case announcement.FieldNotifyMode:
+		m.ResetNotifyMode()
 		return nil
 	case announcement.FieldTargeting:
 		m.ResetTargeting()
@@ -10298,7 +10352,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 30)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 REDACTED

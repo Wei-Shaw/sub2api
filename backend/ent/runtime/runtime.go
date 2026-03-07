@@ -277,12 +277,18 @@ REDACTED()
 	announcement.DefaultStatus = announcementDescStatus.Default.(string)
 	// announcement.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	announcement.StatusValidator = announcementDescStatus.Validators[0].(func(string) error)
+	// announcementDescNotifyMode is the schema descriptor for notify_mode field.
+	announcementDescNotifyMode := announcementFields[3].Descriptor()
+	// announcement.DefaultNotifyMode holds the default value on creation for the notify_mode field.
+	announcement.DefaultNotifyMode = announcementDescNotifyMode.Default.(string)
+	// announcement.NotifyModeValidator is a validator for the "notify_mode" field. It is called by the builders before save.
+	announcement.NotifyModeValidator = announcementDescNotifyMode.Validators[0].(func(string) error)
 	// announcementDescCreatedAt is the schema descriptor for created_at field.
-	announcementDescCreatedAt := announcementFields[8].Descriptor()
+	announcementDescCreatedAt := announcementFields[9].Descriptor()
 	// announcement.DefaultCreatedAt holds the default value on creation for the created_at field.
 	announcement.DefaultCreatedAt = announcementDescCreatedAt.Default.(func() time.Time)
 	// announcementDescUpdatedAt is the schema descriptor for updated_at field.
-	announcementDescUpdatedAt := announcementFields[9].Descriptor()
+	announcementDescUpdatedAt := announcementFields[10].Descriptor()
 	// announcement.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	announcement.DefaultUpdatedAt = announcementDescUpdatedAt.Default.(func() time.Time)
 	// announcement.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

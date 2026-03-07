@@ -2704,6 +2704,7 @@ export default {
       columns: {
         title: 'Title',
         status: 'Status',
+        notifyMode: 'Notify Mode',
         targeting: 'Targeting',
         timeRange: 'Schedule',
         createdAt: 'Created At',
@@ -2714,10 +2715,16 @@ export default {
         active: 'Active',
         archived: 'Archived'
       REDACTED,
+      notifyModeLabels: {
+        silent: 'Silent',
+        popup: 'Popup'
+      REDACTED,
       form: {
         title: 'Title',
         content: 'Content (Markdown supported)',
         status: 'Status',
+        notifyMode: 'Notify Mode',
+        notifyModeHint: 'Popup mode will show a popup notification to users',
         startsAt: 'Starts At',
         endsAt: 'Ends At',
         startsAtHint: 'Leave empty to start immediately',
