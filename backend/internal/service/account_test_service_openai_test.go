@@ -4,7 +4,9 @@ package service
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +30,40 @@ func (r *openAIAccountTestRepo) SetRateLimited(_ context.Context, id int64, rese
 	r.rateLimitedID = id
 	r.rateLimitedAt = &resetAt
 	return nil
+REDACTED
+
+func TestAccountTestService_OpenAISuccessPersistsSnapshotFromHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, recorder := newSoraTestContext()
+
+	resp := newJSONResponse(http.StatusOK, "")
+	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"REDACTED
+
+`))
+	resp.Header.Set("x-codex-primary-used-percent", "88")
+	resp.Header.Set("x-codex-primary-reset-after-seconds", "604800")
+	resp.Header.Set("x-codex-primary-window-minutes", "10080")
+	resp.Header.Set("x-codex-secondary-used-percent", "42")
+	resp.Header.Set("x-codex-secondary-reset-after-seconds", "18000")
+	resp.Header.Set("x-codex-secondary-window-minutes", "300")
+
+	repo := &openAIAccountTestRepo{REDACTED
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{respREDACTEDREDACTED
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstreamREDACTED
+	account := &Account{
+		ID:          89,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+REDACTED"access_token": "test-token"REDACTED,
+REDACTED
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4")
+REDACTED
+	require.NotEmpty(t, repo.updatedExtra)
+	require.Equal(t, 42.0, repo.updatedExtra["codex_5h_used_percent"])
+	require.Equal(t, 88.0, repo.updatedExtra["codex_7d_used_percent"])
+	require.Contains(t, recorder.Body.String(), "test_complete")
 REDACTED
 
 func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimit(t *testing.T) {

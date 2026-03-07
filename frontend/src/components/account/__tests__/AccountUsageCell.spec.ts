@@ -69,6 +69,67 @@ describe('AccountUsageCell', () => {
   REDACTED)
 
 
+  it('OpenAI OAuth 快照已过期时首屏会重新请求 usage', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: {
+        utilization: 15,
+        resets_at: '2026-03-08T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: {
+          requests: 3,
+          tokens: 300,
+          cost: 0.03,
+          standard_cost: 0.03,
+          user_cost: 0.03
+        REDACTED
+      REDACTED,
+      seven_day: {
+        utilization: 77,
+        resets_at: '2026-03-13T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: {
+          requests: 3,
+          tokens: 300,
+          cost: 0.03,
+          standard_cost: 0.03,
+          user_cost: 0.03
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: {
+          id: 2000,
+          platform: 'openai',
+          type: 'oauth',
+          extra: {
+            codex_usage_updated_at: '2026-03-07T00:00:00Z',
+            codex_5h_used_percent: 12,
+            codex_5h_reset_at: '2026-03-08T12:00:00Z',
+            codex_7d_used_percent: 34,
+            codex_7d_reset_at: '2026-03-13T12:00:00Z'
+          REDACTED
+        REDACTED as any
+      REDACTED,
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
+            template: '<div class="usage-bar">{{ label REDACTEDREDACTED|{{ utilization REDACTEDREDACTED|{{ windowStats?.tokens REDACTEDREDACTED</div>'
+          REDACTED,
+          AccountQuotaInfo: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledWith(2000)
+    expect(wrapper.text()).toContain('5h|15|300')
+    expect(wrapper.text()).toContain('7d|77|300')
+  REDACTED)
+
   it('OpenAI OAuth 有现成快照且未限额时不会首屏请求 usage', async () => {
     const wrapper = mount(AccountUsageCell, {
       props: {
@@ -77,6 +138,7 @@ describe('AccountUsageCell', () => {
           platform: 'openai',
           type: 'oauth',
           extra: {
+            codex_usage_updated_at: '2099-03-07T10:00:00Z',
             codex_5h_used_percent: 12,
             codex_5h_reset_at: '2099-03-07T12:00:00Z',
             codex_7d_used_percent: 34,
