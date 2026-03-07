@@ -68,6 +68,40 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('admin.accounts.usageWindow.gemini3Image|70|2026-03-01T09:00:00Z')
   REDACTED)
 
+
+  it('OpenAI OAuth 有现成快照且未限额时不会首屏请求 usage', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: {
+          id: 2001,
+          platform: 'openai',
+          type: 'oauth',
+          extra: {
+            codex_5h_used_percent: 12,
+            codex_5h_reset_at: '2099-03-07T12:00:00Z',
+            codex_7d_used_percent: 34,
+            codex_7d_reset_at: '2099-03-13T12:00:00Z'
+          REDACTED
+        REDACTED as any
+      REDACTED,
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
+            template: '<div class="usage-bar">{{ label REDACTEDREDACTED|{{ utilization REDACTEDREDACTED</div>'
+          REDACTED,
+          AccountQuotaInfo: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    expect(getUsage).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('5h|12')
+    expect(wrapper.text()).toContain('7d|34')
+  REDACTED)
+
   it('OpenAI OAuth 在无 codex 快照时会回退显示 usage 接口窗口', async () => {
 	getUsage.mockResolvedValue({
 	  five_hour: {
@@ -121,5 +155,138 @@ REDACTED)
 	expect(getUsage).toHaveBeenCalledWith(2002)
 	expect(wrapper.text()).toContain('5h|0|27700')
 	expect(wrapper.text()).toContain('7d|0|27700')
+  REDACTED)
+
+  it('OpenAI OAuth 在行数据刷新但仍无 codex 快照时会重新拉取 usage', async () => {
+	getUsage
+	  .mockResolvedValueOnce({
+	    five_hour: {
+	      utilization: 0,
+	      resets_at: null,
+	      remaining_seconds: 0,
+	      window_stats: {
+	        requests: 1,
+	        tokens: 100,
+	        cost: 0.01,
+	        standard_cost: 0.01,
+	        user_cost: 0.01
+	      REDACTED
+	    REDACTED,
+	    seven_day: null
+	  REDACTED)
+	  .mockResolvedValueOnce({
+	    five_hour: {
+	      utilization: 0,
+	      resets_at: null,
+	      remaining_seconds: 0,
+	      window_stats: {
+	        requests: 2,
+	        tokens: 200,
+	        cost: 0.02,
+	        standard_cost: 0.02,
+	        user_cost: 0.02
+	      REDACTED
+	    REDACTED,
+	    seven_day: null
+	  REDACTED)
+
+	const wrapper = mount(AccountUsageCell, {
+	  props: {
+	    account: {
+	      id: 2003,
+	      platform: 'openai',
+	      type: 'oauth',
+	      updated_at: '2026-03-07T10:00:00Z',
+	      extra: {REDACTED
+	    REDACTED as any
+	  REDACTED,
+	  global: {
+	    stubs: {
+	      UsageProgressBar: {
+	        props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
+	        template: '<div class="usage-bar">{{ label REDACTEDREDACTED|{{ utilization REDACTEDREDACTED|{{ windowStats?.tokens REDACTEDREDACTED</div>'
+	      REDACTED,
+	      AccountQuotaInfo: true
+	    REDACTED
+	  REDACTED
+REDACTED)
+
+	await flushPromises()
+	expect(wrapper.text()).toContain('5h|0|100')
+	expect(getUsage).toHaveBeenCalledTimes(1)
+
+	await wrapper.setProps({
+	  account: {
+	    id: 2003,
+	    platform: 'openai',
+	    type: 'oauth',
+	    updated_at: '2026-03-07T10:01:00Z',
+	    extra: {REDACTED
+	  REDACTED
+REDACTED)
+
+	await flushPromises()
+	expect(getUsage).toHaveBeenCalledTimes(2)
+	expect(wrapper.text()).toContain('5h|0|200')
+  REDACTED)
+
+  it('OpenAI OAuth 已限额时首屏优先展示重新查询后的 usage，而不是旧 codex 快照', async () => {
+	getUsage.mockResolvedValue({
+	  five_hour: {
+	    utilization: 100,
+	    resets_at: '2026-03-07T12:00:00Z',
+	    remaining_seconds: 3600,
+	    window_stats: {
+	      requests: 211,
+	      tokens: 106540000,
+	      cost: 38.13,
+	      standard_cost: 38.13,
+	      user_cost: 38.13
+	    REDACTED
+	  REDACTED,
+	  seven_day: {
+	    utilization: 100,
+	    resets_at: '2026-03-13T12:00:00Z',
+	    remaining_seconds: 3600,
+	    window_stats: {
+	      requests: 211,
+	      tokens: 106540000,
+	      cost: 38.13,
+	      standard_cost: 38.13,
+	      user_cost: 38.13
+	    REDACTED
+	  REDACTED
+REDACTED)
+
+	const wrapper = mount(AccountUsageCell, {
+	  props: {
+	    account: {
+	      id: 2004,
+	      platform: 'openai',
+	      type: 'oauth',
+	      rate_limit_reset_at: '2099-03-07T12:00:00Z',
+	      extra: {
+	        codex_5h_used_percent: 0,
+	        codex_7d_used_percent: 0
+	      REDACTED
+	    REDACTED as any
+	  REDACTED,
+	  global: {
+	    stubs: {
+	      UsageProgressBar: {
+	        props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
+	        template: '<div class="usage-bar">{{ label REDACTEDREDACTED|{{ utilization REDACTEDREDACTED|{{ windowStats?.tokens REDACTEDREDACTED</div>'
+	      REDACTED,
+	      AccountQuotaInfo: true
+	    REDACTED
+	  REDACTED
+REDACTED)
+
+	await flushPromises()
+
+	expect(getUsage).toHaveBeenCalledWith(2004)
+	expect(wrapper.text()).toContain('5h|100|106540000')
+	expect(wrapper.text()).toContain('7d|100|106540000')
+	expect(wrapper.text()).not.toContain('5h|0|')
   REDACTED)
 REDACTED)

@@ -615,6 +615,7 @@ REDACTED
 func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
 	// 1. OpenAI 平台：优先尝试解析 x-codex-* 响应头（用于 rate_limit_exceeded）
 	if account.Platform == PlatformOpenAI {
+		s.persistOpenAICodexSnapshot(ctx, account, headers)
 		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
 				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
@@ -875,6 +876,23 @@ func pickSooner(a, b *time.Time) *time.Time {
 		return a
 	default:
 		return b
+REDACTED
+REDACTED
+
+func (s *RateLimitService) persistOpenAICodexSnapshot(ctx context.Context, account *Account, headers http.Header) {
+	if s == nil || s.accountRepo == nil || account == nil || headers == nil {
+		return
+REDACTED
+	snapshot := ParseCodexRateLimitHeaders(headers)
+	if snapshot == nil {
+		return
+REDACTED
+	updates := buildCodexUsageExtraUpdates(snapshot, time.Now())
+	if len(updates) == 0 {
+		return
+REDACTED
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
+		slog.Warn("openai_codex_snapshot_persist_failed", "account_id", account.ID, "error", err)
 REDACTED
 REDACTED
 

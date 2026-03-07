@@ -367,7 +367,7 @@ REDACTED
 		usage.SevenDay = progress
 REDACTED
 
-	if (usage.FiveHour == nil || usage.SevenDay == nil) && s.shouldProbeOpenAICodexSnapshot(account.ID, now) {
+	if shouldRefreshOpenAICodexSnapshot(account, usage, now) && s.shouldProbeOpenAICodexSnapshot(account.ID, now) {
 		if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
 			mergeAccountExtra(account, updates)
 			if usage.UpdatedAt == nil {
@@ -407,6 +407,40 @@ REDACTED
 REDACTED
 
 	return usage, nil
+REDACTED
+
+func shouldRefreshOpenAICodexSnapshot(account *Account, usage *UsageInfo, now time.Time) bool {
+	if account == nil {
+		return false
+REDACTED
+	if usage == nil {
+		return true
+REDACTED
+	if usage.FiveHour == nil || usage.SevenDay == nil {
+		return true
+REDACTED
+	if account.IsRateLimited() {
+		return true
+REDACTED
+	return isOpenAICodexSnapshotStale(account, now)
+REDACTED
+
+func isOpenAICodexSnapshotStale(account *Account, now time.Time) bool {
+	if account == nil || !account.IsOpenAIOAuth() || !account.IsOpenAIResponsesWebSocketV2Enabled() {
+		return false
+REDACTED
+	if account.Extra == nil {
+		return true
+REDACTED
+	raw, ok := account.Extra["codex_usage_updated_at"]
+	if !ok {
+		return true
+REDACTED
+	ts, err := parseTime(fmt.Sprint(raw))
+	if err != nil {
+		return true
+REDACTED
+	return now.Sub(ts) >= openAIProbeCacheTTL
 REDACTED
 
 func (s *AccountUsageService) shouldProbeOpenAICodexSnapshot(accountID int64, now time.Time) bool {
@@ -478,19 +512,33 @@ REDACTED
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("openai codex probe returned status %d", resp.StatusCode)
+	updates, err := extractOpenAICodexProbeUpdates(resp)
+	if err != nil {
+		return nil, err
+REDACTED
+	if len(updates) > 0 {
+		go func(accountID int64, updates map[string]any) {
+			updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer updateCancel()
+			_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
+	REDACTED(account.ID, updates)
+		return updates, nil
+REDACTED
+	return nil, nil
+REDACTED
+
+func extractOpenAICodexProbeUpdates(resp *http.Response) (map[string]any, error) {
+	if resp == nil {
+		return nil, nil
 REDACTED
 	if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
 		updates := buildCodexUsageExtraUpdates(snapshot, time.Now())
 		if len(updates) > 0 {
-			go func(accountID int64, updates map[string]any) {
-				updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer updateCancel()
-				_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
-		REDACTED(account.ID, updates)
 			return updates, nil
 	REDACTED
+REDACTED
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("openai codex probe returned status %d", resp.StatusCode)
 REDACTED
 	return nil, nil
 REDACTED
