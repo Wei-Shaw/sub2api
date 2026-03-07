@@ -3696,6 +3696,15 @@ REDACTED
 				finalEvents, agUsage := processor.Finish()
 				if len(finalEvents) > 0 {
 					cw.Write(finalEvents)
+			REDACTED else if !processor.MessageStartSent() && !cw.Disconnected() {
+					// 整个流未收到任何可解析的上游数据（全部 SSE 行均无法被 JSON 解析），
+					// 触发 failover 在同账号重试，避免向客户端发出缺少 message_start 的残缺流
+					logger.LegacyPrintf("service.antigravity_gateway", "[antigravity-Claude-Stream] empty stream response (no valid events parsed), triggering failover")
+					return nil, &UpstreamFailoverError{
+						StatusCode:             http.StatusBadGateway,
+						ResponseBody:           []byte(`{"error":"empty stream response from upstream"REDACTED`),
+						RetryableOnSameAccount: true,
+				REDACTED
 			REDACTED
 				return &antigravityStreamResult{usage: convertUsage(agUsage), firstTokenMs: firstTokenMs, clientDisconnect: cw.Disconnected()REDACTED, nil
 		REDACTED

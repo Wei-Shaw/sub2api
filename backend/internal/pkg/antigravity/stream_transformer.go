@@ -119,21 +119,31 @@ REDACTED
 	return result.Bytes()
 REDACTED
 
-// Finish 结束处理，返回最终事件和用量
+// Finish 结束处理，返回最终事件和用量。
+// 若整个流未收到任何可解析的上游数据（messageStartSent == false），
+// 则不补发任何结束事件，防止客户端收到没有 message_start 的残缺流。
 func (p *StreamingProcessor) Finish() ([]byte, *ClaudeUsage) {
-	var result bytes.Buffer
-
-	if !p.messageStopSent {
-		_, _ = result.Write(p.emitFinish(""))
-REDACTED
-
 	usage := &ClaudeUsage{
 		InputTokens:          p.inputTokens,
 		OutputTokens:         p.outputTokens,
 		CacheReadInputTokens: p.cacheReadTokens,
 REDACTED
 
+	if !p.messageStartSent {
+		return nil, usage
+REDACTED
+
+	var result bytes.Buffer
+	if !p.messageStopSent {
+		_, _ = result.Write(p.emitFinish(""))
+REDACTED
+
 	return result.Bytes(), usage
+REDACTED
+
+// MessageStartSent 报告流中是否已发出过 message_start 事件（即是否收到过有效的上游数据）
+func (p *StreamingProcessor) MessageStartSent() bool {
+	return p.messageStartSent
 REDACTED
 
 // emitMessageStart 发送 message_start 事件
