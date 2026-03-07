@@ -58,6 +58,12 @@ REDACTED
 	return matchCodexClientHeaderPrefixes(v, CodexOfficialClientOriginatorPrefixes)
 REDACTED
 
+// IsCodexOfficialClientByHeaders checks whether the request headers indicate an
+// official Codex client family request.
+func IsCodexOfficialClientByHeaders(userAgent, originator string) bool {
+	return IsCodexOfficialClientRequest(userAgent) || IsCodexOfficialClientOriginator(originator)
+REDACTED
+
 func normalizeCodexClientHeader(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 REDACTED
