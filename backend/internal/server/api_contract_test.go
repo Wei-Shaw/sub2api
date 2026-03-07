@@ -212,6 +212,7 @@ REDACTED{
 							"claude_code_only": false,
 						"fallback_group_id": null,
 						"fallback_group_id_on_invalid_request": null,
+						"allow_messages_dispatch": false,
 						"created_at": "2025-01-02T03:04:05Z",
 						"updated_at": "2025-01-02T03:04:05Z"
 				REDACTED
