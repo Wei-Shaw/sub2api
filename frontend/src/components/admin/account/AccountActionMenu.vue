@@ -32,14 +32,10 @@
                 {{ t('admin.accounts.refreshToken') REDACTEDREDACTED
               </button>
             </template>
-            <div v-if="account.status === 'error' || isRateLimited || isOverloaded" class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
-            <button v-if="account.status === 'error'" @click="$emit('reset-status', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-yellow-600 hover:bg-gray-100 dark:hover:bg-dark-700">
+            <div v-if="hasRecoverableState" class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
+            <button v-if="hasRecoverableState" @click="$emit('recover-state', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-emerald-600 hover:bg-gray-100 dark:hover:bg-dark-700">
               <Icon name="sync" size="sm" />
-              {{ t('admin.accounts.resetStatus') REDACTEDREDACTED
-            </button>
-            <button v-if="isRateLimited || isOverloaded" @click="$emit('clear-rate-limit', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-amber-600 hover:bg-gray-100 dark:hover:bg-dark-700">
-              <Icon name="clock" size="sm" />
-              {{ t('admin.accounts.clearRateLimit') REDACTEDREDACTED
+              {{ t('admin.accounts.recoverState') REDACTEDREDACTED
             </button>
             <button v-if="hasQuotaLimit" @click="$emit('reset-quota', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-teal-600 hover:bg-gray-100 dark:hover:bg-dark-700">
               <Icon name="refresh" size="sm" />
@@ -59,7 +55,7 @@ import { Icon REDACTED from '@/components/icons'
 import type { Account REDACTED from '@/types'
 
 const props = defineProps<{ show: boolean; account: Account | null; position: { top: number; left: number REDACTED | null REDACTED>()
-const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'reauth', 'refresh-token', 'reset-status', 'clear-rate-limit', 'reset-quota'])
+const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'reauth', 'refresh-token', 'recover-state', 'reset-quota'])
 const { t REDACTED = useI18n()
 const isRateLimited = computed(() => {
   if (props.account?.rate_limit_reset_at && new Date(props.account.rate_limit_reset_at) > new Date()) {
@@ -75,6 +71,10 @@ const isRateLimited = computed(() => {
   return false
 REDACTED)
 const isOverloaded = computed(() => props.account?.overload_until && new Date(props.account.overload_until) > new Date())
+const isTempUnschedulable = computed(() => props.account?.temp_unschedulable_until && new Date(props.account.temp_unschedulable_until) > new Date())
+const hasRecoverableState = computed(() => {
+  return props.account?.status === 'error' || Boolean(isRateLimited.value) || Boolean(isOverloaded.value) || Boolean(isTempUnschedulable.value)
+REDACTED)
 const hasQuotaLimit = computed(() => {
   return props.account?.type === 'apikey' &&
     props.account?.quota_limit !== undefined &&

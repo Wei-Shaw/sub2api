@@ -261,7 +261,7 @@
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @reset-status="handleResetStatus" @clear-rate-limit="handleClearRateLimit" @reset-quota="handleResetQuota" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal :show="showBulkEdit" :account-ids="selIds" :selected-platforms="selPlatforms" :selected-types="selTypes" :proxies="proxies" :groups="groups" @close="showBulkEdit = false" @updated="handleBulkUpdated" />
@@ -1105,24 +1105,15 @@ const handleRefresh = async (a: Account) => {
     console.error('Failed to refresh credentials:', error)
   REDACTED
 REDACTED
-const handleResetStatus = async (a: Account) => {
+const handleRecoverState = async (a: Account) => {
   try {
-    const updated = await adminAPI.accounts.clearError(a.id)
+    const updated = await adminAPI.accounts.recoverState(a.id)
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
-    appStore.showSuccess(t('common.success'))
-  REDACTED catch (error) {
-    console.error('Failed to reset status:', error)
-  REDACTED
-REDACTED
-const handleClearRateLimit = async (a: Account) => {
-  try {
-    const updated = await adminAPI.accounts.clearRateLimit(a.id)
-    patchAccountInList(updated)
-    enterAutoRefreshSilentWindow()
-    appStore.showSuccess(t('common.success'))
-  REDACTED catch (error) {
-    console.error('Failed to clear rate limit:', error)
+    appStore.showSuccess(t('admin.accounts.recoverStateSuccess'))
+  REDACTED catch (error: any) {
+    console.error('Failed to recover account state:', error)
+    appStore.showError(error?.message || t('admin.accounts.recoverStateFailed'))
   REDACTED
 REDACTED
 const handleResetQuota = async (a: Account) => {
@@ -1152,17 +1143,11 @@ const handleToggleSchedulable = async (a: Account) => {
   REDACTED
 REDACTED
 const handleShowTempUnsched = (a: Account) => { tempUnschedAcc.value = a; showTempUnsched.value = true REDACTED
-const handleTempUnschedReset = async () => {
-  if(!tempUnschedAcc.value) return
-  try {
-    const updated = await adminAPI.accounts.clearError(tempUnschedAcc.value.id)
-    showTempUnsched.value = false
-    tempUnschedAcc.value = null
-    patchAccountInList(updated)
-    enterAutoRefreshSilentWindow()
-  REDACTED catch (error) {
-    console.error('Failed to reset temp unscheduled:', error)
-  REDACTED
+const handleTempUnschedReset = async (updated: Account) => {
+  showTempUnsched.value = false
+  tempUnschedAcc.value = null
+  patchAccountInList(updated)
+  enterAutoRefreshSilentWindow()
 REDACTED
 const formatExpiresAt = (value: number | null) => {
   if (!value) return '-'
