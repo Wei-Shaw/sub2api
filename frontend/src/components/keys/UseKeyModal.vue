@@ -269,6 +269,7 @@ const clientTabs = computed((): TabConfig[] => {
       return [
         { id: 'codex', label: t('keys.useKeyModal.cliTabs.codexCli'), icon: TerminalIcon REDACTED,
         { id: 'codex-ws', label: t('keys.useKeyModal.cliTabs.codexCliWs'), icon: TerminalIcon REDACTED,
+        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon REDACTED,
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon REDACTED
       ]
     case 'gemini':
@@ -316,6 +317,9 @@ REDACTED)
 const platformDescription = computed(() => {
   switch (props.platform) {
     case 'openai':
+      if (activeClientTab.value === 'claude') {
+        return t('keys.useKeyModal.description')
+      REDACTED
       return t('keys.useKeyModal.openai.description')
     case 'gemini':
       return t('keys.useKeyModal.gemini.description')
@@ -329,6 +333,9 @@ REDACTED)
 const platformNote = computed(() => {
   switch (props.platform) {
     case 'openai':
+      if (activeClientTab.value === 'claude') {
+        return t('keys.useKeyModal.note')
+      REDACTED
       return activeTab.value === 'windows'
         ? t('keys.useKeyModal.openai.noteWindows')
         : t('keys.useKeyModal.openai.note')
@@ -402,6 +409,9 @@ const currentFiles = computed((): FileConfig[] => {
 
   switch (props.platform) {
     case 'openai':
+      if (activeClientTab.value === 'claude') {
+        return generateAnthropicFiles(baseUrl, apiKey)
+      REDACTED
       if (activeClientTab.value === 'codex-ws') {
         return generateOpenAIWsFiles(baseUrl, apiKey)
       REDACTED
