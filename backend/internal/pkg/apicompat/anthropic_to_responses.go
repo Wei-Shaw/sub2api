@@ -325,16 +325,22 @@ REDACTED
 REDACTED
 
 // convertAnthropicToolsToResponses maps Anthropic tool definitions to
-// Responses API function tools (input_schema → parameters).
+// Responses API tools. Server-side tools like web_search are mapped to their
+// OpenAI equivalents; regular tools become function tools.
 func convertAnthropicToolsToResponses(tools []AnthropicTool) []ResponsesTool {
-	out := make([]ResponsesTool, len(tools))
-	for i, t := range tools {
-		out[i] = ResponsesTool{
+	var out []ResponsesTool
+	for _, t := range tools {
+		// Anthropic server tools like "web_search_20250305" → OpenAI {"type":"web_search"REDACTED
+		if strings.HasPrefix(t.Type, "web_search") {
+			out = append(out, ResponsesTool{Type: "web_search"REDACTED)
+			continue
+	REDACTED
+		out = append(out, ResponsesTool{
 			Type:        "function",
 			Name:        t.Name,
 			Description: t.Description,
 			Parameters:  t.InputSchema,
-	REDACTED
+	REDACTED)
 REDACTED
 	return out
 REDACTED

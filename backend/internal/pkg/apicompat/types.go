@@ -60,6 +60,7 @@ REDACTED
 
 // AnthropicTool describes a tool available to the model.
 type AnthropicTool struct {
+	Type        string          `json:"type,omitempty"`        // e.g. "web_search_20250305" for server tools
 	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`
 	InputSchema json.RawMessage `json:"input_schema"` // JSON Schema object
@@ -217,7 +218,7 @@ REDACTED
 
 // ResponsesOutput is one output item in a Responses API response.
 type ResponsesOutput struct {
-	Type string `json:"type"` // "message" | "reasoning" | "function_call"
+	Type string `json:"type"` // "message" | "reasoning" | "function_call" | "web_search_call"
 
 	// type=message
 	ID      string                 `json:"id,omitempty"`
@@ -233,6 +234,15 @@ type ResponsesOutput struct {
 	CallID    string `json:"call_id,omitempty"`
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
+
+	// type=web_search_call
+	Action *WebSearchAction `json:"action,omitempty"`
+REDACTED
+
+// WebSearchAction describes the search action in a web_search_call output item.
+type WebSearchAction struct {
+	Type  string `json:"type,omitempty"`  // "search"
+	Query string `json:"query,omitempty"` // primary search query
 REDACTED
 
 // ResponsesSummary is a summary text block inside a reasoning output.

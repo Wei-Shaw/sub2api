@@ -54,6 +54,25 @@ REDACTED
 				Name:  item.Name,
 				Input: json.RawMessage(item.Arguments),
 		REDACTED)
+		case "web_search_call":
+			toolUseID := "srvtoolu_" + item.ID
+			query := ""
+			if item.Action != nil {
+				query = item.Action.Query
+		REDACTED
+			inputJSON, _ := json.Marshal(map[string]string{"query": queryREDACTED)
+			blocks = append(blocks, AnthropicContentBlock{
+				Type:  "server_tool_use",
+				ID:    toolUseID,
+				Name:  "web_search",
+				Input: inputJSON,
+		REDACTED)
+			emptyResults, _ := json.Marshal([]struct{REDACTED{REDACTED)
+			blocks = append(blocks, AnthropicContentBlock{
+				Type:      "web_search_tool_result",
+				ToolUseID: toolUseID,
+				Content:   emptyResults,
+		REDACTED)
 	REDACTED
 REDACTED
 
@@ -369,10 +388,71 @@ func resToAnthHandleOutputItemDone(evt *ResponsesStreamEvent, state *ResponsesEv
 	if evt.Item == nil {
 		return nil
 REDACTED
+
+	// Handle web_search_call → synthesize server_tool_use + web_search_tool_result blocks.
+	if evt.Item.Type == "web_search_call" && evt.Item.Status == "completed" {
+		return resToAnthHandleWebSearchDone(evt, state)
+REDACTED
+
 	if state.ContentBlockOpen {
 		return closeCurrentBlock(state)
 REDACTED
 	return nil
+REDACTED
+
+// resToAnthHandleWebSearchDone converts an OpenAI web_search_call output item
+// into Anthropic server_tool_use + web_search_tool_result content block pairs.
+// This allows Claude Code to count the searches performed.
+func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	var events []AnthropicStreamEvent
+	events = append(events, closeCurrentBlock(state)...)
+
+	toolUseID := "srvtoolu_" + evt.Item.ID
+	query := ""
+	if evt.Item.Action != nil {
+		query = evt.Item.Action.Query
+REDACTED
+	inputJSON, _ := json.Marshal(map[string]string{"query": queryREDACTED)
+
+	// Emit server_tool_use block (start + stop).
+	idx1 := state.ContentBlockIndex
+	events = append(events, AnthropicStreamEvent{
+		Type:  "content_block_start",
+		Index: &idx1,
+		ContentBlock: &AnthropicContentBlock{
+			Type:  "server_tool_use",
+			ID:    toolUseID,
+			Name:  "web_search",
+			Input: inputJSON,
+	REDACTED,
+REDACTED)
+	events = append(events, AnthropicStreamEvent{
+		Type:  "content_block_stop",
+		Index: &idx1,
+REDACTED)
+	state.ContentBlockIndex++
+
+	// Emit web_search_tool_result block (start + stop).
+	// Content is empty because OpenAI does not expose individual search results;
+	// the model consumes them internally and produces text output.
+	emptyResults, _ := json.Marshal([]struct{REDACTED{REDACTED)
+	idx2 := state.ContentBlockIndex
+	events = append(events, AnthropicStreamEvent{
+		Type:  "content_block_start",
+		Index: &idx2,
+		ContentBlock: &AnthropicContentBlock{
+			Type:      "web_search_tool_result",
+			ToolUseID: toolUseID,
+			Content:   emptyResults,
+	REDACTED,
+REDACTED)
+	events = append(events, AnthropicStreamEvent{
+		Type:  "content_block_stop",
+		Index: &idx2,
+REDACTED)
+	state.ContentBlockIndex++
+
+	return events
 REDACTED
 
 func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
