@@ -834,8 +834,10 @@ REDACTED
 REDACTED
 
 	userAgent := ""
+	originator := ""
 	if c != nil {
 		userAgent = strings.TrimSpace(c.GetHeader("User-Agent"))
+		originator = strings.TrimSpace(c.GetHeader("originator"))
 REDACTED
 
 	fields := []zap.Field{
@@ -845,7 +847,7 @@ REDACTED
 		zap.Int("upstream_status_code", upstreamStatusCode),
 		zap.String("upstream_error_message", msg),
 		zap.String("request_user_agent", userAgent),
-		zap.Bool("codex_official_client_match", openai.IsCodexCLIRequest(userAgent)),
+		zap.Bool("codex_official_client_match", openai.IsCodexOfficialClientByHeaders(userAgent, originator)),
 REDACTED
 	fields = appendCodexCLIOnlyRejectedRequestFields(fields, c, requestBody)
 
@@ -966,6 +968,18 @@ REDACTED
 	currentHash, legacyHash := deriveOpenAISessionHashes(seed)
 	attachOpenAILegacySessionHashToGin(c, legacyHash)
 	return currentHash
+REDACTED
+
+func resolveOpenAIUpstreamOriginator(c *gin.Context, isOfficialClient bool) string {
+	if c != nil {
+		if originator := strings.TrimSpace(c.GetHeader("originator")); originator != "" {
+			return originator
+	REDACTED
+REDACTED
+	if isOfficialClient {
+		return "codex_cli_rs"
+REDACTED
+	return "opencode"
 REDACTED
 
 // BindStickySession sets session -> account binding with standard TTL.
@@ -1489,7 +1503,7 @@ REDACTED
 	reqModel, reqStream, promptCacheKey := extractOpenAIRequestMetaFromBody(body)
 	originalModel := reqModel
 
-	isCodexCLI := openai.IsCodexCLIRequest(c.GetHeader("User-Agent")) || (s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
+	isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator")) || (s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
 	clientTransport := GetOpenAIClientTransport(c)
 	// 仅允许 WS 入站请求走 WS 上游，避免出现 HTTP -> WS 协议混用。
@@ -2664,11 +2678,7 @@ REDACTED
 REDACTED
 	if account.Type == AccountTypeOAuth {
 		req.Header.Set("OpenAI-Beta", "responses=experimental")
-		if isCodexCLI {
-			req.Header.Set("originator", "codex_cli_rs")
-	REDACTED else {
-			req.Header.Set("originator", "opencode")
-	REDACTED
+		req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 		if isOpenAIResponsesCompactPath(c) {
 			req.Header.Set("accept", "application/json")
 			if req.Header.Get("version") == "" {

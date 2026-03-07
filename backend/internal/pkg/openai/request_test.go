@@ -85,3 +85,26 @@ REDACTED
 	REDACTED)
 REDACTED
 REDACTED
+
+func TestIsCodexOfficialClientByHeaders(t *testing.T) {
+	tests := []struct {
+		name       string
+		ua         string
+		originator string
+		want       bool
+REDACTED{
+		{name: "仅 originator 命中 desktop", originator: "Codex Desktop", want: trueREDACTED,
+		{name: "仅 originator 命中 vscode", originator: "codex_vscode", want: trueREDACTED,
+		{name: "仅 ua 命中 desktop", ua: "Codex Desktop/1.2.3", want: trueREDACTED,
+		{name: "ua 与 originator 都未命中", ua: "curl/8.0.1", originator: "my_client", want: falseREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsCodexOfficialClientByHeaders(tt.ua, tt.originator)
+			if got != tt.want {
+				t.Fatalf("IsCodexOfficialClientByHeaders(%q, %q) = %v, want %v", tt.ua, tt.originator, got, tt.want)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED

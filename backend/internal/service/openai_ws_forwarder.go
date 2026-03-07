@@ -1141,11 +1141,7 @@ REDACTED
 		if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
 			headers.Set("chatgpt-account-id", chatgptAccountID)
 	REDACTED
-		if isCodexCLI {
-			headers.Set("originator", "codex_cli_rs")
-	REDACTED else {
-			headers.Set("originator", "opencode")
-	REDACTED
+		headers.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 REDACTED
 
 	betaValue := openAIWSBetaV2Value
@@ -2543,7 +2539,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	isCodexCLI := openai.IsCodexCLIRequest(c.GetHeader("User-Agent")) || (s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
+	isCodexCLI := openai.IsCodexOfficialClientByHeaders(c.GetHeader("User-Agent"), c.GetHeader("originator")) || (s.cfg != nil && s.cfg.Gateway.ForceCodexCLI)
 	wsHeaders, _ := s.buildOpenAIWSHeaders(c, account, token, wsDecision, isCodexCLI, turnState, strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader)), firstPayload.promptCacheKey)
 	baseAcquireReq := openAIWSAcquireRequest{
 		Account: account,
