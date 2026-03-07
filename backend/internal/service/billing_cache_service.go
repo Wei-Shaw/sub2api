@@ -565,15 +565,15 @@ func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *AP
 	needsReset := false
 
 	// Reset expired windows in-memory for check purposes
-	if w5h != nil && time.Since(*w5h) >= 5*time.Hour {
+	if IsWindowExpired(w5h, RateLimitWindow5h) {
 		usage5h = 0
 		needsReset = true
 REDACTED
-	if w1d != nil && time.Since(*w1d) >= 24*time.Hour {
+	if IsWindowExpired(w1d, RateLimitWindow1d) {
 		usage1d = 0
 		needsReset = true
 REDACTED
-	if w7d != nil && time.Since(*w7d) >= 7*24*time.Hour {
+	if IsWindowExpired(w7d, RateLimitWindow7d) {
 		usage7d = 0
 		needsReset = true
 REDACTED
@@ -589,12 +589,16 @@ REDACTED
 				if loader, ok := s.apiKeyRateLimitLoader.(interface {
 					ResetRateLimitWindows(ctx context.Context, id int64) error
 			REDACTED); ok {
-					_ = loader.ResetRateLimitWindows(resetCtx, keyID)
+					if err := loader.ResetRateLimitWindows(resetCtx, keyID); err != nil {
+						logger.LegacyPrintf("service.billing_cache", "Warning: reset rate limit windows failed for api key %d: %v", keyID, err)
+				REDACTED
 			REDACTED
 		REDACTED
 			// Invalidate cache so next request loads fresh data
 			if s.cache != nil {
-				_ = s.cache.InvalidateAPIKeyRateLimit(resetCtx, keyID)
+				if err := s.cache.InvalidateAPIKeyRateLimit(resetCtx, keyID); err != nil {
+					logger.LegacyPrintf("service.billing_cache", "Warning: invalidate rate limit cache failed for api key %d: %v", keyID, err)
+			REDACTED
 		REDACTED
 	REDACTED()
 REDACTED

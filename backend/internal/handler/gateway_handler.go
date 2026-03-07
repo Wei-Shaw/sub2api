@@ -971,7 +971,7 @@ REDACTED
 		if err == nil && rateLimitData != nil {
 			var rateLimits []gin.H
 			if apiKey.RateLimit5h > 0 {
-				used := rateLimitData.Usage5h
+				used := rateLimitData.EffectiveUsage5h()
 				rateLimits = append(rateLimits, gin.H{
 					"window":       "5h",
 					"limit":        apiKey.RateLimit5h,
@@ -981,7 +981,7 @@ REDACTED
 			REDACTED)
 		REDACTED
 			if apiKey.RateLimit1d > 0 {
-				used := rateLimitData.Usage1d
+				used := rateLimitData.EffectiveUsage1d()
 				rateLimits = append(rateLimits, gin.H{
 					"window":       "1d",
 					"limit":        apiKey.RateLimit1d,
@@ -991,7 +991,7 @@ REDACTED
 			REDACTED)
 		REDACTED
 			if apiKey.RateLimit7d > 0 {
-				used := rateLimitData.Usage7d
+				used := rateLimitData.EffectiveUsage7d()
 				rateLimits = append(rateLimits, gin.H{
 					"window":       "7d",
 					"limit":        apiKey.RateLimit7d,

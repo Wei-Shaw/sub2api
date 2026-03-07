@@ -86,6 +86,30 @@ type APIKeyRateLimitData struct {
 	Window7dStart *time.Time
 REDACTED
 
+// EffectiveUsage5h returns the 5h window usage, or 0 if the window has expired.
+func (d *APIKeyRateLimitData) EffectiveUsage5h() float64 {
+	if IsWindowExpired(d.Window5hStart, RateLimitWindow5h) {
+		return 0
+REDACTED
+	return d.Usage5h
+REDACTED
+
+// EffectiveUsage1d returns the 1d window usage, or 0 if the window has expired.
+func (d *APIKeyRateLimitData) EffectiveUsage1d() float64 {
+	if IsWindowExpired(d.Window1dStart, RateLimitWindow1d) {
+		return 0
+REDACTED
+	return d.Usage1d
+REDACTED
+
+// EffectiveUsage7d returns the 7d window usage, or 0 if the window has expired.
+func (d *APIKeyRateLimitData) EffectiveUsage7d() float64 {
+	if IsWindowExpired(d.Window7dStart, RateLimitWindow7d) {
+		return 0
+REDACTED
+	return d.Usage7d
+REDACTED
+
 // APIKeyCache defines cache operations for API key service
 type APIKeyCache interface {
 	GetCreateAttemptCount(ctx context.Context, userID int64) (int, error)
