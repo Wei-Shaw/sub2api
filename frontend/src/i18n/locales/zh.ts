@@ -4150,6 +4150,18 @@ export default {
         saved: '流超时设置保存成功',
         saveFailed: '保存流超时设置失败'
       REDACTED,
+      rectifier: {
+        title: '请求整流器',
+        description: '当上游返回特定错误时，自动修正请求参数并重试，提高请求成功率',
+        enabled: '启用请求整流器',
+        enabledHint: '总开关，关闭后所有整流功能均不生效',
+        thinkingSignature: 'Thinking 签名整流',
+        thinkingSignatureHint: '当上游返回 thinking block 签名校验错误时，自动去除签名并重试',
+        thinkingBudget: 'Thinking Budget 整流',
+        thinkingBudgetHint: '当上游返回 budget_tokens 约束错误（≥1024）时，自动将 budget 设为 32000 并重试',
+        saved: '整流器设置保存成功',
+        saveFailed: '保存整流器设置失败'
+      REDACTED,
       saveSettings: '保存设置',
       saving: '保存中...',
       settingsSaved: '设置保存成功',

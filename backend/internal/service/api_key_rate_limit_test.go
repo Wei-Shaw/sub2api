@@ -78,11 +78,11 @@ func TestAPIKey_EffectiveUsage(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name      string
-		key       APIKey
-		want5h    float64
-		want1d    float64
-		want7d    float64
+		name   string
+		key    APIKey
+		want5h float64
+		want1d float64
+		want7d float64
 REDACTED{
 		{
 			name: "all windows active",

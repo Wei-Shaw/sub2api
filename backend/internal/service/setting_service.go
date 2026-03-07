@@ -1194,6 +1194,59 @@ REDACTED
 	return ver
 REDACTED
 
+// GetRectifierSettings 获取请求整流器配置
+func (s *SettingService) GetRectifierSettings(ctx context.Context) (*RectifierSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyRectifierSettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultRectifierSettings(), nil
+	REDACTED
+		return nil, fmt.Errorf("get rectifier settings: %w", err)
+REDACTED
+	if value == "" {
+		return DefaultRectifierSettings(), nil
+REDACTED
+
+	var settings RectifierSettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return DefaultRectifierSettings(), nil
+REDACTED
+
+	return &settings, nil
+REDACTED
+
+// SetRectifierSettings 设置请求整流器配置
+func (s *SettingService) SetRectifierSettings(ctx context.Context, settings *RectifierSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+REDACTED
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal rectifier settings: %w", err)
+REDACTED
+
+	return s.settingRepo.Set(ctx, SettingKeyRectifierSettings, string(data))
+REDACTED
+
+// IsSignatureRectifierEnabled 判断签名整流是否启用（总开关 && 签名子开关）
+func (s *SettingService) IsSignatureRectifierEnabled(ctx context.Context) bool {
+	settings, err := s.GetRectifierSettings(ctx)
+	if err != nil {
+		return true // fail-open: 查询失败时默认启用
+REDACTED
+	return settings.Enabled && settings.ThinkingSignatureEnabled
+REDACTED
+
+// IsBudgetRectifierEnabled 判断 Budget 整流是否启用（总开关 && Budget 子开关）
+func (s *SettingService) IsBudgetRectifierEnabled(ctx context.Context) bool {
+	settings, err := s.GetRectifierSettings(ctx)
+	if err != nil {
+		return true // fail-open: 查询失败时默认启用
+REDACTED
+	return settings.Enabled && settings.ThinkingBudgetEnabled
+REDACTED
+
 // SetStreamTimeoutSettings 设置流超时处理配置
 func (s *SettingService) SetStreamTimeoutSettings(ctx context.Context, settings *StreamTimeoutSettings) error {
 	if settings == nil {
