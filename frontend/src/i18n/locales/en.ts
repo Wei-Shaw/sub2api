@@ -3977,6 +3977,18 @@ export default {
         saved: 'Stream timeout settings saved',
         saveFailed: 'Failed to save stream timeout settings'
       REDACTED,
+      rectifier: {
+        title: 'Request Rectifier',
+        description: 'Automatically fix request parameters and retry when upstream returns specific errors',
+        enabled: 'Enable Request Rectifier',
+        enabledHint: 'Master switch - disabling turns off all rectification features',
+        thinkingSignature: 'Thinking Signature Rectifier',
+        thinkingSignatureHint: 'Automatically strip signatures and retry when upstream returns thinking block signature validation errors',
+        thinkingBudget: 'Thinking Budget Rectifier',
+        thinkingBudgetHint: 'Automatically set budget to 32000 and retry when upstream returns budget_tokens constraint error (≥1024)',
+        saved: 'Rectifier settings saved',
+        saveFailed: 'Failed to save rectifier settings'
+      REDACTED,
       saveSettings: 'Save Settings',
       saving: 'Saving...',
       settingsSaved: 'Settings saved successfully',

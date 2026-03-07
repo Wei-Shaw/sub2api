@@ -60,7 +60,7 @@ REDACTED
 
 // AnthropicTool describes a tool available to the model.
 type AnthropicTool struct {
-	Type        string          `json:"type,omitempty"`        // e.g. "web_search_20250305" for server tools
+	Type        string          `json:"type,omitempty"` // e.g. "web_search_20250305" for server tools
 	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`
 	InputSchema json.RawMessage `json:"input_schema"` // JSON Schema object
