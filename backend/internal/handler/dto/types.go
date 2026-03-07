@@ -193,8 +193,12 @@ type Account struct {
 	CacheTTLOverrideTarget  *string `json:"cache_ttl_override_target,omitempty"`
 
 	// API Key 账号配额限制
-	QuotaLimit *float64 `json:"quota_limit,omitempty"`
-	QuotaUsed  *float64 `json:"quota_used,omitempty"`
+	QuotaLimit       *float64 `json:"quota_limit,omitempty"`
+	QuotaUsed        *float64 `json:"quota_used,omitempty"`
+	QuotaDailyLimit  *float64 `json:"quota_daily_limit,omitempty"`
+	QuotaDailyUsed   *float64 `json:"quota_daily_used,omitempty"`
+	QuotaWeeklyLimit *float64 `json:"quota_weekly_limit,omitempty"`
+	QuotaWeeklyUsed  *float64 `json:"quota_weekly_used,omitempty"`
 
 	Proxy         *Proxy         `json:"proxy,omitempty"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`

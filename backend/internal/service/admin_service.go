@@ -1484,9 +1484,11 @@ REDACTED
 		account.Credentials = input.Credentials
 REDACTED
 	if len(input.Extra) > 0 {
-		// 保留 quota_used，防止编辑账号时意外重置配额用量
-		if oldQuotaUsed, ok := account.Extra["quota_used"]; ok {
-			input.Extra["quota_used"] = oldQuotaUsed
+		// 保留配额用量字段，防止编辑账号时意外重置
+		for _, key := range []string{"quota_used", "quota_daily_used", "quota_daily_start", "quota_weekly_used", "quota_weekly_start"REDACTED {
+			if v, ok := account.Extra[key]; ok {
+				input.Extra[key] = v
+		REDACTED
 	REDACTED
 		account.Extra = input.Extra
 REDACTED

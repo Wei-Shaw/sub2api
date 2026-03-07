@@ -719,6 +719,10 @@ export interface Account {
   // API Key 账号配额限制
   quota_limit?: number | null
   quota_used?: number | null
+  quota_daily_limit?: number | null
+  quota_daily_used?: number | null
+  quota_weekly_limit?: number | null
+  quota_weekly_used?: number | null
 
   // 运行时状态（仅当启用对应限制时返回）
   current_window_cost?: number | null // 当前窗口费用

@@ -1134,33 +1134,97 @@ REDACTED
 // GetQuotaLimit 获取 API Key 账号的配额限制（美元）
 // 返回 0 表示未启用
 func (a *Account) GetQuotaLimit() float64 {
-	if a.Extra == nil {
-		return 0
-REDACTED
-	if v, ok := a.Extra["quota_limit"]; ok {
-		return parseExtraFloat64(v)
-REDACTED
-	return 0
+	return a.getExtraFloat64("quota_limit")
 REDACTED
 
 // GetQuotaUsed 获取 API Key 账号的已用配额（美元）
 func (a *Account) GetQuotaUsed() float64 {
+	return a.getExtraFloat64("quota_used")
+REDACTED
+
+// GetQuotaDailyLimit 获取日额度限制（美元），0 表示未启用
+func (a *Account) GetQuotaDailyLimit() float64 {
+	return a.getExtraFloat64("quota_daily_limit")
+REDACTED
+
+// GetQuotaDailyUsed 获取当日已用额度（美元）
+func (a *Account) GetQuotaDailyUsed() float64 {
+	return a.getExtraFloat64("quota_daily_used")
+REDACTED
+
+// GetQuotaWeeklyLimit 获取周额度限制（美元），0 表示未启用
+func (a *Account) GetQuotaWeeklyLimit() float64 {
+	return a.getExtraFloat64("quota_weekly_limit")
+REDACTED
+
+// GetQuotaWeeklyUsed 获取本周已用额度（美元）
+func (a *Account) GetQuotaWeeklyUsed() float64 {
+	return a.getExtraFloat64("quota_weekly_used")
+REDACTED
+
+// getExtraFloat64 从 Extra 中读取指定 key 的 float64 值
+func (a *Account) getExtraFloat64(key string) float64 {
 	if a.Extra == nil {
 		return 0
 REDACTED
-	if v, ok := a.Extra["quota_used"]; ok {
+	if v, ok := a.Extra[key]; ok {
 		return parseExtraFloat64(v)
 REDACTED
 	return 0
 REDACTED
 
-// IsQuotaExceeded 检查 API Key 账号配额是否已超限
-func (a *Account) IsQuotaExceeded() bool {
-	limit := a.GetQuotaLimit()
-	if limit <= 0 {
-		return false
+// getExtraTime 从 Extra 中读取 RFC3339 时间戳
+func (a *Account) getExtraTime(key string) time.Time {
+	if a.Extra == nil {
+		return time.Time{REDACTED
 REDACTED
-	return a.GetQuotaUsed() >= limit
+	if v, ok := a.Extra[key]; ok {
+		if s, ok := v.(string); ok {
+			if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+				return t
+		REDACTED
+			if t, err := time.Parse(time.RFC3339, s); err == nil {
+				return t
+		REDACTED
+	REDACTED
+REDACTED
+	return time.Time{REDACTED
+REDACTED
+
+// HasAnyQuotaLimit 检查是否配置了任一维度的配额限制
+func (a *Account) HasAnyQuotaLimit() bool {
+	return a.GetQuotaLimit() > 0 || a.GetQuotaDailyLimit() > 0 || a.GetQuotaWeeklyLimit() > 0
+REDACTED
+
+// isPeriodExpired 检查指定周期（自 periodStart 起经过 dur）是否已过期
+func isPeriodExpired(periodStart time.Time, dur time.Duration) bool {
+	if periodStart.IsZero() {
+		return true // 从未使用过，视为过期（下次 increment 会初始化）
+REDACTED
+	return time.Since(periodStart) >= dur
+REDACTED
+
+// IsQuotaExceeded 检查 API Key 账号配额是否已超限（任一维度超限即返回 true）
+func (a *Account) IsQuotaExceeded() bool {
+	// 总额度
+	if limit := a.GetQuotaLimit(); limit > 0 && a.GetQuotaUsed() >= limit {
+		return true
+REDACTED
+	// 日额度（周期过期视为未超限，下次 increment 会重置）
+	if limit := a.GetQuotaDailyLimit(); limit > 0 {
+		start := a.getExtraTime("quota_daily_start")
+		if !isPeriodExpired(start, 24*time.Hour) && a.GetQuotaDailyUsed() >= limit {
+			return true
+	REDACTED
+REDACTED
+	// 周额度
+	if limit := a.GetQuotaWeeklyLimit(); limit > 0 {
+		start := a.getExtraTime("quota_weekly_start")
+		if !isPeriodExpired(start, 7*24*time.Hour) && a.GetQuotaWeeklyUsed() >= limit {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 // GetWindowCostLimit 获取 5h 窗口费用阈值（美元）

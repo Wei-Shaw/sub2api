@@ -904,7 +904,22 @@
       </div>
 
       <!-- API Key 账号配额限制 -->
-      <QuotaLimitCard v-if="account?.type === 'apikey'" v-model="editQuotaLimit" />
+      <div v-if="account?.type === 'apikey'" class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
+        <div class="mb-3">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaLimit') REDACTEDREDACTED</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.quotaLimitHint') REDACTEDREDACTED
+          </p>
+        </div>
+        <QuotaLimitCard
+          :totalLimit="editQuotaLimit"
+          :dailyLimit="editQuotaDailyLimit"
+          :weeklyLimit="editQuotaWeeklyLimit"
+          @update:totalLimit="editQuotaLimit = $event"
+          @update:dailyLimit="editQuotaDailyLimit = $event"
+          @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+        />
+      </div>
 
       <!-- OpenAI OAuth Codex 官方客户端限制开关 -->
       <div
@@ -1535,6 +1550,8 @@ const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OF
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const editQuotaLimit = ref<number | null>(null)
+const editQuotaDailyLimit = ref<number | null>(null)
+const editQuotaWeeklyLimit = ref<number | null>(null)
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') REDACTED,
   // TODO: ctx_pool 选项暂时隐藏，待测试完成后恢复
@@ -1704,8 +1721,14 @@ watch(
       if (newAccount.type === 'apikey') {
         const quotaVal = extra?.quota_limit as number | undefined
         editQuotaLimit.value = (quotaVal && quotaVal > 0) ? quotaVal : null
+        const dailyVal = extra?.quota_daily_limit as number | undefined
+        editQuotaDailyLimit.value = (dailyVal && dailyVal > 0) ? dailyVal : null
+        const weeklyVal = extra?.quota_weekly_limit as number | undefined
+        editQuotaWeeklyLimit.value = (weeklyVal && weeklyVal > 0) ? weeklyVal : null
       REDACTED else {
         editQuotaLimit.value = null
+        editQuotaDailyLimit.value = null
+        editQuotaWeeklyLimit.value = null
       REDACTED
 
       // Load antigravity model mapping (Antigravity 只支持映射模式)
@@ -2524,6 +2547,16 @@ const handleSubmit = async () => {
         newExtra.quota_limit = editQuotaLimit.value
       REDACTED else {
         delete newExtra.quota_limit
+      REDACTED
+      if (editQuotaDailyLimit.value != null && editQuotaDailyLimit.value > 0) {
+        newExtra.quota_daily_limit = editQuotaDailyLimit.value
+      REDACTED else {
+        delete newExtra.quota_daily_limit
+      REDACTED
+      if (editQuotaWeeklyLimit.value != null && editQuotaWeeklyLimit.value > 0) {
+        newExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
+      REDACTED else {
+        delete newExtra.quota_weekly_limit
       REDACTED
       updatePayload.extra = newExtra
     REDACTED
