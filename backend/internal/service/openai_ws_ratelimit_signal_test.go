@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -26,6 +27,11 @@ type openAICodexSnapshotAsyncRepo struct {
 	stubOpenAIAccountRepo
 	updateExtraCh chan map[string]any
 	rateLimitCh   chan time.Time
+REDACTED
+
+type openAICodexExtraListRepo struct {
+	stubOpenAIAccountRepo
+	rateLimitCh chan time.Time
 REDACTED
 
 func (r *openAIWSRateLimitSignalRepo) SetRateLimited(_ context.Context, _ int64, resetAt time.Time) error {
@@ -58,6 +64,22 @@ func (r *openAICodexSnapshotAsyncRepo) UpdateExtra(_ context.Context, _ int64, u
 		r.updateExtraCh <- copied
 REDACTED
 	return nil
+REDACTED
+
+func (r *openAICodexExtraListRepo) SetRateLimited(_ context.Context, _ int64, resetAt time.Time) error {
+	if r.rateLimitCh != nil {
+		r.rateLimitCh <- resetAt
+REDACTED
+	return nil
+REDACTED
+
+func (r *openAICodexExtraListRepo) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64) ([]Account, *pagination.PaginationResult, error) {
+	_ = platform
+	_ = accountType
+	_ = status
+	_ = search
+	_ = groupID
+	return r.accounts, &pagination.PaginationResult{Total: int64(len(r.accounts)), Page: params.Page, PageSize: params.PageSizeREDACTED, nil
 REDACTED
 
 func TestOpenAIGatewayService_Forward_WSv2ErrorEventUsageLimitPersistsRateLimit(t *testing.T) {
@@ -385,6 +407,69 @@ REDACTED
 
 func ptrFloat64WS(v float64) *float64 { return &v REDACTED
 func ptrIntWS(v int) *int             { return &v REDACTED
+
+func TestOpenAIGatewayService_GetSchedulableAccount_ExhaustedCodexExtraSetsRateLimit(t *testing.T) {
+	resetAt := time.Now().Add(6 * 24 * time.Hour)
+	account := Account{
+		ID:          701,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Extra: map[string]any{
+			"codex_7d_used_percent": 100.0,
+			"codex_7d_reset_at":     resetAt.UTC().Format(time.RFC3339),
+	REDACTED,
+REDACTED
+	repo := &openAICodexExtraListRepo{stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{accountREDACTEDREDACTED, rateLimitCh: make(chan time.Time, 1)REDACTED
+	svc := &OpenAIGatewayService{accountRepo: repoREDACTED
+
+	fresh, err := svc.getSchedulableAccount(context.Background(), account.ID)
+REDACTED
+	require.NotNil(t, fresh)
+	require.NotNil(t, fresh.RateLimitResetAt)
+	require.WithinDuration(t, resetAt.UTC(), *fresh.RateLimitResetAt, time.Second)
+	select {
+	case persisted := <-repo.rateLimitCh:
+		require.WithinDuration(t, resetAt.UTC(), persisted, time.Second)
+	case <-time.After(2 * time.Second):
+		t.Fatal("等待旧快照补写限流状态超时")
+REDACTED
+REDACTED
+
+func TestAdminService_ListAccounts_ExhaustedCodexExtraReturnsRateLimitedAccount(t *testing.T) {
+	resetAt := time.Now().Add(4 * 24 * time.Hour)
+	repo := &openAICodexExtraListRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{{
+			ID:          702,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Extra: map[string]any{
+				"codex_7d_used_percent": 100.0,
+				"codex_7d_reset_at":     resetAt.UTC().Format(time.RFC3339),
+		REDACTED,
+	REDACTEDREDACTEDREDACTED,
+		rateLimitCh: make(chan time.Time, 1),
+REDACTED
+	svc := &adminServiceImpl{accountRepo: repoREDACTED
+
+	accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeOAuth, "", "", 0)
+REDACTED
+	require.Equal(t, int64(1), total)
+	require.Len(t, accounts, 1)
+	require.NotNil(t, accounts[0].RateLimitResetAt)
+	require.WithinDuration(t, resetAt.UTC(), *accounts[0].RateLimitResetAt, time.Second)
+	select {
+	case persisted := <-repo.rateLimitCh:
+		require.WithinDuration(t, resetAt.UTC(), persisted, time.Second)
+	case <-time.After(2 * time.Second):
+		t.Fatal("等待列表补写限流状态超时")
+REDACTED
+REDACTED
 
 func TestOpenAIWSErrorHTTPStatusFromRaw_UsageLimitReachedIs429(t *testing.T) {
 	require.Equal(t, http.StatusTooManyRequests, openAIWSErrorHTTPStatusFromRaw("", "usage_limit_reached"))

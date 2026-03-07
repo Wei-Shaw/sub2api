@@ -1447,10 +1447,20 @@ REDACTED
 REDACTED
 
 func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {
+	var (
+		account *Account
+		err     error
+	)
 	if s.schedulerSnapshot != nil {
-		return s.schedulerSnapshot.GetAccount(ctx, accountID)
+		account, err = s.schedulerSnapshot.GetAccount(ctx, accountID)
+REDACTED else {
+		account, err = s.accountRepo.GetByID(ctx, accountID)
 REDACTED
-	return s.accountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil {
+		return account, err
+REDACTED
+	syncOpenAICodexRateLimitFromExtra(ctx, s.accountRepo, account, time.Now())
+	return account, nil
 REDACTED
 
 func (s *OpenAIGatewayService) schedulingConfig() config.GatewaySchedulingConfig {
@@ -3921,6 +3931,45 @@ REDACTED
 		return &resetAt
 REDACTED
 	return nil
+REDACTED
+
+func codexRateLimitResetAtFromExtra(extra map[string]any, now time.Time) *time.Time {
+	if len(extra) == 0 {
+		return nil
+REDACTED
+	if progress := buildCodexUsageProgressFromExtra(extra, "7d", now); progress != nil && codexUsagePercentExhausted(&progress.Utilization) && progress.ResetsAt != nil && now.Before(*progress.ResetsAt) {
+		resetAt := progress.ResetsAt.UTC()
+		return &resetAt
+REDACTED
+	if progress := buildCodexUsageProgressFromExtra(extra, "5h", now); progress != nil && codexUsagePercentExhausted(&progress.Utilization) && progress.ResetsAt != nil && now.Before(*progress.ResetsAt) {
+		resetAt := progress.ResetsAt.UTC()
+		return &resetAt
+REDACTED
+	return nil
+REDACTED
+
+func applyOpenAICodexRateLimitFromExtra(account *Account, now time.Time) (*time.Time, bool) {
+	if account == nil || !account.IsOpenAI() {
+		return nil, false
+REDACTED
+	resetAt := codexRateLimitResetAtFromExtra(account.Extra, now)
+	if resetAt == nil {
+		return nil, false
+REDACTED
+	if account.RateLimitResetAt != nil && now.Before(*account.RateLimitResetAt) && !account.RateLimitResetAt.Before(*resetAt) {
+		return account.RateLimitResetAt, false
+REDACTED
+	account.RateLimitResetAt = resetAt
+	return resetAt, true
+REDACTED
+
+func syncOpenAICodexRateLimitFromExtra(ctx context.Context, repo AccountRepository, account *Account, now time.Time) *time.Time {
+	resetAt, changed := applyOpenAICodexRateLimitFromExtra(account, now)
+	if !changed || resetAt == nil || repo == nil || account == nil || account.ID <= 0 {
+		return resetAt
+REDACTED
+	_ = repo.SetRateLimited(ctx, account.ID, *resetAt)
+	return resetAt
 REDACTED
 
 // updateCodexUsageSnapshot saves the Codex usage snapshot to account's Extra field
