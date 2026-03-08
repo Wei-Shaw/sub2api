@@ -2073,6 +2073,12 @@ export default {
       addModel: '填入',
       modelExists: '该模型已存在',
       modelCount: '{countREDACTED 个模型',
+      poolMode: '池模式',
+      poolModeHint: '上游为账号池时启用，错误不标记本地账号状态',
+      poolModeInfo:
+        '启用后，上游 429/403/401 错误将自动重试而不标记账号限流或错误，适用于上游指向另一个 sub2api 实例的场景。',
+      poolModeRetryCount: '同账号重试次数',
+      poolModeRetryCountHint: '仅在池模式下生效。0 表示不原地重试；默认 {defaultREDACTED，最大 {maxREDACTED。',
       customErrorCodes: '自定义错误码',
       customErrorCodesHint: '仅对选中的错误码停止调度',
       customErrorCodesWarning: '仅选中的错误码会停止调度，其他错误将返回 500。',

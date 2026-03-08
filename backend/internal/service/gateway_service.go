@@ -4319,7 +4319,11 @@ REDACTED
 					return ""
 			REDACTED(),
 		REDACTED)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
+			return nil, &UpstreamFailoverError{
+				StatusCode:             resp.StatusCode,
+				ResponseBody:           respBody,
+				RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
+		REDACTED
 	REDACTED
 		return s.handleRetryExhaustedError(ctx, resp, c, account)
 REDACTED
@@ -4349,7 +4353,11 @@ REDACTED
 				return ""
 		REDACTED(),
 	REDACTED)
-		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
+		return nil, &UpstreamFailoverError{
+			StatusCode:             resp.StatusCode,
+			ResponseBody:           respBody,
+			RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
+	REDACTED
 REDACTED
 	if resp.StatusCode >= 400 {
 		// 可选：对部分 400 触发 failover（默认关闭以保持语义）
@@ -4584,7 +4592,11 @@ REDACTED
 					return ""
 			REDACTED(),
 		REDACTED)
-			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
+			return nil, &UpstreamFailoverError{
+				StatusCode:             resp.StatusCode,
+				ResponseBody:           respBody,
+				RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
+		REDACTED
 	REDACTED
 		return s.handleRetryExhaustedError(ctx, resp, c, account)
 REDACTED
@@ -4614,7 +4626,11 @@ REDACTED
 				return ""
 		REDACTED(),
 	REDACTED)
-		return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBodyREDACTED
+		return nil, &UpstreamFailoverError{
+			StatusCode:             resp.StatusCode,
+			ResponseBody:           respBody,
+			RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
+	REDACTED
 REDACTED
 
 	if resp.StatusCode >= 400 {

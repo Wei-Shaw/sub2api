@@ -177,6 +177,36 @@ REDACTED{
 			body:       []byte(`overloaded`),
 			expected:   ErrorPolicyMatched, // custom codes take precedence
 	REDACTED,
+		{
+			name: "pool_mode_custom_error_codes_hit_returns_matched",
+			account: &Account{
+				ID:       7,
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformOpenAI,
+		REDACTED
+					"pool_mode":                  true,
+					"custom_error_codes_enabled": true,
+					"custom_error_codes":         []any{float64(401), float64(403)REDACTED,
+			REDACTED,
+		REDACTED,
+			statusCode: 401,
+			body:       []byte(`unauthorized`),
+			expected:   ErrorPolicyMatched,
+	REDACTED,
+		{
+			name: "pool_mode_without_custom_error_codes_returns_skipped",
+			account: &Account{
+				ID:       8,
+				Type:     AccountTypeAPIKey,
+				Platform: PlatformOpenAI,
+		REDACTED
+					"pool_mode": true,
+			REDACTED,
+		REDACTED,
+			statusCode: 401,
+			body:       []byte(`unauthorized`),
+			expected:   ErrorPolicySkipped,
+	REDACTED,
 REDACTED
 
 	for _, tt := range tests {
@@ -188,6 +218,48 @@ REDACTED
 			require.Equal(t, tt.expected, result, "unexpected ErrorPolicyResult")
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestHandleUpstreamError_PoolModeCustomErrorCodesOverride(t *testing.T) {
+	t.Run("pool_mode_without_custom_error_codes_still_skips", func(t *testing.T) {
+		repo := &errorPolicyRepoStub{REDACTED
+		svc := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+		account := &Account{
+			ID:       30,
+			Type:     AccountTypeAPIKey,
+			Platform: PlatformOpenAI,
+	REDACTED
+				"pool_mode": true,
+		REDACTED,
+	REDACTED
+
+		shouldDisable := svc.HandleUpstreamError(context.Background(), account, 401, http.Header{REDACTED, []byte("unauthorized"))
+
+		require.False(t, shouldDisable)
+		require.Equal(t, 0, repo.setErrCalls)
+		require.Equal(t, 0, repo.tempCalls)
+REDACTED)
+
+	t.Run("pool_mode_with_custom_error_codes_uses_local_error_policy", func(t *testing.T) {
+		repo := &errorPolicyRepoStub{REDACTED
+		svc := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+		account := &Account{
+			ID:       31,
+			Type:     AccountTypeAPIKey,
+			Platform: PlatformOpenAI,
+	REDACTED
+				"pool_mode":                  true,
+				"custom_error_codes_enabled": true,
+				"custom_error_codes":         []any{float64(401)REDACTED,
+		REDACTED,
+	REDACTED
+
+		shouldDisable := svc.HandleUpstreamError(context.Background(), account, 401, http.Header{REDACTED, []byte("unauthorized"))
+
+		require.True(t, shouldDisable)
+		require.Equal(t, 1, repo.setErrCalls)
+		require.Equal(t, 0, repo.tempCalls)
+REDACTED)
 REDACTED
 
 // ---------------------------------------------------------------------------
