@@ -536,6 +536,8 @@ export default {
     apiKey: 'API Key',
     group: 'Group',
     noGroup: 'No group',
+    searchGroup: 'Search groups...',
+    noGroupFound: 'No groups found',
     created: 'Created',
     copyToClipboard: 'Copy to clipboard',
     copied: 'Copied!',
