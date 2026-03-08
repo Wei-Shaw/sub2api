@@ -73,21 +73,10 @@
     </div>
 
     <!-- API Key 账号配额限制 -->
-    <div v-if="showQuotaLimit" class="flex items-center gap-1">
-      <span
-        :class="[
-          'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium',
-          quotaClass
-        ]"
-        :title="quotaTooltip"
-      >
-        <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
-        </svg>
-        <span class="font-mono">${{ formatCost(currentQuotaUsed) REDACTEDREDACTED</span>
-        <span class="text-gray-400 dark:text-gray-500">/</span>
-        <span class="font-mono">${{ formatCost(account.quota_limit) REDACTEDREDACTED</span>
-      </span>
+    <div v-if="showDailyQuota || showWeeklyQuota || showTotalQuota" class="flex items-center gap-1">
+      <QuotaBadge v-if="showDailyQuota" :used="account.quota_daily_used ?? 0" :limit="account.quota_daily_limit!" label="D" />
+      <QuotaBadge v-if="showWeeklyQuota" :used="account.quota_weekly_used ?? 0" :limit="account.quota_weekly_limit!" label="W" />
+      <QuotaBadge v-if="showTotalQuota" :used="account.quota_used ?? 0" :limit="account.quota_limit!" />
     </div>
   </div>
 </template>
@@ -96,6 +85,7 @@
 import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import type { Account REDACTED from '@/types'
+import QuotaBadge from './QuotaBadge.vue'
 
 const props = defineProps<{
   account: Account
@@ -304,46 +294,17 @@ const rpmTooltip = computed(() => {
   REDACTED
 REDACTED)
 
-// 是否显示配额限制（仅 apikey 类型且设置了 quota_limit）
-const showQuotaLimit = computed(() => {
-  return (
-    props.account.type === 'apikey' &&
-    props.account.quota_limit !== undefined &&
-    props.account.quota_limit !== null &&
-    props.account.quota_limit > 0
-  )
+// 是否显示各维度配额（仅 apikey 类型）
+const showDailyQuota = computed(() => {
+  return props.account.type === 'apikey' && (props.account.quota_daily_limit ?? 0) > 0
 REDACTED)
 
-// 当前已用配额
-const currentQuotaUsed = computed(() => props.account.quota_used ?? 0)
-
-// 配额状态样式
-const quotaClass = computed(() => {
-  if (!showQuotaLimit.value) return ''
-
-  const used = currentQuotaUsed.value
-  const limit = props.account.quota_limit || 0
-
-  if (used >= limit) {
-    return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-  REDACTED
-  if (used >= limit * 0.8) {
-    return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-  REDACTED
-  return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+const showWeeklyQuota = computed(() => {
+  return props.account.type === 'apikey' && (props.account.quota_weekly_limit ?? 0) > 0
 REDACTED)
 
-// 配额提示文字
-const quotaTooltip = computed(() => {
-  if (!showQuotaLimit.value) return ''
-
-  const used = currentQuotaUsed.value
-  const limit = props.account.quota_limit || 0
-
-  if (used >= limit) {
-    return t('admin.accounts.capacity.quota.exceeded')
-  REDACTED
-  return t('admin.accounts.capacity.quota.normal')
+const showTotalQuota = computed(() => {
+  return props.account.type === 'apikey' && (props.account.quota_limit ?? 0) > 0
 REDACTED)
 
 // 格式化费用显示
