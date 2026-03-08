@@ -101,6 +101,7 @@
                 <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
                   t('keys.noGroup')
                 REDACTEDREDACTED</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.selectGroup') REDACTEDREDACTED</span>
                 <svg
                   class="h-3.5 w-3.5 text-gray-400 opacity-60 transition-opacity group-hover/dropdown:opacity-100"
                   fill="none"
@@ -385,6 +386,8 @@
             v-model="formData.group_id"
             :options="groupOptions"
             :placeholder="t('keys.selectGroup')"
+            :searchable="true"
+            :search-placeholder="t('keys.searchGroup')"
             data-tour="key-form-group"
           >
             <template #selected="{ option REDACTED">
@@ -955,17 +958,38 @@
       <div
         v-if="groupSelectorKeyId !== null && dropdownPosition"
         ref="dropdownRef"
-        class="animate-in fade-in slide-in-from-top-2 fixed z-[100000020] w-auto min-w-[280px] max-w-[480px] overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 duration-200 dark:bg-dark-800 dark:ring-white/10"
+        class="animate-in fade-in slide-in-from-top-2 fixed z-[100000020] w-max min-w-[380px] overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 duration-200 dark:bg-dark-800 dark:ring-white/10"
         style="pointer-events: auto !important;"
-        :style="{ top: dropdownPosition.top + 'px', left: dropdownPosition.left + 'px' REDACTED"
+        :style="{
+          top: dropdownPosition.top !== undefined ? dropdownPosition.top + 'px' : undefined,
+          bottom: dropdownPosition.bottom !== undefined ? dropdownPosition.bottom + 'px' : undefined,
+          left: dropdownPosition.left + 'px'
+        REDACTED"
       >
-        <div class="max-h-64 overflow-y-auto p-1.5">
+        <!-- Search box -->
+        <div class="border-b border-gray-100 p-2 dark:border-dark-700">
+          <div class="relative">
+            <svg class="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              v-model="groupSearchQuery"
+              type="text"
+              class="w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-8 pr-3 text-sm text-gray-900 placeholder-gray-400 outline-none focus:border-primary-300 focus:ring-1 focus:ring-primary-300 dark:border-dark-600 dark:bg-dark-700 dark:text-white dark:placeholder-gray-500 dark:focus:border-primary-600 dark:focus:ring-primary-600"
+              :placeholder="t('keys.searchGroup')"
+              @click.stop
+            />
+          </div>
+        </div>
+        <!-- Group list -->
+        <div class="max-h-80 overflow-y-auto p-1.5">
           <button
-            v-for="option in groupOptions"
+            v-for="option in filteredGroupOptions"
             :key="option.value ?? 'null'"
             @click="changeGroup(selectedKeyForGroup!, option.value)"
             :class="[
-              'flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors',
+              'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors',
+              'border-b border-gray-100 last:border-0 dark:border-dark-700',
               selectedKeyForGroup?.group_id === option.value ||
               (!selectedKeyForGroup?.group_id && option.value === null)
                 ? 'bg-primary-50 dark:bg-primary-900/20'
@@ -986,6 +1010,10 @@
               "
             />
           </button>
+          <!-- Empty state when search has no results -->
+          <div v-if="filteredGroupOptions.length === 0" class="py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+            {{ t('keys.noGroupFound') REDACTEDREDACTED
+          </div>
         </div>
       </div>
     </Teleport>
@@ -1085,7 +1113,7 @@ const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
-const dropdownPosition = ref<{ top: number; left: number REDACTED | null>(null)
+const dropdownPosition = ref<{ top?: number; bottom?: number; left: number REDACTED | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
 let abortController: AbortController | null = null
 
@@ -1188,6 +1216,17 @@ const groupOptions = computed(() =>
     platform: group.platform
   REDACTED))
 )
+
+// Group dropdown search
+const groupSearchQuery = ref('')
+const filteredGroupOptions = computed(() => {
+  const query = groupSearchQuery.value.trim().toLowerCase()
+  if (!query) return groupOptions.value
+  return groupOptions.value.filter((opt) => {
+    return opt.label.toLowerCase().includes(query) ||
+      (opt.description && opt.description.toLowerCase().includes(query))
+  REDACTED)
+REDACTED)
 
 const maskKey = (key: string): string => {
   if (key.length <= 12) return key
@@ -1348,12 +1387,26 @@ const openGroupSelector = (key: ApiKey) => {
     const buttonEl = groupButtonRefs.value.get(key.id)
     if (buttonEl) {
       const rect = buttonEl.getBoundingClientRect()
-      dropdownPosition.value = {
-        top: rect.bottom + 4,
-        left: rect.left
+      const dropdownEstHeight = 400 // estimated max dropdown height
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+
+      if (spaceBelow < dropdownEstHeight && spaceAbove > spaceBelow) {
+        // Not enough space below, pop upward
+        dropdownPosition.value = {
+          bottom: window.innerHeight - rect.top + 4,
+          left: rect.left
+        REDACTED
+      REDACTED else {
+        // Default: pop downward
+        dropdownPosition.value = {
+          top: rect.bottom + 4,
+          left: rect.left
+        REDACTED
       REDACTED
     REDACTED
     groupSelectorKeyId.value = key.id
+    groupSearchQuery.value = ''
   REDACTED
 REDACTED
 

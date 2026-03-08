@@ -224,7 +224,13 @@ const filteredOptions = computed(() => {
   let opts = props.options as any[]
   if (props.searchable && searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
-    opts = opts.filter((opt) => getOptionLabel(opt).toLowerCase().includes(query))
+    opts = opts.filter((opt) => {
+      // Match label
+      if (getOptionLabel(opt).toLowerCase().includes(query)) return true
+      // Also match description if present
+      if (opt.description && String(opt.description).toLowerCase().includes(query)) return true
+      return false
+    REDACTED)
   REDACTED
   return opts
 REDACTED)
@@ -434,7 +440,7 @@ REDACTED
 
 <style>
 .select-dropdown-portal {
-  @apply w-max min-w-[200px] max-w-[480px];
+  @apply w-max min-w-[200px];
   @apply bg-white dark:bg-dark-800;
   @apply rounded-xl;
   @apply border border-gray-200 dark:border-dark-700;
