@@ -312,6 +312,7 @@ import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
+import { buildOpenAIUsageRefreshKey REDACTED from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime REDACTED from '@/utils/format'
 import type { Account, AccountPlatform, AccountType, Proxy, AdminGroup, WindowStats, ClaudeModel REDACTED from '@/types'
 
@@ -660,7 +661,8 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.status !== next.status ||
     current.rate_limit_reset_at !== next.rate_limit_reset_at ||
     current.overload_until !== next.overload_until ||
-    current.temp_unschedulable_until !== next.temp_unschedulable_until
+    current.temp_unschedulable_until !== next.temp_unschedulable_until ||
+    buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next)
   )
 REDACTED
 
