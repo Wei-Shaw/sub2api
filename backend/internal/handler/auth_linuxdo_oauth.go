@@ -264,11 +264,7 @@ REDACTED
 
 	tokenPair, _, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode)
 	if err != nil {
-		statusCode := http.StatusBadRequest
-		c.JSON(statusCode, gin.H{
-			"error":   infraerrors.Reason(err),
-			"message": infraerrors.Message(err),
-	REDACTED)
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 

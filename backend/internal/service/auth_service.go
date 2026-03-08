@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -59,6 +60,7 @@ REDACTED
 
 // AuthService 认证服务
 type AuthService struct {
+	entClient          *dbent.Client
 	userRepo           UserRepository
 	redeemRepo         RedeemCodeRepository
 	refreshTokenCache  RefreshTokenCache
@@ -77,6 +79,7 @@ REDACTED
 
 // NewAuthService 创建认证服务实例
 func NewAuthService(
+	entClient *dbent.Client,
 	userRepo UserRepository,
 	redeemRepo RedeemCodeRepository,
 	refreshTokenCache RefreshTokenCache,
@@ -89,6 +92,7 @@ func NewAuthService(
 	defaultSubAssigner DefaultSubscriptionAssigner,
 ) *AuthService {
 	return &AuthService{
+		entClient:          entClient,
 		userRepo:           userRepo,
 		redeemRepo:         redeemRepo,
 		refreshTokenCache:  refreshTokenCache,
@@ -597,24 +601,52 @@ REDACTED
 				Status:       StatusActive,
 		REDACTED
 
-			if err := s.userRepo.Create(ctx, newUser); err != nil {
-				if errors.Is(err, ErrEmailExists) {
-					user, err = s.userRepo.GetByEmail(ctx, email)
-					if err != nil {
-						logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
+			if s.entClient != nil && invitationRedeemCode != nil {
+				tx, err := s.entClient.Tx(ctx)
+				if err != nil {
+					logger.LegacyPrintf("service.auth", "[Auth] Failed to begin transaction for oauth registration: %v", err)
+					return nil, nil, ErrServiceUnavailable
+			REDACTED
+				defer func() { _ = tx.Rollback() REDACTED()
+				txCtx := dbent.NewTxContext(ctx, tx)
+
+				if err := s.userRepo.Create(txCtx, newUser); err != nil {
+					if errors.Is(err, ErrEmailExists) {
+						user, err = s.userRepo.GetByEmail(ctx, email)
+						if err != nil {
+							logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
+							return nil, nil, ErrServiceUnavailable
+					REDACTED
+				REDACTED else {
+						logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
 						return nil, nil, ErrServiceUnavailable
 				REDACTED
 			REDACTED else {
-					logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
-					return nil, nil, ErrServiceUnavailable
+					if err := s.redeemRepo.Use(txCtx, invitationRedeemCode.ID, newUser.ID); err != nil {
+						return nil, nil, ErrInvitationCodeInvalid
+				REDACTED
+					if err := tx.Commit(); err != nil {
+						logger.LegacyPrintf("service.auth", "[Auth] Failed to commit oauth registration transaction: %v", err)
+						return nil, nil, ErrServiceUnavailable
+				REDACTED
+					user = newUser
+					s.assignDefaultSubscriptions(ctx, user.ID)
 			REDACTED
 		REDACTED else {
-				user = newUser
-				s.assignDefaultSubscriptions(ctx, user.ID)
-				if invitationRedeemCode != nil {
-					if err := s.redeemRepo.Use(ctx, invitationRedeemCode.ID, user.ID); err != nil {
-						logger.LegacyPrintf("service.auth", "[Auth] Failed to mark invitation code as used for oauth user %d: %v", user.ID, err)
+				if err := s.userRepo.Create(ctx, newUser); err != nil {
+					if errors.Is(err, ErrEmailExists) {
+						user, err = s.userRepo.GetByEmail(ctx, email)
+						if err != nil {
+							logger.LegacyPrintf("service.auth", "[Auth] Database error getting user after conflict: %v", err)
+							return nil, nil, ErrServiceUnavailable
+					REDACTED
+				REDACTED else {
+						logger.LegacyPrintf("service.auth", "[Auth] Database error creating oauth user: %v", err)
+						return nil, nil, ErrServiceUnavailable
 				REDACTED
+			REDACTED else {
+					user = newUser
+					s.assignDefaultSubscriptions(ctx, user.ID)
 			REDACTED
 		REDACTED
 	REDACTED else {
@@ -644,9 +676,13 @@ REDACTED
 // pendingOAuthTokenTTL is the validity period for pending OAuth tokens.
 const pendingOAuthTokenTTL = 10 * time.Minute
 
+// pendingOAuthPurpose is the purpose claim value for pending OAuth registration tokens.
+const pendingOAuthPurpose = "pending_oauth_registration"
+
 type pendingOAuthClaims struct {
 	Email    string `json:"email"`
 	Username string `json:"username"`
+	Purpose  string `json:"purpose"`
 	jwt.RegisteredClaims
 REDACTED
 
@@ -657,6 +693,7 @@ func (s *AuthService) CreatePendingOAuthToken(email, username string) (string, e
 	claims := &pendingOAuthClaims{
 		Email:    email,
 		Username: username,
+		Purpose:  pendingOAuthPurpose,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(pendingOAuthTokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -685,6 +722,9 @@ REDACTED)
 REDACTED
 	claims, ok := token.Claims.(*pendingOAuthClaims)
 	if !ok || !token.Valid {
+		return "", "", ErrInvalidToken
+REDACTED
+	if claims.Purpose != pendingOAuthPurpose {
 		return "", "", ErrInvalidToken
 REDACTED
 	return claims.Email, claims.Username, nil
