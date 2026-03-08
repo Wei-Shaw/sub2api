@@ -88,7 +88,7 @@
       </template>
 
       <template #table>
-        <div ref="proxyTableRef">
+        <div ref="proxyTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <DataTable :columns="columns" :data="proxies" :loading="loading">
           <template #header-select>
             <input
@@ -883,6 +883,7 @@ import Icon from '@/components/icons/Icon.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 import { useSwipeSelect REDACTED from '@/composables/useSwipeSelect'
+import { useTableSelection REDACTED from '@/composables/useTableSelection'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -961,12 +962,25 @@ const testingProxyIds = ref<Set<number>>(new Set())
 const qualityCheckingProxyIds = ref<Set<number>>(new Set())
 const batchTesting = ref(false)
 const batchQualityChecking = ref(false)
-const selectedProxyIds = ref<Set<number>>(new Set())
 const proxyTableRef = ref<HTMLElement | null>(null)
+const {
+  selectedSet: selectedProxyIds,
+  selectedCount,
+  allVisibleSelected,
+  isSelected,
+  select,
+  deselect,
+  clear: clearSelectedProxies,
+  removeMany: removeSelectedProxies,
+  toggleVisible
+REDACTED = useTableSelection<Proxy>({
+  rows: proxies,
+  getId: (proxy) => proxy.id
+REDACTED)
 useSwipeSelect(proxyTableRef, {
-  isSelected: (id) => selectedProxyIds.value.has(id),
-  select: (id) => { const next = new Set(selectedProxyIds.value); next.add(id); selectedProxyIds.value = next REDACTED,
-  deselect: (id) => { const next = new Set(selectedProxyIds.value); next.delete(id); selectedProxyIds.value = next REDACTED
+  isSelected,
+  select,
+  deselect
 REDACTED)
 const accountsProxy = ref<Proxy | null>(null)
 const proxyAccounts = ref<ProxyAccountSummary[]>([])
@@ -976,12 +990,6 @@ const deletingProxy = ref<Proxy | null>(null)
 const showQualityReportDialog = ref(false)
 const qualityReportProxy = ref<Proxy | null>(null)
 const qualityReport = ref<ProxyQualityCheckResult | null>(null)
-
-const selectedCount = computed(() => selectedProxyIds.value.size)
-const allVisibleSelected = computed(() => {
-  if (proxies.value.length === 0) return false
-  return proxies.value.every((proxy) => selectedProxyIds.value.has(proxy.id))
-REDACTED)
 
 // Batch import state
 const createMode = ref<'standard' | 'batch'>('standard')
@@ -1029,26 +1037,16 @@ REDACTED
 
 const toggleSelectRow = (id: number, event: Event) => {
   const target = event.target as HTMLInputElement
-  const next = new Set(selectedProxyIds.value)
   if (target.checked) {
-    next.add(id)
-  REDACTED else {
-    next.delete(id)
+    select(id)
+    return
   REDACTED
-  selectedProxyIds.value = next
+  deselect(id)
 REDACTED
 
 const toggleSelectAllVisible = (event: Event) => {
   const target = event.target as HTMLInputElement
-  const next = new Set(selectedProxyIds.value)
-  for (const proxy of proxies.value) {
-    if (target.checked) {
-      next.add(proxy.id)
-    REDACTED else {
-      next.delete(proxy.id)
-    REDACTED
-  REDACTED
-  selectedProxyIds.value = next
+  toggleVisible(target.checked)
 REDACTED
 
 const loadProxies = async () => {
@@ -1740,11 +1738,7 @@ const confirmDelete = async () => {
     await adminAPI.proxies.delete(deletingProxy.value.id)
     appStore.showSuccess(t('admin.proxies.proxyDeleted'))
     showDeleteDialog.value = false
-    if (selectedProxyIds.value.has(deletingProxy.value.id)) {
-      const next = new Set(selectedProxyIds.value)
-      next.delete(deletingProxy.value.id)
-      selectedProxyIds.value = next
-    REDACTED
+    removeSelectedProxies([deletingProxy.value.id])
     deletingProxy.value = null
     loadProxies()
   REDACTED catch (error: any) {
@@ -1771,7 +1765,7 @@ const confirmBatchDelete = async () => {
       appStore.showInfo(t('admin.proxies.batchDeleteSkipped', { skipped REDACTED))
     REDACTED
 
-    selectedProxyIds.value = new Set()
+    clearSelectedProxies()
     showBatchDeleteDialog.value = false
     loadProxies()
   REDACTED catch (error: any) {
