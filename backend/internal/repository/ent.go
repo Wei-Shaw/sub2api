@@ -89,6 +89,10 @@ REDACTED
 			_ = client.Close()
 			return nil, nil, err
 	REDACTED
+		if err := ensureSimpleModeAdminConcurrency(seedCtx, client); err != nil {
+			_ = client.Close()
+			return nil, nil, err
+	REDACTED
 REDACTED
 
 	return client, drv.DB(), nil

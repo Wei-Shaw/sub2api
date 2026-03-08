@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -23,9 +24,18 @@ import (
 
 // Config paths
 const (
-	ConfigFileName  = "config.yaml"
-	InstallLockFile = ".installed"
+	ConfigFileName             = "config.yaml"
+	InstallLockFile            = ".installed"
+	defaultUserConcurrency     = 5
+	simpleModeAdminConcurrency = 30
 )
+
+func setupDefaultAdminConcurrency() int {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("RUN_MODE")), config.RunModeSimple) {
+		return simpleModeAdminConcurrency
+REDACTED
+	return defaultUserConcurrency
+REDACTED
 
 // GetDataDir returns the data directory for storing config and lock files.
 // Priority: DATA_DIR env > /app/data (if exists and writable) > current directory
@@ -390,7 +400,7 @@ REDACTED
 		Role:        service.RoleAdmin,
 		Status:      service.StatusActive,
 		Balance:     0,
-		Concurrency: 5,
+		Concurrency: setupDefaultAdminConcurrency(),
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 REDACTED
@@ -462,7 +472,7 @@ REDACTED{
 			APIKeyPrefix    string  `yaml:"api_key_prefix"`
 			RateMultiplier  float64 `yaml:"rate_multiplier"`
 	REDACTED{
-			UserConcurrency: 5,
+			UserConcurrency: defaultUserConcurrency,
 			UserBalance:     0,
 			APIKeyPrefix:    "sk-",
 			RateMultiplier:  1.0,
