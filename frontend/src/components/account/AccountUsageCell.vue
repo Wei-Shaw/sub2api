@@ -333,6 +333,29 @@
   <div v-else>
     <!-- Gemini API Key accounts: show quota info -->
     <AccountQuotaInfo v-if="account.platform === 'gemini'" :account="account" />
+    <!-- API Key accounts with quota limits: show progress bars -->
+    <div v-else-if="hasApiKeyQuota" class="space-y-1">
+      <UsageProgressBar
+        v-if="quotaDailyBar"
+        label="1d"
+        :utilization="quotaDailyBar.utilization"
+        :resets-at="quotaDailyBar.resetsAt"
+        color="indigo"
+      />
+      <UsageProgressBar
+        v-if="quotaWeeklyBar"
+        label="7d"
+        :utilization="quotaWeeklyBar.utilization"
+        :resets-at="quotaWeeklyBar.resetsAt"
+        color="emerald"
+      />
+      <UsageProgressBar
+        v-if="quotaTotalBar"
+        label="total"
+        :utilization="quotaTotalBar.utilization"
+        color="purple"
+      />
+    </div>
     <div v-else class="text-xs text-gray-400">-</div>
   </div>
 </template>
@@ -808,6 +831,59 @@ const loadUsage = async () => {
     loading.value = false
   REDACTED
 REDACTED
+
+// ===== API Key quota progress bars =====
+
+interface QuotaBarInfo {
+  utilization: number
+  resetsAt: string | null
+REDACTED
+
+const makeQuotaBar = (
+  used: number,
+  limit: number,
+  startKey?: string
+): QuotaBarInfo => {
+  const utilization = limit > 0 ? (used / limit) * 100 : 0
+  let resetsAt: string | null = null
+  if (startKey) {
+    const extra = props.account.extra as Record<string, unknown> | undefined
+    const startStr = extra?.[startKey] as string | undefined
+    if (startStr) {
+      const startDate = new Date(startStr)
+      const periodMs = startKey.includes('daily') ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000
+      resetsAt = new Date(startDate.getTime() + periodMs).toISOString()
+    REDACTED
+  REDACTED
+  return { utilization, resetsAt REDACTED
+REDACTED
+
+const hasApiKeyQuota = computed(() => {
+  if (props.account.type !== 'apikey') return false
+  return (
+    (props.account.quota_daily_limit ?? 0) > 0 ||
+    (props.account.quota_weekly_limit ?? 0) > 0 ||
+    (props.account.quota_limit ?? 0) > 0
+  )
+REDACTED)
+
+const quotaDailyBar = computed((): QuotaBarInfo | null => {
+  const limit = props.account.quota_daily_limit ?? 0
+  if (limit <= 0) return null
+  return makeQuotaBar(props.account.quota_daily_used ?? 0, limit, 'quota_daily_start')
+REDACTED)
+
+const quotaWeeklyBar = computed((): QuotaBarInfo | null => {
+  const limit = props.account.quota_weekly_limit ?? 0
+  if (limit <= 0) return null
+  return makeQuotaBar(props.account.quota_weekly_used ?? 0, limit, 'quota_weekly_start')
+REDACTED)
+
+const quotaTotalBar = computed((): QuotaBarInfo | null => {
+  const limit = props.account.quota_limit ?? 0
+  if (limit <= 0) return null
+  return makeQuotaBar(props.account.quota_used ?? 0, limit)
+REDACTED)
 
 onMounted(() => {
   if (!shouldAutoLoadUsageOnMount.value) return
