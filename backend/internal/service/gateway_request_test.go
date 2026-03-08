@@ -584,11 +584,14 @@ REDACTED`)
 
 	cm, ok := req["context_management"].(map[string]any)
 	require.True(t, ok)
-	edits, _ := cm["edits"].([]any)
-	for _, e := range edits {
-		em, ok := e.(map[string]any)
+	if rawEdits, hasEdits := cm["edits"]; hasEdits {
+		edits, ok := rawEdits.([]any)
 		require.True(t, ok)
-		require.NotEqual(t, "clear_thinking_20251015", em["type"], "clear_thinking_20251015 应被移除")
+		for _, e := range edits {
+			em, ok := e.(map[string]any)
+			require.True(t, ok)
+			require.NotEqual(t, "clear_thinking_20251015", em["type"], "clear_thinking_20251015 应被移除")
+	REDACTED
 REDACTED
 REDACTED
 
