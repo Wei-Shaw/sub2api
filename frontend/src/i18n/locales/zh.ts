@@ -3043,6 +3043,8 @@ export default {
       billingTypeBalance: '钱包余额',
       billingTypeSubscription: '订阅套餐',
       ipAddress: 'IP',
+      clickToViewBalance: '点击查看充值记录',
+      failedToLoadUser: '加载用户信息失败',
       cleanup: {
         button: '清理',
         title: '清理使用记录',

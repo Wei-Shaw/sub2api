@@ -2875,6 +2875,8 @@ export default {
       billingTypeBalance: 'Balance',
       billingTypeSubscription: 'Subscription',
       ipAddress: 'IP',
+      clickToViewBalance: 'Click to view balance history',
+      failedToLoadUser: 'Failed to load user info',
       cleanup: {
         button: 'Cleanup',
         title: 'Cleanup Usage Records',
