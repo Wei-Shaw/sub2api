@@ -77,6 +77,7 @@ REDACTED
 		return errors.New("token is empty")
 REDACTED
 	requestModel := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "model").String())
+	requestServiceTier := extractOpenAIServiceTierFromBody(firstClientMessage)
 	requestPreviousResponseID := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "previous_response_id").String())
 	logOpenAIWSV2Passthrough(
 		"relay_start account_id=%d model=%s previous_response_id=%s first_message_type=%s first_message_bytes=%d",
@@ -178,6 +179,7 @@ REDACTED
 						CacheReadInputTokens:     turn.Usage.CacheReadInputTokens,
 				REDACTED,
 					Model:           turn.RequestModel,
+					ServiceTier:     requestServiceTier,
 					Stream:          true,
 					OpenAIWSMode:    true,
 					ResponseHeaders: cloneHeader(handshakeHeaders),
@@ -225,6 +227,7 @@ REDACTED)
 			CacheReadInputTokens:     relayResult.Usage.CacheReadInputTokens,
 	REDACTED,
 		Model:           relayResult.RequestModel,
+		ServiceTier:     requestServiceTier,
 		Stream:          true,
 		OpenAIWSMode:    true,
 		ResponseHeaders: cloneHeader(handshakeHeaders),

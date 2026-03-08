@@ -1,10 +1,39 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestParsePricingData_ParsesPriorityAndServiceTierFields(t *testing.T) {
+	svc := &PricingService{REDACTED
+	body := []byte(`{
+		"gpt-5.4": {
+			"input_cost_per_token": 0.0000025,
+			"input_cost_per_token_priority": 0.000005,
+			"output_cost_per_token": 0.000015,
+			"output_cost_per_token_priority": 0.00003,
+			"cache_creation_input_token_cost": 0.0000025,
+			"cache_read_input_token_cost": 0.00000025,
+			"cache_read_input_token_cost_priority": 0.0000005,
+			"supports_service_tier": true,
+			"supports_prompt_caching": true,
+			"litellm_provider": "openai",
+			"mode": "chat"
+	REDACTED
+REDACTED`)
+
+	data, err := svc.parsePricingData(body)
+REDACTED
+	pricing := data["gpt-5.4"]
+	require.NotNil(t, pricing)
+	require.InDelta(t, 5e-6, pricing.InputCostPerTokenPriority, 1e-12)
+	require.InDelta(t, 3e-5, pricing.OutputCostPerTokenPriority, 1e-12)
+	require.InDelta(t, 5e-7, pricing.CacheReadInputTokenCostPriority, 1e-12)
+	require.True(t, pricing.SupportsServiceTier)
+REDACTED
 
 func TestGetModelPricing_Gpt53CodexSparkUsesGpt51CodexPricing(t *testing.T) {
 	sparkPricing := &LiteLLMModelPricing{InputCostPerToken: 1REDACTED
@@ -67,4 +96,65 @@ REDACTED
 	require.Equal(t, 272000, got.LongContextInputTokenThreshold)
 	require.InDelta(t, 2.0, got.LongContextInputCostMultiplier, 1e-12)
 	require.InDelta(t, 1.5, got.LongContextOutputCostMultiplier, 1e-12)
+REDACTED
+
+func TestParsePricingData_PreservesPriorityAndServiceTierFields(t *testing.T) {
+	raw := map[string]any{
+		"gpt-5.4": map[string]any{
+			"input_cost_per_token":                 2.5e-6,
+			"input_cost_per_token_priority":        5e-6,
+			"output_cost_per_token":                15e-6,
+			"output_cost_per_token_priority":       30e-6,
+			"cache_read_input_token_cost":          0.25e-6,
+			"cache_read_input_token_cost_priority": 0.5e-6,
+			"supports_service_tier":                true,
+			"supports_prompt_caching":              true,
+			"litellm_provider":                     "openai",
+			"mode":                                 "chat",
+	REDACTED,
+REDACTED
+	body, err := json.Marshal(raw)
+REDACTED
+
+	svc := &PricingService{REDACTED
+	pricingMap, err := svc.parsePricingData(body)
+REDACTED
+
+	pricing := pricingMap["gpt-5.4"]
+	require.NotNil(t, pricing)
+	require.InDelta(t, 2.5e-6, pricing.InputCostPerToken, 1e-12)
+	require.InDelta(t, 5e-6, pricing.InputCostPerTokenPriority, 1e-12)
+	require.InDelta(t, 15e-6, pricing.OutputCostPerToken, 1e-12)
+	require.InDelta(t, 30e-6, pricing.OutputCostPerTokenPriority, 1e-12)
+	require.InDelta(t, 0.25e-6, pricing.CacheReadInputTokenCost, 1e-12)
+	require.InDelta(t, 0.5e-6, pricing.CacheReadInputTokenCostPriority, 1e-12)
+	require.True(t, pricing.SupportsServiceTier)
+REDACTED
+
+func TestParsePricingData_PreservesServiceTierPriorityFields(t *testing.T) {
+	svc := &PricingService{REDACTED
+	pricingData, err := svc.parsePricingData([]byte(`{
+		"gpt-5.4": {
+			"input_cost_per_token": 0.0000025,
+			"input_cost_per_token_priority": 0.000005,
+			"output_cost_per_token": 0.000015,
+			"output_cost_per_token_priority": 0.00003,
+			"cache_read_input_token_cost": 0.00000025,
+			"cache_read_input_token_cost_priority": 0.0000005,
+			"supports_service_tier": true,
+			"litellm_provider": "openai",
+			"mode": "chat"
+	REDACTED
+REDACTED`))
+REDACTED
+
+	pricing := pricingData["gpt-5.4"]
+	require.NotNil(t, pricing)
+	require.InDelta(t, 0.0000025, pricing.InputCostPerToken, 1e-12)
+	require.InDelta(t, 0.000005, pricing.InputCostPerTokenPriority, 1e-12)
+	require.InDelta(t, 0.000015, pricing.OutputCostPerToken, 1e-12)
+	require.InDelta(t, 0.00003, pricing.OutputCostPerTokenPriority, 1e-12)
+	require.InDelta(t, 0.00000025, pricing.CacheReadInputTokenCost, 1e-12)
+	require.InDelta(t, 0.0000005, pricing.CacheReadInputTokenCostPriority, 1e-12)
+	require.True(t, pricing.SupportsServiceTier)
 REDACTED

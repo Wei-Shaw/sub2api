@@ -213,6 +213,9 @@ type OpenAIForwardResult struct {
 	// This is set by the Anthropic Messages conversion path where
 	// the mapped upstream model differs from the client-facing model.
 	BillingModel string
+	// ServiceTier records the OpenAI Responses API service tier, e.g. "priority" / "flex".
+	// Nil means the request did not specify a recognized tier.
+	ServiceTier *string
 	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
 	// Stored for usage records display; nil means not provided / not applicable.
 	ReasoningEffort *string
@@ -2036,11 +2039,13 @@ REDACTED
 REDACTED
 
 	reasoningEffort := extractOpenAIReasoningEffort(reqBody, originalModel)
+	serviceTier := extractOpenAIServiceTier(reqBody)
 
 	return &OpenAIForwardResult{
 		RequestID:       resp.Header.Get("x-request-id"),
 		Usage:           *usage,
 		Model:           originalModel,
+		ServiceTier:     serviceTier,
 		ReasoningEffort: reasoningEffort,
 		Stream:          reqStream,
 		OpenAIWSMode:    false,
@@ -2195,6 +2200,7 @@ REDACTED
 		RequestID:       resp.Header.Get("x-request-id"),
 		Usage:           *usage,
 		Model:           reqModel,
+		ServiceTier:     extractOpenAIServiceTierFromBody(body),
 		ReasoningEffort: reasoningEffort,
 		Stream:          reqStream,
 		OpenAIWSMode:    false,
@@ -3628,7 +3634,11 @@ REDACTED
 	if result.BillingModel != "" {
 		billingModel = result.BillingModel
 REDACTED
-	cost, err := s.billingService.CalculateCost(billingModel, tokens, multiplier)
+	serviceTier := ""
+	if result.ServiceTier != nil {
+		serviceTier = strings.TrimSpace(*result.ServiceTier)
+REDACTED
+	cost, err := s.billingService.CalculateCostWithServiceTier(billingModel, tokens, multiplier, serviceTier)
 	if err != nil {
 		cost = &CostBreakdown{ActualCost: 0REDACTED
 REDACTED
@@ -3649,6 +3659,7 @@ REDACTED
 		AccountID:             account.ID,
 		RequestID:             result.RequestID,
 		Model:                 billingModel,
+		ServiceTier:           result.ServiceTier,
 		ReasoningEffort:       result.ReasoningEffort,
 		InputTokens:           actualInputTokens,
 		OutputTokens:          result.Usage.OutputTokens,
@@ -4045,6 +4056,40 @@ REDACTED
 		return nil
 REDACTED
 	return &value
+REDACTED
+
+func extractOpenAIServiceTier(reqBody map[string]any) *string {
+	if reqBody == nil {
+		return nil
+REDACTED
+	raw, ok := reqBody["service_tier"].(string)
+	if !ok {
+		return nil
+REDACTED
+	return normalizeOpenAIServiceTier(raw)
+REDACTED
+
+func extractOpenAIServiceTierFromBody(body []byte) *string {
+	if len(body) == 0 {
+		return nil
+REDACTED
+	return normalizeOpenAIServiceTier(gjson.GetBytes(body, "service_tier").String())
+REDACTED
+
+func normalizeOpenAIServiceTier(raw string) *string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return nil
+REDACTED
+	if value == "fast" {
+		value = "priority"
+REDACTED
+	switch value {
+	case "priority", "flex":
+		return &value
+	default:
+		return nil
+REDACTED
 REDACTED
 
 func getOpenAIRequestBodyMap(c *gin.Context, body []byte) (map[string]any, error) {

@@ -98,6 +98,8 @@ type UsageLog struct {
 	AccountID int64
 	RequestID string
 	Model     string
+	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
+	ServiceTier *string
 	// ReasoningEffort is the request's reasoning effort level (OpenAI Responses API),
 	// e.g. "low" / "medium" / "high" / "xhigh". Nil means not provided / not applicable.
 	ReasoningEffort *string

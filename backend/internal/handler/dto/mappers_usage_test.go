@@ -71,3 +71,29 @@ func TestRequestTypeStringPtrNil(t *testing.T) {
 	t.Parallel()
 	require.Nil(t, requestTypeStringPtr(nil))
 REDACTED
+
+func TestUsageLogFromService_IncludesServiceTierForUserAndAdmin(t *testing.T) {
+	t.Parallel()
+
+	serviceTier := "priority"
+	log := &service.UsageLog{
+		RequestID:             "req_3",
+		Model:                 "gpt-5.4",
+		ServiceTier:           &serviceTier,
+		AccountRateMultiplier: f64Ptr(1.5),
+REDACTED
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	require.NotNil(t, userDTO.ServiceTier)
+	require.Equal(t, serviceTier, *userDTO.ServiceTier)
+	require.NotNil(t, adminDTO.ServiceTier)
+	require.Equal(t, serviceTier, *adminDTO.ServiceTier)
+	require.NotNil(t, adminDTO.AccountRateMultiplier)
+	require.InDelta(t, 1.5, *adminDTO.AccountRateMultiplier, 1e-12)
+REDACTED
+
+func f64Ptr(value float64) *float64 {
+	return &value
+REDACTED
