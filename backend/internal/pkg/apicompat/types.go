@@ -47,6 +47,9 @@ type AnthropicContentBlock struct {
 	// type=thinking
 	Thinking string `json:"thinking,omitempty"`
 
+	// type=image
+	Source *AnthropicImageSource `json:"source,omitempty"`
+
 	// type=tool_use
 	ID    string          `json:"id,omitempty"`
 	Name  string          `json:"name,omitempty"`
@@ -56,6 +59,13 @@ type AnthropicContentBlock struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   json.RawMessage `json:"content,omitempty"` // string or []AnthropicContentBlock
 	IsError   bool            `json:"is_error,omitempty"`
+REDACTED
+
+// AnthropicImageSource describes the source data for an image content block.
+type AnthropicImageSource struct {
+	Type      string `json:"type"` // "base64"
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
 REDACTED
 
 // AnthropicTool describes a tool available to the model.
@@ -176,8 +186,9 @@ REDACTED
 
 // ResponsesContentPart is a typed content part in a Responses message.
 type ResponsesContentPart struct {
-	Type string `json:"type"` // "input_text" | "output_text" | "input_image"
-	Text string `json:"text,omitempty"`
+	Type     string `json:"type"` // "input_text" | "output_text" | "input_image"
+	Text     string `json:"text,omitempty"`
+	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
 REDACTED
 
 // ResponsesTool describes a tool in the Responses API.

@@ -733,3 +733,188 @@ REDACTED
 	require.True(t, ok)
 	assert.Equal(t, "get_weather", fn["name"])
 REDACTED
+
+// ---------------------------------------------------------------------------
+// Image content block conversion tests
+// ---------------------------------------------------------------------------
+
+func TestAnthropicToResponses_UserImageBlock(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"text","text":"What is in this image?"REDACTED,
+				{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBOR"REDACTEDREDACTED
+			]`)REDACTED,
+	REDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+	assert.Equal(t, "user", items[0].Role)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 2)
+	assert.Equal(t, "input_text", parts[0].Type)
+	assert.Equal(t, "What is in this image?", parts[0].Text)
+	assert.Equal(t, "input_image", parts[1].Type)
+	assert.Equal(t, "data:image/png;base64,iVBOR", parts[1].ImageURL)
+REDACTED
+
+func TestAnthropicToResponses_ImageOnlyUserMessage(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"/9j/4AAQ"REDACTEDREDACTED
+			]`)REDACTED,
+	REDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_image", parts[0].Type)
+	assert.Equal(t, "data:image/jpeg;base64,/9j/4AAQ", parts[0].ImageURL)
+REDACTED
+
+func TestAnthropicToResponses_ToolResultWithImage(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Read the screenshot"`)REDACTED,
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"/tmp/screen.png"REDACTEDREDACTED]`)REDACTED,
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"tool_result","tool_use_id":"toolu_1","content":[
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBOR"REDACTEDREDACTED
+				]REDACTED
+			]`)REDACTED,
+	REDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	// user + function_call + function_call_output + user(image) = 4
+	require.Len(t, items, 4)
+
+	// function_call_output should have text-only output (no image).
+	assert.Equal(t, "function_call_output", items[2].Type)
+	assert.Equal(t, "fc_toolu_1", items[2].CallID)
+	assert.Equal(t, "(empty)", items[2].Output)
+
+	// Image should be in a separate user message.
+	assert.Equal(t, "user", items[3].Role)
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[3].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_image", parts[0].Type)
+	assert.Equal(t, "data:image/png;base64,iVBOR", parts[0].ImageURL)
+REDACTED
+
+func TestAnthropicToResponses_ToolResultMixed(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Describe the file"`)REDACTED,
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"tool_use","id":"toolu_2","name":"Read","input":{"file_path":"/tmp/photo.png"REDACTEDREDACTED]`)REDACTED,
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"tool_result","tool_use_id":"toolu_2","content":[
+					{"type":"text","text":"File metadata: 800x600 PNG"REDACTED,
+					{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"REDACTEDREDACTED
+				]REDACTED
+			]`)REDACTED,
+	REDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	// user + function_call + function_call_output + user(image) = 4
+	require.Len(t, items, 4)
+
+	// function_call_output should have text-only output.
+	assert.Equal(t, "function_call_output", items[2].Type)
+	assert.Equal(t, "File metadata: 800x600 PNG", items[2].Output)
+
+	// Image should be in a separate user message.
+	assert.Equal(t, "user", items[3].Role)
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[3].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_image", parts[0].Type)
+	assert.Equal(t, "data:image/png;base64,AAAA", parts[0].ImageURL)
+REDACTED
+
+func TestAnthropicToResponses_TextOnlyToolResultBackwardCompat(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Check weather"`)REDACTED,
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"tool_use","id":"call_1","name":"get_weather","input":{"city":"NYC"REDACTEDREDACTED]`)REDACTED,
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"tool_result","tool_use_id":"call_1","content":[
+					{"type":"text","text":"Sunny, 72°F"REDACTED
+				]REDACTED
+			]`)REDACTED,
+	REDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	// user + function_call + function_call_output = 3
+	require.Len(t, items, 3)
+
+	// Text-only tool_result should produce a plain string.
+	assert.Equal(t, "Sunny, 72°F", items[2].Output)
+REDACTED
+
+func TestAnthropicToResponses_ImageEmptyMediaType(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`[
+				{"type":"image","source":{"type":"base64","media_type":"","data":"iVBOR"REDACTEDREDACTED
+			]`)REDACTED,
+	REDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_image", parts[0].Type)
+	// Should default to image/png when media_type is empty.
+	assert.Equal(t, "data:image/png;base64,iVBOR", parts[0].ImageURL)
+REDACTED
