@@ -507,7 +507,11 @@ REDACTED
 					filtered = append(filtered, edit)
 			REDACTED
 				if len(filtered) != len(edits) {
-					cm["edits"] = filtered
+					if len(filtered) == 0 {
+						delete(cm, "edits")
+				REDACTED else {
+						cm["edits"] = filtered
+				REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
