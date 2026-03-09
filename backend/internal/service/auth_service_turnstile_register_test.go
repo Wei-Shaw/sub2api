@@ -43,6 +43,7 @@ REDACTED
 	turnstileService := NewTurnstileService(settingService, verifier)
 
 	return NewAuthService(
+		nil, // entClient
 		&userRepoStub{REDACTED,
 		nil, // redeemRepo
 		nil, // refreshTokenCache
