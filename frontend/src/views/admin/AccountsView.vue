@@ -171,7 +171,7 @@
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-platform_type="{ row REDACTED">
-            <PlatformTypeBadge :platform="row.platform" :type="row.type" />
+            <PlatformTypeBadge :platform="row.platform" :type="row.type" :plan-type="row.credentials?.plan_type" />
           </template>
           <template #cell-capacity="{ row REDACTED">
             <AccountCapacityCell :account="row" />

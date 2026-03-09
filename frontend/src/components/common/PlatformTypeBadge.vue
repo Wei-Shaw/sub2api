@@ -28,6 +28,10 @@
       <Icon v-else name="key" size="xs" />
       <span>{{ typeLabel REDACTEDREDACTED</span>
     </span>
+    <!-- Plan type part (optional) -->
+    <span v-if="planLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1 border-l border-white/20', typeClass]">
+      <span>{{ planLabel REDACTEDREDACTED</span>
+    </span>
   </div>
 </template>
 
@@ -40,6 +44,7 @@ import Icon from '@/components/icons/Icon.vue'
 interface Props {
   platform: AccountPlatform
   type: AccountType
+  planType?: string
 REDACTED
 
 const props = defineProps<Props>()
@@ -62,6 +67,24 @@ const typeLabel = computed(() => {
       return 'Key'
     default:
       return props.type
+  REDACTED
+REDACTED)
+
+const planLabel = computed(() => {
+  if (!props.planType) return ''
+  const lower = props.planType.toLowerCase()
+  switch (lower) {
+    case 'plus':
+      return 'Plus'
+    case 'team':
+      return 'Team'
+    case 'chatgptpro':
+    case 'pro':
+      return 'Pro'
+    case 'free':
+      return 'Free'
+    default:
+      return props.planType
   REDACTED
 REDACTED)
 

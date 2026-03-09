@@ -130,6 +130,7 @@ type OpenAITokenInfo struct {
 	ChatGPTAccountID string `json:"chatgpt_account_id,omitempty"`
 	ChatGPTUserID    string `json:"chatgpt_user_id,omitempty"`
 	OrganizationID   string `json:"organization_id,omitempty"`
+	PlanType         string `json:"plan_type,omitempty"`
 REDACTED
 
 // ExchangeCode exchanges authorization code for tokens
@@ -202,6 +203,7 @@ REDACTED
 		tokenInfo.ChatGPTAccountID = userInfo.ChatGPTAccountID
 		tokenInfo.ChatGPTUserID = userInfo.ChatGPTUserID
 		tokenInfo.OrganizationID = userInfo.OrganizationID
+		tokenInfo.PlanType = userInfo.PlanType
 REDACTED
 
 	return tokenInfo, nil
@@ -246,6 +248,7 @@ REDACTED
 		tokenInfo.ChatGPTAccountID = userInfo.ChatGPTAccountID
 		tokenInfo.ChatGPTUserID = userInfo.ChatGPTUserID
 		tokenInfo.OrganizationID = userInfo.OrganizationID
+		tokenInfo.PlanType = userInfo.PlanType
 REDACTED
 
 	return tokenInfo, nil
@@ -509,6 +512,9 @@ REDACTED
 REDACTED
 	if tokenInfo.OrganizationID != "" {
 		creds["organization_id"] = tokenInfo.OrganizationID
+REDACTED
+	if tokenInfo.PlanType != "" {
+		creds["plan_type"] = tokenInfo.PlanType
 REDACTED
 	if strings.TrimSpace(tokenInfo.ClientID) != "" {
 		creds["client_id"] = strings.TrimSpace(tokenInfo.ClientID)
