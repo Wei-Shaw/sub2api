@@ -934,6 +934,7 @@ export interface UsageLog {
   account_id: number | null
   request_id: string
   model: string
+  service_tier?: string | null
   reasoning_effort?: string | null
 
   group_id: number | null

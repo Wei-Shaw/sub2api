@@ -426,6 +426,14 @@
               <span class="text-gray-400">{{ t('admin.usage.outputCost') REDACTEDREDACTED</span>
               <span class="font-medium text-white">${{ tooltipData.output_cost.toFixed(6) REDACTEDREDACTED</span>
             </div>
+            <div v-if="tooltipData && tooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('usage.inputTokenPrice') REDACTEDREDACTED</span>
+              <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens) REDACTEDREDACTED {{ t('usage.perMillionTokens') REDACTEDREDACTED</span>
+            </div>
+            <div v-if="tooltipData && tooltipData.output_tokens > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('usage.outputTokenPrice') REDACTEDREDACTED</span>
+              <span class="font-medium text-violet-300">{{ formatTokenPricePerMillion(tooltipData.output_cost, tooltipData.output_tokens) REDACTEDREDACTED {{ t('usage.perMillionTokens') REDACTEDREDACTED</span>
+            </div>
             <div v-if="tooltipData && tooltipData.cache_creation_cost > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.cacheCreationCost') REDACTEDREDACTED</span>
               <span class="font-medium text-white">${{ tooltipData.cache_creation_cost.toFixed(6) REDACTEDREDACTED</span>
@@ -436,6 +444,10 @@
             </div>
           </div>
           <!-- Rate and Summary -->
+          <div class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.serviceTier') REDACTEDREDACTED</span>
+            <span class="font-semibold text-cyan-300">{{ getUsageServiceTierLabel(tooltipData?.service_tier, t) REDACTEDREDACTED</span>
+          </div>
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.rate') REDACTEDREDACTED</span>
             <span class="font-semibold text-blue-400"
@@ -478,6 +490,8 @@ import Icon from '@/components/icons/Icon.vue'
 import type { UsageLog, ApiKey, UsageQueryParams, UsageStatsResponse REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
 import { formatDateTime, formatReasoningEffort REDACTED from '@/utils/format'
+import { formatTokenPricePerMillion REDACTED from '@/utils/usagePricing'
+import { getUsageServiceTierLabel REDACTED from '@/utils/usageServiceTier'
 import { resolveUsageRequestType REDACTED from '@/utils/usageRequestType'
 
 const { t REDACTED = useI18n()
