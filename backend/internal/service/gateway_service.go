@@ -997,6 +997,11 @@ REDACTED
 	return fmt.Sprintf("user_%s_account__session_%s", userID, sessionID)
 REDACTED
 
+// GenerateSessionUUID creates a deterministic UUID4 from a seed string.
+func GenerateSessionUUID(seed string) string {
+	return generateSessionUUID(seed)
+REDACTED
+
 func generateSessionUUID(seed string) string {
 	if seed == "" {
 		return uuid.NewString()

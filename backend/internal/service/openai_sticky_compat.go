@@ -29,6 +29,13 @@ func openAIStickyCompatStats() (legacyReadFallbackTotal, legacyReadFallbackHit, 
 		openAIStickyLegacyDualWriteTotal.Load()
 REDACTED
 
+// DeriveSessionHashFromSeed computes the current-format sticky-session hash
+// from an arbitrary seed string.
+func DeriveSessionHashFromSeed(seed string) string {
+	currentHash, _ := deriveOpenAISessionHashes(seed)
+	return currentHash
+REDACTED
+
 func deriveOpenAISessionHashes(sessionID string) (currentHash string, legacyHash string) {
 	normalized := strings.TrimSpace(sessionID)
 	if normalized == "" {
