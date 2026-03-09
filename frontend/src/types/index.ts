@@ -1491,6 +1491,7 @@ export interface ScheduledTestPlan {
   cron_expression: string
   enabled: boolean
   max_results: number
+  auto_recover: boolean
   last_run_at: string | null
   next_run_at: string | null
   created_at: string
@@ -1515,6 +1516,7 @@ export interface CreateScheduledTestPlanRequest {
   cron_expression: string
   enabled?: boolean
   max_results?: number
+  auto_recover?: boolean
 REDACTED
 
 export interface UpdateScheduledTestPlanRequest {
@@ -1522,4 +1524,5 @@ export interface UpdateScheduledTestPlanRequest {
   cron_expression?: string
   enabled?: boolean
   max_results?: number
+  auto_recover?: boolean
 REDACTED

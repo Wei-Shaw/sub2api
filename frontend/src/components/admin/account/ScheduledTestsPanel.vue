@@ -41,8 +41,24 @@
             />
           </div>
           <div>
-            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+            <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
               {{ t('admin.scheduledTests.cronExpression') REDACTEDREDACTED
+              <HelpTooltip>
+                <template #trigger>
+                  <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                    ?
+                  </span>
+                </template>
+                <div class="space-y-1.5">
+                  <p class="font-medium">{{ t('admin.scheduledTests.cronTooltipTitle') REDACTEDREDACTED</p>
+                  <p>{{ t('admin.scheduledTests.cronTooltipMeaning') REDACTEDREDACTED</p>
+                  <p>{{ t('admin.scheduledTests.cronTooltipExampleEvery30Min') REDACTEDREDACTED</p>
+                  <p>{{ t('admin.scheduledTests.cronTooltipExampleHourly') REDACTEDREDACTED</p>
+                  <p>{{ t('admin.scheduledTests.cronTooltipExampleDaily') REDACTEDREDACTED</p>
+                  <p>{{ t('admin.scheduledTests.cronTooltipExampleWeekly') REDACTEDREDACTED</p>
+                  <p>{{ t('admin.scheduledTests.cronTooltipRange') REDACTEDREDACTED</p>
+                </div>
+              </HelpTooltip>
             </label>
             <Input
               v-model="newPlan.cron_expression"
@@ -51,8 +67,22 @@
             />
           </div>
           <div>
-            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+            <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
               {{ t('admin.scheduledTests.maxResults') REDACTEDREDACTED
+              <HelpTooltip>
+                <template #trigger>
+                  <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                    ?
+                  </span>
+                </template>
+                <div class="space-y-1.5">
+                  <p class="font-medium">{{ t('admin.scheduledTests.maxResultsTooltipTitle') REDACTEDREDACTED</p>
+                  <p>{{ t('admin.scheduledTests.maxResultsTooltipMeaning') REDACTEDREDACTED</p>
+                  <p>{{ t('admin.scheduledTests.maxResultsTooltipBody') REDACTEDREDACTED</p>
+                  <p>{{ t('admin.scheduledTests.maxResultsTooltipExample') REDACTEDREDACTED</p>
+                  <p>{{ t('admin.scheduledTests.maxResultsTooltipRange') REDACTEDREDACTED</p>
+                </div>
+              </HelpTooltip>
             </label>
             <Input
               v-model="newPlan.max_results"
@@ -65,6 +95,17 @@
               <Toggle v-model="newPlan.enabled" />
               {{ t('admin.scheduledTests.enabled') REDACTEDREDACTED
             </label>
+          </div>
+          <div class="flex items-end">
+            <div>
+              <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <Toggle v-model="newPlan.auto_recover" />
+                {{ t('admin.scheduledTests.autoRecover') REDACTEDREDACTED
+              </label>
+              <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                {{ t('admin.scheduledTests.autoRecoverHelp') REDACTEDREDACTED
+              </p>
+            </div>
           </div>
         </div>
         <div class="mt-3 flex justify-end gap-2">
@@ -135,6 +176,14 @@
                   {{ plan.enabled ? t('admin.scheduledTests.enabled') : '' REDACTEDREDACTED
                 </span>
               </div>
+
+              <!-- Auto Recover Badge -->
+              <span
+                v-if="plan.auto_recover"
+                class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
+              >
+                {{ t('admin.scheduledTests.autoRecover') REDACTEDREDACTED
+              </span>
             </div>
 
             <div class="flex items-center gap-3">
@@ -202,8 +251,24 @@
                 />
               </div>
               <div>
-                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.scheduledTests.cronExpression') REDACTEDREDACTED
+                  <HelpTooltip>
+                    <template #trigger>
+                      <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                        ?
+                      </span>
+                    </template>
+                    <div class="space-y-1.5">
+                      <p class="font-medium">{{ t('admin.scheduledTests.cronTooltipTitle') REDACTEDREDACTED</p>
+                      <p>{{ t('admin.scheduledTests.cronTooltipMeaning') REDACTEDREDACTED</p>
+                      <p>{{ t('admin.scheduledTests.cronTooltipExampleEvery30Min') REDACTEDREDACTED</p>
+                      <p>{{ t('admin.scheduledTests.cronTooltipExampleHourly') REDACTEDREDACTED</p>
+                      <p>{{ t('admin.scheduledTests.cronTooltipExampleDaily') REDACTEDREDACTED</p>
+                      <p>{{ t('admin.scheduledTests.cronTooltipExampleWeekly') REDACTEDREDACTED</p>
+                      <p>{{ t('admin.scheduledTests.cronTooltipRange') REDACTEDREDACTED</p>
+                    </div>
+                  </HelpTooltip>
                 </label>
                 <Input
                   v-model="editForm.cron_expression"
@@ -212,8 +277,22 @@
                 />
               </div>
               <div>
-                <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                <label class="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.scheduledTests.maxResults') REDACTEDREDACTED
+                  <HelpTooltip>
+                    <template #trigger>
+                      <span class="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-400/70 text-[10px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-gray-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400">
+                        ?
+                      </span>
+                    </template>
+                    <div class="space-y-1.5">
+                      <p class="font-medium">{{ t('admin.scheduledTests.maxResultsTooltipTitle') REDACTEDREDACTED</p>
+                      <p>{{ t('admin.scheduledTests.maxResultsTooltipMeaning') REDACTEDREDACTED</p>
+                      <p>{{ t('admin.scheduledTests.maxResultsTooltipBody') REDACTEDREDACTED</p>
+                      <p>{{ t('admin.scheduledTests.maxResultsTooltipExample') REDACTEDREDACTED</p>
+                      <p>{{ t('admin.scheduledTests.maxResultsTooltipRange') REDACTEDREDACTED</p>
+                    </div>
+                  </HelpTooltip>
                 </label>
                 <Input
                   v-model="editForm.max_results"
@@ -226,6 +305,17 @@
                   <Toggle v-model="editForm.enabled" />
                   {{ t('admin.scheduledTests.enabled') REDACTEDREDACTED
                 </label>
+              </div>
+              <div class="flex items-end">
+                <div>
+                  <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <Toggle v-model="editForm.auto_recover" />
+                    {{ t('admin.scheduledTests.autoRecover') REDACTEDREDACTED
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                    {{ t('admin.scheduledTests.autoRecoverHelp') REDACTEDREDACTED
+                  </p>
+                </div>
               </div>
             </div>
             <div class="mt-3 flex justify-end gap-2">
@@ -377,6 +467,7 @@ import { ref, reactive, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Select, { type SelectOption REDACTED from '@/components/common/Select.vue'
 import Input from '@/components/common/Input.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -416,14 +507,16 @@ const editForm = reactive({
   model_id: '' as string,
   cron_expression: '' as string,
   max_results: '100' as string,
-  enabled: true
+  enabled: true,
+  auto_recover: false
 REDACTED)
 
 const newPlan = reactive({
   model_id: '' as string,
   cron_expression: '' as string,
   max_results: '100' as string,
-  enabled: true
+  enabled: true,
+  auto_recover: false
 REDACTED)
 
 const resetNewPlan = () => {
@@ -431,6 +524,7 @@ const resetNewPlan = () => {
   newPlan.cron_expression = ''
   newPlan.max_results = '100'
   newPlan.enabled = true
+  newPlan.auto_recover = false
 REDACTED
 
 // Load plans when dialog opens
@@ -472,7 +566,8 @@ const handleCreate = async () => {
       model_id: newPlan.model_id,
       cron_expression: newPlan.cron_expression,
       enabled: newPlan.enabled,
-      max_results: maxResults
+      max_results: maxResults,
+      auto_recover: newPlan.auto_recover
     REDACTED)
     appStore.showSuccess(t('admin.scheduledTests.createSuccess'))
     showAddForm.value = false
@@ -504,6 +599,7 @@ const startEdit = (plan: ScheduledTestPlan) => {
   editForm.cron_expression = plan.cron_expression
   editForm.max_results = String(plan.max_results)
   editForm.enabled = plan.enabled
+  editForm.auto_recover = plan.auto_recover
 REDACTED
 
 const cancelEdit = () => {
@@ -518,7 +614,8 @@ const handleEdit = async () => {
       model_id: editForm.model_id,
       cron_expression: editForm.cron_expression,
       max_results: Number(editForm.max_results) || 100,
-      enabled: editForm.enabled
+      enabled: editForm.enabled,
+      auto_recover: editForm.auto_recover
     REDACTED)
     const index = plans.value.findIndex((p) => p.id === editingPlanId.value)
     if (index !== -1) {

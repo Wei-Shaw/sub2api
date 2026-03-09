@@ -25,6 +25,7 @@ type createScheduledTestPlanRequest struct {
 	CronExpression string `json:"cron_expression" binding:"required"`
 	Enabled        *bool  `json:"enabled"`
 	MaxResults     int    `json:"max_results"`
+	AutoRecover    *bool  `json:"auto_recover"`
 REDACTED
 
 type updateScheduledTestPlanRequest struct {
@@ -32,6 +33,7 @@ type updateScheduledTestPlanRequest struct {
 	CronExpression string `json:"cron_expression"`
 	Enabled        *bool  `json:"enabled"`
 	MaxResults     int    `json:"max_results"`
+	AutoRecover    *bool  `json:"auto_recover"`
 REDACTED
 
 // ListByAccount GET /admin/accounts/:id/scheduled-test-plans
@@ -67,6 +69,9 @@ REDACTED
 REDACTED
 	if req.Enabled != nil {
 		plan.Enabled = *req.Enabled
+REDACTED
+	if req.AutoRecover != nil {
+		plan.AutoRecover = *req.AutoRecover
 REDACTED
 
 	created, err := h.scheduledTestSvc.CreatePlan(c.Request.Context(), plan)
@@ -108,6 +113,9 @@ REDACTED
 REDACTED
 	if req.MaxResults > 0 {
 		existing.MaxResults = req.MaxResults
+REDACTED
+	if req.AutoRecover != nil {
+		existing.AutoRecover = *req.AutoRecover
 REDACTED
 
 	updated, err := h.scheduledTestSvc.UpdatePlan(c.Request.Context(), existing)

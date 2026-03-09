@@ -558,6 +558,26 @@ func (s *AccountRepoSuite) TestSetError() {
 	s.Require().Equal("something went wrong", got.ErrorMessage)
 REDACTED
 
+func (s *AccountRepoSuite) TestClearError_SyncSchedulerSnapshotOnRecovery() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:         "acc-clear-err",
+		Status:       service.StatusError,
+		ErrorMessage: "temporary error",
+REDACTED)
+	cacheRecorder := &schedulerCacheRecorder{REDACTED
+	s.repo.schedulerCache = cacheRecorder
+
+	s.Require().NoError(s.repo.ClearError(s.ctx, account.ID))
+
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.StatusActive, got.Status)
+	s.Require().Empty(got.ErrorMessage)
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+	s.Require().Equal(account.ID, cacheRecorder.setAccounts[0].ID)
+	s.Require().Equal(service.StatusActive, cacheRecorder.setAccounts[0].Status)
+REDACTED
+
 // --- UpdateSessionWindow ---
 
 func (s *AccountRepoSuite) TestUpdateSessionWindow() {
