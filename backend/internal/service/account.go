@@ -647,6 +647,75 @@ REDACTED
 	return false
 REDACTED
 
+// IsPoolMode 检查 API Key 账号是否启用池模式。
+// 池模式下，上游错误不标记本地账号状态，而是在同一账号上重试。
+func (a *Account) IsPoolMode() bool {
+	if a.Type != AccountTypeAPIKey || a.Credentials == nil {
+		return false
+REDACTED
+	if v, ok := a.Credentials["pool_mode"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+const (
+	defaultPoolModeRetryCount = 3
+	maxPoolModeRetryCount     = 10
+)
+
+// GetPoolModeRetryCount 返回池模式同账号重试次数。
+// 未配置或配置非法时回退为默认值 3；小于 0 按 0 处理；过大则截断到 10。
+func (a *Account) GetPoolModeRetryCount() int {
+	if a == nil || !a.IsPoolMode() || a.Credentials == nil {
+		return defaultPoolModeRetryCount
+REDACTED
+	raw, ok := a.Credentials["pool_mode_retry_count"]
+	if !ok || raw == nil {
+		return defaultPoolModeRetryCount
+REDACTED
+	count := parsePoolModeRetryCount(raw)
+	if count < 0 {
+		return 0
+REDACTED
+	if count > maxPoolModeRetryCount {
+		return maxPoolModeRetryCount
+REDACTED
+	return count
+REDACTED
+
+func parsePoolModeRetryCount(value any) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return int(i)
+	REDACTED
+	case string:
+		if i, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return i
+	REDACTED
+REDACTED
+	return defaultPoolModeRetryCount
+REDACTED
+
+// isPoolModeRetryableStatus 池模式下应触发同账号重试的状态码
+func isPoolModeRetryableStatus(statusCode int) bool {
+	switch statusCode {
+	case 401, 403, 429:
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
 func (a *Account) GetCustomErrorCodes() []int {
 	if a.Credentials == nil {
 		return nil

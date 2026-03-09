@@ -30,7 +30,7 @@ const (
 
 const (
 	// maxSameAccountRetries 同账号重试次数上限（针对 RetryableOnSameAccount 错误）
-	maxSameAccountRetries = 2
+	maxSameAccountRetries = 3
 	// sameAccountRetryDelay 同账号重试间隔
 	sameAccountRetryDelay = 500 * time.Millisecond
 	// singleAccountBackoffDelay 单账号分组 503 退避重试固定延时。

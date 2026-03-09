@@ -251,6 +251,58 @@
           </template>
         </div>
 
+        <!-- Pool Mode Section -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.poolMode') REDACTEDREDACTED</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.poolModeHint') REDACTEDREDACTED
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="poolModeEnabled = !poolModeEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                poolModeEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  poolModeEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <div v-if="poolModeEnabled" class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+            <p class="text-xs text-blue-700 dark:text-blue-400">
+              <Icon name="exclamationCircle" size="sm" class="mr-1 inline" :stroke-width="2" />
+              {{ t('admin.accounts.poolModeInfo') REDACTEDREDACTED
+            </p>
+          </div>
+          <div v-if="poolModeEnabled" class="mt-3">
+            <label class="input-label">{{ t('admin.accounts.poolModeRetryCount') REDACTEDREDACTED</label>
+            <input
+              v-model.number="poolModeRetryCount"
+              type="number"
+              min="0"
+              :max="MAX_POOL_MODE_RETRY_COUNT"
+              step="1"
+              class="input"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{
+                t('admin.accounts.poolModeRetryCountHint', {
+                  default: DEFAULT_POOL_MODE_RETRY_COUNT,
+                  max: MAX_POOL_MODE_RETRY_COUNT
+                REDACTED)
+              REDACTEDREDACTED
+            </p>
+          </div>
+        </div>
+
         <!-- Custom Error Codes Section -->
         <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
@@ -1498,6 +1550,10 @@ const editApiKey = ref('')
 const modelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+const DEFAULT_POOL_MODE_RETRY_COUNT = 3
+const MAX_POOL_MODE_RETRY_COUNT = 10
+const poolModeEnabled = ref(false)
+const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
 const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
@@ -1658,6 +1714,20 @@ const expiresAtInput = computed({
 REDACTED)
 
 // Watchers
+const normalizePoolModeRetryCount = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_POOL_MODE_RETRY_COUNT
+  REDACTED
+  const normalized = Math.trunc(value)
+  if (normalized < 0) {
+    return 0
+  REDACTED
+  if (normalized > MAX_POOL_MODE_RETRY_COUNT) {
+    return MAX_POOL_MODE_RETRY_COUNT
+  REDACTED
+  return normalized
+REDACTED
+
 watch(
   () => props.account,
   (newAccount) => {
@@ -1805,6 +1875,12 @@ watch(
           allowedModels.value = []
         REDACTED
 
+        // Load pool mode
+        poolModeEnabled.value = credentials.pool_mode === true
+        poolModeRetryCount.value = normalizePoolModeRetryCount(
+          Number(credentials.pool_mode_retry_count ?? DEFAULT_POOL_MODE_RETRY_COUNT)
+        )
+
         // Load custom error codes
         customErrorCodesEnabled.value = credentials.custom_error_codes_enabled === true
         const existingErrorCodes = credentials.custom_error_codes as number[] | undefined
@@ -1851,6 +1927,8 @@ watch(
           modelMappings.value = []
           allowedModels.value = []
         REDACTED
+        poolModeEnabled.value = false
+        poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
         customErrorCodesEnabled.value = false
         selectedErrorCodes.value = []
       REDACTED
@@ -2309,6 +2387,15 @@ const handleSubmit = async () => {
         REDACTED
       REDACTED else if (currentCredentials.model_mapping) {
         newCredentials.model_mapping = currentCredentials.model_mapping
+      REDACTED
+
+      // Add pool mode if enabled
+      if (poolModeEnabled.value) {
+        newCredentials.pool_mode = true
+        newCredentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
+      REDACTED else {
+        delete newCredentials.pool_mode
+        delete newCredentials.pool_mode_retry_count
       REDACTED
 
       // Add custom error codes if enabled
