@@ -12,17 +12,23 @@ import "encoding/json"
 
 // AnthropicRequest is the request body for POST /v1/messages.
 type AnthropicRequest struct {
-	Model       string             `json:"model"`
-	MaxTokens   int                `json:"max_tokens"`
-	System      json.RawMessage    `json:"system,omitempty"` // string or []AnthropicContentBlock
-	Messages    []AnthropicMessage `json:"messages"`
-	Tools       []AnthropicTool    `json:"tools,omitempty"`
-	Stream      bool               `json:"stream,omitempty"`
-	Temperature *float64           `json:"temperature,omitempty"`
-	TopP        *float64           `json:"top_p,omitempty"`
-	StopSeqs    []string           `json:"stop_sequences,omitempty"`
-	Thinking    *AnthropicThinking `json:"thinking,omitempty"`
-	ToolChoice  json.RawMessage    `json:"tool_choice,omitempty"`
+	Model        string                 `json:"model"`
+	MaxTokens    int                    `json:"max_tokens"`
+	System       json.RawMessage        `json:"system,omitempty"` // string or []AnthropicContentBlock
+	Messages     []AnthropicMessage     `json:"messages"`
+	Tools        []AnthropicTool        `json:"tools,omitempty"`
+	Stream       bool                   `json:"stream,omitempty"`
+	Temperature  *float64               `json:"temperature,omitempty"`
+	TopP         *float64               `json:"top_p,omitempty"`
+	StopSeqs     []string               `json:"stop_sequences,omitempty"`
+	Thinking     *AnthropicThinking     `json:"thinking,omitempty"`
+	ToolChoice   json.RawMessage        `json:"tool_choice,omitempty"`
+	OutputConfig *AnthropicOutputConfig `json:"output_config,omitempty"`
+REDACTED
+
+// AnthropicOutputConfig controls output generation parameters.
+type AnthropicOutputConfig struct {
+	Effort string `json:"effort,omitempty"` // "low" | "medium" | "high"
 REDACTED
 
 // AnthropicThinking configures extended thinking in the Anthropic API.
@@ -156,6 +162,7 @@ type ResponsesRequest struct {
 	Store           *bool               `json:"store,omitempty"`
 	Reasoning       *ResponsesReasoning `json:"reasoning,omitempty"`
 	ToolChoice      json.RawMessage     `json:"tool_choice,omitempty"`
+	ServiceTier     string              `json:"service_tier,omitempty"`
 REDACTED
 
 // ResponsesReasoning configures reasoning effort in the Responses API.

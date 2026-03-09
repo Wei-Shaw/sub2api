@@ -5341,6 +5341,19 @@ REDACTED
 	return m
 REDACTED
 
+// containsBetaToken checks if a comma-separated header value contains the given token.
+func containsBetaToken(header, token string) bool {
+	if header == "" || token == "" {
+		return false
+REDACTED
+	for _, p := range strings.Split(header, ",") {
+		if strings.TrimSpace(p) == token {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
 func buildBetaTokenSet(tokens []string) map[string]struct{REDACTED {
 	m := make(map[string]struct{REDACTED, len(tokens))
 	for _, t := range tokens {

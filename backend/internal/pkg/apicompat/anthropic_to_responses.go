@@ -45,18 +45,16 @@ REDACTED
 		out.Tools = convertAnthropicToolsToResponses(req.Tools)
 REDACTED
 
-	// Convert thinking → reasoning.
-	// generate_summary="auto" causes the upstream to emit reasoning_summary_text
-	// streaming events; the include array only needs reasoning.encrypted_content
-	// (already set above) for content continuity.
-	if req.Thinking != nil {
-		switch req.Thinking.Type {
-		case "enabled":
-			out.Reasoning = &ResponsesReasoning{Effort: "high", Summary: "auto"REDACTED
-		case "adaptive":
-			out.Reasoning = &ResponsesReasoning{Effort: "medium", Summary: "auto"REDACTED
-	REDACTED
-		// "disabled" or unknown → omit reasoning
+	// Determine reasoning effort: only output_config.effort controls the
+	// level; thinking.type is ignored. Default is xhigh when unset.
+	// Anthropic levels map to OpenAI: low→low, medium→high, high→xhigh.
+	effort := "high" // default → maps to xhigh
+	if req.OutputConfig != nil && req.OutputConfig.Effort != "" {
+		effort = req.OutputConfig.Effort
+REDACTED
+	out.Reasoning = &ResponsesReasoning{
+		Effort:  mapAnthropicEffortToResponses(effort),
+		Summary: "auto",
 REDACTED
 
 	// Convert tool_choice
@@ -378,6 +376,23 @@ func extractAnthropicTextFromBlocks(blocks []AnthropicContentBlock) string {
 	REDACTED
 REDACTED
 	return strings.Join(parts, "\n\n")
+REDACTED
+
+// mapAnthropicEffortToResponses converts Anthropic reasoning effort levels to
+// OpenAI Responses API effort levels.
+//
+//	low    → low
+//	medium → high
+//	high   → xhigh
+func mapAnthropicEffortToResponses(effort string) string {
+	switch effort {
+	case "medium":
+		return "high"
+	case "high":
+		return "xhigh"
+	default:
+		return effort // "low" and any unknown values pass through unchanged
+REDACTED
 REDACTED
 
 // convertAnthropicToolsToResponses maps Anthropic tool definitions to
