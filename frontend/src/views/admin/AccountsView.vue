@@ -131,7 +131,7 @@
         </div>
       </template>
       <template #table>
-        <AccountBulkActionsBar :selected-ids="selIds" @delete="handleBulkDelete" @edit="showBulkEdit = true" @clear="clearSelection" @select-page="selectPage" @toggle-schedulable="handleBulkToggleSchedulable" />
+        <AccountBulkActionsBar :selected-ids="selIds" @delete="handleBulkDelete" @reset-status="handleBulkResetStatus" @refresh-token="handleBulkRefreshToken" @edit="showBulkEdit = true" @clear="clearSelection" @select-page="selectPage" @toggle-schedulable="handleBulkToggleSchedulable" />
         <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <DataTable
           :columns="cols"
@@ -889,6 +889,38 @@ const toggleSelectAllVisible = (event: Event) => {
   toggleVisible(target.checked)
 REDACTED
 const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); clearSelection(); reload() REDACTED catch (error) { console.error('Failed to bulk delete accounts:', error) REDACTED REDACTED
+const handleBulkResetStatus = async () => {
+  if (!confirm(t('common.confirm'))) return
+  try {
+    const result = await adminAPI.accounts.batchClearError(selIds.value)
+    if (result.failed > 0) {
+      appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed REDACTED))
+    REDACTED else {
+      appStore.showSuccess(t('admin.accounts.bulkActions.resetStatusSuccess', { count: result.success REDACTED))
+      clearSelection()
+    REDACTED
+    reload()
+  REDACTED catch (error) {
+    console.error('Failed to bulk reset status:', error)
+    appStore.showError(String(error))
+  REDACTED
+REDACTED
+const handleBulkRefreshToken = async () => {
+  if (!confirm(t('common.confirm'))) return
+  try {
+    const result = await adminAPI.accounts.batchRefresh(selIds.value)
+    if (result.failed > 0) {
+      appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed REDACTED))
+    REDACTED else {
+      appStore.showSuccess(t('admin.accounts.bulkActions.refreshTokenSuccess', { count: result.success REDACTED))
+      clearSelection()
+    REDACTED
+    reload()
+  REDACTED catch (error) {
+    console.error('Failed to bulk refresh token:', error)
+    appStore.showError(String(error))
+  REDACTED
+REDACTED
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
   if (accountIds.length === 0) return
   const idSet = new Set(accountIds)
