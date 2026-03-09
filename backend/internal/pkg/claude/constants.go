@@ -16,7 +16,7 @@ const (
 
 // DroppedBetas 是转发时需要从 anthropic-beta header 中移除的 beta token 列表。
 // 这些 token 是客户端特有的，不应透传给上游 API。
-var DroppedBetas = []string{BetaContext1M, BetaFastModeREDACTED
+var DroppedBetas = []string{BetaFastModeREDACTED
 
 // DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
 const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
