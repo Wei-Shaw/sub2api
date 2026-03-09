@@ -326,12 +326,9 @@ func (r *RefreshTokenRequest) ToFormData() string {
 	return params.Encode()
 REDACTED
 
-// ParseIDToken parses the ID Token JWT and extracts claims.
-// 注意：当前仅解码 payload 并校验 exp，未验证 JWT 签名。
-// 生产环境如需用 ID Token 做授权决策，应通过 OpenAI 的 JWKS 端点验证签名：
-//
-//	https://auth.openai.com/.well-known/jwks.json
-func ParseIDToken(idToken string) (*IDTokenClaims, error) {
+// DecodeIDToken decodes the ID Token JWT payload without validating expiration.
+// Use this for best-effort extraction (e.g., during data import) where the token may be expired.
+func DecodeIDToken(idToken string) (*IDTokenClaims, error) {
 	parts := strings.Split(idToken, ".")
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid JWT format: expected 3 parts, got %d", len(parts))
@@ -361,6 +358,20 @@ REDACTED
 		return nil, fmt.Errorf("failed to parse JWT claims: %w", err)
 REDACTED
 
+	return &claims, nil
+REDACTED
+
+// ParseIDToken parses the ID Token JWT and extracts claims.
+// 注意：当前仅解码 payload 并校验 exp，未验证 JWT 签名。
+// 生产环境如需用 ID Token 做授权决策，应通过 OpenAI 的 JWKS 端点验证签名：
+//
+//	https://auth.openai.com/.well-known/jwks.json
+func ParseIDToken(idToken string) (*IDTokenClaims, error) {
+	claims, err := DecodeIDToken(idToken)
+	if err != nil {
+		return nil, err
+REDACTED
+
 	// 校验 ID Token 是否已过期（允许 2 分钟时钟偏差，防止因服务器时钟略有差异误判刚颁发的令牌）
 	const clockSkewTolerance = 120 // 秒
 	now := time.Now().Unix()
@@ -368,7 +379,7 @@ REDACTED
 		return nil, fmt.Errorf("id_token has expired (exp: %d, now: %d, skew_tolerance: %ds)", claims.Exp, now, clockSkewTolerance)
 REDACTED
 
-	return &claims, nil
+	return claims, nil
 REDACTED
 
 // UserInfo represents user information extracted from ID Token claims.
