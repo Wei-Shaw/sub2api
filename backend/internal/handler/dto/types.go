@@ -57,6 +57,9 @@ type APIKey struct {
 	Window5hStart *time.Time `json:"window_5h_start"`
 	Window1dStart *time.Time `json:"window_1d_start"`
 	Window7dStart *time.Time `json:"window_7d_start"`
+	Reset5hAt     *time.Time `json:"reset_5h_at,omitempty"`
+	Reset1dAt     *time.Time `json:"reset_1d_at,omitempty"`
+	Reset7dAt     *time.Time `json:"reset_7d_at,omitempty"`
 
 	User  *User  `json:"user,omitempty"`
 	Group *Group `json:"group,omitempty"`

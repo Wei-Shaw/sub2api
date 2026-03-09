@@ -441,6 +441,9 @@ export interface ApiKey {
   window_5h_start: string | null
   window_1d_start: string | null
   window_7d_start: string | null
+  reset_5h_at: string | null
+  reset_1d_at: string | null
+  reset_7d_at: string | null
 REDACTED
 
 export interface CreateApiKeyRequest {

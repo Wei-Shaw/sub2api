@@ -153,6 +153,7 @@ export default {
     todayExpires: '(今日到期)',
     daysLeft: '({daysREDACTED 天)',
     usedQuota: '已用额度',
+    resetNow: '即将重置',
     subscriptionType: '订阅类型',
     subscriptionExpires: '订阅到期',
     // Usage stat cells
@@ -665,6 +666,7 @@ export default {
     resetRateLimitConfirmMessage: '确定要重置密钥 "{nameREDACTED" 的速率限制用量吗？所有时间窗口的已用额度将归零。此操作不可撤销。',
     rateLimitResetSuccess: '速率限制已重置',
     failedToResetRateLimit: '重置速率限制失败',
+    resetNow: '即将重置',
     expiration: '密钥有效期',
     expiresInDays: '{daysREDACTED 天',
     extendDays: '+{daysREDACTED 天',

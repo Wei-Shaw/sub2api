@@ -972,33 +972,45 @@ REDACTED
 			var rateLimits []gin.H
 			if apiKey.RateLimit5h > 0 {
 				used := rateLimitData.EffectiveUsage5h()
-				rateLimits = append(rateLimits, gin.H{
+				entry := gin.H{
 					"window":       "5h",
 					"limit":        apiKey.RateLimit5h,
 					"used":         used,
 					"remaining":    max(0, apiKey.RateLimit5h-used),
 					"window_start": rateLimitData.Window5hStart,
-			REDACTED)
+			REDACTED
+				if rateLimitData.Window5hStart != nil && !service.IsWindowExpired(rateLimitData.Window5hStart, service.RateLimitWindow5h) {
+					entry["reset_at"] = rateLimitData.Window5hStart.Add(service.RateLimitWindow5h)
+			REDACTED
+				rateLimits = append(rateLimits, entry)
 		REDACTED
 			if apiKey.RateLimit1d > 0 {
 				used := rateLimitData.EffectiveUsage1d()
-				rateLimits = append(rateLimits, gin.H{
+				entry := gin.H{
 					"window":       "1d",
 					"limit":        apiKey.RateLimit1d,
 					"used":         used,
 					"remaining":    max(0, apiKey.RateLimit1d-used),
 					"window_start": rateLimitData.Window1dStart,
-			REDACTED)
+			REDACTED
+				if rateLimitData.Window1dStart != nil && !service.IsWindowExpired(rateLimitData.Window1dStart, service.RateLimitWindow1d) {
+					entry["reset_at"] = rateLimitData.Window1dStart.Add(service.RateLimitWindow1d)
+			REDACTED
+				rateLimits = append(rateLimits, entry)
 		REDACTED
 			if apiKey.RateLimit7d > 0 {
 				used := rateLimitData.EffectiveUsage7d()
-				rateLimits = append(rateLimits, gin.H{
+				entry := gin.H{
 					"window":       "7d",
 					"limit":        apiKey.RateLimit7d,
 					"used":         used,
 					"remaining":    max(0, apiKey.RateLimit7d-used),
 					"window_start": rateLimitData.Window7dStart,
-			REDACTED)
+			REDACTED
+				if rateLimitData.Window7dStart != nil && !service.IsWindowExpired(rateLimitData.Window7dStart, service.RateLimitWindow7d) {
+					entry["reset_at"] = rateLimitData.Window7dStart.Add(service.RateLimitWindow7d)
+			REDACTED
+				rateLimits = append(rateLimits, entry)
 		REDACTED
 			if len(rateLimits) > 0 {
 				resp["rate_limits"] = rateLimits
