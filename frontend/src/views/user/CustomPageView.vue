@@ -75,7 +75,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildEmbeddedUrl, detectTheme REDACTED from '@/utils/embedded-url'
 
-const { t REDACTED = useI18n()
+const { t, locale REDACTED = useI18n()
 const route = useRoute()
 const appStore = useAppStore()
 const authStore = useAuthStore()
@@ -107,6 +107,7 @@ const embeddedUrl = computed(() => {
     authStore.user?.id,
     authStore.token,
     pageTheme.value,
+    locale.value,
   )
 REDACTED)
 
