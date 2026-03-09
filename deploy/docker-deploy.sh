@@ -8,7 +8,7 @@
 #   - Creates necessary data directories
 #
 # After running this script, you can start services with:
-#   docker-compose -f docker-compose.local.yml up -d
+#   docker-compose up -d
 # =============================================================================
 
 set -e
@@ -65,7 +65,7 @@ main() {
     fi
 
     # Check if deployment already exists
-    if [ -f "docker-compose.local.yml" ] && [ -f ".env" ]; then
+    if [ -f "docker-compose.yml" ] && [ -f ".env" ]; then
         print_warning "Deployment files already exist in current directory."
         read -p "Overwrite existing files? (y/N): " -r
         echo
@@ -75,17 +75,17 @@ main() {
         fi
     fi
 
-    # Download docker-compose.local.yml
-    print_info "Downloading docker-compose.local.yml..."
+    # Download docker-compose.local.yml and save as docker-compose.yml
+    print_info "Downloading docker-compose.yml..."
     if command_exists curl; then
-        curl -sSL "${GITHUB_RAW_URLREDACTED/docker-compose.local.yml" -o docker-compose.local.yml
+        curl -sSL "${GITHUB_RAW_URLREDACTED/docker-compose.local.yml" -o docker-compose.yml
     elif command_exists wget; then
-        wget -q "${GITHUB_RAW_URLREDACTED/docker-compose.local.yml" -O docker-compose.local.yml
+        wget -q "${GITHUB_RAW_URLREDACTED/docker-compose.local.yml" -O docker-compose.yml
     else
         print_error "Neither curl nor wget is installed. Please install one of them."
         exit 1
     fi
-    print_success "Downloaded docker-compose.local.yml"
+    print_success "Downloaded docker-compose.yml"
 
     # Download .env.example
     print_info "Downloading .env.example..."
@@ -144,7 +144,7 @@ main() {
     print_warning "Please keep them secure and do not share publicly!"
     echo ""
     echo "Directory structure:"
-    echo "  docker-compose.local.yml  - Docker Compose configuration"
+    echo "  docker-compose.yml        - Docker Compose configuration"
     echo "  .env                      - Environment variables (generated secrets)"
     echo "  .env.example              - Example template (for reference)"
     echo "  data/                     - Application data (will be created on first run)"
@@ -154,10 +154,10 @@ main() {
     echo "Next steps:"
     echo "  1. (Optional) Edit .env to customize configuration"
     echo "  2. Start services:"
-    echo "     docker-compose -f docker-compose.local.yml up -d"
+    echo "     docker-compose up -d"
     echo ""
     echo "  3. View logs:"
-    echo "     docker-compose -f docker-compose.local.yml logs -f sub2api"
+    echo "     docker-compose logs -f sub2api"
     echo ""
     echo "  4. Access Web UI:"
     echo "     http://localhost:8080"

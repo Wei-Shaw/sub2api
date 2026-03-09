@@ -150,14 +150,14 @@ mkdir -p sub2api-deploy && cd sub2api-deploy
 curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
 
 # Start services
-docker-compose -f docker-compose.local.yml up -d
+docker-compose up -d
 
 # View logs
-docker-compose -f docker-compose.local.yml logs -f sub2api
+docker-compose logs -f sub2api
 ```
 
 **What the script does:**
-- Downloads `docker-compose.local.yml` and `.env.example`
+- Downloads `docker-compose.local.yml` (saved as `docker-compose.yml`) and `.env.example`
 - Generates secure credentials (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD)
 - Creates `.env` file with auto-generated secrets
 - Creates data directories (uses local directories for easy backup/migration)

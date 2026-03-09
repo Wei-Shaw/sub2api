@@ -154,14 +154,14 @@ mkdir -p sub2api-deploy && cd sub2api-deploy
 curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
 
 # 启动服务
-docker-compose -f docker-compose.local.yml up -d
+docker-compose up -d
 
 # 查看日志
-docker-compose -f docker-compose.local.yml logs -f sub2api
+docker-compose logs -f sub2api
 ```
 
 **脚本功能：**
-- 下载 `docker-compose.local.yml` 和 `.env.example`
+- 下载 `docker-compose.local.yml`（本地保存为 `docker-compose.yml`）和 `.env.example`
 - 自动生成安全凭证（JWT_SECRET、TOTP_ENCRYPTION_KEY、POSTGRES_PASSWORD）
 - 创建 `.env` 文件并填充自动生成的密钥
 - 创建数据目录（使用本地目录，便于备份和迁移）
