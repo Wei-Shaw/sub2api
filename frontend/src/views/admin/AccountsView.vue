@@ -131,8 +131,8 @@
         </div>
       </template>
       <template #table>
-        <AccountBulkActionsBar :selected-ids="selIds" @delete="handleBulkDelete" @edit="showBulkEdit = true" @clear="selIds = []" @select-page="selectPage" @toggle-schedulable="handleBulkToggleSchedulable" />
-        <div ref="accountTableRef">
+        <AccountBulkActionsBar :selected-ids="selIds" @delete="handleBulkDelete" @edit="showBulkEdit = true" @clear="clearSelection" @select-page="selectPage" @toggle-schedulable="handleBulkToggleSchedulable" />
+        <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <DataTable
           :columns="cols"
           :data="accounts"
@@ -288,6 +288,7 @@ import { useAuthStore REDACTED from '@/stores/auth'
 import { adminAPI REDACTED from '@/api/admin'
 import { useTableLoader REDACTED from '@/composables/useTableLoader'
 import { useSwipeSelect REDACTED from '@/composables/useSwipeSelect'
+import { useTableSelection REDACTED from '@/composables/useTableSelection'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -322,17 +323,11 @@ const authStore = useAuthStore()
 
 const proxies = ref<Proxy[]>([])
 const groups = ref<AdminGroup[]>([])
-const selIds = ref<number[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
-useSwipeSelect(accountTableRef, {
-  isSelected: (id) => selIds.value.includes(id),
-  select: (id) => { if (!selIds.value.includes(id)) selIds.value.push(id) REDACTED,
-  deselect: (id) => { selIds.value = selIds.value.filter(x => x !== id) REDACTED
-REDACTED)
 const selPlatforms = computed<AccountPlatform[]>(() => {
   const platforms = new Set(
     accounts.value
-      .filter(a => selIds.value.includes(a.id))
+      .filter(a => isSelected(a.id))
       .map(a => a.platform)
   )
   return [...platforms]
@@ -340,7 +335,7 @@ REDACTED)
 const selTypes = computed<AccountType[]>(() => {
   const types = new Set(
     accounts.value
-      .filter(a => selIds.value.includes(a.id))
+      .filter(a => isSelected(a.id))
       .map(a => a.type)
   )
   return [...types]
@@ -563,6 +558,29 @@ const {
 REDACTED = useTableLoader<Account, any>({
   fetchFn: adminAPI.accounts.list,
   initialParams: { platform: '', type: '', status: '', group: '', search: '' REDACTED
+REDACTED)
+
+const {
+  selectedIds: selIds,
+  allVisibleSelected,
+  isSelected,
+  setSelectedIds,
+  select,
+  deselect,
+  toggle: toggleSel,
+  clear: clearSelection,
+  removeMany: removeSelectedAccounts,
+  toggleVisible,
+  selectVisible: selectPage
+REDACTED = useTableSelection<Account>({
+  rows: accounts,
+  getId: (account) => account.id
+REDACTED)
+
+useSwipeSelect(accountTableRef, {
+  isSelected,
+  select,
+  deselect
 REDACTED)
 
 const resetAutoRefreshCache = () => {
@@ -866,24 +884,11 @@ const openMenu = (a: Account, e: MouseEvent) => {
 
   menu.show = true
 REDACTED
-const toggleSel = (id: number) => { const i = selIds.value.indexOf(id); if(i === -1) selIds.value.push(id); else selIds.value.splice(i, 1) REDACTED
-const allVisibleSelected = computed(() => {
-  if (accounts.value.length === 0) return false
-  return accounts.value.every(account => selIds.value.includes(account.id))
-REDACTED)
 const toggleSelectAllVisible = (event: Event) => {
   const target = event.target as HTMLInputElement
-  if (target.checked) {
-    const next = new Set(selIds.value)
-    accounts.value.forEach(account => next.add(account.id))
-    selIds.value = Array.from(next)
-    return
-  REDACTED
-  const visibleIds = new Set(accounts.value.map(account => account.id))
-  selIds.value = selIds.value.filter(id => !visibleIds.has(id))
+  toggleVisible(target.checked)
 REDACTED
-const selectPage = () => { selIds.value = [...new Set([...selIds.value, ...accounts.value.map(a => a.id)])] REDACTED
-const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); selIds.value = []; reload() REDACTED catch (error) { console.error('Failed to bulk delete accounts:', error) REDACTED REDACTED
+const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); clearSelection(); reload() REDACTED catch (error) { console.error('Failed to bulk delete accounts:', error) REDACTED REDACTED
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
   if (accountIds.length === 0) return
   const idSet = new Set(accountIds)
@@ -956,7 +961,7 @@ const handleBulkToggleSchedulable = async (schedulable: boolean) => {
     const { successIds, failedIds, successCount, failedCount, hasIds, hasCounts REDACTED = normalizeBulkSchedulableResult(result, accountIds)
     if (!hasIds && !hasCounts) {
       appStore.showError(t('admin.accounts.bulkSchedulableResultUnknown'))
-      selIds.value = accountIds
+      setSelectedIds(accountIds)
       load().catch((error) => {
         console.error('Failed to refresh accounts:', error)
       REDACTED)
@@ -976,16 +981,17 @@ const handleBulkToggleSchedulable = async (schedulable: boolean) => {
         ? t('admin.accounts.bulkSchedulablePartial', { success: successCount, failed: failedCount REDACTED)
         : t('admin.accounts.bulkSchedulableResultUnknown')
       appStore.showError(message)
-      selIds.value = failedIds.length > 0 ? failedIds : accountIds
+      setSelectedIds(failedIds.length > 0 ? failedIds : accountIds)
     REDACTED else {
-      selIds.value = hasIds ? [] : accountIds
+      if (hasIds) clearSelection()
+      else setSelectedIds(accountIds)
     REDACTED
   REDACTED catch (error) {
     console.error('Failed to bulk toggle schedulable:', error)
     appStore.showError(t('common.error'))
   REDACTED
 REDACTED
-const handleBulkUpdated = () => { showBulkEdit.value = false; selIds.value = []; reload() REDACTED
+const handleBulkUpdated = () => { showBulkEdit.value = false; clearSelection(); reload() REDACTED
 const handleDataImported = () => { showImportData.value = false; reload() REDACTED
 const accountMatchesCurrentFilters = (account: Account) => {
   if (params.platform && account.platform !== params.platform) return false
@@ -1031,7 +1037,7 @@ const patchAccountInList = (updatedAccount: Account) => {
   if (!accountMatchesCurrentFilters(mergedAccount)) {
     accounts.value = accounts.value.filter(account => account.id !== mergedAccount.id)
     syncPaginationAfterLocalRemoval()
-    selIds.value = selIds.value.filter(id => id !== mergedAccount.id)
+    removeSelectedAccounts([mergedAccount.id])
     if (menu.acc?.id === mergedAccount.id) {
       menu.show = false
       menu.acc = null
