@@ -76,6 +76,9 @@ REDACTED
 func (c StubConcurrencyCache) CleanupExpiredAccountSlots(_ context.Context, _ int64) error {
 	return nil
 REDACTED
+func (c StubConcurrencyCache) CleanupStaleProcessSlots(_ context.Context, _ string) error {
+	return nil
+REDACTED
 
 // ============================================================
 // StubGatewayCache — service.GatewayCache 的空实现

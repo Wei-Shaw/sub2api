@@ -91,6 +91,32 @@ func (c *stubConcurrencyCacheForTest) CleanupExpiredAccountSlots(_ context.Conte
 	return c.cleanupErr
 REDACTED
 
+func (c *stubConcurrencyCacheForTest) CleanupStaleProcessSlots(_ context.Context, _ string) error {
+	return c.cleanupErr
+REDACTED
+
+type trackingConcurrencyCache struct {
+	stubConcurrencyCacheForTest
+	cleanupPrefix string
+REDACTED
+
+func (c *trackingConcurrencyCache) CleanupStaleProcessSlots(_ context.Context, prefix string) error {
+	c.cleanupPrefix = prefix
+	return c.cleanupErr
+REDACTED
+
+func TestCleanupStaleProcessSlots_NilCache(t *testing.T) {
+	svc := &ConcurrencyService{cache: nilREDACTED
+	require.NoError(t, svc.CleanupStaleProcessSlots(context.Background()))
+REDACTED
+
+func TestCleanupStaleProcessSlots_DelegatesPrefix(t *testing.T) {
+	cache := &trackingConcurrencyCache{REDACTED
+	svc := NewConcurrencyService(cache)
+	require.NoError(t, svc.CleanupStaleProcessSlots(context.Background()))
+	require.Equal(t, RequestIDPrefix(), cache.cleanupPrefix)
+REDACTED
+
 func TestAcquireAccountSlot_Success(t *testing.T) {
 	cache := &stubConcurrencyCacheForTest{acquireResult: trueREDACTED
 	svc := NewConcurrencyService(cache)

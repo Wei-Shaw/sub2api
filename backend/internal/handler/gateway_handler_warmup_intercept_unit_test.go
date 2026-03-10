@@ -127,6 +127,7 @@ REDACTED
 	return result, nil
 REDACTED
 func (f *fakeConcurrencyCache) CleanupExpiredAccountSlots(context.Context, int64) error { return nil REDACTED
+func (f *fakeConcurrencyCache) CleanupStaleProcessSlots(context.Context, string) error  { return nil REDACTED
 
 func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*service.Account) (*GatewayHandler, func()) {
 REDACTED
