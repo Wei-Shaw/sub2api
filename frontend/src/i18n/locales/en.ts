@@ -4043,6 +4043,23 @@ export default {
         saved: 'Rectifier settings saved',
         saveFailed: 'Failed to save rectifier settings'
       REDACTED,
+      betaPolicy: {
+        title: 'Beta Policy',
+        description: 'How to handle Beta features when configuring the forwarding of Anthropic API requests. Applicable only to the /v1/messages endpoint.',
+        action: 'Action',
+        actionPass: 'Pass (transparent)',
+        actionFilter: 'Filter (remove)',
+        actionBlock: 'Block (reject)',
+        scope: 'Scope',
+        scopeAll: 'All accounts',
+        scopeOAuth: 'OAuth only',
+        scopeAPIKey: 'API Key only',
+        errorMessage: 'Error message',
+        errorMessagePlaceholder: 'Custom error message when blocked',
+        errorMessageHint: 'Leave empty for default message',
+        saved: 'Beta policy settings saved',
+        saveFailed: 'Failed to save beta policy settings'
+      REDACTED,
       saveSettings: 'Save Settings',
       saving: 'Saving...',
       settingsSaved: 'Settings saved successfully',

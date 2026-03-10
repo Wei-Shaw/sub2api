@@ -1247,6 +1247,60 @@ REDACTED
 	return settings.Enabled && settings.ThinkingBudgetEnabled
 REDACTED
 
+// GetBetaPolicySettings 获取 Beta 策略配置
+func (s *SettingService) GetBetaPolicySettings(ctx context.Context) (*BetaPolicySettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyBetaPolicySettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultBetaPolicySettings(), nil
+	REDACTED
+		return nil, fmt.Errorf("get beta policy settings: %w", err)
+REDACTED
+	if value == "" {
+		return DefaultBetaPolicySettings(), nil
+REDACTED
+
+	var settings BetaPolicySettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return DefaultBetaPolicySettings(), nil
+REDACTED
+
+	return &settings, nil
+REDACTED
+
+// SetBetaPolicySettings 设置 Beta 策略配置
+func (s *SettingService) SetBetaPolicySettings(ctx context.Context, settings *BetaPolicySettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+REDACTED
+
+	validActions := map[string]bool{
+		BetaPolicyActionPass: true, BetaPolicyActionFilter: true, BetaPolicyActionBlock: true,
+REDACTED
+	validScopes := map[string]bool{
+		BetaPolicyScopeAll: true, BetaPolicyScopeOAuth: true, BetaPolicyScopeAPIKey: true,
+REDACTED
+
+	for i, rule := range settings.Rules {
+		if rule.BetaToken == "" {
+			return fmt.Errorf("rule[%d]: beta_token cannot be empty", i)
+	REDACTED
+		if !validActions[rule.Action] {
+			return fmt.Errorf("rule[%d]: invalid action %q", i, rule.Action)
+	REDACTED
+		if !validScopes[rule.Scope] {
+			return fmt.Errorf("rule[%d]: invalid scope %q", i, rule.Scope)
+	REDACTED
+REDACTED
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal beta policy settings: %w", err)
+REDACTED
+
+	return s.settingRepo.Set(ctx, SettingKeyBetaPolicySettings, string(data))
+REDACTED
+
 // SetStreamTimeoutSettings 设置流超时处理配置
 func (s *SettingService) SetStreamTimeoutSettings(ctx context.Context, settings *StreamTimeoutSettings) error {
 	if settings == nil {

@@ -4216,6 +4216,23 @@ export default {
         saved: '整流器设置保存成功',
         saveFailed: '保存整流器设置失败'
       REDACTED,
+      betaPolicy: {
+        title: 'Beta 策略',
+        description: '配置转发 Anthropic API 请求时如何处理 Beta 特性。仅适用于 /v1/messages 接口。',
+        action: '处理方式',
+        actionPass: '透传（不处理）',
+        actionFilter: '过滤（移除）',
+        actionBlock: '拦截（拒绝请求）',
+        scope: '生效范围',
+        scopeAll: '全部账号',
+        scopeOAuth: '仅 OAuth 账号',
+        scopeAPIKey: '仅 API Key 账号',
+        errorMessage: '错误消息',
+        errorMessagePlaceholder: '拦截时返回的自定义错误消息',
+        errorMessageHint: '留空则使用默认错误消息',
+        saved: 'Beta 策略设置保存成功',
+        saveFailed: '保存 Beta 策略设置失败'
+      REDACTED,
       saveSettings: '保存设置',
       saving: '保存中...',
       settingsSaved: '设置保存成功',

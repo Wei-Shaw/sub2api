@@ -308,6 +308,49 @@ export async function updateRectifierSettings(
   return data
 REDACTED
 
+// ==================== Beta Policy Settings ====================
+
+/**
+ * Beta policy rule interface
+ */
+export interface BetaPolicyRule {
+  beta_token: string
+  action: 'pass' | 'filter' | 'block'
+  scope: 'all' | 'oauth' | 'apikey'
+  error_message?: string
+REDACTED
+
+/**
+ * Beta policy settings interface
+ */
+export interface BetaPolicySettings {
+  rules: BetaPolicyRule[]
+REDACTED
+
+/**
+ * Get beta policy settings
+ * @returns Beta policy settings
+ */
+export async function getBetaPolicySettings(): Promise<BetaPolicySettings> {
+  const { data REDACTED = await apiClient.get<BetaPolicySettings>('/admin/settings/beta-policy')
+  return data
+REDACTED
+
+/**
+ * Update beta policy settings
+ * @param settings - Beta policy settings to update
+ * @returns Updated settings
+ */
+export async function updateBetaPolicySettings(
+  settings: BetaPolicySettings
+): Promise<BetaPolicySettings> {
+  const { data REDACTED = await apiClient.put<BetaPolicySettings>(
+    '/admin/settings/beta-policy',
+    settings
+  )
+  return data
+REDACTED
+
 // ==================== Sora S3 Settings ====================
 
 export interface SoraS3Settings {
@@ -456,6 +499,8 @@ export const settingsAPI = {
   updateStreamTimeoutSettings,
   getRectifierSettings,
   updateRectifierSettings,
+  getBetaPolicySettings,
+  updateBetaPolicySettings,
   getSoraS3Settings,
   updateSoraS3Settings,
   testSoraS3Connection,

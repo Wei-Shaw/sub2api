@@ -168,6 +168,19 @@ type RectifierSettings struct {
 	ThinkingBudgetEnabled    bool `json:"thinking_budget_enabled"`
 REDACTED
 
+// BetaPolicyRule Beta 策略规则 DTO
+type BetaPolicyRule struct {
+	BetaToken    string `json:"beta_token"`
+	Action       string `json:"action"`
+	Scope        string `json:"scope"`
+	ErrorMessage string `json:"error_message,omitempty"`
+REDACTED
+
+// BetaPolicySettings Beta 策略配置 DTO
+type BetaPolicySettings struct {
+	Rules []BetaPolicyRule `json:"rules"`
+REDACTED
+
 // ParseCustomMenuItems parses a JSON string into a slice of CustomMenuItem.
 // Returns empty slice on empty/invalid input.
 func ParseCustomMenuItems(raw string) []CustomMenuItem {

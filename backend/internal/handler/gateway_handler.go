@@ -652,6 +652,13 @@ REDACTED
 				accountReleaseFunc()
 		REDACTED
 			if err != nil {
+				// Beta policy block: return 400 immediately, no failover
+				var betaBlockedErr *service.BetaBlockedError
+				if errors.As(err, &betaBlockedErr) {
+					h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", betaBlockedErr.Message)
+					return
+			REDACTED
+
 				var promptTooLongErr *service.PromptTooLongError
 				if errors.As(err, &promptTooLongErr) {
 					reqLog.Warn("gateway.prompt_too_long_from_antigravity",

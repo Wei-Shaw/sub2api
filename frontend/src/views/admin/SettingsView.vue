@@ -405,6 +405,117 @@
             </template>
           </div>
         </div>
+        <!-- Beta Policy Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.betaPolicy.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.betaPolicy.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <!-- Loading State -->
+            <div v-if="betaPolicyLoading" class="flex items-center gap-2 text-gray-500">
+              <div class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"></div>
+              {{ t('common.loading') REDACTEDREDACTED
+            </div>
+
+            <template v-else>
+              <!-- Rule Cards -->
+              <div
+                v-for="rule in betaPolicyForm.rules"
+                :key="rule.beta_token"
+                class="rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+              >
+                <div class="mb-3 flex items-center gap-2">
+                  <span class="text-sm font-medium text-gray-900 dark:text-white">
+                    {{ getBetaDisplayName(rule.beta_token) REDACTEDREDACTED
+                  </span>
+                  <span class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-dark-700 dark:text-gray-400">
+                    {{ rule.beta_token REDACTEDREDACTED
+                  </span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                  <!-- Action -->
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                      {{ t('admin.settings.betaPolicy.action') REDACTEDREDACTED
+                    </label>
+                    <Select
+                      :modelValue="rule.action"
+                      @update:modelValue="rule.action = $event as any"
+                      :options="betaPolicyActionOptions"
+                    />
+                  </div>
+
+                  <!-- Scope -->
+                  <div>
+                    <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                      {{ t('admin.settings.betaPolicy.scope') REDACTEDREDACTED
+                    </label>
+                    <Select
+                      :modelValue="rule.scope"
+                      @update:modelValue="rule.scope = $event as any"
+                      :options="betaPolicyScopeOptions"
+                    />
+                  </div>
+                </div>
+
+                <!-- Error Message (only when action=block) -->
+                <div v-if="rule.action === 'block'" class="mt-3">
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.betaPolicy.errorMessage') REDACTEDREDACTED
+                  </label>
+                  <input
+                    v-model="rule.error_message"
+                    type="text"
+                    class="input"
+                    :placeholder="t('admin.settings.betaPolicy.errorMessagePlaceholder')"
+                  />
+                  <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    {{ t('admin.settings.betaPolicy.errorMessageHint') REDACTEDREDACTED
+                  </p>
+                </div>
+              </div>
+
+              <!-- Save Button -->
+              <div class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700">
+                <button
+                  type="button"
+                  @click="saveBetaPolicySettings"
+                  :disabled="betaPolicySaving"
+                  class="btn btn-primary btn-sm"
+                >
+                  <svg
+                    v-if="betaPolicySaving"
+                    class="mr-1 h-4 w-4 animate-spin"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      class="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      stroke-width="4"
+                    ></circle>
+                    <path
+                      class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  {{ betaPolicySaving ? t('common.saving') : t('common.save') REDACTEDREDACTED
+                </button>
+              </div>
+            </template>
+          </div>
+        </div>
+
         </div><!-- /Tab: Gateway -->
 
         <!-- Tab: Security — Registration, Turnstile, LinuxDo -->
@@ -1627,6 +1738,18 @@ const rectifierForm = reactive({
   thinking_budget_enabled: true
 REDACTED)
 
+// Beta Policy 状态
+const betaPolicyLoading = ref(true)
+const betaPolicySaving = ref(false)
+const betaPolicyForm = reactive({
+  rules: [] as Array<{
+    beta_token: string
+    action: 'pass' | 'filter' | 'block'
+    scope: 'all' | 'oauth' | 'apikey'
+    error_message?: string
+  REDACTED>
+REDACTED)
+
 interface DefaultSubscriptionGroupOption {
   value: number
   label: string
@@ -2165,12 +2288,64 @@ async function saveRectifierSettings() {
   REDACTED
 REDACTED
 
+const betaPolicyActionOptions = computed(() => [
+  { value: 'pass', label: t('admin.settings.betaPolicy.actionPass') REDACTED,
+  { value: 'filter', label: t('admin.settings.betaPolicy.actionFilter') REDACTED,
+  { value: 'block', label: t('admin.settings.betaPolicy.actionBlock') REDACTED
+])
+
+const betaPolicyScopeOptions = computed(() => [
+  { value: 'all', label: t('admin.settings.betaPolicy.scopeAll') REDACTED,
+  { value: 'oauth', label: t('admin.settings.betaPolicy.scopeOAuth') REDACTED,
+  { value: 'apikey', label: t('admin.settings.betaPolicy.scopeAPIKey') REDACTED
+])
+
+// Beta Policy 方法
+const betaDisplayNames: Record<string, string> = {
+  'fast-mode-2026-02-01': 'Fast Mode',
+  'context-1m-2025-08-07': 'Context 1M'
+REDACTED
+
+function getBetaDisplayName(token: string): string {
+  return betaDisplayNames[token] || token
+REDACTED
+
+async function loadBetaPolicySettings() {
+  betaPolicyLoading.value = true
+  try {
+    const settings = await adminAPI.settings.getBetaPolicySettings()
+    betaPolicyForm.rules = settings.rules
+  REDACTED catch (error: any) {
+    console.error('Failed to load beta policy settings:', error)
+  REDACTED finally {
+    betaPolicyLoading.value = false
+  REDACTED
+REDACTED
+
+async function saveBetaPolicySettings() {
+  betaPolicySaving.value = true
+  try {
+    const updated = await adminAPI.settings.updateBetaPolicySettings({
+      rules: betaPolicyForm.rules
+    REDACTED)
+    betaPolicyForm.rules = updated.rules
+    appStore.showSuccess(t('admin.settings.betaPolicy.saved'))
+  REDACTED catch (error: any) {
+    appStore.showError(
+      t('admin.settings.betaPolicy.saveFailed') + ': ' + (error.message || t('common.unknownError'))
+    )
+  REDACTED finally {
+    betaPolicySaving.value = false
+  REDACTED
+REDACTED
+
 onMounted(() => {
   loadSettings()
   loadSubscriptionGroups()
   loadAdminApiKey()
   loadStreamTimeoutSettings()
   loadRectifierSettings()
+  loadBetaPolicySettings()
 REDACTED)
 </script>
 

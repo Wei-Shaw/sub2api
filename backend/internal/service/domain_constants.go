@@ -183,6 +183,13 @@ const (
 	SettingKeyRectifierSettings = "rectifier_settings"
 
 	// =========================
+	// Beta Policy Settings
+	// =========================
+
+	// SettingKeyBetaPolicySettings stores JSON config for beta policy rules.
+	SettingKeyBetaPolicySettings = "beta_policy_settings"
+
+	// =========================
 	// Sora S3 存储配置
 	// =========================
 

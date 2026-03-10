@@ -191,3 +191,45 @@ func DefaultRectifierSettings() *RectifierSettings {
 		ThinkingBudgetEnabled:    true,
 REDACTED
 REDACTED
+
+// Beta Policy 策略常量
+const (
+	BetaPolicyActionPass   = "pass"   // 透传，不做任何处理
+	BetaPolicyActionFilter = "filter" // 过滤，从 beta header 中移除该 token
+	BetaPolicyActionBlock  = "block"  // 拦截，直接返回错误
+
+	BetaPolicyScopeAll    = "all"    // 所有账号类型
+	BetaPolicyScopeOAuth  = "oauth"  // 仅 OAuth 账号
+	BetaPolicyScopeAPIKey = "apikey" // 仅 API Key 账号
+)
+
+// BetaPolicyRule 单条 Beta 策略规则
+type BetaPolicyRule struct {
+	BetaToken    string `json:"beta_token"`              // beta token 值
+	Action       string `json:"action"`                  // "pass" | "filter" | "block"
+	Scope        string `json:"scope"`                   // "all" | "oauth" | "apikey"
+	ErrorMessage string `json:"error_message,omitempty"` // 自定义错误消息 (action=block 时生效)
+REDACTED
+
+// BetaPolicySettings Beta 策略配置
+type BetaPolicySettings struct {
+	Rules []BetaPolicyRule `json:"rules"`
+REDACTED
+
+// DefaultBetaPolicySettings 返回默认的 Beta 策略配置
+func DefaultBetaPolicySettings() *BetaPolicySettings {
+	return &BetaPolicySettings{
+		Rules: []BetaPolicyRule{
+			{
+				BetaToken: "fast-mode-2026-02-01",
+				Action:    BetaPolicyActionFilter,
+				Scope:     BetaPolicyScopeAll,
+		REDACTED,
+			{
+				BetaToken: "context-1m-2025-08-07",
+				Action:    BetaPolicyActionFilter,
+				Scope:     BetaPolicyScopeAll,
+		REDACTED,
+	REDACTED,
+REDACTED
+REDACTED

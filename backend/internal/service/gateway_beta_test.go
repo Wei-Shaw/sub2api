@@ -86,10 +86,10 @@ REDACTED{
 			want:   "oauth-2025-04-20,REDACTED",
 	REDACTED,
 		{
-			name:   "DroppedBetas removes fast-mode only",
+			name:   "DroppedBetas is empty (filtering moved to configurable beta policy)",
 			header: "oauth-2025-04-20,context-1m-2025-08-07,fast-mode-2026-02-01,REDACTED",
 			tokens: claude.DroppedBetas,
-			want:   "oauth-2025-04-20,context-1m-2025-08-07,REDACTED",
+			want:   "oauth-2025-04-20,context-1m-2025-08-07,fast-mode-2026-02-01,REDACTED",
 	REDACTED,
 REDACTED
 
@@ -114,25 +114,23 @@ REDACTED
 func TestMergeAnthropicBetaDropping_DroppedBetas(t *testing.T) {
 	required := []string{"oauth-2025-04-20", "REDACTED"REDACTED
 	incoming := "context-1m-2025-08-07,fast-mode-2026-02-01,foo-beta,oauth-2025-04-20"
+	// DroppedBetas is now empty — filtering moved to configurable beta policy.
+	// Without a policy filter set, nothing gets dropped from the static set.
 	drop := droppedBetaSet()
 
 	got := mergeAnthropicBetaDropping(required, incoming, drop)
-	require.Equal(t, "oauth-2025-04-20,REDACTED,context-1m-2025-08-07,foo-beta", got)
+	require.Equal(t, "oauth-2025-04-20,REDACTED,context-1m-2025-08-07,fast-mode-2026-02-01,foo-beta", got)
 	require.Contains(t, got, "context-1m-2025-08-07")
-	require.NotContains(t, got, "fast-mode-2026-02-01")
+	require.Contains(t, got, "fast-mode-2026-02-01")
 REDACTED
 
 func TestDroppedBetaSet(t *testing.T) {
-	// Base set contains DroppedBetas
+	// Base set contains DroppedBetas (now empty — filtering moved to configurable beta policy)
 	base := droppedBetaSet()
-	require.NotContains(t, base, claude.BetaContext1M)
-	require.Contains(t, base, claude.BetaFastMode)
 	require.Len(t, base, len(claude.DroppedBetas))
 
 	// With extra tokens
 	extended := droppedBetaSet(claude.BetaClaudeCode)
-	require.NotContains(t, extended, claude.BetaContext1M)
-	require.Contains(t, extended, claude.BetaFastMode)
 	require.Contains(t, extended, claude.BetaClaudeCode)
 	require.Len(t, extended, len(claude.DroppedBetas)+1)
 REDACTED
