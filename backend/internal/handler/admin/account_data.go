@@ -8,6 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"log/slog"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -292,6 +295,8 @@ REDACTED
 		REDACTED
 	REDACTED
 
+		enrichCredentialsFromIDToken(&item)
+
 		accountInput := &service.CreateAccountInput{
 			Name:                 item.Name,
 			Notes:                item.Notes,
@@ -533,6 +538,57 @@ func defaultProxyName(name string) string {
 		return "imported-proxy"
 REDACTED
 	return name
+REDACTED
+
+// enrichCredentialsFromIDToken performs best-effort extraction of user info fields
+// (email, plan_type, chatgpt_account_id, etc.) from id_token in credentials.
+// Only applies to OpenAI/Sora OAuth accounts. Skips expired token errors silently.
+// Existing credential values are never overwritten — only missing fields are filled.
+func enrichCredentialsFromIDToken(item *DataAccount) {
+	if item.Credentials == nil {
+		return
+REDACTED
+	// Only enrich OpenAI/Sora OAuth accounts
+	platform := strings.ToLower(strings.TrimSpace(item.Platform))
+	if platform != service.PlatformOpenAI && platform != service.PlatformSora {
+		return
+REDACTED
+	if strings.ToLower(strings.TrimSpace(item.Type)) != service.AccountTypeOAuth {
+		return
+REDACTED
+
+	idToken, _ := item.Credentials["id_token"].(string)
+	if strings.TrimSpace(idToken) == "" {
+		return
+REDACTED
+
+	// DecodeIDToken skips expiry validation — safe for imported data
+	claims, err := openai.DecodeIDToken(idToken)
+	if err != nil {
+		slog.Debug("import_enrich_id_token_decode_failed", "account", item.Name, "error", err)
+		return
+REDACTED
+
+	userInfo := claims.GetUserInfo()
+	if userInfo == nil {
+		return
+REDACTED
+
+	// Fill missing fields only (never overwrite existing values)
+	setIfMissing := func(key, value string) {
+		if value == "" {
+			return
+	REDACTED
+		if existing, _ := item.Credentials[key].(string); existing == "" {
+			item.Credentials[key] = value
+	REDACTED
+REDACTED
+
+	setIfMissing("email", userInfo.Email)
+	setIfMissing("plan_type", userInfo.PlanType)
+	setIfMissing("chatgpt_account_id", userInfo.ChatGPTAccountID)
+	setIfMissing("chatgpt_user_id", userInfo.ChatGPTUserID)
+	setIfMissing("organization_id", userInfo.OrganizationID)
 REDACTED
 
 func normalizeProxyStatus(status string) string {

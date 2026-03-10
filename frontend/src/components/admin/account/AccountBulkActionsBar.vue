@@ -20,6 +20,8 @@
     </div>
     <div class="flex gap-2">
       <button @click="$emit('delete')" class="btn btn-danger btn-sm">{{ t('admin.accounts.bulkActions.delete') REDACTEDREDACTED</button>
+      <button @click="$emit('reset-status')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.resetStatus') REDACTEDREDACTED</button>
+      <button @click="$emit('refresh-token')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.refreshToken') REDACTEDREDACTED</button>
       <button @click="$emit('toggle-schedulable', true)" class="btn btn-success btn-sm">{{ t('admin.accounts.bulkActions.enableScheduling') REDACTEDREDACTED</button>
       <button @click="$emit('toggle-schedulable', false)" class="btn btn-warning btn-sm">{{ t('admin.accounts.bulkActions.disableScheduling') REDACTEDREDACTED</button>
       <button @click="$emit('edit')" class="btn btn-primary btn-sm">{{ t('admin.accounts.bulkActions.edit') REDACTEDREDACTED</button>
@@ -29,5 +31,5 @@
 
 <script setup lang="ts">
 import { useI18n REDACTED from 'vue-i18n'
-defineProps(['selectedIds']); defineEmits(['delete', 'edit', 'clear', 'select-page', 'toggle-schedulable']); const { t REDACTED = useI18n()
+defineProps(['selectedIds']); defineEmits(['delete', 'edit', 'clear', 'select-page', 'toggle-schedulable', 'reset-status', 'refresh-token']); const { t REDACTED = useI18n()
 </script>

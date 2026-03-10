@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -751,52 +753,31 @@ REDACTED
 	response.Success(c, result)
 REDACTED
 
-// Refresh handles refreshing account credentials
-// POST /api/v1/admin/accounts/:id/refresh
-func (h *AccountHandler) Refresh(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
-		return
-REDACTED
-
-	// Get account
-	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
-	if err != nil {
-		response.NotFound(c, "Account not found")
-		return
-REDACTED
-
-	// Only refresh OAuth-based accounts (oauth and setup-token)
+// refreshSingleAccount refreshes credentials for a single OAuth account.
+// Returns (updatedAccount, warning, error) where warning is used for Antigravity ProjectIDMissing scenario.
+func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *service.Account) (*service.Account, string, error) {
 	if !account.IsOAuth() {
-		response.BadRequest(c, "Cannot refresh non-OAuth account credentials")
-		return
+		return nil, "", infraerrors.BadRequest("NOT_OAUTH", "cannot refresh non-OAuth account")
 REDACTED
 
 	var newCredentials map[string]any
 
 	if account.IsOpenAI() {
-		// Use OpenAI OAuth service to refresh token
-		tokenInfo, err := h.openaiOAuthService.RefreshAccountToken(c.Request.Context(), account)
+		tokenInfo, err := h.openaiOAuthService.RefreshAccountToken(ctx, account)
 		if err != nil {
-			response.ErrorFrom(c, err)
-			return
+			return nil, "", err
 	REDACTED
 
-		// Build new credentials from token info
 		newCredentials = h.openaiOAuthService.BuildAccountCredentials(tokenInfo)
-
-		// Preserve non-token settings from existing credentials
 		for k, v := range account.Credentials {
 			if _, exists := newCredentials[k]; !exists {
 				newCredentials[k] = v
 		REDACTED
 	REDACTED
 REDACTED else if account.Platform == service.PlatformGemini {
-		tokenInfo, err := h.geminiOAuthService.RefreshAccountToken(c.Request.Context(), account)
+		tokenInfo, err := h.geminiOAuthService.RefreshAccountToken(ctx, account)
 		if err != nil {
-			response.InternalError(c, "Failed to refresh credentials: "+err.Error())
-			return
+			return nil, "", fmt.Errorf("failed to refresh credentials: %w", err)
 	REDACTED
 
 		newCredentials = h.geminiOAuthService.BuildAccountCredentials(tokenInfo)
@@ -806,10 +787,9 @@ REDACTED else if account.Platform == service.PlatformGemini {
 		REDACTED
 	REDACTED
 REDACTED else if account.Platform == service.PlatformAntigravity {
-		tokenInfo, err := h.antigravityOAuthService.RefreshAccountToken(c.Request.Context(), account)
+		tokenInfo, err := h.antigravityOAuthService.RefreshAccountToken(ctx, account)
 		if err != nil {
-			response.ErrorFrom(c, err)
-			return
+			return nil, "", err
 	REDACTED
 
 		newCredentials = h.antigravityOAuthService.BuildAccountCredentials(tokenInfo)
@@ -828,37 +808,27 @@ REDACTED else if account.Platform == service.PlatformAntigravity {
 	REDACTED
 
 		// 如果 project_id 获取失败，更新凭证但不标记为 error
-		// LoadCodeAssist 失败可能是临时网络问题，给它机会在下次自动刷新时重试
 		if tokenInfo.ProjectIDMissing {
-			// 先更新凭证（token 本身刷新成功了）
-			_, updateErr := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
+			updatedAccount, updateErr := h.adminService.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
 				Credentials: newCredentials,
 		REDACTED)
 			if updateErr != nil {
-				response.InternalError(c, "Failed to update credentials: "+updateErr.Error())
-				return
+				return nil, "", fmt.Errorf("failed to update credentials: %w", updateErr)
 		REDACTED
-			// 不标记为 error，只返回警告信息
-			response.Success(c, gin.H{
-				"message": "Token refreshed successfully, but project_id could not be retrieved (will retry automatically)",
-				"warning": "missing_project_id_temporary",
-		REDACTED)
-			return
+			return updatedAccount, "missing_project_id_temporary", nil
 	REDACTED
 
 		// 成功获取到 project_id，如果之前是 missing_project_id 错误则清除
 		if account.Status == service.StatusError && strings.Contains(account.ErrorMessage, "missing_project_id:") {
-			if _, clearErr := h.adminService.ClearAccountError(c.Request.Context(), accountID); clearErr != nil {
-				response.InternalError(c, "Failed to clear account error: "+clearErr.Error())
-				return
+			if _, clearErr := h.adminService.ClearAccountError(ctx, account.ID); clearErr != nil {
+				return nil, "", fmt.Errorf("failed to clear account error: %w", clearErr)
 		REDACTED
 	REDACTED
 REDACTED else {
 		// Use Anthropic/Claude OAuth service to refresh token
-		tokenInfo, err := h.oauthService.RefreshAccountToken(c.Request.Context(), account)
+		tokenInfo, err := h.oauthService.RefreshAccountToken(ctx, account)
 		if err != nil {
-			response.ErrorFrom(c, err)
-			return
+			return nil, "", err
 	REDACTED
 
 		// Copy existing credentials to preserve non-token settings (e.g., intercept_warmup_requests)
@@ -880,20 +850,51 @@ REDACTED else {
 	REDACTED
 REDACTED
 
-	updatedAccount, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
+	updatedAccount, err := h.adminService.UpdateAccount(ctx, account.ID, &service.UpdateAccountInput{
 		Credentials: newCredentials,
 REDACTED)
+	if err != nil {
+		return nil, "", err
+REDACTED
+
+	// 刷新成功后，清除 token 缓存，确保下次请求使用新 token
+	if h.tokenCacheInvalidator != nil {
+		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(ctx, updatedAccount); invalidateErr != nil {
+			log.Printf("[WARN] Failed to invalidate token cache for account %d: %v", updatedAccount.ID, invalidateErr)
+	REDACTED
+REDACTED
+
+	return updatedAccount, "", nil
+REDACTED
+
+// Refresh handles refreshing account credentials
+// POST /api/v1/admin/accounts/:id/refresh
+func (h *AccountHandler) Refresh(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+REDACTED
+
+	// Get account
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.NotFound(c, "Account not found")
+		return
+REDACTED
+
+	updatedAccount, warning, err := h.refreshSingleAccount(c.Request.Context(), account)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	// 刷新成功后，清除 token 缓存，确保下次请求使用新 token
-	if h.tokenCacheInvalidator != nil {
-		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(c.Request.Context(), updatedAccount); invalidateErr != nil {
-			// 缓存失效失败只记录日志，不影响主流程
-			_ = c.Error(invalidateErr)
-	REDACTED
+	if warning == "missing_project_id_temporary" {
+		response.Success(c, gin.H{
+			"message": "Token refreshed successfully, but project_id could not be retrieved (will retry automatically)",
+			"warning": "missing_project_id_temporary",
+	REDACTED)
+		return
 REDACTED
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), updatedAccount))
@@ -949,12 +950,173 @@ REDACTED
 	// 这解决了管理员重置账号状态后，旧的失效 token 仍在缓存中导致立即再次 401 的问题
 	if h.tokenCacheInvalidator != nil && account.IsOAuth() {
 		if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(c.Request.Context(), account); invalidateErr != nil {
-			// 缓存失效失败只记录日志，不影响主流程
-			_ = c.Error(invalidateErr)
+			log.Printf("[WARN] Failed to invalidate token cache for account %d: %v", accountID, invalidateErr)
 	REDACTED
 REDACTED
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+REDACTED
+
+// BatchClearError handles batch clearing account errors
+// POST /api/v1/admin/accounts/batch-clear-error
+func (h *AccountHandler) BatchClearError(c *gin.Context) {
+	var req struct {
+		AccountIDs []int64 `json:"account_ids"`
+REDACTED
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+	if len(req.AccountIDs) == 0 {
+		response.BadRequest(c, "account_ids is required")
+		return
+REDACTED
+
+	ctx := c.Request.Context()
+
+	const maxConcurrency = 10
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrency)
+
+	var mu sync.Mutex
+	var successCount, failedCount int
+	var errors []gin.H
+
+	// 注意：所有 goroutine 必须 return nil，避免 errgroup cancel 其他并发任务
+	for _, id := range req.AccountIDs {
+		accountID := id // 闭包捕获
+		g.Go(func() error {
+			account, err := h.adminService.ClearAccountError(gctx, accountID)
+			if err != nil {
+				mu.Lock()
+				failedCount++
+				errors = append(errors, gin.H{
+					"account_id": accountID,
+					"error":      err.Error(),
+			REDACTED)
+				mu.Unlock()
+				return nil
+		REDACTED
+
+			// 清除错误后，同时清除 token 缓存
+			if h.tokenCacheInvalidator != nil && account.IsOAuth() {
+				if invalidateErr := h.tokenCacheInvalidator.InvalidateToken(gctx, account); invalidateErr != nil {
+					log.Printf("[WARN] Failed to invalidate token cache for account %d: %v", accountID, invalidateErr)
+			REDACTED
+		REDACTED
+
+			mu.Lock()
+			successCount++
+			mu.Unlock()
+			return nil
+	REDACTED)
+REDACTED
+
+	if err := g.Wait(); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, gin.H{
+		"total":   len(req.AccountIDs),
+		"success": successCount,
+		"failed":  failedCount,
+		"errors":  errors,
+REDACTED)
+REDACTED
+
+// BatchRefresh handles batch refreshing account credentials
+// POST /api/v1/admin/accounts/batch-refresh
+func (h *AccountHandler) BatchRefresh(c *gin.Context) {
+	var req struct {
+		AccountIDs []int64 `json:"account_ids"`
+REDACTED
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+	if len(req.AccountIDs) == 0 {
+		response.BadRequest(c, "account_ids is required")
+		return
+REDACTED
+
+	ctx := c.Request.Context()
+
+	accounts, err := h.adminService.GetAccountsByIDs(ctx, req.AccountIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	// 建立已获取账号的 ID 集合，检测缺失的 ID
+	foundIDs := make(map[int64]bool, len(accounts))
+	for _, acc := range accounts {
+		if acc != nil {
+			foundIDs[acc.ID] = true
+	REDACTED
+REDACTED
+
+	const maxConcurrency = 10
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrency)
+
+	var mu sync.Mutex
+	var successCount, failedCount int
+	var errors []gin.H
+	var warnings []gin.H
+
+	// 将不存在的账号 ID 标记为失败
+	for _, id := range req.AccountIDs {
+		if !foundIDs[id] {
+			failedCount++
+			errors = append(errors, gin.H{
+				"account_id": id,
+				"error":      "account not found",
+		REDACTED)
+	REDACTED
+REDACTED
+
+	// 注意：所有 goroutine 必须 return nil，避免 errgroup cancel 其他并发任务
+	for _, account := range accounts {
+		acc := account // 闭包捕获
+		if acc == nil {
+			continue
+	REDACTED
+		g.Go(func() error {
+			_, warning, err := h.refreshSingleAccount(gctx, acc)
+			mu.Lock()
+			if err != nil {
+				failedCount++
+				errors = append(errors, gin.H{
+					"account_id": acc.ID,
+					"error":      err.Error(),
+			REDACTED)
+		REDACTED else {
+				successCount++
+				if warning != "" {
+					warnings = append(warnings, gin.H{
+						"account_id": acc.ID,
+						"warning":    warning,
+				REDACTED)
+			REDACTED
+		REDACTED
+			mu.Unlock()
+			return nil
+	REDACTED)
+REDACTED
+
+	if err := g.Wait(); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, gin.H{
+		"total":    len(req.AccountIDs),
+		"success":  successCount,
+		"failed":   failedCount,
+		"errors":   errors,
+		"warnings": warnings,
+REDACTED)
 REDACTED
 
 // BatchCreate handles batch creating accounts
