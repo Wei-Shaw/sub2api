@@ -279,7 +279,11 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	requestID := resp.Header.Get("x-request-id")
 
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	maxLineSize := defaultMaxLineSize
+	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+		maxLineSize = s.cfg.Gateway.MaxLineSize
+REDACTED
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
 	var finalResponse *apicompat.ResponsesResponse
 	var usage OpenAIUsage
@@ -378,7 +382,11 @@ REDACTED
 	firstChunk := true
 
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	maxLineSize := defaultMaxLineSize
+	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
+		maxLineSize = s.cfg.Gateway.MaxLineSize
+REDACTED
+	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
 	// resultWithUsage builds the final result snapshot.
 	resultWithUsage := func() *OpenAIForwardResult {
