@@ -211,8 +211,22 @@ REDACTED
 		email = linuxDoSyntheticEmail(subject)
 REDACTED
 
-	tokenPair, _, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username)
+	// 传入空邀请码；如果需要邀请码，服务层返回 ErrOAuthInvitationRequired
+	tokenPair, _, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, "")
 	if err != nil {
+		if errors.Is(err, service.ErrOAuthInvitationRequired) {
+			pendingToken, tokenErr := h.authService.CreatePendingOAuthToken(email, username)
+			if tokenErr != nil {
+				redirectOAuthError(c, frontendCallback, "login_failed", "service_error", "")
+				return
+		REDACTED
+			fragment := url.Values{REDACTED
+			fragment.Set("error", "invitation_required")
+			fragment.Set("pending_oauth_token", pendingToken)
+			fragment.Set("redirect", redirectTo)
+			redirectWithFragment(c, frontendCallback, fragment)
+			return
+	REDACTED
 		// 避免把内部细节泄露给客户端；给前端保留结构化原因与提示信息即可。
 		redirectOAuthError(c, frontendCallback, "login_failed", infraerrors.Reason(err), infraerrors.Message(err))
 		return
@@ -225,6 +239,41 @@ REDACTED
 	fragment.Set("token_type", "Bearer")
 	fragment.Set("redirect", redirectTo)
 	redirectWithFragment(c, frontendCallback, fragment)
+REDACTED
+
+type completeLinuxDoOAuthRequest struct {
+	PendingOAuthToken string `json:"pending_oauth_token" binding:"required"`
+	InvitationCode    string `json:"invitation_code"     binding:"required"`
+REDACTED
+
+// CompleteLinuxDoOAuthRegistration completes a pending OAuth registration by validating
+// the invitation code and creating the user account.
+// POST /api/v1/auth/oauth/linuxdo/complete-registration
+func (h *AuthHandler) CompleteLinuxDoOAuthRegistration(c *gin.Context) {
+	var req completeLinuxDoOAuthRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "INVALID_REQUEST", "message": err.Error()REDACTED)
+		return
+REDACTED
+
+	email, username, err := h.authService.VerifyPendingOAuthToken(req.PendingOAuthToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "INVALID_TOKEN", "message": "invalid or expired registration token"REDACTED)
+		return
+REDACTED
+
+	tokenPair, _, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  tokenPair.AccessToken,
+		"refresh_token": tokenPair.RefreshToken,
+		"expires_in":    tokenPair.ExpiresIn,
+		"token_type":    "Bearer",
+REDACTED)
 REDACTED
 
 func (h *AuthHandler) getLinuxDoOAuthConfig(ctx context.Context) (config.LinuxDoConnectConfig, error) {

@@ -11,6 +11,36 @@
       </div>
 
       <transition name="fade">
+        <div v-if="needsInvitation" class="space-y-4">
+          <p class="text-sm text-gray-700 dark:text-gray-300">
+            {{ t('auth.linuxdo.invitationRequired') REDACTEDREDACTED
+          </p>
+          <div>
+            <input
+              v-model="invitationCode"
+              type="text"
+              class="input w-full"
+              :placeholder="t('auth.invitationCodePlaceholder')"
+              :disabled="isSubmitting"
+              @keyup.enter="handleSubmitInvitation"
+            />
+          </div>
+          <transition name="fade">
+            <p v-if="invitationError" class="text-sm text-red-600 dark:text-red-400">
+              {{ invitationError REDACTEDREDACTED
+            </p>
+          </transition>
+          <button
+            class="btn btn-primary w-full"
+            :disabled="isSubmitting || !invitationCode.trim()"
+            @click="handleSubmitInvitation"
+          >
+            {{ isSubmitting ? t('auth.linuxdo.completing') : t('auth.linuxdo.completeRegistration') REDACTEDREDACTED
+          </button>
+        </div>
+      </transition>
+
+      <transition name="fade">
         <div
           v-if="errorMessage"
           class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20"
@@ -41,6 +71,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { AuthLayout REDACTED from '@/components/layout'
 import Icon from '@/components/icons/Icon.vue'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
+import { completeLinuxDoOAuthRegistration REDACTED from '@/api/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -51,6 +82,14 @@ const appStore = useAppStore()
 
 const isProcessing = ref(true)
 const errorMessage = ref('')
+
+// Invitation code flow state
+const needsInvitation = ref(false)
+const pendingOAuthToken = ref('')
+const invitationCode = ref('')
+const isSubmitting = ref(false)
+const invitationError = ref('')
+const redirectTo = ref('/dashboard')
 
 function parseFragmentParams(): URLSearchParams {
   const raw = typeof window !== 'undefined' ? window.location.hash : ''
@@ -67,6 +106,34 @@ function sanitizeRedirectPath(path: string | null | undefined): string {
   return path
 REDACTED
 
+async function handleSubmitInvitation() {
+  invitationError.value = ''
+  if (!invitationCode.value.trim()) return
+
+  isSubmitting.value = true
+  try {
+    const tokenData = await completeLinuxDoOAuthRegistration(
+      pendingOAuthToken.value,
+      invitationCode.value.trim()
+    )
+    if (tokenData.refresh_token) {
+      localStorage.setItem('refresh_token', tokenData.refresh_token)
+    REDACTED
+    if (tokenData.expires_in) {
+      localStorage.setItem('token_expires_at', String(Date.now() + tokenData.expires_in * 1000))
+    REDACTED
+    await authStore.setToken(tokenData.access_token)
+    appStore.showSuccess(t('auth.loginSuccess'))
+    await router.replace(redirectTo.value)
+  REDACTED catch (e: unknown) {
+    const err = e as { message?: string; response?: { data?: { message?: string REDACTED REDACTED REDACTED
+    invitationError.value =
+      err.response?.data?.message || err.message || t('auth.linuxdo.completeRegistrationFailed')
+  REDACTED finally {
+    isSubmitting.value = false
+  REDACTED
+REDACTED
+
 onMounted(async () => {
   const params = parseFragmentParams()
 
@@ -80,6 +147,19 @@ onMounted(async () => {
   const errorDesc = params.get('error_description') || params.get('error_message') || ''
 
   if (error) {
+    if (error === 'invitation_required') {
+      pendingOAuthToken.value = params.get('pending_oauth_token') || ''
+      redirectTo.value = sanitizeRedirectPath(params.get('redirect'))
+      if (!pendingOAuthToken.value) {
+        errorMessage.value = t('auth.linuxdo.invalidPendingToken')
+        appStore.showError(errorMessage.value)
+        isProcessing.value = false
+        return
+      REDACTED
+      needsInvitation.value = true
+      isProcessing.value = false
+      return
+    REDACTED
     errorMessage.value = errorDesc || error
     appStore.showError(errorMessage.value)
     isProcessing.value = false

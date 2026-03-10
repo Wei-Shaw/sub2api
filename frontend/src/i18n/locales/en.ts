@@ -434,7 +434,12 @@ export default {
       callbackProcessing: 'Completing login, please wait...',
       callbackHint: 'If you are not redirected automatically, go back to the login page and try again.',
       callbackMissingToken: 'Missing login token, please try again.',
-      backToLogin: 'Back to Login'
+      backToLogin: 'Back to Login',
+      invitationRequired: 'This Linux.do account is not yet registered. The site requires an invitation code — please enter one to complete registration.',
+      invalidPendingToken: 'The registration token has expired. Please sign in with Linux.do again.',
+      completeRegistration: 'Complete Registration',
+      completing: 'Completing registration…',
+      completeRegistrationFailed: 'Registration failed. Please check your invitation code and try again.'
     REDACTED,
     oauth: {
       code: 'Code',
