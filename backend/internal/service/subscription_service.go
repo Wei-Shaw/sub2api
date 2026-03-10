@@ -707,15 +707,11 @@ REDACTED
 		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
 			return nil, err
 	REDACTED
-		sub.DailyWindowStart = &windowStart
-		sub.DailyUsageUSD = 0
 REDACTED
 	if resetWeekly {
 		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, windowStart); err != nil {
 			return nil, err
 	REDACTED
-		sub.WeeklyWindowStart = &windowStart
-		sub.WeeklyUsageUSD = 0
 REDACTED
 	// Invalidate caches, same as CheckAndResetWindows
 	s.InvalidateSubCache(sub.UserID, sub.GroupID)
