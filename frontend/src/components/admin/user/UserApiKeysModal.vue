@@ -162,8 +162,7 @@ REDACTED
 const loadGroups = async () => {
   try {
     const groups = await adminAPI.groups.getAll()
-    // 过滤掉订阅类型分组（需通过订阅管理流程绑定）
-    allGroups.value = groups.filter((g) => g.subscription_type !== 'subscription')
+    allGroups.value = groups
   REDACTED catch (error) {
     console.error('Failed to load groups:', error)
   REDACTED
