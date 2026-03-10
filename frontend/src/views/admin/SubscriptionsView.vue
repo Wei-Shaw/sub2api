@@ -1151,6 +1151,7 @@ REDACTED
 
 const confirmResetQuota = async () => {
   if (!resettingSubscription.value) return
+  if (resettingQuota.value) return
   resettingQuota.value = true
   try {
     await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, { daily: true, weekly: true REDACTED)
