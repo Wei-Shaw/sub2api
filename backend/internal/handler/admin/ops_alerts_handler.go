@@ -23,6 +23,13 @@ var validOpsAlertMetricTypes = []string{
 	"cpu_usage_percent",
 	"memory_usage_percent",
 	"concurrency_queue_depth",
+	"group_available_accounts",
+	"group_available_ratio",
+	"group_rate_limit_ratio",
+	"account_rate_limited_count",
+	"account_error_count",
+	"account_error_ratio",
+	"overload_account_count",
 REDACTED
 
 var validOpsAlertMetricTypeSet = func() map[string]struct{REDACTED {
@@ -82,7 +89,10 @@ func isPercentOrRateMetric(metricType string) bool {
 		"error_rate",
 		"upstream_error_rate",
 		"cpu_usage_percent",
-		"memory_usage_percent":
+		"memory_usage_percent",
+		"group_available_ratio",
+		"group_rate_limit_ratio",
+		"account_error_ratio":
 		return true
 	default:
 		return false
