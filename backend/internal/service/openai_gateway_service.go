@@ -12,6 +12,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,6 +37,7 @@ const (
 	chatgptCodexURL = "https://chatgpt.com/backend-api/codex/responses"
 	// OpenAI Platform API for API Key accounts (fallback)
 	openaiPlatformAPIURL   = "https://api.openai.com/v1/responses"
+	openaiChatAPIURL       = "https://api.openai.com/v1/chat/completions"
 	openaiStickySessionTTL = time.Hour // 粘性会话TTL
 	codexCLIUserAgent      = "codex_cli_rs/0.104.0"
 	// codex_cli_only 拒绝时单个请求头日志长度上限（字符）
@@ -53,6 +55,16 @@ const (
 	openAICompactSessionSeedKey        = "openai_compact_session_seed"
 	codexCLIVersion                    = "0.104.0"
 )
+
+// OpenAIChatCompletionsBodyKey stores the original chat-completions payload in gin.Context.
+const OpenAIChatCompletionsBodyKey = "openai_chat_completions_body"
+
+// OpenAIChatCompletionsIncludeUsageKey stores stream_options.include_usage in gin.Context.
+const OpenAIChatCompletionsIncludeUsageKey = "openai_chat_completions_include_usage"
+
+// openaiSSEDataRe matches SSE data lines with optional whitespace after colon.
+// Some upstream APIs return non-standard "data:" without space (should be "data: ").
+var openaiSSEDataRe = regexp.MustCompile(`^data:\s*`)
 
 // OpenAI allowed headers whitelist (for non-passthrough).
 var openaiAllowedHeaders = map[string]bool{
@@ -95,6 +107,19 @@ var codexCLIOnlyDebugHeaderWhitelist = []string{
 	"X-Client-Request-ID",
 	"X-Forwarded-For",
 	"X-Real-IP",
+REDACTED
+
+// OpenAI chat-completions allowed headers (extend responses whitelist).
+var openaiChatAllowedHeaders = map[string]bool{
+	"accept-language":     true,
+	"content-type":        true,
+	"conversation_id":     true,
+	"user-agent":          true,
+	"originator":          true,
+	"session_id":          true,
+	"openai-organization": true,
+	"openai-project":      true,
+	"openai-beta":         true,
 REDACTED
 
 // OpenAICodexUsageSnapshot represents Codex API usage limits from response headers
@@ -1575,6 +1600,23 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		REDACTED,
 	REDACTED)
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
+REDACTED
+
+	if c != nil && account != nil && account.Type == AccountTypeAPIKey {
+		if raw, ok := c.Get(OpenAIChatCompletionsBodyKey); ok {
+			if rawBody, ok := raw.([]byte); ok && len(rawBody) > 0 {
+				includeUsage := false
+				if v, ok := c.Get(OpenAIChatCompletionsIncludeUsageKey); ok {
+					if flag, ok := v.(bool); ok {
+						includeUsage = flag
+				REDACTED
+			REDACTED
+				if passthroughWriter, ok := c.Writer.(interface{ SetPassthrough() REDACTED); ok {
+					passthroughWriter.SetPassthrough()
+			REDACTED
+				return s.forwardChatCompletions(ctx, c, account, rawBody, includeUsage, startTime)
+		REDACTED
+	REDACTED
 REDACTED
 
 	originalBody := body
