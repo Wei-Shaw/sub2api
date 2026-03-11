@@ -162,7 +162,7 @@ REDACTED
 	if includeStats {
 		stats, err := h.dashboardService.GetDashboardStats(ctx)
 		if err != nil {
-			return nil, errors.New("Failed to get dashboard statistics")
+			return nil, errors.New("failed to get dashboard statistics")
 	REDACTED
 		resp.Stats = &dashboardSnapshotV2Stats{
 			DashboardStats: *stats,
@@ -186,7 +186,7 @@ REDACTED
 			filters.BillingType,
 		)
 		if err != nil {
-			return nil, errors.New("Failed to get usage trend")
+			return nil, errors.New("failed to get usage trend")
 	REDACTED
 		resp.Trend = trend
 REDACTED
@@ -205,7 +205,7 @@ REDACTED
 			filters.BillingType,
 		)
 		if err != nil {
-			return nil, errors.New("Failed to get model statistics")
+			return nil, errors.New("failed to get model statistics")
 	REDACTED
 		resp.Models = models
 REDACTED
@@ -224,7 +224,7 @@ REDACTED
 			filters.BillingType,
 		)
 		if err != nil {
-			return nil, errors.New("Failed to get group statistics")
+			return nil, errors.New("failed to get group statistics")
 	REDACTED
 		resp.Groups = groups
 REDACTED
@@ -232,7 +232,7 @@ REDACTED
 	if includeUsersTrend {
 		usersTrend, _, err := h.getUserUsageTrendCached(ctx, startTime, endTime, granularity, usersTrendLimit)
 		if err != nil {
-			return nil, errors.New("Failed to get user usage trend")
+			return nil, errors.New("failed to get user usage trend")
 	REDACTED
 		resp.UsersTrend = usersTrend
 REDACTED
