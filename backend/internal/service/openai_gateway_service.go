@@ -52,6 +52,8 @@ const (
 	openAIWSRetryJitterRatioDefault    = 0.2
 	openAICompactSessionSeedKey        = "openai_compact_session_seed"
 	codexCLIVersion                    = "0.104.0"
+	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
+	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 )
 
 // OpenAI allowed headers whitelist (for non-passthrough).
@@ -255,6 +257,46 @@ type openAIWSRetryMetrics struct {
 	nonRetryableFastFallback atomic.Int64
 REDACTED
 
+type accountWriteThrottle struct {
+	minInterval time.Duration
+	mu          sync.Mutex
+	lastByID    map[int64]time.Time
+REDACTED
+
+func newAccountWriteThrottle(minInterval time.Duration) *accountWriteThrottle {
+	return &accountWriteThrottle{
+		minInterval: minInterval,
+		lastByID:    make(map[int64]time.Time),
+REDACTED
+REDACTED
+
+func (t *accountWriteThrottle) Allow(id int64, now time.Time) bool {
+	if t == nil || id <= 0 || t.minInterval <= 0 {
+		return true
+REDACTED
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if last, ok := t.lastByID[id]; ok && now.Sub(last) < t.minInterval {
+		return false
+REDACTED
+	t.lastByID[id] = now
+
+	if len(t.lastByID) > 4096 {
+		cutoff := now.Add(-4 * t.minInterval)
+		for accountID, writtenAt := range t.lastByID {
+			if writtenAt.Before(cutoff) {
+				delete(t.lastByID, accountID)
+		REDACTED
+	REDACTED
+REDACTED
+
+	return true
+REDACTED
+
+var defaultOpenAICodexSnapshotPersistThrottle = newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval)
+
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
 	accountRepo           AccountRepository
@@ -289,6 +331,7 @@ type OpenAIGatewayService struct {
 	openaiWSFallbackUntil sync.Map // key: int64(accountID), value: time.Time
 	openaiWSRetryMetrics  openAIWSRetryMetrics
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
+	codexSnapshotThrottle *accountWriteThrottle
 REDACTED
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -329,15 +372,23 @@ func NewOpenAIGatewayService(
 			nil,
 			"service.openai_gateway",
 		),
-		httpUpstream:         httpUpstream,
-		deferredService:      deferredService,
-		openAITokenProvider:  openAITokenProvider,
-		toolCorrector:        NewCodexToolCorrector(),
-		openaiWSResolver:     NewOpenAIWSProtocolResolver(cfg),
-		responseHeaderFilter: compileResponseHeaderFilter(cfg),
+		httpUpstream:          httpUpstream,
+		deferredService:       deferredService,
+		openAITokenProvider:   openAITokenProvider,
+		toolCorrector:         NewCodexToolCorrector(),
+		openaiWSResolver:      NewOpenAIWSProtocolResolver(cfg),
+		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
+		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
 REDACTED
 	svc.logOpenAIWSModeBootstrap()
 	return svc
+REDACTED
+
+func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle {
+	if s != nil && s.codexSnapshotThrottle != nil {
+		return s.codexSnapshotThrottle
+REDACTED
+	return defaultOpenAICodexSnapshotPersistThrottle
 REDACTED
 
 func (s *OpenAIGatewayService) billingDeps() *billingDeps {
@@ -4050,11 +4101,12 @@ REDACTED
 	if len(updates) == 0 && resetAt == nil {
 		return
 REDACTED
+	shouldPersistUpdates := len(updates) > 0 && s.getCodexSnapshotThrottle().Allow(accountID, now)
 
 	go func() {
 		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if len(updates) > 0 {
+		if shouldPersistUpdates {
 			_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
 	REDACTED
 		if resetAt != nil {
