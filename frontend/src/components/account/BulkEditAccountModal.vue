@@ -961,6 +961,7 @@ const allModels = [
   { value: 'gpt-5-2025-08-07', label: 'GPT-5' REDACTED,
   { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' REDACTED,
   { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' REDACTED,
+  { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image' REDACTED,
   { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' REDACTED,
   { value: 'gemini-3.1-flash-image', label: 'Gemini 3.1 Flash Image' REDACTED,
   { value: 'gemini-3-pro-image', label: 'Gemini 3 Pro Image (Legacy)' REDACTED,
@@ -1041,6 +1042,12 @@ const presetMappings = [
     from: 'claude-opus-4-5-20251101',
     to: 'claude-sonnet-4-5-20250929',
     color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400'
+  REDACTED,
+  {
+    label: 'Gemini 2.5 Image',
+    from: 'gemini-2.5-flash-image',
+    to: 'gemini-2.5-flash-image',
+    color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400'
   REDACTED,
   {
     label: 'Gemini 3.1 Image',
