@@ -423,6 +423,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup']
 
 router.beforeEach((to, _from, next) => {
   // 开始导航加载状态
@@ -463,9 +464,23 @@ router.beforeEach((to, _from, next) => {
   if (!requiresAuth) {
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
     if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
+      // In backend mode, non-admin users should NOT be redirected away from login
+      // (they are blocked from all protected routes, so redirecting would cause a loop)
+      if (appStore.backendModeEnabled && !authStore.isAdmin) {
+        next()
+        return
+      REDACTED
       // Admin users go to admin dashboard, regular users go to user dashboard
       next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       return
+    REDACTED
+    // Backend mode: block public pages for unauthenticated users (except login, key-usage, setup)
+    if (appStore.backendModeEnabled && !authStore.isAuthenticated) {
+      const isAllowed = BACKEND_MODE_ALLOWED_PATHS.some((p) => to.path === p || to.path.startsWith(p))
+      if (!isAllowed) {
+        next('/login')
+        return
+      REDACTED
     REDACTED
     next()
     return
@@ -501,6 +516,19 @@ router.beforeEach((to, _from, next) => {
     if (restrictedPaths.some((path) => to.path.startsWith(path))) {
       // 简易模式下访问受限页面,重定向到仪表板
       next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      return
+    REDACTED
+  REDACTED
+
+  // Backend mode: admin gets full access, non-admin blocked
+  if (appStore.backendModeEnabled) {
+    if (authStore.isAuthenticated && authStore.isAdmin) {
+      next()
+      return
+    REDACTED
+    const isAllowed = BACKEND_MODE_ALLOWED_PATHS.some((p) => to.path === p || to.path.startsWith(p))
+    if (!isAllowed) {
+      next('/login')
       return
     REDACTED
   REDACTED

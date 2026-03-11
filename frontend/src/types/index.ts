@@ -106,6 +106,7 @@ export interface PublicSettings {
   custom_menu_items: CustomMenuItem[]
   linuxdo_oauth_enabled: boolean
   sora_client_enabled: boolean
+  backend_mode_enabled: boolean
   version: string
 REDACTED
 

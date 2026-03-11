@@ -82,7 +82,7 @@
       </template>
 
       <!-- Regular User View -->
-      <template v-else>
+      <template v-else-if="!appStore.backendModeEnabled">
         <div class="sidebar-section">
           <router-link
             v-for="item in userNavItems"

@@ -1087,6 +1087,12 @@ type TokenPair struct {
 	ExpiresIn    int    `json:"expires_in"` // Access Token有效期（秒）
 REDACTED
 
+// TokenPairWithUser extends TokenPair with user role for backend mode checks
+type TokenPairWithUser struct {
+	TokenPair
+	UserRole string
+REDACTED
+
 // GenerateTokenPair 生成Access Token和Refresh Token对
 // familyID: 可选的Token家族ID，用于Token轮转时保持家族关系
 func (s *AuthService) GenerateTokenPair(ctx context.Context, user *User, familyID string) (*TokenPair, error) {
@@ -1168,7 +1174,7 @@ REDACTED
 
 // RefreshTokenPair 使用Refresh Token刷新Token对
 // 实现Token轮转：每次刷新都会生成新的Refresh Token，旧Token立即失效
-func (s *AuthService) RefreshTokenPair(ctx context.Context, refreshToken string) (*TokenPair, error) {
+func (s *AuthService) RefreshTokenPair(ctx context.Context, refreshToken string) (*TokenPairWithUser, error) {
 	// 检查 refreshTokenCache 是否可用
 	if s.refreshTokenCache == nil {
 		return nil, ErrRefreshTokenInvalid
@@ -1233,7 +1239,14 @@ REDACTED
 REDACTED
 
 	// 生成新的Token对，保持同一个家族ID
-	return s.GenerateTokenPair(ctx, user, data.FamilyID)
+	pair, err := s.GenerateTokenPair(ctx, user, data.FamilyID)
+	if err != nil {
+		return nil, err
+REDACTED
+	return &TokenPairWithUser{
+		TokenPair: *pair,
+		UserRole:  user.Role,
+REDACTED, nil
 REDACTED
 
 // RevokeRefreshToken 撤销单个Refresh Token
