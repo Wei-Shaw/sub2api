@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -48,6 +49,18 @@ type accountRepository struct {
 	// Used to proactively sync account snapshot to cache when status changes,
 	// ensuring sticky sessions can promptly detect unavailable accounts.
 	schedulerCache service.SchedulerCache
+REDACTED
+
+var schedulerNeutralExtraKeyPrefixes = []string{
+	"codex_primary_",
+	"codex_secondary_",
+	"codex_5h_",
+	"codex_7d_",
+REDACTED
+
+var schedulerNeutralExtraKeys = map[string]struct{REDACTED{
+	"codex_usage_updated_at":     {REDACTED,
+	"session_window_utilization": {REDACTED,
 REDACTED
 
 // NewAccountRepository 创建账户仓储实例。
@@ -610,6 +623,29 @@ REDACTED
 REDACTED
 	if err := r.schedulerCache.SetAccount(ctx, account); err != nil {
 		logger.LegacyPrintf("repository.account", "[Scheduler] sync account snapshot write failed: id=%d err=%v", accountID, err)
+REDACTED
+REDACTED
+
+func (r *accountRepository) patchSchedulerAccountExtra(ctx context.Context, accountID int64, updates map[string]any) {
+	if r == nil || r.schedulerCache == nil || accountID <= 0 || len(updates) == 0 {
+		return
+REDACTED
+	account, err := r.schedulerCache.GetAccount(ctx, accountID)
+	if err != nil {
+		logger.LegacyPrintf("repository.account", "[Scheduler] patch account extra read failed: id=%d err=%v", accountID, err)
+		return
+REDACTED
+	if account == nil {
+		return
+REDACTED
+	if account.Extra == nil {
+		account.Extra = make(map[string]any, len(updates))
+REDACTED
+	for key, value := range updates {
+		account.Extra[key] = value
+REDACTED
+	if err := r.schedulerCache.SetAccount(ctx, account); err != nil {
+		logger.LegacyPrintf("repository.account", "[Scheduler] patch account extra write failed: id=%d err=%v", accountID, err)
 REDACTED
 REDACTED
 
@@ -1185,10 +1221,45 @@ REDACTED
 	if affected == 0 {
 		return service.ErrAccountNotFound
 REDACTED
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extra update failed: account=%d err=%v", id, err)
+
+	if shouldEnqueueSchedulerOutboxForExtraUpdates(updates) {
+		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extra update failed: account=%d err=%v", id, err)
+	REDACTED
+REDACTED else {
+		// 观测型 extra 字段不需要触发 bucket 重建，但尽量把单账号缓存补到最新，
+		// 让 sticky session / GetAccount 命中缓存时也能读到最新快照。
+		r.patchSchedulerAccountExtra(ctx, id, updates)
 REDACTED
 	return nil
+REDACTED
+
+func shouldEnqueueSchedulerOutboxForExtraUpdates(updates map[string]any) bool {
+	if len(updates) == 0 {
+		return false
+REDACTED
+	for key := range updates {
+		if !isSchedulerNeutralExtraKey(key) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func isSchedulerNeutralExtraKey(key string) bool {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return false
+REDACTED
+	if _, ok := schedulerNeutralExtraKeys[key]; ok {
+		return true
+REDACTED
+	for _, prefix := range schedulerNeutralExtraKeyPrefixes {
+		if strings.HasPrefix(key, prefix) {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
