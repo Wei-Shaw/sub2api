@@ -1190,6 +1190,9 @@ REDACTED
 		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extra update failed: account=%d err=%v", id, err)
 	REDACTED
+REDACTED else if shouldSyncSchedulerSnapshotForExtraUpdates(updates) {
+		// codex 限流快照仍需要让调度缓存尽快看见，避免 DB 抖动时丢失自愈链路。
+		r.syncSchedulerAccountSnapshot(ctx, id)
 REDACTED
 	return nil
 REDACTED
@@ -1207,6 +1210,10 @@ REDACTED
 	return false
 REDACTED
 
+func shouldSyncSchedulerSnapshotForExtraUpdates(updates map[string]any) bool {
+	return codexExtraIndicatesRateLimit(updates, "7d") || codexExtraIndicatesRateLimit(updates, "5h")
+REDACTED
+
 func isSchedulerNeutralAccountExtraKey(key string) bool {
 	key = strings.TrimSpace(key)
 	if key == "" {
@@ -1216,6 +1223,78 @@ REDACTED
 		return true
 REDACTED
 	return strings.HasPrefix(key, "codex_")
+REDACTED
+
+func codexExtraIndicatesRateLimit(updates map[string]any, window string) bool {
+	if len(updates) == 0 {
+		return false
+REDACTED
+	usedValue, ok := updates["codex_"+window+"_used_percent"]
+	if !ok || !extraValueIndicatesExhausted(usedValue) {
+		return false
+REDACTED
+	return extraValueHasResetMarker(updates["codex_"+window+"_reset_at"]) ||
+		extraValueHasPositiveNumber(updates["codex_"+window+"_reset_after_seconds"])
+REDACTED
+
+func extraValueIndicatesExhausted(value any) bool {
+	number, ok := extraValueToFloat64(value)
+	return ok && number >= 100-1e-9
+REDACTED
+
+func extraValueHasPositiveNumber(value any) bool {
+	number, ok := extraValueToFloat64(value)
+	return ok && number > 0
+REDACTED
+
+func extraValueHasResetMarker(value any) bool {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v) != ""
+	case time.Time:
+		return !v.IsZero()
+	case *time.Time:
+		return v != nil && !v.IsZero()
+	default:
+		return false
+REDACTED
+REDACTED
+
+func extraValueToFloat64(value any) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case int:
+		return float64(v), true
+	case int8:
+		return float64(v), true
+	case int16:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case uint:
+		return float64(v), true
+	case uint8:
+		return float64(v), true
+	case uint16:
+		return float64(v), true
+	case uint32:
+		return float64(v), true
+	case uint64:
+		return float64(v), true
+	case json.Number:
+		parsed, err := v.Float64()
+		return parsed, err == nil
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		return parsed, err == nil
+	default:
+		return 0, false
+REDACTED
 REDACTED
 
 func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
