@@ -62,6 +62,7 @@ REDACTED
 
 	stream, _ := converted["stream"].(bool)
 	model, _ := converted["model"].(string)
+	originalWriter := c.Writer
 	writer := newChatCompletionsResponseWriter(c.Writer, stream, includeUsage, model)
 	c.Writer = writer
 	c.Request.Body = io.NopCloser(bytes.NewReader(convertedBody))
@@ -69,6 +70,7 @@ REDACTED
 
 	h.Responses(c)
 	writer.Finalize()
+	c.Writer = originalWriter
 REDACTED
 
 type chatCompletionsResponseWriter struct {
@@ -165,6 +167,20 @@ REDACTED
 
 func (w *chatCompletionsResponseWriter) SetPassthrough() {
 	w.passthrough = true
+REDACTED
+
+func (w *chatCompletionsResponseWriter) Status() int {
+	if w.ResponseWriter == nil {
+		return 0
+REDACTED
+	return w.ResponseWriter.Status()
+REDACTED
+
+func (w *chatCompletionsResponseWriter) Written() bool {
+	if w.ResponseWriter == nil {
+		return false
+REDACTED
+	return w.ResponseWriter.Written()
 REDACTED
 
 func (w *chatCompletionsResponseWriter) flushStreamBuffer() {
