@@ -1758,6 +1758,16 @@ REDACTED
 			bodyModified = true
 			markPatchSet("model", normalizedModel)
 	REDACTED
+
+		// 移除 gpt-5.2-codex 以下的版本 verbosity 参数
+		// 确保高版本模型向低版本模型映射不报错
+		if !SupportsVerbosity(reqBody["model"].(string)) {
+			if text, ok := reqBody["text"].(map[string]any); ok {
+				if _, ok := text["verbosity"].(string); ok {
+					delete(text, "verbosity")
+			REDACTED
+		REDACTED
+	REDACTED
 REDACTED
 
 	// 规范化 reasoning.effort 参数（minimal -> none），与上游允许值对齐。
