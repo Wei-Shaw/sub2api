@@ -13,18 +13,18 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
-// ForwardAsAnthropic accepts an Anthropic Messages request body, converts it
+// ForwardAsChatCompletions accepts a Chat Completions request body, converts it
 // to OpenAI Responses API format, forwards to the OpenAI upstream, and converts
-// the response back to Anthropic Messages format. This enables Claude Code
-// clients to access OpenAI models through the standard /v1/messages endpoint.
-func (s *OpenAIGatewayService) ForwardAsAnthropic(
+// the response back to Chat Completions format. All account types (OAuth and API
+// Key) go through the Responses API conversion path since the upstream only
+// exposes the /v1/responses endpoint.
+func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,
@@ -34,43 +34,34 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
 
-	// 1. Parse Anthropic request
-	var anthropicReq apicompat.AnthropicRequest
-	if err := json.Unmarshal(body, &anthropicReq); err != nil {
-		return nil, fmt.Errorf("parse anthropic request: %w", err)
+	// 1. Parse Chat Completions request
+	var chatReq apicompat.ChatCompletionsRequest
+	if err := json.Unmarshal(body, &chatReq); err != nil {
+		return nil, fmt.Errorf("parse chat completions request: %w", err)
 REDACTED
-	originalModel := anthropicReq.Model
-	clientStream := anthropicReq.Stream // client's original stream preference
+	originalModel := chatReq.Model
+	clientStream := chatReq.Stream
+	includeUsage := chatReq.StreamOptions != nil && chatReq.StreamOptions.IncludeUsage
 
-	// 2. Convert Anthropic → Responses
-	responsesReq, err := apicompat.AnthropicToResponses(&anthropicReq)
+	// 2. Convert to Responses and forward
+	// ChatCompletionsToResponses always sets Stream=true (upstream always streams).
+	responsesReq, err := apicompat.ChatCompletionsToResponses(&chatReq)
 	if err != nil {
-		return nil, fmt.Errorf("convert anthropic to responses: %w", err)
-REDACTED
-
-	// Upstream always uses streaming (upstream may not support sync mode).
-	// The client's original preference determines the response format.
-	responsesReq.Stream = true
-	isStream := true
-
-	// 2b. Handle BetaFastMode → service_tier: "priority"
-	if containsBetaToken(c.GetHeader("anthropic-beta"), claude.BetaFastMode) {
-		responsesReq.ServiceTier = "priority"
+		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 REDACTED
 
 	// 3. Model mapping
 	mappedModel := account.GetMappedModel(originalModel)
-	// 分组级降级：账号未映射时使用分组默认映射模型
 	if mappedModel == originalModel && defaultMappedModel != "" {
 		mappedModel = defaultMappedModel
 REDACTED
 	responsesReq.Model = mappedModel
 
-	logger.L().Debug("openai messages: model mapping applied",
+	logger.L().Debug("openai chat_completions: model mapping applied",
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
 		zap.String("mapped_model", mappedModel),
-		zap.Bool("stream", isStream),
+		zap.Bool("stream", clientStream),
 	)
 
 	// 4. Marshal Responses request body, then apply OAuth codex transform
@@ -90,9 +81,6 @@ REDACTED
 	REDACTED else if promptCacheKey != "" {
 			reqBody["prompt_cache_key"] = promptCacheKey
 	REDACTED
-		// OAuth codex transform forces stream=true upstream, so always use
-		// the streaming response handler regardless of what the client asked.
-		isStream = true
 		responsesBody, err = json.Marshal(reqBody)
 		if err != nil {
 			return nil, fmt.Errorf("remarshal after codex transform: %w", err)
@@ -106,13 +94,11 @@ REDACTED
 REDACTED
 
 	// 6. Build upstream request
-	upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, responsesBody, token, isStream, promptCacheKey, false)
+	upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, responsesBody, token, true, promptCacheKey, false)
 	if err != nil {
 		return nil, fmt.Errorf("build upstream request: %w", err)
 REDACTED
 
-	// Override session_id with a deterministic UUID derived from the sticky
-	// session key (buildUpstreamRequest may have set it to the raw value).
 	if promptCacheKey != "" {
 		upstreamReq.Header.Set("session_id", generateSessionUUID(promptCacheKey))
 REDACTED
@@ -134,7 +120,7 @@ REDACTED
 			Kind:               "request_error",
 			Message:            safeErr,
 	REDACTED)
-		writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream request failed")
+		writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 REDACTED
 	defer func() { _ = resp.Body.Close() REDACTED()
@@ -175,19 +161,16 @@ REDACTED
 				RetryableOnSameAccount: account.IsPoolMode() && (isPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 		REDACTED
 	REDACTED
-		// Non-failover error: return Anthropic-formatted error to client
-		return s.handleAnthropicErrorResponse(resp, c, account)
+		return s.handleChatCompletionsErrorResponse(resp, c, account)
 REDACTED
 
 	// 9. Handle normal response
-	// Upstream is always streaming; choose response format based on client preference.
 	var result *OpenAIForwardResult
 	var handleErr error
 	if clientStream {
-		result, handleErr = s.handleAnthropicStreamingResponse(resp, c, originalModel, mappedModel, startTime)
+		result, handleErr = s.handleChatStreamingResponse(resp, c, originalModel, mappedModel, includeUsage, startTime)
 REDACTED else {
-		// Client wants JSON: buffer the streaming response and assemble a JSON reply.
-		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, originalModel, mappedModel, startTime)
+		result, handleErr = s.handleChatBufferedStreamingResponse(resp, c, originalModel, mappedModel, startTime)
 REDACTED
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
@@ -212,23 +195,20 @@ REDACTED
 	return result, handleErr
 REDACTED
 
-// handleAnthropicErrorResponse reads an upstream error and returns it in
-// Anthropic error format.
-func (s *OpenAIGatewayService) handleAnthropicErrorResponse(
+// handleChatCompletionsErrorResponse reads an upstream error and returns it in
+// OpenAI Chat Completions error format.
+func (s *OpenAIGatewayService) handleChatCompletionsErrorResponse(
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
 ) (*OpenAIForwardResult, error) {
-	return s.handleCompatErrorResponse(resp, c, account, writeAnthropicError)
+	return s.handleCompatErrorResponse(resp, c, account, writeChatCompletionsError)
 REDACTED
 
-// handleAnthropicBufferedStreamingResponse reads all Responses SSE events from
-// the upstream streaming response, finds the terminal event (response.completed
-// / response.incomplete / response.failed), converts the complete response to
-// Anthropic Messages JSON format, and writes it to the client.
-// This is used when the client requested stream=false but the upstream is always
-// streaming.
-func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
+// handleChatBufferedStreamingResponse reads all Responses SSE events from the
+// upstream, finds the terminal event, converts to a Chat Completions JSON
+// response, and writes it to the client.
+func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
 	originalModel string,
@@ -249,7 +229,6 @@ REDACTED
 
 	for scanner.Scan() {
 		line := scanner.Text()
-
 		if !strings.HasPrefix(line, "data: ") || line == "data: [DONE]" {
 			continue
 	REDACTED
@@ -257,14 +236,13 @@ REDACTED
 
 		var event apicompat.ResponsesStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
-			logger.L().Warn("openai messages buffered: failed to parse event",
+			logger.L().Warn("openai chat_completions buffered: failed to parse event",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
 			continue
 	REDACTED
 
-		// Terminal events carry the complete ResponsesResponse with output + usage.
 		if (event.Type == "response.completed" || event.Type == "response.incomplete" || event.Type == "response.failed") &&
 			event.Response != nil {
 			finalResponse = event.Response
@@ -282,7 +260,7 @@ REDACTED
 
 	if err := scanner.Err(); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("openai messages buffered: read error",
+			logger.L().Warn("openai chat_completions buffered: read error",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -290,16 +268,16 @@ REDACTED
 REDACTED
 
 	if finalResponse == nil {
-		writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream stream ended without a terminal response event")
+		writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Upstream stream ended without a terminal response event")
 		return nil, fmt.Errorf("upstream stream ended without terminal event")
 REDACTED
 
-	anthropicResp := apicompat.ResponsesToAnthropic(finalResponse, originalModel)
+	chatResp := apicompat.ResponsesToChatCompletions(finalResponse, originalModel)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 REDACTED
-	c.JSON(http.StatusOK, anthropicResp)
+	c.JSON(http.StatusOK, chatResp)
 
 	return &OpenAIForwardResult{
 		RequestID:    requestID,
@@ -311,16 +289,14 @@ REDACTED
 REDACTED, nil
 REDACTED
 
-// handleAnthropicStreamingResponse reads Responses SSE events from upstream,
-// converts each to Anthropic SSE events, and writes them to the client.
-// When StreamKeepaliveInterval is configured, it uses a goroutine + channel
-// pattern to send Anthropic ping events during periods of upstream silence,
-// preventing proxy/client timeout disconnections.
-func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
+// handleChatStreamingResponse reads Responses SSE events from upstream,
+// converts each to Chat Completions SSE chunks, and writes them to the client.
+func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
 	originalModel string,
 	mappedModel string,
+	includeUsage bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
@@ -334,8 +310,10 @@ REDACTED
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.WriteHeader(http.StatusOK)
 
-	state := apicompat.NewResponsesEventToAnthropicState()
+	state := apicompat.NewResponsesEventToChatState()
 	state.Model = originalModel
+	state.IncludeUsage = includeUsage
+
 	var usage OpenAIUsage
 	var firstTokenMs *int
 	firstChunk := true
@@ -347,7 +325,6 @@ REDACTED
 REDACTED
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
-	// resultWithUsage builds the final result snapshot.
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
 			RequestID:    requestID,
@@ -360,8 +337,6 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// processDataLine handles a single "data: ..." SSE line from upstream.
-	// Returns (clientDisconnected bool).
 	processDataLine := func(payload string) bool {
 		if firstChunk {
 			firstChunk = false
@@ -371,7 +346,7 @@ REDACTED
 
 		var event apicompat.ResponsesStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
-			logger.L().Warn("openai messages stream: failed to parse event",
+			logger.L().Warn("openai chat_completions stream: failed to parse event",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
@@ -390,62 +365,61 @@ REDACTED
 		REDACTED
 	REDACTED
 
-		// Convert to Anthropic events
-		events := apicompat.ResponsesEventToAnthropicEvents(&event, state)
-		for _, evt := range events {
-			sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)
+		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
+		for _, chunk := range chunks {
+			sse, err := apicompat.ChatChunkToSSE(chunk)
 			if err != nil {
-				logger.L().Warn("openai messages stream: failed to marshal event",
+				logger.L().Warn("openai chat_completions stream: failed to marshal chunk",
 					zap.Error(err),
 					zap.String("request_id", requestID),
 				)
 				continue
 		REDACTED
 			if _, err := fmt.Fprint(c.Writer, sse); err != nil {
-				logger.L().Info("openai messages stream: client disconnected",
+				logger.L().Info("openai chat_completions stream: client disconnected",
 					zap.String("request_id", requestID),
 				)
 				return true
 		REDACTED
 	REDACTED
-		if len(events) > 0 {
+		if len(chunks) > 0 {
 			c.Writer.Flush()
 	REDACTED
 		return false
 REDACTED
 
-	// finalizeStream sends any remaining Anthropic events and returns the result.
 	finalizeStream := func() (*OpenAIForwardResult, error) {
-		if finalEvents := apicompat.FinalizeResponsesAnthropicStream(state); len(finalEvents) > 0 {
-			for _, evt := range finalEvents {
-				sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)
+		if finalChunks := apicompat.FinalizeResponsesChatStream(state); len(finalChunks) > 0 {
+			for _, chunk := range finalChunks {
+				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {
 					continue
 			REDACTED
 				fmt.Fprint(c.Writer, sse) //nolint:errcheck
 		REDACTED
-			c.Writer.Flush()
 	REDACTED
+		// Send [DONE] sentinel
+		fmt.Fprint(c.Writer, "data: [DONE]\n\n") //nolint:errcheck
+		c.Writer.Flush()
 		return resultWithUsage(), nil
 REDACTED
 
-	// handleScanErr logs scanner errors if meaningful.
 	handleScanErr := func(err error) {
 		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			logger.L().Warn("openai messages stream: read error",
+			logger.L().Warn("openai chat_completions stream: read error",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
 	REDACTED
 REDACTED
 
-	// ── Determine keepalive interval ──
+	// Determine keepalive interval
 	keepaliveInterval := time.Duration(0)
 	if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
 		keepaliveInterval = time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
 REDACTED
 
-	// ── No keepalive: fast synchronous path (no goroutine overhead) ──
+	// No keepalive: fast synchronous path
 	if keepaliveInterval <= 0 {
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -460,7 +434,7 @@ REDACTED
 		return finalizeStream()
 REDACTED
 
-	// ── With keepalive: goroutine + channel + select ──
+	// With keepalive: goroutine + channel + select
 	type scanEvent struct {
 		line string
 		err  error
@@ -496,7 +470,6 @@ REDACTED()
 		select {
 		case ev, ok := <-events:
 			if !ok {
-				// Upstream closed
 				return finalizeStream()
 		REDACTED
 			if ev.err != nil {
@@ -516,10 +489,9 @@ REDACTED()
 			if time.Since(lastDataAt) < keepaliveInterval {
 				continue
 		REDACTED
-			// Send Anthropic-format ping event
-			if _, err := fmt.Fprint(c.Writer, "event: ping\ndata: {\"type\":\"ping\"REDACTED\n\n"); err != nil {
-				// Client disconnected
-				logger.L().Info("openai messages stream: client disconnected during keepalive",
+			// Send SSE comment as keepalive
+			if _, err := fmt.Fprint(c.Writer, ":\n\n"); err != nil {
+				logger.L().Info("openai chat_completions stream: client disconnected during keepalive",
 					zap.String("request_id", requestID),
 				)
 				return resultWithUsage(), nil
@@ -529,10 +501,9 @@ REDACTED()
 REDACTED
 REDACTED
 
-// writeAnthropicError writes an error response in Anthropic Messages API format.
-func writeAnthropicError(c *gin.Context, statusCode int, errType, message string) {
+// writeChatCompletionsError writes an error response in OpenAI Chat Completions format.
+func writeChatCompletionsError(c *gin.Context, statusCode int, errType, message string) {
 	c.JSON(statusCode, gin.H{
-		"type": "error",
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
