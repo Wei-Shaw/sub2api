@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -43,6 +45,39 @@ REDACTED
 type usageLogRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
+	db     *sql.DB
+
+	createBatchOnce sync.Once
+	createBatchCh   chan usageLogCreateRequest
+REDACTED
+
+const (
+	usageLogCreateBatchMaxSize  = 64
+	usageLogCreateBatchWindow   = 3 * time.Millisecond
+	usageLogCreateBatchQueueCap = 4096
+)
+
+type usageLogCreateRequest struct {
+	log      *service.UsageLog
+	resultCh chan usageLogCreateResult
+REDACTED
+
+type usageLogCreateResult struct {
+	inserted bool
+	err      error
+REDACTED
+
+type usageLogInsertPrepared struct {
+	createdAt      time.Time
+	requestID      string
+	rateMultiplier float64
+	requestType    int16
+	args           []any
+REDACTED
+
+type usageLogBatchState struct {
+	ID        int64
+	CreatedAt time.Time
 REDACTED
 
 func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB) service.UsageLogRepository {
@@ -51,7 +86,11 @@ REDACTED
 
 func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usageLogRepository {
 	// 使用 scanSingleRow 替代 QueryRowContext，保证 ent.Tx 作为 sqlExecutor 可用。
-	return &usageLogRepository{client: client, sql: sqlqREDACTED
+	repo := &usageLogRepository{client: client, sql: sqlqREDACTED
+	if db, ok := sqlq.(*sql.DB); ok {
+		repo.db = db
+REDACTED
+	return repo
 REDACTED
 
 // getPerformanceStats 获取 RPM 和 TPM（近5分钟平均值，可选按用户过滤）
@@ -82,24 +121,25 @@ func (r *usageLogRepository) Create(ctx context.Context, log *service.UsageLog) 
 		return false, nil
 REDACTED
 
-	// 在事务上下文中，使用 tx 绑定的 ExecQuerier 执行原生 SQL，保证与其他更新同事务。
-	// 无事务时回退到默认的 *sql.DB 执行器。
-	sqlq := r.sql
 	if tx := dbent.TxFromContext(ctx); tx != nil {
-		sqlq = tx.Client()
+		return r.createSingle(ctx, tx.Client(), log)
 REDACTED
-
-	createdAt := log.CreatedAt
-	if createdAt.IsZero() {
-		createdAt = time.Now()
+	if r.db == nil {
+		return r.createSingle(ctx, r.sql, log)
 REDACTED
-
 	requestID := strings.TrimSpace(log.RequestID)
+	if requestID == "" {
+		return r.createSingle(ctx, r.sql, log)
+REDACTED
 	log.RequestID = requestID
+	return r.createBatched(ctx, log)
+REDACTED
 
-	rateMultiplier := log.RateMultiplier
-	log.SyncRequestTypeAndLegacyFields()
-	requestType := int16(log.RequestType)
+func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor, log *service.UsageLog) (bool, error) {
+	prepared := prepareUsageLogInsert(log)
+	if sqlq == nil {
+		sqlq = r.sql
+REDACTED
 
 	query := `
 		INSERT INTO usage_logs (
@@ -151,6 +191,336 @@ REDACTED
 		RETURNING id, created_at
 	`
 
+	if err := scanSingleRow(ctx, sqlq, query, prepared.args, &log.ID, &log.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) && prepared.requestID != "" {
+			selectQuery := "SELECT id, created_at FROM usage_logs WHERE request_id = $1 AND api_key_id = $2"
+			if err := scanSingleRow(ctx, sqlq, selectQuery, []any{prepared.requestID, log.APIKeyIDREDACTED, &log.ID, &log.CreatedAt); err != nil {
+				return false, err
+		REDACTED
+			log.RateMultiplier = prepared.rateMultiplier
+			return false, nil
+	REDACTED else {
+			return false, err
+	REDACTED
+REDACTED
+	log.RateMultiplier = prepared.rateMultiplier
+	return true, nil
+REDACTED
+
+func (r *usageLogRepository) createBatched(ctx context.Context, log *service.UsageLog) (bool, error) {
+	if r.db == nil {
+		return r.createSingle(ctx, r.sql, log)
+REDACTED
+	r.ensureCreateBatcher()
+	if r.createBatchCh == nil {
+		return r.createSingle(ctx, r.sql, log)
+REDACTED
+
+	req := usageLogCreateRequest{
+		log:      log,
+		resultCh: make(chan usageLogCreateResult, 1),
+REDACTED
+
+	select {
+	case r.createBatchCh <- req:
+	case <-ctx.Done():
+		return false, ctx.Err()
+	default:
+		return r.createSingle(ctx, r.sql, log)
+REDACTED
+
+	select {
+	case res := <-req.resultCh:
+		return res.inserted, res.err
+	case <-ctx.Done():
+		return false, ctx.Err()
+REDACTED
+REDACTED
+
+func (r *usageLogRepository) ensureCreateBatcher() {
+	if r == nil || r.db == nil {
+		return
+REDACTED
+	r.createBatchOnce.Do(func() {
+		r.createBatchCh = make(chan usageLogCreateRequest, usageLogCreateBatchQueueCap)
+		go r.runCreateBatcher(r.db)
+REDACTED)
+REDACTED
+
+func (r *usageLogRepository) runCreateBatcher(db *sql.DB) {
+	for {
+		first, ok := <-r.createBatchCh
+		if !ok {
+			return
+	REDACTED
+
+		batch := make([]usageLogCreateRequest, 0, usageLogCreateBatchMaxSize)
+		batch = append(batch, first)
+
+		timer := time.NewTimer(usageLogCreateBatchWindow)
+	batchLoop:
+		for len(batch) < usageLogCreateBatchMaxSize {
+			select {
+			case req, ok := <-r.createBatchCh:
+				if !ok {
+					break batchLoop
+			REDACTED
+				batch = append(batch, req)
+			case <-timer.C:
+				break batchLoop
+		REDACTED
+	REDACTED
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+		REDACTED
+	REDACTED
+
+		r.flushCreateBatch(db, batch)
+REDACTED
+REDACTED
+
+func (r *usageLogRepository) flushCreateBatch(db *sql.DB, batch []usageLogCreateRequest) {
+	if len(batch) == 0 {
+		return
+REDACTED
+
+	uniqueOrder := make([]string, 0, len(batch))
+	preparedByKey := make(map[string]usageLogInsertPrepared, len(batch))
+	requestsByKey := make(map[string][]usageLogCreateRequest, len(batch))
+	fallback := make([]usageLogCreateRequest, 0)
+
+	for _, req := range batch {
+		if req.log == nil {
+			sendUsageLogCreateResult(req.resultCh, usageLogCreateResult{inserted: false, err: nilREDACTED)
+			continue
+	REDACTED
+		prepared := prepareUsageLogInsert(req.log)
+		if prepared.requestID == "" {
+			fallback = append(fallback, req)
+			continue
+	REDACTED
+		key := usageLogBatchKey(prepared.requestID, req.log.APIKeyID)
+		if _, exists := requestsByKey[key]; !exists {
+			uniqueOrder = append(uniqueOrder, key)
+			preparedByKey[key] = prepared
+	REDACTED
+		requestsByKey[key] = append(requestsByKey[key], req)
+REDACTED
+
+	if len(uniqueOrder) > 0 {
+		insertedMap, stateMap, err := r.batchInsertUsageLogs(db, uniqueOrder, preparedByKey)
+		if err != nil {
+			for _, key := range uniqueOrder {
+				fallback = append(fallback, requestsByKey[key]...)
+		REDACTED
+	REDACTED else {
+			for _, key := range uniqueOrder {
+				reqs := requestsByKey[key]
+				state, ok := stateMap[key]
+				if !ok {
+					for _, req := range reqs {
+						sendUsageLogCreateResult(req.resultCh, usageLogCreateResult{
+							inserted: false,
+							err:      fmt.Errorf("usage log batch state missing for key=%s", key),
+					REDACTED)
+				REDACTED
+					continue
+			REDACTED
+				for idx, req := range reqs {
+					req.log.ID = state.ID
+					req.log.CreatedAt = state.CreatedAt
+					req.log.RateMultiplier = preparedByKey[key].rateMultiplier
+					sendUsageLogCreateResult(req.resultCh, usageLogCreateResult{
+						inserted: idx == 0 && insertedMap[key],
+						err:      nil,
+				REDACTED)
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	if len(fallback) == 0 {
+		return
+REDACTED
+
+	fallbackCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for _, req := range fallback {
+		inserted, err := r.createSingle(fallbackCtx, db, req.log)
+		sendUsageLogCreateResult(req.resultCh, usageLogCreateResult{inserted: inserted, err: errREDACTED)
+REDACTED
+REDACTED
+
+func (r *usageLogRepository) batchInsertUsageLogs(db *sql.DB, keys []string, preparedByKey map[string]usageLogInsertPrepared) (map[string]bool, map[string]usageLogBatchState, error) {
+	if len(keys) == 0 {
+		return map[string]bool{REDACTED, map[string]usageLogBatchState{REDACTED, nil
+REDACTED
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	query, args := buildUsageLogBatchInsertQuery(keys, preparedByKey)
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, nil, err
+REDACTED
+	insertedMap := make(map[string]bool, len(keys))
+	for rows.Next() {
+		var (
+			requestID string
+			apiKeyID  int64
+			id        int64
+			createdAt time.Time
+		)
+		if err := rows.Scan(&requestID, &apiKeyID, &id, &createdAt); err != nil {
+			_ = rows.Close()
+			return nil, nil, err
+	REDACTED
+		insertedMap[usageLogBatchKey(requestID, apiKeyID)] = true
+REDACTED
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, nil, err
+REDACTED
+	_ = rows.Close()
+
+	stateMap, err := loadUsageLogBatchStates(ctx, db, keys, preparedByKey)
+	if err != nil {
+		return nil, nil, err
+REDACTED
+	return insertedMap, stateMap, nil
+REDACTED
+
+func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usageLogInsertPrepared) (string, []any) {
+	var query strings.Builder
+	_, _ = query.WriteString(`
+		INSERT INTO usage_logs (
+			user_id,
+			api_key_id,
+			account_id,
+			request_id,
+			model,
+			group_id,
+			subscription_id,
+			input_tokens,
+			output_tokens,
+			cache_creation_tokens,
+			cache_read_tokens,
+			cache_creation_5m_tokens,
+			cache_creation_1h_tokens,
+			input_cost,
+			output_cost,
+			cache_creation_cost,
+			cache_read_cost,
+			total_cost,
+			actual_cost,
+			rate_multiplier,
+			account_rate_multiplier,
+			billing_type,
+			request_type,
+			stream,
+			openai_ws_mode,
+			duration_ms,
+			first_token_ms,
+			user_agent,
+			ip_address,
+			image_count,
+			image_size,
+			media_type,
+			service_tier,
+			reasoning_effort,
+			cache_ttl_overridden,
+			created_at
+		) VALUES `)
+
+	args := make([]any, 0, len(keys)*36)
+	argPos := 1
+	for idx, key := range keys {
+		if idx > 0 {
+			_, _ = query.WriteString(",")
+	REDACTED
+		_, _ = query.WriteString("(")
+		prepared := preparedByKey[key]
+		for i := 0; i < len(prepared.args); i++ {
+			if i > 0 {
+				_, _ = query.WriteString(",")
+		REDACTED
+			_, _ = query.WriteString("$")
+			_, _ = query.WriteString(strconv.Itoa(argPos))
+			argPos++
+	REDACTED
+		_, _ = query.WriteString(")")
+		args = append(args, prepared.args...)
+REDACTED
+	_, _ = query.WriteString(`
+		ON CONFLICT (request_id, api_key_id) DO NOTHING
+		RETURNING request_id, api_key_id, id, created_at
+	`)
+	return query.String(), args
+REDACTED
+
+func loadUsageLogBatchStates(ctx context.Context, db *sql.DB, keys []string, preparedByKey map[string]usageLogInsertPrepared) (map[string]usageLogBatchState, error) {
+	var query strings.Builder
+	_, _ = query.WriteString(`SELECT request_id, api_key_id, id, created_at FROM usage_logs WHERE `)
+	args := make([]any, 0, len(keys)*2)
+	argPos := 1
+	for idx, key := range keys {
+		if idx > 0 {
+			_, _ = query.WriteString(" OR ")
+	REDACTED
+		prepared := preparedByKey[key]
+		apiKeyID := prepared.args[1]
+		_, _ = query.WriteString("(request_id = $")
+		_, _ = query.WriteString(strconv.Itoa(argPos))
+		_, _ = query.WriteString(" AND api_key_id = $")
+		_, _ = query.WriteString(strconv.Itoa(argPos + 1))
+		_, _ = query.WriteString(")")
+		args = append(args, prepared.requestID, apiKeyID)
+		argPos += 2
+REDACTED
+
+	rows, err := db.QueryContext(ctx, query.String(), args...)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	stateMap := make(map[string]usageLogBatchState, len(keys))
+	for rows.Next() {
+		var (
+			requestID string
+			apiKeyID  int64
+			id        int64
+			createdAt time.Time
+		)
+		if err := rows.Scan(&requestID, &apiKeyID, &id, &createdAt); err != nil {
+			return nil, err
+	REDACTED
+		stateMap[usageLogBatchKey(requestID, apiKeyID)] = usageLogBatchState{
+			ID:        id,
+			CreatedAt: createdAt,
+	REDACTED
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+	return stateMap, nil
+REDACTED
+
+func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
+	createdAt := log.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now()
+REDACTED
+
+	requestID := strings.TrimSpace(log.RequestID)
+	log.RequestID = requestID
+
+	rateMultiplier := log.RateMultiplier
+	log.SyncRequestTypeAndLegacyFields()
+	requestType := int16(log.RequestType)
+
 	groupID := nullInt64(log.GroupID)
 	subscriptionID := nullInt64(log.SubscriptionID)
 	duration := nullInt(log.DurationMs)
@@ -167,58 +537,64 @@ REDACTED
 		requestIDArg = requestID
 REDACTED
 
-	args := []any{
-		log.UserID,
-		log.APIKeyID,
-		log.AccountID,
-		requestIDArg,
-		log.Model,
-		groupID,
-		subscriptionID,
-		log.InputTokens,
-		log.OutputTokens,
-		log.CacheCreationTokens,
-		log.CacheReadTokens,
-		log.CacheCreation5mTokens,
-		log.CacheCreation1hTokens,
-		log.InputCost,
-		log.OutputCost,
-		log.CacheCreationCost,
-		log.CacheReadCost,
-		log.TotalCost,
-		log.ActualCost,
-		rateMultiplier,
-		log.AccountRateMultiplier,
-		log.BillingType,
-		requestType,
-		log.Stream,
-		log.OpenAIWSMode,
-		duration,
-		firstToken,
-		userAgent,
-		ipAddress,
-		log.ImageCount,
-		imageSize,
-		mediaType,
-		serviceTier,
-		reasoningEffort,
-		log.CacheTTLOverridden,
-		createdAt,
+	return usageLogInsertPrepared{
+		createdAt:      createdAt,
+		requestID:      requestID,
+		rateMultiplier: rateMultiplier,
+		requestType:    requestType,
+		args: []any{
+			log.UserID,
+			log.APIKeyID,
+			log.AccountID,
+			requestIDArg,
+			log.Model,
+			groupID,
+			subscriptionID,
+			log.InputTokens,
+			log.OutputTokens,
+			log.CacheCreationTokens,
+			log.CacheReadTokens,
+			log.CacheCreation5mTokens,
+			log.CacheCreation1hTokens,
+			log.InputCost,
+			log.OutputCost,
+			log.CacheCreationCost,
+			log.CacheReadCost,
+			log.TotalCost,
+			log.ActualCost,
+			rateMultiplier,
+			log.AccountRateMultiplier,
+			log.BillingType,
+			requestType,
+			log.Stream,
+			log.OpenAIWSMode,
+			duration,
+			firstToken,
+			userAgent,
+			ipAddress,
+			log.ImageCount,
+			imageSize,
+			mediaType,
+			serviceTier,
+			reasoningEffort,
+			log.CacheTTLOverridden,
+			createdAt,
+	REDACTED,
 REDACTED
-	if err := scanSingleRow(ctx, sqlq, query, args, &log.ID, &log.CreatedAt); err != nil {
-		if errors.Is(err, sql.ErrNoRows) && requestID != "" {
-			selectQuery := "SELECT id, created_at FROM usage_logs WHERE request_id = $1 AND api_key_id = $2"
-			if err := scanSingleRow(ctx, sqlq, selectQuery, []any{requestID, log.APIKeyIDREDACTED, &log.ID, &log.CreatedAt); err != nil {
-				return false, err
-		REDACTED
-			log.RateMultiplier = rateMultiplier
-			return false, nil
-	REDACTED else {
-			return false, err
-	REDACTED
 REDACTED
-	log.RateMultiplier = rateMultiplier
-	return true, nil
+
+func usageLogBatchKey(requestID string, apiKeyID int64) string {
+	return requestID + "\x1f" + strconv.FormatInt(apiKeyID, 10)
+REDACTED
+
+func sendUsageLogCreateResult(ch chan usageLogCreateResult, res usageLogCreateResult) {
+	if ch == nil {
+		return
+REDACTED
+	select {
+	case ch <- res:
+	default:
+REDACTED
 REDACTED
 
 func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (log *service.UsageLog, err error) {

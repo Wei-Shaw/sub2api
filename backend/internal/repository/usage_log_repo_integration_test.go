@@ -4,6 +4,8 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -82,6 +85,102 @@ REDACTED
 	_, err := s.repo.Create(s.ctx, log)
 	s.Require().NoError(err, "Create")
 	s.Require().NotZero(log.ID)
+REDACTED
+
+func TestUsageLogRepositoryCreate_BatchPathConcurrent(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := newUsageLogRepositoryWithSQL(client, integrationDB)
+
+	user := mustCreateUser(t, client, &service.User{Email: fmt.Sprintf("usage-batch-%d@example.com", time.Now().UnixNano())REDACTED)
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{UserID: user.ID, Key: "sk-usage-batch-" + uuid.NewString(), Name: "k"REDACTED)
+	account := mustCreateAccount(t, client, &service.Account{Name: "acc-usage-batch-" + uuid.NewString()REDACTED)
+
+	const total = 16
+	results := make([]bool, total)
+	errs := make([]error, total)
+	logs := make([]*service.UsageLog, total)
+
+	var wg sync.WaitGroup
+	wg.Add(total)
+	for i := 0; i < total; i++ {
+		i := i
+		logs[i] = &service.UsageLog{
+			UserID:       user.ID,
+			APIKeyID:     apiKey.ID,
+			AccountID:    account.ID,
+			RequestID:    uuid.NewString(),
+			Model:        "claude-3",
+			InputTokens:  10 + i,
+			OutputTokens: 20 + i,
+			TotalCost:    0.5,
+			ActualCost:   0.5,
+			CreatedAt:    time.Now().UTC(),
+	REDACTED
+		go func() {
+			defer wg.Done()
+			results[i], errs[i] = repo.Create(ctx, logs[i])
+	REDACTED()
+REDACTED
+	wg.Wait()
+
+	for i := 0; i < total; i++ {
+		require.NoError(t, errs[i])
+		require.True(t, results[i])
+		require.NotZero(t, logs[i].ID)
+REDACTED
+
+	var count int
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs WHERE api_key_id = $1", apiKey.ID).Scan(&count))
+	require.Equal(t, total, count)
+REDACTED
+
+func TestUsageLogRepositoryCreate_BatchPathDuplicateRequestID(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := newUsageLogRepositoryWithSQL(client, integrationDB)
+
+	user := mustCreateUser(t, client, &service.User{Email: fmt.Sprintf("usage-dup-%d@example.com", time.Now().UnixNano())REDACTED)
+	apiKey := mustCreateApiKey(t, client, &service.APIKey{UserID: user.ID, Key: "sk-usage-dup-" + uuid.NewString(), Name: "k"REDACTED)
+	account := mustCreateAccount(t, client, &service.Account{Name: "acc-usage-dup-" + uuid.NewString()REDACTED)
+	requestID := uuid.NewString()
+
+	log1 := &service.UsageLog{
+		UserID:       user.ID,
+		APIKeyID:     apiKey.ID,
+		AccountID:    account.ID,
+		RequestID:    requestID,
+		Model:        "claude-3",
+		InputTokens:  10,
+		OutputTokens: 20,
+		TotalCost:    0.5,
+		ActualCost:   0.5,
+		CreatedAt:    time.Now().UTC(),
+REDACTED
+	log2 := &service.UsageLog{
+		UserID:       user.ID,
+		APIKeyID:     apiKey.ID,
+		AccountID:    account.ID,
+		RequestID:    requestID,
+		Model:        "claude-3",
+		InputTokens:  10,
+		OutputTokens: 20,
+		TotalCost:    0.5,
+		ActualCost:   0.5,
+		CreatedAt:    time.Now().UTC(),
+REDACTED
+
+	inserted1, err1 := repo.Create(ctx, log1)
+	inserted2, err2 := repo.Create(ctx, log2)
+	require.NoError(t, err1)
+	require.NoError(t, err2)
+	require.True(t, inserted1)
+	require.False(t, inserted2)
+	require.Equal(t, log1.ID, log2.ID)
+
+	var count int
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_logs WHERE request_id = $1 AND api_key_id = $2", requestID, apiKey.ID).Scan(&count))
+	require.Equal(t, 1, count)
 REDACTED
 
 func (s *UsageLogRepoSuite) TestGetByID() {
