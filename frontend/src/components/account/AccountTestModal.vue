@@ -15,7 +15,7 @@
           <div
             class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-primary-600"
           >
-            <Icon name="userCircle" size="md" class="text-white" :stroke-width="2" />
+            <Icon name="play" size="md" class="text-white" :stroke-width="2" />
           </div>
           <div>
             <div class="font-semibold text-gray-900 dark:text-gray-100">{{ account.name REDACTEDREDACTED</div>
@@ -61,6 +61,17 @@
         {{ t('admin.accounts.soraTestHint') REDACTEDREDACTED
       </div>
 
+      <div v-if="supportsGeminiImageTest" class="space-y-1.5">
+        <TextArea
+          v-model="testPrompt"
+          :label="t('admin.accounts.geminiImagePromptLabel')"
+          :placeholder="t('admin.accounts.geminiImagePromptPlaceholder')"
+          :hint="t('admin.accounts.geminiImageTestHint')"
+          :disabled="status === 'connecting'"
+          rows="3"
+        />
+      </div>
+
       <!-- Terminal Output -->
       <div class="group relative">
         <div
@@ -69,25 +80,11 @@
         >
           <!-- Status Line -->
           <div v-if="status === 'idle'" class="flex items-center gap-2 text-gray-500">
-            <Icon name="bolt" size="sm" :stroke-width="2" />
+            <Icon name="play" size="sm" :stroke-width="2" />
             <span>{{ t('admin.accounts.readyToTest') REDACTEDREDACTED</span>
           </div>
           <div v-else-if="status === 'connecting'" class="flex items-center gap-2 text-yellow-400">
-            <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
+            <Icon name="refresh" size="sm" class="animate-spin" :stroke-width="2" />
             <span>{{ t('admin.accounts.connectingToApi') REDACTEDREDACTED</span>
           </div>
 
@@ -106,21 +103,14 @@
             v-if="status === 'success'"
             class="mt-3 flex items-center gap-2 border-t border-gray-700 pt-3 text-green-400"
           >
-            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
+            <Icon name="check" size="sm" :stroke-width="2" />
             <span>{{ t('admin.accounts.testCompleted') REDACTEDREDACTED</span>
           </div>
           <div
             v-else-if="status === 'error'"
             class="mt-3 flex items-center gap-2 border-t border-gray-700 pt-3 text-red-400"
           >
-            <Icon name="xCircle" size="sm" :stroke-width="2" />
+            <Icon name="x" size="sm" :stroke-width="2" />
             <span>{{ errorMessage REDACTEDREDACTED</span>
           </div>
         </div>
@@ -132,21 +122,48 @@
           class="absolute right-2 top-2 rounded-lg bg-gray-800/80 p-1.5 text-gray-400 opacity-0 transition-all hover:bg-gray-700 hover:text-white group-hover:opacity-100"
           :title="t('admin.accounts.copyOutput')"
         >
-          <Icon name="copy" size="sm" :stroke-width="2" />
+          <Icon name="link" size="sm" :stroke-width="2" />
         </button>
+      </div>
+
+      <div v-if="generatedImages.length > 0" class="space-y-2">
+        <div class="text-xs font-medium text-gray-600 dark:text-gray-300">
+          {{ t('admin.accounts.geminiImagePreview') REDACTEDREDACTED
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <a
+            v-for="(image, index) in generatedImages"
+            :key="`${image.urlREDACTED-${indexREDACTED`"
+            :href="image.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-primary-300 hover:shadow-md dark:border-dark-500 dark:bg-dark-700"
+          >
+            <img :src="image.url" :alt="`gemini-test-image-${index + 1REDACTED`" class="h-48 w-full object-cover" />
+            <div class="border-t border-gray-100 px-3 py-2 text-xs text-gray-500 dark:border-dark-500 dark:text-gray-300">
+              {{ image.mimeType || 'image/*' REDACTEDREDACTED
+            </div>
+          </a>
+        </div>
       </div>
 
       <!-- Test Info -->
       <div class="flex items-center justify-between px-1 text-xs text-gray-500 dark:text-gray-400">
         <div class="flex items-center gap-3">
           <span class="flex items-center gap-1">
-            <Icon name="cpu" size="sm" :stroke-width="2" />
+            <Icon name="grid" size="sm" :stroke-width="2" />
             {{ isSoraAccount ? t('admin.accounts.soraTestTarget') : t('admin.accounts.testModel') REDACTEDREDACTED
           </span>
         </div>
         <span class="flex items-center gap-1">
-          <Icon name="chatBubble" size="sm" :stroke-width="2" />
-          {{ isSoraAccount ? t('admin.accounts.soraTestMode') : t('admin.accounts.testPrompt') REDACTEDREDACTED
+          <Icon name="chat" size="sm" :stroke-width="2" />
+          {{
+            isSoraAccount
+              ? t('admin.accounts.soraTestMode')
+              : supportsGeminiImageTest
+                ? t('admin.accounts.geminiImageTestMode')
+                : t('admin.accounts.testPrompt')
+          REDACTEDREDACTED
         </span>
       </div>
     </div>
@@ -174,54 +191,15 @@
                   : 'bg-primary-500 text-white hover:bg-primary-600'
           ]"
         >
-          <svg
+          <Icon
             v-if="status === 'connecting'"
-            class="h-4 w-4 animate-spin"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              class="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              stroke-width="4"
-            ></circle>
-            <path
-              class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <svg
-            v-else-if="status === 'idle'"
-            class="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-            />
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
+            name="refresh"
+            size="sm"
+            class="animate-spin"
+            :stroke-width="2"
+          />
+          <Icon v-else-if="status === 'idle'" name="play" size="sm" :stroke-width="2" />
+          <Icon v-else name="refresh" size="sm" :stroke-width="2" />
           <span>
             {{
               status === 'connecting'
@@ -242,7 +220,8 @@ import { computed, ref, watch, nextTick REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
-import Icon from '@/components/icons/Icon.vue'
+import TextArea from '@/components/common/TextArea.vue'
+import { Icon REDACTED from '@/components/icons'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Account, ClaudeModel REDACTED from '@/types'
@@ -253,6 +232,11 @@ const { copyToClipboard REDACTED = useClipboard()
 interface OutputLine {
   text: string
   class: string
+REDACTED
+
+interface PreviewImage {
+  url: string
+  mimeType?: string
 REDACTED
 
 const props = defineProps<{
@@ -271,15 +255,25 @@ const streamingContent = ref('')
 const errorMessage = ref('')
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
+const testPrompt = ref('')
 const loadingModels = ref(false)
 let eventSource: EventSource | null = null
 const isSoraAccount = computed(() => props.account?.platform === 'sora')
+const generatedImages = ref<PreviewImage[]>([])
+const supportsGeminiImageTest = computed(() => {
+  if (isSoraAccount.value) return false
+  const modelID = selectedModelId.value.toLowerCase()
+  if (!modelID.startsWith('gemini-') || !modelID.includes('-image')) return false
+
+  return props.account?.platform === 'gemini' || (props.account?.platform === 'antigravity' && props.account?.type === 'apikey')
+REDACTED)
 
 // Load available models when modal opens
 watch(
   () => props.show,
   async (newVal) => {
     if (newVal && props.account) {
+      testPrompt.value = ''
       resetState()
       await loadAvailableModels()
     REDACTED else {
@@ -287,6 +281,12 @@ watch(
     REDACTED
   REDACTED
 )
+
+watch(selectedModelId, () => {
+  if (supportsGeminiImageTest.value && !testPrompt.value.trim()) {
+    testPrompt.value = t('admin.accounts.geminiImagePromptDefault')
+  REDACTED
+REDACTED)
 
 const loadAvailableModels = async () => {
   if (!props.account) return
@@ -332,6 +332,7 @@ const resetState = () => {
   outputLines.value = []
   streamingContent.value = ''
   errorMessage.value = ''
+  generatedImages.value = []
 REDACTED
 
 const handleClose = () => {
@@ -385,7 +386,12 @@ const startTest = async () => {
         'Content-Type': 'application/json'
       REDACTED,
       body: JSON.stringify(
-        isSoraAccount.value ? {REDACTED : { model_id: selectedModelId.value REDACTED
+        isSoraAccount.value
+          ? {REDACTED
+          : {
+              model_id: selectedModelId.value,
+              prompt: supportsGeminiImageTest.value ? testPrompt.value.trim() : ''
+            REDACTED
       )
     REDACTED)
 
@@ -436,6 +442,8 @@ const handleEvent = (event: {
   model?: string
   success?: boolean
   error?: string
+  image_url?: string
+  mime_type?: string
 REDACTED) => {
   switch (event.type) {
     case 'test_start':
@@ -444,7 +452,11 @@ REDACTED) => {
         addLine(t('admin.accounts.usingModel', { model: event.model REDACTED), 'text-cyan-400')
       REDACTED
       addLine(
-        isSoraAccount.value ? t('admin.accounts.soraTestingFlow') : t('admin.accounts.sendingTestMessage'),
+        isSoraAccount.value
+          ? t('admin.accounts.soraTestingFlow')
+          : supportsGeminiImageTest.value
+            ? t('admin.accounts.sendingGeminiImageRequest')
+            : t('admin.accounts.sendingTestMessage'),
         'text-gray-400'
       )
       addLine('', 'text-gray-300')
@@ -455,6 +467,16 @@ REDACTED) => {
       if (event.text) {
         streamingContent.value += event.text
         scrollToBottom()
+      REDACTED
+      break
+
+    case 'image':
+      if (event.image_url) {
+        generatedImages.value.push({
+          url: event.image_url,
+          mimeType: event.mime_type
+        REDACTED)
+        addLine(t('admin.accounts.geminiImageReceived', { count: generatedImages.value.length REDACTED), 'text-purple-300')
       REDACTED
       break
 

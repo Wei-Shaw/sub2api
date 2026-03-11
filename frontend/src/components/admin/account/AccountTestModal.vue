@@ -61,6 +61,17 @@
         {{ t('admin.accounts.soraTestHint') REDACTEDREDACTED
       </div>
 
+      <div v-if="supportsGeminiImageTest" class="space-y-1.5">
+        <TextArea
+          v-model="testPrompt"
+          :label="t('admin.accounts.geminiImagePromptLabel')"
+          :placeholder="t('admin.accounts.geminiImagePromptPlaceholder')"
+          :hint="t('admin.accounts.geminiImageTestHint')"
+          :disabled="status === 'connecting'"
+          rows="3"
+        />
+      </div>
+
       <!-- Terminal Output -->
       <div class="group relative">
         <div
@@ -115,6 +126,27 @@
         </button>
       </div>
 
+      <div v-if="generatedImages.length > 0" class="space-y-2">
+        <div class="text-xs font-medium text-gray-600 dark:text-gray-300">
+          {{ t('admin.accounts.geminiImagePreview') REDACTEDREDACTED
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <a
+            v-for="(image, index) in generatedImages"
+            :key="`${image.urlREDACTED-${indexREDACTED`"
+            :href="image.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:border-primary-300 hover:shadow-md dark:border-dark-500 dark:bg-dark-700"
+          >
+            <img :src="image.url" :alt="`gemini-test-image-${index + 1REDACTED`" class="h-48 w-full object-cover" />
+            <div class="border-t border-gray-100 px-3 py-2 text-xs text-gray-500 dark:border-dark-500 dark:text-gray-300">
+              {{ image.mimeType || 'image/*' REDACTEDREDACTED
+            </div>
+          </a>
+        </div>
+      </div>
+
       <!-- Test Info -->
       <div class="flex items-center justify-between px-1 text-xs text-gray-500 dark:text-gray-400">
         <div class="flex items-center gap-3">
@@ -125,7 +157,13 @@
         </div>
         <span class="flex items-center gap-1">
           <Icon name="chat" size="sm" :stroke-width="2" />
-          {{ isSoraAccount ? t('admin.accounts.soraTestMode') : t('admin.accounts.testPrompt') REDACTEDREDACTED
+          {{
+            isSoraAccount
+              ? t('admin.accounts.soraTestMode')
+              : supportsGeminiImageTest
+                ? t('admin.accounts.geminiImageTestMode')
+                : t('admin.accounts.testPrompt')
+          REDACTEDREDACTED
         </span>
       </div>
     </div>
@@ -182,6 +220,7 @@ import { computed, ref, watch, nextTick REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
+import TextArea from '@/components/common/TextArea.vue'
 import { Icon REDACTED from '@/components/icons'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 import { adminAPI REDACTED from '@/api/admin'
@@ -193,6 +232,11 @@ const { copyToClipboard REDACTED = useClipboard()
 interface OutputLine {
   text: string
   class: string
+REDACTED
+
+interface PreviewImage {
+  url: string
+  mimeType?: string
 REDACTED
 
 const props = defineProps<{
@@ -211,15 +255,25 @@ const streamingContent = ref('')
 const errorMessage = ref('')
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
+const testPrompt = ref('')
 const loadingModels = ref(false)
 let eventSource: EventSource | null = null
 const isSoraAccount = computed(() => props.account?.platform === 'sora')
+const generatedImages = ref<PreviewImage[]>([])
+const supportsGeminiImageTest = computed(() => {
+  if (isSoraAccount.value) return false
+  const modelID = selectedModelId.value.toLowerCase()
+  if (!modelID.startsWith('gemini-') || !modelID.includes('-image')) return false
+
+  return props.account?.platform === 'gemini' || (props.account?.platform === 'antigravity' && props.account?.type === 'apikey')
+REDACTED)
 
 // Load available models when modal opens
 watch(
   () => props.show,
   async (newVal) => {
     if (newVal && props.account) {
+      testPrompt.value = ''
       resetState()
       await loadAvailableModels()
     REDACTED else {
@@ -227,6 +281,12 @@ watch(
     REDACTED
   REDACTED
 )
+
+watch(selectedModelId, () => {
+  if (supportsGeminiImageTest.value && !testPrompt.value.trim()) {
+    testPrompt.value = t('admin.accounts.geminiImagePromptDefault')
+  REDACTED
+REDACTED)
 
 const loadAvailableModels = async () => {
   if (!props.account) return
@@ -272,6 +332,7 @@ const resetState = () => {
   outputLines.value = []
   streamingContent.value = ''
   errorMessage.value = ''
+  generatedImages.value = []
 REDACTED
 
 const handleClose = () => {
@@ -325,7 +386,12 @@ const startTest = async () => {
         'Content-Type': 'application/json'
       REDACTED,
       body: JSON.stringify(
-        isSoraAccount.value ? {REDACTED : { model_id: selectedModelId.value REDACTED
+        isSoraAccount.value
+          ? {REDACTED
+          : {
+              model_id: selectedModelId.value,
+              prompt: supportsGeminiImageTest.value ? testPrompt.value.trim() : ''
+            REDACTED
       )
     REDACTED)
 
@@ -376,6 +442,8 @@ const handleEvent = (event: {
   model?: string
   success?: boolean
   error?: string
+  image_url?: string
+  mime_type?: string
 REDACTED) => {
   switch (event.type) {
     case 'test_start':
@@ -384,7 +452,11 @@ REDACTED) => {
         addLine(t('admin.accounts.usingModel', { model: event.model REDACTED), 'text-cyan-400')
       REDACTED
       addLine(
-        isSoraAccount.value ? t('admin.accounts.soraTestingFlow') : t('admin.accounts.sendingTestMessage'),
+        isSoraAccount.value
+          ? t('admin.accounts.soraTestingFlow')
+          : supportsGeminiImageTest.value
+            ? t('admin.accounts.sendingGeminiImageRequest')
+            : t('admin.accounts.sendingTestMessage'),
         'text-gray-400'
       )
       addLine('', 'text-gray-300')
@@ -395,6 +467,16 @@ REDACTED) => {
       if (event.text) {
         streamingContent.value += event.text
         scrollToBottom()
+      REDACTED
+      break
+
+    case 'image':
+      if (event.image_url) {
+        generatedImages.value.push({
+          url: event.image_url,
+          mimeType: event.mime_type
+        REDACTED)
+        addLine(t('admin.accounts.geminiImageReceived', { count: generatedImages.value.length REDACTED), 'text-purple-300')
       REDACTED
       break
 
