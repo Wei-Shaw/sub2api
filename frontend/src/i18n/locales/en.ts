@@ -950,6 +950,8 @@ export default {
       hour: 'Hour',
       modelDistribution: 'Model Distribution',
       groupDistribution: 'Group Usage Distribution',
+      metricTokens: 'By Tokens',
+      metricActualCost: 'By Actual Cost',
       tokenUsageTrend: 'Token Usage Trend',
       userUsageTrend: 'User Usage Trend (Top 12)',
       model: 'Model',
