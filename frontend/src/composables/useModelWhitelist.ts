@@ -51,13 +51,13 @@ export const claudeModels = [
 const geminiModels = [
   // Keep in sync with backend curated Gemini lists.
   // This list is intentionally conservative (models commonly available across OAuth/API key).
+  'gemini-3.1-flash-image',
+  'gemini-2.5-flash-image',
   'gemini-2.0-flash',
   'gemini-2.5-flash',
-  'gemini-2.5-flash-image',
   'gemini-2.5-pro',
   'gemini-3-flash-preview',
-  'gemini-3-pro-preview',
-  'gemini-3.1-flash-image'
+  'gemini-3-pro-preview'
 ]
 
 // Sora
@@ -87,8 +87,9 @@ const antigravityModels = [
   'claude-sonnet-4-5',
   'claude-sonnet-4-5-thinking',
   // Gemini 2.5 系列
-  'gemini-2.5-flash',
+  'gemini-3.1-flash-image',
   'gemini-2.5-flash-image',
+  'gemini-2.5-flash',
   'gemini-2.5-flash-lite',
   'gemini-2.5-flash-thinking',
   'gemini-2.5-pro',
@@ -99,7 +100,6 @@ const antigravityModels = [
   // Gemini 3.1 系列
   'gemini-3.1-pro-high',
   'gemini-3.1-pro-low',
-  'gemini-3.1-flash-image',
   'gemini-3-pro-image',
   // 其他
   'gpt-oss-120b-medium',
