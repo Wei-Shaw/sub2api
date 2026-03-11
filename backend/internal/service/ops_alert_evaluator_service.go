@@ -506,6 +506,48 @@ REDACTED
 		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
 			return acc.HasError && acc.TempUnschedulableUntil == nil
 	REDACTED)), true
+	case "group_rate_limit_ratio":
+		if groupID == nil || *groupID <= 0 {
+			return 0, false
+	REDACTED
+		if s == nil || s.opsService == nil {
+			return 0, false
+	REDACTED
+		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
+		if err != nil || availability == nil {
+			return 0, false
+	REDACTED
+		if availability.Group == nil || availability.Group.TotalAccounts <= 0 {
+			return 0, true
+	REDACTED
+		return (float64(availability.Group.RateLimitCount) / float64(availability.Group.TotalAccounts)) * 100, true
+	case "account_error_ratio":
+		if s == nil || s.opsService == nil {
+			return 0, false
+	REDACTED
+		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
+		if err != nil || availability == nil {
+			return 0, false
+	REDACTED
+		total := int64(len(availability.Accounts))
+		if total <= 0 {
+			return 0, true
+	REDACTED
+		errorCount := countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
+			return acc.HasError && acc.TempUnschedulableUntil == nil
+	REDACTED)
+		return (float64(errorCount) / float64(total)) * 100, true
+	case "overload_account_count":
+		if s == nil || s.opsService == nil {
+			return 0, false
+	REDACTED
+		availability, err := s.opsService.GetAccountAvailability(ctx, platform, groupID)
+		if err != nil || availability == nil {
+			return 0, false
+	REDACTED
+		return float64(countAccountsByCondition(availability.Accounts, func(acc *AccountAvailability) bool {
+			return acc.IsOverloaded
+	REDACTED)), true
 REDACTED
 
 	overview, err := s.opsRepo.GetDashboardOverview(ctx, &OpsDashboardFilter{
