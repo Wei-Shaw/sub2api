@@ -45,15 +45,22 @@ const (
 
 // TestEvent represents a SSE event for account testing
 type TestEvent struct {
-	Type    string `json:"type"`
-	Text    string `json:"text,omitempty"`
-	Model   string `json:"model,omitempty"`
-	Status  string `json:"status,omitempty"`
-	Code    string `json:"code,omitempty"`
-	Data    any    `json:"data,omitempty"`
-	Success bool   `json:"success,omitempty"`
-	Error   string `json:"error,omitempty"`
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Status   string `json:"status,omitempty"`
+	Code     string `json:"code,omitempty"`
+	ImageURL string `json:"image_url,omitempty"`
+	MimeType string `json:"mime_type,omitempty"`
+	Data     any    `json:"data,omitempty"`
+	Success  bool   `json:"success,omitempty"`
+	Error    string `json:"error,omitempty"`
 REDACTED
+
+const (
+	defaultGeminiTextTestPrompt  = "hi"
+	defaultGeminiImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
+)
 
 // AccountTestService handles account testing operations
 type AccountTestService struct {
@@ -161,7 +168,7 @@ REDACTED
 // TestAccountConnection tests an account's connection by sending a test request
 // All account types use full Claude Code client characteristics, only auth header differs
 // modelID is optional - if empty, defaults to claude.DefaultTestModel
-func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string) error {
+func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string) error {
 	ctx := c.Request.Context()
 
 	// Get account
@@ -176,11 +183,11 @@ REDACTED
 REDACTED
 
 	if account.IsGemini() {
-		return s.testGeminiAccountConnection(c, account, modelID)
+		return s.testGeminiAccountConnection(c, account, modelID, prompt)
 REDACTED
 
 	if account.Platform == PlatformAntigravity {
-		return s.routeAntigravityTest(c, account, modelID)
+		return s.routeAntigravityTest(c, account, modelID, prompt)
 REDACTED
 
 	if account.Platform == PlatformSora {
@@ -435,7 +442,7 @@ REDACTED
 REDACTED
 
 // testGeminiAccountConnection tests a Gemini account's connection
-func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *Account, modelID string) error {
+func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
 	ctx := c.Request.Context()
 
 	// Determine the model to use
@@ -462,7 +469,7 @@ REDACTED
 	c.Writer.Flush()
 
 	// Create test payload (Gemini format)
-	payload := createGeminiTestPayload()
+	payload := createGeminiTestPayload(testModelID, prompt)
 
 	// Build request based on account type
 	var req *http.Request
@@ -1198,10 +1205,10 @@ REDACTED
 
 // routeAntigravityTest 路由 Antigravity 账号的测试请求。
 // APIKey 类型走原生协议（与 gateway_handler 路由一致），OAuth/Upstream 走 CRS 中转。
-func (s *AccountTestService) routeAntigravityTest(c *gin.Context, account *Account, modelID string) error {
+func (s *AccountTestService) routeAntigravityTest(c *gin.Context, account *Account, modelID string, prompt string) error {
 	if account.Type == AccountTypeAPIKey {
 		if strings.HasPrefix(modelID, "gemini-") {
-			return s.testGeminiAccountConnection(c, account, modelID)
+			return s.testGeminiAccountConnection(c, account, modelID, prompt)
 	REDACTED
 		return s.testClaudeAccountConnection(c, account, modelID)
 REDACTED
@@ -1349,14 +1356,46 @@ REDACTED
 	return req, nil
 REDACTED
 
-// createGeminiTestPayload creates a minimal test payload for Gemini API
-func createGeminiTestPayload() []byte {
+// createGeminiTestPayload creates a minimal test payload for Gemini API.
+// Image models use the image-generation path so the frontend can preview the returned image.
+func createGeminiTestPayload(modelID string, prompt string) []byte {
+	if isImageGenerationModel(modelID) {
+		imagePrompt := strings.TrimSpace(prompt)
+		if imagePrompt == "" {
+			imagePrompt = defaultGeminiImageTestPrompt
+	REDACTED
+
+		payload := map[string]any{
+			"contents": []map[string]any{
+				{
+					"role": "user",
+					"parts": []map[string]any{
+						{"text": imagePromptREDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			"generationConfig": map[string]any{
+				"responseModalities": []string{"TEXT", "IMAGE"REDACTED,
+				"imageConfig": map[string]any{
+					"aspectRatio": "1:1",
+			REDACTED,
+		REDACTED,
+	REDACTED
+		bytes, _ := json.Marshal(payload)
+		return bytes
+REDACTED
+
+	textPrompt := strings.TrimSpace(prompt)
+	if textPrompt == "" {
+		textPrompt = defaultGeminiTextTestPrompt
+REDACTED
+
 	payload := map[string]any{
 		"contents": []map[string]any{
 			{
 				"role": "user",
 				"parts": []map[string]any{
-					{"text": "hi"REDACTED,
+					{"text": textPromptREDACTED,
 			REDACTED,
 		REDACTED,
 	REDACTED,
@@ -1415,6 +1454,17 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 							if partMap, ok := part.(map[string]any); ok {
 								if text, ok := partMap["text"].(string); ok && text != "" {
 									s.sendEvent(c, TestEvent{Type: "content", Text: textREDACTED)
+							REDACTED
+								if inlineData, ok := partMap["inlineData"].(map[string]any); ok {
+									mimeType, _ := inlineData["mimeType"].(string)
+									data, _ := inlineData["data"].(string)
+									if strings.HasPrefix(strings.ToLower(mimeType), "image/") && data != "" {
+										s.sendEvent(c, TestEvent{
+											Type:     "image",
+											ImageURL: fmt.Sprintf("data:%s;base64,%s", mimeType, data),
+											MimeType: mimeType,
+									REDACTED)
+								REDACTED
 							REDACTED
 						REDACTED
 					REDACTED
@@ -1602,7 +1652,7 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 	ginCtx, _ := gin.CreateTestContext(w)
 	ginCtx.Request = (&http.Request{REDACTED).WithContext(ctx)
 
-	testErr := s.TestAccountConnection(ginCtx, accountID, modelID)
+	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, "")
 
 	finishedAt := time.Now()
 	body := w.Body.String()

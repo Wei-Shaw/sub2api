@@ -13,6 +13,8 @@ REDACTED
 
 	requiredIDs := []string{
 		"claude-opus-4-6-thinking",
+		"gemini-2.5-flash-image",
+		"gemini-2.5-flash-image-preview",
 		"gemini-3.1-flash-image",
 		"gemini-3.1-flash-image-preview",
 		"gemini-3-pro-image", // legacy compatibility
