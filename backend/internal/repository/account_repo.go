@@ -626,29 +626,6 @@ REDACTED
 REDACTED
 REDACTED
 
-func (r *accountRepository) patchSchedulerAccountExtra(ctx context.Context, accountID int64, updates map[string]any) {
-	if r == nil || r.schedulerCache == nil || accountID <= 0 || len(updates) == 0 {
-		return
-REDACTED
-	account, err := r.schedulerCache.GetAccount(ctx, accountID)
-	if err != nil {
-		logger.LegacyPrintf("repository.account", "[Scheduler] patch account extra read failed: id=%d err=%v", accountID, err)
-		return
-REDACTED
-	if account == nil {
-		return
-REDACTED
-	if account.Extra == nil {
-		account.Extra = make(map[string]any, len(updates))
-REDACTED
-	for key, value := range updates {
-		account.Extra[key] = value
-REDACTED
-	if err := r.schedulerCache.SetAccount(ctx, account); err != nil {
-		logger.LegacyPrintf("repository.account", "[Scheduler] patch account extra write failed: id=%d err=%v", accountID, err)
-REDACTED
-REDACTED
-
 func (r *accountRepository) syncSchedulerAccountSnapshots(ctx context.Context, accountIDs []int64) {
 	if r == nil || r.schedulerCache == nil || len(accountIDs) == 0 {
 		return
@@ -1221,15 +1198,15 @@ REDACTED
 	if affected == 0 {
 		return service.ErrAccountNotFound
 REDACTED
-
 	if shouldEnqueueSchedulerOutboxForExtraUpdates(updates) {
 		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extra update failed: account=%d err=%v", id, err)
 	REDACTED
 REDACTED else {
-		// 观测型 extra 字段不需要触发 bucket 重建，但尽量把单账号缓存补到最新，
-		// 让 sticky session / GetAccount 命中缓存时也能读到最新快照。
-		r.patchSchedulerAccountExtra(ctx, id, updates)
+		// 观测型 extra 字段不需要触发 bucket 重建，但仍同步单账号快照，
+		// 让 sticky session / GetAccount 命中缓存时也能读到最新数据，
+		// 同时避免缓存局部 patch 覆盖掉并发写入的其它账号字段。
+		r.syncSchedulerAccountSnapshot(ctx, id)
 REDACTED
 	return nil
 REDACTED
@@ -1239,9 +1216,10 @@ func shouldEnqueueSchedulerOutboxForExtraUpdates(updates map[string]any) bool {
 		return false
 REDACTED
 	for key := range updates {
-		if !isSchedulerNeutralExtraKey(key) {
-			return true
+		if isSchedulerNeutralExtraKey(key) {
+			continue
 	REDACTED
+		return true
 REDACTED
 	return false
 REDACTED
@@ -1260,6 +1238,82 @@ REDACTED
 	REDACTED
 REDACTED
 	return false
+REDACTED
+
+func shouldSyncSchedulerSnapshotForExtraUpdates(updates map[string]any) bool {
+	return codexExtraIndicatesRateLimit(updates, "7d") || codexExtraIndicatesRateLimit(updates, "5h")
+REDACTED
+
+func codexExtraIndicatesRateLimit(updates map[string]any, window string) bool {
+	if len(updates) == 0 {
+		return false
+REDACTED
+	usedValue, ok := updates["codex_"+window+"_used_percent"]
+	if !ok || !extraValueIndicatesExhausted(usedValue) {
+		return false
+REDACTED
+	return extraValueHasResetMarker(updates["codex_"+window+"_reset_at"]) ||
+		extraValueHasPositiveNumber(updates["codex_"+window+"_reset_after_seconds"])
+REDACTED
+
+func extraValueIndicatesExhausted(value any) bool {
+	number, ok := extraValueToFloat64(value)
+	return ok && number >= 100-1e-9
+REDACTED
+
+func extraValueHasPositiveNumber(value any) bool {
+	number, ok := extraValueToFloat64(value)
+	return ok && number > 0
+REDACTED
+
+func extraValueHasResetMarker(value any) bool {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v) != ""
+	case time.Time:
+		return !v.IsZero()
+	case *time.Time:
+		return v != nil && !v.IsZero()
+	default:
+		return false
+REDACTED
+REDACTED
+
+func extraValueToFloat64(value any) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case int:
+		return float64(v), true
+	case int8:
+		return float64(v), true
+	case int16:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case uint:
+		return float64(v), true
+	case uint8:
+		return float64(v), true
+	case uint16:
+		return float64(v), true
+	case uint32:
+		return float64(v), true
+	case uint64:
+		return float64(v), true
+	case json.Number:
+		parsed, err := v.Float64()
+		return parsed, err == nil
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		return parsed, err == nil
+	default:
+		return 0, false
+REDACTED
 REDACTED
 
 func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {

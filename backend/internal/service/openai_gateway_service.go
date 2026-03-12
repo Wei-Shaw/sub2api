@@ -52,6 +52,8 @@ const (
 	openAIWSRetryJitterRatioDefault    = 0.2
 	openAICompactSessionSeedKey        = "openai_compact_session_seed"
 	codexCLIVersion                    = "0.104.0"
+	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
+	openAICodexSnapshotPersistMinInterval = 30 * time.Second
 )
 
 // OpenAI allowed headers whitelist (for non-passthrough).
@@ -255,6 +257,46 @@ type openAIWSRetryMetrics struct {
 	nonRetryableFastFallback atomic.Int64
 REDACTED
 
+type accountWriteThrottle struct {
+	minInterval time.Duration
+	mu          sync.Mutex
+	lastByID    map[int64]time.Time
+REDACTED
+
+func newAccountWriteThrottle(minInterval time.Duration) *accountWriteThrottle {
+	return &accountWriteThrottle{
+		minInterval: minInterval,
+		lastByID:    make(map[int64]time.Time),
+REDACTED
+REDACTED
+
+func (t *accountWriteThrottle) Allow(id int64, now time.Time) bool {
+	if t == nil || id <= 0 || t.minInterval <= 0 {
+		return true
+REDACTED
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if last, ok := t.lastByID[id]; ok && now.Sub(last) < t.minInterval {
+		return false
+REDACTED
+	t.lastByID[id] = now
+
+	if len(t.lastByID) > 4096 {
+		cutoff := now.Add(-4 * t.minInterval)
+		for accountID, writtenAt := range t.lastByID {
+			if writtenAt.Before(cutoff) {
+				delete(t.lastByID, accountID)
+		REDACTED
+	REDACTED
+REDACTED
+
+	return true
+REDACTED
+
+var defaultOpenAICodexSnapshotPersistThrottle = newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval)
+
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
 	accountRepo           AccountRepository
@@ -289,6 +331,7 @@ type OpenAIGatewayService struct {
 	openaiWSFallbackUntil sync.Map // key: int64(accountID), value: time.Time
 	openaiWSRetryMetrics  openAIWSRetryMetrics
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
+	codexSnapshotThrottle *accountWriteThrottle
 REDACTED
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -329,15 +372,23 @@ func NewOpenAIGatewayService(
 			nil,
 			"service.openai_gateway",
 		),
-		httpUpstream:         httpUpstream,
-		deferredService:      deferredService,
-		openAITokenProvider:  openAITokenProvider,
-		toolCorrector:        NewCodexToolCorrector(),
-		openaiWSResolver:     NewOpenAIWSProtocolResolver(cfg),
-		responseHeaderFilter: compileResponseHeaderFilter(cfg),
+		httpUpstream:          httpUpstream,
+		deferredService:       deferredService,
+		openAITokenProvider:   openAITokenProvider,
+		toolCorrector:         NewCodexToolCorrector(),
+		openaiWSResolver:      NewOpenAIWSProtocolResolver(cfg),
+		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
+		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
 REDACTED
 	svc.logOpenAIWSModeBootstrap()
 	return svc
+REDACTED
+
+func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle {
+	if s != nil && s.codexSnapshotThrottle != nil {
+		return s.codexSnapshotThrottle
+REDACTED
+	return defaultOpenAICodexSnapshotPersistThrottle
 REDACTED
 
 func (s *OpenAIGatewayService) billingDeps() *billingDeps {
@@ -1716,6 +1767,14 @@ REDACTED
 			bodyModified = true
 			markPatchSet("model", normalizedModel)
 	REDACTED
+
+		// 移除 gpt-5.2-codex 以下的版本 verbosity 参数
+		// 确保高版本模型向低版本模型映射不报错
+		if !SupportsVerbosity(normalizedModel) {
+			if text, ok := reqBody["text"].(map[string]any); ok {
+				delete(text, "verbosity")
+		REDACTED
+	REDACTED
 REDACTED
 
 	// 规范化 reasoning.effort 参数（minimal -> none），与上游允许值对齐。
@@ -2947,6 +3006,120 @@ REDACTED
 	return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
 REDACTED
 
+// compatErrorWriter is the signature for format-specific error writers used by
+// the compat paths (Chat Completions and Anthropic Messages).
+type compatErrorWriter func(c *gin.Context, statusCode int, errType, message string)
+
+// handleCompatErrorResponse is the shared non-failover error handler for the
+// Chat Completions and Anthropic Messages compat paths. It mirrors the logic of
+// handleErrorResponse (passthrough rules, ShouldHandleErrorCode, rate-limit
+// tracking, secondary failover) but delegates the final error write to the
+// format-specific writer function.
+func (s *OpenAIGatewayService) handleCompatErrorResponse(
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+	writeError compatErrorWriter,
+) (*OpenAIForwardResult, error) {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+
+	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	if upstreamMsg == "" {
+		upstreamMsg = fmt.Sprintf("Upstream error: %d", resp.StatusCode)
+REDACTED
+	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+	upstreamDetail := ""
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+		if maxBytes <= 0 {
+			maxBytes = 2048
+	REDACTED
+		upstreamDetail = truncateString(string(body), maxBytes)
+REDACTED
+	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
+
+	// Apply error passthrough rules
+	if status, errType, errMsg, matched := applyErrorPassthroughRule(
+		c, account.Platform, resp.StatusCode, body,
+		http.StatusBadGateway, "api_error", "Upstream request failed",
+	); matched {
+		writeError(c, status, errType, errMsg)
+		if upstreamMsg == "" {
+			upstreamMsg = errMsg
+	REDACTED
+		if upstreamMsg == "" {
+			return nil, fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
+	REDACTED
+		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
+REDACTED
+
+	// Check custom error codes — if the account does not handle this status,
+	// return a generic error without exposing upstream details.
+	if !account.ShouldHandleErrorCode(resp.StatusCode) {
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			UpstreamRequestID:  resp.Header.Get("x-request-id"),
+			Kind:               "http_error",
+			Message:            upstreamMsg,
+			Detail:             upstreamDetail,
+	REDACTED)
+		writeError(c, http.StatusInternalServerError, "api_error", "Upstream gateway error")
+		if upstreamMsg == "" {
+			return nil, fmt.Errorf("upstream error: %d (not in custom error codes)", resp.StatusCode)
+	REDACTED
+		return nil, fmt.Errorf("upstream error: %d (not in custom error codes) message=%s", resp.StatusCode, upstreamMsg)
+REDACTED
+
+	// Track rate limits and decide whether to trigger secondary failover.
+	shouldDisable := false
+	if s.rateLimitService != nil {
+		shouldDisable = s.rateLimitService.HandleUpstreamError(
+			c.Request.Context(), account, resp.StatusCode, resp.Header, body,
+		)
+REDACTED
+	kind := "http_error"
+	if shouldDisable {
+		kind = "failover"
+REDACTED
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:           account.Platform,
+		AccountID:          account.ID,
+		AccountName:        account.Name,
+		UpstreamStatusCode: resp.StatusCode,
+		UpstreamRequestID:  resp.Header.Get("x-request-id"),
+		Kind:               kind,
+		Message:            upstreamMsg,
+		Detail:             upstreamDetail,
+REDACTED)
+	if shouldDisable {
+		return nil, &UpstreamFailoverError{
+			StatusCode:             resp.StatusCode,
+			ResponseBody:           body,
+			RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
+	REDACTED
+REDACTED
+
+	// Map status code to error type and write response
+	errType := "api_error"
+	switch {
+	case resp.StatusCode == 400:
+		errType = "invalid_request_error"
+	case resp.StatusCode == 404:
+		errType = "not_found_error"
+	case resp.StatusCode == 429:
+		errType = "rate_limit_error"
+	case resp.StatusCode >= 500:
+		errType = "api_error"
+REDACTED
+
+	writeError(c, resp.StatusCode, errType, upstreamMsg)
+	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
+REDACTED
+
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
 	usage        *OpenAIUsage
@@ -4050,11 +4223,15 @@ REDACTED
 	if len(updates) == 0 && resetAt == nil {
 		return
 REDACTED
+	shouldPersistUpdates := len(updates) > 0 && s.getCodexSnapshotThrottle().Allow(accountID, now)
+	if !shouldPersistUpdates && resetAt == nil {
+		return
+REDACTED
 
 	go func() {
 		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if len(updates) > 0 {
+		if shouldPersistUpdates {
 			_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
 	REDACTED
 		if resetAt != nil {

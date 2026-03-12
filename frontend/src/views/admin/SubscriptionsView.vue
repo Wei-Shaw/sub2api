@@ -372,6 +372,15 @@
               </button>
               <button
                 v-if="row.status === 'active'"
+                @click="handleResetQuota(row)"
+                :disabled="resettingQuota && resettingSubscription?.id === row.id"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Icon name="refresh" size="sm" />
+                <span class="text-xs">{{ t('admin.subscriptions.resetQuota') REDACTEDREDACTED</span>
+              </button>
+              <button
+                v-if="row.status === 'active'"
                 @click="handleRevoke(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               >
@@ -618,6 +627,17 @@
       @confirm="confirmRevoke"
       @cancel="showRevokeDialog = false"
     />
+
+    <!-- Reset Quota Confirmation Dialog -->
+    <ConfirmDialog
+      :show="showResetQuotaConfirm"
+      :title="t('admin.subscriptions.resetQuotaTitle')"
+      :message="t('admin.subscriptions.resetQuotaConfirm', { user: resettingSubscription?.user?.email REDACTED)"
+      :confirm-text="t('admin.subscriptions.resetQuota')"
+      :cancel-text="t('common.cancel')"
+      @confirm="confirmResetQuota"
+      @cancel="showResetQuotaConfirm = false"
+    />
   </AppLayout>
 </template>
 
@@ -812,7 +832,10 @@ REDACTED)
 const showAssignModal = ref(false)
 const showExtendModal = ref(false)
 const showRevokeDialog = ref(false)
+const showResetQuotaConfirm = ref(false)
 const submitting = ref(false)
+const resettingSubscription = ref<UserSubscription | null>(null)
+const resettingQuota = ref(false)
 const extendingSubscription = ref<UserSubscription | null>(null)
 const revokingSubscription = ref<UserSubscription | null>(null)
 
@@ -1118,6 +1141,29 @@ const confirmRevoke = async () => {
   REDACTED catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToRevoke'))
     console.error('Error revoking subscription:', error)
+  REDACTED
+REDACTED
+
+const handleResetQuota = (subscription: UserSubscription) => {
+  resettingSubscription.value = subscription
+  showResetQuotaConfirm.value = true
+REDACTED
+
+const confirmResetQuota = async () => {
+  if (!resettingSubscription.value) return
+  if (resettingQuota.value) return
+  resettingQuota.value = true
+  try {
+    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, { daily: true, weekly: true REDACTED)
+    appStore.showSuccess(t('admin.subscriptions.quotaResetSuccess'))
+    showResetQuotaConfirm.value = false
+    resettingSubscription.value = null
+    await loadSubscriptions()
+  REDACTED catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToResetQuota'))
+    console.error('Error resetting quota:', error)
+  REDACTED finally {
+    resettingQuota.value = false
   REDACTED
 REDACTED
 

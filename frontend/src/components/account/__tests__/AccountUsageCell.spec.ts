@@ -32,6 +32,10 @@ describe('AccountUsageCell', () => {
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
     getUsage.mockResolvedValue({
       antigravity_quota: {
+        'gemini-2.5-flash-image': {
+          utilization: 45,
+          reset_time: '2026-03-01T11:00:00Z'
+        REDACTED,
         'gemini-3.1-flash-image': {
           utilization: 20,
           reset_time: '2026-03-01T10:00:00Z'

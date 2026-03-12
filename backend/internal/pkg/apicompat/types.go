@@ -330,6 +330,148 @@ type ResponsesStreamEvent struct {
 REDACTED
 
 // ---------------------------------------------------------------------------
+// OpenAI Chat Completions API types
+// ---------------------------------------------------------------------------
+
+// ChatCompletionsRequest is the request body for POST /v1/chat/completions.
+type ChatCompletionsRequest struct {
+	Model               string             `json:"model"`
+	Messages            []ChatMessage      `json:"messages"`
+	MaxTokens           *int               `json:"max_tokens,omitempty"`
+	MaxCompletionTokens *int               `json:"max_completion_tokens,omitempty"`
+	Temperature         *float64           `json:"temperature,omitempty"`
+	TopP                *float64           `json:"top_p,omitempty"`
+	Stream              bool               `json:"stream,omitempty"`
+	StreamOptions       *ChatStreamOptions `json:"stream_options,omitempty"`
+	Tools               []ChatTool         `json:"tools,omitempty"`
+	ToolChoice          json.RawMessage    `json:"tool_choice,omitempty"`
+	ReasoningEffort     string             `json:"reasoning_effort,omitempty"` // "low" | "medium" | "high"
+	ServiceTier         string             `json:"service_tier,omitempty"`
+	Stop                json.RawMessage    `json:"stop,omitempty"` // string or []string
+
+	// Legacy function calling (deprecated but still supported)
+	Functions    []ChatFunction  `json:"functions,omitempty"`
+	FunctionCall json.RawMessage `json:"function_call,omitempty"`
+REDACTED
+
+// ChatStreamOptions configures streaming behavior.
+type ChatStreamOptions struct {
+	IncludeUsage bool `json:"include_usage,omitempty"`
+REDACTED
+
+// ChatMessage is a single message in the Chat Completions conversation.
+type ChatMessage struct {
+	Role       string          `json:"role"` // "system" | "user" | "assistant" | "tool" | "function"
+	Content    json.RawMessage `json:"content,omitempty"`
+	Name       string          `json:"name,omitempty"`
+	ToolCalls  []ChatToolCall  `json:"tool_calls,omitempty"`
+	ToolCallID string          `json:"tool_call_id,omitempty"`
+
+	// Legacy function calling
+	FunctionCall *ChatFunctionCall `json:"function_call,omitempty"`
+REDACTED
+
+// ChatContentPart is a typed content part in a multi-modal message.
+type ChatContentPart struct {
+	Type     string        `json:"type"` // "text" | "image_url"
+	Text     string        `json:"text,omitempty"`
+	ImageURL *ChatImageURL `json:"image_url,omitempty"`
+REDACTED
+
+// ChatImageURL contains the URL for an image content part.
+type ChatImageURL struct {
+	URL    string `json:"url"`
+	Detail string `json:"detail,omitempty"` // "auto" | "low" | "high"
+REDACTED
+
+// ChatTool describes a tool available to the model.
+type ChatTool struct {
+	Type     string        `json:"type"` // "function"
+	Function *ChatFunction `json:"function,omitempty"`
+REDACTED
+
+// ChatFunction describes a function tool definition.
+type ChatFunction struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Parameters  json.RawMessage `json:"parameters,omitempty"`
+	Strict      *bool           `json:"strict,omitempty"`
+REDACTED
+
+// ChatToolCall represents a tool call made by the assistant.
+// Index is only populated in streaming chunks (omitted in non-streaming responses).
+type ChatToolCall struct {
+	Index    *int             `json:"index,omitempty"`
+	ID       string           `json:"id,omitempty"`
+	Type     string           `json:"type,omitempty"` // "function"
+	Function ChatFunctionCall `json:"function"`
+REDACTED
+
+// ChatFunctionCall contains the function name and arguments.
+type ChatFunctionCall struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+REDACTED
+
+// ChatCompletionsResponse is the non-streaming response from POST /v1/chat/completions.
+type ChatCompletionsResponse struct {
+	ID                string       `json:"id"`
+	Object            string       `json:"object"` // "chat.completion"
+	Created           int64        `json:"created"`
+	Model             string       `json:"model"`
+	Choices           []ChatChoice `json:"choices"`
+	Usage             *ChatUsage   `json:"usage,omitempty"`
+	SystemFingerprint string       `json:"system_fingerprint,omitempty"`
+	ServiceTier       string       `json:"service_tier,omitempty"`
+REDACTED
+
+// ChatChoice is a single completion choice.
+type ChatChoice struct {
+	Index        int         `json:"index"`
+	Message      ChatMessage `json:"message"`
+	FinishReason string      `json:"finish_reason"` // "stop" | "length" | "tool_calls" | "content_filter"
+REDACTED
+
+// ChatUsage holds token counts in Chat Completions format.
+type ChatUsage struct {
+	PromptTokens        int               `json:"prompt_tokens"`
+	CompletionTokens    int               `json:"completion_tokens"`
+	TotalTokens         int               `json:"total_tokens"`
+	PromptTokensDetails *ChatTokenDetails `json:"prompt_tokens_details,omitempty"`
+REDACTED
+
+// ChatTokenDetails provides a breakdown of token usage.
+type ChatTokenDetails struct {
+	CachedTokens int `json:"cached_tokens,omitempty"`
+REDACTED
+
+// ChatCompletionsChunk is a single streaming chunk from POST /v1/chat/completions.
+type ChatCompletionsChunk struct {
+	ID                string            `json:"id"`
+	Object            string            `json:"object"` // "chat.completion.chunk"
+	Created           int64             `json:"created"`
+	Model             string            `json:"model"`
+	Choices           []ChatChunkChoice `json:"choices"`
+	Usage             *ChatUsage        `json:"usage,omitempty"`
+	SystemFingerprint string            `json:"system_fingerprint,omitempty"`
+	ServiceTier       string            `json:"service_tier,omitempty"`
+REDACTED
+
+// ChatChunkChoice is a single choice in a streaming chunk.
+type ChatChunkChoice struct {
+	Index        int       `json:"index"`
+	Delta        ChatDelta `json:"delta"`
+	FinishReason *string   `json:"finish_reason"` // pointer: null when not final
+REDACTED
+
+// ChatDelta carries incremental content in a streaming chunk.
+type ChatDelta struct {
+	Role      string         `json:"role,omitempty"`
+	Content   *string        `json:"content,omitempty"` // pointer: omit when not present, null vs "" matters
+	ToolCalls []ChatToolCall `json:"tool_calls,omitempty"`
+REDACTED
+
+// ---------------------------------------------------------------------------
 // Shared constants
 // ---------------------------------------------------------------------------
 

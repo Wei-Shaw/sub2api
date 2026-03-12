@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -111,20 +113,45 @@ REDACTED
 REDACTED)
 	cacheKey := string(keyRaw)
 
-	if cached, ok := dashboardSnapshotV2Cache.Get(cacheKey); ok {
-		if cached.ETag != "" {
-			c.Header("ETag", cached.ETag)
-			c.Header("Vary", "If-None-Match")
-			if ifNoneMatchMatched(c.GetHeader("If-None-Match"), cached.ETag) {
-				c.Status(http.StatusNotModified)
-				return
-		REDACTED
-	REDACTED
-		c.Header("X-Snapshot-Cache", "hit")
-		response.Success(c, cached.Payload)
+	cached, hit, err := dashboardSnapshotV2Cache.GetOrLoad(cacheKey, func() (any, error) {
+		return h.buildSnapshotV2Response(
+			c.Request.Context(),
+			startTime,
+			endTime,
+			granularity,
+			filters,
+			includeStats,
+			includeTrend,
+			includeModels,
+			includeGroups,
+			includeUsersTrend,
+			usersTrendLimit,
+		)
+REDACTED)
+	if err != nil {
+		response.Error(c, 500, err.Error())
 		return
 REDACTED
+	if cached.ETag != "" {
+		c.Header("ETag", cached.ETag)
+		c.Header("Vary", "If-None-Match")
+		if ifNoneMatchMatched(c.GetHeader("If-None-Match"), cached.ETag) {
+			c.Status(http.StatusNotModified)
+			return
+	REDACTED
+REDACTED
+	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
+	response.Success(c, cached.Payload)
+REDACTED
 
+func (h *DashboardHandler) buildSnapshotV2Response(
+	ctx context.Context,
+	startTime, endTime time.Time,
+	granularity string,
+	filters *dashboardSnapshotV2Filters,
+	includeStats, includeTrend, includeModels, includeGroups, includeUsersTrend bool,
+	usersTrendLimit int,
+) (*dashboardSnapshotV2Response, error) {
 	resp := &dashboardSnapshotV2Response{
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		StartDate:   startTime.Format("2006-01-02"),
@@ -133,10 +160,9 @@ REDACTED
 REDACTED
 
 	if includeStats {
-		stats, err := h.dashboardService.GetDashboardStats(c.Request.Context())
+		stats, err := h.dashboardService.GetDashboardStats(ctx)
 		if err != nil {
-			response.Error(c, 500, "Failed to get dashboard statistics")
-			return
+			return nil, errors.New("failed to get dashboard statistics")
 	REDACTED
 		resp.Stats = &dashboardSnapshotV2Stats{
 			DashboardStats: *stats,
@@ -145,8 +171,8 @@ REDACTED
 REDACTED
 
 	if includeTrend {
-		trend, err := h.dashboardService.GetUsageTrendWithFilters(
-			c.Request.Context(),
+		trend, _, err := h.getUsageTrendCached(
+			ctx,
 			startTime,
 			endTime,
 			granularity,
@@ -160,15 +186,14 @@ REDACTED
 			filters.BillingType,
 		)
 		if err != nil {
-			response.Error(c, 500, "Failed to get usage trend")
-			return
+			return nil, errors.New("failed to get usage trend")
 	REDACTED
 		resp.Trend = trend
 REDACTED
 
 	if includeModels {
-		models, err := h.dashboardService.GetModelStatsWithFilters(
-			c.Request.Context(),
+		models, _, err := h.getModelStatsCached(
+			ctx,
 			startTime,
 			endTime,
 			filters.UserID,
@@ -180,15 +205,14 @@ REDACTED
 			filters.BillingType,
 		)
 		if err != nil {
-			response.Error(c, 500, "Failed to get model statistics")
-			return
+			return nil, errors.New("failed to get model statistics")
 	REDACTED
 		resp.Models = models
 REDACTED
 
 	if includeGroups {
-		groups, err := h.dashboardService.GetGroupStatsWithFilters(
-			c.Request.Context(),
+		groups, _, err := h.getGroupStatsCached(
+			ctx,
 			startTime,
 			endTime,
 			filters.UserID,
@@ -200,34 +224,20 @@ REDACTED
 			filters.BillingType,
 		)
 		if err != nil {
-			response.Error(c, 500, "Failed to get group statistics")
-			return
+			return nil, errors.New("failed to get group statistics")
 	REDACTED
 		resp.Groups = groups
 REDACTED
 
 	if includeUsersTrend {
-		usersTrend, err := h.dashboardService.GetUserUsageTrend(
-			c.Request.Context(),
-			startTime,
-			endTime,
-			granularity,
-			usersTrendLimit,
-		)
+		usersTrend, _, err := h.getUserUsageTrendCached(ctx, startTime, endTime, granularity, usersTrendLimit)
 		if err != nil {
-			response.Error(c, 500, "Failed to get user usage trend")
-			return
+			return nil, errors.New("failed to get user usage trend")
 	REDACTED
 		resp.UsersTrend = usersTrend
 REDACTED
 
-	cached := dashboardSnapshotV2Cache.Set(cacheKey, resp)
-	if cached.ETag != "" {
-		c.Header("ETag", cached.ETag)
-		c.Header("Vary", "If-None-Match")
-REDACTED
-	c.Header("X-Snapshot-Cache", "miss")
-	response.Success(c, resp)
+	return resp, nil
 REDACTED
 
 func parseDashboardSnapshotV2Filters(c *gin.Context) (*dashboardSnapshotV2Filters, error) {

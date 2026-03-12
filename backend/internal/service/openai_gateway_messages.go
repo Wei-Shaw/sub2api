@@ -172,7 +172,7 @@ REDACTED
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody),
+				RetryableOnSameAccount: account.IsPoolMode() && (isPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 		REDACTED
 	REDACTED
 		// Non-failover error: return Anthropic-formatted error to client
@@ -219,54 +219,7 @@ func (s *OpenAIGatewayService) handleAnthropicErrorResponse(
 	c *gin.Context,
 	account *Account,
 ) (*OpenAIForwardResult, error) {
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-
-	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
-	if upstreamMsg == "" {
-		upstreamMsg = fmt.Sprintf("Upstream error: %d", resp.StatusCode)
-REDACTED
-	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-
-	// Record upstream error details for ops logging
-	upstreamDetail := ""
-	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-		if maxBytes <= 0 {
-			maxBytes = 2048
-	REDACTED
-		upstreamDetail = truncateString(string(body), maxBytes)
-REDACTED
-	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
-
-	// Apply error passthrough rules (matches handleErrorResponse pattern in openai_gateway_service.go)
-	if status, errType, errMsg, matched := applyErrorPassthroughRule(
-		c, account.Platform, resp.StatusCode, body,
-		http.StatusBadGateway, "api_error", "Upstream request failed",
-	); matched {
-		writeAnthropicError(c, status, errType, errMsg)
-		if upstreamMsg == "" {
-			upstreamMsg = errMsg
-	REDACTED
-		if upstreamMsg == "" {
-			return nil, fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
-	REDACTED
-		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
-REDACTED
-
-	errType := "api_error"
-	switch {
-	case resp.StatusCode == 400:
-		errType = "invalid_request_error"
-	case resp.StatusCode == 404:
-		errType = "not_found_error"
-	case resp.StatusCode == 429:
-		errType = "rate_limit_error"
-	case resp.StatusCode >= 500:
-		errType = "api_error"
-REDACTED
-
-	writeAnthropicError(c, resp.StatusCode, errType, upstreamMsg)
-	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
+	return s.handleCompatErrorResponse(resp, c, account, writeAnthropicError)
 REDACTED
 
 // handleAnthropicBufferedStreamingResponse reads all Responses SSE events from

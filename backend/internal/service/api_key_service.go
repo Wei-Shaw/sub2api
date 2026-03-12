@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -108,6 +109,15 @@ func (d *APIKeyRateLimitData) EffectiveUsage7d() float64 {
 		return 0
 REDACTED
 	return d.Usage7d
+REDACTED
+
+// APIKeyQuotaUsageState captures the latest quota fields after an atomic quota update.
+// It is intentionally small so repositories can return it from a single SQL statement.
+type APIKeyQuotaUsageState struct {
+	QuotaUsed float64
+	Quota     float64
+	Key       string
+	Status    string
 REDACTED
 
 // APIKeyCache defines cache operations for API key service
@@ -814,6 +824,21 @@ REDACTED
 // Also checks if quota is exhausted and updates status accordingly
 func (s *APIKeyService) UpdateQuotaUsed(ctx context.Context, apiKeyID int64, cost float64) error {
 	if cost <= 0 {
+		return nil
+REDACTED
+
+	type quotaStateReader interface {
+		IncrementQuotaUsedAndGetState(ctx context.Context, id int64, amount float64) (*APIKeyQuotaUsageState, error)
+REDACTED
+
+	if repo, ok := s.apiKeyRepo.(quotaStateReader); ok {
+		state, err := repo.IncrementQuotaUsedAndGetState(ctx, apiKeyID, cost)
+		if err != nil {
+			return fmt.Errorf("increment quota used: %w", err)
+	REDACTED
+		if state != nil && state.Status == StatusAPIKeyQuotaExhausted && strings.TrimSpace(state.Key) != "" {
+			s.InvalidateAuthCacheByKey(ctx, state.Key)
+	REDACTED
 		return nil
 REDACTED
 
