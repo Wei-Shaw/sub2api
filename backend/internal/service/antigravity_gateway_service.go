@@ -2241,6 +2241,20 @@ REDACTED()
 						contentType = resp.Header.Get("Content-Type")
 				REDACTED
 			REDACTED else {
+					if switchErr, ok := IsAntigravityAccountSwitchError(retryErr); ok {
+						appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+							Platform:           account.Platform,
+							AccountID:          account.ID,
+							AccountName:        account.Name,
+							UpstreamStatusCode: http.StatusServiceUnavailable,
+							Kind:               "failover",
+							Message:            sanitizeUpstreamErrorMessage(retryErr.Error()),
+					REDACTED)
+						return nil, &UpstreamFailoverError{
+							StatusCode:        http.StatusServiceUnavailable,
+							ForceCacheBilling: switchErr.IsStickySession,
+					REDACTED
+				REDACTED
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 						Platform:           account.Platform,
 						AccountID:          account.ID,

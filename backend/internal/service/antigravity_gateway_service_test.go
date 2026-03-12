@@ -139,6 +139,7 @@ type queuedHTTPUpstreamStub struct {
 	errors        []error
 	requestBodies [][]byte
 	callCount     int
+	onCall        func(*http.Request, *queuedHTTPUpstreamStub)
 REDACTED
 
 func (s *queuedHTTPUpstreamStub) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
@@ -152,6 +153,9 @@ REDACTED
 
 	idx := s.callCount
 	s.callCount++
+	if s.onCall != nil {
+		s.onCall(req, s)
+REDACTED
 
 	var resp *http.Response
 	if idx < len(s.responses) {
@@ -677,6 +681,91 @@ REDACTED
 	require.True(t, ok)
 	require.NotEmpty(t, events)
 	require.Equal(t, "signature_error", events[0].Kind)
+REDACTED
+
+func TestAntigravityGatewayService_ForwardGemini_SignatureRetryPropagatesFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+
+	body, err := json.Marshal(map[string]any{
+		"contents": []map[string]any{
+			{"role": "user", "parts": []map[string]any{{"text": "hello"REDACTEDREDACTEDREDACTED,
+			{"role": "model", "parts": []map[string]any{{"text": "thinking", "thought": true, "thoughtSignature": "sig_bad_1"REDACTEDREDACTEDREDACTED,
+	REDACTED,
+REDACTED)
+REDACTED
+
+	req := httptest.NewRequest(http.MethodPost, "/antigravity/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent", bytes.NewReader(body))
+	c.Request = req
+
+	firstRespBody := []byte(`{"response":{"error":{"code":400,"message":"Corrupted thought signature.","status":"INVALID_ARGUMENT"REDACTEDREDACTEDREDACTED`)
+
+	const originalModel = "gemini-3.1-pro-preview"
+	const mappedModel = "gemini-3.1-pro-high"
+	account := &Account{
+		ID:          8,
+		Name:        "acc-gemini-signature-failover",
+		Platform:    PlatformAntigravity,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Concurrency: 1,
+REDACTED
+			"access_token": "token",
+			"model_mapping": map[string]any{
+				originalModel: mappedModel,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	upstream := &queuedHTTPUpstreamStub{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusBadRequest,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"REDACTED,
+					"X-Request-Id": []string{"req-sig-failover-1"REDACTED,
+			REDACTED,
+				Body: io.NopCloser(bytes.NewReader(firstRespBody)),
+		REDACTED,
+	REDACTED,
+		onCall: func(_ *http.Request, stub *queuedHTTPUpstreamStub) {
+			if stub.callCount != 1 {
+				return
+		REDACTED
+			futureResetAt := time.Now().Add(30 * time.Second).Format(time.RFC3339)
+			account.Extra = map[string]any{
+				modelRateLimitsKey: map[string]any{
+					mappedModel: map[string]any{
+						"rate_limit_reset_at": futureResetAt,
+				REDACTED,
+			REDACTED,
+		REDACTED
+	REDACTED,
+REDACTED
+
+	svc := &AntigravityGatewayService{
+		settingService: NewSettingService(&antigravitySettingRepoStub{REDACTED, &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSizeREDACTEDREDACTED),
+		tokenProvider:  &AntigravityTokenProvider{REDACTED,
+		httpUpstream:   upstream,
+REDACTED
+
+	result, err := svc.ForwardGemini(context.Background(), c, account, originalModel, "streamGenerateContent", true, body, true)
+	require.Nil(t, result)
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr, "signature retry should propagate failover instead of falling back to the original 400")
+	require.Equal(t, http.StatusServiceUnavailable, failoverErr.StatusCode)
+	require.True(t, failoverErr.ForceCacheBilling)
+	require.Len(t, upstream.requestBodies, 1, "retry should stop at preflight failover and not issue a second upstream request")
+
+	raw, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := raw.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 2)
+	require.Equal(t, "signature_error", events[0].Kind)
+	require.Equal(t, "failover", events[1].Kind)
 REDACTED
 
 // TestStreamUpstreamResponse_UsageAndFirstToken
