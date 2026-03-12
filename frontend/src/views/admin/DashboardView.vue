@@ -236,7 +236,16 @@
 
           <!-- Charts Grid -->
           <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <ModelDistributionChart :model-stats="modelStats" :loading="chartsLoading" />
+            <ModelDistributionChart
+              :model-stats="modelStats"
+              :enable-ranking-view="true"
+              :ranking-items="rankingItems"
+              :ranking-total-actual-cost="rankingTotalActualCost"
+              :loading="chartsLoading"
+              :ranking-loading="rankingLoading"
+              :ranking-error="rankingError"
+              @ranking-click="goToUserUsage"
+            />
             <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
           </div>
 
@@ -267,11 +276,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
+import { useRouter REDACTED from 'vue-router'
 import { useAppStore REDACTED from '@/stores/app'
 
 const { t REDACTED = useI18n()
 import { adminAPI REDACTED from '@/api/admin'
-import type { DashboardStats, TrendDataPoint, ModelStat, UserUsageTrendPoint REDACTED from '@/types'
+import type {
+  DashboardStats,
+  TrendDataPoint,
+  ModelStat,
+  UserUsageTrendPoint,
+  UserSpendingRankingItem
+REDACTED from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -286,7 +302,6 @@ import {
   LinearScale,
   PointElement,
   LineElement,
-  Title,
   Tooltip,
   Legend,
   Filler
@@ -299,24 +314,30 @@ ChartJS.register(
   LinearScale,
   PointElement,
   LineElement,
-  Title,
   Tooltip,
   Legend,
   Filler
 )
 
 const appStore = useAppStore()
+const router = useRouter()
 const stats = ref<DashboardStats | null>(null)
 const loading = ref(false)
 const chartsLoading = ref(false)
 const userTrendLoading = ref(false)
+const rankingLoading = ref(false)
+const rankingError = ref(false)
 
 // Chart data
 const trendData = ref<TrendDataPoint[]>([])
 const modelStats = ref<ModelStat[]>([])
 const userTrend = ref<UserUsageTrendPoint[]>([])
+const rankingItems = ref<UserSpendingRankingItem[]>([])
+const rankingTotalActualCost = ref(0)
 let chartLoadSeq = 0
 let usersTrendLoadSeq = 0
+let rankingLoadSeq = 0
+const rankingLimit = 12
 
 // Helper function to format date in local timezone
 const formatLocalDate = (date: Date): string => {
@@ -502,6 +523,17 @@ const formatDuration = (ms: number): string => {
   return `${Math.round(ms)REDACTEDms`
 REDACTED
 
+const goToUserUsage = (item: UserSpendingRankingItem) => {
+  void router.push({
+    path: '/admin/usage',
+    query: {
+      user_id: String(item.user_id),
+      start_date: startDate.value,
+      end_date: endDate.value
+    REDACTED
+  REDACTED)
+REDACTED
+
 // Date range change handler
 const onDateRangeChange = (range: {
   startDate: string
@@ -582,14 +614,46 @@ const loadUsersTrend = async () => {
   REDACTED
 REDACTED
 
+const loadUserSpendingRanking = async () => {
+  const currentSeq = ++rankingLoadSeq
+  rankingLoading.value = true
+  rankingError.value = false
+  try {
+    const response = await adminAPI.dashboard.getUserSpendingRanking({
+      start_date: startDate.value,
+      end_date: endDate.value,
+      limit: rankingLimit
+    REDACTED)
+    if (currentSeq !== rankingLoadSeq) return
+    rankingItems.value = response.ranking || []
+    rankingTotalActualCost.value = response.total_actual_cost || 0
+  REDACTED catch (error) {
+    if (currentSeq !== rankingLoadSeq) return
+    console.error('Error loading user spending ranking:', error)
+    rankingItems.value = []
+    rankingTotalActualCost.value = 0
+    rankingError.value = true
+  REDACTED finally {
+    if (currentSeq === rankingLoadSeq) {
+      rankingLoading.value = false
+    REDACTED
+  REDACTED
+REDACTED
+
 const loadDashboardStats = async () => {
-  await loadDashboardSnapshot(true)
-  void loadUsersTrend()
+  await Promise.all([
+    loadDashboardSnapshot(true),
+    loadUsersTrend(),
+    loadUserSpendingRanking()
+  ])
 REDACTED
 
 const loadChartData = async () => {
-  await loadDashboardSnapshot(false)
-  void loadUsersTrend()
+  await Promise.all([
+    loadDashboardSnapshot(false),
+    loadUsersTrend(),
+    loadUserSpendingRanking()
+  ])
 REDACTED
 
 onMounted(() => {

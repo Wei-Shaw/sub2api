@@ -102,6 +102,21 @@ type UserUsageTrendPoint struct {
 	ActualCost float64 `json:"actual_cost"` // 实际扣除
 REDACTED
 
+// UserSpendingRankingItem represents a user spending ranking row.
+type UserSpendingRankingItem struct {
+	UserID     int64   `json:"user_id"`
+	Email      string  `json:"email"`
+	ActualCost float64 `json:"actual_cost"` // 实际扣除
+	Requests   int64   `json:"requests"`
+	Tokens     int64   `json:"tokens"`
+REDACTED
+
+// UserSpendingRankingResponse represents ranking rows plus total spend for the time range.
+type UserSpendingRankingResponse struct {
+	Ranking         []UserSpendingRankingItem `json:"ranking"`
+	TotalActualCost float64                   `json:"total_actual_cost"`
+REDACTED
+
 // APIKeyUsageTrendPoint represents API key usage trend data point
 type APIKeyUsageTrendPoint struct {
 	Date     string `json:"date"`

@@ -963,6 +963,18 @@ export default {
       standard: 'Standard',
       noDataAvailable: 'No data available',
       recentUsage: 'Recent Usage',
+      viewModelDistribution: 'Model Distribution',
+      viewSpendingRanking: 'User Spending Ranking',
+      spendingRankingTitle: 'User Spending Ranking',
+      spendingRankingUser: 'User',
+      spendingRankingRequests: 'Requests',
+      spendingRankingTokens: 'Tokens',
+      spendingRankingSpend: 'Spend',
+      spendingRankingOther: 'Others',
+      spendingRankingUsage: 'Usage',
+      spendShort: 'Spend',
+      requestsShort: 'Req',
+      tokensShort: 'Tok',
       failedToLoad: 'Failed to load dashboard statistics'
     REDACTED,
 
