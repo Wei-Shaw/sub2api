@@ -23,6 +23,7 @@ REDACTED
 
 type schedulerCacheRecorder struct {
 	setAccounts []*service.Account
+	accounts    map[int64]*service.Account
 REDACTED
 
 func (s *schedulerCacheRecorder) GetSnapshot(ctx context.Context, bucket service.SchedulerBucket) ([]*service.Account, bool, error) {
@@ -34,11 +35,20 @@ func (s *schedulerCacheRecorder) SetSnapshot(ctx context.Context, bucket service
 REDACTED
 
 func (s *schedulerCacheRecorder) GetAccount(ctx context.Context, accountID int64) (*service.Account, error) {
-	return nil, nil
+	if s.accounts == nil {
+		return nil, nil
+REDACTED
+	return s.accounts[accountID], nil
 REDACTED
 
 func (s *schedulerCacheRecorder) SetAccount(ctx context.Context, account *service.Account) error {
 	s.setAccounts = append(s.setAccounts, account)
+	if s.accounts == nil {
+		s.accounts = make(map[int64]*service.Account)
+REDACTED
+	if account != nil {
+		s.accounts[account.ID] = account
+REDACTED
 	return nil
 REDACTED
 
@@ -623,21 +633,46 @@ func (s *AccountRepoSuite) TestUpdateExtra_NilExtra() {
 	s.Require().Equal("val", got.Extra["key"])
 REDACTED
 
-func (s *AccountRepoSuite) TestUpdateExtra_SchedulerNeutralKeysSkipOutbox() {
-	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-extra-neutral", Extra: map[string]any{REDACTEDREDACTED)
-	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
-	s.Require().NoError(err)
+func (s *AccountRepoSuite) TestUpdateExtra_SchedulerNeutralSkipsOutboxAndSyncsFreshSnapshot() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "acc-extra-neutral",
+		Platform: service.PlatformOpenAI,
+		Extra:    map[string]any{"codex_usage_updated_at": "old"REDACTED,
+REDACTED)
+	cacheRecorder := &schedulerCacheRecorder{
+		accounts: map[int64]*service.Account{
+			account.ID: {
+				ID:       account.ID,
+				Platform: account.Platform,
+				Status:   service.StatusDisabled,
+				Extra: map[string]any{
+					"codex_usage_updated_at": "old",
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	s.repo.schedulerCache = cacheRecorder
 
-	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
-		"codex_usage_updated_at":     "2026-03-11T13:00:00Z",
-		"codex_5h_used_percent":      12.5,
+	updates := map[string]any{
+		"codex_usage_updated_at":     "2026-03-11T10:00:00Z",
+		"codex_5h_used_percent":      88.5,
 		"session_window_utilization": 0.42,
-REDACTED))
+REDACTED
+	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, updates))
 
-	var count int
-	err = scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox", nil, &count)
+	got, err := s.repo.GetByID(s.ctx, account.ID)
 	s.Require().NoError(err)
-	s.Require().Equal(0, count)
+	s.Require().Equal("2026-03-11T10:00:00Z", got.Extra["codex_usage_updated_at"])
+	s.Require().Equal(88.5, got.Extra["codex_5h_used_percent"])
+	s.Require().Equal(0.42, got.Extra["session_window_utilization"])
+
+	var outboxCount int
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox", nil, &outboxCount))
+	s.Require().Zero(outboxCount)
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+	s.Require().NotNil(cacheRecorder.accounts[account.ID])
+	s.Require().Equal(service.StatusActive, cacheRecorder.accounts[account.ID].Status)
+	s.Require().Equal("2026-03-11T10:00:00Z", cacheRecorder.accounts[account.ID].Extra["codex_usage_updated_at"])
 REDACTED
 
 func (s *AccountRepoSuite) TestUpdateExtra_ExhaustedCodexSnapshotSyncsSchedulerCache() {
@@ -664,16 +699,22 @@ REDACTED))
 	s.Require().Equal(0, count)
 	s.Require().Len(cacheRecorder.setAccounts, 1)
 	s.Require().Equal(account.ID, cacheRecorder.setAccounts[0].ID)
+	s.Require().Equal(service.StatusActive, cacheRecorder.setAccounts[0].Status)
 	s.Require().Equal(100.0, cacheRecorder.setAccounts[0].Extra["codex_7d_used_percent"])
 REDACTED
 
-func (s *AccountRepoSuite) TestUpdateExtra_CustomKeysStillEnqueueOutbox() {
-	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-extra-custom", Extra: map[string]any{REDACTEDREDACTED)
+func (s *AccountRepoSuite) TestUpdateExtra_SchedulerRelevantStillEnqueuesOutbox() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:     "acc-extra-mixed",
+		Platform: service.PlatformAntigravity,
+		Extra:    map[string]any{REDACTED,
+REDACTED)
 	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
-		"custom_scheduler_sensitive_key": true,
+		"mixed_scheduling":       true,
+		"codex_usage_updated_at": "2026-03-11T10:00:00Z",
 REDACTED))
 
 	var count int
