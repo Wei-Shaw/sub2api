@@ -216,6 +216,37 @@ REDACTED
 REDACTED)
 REDACTED
 
+// ResetSubscriptionQuotaRequest represents the reset quota request
+type ResetSubscriptionQuotaRequest struct {
+	Daily  bool `json:"daily"`
+	Weekly bool `json:"weekly"`
+REDACTED
+
+// ResetQuota resets daily and/or weekly usage for a subscription.
+// POST /api/v1/admin/subscriptions/:id/reset-quota
+func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
+	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid subscription ID")
+		return
+REDACTED
+	var req ResetSubscriptionQuotaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+	if !req.Daily && !req.Weekly {
+		response.BadRequest(c, "At least one of 'daily' or 'weekly' must be true")
+		return
+REDACTED
+	sub, err := h.subscriptionService.AdminResetQuota(c.Request.Context(), subscriptionID, req.Daily, req.Weekly)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, dto.UserSubscriptionFromServiceAdmin(sub))
+REDACTED
+
 // Revoke handles revoking a subscription
 // DELETE /api/v1/admin/subscriptions/:id
 func (h *SubscriptionHandler) Revoke(c *gin.Context) {
