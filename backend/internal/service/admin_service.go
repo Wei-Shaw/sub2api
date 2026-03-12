@@ -1425,30 +1425,13 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// OpenAI OAuth: attempt to disable training data sharing
-	extra := input.Extra
-	if input.Platform == PlatformOpenAI && input.Type == AccountTypeOAuth {
-		if token, _ := input.Credentials["access_token"].(string); token != "" {
-			var proxyURL string
-			if input.ProxyID != nil {
-				if p, err := s.proxyRepo.GetByID(ctx, *input.ProxyID); err == nil && p != nil {
-					proxyURL = p.URL()
-			REDACTED
-		REDACTED
-			if extra == nil {
-				extra = make(map[string]any)
-		REDACTED
-			extra["privacy_mode"] = disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
-	REDACTED
-REDACTED
-
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
 		Platform:    input.Platform,
 		Type:        input.Type,
 		Credentials: input.Credentials,
-		Extra:       extra,
+		Extra:       input.Extra,
 		ProxyID:     input.ProxyID,
 		Concurrency: input.Concurrency,
 		Priority:    input.Priority,
