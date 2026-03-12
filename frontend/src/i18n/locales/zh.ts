@@ -963,6 +963,8 @@ export default {
       hour: '按小时',
       modelDistribution: '模型分布',
       groupDistribution: '分组使用分布',
+      metricTokens: '按 Token',
+      metricActualCost: '按实际消费',
       tokenUsageTrend: 'Token 使用趋势',
       noDataAvailable: '暂无数据',
       model: '模型',
