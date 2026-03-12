@@ -19,6 +19,16 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 )
 
+// ForbiddenError 表示上游返回 403 Forbidden
+type ForbiddenError struct {
+	StatusCode int
+	Body       string
+REDACTED
+
+func (e *ForbiddenError) Error() string {
+	return fmt.Sprintf("fetchAvailableModels 失败 (HTTP %d): %s", e.StatusCode, e.Body)
+REDACTED
+
 // NewAPIRequestWithURL 使用指定的 base URL 创建 Antigravity API 请求（v1internal 端点）
 func NewAPIRequestWithURL(ctx context.Context, baseURL, action, accessToken string, body []byte) (*http.Request, error) {
 	// 构建 URL，流式请求添加 ?alt=sse 参数
@@ -514,7 +524,20 @@ REDACTED
 
 // ModelInfo 模型信息
 type ModelInfo struct {
-	QuotaInfo *ModelQuotaInfo `json:"quotaInfo,omitempty"`
+	QuotaInfo          *ModelQuotaInfo `json:"quotaInfo,omitempty"`
+	DisplayName        string          `json:"displayName,omitempty"`
+	SupportsImages     *bool           `json:"supportsImages,omitempty"`
+	SupportsThinking   *bool           `json:"supportsThinking,omitempty"`
+	ThinkingBudget     *int            `json:"thinkingBudget,omitempty"`
+	Recommended        *bool           `json:"recommended,omitempty"`
+	MaxTokens          *int            `json:"maxTokens,omitempty"`
+	MaxOutputTokens    *int            `json:"maxOutputTokens,omitempty"`
+	SupportedMimeTypes map[string]bool `json:"supportedMimeTypes,omitempty"`
+REDACTED
+
+// DeprecatedModelInfo 废弃模型转发信息
+type DeprecatedModelInfo struct {
+	NewModelID string `json:"newModelId"`
 REDACTED
 
 // FetchAvailableModelsRequest fetchAvailableModels 请求
@@ -524,7 +547,8 @@ REDACTED
 
 // FetchAvailableModelsResponse fetchAvailableModels 响应
 type FetchAvailableModelsResponse struct {
-	Models map[string]ModelInfo `json:"models"`
+	Models             map[string]ModelInfo           `json:"models"`
+	DeprecatedModelIDs map[string]DeprecatedModelInfo `json:"deprecatedModelIds,omitempty"`
 REDACTED
 
 // FetchAvailableModels 获取可用模型和配额信息，返回解析后的结构体和原始 JSON
@@ -571,6 +595,13 @@ REDACTED
 		if shouldFallbackToNextURL(nil, resp.StatusCode) && urlIdx < len(availableURLs)-1 {
 			log.Printf("[antigravity] fetchAvailableModels URL fallback (HTTP %d): %s -> %s", resp.StatusCode, baseURL, availableURLs[urlIdx+1])
 			continue
+	REDACTED
+
+		if resp.StatusCode == http.StatusForbidden {
+			return nil, nil, &ForbiddenError{
+				StatusCode: resp.StatusCode,
+				Body:       string(respBodyBytes),
+		REDACTED
 	REDACTED
 
 		if resp.StatusCode != http.StatusOK {

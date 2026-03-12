@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/rand/v2"
 	"net/http"
 	"strings"
@@ -99,6 +100,7 @@ REDACTED
 const (
 	apiCacheTTL             = 3 * time.Minute
 	apiErrorCacheTTL        = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
+	antigravityErrorTTL     = 1 * time.Minute        // Antigravity 错误缓存 TTL（可恢复错误）
 	apiQueryMaxJitter       = 800 * time.Millisecond // 用量查询最大随机延迟
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
@@ -107,11 +109,12 @@ const (
 
 // UsageCache 封装账户使用量相关的缓存
 type UsageCache struct {
-	apiCache         sync.Map           // accountID -> *apiUsageCache
-	windowStatsCache sync.Map           // accountID -> *windowStatsCache
-	antigravityCache sync.Map           // accountID -> *antigravityUsageCache
-	apiFlight        singleflight.Group // 防止同一账号的并发请求击穿缓存
-	openAIProbeCache sync.Map           // accountID -> time.Time
+	apiCache          sync.Map           // accountID -> *apiUsageCache
+	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
+	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
+	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
+	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
+	openAIProbeCache  sync.Map           // accountID -> time.Time
 REDACTED
 
 // NewUsageCache 创建 UsageCache 实例
@@ -148,6 +151,18 @@ type AntigravityModelQuota struct {
 	ResetTime   string `json:"reset_time"`  // 重置时间 ISO8601
 REDACTED
 
+// AntigravityModelDetail Antigravity 单个模型的详细能力信息
+type AntigravityModelDetail struct {
+	DisplayName        string          `json:"display_name,omitempty"`
+	SupportsImages     *bool           `json:"supports_images,omitempty"`
+	SupportsThinking   *bool           `json:"supports_thinking,omitempty"`
+	ThinkingBudget     *int            `json:"thinking_budget,omitempty"`
+	Recommended        *bool           `json:"recommended,omitempty"`
+	MaxTokens          *int            `json:"max_tokens,omitempty"`
+	MaxOutputTokens    *int            `json:"max_output_tokens,omitempty"`
+	SupportedMimeTypes map[string]bool `json:"supported_mime_types,omitempty"`
+REDACTED
+
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
 	UpdatedAt          *time.Time     `json:"updated_at,omitempty"`           // 更新时间
@@ -163,6 +178,33 @@ type UsageInfo struct {
 
 	// Antigravity 多模型配额
 	AntigravityQuota map[string]*AntigravityModelQuota `json:"antigravity_quota,omitempty"`
+
+	// Antigravity 账号级信息
+	SubscriptionTier    string `json:"subscription_tier,omitempty"`     // 归一化订阅等级: FREE/PRO/ULTRA/UNKNOWN
+	SubscriptionTierRaw string `json:"subscription_tier_raw,omitempty"` // 上游原始订阅等级名称
+
+	// Antigravity 模型详细能力信息（与 antigravity_quota 同 key）
+	AntigravityQuotaDetails map[string]*AntigravityModelDetail `json:"antigravity_quota_details,omitempty"`
+
+	// Antigravity 废弃模型转发规则 (old_model_id -> new_model_id)
+	ModelForwardingRules map[string]string `json:"model_forwarding_rules,omitempty"`
+
+	// Antigravity 账号是否被上游禁止 (HTTP 403)
+	IsForbidden     bool   `json:"is_forbidden,omitempty"`
+	ForbiddenReason string `json:"forbidden_reason,omitempty"`
+	ForbiddenType   string `json:"forbidden_type,omitempty"` // "validation" / "violation" / "forbidden"
+	ValidationURL   string `json:"validation_url,omitempty"` // 验证/申诉链接
+
+	// 状态标记（从 ForbiddenType / HTTP 错误码推导）
+	NeedsVerify bool `json:"needs_verify,omitempty"` // 需要人工验证（forbidden_type=validation）
+	IsBanned    bool `json:"is_banned,omitempty"`    // 账号被封（forbidden_type=violation）
+	NeedsReauth bool `json:"needs_reauth,omitempty"` // token 失效需重新授权（401）
+
+	// 错误码（机器可读）：forbidden / unauthenticated / rate_limited / network_error
+	ErrorCode string `json:"error_code,omitempty"`
+
+	// 获取 usage 时的错误信息（降级返回，而非 500）
+	Error string `json:"error,omitempty"`
 REDACTED
 
 // ClaudeUsageResponse Anthropic API返回的usage结构
@@ -647,34 +689,157 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 		return &UsageInfo{UpdatedAt: &nowREDACTED, nil
 REDACTED
 
-	// 1. 检查缓存（10 分钟）
+	// 1. 检查缓存
 	if cached, ok := s.cache.antigravityCache.Load(account.ID); ok {
-		if cache, ok := cached.(*antigravityUsageCache); ok && time.Since(cache.timestamp) < apiCacheTTL {
-			// 重新计算 RemainingSeconds
-			usage := cache.usageInfo
-			if usage.FiveHour != nil && usage.FiveHour.ResetsAt != nil {
-				usage.FiveHour.RemainingSeconds = int(time.Until(*usage.FiveHour.ResetsAt).Seconds())
+		if cache, ok := cached.(*antigravityUsageCache); ok {
+			ttl := antigravityCacheTTL(cache.usageInfo)
+			if time.Since(cache.timestamp) < ttl {
+				usage := cache.usageInfo
+				if usage.FiveHour != nil && usage.FiveHour.ResetsAt != nil {
+					usage.FiveHour.RemainingSeconds = int(time.Until(*usage.FiveHour.ResetsAt).Seconds())
+			REDACTED
+				return usage, nil
 		REDACTED
-			return usage, nil
 	REDACTED
 REDACTED
 
-	// 2. 获取代理 URL
-	proxyURL := s.antigravityQuotaFetcher.GetProxyURL(ctx, account)
+	// 2. singleflight 防止并发击穿
+	flightKey := fmt.Sprintf("ag-usage:%d", account.ID)
+	result, flightErr, _ := s.cache.antigravityFlight.Do(flightKey, func() (any, error) {
+		// 再次检查缓存（等待期间可能已被填充）
+		if cached, ok := s.cache.antigravityCache.Load(account.ID); ok {
+			if cache, ok := cached.(*antigravityUsageCache); ok {
+				ttl := antigravityCacheTTL(cache.usageInfo)
+				if time.Since(cache.timestamp) < ttl {
+					usage := cache.usageInfo
+					// 重新计算 RemainingSeconds，避免返回过时的剩余秒数
+					recalcAntigravityRemainingSeconds(usage)
+					return usage, nil
+			REDACTED
+		REDACTED
+	REDACTED
 
-	// 3. 调用 API 获取额度
-	result, err := s.antigravityQuotaFetcher.FetchQuota(ctx, account, proxyURL)
-	if err != nil {
-		return nil, fmt.Errorf("fetch antigravity quota failed: %w", err)
-REDACTED
+		// 使用独立 context，避免调用方 cancel 导致所有共享 flight 的请求失败
+		fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer fetchCancel()
 
-	// 4. 缓存结果
-	s.cache.antigravityCache.Store(account.ID, &antigravityUsageCache{
-		usageInfo: result.UsageInfo,
-		timestamp: time.Now(),
+		proxyURL := s.antigravityQuotaFetcher.GetProxyURL(fetchCtx, account)
+		fetchResult, err := s.antigravityQuotaFetcher.FetchQuota(fetchCtx, account, proxyURL)
+		if err != nil {
+			degraded := buildAntigravityDegradedUsage(err)
+			enrichUsageWithAccountError(degraded, account)
+			s.cache.antigravityCache.Store(account.ID, &antigravityUsageCache{
+				usageInfo: degraded,
+				timestamp: time.Now(),
+		REDACTED)
+			return degraded, nil
+	REDACTED
+
+		enrichUsageWithAccountError(fetchResult.UsageInfo, account)
+		s.cache.antigravityCache.Store(account.ID, &antigravityUsageCache{
+			usageInfo: fetchResult.UsageInfo,
+			timestamp: time.Now(),
+	REDACTED)
+		return fetchResult.UsageInfo, nil
 REDACTED)
 
-	return result.UsageInfo, nil
+	if flightErr != nil {
+		return nil, flightErr
+REDACTED
+	usage, ok := result.(*UsageInfo)
+	if !ok || usage == nil {
+		now := time.Now()
+		return &UsageInfo{UpdatedAt: &nowREDACTED, nil
+REDACTED
+	return usage, nil
+REDACTED
+
+// recalcAntigravityRemainingSeconds 重新计算 Antigravity UsageInfo 中各窗口的 RemainingSeconds
+// 用于从缓存取出时更新倒计时，避免返回过时的剩余秒数
+func recalcAntigravityRemainingSeconds(info *UsageInfo) {
+	if info == nil {
+		return
+REDACTED
+	if info.FiveHour != nil && info.FiveHour.ResetsAt != nil {
+		remaining := int(time.Until(*info.FiveHour.ResetsAt).Seconds())
+		if remaining < 0 {
+			remaining = 0
+	REDACTED
+		info.FiveHour.RemainingSeconds = remaining
+REDACTED
+REDACTED
+
+// antigravityCacheTTL 根据 UsageInfo 内容决定缓存 TTL
+// 403 forbidden 状态稳定，缓存与成功相同（3 分钟）；
+// 其他错误（401/网络）可能快速恢复，缓存 1 分钟。
+func antigravityCacheTTL(info *UsageInfo) time.Duration {
+	if info == nil {
+		return antigravityErrorTTL
+REDACTED
+	if info.IsForbidden {
+		return apiCacheTTL // 封号/验证状态不会很快变
+REDACTED
+	if info.ErrorCode != "" || info.Error != "" {
+		return antigravityErrorTTL
+REDACTED
+	return apiCacheTTL
+REDACTED
+
+// buildAntigravityDegradedUsage 从 FetchQuota 错误构建降级 UsageInfo
+func buildAntigravityDegradedUsage(err error) *UsageInfo {
+	now := time.Now()
+	errMsg := fmt.Sprintf("usage API error: %v", err)
+	slog.Warn("antigravity usage fetch failed, returning degraded response", "error", err)
+
+	info := &UsageInfo{
+		UpdatedAt: &now,
+		Error:     errMsg,
+REDACTED
+
+	// 从错误信息推断 error_code 和状态标记
+	// 错误格式来自 antigravity/client.go: "fetchAvailableModels 失败 (HTTP %d): ..."
+	errStr := err.Error()
+	switch {
+	case strings.Contains(errStr, "HTTP 401") ||
+		strings.Contains(errStr, "UNAUTHENTICATED") ||
+		strings.Contains(errStr, "invalid_grant"):
+		info.ErrorCode = errorCodeUnauthenticated
+		info.NeedsReauth = true
+	case strings.Contains(errStr, "HTTP 429"):
+		info.ErrorCode = errorCodeRateLimited
+	default:
+		info.ErrorCode = errorCodeNetworkError
+REDACTED
+
+	return info
+REDACTED
+
+// enrichUsageWithAccountError 结合账号错误状态修正 UsageInfo
+// 场景 1（成功路径）：FetchAvailableModels 正常返回，但账号已因 403 被标记为 error，
+//
+//	需要在正常 usage 数据上附加 forbidden/validation 信息。
+//
+// 场景 2（降级路径）：被封号的账号 OAuth token 失效，FetchAvailableModels 返回 401，
+//
+//	降级逻辑设置了 needs_reauth，但账号实际是 403 封号/需验证，需覆盖为正确状态。
+func enrichUsageWithAccountError(info *UsageInfo, account *Account) {
+	if info == nil || account == nil || account.Status != StatusError {
+		return
+REDACTED
+	msg := strings.ToLower(account.ErrorMessage)
+	if !strings.Contains(msg, "403") && !strings.Contains(msg, "forbidden") &&
+		!strings.Contains(msg, "violation") && !strings.Contains(msg, "validation") {
+		return
+REDACTED
+	fbType := classifyForbiddenType(account.ErrorMessage)
+	info.IsForbidden = true
+	info.ForbiddenType = fbType
+	info.ForbiddenReason = account.ErrorMessage
+	info.NeedsVerify = fbType == forbiddenTypeValidation
+	info.IsBanned = fbType == forbiddenTypeViolation
+	info.ValidationURL = extractValidationURL(account.ErrorMessage)
+	info.ErrorCode = errorCodeForbidden
+	info.NeedsReauth = false
 REDACTED
 
 // addWindowStats 为 usage 数据添加窗口期统计
