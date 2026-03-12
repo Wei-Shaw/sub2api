@@ -1,50 +1,67 @@
 <template>
-  <div class="inline-flex items-center overflow-hidden rounded-md text-xs font-medium">
-    <!-- Platform part -->
-    <span :class="['inline-flex items-center gap-1 px-2 py-1', platformClass]">
-      <PlatformIcon :platform="platform" size="xs" />
-      <span>{{ platformLabel REDACTEDREDACTED</span>
-    </span>
-    <!-- Type part -->
-    <span :class="['inline-flex items-center gap-1 px-1.5 py-1', typeClass]">
-      <!-- OAuth icon -->
-      <svg
-        v-if="type === 'oauth'"
-        class="h-3 w-3"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        stroke-width="2"
+  <div class="inline-flex flex-col gap-0.5 text-xs font-medium">
+    <!-- Row 1: Platform + Type -->
+    <div class="inline-flex items-center overflow-hidden rounded-md">
+      <span :class="['inline-flex items-center gap-1 px-2 py-1', platformClass]">
+        <PlatformIcon :platform="platform" size="xs" />
+        <span>{{ platformLabel REDACTEDREDACTED</span>
+      </span>
+      <span :class="['inline-flex items-center gap-1 px-1.5 py-1', typeClass]">
+        <!-- OAuth icon -->
+        <svg
+          v-if="type === 'oauth'"
+          class="h-3 w-3"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+          />
+        </svg>
+        <!-- Setup Token icon -->
+        <Icon v-else-if="type === 'setup-token'" name="shield" size="xs" />
+        <!-- API Key icon -->
+        <Icon v-else name="key" size="xs" />
+        <span>{{ typeLabel REDACTEDREDACTED</span>
+      </span>
+    </div>
+    <!-- Row 2: Plan type + Privacy mode (only if either exists) -->
+    <div v-if="planLabel || privacyBadge" class="inline-flex items-center overflow-hidden rounded-md">
+      <span v-if="planLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1', typeClass]">
+        <span>{{ planLabel REDACTEDREDACTED</span>
+      </span>
+      <span
+        v-if="privacyBadge"
+        :class="['inline-flex items-center gap-1 px-1.5 py-1', privacyBadge.class]"
+        :title="privacyBadge.title"
       >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
-        />
-      </svg>
-      <!-- Setup Token icon -->
-      <Icon v-else-if="type === 'setup-token'" name="shield" size="xs" />
-      <!-- API Key icon -->
-      <Icon v-else name="key" size="xs" />
-      <span>{{ typeLabel REDACTEDREDACTED</span>
-    </span>
-    <!-- Plan type part (optional) -->
-    <span v-if="planLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1 border-l border-white/20', typeClass]">
-      <span>{{ planLabel REDACTEDREDACTED</span>
-    </span>
+        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" :d="privacyBadge.icon" />
+        </svg>
+        <span>{{ privacyBadge.label REDACTEDREDACTED</span>
+      </span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
 import type { AccountPlatform, AccountType REDACTED from '@/types'
 import PlatformIcon from './PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
+
+const { t REDACTED = useI18n()
 
 interface Props {
   platform: AccountPlatform
   type: AccountType
   planType?: string
+  privacyMode?: string
 REDACTED
 
 const props = defineProps<Props>()
@@ -118,5 +135,22 @@ const typeClass = computed(() => {
     return 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
   REDACTED
   return 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+REDACTED)
+
+// Privacy badge — shows different states for OpenAI OAuth training setting
+const privacyBadge = computed(() => {
+  if (props.platform !== 'openai' || props.type !== 'oauth' || !props.privacyMode) return null
+  const shieldCheck = 'M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z'
+  const shieldX = 'M12 9v3.75m0-10.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285zM12 18h.008v.008H12V18z'
+  switch (props.privacyMode) {
+    case 'training_off':
+      return { label: 'Privacy', icon: shieldCheck, title: t('admin.accounts.privacyTrainingOff'), class: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' REDACTED
+    case 'training_set_cf_blocked':
+      return { label: 'CF', icon: shieldX, title: t('admin.accounts.privacyCfBlocked'), class: 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400' REDACTED
+    case 'training_set_failed':
+      return { label: 'Fail', icon: shieldX, title: t('admin.accounts.privacyFailed'), class: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' REDACTED
+    default:
+      return null
+  REDACTED
 REDACTED)
 </script>

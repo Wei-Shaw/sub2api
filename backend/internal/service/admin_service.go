@@ -57,6 +57,8 @@ type AdminService interface {
 	RefreshAccountCredentials(ctx context.Context, id int64) (*Account, error)
 	ClearAccountError(ctx context.Context, id int64) (*Account, error)
 	SetAccountError(ctx context.Context, id int64, errorMsg string) error
+	// EnsureOpenAIPrivacy 检查 OpenAI OAuth 账号 privacy_mode，未设置则尝试关闭训练数据共享并持久化。
+	EnsureOpenAIPrivacy(ctx context.Context, account *Account) string
 	SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error)
 	BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error)
 	CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error
@@ -433,6 +435,7 @@ type adminServiceImpl struct {
 	settingService       *SettingService
 	defaultSubAssigner   DefaultSubscriptionAssigner
 	userSubRepo          UserSubscriptionRepository
+	privacyClientFactory PrivacyClientFactory
 REDACTED
 
 type userGroupRateBatchReader interface {
@@ -461,6 +464,7 @@ func NewAdminService(
 	settingService *SettingService,
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	userSubRepo UserSubscriptionRepository,
+	privacyClientFactory PrivacyClientFactory,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -479,6 +483,7 @@ func NewAdminService(
 		settingService:       settingService,
 		defaultSubAssigner:   defaultSubAssigner,
 		userSubRepo:          userSubRepo,
+		privacyClientFactory: privacyClientFactory,
 REDACTED
 REDACTED
 
@@ -1420,13 +1425,30 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// OpenAI OAuth: attempt to disable training data sharing
+	extra := input.Extra
+	if input.Platform == PlatformOpenAI && input.Type == AccountTypeOAuth {
+		if token, _ := input.Credentials["access_token"].(string); token != "" {
+			var proxyURL string
+			if input.ProxyID != nil {
+				if p, err := s.proxyRepo.GetByID(ctx, *input.ProxyID); err == nil && p != nil {
+					proxyURL = p.URL()
+			REDACTED
+		REDACTED
+			if extra == nil {
+				extra = make(map[string]any)
+		REDACTED
+			extra["privacy_mode"] = disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
+	REDACTED
+REDACTED
+
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
 		Platform:    input.Platform,
 		Type:        input.Type,
 		Credentials: input.Credentials,
-		Extra:       input.Extra,
+		Extra:       extra,
 		ProxyID:     input.ProxyID,
 		Concurrency: input.Concurrency,
 		Priority:    input.Priority,
@@ -2501,4 +2523,40 @@ REDACTED
 
 func (s *adminServiceImpl) ResetAccountQuota(ctx context.Context, id int64) error {
 	return s.accountRepo.ResetQuotaUsed(ctx, id)
+REDACTED
+
+// EnsureOpenAIPrivacy 检查 OpenAI OAuth 账号是否已设置 privacy_mode，
+// 未设置则调用 disableOpenAITraining 并持久化到 Extra，返回设置的 mode 值。
+func (s *adminServiceImpl) EnsureOpenAIPrivacy(ctx context.Context, account *Account) string {
+	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+		return ""
+REDACTED
+	if s.privacyClientFactory == nil {
+		return ""
+REDACTED
+	if account.Extra != nil {
+		if _, ok := account.Extra["privacy_mode"]; ok {
+			return ""
+	REDACTED
+REDACTED
+
+	token, _ := account.Credentials["access_token"].(string)
+	if token == "" {
+		return ""
+REDACTED
+
+	var proxyURL string
+	if account.ProxyID != nil {
+		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
+			proxyURL = p.URL()
+	REDACTED
+REDACTED
+
+	mode := disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
+	if mode == "" {
+		return ""
+REDACTED
+
+	_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": modeREDACTED)
+	return mode
 REDACTED

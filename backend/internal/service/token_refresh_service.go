@@ -21,6 +21,10 @@ type TokenRefreshService struct {
 	schedulerCache   SchedulerCache   // 用于同步更新调度器缓存，解决 token 刷新后缓存不一致问题
 	tempUnschedCache TempUnschedCache // 用于清除 Redis 中的临时不可调度缓存
 
+	// OpenAI privacy: 刷新成功后检查并设置 training opt-out
+	privacyClientFactory PrivacyClientFactory
+	proxyRepo            ProxyRepository
+
 	stopCh chan struct{REDACTED
 	wg     sync.WaitGroup
 REDACTED
@@ -70,6 +74,12 @@ func (s *TokenRefreshService) SetSoraAccountRepo(repo SoraAccountRepository) {
 			openaiRefresher.SetSoraAccountRepo(repo)
 	REDACTED
 REDACTED
+REDACTED
+
+// SetPrivacyDeps 注入 OpenAI privacy opt-out 所需依赖
+func (s *TokenRefreshService) SetPrivacyDeps(factory PrivacyClientFactory, proxyRepo ProxyRepository) {
+	s.privacyClientFactory = factory
+	s.proxyRepo = proxyRepo
 REDACTED
 
 // Start 启动后台刷新服务
@@ -277,6 +287,8 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 					slog.Debug("token_refresh.scheduler_cache_synced", "account_id", account.ID)
 			REDACTED
 		REDACTED
+			// OpenAI OAuth: 刷新成功后，检查是否已设置 privacy_mode，未设置则尝试关闭训练数据共享
+			s.ensureOpenAIPrivacy(ctx, account)
 			return nil
 	REDACTED
 
@@ -340,4 +352,50 @@ REDACTED
 	REDACTED
 REDACTED
 	return false
+REDACTED
+
+// ensureOpenAIPrivacy 检查 OpenAI OAuth 账号是否已设置 privacy_mode，
+// 未设置则调用 disableOpenAITraining 并持久化结果到 Extra。
+func (s *TokenRefreshService) ensureOpenAIPrivacy(ctx context.Context, account *Account) {
+	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+		return
+REDACTED
+	if s.privacyClientFactory == nil {
+		return
+REDACTED
+	// 已设置过则跳过
+	if account.Extra != nil {
+		if _, ok := account.Extra["privacy_mode"]; ok {
+			return
+	REDACTED
+REDACTED
+
+	token, _ := account.Credentials["access_token"].(string)
+	if token == "" {
+		return
+REDACTED
+
+	var proxyURL string
+	if account.ProxyID != nil && s.proxyRepo != nil {
+		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
+			proxyURL = p.URL()
+	REDACTED
+REDACTED
+
+	mode := disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
+	if mode == "" {
+		return
+REDACTED
+
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": modeREDACTED); err != nil {
+		slog.Warn("token_refresh.update_privacy_mode_failed",
+			"account_id", account.ID,
+			"error", err,
+		)
+REDACTED else {
+		slog.Info("token_refresh.privacy_mode_set",
+			"account_id", account.ID,
+			"privacy_mode", mode,
+		)
+REDACTED
 REDACTED

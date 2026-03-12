@@ -1743,6 +1743,9 @@ export default {
         expiresAt: 'Expires At',
         actions: 'Actions'
       REDACTED,
+      privacyTrainingOff: 'Training data sharing disabled',
+      privacyCfBlocked: 'Blocked by Cloudflare, training may still be on',
+      privacyFailed: 'Failed to disable training',
       // Capacity status tooltips
       capacity: {
         windowCost: {
