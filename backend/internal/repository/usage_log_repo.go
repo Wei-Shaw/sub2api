@@ -377,7 +377,7 @@ REDACTED
 REDACTED
 
 func (r *usageLogRepository) ensureCreateBatcher() {
-	if r == nil || r.db == nil {
+	if r == nil || r.db == nil || r.createBatchCh != nil {
 		return
 REDACTED
 	r.createBatchOnce.Do(func() {
@@ -387,7 +387,7 @@ REDACTED)
 REDACTED
 
 func (r *usageLogRepository) ensureBestEffortBatcher() {
-	if r == nil || r.db == nil {
+	if r == nil || r.db == nil || r.bestEffortBatchCh != nil {
 		return
 REDACTED
 	r.bestEffortBatchOnce.Do(func() {
