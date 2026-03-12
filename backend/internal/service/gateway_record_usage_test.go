@@ -1,0 +1,261 @@
+//go:build unit
+
+package service
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/stretchr/testify/require"
+)
+
+func newGatewayRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo UserRepository, subRepo UserSubscriptionRepository) *GatewayService {
+	cfg := &config.Config{REDACTED
+	cfg.Default.RateMultiplier = 1.1
+	return NewGatewayService(
+		nil,
+		nil,
+		usageRepo,
+		nil,
+		userRepo,
+		subRepo,
+		nil,
+		nil,
+		cfg,
+		nil,
+		nil,
+		NewBillingService(cfg, nil),
+		nil,
+		&BillingCacheService{REDACTED,
+		nil,
+		nil,
+		&DeferredService{REDACTED,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+REDACTED
+
+func newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo UsageLogRepository, billingRepo UsageBillingRepository, userRepo UserRepository, subRepo UserSubscriptionRepository) *GatewayService {
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, subRepo)
+	svc.usageBillingRepo = billingRepo
+	return svc
+REDACTED
+
+func TestGatewayServiceRecordUsage_BillingUsesDetachedContext(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: context.DeadlineExceededREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{REDACTED
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, subRepo)
+
+	reqCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := svc.RecordUsage(reqCtx, &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_detached_ctx",
+			Usage: ClaudeUsage{
+				InputTokens:  10,
+				OutputTokens: 6,
+		REDACTED,
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:    501,
+			Quota: 100,
+	REDACTED,
+		User:          &User{ID: 601REDACTED,
+		Account:       &Account{ID: 701REDACTED,
+		APIKeyService: quotaSvc,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 1, userRepo.deductCalls)
+	require.NoError(t, userRepo.lastCtxErr)
+	require.Equal(t, 1, quotaSvc.quotaCalls)
+	require.NoError(t, quotaSvc.lastQuotaCtxErr)
+REDACTED
+
+func TestGatewayServiceRecordUsage_BillingFingerprintIncludesRequestPayloadHash(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{REDACTED
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: trueREDACTEDREDACTED
+	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED)
+
+	payloadHash := HashUsageRequestPayload([]byte(`{"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`))
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_payload_hash",
+			Usage: ClaudeUsage{
+				InputTokens:  10,
+				OutputTokens: 6,
+		REDACTED,
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+	REDACTED,
+		APIKey:             &APIKey{ID: 501, Quota: 100REDACTED,
+		User:               &User{ID: 601REDACTED,
+		Account:            &Account{ID: 701REDACTED,
+		RequestPayloadHash: payloadHash,
+REDACTED)
+REDACTED
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Equal(t, payloadHash, billingRepo.lastCmd.RequestPayloadHash)
+REDACTED
+
+func TestGatewayServiceRecordUsage_BillingFingerprintFallsBackToContextRequestID(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{REDACTED
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: trueREDACTEDREDACTED
+	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED)
+
+	ctx := context.WithValue(context.Background(), ctxkey.RequestID, "req-local-123")
+	err := svc.RecordUsage(ctx, &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_payload_fallback",
+			Usage: ClaudeUsage{
+				InputTokens:  10,
+				OutputTokens: 6,
+		REDACTED,
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 501, Quota: 100REDACTED,
+		User:    &User{ID: 601REDACTED,
+		Account: &Account{ID: 701REDACTED,
+REDACTED)
+REDACTED
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Equal(t, "local:req-local-123", billingRepo.lastCmd.RequestPayloadHash)
+REDACTED
+
+func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: MarkUsageLogCreateNotPersisted(context.Canceled)REDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{REDACTED
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, subRepo)
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_not_persisted",
+			Usage: ClaudeUsage{
+				InputTokens:  10,
+				OutputTokens: 6,
+		REDACTED,
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:    503,
+			Quota: 100,
+	REDACTED,
+		User:          &User{ID: 603REDACTED,
+		Account:       &Account{ID: 703REDACTED,
+		APIKeyService: quotaSvc,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 1, userRepo.deductCalls)
+	require.Equal(t, 1, quotaSvc.quotaCalls)
+REDACTED
+
+func TestGatewayServiceRecordUsageWithLongContext_BillingUsesDetachedContext(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: context.DeadlineExceededREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{REDACTED
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, subRepo)
+
+	reqCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := svc.RecordUsageWithLongContext(reqCtx, &RecordUsageLongContextInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_long_context_detached_ctx",
+			Usage: ClaudeUsage{
+				InputTokens:  12,
+				OutputTokens: 8,
+		REDACTED,
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:    502,
+			Quota: 100,
+	REDACTED,
+		User:                  &User{ID: 602REDACTED,
+		Account:               &Account{ID: 702REDACTED,
+		LongContextThreshold:  200000,
+		LongContextMultiplier: 2,
+		APIKeyService:         quotaSvc,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 1, userRepo.deductCalls)
+	require.NoError(t, userRepo.lastCtxErr)
+	require.Equal(t, 1, quotaSvc.quotaCalls)
+	require.NoError(t, quotaSvc.lastQuotaCtxErr)
+REDACTED
+
+func TestGatewayServiceRecordUsage_UsesFallbackRequestIDForUsageLog(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{REDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, subRepo)
+
+	ctx := context.WithValue(context.Background(), ctxkey.RequestID, "gateway-local-fallback")
+	err := svc.RecordUsage(ctx, &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "",
+			Usage: ClaudeUsage{
+				InputTokens:  10,
+				OutputTokens: 6,
+		REDACTED,
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 504REDACTED,
+		User:    &User{ID: 604REDACTED,
+		Account: &Account{ID: 704REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "local:gateway-local-fallback", usageRepo.lastLog.RequestID)
+REDACTED
+
+func TestGatewayServiceRecordUsage_BillingErrorSkipsUsageLogWrite(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{REDACTED
+	billingRepo := &openAIRecordUsageBillingRepoStub{err: context.DeadlineExceededREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo)
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_billing_fail",
+			Usage: ClaudeUsage{
+				InputTokens:  10,
+				OutputTokens: 6,
+		REDACTED,
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 505REDACTED,
+		User:    &User{ID: 605REDACTED,
+		Account: &Account{ID: 705REDACTED,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 1, billingRepo.calls)
+	require.Equal(t, 0, usageRepo.calls)
+REDACTED

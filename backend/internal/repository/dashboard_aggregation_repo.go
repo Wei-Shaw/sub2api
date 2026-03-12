@@ -17,6 +17,9 @@ type dashboardAggregationRepository struct {
 	sql sqlExecutor
 REDACTED
 
+const usageLogsCleanupBatchSize = 10000
+const usageBillingDedupCleanupBatchSize = 10000
+
 // NewDashboardAggregationRepository 创建仪表盘预聚合仓储。
 func NewDashboardAggregationRepository(sqlDB *sql.DB) service.DashboardAggregationRepository {
 	if sqlDB == nil {
@@ -42,6 +45,9 @@ REDACTED
 REDACTED
 
 func (r *dashboardAggregationRepository) AggregateRange(ctx context.Context, start, end time.Time) error {
+	if r == nil || r.sql == nil {
+		return nil
+REDACTED
 	loc := timezone.Location()
 	startLocal := start.In(loc)
 	endLocal := end.In(loc)
@@ -61,6 +67,22 @@ REDACTED
 		dayEnd = dayEnd.Add(24 * time.Hour)
 REDACTED
 
+	if db, ok := r.sql.(*sql.DB); ok {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+	REDACTED
+		txRepo := newDashboardAggregationRepositoryWithSQL(tx)
+		if err := txRepo.aggregateRangeInTx(ctx, hourStart, hourEnd, dayStart, dayEnd); err != nil {
+			_ = tx.Rollback()
+			return err
+	REDACTED
+		return tx.Commit()
+REDACTED
+	return r.aggregateRangeInTx(ctx, hourStart, hourEnd, dayStart, dayEnd)
+REDACTED
+
+func (r *dashboardAggregationRepository) aggregateRangeInTx(ctx context.Context, hourStart, hourEnd, dayStart, dayEnd time.Time) error {
 	// 以桶边界聚合，允许覆盖 end 所在桶的剩余区间。
 	if err := r.insertHourlyActiveUsers(ctx, hourStart, hourEnd); err != nil {
 		return err
@@ -195,8 +217,58 @@ REDACTED
 	if isPartitioned {
 		return r.dropUsageLogsPartitions(ctx, cutoff)
 REDACTED
-	_, err = r.sql.ExecContext(ctx, "DELETE FROM usage_logs WHERE created_at < $1", cutoff.UTC())
-	return err
+	for {
+		res, err := r.sql.ExecContext(ctx, `
+			WITH victims AS (
+				SELECT ctid
+				FROM usage_logs
+				WHERE created_at < $1
+				LIMIT $2
+			)
+			DELETE FROM usage_logs
+			WHERE ctid IN (SELECT ctid FROM victims)
+		`, cutoff.UTC(), usageLogsCleanupBatchSize)
+		if err != nil {
+			return err
+	REDACTED
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return err
+	REDACTED
+		if affected < usageLogsCleanupBatchSize {
+			return nil
+	REDACTED
+REDACTED
+REDACTED
+
+func (r *dashboardAggregationRepository) CleanupUsageBillingDedup(ctx context.Context, cutoff time.Time) error {
+	for {
+		res, err := r.sql.ExecContext(ctx, `
+			WITH victims AS (
+				SELECT ctid, request_id, api_key_id, request_fingerprint, created_at
+				FROM usage_billing_dedup
+				WHERE created_at < $1
+				LIMIT $2
+			), archived AS (
+				INSERT INTO usage_billing_dedup_archive (request_id, api_key_id, request_fingerprint, created_at)
+				SELECT request_id, api_key_id, request_fingerprint, created_at
+				FROM victims
+				ON CONFLICT (request_id, api_key_id) DO NOTHING
+			)
+			DELETE FROM usage_billing_dedup
+			WHERE ctid IN (SELECT ctid FROM victims)
+		`, cutoff.UTC(), usageBillingDedupCleanupBatchSize)
+		if err != nil {
+			return err
+	REDACTED
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return err
+	REDACTED
+		if affected < usageBillingDedupCleanupBatchSize {
+			return nil
+	REDACTED
+REDACTED
 REDACTED
 
 func (r *dashboardAggregationRepository) EnsureUsageLogsPartitions(ctx context.Context, now time.Time) error {

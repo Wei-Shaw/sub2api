@@ -431,6 +431,7 @@ REDACTED)
 		nil,
 		nil,
 		nil,
+		nil,
 		testutil.StubGatewayCache{REDACTED,
 		cfg,
 		nil,

@@ -7,22 +7,48 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
 
 type openAIRecordUsageLogRepoStub struct {
 	UsageLogRepository
 
-	inserted bool
-	err      error
-	calls    int
-	lastLog  *UsageLog
+	inserted   bool
+	err        error
+	calls      int
+	lastLog    *UsageLog
+	lastCtxErr error
 REDACTED
 
 func (s *openAIRecordUsageLogRepoStub) Create(ctx context.Context, log *UsageLog) (bool, error) {
 	s.calls++
 	s.lastLog = log
+	s.lastCtxErr = ctx.Err()
 	return s.inserted, s.err
+REDACTED
+
+type openAIRecordUsageBillingRepoStub struct {
+	UsageBillingRepository
+
+	result     *UsageBillingApplyResult
+	err        error
+	calls      int
+	lastCmd    *UsageBillingCommand
+	lastCtxErr error
+REDACTED
+
+func (s *openAIRecordUsageBillingRepoStub) Apply(ctx context.Context, cmd *UsageBillingCommand) (*UsageBillingApplyResult, error) {
+	s.calls++
+	s.lastCmd = cmd
+	s.lastCtxErr = ctx.Err()
+	if s.err != nil {
+		return nil, s.err
+REDACTED
+	if s.result != nil {
+		return s.result, nil
+REDACTED
+	return &UsageBillingApplyResult{Applied: trueREDACTED, nil
 REDACTED
 
 type openAIRecordUsageUserRepoStub struct {
@@ -31,11 +57,13 @@ type openAIRecordUsageUserRepoStub struct {
 	deductCalls int
 	deductErr   error
 	lastAmount  float64
+	lastCtxErr  error
 REDACTED
 
 func (s *openAIRecordUsageUserRepoStub) DeductBalance(ctx context.Context, id int64, amount float64) error {
 	s.deductCalls++
 	s.lastAmount = amount
+	s.lastCtxErr = ctx.Err()
 	return s.deductErr
 REDACTED
 
@@ -44,29 +72,35 @@ type openAIRecordUsageSubRepoStub struct {
 
 	incrementCalls int
 	incrementErr   error
+	lastCtxErr     error
 REDACTED
 
 func (s *openAIRecordUsageSubRepoStub) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
 	s.incrementCalls++
+	s.lastCtxErr = ctx.Err()
 	return s.incrementErr
 REDACTED
 
 type openAIRecordUsageAPIKeyQuotaStub struct {
-	quotaCalls     int
-	rateLimitCalls int
-	err            error
-	lastAmount     float64
+	quotaCalls          int
+	rateLimitCalls      int
+	err                 error
+	lastAmount          float64
+	lastQuotaCtxErr     error
+	lastRateLimitCtxErr error
 REDACTED
 
 func (s *openAIRecordUsageAPIKeyQuotaStub) UpdateQuotaUsed(ctx context.Context, apiKeyID int64, cost float64) error {
 	s.quotaCalls++
 	s.lastAmount = cost
+	s.lastQuotaCtxErr = ctx.Err()
 	return s.err
 REDACTED
 
 func (s *openAIRecordUsageAPIKeyQuotaStub) UpdateRateLimitUsage(ctx context.Context, apiKeyID int64, cost float64) error {
 	s.rateLimitCalls++
 	s.lastAmount = cost
+	s.lastRateLimitCtxErr = ctx.Err()
 	return s.err
 REDACTED
 
@@ -93,23 +127,38 @@ REDACTED
 func newOpenAIRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo UserRepository, subRepo UserSubscriptionRepository, rateRepo UserGroupRateRepository) *OpenAIGatewayService {
 	cfg := &config.Config{REDACTED
 	cfg.Default.RateMultiplier = 1.1
-
-	return &OpenAIGatewayService{
-		usageLogRepo:        usageRepo,
-		userRepo:            userRepo,
-		userSubRepo:         subRepo,
-		cfg:                 cfg,
-		billingService:      NewBillingService(cfg, nil),
-		billingCacheService: &BillingCacheService{REDACTED,
-		deferredService:     &DeferredService{REDACTED,
-		userGroupRateResolver: newUserGroupRateResolver(
-			rateRepo,
-			nil,
-			resolveUserGroupRateCacheTTL(cfg),
-			nil,
-			"service.openai_gateway.test",
-		),
+	svc := NewOpenAIGatewayService(
+		nil,
+		usageRepo,
+		nil,
+		userRepo,
+		subRepo,
+		rateRepo,
+		nil,
+		cfg,
+		nil,
+		nil,
+		NewBillingService(cfg, nil),
+		nil,
+		&BillingCacheService{REDACTED,
+		nil,
+		&DeferredService{REDACTED,
+		nil,
+	)
+	svc.userGroupRateResolver = newUserGroupRateResolver(
+		rateRepo,
+		nil,
+		resolveUserGroupRateCacheTTL(cfg),
+		nil,
+		"service.openai_gateway.test",
+	)
+	return svc
 REDACTED
+
+func newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo UsageLogRepository, billingRepo UsageBillingRepository, userRepo UserRepository, subRepo UserSubscriptionRepository, rateRepo UserGroupRateRepository) *OpenAIGatewayService {
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, rateRepo)
+	svc.usageBillingRepo = billingRepo
+	return svc
 REDACTED
 
 func expectedOpenAICost(t *testing.T, svc *OpenAIGatewayService, model string, usage OpenAIUsage, multiplier float64) *CostBreakdown {
@@ -252,9 +301,10 @@ REDACTED
 
 func TestOpenAIGatewayServiceRecordUsage_DuplicateUsageLogSkipsBilling(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: falseREDACTED
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: falseREDACTEDREDACTED
 	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
 	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
-	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
@@ -272,9 +322,252 @@ func TestOpenAIGatewayServiceRecordUsage_DuplicateUsageLogSkipsBilling(t *testin
 REDACTED)
 
 REDACTED
+	require.Equal(t, 1, billingRepo.calls)
 	require.Equal(t, 1, usageRepo.calls)
 	require.Equal(t, 0, userRepo.deductCalls)
 	require.Equal(t, 0, subRepo.incrementCalls)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_DuplicateBillingKeySkipsBillingWithRepo(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: falseREDACTED
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: falseREDACTEDREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{REDACTED
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_duplicate_billing_key",
+			Usage: OpenAIUsage{
+				InputTokens:  8,
+				OutputTokens: 4,
+		REDACTED,
+			Model:    "gpt-5.1",
+			Duration: time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:    10045,
+			Quota: 100,
+	REDACTED,
+		User:          &User{ID: 20045REDACTED,
+		Account:       &Account{ID: 30045REDACTED,
+		APIKeyService: quotaSvc,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 1, billingRepo.calls)
+	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 0, userRepo.deductCalls)
+	require.Equal(t, 0, subRepo.incrementCalls)
+	require.Equal(t, 0, quotaSvc.quotaCalls)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_BillsWhenUsageLogCreateReturnsError(t *testing.T) {
+	usage := OpenAIUsage{InputTokens: 8, OutputTokens: 4REDACTED
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: errors.New("usage log batch state uncertain")REDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_usage_log_error",
+			Usage:     usage,
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 10041REDACTED,
+		User:    &User{ID: 20041REDACTED,
+		Account: &Account{ID: 30041REDACTED,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 1, userRepo.deductCalls)
+	require.Equal(t, 0, subRepo.incrementCalls)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: MarkUsageLogCreateNotPersisted(context.Canceled)REDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_not_persisted",
+			Usage: OpenAIUsage{
+				InputTokens:  8,
+				OutputTokens: 4,
+		REDACTED,
+			Model:    "gpt-5.1",
+			Duration: time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:    10043,
+			Quota: 100,
+	REDACTED,
+		User:          &User{ID: 20043REDACTED,
+		Account:       &Account{ID: 30043REDACTED,
+		APIKeyService: quotaSvc,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 1, userRepo.deductCalls)
+	require.Equal(t, 0, subRepo.incrementCalls)
+	require.Equal(t, 1, quotaSvc.quotaCalls)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_BillingUsesDetachedContext(t *testing.T) {
+	usage := OpenAIUsage{InputTokens: 10, OutputTokens: 6, CacheReadInputTokens: 2REDACTED
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: context.DeadlineExceededREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	reqCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := svc.RecordUsage(reqCtx, &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_detached_billing_ctx",
+			Usage:     usage,
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:    10042,
+			Quota: 100,
+	REDACTED,
+		User:          &User{ID: 20042REDACTED,
+		Account:       &Account{ID: 30042REDACTED,
+		APIKeyService: quotaSvc,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 1, userRepo.deductCalls)
+	require.NoError(t, userRepo.lastCtxErr)
+	require.Equal(t, 1, quotaSvc.quotaCalls)
+	require.NoError(t, quotaSvc.lastQuotaCtxErr)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_BillingRepoUsesDetachedContext(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{REDACTED
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: trueREDACTEDREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	reqCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := svc.RecordUsage(reqCtx, &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_detached_billing_repo_ctx",
+			Usage: OpenAIUsage{
+				InputTokens:  8,
+				OutputTokens: 4,
+		REDACTED,
+			Model:    "gpt-5.1",
+			Duration: time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 10046REDACTED,
+		User:    &User{ID: 20046REDACTED,
+		Account: &Account{ID: 30046REDACTED,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 1, billingRepo.calls)
+	require.NoError(t, billingRepo.lastCtxErr)
+	require.Equal(t, 1, usageRepo.calls)
+	require.NoError(t, usageRepo.lastCtxErr)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_BillingFingerprintIncludesRequestPayloadHash(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{REDACTED
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: trueREDACTEDREDACTED
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED, nil)
+
+	payloadHash := HashUsageRequestPayload([]byte(`{"model":"gpt-5","input":"hello"REDACTED`))
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "openai_payload_hash",
+			Usage: OpenAIUsage{
+				InputTokens:  10,
+				OutputTokens: 6,
+		REDACTED,
+			Model:    "gpt-5",
+			Duration: time.Second,
+	REDACTED,
+		APIKey:             &APIKey{ID: 501, Quota: 100REDACTED,
+		User:               &User{ID: 601REDACTED,
+		Account:            &Account{ID: 701REDACTED,
+		RequestPayloadHash: payloadHash,
+REDACTED)
+REDACTED
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Equal(t, payloadHash, billingRepo.lastCmd.RequestPayloadHash)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_UsesFallbackRequestIDForBillingAndUsageLog(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{REDACTED
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: trueREDACTEDREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	ctx := context.WithValue(context.Background(), ctxkey.RequestID, "req-local-fallback")
+	err := svc.RecordUsage(ctx, &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "",
+			Usage: OpenAIUsage{
+				InputTokens:  8,
+				OutputTokens: 4,
+		REDACTED,
+			Model:    "gpt-5.1",
+			Duration: time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 10047REDACTED,
+		User:    &User{ID: 20047REDACTED,
+		Account: &Account{ID: 30047REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Equal(t, "local:req-local-fallback", billingRepo.lastCmd.RequestID)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "local:req-local-fallback", usageRepo.lastLog.RequestID)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_BillingErrorSkipsUsageLogWrite(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{REDACTED
+	billingRepo := &openAIRecordUsageBillingRepoStub{err: errors.New("billing tx failed")REDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_billing_fail",
+			Usage: OpenAIUsage{
+				InputTokens:  8,
+				OutputTokens: 4,
+		REDACTED,
+			Model:    "gpt-5.1",
+			Duration: time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 10048REDACTED,
+		User:    &User{ID: 20048REDACTED,
+		Account: &Account{ID: 30048REDACTED,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 1, billingRepo.calls)
+	require.Equal(t, 0, usageRepo.calls)
 REDACTED
 
 func TestOpenAIGatewayServiceRecordUsage_UpdatesAPIKeyQuotaWhenConfigured(t *testing.T) {

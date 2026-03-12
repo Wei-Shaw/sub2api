@@ -916,7 +916,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestOpenAIStreamingContextCanceledDoesNotInjectErrorEvent(t *testing.T) {
+func TestOpenAIStreamingContextCanceledReturnsIncompleteErrorWithoutInjectingErrorEvent(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
@@ -940,8 +940,8 @@ REDACTED
 REDACTED
 
 	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1REDACTED, time.Now(), "model", "model")
-	if err != nil {
-		t.Fatalf("expected nil error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "stream usage incomplete") {
+		t.Fatalf("expected incomplete stream error, got %v", err)
 REDACTED
 	if strings.Contains(rec.Body.String(), "event: error") || strings.Contains(rec.Body.String(), "stream_read_error") {
 		t.Fatalf("expected no injected SSE error event, got %q", rec.Body.String())
@@ -991,6 +991,107 @@ REDACTED
 	if strings.Contains(rec.Body.String(), "event: error") || strings.Contains(rec.Body.String(), "write_failed") {
 		t.Fatalf("expected no injected SSE error event, got %q", rec.Body.String())
 REDACTED
+REDACTED
+
+func TestOpenAIStreamingMissingTerminalEventReturnsIncompleteError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+	REDACTED,
+REDACTED
+	svc := &OpenAIGatewayService{cfg: cfgREDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{REDACTED,
+REDACTED
+
+	go func() {
+		defer func() { _ = pw.Close() REDACTED()
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.in_progress\",\"response\":{REDACTEDREDACTED\n\n"))
+REDACTED()
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1REDACTED, time.Now(), "model", "model")
+	_ = pr.Close()
+	if err == nil || !strings.Contains(err.Error(), "missing terminal event") {
+		t.Fatalf("expected missing terminal event error, got %v", err)
+REDACTED
+REDACTED
+
+func TestOpenAIStreamingPassthroughMissingTerminalEventReturnsIncompleteError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize,
+	REDACTED,
+REDACTED
+	svc := &OpenAIGatewayService{cfg: cfgREDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{REDACTED,
+REDACTED
+
+	go func() {
+		defer func() { _ = pw.Close() REDACTED()
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.in_progress\",\"response\":{REDACTEDREDACTED\n\n"))
+REDACTED()
+
+	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1REDACTED, time.Now())
+	_ = pr.Close()
+	if err == nil || !strings.Contains(err.Error(), "missing terminal event") {
+		t.Fatalf("expected missing terminal event error, got %v", err)
+REDACTED
+REDACTED
+
+func TestOpenAIStreamingPassthroughResponseDoneWithoutDoneMarkerStillSucceeds(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize,
+	REDACTED,
+REDACTED
+	svc := &OpenAIGatewayService{cfg: cfgREDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{REDACTED,
+REDACTED
+
+	go func() {
+		defer func() { _ = pw.Close() REDACTED()
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.done\",\"response\":{\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"input_tokens_details\":{\"cached_tokens\":1REDACTEDREDACTEDREDACTEDREDACTED\n\n"))
+REDACTED()
+
+	result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1REDACTED, time.Now())
+	_ = pr.Close()
+REDACTED
+	require.NotNil(t, result)
+	require.NotNil(t, result.usage)
+	require.Equal(t, 2, result.usage.InputTokens)
+	require.Equal(t, 3, result.usage.OutputTokens)
+	require.Equal(t, 1, result.usage.CacheReadInputTokens)
 REDACTED
 
 func TestOpenAIStreamingTooLong(t *testing.T) {
@@ -1124,7 +1225,7 @@ REDACTED
 
 	go func() {
 		defer func() { _ = pw.Close() REDACTED()
-		_, _ = pw.Write([]byte("data: {REDACTED\n\n"))
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{REDACTEDREDACTED\n\n"))
 REDACTED()
 
 	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1REDACTED, time.Now(), "model", "model")
@@ -1674,6 +1775,12 @@ func TestParseSSEUsage_SelectiveParsing(t *testing.T) {
 	require.Equal(t, 3, usage.InputTokens)
 	require.Equal(t, 5, usage.OutputTokens)
 	require.Equal(t, 2, usage.CacheReadInputTokens)
+
+	// done 事件同样可能携带最终 usage
+	svc.parseSSEUsage(`{"type":"response.done","response":{"usage":{"input_tokens":13,"output_tokens":15,"input_tokens_details":{"cached_tokens":4REDACTEDREDACTEDREDACTEDREDACTED`, usage)
+	require.Equal(t, 13, usage.InputTokens)
+	require.Equal(t, 15, usage.OutputTokens)
+	require.Equal(t, 4, usage.CacheReadInputTokens)
 REDACTED
 
 func TestExtractCodexFinalResponse_SampleReplay(t *testing.T) {
