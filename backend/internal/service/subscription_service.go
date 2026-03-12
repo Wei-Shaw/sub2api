@@ -31,6 +31,7 @@ var (
 	ErrSubscriptionAlreadyExists  = infraerrors.Conflict("SUBSCRIPTION_ALREADY_EXISTS", "subscription already exists for this user and group")
 	ErrSubscriptionAssignConflict = infraerrors.Conflict("SUBSCRIPTION_ASSIGN_CONFLICT", "subscription exists but request conflicts with existing assignment semantics")
 	ErrGroupNotSubscriptionType   = infraerrors.BadRequest("GROUP_NOT_SUBSCRIPTION_TYPE", "group is not a subscription type")
+	ErrInvalidInput               = infraerrors.BadRequest("INVALID_INPUT", "at least one of resetDaily or resetWeekly must be true")
 	ErrDailyLimitExceeded         = infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily usage limit exceeded")
 	ErrWeeklyLimitExceeded        = infraerrors.TooManyRequests("WEEKLY_LIMIT_EXCEEDED", "weekly usage limit exceeded")
 	ErrMonthlyLimitExceeded       = infraerrors.TooManyRequests("MONTHLY_LIMIT_EXCEEDED", "monthly usage limit exceeded")
@@ -693,6 +694,36 @@ REDACTED
 	// 使用当天零点作为窗口起始时间
 	windowStart := startOfDay(time.Now())
 	return s.userSubRepo.ActivateWindows(ctx, sub.ID, windowStart)
+REDACTED
+
+// AdminResetQuota manually resets the daily and/or weekly usage windows.
+// Uses startOfDay(now) as the new window start, matching automatic resets.
+func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionID int64, resetDaily, resetWeekly bool) (*UserSubscription, error) {
+	if !resetDaily && !resetWeekly {
+		return nil, ErrInvalidInput
+REDACTED
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+REDACTED
+	windowStart := startOfDay(time.Now())
+	if resetDaily {
+		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+	if resetWeekly {
+		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, windowStart); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+	// Invalidate caches, same as CheckAndResetWindows
+	s.InvalidateSubCache(sub.UserID, sub.GroupID)
+	if s.billingCacheService != nil {
+		_ = s.billingCacheService.InvalidateSubscription(ctx, sub.UserID, sub.GroupID)
+REDACTED
+	// Return the refreshed subscription from DB
+	return s.userSubRepo.GetByID(ctx, subscriptionID)
 REDACTED
 
 // CheckAndResetWindows 检查并重置过期的窗口

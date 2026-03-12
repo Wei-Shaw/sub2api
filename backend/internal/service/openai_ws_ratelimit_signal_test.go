@@ -405,6 +405,40 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestOpenAIGatewayService_UpdateCodexUsageSnapshot_ThrottlesExtraWrites(t *testing.T) {
+	repo := &openAICodexSnapshotAsyncRepo{
+		updateExtraCh: make(chan map[string]any, 2),
+		rateLimitCh:   make(chan time.Time, 2),
+REDACTED
+	svc := &OpenAIGatewayService{
+		accountRepo:           repo,
+		codexSnapshotThrottle: newAccountWriteThrottle(time.Hour),
+REDACTED
+	snapshot := &OpenAICodexUsageSnapshot{
+		PrimaryUsedPercent:         ptrFloat64WS(94),
+		PrimaryResetAfterSeconds:   ptrIntWS(3600),
+		PrimaryWindowMinutes:       ptrIntWS(10080),
+		SecondaryUsedPercent:       ptrFloat64WS(22),
+		SecondaryResetAfterSeconds: ptrIntWS(1200),
+		SecondaryWindowMinutes:     ptrIntWS(300),
+REDACTED
+
+	svc.updateCodexUsageSnapshot(context.Background(), 777, snapshot)
+	svc.updateCodexUsageSnapshot(context.Background(), 777, snapshot)
+
+	select {
+	case <-repo.updateExtraCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("等待第一次 codex 快照落库超时")
+REDACTED
+
+	select {
+	case updates := <-repo.updateExtraCh:
+		t.Fatalf("unexpected second codex snapshot write: %v", updates)
+	case <-time.After(200 * time.Millisecond):
+REDACTED
+REDACTED
+
 func ptrFloat64WS(v float64) *float64 { return &v REDACTED
 func ptrIntWS(v int) *int             { return &v REDACTED
 

@@ -13,8 +13,18 @@
           </div>
         </div>
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <ModelDistributionChart :model-stats="modelStats" :loading="chartsLoading" />
-          <GroupDistributionChart :group-stats="groupStats" :loading="chartsLoading" />
+          <ModelDistributionChart
+            v-model:metric="modelDistributionMetric"
+            :model-stats="modelStats"
+            :loading="chartsLoading"
+            :show-metric-toggle="true"
+          />
+          <GroupDistributionChart
+            v-model:metric="groupDistributionMetric"
+            :group-stats="groupStats"
+            :loading="chartsLoading"
+            :show-metric-toggle="true"
+          />
         </div>
         <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
       </div>
@@ -93,8 +103,12 @@ import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, AdminUser RED
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
+type DistributionMetric = 'tokens' | 'actual_cost'
+
 const usageStats = ref<AdminUsageStatsResponse | null>(null); const usageLogs = ref<AdminUsageLog[]>([]); const loading = ref(false); const exporting = ref(false)
 const trendData = ref<TrendDataPoint[]>([]); const modelStats = ref<ModelStat[]>([]); const groupStats = ref<GroupStat[]>([]); const chartsLoading = ref(false); const granularity = ref<'day' | 'hour'>('day')
+const modelDistributionMetric = ref<DistributionMetric>('tokens')
+const groupDistributionMetric = ref<DistributionMetric>('tokens')
 let abortController: AbortController | null = null; let exportAbortController: AbortController | null = null
 let chartReqSeq = 0
 const exportProgress = reactive({ show: false, progress: 0, current: 0, total: 0, estimatedTime: '' REDACTED)

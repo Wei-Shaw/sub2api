@@ -2164,6 +2164,112 @@ REDACTED()
 		REDACTED
 	REDACTED
 
+		// Gemini 原生请求中的 thoughtSignature 可能来自旧上下文/旧账号，触发上游严格校验后返回
+		// "Corrupted thought signature."。检测到此类 400 时，将 thoughtSignature 清理为 dummy 值后重试一次。
+		signatureCheckBody := respBody
+		if unwrapped, unwrapErr := s.unwrapV1InternalResponse(respBody); unwrapErr == nil && len(unwrapped) > 0 {
+			signatureCheckBody = unwrapped
+	REDACTED
+		if resp.StatusCode == http.StatusBadRequest &&
+			s.settingService != nil &&
+			s.settingService.IsSignatureRectifierEnabled(ctx) &&
+			isSignatureRelatedError(signatureCheckBody) &&
+			bytes.Contains(injectedBody, []byte(`"thoughtSignature"`)) {
+			upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractAntigravityErrorMessage(signatureCheckBody)))
+			upstreamDetail := s.getUpstreamErrorDetail(signatureCheckBody)
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  resp.Header.Get("x-request-id"),
+				Kind:               "signature_error",
+				Message:            upstreamMsg,
+				Detail:             upstreamDetail,
+		REDACTED)
+
+			logger.LegacyPrintf("service.antigravity_gateway", "Antigravity Gemini account %d: detected signature-related 400, retrying with cleaned thought signatures", account.ID)
+
+			cleanedInjectedBody := CleanGeminiNativeThoughtSignatures(injectedBody)
+			retryWrappedBody, wrapErr := s.wrapV1InternalRequest(projectID, mappedModel, cleanedInjectedBody)
+			if wrapErr == nil {
+				retryResult, retryErr := s.antigravityRetryLoop(antigravityRetryLoopParams{
+					ctx:             ctx,
+					prefix:          prefix,
+					account:         account,
+					proxyURL:        proxyURL,
+					accessToken:     accessToken,
+					action:          upstreamAction,
+					body:            retryWrappedBody,
+					c:               c,
+					httpUpstream:    s.httpUpstream,
+					settingService:  s.settingService,
+					accountRepo:     s.accountRepo,
+					handleError:     s.handleUpstreamError,
+					requestedModel:  originalModel,
+					isStickySession: isStickySession,
+					groupID:         0,
+					sessionHash:     "",
+			REDACTED)
+				if retryErr == nil {
+					retryResp := retryResult.resp
+					if retryResp.StatusCode < 400 {
+						resp = retryResp
+				REDACTED else {
+						retryRespBody, _ := io.ReadAll(io.LimitReader(retryResp.Body, 2<<20))
+						_ = retryResp.Body.Close()
+						retryOpsBody := retryRespBody
+						if retryUnwrapped, unwrapErr := s.unwrapV1InternalResponse(retryRespBody); unwrapErr == nil && len(retryUnwrapped) > 0 {
+							retryOpsBody = retryUnwrapped
+					REDACTED
+						appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+							Platform:           account.Platform,
+							AccountID:          account.ID,
+							AccountName:        account.Name,
+							UpstreamStatusCode: retryResp.StatusCode,
+							UpstreamRequestID:  retryResp.Header.Get("x-request-id"),
+							Kind:               "signature_retry",
+							Message:            sanitizeUpstreamErrorMessage(strings.TrimSpace(extractAntigravityErrorMessage(retryOpsBody))),
+							Detail:             s.getUpstreamErrorDetail(retryOpsBody),
+					REDACTED)
+						respBody = retryRespBody
+						resp = &http.Response{
+							StatusCode: retryResp.StatusCode,
+							Header:     retryResp.Header.Clone(),
+							Body:       io.NopCloser(bytes.NewReader(retryRespBody)),
+					REDACTED
+						contentType = resp.Header.Get("Content-Type")
+				REDACTED
+			REDACTED else {
+					if switchErr, ok := IsAntigravityAccountSwitchError(retryErr); ok {
+						appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+							Platform:           account.Platform,
+							AccountID:          account.ID,
+							AccountName:        account.Name,
+							UpstreamStatusCode: http.StatusServiceUnavailable,
+							Kind:               "failover",
+							Message:            sanitizeUpstreamErrorMessage(retryErr.Error()),
+					REDACTED)
+						return nil, &UpstreamFailoverError{
+							StatusCode:        http.StatusServiceUnavailable,
+							ForceCacheBilling: switchErr.IsStickySession,
+					REDACTED
+				REDACTED
+					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+						Platform:           account.Platform,
+						AccountID:          account.ID,
+						AccountName:        account.Name,
+						UpstreamStatusCode: 0,
+						Kind:               "signature_retry_request_error",
+						Message:            sanitizeUpstreamErrorMessage(retryErr.Error()),
+				REDACTED)
+					logger.LegacyPrintf("service.antigravity_gateway", "Antigravity Gemini account %d: signature retry request failed: %v", account.ID, retryErr)
+			REDACTED
+		REDACTED else {
+				logger.LegacyPrintf("service.antigravity_gateway", "Antigravity Gemini account %d: signature retry wrap failed: %v", account.ID, wrapErr)
+		REDACTED
+	REDACTED
+
 		// fallback 成功：继续按正常响应处理
 		if resp.StatusCode < 400 {
 			goto handleSuccess

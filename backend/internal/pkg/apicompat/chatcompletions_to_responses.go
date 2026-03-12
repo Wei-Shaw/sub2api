@@ -1,0 +1,312 @@
+package apicompat
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+// ChatCompletionsToResponses converts a Chat Completions request into a
+// Responses API request. The upstream always streams, so Stream is forced to
+// true. store is always false and reasoning.encrypted_content is always
+// included so that the response translator has full context.
+func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest, error) {
+	input, err := convertChatMessagesToResponsesInput(req.Messages)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	out := &ResponsesRequest{
+		Model:       req.Model,
+		Input:       inputJSON,
+		Temperature: req.Temperature,
+		TopP:        req.TopP,
+		Stream:      true, // upstream always streams
+		Include:     []string{"reasoning.encrypted_content"REDACTED,
+		ServiceTier: req.ServiceTier,
+REDACTED
+
+	storeFalse := false
+	out.Store = &storeFalse
+
+	// max_tokens / max_completion_tokens → max_output_tokens, prefer max_completion_tokens
+	maxTokens := 0
+	if req.MaxTokens != nil {
+		maxTokens = *req.MaxTokens
+REDACTED
+	if req.MaxCompletionTokens != nil {
+		maxTokens = *req.MaxCompletionTokens
+REDACTED
+	if maxTokens > 0 {
+		v := maxTokens
+		if v < minMaxOutputTokens {
+			v = minMaxOutputTokens
+	REDACTED
+		out.MaxOutputTokens = &v
+REDACTED
+
+	// reasoning_effort → reasoning.effort + reasoning.summary="auto"
+	if req.ReasoningEffort != "" {
+		out.Reasoning = &ResponsesReasoning{
+			Effort:  req.ReasoningEffort,
+			Summary: "auto",
+	REDACTED
+REDACTED
+
+	// tools[] and legacy functions[] → ResponsesTool[]
+	if len(req.Tools) > 0 || len(req.Functions) > 0 {
+		out.Tools = convertChatToolsToResponses(req.Tools, req.Functions)
+REDACTED
+
+	// tool_choice: already compatible format — pass through directly.
+	// Legacy function_call needs mapping.
+	if len(req.ToolChoice) > 0 {
+		out.ToolChoice = req.ToolChoice
+REDACTED else if len(req.FunctionCall) > 0 {
+		tc, err := convertChatFunctionCallToToolChoice(req.FunctionCall)
+		if err != nil {
+			return nil, fmt.Errorf("convert function_call: %w", err)
+	REDACTED
+		out.ToolChoice = tc
+REDACTED
+
+	return out, nil
+REDACTED
+
+// convertChatMessagesToResponsesInput converts the Chat Completions messages
+// array into a Responses API input items array.
+func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputItem, error) {
+	var out []ResponsesInputItem
+	for _, m := range msgs {
+		items, err := chatMessageToResponsesItems(m)
+		if err != nil {
+			return nil, err
+	REDACTED
+		out = append(out, items...)
+REDACTED
+	return out, nil
+REDACTED
+
+// chatMessageToResponsesItems converts a single ChatMessage into one or more
+// ResponsesInputItem values.
+func chatMessageToResponsesItems(m ChatMessage) ([]ResponsesInputItem, error) {
+	switch m.Role {
+	case "system":
+		return chatSystemToResponses(m)
+	case "user":
+		return chatUserToResponses(m)
+	case "assistant":
+		return chatAssistantToResponses(m)
+	case "tool":
+		return chatToolToResponses(m)
+	case "function":
+		return chatFunctionToResponses(m)
+	default:
+		return chatUserToResponses(m)
+REDACTED
+REDACTED
+
+// chatSystemToResponses converts a system message.
+func chatSystemToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
+	text, err := parseChatContent(m.Content)
+	if err != nil {
+		return nil, err
+REDACTED
+	content, err := json.Marshal(text)
+	if err != nil {
+		return nil, err
+REDACTED
+	return []ResponsesInputItem{{Role: "system", Content: contentREDACTEDREDACTED, nil
+REDACTED
+
+// chatUserToResponses converts a user message, handling both plain strings and
+// multi-modal content arrays.
+func chatUserToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
+	// Try plain string first.
+	var s string
+	if err := json.Unmarshal(m.Content, &s); err == nil {
+		content, _ := json.Marshal(s)
+		return []ResponsesInputItem{{Role: "user", Content: contentREDACTEDREDACTED, nil
+REDACTED
+
+	var parts []ChatContentPart
+	if err := json.Unmarshal(m.Content, &parts); err != nil {
+		return nil, fmt.Errorf("parse user content: %w", err)
+REDACTED
+
+	var responseParts []ResponsesContentPart
+	for _, p := range parts {
+		switch p.Type {
+		case "text":
+			if p.Text != "" {
+				responseParts = append(responseParts, ResponsesContentPart{
+					Type: "input_text",
+					Text: p.Text,
+			REDACTED)
+		REDACTED
+		case "image_url":
+			if p.ImageURL != nil && p.ImageURL.URL != "" {
+				responseParts = append(responseParts, ResponsesContentPart{
+					Type:     "input_image",
+					ImageURL: p.ImageURL.URL,
+			REDACTED)
+		REDACTED
+	REDACTED
+REDACTED
+
+	content, err := json.Marshal(responseParts)
+	if err != nil {
+		return nil, err
+REDACTED
+	return []ResponsesInputItem{{Role: "user", Content: contentREDACTEDREDACTED, nil
+REDACTED
+
+// chatAssistantToResponses converts an assistant message. If there is both
+// text content and tool_calls, the text is emitted as an assistant message
+// first, then each tool_call becomes a function_call item. If the content is
+// empty/nil and there are tool_calls, only function_call items are emitted.
+func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
+	var items []ResponsesInputItem
+
+	// Emit assistant message with output_text if content is non-empty.
+	if len(m.Content) > 0 {
+		var s string
+		if err := json.Unmarshal(m.Content, &s); err == nil && s != "" {
+			parts := []ResponsesContentPart{{Type: "output_text", Text: sREDACTEDREDACTED
+			partsJSON, err := json.Marshal(parts)
+			if err != nil {
+				return nil, err
+		REDACTED
+			items = append(items, ResponsesInputItem{Role: "assistant", Content: partsJSONREDACTED)
+	REDACTED
+REDACTED
+
+	// Emit one function_call item per tool_call.
+	for _, tc := range m.ToolCalls {
+		args := tc.Function.Arguments
+		if args == "" {
+			args = "{REDACTED"
+	REDACTED
+		items = append(items, ResponsesInputItem{
+			Type:      "function_call",
+			CallID:    tc.ID,
+			Name:      tc.Function.Name,
+			Arguments: args,
+			ID:        tc.ID,
+	REDACTED)
+REDACTED
+
+	return items, nil
+REDACTED
+
+// chatToolToResponses converts a tool result message (role=tool) into a
+// function_call_output item.
+func chatToolToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
+	output, err := parseChatContent(m.Content)
+	if err != nil {
+		return nil, err
+REDACTED
+	if output == "" {
+		output = "(empty)"
+REDACTED
+	return []ResponsesInputItem{{
+		Type:   "function_call_output",
+		CallID: m.ToolCallID,
+		Output: output,
+REDACTEDREDACTED, nil
+REDACTED
+
+// chatFunctionToResponses converts a legacy function result message
+// (role=function) into a function_call_output item. The Name field is used as
+// call_id since legacy function calls do not carry a separate call_id.
+func chatFunctionToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
+	output, err := parseChatContent(m.Content)
+	if err != nil {
+		return nil, err
+REDACTED
+	if output == "" {
+		output = "(empty)"
+REDACTED
+	return []ResponsesInputItem{{
+		Type:   "function_call_output",
+		CallID: m.Name,
+		Output: output,
+REDACTEDREDACTED, nil
+REDACTED
+
+// parseChatContent returns the string value of a ChatMessage Content field.
+// Content must be a JSON string. Returns "" if content is null or empty.
+func parseChatContent(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 {
+		return "", nil
+REDACTED
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return "", fmt.Errorf("parse content as string: %w", err)
+REDACTED
+	return s, nil
+REDACTED
+
+// convertChatToolsToResponses maps Chat Completions tool definitions and legacy
+// function definitions to Responses API tool definitions.
+func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []ResponsesTool {
+	var out []ResponsesTool
+
+	for _, t := range tools {
+		if t.Type != "function" || t.Function == nil {
+			continue
+	REDACTED
+		rt := ResponsesTool{
+			Type:        "function",
+			Name:        t.Function.Name,
+			Description: t.Function.Description,
+			Parameters:  t.Function.Parameters,
+			Strict:      t.Function.Strict,
+	REDACTED
+		out = append(out, rt)
+REDACTED
+
+	// Legacy functions[] are treated as function-type tools.
+	for _, f := range functions {
+		rt := ResponsesTool{
+			Type:        "function",
+			Name:        f.Name,
+			Description: f.Description,
+			Parameters:  f.Parameters,
+			Strict:      f.Strict,
+	REDACTED
+		out = append(out, rt)
+REDACTED
+
+	return out
+REDACTED
+
+// convertChatFunctionCallToToolChoice maps the legacy function_call field to a
+// Responses API tool_choice value.
+//
+//	"auto" → "auto"
+//	"none" → "none"
+//	{"name":"X"REDACTED → {"type":"function","function":{"name":"X"REDACTEDREDACTED
+func convertChatFunctionCallToToolChoice(raw json.RawMessage) (json.RawMessage, error) {
+	// Try string first ("auto", "none", etc.) — pass through as-is.
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return json.Marshal(s)
+REDACTED
+
+	// Object form: {"name":"X"REDACTED
+	var obj struct {
+		Name string `json:"name"`
+REDACTED
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, err
+REDACTED
+	return json.Marshal(map[string]any{
+		"type":     "function",
+		"function": map[string]string{"name": obj.NameREDACTED,
+REDACTED)
+REDACTED

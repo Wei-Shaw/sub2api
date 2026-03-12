@@ -6069,6 +6069,22 @@ REDACTED
 		intervalCh = intervalTicker.C
 REDACTED
 
+	// 下游 keepalive：防止代理/Cloudflare Tunnel 因连接空闲而断开
+	keepaliveInterval := time.Duration(0)
+	if s.cfg != nil && s.cfg.Gateway.StreamKeepaliveInterval > 0 {
+		keepaliveInterval = time.Duration(s.cfg.Gateway.StreamKeepaliveInterval) * time.Second
+REDACTED
+	var keepaliveTicker *time.Ticker
+	if keepaliveInterval > 0 {
+		keepaliveTicker = time.NewTicker(keepaliveInterval)
+		defer keepaliveTicker.Stop()
+REDACTED
+	var keepaliveCh <-chan time.Time
+	if keepaliveTicker != nil {
+		keepaliveCh = keepaliveTicker.C
+REDACTED
+	lastDataAt := time.Now()
+
 	// 仅发送一次错误事件，避免多次写入导致协议混乱（写失败时尽力通知客户端）
 	errorEventSent := false
 	sendErrorEvent := func(reason string) {
@@ -6267,6 +6283,7 @@ REDACTED
 							break
 					REDACTED
 						flusher.Flush()
+						lastDataAt = time.Now()
 				REDACTED
 					if data != "" {
 						if firstTokenMs == nil && data != "[DONE]" {
@@ -6298,6 +6315,22 @@ REDACTED
 		REDACTED
 			sendErrorEvent("stream_timeout")
 			return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream data interval timeout")
+
+		case <-keepaliveCh:
+			if clientDisconnected {
+				continue
+		REDACTED
+			if time.Since(lastDataAt) < keepaliveInterval {
+				continue
+		REDACTED
+			// SSE ping 事件：Anthropic 原生格式，客户端会正确处理，
+			// 同时保持连接活跃防止 Cloudflare Tunnel 等代理断开
+			if _, werr := fmt.Fprint(w, "event: ping\ndata: {\"type\": \"ping\"REDACTED\n\n"); werr != nil {
+				clientDisconnected = true
+				logger.LegacyPrintf("service.gateway", "Client disconnected during keepalive ping, continuing to drain upstream for billing")
+				continue
+		REDACTED
+			flusher.Flush()
 	REDACTED
 REDACTED
 

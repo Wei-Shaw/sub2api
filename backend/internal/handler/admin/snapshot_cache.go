@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 type snapshotCacheEntry struct {
@@ -19,6 +21,12 @@ type snapshotCache struct {
 	mu    sync.RWMutex
 	ttl   time.Duration
 	items map[string]snapshotCacheEntry
+	sf    singleflight.Group
+REDACTED
+
+type snapshotCacheLoadResult struct {
+	Entry snapshotCacheEntry
+	Hit   bool
 REDACTED
 
 func newSnapshotCache(ttl time.Duration) *snapshotCache {
@@ -68,6 +76,41 @@ REDACTED
 	c.items[key] = entry
 	c.mu.Unlock()
 	return entry
+REDACTED
+
+func (c *snapshotCache) GetOrLoad(key string, load func() (any, error)) (snapshotCacheEntry, bool, error) {
+	if load == nil {
+		return snapshotCacheEntry{REDACTED, false, nil
+REDACTED
+	if entry, ok := c.Get(key); ok {
+		return entry, true, nil
+REDACTED
+	if c == nil || key == "" {
+		payload, err := load()
+		if err != nil {
+			return snapshotCacheEntry{REDACTED, false, err
+	REDACTED
+		return c.Set(key, payload), false, nil
+REDACTED
+
+	value, err, _ := c.sf.Do(key, func() (any, error) {
+		if entry, ok := c.Get(key); ok {
+			return snapshotCacheLoadResult{Entry: entry, Hit: trueREDACTED, nil
+	REDACTED
+		payload, err := load()
+		if err != nil {
+			return nil, err
+	REDACTED
+		return snapshotCacheLoadResult{Entry: c.Set(key, payload), Hit: falseREDACTED, nil
+REDACTED)
+	if err != nil {
+		return snapshotCacheEntry{REDACTED, false, err
+REDACTED
+	result, ok := value.(snapshotCacheLoadResult)
+	if !ok {
+		return snapshotCacheEntry{REDACTED, false, nil
+REDACTED
+	return result.Entry, result.Hit, nil
 REDACTED
 
 func buildETagFromAny(payload any) string {

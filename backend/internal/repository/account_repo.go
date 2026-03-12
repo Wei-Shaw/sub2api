@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -48,6 +49,18 @@ type accountRepository struct {
 	// Used to proactively sync account snapshot to cache when status changes,
 	// ensuring sticky sessions can promptly detect unavailable accounts.
 	schedulerCache service.SchedulerCache
+REDACTED
+
+var schedulerNeutralExtraKeyPrefixes = []string{
+	"codex_primary_",
+	"codex_secondary_",
+	"codex_5h_",
+	"codex_7d_",
+REDACTED
+
+var schedulerNeutralExtraKeys = map[string]struct{REDACTED{
+	"codex_usage_updated_at":     {REDACTED,
+	"session_window_utilization": {REDACTED,
 REDACTED
 
 // NewAccountRepository 创建账户仓储实例。
@@ -1185,10 +1198,46 @@ REDACTED
 	if affected == 0 {
 		return service.ErrAccountNotFound
 REDACTED
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extra update failed: account=%d err=%v", id, err)
+	if shouldEnqueueSchedulerOutboxForExtraUpdates(updates) {
+		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extra update failed: account=%d err=%v", id, err)
+	REDACTED
+REDACTED else {
+		// 观测型 extra 字段不需要触发 bucket 重建，但仍同步单账号快照，
+		// 让 sticky session / GetAccount 命中缓存时也能读到最新数据，
+		// 同时避免缓存局部 patch 覆盖掉并发写入的其它账号字段。
+		r.syncSchedulerAccountSnapshot(ctx, id)
 REDACTED
 	return nil
+REDACTED
+
+func shouldEnqueueSchedulerOutboxForExtraUpdates(updates map[string]any) bool {
+	if len(updates) == 0 {
+		return false
+REDACTED
+	for key := range updates {
+		if isSchedulerNeutralExtraKey(key) {
+			continue
+	REDACTED
+		return true
+REDACTED
+	return false
+REDACTED
+
+func isSchedulerNeutralExtraKey(key string) bool {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return false
+REDACTED
+	if _, ok := schedulerNeutralExtraKeys[key]; ok {
+		return true
+REDACTED
+	for _, prefix := range schedulerNeutralExtraKeyPrefixes {
+		if strings.HasPrefix(key, prefix) {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
