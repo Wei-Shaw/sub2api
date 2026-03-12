@@ -246,16 +246,16 @@ REDACTED
 	select {
 	case r.bestEffortBatchCh <- req:
 	case <-ctx.Done():
-		return ctx.Err()
+		return service.MarkUsageLogCreateDropped(ctx.Err())
 	default:
-		return errors.New("usage log best-effort queue full")
+		return service.MarkUsageLogCreateDropped(errors.New("usage log best-effort queue full"))
 REDACTED
 
 	select {
 	case err := <-req.resultCh:
 		return err
 	case <-ctx.Done():
-		return ctx.Err()
+		return service.MarkUsageLogCreateDropped(ctx.Err())
 REDACTED
 REDACTED
 
@@ -355,7 +355,7 @@ REDACTED
 	case <-ctx.Done():
 		return false, service.MarkUsageLogCreateNotPersisted(ctx.Err())
 	default:
-		return r.createSingle(ctx, r.sql, log)
+		return false, service.MarkUsageLogCreateNotPersisted(errors.New("usage log create batch queue full"))
 REDACTED
 
 	select {
@@ -840,27 +840,39 @@ REDACTED
 				cache_ttl_overridden,
 				created_at
 			FROM input
-			ON CONFLICT (request_id, api_key_id) DO UPDATE
-			SET request_id = usage_logs.request_id
-			RETURNING request_id, api_key_id, id, created_at, (xmax = 0) AS inserted
+			ON CONFLICT (request_id, api_key_id) DO NOTHING
+			RETURNING request_id, api_key_id, id, created_at
+		),
+		resolved AS (
+			SELECT
+				input.input_idx,
+				input.request_id,
+				input.api_key_id,
+				COALESCE(inserted.id, existing.id) AS id,
+				COALESCE(inserted.created_at, existing.created_at) AS created_at,
+				(inserted.id IS NOT NULL) AS inserted
+			FROM input
+			LEFT JOIN inserted
+				ON inserted.request_id = input.request_id
+				AND inserted.api_key_id = input.api_key_id
+			LEFT JOIN usage_logs existing
+				ON existing.request_id = input.request_id
+				AND existing.api_key_id = input.api_key_id
 		)
 		SELECT COALESCE(
 			json_agg(
 				json_build_object(
-					'request_id', inserted.request_id,
-					'api_key_id', inserted.api_key_id,
-					'id', inserted.id,
-					'created_at', inserted.created_at,
-					'inserted', inserted.inserted
+					'request_id', resolved.request_id,
+					'api_key_id', resolved.api_key_id,
+					'id', resolved.id,
+					'created_at', resolved.created_at,
+					'inserted', resolved.inserted
 				)
-				ORDER BY input.input_idx
+				ORDER BY resolved.input_idx
 			),
 			'[]'::json
 		)
-		FROM input
-		JOIN inserted
-			ON inserted.request_id = input.request_id
-			AND inserted.api_key_id = input.api_key_id
+		FROM resolved
 	`)
 	return query.String(), args
 REDACTED

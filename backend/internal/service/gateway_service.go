@@ -6745,9 +6745,6 @@ REDACTED
 REDACTED
 
 func resolveUsageBillingRequestID(ctx context.Context, upstreamRequestID string) string {
-	if requestID := strings.TrimSpace(upstreamRequestID); requestID != "" {
-		return requestID
-REDACTED
 	if ctx != nil {
 		if clientRequestID, _ := ctx.Value(ctxkey.ClientRequestID).(string); strings.TrimSpace(clientRequestID) != "" {
 			return "client:" + strings.TrimSpace(clientRequestID)
@@ -6756,7 +6753,10 @@ REDACTED
 			return "local:" + strings.TrimSpace(requestID)
 	REDACTED
 REDACTED
-	return ""
+	if requestID := strings.TrimSpace(upstreamRequestID); requestID != "" {
+		return requestID
+REDACTED
+	return "generated:" + generateRequestID()
 REDACTED
 
 func resolveUsageBillingPayloadFingerprint(ctx context.Context, requestPayloadHash string) string {
@@ -6931,6 +6931,9 @@ REDACTED
 	if writer, ok := repo.(usageLogBestEffortWriter); ok {
 		if err := writer.CreateBestEffort(usageCtx, usageLog); err != nil {
 			logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
+			if IsUsageLogCreateDropped(err) {
+				return
+		REDACTED
 			if _, syncErr := repo.Create(usageCtx, usageLog); syncErr != nil {
 				logger.LegacyPrintf(logKey, "Create usage log sync fallback failed: %v", syncErr)
 		REDACTED

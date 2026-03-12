@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,6 +27,31 @@ func (s *openAIRecordUsageLogRepoStub) Create(ctx context.Context, log *UsageLog
 	s.lastLog = log
 	s.lastCtxErr = ctx.Err()
 	return s.inserted, s.err
+REDACTED
+
+type openAIRecordUsageBestEffortLogRepoStub struct {
+	UsageLogRepository
+
+	bestEffortErr   error
+	createErr       error
+	bestEffortCalls int
+	createCalls     int
+	lastLog         *UsageLog
+	lastCtxErr      error
+REDACTED
+
+func (s *openAIRecordUsageBestEffortLogRepoStub) CreateBestEffort(ctx context.Context, log *UsageLog) error {
+	s.bestEffortCalls++
+	s.lastLog = log
+	s.lastCtxErr = ctx.Err()
+	return s.bestEffortErr
+REDACTED
+
+func (s *openAIRecordUsageBestEffortLogRepoStub) Create(ctx context.Context, log *UsageLog) (bool, error) {
+	s.createCalls++
+	s.lastLog = log
+	s.lastCtxErr = ctx.Err()
+	return false, s.createErr
 REDACTED
 
 type openAIRecordUsageBillingRepoStub struct {
@@ -541,6 +567,65 @@ REDACTED
 	require.Equal(t, "local:req-local-fallback", billingRepo.lastCmd.RequestID)
 	require.NotNil(t, usageRepo.lastLog)
 	require.Equal(t, "local:req-local-fallback", usageRepo.lastLog.RequestID)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_PrefersClientRequestIDOverUpstreamRequestID(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{REDACTED
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: trueREDACTEDREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	ctx := context.WithValue(context.Background(), ctxkey.ClientRequestID, "openai-client-stable-123")
+	err := svc.RecordUsage(ctx, &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "upstream-openai-volatile-456",
+			Usage: OpenAIUsage{
+				InputTokens:  8,
+				OutputTokens: 4,
+		REDACTED,
+			Model:    "gpt-5.1",
+			Duration: time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 10049REDACTED,
+		User:    &User{ID: 20049REDACTED,
+		Account: &Account{ID: 30049REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Equal(t, "client:openai-client-stable-123", billingRepo.lastCmd.RequestID)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "client:openai-client-stable-123", usageRepo.lastLog.RequestID)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_GeneratesRequestIDWhenAllSourcesMissing(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{REDACTED
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: trueREDACTEDREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "",
+			Usage: OpenAIUsage{
+				InputTokens:  8,
+				OutputTokens: 4,
+		REDACTED,
+			Model:    "gpt-5.1",
+			Duration: time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 10050REDACTED,
+		User:    &User{ID: 20050REDACTED,
+		Account: &Account{ID: 30050REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, billingRepo.lastCmd)
+	require.True(t, strings.HasPrefix(billingRepo.lastCmd.RequestID, "generated:"))
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, billingRepo.lastCmd.RequestID, usageRepo.lastLog.RequestID)
 REDACTED
 
 func TestOpenAIGatewayServiceRecordUsage_BillingErrorSkipsUsageLogWrite(t *testing.T) {
