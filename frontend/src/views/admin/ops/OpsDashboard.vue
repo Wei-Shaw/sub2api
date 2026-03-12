@@ -85,7 +85,7 @@
       </div>
 
       <!-- Row: OpenAI Token Stats -->
-      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
+      <div v-if="opsEnabled && showOpenAITokenStats && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
         <OpsOpenAITokenStatsCard
           :platform-filter="platform"
           :group-id-filter="groupId"
@@ -381,6 +381,7 @@ const showSettingsDialog = ref(false)
 const showAlertRulesCard = ref(false)
 
 // Auto refresh settings
+const showOpenAITokenStats = ref(false)
 const autoRefreshEnabled = ref(false)
 const autoRefreshIntervalMs = ref(30000) // default 30 seconds
 const autoRefreshCountdown = ref(0)
@@ -408,15 +409,20 @@ const { pause: pauseCountdown, resume: resumeCountdown REDACTED = useIntervalFn(
   { immediate: false REDACTED
 )
 
-// Load auto refresh settings from backend
-async function loadAutoRefreshSettings() {
+// Load ops dashboard presentation settings from backend.
+async function loadDashboardAdvancedSettings() {
   try {
     const settings = await opsAPI.getAdvancedSettings()
+    showOpenAITokenStats.value = settings.display_openai_token_stats
     autoRefreshEnabled.value = settings.auto_refresh_enabled
     autoRefreshIntervalMs.value = settings.auto_refresh_interval_seconds * 1000
     autoRefreshCountdown.value = settings.auto_refresh_interval_seconds
   REDACTED catch (err) {
-    console.error('[OpsDashboard] Failed to load auto refresh settings', err)
+    console.error('[OpsDashboard] Failed to load dashboard advanced settings', err)
+    showOpenAITokenStats.value = false
+    autoRefreshEnabled.value = false
+    autoRefreshIntervalMs.value = 30000
+    autoRefreshCountdown.value = 0
   REDACTED
 REDACTED
 
@@ -464,7 +470,8 @@ function onCustomTimeRangeChange(startTime: string, endTime: string) {
   customEndTime.value = endTime
 REDACTED
 
-function onSettingsSaved() {
+async function onSettingsSaved() {
+  await loadDashboardAdvancedSettings()
   loadThresholds()
   fetchData()
 REDACTED
@@ -774,7 +781,7 @@ onMounted(async () => {
   loadThresholds()
 
   // Load auto refresh settings
-  await loadAutoRefreshSettings()
+  await loadDashboardAdvancedSettings()
 
   if (opsEnabled.value) {
     await fetchData()
@@ -816,7 +823,7 @@ REDACTED)
 // Reload auto refresh settings after settings dialog is closed
 watch(showSettingsDialog, async (show) => {
   if (!show) {
-    await loadAutoRefreshSettings()
+    await loadDashboardAdvancedSettings()
   REDACTED
 REDACTED)
 </script>

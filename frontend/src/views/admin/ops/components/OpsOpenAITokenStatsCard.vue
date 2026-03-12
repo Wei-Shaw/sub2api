@@ -208,35 +208,39 @@ REDACTED
       :description="t('admin.ops.openaiTokenStats.empty')"
     />
 
-    <div v-else class="overflow-x-auto">
-      <table class="min-w-full text-left text-xs md:text-sm">
-        <thead>
-          <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-gray-400">
-            <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.model') REDACTEDREDACTED</th>
-            <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.requestCount') REDACTEDREDACTED</th>
-            <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.avgTokensPerSec') REDACTEDREDACTED</th>
-            <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.avgFirstTokenMs') REDACTEDREDACTED</th>
-            <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.totalOutputTokens') REDACTEDREDACTED</th>
-            <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.avgDurationMs') REDACTEDREDACTED</th>
-            <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.requestsWithFirstToken') REDACTEDREDACTED</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="row in items"
-            :key="row.model"
-            class="border-b border-gray-100 text-gray-700 dark:border-dark-800 dark:text-gray-200"
-          >
-            <td class="px-2 py-2 font-medium">{{ row.model REDACTEDREDACTED</td>
-            <td class="px-2 py-2">{{ formatInt(row.request_count) REDACTEDREDACTED</td>
-            <td class="px-2 py-2">{{ formatRate(row.avg_tokens_per_sec) REDACTEDREDACTED</td>
-            <td class="px-2 py-2">{{ formatRate(row.avg_first_token_ms) REDACTEDREDACTED</td>
-            <td class="px-2 py-2">{{ formatInt(row.total_output_tokens) REDACTEDREDACTED</td>
-            <td class="px-2 py-2">{{ formatInt(row.avg_duration_ms) REDACTEDREDACTED</td>
-            <td class="px-2 py-2">{{ formatInt(row.requests_with_first_token) REDACTEDREDACTED</td>
-          </tr>
-        </tbody>
-      </table>
+    <div v-else class="space-y-3">
+      <div class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
+        <div class="max-h-[420px] overflow-auto">
+          <table class="min-w-full text-left text-xs md:text-sm">
+            <thead class="sticky top-0 z-10 bg-white dark:bg-dark-800">
+              <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-gray-400">
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.model') REDACTEDREDACTED</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.requestCount') REDACTEDREDACTED</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.avgTokensPerSec') REDACTEDREDACTED</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.avgFirstTokenMs') REDACTEDREDACTED</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.totalOutputTokens') REDACTEDREDACTED</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.avgDurationMs') REDACTEDREDACTED</th>
+                <th class="px-2 py-2 font-semibold">{{ t('admin.ops.openaiTokenStats.table.requestsWithFirstToken') REDACTEDREDACTED</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in items"
+                :key="row.model"
+                class="border-b border-gray-100 text-gray-700 last:border-b-0 dark:border-dark-800 dark:text-gray-200"
+              >
+                <td class="px-2 py-2 font-medium">{{ row.model REDACTEDREDACTED</td>
+                <td class="px-2 py-2">{{ formatInt(row.request_count) REDACTEDREDACTED</td>
+                <td class="px-2 py-2">{{ formatRate(row.avg_tokens_per_sec) REDACTEDREDACTED</td>
+                <td class="px-2 py-2">{{ formatRate(row.avg_first_token_ms) REDACTEDREDACTED</td>
+                <td class="px-2 py-2">{{ formatInt(row.total_output_tokens) REDACTEDREDACTED</td>
+                <td class="px-2 py-2">{{ formatInt(row.avg_duration_ms) REDACTEDREDACTED</td>
+                <td class="px-2 py-2">{{ formatInt(row.requests_with_first_token) REDACTEDREDACTED</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
       <div v-if="viewMode === 'topn'" class="mt-3 text-xs text-gray-500 dark:text-gray-400">
         {{ t('admin.ops.openaiTokenStats.totalModels', { total REDACTED) REDACTEDREDACTED
       </div>
