@@ -1155,6 +1155,7 @@ export interface UserUsageTrendPoint {
   date: string
   user_id: number
   email: string
+  username: string
   requests: number
   tokens: number
   cost: number // 标准计费
