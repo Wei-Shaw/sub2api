@@ -39,6 +39,15 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 - **Concurrency Control** - Per-user and per-account concurrency limits
 - **Rate Limiting** - Configurable request and token rate limits
 - **Admin Dashboard** - Web interface for monitoring and management
+- **External System Integration** - Embed external systems (e.g. payment, ticketing) via iframe to extend the admin dashboard
+
+## Ecosystem
+
+Sub2API supports embedding external systems via iframe to extend the admin dashboard. Here are community-recommended integration projects:
+
+| Project | Description | Features |
+|---------|-------------|----------|
+| [Sub2ApiPay](https://github.com/touwaeriol/sub2apipay) | Self-service payment system | Self-service top-up and subscription purchase; supports YiPay protocol, WeChat Pay, Alipay, Stripe |
 
 ## Tech Stack
 
