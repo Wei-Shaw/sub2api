@@ -323,15 +323,12 @@ const formatLocalDate = (date: Date): string => {
   return `${date.getFullYear()REDACTED-${String(date.getMonth() + 1).padStart(2, '0')REDACTED-${String(date.getDate()).padStart(2, '0')REDACTED`
 REDACTED
 
-// Initialize date range immediately
-const now = new Date()
-const weekAgo = new Date(now)
-weekAgo.setDate(weekAgo.getDate() - 6)
+const getTodayLocalDate = () => formatLocalDate(new Date())
 
 // Date range
 const granularity = ref<'day' | 'hour'>('day')
-const startDate = ref(formatLocalDate(weekAgo))
-const endDate = ref(formatLocalDate(now))
+const startDate = ref(getTodayLocalDate())
+const endDate = ref(getTodayLocalDate())
 
 // Granularity options for Select component
 const granularityOptions = computed(() => [
