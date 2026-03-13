@@ -42,45 +42,56 @@ func (r *tokenCacheInvalidatorRecorder) InvalidateToken(ctx context.Context, acc
 REDACTED
 
 func TestRateLimitService_HandleUpstreamError_OAuth401SetsTempUnschedulable(t *testing.T) {
-	tests := []struct {
-		name     string
-		platform string
-REDACTED{
-		{name: "gemini", platform: PlatformGeminiREDACTED,
-		{name: "antigravity", platform: PlatformAntigravityREDACTED,
-REDACTED
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			repo := &rateLimitAccountRepoStub{REDACTED
-			invalidator := &tokenCacheInvalidatorRecorder{REDACTED
-			service := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
-			service.SetTokenCacheInvalidator(invalidator)
-			account := &Account{
-				ID:       100,
-				Platform: tt.platform,
-				Type:     AccountTypeOAuth,
-		REDACTED
-					"temp_unschedulable_enabled": true,
-					"temp_unschedulable_rules": []any{
-						map[string]any{
-							"error_code":       401,
-							"keywords":         []any{"unauthorized"REDACTED,
-							"duration_minutes": 30,
-							"description":      "custom rule",
-					REDACTED,
+	t.Run("gemini", func(t *testing.T) {
+		repo := &rateLimitAccountRepoStub{REDACTED
+		invalidator := &tokenCacheInvalidatorRecorder{REDACTED
+		service := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+		service.SetTokenCacheInvalidator(invalidator)
+		account := &Account{
+			ID:       100,
+	REDACTED
+			Type:     AccountTypeOAuth,
+	REDACTED
+				"temp_unschedulable_enabled": true,
+				"temp_unschedulable_rules": []any{
+					map[string]any{
+						"error_code":       401,
+						"keywords":         []any{"unauthorized"REDACTED,
+						"duration_minutes": 30,
+						"description":      "custom rule",
 				REDACTED,
 			REDACTED,
-		REDACTED
+		REDACTED,
+	REDACTED
 
-			shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{REDACTED, []byte("unauthorized"))
+		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{REDACTED, []byte("unauthorized"))
 
-			require.True(t, shouldDisable)
-			require.Equal(t, 0, repo.setErrorCalls)
-			require.Equal(t, 1, repo.tempCalls)
-			require.Len(t, invalidator.accounts, 1)
-	REDACTED)
-REDACTED
+		require.True(t, shouldDisable)
+		require.Equal(t, 0, repo.setErrorCalls)
+		require.Equal(t, 1, repo.tempCalls)
+		require.Len(t, invalidator.accounts, 1)
+REDACTED)
+
+	t.Run("antigravity_401_uses_SetError", func(t *testing.T) {
+		// Antigravity 401 由 applyErrorPolicy 的 temp_unschedulable_rules 控制，
+		// HandleUpstreamError 中走 SetError 路径。
+		repo := &rateLimitAccountRepoStub{REDACTED
+		invalidator := &tokenCacheInvalidatorRecorder{REDACTED
+		service := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+		service.SetTokenCacheInvalidator(invalidator)
+		account := &Account{
+			ID:       100,
+			Platform: PlatformAntigravity,
+			Type:     AccountTypeOAuth,
+	REDACTED
+
+		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{REDACTED, []byte("unauthorized"))
+
+		require.True(t, shouldDisable)
+		require.Equal(t, 1, repo.setErrorCalls)
+		require.Equal(t, 0, repo.tempCalls)
+		require.Empty(t, invalidator.accounts)
+REDACTED)
 REDACTED
 
 func TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError(t *testing.T) {
