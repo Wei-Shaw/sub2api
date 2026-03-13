@@ -5853,25 +5853,6 @@ REDACTED
 	return false
 REDACTED
 
-// filterBetaTokensFromHeader removes tokens present in filterSet from a comma-separated header value.
-// Returns the filtered header string, or "" if all tokens were removed.
-func filterBetaTokensFromHeader(header string, filterSet map[string]struct{REDACTED) string {
-	if header == "" || len(filterSet) == 0 {
-		return header
-REDACTED
-	var kept []string
-	for _, p := range strings.Split(header, ",") {
-		t := strings.TrimSpace(p)
-		if t == "" {
-			continue
-	REDACTED
-		if _, filtered := filterSet[t]; !filtered {
-			kept = append(kept, t)
-	REDACTED
-REDACTED
-	return strings.Join(kept, ", ")
-REDACTED
-
 func filterBetaTokens(tokens []string, filterSet map[string]struct{REDACTED) []string {
 	if len(tokens) == 0 || len(filterSet) == 0 {
 		return tokens

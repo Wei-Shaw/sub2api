@@ -76,15 +76,15 @@ func TestExtractEventStreamHeaderValue(t *testing.T) {
 	buildStringHeader := func(name, value string) []byte {
 		var buf bytes.Buffer
 		// name length (1 byte)
-		buf.WriteByte(byte(len(name)))
+		_ = buf.WriteByte(byte(len(name)))
 		// name
-		buf.WriteString(name)
+		_, _ = buf.WriteString(name)
 		// value type (7 = string)
-		buf.WriteByte(7)
+		_ = buf.WriteByte(7)
 		// value length (2 bytes, big-endian)
 		_ = binary.Write(&buf, binary.BigEndian, uint16(len(value)))
 		// value
-		buf.WriteString(value)
+		_, _ = buf.WriteString(value)
 		return buf.Bytes()
 REDACTED
 
@@ -100,9 +100,9 @@ REDACTED)
 
 	t.Run("multiple headers", func(t *testing.T) {
 		var buf bytes.Buffer
-		buf.Write(buildStringHeader(":content-type", "application/json"))
-		buf.Write(buildStringHeader(":event-type", "chunk"))
-		buf.Write(buildStringHeader(":message-type", "event"))
+		_, _ = buf.Write(buildStringHeader(":content-type", "application/json"))
+		_, _ = buf.Write(buildStringHeader(":event-type", "chunk"))
+		_, _ = buf.Write(buildStringHeader(":message-type", "event"))
 
 		headers := buf.Bytes()
 		assert.Equal(t, "chunk", extractEventStreamHeaderValue(headers, ":event-type"))
@@ -123,17 +123,17 @@ func TestBedrockEventStreamDecoder(t *testing.T) {
 		// Build headers
 		var headersBuf bytes.Buffer
 		// :event-type header
-		headersBuf.WriteByte(byte(len(":event-type")))
-		headersBuf.WriteString(":event-type")
-		headersBuf.WriteByte(7) // string type
+		_ = headersBuf.WriteByte(byte(len(":event-type")))
+		_, _ = headersBuf.WriteString(":event-type")
+		_ = headersBuf.WriteByte(7) // string type
 		_ = binary.Write(&headersBuf, binary.BigEndian, uint16(len(eventType)))
-		headersBuf.WriteString(eventType)
+		_, _ = headersBuf.WriteString(eventType)
 		// :message-type header
-		headersBuf.WriteByte(byte(len(":message-type")))
-		headersBuf.WriteString(":message-type")
-		headersBuf.WriteByte(7)
+		_ = headersBuf.WriteByte(byte(len(":message-type")))
+		_, _ = headersBuf.WriteString(":message-type")
+		_ = headersBuf.WriteByte(7)
 		_ = binary.Write(&headersBuf, binary.BigEndian, uint16(len("event")))
-		headersBuf.WriteString("event")
+		_, _ = headersBuf.WriteString("event")
 
 		headers := headersBuf.Bytes()
 		headersLen := uint32(len(headers))
@@ -149,10 +149,10 @@ func TestBedrockEventStreamDecoder(t *testing.T) {
 
 		// Build frame: prelude + prelude_crc + headers + payload
 		var frame bytes.Buffer
-		frame.Write(preludeBytes)
+		_, _ = frame.Write(preludeBytes)
 		_ = binary.Write(&frame, binary.BigEndian, preludeCRC)
-		frame.Write(headers)
-		frame.Write(payload)
+		_, _ = frame.Write(headers)
+		_, _ = frame.Write(payload)
 
 		// Message CRC covers everything before itself
 		messageCRC := crc32.Checksum(frame.Bytes(), crc32IeeeTab)
@@ -173,9 +173,9 @@ REDACTED)
 	t.Run("skip non-chunk events", func(t *testing.T) {
 		// Write initial-response followed by chunk
 		var buf bytes.Buffer
-		buf.Write(buildFrame("initial-response", []byte(`{REDACTED`)))
+		_, _ = buf.Write(buildFrame("initial-response", []byte(`{REDACTED`)))
 		chunkPayload := []byte(`{"bytes":"aGVsbG8="REDACTED`)
-		buf.Write(buildFrame("chunk", chunkPayload))
+		_, _ = buf.Write(buildFrame("chunk", chunkPayload))
 
 		decoder := newBedrockEventStreamDecoder(&buf)
 		result, err := decoder.Decode()
@@ -214,11 +214,11 @@ REDACTED)
 		payload := []byte(`{"bytes":"dGVzdA=="REDACTED`)
 
 		var headersBuf bytes.Buffer
-		headersBuf.WriteByte(byte(len(":event-type")))
-		headersBuf.WriteString(":event-type")
-		headersBuf.WriteByte(7)
+		_ = headersBuf.WriteByte(byte(len(":event-type")))
+		_, _ = headersBuf.WriteString(":event-type")
+		_ = headersBuf.WriteByte(7)
 		_ = binary.Write(&headersBuf, binary.BigEndian, uint16(len("chunk")))
-		headersBuf.WriteString("chunk")
+		_, _ = headersBuf.WriteString("chunk")
 
 		headers := headersBuf.Bytes()
 		headersLen := uint32(len(headers))
@@ -230,10 +230,10 @@ REDACTED)
 		preludeBytes := preludeBuf.Bytes()
 
 		var frame bytes.Buffer
-		frame.Write(preludeBytes)
+		_, _ = frame.Write(preludeBytes)
 		_ = binary.Write(&frame, binary.BigEndian, crc32.Checksum(preludeBytes, castagnoliTab))
-		frame.Write(headers)
-		frame.Write(payload)
+		_, _ = frame.Write(headers)
+		_, _ = frame.Write(payload)
 		_ = binary.Write(&frame, binary.BigEndian, crc32.Checksum(frame.Bytes(), castagnoliTab))
 
 		decoder := newBedrockEventStreamDecoder(bytes.NewReader(frame.Bytes()))

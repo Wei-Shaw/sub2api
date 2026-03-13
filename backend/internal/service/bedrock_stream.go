@@ -282,8 +282,8 @@ func (d *bedrockEventStreamDecoder) Decode() ([]byte, error) {
 		// 验证 message CRC（覆盖 prelude + headers + payload）
 		messageCRC := bedrockReadUint32(data[len(data)-4:])
 		h := crc32.New(crc32IEEETable)
-		h.Write(prelude)
-		h.Write(data[:len(data)-4])
+		_, _ = h.Write(prelude)
+		_, _ = h.Write(data[:len(data)-4])
 		if h.Sum32() != messageCRC {
 			return nil, fmt.Errorf("eventstream message CRC mismatch")
 	REDACTED
