@@ -1291,9 +1291,21 @@
           :totalLimit="editQuotaLimit"
           :dailyLimit="editQuotaDailyLimit"
           :weeklyLimit="editQuotaWeeklyLimit"
+          :dailyResetMode="editDailyResetMode"
+          :dailyResetHour="editDailyResetHour"
+          :weeklyResetMode="editWeeklyResetMode"
+          :weeklyResetDay="editWeeklyResetDay"
+          :weeklyResetHour="editWeeklyResetHour"
+          :resetTimezone="editResetTimezone"
           @update:totalLimit="editQuotaLimit = $event"
           @update:dailyLimit="editQuotaDailyLimit = $event"
           @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+          @update:dailyResetMode="editDailyResetMode = $event"
+          @update:dailyResetHour="editDailyResetHour = $event"
+          @update:weeklyResetMode="editWeeklyResetMode = $event"
+          @update:weeklyResetDay="editWeeklyResetDay = $event"
+          @update:weeklyResetHour="editWeeklyResetHour = $event"
+          @update:resetTimezone="editResetTimezone = $event"
         />
       </div>
 
@@ -2678,6 +2690,12 @@ const apiKeyValue = ref('')
 const editQuotaLimit = ref<number | null>(null)
 const editQuotaDailyLimit = ref<number | null>(null)
 const editQuotaWeeklyLimit = ref<number | null>(null)
+const editDailyResetMode = ref<'rolling' | 'fixed' | null>(null)
+const editDailyResetHour = ref<number | null>(null)
+const editWeeklyResetMode = ref<'rolling' | 'fixed' | null>(null)
+const editWeeklyResetDay = ref<number | null>(null)
+const editWeeklyResetHour = ref<number | null>(null)
+const editResetTimezone = ref<string | null>(null)
 const modelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
@@ -3347,6 +3365,12 @@ const resetForm = () => {
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
+  editDailyResetMode.value = null
+  editDailyResetHour.value = null
+  editWeeklyResetMode.value = null
+  editWeeklyResetDay.value = null
+  editWeeklyResetHour.value = null
+  editResetTimezone.value = null
   modelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
@@ -3795,6 +3819,19 @@ const createAccountAndFinish = async (
     REDACTED
     if (editQuotaWeeklyLimit.value != null && editQuotaWeeklyLimit.value > 0) {
       quotaExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
+    REDACTED
+    // Quota reset mode config
+    if (editDailyResetMode.value === 'fixed') {
+      quotaExtra.quota_daily_reset_mode = 'fixed'
+      quotaExtra.quota_daily_reset_hour = editDailyResetHour.value ?? 0
+    REDACTED
+    if (editWeeklyResetMode.value === 'fixed') {
+      quotaExtra.quota_weekly_reset_mode = 'fixed'
+      quotaExtra.quota_weekly_reset_day = editWeeklyResetDay.value ?? 1
+      quotaExtra.quota_weekly_reset_hour = editWeeklyResetHour.value ?? 0
+    REDACTED
+    if (editDailyResetMode.value === 'fixed' || editWeeklyResetMode.value === 'fixed') {
+      quotaExtra.quota_reset_timezone = editResetTimezone.value || 'UTC'
     REDACTED
     if (Object.keys(quotaExtra).length > 0) {
       finalExtra = quotaExtra

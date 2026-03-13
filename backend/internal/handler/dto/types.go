@@ -203,6 +203,16 @@ type Account struct {
 	QuotaWeeklyLimit *float64 `json:"quota_weekly_limit,omitempty"`
 	QuotaWeeklyUsed  *float64 `json:"quota_weekly_used,omitempty"`
 
+	// 配额固定时间重置配置
+	QuotaDailyResetMode  *string `json:"quota_daily_reset_mode,omitempty"`
+	QuotaDailyResetHour  *int    `json:"quota_daily_reset_hour,omitempty"`
+	QuotaWeeklyResetMode *string `json:"quota_weekly_reset_mode,omitempty"`
+	QuotaWeeklyResetDay  *int    `json:"quota_weekly_reset_day,omitempty"`
+	QuotaWeeklyResetHour *int    `json:"quota_weekly_reset_hour,omitempty"`
+	QuotaResetTimezone   *string `json:"quota_reset_timezone,omitempty"`
+	QuotaDailyResetAt    *string `json:"quota_daily_reset_at,omitempty"`
+	QuotaWeeklyResetAt   *string `json:"quota_weekly_reset_at,omitempty"`
+
 	Proxy         *Proxy         `json:"proxy,omitempty"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
 

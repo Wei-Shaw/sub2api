@@ -1438,6 +1438,13 @@ REDACTED
 		Status:      StatusActive,
 		Schedulable: true,
 REDACTED
+	// 预计算固定时间重置的下次重置时间
+	if account.Extra != nil {
+		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
+			return nil, err
+	REDACTED
+		ComputeQuotaResetAt(account.Extra)
+REDACTED
 	if input.ExpiresAt != nil && *input.ExpiresAt > 0 {
 		expiresAt := time.Unix(*input.ExpiresAt, 0)
 		account.ExpiresAt = &expiresAt
@@ -1511,6 +1518,11 @@ REDACTED
 		REDACTED
 	REDACTED
 		account.Extra = input.Extra
+		// 校验并预计算固定时间重置的下次重置时间
+		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
+			return nil, err
+	REDACTED
+		ComputeQuotaResetAt(account.Extra)
 REDACTED
 	if input.ProxyID != nil {
 		// 0 表示清除代理（前端发送 0 而不是 null 来表达清除意图）

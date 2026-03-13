@@ -848,11 +848,23 @@ const makeQuotaBar = (
   let resetsAt: string | null = null
   if (startKey) {
     const extra = props.account.extra as Record<string, unknown> | undefined
-    const startStr = extra?.[startKey] as string | undefined
-    if (startStr) {
-      const startDate = new Date(startStr)
-      const periodMs = startKey.includes('daily') ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000
-      resetsAt = new Date(startDate.getTime() + periodMs).toISOString()
+    const isDaily = startKey.includes('daily')
+    const mode = isDaily
+      ? (extra?.quota_daily_reset_mode as string) || 'rolling'
+      : (extra?.quota_weekly_reset_mode as string) || 'rolling'
+
+    if (mode === 'fixed') {
+      // Use pre-computed next reset time for fixed mode
+      const resetAtKey = isDaily ? 'quota_daily_reset_at' : 'quota_weekly_reset_at'
+      resetsAt = (extra?.[resetAtKey] as string) || null
+    REDACTED else {
+      // Rolling mode: compute from start + period
+      const startStr = extra?.[startKey] as string | undefined
+      if (startStr) {
+        const startDate = new Date(startStr)
+        const periodMs = isDaily ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000
+        resetsAt = new Date(startDate.getTime() + periodMs).toISOString()
+      REDACTED
     REDACTED
   REDACTED
   return { utilization, resetsAt REDACTED

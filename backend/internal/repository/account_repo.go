@@ -1727,8 +1727,47 @@ REDACTED
 // nowUTC is a SQL expression to generate a UTC RFC3339 timestamp string.
 const nowUTC = `to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
 
+// dailyExpiredExpr is a SQL expression that evaluates to TRUE when daily quota period has expired.
+// Supports both rolling (24h from start) and fixed (pre-computed reset_at) modes.
+const dailyExpiredExpr = `(
+	CASE WHEN COALESCE(extra->>'quota_daily_reset_mode', 'rolling') = 'fixed'
+	THEN NOW() >= COALESCE((extra->>'quota_daily_reset_at')::timestamptz, '1970-01-01'::timestamptz)
+	ELSE COALESCE((extra->>'quota_daily_start')::timestamptz, '1970-01-01'::timestamptz)
+		+ '24 hours'::interval <= NOW()
+	END
+)`
+
+// weeklyExpiredExpr is a SQL expression that evaluates to TRUE when weekly quota period has expired.
+const weeklyExpiredExpr = `(
+	CASE WHEN COALESCE(extra->>'quota_weekly_reset_mode', 'rolling') = 'fixed'
+	THEN NOW() >= COALESCE((extra->>'quota_weekly_reset_at')::timestamptz, '1970-01-01'::timestamptz)
+	ELSE COALESCE((extra->>'quota_weekly_start')::timestamptz, '1970-01-01'::timestamptz)
+		+ '168 hours'::interval <= NOW()
+	END
+)`
+
+// nextDailyResetAtExpr is a SQL expression to compute the next daily reset_at when a reset occurs.
+// For fixed mode: advances current reset_at by 1 day. For rolling mode: not used (NULL).
+const nextDailyResetAtExpr = `(
+	CASE WHEN COALESCE(extra->>'quota_daily_reset_mode', 'rolling') = 'fixed'
+	THEN to_char(
+		COALESCE((extra->>'quota_daily_reset_at')::timestamptz, NOW()) + '1 day'::interval
+		AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+	ELSE NULL END
+)`
+
+// nextWeeklyResetAtExpr is a SQL expression to compute the next weekly reset_at when a reset occurs.
+const nextWeeklyResetAtExpr = `(
+	CASE WHEN COALESCE(extra->>'quota_weekly_reset_mode', 'rolling') = 'fixed'
+	THEN to_char(
+		COALESCE((extra->>'quota_weekly_reset_at')::timestamptz, NOW()) + '7 days'::interval
+		AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+	ELSE NULL END
+)`
+
 // IncrementQuotaUsed 原子递增账号的配额用量（总/日/周三个维度）
 // 日/周额度在周期过期时自动重置为 0 再递增。
+// 支持滚动窗口（rolling）和固定时间（fixed）两种重置模式。
 func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error {
 	rows, err := r.sql.QueryContext(ctx,
 		`UPDATE accounts SET extra = (
@@ -1739,31 +1778,35 @@ func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, am
 			|| CASE WHEN COALESCE((extra->>'quota_daily_limit')::numeric, 0) > 0 THEN
 				jsonb_build_object(
 					'quota_daily_used',
-					CASE WHEN COALESCE((extra->>'quota_daily_start')::timestamptz, '1970-01-01'::timestamptz)
-						+ '24 hours'::interval <= NOW()
+					CASE WHEN `+dailyExpiredExpr+`
 					THEN $1
 					ELSE COALESCE((extra->>'quota_daily_used')::numeric, 0) + $1 END,
 					'quota_daily_start',
-					CASE WHEN COALESCE((extra->>'quota_daily_start')::timestamptz, '1970-01-01'::timestamptz)
-						+ '24 hours'::interval <= NOW()
+					CASE WHEN `+dailyExpiredExpr+`
 					THEN `+nowUTC+`
 					ELSE COALESCE(extra->>'quota_daily_start', `+nowUTC+`) END
 				)
+				-- 固定模式重置时更新下次重置时间
+				|| CASE WHEN `+dailyExpiredExpr+` AND `+nextDailyResetAtExpr+` IS NOT NULL
+				   THEN jsonb_build_object('quota_daily_reset_at', `+nextDailyResetAtExpr+`)
+				   ELSE '{REDACTED'::jsonb END
 			ELSE '{REDACTED'::jsonb END
 			-- 周额度：仅在 quota_weekly_limit > 0 时处理
 			|| CASE WHEN COALESCE((extra->>'quota_weekly_limit')::numeric, 0) > 0 THEN
 				jsonb_build_object(
 					'quota_weekly_used',
-					CASE WHEN COALESCE((extra->>'quota_weekly_start')::timestamptz, '1970-01-01'::timestamptz)
-						+ '168 hours'::interval <= NOW()
+					CASE WHEN `+weeklyExpiredExpr+`
 					THEN $1
 					ELSE COALESCE((extra->>'quota_weekly_used')::numeric, 0) + $1 END,
 					'quota_weekly_start',
-					CASE WHEN COALESCE((extra->>'quota_weekly_start')::timestamptz, '1970-01-01'::timestamptz)
-						+ '168 hours'::interval <= NOW()
+					CASE WHEN `+weeklyExpiredExpr+`
 					THEN `+nowUTC+`
 					ELSE COALESCE(extra->>'quota_weekly_start', `+nowUTC+`) END
 				)
+				-- 固定模式重置时更新下次重置时间
+				|| CASE WHEN `+weeklyExpiredExpr+` AND `+nextWeeklyResetAtExpr+` IS NOT NULL
+				   THEN jsonb_build_object('quota_weekly_reset_at', `+nextWeeklyResetAtExpr+`)
+				   ELSE '{REDACTED'::jsonb END
 			ELSE '{REDACTED'::jsonb END
 		), updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
@@ -1796,12 +1839,13 @@ REDACTED
 REDACTED
 
 // ResetQuotaUsed 重置账号所有维度的配额用量为 0
+// 保留固定重置模式的配置字段（quota_daily_reset_mode 等），仅清零用量和窗口起始时间
 func (r *accountRepository) ResetQuotaUsed(ctx context.Context, id int64) error {
 	_, err := r.sql.ExecContext(ctx,
 		`UPDATE accounts SET extra = (
 			COALESCE(extra, '{REDACTED'::jsonb)
 			|| '{"quota_used": 0, "quota_daily_used": 0, "quota_weekly_used": 0REDACTED'::jsonb
-		) - 'quota_daily_start' - 'quota_weekly_start', updated_at = NOW()
+		) - 'quota_daily_start' - 'quota_weekly_start' - 'quota_daily_reset_at' - 'quota_weekly_reset_at', updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL`,
 		id)
 	if err != nil {
