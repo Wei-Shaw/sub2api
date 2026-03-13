@@ -73,3 +73,14 @@ func buildReqClientKey(opts reqClientOptions) string {
 		opts.ForceHTTP2,
 	)
 REDACTED
+
+// CreatePrivacyReqClient creates an HTTP client for OpenAI privacy settings API
+// This is exported for use by OpenAIPrivacyService
+// Uses Chrome TLS fingerprint impersonation to bypass Cloudflare checks
+func CreatePrivacyReqClient(proxyURL string) (*req.Client, error) {
+	return getSharedReqClient(reqClientOptions{
+		ProxyURL:    proxyURL,
+		Timeout:     30 * time.Second,
+		Impersonate: true, // Enable Chrome TLS fingerprint impersonation
+REDACTED)
+REDACTED

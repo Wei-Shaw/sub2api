@@ -429,5 +429,9 @@ func (s *stubAdminService) ResetAccountQuota(ctx context.Context, id int64) erro
 	return nil
 REDACTED
 
+func (s *stubAdminService) EnsureOpenAIPrivacy(ctx context.Context, account *service.Account) string {
+	return ""
+REDACTED
+
 // Ensure stub implements interface.
 var _ service.AdminService = (*stubAdminService)(nil)

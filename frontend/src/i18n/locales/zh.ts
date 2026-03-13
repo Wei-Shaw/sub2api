@@ -1792,6 +1792,9 @@ export default {
         expiresAt: '过期时间',
         actions: '操作'
       REDACTED,
+      privacyTrainingOff: '已关闭训练数据共享',
+      privacyCfBlocked: '被 Cloudflare 拦截，训练可能仍开启',
+      privacyFailed: '关闭训练数据共享失败',
       // 容量状态提示
       capacity: {
         windowCost: {

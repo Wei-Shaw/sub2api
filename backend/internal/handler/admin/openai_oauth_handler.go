@@ -289,6 +289,7 @@ REDACTED
 		Platform:    platform,
 		Type:        "oauth",
 		Credentials: credentials,
+		Extra:       nil,
 		ProxyID:     req.ProxyID,
 		Concurrency: req.Concurrency,
 		Priority:    req.Priority,
