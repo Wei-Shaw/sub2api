@@ -351,6 +351,18 @@ const routes: RouteRecordRaw[] = [
     REDACTED
   REDACTED,
   {
+    path: '/admin/backup',
+    name: 'AdminBackup',
+    component: () => import('@/views/admin/BackupView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Database Backup',
+      titleKey: 'admin.backup.title',
+      descriptionKey: 'admin.backup.description'
+    REDACTED
+  REDACTED,
+  {
     path: '/admin/data-management',
     name: 'AdminDataManagement',
     component: () => import('@/views/admin/DataManagementView.vue'),
