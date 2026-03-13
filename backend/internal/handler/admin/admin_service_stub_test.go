@@ -175,6 +175,18 @@ func (s *stubAdminService) GetGroupAPIKeys(ctx context.Context, groupID int64, p
 	return s.apiKeys, int64(len(s.apiKeys)), nil
 REDACTED
 
+func (s *stubAdminService) GetGroupRateMultipliers(_ context.Context, _ int64) ([]service.UserGroupRateEntry, error) {
+	return nil, nil
+REDACTED
+
+func (s *stubAdminService) ClearGroupRateMultipliers(_ context.Context, _ int64) error {
+	return nil
+REDACTED
+
+func (s *stubAdminService) BatchSetGroupRateMultipliers(_ context.Context, _ int64, _ []service.GroupRateMultiplierInput) error {
+	return nil
+REDACTED
+
 func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64) ([]service.Account, int64, error) {
 	return s.accounts, int64(len(s.accounts)), nil
 REDACTED
@@ -427,6 +439,10 @@ REDACTED
 
 func (s *stubAdminService) ResetAccountQuota(ctx context.Context, id int64) error {
 	return nil
+REDACTED
+
+func (s *stubAdminService) EnsureOpenAIPrivacy(ctx context.Context, account *service.Account) string {
+	return ""
 REDACTED
 
 // Ensure stub implements interface.

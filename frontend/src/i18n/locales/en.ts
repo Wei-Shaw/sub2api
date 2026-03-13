@@ -1372,7 +1372,11 @@ export default {
         accounts: 'Accounts',
         status: 'Status',
         actions: 'Actions',
-        billingType: 'Billing Type'
+        billingType: 'Billing Type',
+        userName: 'Username',
+        userEmail: 'Email',
+        userNotes: 'Notes',
+        userStatus: 'Status'
       REDACTED,
       rateAndAccounts: '{rateREDACTEDx rate · {countREDACTED accounts',
       accountsCount: '{countREDACTED accounts',
@@ -1411,6 +1415,26 @@ export default {
       failedToUpdate: 'Failed to update group',
       failedToDelete: 'Failed to delete group',
       nameRequired: 'Please enter group name',
+      rateMultipliers: 'Rate Multipliers',
+      rateMultipliersTitle: 'Group Rate Multipliers',
+      addUserRate: 'Add User Rate Multiplier',
+      searchUserPlaceholder: 'Search user email...',
+      noRateMultipliers: 'No user rate multipliers configured',
+      rateUpdated: 'Rate multiplier updated',
+      rateDeleted: 'Rate multiplier removed',
+      rateAdded: 'Rate multiplier added',
+      clearAll: 'Clear All',
+      confirmClearAll: 'Are you sure you want to clear all rate multiplier settings for this group? This cannot be undone.',
+      rateCleared: 'All rate multipliers cleared',
+      batchAdjust: 'Batch Adjust Rates',
+      multiplierFactor: 'Factor',
+      applyMultiplier: 'Apply',
+      rateAdjusted: 'Rates adjusted successfully',
+      rateSaved: 'Rate multipliers saved',
+      finalRate: 'Final Rate',
+      unsavedChanges: 'Unsaved changes',
+      revertChanges: 'Revert',
+      userInfo: 'User Info',
       platforms: {
         all: 'All Platforms',
         anthropic: 'Anthropic',
@@ -1574,7 +1598,7 @@ export default {
       revoke: 'Revoke',
       resetQuota: 'Reset Quota',
       resetQuotaTitle: 'Reset Usage Quota',
-      resetQuotaConfirm: "Reset the daily and weekly usage quota for '{userREDACTED'? Usage will be zeroed and windows restarted from today.",
+      resetQuotaConfirm: "Reset the daily, weekly, and monthly usage quota for '{userREDACTED'? Usage will be zeroed and windows restarted from today.",
       quotaResetSuccess: 'Quota reset successfully',
       failedToResetQuota: 'Failed to reset quota',
       noSubscriptionsYet: 'No subscriptions yet',
@@ -1743,6 +1767,9 @@ export default {
         expiresAt: 'Expires At',
         actions: 'Actions'
       REDACTED,
+      privacyTrainingOff: 'Training data sharing disabled',
+      privacyCfBlocked: 'Blocked by Cloudflare, training may still be on',
+      privacyFailed: 'Failed to disable training',
       // Capacity status tooltips
       capacity: {
         windowCost: {

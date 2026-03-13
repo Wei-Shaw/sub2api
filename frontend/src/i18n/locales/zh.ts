@@ -1428,7 +1428,11 @@ export default {
         accounts: '账号数',
         status: '状态',
         actions: '操作',
-        billingType: '计费类型'
+        billingType: '计费类型',
+        userName: '用户名',
+        userEmail: '邮箱',
+        userNotes: '备注',
+        userStatus: '状态'
       REDACTED,
       form: {
         name: '名称',
@@ -1510,6 +1514,26 @@ export default {
       failedToCreate: '创建分组失败',
       failedToUpdate: '更新分组失败',
       nameRequired: '请输入分组名称',
+      rateMultipliers: '专属倍率',
+      rateMultipliersTitle: '分组专属倍率管理',
+      addUserRate: '添加用户专属倍率',
+      searchUserPlaceholder: '搜索用户邮箱...',
+      noRateMultipliers: '暂无用户设置了专属倍率',
+      rateUpdated: '专属倍率已更新',
+      rateDeleted: '专属倍率已删除',
+      rateAdded: '专属倍率已添加',
+      clearAll: '全部清空',
+      confirmClearAll: '确定要清空该分组所有用户的专属倍率设置吗？此操作不可撤销。',
+      rateCleared: '已清空所有专属倍率',
+      batchAdjust: '批量调整倍率',
+      multiplierFactor: '乘数',
+      applyMultiplier: '应用',
+      rateAdjusted: '倍率已批量调整',
+      rateSaved: '专属倍率已保存',
+      finalRate: '最终倍率',
+      unsavedChanges: '有未保存的修改',
+      revertChanges: '撤销修改',
+      userInfo: '用户信息',
       subscription: {
         title: '订阅设置',
         type: '计费类型',
@@ -1662,7 +1686,7 @@ export default {
       revoke: '撤销',
       resetQuota: '重置配额',
       resetQuotaTitle: '重置用量配额',
-      resetQuotaConfirm: "确定要重置 '{userREDACTED' 的每日和每周用量配额吗？用量将归零并从今天开始重新计算。",
+      resetQuotaConfirm: "确定要重置 '{userREDACTED' 的每日、每周和每月用量配额吗？用量将归零并从今天开始重新计算。",
       quotaResetSuccess: '配额重置成功',
       failedToResetQuota: '重置配额失败',
       noSubscriptionsYet: '暂无订阅',
@@ -1792,6 +1816,9 @@ export default {
         expiresAt: '过期时间',
         actions: '操作'
       REDACTED,
+      privacyTrainingOff: '已关闭训练数据共享',
+      privacyCfBlocked: '被 Cloudflare 拦截，训练可能仍开启',
+      privacyFailed: '关闭训练数据共享失败',
       // 容量状态提示
       capacity: {
         windowCost: {

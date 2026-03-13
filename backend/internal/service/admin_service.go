@@ -42,6 +42,9 @@ type AdminService interface {
 	UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error)
 	DeleteGroup(ctx context.Context, id int64) error
 	GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error)
+	GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error)
+	ClearGroupRateMultipliers(ctx context.Context, groupID int64) error
+	BatchSetGroupRateMultipliers(ctx context.Context, groupID int64, entries []GroupRateMultiplierInput) error
 	UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error
 
 	// API Key management (admin)
@@ -57,6 +60,8 @@ type AdminService interface {
 	RefreshAccountCredentials(ctx context.Context, id int64) (*Account, error)
 	ClearAccountError(ctx context.Context, id int64) (*Account, error)
 	SetAccountError(ctx context.Context, id int64, errorMsg string) error
+	// EnsureOpenAIPrivacy 检查 OpenAI OAuth 账号 privacy_mode，未设置则尝试关闭训练数据共享并持久化。
+	EnsureOpenAIPrivacy(ctx context.Context, account *Account) string
 	SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error)
 	BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error)
 	CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error
@@ -433,6 +438,7 @@ type adminServiceImpl struct {
 	settingService       *SettingService
 	defaultSubAssigner   DefaultSubscriptionAssigner
 	userSubRepo          UserSubscriptionRepository
+	privacyClientFactory PrivacyClientFactory
 REDACTED
 
 type userGroupRateBatchReader interface {
@@ -461,6 +467,7 @@ func NewAdminService(
 	settingService *SettingService,
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	userSubRepo UserSubscriptionRepository,
+	privacyClientFactory PrivacyClientFactory,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -479,6 +486,7 @@ func NewAdminService(
 		settingService:       settingService,
 		defaultSubAssigner:   defaultSubAssigner,
 		userSubRepo:          userSubRepo,
+		privacyClientFactory: privacyClientFactory,
 REDACTED
 REDACTED
 
@@ -1242,6 +1250,27 @@ func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, p
 		return nil, 0, err
 REDACTED
 	return keys, result.Total, nil
+REDACTED
+
+func (s *adminServiceImpl) GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error) {
+	if s.userGroupRateRepo == nil {
+		return nil, nil
+REDACTED
+	return s.userGroupRateRepo.GetByGroupID(ctx, groupID)
+REDACTED
+
+func (s *adminServiceImpl) ClearGroupRateMultipliers(ctx context.Context, groupID int64) error {
+	if s.userGroupRateRepo == nil {
+		return nil
+REDACTED
+	return s.userGroupRateRepo.DeleteByGroupID(ctx, groupID)
+REDACTED
+
+func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, groupID int64, entries []GroupRateMultiplierInput) error {
+	if s.userGroupRateRepo == nil {
+		return nil
+REDACTED
+	return s.userGroupRateRepo.SyncGroupRateMultipliers(ctx, groupID, entries)
 REDACTED
 
 func (s *adminServiceImpl) UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error {
@@ -2501,4 +2530,40 @@ REDACTED
 
 func (s *adminServiceImpl) ResetAccountQuota(ctx context.Context, id int64) error {
 	return s.accountRepo.ResetQuotaUsed(ctx, id)
+REDACTED
+
+// EnsureOpenAIPrivacy 检查 OpenAI OAuth 账号是否已设置 privacy_mode，
+// 未设置则调用 disableOpenAITraining 并持久化到 Extra，返回设置的 mode 值。
+func (s *adminServiceImpl) EnsureOpenAIPrivacy(ctx context.Context, account *Account) string {
+	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+		return ""
+REDACTED
+	if s.privacyClientFactory == nil {
+		return ""
+REDACTED
+	if account.Extra != nil {
+		if _, ok := account.Extra["privacy_mode"]; ok {
+			return ""
+	REDACTED
+REDACTED
+
+	token, _ := account.Credentials["access_token"].(string)
+	if token == "" {
+		return ""
+REDACTED
+
+	var proxyURL string
+	if account.ProxyID != nil {
+		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
+			proxyURL = p.URL()
+	REDACTED
+REDACTED
+
+	mode := disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
+	if mode == "" {
+		return ""
+REDACTED
+
+	_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": modeREDACTED)
+	return mode
 REDACTED
