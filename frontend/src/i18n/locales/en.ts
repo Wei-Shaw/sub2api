@@ -1574,7 +1574,7 @@ export default {
       revoke: 'Revoke',
       resetQuota: 'Reset Quota',
       resetQuotaTitle: 'Reset Usage Quota',
-      resetQuotaConfirm: "Reset the daily and weekly usage quota for '{userREDACTED'? Usage will be zeroed and windows restarted from today.",
+      resetQuotaConfirm: "Reset the daily, weekly, and monthly usage quota for '{userREDACTED'? Usage will be zeroed and windows restarted from today.",
       quotaResetSuccess: 'Quota reset successfully',
       failedToResetQuota: 'Failed to reset quota',
       noSubscriptionsYet: 'No subscriptions yet',
