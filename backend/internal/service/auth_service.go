@@ -833,7 +833,8 @@ REDACTED
 
 func isReservedEmail(email string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(email))
-	return strings.HasSuffix(normalized, LinuxDoConnectSyntheticEmailDomain)
+	return strings.HasSuffix(normalized, LinuxDoConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(normalized, OIDCConnectSyntheticEmailDomain)
 REDACTED
 
 // GenerateToken 生成JWT access token

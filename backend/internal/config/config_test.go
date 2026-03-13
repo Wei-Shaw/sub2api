@@ -351,6 +351,60 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestValidateOIDCScopesMustContainOpenID(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	cfg.OIDC.Enabled = true
+	cfg.OIDC.ClientID = "oidc-client"
+	cfg.OIDC.ClientSecret = "oidc-secret"
+	cfg.OIDC.IssuerURL = "https://issuer.example.com"
+	cfg.OIDC.AuthorizeURL = "https://issuer.example.com/auth"
+	cfg.OIDC.TokenURL = "https://issuer.example.com/token"
+	cfg.OIDC.JWKSURL = "https://issuer.example.com/jwks"
+	cfg.OIDC.RedirectURL = "https://example.com/api/v1/auth/oauth/oidc/callback"
+	cfg.OIDC.FrontendRedirectURL = "/auth/oidc/callback"
+	cfg.OIDC.Scopes = "profile email"
+
+	err = cfg.Validate()
+	if err == nil {
+		t.Fatalf("Validate() expected error when scopes do not include openid, got nil")
+REDACTED
+	if !strings.Contains(err.Error(), "oidc_connect.scopes") {
+		t.Fatalf("Validate() expected oidc_connect.scopes error, got: %v", err)
+REDACTED
+REDACTED
+
+func TestValidateOIDCAllowsIssuerOnlyEndpointsWithDiscoveryFallback(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	cfg.OIDC.Enabled = true
+	cfg.OIDC.ClientID = "oidc-client"
+	cfg.OIDC.ClientSecret = "oidc-secret"
+	cfg.OIDC.IssuerURL = "https://issuer.example.com"
+	cfg.OIDC.AuthorizeURL = ""
+	cfg.OIDC.TokenURL = ""
+	cfg.OIDC.JWKSURL = ""
+	cfg.OIDC.RedirectURL = "https://example.com/api/v1/auth/oauth/oidc/callback"
+	cfg.OIDC.FrontendRedirectURL = "/auth/oidc/callback"
+	cfg.OIDC.Scopes = "openid email profile"
+	cfg.OIDC.ValidateIDToken = true
+
+	err = cfg.Validate()
+	if err != nil {
+		t.Fatalf("Validate() expected issuer-only OIDC config to pass with discovery fallback, got: %v", err)
+REDACTED
+REDACTED
+
 func TestLoadDefaultDashboardCacheConfig(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
