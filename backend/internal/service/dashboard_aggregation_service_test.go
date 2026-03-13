@@ -12,12 +12,18 @@ import (
 
 type dashboardAggregationRepoTestStub struct {
 	aggregateCalls       int
+	recomputeCalls       int
+	cleanupUsageCalls    int
+	cleanupDedupCalls    int
+	ensurePartitionCalls int
 	lastStart            time.Time
 	lastEnd              time.Time
 	watermark            time.Time
 	aggregateErr         error
 	cleanupAggregatesErr error
 	cleanupUsageErr      error
+	cleanupDedupErr      error
+	ensurePartitionErr   error
 REDACTED
 
 func (s *dashboardAggregationRepoTestStub) AggregateRange(ctx context.Context, start, end time.Time) error {
@@ -28,6 +34,7 @@ func (s *dashboardAggregationRepoTestStub) AggregateRange(ctx context.Context, s
 REDACTED
 
 func (s *dashboardAggregationRepoTestStub) RecomputeRange(ctx context.Context, start, end time.Time) error {
+	s.recomputeCalls++
 	return s.AggregateRange(ctx, start, end)
 REDACTED
 
@@ -44,11 +51,18 @@ func (s *dashboardAggregationRepoTestStub) CleanupAggregates(ctx context.Context
 REDACTED
 
 func (s *dashboardAggregationRepoTestStub) CleanupUsageLogs(ctx context.Context, cutoff time.Time) error {
+	s.cleanupUsageCalls++
 	return s.cleanupUsageErr
 REDACTED
 
+func (s *dashboardAggregationRepoTestStub) CleanupUsageBillingDedup(ctx context.Context, cutoff time.Time) error {
+	s.cleanupDedupCalls++
+	return s.cleanupDedupErr
+REDACTED
+
 func (s *dashboardAggregationRepoTestStub) EnsureUsageLogsPartitions(ctx context.Context, now time.Time) error {
-	return nil
+	s.ensurePartitionCalls++
+	return s.ensurePartitionErr
 REDACTED
 
 func TestDashboardAggregationService_RunScheduledAggregation_EpochUsesRetentionStart(t *testing.T) {
@@ -90,6 +104,50 @@ REDACTED
 	svc.maybeCleanupRetention(context.Background(), time.Now().UTC())
 
 	require.Nil(t, svc.lastRetentionCleanup.Load())
+	require.Equal(t, 1, repo.cleanupUsageCalls)
+	require.Equal(t, 1, repo.cleanupDedupCalls)
+REDACTED
+
+func TestDashboardAggregationService_CleanupDedupFailure_DoesNotRecord(t *testing.T) {
+	repo := &dashboardAggregationRepoTestStub{cleanupDedupErr: errors.New("dedup cleanup failed")REDACTED
+	svc := &DashboardAggregationService{
+		repo: repo,
+		cfg: config.DashboardAggregationConfig{
+			Retention: config.DashboardAggregationRetentionConfig{
+				UsageLogsDays: 1,
+				HourlyDays:    1,
+				DailyDays:     1,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	svc.maybeCleanupRetention(context.Background(), time.Now().UTC())
+
+	require.Nil(t, svc.lastRetentionCleanup.Load())
+	require.Equal(t, 1, repo.cleanupDedupCalls)
+REDACTED
+
+func TestDashboardAggregationService_PartitionFailure_DoesNotAggregate(t *testing.T) {
+	repo := &dashboardAggregationRepoTestStub{ensurePartitionErr: errors.New("partition failed")REDACTED
+	svc := &DashboardAggregationService{
+		repo: repo,
+		cfg: config.DashboardAggregationConfig{
+			Enabled:         true,
+			IntervalSeconds: 60,
+			LookbackSeconds: 120,
+			Retention: config.DashboardAggregationRetentionConfig{
+				UsageLogsDays:         1,
+				UsageBillingDedupDays: 2,
+				HourlyDays:            1,
+				DailyDays:             1,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	svc.runScheduledAggregation()
+
+	require.Equal(t, 1, repo.ensurePartitionCalls)
+	require.Equal(t, 1, repo.aggregateCalls)
 REDACTED
 
 func TestDashboardAggregationService_TriggerBackfill_TooLarge(t *testing.T) {

@@ -136,16 +136,18 @@ REDACTED, "\n")
 	REDACTED,
 REDACTED
 
-	svc := &GatewayService{
-		cfg: &config.Config{
-			Gateway: config.GatewayConfig{
-				MaxLineSize: defaultMaxLineSize,
-		REDACTED,
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize,
 	REDACTED,
-		httpUpstream:        upstream,
-		rateLimitService:    &RateLimitService{REDACTED,
-		deferredService:     &DeferredService{REDACTED,
-		billingCacheService: nil,
+REDACTED
+	svc := &GatewayService{
+		cfg:                  cfg,
+		responseHeaderFilter: compileResponseHeaderFilter(cfg),
+		httpUpstream:         upstream,
+		rateLimitService:     &RateLimitService{REDACTED,
+		deferredService:      &DeferredService{REDACTED,
+		billingCacheService:  nil,
 REDACTED
 
 	account := &Account{
@@ -221,14 +223,16 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	svc := &GatewayService{
-		cfg: &config.Config{
-			Gateway: config.GatewayConfig{
-				MaxLineSize: defaultMaxLineSize,
-		REDACTED,
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize,
 	REDACTED,
-		httpUpstream:     upstream,
-		rateLimitService: &RateLimitService{REDACTED,
+REDACTED
+	svc := &GatewayService{
+		cfg:                  cfg,
+		responseHeaderFilter: compileResponseHeaderFilter(cfg),
+		httpUpstream:         upstream,
+		rateLimitService:     &RateLimitService{REDACTED,
 REDACTED
 
 	account := &Account{
@@ -727,6 +731,39 @@ REDACTED
 	require.Equal(t, 5, result.usage.OutputTokens)
 REDACTED
 
+func TestGatewayService_AnthropicAPIKeyPassthrough_MissingTerminalEventReturnsError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	svc := &GatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				MaxLineSize: defaultMaxLineSize,
+		REDACTED,
+	REDACTED,
+		rateLimitService: &RateLimitService{REDACTED,
+REDACTED
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"message_start","message":{"usage":{"input_tokens":11REDACTEDREDACTEDREDACTED`,
+			"",
+			`data: {"type":"message_delta","usage":{"output_tokens":5REDACTEDREDACTED`,
+			"",
+	REDACTED, "\n"))),
+REDACTED
+
+	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 1REDACTED, time.Now(), "claude-3-7-sonnet-20250219")
+REDACTED
+	require.Contains(t, err.Error(), "missing terminal event")
+	require.NotNil(t, result)
+REDACTED
+
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_NonStreamingSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -1075,6 +1112,7 @@ REDACTED()
 	<-done
 
 REDACTED
+	require.Contains(t, err.Error(), "stream usage incomplete after timeout")
 	require.NotNil(t, result)
 	require.True(t, result.clientDisconnect)
 	require.Equal(t, 9, result.usage.InputTokens)
@@ -1104,6 +1142,7 @@ REDACTED
 
 	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 3REDACTED, time.Now(), "claude-3-7-sonnet-20250219")
 REDACTED
+	require.Contains(t, err.Error(), "stream usage incomplete")
 	require.NotNil(t, result)
 	require.True(t, result.clientDisconnect)
 REDACTED
@@ -1134,6 +1173,7 @@ REDACTED
 
 	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 4REDACTED, time.Now(), "claude-3-7-sonnet-20250219")
 REDACTED
+	require.Contains(t, err.Error(), "stream usage incomplete after disconnect")
 	require.NotNil(t, result)
 	require.True(t, result.clientDisconnect)
 	require.Equal(t, 8, result.usage.InputTokens)

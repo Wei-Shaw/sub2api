@@ -352,18 +352,20 @@ REDACTED
 		// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
+		requestPayloadHash := service.HashUsageRequestPayload(body)
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		h.submitUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
-				Result:        result,
-				APIKey:        apiKey,
-				User:          apiKey.User,
-				Account:       account,
-				Subscription:  subscription,
-				UserAgent:     userAgent,
-				IPAddress:     clientIP,
-				APIKeyService: h.apiKeyService,
+				Result:             result,
+				APIKey:             apiKey,
+				User:               apiKey.User,
+				Account:            account,
+				Subscription:       subscription,
+				UserAgent:          userAgent,
+				IPAddress:          clientIP,
+				RequestPayloadHash: requestPayloadHash,
+				APIKeyService:      h.apiKeyService,
 		REDACTED); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.responses"),
@@ -732,17 +734,19 @@ REDACTED
 
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
+		requestPayloadHash := service.HashUsageRequestPayload(body)
 
 		h.submitUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
-				Result:        result,
-				APIKey:        apiKey,
-				User:          apiKey.User,
-				Account:       account,
-				Subscription:  subscription,
-				UserAgent:     userAgent,
-				IPAddress:     clientIP,
-				APIKeyService: h.apiKeyService,
+				Result:             result,
+				APIKey:             apiKey,
+				User:               apiKey.User,
+				Account:            account,
+				Subscription:       subscription,
+				UserAgent:          userAgent,
+				IPAddress:          clientIP,
+				RequestPayloadHash: requestPayloadHash,
+				APIKeyService:      h.apiKeyService,
 		REDACTED); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.messages"),
@@ -1231,14 +1235,15 @@ REDACTED
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
 			h.submitUsageRecordTask(func(taskCtx context.Context) {
 				if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
-					Result:        result,
-					APIKey:        apiKey,
-					User:          apiKey.User,
-					Account:       account,
-					Subscription:  subscription,
-					UserAgent:     userAgent,
-					IPAddress:     clientIP,
-					APIKeyService: h.apiKeyService,
+					Result:             result,
+					APIKey:             apiKey,
+					User:               apiKey.User,
+					Account:            account,
+					Subscription:       subscription,
+					UserAgent:          userAgent,
+					IPAddress:          clientIP,
+					RequestPayloadHash: service.HashUsageRequestPayload(firstMessage),
+					APIKeyService:      h.apiKeyService,
 			REDACTED); err != nil {
 					reqLog.Error("openai.websocket_record_usage_failed",
 						zap.Int64("account_id", account.ID),

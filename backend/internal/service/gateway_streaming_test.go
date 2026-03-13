@@ -182,6 +182,7 @@ REDACTED()
 	result, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1REDACTED, time.Now(), "model", "model", false)
 	_ = pr.Close()
 REDACTED
+	require.Contains(t, err.Error(), "missing terminal event")
 	require.NotNil(t, result)
 REDACTED
 

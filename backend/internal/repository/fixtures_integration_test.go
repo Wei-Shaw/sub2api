@@ -262,6 +262,42 @@ REDACTED
 		SetKey(k.Key).
 		SetName(k.Name).
 		SetStatus(k.Status)
+	if k.Quota != 0 {
+		create.SetQuota(k.Quota)
+REDACTED
+	if k.QuotaUsed != 0 {
+		create.SetQuotaUsed(k.QuotaUsed)
+REDACTED
+	if k.RateLimit5h != 0 {
+		create.SetRateLimit5h(k.RateLimit5h)
+REDACTED
+	if k.RateLimit1d != 0 {
+		create.SetRateLimit1d(k.RateLimit1d)
+REDACTED
+	if k.RateLimit7d != 0 {
+		create.SetRateLimit7d(k.RateLimit7d)
+REDACTED
+	if k.Usage5h != 0 {
+		create.SetUsage5h(k.Usage5h)
+REDACTED
+	if k.Usage1d != 0 {
+		create.SetUsage1d(k.Usage1d)
+REDACTED
+	if k.Usage7d != 0 {
+		create.SetUsage7d(k.Usage7d)
+REDACTED
+	if k.Window5hStart != nil {
+		create.SetWindow5hStart(*k.Window5hStart)
+REDACTED
+	if k.Window1dStart != nil {
+		create.SetWindow1dStart(*k.Window1dStart)
+REDACTED
+	if k.Window7dStart != nil {
+		create.SetWindow7dStart(*k.Window7dStart)
+REDACTED
+	if k.ExpiresAt != nil {
+		create.SetExpiresAt(*k.ExpiresAt)
+REDACTED
 	if k.GroupID != nil {
 		create.SetGroupID(*k.GroupID)
 REDACTED
