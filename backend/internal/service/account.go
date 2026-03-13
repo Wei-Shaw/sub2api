@@ -1405,7 +1405,7 @@ REDACTED
 
 // ComputeQuotaResetAt 根据当前配置计算并填充 extra 中的 quota_daily_reset_at / quota_weekly_reset_at
 // 在保存账号配置时调用
-func ComputeQuotaResetAt(extra map[string]interface{REDACTED) {
+func ComputeQuotaResetAt(extra map[string]any) {
 	now := time.Now()
 	tzName, _ := extra["quota_reset_timezone"].(string)
 	if tzName == "" {
@@ -1449,7 +1449,7 @@ REDACTED
 REDACTED
 
 // ValidateQuotaResetConfig 校验配额固定重置时间配置的合法性
-func ValidateQuotaResetConfig(extra map[string]interface{REDACTED) error {
+func ValidateQuotaResetConfig(extra map[string]any) error {
 	if extra == nil {
 		return nil
 REDACTED
