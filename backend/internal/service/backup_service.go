@@ -43,13 +43,13 @@ var (
 
 // BackupS3Config S3 兼容存储配置（支持 Cloudflare R2）
 type BackupS3Config struct {
-	Endpoint       string `json:"endpoint"`        // e.g. https://<account_id>.r2.cloudflarestorage.com
-	Region         string `json:"region"`           // R2 用 "auto"
-	Bucket         string `json:"bucket"`
-	AccessKeyID    string `json:"access_key_id"`
-	SecretAccessKey string `json:"secret_access_key,omitempty"`
-	Prefix         string `json:"prefix"`           // S3 key 前缀，如 "backups/"
-	ForcePathStyle bool   `json:"force_path_style"`
+	Endpoint        string `json:"endpoint"` // e.g. https://<account_id>.r2.cloudflarestorage.com
+	Region          string `json:"region"`   // R2 用 "auto"
+	Bucket          string `json:"bucket"`
+	AccessKeyID     string `json:"access_key_id"`
+	SecretAccessKey string `json:"secret_access_key,omitempty"` //nolint:revive // field name follows AWS convention
+	Prefix          string `json:"prefix"`                      // S3 key 前缀，如 "backups/"
+	ForcePathStyle  bool   `json:"force_path_style"`
 REDACTED
 
 // IsConfigured 检查必要字段是否已配置
@@ -60,16 +60,16 @@ REDACTED
 // BackupScheduleConfig 定时备份配置
 type BackupScheduleConfig struct {
 	Enabled     bool   `json:"enabled"`
-	CronExpr    string `json:"cron_expr"`     // cron 表达式，如 "0 2 * * *" 每天凌晨2点
-	RetainDays  int    `json:"retain_days"`   // 备份文件过期天数，默认14，0=不自动清理
-	RetainCount int    `json:"retain_count"`  // 最多保留份数，0=不限制
+	CronExpr    string `json:"cron_expr"`    // cron 表达式，如 "0 2 * * *" 每天凌晨2点
+	RetainDays  int    `json:"retain_days"`  // 备份文件过期天数，默认14，0=不自动清理
+	RetainCount int    `json:"retain_count"` // 最多保留份数，0=不限制
 REDACTED
 
 // BackupRecord 备份记录
 type BackupRecord struct {
 	ID          string `json:"id"`
-	Status      string `json:"status"`       // pending, running, completed, failed
-	BackupType  string `json:"backup_type"`  // postgres
+	Status      string `json:"status"`      // pending, running, completed, failed
+	BackupType  string `json:"backup_type"` // postgres
 	FileName    string `json:"file_name"`
 	S3Key       string `json:"s3_key"`
 	SizeBytes   int64  `json:"size_bytes"`
@@ -85,11 +85,11 @@ type BackupService struct {
 	settingRepo SettingRepository
 	dbCfg       *config.DatabaseConfig
 
-	mu          sync.Mutex
-	s3Client    *s3.Client
-	s3Cfg       *BackupS3Config
-	backingUp   bool
-	restoring   bool
+	mu        sync.Mutex
+	s3Client  *s3.Client
+	s3Cfg     *BackupS3Config
+	backingUp bool
+	restoring bool
 
 	cronMu      sync.Mutex
 	cronSched   *cron.Cron
@@ -454,14 +454,14 @@ REDACTED)
 	if err != nil {
 		return fmt.Errorf("S3 download failed: %w", err)
 REDACTED
-	defer result.Body.Close()
+	defer func() { _ = result.Body.Close() REDACTED()
 
 	// 解压 gzip
 	gzReader, err := gzip.NewReader(result.Body)
 	if err != nil {
 		return fmt.Errorf("gzip reader: %w", err)
 REDACTED
-	defer gzReader.Close()
+	defer func() { _ = gzReader.Close() REDACTED()
 
 	sqlData, err := io.ReadAll(gzReader)
 	if err != nil {
