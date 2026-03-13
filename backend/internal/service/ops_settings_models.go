@@ -99,6 +99,7 @@ type OpsAdvancedSettings struct {
 	IgnoreNoAvailableAccounts bool                     `json:"ignore_no_available_accounts"`
 	IgnoreInvalidApiKeyErrors bool                     `json:"ignore_invalid_api_key_errors"`
 	DisplayOpenAITokenStats   bool                     `json:"display_openai_token_stats"`
+	DisplayAlertEvents        bool                     `json:"display_alert_events"`
 	AutoRefreshEnabled        bool                     `json:"auto_refresh_enabled"`
 	AutoRefreshIntervalSec    int                      `json:"auto_refresh_interval_seconds"`
 REDACTED
