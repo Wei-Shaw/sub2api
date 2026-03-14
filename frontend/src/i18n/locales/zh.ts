@@ -3883,6 +3883,11 @@ export default {
         refreshInterval15s: '15 秒',
         refreshInterval30s: '30 秒',
         refreshInterval60s: '60 秒',
+        dashboardCards: '仪表盘卡片',
+        displayAlertEvents: '展示告警事件',
+        displayAlertEventsHint: '控制运维监控仪表盘中告警事件卡片是否显示，默认开启。',
+        displayOpenAITokenStats: '展示 OpenAI Token 请求统计',
+        displayOpenAITokenStatsHint: '控制运维监控仪表盘中 OpenAI Token 请求统计卡片是否显示，默认关闭。',
         autoRefreshCountdown: '自动刷新：{secondsREDACTEDs',
         validation: {
           title: '请先修正以下问题',
