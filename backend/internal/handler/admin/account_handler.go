@@ -1718,13 +1718,12 @@ REDACTED
 
 	// Handle OpenAI accounts
 	if account.IsOpenAI() {
-		// For OAuth accounts: return default OpenAI models
-		if account.IsOAuth() {
+		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。
+		if account.IsOpenAIPassthroughEnabled() {
 			response.Success(c, openai.DefaultModels)
 			return
 	REDACTED
 
-		// For API Key accounts: check model_mapping
 		mapping := account.GetModelMapping()
 		if len(mapping) == 0 {
 			response.Success(c, openai.DefaultModels)
