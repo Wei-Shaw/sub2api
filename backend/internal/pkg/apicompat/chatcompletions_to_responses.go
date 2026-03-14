@@ -232,6 +232,10 @@ REDACTED
 REDACTED
 
 	var b strings.Builder
+	write := func(v string) error {
+		_, err := b.WriteString(v)
+		return err
+REDACTED
 	for _, p := range parts {
 		typ, _ := p["type"].(string)
 		text, _ := p["text"].(string)
@@ -240,17 +244,31 @@ REDACTED
 		switch typ {
 		case "thinking", "reasoning":
 			if thinking != "" {
-				b.WriteString("<thinking>")
-				b.WriteString(thinking)
-				b.WriteString("</thinking>")
+				if err := write("<thinking>"); err != nil {
+					return "", err
+			REDACTED
+				if err := write(thinking); err != nil {
+					return "", err
+			REDACTED
+				if err := write("</thinking>"); err != nil {
+					return "", err
+			REDACTED
 		REDACTED else if text != "" {
-				b.WriteString("<thinking>")
-				b.WriteString(text)
-				b.WriteString("</thinking>")
+				if err := write("<thinking>"); err != nil {
+					return "", err
+			REDACTED
+				if err := write(text); err != nil {
+					return "", err
+			REDACTED
+				if err := write("</thinking>"); err != nil {
+					return "", err
+			REDACTED
 		REDACTED
 		default:
 			if text != "" {
-				b.WriteString(text)
+				if err := write(text); err != nil {
+					return "", err
+			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
