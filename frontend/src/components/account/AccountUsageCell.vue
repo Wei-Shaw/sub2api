@@ -859,7 +859,7 @@ const makeQuotaBar = (
 REDACTED
 
 const hasApiKeyQuota = computed(() => {
-  if (props.account.type !== 'apikey') return false
+  if (props.account.type !== 'apikey' && props.account.type !== 'bedrock') return false
   return (
     (props.account.quota_daily_limit ?? 0) > 0 ||
     (props.account.quota_weekly_limit ?? 0) > 0 ||

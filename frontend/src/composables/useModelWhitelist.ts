@@ -412,7 +412,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'sora') return soraPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
-  if (platform === 'bedrock' || platform === 'bedrock-apikey') return bedrockPresetMappings
+  if (platform === 'bedrock') return bedrockPresetMappings
   return anthropicPresetMappings
 REDACTED
 
