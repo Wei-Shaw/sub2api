@@ -59,11 +59,7 @@ REDACTED
 REDACTED
 
 	// 3. Model mapping
-	mappedModel := account.GetMappedModel(originalModel)
-	// 分组级降级：账号未映射时使用分组默认映射模型
-	if mappedModel == originalModel && defaultMappedModel != "" {
-		mappedModel = defaultMappedModel
-REDACTED
+	mappedModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	responsesReq.Model = mappedModel
 
 	logger.L().Debug("openai messages: model mapping applied",

@@ -522,16 +522,23 @@ REDACTED
 // GetMappedModel 获取映射后的模型名（支持通配符，最长优先匹配）
 // 如果未配置 mapping，返回原始模型名
 func (a *Account) GetMappedModel(requestedModel string) string {
+	mappedModel, _ := a.ResolveMappedModel(requestedModel)
+	return mappedModel
+REDACTED
+
+// ResolveMappedModel 获取映射后的模型名，并返回是否命中了账号级映射。
+// matched=true 表示命中了精确映射或通配符映射，即使映射结果与原模型名相同。
+func (a *Account) ResolveMappedModel(requestedModel string) (mappedModel string, matched bool) {
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
-		return requestedModel
+		return requestedModel, false
 REDACTED
 	// 精确匹配优先
 	if mappedModel, exists := mapping[requestedModel]; exists {
-		return mappedModel
+		return mappedModel, true
 REDACTED
 	// 通配符匹配（最长优先）
-	return matchWildcardMapping(mapping, requestedModel)
+	return matchWildcardMappingResult(mapping, requestedModel)
 REDACTED
 
 func (a *Account) GetBaseURL() string {
@@ -605,9 +612,7 @@ func matchWildcard(pattern, str string) bool {
 	return matchAntigravityWildcard(pattern, str)
 REDACTED
 
-// matchWildcardMapping 通配符映射匹配（最长优先）
-// 如果没有匹配，返回原始字符串
-func matchWildcardMapping(mapping map[string]string, requestedModel string) string {
+func matchWildcardMappingResult(mapping map[string]string, requestedModel string) (string, bool) {
 	// 收集所有匹配的 pattern，按长度降序排序（最长优先）
 	type patternMatch struct {
 		pattern string
@@ -622,7 +627,7 @@ REDACTED
 REDACTED
 
 	if len(matches) == 0 {
-		return requestedModel // 无匹配，返回原始模型名
+		return requestedModel, false // 无匹配，返回原始模型名
 REDACTED
 
 	// 按 pattern 长度降序排序
@@ -633,7 +638,7 @@ REDACTED
 		return matches[i].pattern < matches[j].pattern
 REDACTED)
 
-	return matches[0].target
+	return matches[0].target, true
 REDACTED
 
 func (a *Account) IsCustomErrorCodesEnabled() bool {
