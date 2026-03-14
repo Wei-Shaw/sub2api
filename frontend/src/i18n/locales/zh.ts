@@ -1992,6 +1992,15 @@ export default {
       REDACTED,
       ineligibleWarning:
         '该账号无 Antigravity 使用权限，但仍能进行 API 转发。继续使用请自行承担风险。',
+      forbidden: '已封禁',
+      forbiddenValidation: '需要验证',
+      forbiddenViolation: '违规封禁',
+      openVerification: '打开验证链接',
+      copyLink: '复制链接',
+      linkCopied: '链接已复制',
+      needsReauth: '需要重新授权',
+      rateLimited: '限流中',
+      usageError: '获取失败',
       form: {
         nameLabel: '账号名称',
         namePlaceholder: '请输入账号名称',

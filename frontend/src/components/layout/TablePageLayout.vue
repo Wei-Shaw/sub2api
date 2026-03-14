@@ -84,9 +84,7 @@ REDACTED
 REDACTED
 
 .table-scroll-container :deep(th) {
-  /* 表头高度和文字加粗优化 */
-  @apply px-5 py-4 text-left text-sm font-bold text-gray-900 dark:text-white border-b border-gray-200 dark:border-dark-700;
-  @apply uppercase tracking-wider; /* 让表头更有设计感 */
+  @apply px-5 py-4 text-left text-sm font-medium text-gray-600 dark:text-dark-300 border-b border-gray-200 dark:border-dark-700;
 REDACTED
 
 .table-scroll-container :deep(td) {
