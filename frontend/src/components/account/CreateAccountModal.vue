@@ -232,7 +232,7 @@
       <!-- Account Type Selection (Anthropic) -->
       <div v-if="form.platform === 'anthropic'">
         <label class="input-label">{{ t('admin.accounts.accountType') REDACTEDREDACTED</label>
-        <div class="mt-2 grid grid-cols-2 gap-3" data-tour="account-form-type">
+        <div class="mt-2 grid grid-cols-3 gap-3" data-tour="account-form-type">
           <button
             type="button"
             @click="accountCategory = 'oauth-based'"
@@ -289,6 +289,66 @@
               REDACTEDREDACTED</span>
               <span class="text-xs text-gray-500 dark:text-gray-400">{{
                 t('admin.accounts.apiKey')
+              REDACTEDREDACTED</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            @click="accountCategory = 'bedrock'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'bedrock'
+                ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                : 'border-gray-200 hover:border-amber-300 dark:border-dark-600 dark:hover:border-amber-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'bedrock'
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="cloud" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{
+                t('admin.accounts.bedrockLabel')
+              REDACTEDREDACTED</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                t('admin.accounts.bedrockDesc')
+              REDACTEDREDACTED</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            @click="accountCategory = 'bedrock-apikey'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'bedrock-apikey'
+                ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                : 'border-gray-200 hover:border-amber-300 dark:border-dark-600 dark:hover:border-amber-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'bedrock-apikey'
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="key" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{
+                t('admin.accounts.bedrockApiKeyLabel')
+              REDACTEDREDACTED</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                t('admin.accounts.bedrockApiKeyDesc')
               REDACTEDREDACTED</span>
             </div>
           </button>
@@ -896,7 +956,7 @@
       </div>
 
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
-      <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
+      <div v-if="form.type === 'apikey' && form.platform !== 'antigravity' && accountCategory !== 'bedrock-apikey'" class="space-y-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') REDACTEDREDACTED</label>
           <input
@@ -1277,6 +1337,289 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- Bedrock credentials (only for Anthropic Bedrock type) -->
+      <div v-if="form.platform === 'anthropic' && accountCategory === 'bedrock'" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.bedrockAccessKeyId') REDACTEDREDACTED</label>
+          <input
+            v-model="bedrockAccessKeyId"
+            type="text"
+            required
+            class="input font-mono"
+            placeholder="AKIA..."
+          />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.bedrockSecretAccessKey') REDACTEDREDACTED</label>
+          <input
+            v-model="bedrockSecretAccessKey"
+            type="password"
+            required
+            class="input font-mono"
+          />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.bedrockSessionToken') REDACTEDREDACTED</label>
+          <input
+            v-model="bedrockSessionToken"
+            type="password"
+            class="input font-mono"
+          />
+          <p class="input-hint">{{ t('admin.accounts.bedrockSessionTokenHint') REDACTEDREDACTED</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.bedrockRegion') REDACTEDREDACTED</label>
+          <select v-model="bedrockRegion" class="input">
+            <optgroup label="US">
+              <option value="us-east-1">us-east-1 (N. Virginia)</option>
+              <option value="us-east-2">us-east-2 (Ohio)</option>
+              <option value="us-west-1">us-west-1 (N. California)</option>
+              <option value="us-west-2">us-west-2 (Oregon)</option>
+              <option value="us-gov-east-1">us-gov-east-1 (GovCloud US-East)</option>
+              <option value="us-gov-west-1">us-gov-west-1 (GovCloud US-West)</option>
+            </optgroup>
+            <optgroup label="Europe">
+              <option value="eu-west-1">eu-west-1 (Ireland)</option>
+              <option value="eu-west-2">eu-west-2 (London)</option>
+              <option value="eu-west-3">eu-west-3 (Paris)</option>
+              <option value="eu-central-1">eu-central-1 (Frankfurt)</option>
+              <option value="eu-central-2">eu-central-2 (Zurich)</option>
+              <option value="eu-south-1">eu-south-1 (Milan)</option>
+              <option value="eu-south-2">eu-south-2 (Spain)</option>
+              <option value="eu-north-1">eu-north-1 (Stockholm)</option>
+            </optgroup>
+            <optgroup label="Asia Pacific">
+              <option value="ap-northeast-1">ap-northeast-1 (Tokyo)</option>
+              <option value="ap-northeast-2">ap-northeast-2 (Seoul)</option>
+              <option value="ap-northeast-3">ap-northeast-3 (Osaka)</option>
+              <option value="ap-south-1">ap-south-1 (Mumbai)</option>
+              <option value="ap-south-2">ap-south-2 (Hyderabad)</option>
+              <option value="ap-southeast-1">ap-southeast-1 (Singapore)</option>
+              <option value="ap-southeast-2">ap-southeast-2 (Sydney)</option>
+            </optgroup>
+            <optgroup label="Canada">
+              <option value="ca-central-1">ca-central-1 (Canada)</option>
+            </optgroup>
+            <optgroup label="South America">
+              <option value="sa-east-1">sa-east-1 (São Paulo)</option>
+            </optgroup>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.bedrockRegionHint') REDACTEDREDACTED</p>
+        </div>
+        <div>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              v-model="bedrockForceGlobal"
+              type="checkbox"
+              class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+            />
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.bedrockForceGlobal') REDACTEDREDACTED</span>
+          </label>
+          <p class="input-hint mt-1">{{ t('admin.accounts.bedrockForceGlobalHint') REDACTEDREDACTED</p>
+        </div>
+
+        <!-- Model Restriction Section for Bedrock -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
+
+          <!-- Mode Toggle -->
+          <div class="mb-4 flex gap-2">
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'whitelist'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'whitelist'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
+            </button>
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'mapping'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'mapping'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
+            </button>
+          </div>
+
+          <!-- Whitelist Mode -->
+          <div v-if="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
+              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') REDACTEDREDACTED</span>
+            </p>
+          </div>
+
+          <!-- Mapping Mode -->
+          <div v-else class="space-y-3">
+            <div v-for="(mapping, index) in modelMappings" :key="index" class="flex items-center gap-2">
+              <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
+              <span class="text-gray-400">→</span>
+              <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
+              <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
+            <button type="button" @click="modelMappings.push({ from: '', to: '' REDACTED)" class="btn btn-secondary text-sm">
+              + {{ t('admin.accounts.addMapping') REDACTEDREDACTED
+            </button>
+            <!-- Bedrock Preset Mappings -->
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="preset in bedrockPresets"
+                :key="preset.from"
+                type="button"
+                @click="addPresetMapping(preset.from, preset.to)"
+                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+              >
+                + {{ preset.label REDACTEDREDACTED
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bedrock API Key credentials (only for Anthropic Bedrock API Key type) -->
+      <div v-if="form.platform === 'anthropic' && accountCategory === 'bedrock-apikey'" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.bedrockApiKeyInput') REDACTEDREDACTED</label>
+          <input
+            v-model="bedrockApiKeyValue"
+            type="password"
+            required
+            class="input font-mono"
+          />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.bedrockRegion') REDACTEDREDACTED</label>
+          <select v-model="bedrockApiKeyRegion" class="input">
+            <optgroup label="US">
+              <option value="us-east-1">us-east-1 (N. Virginia)</option>
+              <option value="us-east-2">us-east-2 (Ohio)</option>
+              <option value="us-west-1">us-west-1 (N. California)</option>
+              <option value="us-west-2">us-west-2 (Oregon)</option>
+              <option value="us-gov-east-1">us-gov-east-1 (GovCloud US-East)</option>
+              <option value="us-gov-west-1">us-gov-west-1 (GovCloud US-West)</option>
+            </optgroup>
+            <optgroup label="Europe">
+              <option value="eu-west-1">eu-west-1 (Ireland)</option>
+              <option value="eu-west-2">eu-west-2 (London)</option>
+              <option value="eu-west-3">eu-west-3 (Paris)</option>
+              <option value="eu-central-1">eu-central-1 (Frankfurt)</option>
+              <option value="eu-central-2">eu-central-2 (Zurich)</option>
+              <option value="eu-south-1">eu-south-1 (Milan)</option>
+              <option value="eu-south-2">eu-south-2 (Spain)</option>
+              <option value="eu-north-1">eu-north-1 (Stockholm)</option>
+            </optgroup>
+            <optgroup label="Asia Pacific">
+              <option value="ap-northeast-1">ap-northeast-1 (Tokyo)</option>
+              <option value="ap-northeast-2">ap-northeast-2 (Seoul)</option>
+              <option value="ap-northeast-3">ap-northeast-3 (Osaka)</option>
+              <option value="ap-south-1">ap-south-1 (Mumbai)</option>
+              <option value="ap-south-2">ap-south-2 (Hyderabad)</option>
+              <option value="ap-southeast-1">ap-southeast-1 (Singapore)</option>
+              <option value="ap-southeast-2">ap-southeast-2 (Sydney)</option>
+            </optgroup>
+            <optgroup label="Canada">
+              <option value="ca-central-1">ca-central-1 (Canada)</option>
+            </optgroup>
+            <optgroup label="South America">
+              <option value="sa-east-1">sa-east-1 (São Paulo)</option>
+            </optgroup>
+          </select>
+          <p class="input-hint">{{ t('admin.accounts.bedrockRegionHint') REDACTEDREDACTED</p>
+        </div>
+        <div>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              v-model="bedrockApiKeyForceGlobal"
+              type="checkbox"
+              class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+            />
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.bedrockForceGlobal') REDACTEDREDACTED</span>
+          </label>
+          <p class="input-hint mt-1">{{ t('admin.accounts.bedrockForceGlobalHint') REDACTEDREDACTED</p>
+        </div>
+
+        <!-- Model Restriction Section for Bedrock API Key -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
+
+          <!-- Mode Toggle -->
+          <div class="mb-4 flex gap-2">
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'whitelist'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'whitelist'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
+            </button>
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'mapping'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'mapping'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
+            </button>
+          </div>
+
+          <!-- Whitelist Mode -->
+          <div v-if="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
+              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') REDACTEDREDACTED</span>
+            </p>
+          </div>
+
+          <!-- Mapping Mode -->
+          <div v-else class="space-y-3">
+            <div v-for="(mapping, index) in modelMappings" :key="index" class="flex items-center gap-2">
+              <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
+              <span class="text-gray-400">→</span>
+              <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
+              <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
+            <button type="button" @click="modelMappings.push({ from: '', to: '' REDACTED)" class="btn btn-secondary text-sm">
+              + {{ t('admin.accounts.addMapping') REDACTEDREDACTED
+            </button>
+            <!-- Bedrock Preset Mappings -->
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="preset in bedrockPresets"
+                :key="preset.from"
+                type="button"
+                @click="addPresetMapping(preset.from, preset.to)"
+                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+              >
+                + {{ preset.label REDACTEDREDACTED
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- API Key 账号配额限制 -->
@@ -2671,7 +3014,7 @@ REDACTED
 // State
 const step = ref(1)
 const submitting = ref(false)
-const accountCategory = ref<'oauth-based' | 'apikey'>('oauth-based') // UI selection for account category
+const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'bedrock-apikey'>('oauth-based') // UI selection for account category
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
@@ -2704,6 +3047,19 @@ const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist'
 const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
+const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
+
+// Bedrock credentials
+const bedrockAccessKeyId = ref('')
+const bedrockSecretAccessKey = ref('')
+const bedrockSessionToken = ref('')
+const bedrockRegion = ref('us-east-1')
+const bedrockForceGlobal = ref(false)
+
+// Bedrock API Key credentials
+const bedrockApiKeyValue = ref('')
+const bedrockApiKeyRegion = ref('us-east-1')
+const bedrockApiKeyForceGlobal = ref(false)
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-model-mapping')
@@ -2868,6 +3224,10 @@ const isOAuthFlow = computed(() => {
   if (form.platform === 'antigravity' && antigravityAccountType.value === 'upstream') {
     return false
   REDACTED
+  // Bedrock 类型不需要 OAuth 流程
+  if (form.platform === 'anthropic' && accountCategory.value === 'bedrock') {
+    return false
+  REDACTED
   return accountCategory.value === 'oauth-based'
 REDACTED)
 
@@ -2935,6 +3295,11 @@ watch(
       form.type = 'apikey'
       return
     REDACTED
+    // Bedrock 类型
+    if (form.platform === 'anthropic' && category === 'bedrock') {
+      form.type = 'bedrock' as AccountType
+      return
+    REDACTED
     if (category === 'oauth-based') {
       form.type = method as AccountType // 'oauth' or 'setup-token'
     REDACTED else {
@@ -2972,6 +3337,13 @@ watch(
       antigravityModelMappings.value = []
       antigravityModelRestrictionMode.value = 'mapping'
     REDACTED
+    // Reset Bedrock fields when switching platforms
+    bedrockAccessKeyId.value = ''
+    bedrockSecretAccessKey.value = ''
+    bedrockSessionToken.value = ''
+    bedrockRegion.value = 'us-east-1'
+    bedrockForceGlobal.value = false
+    bedrockApiKeyForceGlobal.value = false
     // Reset Anthropic/Antigravity-specific settings when switching to other platforms
     if (newPlatform !== 'anthropic' && newPlatform !== 'antigravity') {
       interceptWarmupRequests.value = false
@@ -3538,6 +3910,84 @@ const handleSubmit = async () => {
       return
     REDACTED
     step.value = 2
+    return
+  REDACTED
+
+  // For Bedrock type, create directly
+  if (form.platform === 'anthropic' && accountCategory.value === 'bedrock') {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    REDACTED
+    if (!bedrockAccessKeyId.value.trim()) {
+      appStore.showError(t('admin.accounts.bedrockAccessKeyIdRequired'))
+      return
+    REDACTED
+    if (!bedrockSecretAccessKey.value.trim()) {
+      appStore.showError(t('admin.accounts.bedrockSecretAccessKeyRequired'))
+      return
+    REDACTED
+    if (!bedrockRegion.value.trim()) {
+      appStore.showError(t('admin.accounts.bedrockRegionRequired'))
+      return
+    REDACTED
+
+    const credentials: Record<string, unknown> = {
+      aws_access_key_id: bedrockAccessKeyId.value.trim(),
+      aws_secret_access_key: bedrockSecretAccessKey.value.trim(),
+      aws_region: bedrockRegion.value.trim(),
+    REDACTED
+    if (bedrockSessionToken.value.trim()) {
+      credentials.aws_session_token = bedrockSessionToken.value.trim()
+    REDACTED
+    if (bedrockForceGlobal.value) {
+      credentials.aws_force_global = 'true'
+    REDACTED
+
+    // Model mapping
+    const modelMapping = buildModelMappingObject(
+      modelRestrictionMode.value, allowedModels.value, modelMappings.value
+    )
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    REDACTED
+
+    applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+
+    await createAccountAndFinish('anthropic', 'bedrock' as AccountType, credentials)
+    return
+  REDACTED
+
+  // For Bedrock API Key type, create directly
+  if (form.platform === 'anthropic' && accountCategory.value === 'bedrock-apikey') {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    REDACTED
+    if (!bedrockApiKeyValue.value.trim()) {
+      appStore.showError(t('admin.accounts.bedrockApiKeyRequired'))
+      return
+    REDACTED
+
+    const credentials: Record<string, unknown> = {
+      api_key: bedrockApiKeyValue.value.trim(),
+      aws_region: bedrockApiKeyRegion.value.trim() || 'us-east-1',
+    REDACTED
+    if (bedrockApiKeyForceGlobal.value) {
+      credentials.aws_force_global = 'true'
+    REDACTED
+
+    // Model mapping
+    const modelMapping = buildModelMappingObject(
+      modelRestrictionMode.value, allowedModels.value, modelMappings.value
+    )
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    REDACTED
+
+    applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+
+    await createAccountAndFinish('anthropic', 'bedrock-apikey' as AccountType, credentials)
     return
   REDACTED
 

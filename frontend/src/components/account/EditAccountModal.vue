@@ -563,6 +563,233 @@
         </div>
       </div>
 
+      <!-- Bedrock fields (only for bedrock type) -->
+      <div v-if="account.type === 'bedrock'" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.bedrockAccessKeyId') REDACTEDREDACTED</label>
+          <input
+            v-model="editBedrockAccessKeyId"
+            type="text"
+            class="input font-mono"
+            placeholder="AKIA..."
+          />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.bedrockSecretAccessKey') REDACTEDREDACTED</label>
+          <input
+            v-model="editBedrockSecretAccessKey"
+            type="password"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.bedrockSecretKeyLeaveEmpty')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.bedrockSecretKeyLeaveEmpty') REDACTEDREDACTED</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.bedrockSessionToken') REDACTEDREDACTED</label>
+          <input
+            v-model="editBedrockSessionToken"
+            type="password"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.bedrockSecretKeyLeaveEmpty')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.bedrockSessionTokenHint') REDACTEDREDACTED</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.bedrockRegion') REDACTEDREDACTED</label>
+          <input
+            v-model="editBedrockRegion"
+            type="text"
+            class="input"
+            placeholder="us-east-1"
+          />
+          <p class="input-hint">{{ t('admin.accounts.bedrockRegionHint') REDACTEDREDACTED</p>
+        </div>
+        <div>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              v-model="editBedrockForceGlobal"
+              type="checkbox"
+              class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+            />
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.bedrockForceGlobal') REDACTEDREDACTED</span>
+          </label>
+          <p class="input-hint mt-1">{{ t('admin.accounts.bedrockForceGlobalHint') REDACTEDREDACTED</p>
+        </div>
+
+        <!-- Model Restriction for Bedrock -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
+
+          <!-- Mode Toggle -->
+          <div class="mb-4 flex gap-2">
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'whitelist'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'whitelist'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
+            </button>
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'mapping'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'mapping'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
+            </button>
+          </div>
+
+          <!-- Whitelist Mode -->
+          <div v-if="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
+              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') REDACTEDREDACTED</span>
+            </p>
+          </div>
+
+          <!-- Mapping Mode -->
+          <div v-else class="space-y-3">
+            <div v-for="(mapping, index) in modelMappings" :key="getModelMappingKey(mapping)" class="flex items-center gap-2">
+              <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
+              <span class="text-gray-400">→</span>
+              <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
+              <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
+            <button type="button" @click="modelMappings.push({ from: '', to: '' REDACTED)" class="btn btn-secondary text-sm">
+              + {{ t('admin.accounts.addMapping') REDACTEDREDACTED
+            </button>
+            <!-- Bedrock Preset Mappings -->
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="preset in bedrockPresets"
+                :key="preset.from"
+                type="button"
+                @click="modelMappings.push({ from: preset.from, to: preset.to REDACTED)"
+                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+              >
+                + {{ preset.label REDACTEDREDACTED
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bedrock API Key fields (only for bedrock-apikey type) -->
+      <div v-if="account.type === 'bedrock-apikey'" class="space-y-4">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.bedrockApiKeyInput') REDACTEDREDACTED</label>
+          <input
+            v-model="editBedrockApiKeyValue"
+            type="password"
+            class="input font-mono"
+            :placeholder="t('admin.accounts.bedrockApiKeyLeaveEmpty')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.bedrockApiKeyLeaveEmpty') REDACTEDREDACTED</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.bedrockRegion') REDACTEDREDACTED</label>
+          <input
+            v-model="editBedrockApiKeyRegion"
+            type="text"
+            class="input"
+            placeholder="us-east-1"
+          />
+          <p class="input-hint">{{ t('admin.accounts.bedrockRegionHint') REDACTEDREDACTED</p>
+        </div>
+        <div>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              v-model="editBedrockApiKeyForceGlobal"
+              type="checkbox"
+              class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+            />
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.bedrockForceGlobal') REDACTEDREDACTED</span>
+          </label>
+          <p class="input-hint mt-1">{{ t('admin.accounts.bedrockForceGlobalHint') REDACTEDREDACTED</p>
+        </div>
+
+        <!-- Model Restriction for Bedrock API Key -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
+
+          <!-- Mode Toggle -->
+          <div class="mb-4 flex gap-2">
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'whitelist'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'whitelist'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
+            </button>
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'mapping'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'mapping'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
+            </button>
+          </div>
+
+          <!-- Whitelist Mode -->
+          <div v-if="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
+              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') REDACTEDREDACTED</span>
+            </p>
+          </div>
+
+          <!-- Mapping Mode -->
+          <div v-else class="space-y-3">
+            <div v-for="(mapping, index) in modelMappings" :key="getModelMappingKey(mapping)" class="flex items-center gap-2">
+              <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
+              <span class="text-gray-400">→</span>
+              <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
+              <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
+            <button type="button" @click="modelMappings.push({ from: '', to: '' REDACTED)" class="btn btn-secondary text-sm">
+              + {{ t('admin.accounts.addMapping') REDACTEDREDACTED
+            </button>
+            <!-- Bedrock Preset Mappings -->
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="preset in bedrockPresets"
+                :key="preset.from"
+                type="button"
+                @click="modelMappings.push({ from: preset.from, to: preset.to REDACTED)"
+                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+              >
+                + {{ preset.label REDACTEDREDACTED
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Antigravity model restriction (applies to all antigravity types) -->
       <!-- Antigravity 只支持模型映射模式，不支持白名单模式 -->
       <div v-if="account.platform === 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -1529,6 +1756,7 @@ const baseUrlHint = computed(() => {
 REDACTED)
 
 const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
+const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
 
 // Model mapping type
 interface ModelMapping {
@@ -1547,6 +1775,17 @@ REDACTED
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+// Bedrock credentials
+const editBedrockAccessKeyId = ref('')
+const editBedrockSecretAccessKey = ref('')
+const editBedrockSessionToken = ref('')
+const editBedrockRegion = ref('')
+const editBedrockForceGlobal = ref(false)
+
+// Bedrock API Key credentials
+const editBedrockApiKeyValue = ref('')
+const editBedrockApiKeyRegion = ref('')
+const editBedrockApiKeyForceGlobal = ref(false)
 const modelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
@@ -1888,6 +2127,58 @@ watch(
           selectedErrorCodes.value = [...existingErrorCodes]
         REDACTED else {
           selectedErrorCodes.value = []
+        REDACTED
+      REDACTED else if (newAccount.type === 'bedrock' && newAccount.credentials) {
+        const bedrockCreds = newAccount.credentials as Record<string, unknown>
+        editBedrockAccessKeyId.value = (bedrockCreds.aws_access_key_id as string) || ''
+        editBedrockRegion.value = (bedrockCreds.aws_region as string) || ''
+        editBedrockForceGlobal.value = (bedrockCreds.aws_force_global as string) === 'true'
+        editBedrockSecretAccessKey.value = ''
+        editBedrockSessionToken.value = ''
+
+        // Load model mappings for bedrock
+        const existingMappings = bedrockCreds.model_mapping as Record<string, string> | undefined
+        if (existingMappings && typeof existingMappings === 'object') {
+          const entries = Object.entries(existingMappings)
+          const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
+          if (isWhitelistMode) {
+            modelRestrictionMode.value = 'whitelist'
+            allowedModels.value = entries.map(([from]) => from)
+            modelMappings.value = []
+          REDACTED else {
+            modelRestrictionMode.value = 'mapping'
+            modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
+            allowedModels.value = []
+          REDACTED
+        REDACTED else {
+          modelRestrictionMode.value = 'whitelist'
+          modelMappings.value = []
+          allowedModels.value = []
+        REDACTED
+      REDACTED else if (newAccount.type === 'bedrock-apikey' && newAccount.credentials) {
+        const bedrockApiKeyCreds = newAccount.credentials as Record<string, unknown>
+        editBedrockApiKeyRegion.value = (bedrockApiKeyCreds.aws_region as string) || 'us-east-1'
+        editBedrockApiKeyForceGlobal.value = (bedrockApiKeyCreds.aws_force_global as string) === 'true'
+        editBedrockApiKeyValue.value = ''
+
+        // Load model mappings for bedrock-apikey
+        const existingMappings = bedrockApiKeyCreds.model_mapping as Record<string, string> | undefined
+        if (existingMappings && typeof existingMappings === 'object') {
+          const entries = Object.entries(existingMappings)
+          const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
+          if (isWhitelistMode) {
+            modelRestrictionMode.value = 'whitelist'
+            allowedModels.value = entries.map(([from]) => from)
+            modelMappings.value = []
+          REDACTED else {
+            modelRestrictionMode.value = 'mapping'
+            modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
+            allowedModels.value = []
+          REDACTED
+        REDACTED else {
+          modelRestrictionMode.value = 'whitelist'
+          modelMappings.value = []
+          allowedModels.value = []
         REDACTED
       REDACTED else if (newAccount.type === 'upstream' && newAccount.credentials) {
         const credentials = newAccount.credentials as Record<string, unknown>
@@ -2427,6 +2718,70 @@ const handleSubmit = async () => {
       // Add intercept warmup requests setting
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
 
+      if (!applyTempUnschedConfig(newCredentials)) {
+        return
+      REDACTED
+
+      updatePayload.credentials = newCredentials
+    REDACTED else if (props.account.type === 'bedrock') {
+      const currentCredentials = (props.account.credentials as Record<string, unknown>) || {REDACTED
+      const newCredentials: Record<string, unknown> = { ...currentCredentials REDACTED
+
+      newCredentials.aws_access_key_id = editBedrockAccessKeyId.value.trim()
+      newCredentials.aws_region = editBedrockRegion.value.trim()
+      if (editBedrockForceGlobal.value) {
+        newCredentials.aws_force_global = 'true'
+      REDACTED else {
+        delete newCredentials.aws_force_global
+      REDACTED
+
+      // Only update secrets if user provided new values
+      if (editBedrockSecretAccessKey.value.trim()) {
+        newCredentials.aws_secret_access_key = editBedrockSecretAccessKey.value.trim()
+      REDACTED
+      if (editBedrockSessionToken.value.trim()) {
+        newCredentials.aws_session_token = editBedrockSessionToken.value.trim()
+      REDACTED
+
+      // Model mapping
+      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      if (modelMapping) {
+        newCredentials.model_mapping = modelMapping
+      REDACTED else {
+        delete newCredentials.model_mapping
+      REDACTED
+
+      applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
+      if (!applyTempUnschedConfig(newCredentials)) {
+        return
+      REDACTED
+
+      updatePayload.credentials = newCredentials
+    REDACTED else if (props.account.type === 'bedrock-apikey') {
+      const currentCredentials = (props.account.credentials as Record<string, unknown>) || {REDACTED
+      const newCredentials: Record<string, unknown> = { ...currentCredentials REDACTED
+
+      newCredentials.aws_region = editBedrockApiKeyRegion.value.trim() || 'us-east-1'
+      if (editBedrockApiKeyForceGlobal.value) {
+        newCredentials.aws_force_global = 'true'
+      REDACTED else {
+        delete newCredentials.aws_force_global
+      REDACTED
+
+      // Only update API key if user provided new value
+      if (editBedrockApiKeyValue.value.trim()) {
+        newCredentials.api_key = editBedrockApiKeyValue.value.trim()
+      REDACTED
+
+      // Model mapping
+      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      if (modelMapping) {
+        newCredentials.model_mapping = modelMapping
+      REDACTED else {
+        delete newCredentials.model_mapping
+      REDACTED
+
+      applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       if (!applyTempUnschedConfig(newCredentials)) {
         return
       REDACTED
