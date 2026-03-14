@@ -477,6 +477,7 @@ REDACTED
 		"upgrade_required",
 		"ws_unsupported",
 		"auth_failed",
+		"invalid_encrypted_content",
 		"previous_response_not_found":
 		return reason, false
 REDACTED
@@ -527,6 +528,14 @@ REDACTED
 REDACTED
 
 	switch reason {
+	case "invalid_encrypted_content":
+		if statusCode == 0 {
+			statusCode = http.StatusBadRequest
+	REDACTED
+		errType = "invalid_request_error"
+		if upstreamMessage == "" {
+			upstreamMessage = "encrypted content could not be verified"
+	REDACTED
 	case "previous_response_not_found":
 		if statusCode == 0 {
 			statusCode = http.StatusBadRequest
@@ -1921,6 +1930,7 @@ REDACTED
 		var wsErr error
 		wsLastFailureReason := ""
 		wsPrevResponseRecoveryTried := false
+		wsInvalidEncryptedContentRecoveryTried := false
 		recoverPrevResponseNotFound := func(attempt int) bool {
 			if wsPrevResponseRecoveryTried {
 				return false
@@ -1950,6 +1960,37 @@ REDACTED
 				attempt,
 				truncateOpenAIWSLogValue(previousResponseID, openAIWSIDValueMaxLen),
 				normalizeOpenAIWSLogValue(ClassifyOpenAIPreviousResponseIDKind(previousResponseID)),
+			)
+			return true
+	REDACTED
+		recoverInvalidEncryptedContent := func(attempt int) bool {
+			if wsInvalidEncryptedContentRecoveryTried {
+				return false
+		REDACTED
+			removedReasoningItems := trimOpenAIEncryptedReasoningItems(wsReqBody)
+			if !removedReasoningItems {
+				logOpenAIWSModeInfo(
+					"reconnect_invalid_encrypted_content_recovery_skip account_id=%d attempt=%d reason=missing_encrypted_reasoning_items",
+					account.ID,
+					attempt,
+				)
+				return false
+		REDACTED
+			previousResponseID := openAIWSPayloadString(wsReqBody, "previous_response_id")
+			hasFunctionCallOutput := HasFunctionCallOutput(wsReqBody)
+			if previousResponseID != "" && !hasFunctionCallOutput {
+				delete(wsReqBody, "previous_response_id")
+		REDACTED
+			wsInvalidEncryptedContentRecoveryTried = true
+			logOpenAIWSModeInfo(
+				"reconnect_invalid_encrypted_content_recovery account_id=%d attempt=%d action=drop_encrypted_reasoning_items retry=1 previous_response_id_present=%v previous_response_id=%s previous_response_id_kind=%s has_function_call_output=%v dropped_previous_response_id=%v",
+				account.ID,
+				attempt,
+				previousResponseID != "",
+				truncateOpenAIWSLogValue(previousResponseID, openAIWSIDValueMaxLen),
+				normalizeOpenAIWSLogValue(ClassifyOpenAIPreviousResponseIDKind(previousResponseID)),
+				hasFunctionCallOutput,
+				previousResponseID != "" && !hasFunctionCallOutput,
 			)
 			return true
 	REDACTED
@@ -1987,6 +2028,9 @@ REDACTED
 			// previous_response_not_found 说明续链锚点不可用：
 			// 对非 function_call_output 场景，允许一次“去掉 previous_response_id 后重放”。
 			if reason == "previous_response_not_found" && recoverPrevResponseNotFound(attempt) {
+				continue
+		REDACTED
+			if reason == "invalid_encrypted_content" && recoverInvalidEncryptedContent(attempt) {
 				continue
 		REDACTED
 			if retryable && attempt < maxAttempts {
@@ -2072,124 +2116,141 @@ REDACTED
 		return nil, wsErr
 REDACTED
 
-	// Build upstream request
-	upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI)
-	if err != nil {
-		return nil, err
-REDACTED
+	httpInvalidEncryptedContentRetryTried := false
+	for {
+		// Build upstream request
+		upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI)
+		if err != nil {
+			return nil, err
+	REDACTED
 
-	// Get proxy URL
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-REDACTED
+		// Get proxy URL
+		proxyURL := ""
+		if account.ProxyID != nil && account.Proxy != nil {
+			proxyURL = account.Proxy.URL()
+	REDACTED
 
-	// Send request
-	upstreamStart := time.Now()
-	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
-	if err != nil {
-		// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
-		safeErr := sanitizeUpstreamErrorMessage(err.Error())
-		setOpsUpstreamError(c, 0, safeErr, "")
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform:           account.Platform,
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: 0,
-			Kind:               "request_error",
-			Message:            safeErr,
-	REDACTED)
-		c.JSON(http.StatusBadGateway, gin.H{
-			"error": gin.H{
-				"type":    "upstream_error",
-				"message": "Upstream request failed",
-		REDACTED,
-	REDACTED)
-		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
-REDACTED
-	defer func() { _ = resp.Body.Close() REDACTED()
-
-	// Handle error response
-	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-		_ = resp.Body.Close()
-		resp.Body = io.NopCloser(bytes.NewReader(respBody))
-
-		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
-		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
-			upstreamDetail := ""
-			if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-				maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-				if maxBytes <= 0 {
-					maxBytes = 2048
-			REDACTED
-				upstreamDetail = truncateString(string(respBody), maxBytes)
-		REDACTED
+		// Send request
+		upstreamStart := time.Now()
+		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+		if err != nil {
+			// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
+			safeErr := sanitizeUpstreamErrorMessage(err.Error())
+			setOpsUpstreamError(c, 0, safeErr, "")
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				Platform:           account.Platform,
 				AccountID:          account.ID,
 				AccountName:        account.Name,
-				UpstreamStatusCode: resp.StatusCode,
-				UpstreamRequestID:  resp.Header.Get("x-request-id"),
-				Kind:               "failover",
-				Message:            upstreamMsg,
-				Detail:             upstreamDetail,
+				UpstreamStatusCode: 0,
+				Kind:               "request_error",
+				Message:            safeErr,
 		REDACTED)
+			c.JSON(http.StatusBadGateway, gin.H{
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": "Upstream request failed",
+			REDACTED,
+		REDACTED)
+			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+	REDACTED
 
-			s.handleFailoverSideEffects(ctx, resp, account)
-			return nil, &UpstreamFailoverError{
-				StatusCode:             resp.StatusCode,
-				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && (isPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
+		// Handle error response
+		if resp.StatusCode >= 400 {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
+			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+			upstreamCode := extractUpstreamErrorCode(respBody)
+			if !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && upstreamCode == "invalid_encrypted_content" {
+				if trimOpenAIEncryptedReasoningItems(reqBody) {
+					body, err = json.Marshal(reqBody)
+					if err != nil {
+						return nil, fmt.Errorf("serialize invalid_encrypted_content retry body: %w", err)
+				REDACTED
+					setOpsUpstreamRequestBody(c, body)
+					httpInvalidEncryptedContentRetryTried = true
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content (account: %s)", account.Name)
+					continue
+			REDACTED
+				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Skip non-WSv2 invalid_encrypted_content retry because encrypted reasoning items are missing (account: %s)", account.Name)
+		REDACTED
+			if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
+				upstreamDetail := ""
+				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+					maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+					if maxBytes <= 0 {
+						maxBytes = 2048
+				REDACTED
+					upstreamDetail = truncateString(string(respBody), maxBytes)
+			REDACTED
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					Kind:               "failover",
+					Message:            upstreamMsg,
+					Detail:             upstreamDetail,
+			REDACTED)
+
+				s.handleFailoverSideEffects(ctx, resp, account)
+				return nil, &UpstreamFailoverError{
+					StatusCode:             resp.StatusCode,
+					ResponseBody:           respBody,
+					RetryableOnSameAccount: account.IsPoolMode() && (isPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
+			REDACTED
+		REDACTED
+			return s.handleErrorResponse(ctx, resp, c, account, body)
+	REDACTED
+		defer func() { _ = resp.Body.Close() REDACTED()
+
+		// Handle normal response
+		var usage *OpenAIUsage
+		var firstTokenMs *int
+		if reqStream {
+			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, mappedModel)
+			if err != nil {
+				return nil, err
+		REDACTED
+			usage = streamResult.usage
+			firstTokenMs = streamResult.firstTokenMs
+	REDACTED else {
+			usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, mappedModel)
+			if err != nil {
+				return nil, err
 		REDACTED
 	REDACTED
-		return s.handleErrorResponse(ctx, resp, c, account, body)
-REDACTED
 
-	// Handle normal response
-	var usage *OpenAIUsage
-	var firstTokenMs *int
-	if reqStream {
-		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, mappedModel)
-		if err != nil {
-			return nil, err
+		// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
+		if account.Type == AccountTypeOAuth {
+			if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
+				s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
+		REDACTED
 	REDACTED
-		usage = streamResult.usage
-		firstTokenMs = streamResult.firstTokenMs
-REDACTED else {
-		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, mappedModel)
-		if err != nil {
-			return nil, err
+
+		if usage == nil {
+			usage = &OpenAIUsage{REDACTED
 	REDACTED
+
+		reasoningEffort := extractOpenAIReasoningEffort(reqBody, originalModel)
+		serviceTier := extractOpenAIServiceTier(reqBody)
+
+		return &OpenAIForwardResult{
+			RequestID:       resp.Header.Get("x-request-id"),
+			Usage:           *usage,
+			Model:           originalModel,
+			ServiceTier:     serviceTier,
+			ReasoningEffort: reasoningEffort,
+			Stream:          reqStream,
+			OpenAIWSMode:    false,
+			Duration:        time.Since(startTime),
+			FirstTokenMs:    firstTokenMs,
+	REDACTED, nil
 REDACTED
-
-	// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
-	if account.Type == AccountTypeOAuth {
-		if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
-			s.updateCodexUsageSnapshot(ctx, account.ID, snapshot)
-	REDACTED
-REDACTED
-
-	if usage == nil {
-		usage = &OpenAIUsage{REDACTED
-REDACTED
-
-	reasoningEffort := extractOpenAIReasoningEffort(reqBody, originalModel)
-	serviceTier := extractOpenAIServiceTier(reqBody)
-
-	return &OpenAIForwardResult{
-		RequestID:       resp.Header.Get("x-request-id"),
-		Usage:           *usage,
-		Model:           originalModel,
-		ServiceTier:     serviceTier,
-		ReasoningEffort: reasoningEffort,
-		Stream:          reqStream,
-		OpenAIWSMode:    false,
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
-REDACTED, nil
 REDACTED
 
 func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
@@ -3738,6 +3799,109 @@ REDACTED
 		return normalized + "/responses"
 REDACTED
 	return normalized + "/v1/responses"
+REDACTED
+
+func trimOpenAIEncryptedReasoningItems(reqBody map[string]any) bool {
+	if len(reqBody) == 0 {
+		return false
+REDACTED
+
+	inputValue, has := reqBody["input"]
+	if !has {
+		return false
+REDACTED
+
+	switch input := inputValue.(type) {
+	case []any:
+		filtered := input[:0]
+		changed := false
+		for _, item := range input {
+			nextItem, itemChanged, keep := sanitizeEncryptedReasoningInputItem(item)
+			if itemChanged {
+				changed = true
+		REDACTED
+			if !keep {
+				continue
+		REDACTED
+			filtered = append(filtered, nextItem)
+	REDACTED
+		if !changed {
+			return false
+	REDACTED
+		if len(filtered) == 0 {
+			delete(reqBody, "input")
+			return true
+	REDACTED
+		reqBody["input"] = filtered
+		return true
+	case []map[string]any:
+		filtered := input[:0]
+		changed := false
+		for _, item := range input {
+			nextItem, itemChanged, keep := sanitizeEncryptedReasoningInputItem(item)
+			if itemChanged {
+				changed = true
+		REDACTED
+			if !keep {
+				continue
+		REDACTED
+			nextMap, ok := nextItem.(map[string]any)
+			if !ok {
+				filtered = append(filtered, item)
+				continue
+		REDACTED
+			filtered = append(filtered, nextMap)
+	REDACTED
+		if !changed {
+			return false
+	REDACTED
+		if len(filtered) == 0 {
+			delete(reqBody, "input")
+			return true
+	REDACTED
+		reqBody["input"] = filtered
+		return true
+	case map[string]any:
+		nextItem, changed, keep := sanitizeEncryptedReasoningInputItem(input)
+		if !changed {
+			return false
+	REDACTED
+		if !keep {
+			delete(reqBody, "input")
+			return true
+	REDACTED
+		nextMap, ok := nextItem.(map[string]any)
+		if !ok {
+			return false
+	REDACTED
+		reqBody["input"] = nextMap
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
+func sanitizeEncryptedReasoningInputItem(item any) (next any, changed bool, keep bool) {
+	inputItem, ok := item.(map[string]any)
+	if !ok {
+		return item, false, true
+REDACTED
+
+	itemType, _ := inputItem["type"].(string)
+	if strings.TrimSpace(itemType) != "reasoning" {
+		return item, false, true
+REDACTED
+
+	_, hasEncryptedContent := inputItem["encrypted_content"]
+	if !hasEncryptedContent {
+		return item, false, true
+REDACTED
+
+	delete(inputItem, "encrypted_content")
+	if len(inputItem) == 1 {
+		return nil, true, false
+REDACTED
+	return inputItem, true, true
 REDACTED
 
 func IsOpenAIResponsesCompactPathForTest(c *gin.Context) bool {
