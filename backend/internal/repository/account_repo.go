@@ -1747,21 +1747,70 @@ const weeklyExpiredExpr = `(
 )`
 
 // nextDailyResetAtExpr is a SQL expression to compute the next daily reset_at when a reset occurs.
-// For fixed mode: advances current reset_at by 1 day. For rolling mode: not used (NULL).
+// For fixed mode: computes the next future reset time based on NOW(), timezone, and configured hour.
+// This correctly handles long-inactive accounts by jumping directly to the next valid reset point.
 const nextDailyResetAtExpr = `(
 	CASE WHEN COALESCE(extra->>'quota_daily_reset_mode', 'rolling') = 'fixed'
-	THEN to_char(
-		COALESCE((extra->>'quota_daily_reset_at')::timestamptz, NOW()) + '1 day'::interval
-		AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+	THEN to_char((
+		-- Compute today's reset point in the configured timezone, then pick next future one
+		CASE WHEN NOW() >= (
+			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
+			+ (COALESCE((extra->>'quota_daily_reset_hour')::int, 0) || ' hours')::interval
+		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
+		-- NOW() is at or past today's reset point → next reset is tomorrow
+		THEN (
+			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
+			+ (COALESCE((extra->>'quota_daily_reset_hour')::int, 0) || ' hours')::interval
+			+ '1 day'::interval
+		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
+		-- NOW() is before today's reset point → next reset is today
+		ELSE (
+			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
+			+ (COALESCE((extra->>'quota_daily_reset_hour')::int, 0) || ' hours')::interval
+		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
+		END
+	) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 	ELSE NULL END
 )`
 
 // nextWeeklyResetAtExpr is a SQL expression to compute the next weekly reset_at when a reset occurs.
+// For fixed mode: computes the next future reset time based on NOW(), timezone, configured day and hour.
+// This correctly handles long-inactive accounts by jumping directly to the next valid reset point.
 const nextWeeklyResetAtExpr = `(
 	CASE WHEN COALESCE(extra->>'quota_weekly_reset_mode', 'rolling') = 'fixed'
-	THEN to_char(
-		COALESCE((extra->>'quota_weekly_reset_at')::timestamptz, NOW()) + '7 days'::interval
-		AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+	THEN to_char((
+		-- Compute this week's reset point in the configured timezone
+		-- Step 1: get today's date at reset hour in configured tz
+		-- Step 2: compute days forward to target weekday
+		-- Step 3: if same day but past reset hour, advance 7 days
+		CASE
+		WHEN (
+			-- days_forward = (target_day - current_day + 7) % 7
+			(COALESCE((extra->>'quota_weekly_reset_day')::int, 1)
+			 - EXTRACT(DOW FROM NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))::int
+			 + 7) % 7
+		) = 0 AND NOW() >= (
+			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
+			+ (COALESCE((extra->>'quota_weekly_reset_hour')::int, 0) || ' hours')::interval
+		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
+		-- Same weekday and past reset hour → next week
+		THEN (
+			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
+			+ (COALESCE((extra->>'quota_weekly_reset_hour')::int, 0) || ' hours')::interval
+			+ '7 days'::interval
+		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
+		ELSE (
+			-- Advance to target weekday this week (or next if days_forward > 0)
+			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
+			+ (COALESCE((extra->>'quota_weekly_reset_hour')::int, 0) || ' hours')::interval
+			+ ((
+				(COALESCE((extra->>'quota_weekly_reset_day')::int, 1)
+				 - EXTRACT(DOW FROM NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))::int
+				 + 7) % 7
+			) || ' days')::interval
+		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
+		END
+	) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 	ELSE NULL END
 )`
 
