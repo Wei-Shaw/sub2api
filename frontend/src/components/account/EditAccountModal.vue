@@ -1161,9 +1161,21 @@
           :totalLimit="editQuotaLimit"
           :dailyLimit="editQuotaDailyLimit"
           :weeklyLimit="editQuotaWeeklyLimit"
+          :dailyResetMode="editDailyResetMode"
+          :dailyResetHour="editDailyResetHour"
+          :weeklyResetMode="editWeeklyResetMode"
+          :weeklyResetDay="editWeeklyResetDay"
+          :weeklyResetHour="editWeeklyResetHour"
+          :resetTimezone="editResetTimezone"
           @update:totalLimit="editQuotaLimit = $event"
           @update:dailyLimit="editQuotaDailyLimit = $event"
           @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+          @update:dailyResetMode="editDailyResetMode = $event"
+          @update:dailyResetHour="editDailyResetHour = $event"
+          @update:weeklyResetMode="editWeeklyResetMode = $event"
+          @update:weeklyResetDay="editWeeklyResetDay = $event"
+          @update:weeklyResetHour="editWeeklyResetHour = $event"
+          @update:resetTimezone="editResetTimezone = $event"
         />
       </div>
 
@@ -1814,6 +1826,12 @@ const anthropicPassthroughEnabled = ref(false)
 const editQuotaLimit = ref<number | null>(null)
 const editQuotaDailyLimit = ref<number | null>(null)
 const editQuotaWeeklyLimit = ref<number | null>(null)
+const editDailyResetMode = ref<'rolling' | 'fixed' | null>(null)
+const editDailyResetHour = ref<number | null>(null)
+const editWeeklyResetMode = ref<'rolling' | 'fixed' | null>(null)
+const editWeeklyResetDay = ref<number | null>(null)
+const editWeeklyResetHour = ref<number | null>(null)
+const editResetTimezone = ref<string | null>(null)
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') REDACTED,
   // TODO: ctx_pool 选项暂时隐藏，待测试完成后恢复
@@ -2001,10 +2019,23 @@ watch(
         editQuotaDailyLimit.value = (dailyVal && dailyVal > 0) ? dailyVal : null
         const weeklyVal = extra?.quota_weekly_limit as number | undefined
         editQuotaWeeklyLimit.value = (weeklyVal && weeklyVal > 0) ? weeklyVal : null
+        // Load quota reset mode config
+        editDailyResetMode.value = (extra?.quota_daily_reset_mode as 'rolling' | 'fixed') || null
+        editDailyResetHour.value = (extra?.quota_daily_reset_hour as number) ?? null
+        editWeeklyResetMode.value = (extra?.quota_weekly_reset_mode as 'rolling' | 'fixed') || null
+        editWeeklyResetDay.value = (extra?.quota_weekly_reset_day as number) ?? null
+        editWeeklyResetHour.value = (extra?.quota_weekly_reset_hour as number) ?? null
+        editResetTimezone.value = (extra?.quota_reset_timezone as string) || null
       REDACTED else {
         editQuotaLimit.value = null
         editQuotaDailyLimit.value = null
         editQuotaWeeklyLimit.value = null
+        editDailyResetMode.value = null
+        editDailyResetHour.value = null
+        editWeeklyResetMode.value = null
+        editWeeklyResetDay.value = null
+        editWeeklyResetHour.value = null
+        editResetTimezone.value = null
       REDACTED
 
       // Load antigravity model mapping (Antigravity 只支持映射模式)
@@ -2944,6 +2975,28 @@ const handleSubmit = async () => {
         newExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
       REDACTED else {
         delete newExtra.quota_weekly_limit
+      REDACTED
+      // Quota reset mode config
+      if (editDailyResetMode.value === 'fixed') {
+        newExtra.quota_daily_reset_mode = 'fixed'
+        newExtra.quota_daily_reset_hour = editDailyResetHour.value ?? 0
+      REDACTED else {
+        delete newExtra.quota_daily_reset_mode
+        delete newExtra.quota_daily_reset_hour
+      REDACTED
+      if (editWeeklyResetMode.value === 'fixed') {
+        newExtra.quota_weekly_reset_mode = 'fixed'
+        newExtra.quota_weekly_reset_day = editWeeklyResetDay.value ?? 1
+        newExtra.quota_weekly_reset_hour = editWeeklyResetHour.value ?? 0
+      REDACTED else {
+        delete newExtra.quota_weekly_reset_mode
+        delete newExtra.quota_weekly_reset_day
+        delete newExtra.quota_weekly_reset_hour
+      REDACTED
+      if (editDailyResetMode.value === 'fixed' || editWeeklyResetMode.value === 'fixed') {
+        newExtra.quota_reset_timezone = editResetTimezone.value || 'UTC'
+      REDACTED else {
+        delete newExtra.quota_reset_timezone
       REDACTED
       updatePayload.extra = newExtra
     REDACTED

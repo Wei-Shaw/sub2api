@@ -727,6 +727,16 @@ export interface Account {
   quota_weekly_limit?: number | null
   quota_weekly_used?: number | null
 
+  // 配额固定时间重置配置
+  quota_daily_reset_mode?: 'rolling' | 'fixed' | null
+  quota_daily_reset_hour?: number | null
+  quota_weekly_reset_mode?: 'rolling' | 'fixed' | null
+  quota_weekly_reset_day?: number | null
+  quota_weekly_reset_hour?: number | null
+  quota_reset_timezone?: string | null
+  quota_daily_reset_at?: string | null
+  quota_weekly_reset_at?: string | null
+
   // 运行时状态（仅当启用对应限制时返回）
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
