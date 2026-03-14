@@ -131,15 +131,7 @@ const validation = computed(() => {
     REDACTED
   REDACTED
 
-  // 验证邮件配置
-  if (emailConfig.value) {
-    if (emailConfig.value.alert.enabled && emailConfig.value.alert.recipients.length === 0) {
-      errors.push(t('admin.ops.email.validation.alertRecipientsRequired'))
-    REDACTED
-    if (emailConfig.value.report.enabled && emailConfig.value.report.recipients.length === 0) {
-      errors.push(t('admin.ops.email.validation.reportRecipientsRequired'))
-    REDACTED
-  REDACTED
+  // 邮件配置: 启用但无收件人时不阻断保存, 保存时会自动禁用
 
   // 验证高级设置
   if (advancedSettings.value) {
@@ -181,6 +173,15 @@ async function saveAllSettings() {
 
   saving.value = true
   try {
+    // 无收件人时自动禁用邮件通知
+    if (emailConfig.value) {
+      if (emailConfig.value.alert.enabled && emailConfig.value.alert.recipients.length === 0) {
+        emailConfig.value.alert.enabled = false
+      REDACTED
+      if (emailConfig.value.report.enabled && emailConfig.value.report.recipients.length === 0) {
+        emailConfig.value.report.enabled = false
+      REDACTED
+    REDACTED
     await Promise.all([
       runtimeSettings.value ? opsAPI.updateAlertRuntimeSettings(runtimeSettings.value) : Promise.resolve(),
       emailConfig.value ? opsAPI.updateEmailNotificationConfig(emailConfig.value) : Promise.resolve(),
