@@ -357,51 +357,6 @@ const ServerIcon = {
     )
 REDACTED
 
-const DatabaseIcon = {
-  render: () =>
-    h(
-      'svg',
-      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' REDACTED,
-      [
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M3.75 5.25C3.75 4.007 7.443 3 12 3s8.25 1.007 8.25 2.25S16.557 7.5 12 7.5 3.75 6.493 3.75 5.25z'
-        REDACTED),
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M3.75 5.25v4.5C3.75 10.993 7.443 12 12 12s8.25-1.007 8.25-2.25v-4.5'
-        REDACTED),
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M3.75 9.75v4.5c0 1.243 3.693 2.25 8.25 2.25s8.25-1.007 8.25-2.25v-4.5'
-        REDACTED),
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M3.75 14.25v4.5C3.75 19.993 7.443 21 12 21s8.25-1.007 8.25-2.25v-4.5'
-        REDACTED)
-      ]
-    )
-REDACTED
-
-const CloudArrowUpIcon = {
-  render: () =>
-    h(
-      'svg',
-      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' REDACTED,
-      [
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z'
-        REDACTED)
-      ]
-    )
-REDACTED
-
 const BellIcon = {
   render: () =>
     h(
@@ -626,8 +581,6 @@ const adminNavItems = computed((): NavItem[] => {
   if (authStore.isSimpleMode) {
     const filtered = baseItems.filter(item => !item.hideInSimpleMode)
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED)
-    filtered.push({ path: '/admin/backup', label: t('nav.backup'), icon: CloudArrowUpIcon REDACTED)
-    filtered.push({ path: '/admin/data-management', label: t('nav.dataManagement'), icon: DatabaseIcon REDACTED)
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon REDACTED)
     // Add admin custom menu items after settings
     for (const cm of customMenuItemsForAdmin.value) {
@@ -636,8 +589,6 @@ const adminNavItems = computed((): NavItem[] => {
     return filtered
   REDACTED
 
-  baseItems.push({ path: '/admin/backup', label: t('nav.backup'), icon: CloudArrowUpIcon REDACTED)
-  baseItems.push({ path: '/admin/data-management', label: t('nav.dataManagement'), icon: DatabaseIcon REDACTED)
   baseItems.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon REDACTED)
   // Add admin custom menu items after settings
   for (const cm of customMenuItemsForAdmin.value) {

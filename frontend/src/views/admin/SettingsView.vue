@@ -9,7 +9,7 @@
       <!-- Settings Form -->
       <form v-else @submit.prevent="saveSettings" class="space-y-6">
         <!-- Tab Navigation -->
-        <div class="sticky top-0 z-10 overflow-x-auto scrollbar-hide">
+        <div class="sticky top-0 z-10 overflow-x-auto settings-tabs-scroll">
           <nav class="settings-tabs">
             <button
               v-for="tab in settingsTabs"
@@ -1649,8 +1649,18 @@
         </div>
         </div><!-- /Tab: Email -->
 
+        <!-- Tab: Backup -->
+        <div v-show="activeTab === 'backup'">
+          <BackupSettings />
+        </div>
+
+        <!-- Tab: Data Management -->
+        <div v-show="activeTab === 'data'">
+          <DataManagementSettings />
+        </div>
+
         <!-- Save Button -->
-        <div class="flex justify-end">
+        <div v-show="activeTab !== 'backup' && activeTab !== 'data'" class="flex justify-end">
           <button type="submit" :disabled="saving" class="btn btn-primary">
             <svg v-if="saving" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle
@@ -1692,6 +1702,8 @@ import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import ImageUpload from '@/components/common/ImageUpload.vue'
+import BackupSettings from '@/views/admin/BackupView.vue'
+import DataManagementSettings from '@/views/admin/DataManagementView.vue'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 import { useAppStore REDACTED from '@/stores'
 import { useAdminSettingsStore REDACTED from '@/stores/adminSettings'
@@ -1706,7 +1718,7 @@ const { t REDACTED = useI18n()
 const appStore = useAppStore()
 const adminSettingsStore = useAdminSettingsStore()
 
-type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'email'
+type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'email' | 'backup' | 'data'
 const activeTab = ref<SettingsTab>('general')
 const settingsTabs = [
   { key: 'general'  as SettingsTab, icon: 'home'   as const REDACTED,
@@ -1714,6 +1726,8 @@ const settingsTabs = [
   { key: 'users'    as SettingsTab, icon: 'user'   as const REDACTED,
   { key: 'gateway'  as SettingsTab, icon: 'server' as const REDACTED,
   { key: 'email'    as SettingsTab, icon: 'mail'   as const REDACTED,
+  { key: 'backup'   as SettingsTab, icon: 'database' as const REDACTED,
+  { key: 'data'     as SettingsTab, icon: 'cube'     as const REDACTED,
 ]
 const { copyToClipboard REDACTED = useClipboard()
 
@@ -2378,9 +2392,38 @@ REDACTED
 REDACTED
 
 /* ============ Settings Tab Navigation ============ */
+
+/* Scroll container: thin scrollbar on PC, auto-hide on mobile */
+.settings-tabs-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+REDACTED
+.settings-tabs-scroll:hover {
+  scrollbar-color: rgb(0 0 0 / 0.15) transparent;
+REDACTED
+:root.dark .settings-tabs-scroll:hover {
+  scrollbar-color: rgb(255 255 255 / 0.2) transparent;
+REDACTED
+.settings-tabs-scroll::-webkit-scrollbar {
+  height: 3px;
+REDACTED
+.settings-tabs-scroll::-webkit-scrollbar-track {
+  background: transparent;
+REDACTED
+.settings-tabs-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+REDACTED
+.settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgb(0 0 0 / 0.15);
+REDACTED
+:root.dark .settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.2);
+REDACTED
+
 .settings-tabs {
-  @apply inline-flex min-w-full gap-1 rounded-2xl
-         border border-gray-100 bg-white/80 p-1.5 backdrop-blur-sm
+  @apply inline-flex min-w-full gap-0.5 rounded-2xl
+         border border-gray-100 bg-white/80 p-1 backdrop-blur-sm
          dark:border-dark-700/50 dark:bg-dark-800/80;
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.04), 0 1px 2px rgb(0 0 0 / 0.02);
 REDACTED
@@ -2392,8 +2435,8 @@ REDACTED
 REDACTED
 
 .settings-tab {
-  @apply relative flex flex-1 items-center justify-center gap-2
-         whitespace-nowrap rounded-xl px-4 py-2.5
+  @apply relative flex flex-1 items-center justify-center gap-1.5
+         whitespace-nowrap rounded-xl px-2.5 py-2
          text-sm font-medium
          text-gray-500 dark:text-dark-400
          transition-all duration-200 ease-out;
@@ -2420,7 +2463,7 @@ REDACTED
 REDACTED
 
 .settings-tab-icon {
-  @apply flex h-7 w-7 items-center justify-center rounded-lg
+  @apply flex h-6 w-6 items-center justify-center rounded-lg
          transition-all duration-200;
 REDACTED
 

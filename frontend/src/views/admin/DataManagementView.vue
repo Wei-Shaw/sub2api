@@ -1,5 +1,4 @@
 <template>
-  <AppLayout>
     <div class="space-y-6">
       <div class="card p-6">
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -183,13 +182,11 @@
         </div>
       </Transition>
     </Teleport>
-  </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
-import AppLayout from '@/components/layout/AppLayout.vue'
 import type { SoraS3Profile REDACTED from '@/api/admin/settings'
 import { adminAPI REDACTED from '@/api'
 import { useAppStore REDACTED from '@/stores'
