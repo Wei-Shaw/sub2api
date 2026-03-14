@@ -23,7 +23,7 @@ const (
 	opsAggDailyInterval  = 1 * time.Hour
 
 	// Keep in sync with ops retention target (vNext default 30d).
-	opsAggBackfillWindow = 30 * 24 * time.Hour
+	opsAggBackfillWindow = 1 * time.Hour
 
 	// Recompute overlap to absorb late-arriving rows near boundaries.
 	opsAggHourlyOverlap = 2 * time.Hour
@@ -36,7 +36,7 @@ const (
 	// that may still receive late inserts.
 	opsAggSafeDelay = 5 * time.Minute
 
-	opsAggMaxQueryTimeout = 3 * time.Second
+	opsAggMaxQueryTimeout = 5 * time.Second
 	opsAggHourlyTimeout   = 5 * time.Minute
 	opsAggDailyTimeout    = 2 * time.Minute
 
