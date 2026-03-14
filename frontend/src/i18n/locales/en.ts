@@ -3922,6 +3922,9 @@ export default {
       site: {
         title: 'Site Settings',
         description: 'Customize site branding',
+        backendMode: 'Backend Mode',
+        backendModeDescription:
+          'Disables user registration, public site, and self-service features. Only admin can log in and manage the platform.',
         siteName: 'Site Name',
         siteNamePlaceholder: 'Sub2API',
         siteNameHint: 'Displayed in emails and page titles',

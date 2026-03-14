@@ -69,6 +69,9 @@ type SystemSettings struct {
 
 	// 分组隔离：允许未分组 Key 调度（默认 false → 403）
 	AllowUngroupedKeyScheduling bool
+
+	// Backend 模式：禁用用户注册和自助服务，仅管理员可登录
+	BackendModeEnabled bool
 REDACTED
 
 type DefaultSubscriptionSetting struct {
@@ -101,6 +104,7 @@ type PublicSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 
 	LinuxDoOAuthEnabled bool
+	BackendModeEnabled  bool
 	Version             string
 REDACTED
 

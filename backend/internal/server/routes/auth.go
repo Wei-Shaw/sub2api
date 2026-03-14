@@ -6,6 +6,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/middleware"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -17,12 +18,14 @@ func RegisterAuthRoutes(
 	h *handler.Handlers,
 	jwtAuth servermiddleware.JWTAuthMiddleware,
 	redisClient *redis.Client,
+	settingService *service.SettingService,
 ) {
 	// 创建速率限制器
 	rateLimiter := middleware.NewRateLimiter(redisClient)
 
 	// 公开接口
 	auth := v1.Group("/auth")
+	auth.Use(servermiddleware.BackendModeAuthGuard(settingService))
 	{
 		// 注册/登录/2FA/验证码发送均属于高风险入口，增加服务端兜底限流（Redis 故障时 fail-close）
 		auth.POST("/register", rateLimiter.LimitWithOptions("auth-register", 5, time.Minute, middleware.RateLimitOptions{
@@ -78,6 +81,7 @@ REDACTED
 	// 需要认证的当前用户信息
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
+	authenticated.Use(servermiddleware.BackendModeUserGuard(settingService))
 	{
 		authenticated.GET("/auth/me", h.Auth.GetCurrentUser)
 		// 撤销所有会话（需要认证）

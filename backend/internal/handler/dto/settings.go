@@ -81,6 +81,9 @@ type SystemSettings struct {
 
 	// 分组隔离
 	AllowUngroupedKeyScheduling bool `json:"allow_ungrouped_key_scheduling"`
+
+	// Backend Mode
+	BackendModeEnabled bool `json:"backend_mode_enabled"`
 REDACTED
 
 type DefaultSubscriptionSetting struct {
@@ -111,6 +114,7 @@ type PublicSettings struct {
 	CustomMenuItems                  []CustomMenuItem `json:"custom_menu_items"`
 	LinuxDoOAuthEnabled              bool             `json:"linuxdo_oauth_enabled"`
 	SoraClientEnabled                bool             `json:"sora_client_enabled"`
+	BackendModeEnabled               bool             `json:"backend_mode_enabled"`
 	Version                          string           `json:"version"`
 REDACTED
 
