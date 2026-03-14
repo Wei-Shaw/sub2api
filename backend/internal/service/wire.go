@@ -323,8 +323,14 @@ func ProvideAPIKeyAuthCacheInvalidator(apiKeyService *APIKeyService) APIKeyAuthC
 REDACTED
 
 // ProvideBackupService creates and starts BackupService
-func ProvideBackupService(settingRepo SettingRepository, cfg *config.Config) *BackupService {
-	svc := NewBackupService(settingRepo, cfg)
+func ProvideBackupService(
+	settingRepo SettingRepository,
+	cfg *config.Config,
+	encryptor SecretEncryptor,
+	storeFactory BackupObjectStoreFactory,
+	dumper DBDumper,
+) *BackupService {
+	svc := NewBackupService(settingRepo, cfg, encryptor, storeFactory, dumper)
 	svc.Start()
 	return svc
 REDACTED

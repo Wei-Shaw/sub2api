@@ -1034,6 +1034,7 @@ export default {
         download: 'Download',
         restore: 'Restore',
         restoreConfirm: 'Are you sure you want to restore from this backup? This will overwrite the current database!',
+        restorePasswordPrompt: 'Please enter your admin password to confirm the restore operation',
         restoreSuccess: 'Database restored successfully',
         deleteConfirm: 'Are you sure you want to delete this backup?',
         deleted: 'Backup deleted'

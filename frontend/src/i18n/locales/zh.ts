@@ -1056,6 +1056,7 @@ export default {
         download: '下载',
         restore: '恢复',
         restoreConfirm: '确定要从此备份恢复吗？这将覆盖当前数据库！',
+        restorePasswordPrompt: '请输入管理员密码以确认恢复操作',
         restoreSuccess: '数据库恢复成功',
         deleteConfirm: '确定要删除此备份吗？',
         deleted: '备份已删除'

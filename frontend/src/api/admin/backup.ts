@@ -93,8 +93,8 @@ export async function getDownloadURL(id: string): Promise<{ url: string REDACTED
 REDACTED
 
 // Restore
-export async function restoreBackup(id: string): Promise<void> {
-  await apiClient.post(`/admin/backups/${idREDACTED/restore`, {REDACTED, { timeout: 600000 REDACTED)
+export async function restoreBackup(id: string, password: string): Promise<void> {
+  await apiClient.post(`/admin/backups/${idREDACTED/restore`, { password REDACTED, { timeout: 600000 REDACTED)
 REDACTED
 
 export const backupAPI = {

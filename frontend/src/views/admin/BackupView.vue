@@ -440,9 +440,11 @@ REDACTED
 
 async function restoreBackup(id: string) {
   if (!window.confirm(t('admin.backup.actions.restoreConfirm'))) return
+  const password = window.prompt(t('admin.backup.actions.restorePasswordPrompt'))
+  if (!password) return
   restoringId.value = id
   try {
-    await adminAPI.backup.restoreBackup(id)
+    await adminAPI.backup.restoreBackup(id, password)
     appStore.showSuccess(t('admin.backup.actions.restoreSuccess'))
   REDACTED catch (error) {
     appStore.showError((error as { message?: string REDACTED)?.message || t('errors.networkError'))

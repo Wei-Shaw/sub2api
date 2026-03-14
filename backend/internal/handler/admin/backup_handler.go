@@ -2,16 +2,21 @@ package admin
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
 type BackupHandler struct {
 	backupService *service.BackupService
+	userService   *service.UserService
 REDACTED
 
-func NewBackupHandler(backupService *service.BackupService) *BackupHandler {
-	return &BackupHandler{backupService: backupServiceREDACTED
+func NewBackupHandler(backupService *service.BackupService, userService *service.UserService) *BackupHandler {
+	return &BackupHandler{
+		backupService: backupService,
+		userService:   userService,
+REDACTED
 REDACTED
 
 // ─── S3 配置 ───
@@ -154,7 +159,11 @@ REDACTED
 	response.Success(c, gin.H{"url": urlREDACTED)
 REDACTED
 
-// ─── 恢复操作 ───
+// ─── 恢复操作（需要重新输入管理员密码） ───
+
+type RestoreBackupRequest struct {
+	Password string `json:"password" binding:"required"`
+REDACTED
 
 func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 	backupID := c.Param("id")
@@ -162,6 +171,31 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 		response.BadRequest(c, "backup ID is required")
 		return
 REDACTED
+
+	var req RestoreBackupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "password is required for restore operation")
+		return
+REDACTED
+
+	// 从上下文获取当前管理员用户 ID
+	sub, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "unauthorized")
+		return
+REDACTED
+
+	// 获取管理员用户并验证密码
+	user, err := h.userService.GetByID(c.Request.Context(), sub.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	if !user.CheckPassword(req.Password) {
+		response.BadRequest(c, "incorrect admin password")
+		return
+REDACTED
+
 	if err := h.backupService.RestoreBackup(c.Request.Context(), backupID); err != nil {
 		response.ErrorFrom(c, err)
 		return
