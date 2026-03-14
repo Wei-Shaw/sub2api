@@ -33,12 +33,63 @@ REDACTED
 	first, ok := input[0].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "item_reference", first["type"])
-	require.Equal(t, "fc_ref1", first["id"])
+	require.Equal(t, "ref1", first["id"])
 
 	// 校验 input[1] 为 map，确保后续字段断言安全。
 	second, ok := input[1].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "fc_o1", second["id"])
+	require.Equal(t, "o1", second["id"])
+	require.Equal(t, "fc1", second["call_id"])
+REDACTED
+
+func TestApplyCodexOAuthTransform_ToolContinuationPreservesNativeMessageAndReasoningIDs(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.2",
+		"input": []any{
+			map[string]any{"type": "message", "id": "msg_0", "role": "user", "content": "hi"REDACTED,
+			map[string]any{"type": "item_reference", "id": "rs_123"REDACTED,
+	REDACTED,
+		"tool_choice": "auto",
+REDACTED
+
+	applyCodexOAuthTransform(reqBody, false, false)
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 2)
+
+	first, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "msg_0", first["id"])
+
+	second, ok := input[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "rs_123", second["id"])
+REDACTED
+
+func TestApplyCodexOAuthTransform_ToolContinuationNormalizesToolReferenceIDsOnly(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.2",
+		"input": []any{
+			map[string]any{"type": "item_reference", "id": "call_1"REDACTED,
+			map[string]any{"type": "function_call_output", "call_id": "call_1", "output": "ok"REDACTED,
+	REDACTED,
+		"tool_choice": "auto",
+REDACTED
+
+	applyCodexOAuthTransform(reqBody, false, false)
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 2)
+
+	first, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "fc1", first["id"])
+
+	second, ok := input[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "fc1", second["call_id"])
 REDACTED
 
 func TestApplyCodexOAuthTransform_ExplicitStoreFalsePreserved(t *testing.T) {
