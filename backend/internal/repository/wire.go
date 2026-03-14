@@ -100,6 +100,10 @@ var ProviderSet = wire.NewSet(
 	// Encryptors
 	NewAESEncryptor,
 
+	// Backup infrastructure
+	NewPgDumper,
+	NewS3BackupStoreFactory,
+
 	// HTTP service ports (DI Strategy A: return interface directly)
 	NewTurnstileVerifier,
 	ProvidePricingRemoteClient,
