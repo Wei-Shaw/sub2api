@@ -41,12 +41,15 @@ type GenerateRedeemCodesRequest struct {
 REDACTED
 
 // CreateAndRedeemCodeRequest represents creating a fixed code and redeeming it for a target user.
+// Type 为 omitempty 而非 required 是为了向后兼容旧版调用方（不传 type 时默认 balance）。
 type CreateAndRedeemCodeRequest struct {
-	Code   string  `json:"code" binding:"required,min=3,max=128"`
-	Type   string  `json:"type" binding:"required,oneof=balance concurrency subscription invitation"`
-	Value  float64 `json:"value" binding:"required,gt=0"`
-	UserID int64   `json:"user_id" binding:"required,gt=0"`
-	Notes  string  `json:"notes"`
+	Code         string  `json:"code" binding:"required,min=3,max=128"`
+	Type         string  `json:"type" binding:"omitempty,oneof=balance concurrency subscription invitation"` // 不传时默认 balance（向后兼容）
+	Value        float64 `json:"value" binding:"required,gt=0"`
+	UserID       int64   `json:"user_id" binding:"required,gt=0"`
+	GroupID      *int64  `json:"group_id"`                                    // subscription 类型必填
+	ValidityDays int     `json:"validity_days" binding:"omitempty,max=36500"` // subscription 类型必填，>0
+	Notes        string  `json:"notes"`
 REDACTED
 
 // List handles listing all redeem codes with pagination
@@ -136,6 +139,22 @@ REDACTED
 		return
 REDACTED
 	req.Code = strings.TrimSpace(req.Code)
+	// 向后兼容：旧版调用方（如 Sub2ApiPay）不传 type 字段，默认当作 balance 充值处理。
+	// 请勿删除此默认值逻辑，否则会导致旧版调用方 400 报错。
+	if req.Type == "" {
+		req.Type = "balance"
+REDACTED
+
+	if req.Type == "subscription" {
+		if req.GroupID == nil {
+			response.BadRequest(c, "group_id is required for subscription type")
+			return
+	REDACTED
+		if req.ValidityDays <= 0 {
+			response.BadRequest(c, "validity_days must be greater than 0 for subscription type")
+			return
+	REDACTED
+REDACTED
 
 	executeAdminIdempotentJSON(c, "admin.redeem_codes.create_and_redeem", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		existing, err := h.redeemService.GetByCode(ctx, req.Code)
@@ -147,11 +166,13 @@ REDACTED
 	REDACTED
 
 		createErr := h.redeemService.CreateCode(ctx, &service.RedeemCode{
-			Code:   req.Code,
-			Type:   req.Type,
-			Value:  req.Value,
-			Status: service.StatusUnused,
-			Notes:  req.Notes,
+			Code:         req.Code,
+			Type:         req.Type,
+			Value:        req.Value,
+			Status:       service.StatusUnused,
+			Notes:        req.Notes,
+			GroupID:      req.GroupID,
+			ValidityDays: req.ValidityDays,
 	REDACTED)
 		if createErr != nil {
 			// Unique code race: if code now exists, use idempotent semantics by used_by.

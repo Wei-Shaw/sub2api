@@ -82,6 +82,8 @@ const typeLabel = computed(() => {
       return 'Token'
     case 'apikey':
       return 'Key'
+    case 'bedrock':
+      return 'Bedrock'
     default:
       return props.type
   REDACTED

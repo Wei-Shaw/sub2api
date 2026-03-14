@@ -33,12 +33,12 @@ REDACTED
 	first, ok := input[0].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "item_reference", first["type"])
-	require.Equal(t, "ref1", first["id"])
+	require.Equal(t, "fc_ref1", first["id"])
 
 	// 校验 input[1] 为 map，确保后续字段断言安全。
 	second, ok := input[1].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, "o1", second["id"])
+	require.Equal(t, "fc_o1", second["id"])
 REDACTED
 
 func TestApplyCodexOAuthTransform_ExplicitStoreFalsePreserved(t *testing.T) {

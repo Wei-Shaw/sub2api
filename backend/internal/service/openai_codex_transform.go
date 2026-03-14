@@ -129,6 +129,41 @@ REDACTED {
 	REDACTED
 REDACTED
 
+	// 兼容遗留的 functions 和 function_call，转换为 tools 和 tool_choice
+	if functionsRaw, ok := reqBody["functions"]; ok {
+		if functions, k := functionsRaw.([]any); k {
+			tools := make([]any, 0, len(functions))
+			for _, f := range functions {
+				tools = append(tools, map[string]any{
+					"type":     "function",
+					"function": f,
+			REDACTED)
+		REDACTED
+			reqBody["tools"] = tools
+	REDACTED
+		delete(reqBody, "functions")
+		result.Modified = true
+REDACTED
+
+	if fcRaw, ok := reqBody["function_call"]; ok {
+		if fcStr, ok := fcRaw.(string); ok {
+			// e.g. "auto", "none"
+			reqBody["tool_choice"] = fcStr
+	REDACTED else if fcObj, ok := fcRaw.(map[string]any); ok {
+			// e.g. {"name": "my_func"REDACTED
+			if name, ok := fcObj["name"].(string); ok && strings.TrimSpace(name) != "" {
+				reqBody["tool_choice"] = map[string]any{
+					"type": "function",
+					"function": map[string]any{
+						"name": name,
+				REDACTED,
+			REDACTED
+		REDACTED
+	REDACTED
+		delete(reqBody, "function_call")
+		result.Modified = true
+REDACTED
+
 	if normalizeCodexTools(reqBody) {
 		result.Modified = true
 REDACTED
@@ -303,6 +338,18 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 			continue
 	REDACTED
 		typ, _ := m["type"].(string)
+
+		// 修复 OpenAI 上游的最新校验："Expected an ID that begins with 'fc'"
+		fixIDPrefix := func(id string) string {
+			if id == "" || strings.HasPrefix(id, "fc") {
+				return id
+		REDACTED
+			if strings.HasPrefix(id, "call_") {
+				return "fc" + strings.TrimPrefix(id, "call_")
+		REDACTED
+			return "fc_" + id
+	REDACTED
+
 		if typ == "item_reference" {
 			if !preserveReferences {
 				continue
@@ -310,6 +357,9 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 			newItem := make(map[string]any, len(m))
 			for key, value := range m {
 				newItem[key] = value
+		REDACTED
+			if id, ok := newItem["id"].(string); ok && id != "" {
+				newItem["id"] = fixIDPrefix(id)
 		REDACTED
 			filtered = append(filtered, newItem)
 			continue
@@ -330,10 +380,20 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 	REDACTED
 
 		if isCodexToolCallItemType(typ) {
-			if callID, ok := m["call_id"].(string); !ok || strings.TrimSpace(callID) == "" {
+			callID, ok := m["call_id"].(string)
+			if !ok || strings.TrimSpace(callID) == "" {
 				if id, ok := m["id"].(string); ok && strings.TrimSpace(id) != "" {
+					callID = id
 					ensureCopy()
-					newItem["call_id"] = id
+					newItem["call_id"] = callID
+			REDACTED
+		REDACTED
+
+			if callID != "" {
+				fixedCallID := fixIDPrefix(callID)
+				if fixedCallID != callID {
+					ensureCopy()
+					newItem["call_id"] = fixedCallID
 			REDACTED
 		REDACTED
 	REDACTED
@@ -343,6 +403,14 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 			delete(newItem, "id")
 			if !isCodexToolCallItemType(typ) {
 				delete(newItem, "call_id")
+		REDACTED
+	REDACTED else {
+			if id, ok := newItem["id"].(string); ok && id != "" {
+				fixedID := fixIDPrefix(id)
+				if fixedID != id {
+					ensureCopy()
+					newItem["id"] = fixedID
+			REDACTED
 		REDACTED
 	REDACTED
 

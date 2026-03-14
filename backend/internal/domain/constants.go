@@ -27,10 +27,12 @@ const (
 
 // Account type constants
 const (
-	AccountTypeOAuth      = "oauth"       // OAuth类型账号（full scope: profile + inference）
-	AccountTypeSetupToken = "setup-token" // Setup Token类型账号（inference only scope）
-	AccountTypeAPIKey     = "apikey"      // API Key类型账号
-	AccountTypeUpstream   = "upstream"    // 上游透传类型账号（通过 Base URL + API Key 连接上游）
+	AccountTypeOAuth         = "oauth"          // OAuth类型账号（full scope: profile + inference）
+	AccountTypeSetupToken    = "setup-token"    // Setup Token类型账号（inference only scope）
+	AccountTypeAPIKey        = "apikey"         // API Key类型账号
+	AccountTypeUpstream      = "upstream"       // 上游透传类型账号（通过 Base URL + API Key 连接上游）
+	AccountTypeBedrock       = "bedrock"        // AWS Bedrock 类型账号（通过 SigV4 签名连接 Bedrock）
+	AccountTypeBedrockAPIKey = "bedrock-apikey" // AWS Bedrock API Key 类型账号（通过 Bearer Token 连接 Bedrock）
 )
 
 // Redeem type constants
@@ -112,4 +114,28 @@ var DefaultAntigravityModelMapping = map[string]string{
 	// 其他官方模型
 	"gpt-oss-120b-medium":    "gpt-oss-120b-medium",
 	"tab_flash_lite_preview": "tab_flash_lite_preview",
+REDACTED
+
+// DefaultBedrockModelMapping 是 AWS Bedrock 平台的默认模型映射
+// 将 Anthropic 标准模型名映射到 Bedrock 模型 ID
+// 注意：此处的 "us." 前缀仅为默认值，ResolveBedrockModelID 会根据账号配置的
+// aws_region 自动调整为匹配的区域前缀（如 eu.、apac.、jp. 等）
+var DefaultBedrockModelMapping = map[string]string{
+	// Claude Opus
+	"claude-opus-4-6-thinking": "us.anthropic.claude-opus-4-6-v1",
+	"claude-opus-4-6":          "us.anthropic.claude-opus-4-6-v1",
+	"claude-opus-4-5-thinking": "us.anthropic.claude-opus-4-5-20251101-v1:0",
+	"claude-opus-4-5-20251101": "us.anthropic.claude-opus-4-5-20251101-v1:0",
+	"claude-opus-4-1":          "us.anthropic.claude-opus-4-1-20250805-v1:0",
+	"claude-opus-4-20250514":   "us.anthropic.claude-opus-4-20250514-v1:0",
+	// Claude Sonnet
+	"claude-sonnet-4-6-thinking": "us.anthropic.claude-sonnet-4-6",
+	"claude-sonnet-4-6":          "us.anthropic.claude-sonnet-4-6",
+	"claude-sonnet-4-5":          "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+	"claude-sonnet-4-5-thinking": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+	"claude-sonnet-4-5-20250929": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+	"claude-sonnet-4-20250514":   "us.anthropic.claude-sonnet-4-20250514-v1:0",
+	// Claude Haiku
+	"claude-haiku-4-5":          "us.anthropic.REDACTED-v1:0",
+	"REDACTED": "us.anthropic.REDACTED-v1:0",
 REDACTED

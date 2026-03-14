@@ -50,6 +50,7 @@ const (
 
 	defaultUserGroupRateCacheTTL = 30 * time.Second
 	defaultModelsListCacheTTL    = 15 * time.Second
+	postUsageBillingTimeout      = 15 * time.Second
 )
 
 const (
@@ -104,6 +105,36 @@ REDACTED
 
 func GatewayModelsListCacheStats() (cacheHit, cacheMiss, store int64) {
 	return modelsListCacheHitTotal.Load(), modelsListCacheMissTotal.Load(), modelsListCacheStoreTotal.Load()
+REDACTED
+
+func openAIStreamEventIsTerminal(data string) bool {
+	trimmed := strings.TrimSpace(data)
+	if trimmed == "" {
+		return false
+REDACTED
+	if trimmed == "[DONE]" {
+		return true
+REDACTED
+	switch gjson.Get(trimmed, "type").String() {
+	case "response.completed", "response.done", "response.failed":
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
+func anthropicStreamEventIsTerminal(eventName, data string) bool {
+	if strings.EqualFold(strings.TrimSpace(eventName), "message_stop") {
+		return true
+REDACTED
+	trimmed := strings.TrimSpace(data)
+	if trimmed == "" {
+		return false
+REDACTED
+	if trimmed == "[DONE]" {
+		return true
+REDACTED
+	return gjson.Get(trimmed, "type").String() == "message_stop"
 REDACTED
 
 func cloneStringSlice(src []string) []string {
@@ -504,6 +535,7 @@ type GatewayService struct {
 	accountRepo           AccountRepository
 	groupRepo             GroupRepository
 	usageLogRepo          UsageLogRepository
+	usageBillingRepo      UsageBillingRepository
 	userRepo              UserRepository
 	userSubRepo           UserSubscriptionRepository
 	userGroupRateRepo     UserGroupRateRepository
@@ -537,6 +569,7 @@ func NewGatewayService(
 	accountRepo AccountRepository,
 	groupRepo GroupRepository,
 	usageLogRepo UsageLogRepository,
+	usageBillingRepo UsageBillingRepository,
 	userRepo UserRepository,
 	userSubRepo UserSubscriptionRepository,
 	userGroupRateRepo UserGroupRateRepository,
@@ -563,6 +596,7 @@ func NewGatewayService(
 		accountRepo:          accountRepo,
 		groupRepo:            groupRepo,
 		usageLogRepo:         usageLogRepo,
+		usageBillingRepo:     usageBillingRepo,
 		userRepo:             userRepo,
 		userSubRepo:          userSubRepo,
 		userGroupRateRepo:    userGroupRateRepo,
@@ -3336,6 +3370,10 @@ REDACTED
 	if account.Platform == PlatformSora {
 		return s.isSoraModelSupportedByAccount(account, requestedModel)
 REDACTED
+	if account.IsBedrock() {
+		_, ok := ResolveBedrockModelID(account, requestedModel)
+		return ok
+REDACTED
 	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
 	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
 		requestedModel = claude.NormalizeModelID(requestedModel)
@@ -3493,6 +3531,10 @@ func (s *GatewayService) GetAccessToken(ctx context.Context, account *Account) (
 			return "", "", errors.New("api_key not found in credentials")
 	REDACTED
 		return apiKey, "apikey", nil
+	case AccountTypeBedrock:
+		return "", "bedrock", nil // Bedrock 使用 SigV4 签名，不需要 token
+	case AccountTypeBedrockAPIKey:
+		return "", "bedrock-apikey", nil // Bedrock API Key 使用 Bearer Token，由 forwardBedrock 处理
 	default:
 		return "", "", fmt.Errorf("unsupported account type: %s", account.Type)
 REDACTED
@@ -3948,6 +3990,10 @@ REDACTED
 		return s.forwardAnthropicAPIKeyPassthrough(ctx, c, account, passthroughBody, passthroughModel, parsed.Stream, startTime)
 REDACTED
 
+	if account != nil && account.IsBedrock() {
+		return s.forwardBedrock(ctx, c, account, parsed, startTime)
+REDACTED
+
 	// Beta policy: evaluate once; block check + cache filter set for buildUpstreamRequest.
 	// Always overwrite the cache to prevent stale values from a previous retry with a different account.
 	if account.Platform == PlatformAnthropic && c != nil {
@@ -4049,7 +4095,9 @@ REDACTED
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
-		upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
+		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+		releaseUpstreamCtx()
 		if err != nil {
 			return nil, err
 	REDACTED
@@ -4127,7 +4175,9 @@ REDACTED
 					//    also downgrade tool_use/tool_result blocks to text.
 
 					filteredBody := FilterThinkingBlocksForRetry(body)
-					retryReq, buildErr := s.buildUpstreamRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+					retryCtx, releaseRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
+					retryReq, buildErr := s.buildUpstreamRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+					releaseRetryCtx()
 					if buildErr == nil {
 						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 						if retryErr == nil {
@@ -4159,7 +4209,9 @@ REDACTED
 								if looksLikeToolSignatureError(msg2) && time.Since(retryStart) < maxRetryElapsed {
 									logger.LegacyPrintf("service.gateway", "Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
 									filteredBody2 := FilterSignatureSensitiveBlocksForRetry(body)
-									retryReq2, buildErr2 := s.buildUpstreamRequest(ctx, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+									retryCtx2, releaseRetryCtx2 := detachStreamUpstreamContext(ctx, reqStream)
+									retryReq2, buildErr2 := s.buildUpstreamRequest(retryCtx2, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+									releaseRetryCtx2()
 									if buildErr2 == nil {
 										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 										if retryErr2 == nil {
@@ -4226,7 +4278,9 @@ REDACTED
 					rectifiedBody, applied := RectifyThinkingBudget(body)
 					if applied && time.Since(retryStart) < maxRetryElapsed {
 						logger.LegacyPrintf("service.gateway", "Account %d: detected budget_tokens constraint error, retrying with rectified budget (budget_tokens=%d, max_tokens=%d)", account.ID, BudgetRectifyBudgetTokens, BudgetRectifyMaxTokens)
-						budgetRetryReq, buildErr := s.buildUpstreamRequest(ctx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+						budgetRetryCtx, releaseBudgetRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
+						budgetRetryReq, buildErr := s.buildUpstreamRequest(budgetRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+						releaseBudgetRetryCtx()
 						if buildErr == nil {
 							budgetRetryResp, retryErr := s.httpUpstream.DoWithTLS(budgetRetryReq, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 							if retryErr == nil {
@@ -4498,7 +4552,9 @@ REDACTED
 	var resp *http.Response
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
-		upstreamReq, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(ctx, c, account, body, token)
+		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
+		upstreamReq, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, body, token)
+		releaseUpstreamCtx()
 		if err != nil {
 			return nil, err
 	REDACTED
@@ -4774,6 +4830,7 @@ REDACTED
 	usage := &ClaudeUsage{REDACTED
 	var firstTokenMs *int
 	clientDisconnected := false
+	sawTerminalEvent := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -4836,17 +4893,20 @@ REDACTED
 					// 兜底补刷，确保最后一个未以空行结尾的事件也能及时送达客户端。
 					flusher.Flush()
 			REDACTED
+				if !sawTerminalEvent {
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnectedREDACTED, fmt.Errorf("stream usage incomplete: missing terminal event")
+			REDACTED
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnectedREDACTED, nil
 		REDACTED
 			if ev.err != nil {
+				if sawTerminalEvent {
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnectedREDACTED, nil
+			REDACTED
 				if clientDisconnected {
-					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Upstream read error after client disconnect: account=%d err=%v", account.ID, ev.err)
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, fmt.Errorf("stream usage incomplete after disconnect: %w", ev.err)
 			REDACTED
 				if errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
-					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] 流读取被取消: account=%d request_id=%s err=%v ctx_err=%v",
-						account.ID, resp.Header.Get("x-request-id"), ev.err, ctx.Err())
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, fmt.Errorf("stream usage incomplete: %w", ev.err)
 			REDACTED
 				if errors.Is(ev.err, bufio.ErrTooLong) {
 					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
@@ -4858,11 +4918,19 @@ REDACTED
 			line := ev.line
 			if data, ok := extractAnthropicSSEDataLine(line); ok {
 				trimmed := strings.TrimSpace(data)
+				if anthropicStreamEventIsTerminal("", trimmed) {
+					sawTerminalEvent = true
+			REDACTED
 				if firstTokenMs == nil && trimmed != "" && trimmed != "[DONE]" {
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 			REDACTED
 				s.parseSSEUsagePassthrough(data, usage)
+		REDACTED else {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "event:") && anthropicStreamEventIsTerminal(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "") {
+					sawTerminalEvent = true
+			REDACTED
 		REDACTED
 
 			if !clientDisconnected {
@@ -4884,8 +4952,7 @@ REDACTED
 				continue
 		REDACTED
 			if clientDisconnected {
-				logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Upstream timeout after client disconnect: account=%d model=%s", account.ID, model)
-				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, fmt.Errorf("stream usage incomplete after timeout")
 		REDACTED
 			logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Stream data interval timeout: account=%d model=%s interval=%s", account.ID, model, streamInterval)
 			if s.rateLimitService != nil {
@@ -5066,6 +5133,366 @@ REDACTED
 	if v := strings.TrimSpace(src.Get("x-request-id")); v != "" {
 		dst.Set("x-request-id", v)
 REDACTED
+REDACTED
+
+// forwardBedrock 转发请求到 AWS Bedrock
+func (s *GatewayService) forwardBedrock(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	parsed *ParsedRequest,
+	startTime time.Time,
+) (*ForwardResult, error) {
+	reqModel := parsed.Model
+	reqStream := parsed.Stream
+	body := parsed.Body
+
+	region := bedrockRuntimeRegion(account)
+	mappedModel, ok := ResolveBedrockModelID(account, reqModel)
+	if !ok {
+		return nil, fmt.Errorf("unsupported bedrock model: %s", reqModel)
+REDACTED
+	if mappedModel != reqModel {
+		logger.LegacyPrintf("service.gateway", "[Bedrock] Model mapping: %s -> %s (account: %s)", reqModel, mappedModel, account.Name)
+REDACTED
+
+	betaHeader := ""
+	if c != nil && c.Request != nil {
+		betaHeader = c.GetHeader("anthropic-beta")
+REDACTED
+
+	// 准备请求体（注入 anthropic_version/anthropic_beta，移除 Bedrock 不支持的字段，清理 cache_control）
+	betaTokens, err := s.resolveBedrockBetaTokensForRequest(ctx, account, betaHeader, body, mappedModel)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	bedrockBody, err := PrepareBedrockRequestBodyWithTokens(body, mappedModel, betaTokens)
+	if err != nil {
+		return nil, fmt.Errorf("prepare bedrock request body: %w", err)
+REDACTED
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	logger.LegacyPrintf("service.gateway", "[Bedrock] 命中 Bedrock 分支: account=%d name=%s model=%s->%s stream=%v",
+		account.ID, account.Name, reqModel, mappedModel, reqStream)
+
+	// 根据账号类型选择认证方式
+	var signer *BedrockSigner
+	var bedrockAPIKey string
+	if account.IsBedrockAPIKey() {
+		bedrockAPIKey = account.GetCredential("api_key")
+		if bedrockAPIKey == "" {
+			return nil, fmt.Errorf("api_key not found in bedrock-apikey credentials")
+	REDACTED
+REDACTED else {
+		signer, err = NewBedrockSignerFromAccount(account)
+		if err != nil {
+			return nil, fmt.Errorf("create bedrock signer: %w", err)
+	REDACTED
+REDACTED
+
+	// 执行上游请求（含重试）
+	resp, err := s.executeBedrockUpstream(ctx, c, account, bedrockBody, mappedModel, region, reqStream, signer, bedrockAPIKey, proxyURL)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	// 将 Bedrock 的 x-amzn-requestid 映射到 x-request-id，
+	// 使通用错误处理函数（handleErrorResponse、handleRetryExhaustedError）能正确提取 AWS request ID。
+	if awsReqID := resp.Header.Get("x-amzn-requestid"); awsReqID != "" && resp.Header.Get("x-request-id") == "" {
+		resp.Header.Set("x-request-id", awsReqID)
+REDACTED
+
+	// 错误/failover 处理
+	if resp.StatusCode >= 400 {
+		return s.handleBedrockUpstreamErrors(ctx, resp, c, account)
+REDACTED
+
+	// 响应处理
+	var usage *ClaudeUsage
+	var firstTokenMs *int
+	var clientDisconnect bool
+	if reqStream {
+		streamResult, err := s.handleBedrockStreamingResponse(ctx, resp, c, account, startTime, reqModel)
+		if err != nil {
+			return nil, err
+	REDACTED
+		usage = streamResult.usage
+		firstTokenMs = streamResult.firstTokenMs
+		clientDisconnect = streamResult.clientDisconnect
+REDACTED else {
+		usage, err = s.handleBedrockNonStreamingResponse(ctx, resp, c, account)
+		if err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+	if usage == nil {
+		usage = &ClaudeUsage{REDACTED
+REDACTED
+
+	return &ForwardResult{
+		RequestID:        resp.Header.Get("x-amzn-requestid"),
+		Usage:            *usage,
+		Model:            reqModel,
+		Stream:           reqStream,
+		Duration:         time.Since(startTime),
+		FirstTokenMs:     firstTokenMs,
+		ClientDisconnect: clientDisconnect,
+REDACTED, nil
+REDACTED
+
+// executeBedrockUpstream 执行 Bedrock 上游请求（含重试逻辑）
+func (s *GatewayService) executeBedrockUpstream(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	modelID string,
+	region string,
+	stream bool,
+	signer *BedrockSigner,
+	apiKey string,
+	proxyURL string,
+) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+	retryStart := time.Now()
+	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
+		var upstreamReq *http.Request
+		if account.IsBedrockAPIKey() {
+			upstreamReq, err = s.buildUpstreamRequestBedrockAPIKey(ctx, body, modelID, region, stream, apiKey)
+	REDACTED else {
+			upstreamReq, err = s.buildUpstreamRequestBedrock(ctx, body, modelID, region, stream, signer)
+	REDACTED
+		if err != nil {
+			return nil, err
+	REDACTED
+
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, false)
+		if err != nil {
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+		REDACTED
+			safeErr := sanitizeUpstreamErrorMessage(err.Error())
+			setOpsUpstreamError(c, 0, safeErr, "")
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: 0,
+				Kind:               "request_error",
+				Message:            safeErr,
+		REDACTED)
+			c.JSON(http.StatusBadGateway, gin.H{
+				"type": "error",
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": "Upstream request failed",
+			REDACTED,
+		REDACTED)
+			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+	REDACTED
+
+		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
+			if attempt < maxRetryAttempts {
+				elapsed := time.Since(retryStart)
+				if elapsed >= maxRetryElapsed {
+					break
+			REDACTED
+
+				delay := retryBackoffDelay(attempt)
+				remaining := maxRetryElapsed - elapsed
+				if delay > remaining {
+					delay = remaining
+			REDACTED
+				if delay <= 0 {
+					break
+			REDACTED
+
+				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+				_ = resp.Body.Close()
+				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+					Platform:           account.Platform,
+					AccountID:          account.ID,
+					AccountName:        account.Name,
+					UpstreamStatusCode: resp.StatusCode,
+					Kind:               "retry",
+					Message:            extractUpstreamErrorMessage(respBody),
+					Detail: func() string {
+						if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+							return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+					REDACTED
+						return ""
+				REDACTED(),
+			REDACTED)
+				logger.LegacyPrintf("service.gateway", "[Bedrock] account %d: upstream error %d, retry %d/%d after %v",
+					account.ID, resp.StatusCode, attempt, maxRetryAttempts, delay)
+				if err := sleepWithContext(ctx, delay); err != nil {
+					return nil, err
+			REDACTED
+				continue
+		REDACTED
+			break
+	REDACTED
+
+		break
+REDACTED
+	if resp == nil || resp.Body == nil {
+		return nil, errors.New("upstream request failed: empty response")
+REDACTED
+	return resp, nil
+REDACTED
+
+// handleBedrockUpstreamErrors 处理 Bedrock 上游 4xx/5xx 错误（failover + 错误响应）
+func (s *GatewayService) handleBedrockUpstreamErrors(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+) (*ForwardResult, error) {
+	// retry exhausted + failover
+	if s.shouldRetryUpstreamError(account, resp.StatusCode) {
+		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			_ = resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
+			logger.LegacyPrintf("service.gateway", "[Bedrock] Upstream error (retry exhausted, failover): Account=%d(%s) Status=%d Body=%s",
+				account.ID, account.Name, resp.StatusCode, truncateString(string(respBody), 1000))
+
+			s.handleRetryExhaustedSideEffects(ctx, resp, account)
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				Kind:               "retry_exhausted_failover",
+				Message:            extractUpstreamErrorMessage(respBody),
+		REDACTED)
+			return nil, &UpstreamFailoverError{
+				StatusCode:   resp.StatusCode,
+				ResponseBody: respBody,
+		REDACTED
+	REDACTED
+		return s.handleRetryExhaustedError(ctx, resp, c, account)
+REDACTED
+
+	// non-retryable failover
+	if s.shouldFailoverUpstreamError(resp.StatusCode) {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
+		s.handleFailoverSideEffects(ctx, resp, account)
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: resp.StatusCode,
+			Kind:               "failover",
+			Message:            extractUpstreamErrorMessage(respBody),
+	REDACTED)
+		return nil, &UpstreamFailoverError{
+			StatusCode:   resp.StatusCode,
+			ResponseBody: respBody,
+	REDACTED
+REDACTED
+
+	// other errors
+	return s.handleErrorResponse(ctx, resp, c, account)
+REDACTED
+
+// buildUpstreamRequestBedrock 构建 Bedrock 上游请求
+func (s *GatewayService) buildUpstreamRequestBedrock(
+	ctx context.Context,
+	body []byte,
+	modelID string,
+	region string,
+	stream bool,
+	signer *BedrockSigner,
+) (*http.Request, error) {
+	targetURL := BuildBedrockURL(region, modelID, stream)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+REDACTED
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	// SigV4 签名
+	if err := signer.SignRequest(ctx, req, body); err != nil {
+		return nil, fmt.Errorf("sign bedrock request: %w", err)
+REDACTED
+
+	return req, nil
+REDACTED
+
+// buildUpstreamRequestBedrockAPIKey 构建 Bedrock API Key (Bearer Token) 上游请求
+func (s *GatewayService) buildUpstreamRequestBedrockAPIKey(
+	ctx context.Context,
+	body []byte,
+	modelID string,
+	region string,
+	stream bool,
+	apiKey string,
+) (*http.Request, error) {
+	targetURL := BuildBedrockURL(region, modelID, stream)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+REDACTED
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	return req, nil
+REDACTED
+
+// handleBedrockNonStreamingResponse 处理 Bedrock 非流式响应
+// Bedrock InvokeModel 非流式响应的 body 格式与 Claude API 兼容
+func (s *GatewayService) handleBedrockNonStreamingResponse(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+) (*ClaudeUsage, error) {
+	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
+	body, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
+	if err != nil {
+		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
+			c.JSON(http.StatusBadGateway, gin.H{
+				"type": "error",
+				"error": gin.H{
+					"type":    "upstream_error",
+					"message": "Upstream response too large",
+			REDACTED,
+		REDACTED)
+	REDACTED
+		return nil, err
+REDACTED
+
+	// 转换 Bedrock 特有的 amazon-bedrock-invocationMetrics 为标准 Anthropic usage 格式
+	// 并移除该字段避免透传给客户端
+	body = transformBedrockInvocationMetrics(body)
+
+	usage := parseClaudeUsageFromResponseBody(body)
+
+	c.Header("Content-Type", "application/json")
+	if v := resp.Header.Get("x-amzn-requestid"); v != "" {
+		c.Header("x-request-id", v)
+REDACTED
+	c.Data(resp.StatusCode, "application/json", body)
+	return usage, nil
 REDACTED
 
 func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, reqStream bool, mimicClaudeCode bool) (*http.Request, error) {
@@ -5479,6 +5906,76 @@ REDACTED
 	REDACTED
 REDACTED
 	return false
+REDACTED
+
+func filterBetaTokens(tokens []string, filterSet map[string]struct{REDACTED) []string {
+	if len(tokens) == 0 || len(filterSet) == 0 {
+		return tokens
+REDACTED
+	kept := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		if _, filtered := filterSet[token]; !filtered {
+			kept = append(kept, token)
+	REDACTED
+REDACTED
+	return kept
+REDACTED
+
+func (s *GatewayService) resolveBedrockBetaTokensForRequest(
+	ctx context.Context,
+	account *Account,
+	betaHeader string,
+	body []byte,
+	modelID string,
+) ([]string, error) {
+	// 1. 对原始 header 中的 beta token 做 block 检查（快速失败）
+	policy := s.evaluateBetaPolicy(ctx, betaHeader, account)
+	if policy.blockErr != nil {
+		return nil, policy.blockErr
+REDACTED
+
+	// 2. 解析 header + body 自动注入 + Bedrock 转换/过滤
+	betaTokens := ResolveBedrockBetaTokens(betaHeader, body, modelID)
+
+	// 3. 对最终 token 列表再做 block 检查，捕获通过 body 自动注入绕过 header block 的情况。
+	//    例如：管理员 block 了 interleaved-thinking，客户端不在 header 中带该 token，
+	//    但请求体中包含 thinking 字段 → autoInjectBedrockBetaTokens 会自动补齐 →
+	//    如果不做此检查，block 规则会被绕过。
+	if blockErr := s.checkBetaPolicyBlockForTokens(ctx, betaTokens, account); blockErr != nil {
+		return nil, blockErr
+REDACTED
+
+	return filterBetaTokens(betaTokens, policy.filterSet), nil
+REDACTED
+
+// checkBetaPolicyBlockForTokens 检查 token 列表中是否有被管理员 block 规则命中的 token。
+// 用于补充 evaluateBetaPolicy 对 header 的检查，覆盖 body 自动注入的 token。
+func (s *GatewayService) checkBetaPolicyBlockForTokens(ctx context.Context, tokens []string, account *Account) *BetaBlockedError {
+	if s.settingService == nil || len(tokens) == 0 {
+		return nil
+REDACTED
+	settings, err := s.settingService.GetBetaPolicySettings(ctx)
+	if err != nil || settings == nil {
+		return nil
+REDACTED
+	isOAuth := account.IsOAuth()
+	tokenSet := buildBetaTokenSet(tokens)
+	for _, rule := range settings.Rules {
+		if rule.Action != BetaPolicyActionBlock {
+			continue
+	REDACTED
+		if !betaPolicyScopeMatches(rule.Scope, isOAuth) {
+			continue
+	REDACTED
+		if _, present := tokenSet[rule.BetaToken]; present {
+			msg := rule.ErrorMessage
+			if msg == "" {
+				msg = "beta feature " + rule.BetaToken + " is not allowed"
+		REDACTED
+			return &BetaBlockedError{Message: msgREDACTED
+	REDACTED
+REDACTED
+	return nil
 REDACTED
 
 func buildBetaTokenSet(tokens []string) map[string]struct{REDACTED {
@@ -6050,6 +6547,7 @@ REDACTED
 
 	needModelReplace := originalModel != mappedModel
 	clientDisconnected := false // 客户端断开标志，断开后继续读取上游以获取完整usage
+	sawTerminalEvent := false
 
 	pendingEventLines := make([]string, 0, 4)
 
@@ -6080,6 +6578,7 @@ REDACTED
 	REDACTED
 
 		if dataLine == "[DONE]" {
+			sawTerminalEvent = true
 			block := ""
 			if eventName != "" {
 				block = "event: " + eventName + "\n"
@@ -6146,6 +6645,9 @@ REDACTED
 	REDACTED
 
 		usagePatch := s.extractSSEUsagePatch(event)
+		if anthropicStreamEventIsTerminal(eventName, dataLine) {
+			sawTerminalEvent = true
+	REDACTED
 		if !eventChanged {
 			block := ""
 			if eventName != "" {
@@ -6179,18 +6681,22 @@ REDACTED
 		case ev, ok := <-events:
 			if !ok {
 				// 上游完成，返回结果
+				if !sawTerminalEvent {
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnectedREDACTED, fmt.Errorf("stream usage incomplete: missing terminal event")
+			REDACTED
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnectedREDACTED, nil
 		REDACTED
 			if ev.err != nil {
+				if sawTerminalEvent {
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnectedREDACTED, nil
+			REDACTED
 				// 检测 context 取消（客户端断开会导致 context 取消，进而影响上游读取）
 				if errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
-					logger.LegacyPrintf("service.gateway", "Context canceled during streaming, returning collected usage")
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, fmt.Errorf("stream usage incomplete: %w", ev.err)
 			REDACTED
 				// 客户端已通过写入失败检测到断开，上游也出错了，返回已收集的 usage
 				if clientDisconnected {
-					logger.LegacyPrintf("service.gateway", "Upstream read error after client disconnect: %v, returning collected usage", ev.err)
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, fmt.Errorf("stream usage incomplete after disconnect: %w", ev.err)
 			REDACTED
 				// 客户端未断开，正常的错误处理
 				if errors.Is(ev.err, bufio.ErrTooLong) {
@@ -6249,9 +6755,7 @@ REDACTED
 				continue
 		REDACTED
 			if clientDisconnected {
-				// 客户端已断开，上游也超时了，返回已收集的 usage
-				logger.LegacyPrintf("service.gateway", "Upstream timeout after client disconnect, returning collected usage")
-				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, nil
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: trueREDACTED, fmt.Errorf("stream usage incomplete after timeout")
 		REDACTED
 			logger.LegacyPrintf("service.gateway", "Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
 			// 处理流超时，可能标记账户为临时不可调度或错误状态
@@ -6613,21 +7117,30 @@ REDACTED
 
 // RecordUsageInput 记录使用量的输入参数
 type RecordUsageInput struct {
-	Result            *ForwardResult
-	APIKey            *APIKey
-	User              *User
-	Account           *Account
-	Subscription      *UserSubscription  // 可选：订阅信息
-	UserAgent         string             // 请求的 User-Agent
-	IPAddress         string             // 请求的客户端 IP 地址
-	ForceCacheBilling bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
-	APIKeyService     APIKeyQuotaUpdater // 可选：用于更新API Key配额
+	Result             *ForwardResult
+	APIKey             *APIKey
+	User               *User
+	Account            *Account
+	Subscription       *UserSubscription  // 可选：订阅信息
+	UserAgent          string             // 请求的 User-Agent
+	IPAddress          string             // 请求的客户端 IP 地址
+	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
+	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
+	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
 REDACTED
 
 // APIKeyQuotaUpdater defines the interface for updating API Key quota and rate limit usage
 type APIKeyQuotaUpdater interface {
 	UpdateQuotaUsed(ctx context.Context, apiKeyID int64, cost float64) error
 	UpdateRateLimitUsage(ctx context.Context, apiKeyID int64, cost float64) error
+REDACTED
+
+type apiKeyAuthCacheInvalidator interface {
+	InvalidateAuthCacheByKey(ctx context.Context, key string)
+REDACTED
+
+type usageLogBestEffortWriter interface {
+	CreateBestEffort(ctx context.Context, log *UsageLog) error
 REDACTED
 
 // postUsageBillingParams 统一扣费所需的参数
@@ -6637,6 +7150,7 @@ type postUsageBillingParams struct {
 	APIKey                *APIKey
 	Account               *Account
 	Subscription          *UserSubscription
+	RequestPayloadHash    string
 	IsSubscriptionBill    bool
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
@@ -6648,19 +7162,22 @@ REDACTED
 //   - API Key 限速用量更新
 //   - 账号配额用量更新（账号口径：TotalCost × 账号计费倍率）
 func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps) {
+	billingCtx, cancel := detachedBillingContext(ctx)
+	defer cancel()
+
 	cost := p.Cost
 
 	// 1. 订阅 / 余额扣费
 	if p.IsSubscriptionBill {
 		if cost.TotalCost > 0 {
-			if err := deps.userSubRepo.IncrementUsage(ctx, p.Subscription.ID, cost.TotalCost); err != nil {
+			if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.TotalCost); err != nil {
 				slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
 		REDACTED
 			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, cost.TotalCost)
 	REDACTED
 REDACTED else {
 		if cost.ActualCost > 0 {
-			if err := deps.userRepo.DeductBalance(ctx, p.User.ID, cost.ActualCost); err != nil {
+			if err := deps.userRepo.DeductBalance(billingCtx, p.User.ID, cost.ActualCost); err != nil {
 				slog.Error("deduct balance failed", "user_id", p.User.ID, "error", err)
 		REDACTED
 			deps.billingCacheService.QueueDeductBalance(p.User.ID, cost.ActualCost)
@@ -6669,29 +7186,185 @@ REDACTED
 
 	// 2. API Key 配额
 	if cost.ActualCost > 0 && p.APIKey.Quota > 0 && p.APIKeyService != nil {
-		if err := p.APIKeyService.UpdateQuotaUsed(ctx, p.APIKey.ID, cost.ActualCost); err != nil {
+		if err := p.APIKeyService.UpdateQuotaUsed(billingCtx, p.APIKey.ID, cost.ActualCost); err != nil {
 			slog.Error("update api key quota failed", "api_key_id", p.APIKey.ID, "error", err)
 	REDACTED
 REDACTED
 
 	// 3. API Key 限速用量
 	if cost.ActualCost > 0 && p.APIKey.HasRateLimits() && p.APIKeyService != nil {
-		if err := p.APIKeyService.UpdateRateLimitUsage(ctx, p.APIKey.ID, cost.ActualCost); err != nil {
+		if err := p.APIKeyService.UpdateRateLimitUsage(billingCtx, p.APIKey.ID, cost.ActualCost); err != nil {
 			slog.Error("update api key rate limit usage failed", "api_key_id", p.APIKey.ID, "error", err)
 	REDACTED
-		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, cost.ActualCost)
 REDACTED
 
 	// 4. 账号配额用量（账号口径：TotalCost × 账号计费倍率）
 	if cost.TotalCost > 0 && p.Account.Type == AccountTypeAPIKey && p.Account.HasAnyQuotaLimit() {
 		accountCost := cost.TotalCost * p.AccountRateMultiplier
-		if err := deps.accountRepo.IncrementQuotaUsed(ctx, p.Account.ID, accountCost); err != nil {
+		if err := deps.accountRepo.IncrementQuotaUsed(billingCtx, p.Account.ID, accountCost); err != nil {
 			slog.Error("increment account quota used failed", "account_id", p.Account.ID, "cost", accountCost, "error", err)
 	REDACTED
 REDACTED
 
-	// 5. 更新账号最近使用时间
+	finalizePostUsageBilling(p, deps)
+REDACTED
+
+func resolveUsageBillingRequestID(ctx context.Context, upstreamRequestID string) string {
+	if ctx != nil {
+		if clientRequestID, _ := ctx.Value(ctxkey.ClientRequestID).(string); strings.TrimSpace(clientRequestID) != "" {
+			return "client:" + strings.TrimSpace(clientRequestID)
+	REDACTED
+		if requestID, _ := ctx.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
+			return "local:" + strings.TrimSpace(requestID)
+	REDACTED
+REDACTED
+	if requestID := strings.TrimSpace(upstreamRequestID); requestID != "" {
+		return requestID
+REDACTED
+	return "generated:" + generateRequestID()
+REDACTED
+
+func resolveUsageBillingPayloadFingerprint(ctx context.Context, requestPayloadHash string) string {
+	if payloadHash := strings.TrimSpace(requestPayloadHash); payloadHash != "" {
+		return payloadHash
+REDACTED
+	if ctx != nil {
+		if clientRequestID, _ := ctx.Value(ctxkey.ClientRequestID).(string); strings.TrimSpace(clientRequestID) != "" {
+			return "client:" + strings.TrimSpace(clientRequestID)
+	REDACTED
+		if requestID, _ := ctx.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
+			return "local:" + strings.TrimSpace(requestID)
+	REDACTED
+REDACTED
+	return ""
+REDACTED
+
+func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsageBillingParams) *UsageBillingCommand {
+	if p == nil || p.Cost == nil || p.APIKey == nil || p.User == nil || p.Account == nil {
+		return nil
+REDACTED
+
+	cmd := &UsageBillingCommand{
+		RequestID:          requestID,
+		APIKeyID:           p.APIKey.ID,
+		UserID:             p.User.ID,
+		AccountID:          p.Account.ID,
+		AccountType:        p.Account.Type,
+		RequestPayloadHash: strings.TrimSpace(p.RequestPayloadHash),
+REDACTED
+	if usageLog != nil {
+		cmd.Model = usageLog.Model
+		cmd.BillingType = usageLog.BillingType
+		cmd.InputTokens = usageLog.InputTokens
+		cmd.OutputTokens = usageLog.OutputTokens
+		cmd.CacheCreationTokens = usageLog.CacheCreationTokens
+		cmd.CacheReadTokens = usageLog.CacheReadTokens
+		cmd.ImageCount = usageLog.ImageCount
+		if usageLog.MediaType != nil {
+			cmd.MediaType = *usageLog.MediaType
+	REDACTED
+		if usageLog.ServiceTier != nil {
+			cmd.ServiceTier = *usageLog.ServiceTier
+	REDACTED
+		if usageLog.ReasoningEffort != nil {
+			cmd.ReasoningEffort = *usageLog.ReasoningEffort
+	REDACTED
+		if usageLog.SubscriptionID != nil {
+			cmd.SubscriptionID = usageLog.SubscriptionID
+	REDACTED
+REDACTED
+
+	if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
+		cmd.SubscriptionID = &p.Subscription.ID
+		cmd.SubscriptionCost = p.Cost.TotalCost
+REDACTED else if p.Cost.ActualCost > 0 {
+		cmd.BalanceCost = p.Cost.ActualCost
+REDACTED
+
+	if p.Cost.ActualCost > 0 && p.APIKey.Quota > 0 && p.APIKeyService != nil {
+		cmd.APIKeyQuotaCost = p.Cost.ActualCost
+REDACTED
+	if p.Cost.ActualCost > 0 && p.APIKey.HasRateLimits() && p.APIKeyService != nil {
+		cmd.APIKeyRateLimitCost = p.Cost.ActualCost
+REDACTED
+	if p.Cost.TotalCost > 0 && p.Account.Type == AccountTypeAPIKey && p.Account.HasAnyQuotaLimit() {
+		cmd.AccountQuotaCost = p.Cost.TotalCost * p.AccountRateMultiplier
+REDACTED
+
+	cmd.Normalize()
+	return cmd
+REDACTED
+
+func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog, p *postUsageBillingParams, deps *billingDeps, repo UsageBillingRepository) (bool, error) {
+	if p == nil || deps == nil {
+		return false, nil
+REDACTED
+
+	cmd := buildUsageBillingCommand(requestID, usageLog, p)
+	if cmd == nil || cmd.RequestID == "" || repo == nil {
+		postUsageBilling(ctx, p, deps)
+		return true, nil
+REDACTED
+
+	billingCtx, cancel := detachedBillingContext(ctx)
+	defer cancel()
+
+	result, err := repo.Apply(billingCtx, cmd)
+	if err != nil {
+		return false, err
+REDACTED
+
+	if result == nil || !result.Applied {
+		deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
+		return false, nil
+REDACTED
+
+	if result.APIKeyQuotaExhausted {
+		if invalidator, ok := p.APIKeyService.(apiKeyAuthCacheInvalidator); ok && p.APIKey != nil && p.APIKey.Key != "" {
+			invalidator.InvalidateAuthCacheByKey(billingCtx, p.APIKey.Key)
+	REDACTED
+REDACTED
+
+	finalizePostUsageBilling(p, deps)
+	return true, nil
+REDACTED
+
+func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps) {
+	if p == nil || p.Cost == nil || deps == nil {
+		return
+REDACTED
+
+	if p.IsSubscriptionBill {
+		if p.Cost.TotalCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
+			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.TotalCost)
+	REDACTED
+REDACTED else if p.Cost.ActualCost > 0 && p.User != nil {
+		deps.billingCacheService.QueueDeductBalance(p.User.ID, p.Cost.ActualCost)
+REDACTED
+
+	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() {
+		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
+REDACTED
+
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
+REDACTED
+
+func detachedBillingContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+REDACTED
+	return context.WithTimeout(base, postUsageBillingTimeout)
+REDACTED
+
+func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Context, context.CancelFunc) {
+	if !stream {
+		return ctx, func() {REDACTED
+REDACTED
+	if ctx == nil {
+		return context.Background(), func() {REDACTED
+REDACTED
+	return context.WithoutCancel(ctx), func() {REDACTED
 REDACTED
 
 // billingDeps 扣费逻辑依赖的服务（由各 gateway service 提供）
@@ -6710,6 +7383,31 @@ func (s *GatewayService) billingDeps() *billingDeps {
 		userSubRepo:         s.userSubRepo,
 		billingCacheService: s.billingCacheService,
 		deferredService:     s.deferredService,
+REDACTED
+REDACTED
+
+func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) {
+	if repo == nil || usageLog == nil {
+		return
+REDACTED
+	usageCtx, cancel := detachedBillingContext(ctx)
+	defer cancel()
+
+	if writer, ok := repo.(usageLogBestEffortWriter); ok {
+		if err := writer.CreateBestEffort(usageCtx, usageLog); err != nil {
+			logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
+			if IsUsageLogCreateDropped(err) {
+				return
+		REDACTED
+			if _, syncErr := repo.Create(usageCtx, usageLog); syncErr != nil {
+				logger.LegacyPrintf(logKey, "Create usage log sync fallback failed: %v", syncErr)
+		REDACTED
+	REDACTED
+		return
+REDACTED
+
+	if _, err := repo.Create(usageCtx, usageLog); err != nil {
+		logger.LegacyPrintf(logKey, "Create usage log failed: %v", err)
 REDACTED
 REDACTED
 
@@ -6814,11 +7512,12 @@ REDACTED
 		mediaType = &result.MediaType
 REDACTED
 	accountRateMultiplier := account.BillingRateMultiplier()
+	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
 	usageLog := &UsageLog{
 		UserID:                user.ID,
 		APIKeyID:              apiKey.ID,
 		AccountID:             account.ID,
-		RequestID:             result.RequestID,
+		RequestID:             requestID,
 		Model:                 result.Model,
 		InputTokens:           result.Usage.InputTokens,
 		OutputTokens:          result.Usage.OutputTokens,
@@ -6863,33 +7562,32 @@ REDACTED
 		usageLog.SubscriptionID = &subscription.ID
 REDACTED
 
-	inserted, err := s.usageLogRepo.Create(ctx, usageLog)
-	if err != nil {
-		logger.LegacyPrintf("service.gateway", "Create usage log failed: %v", err)
-REDACTED
-
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
 REDACTED
 
-	shouldBill := inserted || err != nil
-
-	if shouldBill {
-		postUsageBilling(ctx, &postUsageBillingParams{
+	billingErr := func() error {
+		_, err := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
 			Cost:                  cost,
 			User:                  user,
 			APIKey:                apiKey,
 			Account:               account,
 			Subscription:          subscription,
+			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
 			IsSubscriptionBill:    isSubscriptionBilling,
 			AccountRateMultiplier: accountRateMultiplier,
 			APIKeyService:         input.APIKeyService,
-	REDACTED, s.billingDeps())
-REDACTED else {
-		s.deferredService.ScheduleLastUsedUpdate(account.ID)
+	REDACTED, s.billingDeps(), s.usageBillingRepo)
+		return err
+REDACTED()
+
+	if billingErr != nil {
+		return billingErr
 REDACTED
+	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 
 	return nil
 REDACTED
@@ -6900,13 +7598,14 @@ type RecordUsageLongContextInput struct {
 	APIKey                *APIKey
 	User                  *User
 	Account               *Account
-	Subscription          *UserSubscription // 可选：订阅信息
-	UserAgent             string            // 请求的 User-Agent
-	IPAddress             string            // 请求的客户端 IP 地址
-	LongContextThreshold  int               // 长上下文阈值（如 200000）
-	LongContextMultiplier float64           // 超出阈值部分的倍率（如 2.0）
-	ForceCacheBilling     bool              // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
-	APIKeyService         *APIKeyService    // API Key 配额服务（可选）
+	Subscription          *UserSubscription  // 可选：订阅信息
+	UserAgent             string             // 请求的 User-Agent
+	IPAddress             string             // 请求的客户端 IP 地址
+	RequestPayloadHash    string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
+	LongContextThreshold  int                // 长上下文阈值（如 200000）
+	LongContextMultiplier float64            // 超出阈值部分的倍率（如 2.0）
+	ForceCacheBilling     bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
+	APIKeyService         APIKeyQuotaUpdater // API Key 配额服务（可选）
 REDACTED
 
 // RecordUsageWithLongContext 记录使用量并扣费，支持长上下文双倍计费（用于 Gemini）
@@ -6989,11 +7688,12 @@ REDACTED
 		imageSize = &result.ImageSize
 REDACTED
 	accountRateMultiplier := account.BillingRateMultiplier()
+	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
 	usageLog := &UsageLog{
 		UserID:                user.ID,
 		APIKeyID:              apiKey.ID,
 		AccountID:             account.ID,
-		RequestID:             result.RequestID,
+		RequestID:             requestID,
 		Model:                 result.Model,
 		InputTokens:           result.Usage.InputTokens,
 		OutputTokens:          result.Usage.OutputTokens,
@@ -7037,33 +7737,32 @@ REDACTED
 		usageLog.SubscriptionID = &subscription.ID
 REDACTED
 
-	inserted, err := s.usageLogRepo.Create(ctx, usageLog)
-	if err != nil {
-		logger.LegacyPrintf("service.gateway", "Create usage log failed: %v", err)
-REDACTED
-
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil
 REDACTED
 
-	shouldBill := inserted || err != nil
-
-	if shouldBill {
-		postUsageBilling(ctx, &postUsageBillingParams{
+	billingErr := func() error {
+		_, err := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
 			Cost:                  cost,
 			User:                  user,
 			APIKey:                apiKey,
 			Account:               account,
 			Subscription:          subscription,
+			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
 			IsSubscriptionBill:    isSubscriptionBilling,
 			AccountRateMultiplier: accountRateMultiplier,
 			APIKeyService:         input.APIKeyService,
-	REDACTED, s.billingDeps())
-REDACTED else {
-		s.deferredService.ScheduleLastUsedUpdate(account.ID)
+	REDACTED, s.billingDeps(), s.usageBillingRepo)
+		return err
+REDACTED()
+
+	if billingErr != nil {
+		return billingErr
 REDACTED
+	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 
 	return nil
 REDACTED
@@ -7085,6 +7784,12 @@ REDACTED
 		REDACTED
 	REDACTED
 		return s.forwardCountTokensAnthropicAPIKeyPassthrough(ctx, c, account, passthroughBody)
+REDACTED
+
+	// Bedrock 不支持 count_tokens 端点
+	if account != nil && account.IsBedrock() {
+		s.countTokensError(c, http.StatusNotFound, "not_found_error", "count_tokens endpoint is not supported for Bedrock")
+		return nil
 REDACTED
 
 	body := parsed.Body

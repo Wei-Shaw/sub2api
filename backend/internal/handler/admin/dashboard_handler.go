@@ -466,8 +466,59 @@ type BatchUsersUsageRequest struct {
 	UserIDs []int64 `json:"user_ids" binding:"required"`
 REDACTED
 
+var dashboardUsersRankingCache = newSnapshotCache(5 * time.Minute)
 var dashboardBatchUsersUsageCache = newSnapshotCache(30 * time.Second)
 var dashboardBatchAPIKeysUsageCache = newSnapshotCache(30 * time.Second)
+
+func parseRankingLimit(raw string) int {
+	limit, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || limit <= 0 {
+		return 12
+REDACTED
+	if limit > 50 {
+		return 50
+REDACTED
+	return limit
+REDACTED
+
+// GetUserSpendingRanking handles getting user spending ranking data.
+// GET /api/v1/admin/dashboard/users-ranking
+func (h *DashboardHandler) GetUserSpendingRanking(c *gin.Context) {
+	startTime, endTime := parseTimeRange(c)
+	limit := parseRankingLimit(c.DefaultQuery("limit", "12"))
+
+	keyRaw, _ := json.Marshal(struct {
+		Start string `json:"start"`
+		End   string `json:"end"`
+		Limit int    `json:"limit"`
+REDACTED{
+		Start: startTime.UTC().Format(time.RFC3339),
+		End:   endTime.UTC().Format(time.RFC3339),
+		Limit: limit,
+REDACTED)
+	cacheKey := string(keyRaw)
+	if cached, ok := dashboardUsersRankingCache.Get(cacheKey); ok {
+		c.Header("X-Snapshot-Cache", "hit")
+		response.Success(c, cached.Payload)
+		return
+REDACTED
+
+	ranking, err := h.dashboardService.GetUserSpendingRanking(c.Request.Context(), startTime, endTime, limit)
+	if err != nil {
+		response.Error(c, 500, "Failed to get user spending ranking")
+		return
+REDACTED
+
+	payload := gin.H{
+		"ranking":           ranking.Ranking,
+		"total_actual_cost": ranking.TotalActualCost,
+		"start_date":        startTime.Format("2006-01-02"),
+		"end_date":          endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+REDACTED
+	dashboardUsersRankingCache.Set(cacheKey, payload)
+	c.Header("X-Snapshot-Cache", "miss")
+	response.Success(c, payload)
+REDACTED
 
 // GetBatchUsersUsage handles getting usage stats for multiple users
 // POST /api/v1/admin/dashboard/users-usage

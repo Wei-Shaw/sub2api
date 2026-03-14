@@ -2206,7 +2206,7 @@ REDACTED
 // newMinimalGatewayService 创建仅包含 accountRepo 的最小 GatewayService（用于测试 SelectAccountForModel）。
 func newMinimalGatewayService(accountRepo service.AccountRepository) *service.GatewayService {
 	return service.NewGatewayService(
-		accountRepo, nil, nil, nil, nil, nil, nil, nil,
+		accountRepo, nil, nil, nil, nil, nil, nil, nil, nil,
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
 REDACTED
