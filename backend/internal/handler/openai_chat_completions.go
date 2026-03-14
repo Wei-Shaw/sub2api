@@ -181,13 +181,7 @@ REDACTED
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
 
-		defaultMappedModel := ""
-		if apiKey.Group != nil {
-			defaultMappedModel = apiKey.Group.DefaultMappedModel
-	REDACTED
-		if fallbackModel := c.GetString("openai_chat_completions_fallback_model"); fallbackModel != "" {
-			defaultMappedModel = fallbackModel
-	REDACTED
+		defaultMappedModel := c.GetString("openai_chat_completions_fallback_model")
 		result, err := h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, body, promptCacheKey, defaultMappedModel)
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()

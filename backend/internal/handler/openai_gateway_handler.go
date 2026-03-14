@@ -655,14 +655,9 @@ REDACTED
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
 
-		defaultMappedModel := ""
-		if apiKey.Group != nil {
-			defaultMappedModel = apiKey.Group.DefaultMappedModel
-	REDACTED
-		// 如果使用了降级模型调度，强制使用降级模型
-		if fallbackModel := c.GetString("openai_messages_fallback_model"); fallbackModel != "" {
-			defaultMappedModel = fallbackModel
-	REDACTED
+		// 仅在调度时实际触发了降级（原模型无可用账号、改用默认模型重试成功）时，
+		// 才将降级模型传给 Forward 层做模型替换；否则保持用户请求的原始模型。
+		defaultMappedModel := c.GetString("openai_messages_fallback_model")
 		result, err := h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, body, promptCacheKey, defaultMappedModel)
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
