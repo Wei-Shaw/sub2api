@@ -656,7 +656,7 @@ REDACTED
 // IsPoolMode 检查 API Key 账号是否启用池模式。
 // 池模式下，上游错误不标记本地账号状态，而是在同一账号上重试。
 func (a *Account) IsPoolMode() bool {
-	if a.Type != AccountTypeAPIKey || a.Credentials == nil {
+	if !a.IsAPIKeyOrBedrock() || a.Credentials == nil {
 		return false
 REDACTED
 	if v, ok := a.Credentials["pool_mode"]; ok {
@@ -771,11 +771,16 @@ REDACTED
 REDACTED
 
 func (a *Account) IsBedrock() bool {
-	return a.Platform == PlatformAnthropic && (a.Type == AccountTypeBedrock || a.Type == AccountTypeBedrockAPIKey)
+	return a.Platform == PlatformAnthropic && a.Type == AccountTypeBedrock
 REDACTED
 
 func (a *Account) IsBedrockAPIKey() bool {
-	return a.Platform == PlatformAnthropic && a.Type == AccountTypeBedrockAPIKey
+	return a.IsBedrock() && a.GetCredential("auth_mode") == "apikey"
+REDACTED
+
+// IsAPIKeyOrBedrock 返回账号类型是否支持配额和池模式等特性
+func (a *Account) IsAPIKeyOrBedrock() bool {
+	return a.Type == AccountTypeAPIKey || a.Type == AccountTypeBedrock
 REDACTED
 
 func (a *Account) IsOpenAI() bool {

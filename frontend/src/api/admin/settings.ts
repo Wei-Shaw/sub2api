@@ -316,7 +316,7 @@ REDACTED
 export interface BetaPolicyRule {
   beta_token: string
   action: 'pass' | 'filter' | 'block'
-  scope: 'all' | 'oauth' | 'apikey'
+  scope: 'all' | 'oauth' | 'apikey' | 'bedrock'
   error_message?: string
 REDACTED
 

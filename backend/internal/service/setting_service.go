@@ -1278,7 +1278,7 @@ REDACTED
 		BetaPolicyActionPass: true, BetaPolicyActionFilter: true, BetaPolicyActionBlock: true,
 REDACTED
 	validScopes := map[string]bool{
-		BetaPolicyScopeAll: true, BetaPolicyScopeOAuth: true, BetaPolicyScopeAPIKey: true,
+		BetaPolicyScopeAll: true, BetaPolicyScopeOAuth: true, BetaPolicyScopeAPIKey: true, BetaPolicyScopeBedrock: true,
 REDACTED
 
 	for i, rule := range settings.Rules {
