@@ -43,12 +43,13 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestMatchWildcardMapping(t *testing.T) {
+func TestMatchWildcardMappingResult(t *testing.T) {
 	tests := []struct {
 		name           string
 		mapping        map[string]string
 		requestedModel string
 		expected       string
+		matched        bool
 REDACTED{
 		// 精确匹配优先于通配符
 		{
@@ -59,6 +60,7 @@ REDACTED{
 		REDACTED,
 			requestedModel: "claude-sonnet-4-5",
 			expected:       "claude-sonnet-4-5-exact",
+			matched:        true,
 	REDACTED,
 
 		// 最长通配符优先
@@ -71,6 +73,7 @@ REDACTED{
 		REDACTED,
 			requestedModel: "claude-sonnet-4-5",
 			expected:       "claude-sonnet-4-series",
+			matched:        true,
 	REDACTED,
 
 		// 单个通配符
@@ -81,6 +84,7 @@ REDACTED{
 		REDACTED,
 			requestedModel: "claude-opus-4-5",
 			expected:       "claude-mapped",
+			matched:        true,
 	REDACTED,
 
 		// 无匹配返回原始模型
@@ -91,6 +95,7 @@ REDACTED{
 		REDACTED,
 			requestedModel: "gemini-3-flash",
 			expected:       "gemini-3-flash",
+			matched:        false,
 	REDACTED,
 
 		// 空映射返回原始模型
@@ -99,6 +104,7 @@ REDACTED{
 			mapping:        map[string]string{REDACTED,
 			requestedModel: "claude-sonnet-4-5",
 			expected:       "claude-sonnet-4-5",
+			matched:        false,
 	REDACTED,
 
 		// Gemini 模型映射
@@ -110,14 +116,15 @@ REDACTED{
 		REDACTED,
 			requestedModel: "gemini-3-flash-preview",
 			expected:       "gemini-3-pro-high",
+			matched:        true,
 	REDACTED,
 REDACTED
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := matchWildcardMapping(tt.mapping, tt.requestedModel)
-			if result != tt.expected {
-				t.Errorf("matchWildcardMapping(%v, %q) = %q, want %q", tt.mapping, tt.requestedModel, result, tt.expected)
+			result, matched := matchWildcardMappingResult(tt.mapping, tt.requestedModel)
+			if result != tt.expected || matched != tt.matched {
+				t.Errorf("matchWildcardMappingResult(%v, %q) = (%q, %v), want (%q, %v)", tt.mapping, tt.requestedModel, result, matched, tt.expected, tt.matched)
 		REDACTED
 	REDACTED)
 REDACTED
