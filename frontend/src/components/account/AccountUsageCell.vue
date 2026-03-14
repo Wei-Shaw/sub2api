@@ -36,6 +36,10 @@
 
       <!-- Usage data -->
       <div v-else-if="usageInfo" class="space-y-1">
+        <!-- API error (degraded response) -->
+        <div v-if="usageInfo.error" class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[200px]" :title="usageInfo.error">
+          {{ usageInfo.error REDACTEDREDACTED
+        </div>
         <!-- 5h Window -->
         <UsageProgressBar
           v-if="usageInfo.five_hour"
@@ -189,8 +193,53 @@
         </span>
       </div>
 
+      <!-- Forbidden state (403) -->
+      <div v-if="isForbidden" class="space-y-1">
+        <span
+          :class="[
+            'inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
+            forbiddenBadgeClass
+          ]"
+        >
+          {{ forbiddenLabel REDACTEDREDACTED
+        </span>
+        <div v-if="validationURL" class="flex items-center gap-1">
+          <a
+            :href="validationURL"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-[10px] text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+            :title="t('admin.accounts.openVerification')"
+          >
+            {{ t('admin.accounts.openVerification') REDACTEDREDACTED
+          </a>
+          <button
+            type="button"
+            class="text-[10px] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            :title="t('admin.accounts.copyLink')"
+            @click="copyValidationURL"
+          >
+            {{ linkCopied ? t('admin.accounts.linkCopied') : t('admin.accounts.copyLink') REDACTEDREDACTED
+          </button>
+        </div>
+      </div>
+
+      <!-- Needs reauth (401) -->
+      <div v-else-if="needsReauth" class="space-y-1">
+        <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+          {{ t('admin.accounts.needsReauth') REDACTEDREDACTED
+        </span>
+      </div>
+
+      <!-- Degraded error (non-403, non-401) -->
+      <div v-else-if="usageInfo?.error" class="space-y-1">
+        <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+          {{ usageErrorLabel REDACTEDREDACTED
+        </span>
+      </div>
+
       <!-- Loading state -->
-      <div v-if="loading" class="space-y-1.5">
+      <div v-else-if="loading" class="space-y-1.5">
         <div class="flex items-center gap-1">
           <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
           <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
@@ -816,6 +865,51 @@ const hasIneligibleTiers = computed(() => {
   return Array.isArray(ineligibleTiers) && ineligibleTiers.length > 0
 REDACTED)
 
+// Antigravity 403 forbidden 状态
+const isForbidden = computed(() => !!usageInfo.value?.is_forbidden)
+const forbiddenType = computed(() => usageInfo.value?.forbidden_type || 'forbidden')
+const validationURL = computed(() => usageInfo.value?.validation_url || '')
+
+// 需要重新授权（401）
+const needsReauth = computed(() => !!usageInfo.value?.needs_reauth)
+
+// 降级错误标签（rate_limited / network_error）
+const usageErrorLabel = computed(() => {
+  const code = usageInfo.value?.error_code
+  if (code === 'rate_limited') return t('admin.accounts.rateLimited')
+  return t('admin.accounts.usageError')
+REDACTED)
+
+const forbiddenLabel = computed(() => {
+  switch (forbiddenType.value) {
+    case 'validation':
+      return t('admin.accounts.forbiddenValidation')
+    case 'violation':
+      return t('admin.accounts.forbiddenViolation')
+    default:
+      return t('admin.accounts.forbidden')
+  REDACTED
+REDACTED)
+
+const forbiddenBadgeClass = computed(() => {
+  if (forbiddenType.value === 'validation') {
+    return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
+  REDACTED
+  return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+REDACTED)
+
+const linkCopied = ref(false)
+const copyValidationURL = async () => {
+  if (!validationURL.value) return
+  try {
+    await navigator.clipboard.writeText(validationURL.value)
+    linkCopied.value = true
+    setTimeout(() => { linkCopied.value = false REDACTED, 2000)
+  REDACTED catch {
+    // fallback: ignore
+  REDACTED
+REDACTED
+
 const loadUsage = async () => {
   if (!shouldFetchUsage.value) return
 
@@ -848,18 +942,30 @@ const makeQuotaBar = (
   let resetsAt: string | null = null
   if (startKey) {
     const extra = props.account.extra as Record<string, unknown> | undefined
-    const startStr = extra?.[startKey] as string | undefined
-    if (startStr) {
-      const startDate = new Date(startStr)
-      const periodMs = startKey.includes('daily') ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000
-      resetsAt = new Date(startDate.getTime() + periodMs).toISOString()
+    const isDaily = startKey.includes('daily')
+    const mode = isDaily
+      ? (extra?.quota_daily_reset_mode as string) || 'rolling'
+      : (extra?.quota_weekly_reset_mode as string) || 'rolling'
+
+    if (mode === 'fixed') {
+      // Use pre-computed next reset time for fixed mode
+      const resetAtKey = isDaily ? 'quota_daily_reset_at' : 'quota_weekly_reset_at'
+      resetsAt = (extra?.[resetAtKey] as string) || null
+    REDACTED else {
+      // Rolling mode: compute from start + period
+      const startStr = extra?.[startKey] as string | undefined
+      if (startStr) {
+        const startDate = new Date(startStr)
+        const periodMs = isDaily ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000
+        resetsAt = new Date(startDate.getTime() + periodMs).toISOString()
+      REDACTED
     REDACTED
   REDACTED
   return { utilization, resetsAt REDACTED
 REDACTED
 
 const hasApiKeyQuota = computed(() => {
-  if (props.account.type !== 'apikey') return false
+  if (props.account.type !== 'apikey' && props.account.type !== 'bedrock') return false
   return (
     (props.account.quota_daily_limit ?? 0) > 0 ||
     (props.account.quota_weekly_limit ?? 0) > 0 ||

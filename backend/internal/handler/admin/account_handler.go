@@ -97,7 +97,7 @@ type CreateAccountRequest struct {
 	Name                    string         `json:"name" binding:"required"`
 	Notes                   *string        `json:"notes"`
 	Platform                string         `json:"platform" binding:"required"`
-	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock bedrock-apikey"`
+	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock"`
 	Credentials             map[string]any `json:"credentials" binding:"required"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -116,7 +116,7 @@ REDACTED
 type UpdateAccountRequest struct {
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
-	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock bedrock-apikey"`
+	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock"`
 	Credentials             map[string]any `json:"credentials"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -1718,13 +1718,12 @@ REDACTED
 
 	// Handle OpenAI accounts
 	if account.IsOpenAI() {
-		// For OAuth accounts: return default OpenAI models
-		if account.IsOAuth() {
+		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。
+		if account.IsOpenAIPassthroughEnabled() {
 			response.Success(c, openai.DefaultModels)
 			return
 	REDACTED
 
-		// For API Key accounts: check model_mapping
 		mapping := account.GetModelMapping()
 		if len(mapping) == 0 {
 			response.Success(c, openai.DefaultModels)

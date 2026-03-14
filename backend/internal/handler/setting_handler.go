@@ -54,6 +54,7 @@ REDACTED
 		CustomMenuItems:                  dto.ParseUserVisibleMenuItems(settings.CustomMenuItems),
 		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
 		SoraClientEnabled:                settings.SoraClientEnabled,
+		BackendModeEnabled:               settings.BackendModeEnabled,
 		Version:                          h.version,
 REDACTED)
 REDACTED

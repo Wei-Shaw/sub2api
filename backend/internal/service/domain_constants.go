@@ -29,12 +29,11 @@ const (
 
 // Account type constants
 const (
-	AccountTypeOAuth         = domain.AccountTypeOAuth         // OAuth类型账号（full scope: profile + inference）
-	AccountTypeSetupToken    = domain.AccountTypeSetupToken    // Setup Token类型账号（inference only scope）
-	AccountTypeAPIKey        = domain.AccountTypeAPIKey        // API Key类型账号
-	AccountTypeUpstream      = domain.AccountTypeUpstream      // 上游透传类型账号（通过 Base URL + API Key 连接上游）
-	AccountTypeBedrock       = domain.AccountTypeBedrock       // AWS Bedrock 类型账号（通过 SigV4 签名连接 Bedrock）
-	AccountTypeBedrockAPIKey = domain.AccountTypeBedrockAPIKey // AWS Bedrock API Key 类型账号（通过 Bearer Token 连接 Bedrock）
+	AccountTypeOAuth      = domain.AccountTypeOAuth      // OAuth类型账号（full scope: profile + inference）
+	AccountTypeSetupToken = domain.AccountTypeSetupToken // Setup Token类型账号（inference only scope）
+	AccountTypeAPIKey     = domain.AccountTypeAPIKey     // API Key类型账号
+	AccountTypeUpstream   = domain.AccountTypeUpstream   // 上游透传类型账号（通过 Base URL + API Key 连接上游）
+	AccountTypeBedrock    = domain.AccountTypeBedrock    // AWS Bedrock 类型账号（通过 SigV4 签名或 API Key 连接 Bedrock，由 credentials.auth_mode 区分）
 )
 
 // Redeem type constants
@@ -221,6 +220,9 @@ const (
 
 	// SettingKeyAllowUngroupedKeyScheduling 允许未分组 API Key 调度（默认 false：未分组 Key 返回 403）
 	SettingKeyAllowUngroupedKeyScheduling = "allow_ungrouped_key_scheduling"
+
+	// SettingKeyBackendModeEnabled Backend 模式：禁用用户注册和自助服务，仅管理员可登录
+	SettingKeyBackendModeEnabled = "backend_mode_enabled"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

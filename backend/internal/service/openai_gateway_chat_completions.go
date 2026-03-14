@@ -51,10 +51,7 @@ REDACTED
 REDACTED
 
 	// 3. Model mapping
-	mappedModel := account.GetMappedModel(originalModel)
-	if mappedModel == originalModel && defaultMappedModel != "" {
-		mappedModel = defaultMappedModel
-REDACTED
+	mappedModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	responsesReq.Model = mappedModel
 
 	logger.L().Debug("openai chat_completions: model mapping applied",

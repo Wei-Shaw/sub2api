@@ -142,6 +142,35 @@ func (s *AccountRepoSuite) TestUpdate_SyncSchedulerSnapshotOnDisabled() {
 	s.Require().Equal(service.StatusDisabled, cacheRecorder.setAccounts[0].Status)
 REDACTED
 
+func (s *AccountRepoSuite) TestUpdate_SyncSchedulerSnapshotOnCredentialsChange() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "sync-credentials-update",
+		Status:      service.StatusActive,
+		Schedulable: true,
+REDACTED
+			"model_mapping": map[string]any{
+				"gpt-5": "gpt-5.1",
+		REDACTED,
+	REDACTED,
+REDACTED)
+	cacheRecorder := &schedulerCacheRecorder{REDACTED
+	s.repo.schedulerCache = cacheRecorder
+
+	account.Credentials = map[string]any{
+		"model_mapping": map[string]any{
+			"gpt-5": "gpt-5.2",
+	REDACTED,
+REDACTED
+	err := s.repo.Update(s.ctx, account)
+	s.Require().NoError(err, "Update")
+
+	s.Require().Len(cacheRecorder.setAccounts, 1)
+	s.Require().Equal(account.ID, cacheRecorder.setAccounts[0].ID)
+	mapping, ok := cacheRecorder.setAccounts[0].Credentials["model_mapping"].(map[string]any)
+	s.Require().True(ok)
+	s.Require().Equal("gpt-5.2", mapping["gpt-5"])
+REDACTED
+
 func (s *AccountRepoSuite) TestDelete() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "to-delete"REDACTED)
 

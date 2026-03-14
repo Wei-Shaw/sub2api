@@ -2173,10 +2173,10 @@ REDACTED
 	return context.WithValue(ctx, windowCostPrefetchContextKey, costs)
 REDACTED
 
-// isAccountSchedulableForQuota 检查 API Key 账号是否在配额限制内
-// 仅适用于配置了 quota_limit 的 apikey 类型账号
+// isAccountSchedulableForQuota 检查账号是否在配额限制内
+// 适用于配置了 quota_limit 的 apikey 和 bedrock 类型账号
 func (s *GatewayService) isAccountSchedulableForQuota(account *Account) bool {
-	if account.Type != AccountTypeAPIKey {
+	if !account.IsAPIKeyOrBedrock() {
 		return true
 REDACTED
 	return !account.IsQuotaExceeded()
@@ -3532,9 +3532,7 @@ func (s *GatewayService) GetAccessToken(ctx context.Context, account *Account) (
 	REDACTED
 		return apiKey, "apikey", nil
 	case AccountTypeBedrock:
-		return "", "bedrock", nil // Bedrock 使用 SigV4 签名，不需要 token
-	case AccountTypeBedrockAPIKey:
-		return "", "bedrock-apikey", nil // Bedrock API Key 使用 Bearer Token，由 forwardBedrock 处理
+		return "", "bedrock", nil // Bedrock 使用 SigV4 签名或 API Key，由 forwardBedrock 处理
 	default:
 		return "", "", fmt.Errorf("unsupported account type: %s", account.Type)
 REDACTED
@@ -5186,7 +5184,7 @@ REDACTED
 	if account.IsBedrockAPIKey() {
 		bedrockAPIKey = account.GetCredential("api_key")
 		if bedrockAPIKey == "" {
-			return nil, fmt.Errorf("api_key not found in bedrock-apikey credentials")
+			return nil, fmt.Errorf("api_key not found in bedrock credentials")
 	REDACTED
 REDACTED else {
 		signer, err = NewBedrockSignerFromAccount(account)
@@ -5375,8 +5373,9 @@ func (s *GatewayService) handleBedrockUpstreamErrors(
 				Message:            extractUpstreamErrorMessage(respBody),
 		REDACTED)
 			return nil, &UpstreamFailoverError{
-				StatusCode:   resp.StatusCode,
-				ResponseBody: respBody,
+				StatusCode:             resp.StatusCode,
+				ResponseBody:           respBody,
+				RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
 		REDACTED
 	REDACTED
 		return s.handleRetryExhaustedError(ctx, resp, c, account)
@@ -5398,8 +5397,9 @@ REDACTED
 			Message:            extractUpstreamErrorMessage(respBody),
 	REDACTED)
 		return nil, &UpstreamFailoverError{
-			StatusCode:   resp.StatusCode,
-			ResponseBody: respBody,
+			StatusCode:             resp.StatusCode,
+			ResponseBody:           respBody,
+			RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
 	REDACTED
 REDACTED
 
@@ -5808,9 +5808,10 @@ REDACTED
 		return betaPolicyResult{REDACTED
 REDACTED
 	isOAuth := account.IsOAuth()
+	isBedrock := account.IsBedrock()
 	var result betaPolicyResult
 	for _, rule := range settings.Rules {
-		if !betaPolicyScopeMatches(rule.Scope, isOAuth) {
+		if !betaPolicyScopeMatches(rule.Scope, isOAuth, isBedrock) {
 			continue
 	REDACTED
 		switch rule.Action {
@@ -5870,14 +5871,16 @@ REDACTED
 REDACTED
 
 // betaPolicyScopeMatches checks whether a rule's scope matches the current account type.
-func betaPolicyScopeMatches(scope string, isOAuth bool) bool {
+func betaPolicyScopeMatches(scope string, isOAuth bool, isBedrock bool) bool {
 	switch scope {
 	case BetaPolicyScopeAll:
 		return true
 	case BetaPolicyScopeOAuth:
 		return isOAuth
 	case BetaPolicyScopeAPIKey:
-		return !isOAuth
+		return !isOAuth && !isBedrock
+	case BetaPolicyScopeBedrock:
+		return isBedrock
 	default:
 		return true // unknown scope → match all (fail-open)
 REDACTED
@@ -5959,12 +5962,13 @@ REDACTED
 		return nil
 REDACTED
 	isOAuth := account.IsOAuth()
+	isBedrock := account.IsBedrock()
 	tokenSet := buildBetaTokenSet(tokens)
 	for _, rule := range settings.Rules {
 		if rule.Action != BetaPolicyActionBlock {
 			continue
 	REDACTED
-		if !betaPolicyScopeMatches(rule.Scope, isOAuth) {
+		if !betaPolicyScopeMatches(rule.Scope, isOAuth, isBedrock) {
 			continue
 	REDACTED
 		if _, present := tokenSet[rule.BetaToken]; present {
@@ -7199,7 +7203,7 @@ REDACTED
 REDACTED
 
 	// 4. 账号配额用量（账号口径：TotalCost × 账号计费倍率）
-	if cost.TotalCost > 0 && p.Account.Type == AccountTypeAPIKey && p.Account.HasAnyQuotaLimit() {
+	if cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit() {
 		accountCost := cost.TotalCost * p.AccountRateMultiplier
 		if err := deps.accountRepo.IncrementQuotaUsed(billingCtx, p.Account.ID, accountCost); err != nil {
 			slog.Error("increment account quota used failed", "account_id", p.Account.ID, "cost", accountCost, "error", err)
@@ -7287,7 +7291,7 @@ REDACTED
 	if p.Cost.ActualCost > 0 && p.APIKey.HasRateLimits() && p.APIKeyService != nil {
 		cmd.APIKeyRateLimitCost = p.Cost.ActualCost
 REDACTED
-	if p.Cost.TotalCost > 0 && p.Account.Type == AccountTypeAPIKey && p.Account.HasAnyQuotaLimit() {
+	if p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit() {
 		cmd.AccountQuotaCost = p.Cost.TotalCost * p.AccountRateMultiplier
 REDACTED
 

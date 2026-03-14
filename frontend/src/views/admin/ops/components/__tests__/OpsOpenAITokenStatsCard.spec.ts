@@ -196,6 +196,23 @@ describe('OpsOpenAITokenStatsCard', () => {
     expect(wrapper.find('.empty-state').exists()).toBe(true)
   REDACTED)
 
+  it('数据表使用固定高度滚动容器，避免纵向无限增长', async () => {
+    mockGetOpenAITokenStats.mockResolvedValue(sampleResponse)
+
+    const wrapper = mount(OpsOpenAITokenStatsCard, {
+      props: { refreshToken: 0 REDACTED,
+      global: {
+        stubs: {
+          Select: SelectStub,
+          EmptyState: EmptyStateStub,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+    await flushPromises()
+
+    expect(wrapper.find('.max-h-\\[420px\\]').exists()).toBe(true)
+  REDACTED)
+
   it('接口异常时显示错误提示', async () => {
     mockGetOpenAITokenStats.mockRejectedValue(new Error('加载失败'))
 

@@ -106,6 +106,7 @@ export interface PublicSettings {
   custom_menu_items: CustomMenuItem[]
   linuxdo_oauth_enabled: boolean
   sora_client_enabled: boolean
+  backend_mode_enabled: boolean
   version: string
 REDACTED
 
@@ -531,7 +532,7 @@ REDACTED
 // ==================== Account & Proxy Types ====================
 
 export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'sora'
-export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'bedrock-apikey'
+export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
 
@@ -727,6 +728,16 @@ export interface Account {
   quota_weekly_limit?: number | null
   quota_weekly_used?: number | null
 
+  // 配额固定时间重置配置
+  quota_daily_reset_mode?: 'rolling' | 'fixed' | null
+  quota_daily_reset_hour?: number | null
+  quota_weekly_reset_mode?: 'rolling' | 'fixed' | null
+  quota_weekly_reset_day?: number | null
+  quota_weekly_reset_hour?: number | null
+  quota_reset_timezone?: string | null
+  quota_daily_reset_at?: string | null
+  quota_weekly_reset_at?: string | null
+
   // 运行时状态（仅当启用对应限制时返回）
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
@@ -769,6 +780,21 @@ export interface AccountUsageInfo {
   gemini_pro_minute?: UsageProgress | null
   gemini_flash_minute?: UsageProgress | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
+  // Antigravity 403 forbidden 状态
+  is_forbidden?: boolean
+  forbidden_reason?: string
+  forbidden_type?: string   // "validation" | "violation" | "forbidden"
+  validation_url?: string   // 验证/申诉链接
+
+  // 状态标记（后端自动推导）
+  needs_verify?: boolean    // 需要人工验证（forbidden_type=validation）
+  is_banned?: boolean       // 账号被封（forbidden_type=violation）
+  needs_reauth?: boolean    // token 失效需重新授权（401）
+
+  // 机器可读错误码：forbidden / unauthenticated / rate_limited / network_error
+  error_code?: string
+
+  error?: string            // usage 获取失败时的错误信息
 REDACTED
 
 // OpenAI Codex usage snapshot (from response headers)

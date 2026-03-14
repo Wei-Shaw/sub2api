@@ -39,6 +39,16 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅（
 - **并发控制** - 用户级和账号级并发限制
 - **速率限制** - 可配置的请求和 Token 速率限制
 - **管理后台** - Web 界面进行监控和管理
+- **外部系统集成** - 支持通过 iframe 嵌入外部系统（如支付、工单等），扩展管理后台功能
+
+## 生态项目
+
+围绕 Sub2API 的社区扩展与集成项目：
+
+| 项目 | 说明 | 功能 |
+|------|------|------|
+| [Sub2ApiPay](https://github.com/touwaeriol/sub2apipay) | 自助支付系统 | 用户自助充值、自助订阅购买；兼容易支付协议、微信官方支付、支付宝官方支付、Stripe；支持 iframe 嵌入管理后台 |
+| [sub2api-mobile](https://github.com/ckken/sub2api-mobile) | 移动端管理控制台 | 跨平台应用（iOS/Android/Web），支持用户管理、账号管理、监控看板、多后端切换；基于 Expo + React Native 构建 |
 
 ## 技术栈
 
