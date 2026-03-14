@@ -105,6 +105,7 @@ REDACTED
 	assert.Equal(t, "assistant", items[1].Role)
 	assert.Equal(t, "function_call", items[2].Type)
 	assert.Equal(t, "fc_call_1", items[2].CallID)
+	assert.Empty(t, items[2].ID)
 	assert.Equal(t, "function_call_output", items[3].Type)
 	assert.Equal(t, "fc_call_1", items[3].CallID)
 	assert.Equal(t, "Sunny, 72°F", items[3].Output)

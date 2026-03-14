@@ -277,7 +277,6 @@ REDACTED
 			CallID:    fcID,
 			Name:      b.Name,
 			Arguments: args,
-			ID:        fcID,
 	REDACTED)
 REDACTED
 

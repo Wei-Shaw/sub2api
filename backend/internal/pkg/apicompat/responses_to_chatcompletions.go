@@ -29,6 +29,7 @@ REDACTED
 REDACTED
 
 	var contentText string
+	var reasoningText string
 	var toolCalls []ChatToolCall
 
 	for _, item := range resp.Output {
@@ -51,7 +52,7 @@ REDACTED
 		case "reasoning":
 			for _, s := range item.Summary {
 				if s.Type == "summary_text" && s.Text != "" {
-					contentText += s.Text
+					reasoningText += s.Text
 			REDACTED
 		REDACTED
 		case "web_search_call":
@@ -66,6 +67,9 @@ REDACTED
 	if contentText != "" {
 		raw, _ := json.Marshal(contentText)
 		msg.Content = raw
+REDACTED
+	if reasoningText != "" {
+		msg.ReasoningContent = reasoningText
 REDACTED
 
 	finishReason := responsesStatusToChatFinishReason(resp.Status, resp.IncompleteDetails, toolCalls)
@@ -153,6 +157,8 @@ func ResponsesEventToChatChunks(evt *ResponsesStreamEvent, state *ResponsesEvent
 		return resToChatHandleFuncArgsDelta(evt, state)
 	case "response.reasoning_summary_text.delta":
 		return resToChatHandleReasoningDelta(evt, state)
+	case "response.reasoning_summary_text.done":
+		return nil
 	case "response.completed", "response.incomplete", "response.failed":
 		return resToChatHandleCompleted(evt, state)
 	default:
@@ -276,8 +282,8 @@ func resToChatHandleReasoningDelta(evt *ResponsesStreamEvent, state *ResponsesEv
 	if evt.Delta == "" {
 		return nil
 REDACTED
-	content := evt.Delta
-	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{Content: &contentREDACTED)REDACTED
+	reasoning := evt.Delta
+	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{ReasoningContent: &reasoningREDACTED)REDACTED
 REDACTED
 
 func resToChatHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventToChatState) []ChatCompletionsChunk {

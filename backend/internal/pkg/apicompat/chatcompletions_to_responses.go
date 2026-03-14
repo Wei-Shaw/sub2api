@@ -3,6 +3,7 @@ package apicompat
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // ChatCompletionsToResponses converts a Chat Completions request into a
@@ -174,8 +175,11 @@ func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 
 	// Emit assistant message with output_text if content is non-empty.
 	if len(m.Content) > 0 {
-		var s string
-		if err := json.Unmarshal(m.Content, &s); err == nil && s != "" {
+		s, err := parseAssistantContent(m.Content)
+		if err != nil {
+			return nil, err
+	REDACTED
+		if s != "" {
 			parts := []ResponsesContentPart{{Type: "output_text", Text: sREDACTEDREDACTED
 			partsJSON, err := json.Marshal(parts)
 			if err != nil {
@@ -196,11 +200,62 @@ REDACTED
 			CallID:    tc.ID,
 			Name:      tc.Function.Name,
 			Arguments: args,
-			ID:        tc.ID,
 	REDACTED)
 REDACTED
 
 	return items, nil
+REDACTED
+
+// parseAssistantContent returns assistant content as plain text.
+//
+// Supported formats:
+// - JSON string
+// - JSON array of typed parts (e.g. [{"type":"text","text":"..."REDACTED])
+//
+// For structured thinking/reasoning parts, it preserves semantics by wrapping
+// the text in explicit tags so downstream can still distinguish it from normal text.
+func parseAssistantContent(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 {
+		return "", nil
+REDACTED
+
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s, nil
+REDACTED
+
+	var parts []map[string]any
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		// Keep compatibility with prior behavior: unsupported assistant content
+		// formats are ignored instead of failing the whole request conversion.
+		return "", nil
+REDACTED
+
+	var b strings.Builder
+	for _, p := range parts {
+		typ, _ := p["type"].(string)
+		text, _ := p["text"].(string)
+		thinking, _ := p["thinking"].(string)
+
+		switch typ {
+		case "thinking", "reasoning":
+			if thinking != "" {
+				b.WriteString("<thinking>")
+				b.WriteString(thinking)
+				b.WriteString("</thinking>")
+		REDACTED else if text != "" {
+				b.WriteString("<thinking>")
+				b.WriteString(text)
+				b.WriteString("</thinking>")
+		REDACTED
+		default:
+			if text != "" {
+				b.WriteString(text)
+		REDACTED
+	REDACTED
+REDACTED
+
+	return b.String(), nil
 REDACTED
 
 // chatToolToResponses converts a tool result message (role=tool) into a
