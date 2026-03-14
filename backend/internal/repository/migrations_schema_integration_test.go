@@ -45,6 +45,20 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "usage_logs", "request_type", "smallint", 0, false)
 	requireColumn(t, tx, "usage_logs", "openai_ws_mode", "boolean", 0, false)
 
+	// usage_billing_dedup: billing idempotency narrow table
+	var usageBillingDedupRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.usage_billing_dedup')").Scan(&usageBillingDedupRegclass))
+	require.True(t, usageBillingDedupRegclass.Valid, "expected usage_billing_dedup table to exist")
+	requireColumn(t, tx, "usage_billing_dedup", "request_fingerprint", "character varying", 64, false)
+	requireIndex(t, tx, "usage_billing_dedup", "idx_usage_billing_dedup_request_api_key")
+	requireIndex(t, tx, "usage_billing_dedup", "idx_usage_billing_dedup_created_at_brin")
+
+	var usageBillingDedupArchiveRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.usage_billing_dedup_archive')").Scan(&usageBillingDedupArchiveRegclass))
+	require.True(t, usageBillingDedupArchiveRegclass.Valid, "expected usage_billing_dedup_archive table to exist")
+	requireColumn(t, tx, "usage_billing_dedup_archive", "request_fingerprint", "character varying", 64, false)
+	requireIndex(t, tx, "usage_billing_dedup_archive", "usage_billing_dedup_archive_pkey")
+
 	// settings table should exist
 	var settingsRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.settings')").Scan(&settingsRegclass))
@@ -73,6 +87,23 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 
 	// user_allowed_groups: created_at should be timestamptz
 	requireColumn(t, tx, "user_allowed_groups", "created_at", "timestamp with time zone", 0, false)
+REDACTED
+
+func requireIndex(t *testing.T, tx *sql.Tx, table, index string) {
+REDACTED
+
+	var exists bool
+	err := tx.QueryRowContext(context.Background(), `
+SELECT EXISTS (
+	SELECT 1
+	FROM pg_indexes
+	WHERE schemaname = 'public'
+	  AND tablename = $1
+	  AND indexname = $2
+)
+`, table, index).Scan(&exists)
+	require.NoError(t, err, "query pg_indexes for %s.%s", table, index)
+	require.True(t, exists, "expected index %s on %s", index, table)
 REDACTED
 
 func requireColumn(t *testing.T, tx *sql.Tx, table, column, dataType string, maxLen int, nullable bool) {

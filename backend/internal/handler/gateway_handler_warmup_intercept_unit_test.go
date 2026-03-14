@@ -139,6 +139,7 @@ REDACTED
 		nil, // accountRepo (not used: scheduler snapshot hit)
 		&fakeGroupRepo{group: groupREDACTED,
 		nil, // usageLogRepo
+		nil, // usageBillingRepo
 		nil, // userRepo
 		nil, // userSubRepo
 		nil, // userGroupRateRepo

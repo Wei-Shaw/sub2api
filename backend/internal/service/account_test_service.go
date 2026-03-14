@@ -207,14 +207,14 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		testModelID = claude.DefaultTestModel
 REDACTED
 
-	// For API Key accounts with model mapping, map the model
+	// API Key 账号测试连接时也需要应用通配符模型映射。
 	if account.Type == "apikey" {
-		mapping := account.GetModelMapping()
-		if len(mapping) > 0 {
-			if mappedModel, exists := mapping[testModelID]; exists {
-				testModelID = mappedModel
-		REDACTED
-	REDACTED
+		testModelID = account.GetMappedModel(testModelID)
+REDACTED
+
+	// Bedrock accounts use a separate test path
+	if account.IsBedrock() {
+		return s.testBedrockAccountConnection(c, ctx, account, testModelID)
 REDACTED
 
 	// Determine authentication method and API URL
@@ -310,6 +310,109 @@ REDACTED
 
 	// Process SSE stream
 	return s.processClaudeStream(c, resp.Body)
+REDACTED
+
+// testBedrockAccountConnection tests a Bedrock (SigV4 or API Key) account using non-streaming invoke
+func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string) error {
+	region := bedrockRuntimeRegion(account)
+	resolvedModelID, ok := ResolveBedrockModelID(account, testModelID)
+	if !ok {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported Bedrock model: %s", testModelID))
+REDACTED
+	testModelID = resolvedModelID
+
+	// Set SSE headers (test UI expects SSE)
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	// Create a minimal Bedrock-compatible payload (no stream, no cache_control)
+	bedrockPayload := map[string]any{
+		"anthropic_version": "bedrock-2023-05-31",
+		"messages": []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{
+						"type": "text",
+						"text": "hi",
+				REDACTED,
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		"max_tokens":  256,
+		"temperature": 1,
+REDACTED
+	bedrockBody, _ := json.Marshal(bedrockPayload)
+
+	// Use non-streaming endpoint (response is standard Claude JSON)
+	apiURL := BuildBedrockURL(region, testModelID, false)
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelIDREDACTED)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(bedrockBody))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+REDACTED
+	req.Header.Set("Content-Type", "application/json")
+
+	// Sign or set auth based on account type
+	if account.IsBedrockAPIKey() {
+		apiKey := account.GetCredential("api_key")
+		if apiKey == "" {
+			return s.sendErrorAndEnd(c, "No API key available")
+	REDACTED
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+REDACTED else {
+		signer, err := NewBedrockSignerFromAccount(account)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to create Bedrock signer: %s", err.Error()))
+	REDACTED
+		if err := signer.SignRequest(ctx, req, bedrockBody); err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to sign request: %s", err.Error()))
+	REDACTED
+REDACTED
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, false)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+REDACTED
+
+	// Bedrock non-streaming response is standard Claude JSON, extract the text
+	var result struct {
+		Content []struct {
+			Text string `json:"text"`
+	REDACTED `json:"content"`
+REDACTED
+	if err := json.Unmarshal(body, &result); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse response: %s", err.Error()))
+REDACTED
+
+	text := ""
+	if len(result.Content) > 0 {
+		text = result.Content[0].Text
+REDACTED
+	if text == "" {
+		text = "(empty response)"
+REDACTED
+
+	s.sendEvent(c, TestEvent{Type: "content", Text: textREDACTED)
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
+	return nil
 REDACTED
 
 // testOpenAIAccountConnection tests an OpenAI account's connection

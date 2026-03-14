@@ -1,0 +1,659 @@
+package service
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
+)
+
+func TestPrepareBedrockRequestBody_BasicFields(t *testing.T) {
+	input := `{"model":"claude-opus-4-6","stream":true,"max_tokens":1024,"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`
+	result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", "")
+REDACTED
+
+	// anthropic_version 应被注入
+	assert.Equal(t, "bedrock-2023-05-31", gjson.GetBytes(result, "anthropic_version").String())
+	// model 和 stream 应被移除
+	assert.False(t, gjson.GetBytes(result, "model").Exists())
+	assert.False(t, gjson.GetBytes(result, "stream").Exists())
+	// max_tokens 应保留
+	assert.Equal(t, int64(1024), gjson.GetBytes(result, "max_tokens").Int())
+REDACTED
+
+func TestPrepareBedrockRequestBody_OutputFormatInlineSchema(t *testing.T) {
+	t.Run("schema inlined into last user message array content", func(t *testing.T) {
+		input := `{"model":"claude-sonnet-4-5","output_format":{"type":"json","schema":{"name":"string"REDACTEDREDACTED,"messages":[{"role":"user","content":[{"type":"text","text":"hello"REDACTED]REDACTED]REDACTED`
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-sonnet-4-5-v1", "")
+	REDACTED
+
+		assert.False(t, gjson.GetBytes(result, "output_format").Exists())
+		// schema 应内联到最后一条 user message 的 content 数组末尾
+		contentArr := gjson.GetBytes(result, "messages.0.content").Array()
+		require.Len(t, contentArr, 2)
+		assert.Equal(t, "text", contentArr[1].Get("type").String())
+		assert.Contains(t, contentArr[1].Get("text").String(), `"name":"string"`)
+REDACTED)
+
+	t.Run("schema inlined into string content", func(t *testing.T) {
+		input := `{"model":"claude-sonnet-4-5","output_format":{"type":"json","schema":{"result":"number"REDACTEDREDACTED,"messages":[{"role":"user","content":"compute this"REDACTED]REDACTED`
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-sonnet-4-5-v1", "")
+	REDACTED
+
+		assert.False(t, gjson.GetBytes(result, "output_format").Exists())
+		contentArr := gjson.GetBytes(result, "messages.0.content").Array()
+		require.Len(t, contentArr, 2)
+		assert.Equal(t, "compute this", contentArr[0].Get("text").String())
+		assert.Contains(t, contentArr[1].Get("text").String(), `"result":"number"`)
+REDACTED)
+
+	t.Run("no schema field just removes output_format", func(t *testing.T) {
+		input := `{"model":"claude-sonnet-4-5","output_format":{"type":"json"REDACTED,"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-sonnet-4-5-v1", "")
+	REDACTED
+
+		assert.False(t, gjson.GetBytes(result, "output_format").Exists())
+REDACTED)
+
+	t.Run("no messages just removes output_format", func(t *testing.T) {
+		input := `{"model":"claude-sonnet-4-5","output_format":{"type":"json","schema":{"name":"string"REDACTEDREDACTEDREDACTED`
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-sonnet-4-5-v1", "")
+	REDACTED
+
+		assert.False(t, gjson.GetBytes(result, "output_format").Exists())
+REDACTED)
+REDACTED
+
+func TestPrepareBedrockRequestBody_RemoveOutputConfig(t *testing.T) {
+	input := `{"model":"claude-sonnet-4-5","output_config":{"max_tokens":100REDACTED,"messages":[]REDACTED`
+	result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-sonnet-4-5-v1", "")
+REDACTED
+
+	assert.False(t, gjson.GetBytes(result, "output_config").Exists())
+REDACTED
+
+func TestRemoveCustomFieldFromTools(t *testing.T) {
+	input := `{
+		"tools": [
+			{"name":"tool1","custom":{"defer_loading":trueREDACTED,"description":"desc1"REDACTED,
+			{"name":"tool2","description":"desc2"REDACTED,
+			{"name":"tool3","custom":{"defer_loading":true,"other":123REDACTED,"description":"desc3"REDACTED
+		]
+REDACTED`
+	result := removeCustomFieldFromTools([]byte(input))
+
+	tools := gjson.GetBytes(result, "tools").Array()
+	require.Len(t, tools, 3)
+	// custom 应被移除
+	assert.False(t, tools[0].Get("custom").Exists())
+	// name/description 应保留
+	assert.Equal(t, "tool1", tools[0].Get("name").String())
+	assert.Equal(t, "desc1", tools[0].Get("description").String())
+	// 没有 custom 的工具不受影响
+	assert.Equal(t, "tool2", tools[1].Get("name").String())
+	// 第三个工具的 custom 也应被移除
+	assert.False(t, tools[2].Get("custom").Exists())
+	assert.Equal(t, "tool3", tools[2].Get("name").String())
+REDACTED
+
+func TestRemoveCustomFieldFromTools_NoTools(t *testing.T) {
+	input := `{"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`
+	result := removeCustomFieldFromTools([]byte(input))
+	// 无 tools 时不改变原始数据
+	assert.JSONEq(t, input, string(result))
+REDACTED
+
+func TestSanitizeBedrockCacheControl_RemoveScope(t *testing.T) {
+	input := `{
+		"system": [{"type":"text","text":"sys","cache_control":{"type":"ephemeral","scope":"global"REDACTEDREDACTED],
+		"messages": [{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral","scope":"global"REDACTEDREDACTED]REDACTED]
+REDACTED`
+	result := sanitizeBedrockCacheControl([]byte(input), "us.anthropic.claude-opus-4-6-v1")
+
+	// scope 应被移除
+	assert.False(t, gjson.GetBytes(result, "system.0.cache_control.scope").Exists())
+	assert.False(t, gjson.GetBytes(result, "messages.0.content.0.cache_control.scope").Exists())
+	// type 应保留
+	assert.Equal(t, "ephemeral", gjson.GetBytes(result, "system.0.cache_control.type").String())
+	assert.Equal(t, "ephemeral", gjson.GetBytes(result, "messages.0.content.0.cache_control.type").String())
+REDACTED
+
+func TestSanitizeBedrockCacheControl_TTL_OldModel(t *testing.T) {
+	input := `{
+		"system": [{"type":"text","text":"sys","cache_control":{"type":"ephemeral","ttl":"5m"REDACTEDREDACTED]
+REDACTED`
+	// 旧模型（Claude 3.5）不支持 ttl
+	result := sanitizeBedrockCacheControl([]byte(input), "anthropic.claude-3-5-sonnet-20241022-v2:0")
+
+	assert.False(t, gjson.GetBytes(result, "system.0.cache_control.ttl").Exists())
+	assert.Equal(t, "ephemeral", gjson.GetBytes(result, "system.0.cache_control.type").String())
+REDACTED
+
+func TestSanitizeBedrockCacheControl_TTL_Claude45_Supported(t *testing.T) {
+	input := `{
+		"system": [{"type":"text","text":"sys","cache_control":{"type":"ephemeral","ttl":"5m"REDACTEDREDACTED]
+REDACTED`
+	// Claude 4.5+ 支持 "5m" 和 "1h"
+	result := sanitizeBedrockCacheControl([]byte(input), "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
+
+	assert.True(t, gjson.GetBytes(result, "system.0.cache_control.ttl").Exists())
+	assert.Equal(t, "5m", gjson.GetBytes(result, "system.0.cache_control.ttl").String())
+REDACTED
+
+func TestSanitizeBedrockCacheControl_TTL_Claude45_UnsupportedValue(t *testing.T) {
+	input := `{
+		"system": [{"type":"text","text":"sys","cache_control":{"type":"ephemeral","ttl":"10m"REDACTEDREDACTED]
+REDACTED`
+	// Claude 4.5 不支持 "10m"
+	result := sanitizeBedrockCacheControl([]byte(input), "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
+
+	assert.False(t, gjson.GetBytes(result, "system.0.cache_control.ttl").Exists())
+REDACTED
+
+func TestSanitizeBedrockCacheControl_TTL_Claude46(t *testing.T) {
+	input := `{
+		"messages": [{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral","ttl":"1h"REDACTEDREDACTED]REDACTED]
+REDACTED`
+	result := sanitizeBedrockCacheControl([]byte(input), "us.anthropic.claude-opus-4-6-v1")
+
+	assert.True(t, gjson.GetBytes(result, "messages.0.content.0.cache_control.ttl").Exists())
+	assert.Equal(t, "1h", gjson.GetBytes(result, "messages.0.content.0.cache_control.ttl").String())
+REDACTED
+
+func TestSanitizeBedrockCacheControl_NoCacheControl(t *testing.T) {
+	input := `{"system":[{"type":"text","text":"sys"REDACTED],"messages":[{"role":"user","content":[{"type":"text","text":"hi"REDACTED]REDACTED]REDACTED`
+	result := sanitizeBedrockCacheControl([]byte(input), "us.anthropic.claude-opus-4-6-v1")
+	// 无 cache_control 时不改变原始数据
+	assert.JSONEq(t, input, string(result))
+REDACTED
+
+func TestIsBedrockClaude45OrNewer(t *testing.T) {
+	tests := []struct {
+		modelID string
+		expect  bool
+REDACTED{
+		{"us.anthropic.claude-opus-4-6-v1", trueREDACTED,
+		{"us.anthropic.claude-sonnet-4-6", trueREDACTED,
+		{"us.anthropic.claude-sonnet-4-5-20250929-v1:0", trueREDACTED,
+		{"us.anthropic.claude-opus-4-5-20251101-v1:0", trueREDACTED,
+		{"us.anthropic.REDACTED-v1:0", trueREDACTED,
+		{"anthropic.claude-3-5-sonnet-20241022-v2:0", falseREDACTED,
+		{"anthropic.claude-3-opus-20240229-v1:0", falseREDACTED,
+		{"anthropic.claude-3-haiku-20240307-v1:0", falseREDACTED,
+		// 未来版本应自动支持
+		{"us.anthropic.claude-sonnet-5-0-v1", trueREDACTED,
+		{"us.anthropic.claude-opus-4-7-v1", trueREDACTED,
+		// 旧版本
+		{"anthropic.claude-opus-4-1-v1", falseREDACTED,
+		{"anthropic.claude-sonnet-4-0-v1", falseREDACTED,
+		// 非 Claude 模型
+		{"amazon.nova-pro-v1", falseREDACTED,
+		{"meta.llama3-70b", falseREDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.modelID, func(t *testing.T) {
+			assert.Equal(t, tt.expect, isBedrockClaude45OrNewer(tt.modelID))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestPrepareBedrockRequestBody_FullIntegration(t *testing.T) {
+	// 模拟一个完整的 Claude Code 请求
+	input := `{
+		"model": "claude-opus-4-6",
+		"stream": true,
+		"max_tokens": 16384,
+		"output_format": {"type": "json", "schema": {"result": "string"REDACTEDREDACTED,
+		"output_config": {"max_tokens": 100REDACTED,
+		"system": [{"type": "text", "text": "You are helpful", "cache_control": {"type": "ephemeral", "scope": "global", "ttl": "5m"REDACTEDREDACTED],
+		"messages": [
+			{"role": "user", "content": [{"type": "text", "text": "hello", "cache_control": {"type": "ephemeral", "ttl": "1h"REDACTEDREDACTED]REDACTED
+		],
+		"tools": [
+			{"name": "bash", "description": "Run bash", "custom": {"defer_loading": trueREDACTED, "input_schema": {"type": "object"REDACTEDREDACTED,
+			{"name": "read", "description": "Read file", "input_schema": {"type": "object"REDACTEDREDACTED
+		]
+REDACTED`
+
+	betaHeader := "REDACTED, context-1m-2025-08-07, compact-2026-01-12"
+	result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", betaHeader)
+REDACTED
+
+	// 基本字段
+	assert.Equal(t, "bedrock-2023-05-31", gjson.GetBytes(result, "anthropic_version").String())
+	assert.False(t, gjson.GetBytes(result, "model").Exists())
+	assert.False(t, gjson.GetBytes(result, "stream").Exists())
+	assert.Equal(t, int64(16384), gjson.GetBytes(result, "max_tokens").Int())
+
+	// anthropic_beta 应包含所有 beta tokens
+	betaArr := gjson.GetBytes(result, "anthropic_beta").Array()
+	require.Len(t, betaArr, 3)
+	assert.Equal(t, "REDACTED", betaArr[0].String())
+	assert.Equal(t, "context-1m-2025-08-07", betaArr[1].String())
+	assert.Equal(t, "compact-2026-01-12", betaArr[2].String())
+
+	// output_format 应被移除，schema 内联到最后一条 user message
+	assert.False(t, gjson.GetBytes(result, "output_format").Exists())
+	assert.False(t, gjson.GetBytes(result, "output_config").Exists())
+	// content 数组：原始 text block + 内联 schema block
+	contentArr := gjson.GetBytes(result, "messages.0.content").Array()
+	require.Len(t, contentArr, 2)
+	assert.Equal(t, "hello", contentArr[0].Get("text").String())
+	assert.Contains(t, contentArr[1].Get("text").String(), `"result":"string"`)
+
+	// tools 中的 custom 应被移除
+	assert.False(t, gjson.GetBytes(result, "tools.0.custom").Exists())
+	assert.Equal(t, "bash", gjson.GetBytes(result, "tools.0.name").String())
+	assert.Equal(t, "read", gjson.GetBytes(result, "tools.1.name").String())
+
+	// cache_control: scope 应被移除，ttl 在 Claude 4.6 上保留合法值
+	assert.False(t, gjson.GetBytes(result, "system.0.cache_control.scope").Exists())
+	assert.Equal(t, "ephemeral", gjson.GetBytes(result, "system.0.cache_control.type").String())
+	assert.Equal(t, "5m", gjson.GetBytes(result, "system.0.cache_control.ttl").String())
+	assert.Equal(t, "1h", gjson.GetBytes(result, "messages.0.content.0.cache_control.ttl").String())
+REDACTED
+
+func TestPrepareBedrockRequestBody_BetaHeader(t *testing.T) {
+	input := `{"messages":[{"role":"user","content":"hi"REDACTED],"max_tokens":100REDACTED`
+
+	t.Run("empty beta header", func(t *testing.T) {
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", "")
+	REDACTED
+		assert.False(t, gjson.GetBytes(result, "anthropic_beta").Exists())
+REDACTED)
+
+	t.Run("single beta token", func(t *testing.T) {
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", "REDACTED")
+	REDACTED
+		arr := gjson.GetBytes(result, "anthropic_beta").Array()
+		require.Len(t, arr, 1)
+		assert.Equal(t, "REDACTED", arr[0].String())
+REDACTED)
+
+	t.Run("multiple beta tokens with spaces", func(t *testing.T) {
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", "REDACTED , context-1m-2025-08-07 ")
+	REDACTED
+		arr := gjson.GetBytes(result, "anthropic_beta").Array()
+		require.Len(t, arr, 2)
+		assert.Equal(t, "REDACTED", arr[0].String())
+		assert.Equal(t, "context-1m-2025-08-07", arr[1].String())
+REDACTED)
+
+	t.Run("json array beta header", func(t *testing.T) {
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", `["REDACTED","context-1m-2025-08-07"]`)
+	REDACTED
+		arr := gjson.GetBytes(result, "anthropic_beta").Array()
+		require.Len(t, arr, 2)
+		assert.Equal(t, "REDACTED", arr[0].String())
+		assert.Equal(t, "context-1m-2025-08-07", arr[1].String())
+REDACTED)
+REDACTED
+
+func TestParseAnthropicBetaHeader(t *testing.T) {
+	assert.Nil(t, parseAnthropicBetaHeader(""))
+	assert.Equal(t, []string{"a"REDACTED, parseAnthropicBetaHeader("a"))
+	assert.Equal(t, []string{"a", "b"REDACTED, parseAnthropicBetaHeader("a,b"))
+	assert.Equal(t, []string{"a", "b"REDACTED, parseAnthropicBetaHeader("a , b "))
+	assert.Equal(t, []string{"a", "b", "c"REDACTED, parseAnthropicBetaHeader("a,b,c"))
+	assert.Equal(t, []string{"a", "b"REDACTED, parseAnthropicBetaHeader(`["a","b"]`))
+REDACTED
+
+func TestFilterBedrockBetaTokens(t *testing.T) {
+	t.Run("supported tokens pass through", func(t *testing.T) {
+		tokens := []string{"REDACTED", "context-1m-2025-08-07", "compact-2026-01-12"REDACTED
+		result := filterBedrockBetaTokens(tokens)
+		assert.Equal(t, tokens, result)
+REDACTED)
+
+	t.Run("unsupported tokens are filtered out", func(t *testing.T) {
+		tokens := []string{"REDACTED", "output-128k-2025-02-19", "files-api-2025-04-14", "structured-outputs-2025-11-13"REDACTED
+		result := filterBedrockBetaTokens(tokens)
+		assert.Equal(t, []string{"REDACTED"REDACTED, result)
+REDACTED)
+
+	t.Run("advanced-tool-use transforms to tool-search-tool", func(t *testing.T) {
+		tokens := []string{"advanced-tool-use-2025-11-20"REDACTED
+		result := filterBedrockBetaTokens(tokens)
+		assert.Contains(t, result, "tool-search-tool-2025-10-19")
+		// tool-examples 自动关联
+		assert.Contains(t, result, "tool-examples-2025-10-29")
+REDACTED)
+
+	t.Run("tool-search-tool auto-associates tool-examples", func(t *testing.T) {
+		tokens := []string{"tool-search-tool-2025-10-19"REDACTED
+		result := filterBedrockBetaTokens(tokens)
+		assert.Contains(t, result, "tool-search-tool-2025-10-19")
+		assert.Contains(t, result, "tool-examples-2025-10-29")
+REDACTED)
+
+	t.Run("no duplication when tool-examples already present", func(t *testing.T) {
+		tokens := []string{"tool-search-tool-2025-10-19", "tool-examples-2025-10-29"REDACTED
+		result := filterBedrockBetaTokens(tokens)
+		count := 0
+		for _, t := range result {
+			if t == "tool-examples-2025-10-29" {
+				count++
+		REDACTED
+	REDACTED
+		assert.Equal(t, 1, count)
+REDACTED)
+
+	t.Run("empty input returns nil", func(t *testing.T) {
+		result := filterBedrockBetaTokens(nil)
+		assert.Nil(t, result)
+REDACTED)
+
+	t.Run("all unsupported returns nil", func(t *testing.T) {
+		result := filterBedrockBetaTokens([]string{"output-128k-2025-02-19", "effort-2025-11-24"REDACTED)
+		assert.Nil(t, result)
+REDACTED)
+
+	t.Run("duplicate tokens are deduplicated", func(t *testing.T) {
+		tokens := []string{"context-1m-2025-08-07", "context-1m-2025-08-07"REDACTED
+		result := filterBedrockBetaTokens(tokens)
+		assert.Equal(t, []string{"context-1m-2025-08-07"REDACTED, result)
+REDACTED)
+REDACTED
+
+func TestPrepareBedrockRequestBody_BetaFiltering(t *testing.T) {
+	input := `{"messages":[{"role":"user","content":"hi"REDACTED],"max_tokens":100REDACTED`
+
+	t.Run("unsupported beta tokens are filtered", func(t *testing.T) {
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1",
+			"REDACTED, output-128k-2025-02-19, files-api-2025-04-14")
+	REDACTED
+		arr := gjson.GetBytes(result, "anthropic_beta").Array()
+		require.Len(t, arr, 1)
+		assert.Equal(t, "REDACTED", arr[0].String())
+REDACTED)
+
+	t.Run("advanced-tool-use transformed in full pipeline", func(t *testing.T) {
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1",
+			"advanced-tool-use-2025-11-20")
+	REDACTED
+		arr := gjson.GetBytes(result, "anthropic_beta").Array()
+		require.Len(t, arr, 2)
+		assert.Equal(t, "tool-search-tool-2025-10-19", arr[0].String())
+		assert.Equal(t, "tool-examples-2025-10-29", arr[1].String())
+REDACTED)
+REDACTED
+
+func TestBedrockCrossRegionPrefix(t *testing.T) {
+	tests := []struct {
+		region string
+		expect string
+REDACTED{
+		// US regions
+		{"us-east-1", "us"REDACTED,
+		{"us-east-2", "us"REDACTED,
+		{"us-west-1", "us"REDACTED,
+		{"us-west-2", "us"REDACTED,
+		// GovCloud
+		{"us-gov-east-1", "us-gov"REDACTED,
+		{"us-gov-west-1", "us-gov"REDACTED,
+		// EU regions
+		{"eu-west-1", "eu"REDACTED,
+		{"eu-west-2", "eu"REDACTED,
+		{"eu-west-3", "eu"REDACTED,
+		{"eu-central-1", "eu"REDACTED,
+		{"eu-central-2", "eu"REDACTED,
+		{"eu-north-1", "eu"REDACTED,
+		{"eu-south-1", "eu"REDACTED,
+		// APAC regions
+		{"ap-northeast-1", "jp"REDACTED,
+		{"ap-northeast-2", "apac"REDACTED,
+		{"ap-southeast-1", "apac"REDACTED,
+		{"ap-southeast-2", "au"REDACTED,
+		{"ap-south-1", "apac"REDACTED,
+		// Canada / South America fallback to us
+		{"ca-central-1", "us"REDACTED,
+		{"sa-east-1", "us"REDACTED,
+		// Unknown defaults to us
+		{"me-south-1", "us"REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.region, func(t *testing.T) {
+			assert.Equal(t, tt.expect, BedrockCrossRegionPrefix(tt.region))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestResolveBedrockModelID(t *testing.T) {
+	t.Run("default alias resolves and adjusts region", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeBedrock,
+	REDACTED
+				"aws_region": "eu-west-1",
+		REDACTED,
+	REDACTED
+
+		modelID, ok := ResolveBedrockModelID(account, "claude-sonnet-4-5")
+		require.True(t, ok)
+		assert.Equal(t, "eu.anthropic.claude-sonnet-4-5-20250929-v1:0", modelID)
+REDACTED)
+
+	t.Run("custom alias mapping reuses default bedrock mapping", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeBedrock,
+	REDACTED
+				"aws_region": "ap-southeast-2",
+				"model_mapping": map[string]any{
+					"claude-*": "claude-opus-4-6",
+			REDACTED,
+		REDACTED,
+	REDACTED
+
+		modelID, ok := ResolveBedrockModelID(account, "claude-opus-4-6-thinking")
+		require.True(t, ok)
+		assert.Equal(t, "au.anthropic.claude-opus-4-6-v1", modelID)
+REDACTED)
+
+	t.Run("force global rewrites anthropic regional model id", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeBedrock,
+	REDACTED
+				"aws_region":       "us-east-1",
+				"aws_force_global": "true",
+				"model_mapping": map[string]any{
+					"claude-sonnet-4-6": "us.anthropic.claude-sonnet-4-6",
+			REDACTED,
+		REDACTED,
+	REDACTED
+
+		modelID, ok := ResolveBedrockModelID(account, "claude-sonnet-4-6")
+		require.True(t, ok)
+		assert.Equal(t, "global.anthropic.claude-sonnet-4-6", modelID)
+REDACTED)
+
+	t.Run("direct bedrock model id passes through", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeBedrock,
+	REDACTED
+				"aws_region": "us-east-1",
+		REDACTED,
+	REDACTED
+
+		modelID, ok := ResolveBedrockModelID(account, "anthropic.REDACTED-v1:0")
+		require.True(t, ok)
+		assert.Equal(t, "anthropic.REDACTED-v1:0", modelID)
+REDACTED)
+
+	t.Run("unsupported alias returns false", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeBedrock,
+	REDACTED
+				"aws_region": "us-east-1",
+		REDACTED,
+	REDACTED
+
+		_, ok := ResolveBedrockModelID(account, "claude-3-5-sonnet-20241022")
+		assert.False(t, ok)
+REDACTED)
+REDACTED
+
+func TestAutoInjectBedrockBetaTokens(t *testing.T) {
+	t.Run("inject interleaved-thinking when thinking present", func(t *testing.T) {
+		body := []byte(`{"thinking":{"type":"enabled","budget_tokens":10000REDACTED,"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+		result := autoInjectBedrockBetaTokens(nil, body, "us.anthropic.claude-opus-4-6-v1")
+		assert.Contains(t, result, "REDACTED")
+REDACTED)
+
+	t.Run("no duplicate when already present", func(t *testing.T) {
+		body := []byte(`{"thinking":{"type":"enabled","budget_tokens":10000REDACTED,"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+		result := autoInjectBedrockBetaTokens([]string{"REDACTED"REDACTED, body, "us.anthropic.claude-opus-4-6-v1")
+		count := 0
+		for _, t := range result {
+			if t == "REDACTED" {
+				count++
+		REDACTED
+	REDACTED
+		assert.Equal(t, 1, count)
+REDACTED)
+
+	t.Run("inject computer-use when computer tool present", func(t *testing.T) {
+		body := []byte(`{"tools":[{"type":"computer_20250124","name":"computer","display_width_px":1024REDACTED],"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+		result := autoInjectBedrockBetaTokens(nil, body, "us.anthropic.claude-opus-4-6-v1")
+		assert.Contains(t, result, "computer-use-2025-11-24")
+REDACTED)
+
+	t.Run("inject advanced-tool-use for programmatic tool calling", func(t *testing.T) {
+		body := []byte(`{"tools":[{"name":"bash","allowed_callers":["code_execution_20250825"]REDACTED],"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+		result := autoInjectBedrockBetaTokens(nil, body, "us.anthropic.claude-opus-4-6-v1")
+		assert.Contains(t, result, "advanced-tool-use-2025-11-20")
+REDACTED)
+
+	t.Run("inject advanced-tool-use for input examples", func(t *testing.T) {
+		body := []byte(`{"tools":[{"name":"bash","input_examples":[{"cmd":"ls"REDACTED]REDACTED],"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+		result := autoInjectBedrockBetaTokens(nil, body, "us.anthropic.claude-opus-4-6-v1")
+		assert.Contains(t, result, "advanced-tool-use-2025-11-20")
+REDACTED)
+
+	t.Run("inject tool-search-tool directly for pure tool search (no programmatic/inputExamples)", func(t *testing.T) {
+		body := []byte(`{"tools":[{"type":"tool_search_tool_regex_20251119","name":"search"REDACTED],"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+		result := autoInjectBedrockBetaTokens(nil, body, "us.anthropic.claude-sonnet-4-6")
+		// 纯 tool search 场景直接注入 Bedrock 特定头，不走 advanced-tool-use 转换
+		assert.Contains(t, result, "tool-search-tool-2025-10-19")
+		assert.NotContains(t, result, "advanced-tool-use-2025-11-20")
+REDACTED)
+
+	t.Run("inject advanced-tool-use when tool search combined with programmatic calling", func(t *testing.T) {
+		body := []byte(`{"tools":[{"type":"tool_search_tool_regex_20251119","name":"search"REDACTED,{"name":"bash","allowed_callers":["code_execution_20250825"]REDACTED],"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+		result := autoInjectBedrockBetaTokens(nil, body, "us.anthropic.claude-sonnet-4-6")
+		// 混合场景使用 advanced-tool-use（后续由 filter 转换为 tool-search-tool）
+		assert.Contains(t, result, "advanced-tool-use-2025-11-20")
+REDACTED)
+
+	t.Run("do not inject tool-search beta for unsupported models", func(t *testing.T) {
+		body := []byte(`{"tools":[{"type":"tool_search_tool_regex_20251119","name":"search"REDACTED],"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+		result := autoInjectBedrockBetaTokens(nil, body, "anthropic.claude-3-5-sonnet-20241022-v2:0")
+		assert.NotContains(t, result, "advanced-tool-use-2025-11-20")
+		assert.NotContains(t, result, "tool-search-tool-2025-10-19")
+REDACTED)
+
+	t.Run("no injection for regular tools", func(t *testing.T) {
+		body := []byte(`{"tools":[{"name":"bash","description":"run bash","input_schema":{"type":"object"REDACTEDREDACTED],"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+		result := autoInjectBedrockBetaTokens(nil, body, "us.anthropic.claude-opus-4-6-v1")
+		assert.Empty(t, result)
+REDACTED)
+
+	t.Run("no injection when no features detected", func(t *testing.T) {
+		body := []byte(`{"messages":[{"role":"user","content":"hi"REDACTED],"max_tokens":100REDACTED`)
+		result := autoInjectBedrockBetaTokens(nil, body, "us.anthropic.claude-opus-4-6-v1")
+		assert.Empty(t, result)
+REDACTED)
+
+	t.Run("preserves existing tokens", func(t *testing.T) {
+		body := []byte(`{"thinking":{"type":"enabled"REDACTED,"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+		existing := []string{"context-1m-2025-08-07", "compact-2026-01-12"REDACTED
+		result := autoInjectBedrockBetaTokens(existing, body, "us.anthropic.claude-opus-4-6-v1")
+		assert.Contains(t, result, "context-1m-2025-08-07")
+		assert.Contains(t, result, "compact-2026-01-12")
+		assert.Contains(t, result, "REDACTED")
+REDACTED)
+REDACTED
+
+func TestResolveBedrockBetaTokens(t *testing.T) {
+	t.Run("body-only tool features resolve to final bedrock tokens", func(t *testing.T) {
+		body := []byte(`{"tools":[{"name":"bash","allowed_callers":["code_execution_20250825"]REDACTED],"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+		result := ResolveBedrockBetaTokens("", body, "us.anthropic.claude-opus-4-6-v1")
+		assert.Contains(t, result, "tool-search-tool-2025-10-19")
+		assert.Contains(t, result, "tool-examples-2025-10-29")
+REDACTED)
+
+	t.Run("unsupported client beta tokens are filtered out", func(t *testing.T) {
+		body := []byte(`{"messages":[{"role":"user","content":"hi"REDACTED]REDACTED`)
+		result := ResolveBedrockBetaTokens("REDACTED,files-api-2025-04-14", body, "us.anthropic.claude-opus-4-6-v1")
+		assert.Equal(t, []string{"REDACTED"REDACTED, result)
+REDACTED)
+REDACTED
+
+func TestPrepareBedrockRequestBody_AutoBetaInjection(t *testing.T) {
+	t.Run("thinking in body auto-injects beta without header", func(t *testing.T) {
+		input := `{"messages":[{"role":"user","content":"hi"REDACTED],"max_tokens":100,"thinking":{"type":"enabled","budget_tokens":10000REDACTEDREDACTED`
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", "")
+	REDACTED
+		arr := gjson.GetBytes(result, "anthropic_beta").Array()
+		found := false
+		for _, v := range arr {
+			if v.String() == "REDACTED" {
+				found = true
+		REDACTED
+	REDACTED
+		assert.True(t, found, "interleaved-thinking should be auto-injected")
+REDACTED)
+
+	t.Run("header tokens merged with auto-injected tokens", func(t *testing.T) {
+		input := `{"messages":[{"role":"user","content":"hi"REDACTED],"max_tokens":100,"thinking":{"type":"enabled","budget_tokens":10000REDACTEDREDACTED`
+		result, err := PrepareBedrockRequestBody([]byte(input), "us.anthropic.claude-opus-4-6-v1", "context-1m-2025-08-07")
+	REDACTED
+		arr := gjson.GetBytes(result, "anthropic_beta").Array()
+		names := make([]string, len(arr))
+		for i, v := range arr {
+			names[i] = v.String()
+	REDACTED
+		assert.Contains(t, names, "context-1m-2025-08-07")
+		assert.Contains(t, names, "REDACTED")
+REDACTED)
+REDACTED
+
+func TestAdjustBedrockModelRegionPrefix(t *testing.T) {
+	tests := []struct {
+		name    string
+		modelID string
+		region  string
+		expect  string
+REDACTED{
+		// US region — no change needed
+		{"us region keeps us prefix", "us.anthropic.claude-opus-4-6-v1", "us-east-1", "us.anthropic.claude-opus-4-6-v1"REDACTED,
+		// EU region — replace us → eu
+		{"eu region replaces prefix", "us.anthropic.claude-opus-4-6-v1", "eu-west-1", "eu.anthropic.claude-opus-4-6-v1"REDACTED,
+		{"eu region sonnet", "us.anthropic.claude-sonnet-4-6", "eu-central-1", "eu.anthropic.claude-sonnet-4-6"REDACTED,
+		// APAC region — jp and au have dedicated prefixes per AWS docs
+		{"jp region (ap-northeast-1)", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "ap-northeast-1", "jp.anthropic.claude-sonnet-4-5-20250929-v1:0"REDACTED,
+		{"au region (ap-southeast-2)", "us.anthropic.REDACTED-v1:0", "ap-southeast-2", "au.anthropic.REDACTED-v1:0"REDACTED,
+		{"apac region (ap-southeast-1)", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "ap-southeast-1", "apac.anthropic.claude-sonnet-4-5-20250929-v1:0"REDACTED,
+		// eu → us (user manually set eu prefix, moved to us region)
+		{"eu to us", "eu.anthropic.claude-opus-4-6-v1", "us-west-2", "us.anthropic.claude-opus-4-6-v1"REDACTED,
+		// global prefix — replace to match region
+		{"global to eu", "global.anthropic.claude-opus-4-6-v1", "eu-west-1", "eu.anthropic.claude-opus-4-6-v1"REDACTED,
+		// No known prefix — leave unchanged
+		{"no prefix unchanged", "anthropic.claude-3-5-sonnet-20241022-v2:0", "eu-west-1", "anthropic.claude-3-5-sonnet-20241022-v2:0"REDACTED,
+		// GovCloud — uses independent us-gov prefix
+		{"govcloud from us", "us.anthropic.claude-opus-4-6-v1", "us-gov-east-1", "us-gov.anthropic.claude-opus-4-6-v1"REDACTED,
+		{"govcloud already correct", "us-gov.anthropic.claude-opus-4-6-v1", "us-gov-west-1", "us-gov.anthropic.claude-opus-4-6-v1"REDACTED,
+		// Force global (special region value)
+		{"force global from us", "us.anthropic.claude-opus-4-6-v1", "global", "global.anthropic.claude-opus-4-6-v1"REDACTED,
+		{"force global from eu", "eu.anthropic.claude-sonnet-4-6", "global", "global.anthropic.claude-sonnet-4-6"REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expect, AdjustBedrockModelRegionPrefix(tt.modelID, tt.region))
+	REDACTED)
+REDACTED
+REDACTED

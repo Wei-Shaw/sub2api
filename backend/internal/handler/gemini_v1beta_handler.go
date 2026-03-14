@@ -503,6 +503,7 @@ REDACTED
 	REDACTED
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
+		requestPayloadHash := service.HashUsageRequestPayload(body)
 		h.submitUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsageWithLongContext(ctx, &service.RecordUsageLongContextInput{
 				Result:                result,
@@ -512,6 +513,7 @@ REDACTED
 				Subscription:          subscription,
 				UserAgent:             userAgent,
 				IPAddress:             clientIP,
+				RequestPayloadHash:    requestPayloadHash,
 				LongContextThreshold:  200000, // Gemini 200K 阈值
 				LongContextMultiplier: 2.0,    // 超出部分双倍计费
 				ForceCacheBilling:     fs.ForceCacheBilling,

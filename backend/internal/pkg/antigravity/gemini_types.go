@@ -189,6 +189,5 @@ var DefaultStopSequences = []string{
 	"<|user|>",
 	"<|endoftext|>",
 	"<|end_of_turn|>",
-	"[DONE]",
 	"\n\nHuman:",
 REDACTED

@@ -439,7 +439,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_ResponseHeadersAllowXCodex(t *tes
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
 	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
 
-	originalBody := []byte(`{"model":"gpt-5.2","stream":false,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
+	originalBody := []byte(`{"model":"gpt-5.2","stream":true,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
 
 	headers := make(http.Header)
 	headers.Set("Content-Type", "application/json")
@@ -453,7 +453,14 @@ func TestOpenAIGatewayService_OAuthPassthrough_ResponseHeadersAllowXCodex(t *tes
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     headers,
-		Body:       io.NopCloser(strings.NewReader(`{"output":[],"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0REDACTEDREDACTEDREDACTED`)),
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.output_text.delta","delta":"h"REDACTED`,
+			"",
+			`data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0REDACTEDREDACTEDREDACTEDREDACTED`,
+			"",
+			"data: [DONE]",
+			"",
+	REDACTED, "\n"))),
 REDACTED
 	upstream := &httpUpstreamRecorder{resp: respREDACTED
 
@@ -895,7 +902,7 @@ REDACTED
 REDACTED
 
 	_, err := svc.Forward(context.Background(), c, account, originalBody)
-REDACTED
+	require.EqualError(t, err, "stream usage incomplete: missing terminal event")
 	require.True(t, logSink.ContainsMessage("上游流在未收到 [DONE] 时结束，疑似断流"))
 	require.True(t, logSink.ContainsMessageAtLevel("上游流在未收到 [DONE] 时结束，疑似断流", "info"))
 	require.True(t, logSink.ContainsFieldValue("upstream_request_id", "rid-truncate"))
@@ -911,11 +918,16 @@ func TestOpenAIGatewayService_OAuthPassthrough_DefaultFiltersTimeoutHeaders(t *t
 	c.Request.Header.Set("x-stainless-timeout", "120000")
 	c.Request.Header.Set("X-Test", "keep")
 
-	originalBody := []byte(`{"model":"gpt-5.2","stream":false,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
+	originalBody := []byte(`{"model":"gpt-5.2","stream":true,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "X-Request-Id": []string{"rid-filter-default"REDACTEDREDACTED,
-		Body:       io.NopCloser(strings.NewReader(`{"output":[],"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0REDACTEDREDACTEDREDACTED`)),
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "X-Request-Id": []string{"rid-filter-default"REDACTEDREDACTED,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0REDACTEDREDACTEDREDACTEDREDACTED`,
+			"",
+			"data: [DONE]",
+			"",
+	REDACTED, "\n"))),
 REDACTED
 	upstream := &httpUpstreamRecorder{resp: respREDACTED
 	svc := &OpenAIGatewayService{
@@ -952,11 +964,16 @@ func TestOpenAIGatewayService_OAuthPassthrough_AllowTimeoutHeadersWhenConfigured
 	c.Request.Header.Set("x-stainless-timeout", "120000")
 	c.Request.Header.Set("X-Test", "keep")
 
-	originalBody := []byte(`{"model":"gpt-5.2","stream":false,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
+	originalBody := []byte(`{"model":"gpt-5.2","stream":true,"input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "X-Request-Id": []string{"rid-filter-allow"REDACTEDREDACTED,
-		Body:       io.NopCloser(strings.NewReader(`{"output":[],"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0REDACTEDREDACTEDREDACTED`)),
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "X-Request-Id": []string{"rid-filter-allow"REDACTEDREDACTED,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1,"input_tokens_details":{"cached_tokens":0REDACTEDREDACTEDREDACTEDREDACTED`,
+			"",
+			"data: [DONE]",
+			"",
+	REDACTED, "\n"))),
 REDACTED
 	upstream := &httpUpstreamRecorder{resp: respREDACTED
 	svc := &OpenAIGatewayService{

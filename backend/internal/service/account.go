@@ -412,6 +412,7 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		if a.Platform == domain.PlatformAntigravity {
 			return domain.DefaultAntigravityModelMapping
 	REDACTED
+		// Bedrock 默认映射由 forwardBedrock 统一处理（需配合 region prefix 调整）
 		return nil
 REDACTED
 	if len(rawMapping) == 0 {
@@ -774,6 +775,14 @@ REDACTED
 	REDACTED
 REDACTED
 	return false
+REDACTED
+
+func (a *Account) IsBedrock() bool {
+	return a.Platform == PlatformAnthropic && (a.Type == AccountTypeBedrock || a.Type == AccountTypeBedrockAPIKey)
+REDACTED
+
+func (a *Account) IsBedrockAPIKey() bool {
+	return a.Platform == PlatformAnthropic && a.Type == AccountTypeBedrockAPIKey
 REDACTED
 
 func (a *Account) IsOpenAI() bool {
