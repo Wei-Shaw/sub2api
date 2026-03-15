@@ -60,6 +60,7 @@ type ParsedRequest struct {
 	Messages        []any           // messages 数组
 	HasSystem       bool            // 是否包含 system 字段（包含 null 也视为显式传入）
 	ThinkingEnabled bool            // 是否开启 thinking（部分平台会影响最终模型名）
+	OutputEffort    string          // output_config.effort（Claude API 的推理强度控制）
 	MaxTokens       int             // max_tokens 值（用于探测请求拦截）
 	SessionContext  *SessionContext // 可选：请求上下文区分因子（nil 时行为不变）
 
@@ -115,6 +116,9 @@ REDACTED
 	if thinkingType == "enabled" || thinkingType == "adaptive" {
 		parsed.ThinkingEnabled = true
 REDACTED
+
+	// output_config.effort: Claude API 的推理强度控制参数
+	parsed.OutputEffort = strings.TrimSpace(gjson.Get(jsonStr, "output_config.effort").String())
 
 	// max_tokens: 仅接受整数值
 	maxTokensResult := gjson.Get(jsonStr, "max_tokens")
@@ -745,6 +749,21 @@ REDACTED
 		return body
 REDACTED
 	return newBody
+REDACTED
+
+// NormalizeClaudeOutputEffort normalizes Claude's output_config.effort value.
+// Returns nil for empty or unrecognized values.
+func NormalizeClaudeOutputEffort(raw string) *string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	if value == "" {
+		return nil
+REDACTED
+	switch value {
+	case "low", "medium", "high", "max":
+		return &value
+	default:
+		return nil
+REDACTED
 REDACTED
 
 // =========================

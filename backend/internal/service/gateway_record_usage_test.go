@@ -369,3 +369,54 @@ REDACTED
 	require.Equal(t, 1, billingRepo.calls)
 	require.Equal(t, 0, usageRepo.calls)
 REDACTED
+
+func TestGatewayServiceRecordUsage_ReasoningEffortPersisted(t *testing.T) {
+	usageRepo := &openAIRecordUsageBestEffortLogRepoStub{REDACTED
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED)
+
+	effort := "max"
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "effort_test",
+			Usage: ClaudeUsage{
+				InputTokens:  10,
+				OutputTokens: 5,
+		REDACTED,
+			Model:           "claude-opus-4-6",
+			Duration:        time.Second,
+			ReasoningEffort: &effort,
+	REDACTED,
+		APIKey:  &APIKey{ID: 1REDACTED,
+		User:    &User{ID: 1REDACTED,
+		Account: &Account{ID: 1REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.ReasoningEffort)
+	require.Equal(t, "max", *usageRepo.lastLog.ReasoningEffort)
+REDACTED
+
+func TestGatewayServiceRecordUsage_ReasoningEffortNil(t *testing.T) {
+	usageRepo := &openAIRecordUsageBestEffortLogRepoStub{REDACTED
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED)
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "no_effort_test",
+			Usage: ClaudeUsage{
+				InputTokens:  10,
+				OutputTokens: 5,
+		REDACTED,
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 1REDACTED,
+		User:    &User{ID: 1REDACTED,
+		Account: &Account{ID: 1REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.Nil(t, usageRepo.lastLog.ReasoningEffort)
+REDACTED
