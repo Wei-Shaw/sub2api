@@ -115,6 +115,25 @@ func (r *stubGenRepo) CountByUserAndStatus(_ context.Context, userID int64, stat
 	return count, nil
 }
 
+func (r *stubGenRepo) CountByStorageType(_ context.Context, storageType string, statuses []string) (int64, error) {
+	if r.countErr != nil {
+		return 0, r.countErr
+	}
+	var count int64
+	statusSet := make(map[string]struct{})
+	for _, s := range statuses {
+		statusSet[s] = struct{}{}
+	}
+	for _, gen := range r.gens {
+		if gen.StorageType == storageType {
+			if _, ok := statusSet[gen.Status]; ok {
+				count++
+			}
+		}
+	}
+	return count, nil
+}
+
 // ==================== Stub: UserRepository (用于 SoraQuotaService) ====================
 
 var _ UserRepository = (*stubUserRepoForQuota)(nil)
@@ -519,7 +538,7 @@ func TestDelete_S3Cleanup_NilS3(t *testing.T) {
 	svc := NewSoraGenerationService(repo, nil, nil)
 
 	err := svc.Delete(context.Background(), 1, 1)
-	require.NoError(t, err) // s3Storage 为 nil，跳过清理
+	require.NoError(t, err) // objectStorage 为 nil，跳过清理
 }
 
 func TestDelete_QuotaRelease_NilQuota(t *testing.T) {

@@ -138,6 +138,16 @@ func RegisterGatewayRoutes(
 	{
 		soraV1.POST("/chat/completions", h.SoraGateway.ChatCompletions)
 		soraV1.GET("/models", h.Gateway.Models)
+
+		// Sora Videos/Images async task API
+		if h.SoraVideos != nil {
+			soraV1.POST("/videos", h.SoraVideos.CreateVideo)
+			soraV1.GET("/videos/:id", h.SoraVideos.GetVideo)
+			soraV1.POST("/videos/:id/remix", h.SoraVideos.RemixVideo)
+			soraV1.GET("/videos/:id/content", h.SoraVideos.GetVideoContent)
+			soraV1.POST("/images/generations", h.SoraVideos.CreateImage)
+			soraV1.POST("/images/edits", h.SoraVideos.EditImage)
+		}
 	}
 
 	// Sora 媒体代理（可选 API Key 验证）

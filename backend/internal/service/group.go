@@ -50,6 +50,9 @@ type Group struct {
 	// MCP XML 协议注入开关（仅 antigravity 平台使用）
 	MCPXMLInject bool
 
+	// Claude usage 模拟开关：将无写缓存 usage 模拟为 claude-max 风格
+	SimulateClaudeMaxEnabled bool
+
 	// 支持的模型系列（仅 antigravity 平台使用）
 	// 可选值: claude, gemini_text, gemini_image
 	SupportedModelScopes []string

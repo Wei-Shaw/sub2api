@@ -238,7 +238,7 @@ func TestTestConnection_GetClientError(t *testing.T) {
 
 func TestUploadFromURL_GetClientError(t *testing.T) {
 	s := NewSoraS3Storage(nil)
-	_, _, err := s.UploadFromURL(context.Background(), 1, "https://example.com/file.mp4")
+	_, _, _, err := s.UploadFromURL(context.Background(), 1, "https://example.com/file.mp4")
 	require.Error(t, err)
 }
 

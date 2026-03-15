@@ -81,15 +81,15 @@
       v-if="activeModelRateLimits.length > 0"
       :class="[
         activeModelRateLimits.length <= 4
-          ? 'flex flex-col gap-1'
+          ? 'flex flex-col gap-0.5'
           : activeModelRateLimits.length <= 8
             ? 'columns-2 gap-x-2'
             : 'columns-3 gap-x-2'
       ]"
     >
-      <div v-for="item in activeModelRateLimits" :key="item.model" class="group relative mb-1 break-inside-avoid">
+      <div v-for="item in activeModelRateLimits" :key="item.model" class="group relative mb-0.5 break-inside-avoid">
         <span
-          class="inline-flex items-center gap-1 rounded bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
+          class="inline-flex items-center gap-0.5 rounded bg-purple-100 px-1.5 py-px text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
         >
           <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
           {{ formatScopeName(item.model) }}
@@ -182,7 +182,7 @@ const formatScopeName = (scope: string): string => {
     'gemini-3.1-pro-high': 'G3PH',
     'gemini-3.1-pro-low': 'G3PL',
     'gemini-3-pro-image': 'G3PI',
-    'gemini-3.1-flash-image': 'GImage',
+    'gemini-3.1-flash-image': 'G31FI',
     // 其他
     'gpt-oss-120b-medium': 'GPT120',
     'tab_flash_lite_preview': 'TabFL',

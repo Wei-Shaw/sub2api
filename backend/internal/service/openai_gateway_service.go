@@ -1375,7 +1375,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 		if !acc.IsSchedulable() {
 			continue
 		}
-		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
+		if requestedModel != "" && !acc.IsOpenAIPassthroughEnabled() && !acc.IsModelSupported(requestedModel) {
 			continue
 		}
 		candidates = append(candidates, acc)
@@ -1536,7 +1536,7 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.
 	if !fresh.IsSchedulable() || !fresh.IsOpenAI() {
 		return nil
 	}
-	if requestedModel != "" && !fresh.IsModelSupported(requestedModel) {
+	if requestedModel != "" && !fresh.IsOpenAIPassthroughEnabled() && !fresh.IsModelSupported(requestedModel) {
 		return nil
 	}
 	return fresh

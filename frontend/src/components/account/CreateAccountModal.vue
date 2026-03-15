@@ -1556,10 +1556,54 @@
         </div>
       </div>
 
-      <!-- API Key / Bedrock 账号配额限制 -->
-      <div v-if="form.type === 'apikey' || form.type === 'bedrock'" class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
+      <!-- 配额控制 (Anthropic apikey/bedrock: 配额限制 + 亲和) -->
+      <div
+        v-if="form.platform === 'anthropic' && (form.type === 'apikey' || form.type === 'bedrock')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
         <div class="mb-3">
-          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaLimit') }}</h3>
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.quotaLimitHint') }}
+          </p>
+        </div>
+        <QuotaLimitCard
+          :totalLimit="editQuotaLimit"
+          :dailyLimit="editQuotaDailyLimit"
+          :weeklyLimit="editQuotaWeeklyLimit"
+          :dailyResetMode="editDailyResetMode"
+          :dailyResetHour="editDailyResetHour"
+          :weeklyResetMode="editWeeklyResetMode"
+          :weeklyResetDay="editWeeklyResetDay"
+          :weeklyResetHour="editWeeklyResetHour"
+          :resetTimezone="editResetTimezone"
+          @update:totalLimit="editQuotaLimit = $event"
+          @update:dailyLimit="editQuotaDailyLimit = $event"
+          @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+          @update:dailyResetMode="editDailyResetMode = $event"
+          @update:dailyResetHour="editDailyResetHour = $event"
+          @update:weeklyResetMode="editWeeklyResetMode = $event"
+          @update:weeklyResetDay="editWeeklyResetDay = $event"
+          @update:weeklyResetHour="editWeeklyResetHour = $event"
+          @update:resetTimezone="editResetTimezone = $event"
+        />
+        <AffinityConfigCard
+          :enabled="clientAffinityEnabled"
+          :base="affinityBase"
+          :buffer="affinityBuffer"
+          @update:enabled="clientAffinityEnabled = $event"
+          @update:base="affinityBase = $event"
+          @update:buffer="affinityBuffer = $event"
+        />
+      </div>
+
+      <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
+      <div
+        v-else-if="form.type === 'apikey' || form.type === 'bedrock'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
+        <div class="mb-3">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.accounts.quotaLimitHint') }}
           </p>
@@ -1902,7 +1946,7 @@
         </div>
       </div>
 
-      <!-- Quota Control Section (Anthropic OAuth/SetupToken only) -->
+      <!-- 配额控制 (Anthropic OAuth/SetupToken: 亲和 + 窗口费用 + 会话 + RPM 等) -->
       <div
         v-if="form.platform === 'anthropic' && accountCategory === 'oauth-based'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
@@ -1913,6 +1957,15 @@
             {{ t('admin.accounts.quotaControl.hint') }}
           </p>
         </div>
+
+        <AffinityConfigCard
+          :enabled="clientAffinityEnabled"
+          :base="affinityBase"
+          :buffer="affinityBuffer"
+          @update:enabled="clientAffinityEnabled = $event"
+          @update:base="affinityBase = $event"
+          @update:buffer="affinityBuffer = $event"
+        />
 
         <!-- Window Cost Limit -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
@@ -2841,6 +2894,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
+import AffinityConfigCard from '@/components/account/AffinityConfigCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
@@ -3026,6 +3080,11 @@ const mixedChannelWarningAction = ref<(() => Promise<void>) | null>(null)
 const antigravityMixedChannelConfirmed = ref(false)
 const showAdvancedOAuth = ref(false)
 const showGeminiHelpDialog = ref(false)
+
+// Client affinity (all Anthropic accounts)
+const clientAffinityEnabled = ref(false)
+const affinityBase = ref<number | null>(null)
+const affinityBuffer = ref<number | null>(null)
 
 // Quota control state (Anthropic OAuth/SetupToken only)
 const windowCostEnabled = ref(false)
@@ -3675,6 +3734,9 @@ const resetForm = () => {
   editWeeklyResetDay.value = null
   editWeeklyResetHour.value = null
   editResetTimezone.value = null
+  clientAffinityEnabled.value = false
+  affinityBase.value = null
+  affinityBuffer.value = null
   modelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
@@ -3780,8 +3842,30 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
   } else {
     delete extra.anthropic_passthrough
   }
+  applyClientAffinity(extra)
 
   return Object.keys(extra).length > 0 ? extra : undefined
+}
+
+/** 将客户端亲和设置写入 extra（Anthropic 全类型通用） */
+const applyClientAffinity = (extra: Record<string, unknown>) => {
+  if (clientAffinityEnabled.value) {
+    extra.client_affinity_enabled = true
+    if (affinityBase.value != null && affinityBase.value > 0) {
+      extra.affinity_base = affinityBase.value
+    } else {
+      delete extra.affinity_base
+    }
+    if (affinityBase.value != null && affinityBase.value > 0 && affinityBuffer.value != null) {
+      extra.affinity_buffer = affinityBuffer.value
+    } else {
+      delete extra.affinity_buffer
+    }
+  } else {
+    delete extra.client_affinity_enabled
+    delete extra.affinity_base
+    delete extra.affinity_buffer
+  }
 }
 
 const buildSoraExtra = (
@@ -4784,6 +4868,9 @@ const handleAnthropicExchange = async (authCode: string) => {
       extra.cache_ttl_override_enabled = true
       extra.cache_ttl_override_target = cacheTTLOverrideTarget.value
     }
+
+    // Add client affinity setting
+    applyClientAffinity(extra)
 
     const credentials: Record<string, unknown> = { ...tokenInfo }
     applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')

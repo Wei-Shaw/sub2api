@@ -451,6 +451,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			h.submitUsageRecordTask(func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
+					ParsedRequest:      parsedReq,
 					APIKey:             apiKey,
 					User:               apiKey.User,
 					Account:            account,
@@ -643,6 +644,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// ===== 用户消息串行队列 END =====
 
 			// 转发请求 - 根据账号平台分流
+			c.Set("parsed_request", parsedReq)
 			var result *service.ForwardResult
 			requestCtx := c.Request.Context()
 			if fs.SwitchCount > 0 {
@@ -766,6 +768,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			h.submitUsageRecordTask(func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
+					ParsedRequest:      parsedReq,
 					APIKey:             currentAPIKey,
 					User:               currentAPIKey.User,
 					Account:            account,

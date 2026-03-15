@@ -1188,6 +1188,90 @@ func (a *Account) IsSessionIDMaskingEnabled() bool {
 	return false
 }
 
+// IsClientAffinityEnabled 检查是否启用客户端亲和调度
+// 仅适用于 Anthropic 账号（OAuth/SetupToken/APIKey）
+// 启用后，新会话会优先调度到之前使用过的账号
+func (a *Account) IsClientAffinityEnabled() bool {
+	if a.Platform != PlatformAnthropic {
+		return false
+	}
+	if a.Extra == nil {
+		return false
+	}
+	if v, ok := a.Extra["client_affinity_enabled"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+		}
+	}
+	return false
+}
+
+// AffinityZone 表示账号的客户端亲和分区
+type AffinityZone int
+
+const (
+	AffinityZoneGreen  AffinityZone = iota // 绿区：允许绑定新客户端，优先调度
+	AffinityZoneYellow                     // 黄区：允许绑定，仅在无绿区账号时降级调度
+	AffinityZoneRed                        // 红区：禁止调度
+)
+
+// GetAffinityBase 获取亲和基础限制（绿区上限），0 表示未配置
+func (a *Account) GetAffinityBase() int {
+	if a.Extra == nil {
+		return 0
+	}
+	if v, ok := a.Extra["affinity_base"]; ok {
+		return parseExtraInt(v)
+	}
+	return 0
+}
+
+// GetAffinityBuffer 获取亲和缓冲区大小（黄区范围）
+// 返回 (value, configured)：
+//   - (0, false): 未配置 → 无限黄区（超过 base 永远黄区，永不红区）
+//   - (0, true):  显式设为 0 → 无黄区，超过 base 直接红区
+//   - (n, true):  n > 0 → 黄区范围为 base+1 到 base+n
+func (a *Account) GetAffinityBuffer() (int, bool) {
+	if a.Extra == nil {
+		return 0, false
+	}
+	v, ok := a.Extra["affinity_buffer"]
+	if !ok {
+		return 0, false
+	}
+	// 显式设为 null/nil → 视为未配置
+	if v == nil {
+		return 0, false
+	}
+	return parseExtraInt(v), true
+}
+
+// GetAffinityZone 根据当前绑定的客户端数量计算账号的亲和分区。
+// 未开启亲和或未配置 base 的账号永远返回绿区。
+func (a *Account) GetAffinityZone(clientCount int64) AffinityZone {
+	if !a.IsClientAffinityEnabled() {
+		return AffinityZoneGreen
+	}
+	base := a.GetAffinityBase()
+	if base <= 0 {
+		return AffinityZoneGreen
+	}
+	if clientCount <= int64(base) {
+		return AffinityZoneGreen
+	}
+	buffer, configured := a.GetAffinityBuffer()
+	if !configured {
+		return AffinityZoneYellow // 未配置 buffer → 无限黄区
+	}
+	if buffer == 0 {
+		return AffinityZoneRed // buffer=0 → 无黄区，直接红区
+	}
+	if clientCount <= int64(base+buffer) {
+		return AffinityZoneYellow
+	}
+	return AffinityZoneRed
+}
+
 // IsCacheTTLOverrideEnabled 检查是否启用缓存 TTL 强制替换
 // 仅适用于 Anthropic OAuth/SetupToken 类型账号
 // 启用后将所有 cache creation tokens 归入指定的 TTL 类型（5m 或 1h）

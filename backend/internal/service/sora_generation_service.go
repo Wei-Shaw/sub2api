@@ -35,21 +35,21 @@ type soraGenerationRepoConditionalUpdater interface {
 
 // SoraGenerationService 管理 Sora 客户端的生成记录 CRUD。
 type SoraGenerationService struct {
-	genRepo      SoraGenerationRepository
-	s3Storage    *SoraS3Storage
-	quotaService *SoraQuotaService
+	genRepo       SoraGenerationRepository
+	objectStorage SoraObjectStorage
+	quotaService  *SoraQuotaService
 }
 
 // NewSoraGenerationService 创建生成记录服务。
 func NewSoraGenerationService(
 	genRepo SoraGenerationRepository,
-	s3Storage *SoraS3Storage,
+	objectStorage SoraObjectStorage,
 	quotaService *SoraQuotaService,
 ) *SoraGenerationService {
 	return &SoraGenerationService{
-		genRepo:      genRepo,
-		s3Storage:    s3Storage,
-		quotaService: quotaService,
+		genRepo:       genRepo,
+		objectStorage: objectStorage,
+		quotaService:  quotaService,
 	}
 }
 
@@ -268,15 +268,15 @@ func (s *SoraGenerationService) Delete(ctx context.Context, id, userID int64) er
 		return fmt.Errorf("无权删除此生成记录")
 	}
 
-	// 清理 S3 文件
-	if gen.StorageType == SoraStorageTypeS3 && len(gen.S3ObjectKeys) > 0 && s.s3Storage != nil {
-		if err := s.s3Storage.DeleteObjects(ctx, gen.S3ObjectKeys); err != nil {
-			logger.LegacyPrintf("service.sora_gen", "[SoraGen] S3 清理失败 id=%d err=%v", id, err)
+	// 清理存储文件（S3 / Google Drive）
+	if IsObjectStorageType(gen.StorageType) && len(gen.S3ObjectKeys) > 0 && s.objectStorage != nil {
+		if err := s.objectStorage.DeleteObjects(ctx, gen.S3ObjectKeys); err != nil {
+			logger.LegacyPrintf("service.sora_gen", "[SoraGen] 存储清理失败 id=%d type=%s err=%v", id, gen.StorageType, err)
 		}
 	}
 
-	// 释放配额（S3/本地均释放）
-	if gen.FileSizeBytes > 0 && (gen.StorageType == SoraStorageTypeS3 || gen.StorageType == SoraStorageTypeLocal) && s.quotaService != nil {
+	// 释放配额（对象存储/本地均释放）
+	if gen.FileSizeBytes > 0 && (IsObjectStorageType(gen.StorageType) || gen.StorageType == SoraStorageTypeLocal) && s.quotaService != nil {
 		if err := s.quotaService.ReleaseUsage(ctx, userID, gen.FileSizeBytes); err != nil {
 			logger.LegacyPrintf("service.sora_gen", "[SoraGen] 配额释放失败 id=%d err=%v", id, err)
 		}
@@ -290,9 +290,9 @@ func (s *SoraGenerationService) CountActiveByUser(ctx context.Context, userID in
 	return s.genRepo.CountByUserAndStatus(ctx, userID, []string{SoraGenStatusPending, SoraGenStatusGenerating})
 }
 
-// ResolveMediaURLs 为 S3 记录动态生成预签名 URL。
+// ResolveMediaURLs 为对象存储记录动态生成访问 URL。
 func (s *SoraGenerationService) ResolveMediaURLs(ctx context.Context, gen *SoraGeneration) error {
-	if gen == nil || gen.StorageType != SoraStorageTypeS3 || s.s3Storage == nil {
+	if gen == nil || !IsObjectStorageType(gen.StorageType) || s.objectStorage == nil {
 		return nil
 	}
 	if len(gen.S3ObjectKeys) == 0 {
@@ -308,7 +308,7 @@ func (s *SoraGenerationService) ResolveMediaURLs(ctx context.Context, gen *SoraG
 		wg.Add(1)
 		go func(i int, objectKey string) {
 			defer wg.Done()
-			url, err := s.s3Storage.GetAccessURL(ctx, objectKey)
+			url, err := s.objectStorage.GetAccessURL(ctx, objectKey)
 			if err != nil {
 				errMu.Lock()
 				if firstErr == nil {
@@ -329,4 +329,23 @@ func (s *SoraGenerationService) ResolveMediaURLs(ctx context.Context, gen *SoraG
 	gen.MediaURLs = urls
 
 	return nil
+}
+
+// StorageVideoStats 各存储类型的视频统计。
+type StorageVideoStats struct {
+	Completed  int64 `json:"completed"`
+	InProgress int64 `json:"in_progress"`
+}
+
+// CountByStorageType 按存储类型统计视频数量（completed 和 in_progress）。
+func (s *SoraGenerationService) CountByStorageType(ctx context.Context, storageType string) (completed, inProgress int64, err error) {
+	completed, err = s.genRepo.CountByStorageType(ctx, storageType, []string{SoraGenStatusCompleted})
+	if err != nil {
+		return 0, 0, fmt.Errorf("count completed: %w", err)
+	}
+	inProgress, err = s.genRepo.CountByStorageType(ctx, storageType, []string{SoraGenStatusPending, SoraGenStatusGenerating})
+	if err != nil {
+		return 0, 0, fmt.Errorf("count in_progress: %w", err)
+	}
+	return completed, inProgress, nil
 }

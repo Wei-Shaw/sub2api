@@ -135,14 +135,15 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		return nil
 	}
 	out := &AdminGroup{
-		Group:                groupFromServiceBase(g),
-		ModelRouting:         g.ModelRouting,
-		ModelRoutingEnabled:  g.ModelRoutingEnabled,
-		MCPXMLInject:         g.MCPXMLInject,
-		DefaultMappedModel:   g.DefaultMappedModel,
-		SupportedModelScopes: g.SupportedModelScopes,
-		AccountCount:         g.AccountCount,
-		SortOrder:            g.SortOrder,
+		Group:                    groupFromServiceBase(g),
+		ModelRouting:             g.ModelRouting,
+		ModelRoutingEnabled:      g.ModelRoutingEnabled,
+		MCPXMLInject:             g.MCPXMLInject,
+		DefaultMappedModel:       g.DefaultMappedModel,
+		SimulateClaudeMaxEnabled: g.SimulateClaudeMaxEnabled,
+		SupportedModelScopes:     g.SupportedModelScopes,
+		AccountCount:             g.AccountCount,
+		SortOrder:                g.SortOrder,
 	}
 	if len(g.AccountGroups) > 0 {
 		out.AccountGroups = make([]AccountGroup, 0, len(g.AccountGroups))
@@ -262,6 +263,12 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 			target := a.GetCacheTTLOverrideTarget()
 			out.CacheTTLOverrideTarget = &target
 		}
+	}
+
+	// 客户端亲和调度（Anthropic 和 Antigravity 账号）
+	if a.IsClientAffinityEnabled() {
+		enabled := true
+		out.ClientAffinityEnabled = &enabled
 	}
 
 	// 提取账号配额限制（apikey / bedrock 类型有效）

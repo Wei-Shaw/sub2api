@@ -15,7 +15,7 @@ import (
 func setupAccountMixedChannelRouter(adminSvc *stubAdminService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	accountHandler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	accountHandler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router.POST("/api/v1/admin/accounts/check-mixed-channel", accountHandler.CheckMixedChannel)
 	router.POST("/api/v1/admin/accounts", accountHandler.Create)
 	router.PUT("/api/v1/admin/accounts/:id", accountHandler.Update)
@@ -111,7 +111,7 @@ func TestAccountHandlerCreateMixedChannelConflictSimplifiedResponse(t *testing.T
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, "mixed_channel_warning", resp["error"])
-	require.Contains(t, resp["message"], "mixed_channel_warning")
+	require.Contains(t, resp["message"], "claude-max")
 	_, hasDetails := resp["details"]
 	_, hasRequireConfirmation := resp["require_confirmation"]
 	require.False(t, hasDetails)
@@ -140,7 +140,7 @@ func TestAccountHandlerUpdateMixedChannelConflictSimplifiedResponse(t *testing.T
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, "mixed_channel_warning", resp["error"])
-	require.Contains(t, resp["message"], "mixed_channel_warning")
+	require.Contains(t, resp["message"], "claude-max")
 	_, hasDetails := resp["details"]
 	_, hasRequireConfirmation := resp["require_confirmation"]
 	require.False(t, hasDetails)

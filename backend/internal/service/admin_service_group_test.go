@@ -785,3 +785,57 @@ func TestAdminService_UpdateGroup_InvalidRequestFallbackAllowsAntigravity(t *tes
 	require.NotNil(t, repo.updated)
 	require.Equal(t, fallbackID, *repo.updated.FallbackGroupIDOnInvalidRequest)
 }
+
+func TestAdminService_CreateGroup_SimulateClaudeMaxRequiresAnthropic(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	enabled := true
+	_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                     "openai-group",
+		Platform:                 PlatformOpenAI,
+		SimulateClaudeMaxEnabled: &enabled,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "simulate_claude_max_enabled only supported for anthropic groups")
+	require.Nil(t, repo.created)
+}
+
+func TestAdminService_UpdateGroup_SimulateClaudeMaxRequiresAnthropic(t *testing.T) {
+	existingGroup := &Group{
+		ID:       1,
+		Name:     "openai-group",
+		Platform: PlatformOpenAI,
+		Status:   StatusActive,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	enabled := true
+	_, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		SimulateClaudeMaxEnabled: &enabled,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "simulate_claude_max_enabled only supported for anthropic groups")
+	require.Nil(t, repo.updated)
+}
+
+func TestAdminService_UpdateGroup_ClearsSimulateClaudeMaxWhenPlatformChanges(t *testing.T) {
+	existingGroup := &Group{
+		ID:                       1,
+		Name:                     "anthropic-group",
+		Platform:                 PlatformAnthropic,
+		Status:                   StatusActive,
+		SimulateClaudeMaxEnabled: true,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		Platform: PlatformOpenAI,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.False(t, repo.updated.SimulateClaudeMaxEnabled)
+}

@@ -143,9 +143,10 @@ type CreateGroupInput struct {
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
-	ModelRouting        map[string][]int64
-	ModelRoutingEnabled bool // 是否启用模型路由
-	MCPXMLInject        *bool
+	ModelRouting             map[string][]int64
+	ModelRoutingEnabled      bool // 是否启用模型路由
+	MCPXMLInject             *bool
+	SimulateClaudeMaxEnabled *bool
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string
 	// Sora 存储配额
@@ -182,9 +183,10 @@ type UpdateGroupInput struct {
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
 	FallbackGroupIDOnInvalidRequest *int64
 	// 模型路由配置（仅 anthropic 平台使用）
-	ModelRouting        map[string][]int64
-	ModelRoutingEnabled *bool // 是否启用模型路由
-	MCPXMLInject        *bool
+	ModelRouting             map[string][]int64
+	ModelRoutingEnabled      *bool // 是否启用模型路由
+	MCPXMLInject             *bool
+	SimulateClaudeMaxEnabled *bool
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes *[]string
 	// Sora 存储配额
@@ -368,6 +370,10 @@ type ProxyExitInfoProber interface {
 	ProbeProxy(ctx context.Context, proxyURL string) (*ProxyExitInfo, int64, error)
 }
 
+type groupExistenceBatchReader interface {
+	ExistsByIDs(ctx context.Context, ids []int64) (map[int64]bool, error)
+}
+
 type proxyQualityTarget struct {
 	Target          string
 	URL             string
@@ -443,10 +449,6 @@ type adminServiceImpl struct {
 
 type userGroupRateBatchReader interface {
 	GetByUserIDs(ctx context.Context, userIDs []int64) (map[int64]map[int64]float64, error)
-}
-
-type groupExistenceBatchReader interface {
-	ExistsByIDs(ctx context.Context, ids []int64) (map[int64]bool, error)
 }
 
 // NewAdminService creates a new AdminService
@@ -868,6 +870,13 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if input.MCPXMLInject != nil {
 		mcpXMLInject = *input.MCPXMLInject
 	}
+	simulateClaudeMaxEnabled := false
+	if input.SimulateClaudeMaxEnabled != nil {
+		if platform != PlatformAnthropic && *input.SimulateClaudeMaxEnabled {
+			return nil, fmt.Errorf("simulate_claude_max_enabled only supported for anthropic groups")
+		}
+		simulateClaudeMaxEnabled = *input.SimulateClaudeMaxEnabled
+	}
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -924,6 +933,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
 		ModelRouting:                    input.ModelRouting,
 		MCPXMLInject:                    mcpXMLInject,
+		SimulateClaudeMaxEnabled:        simulateClaudeMaxEnabled,
 		SupportedModelScopes:            input.SupportedModelScopes,
 		SoraStorageQuotaBytes:           input.SoraStorageQuotaBytes,
 		AllowMessagesDispatch:           input.AllowMessagesDispatch,
@@ -1129,6 +1139,15 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.MCPXMLInject != nil {
 		group.MCPXMLInject = *input.MCPXMLInject
+	}
+	if input.SimulateClaudeMaxEnabled != nil {
+		if group.Platform != PlatformAnthropic && *input.SimulateClaudeMaxEnabled {
+			return nil, fmt.Errorf("simulate_claude_max_enabled only supported for anthropic groups")
+		}
+		group.SimulateClaudeMaxEnabled = *input.SimulateClaudeMaxEnabled
+	}
+	if group.Platform != PlatformAnthropic {
+		group.SimulateClaudeMaxEnabled = false
 	}
 
 	// 支持的模型系列（仅 antigravity 平台使用）

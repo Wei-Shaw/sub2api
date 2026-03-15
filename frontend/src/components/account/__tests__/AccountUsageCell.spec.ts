@@ -14,6 +14,10 @@ vi.mock('@/api/admin', () => ({
   }
 }))
 
+vi.mock('@/utils/usageLoadQueue', () => ({
+  enqueueUsageRequest: (_account: unknown, fn: () => Promise<unknown>) => fn()
+}))
+
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
