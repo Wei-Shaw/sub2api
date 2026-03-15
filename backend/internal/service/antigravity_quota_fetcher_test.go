@@ -81,7 +81,7 @@ func TestBuildUsageInfo_BasicModels(t *testing.T) {
 		},
 	}
 
-	info := fetcher.buildUsageInfo(modelsResp, "g1-pro-tier", "PRO")
+	info := fetcher.buildUsageInfo(modelsResp, "g1-pro-tier", "PRO", nil)
 
 	// 基本字段
 	require.NotNil(t, info.UpdatedAt, "UpdatedAt should be set")
@@ -141,7 +141,7 @@ func TestBuildUsageInfo_DeprecatedModels(t *testing.T) {
 		},
 	}
 
-	info := fetcher.buildUsageInfo(modelsResp, "", "")
+	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 
 	require.Len(t, info.ModelForwardingRules, 2)
 	require.Equal(t, "claude-sonnet-4-20250514", info.ModelForwardingRules["claude-3-sonnet-20240229"])
@@ -159,7 +159,7 @@ func TestBuildUsageInfo_NoDeprecatedModels(t *testing.T) {
 		},
 	}
 
-	info := fetcher.buildUsageInfo(modelsResp, "", "")
+	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 
 	require.Nil(t, info.ModelForwardingRules, "ModelForwardingRules should be nil when no deprecated models")
 }
@@ -171,7 +171,7 @@ func TestBuildUsageInfo_EmptyModels(t *testing.T) {
 		Models: map[string]antigravity.ModelInfo{},
 	}
 
-	info := fetcher.buildUsageInfo(modelsResp, "", "")
+	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 
 	require.NotNil(t, info)
 	require.NotNil(t, info.AntigravityQuota)
@@ -193,7 +193,7 @@ func TestBuildUsageInfo_ModelWithNilQuotaInfo(t *testing.T) {
 		},
 	}
 
-	info := fetcher.buildUsageInfo(modelsResp, "", "")
+	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 
 	require.NotNil(t, info)
 	require.Empty(t, info.AntigravityQuota, "models with nil QuotaInfo should be skipped")
@@ -222,7 +222,7 @@ func TestBuildUsageInfo_FiveHourPriorityOrder(t *testing.T) {
 		},
 	}
 
-	info := fetcher.buildUsageInfo(modelsResp, "", "")
+	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 
 	require.NotNil(t, info.FiveHour, "FiveHour should be set when a priority model exists")
 	// claude-sonnet-4-20250514 is first in priority list, so it should be used
@@ -251,7 +251,7 @@ func TestBuildUsageInfo_FiveHourFallbackToClaude4(t *testing.T) {
 		},
 	}
 
-	info := fetcher.buildUsageInfo(modelsResp, "", "")
+	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 
 	require.NotNil(t, info.FiveHour)
 	expectedUtilization := (1.0 - 0.60) * 100 // 40
@@ -277,7 +277,7 @@ func TestBuildUsageInfo_FiveHourFallbackToGemini(t *testing.T) {
 		},
 	}
 
-	info := fetcher.buildUsageInfo(modelsResp, "", "")
+	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 
 	require.NotNil(t, info.FiveHour)
 	expectedUtilization := (1.0 - 0.30) * 100 // 70
@@ -298,7 +298,7 @@ func TestBuildUsageInfo_FiveHourNoPriorityModel(t *testing.T) {
 		},
 	}
 
-	info := fetcher.buildUsageInfo(modelsResp, "", "")
+	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 
 	require.Nil(t, info.FiveHour, "FiveHour should be nil when no priority model exists")
 }
@@ -317,7 +317,7 @@ func TestBuildUsageInfo_FiveHourWithEmptyResetTime(t *testing.T) {
 		},
 	}
 
-	info := fetcher.buildUsageInfo(modelsResp, "", "")
+	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 
 	require.NotNil(t, info.FiveHour)
 	require.Nil(t, info.FiveHour.ResetsAt, "ResetsAt should be nil when ResetTime is empty")
@@ -338,7 +338,7 @@ func TestBuildUsageInfo_FullUtilization(t *testing.T) {
 		},
 	}
 
-	info := fetcher.buildUsageInfo(modelsResp, "", "")
+	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 
 	quota := info.AntigravityQuota["claude-sonnet-4-20250514"]
 	require.NotNil(t, quota)
@@ -358,11 +358,36 @@ func TestBuildUsageInfo_ZeroUtilization(t *testing.T) {
 		},
 	}
 
-	info := fetcher.buildUsageInfo(modelsResp, "", "")
-
+	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 	quota := info.AntigravityQuota["claude-sonnet-4-20250514"]
 	require.NotNil(t, quota)
 	require.Equal(t, 0, quota.Utilization)
+}
+
+func TestBuildUsageInfo_AICredits(t *testing.T) {
+	fetcher := &AntigravityQuotaFetcher{}
+	modelsResp := &antigravity.FetchAvailableModelsResponse{
+		Models: map[string]antigravity.ModelInfo{},
+	}
+	loadResp := &antigravity.LoadCodeAssistResponse{
+		PaidTier: &antigravity.PaidTierInfo{
+			ID: "g1-pro-tier",
+			AvailableCredits: []antigravity.AvailableCredit{
+				{
+					CreditType:                  "GOOGLE_ONE_AI",
+					CreditAmount:                "25",
+					MinimumCreditAmountForUsage: "5",
+				},
+			},
+		},
+	}
+
+	info := fetcher.buildUsageInfo(modelsResp, "g1-pro-tier", "PRO", loadResp)
+
+	require.Len(t, info.AICredits, 1)
+	require.Equal(t, "GOOGLE_ONE_AI", info.AICredits[0].CreditType)
+	require.Equal(t, 25.0, info.AICredits[0].Amount)
+	require.Equal(t, 5.0, info.AICredits[0].MinimumBalance)
 }
 
 func TestFetchQuota_ForbiddenReturnsIsForbidden(t *testing.T) {

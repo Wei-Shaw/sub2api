@@ -1174,7 +1174,8 @@ func hasRecoverableRuntimeState(account *Account) bool {
 	if len(account.Extra) == 0 {
 		return false
 	}
-	return hasNonEmptyMapValue(account.Extra, "model_rate_limits") || hasNonEmptyMapValue(account.Extra, "antigravity_quota_scopes")
+	return hasNonEmptyMapValue(account.Extra, "model_rate_limits") ||
+		hasNonEmptyMapValue(account.Extra, "antigravity_quota_scopes")
 }
 
 func hasNonEmptyMapValue(extra map[string]any, key string) bool {

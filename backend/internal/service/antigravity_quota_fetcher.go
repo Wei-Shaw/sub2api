@@ -78,11 +78,11 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		return nil, err
 	}
 
-	// 调用 LoadCodeAssist 获取订阅等级（非关键路径，失败不影响主流程）
-	tierRaw, tierNormalized := f.fetchSubscriptionTier(ctx, client, accessToken)
+	// 调用 LoadCodeAssist 获取订阅等级和 AI Credits 余额（非关键路径，失败不影响主流程）
+	tierRaw, tierNormalized, loadResp := f.fetchSubscriptionTier(ctx, client, accessToken)
 
 	// 转换为 UsageInfo
-	usageInfo := f.buildUsageInfo(modelsResp, tierRaw, tierNormalized)
+	usageInfo := f.buildUsageInfo(modelsResp, tierRaw, tierNormalized, loadResp)
 
 	return &QuotaResult{
 		UsageInfo: usageInfo,
@@ -90,20 +90,21 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 	}, nil
 }
 
-// fetchSubscriptionTier 获取账号订阅等级，失败返回空字符串
-func (f *AntigravityQuotaFetcher) fetchSubscriptionTier(ctx context.Context, client *antigravity.Client, accessToken string) (raw, normalized string) {
+// fetchSubscriptionTier 获取账号订阅等级，失败返回空字符串。
+// 同时返回 LoadCodeAssistResponse，以便提取 AI Credits 余额。
+func (f *AntigravityQuotaFetcher) fetchSubscriptionTier(ctx context.Context, client *antigravity.Client, accessToken string) (raw, normalized string, loadResp *antigravity.LoadCodeAssistResponse) {
 	loadResp, _, err := client.LoadCodeAssist(ctx, accessToken)
 	if err != nil {
 		slog.Warn("failed to fetch subscription tier", "error", err)
-		return "", ""
+		return "", "", nil
 	}
 	if loadResp == nil {
-		return "", ""
+		return "", "", nil
 	}
 
 	raw = loadResp.GetTier() // 已有方法：paidTier > currentTier
 	normalized = normalizeTier(raw)
-	return raw, normalized
+	return raw, normalized, loadResp
 }
 
 // normalizeTier 将原始 tier 字符串归一化为 FREE/PRO/ULTRA/UNKNOWN
@@ -124,8 +125,8 @@ func normalizeTier(raw string) string {
 	}
 }
 
-// buildUsageInfo 将 API 响应转换为 UsageInfo
-func (f *AntigravityQuotaFetcher) buildUsageInfo(modelsResp *antigravity.FetchAvailableModelsResponse, tierRaw, tierNormalized string) *UsageInfo {
+// buildUsageInfo 将 API 响应转换为 UsageInfo。
+func (f *AntigravityQuotaFetcher) buildUsageInfo(modelsResp *antigravity.FetchAvailableModelsResponse, tierRaw, tierNormalized string, loadResp *antigravity.LoadCodeAssistResponse) *UsageInfo {
 	now := time.Now()
 	info := &UsageInfo{
 		UpdatedAt:               &now,
@@ -187,6 +188,16 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(modelsResp *antigravity.FetchAv
 			}
 			info.FiveHour = progress
 			break
+		}
+	}
+
+	if loadResp != nil {
+		for _, credit := range loadResp.GetAvailableCredits() {
+			info.AICredits = append(info.AICredits, AICredit{
+				CreditType:     credit.CreditType,
+				Amount:         credit.GetAmount(),
+				MinimumBalance: credit.GetMinimumAmount(),
+			})
 		}
 	}
 

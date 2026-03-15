@@ -51,15 +51,23 @@ func (c *stubSmartRetryCache) ClearAccountAffinity(_ context.Context, _ int64, _
 
 // mockSmartRetryUpstream 用于 handleSmartRetry 测试的 mock upstream
 type mockSmartRetryUpstream struct {
-	responses []*http.Response
-	errors    []error
-	callIdx   int
-	calls     []string
+	responses     []*http.Response
+	errors        []error
+	callIdx       int
+	calls         []string
+	requestBodies [][]byte
 }
 
 func (m *mockSmartRetryUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
 	idx := m.callIdx
 	m.calls = append(m.calls, req.URL.String())
+	if req != nil && req.Body != nil {
+		body, _ := io.ReadAll(req.Body)
+		m.requestBodies = append(m.requestBodies, body)
+		req.Body = io.NopCloser(bytes.NewReader(body))
+	} else {
+		m.requestBodies = append(m.requestBodies, nil)
+	}
 	m.callIdx++
 	if idx < len(m.responses) {
 		return m.responses[idx], m.errors[idx]

@@ -32,6 +32,10 @@ func (a *Account) IsSchedulableForModelWithContext(ctx context.Context, requeste
 		return false
 	}
 	if a.isModelRateLimitedWithContext(ctx, requestedModel) {
+		// Antigravity + overages 启用 + 积分未耗尽 → 放行（有积分可用）
+		if a.Platform == PlatformAntigravity && a.IsOveragesEnabled() && !a.isCreditsExhausted() {
+			return true
+		}
 		return false
 	}
 	return true
