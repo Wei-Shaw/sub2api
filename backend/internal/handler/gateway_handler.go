@@ -391,6 +391,8 @@ REDACTED
 			if fs.SwitchCount > 0 {
 				requestCtx = service.WithAccountSwitchCount(requestCtx, fs.SwitchCount, h.metadataBridgeEnabled())
 		REDACTED
+			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
+			writerSizeBeforeForward := c.Writer.Size()
 			if account.Platform == service.PlatformAntigravity {
 				result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, reqModel, "generateContent", reqStream, body, hasBoundSession)
 		REDACTED else {
@@ -402,6 +404,11 @@ REDACTED
 			if err != nil {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
+					if c.Writer.Size() != writerSizeBeforeForward {
+						h.handleFailoverExhausted(c, failoverErr, service.PlatformGemini, true)
+						return
+				REDACTED
 					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr)
 					switch action {
 					case FailoverContinue:
@@ -637,6 +644,8 @@ REDACTED
 			if fs.SwitchCount > 0 {
 				requestCtx = service.WithAccountSwitchCount(requestCtx, fs.SwitchCount, h.metadataBridgeEnabled())
 		REDACTED
+			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
+			writerSizeBeforeForward := c.Writer.Size()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, body, hasBoundSession)
 		REDACTED else {
@@ -706,6 +715,11 @@ REDACTED
 			REDACTED
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
+					if c.Writer.Size() != writerSizeBeforeForward {
+						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
+						return
+				REDACTED
 					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr)
 					switch action {
 					case FailoverContinue:
