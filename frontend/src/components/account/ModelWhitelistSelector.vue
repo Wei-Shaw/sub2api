@@ -131,7 +131,8 @@ const { t REDACTED = useI18n()
 
 const props = defineProps<{
   modelValue: string[]
-  platform: string
+  platform?: string
+  platforms?: string[]
 REDACTED>()
 
 const emit = defineEmits<{
@@ -144,11 +145,36 @@ const showDropdown = ref(false)
 const searchQuery = ref('')
 const customModel = ref('')
 const isComposing = ref(false)
+const normalizedPlatforms = computed(() => {
+  const rawPlatforms =
+    props.platforms && props.platforms.length > 0
+      ? props.platforms
+      : props.platform
+        ? [props.platform]
+        : []
+
+  return Array.from(
+    new Set(
+      rawPlatforms
+        .map(platform => platform?.trim())
+        .filter((platform): platform is string => Boolean(platform))
+    )
+  )
+REDACTED)
+
 const availableOptions = computed(() => {
-  if (props.platform === 'sora') {
-    return getModelsByPlatform('sora').map(m => ({ value: m, label: m REDACTED))
+  if (normalizedPlatforms.value.length === 0) {
+    return allModels
   REDACTED
-  return allModels
+
+  const allowedModels = new Set<string>()
+  for (const platform of normalizedPlatforms.value) {
+    for (const model of getModelsByPlatform(platform)) {
+      allowedModels.add(model)
+    REDACTED
+  REDACTED
+
+  return allModels.filter(model => allowedModels.has(model.value))
 REDACTED)
 
 const filteredModels = computed(() => {
@@ -192,10 +218,13 @@ const handleEnter = () => {
 REDACTED
 
 const fillRelated = () => {
-  const models = getModelsByPlatform(props.platform)
   const newModels = [...props.modelValue]
-  for (const model of models) {
-    if (!newModels.includes(model)) newModels.push(model)
+  for (const platform of normalizedPlatforms.value) {
+    for (const model of getModelsByPlatform(platform)) {
+      if (!newModels.includes(model)) {
+        newModels.push(model)
+      REDACTED
+    REDACTED
   REDACTED
   emit('update:modelValue', newModels)
 REDACTED
