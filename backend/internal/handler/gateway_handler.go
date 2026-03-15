@@ -406,7 +406,7 @@ REDACTED
 				if errors.As(err, &failoverErr) {
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
 					if c.Writer.Size() != writerSizeBeforeForward {
-						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
+						h.handleFailoverExhausted(c, failoverErr, service.PlatformGemini, true)
 						return
 				REDACTED
 					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr)
