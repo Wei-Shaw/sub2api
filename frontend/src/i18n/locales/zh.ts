@@ -4017,7 +4017,7 @@ export default {
         ignoreInvalidApiKeyErrors: '忽略无效 API Key 错误',
         ignoreInvalidApiKeyErrorsHint: '启用后，无效或缺失 API Key 的错误（INVALID_API_KEY、API_KEY_REQUIRED）将不会写入错误日志。',
         ignoreInsufficientBalanceErrors: '忽略余额不足错误',
-        ignoreInsufficientBalanceErrorsHint: '启用后，上游账号余额不足（Insufficient balance）的错误将不会写入错误日志。',
+        ignoreInsufficientBalanceErrorsHint: '启用后，账号余额不足（Insufficient balance）的错误将不会写入错误日志。',
         autoRefresh: '自动刷新',
         enableAutoRefresh: '启用自动刷新',
         enableAutoRefreshHint: '自动刷新仪表板数据，启用后会定期拉取最新数据。',
