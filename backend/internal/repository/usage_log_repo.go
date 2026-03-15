@@ -2139,7 +2139,9 @@ REDACTED
 				actual_cost,
 				requests,
 				tokens,
-				COALESCE(SUM(actual_cost) OVER (), 0) as total_actual_cost
+				COALESCE(SUM(actual_cost) OVER (), 0) as total_actual_cost,
+				COALESCE(SUM(requests) OVER (), 0) as total_requests,
+				COALESCE(SUM(tokens) OVER (), 0) as total_tokens
 			FROM user_spend
 			ORDER BY actual_cost DESC, tokens DESC, user_id ASC
 			LIMIT $3
@@ -2150,7 +2152,9 @@ REDACTED
 			actual_cost,
 			requests,
 			tokens,
-			total_actual_cost
+			total_actual_cost,
+			total_requests,
+			total_tokens
 		FROM ranked
 		ORDER BY actual_cost DESC, tokens DESC, user_id ASC
 	`
@@ -2168,9 +2172,11 @@ REDACTED()
 
 	ranking := make([]UserSpendingRankingItem, 0)
 	totalActualCost := 0.0
+	totalRequests := int64(0)
+	totalTokens := int64(0)
 	for rows.Next() {
 		var row UserSpendingRankingItem
-		if err = rows.Scan(&row.UserID, &row.Email, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost); err != nil {
+		if err = rows.Scan(&row.UserID, &row.Email, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens); err != nil {
 			return nil, err
 	REDACTED
 		ranking = append(ranking, row)
@@ -2182,6 +2188,8 @@ REDACTED
 	return &UserSpendingRankingResponse{
 		Ranking:         ranking,
 		TotalActualCost: totalActualCost,
+		TotalRequests:   totalRequests,
+		TotalTokens:     totalTokens,
 REDACTED, nil
 REDACTED
 

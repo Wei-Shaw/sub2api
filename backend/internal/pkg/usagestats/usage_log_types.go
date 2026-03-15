@@ -116,6 +116,8 @@ REDACTED
 type UserSpendingRankingResponse struct {
 	Ranking         []UserSpendingRankingItem `json:"ranking"`
 	TotalActualCost float64                   `json:"total_actual_cost"`
+	TotalRequests   int64                     `json:"total_requests"`
+	TotalTokens     int64                     `json:"total_tokens"`
 REDACTED
 
 // APIKeyUsageTrendPoint represents API key usage trend data point
