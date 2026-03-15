@@ -270,8 +270,7 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 				return s.refreshPolicy.handleAlreadyRefreshed()
 			} else {
 				account = result.Account
-				newCredentials = result.NewCredentials
-				// 统一 API 已设置 _token_version 并更新 DB，无需重复操作
+				_ = result.NewCredentials // 统一 API 已设置 _token_version 并更新 DB，无需重复操作
 			}
 		} else {
 			// 降级：直接调用 refresher（兼容旧路径）
