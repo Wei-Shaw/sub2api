@@ -337,6 +337,10 @@ type UsageLog struct {
 	// ReasoningEffort is the request's reasoning effort level (OpenAI Responses API).
 	// nil means not provided / not applicable.
 	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
+	// InboundEndpoint is the client-facing API endpoint path, e.g. /v1/chat/completions.
+	InboundEndpoint *string `json:"inbound_endpoint,omitempty"`
+	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.
+	UpstreamEndpoint *string `json:"upstream_endpoint,omitempty"`
 
 	GroupID        *int64 `json:"group_id"`
 	SubscriptionID *int64 `json:"subscription_id"`

@@ -73,6 +73,8 @@ REDACTED
 			sqlmock.AnyArg(), // media_type
 			sqlmock.AnyArg(), // service_tier
 			sqlmock.AnyArg(), // reasoning_effort
+			sqlmock.AnyArg(), // inbound_endpoint
+			sqlmock.AnyArg(), // upstream_endpoint
 			log.CacheTTLOverridden,
 			createdAt,
 		).
@@ -140,6 +142,8 @@ REDACTED
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			serviceTier,
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			log.CacheTTLOverridden,
 			createdAt,
@@ -376,6 +380,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{REDACTED,
 			sql.NullString{Valid: true, String: "priority"REDACTED,
 			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
 			false,
 			now,
 	REDACTEDREDACTED)
@@ -415,6 +421,8 @@ REDACTED)
 			sql.NullString{REDACTED,
 			sql.NullString{Valid: true, String: "flex"REDACTED,
 			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
 			false,
 			now,
 	REDACTEDREDACTED)
@@ -453,6 +461,8 @@ REDACTED)
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullString{Valid: true, String: "priority"REDACTED,
+			sql.NullString{REDACTED,
+			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			false,
 			now,

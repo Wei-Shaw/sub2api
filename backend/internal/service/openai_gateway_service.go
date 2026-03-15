@@ -4028,6 +4028,8 @@ type OpenAIRecordUsageInput struct {
 	User               *User
 	Account            *Account
 	Subscription       *UserSubscription
+	InboundEndpoint    string
+	UpstreamEndpoint   string
 	UserAgent          string // 请求的 User-Agent
 	IPAddress          string // 请求的客户端 IP 地址
 	RequestPayloadHash string
@@ -4106,6 +4108,8 @@ REDACTED
 		Model:                 billingModel,
 		ServiceTier:           result.ServiceTier,
 		ReasoningEffort:       result.ReasoningEffort,
+		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
+		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
 		InputTokens:           actualInputTokens,
 		OutputTokens:          result.Usage.OutputTokens,
 		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
@@ -4125,7 +4129,6 @@ REDACTED
 		FirstTokenMs:          result.FirstTokenMs,
 		CreatedAt:             time.Now(),
 REDACTED
-
 	// 添加 UserAgent
 	if input.UserAgent != "" {
 		usageLog.UserAgent = &input.UserAgent
@@ -4667,4 +4670,12 @@ REDACTED
 		// Only store known effort levels for now to keep UI consistent.
 		return ""
 REDACTED
+REDACTED
+
+func optionalTrimmedStringPtr(raw string) *string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+REDACTED
+	return &trimmed
 REDACTED
