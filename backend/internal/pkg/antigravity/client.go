@@ -124,8 +124,66 @@ type IneligibleTier struct {
 type LoadCodeAssistResponse struct {
 	CloudAICompanionProject string            `json:"cloudaicompanionProject"`
 	CurrentTier             *TierInfo         `json:"currentTier,omitempty"`
-	PaidTier                *TierInfo         `json:"paidTier,omitempty"`
+	PaidTier                *PaidTierInfo     `json:"paidTier,omitempty"`
 	IneligibleTiers         []*IneligibleTier `json:"ineligibleTiers,omitempty"`
+}
+
+// PaidTierInfo 付费等级信息，包含 AI Credits 余额。
+type PaidTierInfo struct {
+	ID               string            `json:"id"`
+	Name             string            `json:"name"`
+	Description      string            `json:"description"`
+	AvailableCredits []AvailableCredit `json:"availableCredits,omitempty"`
+}
+
+// UnmarshalJSON 兼容 paidTier 既可能是字符串也可能是对象的情况。
+func (p *PaidTierInfo) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || string(data) == "null" {
+		return nil
+	}
+	if data[0] == '"' {
+		var id string
+		if err := json.Unmarshal(data, &id); err != nil {
+			return err
+		}
+		p.ID = id
+		return nil
+	}
+	type alias PaidTierInfo
+	var raw alias
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*p = PaidTierInfo(raw)
+	return nil
+}
+
+// AvailableCredit 表示一条 AI Credits 余额记录。
+type AvailableCredit struct {
+	CreditType                  string `json:"creditType,omitempty"`
+	CreditAmount                string `json:"creditAmount,omitempty"`
+	MinimumCreditAmountForUsage string `json:"minimumCreditAmountForUsage,omitempty"`
+}
+
+// GetAmount 将 creditAmount 解析为浮点数。
+func (c *AvailableCredit) GetAmount() float64 {
+	if c.CreditAmount == "" {
+		return 0
+	}
+	var value float64
+	_, _ = fmt.Sscanf(c.CreditAmount, "%f", &value)
+	return value
+}
+
+// GetMinimumAmount 将 minimumCreditAmountForUsage 解析为浮点数。
+func (c *AvailableCredit) GetMinimumAmount() float64 {
+	if c.MinimumCreditAmountForUsage == "" {
+		return 0
+	}
+	var value float64
+	_, _ = fmt.Sscanf(c.MinimumCreditAmountForUsage, "%f", &value)
+	return value
 }
 
 // OnboardUserRequest onboardUser 请求
@@ -155,6 +213,14 @@ func (r *LoadCodeAssistResponse) GetTier() string {
 		return r.CurrentTier.ID
 	}
 	return ""
+}
+
+// GetAvailableCredits 返回 paid tier 中的 AI Credits 余额列表。
+func (r *LoadCodeAssistResponse) GetAvailableCredits() []AvailableCredit {
+	if r.PaidTier == nil {
+		return nil
+	}
+	return r.PaidTier.AvailableCredits
 }
 
 // Client Antigravity API 客户端
