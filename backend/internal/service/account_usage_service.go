@@ -166,6 +166,13 @@ type AntigravityModelDetail struct {
 	SupportedMimeTypes map[string]bool `json:"supported_mime_types,omitempty"`
 }
 
+// AICredit 表示 Antigravity 账号的 AI Credits 余额信息。
+type AICredit struct {
+	CreditType     string  `json:"credit_type,omitempty"`
+	Amount         float64 `json:"amount,omitempty"`
+	MinimumBalance float64 `json:"minimum_balance,omitempty"`
+}
+
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
 	UpdatedAt          *time.Time     `json:"updated_at,omitempty"`           // 更新时间
@@ -188,6 +195,9 @@ type UsageInfo struct {
 
 	// Antigravity 模型详细能力信息（与 antigravity_quota 同 key）
 	AntigravityQuotaDetails map[string]*AntigravityModelDetail `json:"antigravity_quota_details,omitempty"`
+
+	// Antigravity AI Credits 余额
+	AICredits []AICredit `json:"ai_credits,omitempty"`
 
 	// Antigravity 废弃模型转发规则 (old_model_id -> new_model_id)
 	ModelForwardingRules map[string]string `json:"model_forwarding_rules,omitempty"`

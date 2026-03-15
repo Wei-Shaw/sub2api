@@ -1535,6 +1535,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	wasOveragesEnabled := account.IsOveragesEnabled()
 
 	if input.Name != "" {
 		account.Name = input.Name
@@ -1556,6 +1557,13 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			}
 		}
 		account.Extra = input.Extra
+		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
+			delete(account.Extra, antigravityCreditsOveragesKey)
+		}
+		if account.Platform == PlatformAntigravity && !wasOveragesEnabled && account.IsOveragesEnabled() {
+			delete(account.Extra, modelRateLimitsKey)
+			delete(account.Extra, antigravityCreditsOveragesKey)
+		}
 		// 校验并预计算固定时间重置的下次重置时间
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
 			return nil, err
@@ -1637,6 +1645,14 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 
 	if err := s.accountRepo.Update(ctx, account); err != nil {
 		return nil, err
+	}
+	if account.Platform == PlatformAntigravity {
+		if !account.IsOveragesEnabled() && wasOveragesEnabled {
+			clearCreditsExhausted(account.ID)
+		}
+		if account.IsOveragesEnabled() && !wasOveragesEnabled {
+			clearCreditsExhausted(account.ID)
+		}
 	}
 
 	// 绑定分组

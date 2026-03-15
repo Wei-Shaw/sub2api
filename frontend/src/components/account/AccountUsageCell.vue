@@ -289,6 +289,13 @@
           :resets-at="antigravityClaudeUsageFromAPI.resetTime"
           color="amber"
         />
+
+        <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+          💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
+        </div>
+      </div>
+      <div v-else-if="aiCreditsDisplay" class="text-[10px] text-gray-500 dark:text-gray-400">
+        💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
       </div>
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
@@ -587,6 +594,14 @@ const antigravityClaudeUsageFromAPI = computed(() =>
     'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-opus-4-6-thinking',
   ])
 )
+
+const aiCreditsDisplay = computed(() => {
+  const credits = usageInfo.value?.ai_credits
+  if (!credits || credits.length === 0) return null
+  const total = credits.reduce((sum, credit) => sum + (credit.amount ?? 0), 0)
+  if (total <= 0) return null
+  return total.toFixed(0)
+})
 
 // Antigravity 账户类型（从 load_code_assist 响应中提取）
 const antigravityTier = computed(() => {

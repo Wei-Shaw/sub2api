@@ -188,8 +188,28 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 		return &smartRetryResult{action: smartRetryActionContinueURL}
 	}
 
+	category := antigravity429Unknown
+	if resp.StatusCode == http.StatusTooManyRequests {
+		category = classifyAntigravity429(respBody)
+	}
+
 	// 判断是否触发智能重试
 	shouldSmartRetry, shouldRateLimitModel, waitDuration, modelName, isModelCapacityExhausted := shouldTriggerAntigravitySmartRetry(p.account, respBody)
+
+	// AI Credits 超量请求：
+	// 仅在上游明确返回免费配额耗尽时才允许切换到 credits。
+	if resp.StatusCode == http.StatusTooManyRequests &&
+		category == antigravity429QuotaExhausted &&
+		p.account.IsOveragesEnabled() &&
+		!isCreditsExhausted(p.account.ID) {
+		result := s.attemptCreditsOveragesRetry(p, baseURL, modelName, waitDuration, resp.StatusCode, respBody)
+		if result.handled && result.resp != nil {
+			return &smartRetryResult{
+				action: smartRetryActionBreakWithResp,
+				resp:   result.resp,
+			}
+		}
+	}
 
 	// 情况1: retryDelay >= 阈值，限流模型并切换账号
 	if shouldRateLimitModel {
@@ -532,14 +552,29 @@ func (s *AntigravityGatewayService) handleSingleAccountRetryInPlace(
 
 // antigravityRetryLoop 执行带 URL fallback 的重试循环
 func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopResult, error) {
+	// 预检查：如果模型已进入 overages 运行态，则直接注入 AI Credits。
+	overagesActive := false
+	if p.requestedModel != "" && canUseAntigravityCreditsOverages(p.ctx, p.account, p.requestedModel) {
+		if creditsBody := injectEnabledCreditTypes(p.body); creditsBody != nil {
+			p.body = creditsBody
+			overagesActive = true
+			logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: credit_overages_active model=%s account=%d (injecting enabledCreditTypes)",
+				p.prefix, p.requestedModel, p.account.ID)
+		}
+	}
+
 	// 预检查：如果账号已限流，直接返回切换信号
 	if p.requestedModel != "" {
 		if remaining := p.account.GetRateLimitRemainingTimeWithContext(p.ctx, p.requestedModel); remaining > 0 {
-			// 单账号 503 退避重试模式：跳过限流预检查，直接发请求。
-			// 首次请求设的限流是为了多账号调度器跳过该账号，在单账号模式下无意义。
-			// 如果上游确实还不可用，handleSmartRetry → handleSingleAccountRetryInPlace
-			// 会在 Service 层原地等待+重试，不需要在预检查这里等。
-			if isSingleAccountRetry(p.ctx) {
+			// 进入 overages 运行态的模型不再受普通模型限流预检查阻断。
+			if overagesActive {
+				logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: credit_overages_ignore_rate_limit remaining=%v model=%s account=%d",
+					p.prefix, remaining.Truncate(time.Millisecond), p.requestedModel, p.account.ID)
+			} else if isSingleAccountRetry(p.ctx) {
+				// 单账号 503 退避重试模式：跳过限流预检查，直接发请求。
+				// 首次请求设的限流是为了多账号调度器跳过该账号，在单账号模式下无意义。
+				// 如果上游确实还不可用，handleSmartRetry → handleSingleAccountRetryInPlace
+				// 会在 Service 层原地等待+重试，不需要在预检查这里等。
 				logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: single_account_retry skipping rate_limit remaining=%v model=%s account=%d (will retry in-place if 503)",
 					p.prefix, remaining.Truncate(time.Millisecond), p.requestedModel, p.account.ID)
 			} else {
@@ -630,6 +665,15 @@ urlFallbackLoop:
 			if resp.StatusCode >= 400 {
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
+
+				if overagesActive && shouldMarkCreditsExhausted(resp, respBody, nil) {
+					modelKey := resolveCreditsOveragesModelKey(p.ctx, p.account, "", p.requestedModel)
+					s.handleCreditsRetryFailure(p.prefix, modelKey, p.account, 0, &http.Response{
+						StatusCode: resp.StatusCode,
+						Header:     resp.Header.Clone(),
+						Body:       io.NopCloser(bytes.NewReader(respBody)),
+					}, nil)
+				}
 
 				// ★ 统一入口：自定义错误码 + 临时不可调度
 				if handled, outStatus, policyErr := s.applyErrorPolicy(p, resp.StatusCode, resp.Header, respBody); handled {
