@@ -22,8 +22,9 @@ const (
 )
 
 // IsWindowExpired returns true if the window starting at windowStart has exceeded the given duration.
+// A nil windowStart is treated as expired — no initialized window means any accumulated usage is stale.
 func IsWindowExpired(windowStart *time.Time, duration time.Duration) bool {
-	return windowStart != nil && time.Since(*windowStart) >= duration
+	return windowStart == nil || time.Since(*windowStart) >= duration
 REDACTED
 
 type APIKey struct {

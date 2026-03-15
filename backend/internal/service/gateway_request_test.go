@@ -972,6 +972,76 @@ func BenchmarkParseGatewayRequest_Old_Large(b *testing.B) {
 REDACTED
 REDACTED
 
+func TestParseGatewayRequest_OutputEffort(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantEffort string
+REDACTED{
+		{
+			name:       "output_config.effort present",
+			body:       `{"model":"claude-opus-4-6","output_config":{"effort":"medium"REDACTED,"messages":[]REDACTED`,
+			wantEffort: "medium",
+	REDACTED,
+		{
+			name:       "output_config.effort max",
+			body:       `{"model":"claude-opus-4-6","output_config":{"effort":"max"REDACTED,"messages":[]REDACTED`,
+			wantEffort: "max",
+	REDACTED,
+		{
+			name:       "output_config without effort",
+			body:       `{"model":"claude-opus-4-6","output_config":{REDACTED,"messages":[]REDACTED`,
+			wantEffort: "",
+	REDACTED,
+		{
+			name:       "no output_config",
+			body:       `{"model":"claude-opus-4-6","messages":[]REDACTED`,
+			wantEffort: "",
+	REDACTED,
+		{
+			name:       "effort with whitespace trimmed",
+			body:       `{"model":"claude-opus-4-6","output_config":{"effort":" high "REDACTED,"messages":[]REDACTED`,
+			wantEffort: "high",
+	REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parsed, err := ParseGatewayRequest([]byte(tt.body), "")
+		REDACTED
+			require.Equal(t, tt.wantEffort, parsed.OutputEffort)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestNormalizeClaudeOutputEffort(t *testing.T) {
+	tests := []struct {
+		input string
+		want  *string
+REDACTED{
+		{"low", strPtr("low")REDACTED,
+		{"medium", strPtr("medium")REDACTED,
+		{"high", strPtr("high")REDACTED,
+		{"max", strPtr("max")REDACTED,
+		{"LOW", strPtr("low")REDACTED,
+		{"Max", strPtr("max")REDACTED,
+		{" medium ", strPtr("medium")REDACTED,
+		{"", nilREDACTED,
+		{"unknown", nilREDACTED,
+		{"xhigh", nilREDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := NormalizeClaudeOutputEffort(tt.input)
+			if tt.want == nil {
+				require.Nil(t, got)
+		REDACTED else {
+				require.NotNil(t, got)
+				require.Equal(t, *tt.want, *got)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
 func BenchmarkParseGatewayRequest_New_Large(b *testing.B) {
 	data := buildLargeJSON()
 	b.SetBytes(int64(len(data)))

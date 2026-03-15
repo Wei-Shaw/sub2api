@@ -81,6 +81,15 @@ type ModelStat struct {
 	ActualCost          float64 `json:"actual_cost"` // 实际扣除
 REDACTED
 
+// EndpointStat represents usage statistics for a single request endpoint.
+type EndpointStat struct {
+	Endpoint    string  `json:"endpoint"`
+	Requests    int64   `json:"requests"`
+	TotalTokens int64   `json:"total_tokens"`
+	Cost        float64 `json:"cost"`        // 标准计费
+	ActualCost  float64 `json:"actual_cost"` // 实际扣除
+REDACTED
+
 // GroupStat represents usage statistics for a single group
 type GroupStat struct {
 	GroupID     int64   `json:"group_id"`
@@ -179,15 +188,18 @@ REDACTED
 
 // UsageStats represents usage statistics
 type UsageStats struct {
-	TotalRequests     int64    `json:"total_requests"`
-	TotalInputTokens  int64    `json:"total_input_tokens"`
-	TotalOutputTokens int64    `json:"total_output_tokens"`
-	TotalCacheTokens  int64    `json:"total_cache_tokens"`
-	TotalTokens       int64    `json:"total_tokens"`
-	TotalCost         float64  `json:"total_cost"`
-	TotalActualCost   float64  `json:"total_actual_cost"`
-	TotalAccountCost  *float64 `json:"total_account_cost,omitempty"`
-	AverageDurationMs float64  `json:"average_duration_ms"`
+	TotalRequests     int64          `json:"total_requests"`
+	TotalInputTokens  int64          `json:"total_input_tokens"`
+	TotalOutputTokens int64          `json:"total_output_tokens"`
+	TotalCacheTokens  int64          `json:"total_cache_tokens"`
+	TotalTokens       int64          `json:"total_tokens"`
+	TotalCost         float64        `json:"total_cost"`
+	TotalActualCost   float64        `json:"total_actual_cost"`
+	TotalAccountCost  *float64       `json:"total_account_cost,omitempty"`
+	AverageDurationMs float64        `json:"average_duration_ms"`
+	Endpoints         []EndpointStat `json:"endpoints,omitempty"`
+	UpstreamEndpoints []EndpointStat `json:"upstream_endpoints,omitempty"`
+	EndpointPaths     []EndpointStat `json:"endpoint_paths,omitempty"`
 REDACTED
 
 // BatchUserUsageStats represents usage stats for a single user
@@ -254,7 +266,9 @@ REDACTED
 
 // AccountUsageStatsResponse represents the full usage statistics response for an account
 type AccountUsageStatsResponse struct {
-	History []AccountUsageHistory `json:"history"`
-	Summary AccountUsageSummary   `json:"summary"`
-	Models  []ModelStat           `json:"models"`
+	History           []AccountUsageHistory `json:"history"`
+	Summary           AccountUsageSummary   `json:"summary"`
+	Models            []ModelStat           `json:"models"`
+	Endpoints         []EndpointStat        `json:"endpoints"`
+	UpstreamEndpoints []EndpointStat        `json:"upstream_endpoints"`
 REDACTED
