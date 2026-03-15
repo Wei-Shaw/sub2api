@@ -440,7 +440,7 @@ REDACTED
 	acc, err := svc.selectAccountForModelWithPlatform(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, PlatformAnthropic)
 REDACTED
 	require.Nil(t, acc)
-	require.Contains(t, err.Error(), "no available accounts")
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
 REDACTED
 
 // TestGatewayService_SelectAccountForModelWithPlatform_AllExcluded 测试所有账户被排除
@@ -1073,7 +1073,7 @@ REDACTED
 	acc, err := svc.selectAccountForModelWithPlatform(ctx, nil, "", "", nil, PlatformAnthropic)
 REDACTED
 	require.Nil(t, acc)
-	require.Contains(t, err.Error(), "no available accounts")
+	require.ErrorIs(t, err, ErrNoAvailableAccounts)
 REDACTED
 
 func TestGatewayService_isModelSupportedByAccount(t *testing.T) {
@@ -1734,7 +1734,7 @@ REDACTED)
 		acc, err := svc.selectAccountWithMixedScheduling(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, PlatformAnthropic)
 	REDACTED
 		require.Nil(t, acc)
-		require.Contains(t, err.Error(), "no available accounts")
+		require.ErrorIs(t, err, ErrNoAvailableAccounts)
 REDACTED)
 
 	t.Run("混合调度-不支持模型返回错误", func(t *testing.T) {
@@ -2290,7 +2290,7 @@ REDACTED)
 		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "")
 	REDACTED
 		require.Nil(t, result)
-		require.Contains(t, err.Error(), "no available accounts")
+		require.ErrorIs(t, err, ErrNoAvailableAccounts)
 REDACTED)
 
 	t.Run("过滤不可调度账号-限流账号被跳过", func(t *testing.T) {

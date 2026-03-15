@@ -467,7 +467,7 @@ REDACTED
 			return &opsRetryExecution{status: opsRetryStatusFailed, errorMessage: selErr.Error()REDACTED
 	REDACTED
 		if selection == nil || selection.Account == nil {
-			return &opsRetryExecution{status: opsRetryStatusFailed, errorMessage: "no available accounts"REDACTED
+			return &opsRetryExecution{status: opsRetryStatusFailed, errorMessage: ErrNoAvailableAccounts.Error()REDACTED
 	REDACTED
 
 		account := selection.Account

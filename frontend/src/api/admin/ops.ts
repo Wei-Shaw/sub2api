@@ -841,6 +841,7 @@ export interface OpsAdvancedSettings {
   ignore_context_canceled: boolean
   ignore_no_available_accounts: boolean
   ignore_invalid_api_key_errors: boolean
+  ignore_insufficient_balance_errors: boolean
   display_openai_token_stats: boolean
   display_alert_events: boolean
   auto_refresh_enabled: boolean
