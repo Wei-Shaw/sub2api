@@ -5,7 +5,12 @@
 # It only packages the pre-built binary, no compilation needed.
 # =============================================================================
 
-FROM alpine:3.19
+ARG ALPINE_IMAGE=alpine:3.21
+ARG POSTGRES_IMAGE=postgres:18-alpine
+
+FROM ${POSTGRES_IMAGEREDACTED AS pg-client
+
+FROM ${ALPINE_IMAGEREDACTED
 
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
 LABEL description="Sub2API - AI API Gateway Platform"
@@ -16,7 +21,19 @@ RUN apk add --no-cache \
     ca-certificates \
     tzdata \
     curl \
+    libpq \
+    zstd-libs \
+    lz4-libs \
+    krb5-libs \
+    libldap \
+    libedit \
     && rm -rf /var/cache/apk/*
+
+# Copy pg_dump and psql from a version-matched PostgreSQL image so backup and
+# restore work in the runtime container without requiring Docker socket access.
+COPY --from=pg-client /usr/local/bin/pg_dump /usr/local/bin/pg_dump
+COPY --from=pg-client /usr/local/bin/psql /usr/local/bin/psql
+COPY --from=pg-client /usr/local/lib/libpq.so.5* /usr/local/lib/
 
 # Create non-root user
 RUN addgroup -g 1000 sub2api && \
