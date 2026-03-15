@@ -1538,6 +1538,13 @@ REDACTED
 		REDACTED
 	REDACTED
 		account.Extra = input.Extra
+		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
+			delete(account.Extra, antigravityCreditsOveragesKey)
+	REDACTED
+		if account.Platform == PlatformAntigravity && !wasOveragesEnabled && account.IsOveragesEnabled() {
+			delete(account.Extra, modelRateLimitsKey)
+			delete(account.Extra, antigravityCreditsOveragesKey)
+	REDACTED
 		// 校验并预计算固定时间重置的下次重置时间
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
 			return nil, err
@@ -1623,9 +1630,6 @@ REDACTED
 	if account.Platform == PlatformAntigravity {
 		if !account.IsOveragesEnabled() && wasOveragesEnabled {
 			clearCreditsExhausted(account.ID)
-			if err := clearAntigravityCreditsOveragesState(ctx, s.accountRepo, account.ID); err != nil {
-				return nil, err
-		REDACTED
 	REDACTED
 		if account.IsOveragesEnabled() && !wasOveragesEnabled {
 			clearCreditsExhausted(account.ID)

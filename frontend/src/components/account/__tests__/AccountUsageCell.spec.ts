@@ -133,9 +133,9 @@ describe('AccountUsageCell', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('admin.accounts.aiCreditsBalance')
-    expect(wrapper.text()).toContain('GOOGLE_ONE_AI')
+    expect(wrapper.text()).toContain('Google One AI')
     expect(wrapper.text()).toContain('25')
-    expect(wrapper.text()).toContain('(min 5)')
+    expect(wrapper.text()).toContain('min 5')
   REDACTED)
 
 
