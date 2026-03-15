@@ -145,8 +145,7 @@ type CreateGroupInput struct {
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting             map[string][]int64
 	ModelRoutingEnabled      bool // 是否启用模型路由
-	MCPXMLInject             *bool
-	SimulateClaudeMaxEnabled *bool
+	MCPXMLInject *bool
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string
 	// Sora 存储配额
@@ -185,8 +184,7 @@ type UpdateGroupInput struct {
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting             map[string][]int64
 	ModelRoutingEnabled      *bool // 是否启用模型路由
-	MCPXMLInject             *bool
-	SimulateClaudeMaxEnabled *bool
+	MCPXMLInject *bool
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes *[]string
 	// Sora 存储配额
@@ -870,13 +868,6 @@ REDACTED
 	if input.MCPXMLInject != nil {
 		mcpXMLInject = *input.MCPXMLInject
 REDACTED
-	simulateClaudeMaxEnabled := false
-	if input.SimulateClaudeMaxEnabled != nil {
-		if platform != PlatformAnthropic && *input.SimulateClaudeMaxEnabled {
-			return nil, fmt.Errorf("simulate_claude_max_enabled only supported for anthropic groups")
-	REDACTED
-		simulateClaudeMaxEnabled = *input.SimulateClaudeMaxEnabled
-REDACTED
 
 	// 如果指定了复制账号的源分组，先获取账号 ID 列表
 	var accountIDsToCopy []int64
@@ -933,7 +924,6 @@ REDACTED
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
 		ModelRouting:                    input.ModelRouting,
 		MCPXMLInject:                    mcpXMLInject,
-		SimulateClaudeMaxEnabled:        simulateClaudeMaxEnabled,
 		SupportedModelScopes:            input.SupportedModelScopes,
 		SoraStorageQuotaBytes:           input.SoraStorageQuotaBytes,
 		AllowMessagesDispatch:           input.AllowMessagesDispatch,
@@ -1139,15 +1129,6 @@ REDACTED
 REDACTED
 	if input.MCPXMLInject != nil {
 		group.MCPXMLInject = *input.MCPXMLInject
-REDACTED
-	if input.SimulateClaudeMaxEnabled != nil {
-		if group.Platform != PlatformAnthropic && *input.SimulateClaudeMaxEnabled {
-			return nil, fmt.Errorf("simulate_claude_max_enabled only supported for anthropic groups")
-	REDACTED
-		group.SimulateClaudeMaxEnabled = *input.SimulateClaudeMaxEnabled
-REDACTED
-	if group.Platform != PlatformAnthropic {
-		group.SimulateClaudeMaxEnabled = false
 REDACTED
 
 	// 支持的模型系列（仅 antigravity 平台使用）

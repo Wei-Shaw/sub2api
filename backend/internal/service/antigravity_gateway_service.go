@@ -1719,7 +1719,7 @@ REDACTED
 	var clientDisconnect bool
 	if claudeReq.Stream {
 		// 客户端要求流式，直接透传转换
-		streamRes, err := s.handleClaudeStreamingResponse(c, resp, startTime, originalModel, account.ID)
+		streamRes, err := s.handleClaudeStreamingResponse(c, resp, startTime, originalModel)
 		if err != nil {
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=stream_error error=%v", prefix, err)
 			return nil, err
@@ -1729,7 +1729,7 @@ REDACTED
 		clientDisconnect = streamRes.clientDisconnect
 REDACTED else {
 		// 客户端要求非流式，收集流式响应后转换返回
-		streamRes, err := s.handleClaudeStreamToNonStreaming(c, resp, startTime, originalModel, account.ID)
+		streamRes, err := s.handleClaudeStreamToNonStreaming(c, resp, startTime, originalModel)
 		if err != nil {
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=stream_collect_error error=%v", prefix, err)
 			return nil, err
@@ -1737,9 +1737,6 @@ REDACTED else {
 		usage = streamRes.usage
 		firstTokenMs = streamRes.firstTokenMs
 REDACTED
-
-	// Claude Max cache billing: 同步 ForwardResult.Usage 与客户端响应体一致
-	applyClaudeMaxCacheBillingPolicyToUsage(usage, parsedRequestFromGinContext(c), claudeMaxGroupFromGinContext(c), originalModel, account.ID)
 
 	return &ForwardResult{
 		RequestID:        requestID,
@@ -3644,7 +3641,7 @@ REDACTED
 
 // handleClaudeStreamToNonStreaming 收集上游流式响应，转换为 Claude 非流式格式返回
 // 用于处理客户端非流式请求但上游只支持流式的情况
-func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string, accountID int64) (*antigravityStreamResult, error) {
+func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
@@ -3802,9 +3799,6 @@ REDACTED
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 REDACTED
 
-	// Claude Max cache billing simulation (non-streaming)
-	claudeResp = applyClaudeMaxNonStreamingRewrite(c, claudeResp, agUsage, originalModel, accountID)
-
 	c.Data(http.StatusOK, "application/json", claudeResp)
 
 	// 转换为 service.ClaudeUsage
@@ -3819,7 +3813,7 @@ REDACTED
 REDACTED
 
 // handleClaudeStreamingResponse 处理 Claude 流式响应（Gemini SSE → Claude SSE 转换）
-func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string, accountID int64) (*antigravityStreamResult, error) {
+func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -3832,8 +3826,6 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 REDACTED
 
 	processor := antigravity.NewStreamingProcessor(originalModel)
-	setupClaudeMaxStreamingHook(c, processor, originalModel, accountID)
-
 	var firstTokenMs *int
 	// 使用 Scanner 并限制单行大小，避免 ReadString 无上限导致 OOM
 	scanner := bufio.NewScanner(resp.Body)
