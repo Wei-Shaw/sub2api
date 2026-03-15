@@ -172,7 +172,7 @@ func (c *AvailableCredit) GetAmount() float64 {
 		return 0
 REDACTED
 	var value float64
-	fmt.Sscanf(c.CreditAmount, "%f", &value)
+	_, _ = fmt.Sscanf(c.CreditAmount, "%f", &value)
 	return value
 REDACTED
 
@@ -182,7 +182,7 @@ func (c *AvailableCredit) GetMinimumAmount() float64 {
 		return 0
 REDACTED
 	var value float64
-	fmt.Sscanf(c.MinimumCreditAmountForUsage, "%f", &value)
+	_, _ = fmt.Sscanf(c.MinimumCreditAmountForUsage, "%f", &value)
 	return value
 REDACTED
 
