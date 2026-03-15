@@ -190,7 +190,7 @@ REDACTED
 func TestGetTier_PaidTier优先(t *testing.T) {
 	resp := &LoadCodeAssistResponse{
 		CurrentTier: &TierInfo{ID: "free-tier"REDACTED,
-		PaidTier:    &TierInfo{ID: "g1-pro-tier"REDACTED,
+		PaidTier:    &PaidTierInfo{ID: "g1-pro-tier"REDACTED,
 REDACTED
 	if got := resp.GetTier(); got != "g1-pro-tier" {
 		t.Errorf("应返回 paidTier: got %s", got)
@@ -209,11 +209,37 @@ REDACTED
 func TestGetTier_PaidTier为空ID(t *testing.T) {
 	resp := &LoadCodeAssistResponse{
 		CurrentTier: &TierInfo{ID: "free-tier"REDACTED,
-		PaidTier:    &TierInfo{ID: ""REDACTED,
+		PaidTier:    &PaidTierInfo{ID: ""REDACTED,
 REDACTED
 	// paidTier.ID 为空时应回退到 currentTier
 	if got := resp.GetTier(); got != "free-tier" {
 		t.Errorf("paidTier.ID 为空时应回退到 currentTier: got %s", got)
+REDACTED
+REDACTED
+
+func TestGetAvailableCredits(t *testing.T) {
+	resp := &LoadCodeAssistResponse{
+		PaidTier: &PaidTierInfo{
+			ID: "g1-pro-tier",
+			AvailableCredits: []AvailableCredit{
+				{
+					CreditType:                  "GOOGLE_ONE_AI",
+					CreditAmount:                "25",
+					MinimumCreditAmountForUsage: "5",
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	credits := resp.GetAvailableCredits()
+	if len(credits) != 1 {
+		t.Fatalf("AI Credits 数量不匹配: got %d", len(credits))
+REDACTED
+	if credits[0].GetAmount() != 25 {
+		t.Errorf("CreditAmount 解析不正确: got %v", credits[0].GetAmount())
+REDACTED
+	if credits[0].GetMinimumAmount() != 5 {
+		t.Errorf("MinimumCreditAmountForUsage 解析不正确: got %v", credits[0].GetMinimumAmount())
 REDACTED
 REDACTED
 

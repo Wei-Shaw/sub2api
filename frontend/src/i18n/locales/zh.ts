@@ -2052,6 +2052,7 @@ export default {
         rateLimitedUntil: '限流中，当前不参与调度，预计 {timeREDACTED 自动恢复',
         rateLimitedAutoResume: '{timeREDACTED 自动恢复',
         modelRateLimitedUntil: '{modelREDACTED 限流至 {timeREDACTED',
+        modelCreditOveragesUntil: '{modelREDACTED 正在使用 AI Credits，至 {timeREDACTED',
         overloadedUntil: '负载过重，重置时间：{timeREDACTED',
         viewTempUnschedDetails: '查看临时不可调度详情'
       REDACTED,
@@ -2389,6 +2390,7 @@ export default {
       mixedSchedulingHint: '启用后可参与 Anthropic/Gemini 分组的调度',
       mixedSchedulingTooltip:
         '！！注意！！ Antigravity Claude 和 Anthropic Claude 无法在同个上下文中使用，如果你同时有 Anthropic 账号和 Antigravity 账号，开启此选项会导致经常 400 报错。开启后，请用分组功能做好 Antigravity 账号和 Anthropic 账号的隔离。一定要弄明白再开启！！',
+      aiCreditsBalance: 'AI Credits',
       allowOverages: '允许超量请求 (AI Credits)',
       allowOveragesTooltip:
         '仅在免费配额被明确判定为耗尽后才会使用 AI Credits。普通并发 429 限流不会切换到超量请求。',

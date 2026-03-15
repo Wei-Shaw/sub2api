@@ -1867,6 +1867,7 @@ export default {
         rateLimitedUntil: 'Rate limited and removed from scheduling. Auto resumes at {timeREDACTED',
         rateLimitedAutoResume: 'Auto resumes in {timeREDACTED',
         modelRateLimitedUntil: '{modelREDACTED rate limited until {timeREDACTED',
+        modelCreditOveragesUntil: '{modelREDACTED using AI Credits until {timeREDACTED',
         overloadedUntil: 'Overloaded until {timeREDACTED',
         viewTempUnschedDetails: 'View temp unschedulable details'
       REDACTED,
@@ -2239,6 +2240,7 @@ export default {
       mixedSchedulingHint: 'Enable to participate in Anthropic/Gemini group scheduling',
       mixedSchedulingTooltip:
         '!! WARNING !! Antigravity Claude and Anthropic Claude cannot be used in the same context. If you have both Anthropic and Antigravity accounts, enabling this option will cause frequent 400 errors. When enabled, please use the group feature to isolate Antigravity accounts from Anthropic accounts. Make sure you understand this before enabling!!',
+      aiCreditsBalance: 'AI Credits',
       allowOverages: 'Allow Overages (AI Credits)',
       allowOveragesTooltip:
         'Only use AI Credits after free quota is explicitly exhausted. Ordinary concurrent 429 rate limits will not switch to overages.',

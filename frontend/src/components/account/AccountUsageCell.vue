@@ -289,6 +289,33 @@
           :resets-at="antigravityClaudeUsageFromAPI.resetTime"
           color="amber"
         />
+
+        <div v-if="antigravityAICreditsDisplay.length > 0" class="mt-1 space-y-0.5 text-[10px] text-gray-500 dark:text-gray-400">
+          <div
+            v-for="credit in antigravityAICreditsDisplay"
+            :key="credit.creditType"
+          >
+            {{ t('admin.accounts.aiCreditsBalance') REDACTEDREDACTED:
+            {{ credit.creditType REDACTEDREDACTED
+            {{ credit.amount REDACTEDREDACTED
+            <span v-if="credit.minimumBalance !== null">
+              (min {{ credit.minimumBalance REDACTEDREDACTED)
+            </span>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="antigravityAICreditsDisplay.length > 0" class="space-y-0.5 text-[10px] text-gray-500 dark:text-gray-400">
+        <div
+          v-for="credit in antigravityAICreditsDisplay"
+          :key="credit.creditType"
+        >
+          {{ t('admin.accounts.aiCreditsBalance') REDACTEDREDACTED:
+          {{ credit.creditType REDACTEDREDACTED
+          {{ credit.amount REDACTEDREDACTED
+          <span v-if="credit.minimumBalance !== null">
+            (min {{ credit.minimumBalance REDACTEDREDACTED)
+          </span>
+        </div>
       </div>
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
@@ -580,6 +607,20 @@ const antigravityClaudeUsageFromAPI = computed(() =>
     'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-opus-4-6-thinking',
   ])
 )
+
+const antigravityAICreditsDisplay = computed(() => {
+  const credits = usageInfo.value?.ai_credits
+  if (!credits || credits.length === 0) return []
+  return credits
+    .filter((credit) => (credit.amount ?? 0) > 0)
+    .map((credit) => ({
+      creditType: credit.credit_type || 'UNKNOWN',
+      amount: Number(credit.amount ?? 0).toFixed(0),
+      minimumBalance: typeof credit.minimum_balance === 'number'
+        ? Number(credit.minimum_balance).toFixed(0)
+        : null,
+    REDACTED))
+REDACTED)
 
 // Antigravity 账户类型（从 load_code_assist 响应中提取）
 const antigravityTier = computed(() => {
