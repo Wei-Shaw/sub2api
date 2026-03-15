@@ -725,7 +725,7 @@ REDACTED
 	REDACTED, len(candidates), topK, loadSkew, nil
 REDACTED
 
-	return nil, len(candidates), topK, loadSkew, errors.New("no available accounts")
+	return nil, len(candidates), topK, loadSkew, ErrNoAvailableAccounts
 REDACTED
 
 func (s *defaultOpenAIAccountScheduler) isAccountTransportCompatible(account *Account, requiredTransport OpenAIUpstreamTransport) bool {

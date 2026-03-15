@@ -346,6 +346,9 @@ var systemBlockFilterPrefixes = []string{
 	"x-anthropic-billing-header",
 REDACTED
 
+// ErrNoAvailableAccounts 表示没有可用的账号
+var ErrNoAvailableAccounts = errors.New("no available accounts")
+
 // ErrClaudeCodeOnly 表示分组仅允许 Claude Code 客户端访问
 var ErrClaudeCodeOnly = errors.New("this group only allows Claude Code clients")
 
@@ -1205,7 +1208,7 @@ REDACTED
 		return nil, err
 REDACTED
 	if len(accounts) == 0 {
-		return nil, errors.New("no available accounts")
+		return nil, ErrNoAvailableAccounts
 REDACTED
 	ctx = s.withWindowCostPrefetch(ctx, accounts)
 	ctx = s.withRPMPrefetch(ctx, accounts)
@@ -1553,7 +1556,7 @@ REDACTED
 REDACTED
 
 	if len(candidates) == 0 {
-		return nil, errors.New("no available accounts")
+		return nil, ErrNoAvailableAccounts
 REDACTED
 
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
@@ -1642,7 +1645,7 @@ REDACTED
 		REDACTED,
 	REDACTED, nil
 REDACTED
-	return nil, errors.New("no available accounts")
+	return nil, ErrNoAvailableAccounts
 REDACTED
 
 func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool) {
@@ -2852,9 +2855,9 @@ REDACTED
 	if selected == nil {
 		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, platform, accounts, excludedIDs, false)
 		if requestedModel != "" {
-			return nil, fmt.Errorf("no available accounts supporting model: %s (%s)", requestedModel, summarizeSelectionFailureStats(stats))
+			return nil, fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summarizeSelectionFailureStats(stats))
 	REDACTED
-		return nil, errors.New("no available accounts")
+		return nil, ErrNoAvailableAccounts
 REDACTED
 
 	// 4. 建立粘性绑定
@@ -3090,9 +3093,9 @@ REDACTED
 	if selected == nil {
 		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, nativePlatform, accounts, excludedIDs, true)
 		if requestedModel != "" {
-			return nil, fmt.Errorf("no available accounts supporting model: %s (%s)", requestedModel, summarizeSelectionFailureStats(stats))
+			return nil, fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summarizeSelectionFailureStats(stats))
 	REDACTED
-		return nil, errors.New("no available accounts")
+		return nil, ErrNoAvailableAccounts
 REDACTED
 
 	// 4. 建立粘性绑定

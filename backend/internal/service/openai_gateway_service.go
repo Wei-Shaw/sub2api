@@ -1312,7 +1312,7 @@ REDACTED
 		return nil, err
 REDACTED
 	if len(accounts) == 0 {
-		return nil, errors.New("no available accounts")
+		return nil, ErrNoAvailableAccounts
 REDACTED
 
 	isExcluded := func(accountID int64) bool {
@@ -1382,7 +1382,7 @@ REDACTED
 REDACTED
 
 	if len(candidates) == 0 {
-		return nil, errors.New("no available accounts")
+		return nil, ErrNoAvailableAccounts
 REDACTED
 
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
@@ -1489,7 +1489,7 @@ REDACTED
 	REDACTED, nil
 REDACTED
 
-	return nil, errors.New("no available accounts")
+	return nil, ErrNoAvailableAccounts
 REDACTED
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, error) {

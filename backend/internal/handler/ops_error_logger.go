@@ -26,6 +26,22 @@ const (
 	opsStreamKey      = "ops_stream"
 	opsRequestBodyKey = "ops_request_body"
 	opsAccountIDKey   = "ops_account_id"
+
+	// 错误过滤匹配常量 — shouldSkipOpsErrorLog 和错误分类共用
+	opsErrContextCanceled            = "context canceled"
+	opsErrNoAvailableAccounts        = "no available accounts"
+	opsErrInvalidAPIKey              = "invalid_api_key"
+	opsErrAPIKeyRequired             = "api_key_required"
+	opsErrInsufficientBalance        = "insufficient balance"
+	opsErrInsufficientAccountBalance = "insufficient account balance"
+	opsErrInsufficientQuota          = "insufficient_quota"
+
+	// 上游错误码常量 — 错误分类 (normalizeOpsErrorType / classifyOpsPhase / classifyOpsIsBusinessLimited)
+	opsCodeInsufficientBalance  = "INSUFFICIENT_BALANCE"
+	opsCodeUsageLimitExceeded   = "USAGE_LIMIT_EXCEEDED"
+	opsCodeSubscriptionNotFound = "SUBSCRIPTION_NOT_FOUND"
+	opsCodeSubscriptionInvalid  = "SUBSCRIPTION_INVALID"
+	opsCodeUserInactive         = "USER_INACTIVE"
 )
 
 const (
@@ -1024,9 +1040,9 @@ func normalizeOpsErrorType(errType string, code string) string {
 		return errType
 REDACTED
 	switch strings.TrimSpace(code) {
-	case "INSUFFICIENT_BALANCE":
+	case opsCodeInsufficientBalance:
 		return "billing_error"
-	case "USAGE_LIMIT_EXCEEDED", "SUBSCRIPTION_NOT_FOUND", "SUBSCRIPTION_INVALID":
+	case opsCodeUsageLimitExceeded, opsCodeSubscriptionNotFound, opsCodeSubscriptionInvalid:
 		return "subscription_error"
 	default:
 		return "api_error"
@@ -1038,7 +1054,7 @@ func classifyOpsPhase(errType, message, code string) string {
 	// Standardized phases: request|auth|routing|upstream|network|internal
 	// Map billing/concurrency/response => request; scheduling => routing.
 	switch strings.TrimSpace(code) {
-	case "INSUFFICIENT_BALANCE", "USAGE_LIMIT_EXCEEDED", "SUBSCRIPTION_NOT_FOUND", "SUBSCRIPTION_INVALID":
+	case opsCodeInsufficientBalance, opsCodeUsageLimitExceeded, opsCodeSubscriptionNotFound, opsCodeSubscriptionInvalid:
 		return "request"
 REDACTED
 
@@ -1057,7 +1073,7 @@ REDACTED
 	case "upstream_error", "overloaded_error":
 		return "upstream"
 	case "api_error":
-		if strings.Contains(msg, "no available accounts") {
+		if strings.Contains(msg, opsErrNoAvailableAccounts) {
 			return "routing"
 	REDACTED
 		return "internal"
@@ -1103,7 +1119,7 @@ REDACTED
 
 func classifyOpsIsBusinessLimited(errType, phase, code string, status int, message string) bool {
 	switch strings.TrimSpace(code) {
-	case "INSUFFICIENT_BALANCE", "USAGE_LIMIT_EXCEEDED", "SUBSCRIPTION_NOT_FOUND", "SUBSCRIPTION_INVALID", "USER_INACTIVE":
+	case opsCodeInsufficientBalance, opsCodeUsageLimitExceeded, opsCodeSubscriptionNotFound, opsCodeSubscriptionInvalid, opsCodeUserInactive:
 		return true
 REDACTED
 	if phase == "billing" || phase == "concurrency" {
@@ -1197,21 +1213,30 @@ REDACTED
 
 	// Check if context canceled errors should be ignored (client disconnects)
 	if settings.IgnoreContextCanceled {
-		if strings.Contains(msgLower, "context canceled") || strings.Contains(bodyLower, "context canceled") {
+		if strings.Contains(msgLower, opsErrContextCanceled) || strings.Contains(bodyLower, opsErrContextCanceled) {
 			return true
 	REDACTED
 REDACTED
 
 	// Check if "no available accounts" errors should be ignored
 	if settings.IgnoreNoAvailableAccounts {
-		if strings.Contains(msgLower, "no available accounts") || strings.Contains(bodyLower, "no available accounts") {
+		if strings.Contains(msgLower, opsErrNoAvailableAccounts) || strings.Contains(bodyLower, opsErrNoAvailableAccounts) {
 			return true
 	REDACTED
 REDACTED
 
 	// Check if invalid/missing API key errors should be ignored (user misconfiguration)
 	if settings.IgnoreInvalidApiKeyErrors {
-		if strings.Contains(bodyLower, "invalid_api_key") || strings.Contains(bodyLower, "api_key_required") {
+		if strings.Contains(bodyLower, opsErrInvalidAPIKey) || strings.Contains(bodyLower, opsErrAPIKeyRequired) {
+			return true
+	REDACTED
+REDACTED
+
+	// Check if insufficient balance errors should be ignored
+	if settings.IgnoreInsufficientBalanceErrors {
+		if strings.Contains(bodyLower, opsErrInsufficientBalance) || strings.Contains(bodyLower, opsErrInsufficientAccountBalance) ||
+			strings.Contains(bodyLower, opsErrInsufficientQuota) ||
+			strings.Contains(msgLower, opsErrInsufficientBalance) || strings.Contains(msgLower, opsErrInsufficientAccountBalance) {
 			return true
 	REDACTED
 REDACTED
