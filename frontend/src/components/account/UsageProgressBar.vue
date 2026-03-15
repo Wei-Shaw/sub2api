@@ -1,5 +1,29 @@
 <template>
   <div>
+    <!-- Window stats row (above progress bar) -->
+    <div
+      v-if="windowStats"
+      class="mb-0.5 flex items-center"
+    >
+      <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+          {{ formatRequests REDACTEDREDACTED req
+        </span>
+        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+          {{ formatTokens REDACTEDREDACTED
+        </span>
+        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+          A ${{ formatAccountCost REDACTEDREDACTED
+        </span>
+        <span
+          v-if="windowStats?.user_cost != null"
+          class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"
+        >
+          U ${{ formatUserCost REDACTEDREDACTED
+        </span>
+      </div>
+    </div>
+
     <!-- Progress bar row -->
     <div class="flex items-center gap-1">
       <!-- Label badge (fixed width for alignment) -->
@@ -106,6 +130,34 @@ const formatResetTime = computed(() => {
   REDACTED else {
     return `${diffMinsREDACTEDm`
   REDACTED
+REDACTED)
+
+// Window stats formatters
+const formatRequests = computed(() => {
+  if (!props.windowStats) return ''
+  const r = props.windowStats.requests
+  if (r >= 1000000) return `${(r / 1000000).toFixed(1)REDACTEDM`
+  if (r >= 1000) return `${(r / 1000).toFixed(1)REDACTEDK`
+  return r.toString()
+REDACTED)
+
+const formatTokens = computed(() => {
+  if (!props.windowStats) return ''
+  const t = props.windowStats.tokens
+  if (t >= 1000000000) return `${(t / 1000000000).toFixed(1)REDACTEDB`
+  if (t >= 1000000) return `${(t / 1000000).toFixed(1)REDACTEDM`
+  if (t >= 1000) return `${(t / 1000).toFixed(1)REDACTEDK`
+  return t.toString()
+REDACTED)
+
+const formatAccountCost = computed(() => {
+  if (!props.windowStats) return '0.00'
+  return props.windowStats.cost.toFixed(2)
+REDACTED)
+
+const formatUserCost = computed(() => {
+  if (!props.windowStats || props.windowStats.user_cost == null) return '0.00'
+  return props.windowStats.user_cost.toFixed(2)
 REDACTED)
 
 </script>
