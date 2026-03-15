@@ -20,7 +20,7 @@ const (
 	openAILockWarnThresholdMs = 250
 )
 
-// OpenAITokenRuntimeMetrics 表示 OpenAI token 刷新与锁竞争保护指标快照。
+// OpenAITokenRuntimeMetrics is a snapshot of refresh and lock contention metrics.
 type OpenAITokenRuntimeMetrics struct {
 	RefreshRequests    int64
 	RefreshSuccess     int64
@@ -72,15 +72,18 @@ func (m *openAITokenRuntimeMetricsStore) touchNow() {
 	m.lastObservedUnixMs.Store(time.Now().UnixMilli())
 }
 
-// OpenAITokenCache Token 缓存接口（复用 GeminiTokenCache 接口定义）
+// OpenAITokenCache token cache interface.
 type OpenAITokenCache = GeminiTokenCache
 
-// OpenAITokenProvider 管理 OpenAI OAuth 账户的 access_token
+// OpenAITokenProvider manages access_token for OpenAI/Sora OAuth accounts.
 type OpenAITokenProvider struct {
 	accountRepo        AccountRepository
 	tokenCache         OpenAITokenCache
 	openAIOAuthService *OpenAIOAuthService
 	metrics            *openAITokenRuntimeMetricsStore
+	refreshAPI         *OAuthRefreshAPI
+	executor           OAuthRefreshExecutor
+	refreshPolicy      ProviderRefreshPolicy
 }
 
 func NewOpenAITokenProvider(
@@ -93,7 +96,19 @@ func NewOpenAITokenProvider(
 		tokenCache:         tokenCache,
 		openAIOAuthService: openAIOAuthService,
 		metrics:            &openAITokenRuntimeMetricsStore{},
+		refreshPolicy:      OpenAIProviderRefreshPolicy(),
 	}
+}
+
+// SetRefreshAPI injects unified OAuth refresh API and executor.
+func (p *OpenAITokenProvider) SetRefreshAPI(api *OAuthRefreshAPI, executor OAuthRefreshExecutor) {
+	p.refreshAPI = api
+	p.executor = executor
+}
+
+// SetRefreshPolicy injects caller-side refresh policy.
+func (p *OpenAITokenProvider) SetRefreshPolicy(policy ProviderRefreshPolicy) {
+	p.refreshPolicy = policy
 }
 
 func (p *OpenAITokenProvider) SnapshotRuntimeMetrics() OpenAITokenRuntimeMetrics {
@@ -110,7 +125,7 @@ func (p *OpenAITokenProvider) ensureMetrics() {
 	}
 }
 
-// GetAccessToken 获取有效的 access_token
+// GetAccessToken returns a valid access_token.
 func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
 	p.ensureMetrics()
 	if account == nil {
@@ -122,7 +137,7 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 
 	cacheKey := OpenAITokenCacheKey(account)
 
-	// 1. 先尝试缓存
+	// 1) Try cache first.
 	if p.tokenCache != nil {
 		if token, err := p.tokenCache.GetAccessToken(ctx, cacheKey); err == nil && strings.TrimSpace(token) != "" {
 			slog.Debug("openai_token_cache_hit", "account_id", account.ID)
@@ -134,114 +149,62 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 
 	slog.Debug("openai_token_cache_miss", "account_id", account.ID)
 
-	// 2. 如果即将过期则刷新
+	// 2) Refresh if needed (pre-expiry skew).
 	expiresAt := account.GetCredentialAsTime("expires_at")
 	needsRefresh := expiresAt == nil || time.Until(*expiresAt) <= openAITokenRefreshSkew
 	refreshFailed := false
-	if needsRefresh && p.tokenCache != nil {
+
+	if needsRefresh && p.refreshAPI != nil && p.executor != nil {
+		p.metrics.refreshRequests.Add(1)
+		p.metrics.touchNow()
+
+		// Sora accounts skip OpenAI OAuth refresh and keep existing token path.
+		if account.Platform == PlatformSora {
+			slog.Debug("openai_token_refresh_skipped_for_sora", "account_id", account.ID)
+			refreshFailed = true
+		} else {
+			result, err := p.refreshAPI.RefreshIfNeeded(ctx, account, p.executor, openAITokenRefreshSkew)
+			if err != nil {
+				if p.refreshPolicy.OnRefreshError == ProviderRefreshErrorReturn {
+					return "", err
+				}
+				slog.Warn("openai_token_refresh_failed", "account_id", account.ID, "error", err)
+				p.metrics.refreshFailure.Add(1)
+				refreshFailed = true
+			} else if result.LockHeld {
+				if p.refreshPolicy.OnLockHeld == ProviderLockHeldWaitForCache {
+					p.metrics.lockContention.Add(1)
+					p.metrics.touchNow()
+					token, waitErr := p.waitForTokenAfterLockRace(ctx, cacheKey)
+					if waitErr != nil {
+						return "", waitErr
+					}
+					if strings.TrimSpace(token) != "" {
+						slog.Debug("openai_token_cache_hit_after_wait", "account_id", account.ID)
+						return token, nil
+					}
+				}
+			} else if result.Refreshed {
+				p.metrics.refreshSuccess.Add(1)
+				account = result.Account
+				expiresAt = account.GetCredentialAsTime("expires_at")
+			} else {
+				account = result.Account
+				expiresAt = account.GetCredentialAsTime("expires_at")
+			}
+		}
+	} else if needsRefresh && p.tokenCache != nil {
+		// Backward-compatible test path when refreshAPI is not injected.
 		p.metrics.refreshRequests.Add(1)
 		p.metrics.touchNow()
 		locked, lockErr := p.tokenCache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second)
 		if lockErr == nil && locked {
 			defer func() { _ = p.tokenCache.ReleaseRefreshLock(ctx, cacheKey) }()
-
-			// 拿到锁后再次检查缓存（另一个 worker 可能已刷新）
-			if token, err := p.tokenCache.GetAccessToken(ctx, cacheKey); err == nil && strings.TrimSpace(token) != "" {
-				return token, nil
-			}
-
-			// 从数据库获取最新账户信息
-			fresh, err := p.accountRepo.GetByID(ctx, account.ID)
-			if err == nil && fresh != nil {
-				account = fresh
-			}
-			expiresAt = account.GetCredentialAsTime("expires_at")
-			if expiresAt == nil || time.Until(*expiresAt) <= openAITokenRefreshSkew {
-				if account.Platform == PlatformSora {
-					slog.Debug("openai_token_refresh_skipped_for_sora", "account_id", account.ID)
-					// Sora 账号不走 OpenAI OAuth 刷新，交由 Sora 客户端的 ST/RT 恢复链路处理。
-					refreshFailed = true
-				} else if p.openAIOAuthService == nil {
-					slog.Warn("openai_oauth_service_not_configured", "account_id", account.ID)
-					p.metrics.refreshFailure.Add(1)
-					refreshFailed = true // 无法刷新，标记失败
-				} else {
-					tokenInfo, err := p.openAIOAuthService.RefreshAccountToken(ctx, account)
-					if err != nil {
-						// 刷新失败时记录警告，但不立即返回错误，尝试使用现有 token
-						slog.Warn("openai_token_refresh_failed", "account_id", account.ID, "error", err)
-						p.metrics.refreshFailure.Add(1)
-						refreshFailed = true // 刷新失败，标记以使用短 TTL
-					} else {
-						p.metrics.refreshSuccess.Add(1)
-						newCredentials := p.openAIOAuthService.BuildAccountCredentials(tokenInfo)
-						for k, v := range account.Credentials {
-							if _, exists := newCredentials[k]; !exists {
-								newCredentials[k] = v
-							}
-						}
-						account.Credentials = newCredentials
-						if updateErr := p.accountRepo.Update(ctx, account); updateErr != nil {
-							slog.Error("openai_token_provider_update_failed", "account_id", account.ID, "error", updateErr)
-						}
-						expiresAt = account.GetCredentialAsTime("expires_at")
-					}
-				}
-			}
 		} else if lockErr != nil {
-			// Redis 错误导致无法获取锁，降级为无锁刷新（仅在 token 接近过期时）
 			p.metrics.lockAcquireFailure.Add(1)
 			p.metrics.touchNow()
-			slog.Warn("openai_token_lock_failed_degraded_refresh", "account_id", account.ID, "error", lockErr)
-
-			// 检查 ctx 是否已取消
-			if ctx.Err() != nil {
-				return "", ctx.Err()
-			}
-
-			// 从数据库获取最新账户信息
-			if p.accountRepo != nil {
-				fresh, err := p.accountRepo.GetByID(ctx, account.ID)
-				if err == nil && fresh != nil {
-					account = fresh
-				}
-			}
-			expiresAt = account.GetCredentialAsTime("expires_at")
-
-			// 仅在 expires_at 已过期/接近过期时才执行无锁刷新
-			if expiresAt == nil || time.Until(*expiresAt) <= openAITokenRefreshSkew {
-				if account.Platform == PlatformSora {
-					slog.Debug("openai_token_refresh_skipped_for_sora_degraded", "account_id", account.ID)
-					// Sora 账号不走 OpenAI OAuth 刷新，交由 Sora 客户端的 ST/RT 恢复链路处理。
-					refreshFailed = true
-				} else if p.openAIOAuthService == nil {
-					slog.Warn("openai_oauth_service_not_configured", "account_id", account.ID)
-					p.metrics.refreshFailure.Add(1)
-					refreshFailed = true
-				} else {
-					tokenInfo, err := p.openAIOAuthService.RefreshAccountToken(ctx, account)
-					if err != nil {
-						slog.Warn("openai_token_refresh_failed_degraded", "account_id", account.ID, "error", err)
-						p.metrics.refreshFailure.Add(1)
-						refreshFailed = true
-					} else {
-						p.metrics.refreshSuccess.Add(1)
-						newCredentials := p.openAIOAuthService.BuildAccountCredentials(tokenInfo)
-						for k, v := range account.Credentials {
-							if _, exists := newCredentials[k]; !exists {
-								newCredentials[k] = v
-							}
-						}
-						account.Credentials = newCredentials
-						if updateErr := p.accountRepo.Update(ctx, account); updateErr != nil {
-							slog.Error("openai_token_provider_update_failed", "account_id", account.ID, "error", updateErr)
-						}
-						expiresAt = account.GetCredentialAsTime("expires_at")
-					}
-				}
-			}
+			slog.Warn("openai_token_lock_failed", "account_id", account.ID, "error", lockErr)
 		} else {
-			// 锁被其他 worker 持有：使用短轮询+jitter，降低固定等待导致的尾延迟台阶。
 			p.metrics.lockContention.Add(1)
 			p.metrics.touchNow()
 			token, waitErr := p.waitForTokenAfterLockRace(ctx, cacheKey)
@@ -260,22 +223,23 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 		return "", errors.New("access_token not found in credentials")
 	}
 
-	// 3. 存入缓存（验证版本后再写入，避免异步刷新任务与请求线程的竞态条件）
+	// 3) Populate cache with TTL.
 	if p.tokenCache != nil {
 		latestAccount, isStale := CheckTokenVersion(ctx, account, p.accountRepo)
 		if isStale && latestAccount != nil {
-			// 版本过时，使用 DB 中的最新 token
 			slog.Debug("openai_token_version_stale_use_latest", "account_id", account.ID)
 			accessToken = latestAccount.GetOpenAIAccessToken()
 			if strings.TrimSpace(accessToken) == "" {
 				return "", errors.New("access_token not found after version check")
 			}
-			// 不写入缓存，让下次请求重新处理
 		} else {
 			ttl := 30 * time.Minute
 			if refreshFailed {
-				// 刷新失败时使用短 TTL，避免失效 token 长时间缓存导致 401 抖动
-				ttl = time.Minute
+				if p.refreshPolicy.FailureTTL > 0 {
+					ttl = p.refreshPolicy.FailureTTL
+				} else {
+					ttl = time.Minute
+				}
 				slog.Debug("openai_token_cache_short_ttl", "account_id", account.ID, "reason", "refresh_failed")
 			} else if expiresAt != nil {
 				until := time.Until(*expiresAt)

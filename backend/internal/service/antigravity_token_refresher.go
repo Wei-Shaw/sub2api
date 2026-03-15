@@ -25,6 +25,11 @@ func NewAntigravityTokenRefresher(antigravityOAuthService *AntigravityOAuthServi
 	}
 }
 
+// CacheKey 返回用于分布式锁的缓存键
+func (r *AntigravityTokenRefresher) CacheKey(account *Account) string {
+	return AntigravityTokenCacheKey(account)
+}
+
 // CanRefresh 检查是否可以刷新此账户
 func (r *AntigravityTokenRefresher) CanRefresh(account *Account) bool {
 	return account.Platform == PlatformAntigravity && account.Type == AccountTypeOAuth
@@ -58,11 +63,7 @@ func (r *AntigravityTokenRefresher) Refresh(ctx context.Context, account *Accoun
 
 	newCredentials := r.antigravityOAuthService.BuildAccountCredentials(tokenInfo)
 	// 合并旧的 credentials，保留新 credentials 中不存在的字段
-	for k, v := range account.Credentials {
-		if _, exists := newCredentials[k]; !exists {
-			newCredentials[k] = v
-		}
-	}
+	newCredentials = MergeCredentials(account.Credentials, newCredentials)
 
 	// 特殊处理 project_id：如果新值为空但旧值非空，保留旧值
 	// 这确保了即使 LoadCodeAssist 失败，project_id 也不会丢失

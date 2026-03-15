@@ -51,14 +51,75 @@ func ProvideTokenRefreshService(
 	tempUnschedCache TempUnschedCache,
 	privacyClientFactory PrivacyClientFactory,
 	proxyRepo ProxyRepository,
+	refreshAPI *OAuthRefreshAPI,
 ) *TokenRefreshService {
 	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache)
 	// 注入 Sora 账号扩展表仓储，用于 OpenAI Token 刷新时同步 sora_accounts 表
 	svc.SetSoraAccountRepo(soraAccountRepo)
 	// 注入 OpenAI privacy opt-out 依赖
 	svc.SetPrivacyDeps(privacyClientFactory, proxyRepo)
+	// 注入统一 OAuth 刷新 API（消除 TokenRefreshService 与 TokenProvider 之间的竞争条件）
+	svc.SetRefreshAPI(refreshAPI)
+	// 调用侧显式注入后台刷新策略，避免策略漂移
+	svc.SetRefreshPolicy(DefaultBackgroundRefreshPolicy())
 	svc.Start()
 	return svc
+}
+
+// ProvideClaudeTokenProvider creates ClaudeTokenProvider with OAuthRefreshAPI injection
+func ProvideClaudeTokenProvider(
+	accountRepo AccountRepository,
+	tokenCache GeminiTokenCache,
+	oauthService *OAuthService,
+	refreshAPI *OAuthRefreshAPI,
+) *ClaudeTokenProvider {
+	p := NewClaudeTokenProvider(accountRepo, tokenCache, oauthService)
+	executor := NewClaudeTokenRefresher(oauthService)
+	p.SetRefreshAPI(refreshAPI, executor)
+	p.SetRefreshPolicy(ClaudeProviderRefreshPolicy())
+	return p
+}
+
+// ProvideOpenAITokenProvider creates OpenAITokenProvider with OAuthRefreshAPI injection
+func ProvideOpenAITokenProvider(
+	accountRepo AccountRepository,
+	tokenCache GeminiTokenCache,
+	openaiOAuthService *OpenAIOAuthService,
+	refreshAPI *OAuthRefreshAPI,
+) *OpenAITokenProvider {
+	p := NewOpenAITokenProvider(accountRepo, tokenCache, openaiOAuthService)
+	executor := NewOpenAITokenRefresher(openaiOAuthService, accountRepo)
+	p.SetRefreshAPI(refreshAPI, executor)
+	p.SetRefreshPolicy(OpenAIProviderRefreshPolicy())
+	return p
+}
+
+// ProvideGeminiTokenProvider creates GeminiTokenProvider with OAuthRefreshAPI injection
+func ProvideGeminiTokenProvider(
+	accountRepo AccountRepository,
+	tokenCache GeminiTokenCache,
+	geminiOAuthService *GeminiOAuthService,
+	refreshAPI *OAuthRefreshAPI,
+) *GeminiTokenProvider {
+	p := NewGeminiTokenProvider(accountRepo, tokenCache, geminiOAuthService)
+	executor := NewGeminiTokenRefresher(geminiOAuthService)
+	p.SetRefreshAPI(refreshAPI, executor)
+	p.SetRefreshPolicy(GeminiProviderRefreshPolicy())
+	return p
+}
+
+// ProvideAntigravityTokenProvider creates AntigravityTokenProvider with OAuthRefreshAPI injection
+func ProvideAntigravityTokenProvider(
+	accountRepo AccountRepository,
+	tokenCache GeminiTokenCache,
+	antigravityOAuthService *AntigravityOAuthService,
+	refreshAPI *OAuthRefreshAPI,
+) *AntigravityTokenProvider {
+	p := NewAntigravityTokenProvider(accountRepo, tokenCache, antigravityOAuthService)
+	executor := NewAntigravityTokenRefresher(antigravityOAuthService)
+	p.SetRefreshAPI(refreshAPI, executor)
+	p.SetRefreshPolicy(AntigravityProviderRefreshPolicy())
+	return p
 }
 
 // ProvideDashboardAggregationService 创建并启动仪表盘聚合服务
@@ -375,11 +436,12 @@ var ProviderSet = wire.NewSet(
 	NewCompositeTokenCacheInvalidator,
 	wire.Bind(new(TokenCacheInvalidator), new(*CompositeTokenCacheInvalidator)),
 	NewAntigravityOAuthService,
-	NewGeminiTokenProvider,
+	NewOAuthRefreshAPI,
+	ProvideGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
-	NewAntigravityTokenProvider,
-	NewOpenAITokenProvider,
-	NewClaudeTokenProvider,
+	ProvideAntigravityTokenProvider,
+	ProvideOpenAITokenProvider,
+	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,
 	NewAccountUsageService,

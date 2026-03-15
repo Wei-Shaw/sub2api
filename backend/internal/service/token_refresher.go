@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"log"
-	"strconv"
 	"time"
 )
 
@@ -33,6 +32,11 @@ func NewClaudeTokenRefresher(oauthService *OAuthService) *ClaudeTokenRefresher {
 	}
 }
 
+// CacheKey 返回用于分布式锁的缓存键
+func (r *ClaudeTokenRefresher) CacheKey(account *Account) string {
+	return ClaudeTokenCacheKey(account)
+}
+
 // CanRefresh 检查是否能处理此账号
 // 只处理 anthropic 平台的 oauth 类型账号
 // setup-token 虽然也是OAuth，但有效期1年，不需要频繁刷新
@@ -59,24 +63,8 @@ func (r *ClaudeTokenRefresher) Refresh(ctx context.Context, account *Account) (m
 		return nil, err
 	}
 
-	// 保留现有credentials中的所有字段
-	newCredentials := make(map[string]any)
-	for k, v := range account.Credentials {
-		newCredentials[k] = v
-	}
-
-	// 只更新token相关字段
-	// 注意：expires_at 和 expires_in 必须存为字符串，因为 GetCredential 只返回 string 类型
-	newCredentials["access_token"] = tokenInfo.AccessToken
-	newCredentials["token_type"] = tokenInfo.TokenType
-	newCredentials["expires_in"] = strconv.FormatInt(tokenInfo.ExpiresIn, 10)
-	newCredentials["expires_at"] = strconv.FormatInt(tokenInfo.ExpiresAt, 10)
-	if tokenInfo.RefreshToken != "" {
-		newCredentials["refresh_token"] = tokenInfo.RefreshToken
-	}
-	if tokenInfo.Scope != "" {
-		newCredentials["scope"] = tokenInfo.Scope
-	}
+	newCredentials := BuildClaudeAccountCredentials(tokenInfo)
+	newCredentials = MergeCredentials(account.Credentials, newCredentials)
 
 	return newCredentials, nil
 }
@@ -95,6 +83,11 @@ func NewOpenAITokenRefresher(openaiOAuthService *OpenAIOAuthService, accountRepo
 		openaiOAuthService: openaiOAuthService,
 		accountRepo:        accountRepo,
 	}
+}
+
+// CacheKey 返回用于分布式锁的缓存键
+func (r *OpenAITokenRefresher) CacheKey(account *Account) string {
+	return OpenAITokenCacheKey(account)
 }
 
 // SetSoraAccountRepo 设置 Sora 账号扩展表仓储
@@ -137,13 +130,7 @@ func (r *OpenAITokenRefresher) Refresh(ctx context.Context, account *Account) (m
 
 	// 使用服务提供的方法构建新凭证，并保留原有字段
 	newCredentials := r.openaiOAuthService.BuildAccountCredentials(tokenInfo)
-
-	// 保留原有credentials中非token相关字段
-	for k, v := range account.Credentials {
-		if _, exists := newCredentials[k]; !exists {
-			newCredentials[k] = v
-		}
-	}
+	newCredentials = MergeCredentials(account.Credentials, newCredentials)
 
 	// 异步同步关联的 Sora 账号（不阻塞主流程）
 	if r.accountRepo != nil && r.syncLinkedSora {
