@@ -15,10 +15,10 @@ func TestIsWindowExpired(t *testing.T) {
 		want     bool
 REDACTED{
 		{
-			name:     "nil window start",
+			name:     "nil window start (treated as expired)",
 			start:    nil,
 			duration: RateLimitWindow5h,
-			want:     false,
+			want:     true,
 	REDACTED,
 		{
 			name:     "active window (started 1h ago, 5h window)",
@@ -113,7 +113,7 @@ REDACTED{
 			want7d: 0,
 	REDACTED,
 		{
-			name: "nil window starts return raw usage",
+			name: "nil window starts return 0 (stale usage reset)",
 			key: APIKey{
 				Usage5h:       5.0,
 				Usage1d:       10.0,
@@ -122,9 +122,9 @@ REDACTED{
 				Window1dStart: nil,
 				Window7dStart: nil,
 		REDACTED,
-			want5h: 5.0,
-			want1d: 10.0,
-			want7d: 50.0,
+			want5h: 0,
+			want1d: 0,
+			want7d: 0,
 	REDACTED,
 		{
 			name: "mixed: 5h expired, 1d active, 7d nil",
@@ -138,7 +138,7 @@ REDACTED{
 		REDACTED,
 			want5h: 0,
 			want1d: 10.0,
-			want7d: 50.0,
+			want7d: 0,
 	REDACTED,
 		{
 			name: "zero usage with active windows",
@@ -210,7 +210,7 @@ REDACTED{
 			want7d: 0,
 	REDACTED,
 		{
-			name: "nil window starts return raw usage",
+			name: "nil window starts return 0 (stale usage reset)",
 			data: APIKeyRateLimitData{
 				Usage5h:       3.0,
 				Usage1d:       8.0,
@@ -219,9 +219,9 @@ REDACTED{
 				Window1dStart: nil,
 				Window7dStart: nil,
 		REDACTED,
-			want5h: 3.0,
-			want1d: 8.0,
-			want7d: 40.0,
+			want5h: 0,
+			want1d: 0,
+			want7d: 0,
 	REDACTED,
 REDACTED
 
