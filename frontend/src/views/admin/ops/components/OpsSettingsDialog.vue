@@ -516,6 +516,16 @@ async function saveAllSettings() {
               </div>
               <Toggle v-model="advancedSettings.ignore_invalid_api_key_errors" />
             </div>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.ignoreInsufficientBalanceErrors') }}</label>
+                <p class="mt-1 text-xs text-gray-500">
+                  {{ t('admin.ops.settings.ignoreInsufficientBalanceErrorsHint') }}
+                </p>
+              </div>
+              <Toggle v-model="advancedSettings.ignore_insufficient_balance_errors" />
+            </div>
           </div>
 
           <!-- Auto Refresh -->

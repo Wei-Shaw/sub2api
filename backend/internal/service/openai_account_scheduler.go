@@ -725,7 +725,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}, len(candidates), topK, loadSkew, nil
 	}
 
-	return nil, len(candidates), topK, loadSkew, errors.New("no available accounts")
+	return nil, len(candidates), topK, loadSkew, ErrNoAvailableAccounts
 }
 
 func (s *defaultOpenAIAccountScheduler) isAccountTransportCompatible(account *Account, requiredTransport OpenAIUpstreamTransport) bool {

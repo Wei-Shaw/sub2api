@@ -467,7 +467,7 @@ func (s *OpsService) executeClientRetry(ctx context.Context, reqType opsRetryReq
 			return &opsRetryExecution{status: opsRetryStatusFailed, errorMessage: selErr.Error()}
 		}
 		if selection == nil || selection.Account == nil {
-			return &opsRetryExecution{status: opsRetryStatusFailed, errorMessage: "no available accounts"}
+			return &opsRetryExecution{status: opsRetryStatusFailed, errorMessage: ErrNoAvailableAccounts.Error()}
 		}
 
 		account := selection.Account
