@@ -834,7 +834,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		subscriptionType = SubscriptionTypeStandard
 	}
 
-	// 限额字段：0 和 nil 都表示"无限制"
+	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
 	dailyLimit := normalizeLimit(input.DailyLimitUSD)
 	weeklyLimit := normalizeLimit(input.WeeklyLimitUSD)
 	monthlyLimit := normalizeLimit(input.MonthlyLimitUSD)
@@ -954,9 +954,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	return group, nil
 }
 
-// normalizeLimit 将 0 或负数转换为 nil（表示无限制）
+// normalizeLimit 将负数转换为 nil（表示无限制），0 保留（表示限额为零）
 func normalizeLimit(limit *float64) *float64 {
-	if limit == nil || *limit <= 0 {
+	if limit == nil || *limit < 0 {
 		return nil
 	}
 	return limit
@@ -1068,16 +1068,11 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.SubscriptionType != "" {
 		group.SubscriptionType = input.SubscriptionType
 	}
-	// 限额字段：0 和 nil 都表示"无限制"，正数表示具体限额
-	if input.DailyLimitUSD != nil {
-		group.DailyLimitUSD = normalizeLimit(input.DailyLimitUSD)
-	}
-	if input.WeeklyLimitUSD != nil {
-		group.WeeklyLimitUSD = normalizeLimit(input.WeeklyLimitUSD)
-	}
-	if input.MonthlyLimitUSD != nil {
-		group.MonthlyLimitUSD = normalizeLimit(input.MonthlyLimitUSD)
-	}
+	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
+	// 前端始终发送这三个字段，无需 nil 守卫
+	group.DailyLimitUSD = normalizeLimit(input.DailyLimitUSD)
+	group.WeeklyLimitUSD = normalizeLimit(input.WeeklyLimitUSD)
+	group.MonthlyLimitUSD = normalizeLimit(input.MonthlyLimitUSD)
 	// 图片生成计费配置：负数表示清除（使用默认价格）
 	if input.ImagePrice1K != nil {
 		group.ImagePrice1K = normalizePrice(input.ImagePrice1K)
