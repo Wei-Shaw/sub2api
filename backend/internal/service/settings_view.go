@@ -6,6 +6,7 @@ type SystemSettings struct {
 	RegistrationEmailSuffixWhitelist []string
 	PromoCodeEnabled                 bool
 	PasswordResetEnabled             bool
+	FrontendURL                      string
 	InvitationCodeEnabled            bool
 	TotpEnabled                      bool // TOTP 双因素认证
 

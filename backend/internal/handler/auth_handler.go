@@ -459,9 +459,9 @@ REDACTED
 		return
 REDACTED
 
-	frontendBaseURL := strings.TrimSpace(h.cfg.Server.FrontendURL)
+	frontendBaseURL := strings.TrimSpace(h.settingSvc.GetFrontendURL(c.Request.Context()))
 	if frontendBaseURL == "" {
-		slog.Error("server.frontend_url not configured; cannot build password reset link")
+		slog.Error("frontend_url not configured in settings or config; cannot build password reset link")
 		response.InternalError(c, "Password reset is not configured")
 		return
 REDACTED

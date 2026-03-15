@@ -493,6 +493,7 @@ REDACTED{
 					"registration_email_suffix_whitelist": [],
 					"promo_code_enabled": true,
 					"password_reset_enabled": false,
+					"frontend_url": "",
 					"totp_enabled": false,
 					"totp_encryption_key_configured": false,
 					"smtp_host": "smtp.example.com",
