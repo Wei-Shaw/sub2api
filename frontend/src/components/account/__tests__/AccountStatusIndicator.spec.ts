@@ -43,17 +43,18 @@ function makeAccount(overrides: Partial<Account>): Account {
 REDACTED
 
 describe('AccountStatusIndicator', () => {
-  it('会将超量请求中的模型显示为独立状态', () => {
+  it('模型限流 + overages 启用 + 无 AICredits key → 显示 ⚡ (credits_active)', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {
         account: makeAccount({
           id: 1,
           name: 'ag-1',
           extra: {
-            antigravity_credits_overages: {
+            allow_overages: true,
+            model_rate_limits: {
               'claude-sonnet-4-5': {
-                activated_at: '2026-03-15T00:00:00Z',
-                active_until: '2099-03-15T00:00:00Z'
+                rate_limited_at: '2026-03-15T00:00:00Z',
+                rate_limit_reset_at: '2099-03-15T00:00:00Z'
               REDACTED
             REDACTED
           REDACTED
@@ -70,7 +71,7 @@ describe('AccountStatusIndicator', () => {
     expect(wrapper.text()).toContain('CSon45')
   REDACTED)
 
-  it('普通模型限流仍显示原有限流状态', () => {
+  it('模型限流 + overages 未启用 → 普通限流样式（无 ⚡）', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {
         account: makeAccount({
@@ -95,5 +96,67 @@ describe('AccountStatusIndicator', () => {
 
     expect(wrapper.text()).toContain('CSon45')
     expect(wrapper.text()).not.toContain('⚡')
+  REDACTED)
+
+  it('AICredits key 生效 → 显示积分已用尽 (credits_exhausted)', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 3,
+          name: 'ag-3',
+          extra: {
+            allow_overages: true,
+            model_rate_limits: {
+              'AICredits': {
+                rate_limited_at: '2026-03-15T00:00:00Z',
+                rate_limit_reset_at: '2099-03-15T00:00:00Z'
+              REDACTED
+            REDACTED
+          REDACTED
+        REDACTED)
+      REDACTED,
+      global: {
+        stubs: {
+          Icon: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    expect(wrapper.text()).toContain('account.creditsExhausted')
+  REDACTED)
+
+  it('模型限流 + overages 启用 + AICredits key 生效 → 普通限流样式（积分耗尽，无 ⚡）', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 4,
+          name: 'ag-4',
+          extra: {
+            allow_overages: true,
+            model_rate_limits: {
+              'claude-sonnet-4-5': {
+                rate_limited_at: '2026-03-15T00:00:00Z',
+                rate_limit_reset_at: '2099-03-15T00:00:00Z'
+              REDACTED,
+              'AICredits': {
+                rate_limited_at: '2026-03-15T00:00:00Z',
+                rate_limit_reset_at: '2099-03-15T00:00:00Z'
+              REDACTED
+            REDACTED
+          REDACTED
+        REDACTED)
+      REDACTED,
+      global: {
+        stubs: {
+          Icon: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    // 模型限流 + 积分耗尽 → 不应显示 ⚡
+    expect(wrapper.text()).toContain('CSon45')
+    expect(wrapper.text()).not.toContain('⚡')
+    // AICredits 积分耗尽状态应显示
+    expect(wrapper.text()).toContain('account.creditsExhausted')
   REDACTED)
 REDACTED)
