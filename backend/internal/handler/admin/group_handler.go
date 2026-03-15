@@ -1,6 +1,9 @@
 package admin
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -14,6 +17,55 @@ import (
 // GroupHandler handles admin group management
 type GroupHandler struct {
 	adminService service.AdminService
+REDACTED
+
+type optionalLimitField struct {
+	set   bool
+	value *float64
+REDACTED
+
+func (f *optionalLimitField) UnmarshalJSON(data []byte) error {
+	f.set = true
+
+	trimmed := bytes.TrimSpace(data)
+	if bytes.Equal(trimmed, []byte("null")) {
+		f.value = nil
+		return nil
+REDACTED
+
+	var number float64
+	if err := json.Unmarshal(trimmed, &number); err == nil {
+		f.value = &number
+		return nil
+REDACTED
+
+	var text string
+	if err := json.Unmarshal(trimmed, &text); err == nil {
+		text = strings.TrimSpace(text)
+		if text == "" {
+			f.value = nil
+			return nil
+	REDACTED
+		number, err = strconv.ParseFloat(text, 64)
+		if err != nil {
+			return fmt.Errorf("invalid numeric limit value %q: %w", text, err)
+	REDACTED
+		f.value = &number
+		return nil
+REDACTED
+
+	return fmt.Errorf("invalid limit value: %s", string(trimmed))
+REDACTED
+
+func (f optionalLimitField) ToServiceInput() *float64 {
+	if !f.set {
+		return nil
+REDACTED
+	if f.value != nil {
+		return f.value
+REDACTED
+	zero := 0.0
+	return &zero
 REDACTED
 
 // NewGroupHandler creates a new admin group handler
@@ -31,9 +83,9 @@ type CreateGroupRequest struct {
 	RateMultiplier   float64  `json:"rate_multiplier"`
 	IsExclusive      bool     `json:"is_exclusive"`
 	SubscriptionType string   `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
-	DailyLimitUSD    *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
+	DailyLimitUSD    optionalLimitField `json:"daily_limit_usd"`
+	WeeklyLimitUSD   optionalLimitField `json:"weekly_limit_usd"`
+	MonthlyLimitUSD  optionalLimitField `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
@@ -69,9 +121,9 @@ type UpdateGroupRequest struct {
 	IsExclusive      *bool    `json:"is_exclusive"`
 	Status           string   `json:"status" binding:"omitempty,oneof=active inactive"`
 	SubscriptionType string   `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
-	DailyLimitUSD    *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD   *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD  *float64 `json:"monthly_limit_usd"`
+	DailyLimitUSD    optionalLimitField `json:"daily_limit_usd"`
+	WeeklyLimitUSD   optionalLimitField `json:"weekly_limit_usd"`
+	MonthlyLimitUSD  optionalLimitField `json:"monthly_limit_usd"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	ImagePrice1K                    *float64 `json:"image_price_1k"`
 	ImagePrice2K                    *float64 `json:"image_price_2k"`
@@ -191,9 +243,9 @@ REDACTED
 		RateMultiplier:                  req.RateMultiplier,
 		IsExclusive:                     req.IsExclusive,
 		SubscriptionType:                req.SubscriptionType,
-		DailyLimitUSD:                   req.DailyLimitUSD,
-		WeeklyLimitUSD:                  req.WeeklyLimitUSD,
-		MonthlyLimitUSD:                 req.MonthlyLimitUSD,
+		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
+		WeeklyLimitUSD:                  req.WeeklyLimitUSD.ToServiceInput(),
+		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
@@ -244,9 +296,9 @@ REDACTED
 		IsExclusive:                     req.IsExclusive,
 		Status:                          req.Status,
 		SubscriptionType:                req.SubscriptionType,
-		DailyLimitUSD:                   req.DailyLimitUSD,
-		WeeklyLimitUSD:                  req.WeeklyLimitUSD,
-		MonthlyLimitUSD:                 req.MonthlyLimitUSD,
+		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
+		WeeklyLimitUSD:                  req.WeeklyLimitUSD.ToServiceInput(),
+		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
 		ImagePrice1K:                    req.ImagePrice1K,
 		ImagePrice2K:                    req.ImagePrice2K,
 		ImagePrice4K:                    req.ImagePrice4K,
