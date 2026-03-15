@@ -1312,7 +1312,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 		return nil, err
 	}
 	if len(accounts) == 0 {
-		return nil, errors.New("no available accounts")
+		return nil, ErrNoAvailableAccounts
 	}
 
 	isExcluded := func(accountID int64) bool {
@@ -1382,7 +1382,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	if len(candidates) == 0 {
-		return nil, errors.New("no available accounts")
+		return nil, ErrNoAvailableAccounts
 	}
 
 	accountLoads := make([]AccountWithConcurrency, 0, len(candidates))
@@ -1489,7 +1489,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 		}, nil
 	}
 
-	return nil, errors.New("no available accounts")
+	return nil, ErrNoAvailableAccounts
 }
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
