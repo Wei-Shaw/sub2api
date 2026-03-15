@@ -32,8 +32,9 @@ const (
 	opsErrNoAvailableAccounts = "no available accounts"
 	opsErrInvalidAPIKey       = "invalid_api_key"
 	opsErrAPIKeyRequired      = "api_key_required"
-	opsErrInsufficientBalance = "insufficient balance"
-	opsErrInsufficientQuota   = "insufficient_quota"
+	opsErrInsufficientBalance        = "insufficient balance"
+	opsErrInsufficientAccountBalance = "insufficient account balance"
+	opsErrInsufficientQuota          = "insufficient_quota"
 
 	// 上游错误码常量 — 错误分类 (normalizeOpsErrorType / classifyOpsPhase / classifyOpsIsBusinessLimited)
 	opsCodeInsufficientBalance  = "INSUFFICIENT_BALANCE"
@@ -1233,8 +1234,9 @@ func shouldSkipOpsErrorLog(ctx context.Context, ops *service.OpsService, message
 
 	// Check if insufficient balance errors should be ignored
 	if settings.IgnoreInsufficientBalanceErrors {
-		if strings.Contains(bodyLower, opsErrInsufficientBalance) || strings.Contains(bodyLower, opsErrInsufficientQuota) ||
-			strings.Contains(msgLower, opsErrInsufficientBalance) {
+		if strings.Contains(bodyLower, opsErrInsufficientBalance) || strings.Contains(bodyLower, opsErrInsufficientAccountBalance) ||
+			strings.Contains(bodyLower, opsErrInsufficientQuota) ||
+			strings.Contains(msgLower, opsErrInsufficientBalance) || strings.Contains(msgLower, opsErrInsufficientAccountBalance) {
 			return true
 		}
 	}
