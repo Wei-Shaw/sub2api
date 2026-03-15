@@ -2382,6 +2382,11 @@ const handleCreateGroup = async () => {
       sora_storage_quota_bytes: createQuotaGb ? Math.round(createQuotaGb * 1024 * 1024 * 1024) : 0,
       model_routing: convertRoutingRulesToApiFormat(createModelRoutingRules.value)
     REDACTED
+    // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
+    const emptyToNull = (v: any) => v === '' ? null : v
+    requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd)
+    requestData.weekly_limit_usd = emptyToNull(requestData.weekly_limit_usd)
+    requestData.monthly_limit_usd = emptyToNull(requestData.monthly_limit_usd)
     await adminAPI.groups.create(requestData)
     appStore.showSuccess(t('admin.groups.groupCreated'))
     closeCreateModal()
@@ -2465,6 +2470,11 @@ const handleUpdateGroup = async () => {
           : editForm.fallback_group_id_on_invalid_request,
       model_routing: convertRoutingRulesToApiFormat(editModelRoutingRules.value)
     REDACTED
+    // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
+    const emptyToNull = (v: any) => v === '' ? null : v
+    payload.daily_limit_usd = emptyToNull(payload.daily_limit_usd)
+    payload.weekly_limit_usd = emptyToNull(payload.weekly_limit_usd)
+    payload.monthly_limit_usd = emptyToNull(payload.monthly_limit_usd)
     await adminAPI.groups.update(editingGroup.value.id, payload)
     appStore.showSuccess(t('admin.groups.groupUpdated'))
     closeEditModal()
