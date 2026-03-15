@@ -28,10 +28,10 @@ const (
 	opsAccountIDKey   = "ops_account_id"
 
 	// 错误过滤匹配常量 — shouldSkipOpsErrorLog 和错误分类共用
-	opsErrContextCanceled     = "context canceled"
-	opsErrNoAvailableAccounts = "no available accounts"
-	opsErrInvalidAPIKey       = "invalid_api_key"
-	opsErrAPIKeyRequired      = "api_key_required"
+	opsErrContextCanceled            = "context canceled"
+	opsErrNoAvailableAccounts        = "no available accounts"
+	opsErrInvalidAPIKey              = "invalid_api_key"
+	opsErrAPIKeyRequired             = "api_key_required"
 	opsErrInsufficientBalance        = "insufficient balance"
 	opsErrInsufficientAccountBalance = "insufficient account balance"
 	opsErrInsufficientQuota          = "insufficient_quota"
