@@ -290,36 +290,12 @@
           color="amber"
         />
 
-        <div v-if="antigravityAICreditsDisplay.length > 0" class="mt-1 flex flex-wrap gap-1">
-          <div
-            v-for="credit in antigravityAICreditsDisplay"
-            :key="credit.creditType"
-            class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-300"
-          >
-            <span>⚡</span>
-            <span>{{ t('admin.accounts.aiCreditsBalance') REDACTEDREDACTED</span>
-            <span>{{ credit.label REDACTEDREDACTED</span>
-            <span class="font-mono">{{ credit.amount REDACTEDREDACTED</span>
-            <span v-if="credit.minimumBalance !== null" class="text-[9px] opacity-75">
-              min {{ credit.minimumBalance REDACTEDREDACTED
-            </span>
-          </div>
+        <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+          💳 {{ t('admin.accounts.aiCreditsBalance') REDACTEDREDACTED: {{ aiCreditsDisplay REDACTEDREDACTED
         </div>
       </div>
-      <div v-else-if="antigravityAICreditsDisplay.length > 0" class="flex flex-wrap gap-1">
-        <div
-          v-for="credit in antigravityAICreditsDisplay"
-          :key="credit.creditType"
-          class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-300"
-        >
-          <span>⚡</span>
-          <span>{{ t('admin.accounts.aiCreditsBalance') REDACTEDREDACTED</span>
-          <span>{{ credit.label REDACTEDREDACTED</span>
-          <span class="font-mono">{{ credit.amount REDACTEDREDACTED</span>
-          <span v-if="credit.minimumBalance !== null" class="text-[9px] opacity-75">
-            min {{ credit.minimumBalance REDACTEDREDACTED
-          </span>
-        </div>
+      <div v-else-if="aiCreditsDisplay" class="text-[10px] text-gray-500 dark:text-gray-400">
+        💳 {{ t('admin.accounts.aiCreditsBalance') REDACTEDREDACTED: {{ aiCreditsDisplay REDACTEDREDACTED
       </div>
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
@@ -612,25 +588,13 @@ const antigravityClaudeUsageFromAPI = computed(() =>
   ])
 )
 
-const antigravityAICreditsDisplay = computed(() => {
+const aiCreditsDisplay = computed(() => {
   const credits = usageInfo.value?.ai_credits
-  if (!credits || credits.length === 0) return []
-  return credits
-    .filter((credit) => (credit.amount ?? 0) > 0)
-    .map((credit) => ({
-      creditType: credit.credit_type || 'UNKNOWN',
-      label: formatAICreditTypeLabel(credit.credit_type || 'UNKNOWN'),
-      amount: Number(credit.amount ?? 0).toFixed(0),
-      minimumBalance: typeof credit.minimum_balance === 'number'
-        ? Number(credit.minimum_balance).toFixed(0)
-        : null,
-    REDACTED))
+  if (!credits || credits.length === 0) return null
+  const total = credits.reduce((sum, credit) => sum + (credit.amount ?? 0), 0)
+  if (total <= 0) return null
+  return total.toFixed(0)
 REDACTED)
-
-function formatAICreditTypeLabel(creditType: string): string {
-  if (creditType === 'GOOGLE_ONE_AI') return 'Google One AI'
-  return creditType
-REDACTED
 
 // Antigravity 账户类型（从 load_code_assist 响应中提取）
 const antigravityTier = computed(() => {
