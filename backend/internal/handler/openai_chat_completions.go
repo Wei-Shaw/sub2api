@@ -256,14 +256,16 @@ REDACTED
 
 		h.submitUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
-				Result:        result,
-				APIKey:        apiKey,
-				User:          apiKey.User,
-				Account:       account,
-				Subscription:  subscription,
-				UserAgent:     userAgent,
-				IPAddress:     clientIP,
-				APIKeyService: h.apiKeyService,
+				Result:           result,
+				APIKey:           apiKey,
+				User:             apiKey.User,
+				Account:          account,
+				Subscription:     subscription,
+				InboundEndpoint:  normalizedOpenAIInboundEndpoint(c, openAIInboundEndpointChatCompletions),
+				UpstreamEndpoint: normalizedOpenAIUpstreamEndpoint(c, openAIUpstreamEndpointResponses),
+				UserAgent:        userAgent,
+				IPAddress:        clientIP,
+				APIKeyService:    h.apiKeyService,
 		REDACTED); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.chat_completions"),

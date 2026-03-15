@@ -446,6 +446,18 @@
 
         <!-- Model Distribution -->
         <ModelDistributionChart :model-stats="stats.models" :loading="false" />
+
+        <EndpointDistributionChart
+          :endpoint-stats="stats.endpoints || []"
+          :loading="false"
+          :title="t('usage.inboundEndpoint')"
+        />
+
+        <EndpointDistributionChart
+          :endpoint-stats="stats.upstream_endpoints || []"
+          :loading="false"
+          :title="t('usage.upstreamEndpoint')"
+        />
       </template>
 
       <!-- No Data State -->
@@ -489,6 +501,7 @@ import { Line REDACTED from 'vue-chartjs'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
+import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Account, AccountUsageStatsResponse REDACTED from '@/types'
