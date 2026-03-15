@@ -201,7 +201,7 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 	if resp.StatusCode == http.StatusTooManyRequests &&
 		category == antigravity429QuotaExhausted &&
 		p.account.IsOveragesEnabled() &&
-		!isCreditsExhausted(p.account.ID) {
+		!p.account.isCreditsExhausted() {
 		result := s.attemptCreditsOveragesRetry(p, baseURL, modelName, waitDuration, resp.StatusCode, respBody)
 		if result.handled && result.resp != nil {
 			return &smartRetryResult{
@@ -552,13 +552,15 @@ func (s *AntigravityGatewayService) handleSingleAccountRetryInPlace(
 
 // antigravityRetryLoop 执行带 URL fallback 的重试循环
 func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopParams) (*antigravityRetryLoopResult, error) {
-	// 预检查：如果模型已进入 overages 运行态，则直接注入 AI Credits。
-	overagesActive := false
-	if p.requestedModel != "" && canUseAntigravityCreditsOverages(p.ctx, p.account, p.requestedModel) {
+	// 预检查：模型限流 + overages 启用 + 积分未耗尽 → 直接注入 AI Credits
+	overagesInjected := false
+	if p.requestedModel != "" && p.account.Platform == PlatformAntigravity &&
+		p.account.IsOveragesEnabled() && !p.account.isCreditsExhausted() &&
+		p.account.isModelRateLimitedWithContext(p.ctx, p.requestedModel) {
 		if creditsBody := injectEnabledCreditTypes(p.body); creditsBody != nil {
 			p.body = creditsBody
-			overagesActive = true
-			logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: credit_overages_active model=%s account=%d (injecting enabledCreditTypes)",
+			overagesInjected = true
+			logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: model_rate_limited_credits_inject model=%s account=%d (injecting enabledCreditTypes)",
 				p.prefix, p.requestedModel, p.account.ID)
 		}
 	}
@@ -566,9 +568,9 @@ func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopP
 	// 预检查：如果账号已限流，直接返回切换信号
 	if p.requestedModel != "" {
 		if remaining := p.account.GetRateLimitRemainingTimeWithContext(p.ctx, p.requestedModel); remaining > 0 {
-			// 进入 overages 运行态的模型不再受普通模型限流预检查阻断。
-			if overagesActive {
-				logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: credit_overages_ignore_rate_limit remaining=%v model=%s account=%d",
+			// 已注入积分的请求不再受普通模型限流预检查阻断。
+			if overagesInjected {
+				logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: credits_injected_ignore_rate_limit remaining=%v model=%s account=%d",
 					p.prefix, remaining.Truncate(time.Millisecond), p.requestedModel, p.account.ID)
 			} else if isSingleAccountRetry(p.ctx) {
 				// 单账号 503 退避重试模式：跳过限流预检查，直接发请求。
@@ -666,9 +668,9 @@ urlFallbackLoop:
 				respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 				_ = resp.Body.Close()
 
-				if overagesActive && shouldMarkCreditsExhausted(resp, respBody, nil) {
+				if overagesInjected && shouldMarkCreditsExhausted(resp, respBody, nil) {
 					modelKey := resolveCreditsOveragesModelKey(p.ctx, p.account, "", p.requestedModel)
-					s.handleCreditsRetryFailure(p.prefix, modelKey, p.account, 0, &http.Response{
+					s.handleCreditsRetryFailure(p.ctx, p.prefix, modelKey, p.account, &http.Response{
 						StatusCode: resp.StatusCode,
 						Header:     resp.Header.Clone(),
 						Body:       io.NopCloser(bytes.NewReader(respBody)),

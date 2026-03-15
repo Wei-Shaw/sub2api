@@ -88,14 +88,25 @@
       ]"
     >
       <div v-for="item in activeModelStatuses" :key="`${item.kind}-${item.model}`" class="group relative mb-1 break-inside-avoid">
+        <!-- 积分已用尽 -->
         <span
-          v-if="item.kind === 'overages'"
+          v-if="item.kind === 'credits_exhausted'"
+          class="inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
+        >
+          <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
+          {{ t('admin.accounts.status.creditsExhausted') }}
+          <span class="text-[10px] opacity-70">{{ formatModelResetTime(item.reset_at) }}</span>
+        </span>
+        <!-- 正在走积分（模型限流但积分可用）-->
+        <span
+          v-else-if="item.kind === 'credits_active'"
           class="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
         >
           <span>⚡</span>
           {{ formatScopeName(item.model) }}
           <span class="text-[10px] opacity-70">{{ formatModelResetTime(item.reset_at) }}</span>
         </span>
+        <!-- 普通模型限流 -->
         <span
           v-else
           class="inline-flex items-center gap-1 rounded bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
@@ -109,9 +120,11 @@
           class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 whitespace-normal rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
         >
           {{
-            item.kind === 'overages'
-              ? t('admin.accounts.status.modelCreditOveragesUntil', { model: formatScopeName(item.model), time: formatTime(item.reset_at) })
-              : t('admin.accounts.status.modelRateLimitedUntil', { model: formatScopeName(item.model), time: formatTime(item.reset_at) })
+            item.kind === 'credits_exhausted'
+              ? t('admin.accounts.status.creditsExhaustedUntil', { time: formatTime(item.reset_at) })
+              : item.kind === 'credits_active'
+                ? t('admin.accounts.status.modelCreditOveragesUntil', { model: formatScopeName(item.model), time: formatTime(item.reset_at) })
+                : t('admin.accounts.status.modelRateLimitedUntil', { model: formatScopeName(item.model), time: formatTime(item.reset_at) })
           }}
           <div
             class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
@@ -165,12 +178,12 @@ const isRateLimited = computed(() => {
 })
 
 type AccountModelStatusItem = {
-  kind: 'rate_limit' | 'overages'
+  kind: 'rate_limit' | 'credits_exhausted' | 'credits_active'
   model: string
   reset_at: string
 }
 
-// Computed: active model statuses (普通模型限流 + 超量请求运行态)
+// Computed: active model statuses (普通模型限流 + 积分耗尽 + 走积分中)
 const activeModelStatuses = computed<AccountModelStatusItem[]>(() => {
   const extra = props.account.extra as Record<string, unknown> | undefined
   const modelLimits = extra?.model_rate_limits as
@@ -179,19 +192,26 @@ const activeModelStatuses = computed<AccountModelStatusItem[]>(() => {
   const now = new Date()
   const items: AccountModelStatusItem[] = []
 
-  if (modelLimits) {
-    items.push(...Object.entries(modelLimits)
-      .filter(([, info]) => new Date(info.rate_limit_reset_at) > now)
-      .map(([model, info]) => ({ kind: 'rate_limit' as const, model, reset_at: info.rate_limit_reset_at })))
-  }
+  if (!modelLimits) return items
 
-  const overagesStates = extra?.antigravity_credits_overages as
-    | Record<string, { activated_at?: string; active_until: string }>
-    | undefined
-  if (overagesStates) {
-    items.push(...Object.entries(overagesStates)
-      .filter(([, info]) => new Date(info.active_until) > now)
-      .map(([model, info]) => ({ kind: 'overages' as const, model, reset_at: info.active_until })))
+  // 检查 AICredits key 是否生效（积分是否耗尽）
+  const aiCreditsEntry = modelLimits['AICredits']
+  const hasActiveAICredits = aiCreditsEntry && new Date(aiCreditsEntry.rate_limit_reset_at) > now
+  const allowOverages = !!(extra?.allow_overages)
+
+  for (const [model, info] of Object.entries(modelLimits)) {
+    if (new Date(info.rate_limit_reset_at) <= now) continue
+
+    if (model === 'AICredits') {
+      // AICredits key → 积分已用尽
+      items.push({ kind: 'credits_exhausted', model, reset_at: info.rate_limit_reset_at })
+    } else if (allowOverages && !hasActiveAICredits) {
+      // 普通模型限流 + overages 启用 + 积分可用 → 正在走积分
+      items.push({ kind: 'credits_active', model, reset_at: info.rate_limit_reset_at })
+    } else {
+      // 普通模型限流
+      items.push({ kind: 'rate_limit', model, reset_at: info.rate_limit_reset_at })
+    }
   }
 
   return items
