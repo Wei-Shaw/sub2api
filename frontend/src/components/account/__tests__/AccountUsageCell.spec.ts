@@ -198,7 +198,34 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('7d|77|300')
   REDACTED)
 
-  it('OpenAI OAuth 有现成快照且未限额时不会首屏请求 usage', async () => {
+  it('OpenAI OAuth 有现成快照时首屏先显示快照再加载 usage 覆盖', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: {
+        utilization: 18,
+        resets_at: '2099-03-07T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: {
+          requests: 9,
+          tokens: 900,
+          cost: 0.09,
+          standard_cost: 0.09,
+          user_cost: 0.09
+        REDACTED
+      REDACTED,
+      seven_day: {
+        utilization: 36,
+        resets_at: '2099-03-13T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: {
+          requests: 9,
+          tokens: 900,
+          cost: 0.09,
+          standard_cost: 0.09,
+          user_cost: 0.09
+        REDACTED
+      REDACTED
+    REDACTED)
+
     const wrapper = mount(AccountUsageCell, {
       props: {
         account: makeAccount({
@@ -218,7 +245,7 @@ describe('AccountUsageCell', () => {
         stubs: {
           UsageProgressBar: {
             props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
-            template: '<div class="usage-bar">{{ label REDACTEDREDACTED|{{ utilization REDACTEDREDACTED</div>'
+            template: '<div class="usage-bar">{{ label REDACTEDREDACTED|{{ utilization REDACTEDREDACTED|{{ windowStats?.tokens REDACTEDREDACTED</div>'
           REDACTED,
           AccountQuotaInfo: true
         REDACTED
@@ -227,9 +254,80 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(getUsage).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('5h|12')
-    expect(wrapper.text()).toContain('7d|34')
+    // 始终拉 usage，fetched data 优先显示（包含 window_stats）
+    expect(getUsage).toHaveBeenCalledWith(2001)
+    expect(wrapper.text()).toContain('5h|18|900')
+    expect(wrapper.text()).toContain('7d|36|900')
+  REDACTED)
+
+  it('OpenAI OAuth 有现成快照时，手动刷新信号会触发 usage 重拉', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: {
+        utilization: 18,
+        resets_at: '2099-03-07T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: {
+          requests: 9,
+          tokens: 900,
+          cost: 0.09,
+          standard_cost: 0.09,
+          user_cost: 0.09
+        REDACTED
+      REDACTED,
+      seven_day: {
+        utilization: 36,
+        resets_at: '2099-03-13T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: {
+          requests: 9,
+          tokens: 900,
+          cost: 0.09,
+          standard_cost: 0.09,
+          user_cost: 0.09
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 2010,
+          platform: 'openai',
+          type: 'oauth',
+          extra: {
+            codex_usage_updated_at: '2099-03-07T10:00:00Z',
+            codex_5h_used_percent: 12,
+            codex_5h_reset_at: '2099-03-07T12:00:00Z',
+            codex_7d_used_percent: 34,
+            codex_7d_reset_at: '2099-03-13T12:00:00Z'
+          REDACTED,
+          rate_limit_reset_at: null
+        REDACTED),
+        manualRefreshToken: 0
+      REDACTED,
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color'],
+            template: '<div class="usage-bar">{{ label REDACTEDREDACTED|{{ utilization REDACTEDREDACTED|{{ windowStats?.tokens REDACTEDREDACTED</div>'
+          REDACTED,
+          AccountQuotaInfo: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+    // mount 时已经拉取一次
+    expect(getUsage).toHaveBeenCalledTimes(1)
+
+    await wrapper.setProps({ manualRefreshToken: 1 REDACTED)
+    await flushPromises()
+
+    // 手动刷新再拉一次
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    expect(getUsage).toHaveBeenCalledWith(2010)
+    // fetched data 优先显示，包含 window_stats
+    expect(wrapper.text()).toContain('5h|18|900')
   REDACTED)
 
   it('OpenAI OAuth 在无 codex 快照时会回退显示 usage 接口窗口', async () => {
@@ -414,9 +512,96 @@ REDACTED)
 
 	await flushPromises()
 
-	expect(getUsage).toHaveBeenCalledWith(2004)
-	expect(wrapper.text()).toContain('5h|100|106540000')
-	expect(wrapper.text()).toContain('7d|100|106540000')
-	expect(wrapper.text()).not.toContain('5h|0|')
+  expect(getUsage).toHaveBeenCalledWith(2004)
+  expect(wrapper.text()).toContain('5h|100|106540000')
+  expect(wrapper.text()).toContain('7d|100|106540000')
+  expect(wrapper.text()).not.toContain('5h|0|')
+  REDACTED)
+
+  it('Key 账号会展示 today stats 徽章并带 A/U 提示', async () => {
+		const wrapper = mount(AccountUsageCell, {
+		  props: {
+		    account: makeAccount({
+		      id: 3001,
+		      platform: 'anthropic',
+		      type: 'apikey'
+		    REDACTED),
+		    todayStats: {
+		      requests: 1_000_000,
+		      tokens: 1_000_000_000,
+		      cost: 12.345,
+		      standard_cost: 12.345,
+		      user_cost: 6.789
+		    REDACTED
+		  REDACTED,
+		  global: {
+		    stubs: {
+		      UsageProgressBar: true,
+		      AccountQuotaInfo: true
+		    REDACTED
+		  REDACTED
+	REDACTED)
+
+		await flushPromises()
+
+		expect(wrapper.text()).toContain('1.0M req')
+		expect(wrapper.text()).toContain('1.0B')
+		expect(wrapper.text()).toContain('A $12.35')
+		expect(wrapper.text()).toContain('U $6.79')
+
+		const badges = wrapper.findAll('span[title]')
+		expect(badges.some(node => node.attributes('title') === 'usage.accountBilled')).toBe(true)
+		expect(badges.some(node => node.attributes('title') === 'usage.userBilled')).toBe(true)
+  REDACTED)
+
+  it('Key 账号在 today stats loading 时显示骨架屏', async () => {
+		const wrapper = mount(AccountUsageCell, {
+		  props: {
+		    account: makeAccount({
+		      id: 3002,
+		      platform: 'anthropic',
+		      type: 'apikey'
+		    REDACTED),
+		    todayStats: null,
+		    todayStatsLoading: true
+		  REDACTED,
+		  global: {
+		    stubs: {
+		      UsageProgressBar: true,
+		      AccountQuotaInfo: true
+		    REDACTED
+		  REDACTED
+	REDACTED)
+
+		await flushPromises()
+
+		expect(wrapper.findAll('.animate-pulse').length).toBeGreaterThan(0)
+  REDACTED)
+
+  it('Key 账号在无 today stats 且无配额时显示兜底短横线', async () => {
+		const wrapper = mount(AccountUsageCell, {
+		  props: {
+		    account: makeAccount({
+		      id: 3003,
+		      platform: 'anthropic',
+		      type: 'apikey',
+		      quota_limit: 0,
+		      quota_daily_limit: 0,
+		      quota_weekly_limit: 0
+		    REDACTED),
+		    todayStats: null,
+		    todayStatsLoading: false
+		  REDACTED,
+		  global: {
+		    stubs: {
+		      UsageProgressBar: true,
+		      AccountQuotaInfo: true
+		    REDACTED
+		  REDACTED
+	REDACTED)
+
+		await flushPromises()
+
+		expect(wrapper.text().trim()).toBe('-')
   REDACTED)
 REDACTED)
