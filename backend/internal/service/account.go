@@ -901,6 +901,22 @@ REDACTED
 	return false
 REDACTED
 
+// IsOveragesEnabled 检查 Antigravity 账号是否启用 AI Credits 超量请求。
+func (a *Account) IsOveragesEnabled() bool {
+	if a.Platform != PlatformAntigravity {
+		return false
+REDACTED
+	if a.Extra == nil {
+		return false
+REDACTED
+	if v, ok := a.Extra["allow_overages"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
 // IsOpenAIPassthroughEnabled 返回 OpenAI 账号是否启用“自动透传（仅替换认证）”。
 //
 // 新字段：accounts.extra.openai_passthrough。

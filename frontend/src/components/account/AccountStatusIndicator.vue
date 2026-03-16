@@ -76,19 +76,39 @@
       </div>
     </div>
 
-    <!-- Model Rate Limit Indicators (Antigravity OAuth Smart Retry) -->
+    <!-- Model Status Indicators (普通限流 / 超量请求中) -->
     <div
-      v-if="activeModelRateLimits.length > 0"
+      v-if="activeModelStatuses.length > 0"
       :class="[
-        activeModelRateLimits.length <= 4
+        activeModelStatuses.length <= 4
           ? 'flex flex-col gap-1'
-          : activeModelRateLimits.length <= 8
+          : activeModelStatuses.length <= 8
             ? 'columns-2 gap-x-2'
             : 'columns-3 gap-x-2'
       ]"
     >
-      <div v-for="item in activeModelRateLimits" :key="item.model" class="group relative mb-1 break-inside-avoid">
+      <div v-for="item in activeModelStatuses" :key="`${item.kindREDACTED-${item.modelREDACTED`" class="group relative mb-1 break-inside-avoid">
+        <!-- 积分已用尽 -->
         <span
+          v-if="item.kind === 'credits_exhausted'"
+          class="inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
+        >
+          <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
+          {{ t('admin.accounts.status.creditsExhausted') REDACTEDREDACTED
+          <span class="text-[10px] opacity-70">{{ formatModelResetTime(item.reset_at) REDACTEDREDACTED</span>
+        </span>
+        <!-- 正在走积分（模型限流但积分可用）-->
+        <span
+          v-else-if="item.kind === 'credits_active'"
+          class="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+        >
+          <span>⚡</span>
+          {{ formatScopeName(item.model) REDACTEDREDACTED
+          <span class="text-[10px] opacity-70">{{ formatModelResetTime(item.reset_at) REDACTEDREDACTED</span>
+        </span>
+        <!-- 普通模型限流 -->
+        <span
+          v-else
           class="inline-flex items-center gap-1 rounded bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
         >
           <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
@@ -99,7 +119,13 @@
         <div
           class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 whitespace-normal rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
         >
-          {{ t('admin.accounts.status.modelRateLimitedUntil', { model: formatScopeName(item.model), time: formatTime(item.reset_at) REDACTED) REDACTEDREDACTED
+          {{
+            item.kind === 'credits_exhausted'
+              ? t('admin.accounts.status.creditsExhaustedUntil', { time: formatTime(item.reset_at) REDACTED)
+              : item.kind === 'credits_active'
+                ? t('admin.accounts.status.modelCreditOveragesUntil', { model: formatScopeName(item.model), time: formatTime(item.reset_at) REDACTED)
+                : t('admin.accounts.status.modelRateLimitedUntil', { model: formatScopeName(item.model), time: formatTime(item.reset_at) REDACTED)
+          REDACTEDREDACTED
           <div
             class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
           ></div>
@@ -131,6 +157,7 @@
 <script setup lang="ts">
 import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
+import Icon from '@/components/icons/Icon.vue'
 import type { Account REDACTED from '@/types'
 import { formatCountdown, formatDateTime, formatCountdownWithSuffix, formatTime REDACTED from '@/utils/format'
 
@@ -150,17 +177,44 @@ const isRateLimited = computed(() => {
   return new Date(props.account.rate_limit_reset_at) > new Date()
 REDACTED)
 
+type AccountModelStatusItem = {
+  kind: 'rate_limit' | 'credits_exhausted' | 'credits_active'
+  model: string
+  reset_at: string
+REDACTED
 
-// Computed: active model rate limits (Antigravity OAuth Smart Retry)
-const activeModelRateLimits = computed(() => {
-  const modelLimits = (props.account.extra as Record<string, unknown> | undefined)?.model_rate_limits as
+// Computed: active model statuses (普通模型限流 + 积分耗尽 + 走积分中)
+const activeModelStatuses = computed<AccountModelStatusItem[]>(() => {
+  const extra = props.account.extra as Record<string, unknown> | undefined
+  const modelLimits = extra?.model_rate_limits as
     | Record<string, { rate_limited_at: string; rate_limit_reset_at: string REDACTED>
     | undefined
-  if (!modelLimits) return []
   const now = new Date()
-  return Object.entries(modelLimits)
-    .filter(([, info]) => new Date(info.rate_limit_reset_at) > now)
-    .map(([model, info]) => ({ model, reset_at: info.rate_limit_reset_at REDACTED))
+  const items: AccountModelStatusItem[] = []
+
+  if (!modelLimits) return items
+
+  // 检查 AICredits key 是否生效（积分是否耗尽）
+  const aiCreditsEntry = modelLimits['AICredits']
+  const hasActiveAICredits = aiCreditsEntry && new Date(aiCreditsEntry.rate_limit_reset_at) > now
+  const allowOverages = !!(extra?.allow_overages)
+
+  for (const [model, info] of Object.entries(modelLimits)) {
+    if (new Date(info.rate_limit_reset_at) <= now) continue
+
+    if (model === 'AICredits') {
+      // AICredits key → 积分已用尽
+      items.push({ kind: 'credits_exhausted', model, reset_at: info.rate_limit_reset_at REDACTED)
+    REDACTED else if (allowOverages && !hasActiveAICredits) {
+      // 普通模型限流 + overages 启用 + 积分可用 → 正在走积分
+      items.push({ kind: 'credits_active', model, reset_at: info.rate_limit_reset_at REDACTED)
+    REDACTED else {
+      // 普通模型限流
+      items.push({ kind: 'rate_limit', model, reset_at: info.rate_limit_reset_at REDACTED)
+    REDACTED
+  REDACTED
+
+  return items
 REDACTED)
 
 const formatScopeName = (scope: string): string => {
@@ -182,7 +236,7 @@ const formatScopeName = (scope: string): string => {
     'gemini-3.1-pro-high': 'G3PH',
     'gemini-3.1-pro-low': 'G3PL',
     'gemini-3-pro-image': 'G3PI',
-    'gemini-3.1-flash-image': 'GImage',
+    'gemini-3.1-flash-image': 'G31FI',
     // 其他
     'gpt-oss-120b-medium': 'GPT120',
     'tab_flash_lite_preview': 'TabFL',
