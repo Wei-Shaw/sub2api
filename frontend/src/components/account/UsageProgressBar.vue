@@ -2,7 +2,7 @@
   <div>
     <!-- Window stats row (above progress bar) -->
     <div
-      v-if="windowStats"
+      v-if="windowStats && (windowStats.requests > 0 || windowStats.tokens > 0)"
       class="mb-0.5 flex items-center"
     >
       <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
@@ -12,12 +12,13 @@
         <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
           {{ formatTokens REDACTEDREDACTED
         </span>
-        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800" :title="t('usage.accountBilled')">
           A ${{ formatAccountCost REDACTEDREDACTED
         </span>
         <span
           v-if="windowStats?.user_cost != null"
           class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"
+          :title="t('usage.userBilled')"
         >
           U ${{ formatUserCost REDACTEDREDACTED
         </span>
@@ -56,7 +57,9 @@
 
 <script setup lang="ts">
 import { computed REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
 import type { WindowStats REDACTED from '@/types'
+import { formatCompactNumber REDACTED from '@/utils/format'
 
 const props = defineProps<{
   label: string
@@ -65,6 +68,8 @@ const props = defineProps<{
   color: 'indigo' | 'emerald' | 'purple' | 'amber'
   windowStats?: WindowStats | null
 REDACTED>()
+
+const { t REDACTED = useI18n()
 
 // Label background colors
 const labelClass = computed(() => {
@@ -135,19 +140,12 @@ REDACTED)
 // Window stats formatters
 const formatRequests = computed(() => {
   if (!props.windowStats) return ''
-  const r = props.windowStats.requests
-  if (r >= 1000000) return `${(r / 1000000).toFixed(1)REDACTEDM`
-  if (r >= 1000) return `${(r / 1000).toFixed(1)REDACTEDK`
-  return r.toString()
+  return formatCompactNumber(props.windowStats.requests, { allowBillions: false REDACTED)
 REDACTED)
 
 const formatTokens = computed(() => {
   if (!props.windowStats) return ''
-  const t = props.windowStats.tokens
-  if (t >= 1000000000) return `${(t / 1000000000).toFixed(1)REDACTEDB`
-  if (t >= 1000000) return `${(t / 1000000).toFixed(1)REDACTEDM`
-  if (t >= 1000) return `${(t / 1000).toFixed(1)REDACTEDK`
-  return t.toString()
+  return formatCompactNumber(props.windowStats.tokens)
 REDACTED)
 
 const formatAccountCost = computed(() => {

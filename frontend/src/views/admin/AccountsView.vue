@@ -203,7 +203,12 @@
             <AccountGroupsCell :groups="row.groups" :max-display="4" />
           </template>
           <template #cell-usage="{ row REDACTED">
-            <AccountUsageCell :account="row" />
+            <AccountUsageCell
+              :account="row"
+              :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
+              :today-stats-loading="todayStatsLoading"
+              :manual-refresh-token="usageManualRefreshToken"
+            />
           </template>
           <template #cell-proxy="{ row REDACTED">
             <div v-if="row.proxy" class="flex items-center gap-2">
@@ -323,13 +328,13 @@ import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import { buildOpenAIUsageRefreshKey REDACTED from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime REDACTED from '@/utils/format'
-import type { Account, AccountPlatform, AccountType, Proxy, AdminGroup, WindowStats, ClaudeModel REDACTED from '@/types'
+import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel REDACTED from '@/types'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
-const proxies = ref<Proxy[]>([])
+const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
 const selPlatforms = computed<AccountPlatform[]>(() => {
@@ -402,6 +407,7 @@ const todayStatsLoading = ref(false)
 const todayStatsError = ref<string | null>(null)
 const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
+const usageManualRefreshToken = ref(0)
 
 const buildDefaultTodayStats = (): WindowStats => ({
   requests: 0,
@@ -412,7 +418,11 @@ const buildDefaultTodayStats = (): WindowStats => ({
 REDACTED)
 
 const refreshTodayStatsBatch = async () => {
-  if (hiddenColumns.has('today_stats')) {
+  // Why this checks both columns:
+  // - today_stats column shows dedicated today's metrics.
+  // - usage column also embeds today's stats for Key/Bedrock rows.
+  // So we only skip fetching when BOTH columns are hidden.
+  if (hiddenColumns.has('today_stats') && hiddenColumns.has('usage')) {
     todayStatsLoading.value = false
     todayStatsError.value = null
     return
@@ -464,13 +474,19 @@ const loadSavedColumns = () => {
     const saved = localStorage.getItem(HIDDEN_COLUMNS_KEY)
     if (saved) {
       const parsed = JSON.parse(saved) as string[]
-      parsed.forEach(key => hiddenColumns.add(key))
+      parsed.forEach(key => {
+        hiddenColumns.add(key)
+      REDACTED)
     REDACTED else {
-      DEFAULT_HIDDEN_COLUMNS.forEach(key => hiddenColumns.add(key))
+      DEFAULT_HIDDEN_COLUMNS.forEach(key => {
+        hiddenColumns.add(key)
+      REDACTED)
     REDACTED
   REDACTED catch (e) {
     console.error('Failed to load saved columns:', e)
-    DEFAULT_HIDDEN_COLUMNS.forEach(key => hiddenColumns.add(key))
+    DEFAULT_HIDDEN_COLUMNS.forEach(key => {
+      hiddenColumns.add(key)
+    REDACTED)
   REDACTED
 REDACTED
 
@@ -544,7 +560,7 @@ const toggleColumn = (key: string) => {
     hiddenColumns.add(key)
   REDACTED
   saveColumnsToStorage()
-  if (key === 'today_stats' && wasHidden) {
+  if ((key === 'today_stats' || key === 'usage') && wasHidden) {
     refreshTodayStatsBatch().catch((error) => {
       console.error('Failed to load account today stats after showing column:', error)
     REDACTED)
@@ -768,11 +784,15 @@ REDACTED
 
 const handleManualRefresh = async () => {
   await load()
+  // Force usage cells to refetch /usage on explicit user refresh.
+  usageManualRefreshToken.value += 1
 REDACTED
 
 const syncPendingListChanges = async () => {
   hasPendingListSync.value = false
   await load()
+  // Keep behavior consistent with manual refresh.
+  usageManualRefreshToken.value += 1
 REDACTED
 
 const { pause: pauseAutoRefresh, resume: resumeAutoRefresh REDACTED = useIntervalFn(
@@ -888,7 +908,8 @@ const openMenu = (a: Account, e: MouseEvent) => {
     const viewportWidth = window.innerWidth
     const viewportHeight = window.innerHeight
 
-    let left, top
+    let left: number
+    let top: number
 
     if (viewportWidth < 768) {
       // 居中显示,水平位置
