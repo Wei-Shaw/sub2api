@@ -574,7 +574,7 @@ export default {
     groupRequired: '请选择分组',
     usage: '用量',
     today: '今日',
-    total: '累计',
+    total: '近30天',
     quota: '额度',
     lastUsedAt: '上次使用时间',
     useKey: '使用密钥',
@@ -1335,7 +1335,7 @@ export default {
         actions: '操作'
       },
       today: '今日',
-      total: '累计',
+      total: '近30天',
       noSubscription: '暂无订阅',
       daysRemaining: '{days}天',
       expired: '已过期',

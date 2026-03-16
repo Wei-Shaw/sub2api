@@ -574,7 +574,7 @@ export default {
     groupRequired: 'Please select a group',
     usage: 'Usage',
     today: 'Today',
-    total: 'Total',
+    total: 'Last 30d',
     quota: 'Quota',
     lastUsedAt: 'Last Used',
     useKey: 'Use Key',
@@ -1308,7 +1308,7 @@ export default {
         actions: 'Actions'
       },
       today: 'Today',
-      total: 'Total',
+      total: 'Last 30d',
       noSubscription: 'No subscription',
       daysRemaining: '{days}d',
       expired: 'Expired',
