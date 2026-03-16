@@ -446,23 +446,17 @@ REDACTED
 REDACTED
 
 	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, now.Add(-5*time.Hour)); err == nil {
-		windowStats := windowStatsFromAccountStats(stats)
-		if hasMeaningfulWindowStats(windowStats) {
-			if usage.FiveHour == nil {
-				usage.FiveHour = &UsageProgress{Utilization: 0REDACTED
-		REDACTED
-			usage.FiveHour.WindowStats = windowStats
+		if usage.FiveHour == nil {
+			usage.FiveHour = &UsageProgress{Utilization: 0REDACTED
 	REDACTED
+		usage.FiveHour.WindowStats = windowStatsFromAccountStats(stats)
 REDACTED
 
 	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, now.Add(-7*24*time.Hour)); err == nil {
-		windowStats := windowStatsFromAccountStats(stats)
-		if hasMeaningfulWindowStats(windowStats) {
-			if usage.SevenDay == nil {
-				usage.SevenDay = &UsageProgress{Utilization: 0REDACTED
-		REDACTED
-			usage.SevenDay.WindowStats = windowStats
+		if usage.SevenDay == nil {
+			usage.SevenDay = &UsageProgress{Utilization: 0REDACTED
 	REDACTED
+		usage.SevenDay.WindowStats = windowStatsFromAccountStats(stats)
 REDACTED
 
 	return usage, nil
@@ -990,13 +984,6 @@ REDACTED
 		StandardCost: stats.StandardCost,
 		UserCost:     stats.UserCost,
 REDACTED
-REDACTED
-
-func hasMeaningfulWindowStats(stats *WindowStats) bool {
-	if stats == nil {
-		return false
-REDACTED
-	return stats.Requests > 0 || stats.Tokens > 0 || stats.Cost > 0 || stats.StandardCost > 0 || stats.UserCost > 0
 REDACTED
 
 func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now time.Time) *UsageProgress {
