@@ -8,27 +8,30 @@
 [![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 
+<a href="https://trendshift.io/repositories/21823" target="_blank"><img src="https://trendshift.io/api/badge/repositories/21823" alt="Wei-Shaw%2Fsub2api | Trendshift" width="250" height="55"/></a>
+
 **AI API 网关平台 - 订阅配额分发管理**
 
 [English](README.md) | 中文
 
 </div>
 
+> **Sub2API 官方仅使用  `sub2api.org` 与 `pincc.ai` 两个域名。其他使用 Sub2API 名义的网站可能为第三方部署或服务，与本项目无关，请自行甄别。**
 ---
 
 ## 在线体验
 
-体验地址：**https://v2.pincc.ai/**
+体验地址：**[https://demo.sub2api.org/](https://demo.sub2api.org/)**
 
 演示账号（共享演示环境；自建部署不会自动创建该账号）：
 
 | 邮箱 | 密码 |
 |------|------|
-| admin@sub2api.com | admin123 |
+| admin@sub2api.org | admin123 |
 
 ## 项目概述
 
-Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅（如 Claude Code $200/月）的 API 配额。用户通过平台生成的 API Key 调用上游 AI 服务，平台负责鉴权、计费、负载均衡和请求转发。
+Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的 API 配额。用户通过平台生成的 API Key 调用上游 AI 服务，平台负责鉴权、计费、负载均衡和请求转发。
 
 ## 核心功能
 
@@ -40,6 +43,15 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅（
 - **速率限制** - 可配置的请求和 Token 速率限制
 - **管理后台** - Web 界面进行监控和管理
 - **外部系统集成** - 支持通过 iframe 嵌入外部系统（如支付、工单等），扩展管理后台功能
+
+## 不想自建？试试官方中转
+
+<table>
+<tr>
+<td width="180" align="center" valign="middle"><a href="https://shop.pincc.ai/"><img src="assets/partners/logos/pincc-logo.png" alt="pincc" width="120"></a></td>
+<td valign="middle"><b><a href="https://shop.pincc.ai/">PinCC</a></b> 是基于 Sub2API 搭建的官方中转服务，提供 Claude Code、Codex、Gemini 等主流模型的稳定中转，开箱即用，免去自建部署与运维烦恼。</td>
+</tr>
+</table>
 
 ## 生态项目
 
@@ -61,16 +73,17 @@ Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅（
 
 ---
 
-## 文档
+## Nginx 反向代理注意事项
 
-- 依赖安全：`docs/dependency-security.md`
+通过 Nginx 反向代理 Sub2API（或 CRS 服务）并搭配 Codex CLI 使用时，需要在 Nginx 配置的 `http` 块中添加：
+
+```nginx
+underscores_in_headers on;
+```
+
+Nginx 默认会丢弃名称中含下划线的请求头（如 `session_id`），这会导致多账号环境下的粘性会话功能失效。
 
 ---
-
-## OpenAI Responses 兼容注意事项
-
-- 当请求包含 `function_call_output` 时，需要携带 `previous_response_id`，或在 `input` 中包含带 `call_id` 的 `tool_call`/`function_call`，或带非空 `id` 且与 `function_call_output.call_id` 匹配的 `item_reference`。
-- 若依赖上游历史记录，网关会强制 `store=true` 并需要复用 `previous_response_id`，以避免出现 “No tool call found for function call output” 错误。
 
 ## 部署方式
 
