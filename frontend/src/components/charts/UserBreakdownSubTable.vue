@@ -7,15 +7,6 @@
       {{ t('admin.dashboard.noDataAvailable') }}
     </div>
     <table v-else class="w-full text-xs">
-      <thead>
-        <tr class="text-gray-400 dark:text-gray-500">
-          <th class="py-1 pl-6 text-left">{{ t('admin.dashboard.spendingRankingUser') }}</th>
-          <th class="py-1 text-right">{{ t('admin.dashboard.requests') }}</th>
-          <th class="py-1 text-right">{{ t('admin.dashboard.tokens') }}</th>
-          <th class="py-1 text-right">{{ t('admin.dashboard.actual') }}</th>
-          <th class="py-1 pr-1 text-right">{{ t('admin.dashboard.standard') }}</th>
-        </tr>
-      </thead>
       <tbody>
         <tr
           v-for="user in items"
