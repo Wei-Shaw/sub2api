@@ -1051,16 +1051,32 @@ REDACTED
 	var windowStart, windowEnd *time.Time
 	needInitWindow := account.SessionWindowEnd == nil || time.Now().After(*account.SessionWindowEnd)
 
-	if needInitWindow && (status == "allowed" || status == "allowed_warning") {
-		// 预测时间窗口：从当前时间的整点开始，+5小时为结束
-		// 例如：现在是 14:30，窗口为 14:00 ~ 19:00
+	// 优先使用响应头中的真实重置时间（比预测更准确）
+	if resetStr := headers.Get("anthropic-ratelimit-unified-5h-reset"); resetStr != "" {
+		if ts, err := strconv.ParseInt(resetStr, 10, 64); err == nil {
+			end := time.Unix(ts, 0)
+			// 窗口需要初始化，或者真实重置时间与已存储的不同，则更新
+			if needInitWindow || account.SessionWindowEnd == nil || !end.Equal(*account.SessionWindowEnd) {
+				start := end.Add(-5 * time.Hour)
+				windowStart = &start
+				windowEnd = &end
+				slog.Info("account_session_window_from_header", "account_id", account.ID, "window_start", start, "window_end", end, "status", status)
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 回退：如果没有真实重置时间且需要初始化窗口，使用预测
+	if windowEnd == nil && needInitWindow && (status == "allowed" || status == "allowed_warning") {
 		now := time.Now()
 		start := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
 		end := start.Add(5 * time.Hour)
 		windowStart = &start
 		windowEnd = &end
 		slog.Info("account_session_window_initialized", "account_id", account.ID, "window_start", start, "window_end", end, "status", status)
-		// 窗口重置时清除旧的 utilization，避免残留上个窗口的数据
+REDACTED
+
+	// 窗口重置时清除旧的 utilization，避免残留上个窗口的数据
+	if windowEnd != nil && needInitWindow {
 		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 			"session_window_utilization": nil,
 	REDACTED)
