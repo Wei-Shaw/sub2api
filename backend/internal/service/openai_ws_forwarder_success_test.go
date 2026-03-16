@@ -380,7 +380,8 @@ REDACTED
 		require.True(t, strings.HasPrefix(result.RequestID, "resp_reuse_"))
 REDACTED
 
-	require.Equal(t, int64(1), upgradeCount.Load(), "多个客户端请求应复用账号连接池而不是 1:1 对等建链")
+	// 条件式 MarkBroken：正常终端事件退出后连接归还复用，不再无条件销毁。
+	require.Equal(t, int64(1), upgradeCount.Load(), "正常完成后连接应归还复用，不应每次新建")
 	metrics := svc.SnapshotOpenAIWSPoolMetrics()
 	require.GreaterOrEqual(t, metrics.AcquireReuseTotal, int64(1))
 	require.GreaterOrEqual(t, metrics.ConnPickTotal, int64(1))
@@ -964,6 +965,10 @@ REDACTED
 	require.NotNil(t, result1)
 	require.Equal(t, "resp_meta_1", result1.RequestID)
 
+	require.Len(t, captureConn.writes, 1)
+	firstWrite := requestToJSONString(captureConn.writes[0])
+	require.Equal(t, "turn_meta_payload_1", gjson.Get(firstWrite, "client_metadata.x-codex-turn-metadata").String())
+
 	rec2 := httptest.NewRecorder()
 	c2, _ := gin.CreateTestContext(rec2)
 	c2.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
@@ -977,7 +982,7 @@ REDACTED
 	require.Equal(t, 1, captureDialer.DialCount(), "同一账号两轮请求应复用同一 WS 连接")
 	require.Len(t, captureConn.writes, 2)
 
-	firstWrite := requestToJSONString(captureConn.writes[0])
+	firstWrite = requestToJSONString(captureConn.writes[0])
 	secondWrite := requestToJSONString(captureConn.writes[1])
 	require.Equal(t, "turn_meta_payload_1", gjson.Get(firstWrite, "client_metadata.x-codex-turn-metadata").String())
 	require.Equal(t, "turn_meta_payload_2", gjson.Get(secondWrite, "client_metadata.x-codex-turn-metadata").String())
