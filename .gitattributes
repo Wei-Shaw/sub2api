@@ -4,6 +4,13 @@ backend/migrations/*.sql text eol=lf
 # Go 源代码文件
 *.go text eol=lf
 
+# 前端 源代码文件
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.vue text eol=lf
+
 # Shell 脚本
 *.sh text eol=lf
 
