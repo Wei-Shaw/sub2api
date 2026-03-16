@@ -1047,7 +1047,12 @@ export default {
         createBackup: '创建备份',
         backing: '备份中...',
         backupCreated: '备份创建成功',
-        expireDays: '过期天数'
+        expireDays: '过期天数',
+        alreadyInProgress: '已有备份正在进行中',
+        backupRunning: '备份进行中...',
+        backupFailed: '备份失败',
+        restoreRunning: '恢复进行中...',
+        restoreFailed: '恢复失败',
       REDACTED,
       columns: {
         status: '状态',
@@ -1063,6 +1068,11 @@ export default {
         running: '执行中',
         completed: '已完成',
         failed: '失败'
+      REDACTED,
+      progress: {
+        pending: '准备中',
+        dumping: '导出数据库',
+        uploading: '上传中',
       REDACTED,
       trigger: {
         manual: '手动',
