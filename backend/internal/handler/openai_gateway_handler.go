@@ -37,13 +37,6 @@ type OpenAIGatewayHandler struct {
 	cfg                     *config.Config
 REDACTED
 
-const (
-	openAIInboundEndpointResponses       = "/v1/responses"
-	openAIInboundEndpointMessages        = "/v1/messages"
-	openAIInboundEndpointChatCompletions = "/v1/chat/completions"
-	openAIUpstreamEndpointResponses      = "/v1/responses"
-)
-
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
 func NewOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
@@ -369,8 +362,8 @@ REDACTED
 				User:               apiKey.User,
 				Account:            account,
 				Subscription:       subscription,
-				InboundEndpoint:    normalizedOpenAIInboundEndpoint(c, openAIInboundEndpointResponses),
-				UpstreamEndpoint:   normalizedOpenAIUpstreamEndpoint(c, openAIUpstreamEndpointResponses),
+				InboundEndpoint:    GetInboundEndpoint(c),
+				UpstreamEndpoint:   GetUpstreamEndpoint(c, account.Platform),
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
@@ -747,8 +740,8 @@ REDACTED
 				User:               apiKey.User,
 				Account:            account,
 				Subscription:       subscription,
-				InboundEndpoint:    normalizedOpenAIInboundEndpoint(c, openAIInboundEndpointMessages),
-				UpstreamEndpoint:   normalizedOpenAIUpstreamEndpoint(c, openAIUpstreamEndpointResponses),
+				InboundEndpoint:    GetInboundEndpoint(c),
+				UpstreamEndpoint:   GetUpstreamEndpoint(c, account.Platform),
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
@@ -1246,8 +1239,8 @@ REDACTED
 					User:               apiKey.User,
 					Account:            account,
 					Subscription:       subscription,
-					InboundEndpoint:    normalizedOpenAIInboundEndpoint(c, openAIInboundEndpointResponses),
-					UpstreamEndpoint:   normalizedOpenAIUpstreamEndpoint(c, openAIUpstreamEndpointResponses),
+					InboundEndpoint:    GetInboundEndpoint(c),
+					UpstreamEndpoint:   GetUpstreamEndpoint(c, account.Platform),
 					UserAgent:          userAgent,
 					IPAddress:          clientIP,
 					RequestPayloadHash: service.HashUsageRequestPayload(firstMessage),
@@ -1541,62 +1534,6 @@ func openAIWSIngressFallbackSessionSeed(userID, apiKeyID int64, groupID *int64) 
 		gid = *groupID
 REDACTED
 	return fmt.Sprintf("openai_ws_ingress:%d:%d:%d", gid, userID, apiKeyID)
-REDACTED
-
-func normalizedOpenAIInboundEndpoint(c *gin.Context, fallback string) string {
-	path := strings.TrimSpace(fallback)
-	if c != nil {
-		if fullPath := strings.TrimSpace(c.FullPath()); fullPath != "" {
-			path = fullPath
-	REDACTED else if c.Request != nil && c.Request.URL != nil {
-			if requestPath := strings.TrimSpace(c.Request.URL.Path); requestPath != "" {
-				path = requestPath
-		REDACTED
-	REDACTED
-REDACTED
-
-	switch {
-	case strings.Contains(path, openAIInboundEndpointChatCompletions):
-		return openAIInboundEndpointChatCompletions
-	case strings.Contains(path, openAIInboundEndpointMessages):
-		return openAIInboundEndpointMessages
-	case strings.Contains(path, openAIInboundEndpointResponses):
-		return openAIInboundEndpointResponses
-	default:
-		return path
-REDACTED
-REDACTED
-
-func normalizedOpenAIUpstreamEndpoint(c *gin.Context, fallback string) string {
-	base := strings.TrimSpace(fallback)
-	if base == "" {
-		base = openAIUpstreamEndpointResponses
-REDACTED
-	base = strings.TrimRight(base, "/")
-
-	if c == nil || c.Request == nil || c.Request.URL == nil {
-		return base
-REDACTED
-
-	path := strings.TrimRight(strings.TrimSpace(c.Request.URL.Path), "/")
-	if path == "" {
-		return base
-REDACTED
-
-	idx := strings.LastIndex(path, "/responses")
-	if idx < 0 {
-		return base
-REDACTED
-
-	suffix := strings.TrimSpace(path[idx+len("/responses"):])
-	if suffix == "" || suffix == "/" {
-		return base
-REDACTED
-	if !strings.HasPrefix(suffix, "/") {
-		return base
-REDACTED
-
-	return base + suffix
 REDACTED
 
 func isOpenAIWSUpgradeRequest(r *http.Request) bool {
