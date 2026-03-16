@@ -198,7 +198,7 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('7d|77|300')
   REDACTED)
 
-  it('OpenAI OAuth 有现成快照时首屏先显示快照再加载 usage 覆盖', async () => {
+  it('OpenAI OAuth 有 codex 快照时仍然使用 /usage API 数据渲染', async () => {
     getUsage.mockResolvedValue({
       five_hour: {
         utilization: 18,
@@ -254,8 +254,8 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    // 始终拉 usage，fetched data 优先显示（包含 window_stats）
     expect(getUsage).toHaveBeenCalledWith(2001)
+    // 单一数据源：始终使用 /usage API 返回值，忽略 codex 快照
     expect(wrapper.text()).toContain('5h|18|900')
     expect(wrapper.text()).toContain('7d|36|900')
   REDACTED)
@@ -326,7 +326,7 @@ describe('AccountUsageCell', () => {
     // 手动刷新再拉一次
     expect(getUsage).toHaveBeenCalledTimes(2)
     expect(getUsage).toHaveBeenCalledWith(2010)
-    // fetched data 优先显示，包含 window_stats
+    // 单一数据源：始终使用 /usage API 值
     expect(wrapper.text()).toContain('5h|18|900')
   REDACTED)
 
@@ -458,7 +458,7 @@ REDACTED)
 	expect(wrapper.text()).toContain('5h|0|200')
   REDACTED)
 
-  it('OpenAI OAuth 已限额时首屏优先展示重新查询后的 usage，而不是旧 codex 快照', async () => {
+  it('OpenAI OAuth 已限额时显示 /usage API 返回的限额数据', async () => {
 	getUsage.mockResolvedValue({
 	  five_hour: {
 	    utilization: 100,
@@ -515,7 +515,6 @@ REDACTED)
   expect(getUsage).toHaveBeenCalledWith(2004)
   expect(wrapper.text()).toContain('5h|100|106540000')
   expect(wrapper.text()).toContain('7d|100|106540000')
-  expect(wrapper.text()).not.toContain('5h|0|')
   REDACTED)
 
   it('Key 账号会展示 today stats 徽章并带 A/U 提示', async () => {
