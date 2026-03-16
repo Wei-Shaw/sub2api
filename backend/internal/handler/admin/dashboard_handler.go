@@ -9,6 +9,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -603,4 +604,42 @@ func (h *DashboardHandler) GetBatchAPIKeysUsage(c *gin.Context) {
 	dashboardBatchAPIKeysUsageCache.Set(cacheKey, payload)
 	c.Header("X-Snapshot-Cache", "miss")
 	response.Success(c, payload)
+}
+
+// GetUserBreakdown handles getting per-user usage breakdown within a dimension.
+// GET /api/v1/admin/dashboard/user-breakdown
+// Query params: start_date, end_date, group_id, model, endpoint, endpoint_type, limit
+func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
+	startTime, endTime := parseTimeRange(c)
+
+	dim := usagestats.UserBreakdownDimension{}
+	if v := c.Query("group_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			dim.GroupID = id
+		}
+	}
+	dim.Model = c.Query("model")
+	dim.Endpoint = c.Query("endpoint")
+	dim.EndpointType = c.DefaultQuery("endpoint_type", "inbound")
+
+	limit := 50
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+
+	stats, err := h.dashboardService.GetUserBreakdownStats(
+		c.Request.Context(), startTime, endTime, dim, limit,
+	)
+	if err != nil {
+		response.Error(c, 500, "Failed to get user breakdown stats")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"users":      stats,
+		"start_date": startTime.Format("2006-01-02"),
+		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+	})
 }

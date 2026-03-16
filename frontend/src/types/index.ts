@@ -1203,6 +1203,15 @@ export interface GroupStat {
   actual_cost: number // 实际扣除
 }
 
+export interface UserBreakdownItem {
+  user_id: number
+  email: string
+  requests: number
+  total_tokens: number
+  cost: number
+  actual_cost: number
+}
+
 export interface UserUsageTrendPoint {
   date: string
   user_id: number

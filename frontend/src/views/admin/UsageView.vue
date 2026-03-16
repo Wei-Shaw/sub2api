@@ -18,12 +18,16 @@
             :model-stats="modelStats"
             :loading="chartsLoading"
             :show-metric-toggle="true"
+            :start-date="startDate"
+            :end-date="endDate"
           />
           <GroupDistributionChart
             v-model:metric="groupDistributionMetric"
             :group-stats="groupStats"
             :loading="chartsLoading"
             :show-metric-toggle="true"
+            :start-date="startDate"
+            :end-date="endDate"
           />
         </div>
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -37,6 +41,8 @@
             :show-source-toggle="true"
             :show-metric-toggle="true"
             :title="t('usage.endpointDistribution')"
+            :start-date="startDate"
+            :end-date="endDate"
           />
           <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
         </div>
