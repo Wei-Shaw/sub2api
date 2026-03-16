@@ -15,10 +15,14 @@ const (
 	geminiTokenCacheSkew   = 5 * time.Minute
 )
 
+// GeminiTokenProvider manages access_token for Gemini OAuth accounts.
 type GeminiTokenProvider struct {
 	accountRepo        AccountRepository
 	tokenCache         GeminiTokenCache
 	geminiOAuthService *GeminiOAuthService
+	refreshAPI         *OAuthRefreshAPI
+	executor           OAuthRefreshExecutor
+	refreshPolicy      ProviderRefreshPolicy
 REDACTED
 
 func NewGeminiTokenProvider(
@@ -30,7 +34,19 @@ func NewGeminiTokenProvider(
 		accountRepo:        accountRepo,
 		tokenCache:         tokenCache,
 		geminiOAuthService: geminiOAuthService,
+		refreshPolicy:      GeminiProviderRefreshPolicy(),
 REDACTED
+REDACTED
+
+// SetRefreshAPI injects unified OAuth refresh API and executor.
+func (p *GeminiTokenProvider) SetRefreshAPI(api *OAuthRefreshAPI, executor OAuthRefreshExecutor) {
+	p.refreshAPI = api
+	p.executor = executor
+REDACTED
+
+// SetRefreshPolicy injects caller-side refresh policy.
+func (p *GeminiTokenProvider) SetRefreshPolicy(policy ProviderRefreshPolicy) {
+	p.refreshPolicy = policy
 REDACTED
 
 func (p *GeminiTokenProvider) GetAccessToken(ctx context.Context, account *Account) (string, error) {
@@ -53,39 +69,31 @@ REDACTED
 	// 2) Refresh if needed (pre-expiry skew).
 	expiresAt := account.GetCredentialAsTime("expires_at")
 	needsRefresh := expiresAt == nil || time.Until(*expiresAt) <= geminiTokenRefreshSkew
-	if needsRefresh && p.tokenCache != nil {
-		locked, err := p.tokenCache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second)
-		if err == nil && locked {
-			defer func() { _ = p.tokenCache.ReleaseRefreshLock(ctx, cacheKey) REDACTED()
 
-			// Re-check after lock (another worker may have refreshed).
-			if token, err := p.tokenCache.GetAccessToken(ctx, cacheKey); err == nil && strings.TrimSpace(token) != "" {
-				return token, nil
+	if needsRefresh && p.refreshAPI != nil && p.executor != nil {
+		result, err := p.refreshAPI.RefreshIfNeeded(ctx, account, p.executor, geminiTokenRefreshSkew)
+		if err != nil {
+			if p.refreshPolicy.OnRefreshError == ProviderRefreshErrorReturn {
+				return "", err
 		REDACTED
-
-			fresh, err := p.accountRepo.GetByID(ctx, account.ID)
-			if err == nil && fresh != nil {
-				account = fresh
+	REDACTED else if result.LockHeld {
+			if p.refreshPolicy.OnLockHeld == ProviderLockHeldWaitForCache && p.tokenCache != nil {
+				if token, cacheErr := p.tokenCache.GetAccessToken(ctx, cacheKey); cacheErr == nil && strings.TrimSpace(token) != "" {
+					return token, nil
+			REDACTED
 		REDACTED
+			slog.Debug("gemini_token_lock_held_use_old", "account_id", account.ID)
+	REDACTED else {
+			account = result.Account
 			expiresAt = account.GetCredentialAsTime("expires_at")
-			if expiresAt == nil || time.Until(*expiresAt) <= geminiTokenRefreshSkew {
-				if p.geminiOAuthService == nil {
-					return "", errors.New("gemini oauth service not configured")
-			REDACTED
-				tokenInfo, err := p.geminiOAuthService.RefreshAccountToken(ctx, account)
-				if err != nil {
-					return "", err
-			REDACTED
-				newCredentials := p.geminiOAuthService.BuildAccountCredentials(tokenInfo)
-				for k, v := range account.Credentials {
-					if _, exists := newCredentials[k]; !exists {
-						newCredentials[k] = v
-				REDACTED
-			REDACTED
-				account.Credentials = newCredentials
-				_ = p.accountRepo.Update(ctx, account)
-				expiresAt = account.GetCredentialAsTime("expires_at")
-		REDACTED
+	REDACTED
+REDACTED else if needsRefresh && p.tokenCache != nil {
+		// Backward-compatible test path when refreshAPI is not injected.
+		locked, lockErr := p.tokenCache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second)
+		if lockErr == nil && locked {
+			defer func() { _ = p.tokenCache.ReleaseRefreshLock(ctx, cacheKey) REDACTED()
+	REDACTED else if lockErr != nil {
+			slog.Warn("gemini_token_lock_failed", "account_id", account.ID, "error", lockErr)
 	REDACTED
 REDACTED
 
@@ -95,15 +103,14 @@ REDACTED
 REDACTED
 
 	// project_id is optional now:
-	// - If present: will use Code Assist API (requires project_id)
-	// - If absent: will use AI Studio API with OAuth token (like regular API key mode)
-	// Auto-detect project_id only if explicitly enabled via a credential flag
+	// - If present: use Code Assist API (requires project_id)
+	// - If absent: use AI Studio API with OAuth token.
 	projectID := strings.TrimSpace(account.GetCredential("project_id"))
 	autoDetectProjectID := account.GetCredential("auto_detect_project_id") == "true"
 
 	if projectID == "" && autoDetectProjectID {
 		if p.geminiOAuthService == nil {
-			return accessToken, nil // Fallback to AI Studio API mode
+			return accessToken, nil
 	REDACTED
 
 		var proxyURL string
@@ -132,17 +139,15 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 3) Populate cache with TTL（验证版本后再写入，避免异步刷新任务与请求线程的竞态条件）
+	// 3) Populate cache with TTL.
 	if p.tokenCache != nil {
 		latestAccount, isStale := CheckTokenVersion(ctx, account, p.accountRepo)
 		if isStale && latestAccount != nil {
-			// 版本过时，使用 DB 中的最新 token
 			slog.Debug("gemini_token_version_stale_use_latest", "account_id", account.ID)
 			accessToken = latestAccount.GetCredential("access_token")
 			if strings.TrimSpace(accessToken) == "" {
 				return "", errors.New("access_token not found after version check")
 		REDACTED
-			// 不写入缓存，让下次请求重新处理
 	REDACTED else {
 			ttl := 30 * time.Minute
 			if expiresAt != nil {
