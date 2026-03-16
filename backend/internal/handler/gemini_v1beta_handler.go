@@ -504,6 +504,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		requestPayloadHash := service.HashUsageRequestPayload(body)
+		inboundEndpoint := GetInboundEndpoint(c)
+		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 		h.submitUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsageWithLongContext(ctx, &service.RecordUsageLongContextInput{
 				Result:                result,
@@ -511,6 +513,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				User:                  apiKey.User,
 				Account:               account,
 				Subscription:          subscription,
+				InboundEndpoint:       inboundEndpoint,
+				UpstreamEndpoint:      upstreamEndpoint,
 				UserAgent:             userAgent,
 				IPAddress:             clientIP,
 				RequestPayloadHash:    requestPayloadHash,

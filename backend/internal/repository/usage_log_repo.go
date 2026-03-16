@@ -2161,7 +2161,9 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 				actual_cost,
 				requests,
 				tokens,
-				COALESCE(SUM(actual_cost) OVER (), 0) as total_actual_cost
+				COALESCE(SUM(actual_cost) OVER (), 0) as total_actual_cost,
+				COALESCE(SUM(requests) OVER (), 0) as total_requests,
+				COALESCE(SUM(tokens) OVER (), 0) as total_tokens
 			FROM user_spend
 			ORDER BY actual_cost DESC, tokens DESC, user_id ASC
 			LIMIT $3
@@ -2172,7 +2174,9 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 			actual_cost,
 			requests,
 			tokens,
-			total_actual_cost
+			total_actual_cost,
+			total_requests,
+			total_tokens
 		FROM ranked
 		ORDER BY actual_cost DESC, tokens DESC, user_id ASC
 	`
@@ -2190,9 +2194,11 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 
 	ranking := make([]UserSpendingRankingItem, 0)
 	totalActualCost := 0.0
+	totalRequests := int64(0)
+	totalTokens := int64(0)
 	for rows.Next() {
 		var row UserSpendingRankingItem
-		if err = rows.Scan(&row.UserID, &row.Email, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost); err != nil {
+		if err = rows.Scan(&row.UserID, &row.Email, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens); err != nil {
 			return nil, err
 		}
 		ranking = append(ranking, row)
@@ -2204,6 +2210,8 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	return &UserSpendingRankingResponse{
 		Ranking:         ranking,
 		TotalActualCost: totalActualCost,
+		TotalRequests:   totalRequests,
+		TotalTokens:     totalTokens,
 	}, nil
 }
 
@@ -3004,7 +3012,7 @@ func (r *usageLogRepository) GetGlobalStats(ctx context.Context, startTime, endT
 			COALESCE(SUM(actual_cost), 0) as total_actual_cost,
 			COALESCE(AVG(duration_ms), 0) as avg_duration_ms
 		FROM usage_logs
-		WHERE created_at >= $1 AND created_at <= $2
+		WHERE created_at >= $1 AND created_at < $2
 	`
 
 	stats := &UsageStats{}

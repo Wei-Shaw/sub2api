@@ -512,6 +512,8 @@ func (h *DashboardHandler) GetUserSpendingRanking(c *gin.Context) {
 	payload := gin.H{
 		"ranking":           ranking.Ranking,
 		"total_actual_cost": ranking.TotalActualCost,
+		"total_requests":    ranking.TotalRequests,
+		"total_tokens":      ranking.TotalTokens,
 		"start_date":        startTime.Format("2006-01-02"),
 		"end_date":          endTime.Add(-24 * time.Hour).Format("2006-01-02"),
 	}

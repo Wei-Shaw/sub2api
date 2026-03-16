@@ -159,8 +159,8 @@ func (h *UsageHandler) List(c *gin.Context) {
 			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
 			return
 		}
-		// Set end time to end of day
-		t = t.Add(24*time.Hour - time.Nanosecond)
+		// Use half-open range [start, end), move to next calendar day start (DST-safe).
+		t = t.AddDate(0, 0, 1)
 		endTime = &t
 	}
 
@@ -285,7 +285,8 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
 			return
 		}
-		endTime = endTime.Add(24*time.Hour - time.Nanosecond)
+		// 与 SQL 条件 created_at < end 对齐，使用次日 00:00 作为上边界（DST-safe）。
+		endTime = endTime.AddDate(0, 0, 1)
 	} else {
 		period := c.DefaultQuery("period", "today")
 		switch period {

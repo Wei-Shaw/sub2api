@@ -5,42 +5,41 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNormalizedOpenAIUpstreamEndpoint(t *testing.T) {
+// TestOpenAIUpstreamEndpoint_ViaGetUpstreamEndpoint verifies that the
+// unified GetUpstreamEndpoint helper produces the same results as the
+// former normalizedOpenAIUpstreamEndpoint for OpenAI platform requests.
+func TestOpenAIUpstreamEndpoint_ViaGetUpstreamEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name     string
-		path     string
-		fallback string
-		want     string
+		name string
+		path string
+		want string
 	}{
 		{
-			name:     "responses root maps to responses upstream",
-			path:     "/v1/responses",
-			fallback: openAIUpstreamEndpointResponses,
-			want:     "/v1/responses",
+			name: "responses root maps to responses upstream",
+			path: "/v1/responses",
+			want: EndpointResponses,
 		},
 		{
-			name:     "responses compact keeps compact suffix",
-			path:     "/openai/v1/responses/compact",
-			fallback: openAIUpstreamEndpointResponses,
-			want:     "/v1/responses/compact",
+			name: "responses compact keeps compact suffix",
+			path: "/openai/v1/responses/compact",
+			want: "/v1/responses/compact",
 		},
 		{
-			name:     "responses nested suffix preserved",
-			path:     "/openai/v1/responses/compact/detail",
-			fallback: openAIUpstreamEndpointResponses,
-			want:     "/v1/responses/compact/detail",
+			name: "responses nested suffix preserved",
+			path: "/openai/v1/responses/compact/detail",
+			want: "/v1/responses/compact/detail",
 		},
 		{
-			name:     "non responses path uses fallback",
-			path:     "/v1/messages",
-			fallback: openAIUpstreamEndpointResponses,
-			want:     "/v1/responses",
+			name: "non responses path uses platform fallback",
+			path: "/v1/messages",
+			want: EndpointResponses,
 		},
 	}
 
@@ -50,7 +49,7 @@ func TestNormalizedOpenAIUpstreamEndpoint(t *testing.T) {
 			c, _ := gin.CreateTestContext(rec)
 			c.Request = httptest.NewRequest(http.MethodPost, tt.path, nil)
 
-			got := normalizedOpenAIUpstreamEndpoint(c, tt.fallback)
+			got := GetUpstreamEndpoint(c, service.PlatformOpenAI)
 			require.Equal(t, tt.want, got)
 		})
 	}

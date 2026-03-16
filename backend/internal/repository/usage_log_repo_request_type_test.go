@@ -259,10 +259,10 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 
-	rows := sqlmock.NewRows([]string{"user_id", "email", "actual_cost", "requests", "tokens", "total_actual_cost"}).
-		AddRow(int64(2), "beta@example.com", 12.5, int64(9), int64(900), 40.0).
-		AddRow(int64(1), "alpha@example.com", 12.5, int64(8), int64(800), 40.0).
-		AddRow(int64(3), "gamma@example.com", 4.25, int64(5), int64(300), 40.0)
+	rows := sqlmock.NewRows([]string{"user_id", "email", "actual_cost", "requests", "tokens", "total_actual_cost", "total_requests", "total_tokens"}).
+		AddRow(int64(2), "beta@example.com", 12.5, int64(9), int64(900), 40.0, int64(30), int64(2600)).
+		AddRow(int64(1), "alpha@example.com", 12.5, int64(8), int64(800), 40.0, int64(30), int64(2600)).
+		AddRow(int64(3), "gamma@example.com", 4.25, int64(5), int64(300), 40.0, int64(30), int64(2600))
 
 	mock.ExpectQuery("WITH user_spend AS \\(").
 		WithArgs(start, end, 12).
@@ -277,6 +277,8 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 			{UserID: 3, Email: "gamma@example.com", ActualCost: 4.25, Requests: 5, Tokens: 300},
 		},
 		TotalActualCost: 40.0,
+		TotalRequests:   30,
+		TotalTokens:     2600,
 	}, got)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

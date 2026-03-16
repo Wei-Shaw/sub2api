@@ -8,27 +8,31 @@
 [![Redis](https://img.shields.io/badge/Redis-7+-DC382D.svg)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 
+<a href="https://trendshift.io/repositories/21823" target="_blank"><img src="https://trendshift.io/api/badge/repositories/21823" alt="Wei-Shaw%2Fsub2api | Trendshift" width="250" height="55"/></a>
+
 **AI API Gateway Platform for Subscription Quota Distribution**
 
 English | [中文](README_CN.md)
 
 </div>
 
+> **Sub2API officially uses only the domains `sub2api.org` and `pincc.ai`. Other websites using the Sub2API name may be third-party deployments or services and are not affiliated with this project. Please verify and exercise your own judgment.**
+
 ---
 
 ## Demo
 
-Try Sub2API online: **https://demo.sub2api.org/**
+Try Sub2API online: **[https://demo.sub2api.org/](https://demo.sub2api.org/)**
 
 Demo credentials (shared demo environment; **not** created automatically for self-hosted installs):
 
 | Email | Password |
 |-------|----------|
-| admin@sub2api.com | admin123 |
+| admin@sub2api.org | admin123 |
 
 ## Overview
 
-Sub2API is an AI API gateway platform designed to distribute and manage API quotas from AI product subscriptions (like Claude Code $200/month). Users can access upstream AI services through platform-generated API Keys, while the platform handles authentication, billing, load balancing, and request forwarding.
+Sub2API is an AI API gateway platform designed to distribute and manage API quotas from AI product subscriptions. Users can access upstream AI services through platform-generated API Keys, while the platform handles authentication, billing, load balancing, and request forwarding.
 
 ## Features
 
@@ -40,6 +44,15 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 - **Rate Limiting** - Configurable request and token rate limits
 - **Admin Dashboard** - Web interface for monitoring and management
 - **External System Integration** - Embed external systems (e.g. payment, ticketing) via iframe to extend the admin dashboard
+
+## Don't Want to Self-Host?
+
+<table>
+<tr>
+<td width="180" align="center" valign="middle"><a href="https://shop.pincc.ai/"><img src="assets/partners/logos/pincc-logo.png" alt="pincc" width="120"></a></td>
+<td valign="middle"><b><a href="https://shop.pincc.ai/">PinCC</a></b> is the official relay service built on Sub2API, offering stable access to Claude Code, Codex, Gemini and other popular models — ready to use, no deployment or maintenance required.</td>
+</tr>
+</table>
 
 ## Ecosystem
 
@@ -61,10 +74,15 @@ Community projects that extend or integrate with Sub2API:
 
 ---
 
-## Documentation
+## Nginx Reverse Proxy Note
 
-- Dependency Security: `docs/dependency-security.md`
-- Admin Payment Integration API: `docs/ADMIN_PAYMENT_INTEGRATION_API.md`
+When using Nginx as a reverse proxy for Sub2API (or CRS) with Codex CLI, add the following to the `http` block in your Nginx configuration:
+
+```nginx
+underscores_in_headers on;
+```
+
+Nginx drops headers containing underscores by default (e.g. `session_id`), which breaks sticky session routing in multi-account setups.
 
 ---
 

@@ -7405,6 +7405,8 @@ type RecordUsageInput struct {
 	User               *User
 	Account            *Account
 	Subscription       *UserSubscription  // 可选：订阅信息
+	InboundEndpoint    string             // 入站端点（客户端请求路径）
+	UpstreamEndpoint   string             // 上游端点（标准化后的上游路径）
 	UserAgent          string             // 请求的 User-Agent
 	IPAddress          string             // 请求的客户端 IP 地址
 	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
@@ -7813,6 +7815,8 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		RequestID:             requestID,
 		Model:                 result.Model,
 		ReasoningEffort:       result.ReasoningEffort,
+		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
+		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
 		InputTokens:           result.Usage.InputTokens,
 		OutputTokens:          result.Usage.OutputTokens,
 		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
@@ -7893,6 +7897,8 @@ type RecordUsageLongContextInput struct {
 	User                  *User
 	Account               *Account
 	Subscription          *UserSubscription  // 可选：订阅信息
+	InboundEndpoint       string             // 入站端点（客户端请求路径）
+	UpstreamEndpoint      string             // 上游端点（标准化后的上游路径）
 	UserAgent             string             // 请求的 User-Agent
 	IPAddress             string             // 请求的客户端 IP 地址
 	RequestPayloadHash    string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
@@ -7990,6 +7996,8 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		RequestID:             requestID,
 		Model:                 result.Model,
 		ReasoningEffort:       result.ReasoningEffort,
+		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
+		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
 		InputTokens:           result.Usage.InputTokens,
 		OutputTokens:          result.Usage.OutputTokens,
 		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,

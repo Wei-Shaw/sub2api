@@ -1225,6 +1225,8 @@ export interface UserSpendingRankingItem {
 export interface UserSpendingRankingResponse {
   ranking: UserSpendingRankingItem[]
   total_actual_cost: number
+  total_requests: number
+  total_tokens: number
   start_date: string
   end_date: string
 }

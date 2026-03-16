@@ -446,23 +446,17 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 	}
 
 	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, now.Add(-5*time.Hour)); err == nil {
-		windowStats := windowStatsFromAccountStats(stats)
-		if hasMeaningfulWindowStats(windowStats) {
-			if usage.FiveHour == nil {
-				usage.FiveHour = &UsageProgress{Utilization: 0}
-			}
-			usage.FiveHour.WindowStats = windowStats
+		if usage.FiveHour == nil {
+			usage.FiveHour = &UsageProgress{Utilization: 0}
 		}
+		usage.FiveHour.WindowStats = windowStatsFromAccountStats(stats)
 	}
 
 	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, now.Add(-7*24*time.Hour)); err == nil {
-		windowStats := windowStatsFromAccountStats(stats)
-		if hasMeaningfulWindowStats(windowStats) {
-			if usage.SevenDay == nil {
-				usage.SevenDay = &UsageProgress{Utilization: 0}
-			}
-			usage.SevenDay.WindowStats = windowStats
+		if usage.SevenDay == nil {
+			usage.SevenDay = &UsageProgress{Utilization: 0}
 		}
+		usage.SevenDay.WindowStats = windowStatsFromAccountStats(stats)
 	}
 
 	return usage, nil
@@ -990,13 +984,6 @@ func windowStatsFromAccountStats(stats *usagestats.AccountStats) *WindowStats {
 		StandardCost: stats.StandardCost,
 		UserCost:     stats.UserCost,
 	}
-}
-
-func hasMeaningfulWindowStats(stats *WindowStats) bool {
-	if stats == nil {
-		return false
-	}
-	return stats.Requests > 0 || stats.Tokens > 0 || stats.Cost > 0 || stats.StandardCost > 0 || stats.UserCost > 0
 }
 
 func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now time.Time) *UsageProgress {

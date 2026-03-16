@@ -49,8 +49,8 @@ const (
 	antigravityDailyBaseURL = "https://daily-cloudcode-pa.sandbox.googleapis.com"
 )
 
-// defaultUserAgentVersion 可通过环境变量 ANTIGRAVITY_USER_AGENT_VERSION 配置，默认 1.20.4
-var defaultUserAgentVersion = "1.20.4"
+// defaultUserAgentVersion 可通过环境变量 ANTIGRAVITY_USER_AGENT_VERSION 配置，默认 1.20.5
+var defaultUserAgentVersion = "1.20.5"
 
 // defaultClientSecret 可通过环境变量 ANTIGRAVITY_OAUTH_CLIENT_SECRET 配置
 var defaultClientSecret = "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"

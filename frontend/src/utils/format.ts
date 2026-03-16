@@ -248,6 +248,26 @@ export function formatTokensK(tokens: number): string {
 }
 
 /**
+ * 格式化大数字（K/M/B，保留 1 位小数）
+ * @param num 数字
+ * @param options allowBillions=false 时最高只显示到 M
+ */
+export function formatCompactNumber(
+  num: number | null | undefined,
+  options?: { allowBillions?: boolean }
+): string {
+  if (num === null || num === undefined) return '0'
+
+  const abs = Math.abs(num)
+  const allowBillions = options?.allowBillions !== false
+
+  if (allowBillions && abs >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1)}B`
+  if (abs >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`
+  if (abs >= 1_000) return `${(num / 1_000).toFixed(1)}K`
+  return num.toString()
+}
+
+/**
  * 格式化倒计时（从现在到目标时间的剩余时间）
  * @param targetDate 目标日期字符串或 Date 对象
  * @returns 倒计时字符串，如 "2h 41m", "3d 5h", "15m"

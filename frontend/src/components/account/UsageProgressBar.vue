@@ -2,7 +2,7 @@
   <div>
     <!-- Window stats row (above progress bar) -->
     <div
-      v-if="windowStats"
+      v-if="windowStats && (windowStats.requests > 0 || windowStats.tokens > 0)"
       class="mb-0.5 flex items-center"
     >
       <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
@@ -12,12 +12,13 @@
         <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
           {{ formatTokens }}
         </span>
-        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+        <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800" :title="t('usage.accountBilled')">
           A ${{ formatAccountCost }}
         </span>
         <span
           v-if="windowStats?.user_cost != null"
           class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"
+          :title="t('usage.userBilled')"
         >
           U ${{ formatUserCost }}
         </span>
@@ -56,7 +57,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { WindowStats } from '@/types'
+import { formatCompactNumber } from '@/utils/format'
 
 const props = defineProps<{
   label: string
@@ -65,6 +68,8 @@ const props = defineProps<{
   color: 'indigo' | 'emerald' | 'purple' | 'amber'
   windowStats?: WindowStats | null
 }>()
+
+const { t } = useI18n()
 
 // Label background colors
 const labelClass = computed(() => {
@@ -135,19 +140,12 @@ const formatResetTime = computed(() => {
 // Window stats formatters
 const formatRequests = computed(() => {
   if (!props.windowStats) return ''
-  const r = props.windowStats.requests
-  if (r >= 1000000) return `${(r / 1000000).toFixed(1)}M`
-  if (r >= 1000) return `${(r / 1000).toFixed(1)}K`
-  return r.toString()
+  return formatCompactNumber(props.windowStats.requests, { allowBillions: false })
 })
 
 const formatTokens = computed(() => {
   if (!props.windowStats) return ''
-  const t = props.windowStats.tokens
-  if (t >= 1000000000) return `${(t / 1000000000).toFixed(1)}B`
-  if (t >= 1000000) return `${(t / 1000000).toFixed(1)}M`
-  if (t >= 1000) return `${(t / 1000).toFixed(1)}K`
-  return t.toString()
+  return formatCompactNumber(props.windowStats.tokens)
 })
 
 const formatAccountCost = computed(() => {

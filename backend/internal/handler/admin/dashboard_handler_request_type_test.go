@@ -61,6 +61,8 @@ func (s *dashboardUsageRepoCapture) GetUserSpendingRanking(
 	return &usagestats.UserSpendingRankingResponse{
 		Ranking:         s.ranking,
 		TotalActualCost: s.rankingTotal,
+		TotalRequests:   44,
+		TotalTokens:     1234,
 	}, nil
 }
 
@@ -164,6 +166,8 @@ func TestDashboardUsersRankingLimitAndCache(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, 50, repo.rankingLimit)
 	require.Contains(t, rec.Body.String(), "\"total_actual_cost\":88.8")
+	require.Contains(t, rec.Body.String(), "\"total_requests\":44")
+	require.Contains(t, rec.Body.String(), "\"total_tokens\":1234")
 	require.Equal(t, "miss", rec.Header().Get("X-Snapshot-Cache"))
 
 	req2 := httptest.NewRequest(http.MethodGet, "/admin/dashboard/users-ranking?limit=100&start_date=2025-01-01&end_date=2025-01-02", nil)

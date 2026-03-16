@@ -127,7 +127,7 @@
     >
       {{ t('admin.dashboard.failedToLoad') }}
     </div>
-    <div v-else-if="rankingItems.length > 0 && rankingChartData" class="flex items-center gap-6">
+    <div v-else-if="rankingDisplayItems.length > 0 && rankingChartData" class="flex items-center gap-6">
       <div class="h-48 w-48">
         <Doughnut :data="rankingChartData" :options="rankingDoughnutOptions" />
       </div>
@@ -143,21 +143,24 @@
           </thead>
           <tbody>
             <tr
-              v-for="(item, index) in rankingItems"
-              :key="`${item.user_id}-${index}`"
-              class="cursor-pointer border-t border-gray-100 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-dark-700/40"
-              @click="emit('ranking-click', item)"
+              v-for="(item, index) in rankingDisplayItems"
+              :key="item.isOther ? 'others' : `${item.user_id}-${index}`"
+              class="border-t border-gray-100 transition-colors dark:border-gray-700"
+              :class="item.isOther
+                ? 'bg-gray-50/70 dark:bg-dark-700/20'
+                : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-700/40'"
+              @click="item.isOther ? undefined : emit('ranking-click', item)"
             >
               <td class="py-1.5">
                 <div class="flex min-w-0 items-center gap-2">
                   <span class="shrink-0 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
-                    #{{ index + 1 }}
+                    {{ item.isOther ? 'Σ' : `#${index + 1}` }}
                   </span>
                   <span
                     class="block max-w-[140px] truncate font-medium text-gray-900 dark:text-white"
-                    :title="getRankingUserLabel(item)"
+                    :title="getRankingRowLabel(item)"
                   >
-                    {{ getRankingUserLabel(item) }}
+                    {{ getRankingRowLabel(item) }}
                   </span>
                 </div>
               </td>
@@ -197,11 +200,14 @@ ChartJS.register(ArcElement, Tooltip, Legend)
 const { t } = useI18n()
 
 type DistributionMetric = 'tokens' | 'actual_cost'
+type RankingDisplayItem = UserSpendingRankingItem & { isOther?: boolean }
 const props = withDefaults(defineProps<{
   modelStats: ModelStat[]
   enableRankingView?: boolean
   rankingItems?: UserSpendingRankingItem[]
   rankingTotalActualCost?: number
+  rankingTotalRequests?: number
+  rankingTotalTokens?: number
   loading?: boolean
   metric?: DistributionMetric
   showMetricToggle?: boolean
@@ -211,6 +217,8 @@ const props = withDefaults(defineProps<{
   enableRankingView: false,
   rankingItems: () => [],
   rankingTotalActualCost: 0,
+  rankingTotalRequests: 0,
+  rankingTotalTokens: 0,
   loading: false,
   metric: 'tokens',
   showMetricToggle: false,
@@ -266,14 +274,14 @@ const chartData = computed(() => {
 const rankingChartData = computed(() => {
   if (!props.rankingItems?.length) return null
 
-  const rankedTotal = props.rankingItems.reduce((sum, item) => sum + item.actual_cost, 0)
-  const otherActualCost = Math.max((props.rankingTotalActualCost || 0) - rankedTotal, 0)
   const labels = props.rankingItems.map((item, index) => `#${index + 1} ${getRankingUserLabel(item)}`)
   const data = props.rankingItems.map((item) => item.actual_cost)
+  const backgroundColor = chartColors.slice(0, props.rankingItems.length)
 
-  if (otherActualCost > 0.000001) {
+  if (otherRankingItem.value) {
     labels.push(t('admin.dashboard.spendingRankingOther'))
-    data.push(otherActualCost)
+    data.push(otherRankingItem.value.actual_cost)
+    backgroundColor.push('#94a3b8')
   }
 
   return {
@@ -281,11 +289,41 @@ const rankingChartData = computed(() => {
     datasets: [
       {
         data,
-        backgroundColor: chartColors.slice(0, data.length),
+        backgroundColor,
         borderWidth: 0
       }
     ]
   }
+})
+
+const otherRankingItem = computed<RankingDisplayItem | null>(() => {
+  if (!props.rankingItems?.length) return null
+
+  const rankedActualCost = props.rankingItems.reduce((sum, item) => sum + item.actual_cost, 0)
+  const rankedRequests = props.rankingItems.reduce((sum, item) => sum + item.requests, 0)
+  const rankedTokens = props.rankingItems.reduce((sum, item) => sum + item.tokens, 0)
+
+  const otherActualCost = Math.max((props.rankingTotalActualCost || 0) - rankedActualCost, 0)
+  const otherRequests = Math.max((props.rankingTotalRequests || 0) - rankedRequests, 0)
+  const otherTokens = Math.max((props.rankingTotalTokens || 0) - rankedTokens, 0)
+
+  if (otherActualCost <= 0.000001 && otherRequests <= 0 && otherTokens <= 0) return null
+
+  return {
+    user_id: 0,
+    email: '',
+    actual_cost: otherActualCost,
+    requests: otherRequests,
+    tokens: otherTokens,
+    isOther: true
+  }
+})
+
+const rankingDisplayItems = computed<RankingDisplayItem[]>(() => {
+  if (!props.rankingItems?.length) return []
+  return otherRankingItem.value
+    ? [...props.rankingItems, otherRankingItem.value]
+    : [...props.rankingItems]
 })
 
 const doughnutOptions = computed(() => ({
@@ -349,6 +387,11 @@ const formatNumber = (value: number): string => {
 const getRankingUserLabel = (item: UserSpendingRankingItem): string => {
   if (item.email) return item.email
   return t('admin.redeem.userPrefix', { id: item.user_id })
+}
+
+const getRankingRowLabel = (item: RankingDisplayItem): string => {
+  if (item.isOther) return t('admin.dashboard.spendingRankingOther')
+  return getRankingUserLabel(item)
 }
 
 const formatCost = (value: number): string => {

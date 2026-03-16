@@ -380,7 +380,8 @@ func TestOpenAIGatewayService_Forward_WSv2_PoolReuseNotOneToOne(t *testing.T) {
 		require.True(t, strings.HasPrefix(result.RequestID, "resp_reuse_"))
 	}
 
-	require.Equal(t, int64(1), upgradeCount.Load(), "多个客户端请求应复用账号连接池而不是 1:1 对等建链")
+	// 条件式 MarkBroken：正常终端事件退出后连接归还复用，不再无条件销毁。
+	require.Equal(t, int64(1), upgradeCount.Load(), "正常完成后连接应归还复用，不应每次新建")
 	metrics := svc.SnapshotOpenAIWSPoolMetrics()
 	require.GreaterOrEqual(t, metrics.AcquireReuseTotal, int64(1))
 	require.GreaterOrEqual(t, metrics.ConnPickTotal, int64(1))
@@ -454,8 +455,10 @@ func TestOpenAIGatewayService_Forward_WSv2_OAuthStoreFalseByDefault(t *testing.T
 	require.True(t, gjson.Get(requestJSON, "stream").Exists(), "WSv2 payload 应保留 stream 字段")
 	require.True(t, gjson.Get(requestJSON, "stream").Bool(), "OAuth Codex 规范化后应强制 stream=true")
 	require.Equal(t, openAIWSBetaV2Value, captureDialer.lastHeaders.Get("OpenAI-Beta"))
-	require.Equal(t, "sess-oauth-1", captureDialer.lastHeaders.Get("session_id"))
-	require.Equal(t, "conv-oauth-1", captureDialer.lastHeaders.Get("conversation_id"))
+	// OAuth 账号的 session_id/conversation_id 应被 isolateOpenAISessionID 隔离，
+	// 测试中未设置 api_key 到 context，apiKeyID=0。
+	require.Equal(t, isolateOpenAISessionID(0, "sess-oauth-1"), captureDialer.lastHeaders.Get("session_id"))
+	require.Equal(t, isolateOpenAISessionID(0, "conv-oauth-1"), captureDialer.lastHeaders.Get("conversation_id"))
 }
 
 func TestOpenAIGatewayService_Forward_WSv2_OAuthOriginatorCompatibility(t *testing.T) {
@@ -596,7 +599,8 @@ func TestOpenAIGatewayService_Forward_WSv2_HeaderSessionFallbackFromPromptCacheK
 	require.NotNil(t, result)
 	require.Equal(t, "resp_prompt_cache_key", result.RequestID)
 
-	require.Equal(t, "pcache_123", captureDialer.lastHeaders.Get("session_id"))
+	// OAuth 账号的 session_id 应被 isolateOpenAISessionID 隔离（apiKeyID=0，未在 context 设置）。
+	require.Equal(t, isolateOpenAISessionID(0, "pcache_123"), captureDialer.lastHeaders.Get("session_id"))
 	require.Empty(t, captureDialer.lastHeaders.Get("conversation_id"))
 	require.NotNil(t, captureConn.lastWrite)
 	require.True(t, gjson.Get(requestToJSONString(captureConn.lastWrite), "stream").Exists())
@@ -961,6 +965,10 @@ func TestOpenAIGatewayService_Forward_WSv2_TurnMetadataInPayloadOnConnReuse(t *t
 	require.NotNil(t, result1)
 	require.Equal(t, "resp_meta_1", result1.RequestID)
 
+	require.Len(t, captureConn.writes, 1)
+	firstWrite := requestToJSONString(captureConn.writes[0])
+	require.Equal(t, "turn_meta_payload_1", gjson.Get(firstWrite, "client_metadata.x-codex-turn-metadata").String())
+
 	rec2 := httptest.NewRecorder()
 	c2, _ := gin.CreateTestContext(rec2)
 	c2.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
@@ -974,7 +982,7 @@ func TestOpenAIGatewayService_Forward_WSv2_TurnMetadataInPayloadOnConnReuse(t *t
 	require.Equal(t, 1, captureDialer.DialCount(), "同一账号两轮请求应复用同一 WS 连接")
 	require.Len(t, captureConn.writes, 2)
 
-	firstWrite := requestToJSONString(captureConn.writes[0])
+	firstWrite = requestToJSONString(captureConn.writes[0])
 	secondWrite := requestToJSONString(captureConn.writes[1])
 	require.Equal(t, "turn_meta_payload_1", gjson.Get(firstWrite, "client_metadata.x-codex-turn-metadata").String())
 	require.Equal(t, "turn_meta_payload_2", gjson.Get(secondWrite, "client_metadata.x-codex-turn-metadata").String())

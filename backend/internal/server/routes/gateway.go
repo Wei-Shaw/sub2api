@@ -30,6 +30,7 @@ func RegisterGatewayRoutes(
 	soraBodyLimit := middleware.RequestBodyLimit(soraMaxBodySize)
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
+	endpointNorm := handler.InboundEndpointMiddleware()
 
 	// 未分组 Key 拦截中间件（按协议格式区分错误响应）
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
@@ -40,6 +41,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(bodyLimit)
 	gateway.Use(clientRequestID)
 	gateway.Use(opsErrorLogger)
+	gateway.Use(endpointNorm)
 	gateway.Use(gin.HandlerFunc(apiKeyAuth))
 	gateway.Use(requireGroupAnthropic)
 	{
@@ -80,6 +82,7 @@ func RegisterGatewayRoutes(
 	gemini.Use(bodyLimit)
 	gemini.Use(clientRequestID)
 	gemini.Use(opsErrorLogger)
+	gemini.Use(endpointNorm)
 	gemini.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))
 	gemini.Use(requireGroupGoogle)
 	{
@@ -90,11 +93,11 @@ func RegisterGatewayRoutes(
 	}
 
 	// OpenAI Responses API（不带v1前缀的别名）
-	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.Responses)
-	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.Responses)
-	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.ResponsesWebSocket)
+	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.Responses)
+	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.Responses)
+	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.ResponsesWebSocket)
 	// OpenAI Chat Completions API（不带v1前缀的别名）
-	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.ChatCompletions)
+	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.ChatCompletions)
 
 	// Antigravity 模型列表
 	r.GET("/antigravity/models", gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.Gateway.AntigravityModels)
@@ -104,6 +107,7 @@ func RegisterGatewayRoutes(
 	antigravityV1.Use(bodyLimit)
 	antigravityV1.Use(clientRequestID)
 	antigravityV1.Use(opsErrorLogger)
+	antigravityV1.Use(endpointNorm)
 	antigravityV1.Use(middleware.ForcePlatform(service.PlatformAntigravity))
 	antigravityV1.Use(gin.HandlerFunc(apiKeyAuth))
 	antigravityV1.Use(requireGroupAnthropic)
@@ -118,6 +122,7 @@ func RegisterGatewayRoutes(
 	antigravityV1Beta.Use(bodyLimit)
 	antigravityV1Beta.Use(clientRequestID)
 	antigravityV1Beta.Use(opsErrorLogger)
+	antigravityV1Beta.Use(endpointNorm)
 	antigravityV1Beta.Use(middleware.ForcePlatform(service.PlatformAntigravity))
 	antigravityV1Beta.Use(middleware.APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, cfg))
 	antigravityV1Beta.Use(requireGroupGoogle)
@@ -132,6 +137,7 @@ func RegisterGatewayRoutes(
 	soraV1.Use(soraBodyLimit)
 	soraV1.Use(clientRequestID)
 	soraV1.Use(opsErrorLogger)
+	soraV1.Use(endpointNorm)
 	soraV1.Use(middleware.ForcePlatform(service.PlatformSora))
 	soraV1.Use(gin.HandlerFunc(apiKeyAuth))
 	soraV1.Use(requireGroupAnthropic)
