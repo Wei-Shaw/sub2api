@@ -1043,13 +1043,8 @@ func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account 
 
 	// 复用 antigravityRetryLoop：完整的重试 / credits overages / 智能重试
 	prefix := fmt.Sprintf("[antigravity-Test] account=%d(%s)", account.ID, account.Name)
-	// 限制测试连接的总超时：避免 MODEL_CAPACITY_EXHAUSTED 60 次重试导致长时间阻塞
-	const testConnectionTimeout = 30 * time.Second
-	testCtx, cancel := context.WithTimeout(ctx, testConnectionTimeout)
-	defer cancel()
-
 	p := antigravityRetryLoopParams{
-		ctx:            testCtx,
+		ctx:            ctx,
 		prefix:         prefix,
 		account:        account,
 		proxyURL:       proxyURL,
