@@ -266,9 +266,14 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 	}
 
 	// 客户端亲和调度（Anthropic 和 Antigravity 账号）
-	if a.IsClientAffinityEnabled() {
+	if a.IsAffinityEnabled() {
 		enabled := true
 		out.ClientAffinityEnabled = &enabled
+		allow := a.IsAffinityAllowSwitch()
+		out.AffinityAllowSwitch = &allow
+		if pinnedUsers := a.GetPinnedUsers(); len(pinnedUsers) > 0 {
+			out.PinnedUserIDs = pinnedUsers
+		}
 	}
 
 	// 提取账号配额限制（apikey / bedrock 类型有效）

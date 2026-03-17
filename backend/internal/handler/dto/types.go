@@ -201,6 +201,15 @@ type Account struct {
 	// 启用后新会话会优先调度到客户端之前使用过的账号
 	ClientAffinityEnabled *bool `json:"client_affinity_enabled,omitempty"`
 
+	// 亲和允许切换（默认 true）
+	AffinityAllowSwitch *bool `json:"affinity_allow_switch,omitempty"`
+
+	// 亲和用户数量（admin 列表端点注入）
+	AffinityUserCount *int64 `json:"affinity_user_count,omitempty"`
+
+	// 指定亲和用户 ID 列表
+	PinnedUserIDs []int64 `json:"pinned_user_ids,omitempty"`
+
 	// 亲和客户端数据（仅 admin 列表端点注入，不由 mapper 填充）
 	AffinityClientCount *int64   `json:"affinity_client_count,omitempty"`
 	AffinityClients     []string `json:"affinity_clients,omitempty"`

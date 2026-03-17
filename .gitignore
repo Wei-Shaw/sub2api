@@ -128,6 +128,7 @@ deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
+!docs/ACCOUNT_SCHEDULING_FLOW.md
 .serena/
 
 # ===================

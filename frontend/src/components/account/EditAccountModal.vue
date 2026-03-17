@@ -1158,7 +1158,7 @@
         <div class="mb-3">
           <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {{ t('admin.accounts.quotaLimitHint') }}
+            {{ t('admin.accounts.quotaControl.hint') }}
           </p>
         </div>
         <QuotaLimitCard
@@ -1185,12 +1185,21 @@
           :enabled="clientAffinityEnabled"
           :base="affinityBase"
           :buffer="affinityBuffer"
+          :allow-switch="affinityAllowSwitch"
+          :user-base="affinityUserBase"
+          :user-buffer="affinityUserBuffer"
+          :per-user-limit="perUserClientLimit"
+          :pinned-users="pinnedUsers"
           @update:enabled="clientAffinityEnabled = $event"
           @update:base="affinityBase = $event"
           @update:buffer="affinityBuffer = $event"
+          @update:allow-switch="affinityAllowSwitch = $event"
+          @update:user-base="affinityUserBase = $event"
+          @update:user-buffer="affinityUserBuffer = $event"
+          @update:per-user-limit="perUserClientLimit = $event"
+          @update:pinned-users="pinnedUsers = $event"
         />
       </div>
-
       <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
       <div
         v-else-if="account?.type === 'apikey' || account?.type === 'bedrock'"
@@ -1298,9 +1307,19 @@
           :enabled="clientAffinityEnabled"
           :base="affinityBase"
           :buffer="affinityBuffer"
+          :allow-switch="affinityAllowSwitch"
+          :user-base="affinityUserBase"
+          :user-buffer="affinityUserBuffer"
+          :per-user-limit="perUserClientLimit"
+          :pinned-users="pinnedUsers"
           @update:enabled="clientAffinityEnabled = $event"
           @update:base="affinityBase = $event"
           @update:buffer="affinityBuffer = $event"
+          @update:allow-switch="affinityAllowSwitch = $event"
+          @update:user-base="affinityUserBase = $event"
+          @update:user-buffer="affinityUserBuffer = $event"
+          @update:per-user-limit="perUserClientLimit = $event"
+          @update:pinned-users="pinnedUsers = $event"
         />
 
         <!-- Window Cost Limit -->
@@ -1902,6 +1921,11 @@ const cacheTTLOverrideTarget = ref<string>('5m')
 const clientAffinityEnabled = ref(false)
 const affinityBase = ref<number | null>(null)
 const affinityBuffer = ref<number | null>(null)
+const affinityAllowSwitch = ref(true)
+const affinityUserBase = ref<number | null>(null)
+const affinityUserBuffer = ref<number | null>(null)
+const perUserClientLimit = ref<number | null>(null)
+const pinnedUsers = ref<number[]>([])
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
@@ -2512,6 +2536,11 @@ function loadQuotaControlSettings(account: Account) {
   clientAffinityEnabled.value = false
   affinityBase.value = null
   affinityBuffer.value = null
+  affinityAllowSwitch.value = true
+  affinityUserBase.value = null
+  affinityUserBuffer.value = null
+  perUserClientLimit.value = null
+  pinnedUsers.value = []
 
   // Remaining quota control settings only apply to Anthropic accounts
   if (account.platform !== 'anthropic') {
@@ -2530,6 +2559,17 @@ function loadQuotaControlSettings(account: Account) {
     // buffer: null = infinite yellow, 0 = no yellow, >0 = yellow range
     const buf = extra.affinity_buffer
     affinityBuffer.value = (typeof buf === 'number') ? buf : null
+
+    // New v2 fields
+    affinityAllowSwitch.value = extra.affinity_allow_switch !== false
+    const ub = extra.affinity_user_base
+    affinityUserBase.value = (typeof ub === 'number' && ub > 0) ? ub : null
+    const ubuf = extra.affinity_user_buffer
+    affinityUserBuffer.value = (typeof ubuf === 'number') ? ubuf : null
+    const pul = extra.per_user_client_limit
+    perUserClientLimit.value = (typeof pul === 'number' && pul > 0) ? pul : null
+    const pu = extra.pinned_users
+    pinnedUsers.value = Array.isArray(pu) ? pu : []
   }
 
   // Window cost / session limit only apply to Anthropic OAuth/SetupToken accounts
@@ -2951,11 +2991,12 @@ const handleSubmit = async () => {
     }
 
     // For all Anthropic accounts, handle client_affinity in extra
-    if (props.account.platform === 'anthropic') {
-      const currentExtra = (props.account.extra as Record<string, unknown>) || {}
-      const newExtra: Record<string, unknown> = { ...currentExtra }
-      if (clientAffinityEnabled.value) {
-        newExtra.client_affinity_enabled = true
+	    if (props.account.platform === 'anthropic') {
+	      const currentExtra = (props.account.extra as Record<string, unknown>) || {}
+	      const newExtra: Record<string, unknown> = { ...currentExtra }
+	      if (clientAffinityEnabled.value) {
+	        newExtra.affinity_enabled = true
+	        newExtra.client_affinity_enabled = true
         if (affinityBase.value != null && affinityBase.value > 0) {
           newExtra.affinity_base = affinityBase.value
         } else {
@@ -2967,10 +3008,38 @@ const handleSubmit = async () => {
         } else {
           delete newExtra.affinity_buffer
         }
-      } else {
-        delete newExtra.client_affinity_enabled
-        delete newExtra.affinity_base
-        delete newExtra.affinity_buffer
+        // v2 fields
+        newExtra.affinity_allow_switch = affinityAllowSwitch.value
+        if (affinityUserBase.value != null && affinityUserBase.value > 0) {
+          newExtra.affinity_user_base = affinityUserBase.value
+        } else {
+          delete newExtra.affinity_user_base
+        }
+        if (affinityUserBase.value != null && affinityUserBase.value > 0 && affinityUserBuffer.value != null) {
+          newExtra.affinity_user_buffer = affinityUserBuffer.value
+        } else {
+          delete newExtra.affinity_user_buffer
+        }
+        if (perUserClientLimit.value != null && perUserClientLimit.value > 0) {
+          newExtra.per_user_client_limit = perUserClientLimit.value
+        } else {
+          delete newExtra.per_user_client_limit
+        }
+        if (pinnedUsers.value.length > 0) {
+          newExtra.pinned_users = pinnedUsers.value
+        } else {
+          delete newExtra.pinned_users
+        }
+	      } else {
+	        newExtra.affinity_enabled = false
+	        newExtra.client_affinity_enabled = false
+	        delete newExtra.affinity_base
+	        delete newExtra.affinity_buffer
+	        delete newExtra.affinity_allow_switch
+        delete newExtra.affinity_user_base
+        delete newExtra.affinity_user_buffer
+        delete newExtra.per_user_client_limit
+        delete newExtra.pinned_users
       }
       updatePayload.extra = newExtra
     }

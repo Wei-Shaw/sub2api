@@ -235,11 +235,14 @@ func (m *mockGatewayCacheForPlatform) DeleteSessionAccountID(ctx context.Context
 	return nil
 }
 
-func (m *mockGatewayCacheForPlatform) GetClientAffinityAccounts(_ context.Context, _ int64, _ string, _ time.Duration) ([]int64, error) {
+func (m *mockGatewayCacheForPlatform) GetAffinityAccounts(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
 	return nil, nil
 }
-func (m *mockGatewayCacheForPlatform) UpdateClientAffinity(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
+func (m *mockGatewayCacheForPlatform) UpdateAffinity(_ context.Context, _ int64, _ int64, _ string, _ int64, _ time.Duration) error {
 	return nil
+}
+func (m *mockGatewayCacheForPlatform) GetAffinityMultiCount(_ context.Context, _ int64, _ int64, _ int64, _ time.Duration) (int64, int64, int64, error) {
+	return 0, 0, 0, nil
 }
 func (m *mockGatewayCacheForPlatform) GetAccountAffinityCountBatch(_ context.Context, _ int64, _ []int64, _ time.Duration) (map[int64]int64, error) {
 	return map[int64]int64{}, nil
@@ -2050,7 +2053,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: nil, // No concurrency service
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2103,7 +2106,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: nil, // legacy path
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-b", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-b", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2135,7 +2138,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: nil,
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2167,11 +2170,312 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 		}
 
 		excludedIDs := map[int64]struct{}{1: {}}
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", excludedIDs, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", excludedIDs, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
 		require.Equal(t, int64(2), result.Account.ID, "不应选择被排除的账号")
+	})
+
+	t.Run("无客户端ID时过滤Anthropic OAuth亲和账号-load-aware路径", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID:          1,
+					Platform:    PlatformAnthropic,
+					Type:        AccountTypeOAuth,
+					Priority:    1,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+					Extra: map[string]any{
+						"client_affinity_enabled": true,
+					},
+				},
+				{
+					ID:          2,
+					Platform:    PlatformAnthropic,
+					Type:        AccountTypeOAuth,
+					Priority:    2,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              &mockGatewayCacheForPlatform{},
+			cfg:                cfg,
+			concurrencyService: NewConcurrencyService(&mockConcurrencyCache{}),
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "", 0)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(2), result.Account.ID, "无客户端ID时应过滤亲和OAuth账号")
+	})
+
+	t.Run("无客户端ID且亲和关闭时-load-aware路径恢复旧逻辑", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID:          1,
+					Platform:    PlatformAnthropic,
+					Type:        AccountTypeOAuth,
+					Priority:    1,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+					Extra: map[string]any{
+						"affinity_enabled": false,
+					},
+				},
+				{
+					ID:          2,
+					Platform:    PlatformAnthropic,
+					Type:        AccountTypeOAuth,
+					Priority:    2,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              &mockGatewayCacheForPlatform{},
+			cfg:                cfg,
+			concurrencyService: NewConcurrencyService(&mockConcurrencyCache{}),
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "", 0)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(1), result.Account.ID, "关闭亲和后不应再被无clientID过滤")
+	})
+
+	t.Run("有客户端ID时不过滤Anthropic OAuth亲和账号", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID:          1,
+					Platform:    PlatformAnthropic,
+					Type:        AccountTypeOAuth,
+					Priority:    1,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+					Extra: map[string]any{
+						"client_affinity_enabled": true,
+					},
+				},
+				{
+					ID:          2,
+					Platform:    PlatformAnthropic,
+					Type:        AccountTypeOAuth,
+					Priority:    2,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              &mockGatewayCacheForPlatform{},
+			cfg:                cfg,
+			concurrencyService: NewConcurrencyService(&mockConcurrencyCache{}),
+		}
+
+		metadataUserID := "user_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef_account_test_session_test"
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, metadataUserID, 123)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(1), result.Account.ID, "有客户端ID时应允许亲和OAuth账号参与调度")
+	})
+
+	t.Run("过滤对Anthropic全类型生效-SetupToken也受影响", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID:          1,
+					Platform:    PlatformAnthropic,
+					Type:        AccountTypeSetupToken,
+					Priority:    1,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+					Extra: map[string]any{
+						"client_affinity_enabled": true,
+					},
+				},
+				{
+					ID:          2,
+					Platform:    PlatformAnthropic,
+					Type:        AccountTypeOAuth,
+					Priority:    2,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+					Extra: map[string]any{
+						"client_affinity_enabled": true,
+					},
+				},
+				{
+					ID:          3,
+					Platform:    PlatformAnthropic,
+					Type:        AccountTypeOAuth,
+					Priority:    3,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              &mockGatewayCacheForPlatform{},
+			cfg:                cfg,
+			concurrencyService: NewConcurrencyService(&mockConcurrencyCache{}),
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "", 0)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(3), result.Account.ID, "无客户端ID时，Anthropic SetupToken/OAuth(开启亲和)都应被过滤")
+	})
+
+	t.Run("无客户端ID时过滤Anthropic OAuth亲和账号-legacy路径", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID:          1,
+					Platform:    PlatformAnthropic,
+					Type:        AccountTypeOAuth,
+					Priority:    1,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+					Extra: map[string]any{
+						"client_affinity_enabled": true,
+					},
+				},
+				{
+					ID:          2,
+					Platform:    PlatformAnthropic,
+					Type:        AccountTypeOAuth,
+					Priority:    2,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = false
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              &mockGatewayCacheForPlatform{},
+			cfg:                cfg,
+			concurrencyService: nil,
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "", 0)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(2), result.Account.ID, "legacy路径也应过滤亲和OAuth账号")
+	})
+
+	t.Run("无客户端ID且亲和关闭时-legacy路径恢复旧逻辑", func(t *testing.T) {
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID:          1,
+					Platform:    PlatformAnthropic,
+					Type:        AccountTypeOAuth,
+					Priority:    1,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+					Extra: map[string]any{
+						"client_affinity_enabled": false,
+					},
+				},
+				{
+					ID:          2,
+					Platform:    PlatformAnthropic,
+					Type:        AccountTypeOAuth,
+					Priority:    2,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		cfg := testConfig()
+		cfg.Gateway.Scheduling.LoadBatchEnabled = false
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              &mockGatewayCacheForPlatform{},
+			cfg:                cfg,
+			concurrencyService: nil,
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "", 0)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		require.Equal(t, int64(1), result.Account.ID, "关闭亲和后 legacy 路径不应再被无clientID过滤")
 	})
 
 	t.Run("粘性命中-不调用GetByID", func(t *testing.T) {
@@ -2201,7 +2505,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sticky", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sticky", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2237,7 +2541,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sticky", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sticky", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2278,7 +2582,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(testCtx, nil, "sticky", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(testCtx, nil, "sticky", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2306,7 +2610,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: nil,
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.Error(t, err)
 		require.Nil(t, result)
 		require.ErrorIs(t, err, ErrNoAvailableAccounts)
@@ -2338,7 +2642,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: nil,
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2371,7 +2675,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: nil,
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2409,7 +2713,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sticky", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sticky", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.WaitPlan)
@@ -2445,7 +2749,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "legacy", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "legacy", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2504,7 +2808,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.WaitPlan)
@@ -2558,7 +2862,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2612,7 +2916,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, sessionHash, "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2670,7 +2974,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "route", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "route", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2728,7 +3032,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "route-full", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "route-full", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.WaitPlan)
@@ -2786,7 +3090,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "fallback", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "fallback", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2823,7 +3127,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.WaitPlan)
@@ -2875,7 +3179,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "gemini", "gemini-2.5-pro", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "gemini", "gemini-2.5-pro", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -2953,7 +3257,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 		}
 
 		excluded := map[int64]struct{}{1: {}}
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "claude-3-5-sonnet-20241022", excluded, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "claude-3-5-sonnet-20241022", excluded, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -3007,7 +3311,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: nil,
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "gemini-2.5-pro", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "gemini-2.5-pro", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -3040,7 +3344,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: nil,
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, &groupID, "", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.Error(t, err)
 		require.Nil(t, result)
 		require.ErrorIs(t, err, ErrClaudeCodeOnly)
@@ -3078,7 +3382,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "wait", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "wait", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.WaitPlan)
@@ -3116,7 +3420,7 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 			concurrencyService: NewConcurrencyService(concurrencyCache),
 		}
 
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "missing-load", "claude-3-5-sonnet-20241022", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "missing-load", "claude-3-5-sonnet-20241022", nil, "", int64(0))
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)

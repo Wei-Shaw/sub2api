@@ -1564,7 +1564,7 @@
         <div class="mb-3">
           <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {{ t('admin.accounts.quotaLimitHint') }}
+            {{ t('admin.accounts.quotaControl.hint') }}
           </p>
         </div>
         <QuotaLimitCard
@@ -1591,9 +1591,19 @@
           :enabled="clientAffinityEnabled"
           :base="affinityBase"
           :buffer="affinityBuffer"
+          :allow-switch="affinityAllowSwitch"
+          :user-base="affinityUserBase"
+          :user-buffer="affinityUserBuffer"
+          :per-user-limit="perUserClientLimit"
+          :pinned-users="pinnedUsers"
           @update:enabled="clientAffinityEnabled = $event"
           @update:base="affinityBase = $event"
           @update:buffer="affinityBuffer = $event"
+          @update:allow-switch="affinityAllowSwitch = $event"
+          @update:user-base="affinityUserBase = $event"
+          @update:user-buffer="affinityUserBuffer = $event"
+          @update:per-user-limit="perUserClientLimit = $event"
+          @update:pinned-users="pinnedUsers = $event"
         />
       </div>
 
@@ -1962,9 +1972,19 @@
           :enabled="clientAffinityEnabled"
           :base="affinityBase"
           :buffer="affinityBuffer"
+          :allow-switch="affinityAllowSwitch"
+          :user-base="affinityUserBase"
+          :user-buffer="affinityUserBuffer"
+          :per-user-limit="perUserClientLimit"
+          :pinned-users="pinnedUsers"
           @update:enabled="clientAffinityEnabled = $event"
           @update:base="affinityBase = $event"
           @update:buffer="affinityBuffer = $event"
+          @update:allow-switch="affinityAllowSwitch = $event"
+          @update:user-base="affinityUserBase = $event"
+          @update:user-buffer="affinityUserBuffer = $event"
+          @update:per-user-limit="perUserClientLimit = $event"
+          @update:pinned-users="pinnedUsers = $event"
         />
 
         <!-- Window Cost Limit -->
@@ -3120,6 +3140,11 @@ const showGeminiHelpDialog = ref(false)
 const clientAffinityEnabled = ref(false)
 const affinityBase = ref<number | null>(null)
 const affinityBuffer = ref<number | null>(null)
+const affinityAllowSwitch = ref(true)
+const affinityUserBase = ref<number | null>(null)
+const affinityUserBuffer = ref<number | null>(null)
+const perUserClientLimit = ref<number | null>(null)
+const pinnedUsers = ref<number[]>([])
 
 // Quota control state (Anthropic OAuth/SetupToken only)
 const windowCostEnabled = ref(false)
@@ -3773,6 +3798,11 @@ const resetForm = () => {
   clientAffinityEnabled.value = false
   affinityBase.value = null
   affinityBuffer.value = null
+  affinityAllowSwitch.value = true
+  affinityUserBase.value = null
+  affinityUserBuffer.value = null
+  perUserClientLimit.value = null
+  pinnedUsers.value = []
   modelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
@@ -3887,6 +3917,7 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
 /** 将客户端亲和设置写入 extra（Anthropic 全类型通用） */
 const applyClientAffinity = (extra: Record<string, unknown>) => {
   if (clientAffinityEnabled.value) {
+    extra.affinity_enabled = true
     extra.client_affinity_enabled = true
     if (affinityBase.value != null && affinityBase.value > 0) {
       extra.affinity_base = affinityBase.value
@@ -3898,10 +3929,38 @@ const applyClientAffinity = (extra: Record<string, unknown>) => {
     } else {
       delete extra.affinity_buffer
     }
+    // v2 fields
+    extra.affinity_allow_switch = affinityAllowSwitch.value
+    if (affinityUserBase.value != null && affinityUserBase.value > 0) {
+      extra.affinity_user_base = affinityUserBase.value
+    } else {
+      delete extra.affinity_user_base
+    }
+    if (affinityUserBase.value != null && affinityUserBase.value > 0 && affinityUserBuffer.value != null) {
+      extra.affinity_user_buffer = affinityUserBuffer.value
+    } else {
+      delete extra.affinity_user_buffer
+    }
+    if (perUserClientLimit.value != null && perUserClientLimit.value > 0) {
+      extra.per_user_client_limit = perUserClientLimit.value
+    } else {
+      delete extra.per_user_client_limit
+    }
+    if (pinnedUsers.value.length > 0) {
+      extra.pinned_users = pinnedUsers.value
+    } else {
+      delete extra.pinned_users
+    }
   } else {
+    delete extra.affinity_enabled
     delete extra.client_affinity_enabled
     delete extra.affinity_base
     delete extra.affinity_buffer
+    delete extra.affinity_allow_switch
+    delete extra.affinity_user_base
+    delete extra.affinity_user_buffer
+    delete extra.per_user_client_limit
+    delete extra.pinned_users
   }
 }
 

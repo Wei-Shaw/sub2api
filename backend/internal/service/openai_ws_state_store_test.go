@@ -193,11 +193,14 @@ func (c *openAIWSStateStoreTimeoutProbeCache) DeleteSessionAccountID(ctx context
 	return nil
 }
 
-func (c *openAIWSStateStoreTimeoutProbeCache) GetClientAffinityAccounts(_ context.Context, _ int64, _ string, _ time.Duration) ([]int64, error) {
+func (c *openAIWSStateStoreTimeoutProbeCache) GetAffinityAccounts(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
 	return nil, nil
 }
-func (c *openAIWSStateStoreTimeoutProbeCache) UpdateClientAffinity(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
+func (c *openAIWSStateStoreTimeoutProbeCache) UpdateAffinity(_ context.Context, _ int64, _ int64, _ string, _ int64, _ time.Duration) error {
 	return nil
+}
+func (c *openAIWSStateStoreTimeoutProbeCache) GetAffinityMultiCount(_ context.Context, _ int64, _ int64, _ int64, _ time.Duration) (int64, int64, int64, error) {
+	return 0, 0, 0, nil
 }
 func (c *openAIWSStateStoreTimeoutProbeCache) GetAccountAffinityCountBatch(_ context.Context, _ int64, _ []int64, _ time.Duration) (map[int64]int64, error) {
 	return map[int64]int64{}, nil

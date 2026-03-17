@@ -364,6 +364,12 @@ var ErrNoAvailableAccounts = errors.New("no available accounts")
 // ErrClaudeCodeOnly 表示分组仅允许 Claude Code 客户端访问
 var ErrClaudeCodeOnly = errors.New("this group only allows Claude Code clients")
 
+// ErrAffinityNoSwitch 表示亲和账号不可用且不允许切换到其他账号
+var ErrAffinityNoSwitch = errors.New("affinity account unavailable and switching is disabled")
+
+// ErrAffinityLimitExceeded 表示亲和客户端限制已达上限
+var ErrAffinityLimitExceeded = errors.New("affinity client limit exceeded")
+
 // allowedHeaders 白名单headers（参考CRS项目）
 var allowedHeaders = map[string]bool{
 	"accept":                                    true,
@@ -405,24 +411,29 @@ type GatewayCache interface {
 	// Delete sticky session binding, used to proactively clean up when account becomes unavailable
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
 
-	// GetClientAffinityAccounts 获取客户端亲和账号列表（按最近使用降序），同时清理过期成员
-	GetClientAffinityAccounts(ctx context.Context, groupID int64, clientID string, ttl time.Duration) ([]int64, error)
-	// UpdateClientAffinity 添加/更新客户端亲和关系（更新 score 为当前时间戳，刷新 key TTL）
-	UpdateClientAffinity(ctx context.Context, groupID int64, clientID string, accountID int64, ttl time.Duration) error
-	// GetAccountAffinityCountBatch 批量获取账号的亲和客户端数量（惰性清理过期成员）
+	// GetAffinityAccounts 获取亲和账号列表（按最近使用降序），同时清理过期成员
+	GetAffinityAccounts(ctx context.Context, groupID int64, userID int64, clientID string, ttl time.Duration) ([]int64, error)
+	// UpdateAffinity 添加/更新亲和关系（更新 score 为当前时间戳，刷新 key TTL）
+	UpdateAffinity(ctx context.Context, groupID int64, userID int64, clientID string, accountID int64, ttl time.Duration) error
+	// GetAccountAffinityCountBatch 批量获取账号的亲和成员数量（惰性清理过期成员）
 	GetAccountAffinityCountBatch(ctx context.Context, groupID int64, accountIDs []int64, ttl time.Duration) (map[int64]int64, error)
-	// GetAccountAffinityClientsBatch 批量获取每个账号跨所有分组的亲和客户端列表（去重）
+	// GetAccountAffinityClientsBatch 批量获取每个账号跨所有分组的亲和成员列表（去重）
 	// accountGroups: map[accountID][]groupID
+	// 返回值成员格式为 {userID}/{clientID}
 	GetAccountAffinityClientsBatch(ctx context.Context, accountGroups map[int64][]int64, ttl time.Duration) (map[int64][]string, error)
 	// GetAccountAffinityClientsWithScores 获取单个账号跨所有分组的亲和客户端列表（含最后活跃时间）
 	GetAccountAffinityClientsWithScores(ctx context.Context, accountID int64, groupIDs []int64, ttl time.Duration) ([]AffinityClient, error)
 	// ClearAccountAffinity 清除指定账号在所有分组的亲和记录（正向+反向索引）
-	// 用于账号关闭客户端亲和时立即清理旧绑定
+	// 用于账号关闭亲和时立即清理旧绑定
 	ClearAccountAffinity(ctx context.Context, accountID int64, groupIDs []int64) error
+	// GetAffinityMultiCount 获取账号的多维度亲和计数
+	// 返回: uniqueUsers, uniqueClients, perUserClients
+	GetAffinityMultiCount(ctx context.Context, groupID int64, accountID int64, targetUserID int64, ttl time.Duration) (users, clients, perUser int64, err error)
 }
 
-// AffinityClient 亲和客户端信息（含最后活跃时间）
+// AffinityClient 亲和客户端信息（含用户 ID 和最后活跃时间）
 type AffinityClient struct {
+	UserID     int64     `json:"user_id"`
 	ClientID   string    `json:"client_id"`
 	LastActive time.Time `json:"last_active"`
 }
@@ -1148,8 +1159,10 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 }
 
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
+// 调度流程文档见 docs/ACCOUNT_SCHEDULING_FLOW.md 。
 // metadataUserID: 用于客户端亲和调度，从中提取客户端 ID
-func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string) (*AccountSelectionResult, error) {
+// sub2apiUserID: 系统用户 ID，用于二维亲和调度
+func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {
 	// 调试日志：记录调度入口参数
 	excludedIDsList := make([]int64, 0, len(excludedIDs))
 	for id := range excludedIDs {
@@ -1181,6 +1194,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	// 提取客户端 ID（用于客户端亲和调度）
 	affinityClientID := extractClientIDFromMetadata(metadataUserID)
+	affinityUserID := sub2apiUserID
 
 	if s.debugModelRoutingEnabled() && requestedModel != "" {
 		groupPlatform := ""
@@ -1202,6 +1216,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			account, err := s.SelectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, localExcluded)
 			if err != nil {
 				return nil, err
+			}
+			if shouldFilterAccountWithoutClientID(account, affinityClientID) {
+				localExcluded[account.ID] = struct{}{}
+				continue
 			}
 
 			result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
@@ -1264,12 +1282,18 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	if err != nil {
 		return nil, err
 	}
+	accounts = filterAccountsWithoutClientID(accounts, affinityClientID)
 	if len(accounts) == 0 {
 		return nil, ErrNoAvailableAccounts
 	}
 	ctx = s.withWindowCostPrefetch(ctx, accounts)
 	ctx = s.withRPMPrefetch(ctx, accounts)
 
+	// 提前构建 accountByID（供 Layer 1 和 Layer 1.5 使用）
+	accountByID := make(map[int64]*Account, len(accounts))
+	for i := range accounts {
+		accountByID[accounts[i].ID] = &accounts[i]
+	}
 	isExcluded := func(accountID int64) bool {
 		if excludedIDs == nil {
 			return false
@@ -1277,12 +1301,19 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		_, excluded := excludedIDs[accountID]
 		return excluded
 	}
-
-	// 提前构建 accountByID（供 Layer 1 和 Layer 1.5 使用）
-	accountByID := make(map[int64]*Account, len(accounts))
-	for i := range accounts {
-		accountByID[accounts[i].ID] = &accounts[i]
-	}
+	affinityFlow := newGatewayAffinityFlow(
+		s,
+		ctx,
+		groupID,
+		sessionHash,
+		requestedModel,
+		affinityClientID,
+		affinityUserID,
+		platform,
+		useMixed,
+		accountByID,
+		isExcluded,
+	)
 
 	// 获取模型路由配置（仅 anthropic 平台）
 	var routingAccountIDs []int64
@@ -1485,8 +1516,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						if sessionHash != "" && s.cache != nil {
 							_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, item.account.ID, stickySessionTTL)
 						}
-						if affinityClientID != "" && s.cache != nil && item.account.IsClientAffinityEnabled() {
-							_ = s.cache.UpdateClientAffinity(ctx, derefGroupID(groupID), affinityClientID, item.account.ID, ClientAffinityTTL)
+						if affinityClientID != "" && affinityUserID > 0 && s.cache != nil && item.account.IsAffinityEnabled() {
+							_ = s.cache.UpdateAffinity(ctx, derefGroupID(groupID), affinityUserID, affinityClientID, item.account.ID, ClientAffinityTTL)
 						}
 						if s.debugModelRoutingEnabled() {
 							logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
@@ -1525,14 +1556,27 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 	}
 
-	// ============ Layer 1.5: 粘性会话（仅在无模型路由配置时生效） ============
-	if len(routingAccountIDs) == 0 && sessionHash != "" && stickyAccountID > 0 && !isExcluded(stickyAccountID) {
+	// ============ Layer 1.3: 用户亲和预处理（pinned_users 自动注入） ============
+	affinityFlow.preprocessPinnedUsers(accounts)
+
+	// ============ Layer 1.4: 客户端亲和调度（优先于粘性会话） ============
+	affinityHit := false
+	if affinityResult, hit, err := affinityFlow.trySelectAffinityAccount(); err != nil {
+		return nil, err
+	} else {
+		affinityHit = hit
+		if affinityResult != nil {
+			return affinityResult, nil
+		}
+	}
+
+	// ============ Layer 1.5: 粘性会话（仅在无模型路由配置 且 亲和未命中时生效） ============
+	if !affinityHit && len(routingAccountIDs) == 0 && sessionHash != "" && stickyAccountID > 0 && !isExcluded(stickyAccountID) {
 		accountID := stickyAccountID
 		if accountID > 0 && !isExcluded(accountID) {
 			account, ok := accountByID[accountID]
 			if ok {
 				// 检查账户是否需要清理粘性会话绑定
-				// Check if the account needs sticky session cleanup
 				clearSticky := shouldClearStickySession(account, requestedModel)
 				if clearSticky {
 					_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
@@ -1548,7 +1592,6 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
-						// Session count limit check
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 							result.ReleaseFunc() // 释放槽位，继续到 Layer 2
 						} else {
@@ -1563,10 +1606,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
 					if waitingCount < cfg.StickySessionMaxWaiting {
 						// 会话数量限制检查（等待计划也需要占用会话配额）
-						// Session count limit check (wait plan also requires session quota)
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 							// 会话限制已满，继续到 Layer 2
-							// Session limit full, continue to Layer 2
 						} else {
 							return &AccountSelectionResult{
 								Account: account,
@@ -1581,76 +1622,6 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					}
 				}
 			}
-		}
-	}
-
-	// ============ Layer 1.6: 客户端亲和（仅在粘性会话未命中时生效） ============
-	if affinityClientID != "" && s.cache != nil && stickyAccountID <= 0 {
-		affinityAccountIDs, err := s.cache.GetClientAffinityAccounts(ctx, derefGroupID(groupID), affinityClientID, ClientAffinityTTL)
-		if err == nil && len(affinityAccountIDs) > 0 {
-			for _, affinityAccID := range affinityAccountIDs {
-				if isExcluded(affinityAccID) {
-					continue
-				}
-				account, ok := accountByID[affinityAccID]
-				if !ok || !s.isAccountSchedulableForSelection(account) {
-					continue
-				}
-				if !account.IsClientAffinityEnabled() {
-					continue
-				}
-				if !s.isAccountAllowedForPlatform(account, platform, useMixed) {
-					continue
-				}
-				if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, account, requestedModel) {
-					continue
-				}
-				if !s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) {
-					continue
-				}
-				if !s.isAccountSchedulableForQuota(account) {
-					continue
-				}
-				if !s.isAccountSchedulableForWindowCost(ctx, account, false) {
-					continue
-				}
-				if !s.isAccountSchedulableForRPM(ctx, account, false) {
-					continue
-				}
-				// 亲和三区检查：红区账号不可通过亲和命中调度
-				if account.GetAffinityBase() > 0 && s.cache != nil {
-					countMap, err := s.cache.GetAccountAffinityCountBatch(ctx, derefGroupID(groupID), []int64{affinityAccID}, ClientAffinityTTL)
-					if err == nil {
-						zone := account.GetAffinityZone(countMap[affinityAccID])
-						if zone == AffinityZoneRed {
-							continue
-						}
-					}
-				}
-
-				result, err := s.tryAcquireAccountSlot(ctx, affinityAccID, account.Concurrency)
-				if err == nil && result.Acquired {
-					if !s.checkAndRegisterSession(ctx, account, sessionHash) {
-						result.ReleaseFunc()
-						continue
-					}
-					// 亲和命中：更新亲和 score + 绑定粘性会话
-					_ = s.cache.UpdateClientAffinity(ctx, derefGroupID(groupID), affinityClientID, affinityAccID, ClientAffinityTTL)
-					if sessionHash != "" {
-						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, affinityAccID, stickySessionTTL)
-					}
-					slog.Debug("client_affinity_hit",
-						"group_id", derefGroupID(groupID),
-						"client_id", affinityClientID[:8]+"...",
-						"account_id", affinityAccID)
-					return &AccountSelectionResult{
-						Account:     account,
-						Acquired:    true,
-						ReleaseFunc: result.ReleaseFunc,
-					}, nil
-				}
-			}
-			// 所有亲和账号不可用，继续到 Layer 2
 		}
 	}
 
@@ -1706,8 +1677,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
 		if result, ok := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); ok {
-			if affinityClientID != "" && s.cache != nil && result.Account != nil && result.Account.IsClientAffinityEnabled() {
-				_ = s.cache.UpdateClientAffinity(ctx, derefGroupID(groupID), affinityClientID, result.Account.ID, ClientAffinityTTL)
+			if affinityClientID != "" && affinityUserID > 0 && s.cache != nil && result.Account != nil && result.Account.IsAffinityEnabled() {
+				_ = s.cache.UpdateAffinity(ctx, derefGroupID(groupID), affinityUserID, affinityClientID, result.Account.ID, ClientAffinityTTL)
 			}
 			return result, nil
 		}
@@ -1771,9 +1742,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					if sessionHash != "" && s.cache != nil {
 						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
 					}
-					// 更新客户端亲和关系
-					if affinityClientID != "" && s.cache != nil && selected.account.IsClientAffinityEnabled() {
-						_ = s.cache.UpdateClientAffinity(ctx, derefGroupID(groupID), affinityClientID, selected.account.ID, ClientAffinityTTL)
+					// 更新亲和关系
+					if affinityClientID != "" && affinityUserID > 0 && s.cache != nil && selected.account.IsAffinityEnabled() {
+						_ = s.cache.UpdateAffinity(ctx, derefGroupID(groupID), affinityUserID, affinityClientID, selected.account.ID, ClientAffinityTTL)
 					}
 					return &AccountSelectionResult{
 						Account:     selected.account,
@@ -2541,7 +2512,7 @@ func (s *GatewayService) populateAffinityCounts(ctx context.Context, accounts []
 	// 快速检查：是否有任何账号开启了亲和
 	hasAffinity := false
 	for _, acc := range accounts {
-		if acc.account.IsClientAffinityEnabled() {
+		if acc.account.IsAffinityEnabled() {
 			hasAffinity = true
 			break
 		}
@@ -2632,7 +2603,7 @@ func classifyByAffinityZone(accounts []accountWithLoad) []accountWithLoad {
 	// 快速检查：是否有任何账号配置了 affinity_base
 	hasZoneConfig := false
 	for _, acc := range accounts {
-		if acc.account.IsClientAffinityEnabled() && acc.account.GetAffinityBase() > 0 {
+		if acc.account.IsAffinityEnabled() && acc.account.GetAffinityBase() > 0 {
 			hasZoneConfig = true
 			break
 		}

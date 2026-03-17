@@ -29,7 +29,7 @@
     </CapacityBadge>
 
     <!-- 客户端亲和 -->
-    <AffinityBadge v-if="showAffinity" :account-id="account.id" :count="affinityClientCount" :base="affinityBase" :buffer="affinityBuffer" />
+    <AffinityBadge v-if="showAffinity" :account-id="account.id" :client-count="affinityClientCount" :user-count="affinityUserCount" :base="affinityBase" :buffer="affinityBuffer" :user-base="affinityUserBase" :user-buffer="affinityUserBuffer" />
 
     <!-- API Key 账号配额限制 -->
     <QuotaBadge v-if="showDailyQuota" :used="account.quota_daily_used ?? 0" :limit="account.quota_daily_limit!" label="D" />
@@ -177,10 +177,11 @@ const rpmTooltip = computed(() => {
 const showAffinity = computed(() =>
   props.account.platform === 'anthropic' &&
   props.account.client_affinity_enabled === true &&
-  props.account.affinity_client_count != null
+  (props.account.affinity_client_count != null || props.account.affinity_user_count != null)
 )
 
 const affinityClientCount = computed(() => props.account.affinity_client_count ?? 0)
+const affinityUserCount = computed(() => props.account.affinity_user_count ?? 0)
 
 const affinityBase = computed(() => {
   const extra = props.account.extra as Record<string, unknown> | undefined
@@ -193,6 +194,21 @@ const affinityBuffer = computed((): number | null => {
   const extra = props.account.extra as Record<string, unknown> | undefined
   if (!extra) return null
   const v = extra.affinity_buffer
+  if (typeof v === 'number') return v
+  return null
+})
+
+const affinityUserBase = computed(() => {
+  const extra = props.account.extra as Record<string, unknown> | undefined
+  if (!extra) return 0
+  const v = extra.affinity_user_base
+  return (typeof v === 'number' && v > 0) ? v : 0
+})
+
+const affinityUserBuffer = computed((): number | null => {
+  const extra = props.account.extra as Record<string, unknown> | undefined
+  if (!extra) return null
+  const v = extra.affinity_user_buffer
   if (typeof v === 'number') return v
   return null
 })

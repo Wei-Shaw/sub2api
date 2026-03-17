@@ -17,7 +17,8 @@ import type {
   AdminDataPayload,
   AdminDataImportResult,
   CheckMixedChannelRequest,
-  CheckMixedChannelResponse
+  CheckMixedChannelResponse,
+  AffinityDetailsResponse
 } from '@/types'
 
 /**
@@ -630,6 +631,18 @@ export async function getAffinityClients(id: number): Promise<{ client_id: strin
   return data
 }
 
+/**
+ * Get affinity details for an account with user-level grouping
+ * @param id - Account ID
+ * @returns Affinity details with user groups
+ */
+export async function getAffinityDetails(id: number): Promise<AffinityDetailsResponse> {
+  const { data } = await apiClient.get<AffinityDetailsResponse>(
+    `/admin/accounts/${id}/affinity-details`
+  )
+  return data
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -667,7 +680,8 @@ export const accountsAPI = {
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
-  getAffinityClients
+  getAffinityClients,
+  getAffinityDetails
 }
 
 export default accountsAPI

@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -211,7 +210,7 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	}
 
 	// 亲和客户端数据（启用亲和的账号始终返回 count，即使为 0）
-	if account.IsClientAffinityEnabled() {
+	if account.IsAffinityEnabled() {
 		if h.gatewayCache != nil && len(account.GroupIDs) > 0 {
 			accountGroups := map[int64][]int64{account.ID: account.GroupIDs}
 			if clients, err := h.gatewayCache.GetAccountAffinityClientsBatch(ctx, accountGroups, service.ClientAffinityTTL); err == nil {
@@ -219,17 +218,22 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 					count := int64(len(cl))
 					item.AffinityClientCount = &count
 					item.AffinityClients = cl
+					userCount := countUniqueUsersFromAffinityMembers(cl)
+					item.AffinityUserCount = &userCount
 				} else {
 					zero := int64(0)
 					item.AffinityClientCount = &zero
+					item.AffinityUserCount = &zero
 				}
 			} else {
 				zero := int64(0)
 				item.AffinityClientCount = &zero
+				item.AffinityUserCount = &zero
 			}
 		} else {
 			zero := int64(0)
 			item.AffinityClientCount = &zero
+			item.AffinityUserCount = &zero
 		}
 	}
 
@@ -351,7 +355,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		accountGroups := make(map[int64][]int64)
 		for i := range accounts {
 			acc := &accounts[i]
-			if acc.IsClientAffinityEnabled() && len(acc.GroupIDs) > 0 {
+			if acc.IsAffinityEnabled() && len(acc.GroupIDs) > 0 {
 				accountGroups[acc.ID] = acc.GroupIDs
 			}
 		}
@@ -391,14 +395,18 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 
 		// 注入亲和客户端数据到 DTO（启用亲和的账号始终返回 count，即使为 0）
-		if acc.IsClientAffinityEnabled() {
+		if acc.IsAffinityEnabled() {
 			if clients, ok := affinityClients[acc.ID]; ok && len(clients) > 0 {
 				count := int64(len(clients))
 				item.AffinityClientCount = &count
 				item.AffinityClients = clients
+				// 从成员列表中解析唯一用户数
+				userCount := countUniqueUsersFromAffinityMembers(clients)
+				item.AffinityUserCount = &userCount
 			} else {
 				zero := int64(0)
 				item.AffinityClientCount = &zero
+				item.AffinityUserCount = &zero
 			}
 		}
 
@@ -622,15 +630,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
 
-	// 记录更新前的亲和状态，用于检测亲和关闭时清理 Redis 记录
-	oldAffinityEnabled := false
-	var oldGroupIDs []int64
-	if len(req.Extra) > 0 && h.gatewayCache != nil {
-		if oldAccount, err := h.adminService.GetAccount(c.Request.Context(), accountID); err == nil {
-			oldAffinityEnabled = oldAccount.IsClientAffinityEnabled()
-			oldGroupIDs = oldAccount.GroupIDs
-		}
-	}
+	oldStates := h.captureAffinityStates(c.Request.Context(), []int64{accountID})
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -668,14 +668,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		return
 	}
 
-	// 亲和关闭时清理 Redis 中的亲和记录
-	if oldAffinityEnabled && !account.IsClientAffinityEnabled() {
-		groupIDs := oldGroupIDs
-		if len(account.GroupIDs) > 0 {
-			groupIDs = mergeGroupIDs(oldGroupIDs, account.GroupIDs)
-		}
-		h.clearAccountAffinity(c.Request.Context(), accountID, groupIDs)
-	}
+	h.clearAffinityCacheForBulkIfDisabled(c.Request.Context(), []int64{accountID}, oldStates)
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
@@ -1393,6 +1386,8 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		return
 	}
 
+	oldStates := h.captureAffinityStates(c.Request.Context(), req.AccountIDs)
+
 	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
 		AccountIDs:            req.AccountIDs,
 		Name:                  req.Name,
@@ -1426,6 +1421,8 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+
+	h.clearAffinityCacheForBulkIfDisabled(c.Request.Context(), req.AccountIDs, oldStates)
 
 	response.Success(c, result)
 }
@@ -1637,56 +1634,6 @@ func (h *AccountHandler) ResetQuota(c *gin.Context) {
 	}
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
-}
-
-// GetAffinityClients returns the list of affinity clients for an account with last active timestamps.
-// GET /api/v1/admin/accounts/:id/affinity-clients
-func (h *AccountHandler) GetAffinityClients(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
-		return
-	}
-
-	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	if !account.IsClientAffinityEnabled() {
-		response.Success(c, []service.AffinityClient{})
-		return
-	}
-
-	if h.gatewayCache == nil || len(account.GroupIDs) == 0 {
-		response.Success(c, []service.AffinityClient{})
-		return
-	}
-
-	clients, err := h.gatewayCache.GetAccountAffinityClientsWithScores(
-		c.Request.Context(), accountID, account.GroupIDs, service.ClientAffinityTTL,
-	)
-	if err != nil {
-		response.Success(c, []service.AffinityClient{})
-		return
-	}
-
-	response.Success(c, clients)
-}
-
-// clearAccountAffinity 清除指定账号在所有分组的亲和记录。
-func (h *AccountHandler) clearAccountAffinity(ctx context.Context, accountID int64, groupIDs []int64) {
-	if h.gatewayCache == nil || len(groupIDs) == 0 {
-		return
-	}
-	if err := h.gatewayCache.ClearAccountAffinity(ctx, accountID, groupIDs); err != nil {
-		// 清理失败不影响主流程，记录日志即可
-		slog.Warn("clear account affinity failed",
-			"account_id", accountID,
-			"error", err,
-		)
-	}
 }
 
 // mergeGroupIDs 合并两个 groupID 切片并去重。
