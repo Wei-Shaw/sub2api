@@ -160,7 +160,7 @@ func (s *groupRepoStub) ExistsByName(ctx context.Context, name string) (bool, er
 	panic("unexpected ExistsByName call")
 REDACTED
 
-func (s *groupRepoStub) GetAccountCount(ctx context.Context, groupID int64) (int64, error) {
+func (s *groupRepoStub) GetAccountCount(ctx context.Context, groupID int64) (int64, int64, error) {
 	panic("unexpected GetAccountCount call")
 REDACTED
 

@@ -1561,6 +1561,7 @@ export default {
         priority: '优先级',
         apiKeys: 'API 密钥数',
         accounts: '账号数',
+        usage: '用量',
         status: '状态',
         actions: '操作',
         billingType: '计费类型',
@@ -1569,6 +1570,12 @@ export default {
         userNotes: '备注',
         userStatus: '状态'
       REDACTED,
+      usageToday: '今日',
+      usageTotal: '累计',
+      accountsAvailable: '可用:',
+      accountsRateLimited: '限流:',
+      accountsTotal: '总量:',
+      accountsUnit: '个账号',
       form: {
         name: '名称',
         description: '描述',

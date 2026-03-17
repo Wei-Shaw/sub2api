@@ -88,8 +88,9 @@ func (r *groupRepository) GetByID(ctx context.Context, id int64) (*service.Group
 	if err != nil {
 		return nil, err
 REDACTED
-	count, _ := r.GetAccountCount(ctx, out.ID)
-	out.AccountCount = count
+	total, active, _ := r.GetAccountCount(ctx, out.ID)
+	out.AccountCount = total
+	out.ActiveAccountCount = active
 	return out, nil
 REDACTED
 
@@ -256,7 +257,10 @@ REDACTED
 	counts, err := r.loadAccountCounts(ctx, groupIDs)
 	if err == nil {
 		for i := range outGroups {
-			outGroups[i].AccountCount = counts[outGroups[i].ID]
+			c := counts[outGroups[i].ID]
+			outGroups[i].AccountCount = c.Total
+			outGroups[i].ActiveAccountCount = c.Active
+			outGroups[i].RateLimitedAccountCount = c.RateLimited
 	REDACTED
 REDACTED
 
@@ -283,7 +287,10 @@ REDACTED
 	counts, err := r.loadAccountCounts(ctx, groupIDs)
 	if err == nil {
 		for i := range outGroups {
-			outGroups[i].AccountCount = counts[outGroups[i].ID]
+			c := counts[outGroups[i].ID]
+			outGroups[i].AccountCount = c.Total
+			outGroups[i].ActiveAccountCount = c.Active
+			outGroups[i].RateLimitedAccountCount = c.RateLimited
 	REDACTED
 REDACTED
 
@@ -310,7 +317,10 @@ REDACTED
 	counts, err := r.loadAccountCounts(ctx, groupIDs)
 	if err == nil {
 		for i := range outGroups {
-			outGroups[i].AccountCount = counts[outGroups[i].ID]
+			c := counts[outGroups[i].ID]
+			outGroups[i].AccountCount = c.Total
+			outGroups[i].ActiveAccountCount = c.Active
+			outGroups[i].RateLimitedAccountCount = c.RateLimited
 	REDACTED
 REDACTED
 
@@ -369,12 +379,20 @@ REDACTED
 	return result, nil
 REDACTED
 
-func (r *groupRepository) GetAccountCount(ctx context.Context, groupID int64) (int64, error) {
-	var count int64
-	if err := scanSingleRow(ctx, r.sql, "SELECT COUNT(*) FROM account_groups WHERE group_id = $1", []any{groupIDREDACTED, &count); err != nil {
-		return 0, err
-REDACTED
-	return count, nil
+func (r *groupRepository) GetAccountCount(ctx context.Context, groupID int64) (total int64, active int64, err error) {
+	var rateLimited int64
+	err = scanSingleRow(ctx, r.sql,
+		`SELECT COUNT(*),
+			COUNT(*) FILTER (WHERE a.status = 'active' AND a.schedulable = true),
+			COUNT(*) FILTER (WHERE a.status = 'active' AND (
+				a.rate_limit_reset_at > NOW() OR
+				a.overload_until > NOW() OR
+				a.temp_unschedulable_until > NOW()
+			))
+		FROM account_groups ag JOIN accounts a ON a.id = ag.account_id
+		WHERE ag.group_id = $1`,
+		[]any{groupIDREDACTED, &total, &active, &rateLimited)
+	return
 REDACTED
 
 func (r *groupRepository) DeleteAccountGroupsByGroupID(ctx context.Context, groupID int64) (int64, error) {
@@ -500,15 +518,32 @@ REDACTED
 	return affectedUserIDs, nil
 REDACTED
 
-func (r *groupRepository) loadAccountCounts(ctx context.Context, groupIDs []int64) (counts map[int64]int64, err error) {
-	counts = make(map[int64]int64, len(groupIDs))
+type groupAccountCounts struct {
+	Total       int64
+	Active      int64
+	RateLimited int64
+REDACTED
+
+func (r *groupRepository) loadAccountCounts(ctx context.Context, groupIDs []int64) (counts map[int64]groupAccountCounts, err error) {
+	counts = make(map[int64]groupAccountCounts, len(groupIDs))
 	if len(groupIDs) == 0 {
 		return counts, nil
 REDACTED
 
 	rows, err := r.sql.QueryContext(
 		ctx,
-		"SELECT group_id, COUNT(*) FROM account_groups WHERE group_id = ANY($1) GROUP BY group_id",
+		`SELECT ag.group_id,
+			COUNT(*) AS total,
+			COUNT(*) FILTER (WHERE a.status = 'active' AND a.schedulable = true) AS active,
+			COUNT(*) FILTER (WHERE a.status = 'active' AND (
+				a.rate_limit_reset_at > NOW() OR
+				a.overload_until > NOW() OR
+				a.temp_unschedulable_until > NOW()
+			)) AS rate_limited
+		FROM account_groups ag
+		JOIN accounts a ON a.id = ag.account_id
+		WHERE ag.group_id = ANY($1)
+		GROUP BY ag.group_id`,
 		pq.Array(groupIDs),
 	)
 	if err != nil {
@@ -523,11 +558,11 @@ REDACTED()
 
 	for rows.Next() {
 		var groupID int64
-		var count int64
-		if err = rows.Scan(&groupID, &count); err != nil {
+		var c groupAccountCounts
+		if err = rows.Scan(&groupID, &c.Total, &c.Active, &c.RateLimited); err != nil {
 			return nil, err
 	REDACTED
-		counts[groupID] = count
+		counts[groupID] = c
 REDACTED
 	if err = rows.Err(); err != nil {
 		return nil, err

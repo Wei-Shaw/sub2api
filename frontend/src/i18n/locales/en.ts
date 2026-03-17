@@ -1505,6 +1505,7 @@ export default {
         rateMultiplier: 'Rate Multiplier',
         type: 'Type',
         accounts: 'Accounts',
+        usage: 'Usage',
         status: 'Status',
         actions: 'Actions',
         billingType: 'Billing Type',
@@ -1513,6 +1514,12 @@ export default {
         userNotes: 'Notes',
         userStatus: 'Status'
       REDACTED,
+      usageToday: 'Today',
+      usageTotal: 'Total',
+      accountsAvailable: 'Avail:',
+      accountsRateLimited: 'Limited:',
+      accountsTotal: 'Total:',
+      accountsUnit: '',
       rateAndAccounts: '{rateREDACTEDx rate · {countREDACTED accounts',
       accountsCount: '{countREDACTED accounts',
       form: {

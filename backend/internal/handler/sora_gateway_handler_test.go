@@ -273,8 +273,8 @@ REDACTED
 func (r *stubGroupRepo) ExistsByName(ctx context.Context, name string) (bool, error) {
 	return false, nil
 REDACTED
-func (r *stubGroupRepo) GetAccountCount(ctx context.Context, groupID int64) (int64, error) {
-	return 0, nil
+func (r *stubGroupRepo) GetAccountCount(ctx context.Context, groupID int64) (int64, int64, error) {
+	return 0, 0, nil
 REDACTED
 func (r *stubGroupRepo) DeleteAccountGroupsByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	return 0, nil
