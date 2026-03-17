@@ -19,6 +19,8 @@ type sessionWindowMockRepo struct {
 	clearRateLimitIDs  []int64
 REDACTED
 
+var _ AccountRepository = (*sessionWindowMockRepo)(nil)
+
 type swCall struct {
 	ID     int64
 	Start  *time.Time
@@ -160,7 +162,7 @@ REDACTED
 func TestUpdateSessionWindow_UsesResetHeader(t *testing.T) {
 	// The reset header provides the real window end as a Unix timestamp.
 	// UpdateSessionWindow should use it instead of the hour-truncated prediction.
-	resetUnix := int64(1771020000) // 2026-02-14T10:00:00Z
+	resetUnix := time.Now().Add(3 * time.Hour).Unix()
 	wantEnd := time.Unix(resetUnix, 0)
 	wantStart := wantEnd.Add(-5 * time.Hour)
 
@@ -203,6 +205,11 @@ func TestUpdateSessionWindow_FallbackPredictionWhenNoResetHeader(t *testing.T) {
 	headers.Set("anthropic-ratelimit-unified-5h-status", "allowed_warning")
 	// No anthropic-ratelimit-unified-5h-reset header
 
+	// Capture now before the call to avoid hour-boundary races
+	now := time.Now()
+	expectedStart := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
+	expectedEnd := expectedStart.Add(5 * time.Hour)
+
 	svc.UpdateSessionWindow(context.Background(), account, headers)
 
 	if len(repo.sessionWindowCalls) != 1 {
@@ -214,9 +221,6 @@ REDACTED
 		t.Fatal("expected window end to be set (fallback prediction)")
 REDACTED
 	// Fallback: start = current hour truncated, end = start + 5h
-	now := time.Now()
-	expectedStart := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
-	expectedEnd := expectedStart.Add(5 * time.Hour)
 
 	if !call.End.Equal(expectedEnd) {
 		t.Errorf("expected fallback end %v, got %v", expectedEnd, *call.End)
@@ -229,7 +233,7 @@ REDACTED
 func TestUpdateSessionWindow_CorrectsStalePrediction(t *testing.T) {
 	// When the stored SessionWindowEnd is wrong (from a previous prediction),
 	// and the reset header provides the real time, it should update the window.
-	staleEnd := time.Now().Add(2 * time.Hour) // existing prediction: 2h from now
+	staleEnd := time.Now().Add(2 * time.Hour)             // existing prediction: 2h from now
 	realResetUnix := time.Now().Add(4 * time.Hour).Unix() // real reset: 4h from now
 	wantEnd := time.Unix(realResetUnix, 0)
 
@@ -291,7 +295,7 @@ REDACTED
 
 func TestUpdateSessionWindow_ClearsUtilizationOnWindowReset(t *testing.T) {
 	// When needInitWindow=true and window is set, utilization should be cleared.
-	resetUnix := int64(1771020000)
+	resetUnix := time.Now().Add(3 * time.Hour).Unix()
 
 	repo := &sessionWindowMockRepo{REDACTED
 	svc := newRateLimitServiceForTest(repo)

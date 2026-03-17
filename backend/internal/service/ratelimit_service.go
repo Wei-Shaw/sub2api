@@ -1054,14 +1054,26 @@ REDACTED
 	// 优先使用响应头中的真实重置时间（比预测更准确）
 	if resetStr := headers.Get("anthropic-ratelimit-unified-5h-reset"); resetStr != "" {
 		if ts, err := strconv.ParseInt(resetStr, 10, 64); err == nil {
+			// 检测可能的毫秒时间戳（秒级约为 1e9，毫秒约为 1e12）
+			if ts > 1e11 {
+				slog.Warn("account_session_window_header_millis_detected", "account_id", account.ID, "raw_reset", resetStr)
+				ts = ts / 1000
+		REDACTED
 			end := time.Unix(ts, 0)
-			// 窗口需要初始化，或者真实重置时间与已存储的不同，则更新
-			if needInitWindow || account.SessionWindowEnd == nil || !end.Equal(*account.SessionWindowEnd) {
+			// 校验时间戳是否在合理范围内（不早于 5h 前，不晚于 7 天后）
+			minAllowed := time.Now().Add(-5 * time.Hour)
+			maxAllowed := time.Now().Add(7 * 24 * time.Hour)
+			if end.Before(minAllowed) || end.After(maxAllowed) {
+				slog.Warn("account_session_window_header_out_of_range", "account_id", account.ID, "raw_reset", resetStr, "parsed_end", end)
+		REDACTED else if needInitWindow || account.SessionWindowEnd == nil || !end.Equal(*account.SessionWindowEnd) {
+				// 窗口需要初始化，或者真实重置时间与已存储的不同，则更新
 				start := end.Add(-5 * time.Hour)
 				windowStart = &start
 				windowEnd = &end
 				slog.Info("account_session_window_from_header", "account_id", account.ID, "window_start", start, "window_end", end, "status", status)
 		REDACTED
+	REDACTED else {
+			slog.Warn("account_session_window_header_parse_failed", "account_id", account.ID, "raw_reset", resetStr, "error", err)
 	REDACTED
 REDACTED
 
