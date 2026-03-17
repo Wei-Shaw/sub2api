@@ -247,6 +247,12 @@ REDACTED
 		return
 REDACTED
 
+	req.Admin.Email = strings.TrimSpace(req.Admin.Email)
+	req.Database.Host = strings.TrimSpace(req.Database.Host)
+	req.Database.User = strings.TrimSpace(req.Database.User)
+	req.Database.DBName = strings.TrimSpace(req.Database.DBName)
+	req.Redis.Host = strings.TrimSpace(req.Redis.Host)
+
 	// ========== COMPREHENSIVE INPUT VALIDATION ==========
 	// Database validation
 	if !validateHostname(req.Database.Host) {
@@ -318,13 +324,6 @@ REDACTED
 		response.Error(c, http.StatusBadRequest, "Invalid server mode (must be 'release' or 'debug')")
 		return
 REDACTED
-
-	// Trim whitespace from string inputs
-	req.Admin.Email = strings.TrimSpace(req.Admin.Email)
-	req.Database.Host = strings.TrimSpace(req.Database.Host)
-	req.Database.User = strings.TrimSpace(req.Database.User)
-	req.Database.DBName = strings.TrimSpace(req.Database.DBName)
-	req.Redis.Host = strings.TrimSpace(req.Redis.Host)
 
 	cfg := &SetupConfig{
 		Database: req.Database,
