@@ -81,6 +81,7 @@ export interface ModelStatsParams {
   user_id?: number
   api_key_id?: number
   model?: string
+  model_source?: 'requested' | 'upstream' | 'mapping'
   account_id?: number
   group_id?: number
   request_type?: UsageRequestType
@@ -162,6 +163,7 @@ export interface UserBreakdownParams {
   end_date?: string
   group_id?: number
   model?: string
+  model_source?: 'requested' | 'upstream' | 'mapping'
   endpoint?: string
   endpoint_type?: 'inbound' | 'upstream' | 'path'
   limit?: number
