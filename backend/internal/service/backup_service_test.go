@@ -134,6 +134,30 @@ REDACTED
 	return nil
 REDACTED
 
+// blockingDumper 可控延迟的 dumper，用于测试异步行为
+type blockingDumper struct {
+	blockCh chan struct{REDACTED
+	data    []byte
+	restErr error
+REDACTED
+
+func (d *blockingDumper) Dump(ctx context.Context) (io.ReadCloser, error) {
+	select {
+	case <-d.blockCh:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+REDACTED
+	return io.NopCloser(bytes.NewReader(d.data)), nil
+REDACTED
+
+func (d *blockingDumper) Restore(_ context.Context, data io.Reader) error {
+	if d.restErr != nil {
+		return d.restErr
+REDACTED
+	_, _ = io.ReadAll(data)
+	return nil
+REDACTED
+
 type mockObjectStore struct {
 	objects map[string][]byte
 	mu      sync.Mutex
@@ -179,7 +203,7 @@ func (m *mockObjectStore) HeadBucket(_ context.Context) error {
 	return nil
 REDACTED
 
-func newTestBackupService(repo *mockSettingRepo, dumper *mockDumper, store *mockObjectStore) *BackupService {
+func newTestBackupService(repo *mockSettingRepo, dumper DBDumper, store *mockObjectStore) *BackupService {
 	cfg := &config.Config{
 		Database: config.DatabaseConfig{
 			Host:   "localhost",
@@ -361,9 +385,9 @@ func TestBackupService_CreateBackup_ConcurrentBlocked(t *testing.T) {
 	svc := newTestBackupService(repo, dumper, store)
 
 	// 手动设置 backingUp 标志
-	svc.mu.Lock()
+	svc.opMu.Lock()
 	svc.backingUp = true
-	svc.mu.Unlock()
+	svc.opMu.Unlock()
 
 	_, err := svc.CreateBackup(context.Background(), "manual", 14)
 	require.ErrorIs(t, err, ErrBackupInProgress)
@@ -525,4 +549,155 @@ func TestBackupService_LoadS3Config_Corrupted(t *testing.T) {
 	cfg, err := svc.loadS3Config(context.Background())
 REDACTED
 	require.Nil(t, cfg)
+REDACTED
+
+// ─── Async Backup Tests ───
+
+func TestStartBackup_ReturnsImmediately(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	dumper := &blockingDumper{blockCh: make(chan struct{REDACTED), data: []byte("data")REDACTED
+	store := newMockObjectStore()
+	svc := newTestBackupService(repo, dumper, store)
+
+	record, err := svc.StartBackup(context.Background(), "manual", 14)
+REDACTED
+	require.Equal(t, "running", record.Status)
+	require.NotEmpty(t, record.ID)
+
+	// 释放 dumper 让后台完成
+	close(dumper.blockCh)
+	svc.wg.Wait()
+
+	// 验证最终状态
+	final, err := svc.GetBackupRecord(context.Background(), record.ID)
+REDACTED
+	require.Equal(t, "completed", final.Status)
+	require.Greater(t, final.SizeBytes, int64(0))
+REDACTED
+
+func TestStartBackup_ConcurrentBlocked(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	dumper := &blockingDumper{blockCh: make(chan struct{REDACTED), data: []byte("data")REDACTED
+	store := newMockObjectStore()
+	svc := newTestBackupService(repo, dumper, store)
+
+	// 第一次启动
+	_, err := svc.StartBackup(context.Background(), "manual", 14)
+REDACTED
+
+	// 第二次应被阻塞
+	_, err = svc.StartBackup(context.Background(), "manual", 14)
+	require.ErrorIs(t, err, ErrBackupInProgress)
+
+	close(dumper.blockCh)
+	svc.wg.Wait()
+REDACTED
+
+func TestStartBackup_ShuttingDown(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+	svc := newTestBackupService(repo, &mockDumper{dumpData: []byte("data")REDACTED, newMockObjectStore())
+
+	svc.shuttingDown.Store(true)
+
+	_, err := svc.StartBackup(context.Background(), "manual", 14)
+REDACTED
+	require.Contains(t, err.Error(), "shutting down")
+REDACTED
+
+func TestRecoverStaleRecords(t *testing.T) {
+	repo := newMockSettingRepo()
+	svc := newTestBackupService(repo, &mockDumper{REDACTED, newMockObjectStore())
+
+	// 模拟一条孤立的 running 记录
+	_ = svc.saveRecord(context.Background(), &BackupRecord{
+		ID:        "stale-1",
+		Status:    "running",
+		StartedAt: time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
+REDACTED)
+	// 模拟一条孤立的恢复中记录
+	_ = svc.saveRecord(context.Background(), &BackupRecord{
+		ID:            "stale-2",
+		Status:        "completed",
+		RestoreStatus: "running",
+		StartedAt:     time.Now().Add(-1 * time.Hour).Format(time.RFC3339),
+REDACTED)
+
+	svc.recoverStaleRecords()
+
+	r1, _ := svc.GetBackupRecord(context.Background(), "stale-1")
+	require.Equal(t, "failed", r1.Status)
+	require.Contains(t, r1.ErrorMsg, "server restart")
+
+	r2, _ := svc.GetBackupRecord(context.Background(), "stale-2")
+	require.Equal(t, "failed", r2.RestoreStatus)
+	require.Contains(t, r2.RestoreError, "server restart")
+REDACTED
+
+func TestGracefulShutdown(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	dumper := &blockingDumper{blockCh: make(chan struct{REDACTED), data: []byte("data")REDACTED
+	store := newMockObjectStore()
+	svc := newTestBackupService(repo, dumper, store)
+
+	_, err := svc.StartBackup(context.Background(), "manual", 14)
+REDACTED
+
+	// Stop 应该等待备份完成
+	done := make(chan struct{REDACTED)
+	go func() {
+		svc.Stop()
+		close(done)
+REDACTED()
+
+	// 短暂等待确认 Stop 还在等待
+	select {
+	case <-done:
+		t.Fatal("Stop returned before backup finished")
+	case <-time.After(100 * time.Millisecond):
+		// 预期：Stop 还在等待
+REDACTED
+
+	// 释放备份
+	close(dumper.blockCh)
+
+	// 现在 Stop 应该完成
+	select {
+	case <-done:
+		// 预期
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop did not return after backup finished")
+REDACTED
+REDACTED
+
+func TestStartRestore_Async(t *testing.T) {
+	repo := newMockSettingRepo()
+	seedS3Config(t, repo)
+
+	dumpContent := "-- PostgreSQL dump\nCREATE TABLE test (id int);\n"
+	dumper := &mockDumper{dumpData: []byte(dumpContent)REDACTED
+	store := newMockObjectStore()
+	svc := newTestBackupService(repo, dumper, store)
+
+	// 先创建一个备份（同步方式）
+	record, err := svc.CreateBackup(context.Background(), "manual", 14)
+REDACTED
+
+	// 异步恢复
+	restored, err := svc.StartRestore(context.Background(), record.ID)
+REDACTED
+	require.Equal(t, "running", restored.RestoreStatus)
+
+	svc.wg.Wait()
+
+	// 验证最终状态
+	final, err := svc.GetBackupRecord(context.Background(), record.ID)
+REDACTED
+	require.Equal(t, "completed", final.RestoreStatus)
 REDACTED

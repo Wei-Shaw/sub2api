@@ -29,6 +29,10 @@ export interface BackupRecord {
   started_at: string
   finished_at?: string
   expires_at?: string
+  progress?: string
+  restore_status?: string
+  restore_error?: string
+  restored_at?: string
 REDACTED
 
 export interface CreateBackupRequest {
@@ -69,7 +73,7 @@ REDACTED
 
 // Backup operations
 export async function createBackup(req?: CreateBackupRequest): Promise<BackupRecord> {
-  const { data REDACTED = await apiClient.post<BackupRecord>('/admin/backups', req || {REDACTED, { timeout: 600000 REDACTED)
+  const { data REDACTED = await apiClient.post<BackupRecord>('/admin/backups', req || {REDACTED)
   return data
 REDACTED
 
@@ -93,8 +97,9 @@ export async function getDownloadURL(id: string): Promise<{ url: string REDACTED
 REDACTED
 
 // Restore
-export async function restoreBackup(id: string, password: string): Promise<void> {
-  await apiClient.post(`/admin/backups/${idREDACTED/restore`, { password REDACTED, { timeout: 600000 REDACTED)
+export async function restoreBackup(id: string, password: string): Promise<BackupRecord> {
+  const { data REDACTED = await apiClient.post<BackupRecord>(`/admin/backups/${idREDACTED/restore`, { password REDACTED)
+  return data
 REDACTED
 
 export const backupAPI = {

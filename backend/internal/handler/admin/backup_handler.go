@@ -98,12 +98,12 @@ func (h *BackupHandler) CreateBackup(c *gin.Context) {
 		expireDays = *req.ExpireDays
 REDACTED
 
-	record, err := h.backupService.CreateBackup(c.Request.Context(), "manual", expireDays)
+	record, err := h.backupService.StartBackup(c.Request.Context(), "manual", expireDays)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	response.Success(c, record)
+	response.Accepted(c, record)
 REDACTED
 
 func (h *BackupHandler) ListBackups(c *gin.Context) {
@@ -196,9 +196,10 @@ REDACTED
 		return
 REDACTED
 
-	if err := h.backupService.RestoreBackup(c.Request.Context(), backupID); err != nil {
+	record, err := h.backupService.StartRestore(c.Request.Context(), backupID)
+	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	response.Success(c, gin.H{"restored": trueREDACTED)
+	response.Accepted(c, record)
 REDACTED

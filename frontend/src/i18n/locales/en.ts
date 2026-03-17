@@ -1025,7 +1025,12 @@ export default {
         createBackup: 'Create Backup',
         backing: 'Backing up...',
         backupCreated: 'Backup created successfully',
-        expireDays: 'Expire Days'
+        expireDays: 'Expire Days',
+        alreadyInProgress: 'A backup is already in progress',
+        backupRunning: 'Backup in progress...',
+        backupFailed: 'Backup failed',
+        restoreRunning: 'Restore in progress...',
+        restoreFailed: 'Restore failed',
       REDACTED,
       columns: {
         status: 'Status',
@@ -1041,6 +1046,11 @@ export default {
         running: 'Running',
         completed: 'Completed',
         failed: 'Failed'
+      REDACTED,
+      progress: {
+        pending: 'Preparing',
+        dumping: 'Dumping database',
+        uploading: 'Uploading',
       REDACTED,
       trigger: {
         manual: 'Manual',
