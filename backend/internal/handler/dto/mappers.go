@@ -135,16 +135,16 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		return nil
 REDACTED
 	out := &AdminGroup{
-		Group:                groupFromServiceBase(g),
-		ModelRouting:         g.ModelRouting,
-		ModelRoutingEnabled:  g.ModelRoutingEnabled,
-		MCPXMLInject:         g.MCPXMLInject,
-		DefaultMappedModel:   g.DefaultMappedModel,
-		SupportedModelScopes: g.SupportedModelScopes,
+		Group:                   groupFromServiceBase(g),
+		ModelRouting:            g.ModelRouting,
+		ModelRoutingEnabled:     g.ModelRoutingEnabled,
+		MCPXMLInject:            g.MCPXMLInject,
+		DefaultMappedModel:      g.DefaultMappedModel,
+		SupportedModelScopes:    g.SupportedModelScopes,
 		AccountCount:            g.AccountCount,
 		ActiveAccountCount:      g.ActiveAccountCount,
 		RateLimitedAccountCount: g.RateLimitedAccountCount,
-		SortOrder:            g.SortOrder,
+		SortOrder:               g.SortOrder,
 REDACTED
 	if len(g.AccountGroups) > 0 {
 		out.AccountGroups = make([]AccountGroup, 0, len(g.AccountGroups))

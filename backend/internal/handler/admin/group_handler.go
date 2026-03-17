@@ -17,8 +17,9 @@ import (
 
 // GroupHandler handles admin group management
 type GroupHandler struct {
-	adminService     service.AdminService
-	dashboardService *service.DashboardService
+	adminService         service.AdminService
+	dashboardService     *service.DashboardService
+	groupCapacityService *service.GroupCapacityService
 REDACTED
 
 type optionalLimitField struct {
@@ -71,10 +72,11 @@ REDACTED
 REDACTED
 
 // NewGroupHandler creates a new admin group handler
-func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService) *GroupHandler {
+func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService) *GroupHandler {
 	return &GroupHandler{
-		adminService:     adminService,
-		dashboardService: dashboardService,
+		adminService:         adminService,
+		dashboardService:     dashboardService,
+		groupCapacityService: groupCapacityService,
 REDACTED
 REDACTED
 
@@ -379,6 +381,17 @@ func (h *GroupHandler) GetUsageSummary(c *gin.Context) {
 		return
 REDACTED
 
+	response.Success(c, results)
+REDACTED
+
+// GetCapacitySummary returns aggregated capacity (concurrency/sessions/RPM) for all active groups.
+// GET /api/v1/admin/groups/capacity-summary
+func (h *GroupHandler) GetCapacitySummary(c *gin.Context) {
+	results, err := h.groupCapacityService.GetAllGroupCapacity(c.Request.Context())
+	if err != nil {
+		response.Error(c, 500, "Failed to get group capacity summary")
+		return
+REDACTED
 	response.Success(c, results)
 REDACTED
 

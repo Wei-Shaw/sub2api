@@ -3000,7 +3000,6 @@ REDACTED
 	return results, nil
 REDACTED
 
-<<<<<<< HEAD
 // GetUserBreakdownStats returns per-user usage breakdown within a specific dimension.
 func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension, limit int) (results []usagestats.UserBreakdownItem, err error) {
 	query := `
@@ -3088,13 +3087,11 @@ func (r *usageLogRepository) GetAllGroupUsageSummary(ctx context.Context, todayS
 	if err != nil {
 		return nil, err
 REDACTED
-	defer rows.Close()
-
+	defer func() { _ = rows.Close() REDACTED()
 	var results []usagestats.GroupUsageSummary
 	for rows.Next() {
 		var row usagestats.GroupUsageSummary
 		if err := rows.Scan(&row.GroupID, &row.TotalCost, &row.TodayCost); err != nil {
->>>>>>> c8c1b4d4 (feat(admin): 分组管理列表新增用量列与账号数分类)
 			return nil, err
 	REDACTED
 		results = append(results, row)

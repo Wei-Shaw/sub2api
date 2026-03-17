@@ -1505,6 +1505,7 @@ export default {
         rateMultiplier: 'Rate Multiplier',
         type: 'Type',
         accounts: 'Accounts',
+        capacity: 'Capacity',
         usage: 'Usage',
         status: 'Status',
         actions: 'Actions',
