@@ -920,6 +920,7 @@ export default {
     lastWeek: 'Last Week',
     thisMonth: 'This Month',
     lastMonth: 'Last Month',
+    last24Hours: 'Last 24 Hours',
     last7Days: 'Last 7 Days',
     last14Days: 'Last 14 Days',
     last30Days: 'Last 30 Days',
