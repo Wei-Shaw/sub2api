@@ -73,7 +73,7 @@
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
-    <!-- OpenAI OAuth accounts: prefer fresh usage query for active rate-limited rows -->
+    <!-- OpenAI OAuth accounts: single source from /usage API -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
@@ -90,37 +90,6 @@
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
           :window-stats="usageInfo.seven_day.window_stats"
-          color="emerald"
-        />
-      </div>
-      <div v-else-if="isActiveOpenAIRateLimited && loading" class="space-y-1.5">
-        <div class="flex items-center gap-1">
-          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
-          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-        </div>
-        <div class="flex items-center gap-1">
-          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
-          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-        </div>
-      </div>
-      <div v-else-if="hasCodexUsage" class="space-y-1">
-        <!-- 5h Window -->
-        <UsageProgressBar
-          v-if="codex5hUsedPercent !== null"
-          label="5h"
-          :utilization="codex5hUsedPercent"
-          :resets-at="codex5hResetAt"
-          color="indigo"
-        />
-
-        <!-- 7d Window -->
-        <UsageProgressBar
-          v-if="codex7dUsedPercent !== null"
-          label="7d"
-          :utilization="codex7dUsedPercent"
-          :resets-at="codex7dResetAt"
           color="emerald"
         />
       </div>
@@ -441,7 +410,6 @@ import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats REDACTED from '@/types'
 import { buildOpenAIUsageRefreshKey REDACTED from '@/utils/accountUsageRefresh'
-import { resolveCodexUsageWindow REDACTED from '@/utils/codexUsage'
 import { formatCompactNumber REDACTED from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
@@ -500,24 +468,9 @@ const geminiUsageAvailable = computed(() => {
   )
 REDACTED)
 
-const codex5hWindow = computed(() => resolveCodexUsageWindow(props.account.extra, '5h'))
-const codex7dWindow = computed(() => resolveCodexUsageWindow(props.account.extra, '7d'))
-
-// OpenAI Codex usage computed properties
-const hasCodexUsage = computed(() => {
-  return codex5hWindow.value.usedPercent !== null || codex7dWindow.value.usedPercent !== null
-REDACTED)
-
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
   return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
-REDACTED)
-
-const isActiveOpenAIRateLimited = computed(() => {
-  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
-  if (!props.account.rate_limit_reset_at) return false
-  const resetAt = Date.parse(props.account.rate_limit_reset_at)
-  return !Number.isNaN(resetAt) && resetAt > Date.now()
 REDACTED)
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
@@ -525,11 +478,6 @@ const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.ac
 const shouldAutoLoadUsageOnMount = computed(() => {
   return shouldFetchUsage.value
 REDACTED)
-
-const codex5hUsedPercent = computed(() => codex5hWindow.value.usedPercent)
-const codex5hResetAt = computed(() => codex5hWindow.value.resetAt)
-const codex7dUsedPercent = computed(() => codex7dWindow.value.usedPercent)
-const codex7dResetAt = computed(() => codex7dWindow.value.resetAt)
 
 // Antigravity quota types (用于 API 返回的数据)
 interface AntigravityUsageResult {
