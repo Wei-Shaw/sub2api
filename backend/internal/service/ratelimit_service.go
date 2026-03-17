@@ -1051,16 +1051,44 @@ REDACTED
 	var windowStart, windowEnd *time.Time
 	needInitWindow := account.SessionWindowEnd == nil || time.Now().After(*account.SessionWindowEnd)
 
-	if needInitWindow && (status == "allowed" || status == "allowed_warning") {
-		// 预测时间窗口：从当前时间的整点开始，+5小时为结束
-		// 例如：现在是 14:30，窗口为 14:00 ~ 19:00
+	// 优先使用响应头中的真实重置时间（比预测更准确）
+	if resetStr := headers.Get("anthropic-ratelimit-unified-5h-reset"); resetStr != "" {
+		if ts, err := strconv.ParseInt(resetStr, 10, 64); err == nil {
+			// 检测可能的毫秒时间戳（秒级约为 1e9，毫秒约为 1e12）
+			if ts > 1e11 {
+				slog.Warn("account_session_window_header_millis_detected", "account_id", account.ID, "raw_reset", resetStr)
+				ts = ts / 1000
+		REDACTED
+			end := time.Unix(ts, 0)
+			// 校验时间戳是否在合理范围内（不早于 5h 前，不晚于 7 天后）
+			minAllowed := time.Now().Add(-5 * time.Hour)
+			maxAllowed := time.Now().Add(7 * 24 * time.Hour)
+			if end.Before(minAllowed) || end.After(maxAllowed) {
+				slog.Warn("account_session_window_header_out_of_range", "account_id", account.ID, "raw_reset", resetStr, "parsed_end", end)
+		REDACTED else if needInitWindow || account.SessionWindowEnd == nil || !end.Equal(*account.SessionWindowEnd) {
+				// 窗口需要初始化，或者真实重置时间与已存储的不同，则更新
+				start := end.Add(-5 * time.Hour)
+				windowStart = &start
+				windowEnd = &end
+				slog.Info("account_session_window_from_header", "account_id", account.ID, "window_start", start, "window_end", end, "status", status)
+		REDACTED
+	REDACTED else {
+			slog.Warn("account_session_window_header_parse_failed", "account_id", account.ID, "raw_reset", resetStr, "error", err)
+	REDACTED
+REDACTED
+
+	// 回退：如果没有真实重置时间且需要初始化窗口，使用预测
+	if windowEnd == nil && needInitWindow && (status == "allowed" || status == "allowed_warning") {
 		now := time.Now()
 		start := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, now.Location())
 		end := start.Add(5 * time.Hour)
 		windowStart = &start
 		windowEnd = &end
 		slog.Info("account_session_window_initialized", "account_id", account.ID, "window_start", start, "window_end", end, "status", status)
-		// 窗口重置时清除旧的 utilization，避免残留上个窗口的数据
+REDACTED
+
+	// 窗口重置时清除旧的 utilization，避免残留上个窗口的数据
+	if windowEnd != nil && needInitWindow {
 		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 			"session_window_utilization": nil,
 	REDACTED)
