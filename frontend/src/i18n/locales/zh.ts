@@ -1838,7 +1838,37 @@ export default {
       pleaseSelectUser: '请选择用户',
       pleaseSelectGroup: '请选择分组',
       validityDaysRequired: '请输入有效的天数（至少1天）',
-      revokeConfirm: "确定要撤销 '{userREDACTED' 的订阅吗？此操作无法撤销。"
+      revokeConfirm: "确定要撤销 '{userREDACTED' 的订阅吗？此操作无法撤销。",
+      guide: {
+        title: '订阅管理教程',
+        subtitle: '订阅模式允许你按时间周期为用户分配使用额度，支持日/周/月配额限制。按照以下步骤即可完成配置。',
+        showGuide: '使用指南',
+        step1: {
+          title: '创建订阅分组',
+          line1: '前往「分组管理」页面，点击「创建分组」',
+          line2: '将计费类型设为「订阅」，配置日/周/月额度限制',
+          line3: '保存分组，确保状态为「正常」',
+          link: '前往分组管理'
+        REDACTED,
+        step2: {
+          title: '分配订阅给用户',
+          line1: '点击本页右上角「分配订阅」按钮',
+          line2: '在弹窗中搜索用户邮箱并选择目标用户',
+          line3: '选择订阅分组、设置有效期天数，点击「分配」'
+        REDACTED,
+        step3: {
+          title: '管理已有订阅'
+        REDACTED,
+        actions: {
+          adjust: '调整',
+          adjustDesc: '延长或缩短订阅有效期',
+          resetQuota: '重置配额',
+          resetQuotaDesc: '将日/周/月用量归零，重新开始计算',
+          revoke: '撤销',
+          revokeDesc: '立即终止该用户的订阅，不可恢复'
+        REDACTED,
+        tip: '提示：订阅分组下拉列表中只会显示计费类型为「订阅」且状态为「正常」的分组。如果没有可选项，请先到分组管理中创建。'
+      REDACTED
     REDACTED,
 
     // Accounts Management
