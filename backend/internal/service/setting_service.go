@@ -1172,6 +1172,57 @@ REDACTED
 	return effective, nil
 REDACTED
 
+// GetOverloadCooldownSettings 获取529过载冷却配置
+func (s *SettingService) GetOverloadCooldownSettings(ctx context.Context) (*OverloadCooldownSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyOverloadCooldownSettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultOverloadCooldownSettings(), nil
+	REDACTED
+		return nil, fmt.Errorf("get overload cooldown settings: %w", err)
+REDACTED
+	if value == "" {
+		return DefaultOverloadCooldownSettings(), nil
+REDACTED
+
+	var settings OverloadCooldownSettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return DefaultOverloadCooldownSettings(), nil
+REDACTED
+
+	// 修正配置值范围
+	if settings.CooldownMinutes < 1 {
+		settings.CooldownMinutes = 1
+REDACTED
+	if settings.CooldownMinutes > 120 {
+		settings.CooldownMinutes = 120
+REDACTED
+
+	return &settings, nil
+REDACTED
+
+// SetOverloadCooldownSettings 设置529过载冷却配置
+func (s *SettingService) SetOverloadCooldownSettings(ctx context.Context, settings *OverloadCooldownSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+REDACTED
+
+	// 禁用时修正为合法值即可，不拒绝请求
+	if settings.CooldownMinutes < 1 || settings.CooldownMinutes > 120 {
+		if settings.Enabled {
+			return fmt.Errorf("cooldown_minutes must be between 1-120")
+	REDACTED
+		settings.CooldownMinutes = 10 // 禁用状态下归一化为默认值
+REDACTED
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal overload cooldown settings: %w", err)
+REDACTED
+
+	return s.settingRepo.Set(ctx, SettingKeyOverloadCooldownSettings, string(data))
+REDACTED
+
 // GetStreamTimeoutSettings 获取流超时处理配置
 func (s *SettingService) GetStreamTimeoutSettings(ctx context.Context) (*StreamTimeoutSettings, error) {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyStreamTimeoutSettings)

@@ -4362,6 +4362,16 @@ export default {
           testFailed: 'Google Drive storage test failed'
         REDACTED
       REDACTED,
+      overloadCooldown: {
+        title: '529 Overload Cooldown',
+        description: 'Configure account scheduling pause strategy when upstream returns 529 (overloaded)',
+        enabled: 'Enable Overload Cooldown',
+        enabledHint: 'Pause account scheduling on 529 errors, auto-recover after cooldown',
+        cooldownMinutes: 'Cooldown Duration (minutes)',
+        cooldownMinutesHint: 'Duration to pause account scheduling (1-120 minutes)',
+        saved: 'Overload cooldown settings saved',
+        saveFailed: 'Failed to save overload cooldown settings'
+      REDACTED,
       streamTimeout: {
         title: 'Stream Timeout Handling',
         description: 'Configure account handling strategy when upstream response times out',
