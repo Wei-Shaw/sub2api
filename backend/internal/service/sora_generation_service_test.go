@@ -162,6 +162,9 @@ REDACTED
 func (r *stubUserRepoForQuota) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
 REDACTED
+func (r *stubUserRepoForQuota) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
+	return nil
+REDACTED
 func (r *stubUserRepoForQuota) UpdateTotpSecret(context.Context, int64, *string) error { return nil REDACTED
 func (r *stubUserRepoForQuota) EnableTotp(context.Context, int64) error                { return nil REDACTED
 func (r *stubUserRepoForQuota) DisableTotp(context.Context, int64) error               { return nil REDACTED

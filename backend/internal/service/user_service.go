@@ -21,6 +21,7 @@ type UserListFilters struct {
 	Status     string           // User status filter
 	Role       string           // User role filter
 	Search     string           // Search in email, username
+	GroupName  string           // Filter by allowed group name (fuzzy match)
 	Attributes map[int64]string // Custom attribute filters: attributeID -> value
 	// IncludeSubscriptions controls whether ListWithFilters should load active subscriptions.
 	// For large datasets this can be expensive; admin list pages should enable it on demand.
@@ -46,6 +47,8 @@ type UserRepository interface {
 	RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error)
 	// AddGroupToAllowedGroups 将指定分组增量添加到用户的 allowed_groups（幂等，冲突忽略）
 	AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error
+	// RemoveGroupFromUserAllowedGroups 移除单个用户的指定分组权限
+	RemoveGroupFromUserAllowedGroups(ctx context.Context, userID int64, groupID int64) error
 
 	// TOTP 双因素认证
 	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
