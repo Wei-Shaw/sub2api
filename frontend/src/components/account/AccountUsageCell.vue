@@ -451,6 +451,10 @@ import { formatCompactNumber } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 
+// Module-level cache shared across all AccountUsageCell instances
+const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
+const USAGE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
 const props = withDefaults(
   defineProps<{
     account: Account
@@ -946,8 +950,18 @@ const copyValidationURL = async () => {
   }
 }
 
-const loadUsage = async () => {
+const loadUsage = async (bypassCache = false) => {
   if (!shouldFetchUsage.value) return
+
+  // Check cache
+  if (!bypassCache) {
+    const cached = _usageCache.get(props.account.id)
+    if (cached && Date.now() - cached.ts < USAGE_CACHE_TTL) {
+      usageInfo.value = cached.data
+      loading.value = false
+      return
+    }
+  }
 
   loading.value = true
   error.value = null
@@ -955,7 +969,10 @@ const loadUsage = async () => {
   try {
     const fetchFn = () => adminAPI.accounts.getUsage(props.account.id)
     const result = await enqueueUsageRequest(props.account, fetchFn)
-    if (!unmounted.value) usageInfo.value = result
+    if (!unmounted.value) {
+      usageInfo.value = result
+      _usageCache.set(props.account.id, { data: result, ts: Date.now() })
+    }
   } catch (e: any) {
     if (!unmounted.value) {
       error.value = t('common.error')
@@ -1077,7 +1094,8 @@ watch(
     if (nextToken === prevToken) return
     if (!shouldFetchUsage.value) return
 
-    loadUsage().catch((e) => {
+    _usageCache.delete(props.account.id)
+    loadUsage(true).catch((e) => {
       console.error('Failed to refresh usage after manual refresh:', e)
     })
   }
