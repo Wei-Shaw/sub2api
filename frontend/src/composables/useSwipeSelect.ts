@@ -25,6 +25,7 @@ export interface SwipeSelectAdapter {
   isSelected: (id: number) => boolean
   select: (id: number) => void
   deselect: (id: number) => void
+  batchUpdate?: (updater: (draft: Set<number>) => void) => void
 }
 
 export function useSwipeSelect(
@@ -140,16 +141,30 @@ export function useSwipeSelect(
     const lo = Math.min(rangeMin, prevMin)
     const hi = Math.max(rangeMax, prevMax)
 
-    for (let i = lo; i <= hi && i < cachedRows.length; i++) {
-      const id = getRowId(cachedRows[i])
-      if (id === null) continue
-      if (i >= rangeMin && i <= rangeMax) {
-        if (dragMode === 'select') adapter.select(id)
-        else adapter.deselect(id)
-      } else {
-        const wasSelected = initialSelectedSnapshot.get(id) ?? false
-        if (wasSelected) adapter.select(id)
-        else adapter.deselect(id)
+    if (adapter.batchUpdate) {
+      adapter.batchUpdate((draft) => {
+        for (let i = lo; i <= hi && i < cachedRows.length; i++) {
+          const id = getRowId(cachedRows[i])
+          if (id === null) continue
+          const shouldBeSelected = (i >= rangeMin && i <= rangeMax)
+            ? (dragMode === 'select')
+            : (initialSelectedSnapshot.get(id) ?? false)
+          if (shouldBeSelected) draft.add(id)
+          else draft.delete(id)
+        }
+      })
+    } else {
+      for (let i = lo; i <= hi && i < cachedRows.length; i++) {
+        const id = getRowId(cachedRows[i])
+        if (id === null) continue
+        if (i >= rangeMin && i <= rangeMax) {
+          if (dragMode === 'select') adapter.select(id)
+          else adapter.deselect(id)
+        } else {
+          const wasSelected = initialSelectedSnapshot.get(id) ?? false
+          if (wasSelected) adapter.select(id)
+          else adapter.deselect(id)
+        }
       }
     }
     lastEndIndex = endIndex
@@ -306,12 +321,17 @@ export function useSwipeSelect(
     window.getSelection()?.removeAllRanges()
   }
 
+  let moveRAF = 0
+
   function onMouseMove(e: MouseEvent) {
     if (!isDragging.value) return
     lastMouseY = e.clientY
-    updateMarquee(e.clientY)
-    const rowIdx = findRowIndexAtY(e.clientY)
-    if (rowIdx >= 0 && rowIdx !== lastEndIndex) applyRange(rowIdx)
+    cancelAnimationFrame(moveRAF)
+    moveRAF = requestAnimationFrame(() => {
+      updateMarquee(lastMouseY)
+      const rowIdx = findRowIndexAtY(lastMouseY)
+      if (rowIdx >= 0 && rowIdx !== lastEndIndex) applyRange(rowIdx)
+    })
     autoScroll(e)
   }
 
@@ -332,6 +352,7 @@ export function useSwipeSelect(
     cachedRows = []
     initialSelectedSnapshot.clear()
     cachedScrollParent = null
+    cancelAnimationFrame(moveRAF)
     stopAutoScroll()
     removeMarquee()
     document.removeEventListener('selectstart', onSelectStart)

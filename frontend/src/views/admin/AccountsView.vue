@@ -152,7 +152,7 @@
             />
           </template>
           <template #cell-select="{ row }">
-            <input type="checkbox" :checked="selIds.includes(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <input type="checkbox" :checked="isSelected(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           </template>
           <template #cell-name="{ row, value }">
             <div class="flex flex-col">
@@ -597,7 +597,8 @@ const {
   clear: clearSelection,
   removeMany: removeSelectedAccounts,
   toggleVisible,
-  selectVisible: selectPage
+  selectVisible: selectPage,
+  batchUpdate
 } = useTableSelection<Account>({
   rows: accounts,
   getId: (account) => account.id
@@ -606,7 +607,8 @@ const {
 useSwipeSelect(accountTableRef, {
   isSelected,
   select,
-  deselect
+  deselect,
+  batchUpdate
 })
 
 const resetAutoRefreshCache = () => {
