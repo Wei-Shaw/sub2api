@@ -6067,9 +6067,11 @@ REDACTED
 		return true
 REDACTED
 
-	// 检测空消息内容错误（可能是过滤 thinking blocks 后导致的）
+	// 检测空消息内容错误（可能是过滤 thinking blocks 后导致的，或客户端发送了空 text block）
 	// 例如: "all messages must have non-empty content"
-	if strings.Contains(msg, "non-empty content") || strings.Contains(msg, "empty content") {
+	//       "messages: text content blocks must be non-empty"
+	if strings.Contains(msg, "non-empty content") || strings.Contains(msg, "empty content") ||
+		strings.Contains(msg, "content blocks must be non-empty") {
 		logger.LegacyPrintf("service.gateway", "[SignatureCheck] Detected empty content error")
 		return true
 REDACTED
