@@ -147,28 +147,46 @@
           </td>
         </tr>
 
-        <!-- Data rows -->
-        <tr
-          v-else
-          v-for="(row, index) in sortedData"
-          :key="resolveRowKey(row, index)"
-          :data-row-id="resolveRowKey(row, index)"
-          class="hover:bg-gray-50 dark:hover:bg-dark-800"
-        >
-          <td
-            v-for="(column, colIndex) in columns"
-            :key="column.key"
-            :class="[
-              'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
-              getAdaptivePaddingClass(),
-              getStickyColumnClass(column, colIndex)
-            ]"
+        <!-- Data rows (virtual scroll) -->
+        <template v-else>
+          <tr v-if="virtualPaddingTop > 0" aria-hidden="true">
+            <td :colspan="columns.length"
+                :style="{ height: virtualPaddingTop + 'px', padding: 0, border: 'none' REDACTED">
+            </td>
+          </tr>
+          <tr
+            v-for="virtualRow in virtualItems"
+            :key="resolveRowKey(sortedData[virtualRow.index], virtualRow.index)"
+            :data-row-id="resolveRowKey(sortedData[virtualRow.index], virtualRow.index)"
+            :data-index="virtualRow.index"
+            :ref="measureElement"
+            class="hover:bg-gray-50 dark:hover:bg-dark-800"
           >
-            <slot :name="`cell-${column.keyREDACTED`" :row="row" :value="row[column.key]" :expanded="actionsExpanded">
-              {{ column.formatter ? column.formatter(row[column.key], row) : row[column.key] REDACTEDREDACTED
-            </slot>
-          </td>
-        </tr>
+            <td
+              v-for="(column, colIndex) in columns"
+              :key="column.key"
+              :class="[
+                'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
+                getAdaptivePaddingClass(),
+                getStickyColumnClass(column, colIndex)
+              ]"
+            >
+              <slot :name="`cell-${column.keyREDACTED`"
+                    :row="sortedData[virtualRow.index]"
+                    :value="sortedData[virtualRow.index][column.key]"
+                    :expanded="actionsExpanded">
+                {{ column.formatter
+                   ? column.formatter(sortedData[virtualRow.index][column.key], sortedData[virtualRow.index])
+                   : sortedData[virtualRow.index][column.key] REDACTEDREDACTED
+              </slot>
+            </td>
+          </tr>
+          <tr v-if="virtualPaddingBottom > 0" aria-hidden="true">
+            <td :colspan="columns.length"
+                :style="{ height: virtualPaddingBottom + 'px', padding: 0, border: 'none' REDACTED">
+            </td>
+          </tr>
+        </template>
       </tbody>
     </table>
   </div>
@@ -176,6 +194,7 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch, nextTick REDACTED from 'vue'
+import { useVirtualizer REDACTED from '@tanstack/vue-virtual'
 import { useI18n REDACTED from 'vue-i18n'
 import type { Column REDACTED from './types'
 import Icon from '@/components/icons/Icon.vue'
@@ -299,6 +318,10 @@ interface Props {
    * will emit 'sort' events instead of performing client-side sorting.
    */
   serverSideSort?: boolean
+  /** Estimated row height in px for the virtualizer (default 56) */
+  estimateRowHeight?: number
+  /** Number of rows to render beyond the visible area (default 5) */
+  overscan?: number
 REDACTED
 
 const props = withDefaults(defineProps<Props>(), {
@@ -499,6 +522,33 @@ const sortedData = computed(() => {
     .map(item => item.row)
 REDACTED)
 
+// --- Virtual scrolling ---
+const rowVirtualizer = useVirtualizer(computed(() => ({
+  count: sortedData.value?.length ?? 0,
+  getScrollElement: () => tableWrapperRef.value,
+  estimateSize: () => props.estimateRowHeight ?? 56,
+  overscan: props.overscan ?? 5,
+REDACTED)))
+
+const virtualItems = computed(() => rowVirtualizer.value.getVirtualItems())
+
+const virtualPaddingTop = computed(() => {
+  const items = virtualItems.value
+  return items.length > 0 ? items[0].start : 0
+REDACTED)
+
+const virtualPaddingBottom = computed(() => {
+  const items = virtualItems.value
+  if (items.length === 0) return 0
+  return rowVirtualizer.value.getTotalSize() - items[items.length - 1].end
+REDACTED)
+
+const measureElement = (el: any) => {
+  if (el) {
+    rowVirtualizer.value.measureElement(el as Element)
+  REDACTED
+REDACTED
+
 const hasActionsColumn = computed(() => {
   return props.columns.some(column => column.key === 'actions')
 REDACTED)
@@ -595,6 +645,13 @@ watch(
   REDACTED,
   { flush: 'post' REDACTED
 )
+
+defineExpose({
+  virtualizer: rowVirtualizer,
+  sortedData,
+  resolveRowKey,
+  tableWrapperEl: tableWrapperRef,
+REDACTED)
 </script>
 
 <style scoped>
@@ -603,6 +660,9 @@ watch(
   --select-col-width: 52px; /* 勾选列宽度：px-6 (24px*2) + checkbox (16px) */
   position: relative;
   overflow-x: auto;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
   isolation: isolate;
 REDACTED
 
