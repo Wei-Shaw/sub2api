@@ -273,6 +273,7 @@ func (h *DashboardHandler) GetModelStats(c *gin.Context) {
 
 	// Parse optional filter params
 	var userID, apiKeyID, accountID, groupID int64
+	modelSource := usagestats.ModelSourceRequested
 	var requestType *int16
 	var stream *bool
 	var billingType *int8
@@ -296,6 +297,13 @@ REDACTED
 		if id, err := strconv.ParseInt(groupIDStr, 10, 64); err == nil {
 			groupID = id
 	REDACTED
+REDACTED
+	if rawModelSource := strings.TrimSpace(c.Query("model_source")); rawModelSource != "" {
+		if !usagestats.IsValidModelSource(rawModelSource) {
+			response.BadRequest(c, "Invalid model_source, use requested/upstream/mapping")
+			return
+	REDACTED
+		modelSource = rawModelSource
 REDACTED
 	if requestTypeStr := strings.TrimSpace(c.Query("request_type")); requestTypeStr != "" {
 		parsed, err := service.ParseUsageRequestType(requestTypeStr)
@@ -323,7 +331,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	stats, hit, err := h.getModelStatsCached(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType)
+	stats, hit, err := h.getModelStatsCached(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, modelSource, requestType, stream, billingType)
 	if err != nil {
 		response.Error(c, 500, "Failed to get model statistics")
 		return
@@ -619,6 +627,12 @@ func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
 	REDACTED
 REDACTED
 	dim.Model = c.Query("model")
+	rawModelSource := strings.TrimSpace(c.DefaultQuery("model_source", usagestats.ModelSourceRequested))
+	if !usagestats.IsValidModelSource(rawModelSource) {
+		response.BadRequest(c, "Invalid model_source, use requested/upstream/mapping")
+		return
+REDACTED
+	dim.ModelType = rawModelSource
 	dim.Endpoint = c.Query("endpoint")
 	dim.EndpointType = c.DefaultQuery("endpoint_type", "inbound")
 

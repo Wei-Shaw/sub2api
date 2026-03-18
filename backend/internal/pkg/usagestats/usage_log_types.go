@@ -3,6 +3,28 @@ package usagestats
 
 import "time"
 
+const (
+	ModelSourceRequested = "requested"
+	ModelSourceUpstream  = "upstream"
+	ModelSourceMapping   = "mapping"
+)
+
+func IsValidModelSource(source string) bool {
+	switch source {
+	case ModelSourceRequested, ModelSourceUpstream, ModelSourceMapping:
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
+func NormalizeModelSource(source string) string {
+	if IsValidModelSource(source) {
+		return source
+REDACTED
+	return ModelSourceRequested
+REDACTED
+
 // DashboardStats 仪表盘统计
 type DashboardStats struct {
 	// 用户统计
@@ -150,6 +172,7 @@ REDACTED
 type UserBreakdownDimension struct {
 	GroupID      int64  // filter by group_id (>0 to enable)
 	Model        string // filter by model name (non-empty to enable)
+	ModelType    string // "requested", "upstream", or "mapping"
 	Endpoint     string // filter by endpoint value (non-empty to enable)
 	EndpointType string // "inbound", "upstream", or "path"
 REDACTED

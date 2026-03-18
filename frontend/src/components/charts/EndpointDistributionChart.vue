@@ -1,10 +1,10 @@
 <template>
   <div class="card p-4">
-    <div class="mb-4 flex items-start justify-between gap-3">
+    <div class="mb-4 flex items-center justify-between gap-3">
       <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
         {{ title || t('usage.endpointDistribution') REDACTEDREDACTED
       </h3>
-      <div class="flex flex-col items-end gap-2">
+      <div class="flex flex-wrap items-center justify-end gap-2">
         <div
           v-if="showSourceToggle"
           class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-dark-800"
