@@ -210,6 +210,49 @@ func (s *SettingService) SetOnS3UpdateCallback(callback func()) {
 	s.onS3Update = callback
 }
 
+// SetOnStorageUpdateCallback 设置存储配置变更时的回调函数（用于刷新所有存储客户端缓存）。
+// 替代 SetOnS3UpdateCallback，支持 S3 + GDrive 统一刷新。
+func (s *SettingService) SetOnStorageUpdateCallback(callback func()) {
+	s.onS3Update = callback
+}
+
+// --- 统一存储 Profile 方法别名 ---
+
+// ListSoraStorageProfiles 获取 Sora 存储多配置列表（统一方法名）。
+func (s *SettingService) ListSoraStorageProfiles(ctx context.Context) (*SoraS3ProfileList, error) {
+	return s.ListSoraS3Profiles(ctx)
+}
+
+// CreateSoraStorageProfile 创建 Sora 存储配置（统一方法名）。
+func (s *SettingService) CreateSoraStorageProfile(ctx context.Context, profile *SoraS3Profile, setActive bool) (*SoraS3Profile, error) {
+	return s.CreateSoraS3Profile(ctx, profile, setActive)
+}
+
+// UpdateSoraStorageProfile 更新 Sora 存储配置（统一方法名）。
+func (s *SettingService) UpdateSoraStorageProfile(ctx context.Context, profileID string, profile *SoraS3Profile) (*SoraS3Profile, error) {
+	return s.UpdateSoraS3Profile(ctx, profileID, profile)
+}
+
+// DeleteSoraStorageProfile 删除 Sora 存储配置（统一方法名）。
+func (s *SettingService) DeleteSoraStorageProfile(ctx context.Context, profileID string) error {
+	return s.DeleteSoraS3Profile(ctx, profileID)
+}
+
+// SetActiveSoraStorageProfile 设置激活的 Sora 存储配置（统一方法名）。
+func (s *SettingService) SetActiveSoraStorageProfile(ctx context.Context, profileID string) (*SoraS3Profile, error) {
+	return s.SetActiveSoraS3Profile(ctx, profileID)
+}
+
+// GetActiveStorageProfile 获取当前激活的存储配置 profile。
+func (s *SettingService) GetActiveStorageProfile(ctx context.Context) (*SoraS3Profile, error) {
+	profiles, err := s.ListSoraS3Profiles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	active := pickActiveSoraS3Profile(profiles.Items, profiles.ActiveProfileID)
+	return active, nil
+}
+
 // SetVersion sets the application version for injection into public settings
 func (s *SettingService) SetVersion(version string) {
 	s.version = version
@@ -1424,6 +1467,8 @@ type soraS3ProfilesStore struct {
 type soraS3ProfileStoreItem struct {
 	ProfileID                string `json:"profile_id"`
 	Name                     string `json:"name"`
+	Provider                 string `json:"provider,omitempty"`    // "s3" / "gdrive"，空值视为 "s3"
+	AccessMode               string `json:"access_mode,omitempty"` // "direct" / "proxy"，空值视为 "direct"
 	Enabled                  bool   `json:"enabled"`
 	Endpoint                 string `json:"endpoint"`
 	Region                   string `json:"region"`
@@ -1435,6 +1480,14 @@ type soraS3ProfileStoreItem struct {
 	CDNURL                   string `json:"cdn_url"`
 	DefaultStorageQuotaBytes int64  `json:"default_storage_quota_bytes"`
 	UpdatedAt                string `json:"updated_at"`
+
+	// --- Google Drive 专属 ---
+	AuthType           string `json:"auth_type,omitempty"`
+	ClientID           string `json:"client_id,omitempty"`
+	ClientSecret       string `json:"client_secret,omitempty"`
+	RefreshToken       string `json:"refresh_token,omitempty"`
+	ServiceAccountJSON string `json:"service_account_json,omitempty"`
+	FolderID           string `json:"folder_id,omitempty"`
 }
 
 // GetSoraS3Settings 获取 Sora S3 存储配置（兼容旧单配置语义：返回当前激活配置）
@@ -1546,6 +1599,8 @@ func (s *SettingService) CreateSoraS3Profile(ctx context.Context, profile *SoraS
 	store.Items = append(store.Items, soraS3ProfileStoreItem{
 		ProfileID:                profileID,
 		Name:                     name,
+		Provider:                 profile.Provider,
+		AccessMode:               profile.AccessMode,
 		Enabled:                  profile.Enabled,
 		Endpoint:                 strings.TrimSpace(profile.Endpoint),
 		Region:                   strings.TrimSpace(profile.Region),
@@ -1557,6 +1612,13 @@ func (s *SettingService) CreateSoraS3Profile(ctx context.Context, profile *SoraS
 		CDNURL:                   strings.TrimSpace(profile.CDNURL),
 		DefaultStorageQuotaBytes: maxInt64(profile.DefaultStorageQuotaBytes, 0),
 		UpdatedAt:                now,
+		// Google Drive 专属
+		AuthType:           profile.AuthType,
+		ClientID:           strings.TrimSpace(profile.ClientID),
+		ClientSecret:       profile.ClientSecret,
+		RefreshToken:       profile.RefreshToken,
+		ServiceAccountJSON: profile.ServiceAccountJSON,
+		FolderID:           strings.TrimSpace(profile.FolderID),
 	})
 
 	if setActive || store.ActiveProfileID == "" {
@@ -1602,6 +1664,8 @@ func (s *SettingService) UpdateSoraS3Profile(ctx context.Context, profileID stri
 		return nil, infraerrors.BadRequest("SORA_S3_PROFILE_NAME_REQUIRED", "name is required")
 	}
 	target.Name = name
+	target.Provider = profile.Provider
+	target.AccessMode = profile.AccessMode
 	target.Enabled = profile.Enabled
 	target.Endpoint = strings.TrimSpace(profile.Endpoint)
 	target.Region = strings.TrimSpace(profile.Region)
@@ -1614,6 +1678,19 @@ func (s *SettingService) UpdateSoraS3Profile(ctx context.Context, profileID stri
 	if profile.SecretAccessKey != "" {
 		target.SecretAccessKey = profile.SecretAccessKey
 	}
+	// Google Drive 专属
+	target.AuthType = profile.AuthType
+	target.ClientID = strings.TrimSpace(profile.ClientID)
+	if profile.ClientSecret != "" {
+		target.ClientSecret = profile.ClientSecret
+	}
+	if profile.RefreshToken != "" {
+		target.RefreshToken = profile.RefreshToken
+	}
+	if profile.ServiceAccountJSON != "" {
+		target.ServiceAccountJSON = profile.ServiceAccountJSON
+	}
+	target.FolderID = strings.TrimSpace(profile.FolderID)
 	target.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	store.Items[targetIndex] = target
 
@@ -1916,6 +1993,8 @@ func convertSoraS3ProfilesStore(store *soraS3ProfilesStore) *SoraS3ProfileList {
 			ProfileID:                 item.ProfileID,
 			Name:                      item.Name,
 			IsActive:                  item.ProfileID == store.ActiveProfileID,
+			Provider:                  item.Provider,
+			AccessMode:                item.AccessMode,
 			Enabled:                   item.Enabled,
 			Endpoint:                  item.Endpoint,
 			Region:                    item.Region,
@@ -1928,6 +2007,16 @@ func convertSoraS3ProfilesStore(store *soraS3ProfilesStore) *SoraS3ProfileList {
 			CDNURL:                    item.CDNURL,
 			DefaultStorageQuotaBytes:  item.DefaultStorageQuotaBytes,
 			UpdatedAt:                 item.UpdatedAt,
+			// Google Drive 专属
+			AuthType:                 item.AuthType,
+			ClientID:                 item.ClientID,
+			ClientSecret:             item.ClientSecret,
+			ClientSecretConfigured:   item.ClientSecret != "",
+			RefreshToken:             item.RefreshToken,
+			RefreshTokenConfigured:   item.RefreshToken != "",
+			ServiceAccountJSON:       item.ServiceAccountJSON,
+			ServiceAccountConfigured: item.ServiceAccountJSON != "",
+			FolderID:                 item.FolderID,
 		})
 	}
 	return &SoraS3ProfileList{

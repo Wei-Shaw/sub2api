@@ -47,8 +47,8 @@ func (m *mockUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int
 }
 func (m *mockUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) error { return nil }
 func (m *mockUserRepo) UpdateTotpSecret(context.Context, int64, *string) error      { return nil }
-func (m *mockUserRepo) EnableTotp(context.Context, int64) error                { return nil }
-func (m *mockUserRepo) DisableTotp(context.Context, int64) error               { return nil }
+func (m *mockUserRepo) EnableTotp(context.Context, int64) error                     { return nil }
+func (m *mockUserRepo) DisableTotp(context.Context, int64) error                    { return nil }
 
 // --- mock: APIKeyAuthCacheInvalidator ---
 

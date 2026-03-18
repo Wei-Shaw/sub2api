@@ -316,20 +316,36 @@ func (c *SoraSDKClient) GetCameoStatus(ctx context.Context, account *Account, ca
 	if err != nil {
 		return nil, err
 	}
-	sdkClient, err := c.getSDKClient(account)
-	if err != nil {
-		return nil, err
-	}
-	status, err := sdkClient.GetCameoStatus(ctx, token, cameoID)
+
+	// 直接调用 Sora 后端 API 而非 SDK，以获取 SDK 未暴露的字段
+	// （status_message、instruction_set_hint、instruction_set）。
+	path := "/project_y/cameos/in_progress/" + cameoID
+	raw, err := c.doSoraBackendJSON(ctx, account, http.MethodGet, path, token, "", nil)
 	if err != nil {
 		return nil, c.wrapSDKError(err, account)
 	}
-	return &SoraCameoStatus{
-		Status:          status.Status,
-		DisplayNameHint: status.DisplayNameHint,
-		UsernameHint:    status.UsernameHint,
-		ProfileAssetURL: status.ProfileAssetURL,
-	}, nil
+
+	return parseCameoStatusFromRaw(raw), nil
+}
+
+// parseCameoStatusFromRaw 从原始 JSON 解析 SoraCameoStatus，
+// 包含 SDK 未暴露的 status_message / instruction_set_hint / instruction_set 字段。
+func parseCameoStatusFromRaw(raw []byte) *SoraCameoStatus {
+	result := gjson.ParseBytes(raw)
+	cameoStatus := &SoraCameoStatus{
+		Status:          strings.TrimSpace(result.Get("status").String()),
+		StatusMessage:   strings.TrimSpace(result.Get("status_message").String()),
+		DisplayNameHint: strings.TrimSpace(result.Get("display_name_hint").String()),
+		UsernameHint:    strings.TrimSpace(result.Get("username_hint").String()),
+		ProfileAssetURL: strings.TrimSpace(result.Get("profile_asset_url").String()),
+	}
+	if v := result.Get("instruction_set_hint"); v.Exists() {
+		cameoStatus.InstructionSetHint = v.Value()
+	}
+	if v := result.Get("instruction_set"); v.Exists() {
+		cameoStatus.InstructionSet = v.Value()
+	}
+	return cameoStatus
 }
 
 func (c *SoraSDKClient) DownloadCharacterImage(ctx context.Context, account *Account, imageURL string) ([]byte, error) {
@@ -925,26 +941,32 @@ func (c *SoraSDKClient) exchangeSessionToken(ctx context.Context, account *Accou
 	return accessToken, expiresAt, nil
 }
 
-// applyRecoveredToken 将恢复的 token 写入账号内存和数据库
+// applyRecoveredToken 将恢复的 token 写入账号内存和数据库。
+// 使用 copy-on-write 避免并发 map 写入 panic：创建新 map 后整体替换指针。
 func (c *SoraSDKClient) applyRecoveredToken(ctx context.Context, account *Account, accessToken, refreshToken, expiresAt, sessionToken string) {
 	if account == nil {
 		return
 	}
-	if account.Credentials == nil {
-		account.Credentials = make(map[string]any)
+
+	// Copy-on-write: 复制旧 map 并写入新值，最后整体替换
+	oldCreds := account.Credentials
+	newCreds := make(map[string]any, len(oldCreds)+4)
+	for k, v := range oldCreds {
+		newCreds[k] = v
 	}
 	if strings.TrimSpace(accessToken) != "" {
-		account.Credentials["access_token"] = accessToken
+		newCreds["access_token"] = accessToken
 	}
 	if strings.TrimSpace(refreshToken) != "" {
-		account.Credentials["refresh_token"] = refreshToken
+		newCreds["refresh_token"] = refreshToken
 	}
 	if strings.TrimSpace(expiresAt) != "" {
-		account.Credentials["expires_at"] = expiresAt
+		newCreds["expires_at"] = expiresAt
 	}
 	if strings.TrimSpace(sessionToken) != "" {
-		account.Credentials["session_token"] = sessionToken
+		newCreds["session_token"] = sessionToken
 	}
+	account.Credentials = newCreds
 
 	if c.accountRepo != nil {
 		if err := c.accountRepo.Update(ctx, account); err != nil && c.debugEnabled() {

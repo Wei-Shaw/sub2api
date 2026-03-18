@@ -212,29 +212,29 @@ func (s *SoraS3Storage) GenerateObjectKey(prefix string, userID int64, ext strin
 }
 
 // UploadFromURL 从上游 URL 下载并流式上传到 S3。
-// 返回 S3 object key。
-func (s *SoraS3Storage) UploadFromURL(ctx context.Context, userID int64, sourceURL string) (string, int64, error) {
+// 返回 S3 object key、文件大小、存储类型。
+func (s *SoraS3Storage) UploadFromURL(ctx context.Context, userID int64, sourceURL string) (string, int64, string, error) {
 	client, cfg, err := s.getClient(ctx)
 	if err != nil {
-		return "", 0, err
+		return "", 0, "", err
 	}
 
 	// 下载源文件
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 	if err != nil {
-		return "", 0, fmt.Errorf("create download request: %w", err)
+		return "", 0, "", fmt.Errorf("create download request: %w", err)
 	}
 	httpClient := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", 0, fmt.Errorf("download from upstream: %w", err)
+		return "", 0, "", fmt.Errorf("download from upstream: %w", err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", 0, &UpstreamDownloadError{StatusCode: resp.StatusCode}
+		return "", 0, "", &UpstreamDownloadError{StatusCode: resp.StatusCode}
 	}
 
 	// 推断文件扩展名
@@ -275,14 +275,14 @@ func (s *SoraS3Storage) UploadFromURL(ctx context.Context, userID int64, sourceU
 	_ = writer.CloseWithError(copyErr)
 	uploadErr := <-uploadErrCh
 	if copyErr != nil {
-		return "", 0, fmt.Errorf("stream upload copy failed: %w", copyErr)
+		return "", 0, "", fmt.Errorf("stream upload copy failed: %w", copyErr)
 	}
 	if uploadErr != nil {
-		return "", 0, fmt.Errorf("s3 upload: %w", uploadErr)
+		return "", 0, "", fmt.Errorf("s3 upload: %w", uploadErr)
 	}
 
 	logger.LegacyPrintf("service.sora_s3", "[SoraS3] 上传完成 key=%s size=%d", objectKey, written)
-	return objectKey, written, nil
+	return objectKey, written, SoraStorageTypeS3, nil
 }
 
 func buildSoraS3Client(ctx context.Context, cfg *SoraS3Settings) (*s3.Client, string, error) {
@@ -378,6 +378,11 @@ func (s *SoraS3Storage) GeneratePresignedURL(ctx context.Context, objectKey stri
 		return "", fmt.Errorf("presign url: %w", err)
 	}
 	return result.URL, nil
+}
+
+// StorageType 返回存储类型标识。
+func (s *SoraS3Storage) StorageType() string {
+	return SoraStorageTypeS3
 }
 
 // GetMediaType 从 object key 推断媒体类型（image/video）。

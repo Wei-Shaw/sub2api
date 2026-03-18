@@ -31,7 +31,7 @@ const (
 type SoraClientHandler struct {
 	genService         *service.SoraGenerationService
 	quotaService       *service.SoraQuotaService
-	s3Storage          *service.SoraS3Storage
+	objectStorage      service.SoraObjectStorage
 	soraGatewayService *service.SoraGatewayService
 	gatewayService     *service.GatewayService
 	mediaStorage       *service.SoraMediaStorage
@@ -48,7 +48,7 @@ type SoraClientHandler struct {
 func NewSoraClientHandler(
 	genService *service.SoraGenerationService,
 	quotaService *service.SoraQuotaService,
-	s3Storage *service.SoraS3Storage,
+	objectStorage service.SoraObjectStorage,
 	soraGatewayService *service.SoraGatewayService,
 	gatewayService *service.GatewayService,
 	mediaStorage *service.SoraMediaStorage,
@@ -57,7 +57,7 @@ func NewSoraClientHandler(
 	return &SoraClientHandler{
 		genService:         genService,
 		quotaService:       quotaService,
-		s3Storage:          s3Storage,
+		objectStorage:      objectStorage,
 		soraGatewayService: soraGatewayService,
 		gatewayService:     gatewayService,
 		mediaStorage:       mediaStorage,
@@ -291,11 +291,11 @@ func (h *SoraClientHandler) processGeneration(genID int64, userID int64, groupID
 		return
 	}
 
-	// 三层降级存储：S3 → 本地 → 上游临时 URL
+	// 三层降级存储：对象存储 → 本地 → 上游临时 URL
 	storedURL, storedURLs, storageType, s3Keys, fileSize := h.storeMediaWithDegradation(ctx, userID, mediaType, mediaURL, mediaURLs)
 
 	usageAdded := false
-	if (storageType == service.SoraStorageTypeS3 || storageType == service.SoraStorageTypeLocal) && fileSize > 0 && h.quotaService != nil {
+	if (service.IsObjectStorageType(storageType) || storageType == service.SoraStorageTypeLocal) && fileSize > 0 && h.quotaService != nil {
 		if err := h.quotaService.AddUsage(ctx, userID, fileSize); err != nil {
 			h.cleanupStoredMedia(ctx, storageType, s3Keys, storedURLs)
 			var quotaErr *service.QuotaExceededError
@@ -346,39 +346,41 @@ func (h *SoraClientHandler) storeMediaWithDegradation(
 		urls = []string{mediaURL}
 	}
 
-	// 第一层：尝试 S3
-	if h.s3Storage != nil && h.s3Storage.Enabled(ctx) {
+	// 第一层：尝试对象存储（S3 / Google Drive）
+	if h.objectStorage != nil && h.objectStorage.Enabled(ctx) {
 		keys := make([]string, 0, len(urls))
 		var totalSize int64
+		var actualStorageType string
 		allOK := true
 		for _, u := range urls {
-			key, size, err := h.s3Storage.UploadFromURL(ctx, userID, u)
+			key, size, st, err := h.objectStorage.UploadFromURL(ctx, userID, u)
 			if err != nil {
-				logger.LegacyPrintf("handler.sora_client", "[SoraClient] S3 上传失败 err=%v", err)
+				logger.LegacyPrintf("handler.sora_client", "[SoraClient] 对象存储上传失败 type=%s err=%v", h.objectStorage.StorageType(), err)
 				allOK = false
 				// 清理已上传的文件
 				if len(keys) > 0 {
-					_ = h.s3Storage.DeleteObjects(ctx, keys)
+					_ = h.objectStorage.DeleteObjects(ctx, keys)
 				}
 				break
 			}
 			keys = append(keys, key)
 			totalSize += size
+			actualStorageType = st
 		}
 		if allOK && len(keys) > 0 {
 			accessURLs := make([]string, 0, len(keys))
 			for _, key := range keys {
-				accessURL, err := h.s3Storage.GetAccessURL(ctx, key)
+				accessURL, err := h.objectStorage.GetAccessURL(ctx, key)
 				if err != nil {
-					logger.LegacyPrintf("handler.sora_client", "[SoraClient] 生成 S3 访问 URL 失败 err=%v", err)
-					_ = h.s3Storage.DeleteObjects(ctx, keys)
+					logger.LegacyPrintf("handler.sora_client", "[SoraClient] 生成访问 URL 失败 type=%s err=%v", h.objectStorage.StorageType(), err)
+					_ = h.objectStorage.DeleteObjects(ctx, keys)
 					allOK = false
 					break
 				}
 				accessURLs = append(accessURLs, accessURL)
 			}
 			if allOK && len(accessURLs) > 0 {
-				return accessURLs[0], accessURLs, service.SoraStorageTypeS3, keys, totalSize
+				return accessURLs[0], accessURLs, actualStorageType, keys, totalSize
 			}
 		}
 	}
@@ -678,7 +680,7 @@ func (h *SoraClientHandler) SaveToStorage(c *gin.Context) {
 		return
 	}
 
-	if h.s3Storage == nil || !h.s3Storage.Enabled(c.Request.Context()) {
+	if h.objectStorage == nil || !h.objectStorage.Enabled(c.Request.Context()) {
 		response.Error(c, http.StatusServiceUnavailable, "云存储未配置，请联系管理员")
 		return
 	}
@@ -697,24 +699,24 @@ func (h *SoraClientHandler) SaveToStorage(c *gin.Context) {
 	var totalSize int64
 
 	for _, sourceURL := range sourceURLs {
-		objectKey, fileSize, uploadErr := h.s3Storage.UploadFromURL(c.Request.Context(), userID, sourceURL)
+		objectKey, fileSize, _, uploadErr := h.objectStorage.UploadFromURL(c.Request.Context(), userID, sourceURL)
 		if uploadErr != nil {
 			if len(uploadedKeys) > 0 {
-				_ = h.s3Storage.DeleteObjects(c.Request.Context(), uploadedKeys)
+				_ = h.objectStorage.DeleteObjects(c.Request.Context(), uploadedKeys)
 			}
 			var upstreamErr *service.UpstreamDownloadError
 			if errors.As(uploadErr, &upstreamErr) && (upstreamErr.StatusCode == http.StatusForbidden || upstreamErr.StatusCode == http.StatusNotFound) {
 				response.Error(c, http.StatusGone, "媒体链接已过期，无法保存")
 				return
 			}
-			response.Error(c, http.StatusInternalServerError, "上传到 S3 失败: "+uploadErr.Error())
+			response.Error(c, http.StatusInternalServerError, "上传到存储失败: "+uploadErr.Error())
 			return
 		}
-		accessURL, err := h.s3Storage.GetAccessURL(c.Request.Context(), objectKey)
+		accessURL, err := h.objectStorage.GetAccessURL(c.Request.Context(), objectKey)
 		if err != nil {
 			uploadedKeys = append(uploadedKeys, objectKey)
-			_ = h.s3Storage.DeleteObjects(c.Request.Context(), uploadedKeys)
-			response.Error(c, http.StatusInternalServerError, "生成 S3 访问链接失败: "+err.Error())
+			_ = h.objectStorage.DeleteObjects(c.Request.Context(), uploadedKeys)
+			response.Error(c, http.StatusInternalServerError, "生成访问链接失败: "+err.Error())
 			return
 		}
 		uploadedKeys = append(uploadedKeys, objectKey)
@@ -725,7 +727,7 @@ func (h *SoraClientHandler) SaveToStorage(c *gin.Context) {
 	usageAdded := false
 	if totalSize > 0 && h.quotaService != nil {
 		if err := h.quotaService.AddUsage(c.Request.Context(), userID, totalSize); err != nil {
-			_ = h.s3Storage.DeleteObjects(c.Request.Context(), uploadedKeys)
+			_ = h.objectStorage.DeleteObjects(c.Request.Context(), uploadedKeys)
 			var quotaErr *service.QuotaExceededError
 			if errors.As(err, &quotaErr) {
 				response.Error(c, http.StatusTooManyRequests, "存储配额已满，请删除不需要的作品释放空间")
@@ -742,11 +744,11 @@ func (h *SoraClientHandler) SaveToStorage(c *gin.Context) {
 		id,
 		accessURLs[0],
 		accessURLs,
-		service.SoraStorageTypeS3,
+		h.objectStorage.StorageType(),
 		uploadedKeys,
 		totalSize,
 	); err != nil {
-		_ = h.s3Storage.DeleteObjects(c.Request.Context(), uploadedKeys)
+		_ = h.objectStorage.DeleteObjects(c.Request.Context(), uploadedKeys)
 		if usageAdded && h.quotaService != nil {
 			_ = h.quotaService.ReleaseUsage(c.Request.Context(), userID, totalSize)
 		}
@@ -755,7 +757,7 @@ func (h *SoraClientHandler) SaveToStorage(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"message":     "已保存到 S3",
+		"message":     "已保存到云存储",
 		"object_key":  uploadedKeys[0],
 		"object_keys": uploadedKeys,
 	})
@@ -764,28 +766,30 @@ func (h *SoraClientHandler) SaveToStorage(c *gin.Context) {
 // GetStorageStatus 返回存储状态。
 // GET /api/v1/sora/storage-status
 func (h *SoraClientHandler) GetStorageStatus(c *gin.Context) {
-	s3Enabled := h.s3Storage != nil && h.s3Storage.Enabled(c.Request.Context())
-	s3Healthy := false
-	if s3Enabled {
-		s3Healthy = h.s3Storage.IsHealthy(c.Request.Context())
+	objectStorageEnabled := h.objectStorage != nil && h.objectStorage.Enabled(c.Request.Context())
+	objectStorageHealthy := false
+	storageType := ""
+	if objectStorageEnabled {
+		objectStorageHealthy = h.objectStorage.IsHealthy(c.Request.Context())
+		storageType = h.objectStorage.StorageType()
 	}
 	localEnabled := h.mediaStorage != nil && h.mediaStorage.Enabled()
 	response.Success(c, gin.H{
-		"s3_enabled":    s3Enabled,
-		"s3_healthy":    s3Healthy,
+		"s3_enabled":    objectStorageEnabled, // 保留字段名向后兼容
+		"s3_healthy":    objectStorageHealthy,
+		"storage_type":  storageType,
 		"local_enabled": localEnabled,
 	})
 }
 
 func (h *SoraClientHandler) cleanupStoredMedia(ctx context.Context, storageType string, s3Keys []string, localPaths []string) {
-	switch storageType {
-	case service.SoraStorageTypeS3:
-		if h.s3Storage != nil && len(s3Keys) > 0 {
-			if err := h.s3Storage.DeleteObjects(ctx, s3Keys); err != nil {
-				logger.LegacyPrintf("handler.sora_client", "[SoraClient] 清理 S3 文件失败 keys=%v err=%v", s3Keys, err)
+	if service.IsObjectStorageType(storageType) {
+		if h.objectStorage != nil && len(s3Keys) > 0 {
+			if err := h.objectStorage.DeleteObjects(ctx, s3Keys); err != nil {
+				logger.LegacyPrintf("handler.sora_client", "[SoraClient] 清理存储文件失败 type=%s keys=%v err=%v", storageType, s3Keys, err)
 			}
 		}
-	case service.SoraStorageTypeLocal:
+	} else if storageType == service.SoraStorageTypeLocal {
 		if h.mediaStorage != nil && len(localPaths) > 0 {
 			if err := h.mediaStorage.DeleteByRelativePaths(localPaths); err != nil {
 				logger.LegacyPrintf("handler.sora_client", "[SoraClient] 清理本地文件失败 paths=%v err=%v", localPaths, err)

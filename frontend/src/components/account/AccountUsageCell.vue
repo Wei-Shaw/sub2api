@@ -384,6 +384,7 @@
         label="1d"
         :utilization="quotaDailyBar.utilization"
         :resets-at="quotaDailyBar.resetsAt"
+:display-value="quotaDailyBar.displayValue"
         color="indigo"
       />
       <UsageProgressBar
@@ -391,12 +392,14 @@
         label="7d"
         :utilization="quotaWeeklyBar.utilization"
         :resets-at="quotaWeeklyBar.resetsAt"
+:display-value="quotaWeeklyBar.displayValue"
         color="emerald"
       />
       <UsageProgressBar
         v-if="quotaTotalBar"
         label="total"
         :utilization="quotaTotalBar.utilization"
+:display-value="quotaTotalBar.displayValue"
         color="purple"
       />
 
@@ -407,11 +410,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
@@ -431,6 +435,9 @@ const props = withDefaults(
 )
 
 const { t } = useI18n()
+
+const unmounted = ref(false)
+onBeforeUnmount(() => { unmounted.value = true })
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -895,12 +902,16 @@ const loadUsage = async () => {
   error.value = null
 
   try {
-    usageInfo.value = await adminAPI.accounts.getUsage(props.account.id)
+    const fetchFn = () => adminAPI.accounts.getUsage(props.account.id)
+    const result = await enqueueUsageRequest(props.account, fetchFn)
+    if (!unmounted.value) usageInfo.value = result
   } catch (e: any) {
-    error.value = t('common.error')
-    console.error('Failed to load usage:', e)
+    if (!unmounted.value) {
+      error.value = t('common.error')
+      console.error('Failed to load usage:', e)
+    }
   } finally {
-    loading.value = false
+    if (!unmounted.value) loading.value = false
   }
 }
 
@@ -908,8 +919,11 @@ const loadUsage = async () => {
 
 interface QuotaBarInfo {
   utilization: number
+  displayValue: string
   resetsAt: string | null
 }
+
+const fmtCost = (v: number) => v.toFixed(2)
 
 const makeQuotaBar = (
   used: number,
@@ -917,6 +931,7 @@ const makeQuotaBar = (
   startKey?: string
 ): QuotaBarInfo => {
   const utilization = limit > 0 ? (used / limit) * 100 : 0
+  const displayValue = `${fmtCost(used)}/${fmtCost(limit)}`
   let resetsAt: string | null = null
   if (startKey) {
     const extra = props.account.extra as Record<string, unknown> | undefined
@@ -939,7 +954,7 @@ const makeQuotaBar = (
       }
     }
   }
-  return { utilization, resetsAt }
+  return { utilization, displayValue, resetsAt }
 }
 
 const hasApiKeyQuota = computed(() => {
