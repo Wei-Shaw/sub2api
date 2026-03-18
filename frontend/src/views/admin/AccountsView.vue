@@ -142,7 +142,6 @@
           default-sort-key="name"
           default-sort-order="asc"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
-          :virtual-scroll="true"
           :estimate-row-height="72"
           :overscan="5"
         >
