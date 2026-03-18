@@ -1782,6 +1782,7 @@ export default {
       revokeSubscription: '撤销订阅',
       allStatus: '全部状态',
       allGroups: '全部分组',
+      allPlatforms: '全部平台',
       daily: '每日',
       weekly: '每周',
       monthly: '每月',

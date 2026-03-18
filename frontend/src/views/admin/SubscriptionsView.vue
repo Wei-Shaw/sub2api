@@ -81,6 +81,14 @@
                 @change="applyFilters"
               />
             </div>
+            <div class="w-full sm:w-40">
+              <Select
+                v-model="filters.platform"
+                :options="platformFilterOptions"
+                :placeholder="t('admin.subscriptions.allPlatforms')"
+                @change="applyFilters"
+              />
+            </div>
           </div>
 
           <!-- Right: Actions -->
@@ -908,6 +916,7 @@ let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
 const filters = reactive({
   status: 'active',
   group_id: '',
+  platform: '',
   user_id: null as number | null
 REDACTED)
 
@@ -950,6 +959,15 @@ const groupOptions = computed(() => [
   ...groups.value.map((g) => ({ value: g.id.toString(), label: g.name REDACTED))
 ])
 
+const platformFilterOptions = computed(() => [
+  { value: '', label: t('admin.subscriptions.allPlatforms') REDACTED,
+  { value: 'anthropic', label: 'Anthropic' REDACTED,
+  { value: 'openai', label: 'OpenAI' REDACTED,
+  { value: 'gemini', label: 'Gemini' REDACTED,
+  { value: 'antigravity', label: 'Antigravity' REDACTED,
+  { value: 'sora', label: 'Sora' REDACTED
+])
+
 // Group options for assign (only subscription type groups)
 const subscriptionGroupOptions = computed(() =>
   groups.value
@@ -985,6 +1003,7 @@ const loadSubscriptions = async () => {
       {
         status: (filters.status as any) || undefined,
         group_id: filters.group_id ? parseInt(filters.group_id) : undefined,
+        platform: filters.platform || undefined,
         user_id: filters.user_id || undefined,
         sort_by: sortState.sort_by,
         sort_order: sortState.sort_order

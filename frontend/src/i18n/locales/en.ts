@@ -1702,6 +1702,7 @@ export default {
       revokeSubscription: 'Revoke Subscription',
       allStatus: 'All Status',
       allGroups: 'All Groups',
+      allPlatforms: 'All Platforms',
       daily: 'Daily',
       weekly: 'Weekly',
       monthly: 'Monthly',

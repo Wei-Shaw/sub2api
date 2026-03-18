@@ -634,9 +634,9 @@ REDACTED
 REDACTED
 
 // List 获取所有订阅（分页，支持筛选和排序）
-func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, userID, groupID *int64, status, sortBy, sortOrder string) ([]UserSubscription, *pagination.PaginationResult, error) {
+func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, userID, groupID *int64, status, platform, sortBy, sortOrder string) ([]UserSubscription, *pagination.PaginationResult, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
-	subs, pag, err := s.userSubRepo.List(ctx, params, userID, groupID, status, sortBy, sortOrder)
+	subs, pag, err := s.userSubRepo.List(ctx, params, userID, groupID, status, platform, sortBy, sortOrder)
 	if err != nil {
 		return nil, nil, err
 REDACTED
