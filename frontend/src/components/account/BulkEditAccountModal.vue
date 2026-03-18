@@ -599,6 +599,48 @@
         </div>
       </div>
 
+      <!-- Allow Overages (Antigravity only) -->
+      <div v-if="allAntigravity" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex items-center justify-between">
+          <div class="flex-1 pr-4">
+            <label
+              id="bulk-edit-allow-overages-label"
+              class="input-label mb-0"
+              for="bulk-edit-allow-overages-enabled"
+            >
+              {{ t('admin.accounts.allowOverages') }}
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.allowOveragesTooltip') }}
+            </p>
+          </div>
+          <input
+            v-model="enableAllowOverages"
+            id="bulk-edit-allow-overages-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-allow-overages-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div v-if="enableAllowOverages" id="bulk-edit-allow-overages-body" class="mt-3">
+          <button
+            type="button"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              allowOverages ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+            @click="allowOverages = !allowOverages"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                allowOverages ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- RPM Limit (仅全部为 Anthropic OAuth/SetupToken 时显示) -->
       <div v-if="allAnthropicOAuthOrSetupToken" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -843,6 +885,11 @@ const appStore = useAppStore()
 // Platform awareness
 const isMixedPlatform = computed(() => props.selectedPlatforms.length > 1)
 
+// 是否全部为 Antigravity 平台（allow_overages 仅在此条件下显示）
+const allAntigravity = computed(() =>
+  props.selectedPlatforms.length === 1 && props.selectedPlatforms[0] === 'antigravity'
+)
+
 // 是否全部为 Anthropic OAuth/SetupToken（RPM 配置仅在此条件下显示）
 const allAnthropicOAuthOrSetupToken = computed(() => {
   return (
@@ -887,6 +934,7 @@ const enableRateMultiplier = ref(false)
 const enableStatus = ref(false)
 const enableGroups = ref(false)
 const enableRpmLimit = ref(false)
+const enableAllowOverages = ref(false)
 
 // State - field values
 const submitting = ref(false)
@@ -912,6 +960,7 @@ const bulkBaseRpm = ref<number | null>(null)
 const bulkRpmStrategy = ref<'tiered' | 'sticky_exempt'>('tiered')
 const bulkRpmStickyBuffer = ref<number | null>(null)
 const userMsgQueueMode = ref<string | null>(null)
+const allowOverages = ref(false)
 const umqModeOptions = computed(() => [
   { value: '', label: t('admin.accounts.quotaControl.rpmLimit.umqModeOff') },
   { value: 'throttle', label: t('admin.accounts.quotaControl.rpmLimit.umqModeThrottle') },
@@ -1120,6 +1169,13 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     umqExtra.user_msg_queue_enabled = false  // 清理旧字段（JSONB merge）
   }
 
+  // Allow overages (Antigravity only)
+  if (enableAllowOverages.value) {
+    if (!updates.extra) updates.extra = {}
+    const overagesExtra = updates.extra as Record<string, unknown>
+    overagesExtra.allow_overages = allowOverages.value
+  }
+
   return Object.keys(updates).length > 0 ? updates : null
 }
 
@@ -1182,6 +1238,7 @@ const handleSubmit = async () => {
     enableStatus.value ||
     enableGroups.value ||
     enableRpmLimit.value ||
+    enableAllowOverages.value ||
     userMsgQueueMode.value !== null
 
   if (!hasAnyFieldEnabled) {
@@ -1273,6 +1330,7 @@ watch(
       enableStatus.value = false
       enableGroups.value = false
       enableRpmLimit.value = false
+      enableAllowOverages.value = false
 
       // Reset all values
       baseUrl.value = ''
@@ -1294,6 +1352,7 @@ watch(
       bulkRpmStrategy.value = 'tiered'
       bulkRpmStickyBuffer.value = null
       userMsgQueueMode.value = null
+      allowOverages.value = false
 
       // Reset mixed channel warning state
       showMixedChannelWarning.value = false
