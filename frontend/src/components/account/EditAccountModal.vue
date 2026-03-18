@@ -1980,271 +1980,281 @@ const normalizePoolModeRetryCount = (value: number) => {
   return normalized
 REDACTED
 
-watch(
-  () => props.account,
-  (newAccount) => {
-    if (newAccount) {
-      antigravityMixedChannelConfirmed.value = false
-      showMixedChannelWarning.value = false
-      mixedChannelWarningDetails.value = null
-      mixedChannelWarningRawMessage.value = ''
-      mixedChannelWarningAction.value = null
-      form.name = newAccount.name
-      form.notes = newAccount.notes || ''
-      form.proxy_id = newAccount.proxy_id
-      form.concurrency = newAccount.concurrency
-      form.load_factor = newAccount.load_factor ?? null
-      form.priority = newAccount.priority
-      form.rate_multiplier = newAccount.rate_multiplier ?? 1
-      form.status = (newAccount.status === 'active' || newAccount.status === 'inactive' || newAccount.status === 'error')
-        ? newAccount.status
-        : 'active'
-      form.group_ids = newAccount.group_ids || []
-      form.expires_at = newAccount.expires_at ?? null
+const syncFormFromAccount = (newAccount: Account | null) => {
+  if (!newAccount) {
+    return
+  REDACTED
+  antigravityMixedChannelConfirmed.value = false
+  showMixedChannelWarning.value = false
+  mixedChannelWarningDetails.value = null
+  mixedChannelWarningRawMessage.value = ''
+  mixedChannelWarningAction.value = null
+  form.name = newAccount.name
+  form.notes = newAccount.notes || ''
+  form.proxy_id = newAccount.proxy_id
+  form.concurrency = newAccount.concurrency
+  form.load_factor = newAccount.load_factor ?? null
+  form.priority = newAccount.priority
+  form.rate_multiplier = newAccount.rate_multiplier ?? 1
+  form.status = (newAccount.status === 'active' || newAccount.status === 'inactive' || newAccount.status === 'error')
+    ? newAccount.status
+    : 'active'
+  form.group_ids = newAccount.group_ids || []
+  form.expires_at = newAccount.expires_at ?? null
 
-      // Load intercept warmup requests setting (applies to all account types)
-      const credentials = newAccount.credentials as Record<string, unknown> | undefined
-      interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
-      autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
+  // Load intercept warmup requests setting (applies to all account types)
+  const credentials = newAccount.credentials as Record<string, unknown> | undefined
+  interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
+  autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
 
-      // Load mixed scheduling setting (only for antigravity accounts)
-      mixedScheduling.value = false
-      allowOverages.value = false
-      const extra = newAccount.extra as Record<string, unknown> | undefined
-      mixedScheduling.value = extra?.mixed_scheduling === true
-      allowOverages.value = extra?.allow_overages === true
+  // Load mixed scheduling setting (only for antigravity accounts)
+  mixedScheduling.value = false
+  allowOverages.value = false
+  const extra = newAccount.extra as Record<string, unknown> | undefined
+  mixedScheduling.value = extra?.mixed_scheduling === true
+  allowOverages.value = extra?.allow_overages === true
 
-      // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)
-      openaiPassthroughEnabled.value = false
-      openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
-      openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
-      codexCLIOnlyEnabled.value = false
-      anthropicPassthroughEnabled.value = false
-      if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
-        openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
-        openaiOAuthResponsesWebSocketV2Mode.value = resolveOpenAIWSModeFromExtra(extra, {
-          modeKey: 'openai_oauth_responses_websockets_v2_mode',
-          enabledKey: 'openai_oauth_responses_websockets_v2_enabled',
-          fallbackEnabledKeys: ['responses_websockets_v2_enabled', 'openai_ws_enabled'],
-          defaultMode: OPENAI_WS_MODE_OFF
-        REDACTED)
-        openaiAPIKeyResponsesWebSocketV2Mode.value = resolveOpenAIWSModeFromExtra(extra, {
-          modeKey: 'openai_apikey_responses_websockets_v2_mode',
-          enabledKey: 'openai_apikey_responses_websockets_v2_enabled',
-          fallbackEnabledKeys: ['responses_websockets_v2_enabled', 'openai_ws_enabled'],
-          defaultMode: OPENAI_WS_MODE_OFF
-        REDACTED)
-        if (newAccount.type === 'oauth') {
-          codexCLIOnlyEnabled.value = extra?.codex_cli_only === true
-        REDACTED
-      REDACTED
-      if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
-        anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
-      REDACTED
+  // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)
+  openaiPassthroughEnabled.value = false
+  openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
+  openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
+  codexCLIOnlyEnabled.value = false
+  anthropicPassthroughEnabled.value = false
+  if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
+    openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
+    openaiOAuthResponsesWebSocketV2Mode.value = resolveOpenAIWSModeFromExtra(extra, {
+      modeKey: 'openai_oauth_responses_websockets_v2_mode',
+      enabledKey: 'openai_oauth_responses_websockets_v2_enabled',
+      fallbackEnabledKeys: ['responses_websockets_v2_enabled', 'openai_ws_enabled'],
+      defaultMode: OPENAI_WS_MODE_OFF
+    REDACTED)
+    openaiAPIKeyResponsesWebSocketV2Mode.value = resolveOpenAIWSModeFromExtra(extra, {
+      modeKey: 'openai_apikey_responses_websockets_v2_mode',
+      enabledKey: 'openai_apikey_responses_websockets_v2_enabled',
+      fallbackEnabledKeys: ['responses_websockets_v2_enabled', 'openai_ws_enabled'],
+      defaultMode: OPENAI_WS_MODE_OFF
+    REDACTED)
+    if (newAccount.type === 'oauth') {
+      codexCLIOnlyEnabled.value = extra?.codex_cli_only === true
+    REDACTED
+  REDACTED
+  if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
+    anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
+  REDACTED
 
-      // Load quota limit for apikey/bedrock accounts (bedrock quota is also loaded in its own branch above)
-      if (newAccount.type === 'apikey' || newAccount.type === 'bedrock') {
-        const quotaVal = extra?.quota_limit as number | undefined
-        editQuotaLimit.value = (quotaVal && quotaVal > 0) ? quotaVal : null
-        const dailyVal = extra?.quota_daily_limit as number | undefined
-        editQuotaDailyLimit.value = (dailyVal && dailyVal > 0) ? dailyVal : null
-        const weeklyVal = extra?.quota_weekly_limit as number | undefined
-        editQuotaWeeklyLimit.value = (weeklyVal && weeklyVal > 0) ? weeklyVal : null
-        // Load quota reset mode config
-        editDailyResetMode.value = (extra?.quota_daily_reset_mode as 'rolling' | 'fixed') || null
-        editDailyResetHour.value = (extra?.quota_daily_reset_hour as number) ?? null
-        editWeeklyResetMode.value = (extra?.quota_weekly_reset_mode as 'rolling' | 'fixed') || null
-        editWeeklyResetDay.value = (extra?.quota_weekly_reset_day as number) ?? null
-        editWeeklyResetHour.value = (extra?.quota_weekly_reset_hour as number) ?? null
-        editResetTimezone.value = (extra?.quota_reset_timezone as string) || null
+  // Load quota limit for apikey/bedrock accounts (bedrock quota is also loaded in its own branch above)
+  if (newAccount.type === 'apikey' || newAccount.type === 'bedrock') {
+    const quotaVal = extra?.quota_limit as number | undefined
+    editQuotaLimit.value = (quotaVal && quotaVal > 0) ? quotaVal : null
+    const dailyVal = extra?.quota_daily_limit as number | undefined
+    editQuotaDailyLimit.value = (dailyVal && dailyVal > 0) ? dailyVal : null
+    const weeklyVal = extra?.quota_weekly_limit as number | undefined
+    editQuotaWeeklyLimit.value = (weeklyVal && weeklyVal > 0) ? weeklyVal : null
+    // Load quota reset mode config
+    editDailyResetMode.value = (extra?.quota_daily_reset_mode as 'rolling' | 'fixed') || null
+    editDailyResetHour.value = (extra?.quota_daily_reset_hour as number) ?? null
+    editWeeklyResetMode.value = (extra?.quota_weekly_reset_mode as 'rolling' | 'fixed') || null
+    editWeeklyResetDay.value = (extra?.quota_weekly_reset_day as number) ?? null
+    editWeeklyResetHour.value = (extra?.quota_weekly_reset_hour as number) ?? null
+    editResetTimezone.value = (extra?.quota_reset_timezone as string) || null
+  REDACTED else {
+    editQuotaLimit.value = null
+    editQuotaDailyLimit.value = null
+    editQuotaWeeklyLimit.value = null
+    editDailyResetMode.value = null
+    editDailyResetHour.value = null
+    editWeeklyResetMode.value = null
+    editWeeklyResetDay.value = null
+    editWeeklyResetHour.value = null
+    editResetTimezone.value = null
+  REDACTED
+
+  // Load antigravity model mapping (Antigravity 只支持映射模式)
+  if (newAccount.platform === 'antigravity') {
+    const credentials = newAccount.credentials as Record<string, unknown> | undefined
+
+    // Antigravity 始终使用映射模式
+    antigravityModelRestrictionMode.value = 'mapping'
+    antigravityWhitelistModels.value = []
+
+    // 从 model_mapping 读取映射配置
+    const rawAgMapping = credentials?.model_mapping as Record<string, string> | undefined
+    if (rawAgMapping && typeof rawAgMapping === 'object') {
+      const entries = Object.entries(rawAgMapping)
+      // 无论是白名单样式(key===value)还是真正的映射，都统一转换为映射列表
+      antigravityModelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
+    REDACTED else {
+      // 兼容旧数据：从 model_whitelist 读取，转换为映射格式
+      const rawWhitelist = credentials?.model_whitelist
+      if (Array.isArray(rawWhitelist) && rawWhitelist.length > 0) {
+        antigravityModelMappings.value = rawWhitelist
+          .map((v) => String(v).trim())
+          .filter((v) => v.length > 0)
+          .map((m) => ({ from: m, to: m REDACTED))
       REDACTED else {
-        editQuotaLimit.value = null
-        editQuotaDailyLimit.value = null
-        editQuotaWeeklyLimit.value = null
-        editDailyResetMode.value = null
-        editDailyResetHour.value = null
-        editWeeklyResetMode.value = null
-        editWeeklyResetDay.value = null
-        editWeeklyResetHour.value = null
-        editResetTimezone.value = null
-      REDACTED
-
-      // Load antigravity model mapping (Antigravity 只支持映射模式)
-      if (newAccount.platform === 'antigravity') {
-        const credentials = newAccount.credentials as Record<string, unknown> | undefined
-
-        // Antigravity 始终使用映射模式
-        antigravityModelRestrictionMode.value = 'mapping'
-        antigravityWhitelistModels.value = []
-
-        // 从 model_mapping 读取映射配置
-        const rawAgMapping = credentials?.model_mapping as Record<string, string> | undefined
-        if (rawAgMapping && typeof rawAgMapping === 'object') {
-          const entries = Object.entries(rawAgMapping)
-          // 无论是白名单样式(key===value)还是真正的映射，都统一转换为映射列表
-          antigravityModelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
-        REDACTED else {
-          // 兼容旧数据：从 model_whitelist 读取，转换为映射格式
-          const rawWhitelist = credentials?.model_whitelist
-          if (Array.isArray(rawWhitelist) && rawWhitelist.length > 0) {
-            antigravityModelMappings.value = rawWhitelist
-              .map((v) => String(v).trim())
-              .filter((v) => v.length > 0)
-              .map((m) => ({ from: m, to: m REDACTED))
-          REDACTED else {
-            antigravityModelMappings.value = []
-          REDACTED
-        REDACTED
-      REDACTED else {
-        antigravityModelRestrictionMode.value = 'mapping'
-        antigravityWhitelistModels.value = []
         antigravityModelMappings.value = []
       REDACTED
+    REDACTED
+  REDACTED else {
+    antigravityModelRestrictionMode.value = 'mapping'
+    antigravityWhitelistModels.value = []
+    antigravityModelMappings.value = []
+  REDACTED
 
-      // Load quota control settings (Anthropic OAuth/SetupToken only)
-      loadQuotaControlSettings(newAccount)
+  // Load quota control settings (Anthropic OAuth/SetupToken only)
+  loadQuotaControlSettings(newAccount)
 
-      loadTempUnschedRules(credentials)
+  loadTempUnschedRules(credentials)
 
-      // Initialize API Key fields for apikey type
-      if (newAccount.type === 'apikey' && newAccount.credentials) {
-        const credentials = newAccount.credentials as Record<string, unknown>
-        const platformDefaultUrl =
-          newAccount.platform === 'openai' || newAccount.platform === 'sora'
-            ? 'https://api.openai.com'
-            : newAccount.platform === 'gemini'
-              ? 'https://generativelanguage.googleapis.com'
-              : 'https://api.anthropic.com'
-        editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
+  // Initialize API Key fields for apikey type
+  if (newAccount.type === 'apikey' && newAccount.credentials) {
+    const credentials = newAccount.credentials as Record<string, unknown>
+    const platformDefaultUrl =
+      newAccount.platform === 'openai' || newAccount.platform === 'sora'
+        ? 'https://api.openai.com'
+        : newAccount.platform === 'gemini'
+          ? 'https://generativelanguage.googleapis.com'
+          : 'https://api.anthropic.com'
+    editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
-        // Load model mappings and detect mode
-        const existingMappings = credentials.model_mapping as Record<string, string> | undefined
-        if (existingMappings && typeof existingMappings === 'object') {
-          const entries = Object.entries(existingMappings)
+    // Load model mappings and detect mode
+    const existingMappings = credentials.model_mapping as Record<string, string> | undefined
+    if (existingMappings && typeof existingMappings === 'object') {
+      const entries = Object.entries(existingMappings)
 
-          // Detect if this is whitelist mode (all from === to) or mapping mode
-          const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
+      // Detect if this is whitelist mode (all from === to) or mapping mode
+      const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
 
-          if (isWhitelistMode) {
-            // Whitelist mode: populate allowedModels
-            modelRestrictionMode.value = 'whitelist'
-            allowedModels.value = entries.map(([from]) => from)
-            modelMappings.value = []
-          REDACTED else {
-            // Mapping mode: populate modelMappings
-            modelRestrictionMode.value = 'mapping'
-            modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
-            allowedModels.value = []
-          REDACTED
-        REDACTED else {
-          // No mappings: default to whitelist mode with empty selection (allow all)
-          modelRestrictionMode.value = 'whitelist'
-          modelMappings.value = []
-          allowedModels.value = []
-        REDACTED
-
-        // Load pool mode
-        poolModeEnabled.value = credentials.pool_mode === true
-        poolModeRetryCount.value = normalizePoolModeRetryCount(
-          Number(credentials.pool_mode_retry_count ?? DEFAULT_POOL_MODE_RETRY_COUNT)
-        )
-
-        // Load custom error codes
-        customErrorCodesEnabled.value = credentials.custom_error_codes_enabled === true
-        const existingErrorCodes = credentials.custom_error_codes as number[] | undefined
-        if (existingErrorCodes && Array.isArray(existingErrorCodes)) {
-          selectedErrorCodes.value = [...existingErrorCodes]
-        REDACTED else {
-          selectedErrorCodes.value = []
-        REDACTED
-      REDACTED else if (newAccount.type === 'bedrock' && newAccount.credentials) {
-        const bedrockCreds = newAccount.credentials as Record<string, unknown>
-        const authMode = (bedrockCreds.auth_mode as string) || 'sigv4'
-        editBedrockRegion.value = (bedrockCreds.aws_region as string) || ''
-        editBedrockForceGlobal.value = (bedrockCreds.aws_force_global as string) === 'true'
-
-        if (authMode === 'apikey') {
-          editBedrockApiKeyValue.value = ''
-        REDACTED else {
-          editBedrockAccessKeyId.value = (bedrockCreds.aws_access_key_id as string) || ''
-          editBedrockSecretAccessKey.value = ''
-          editBedrockSessionToken.value = ''
-        REDACTED
-
-        // Load pool mode for bedrock
-        poolModeEnabled.value = bedrockCreds.pool_mode === true
-        const retryCount = bedrockCreds.pool_mode_retry_count
-        poolModeRetryCount.value = (typeof retryCount === 'number' && retryCount >= 0) ? retryCount : DEFAULT_POOL_MODE_RETRY_COUNT
-
-        // Load quota limits for bedrock
-        const bedrockExtra = (newAccount.extra as Record<string, unknown>) || {REDACTED
-        editQuotaLimit.value = typeof bedrockExtra.quota_limit === 'number' ? bedrockExtra.quota_limit : null
-        editQuotaDailyLimit.value = typeof bedrockExtra.quota_daily_limit === 'number' ? bedrockExtra.quota_daily_limit : null
-        editQuotaWeeklyLimit.value = typeof bedrockExtra.quota_weekly_limit === 'number' ? bedrockExtra.quota_weekly_limit : null
-
-        // Load model mappings for bedrock
-        const existingMappings = bedrockCreds.model_mapping as Record<string, string> | undefined
-        if (existingMappings && typeof existingMappings === 'object') {
-          const entries = Object.entries(existingMappings)
-          const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
-          if (isWhitelistMode) {
-            modelRestrictionMode.value = 'whitelist'
-            allowedModels.value = entries.map(([from]) => from)
-            modelMappings.value = []
-          REDACTED else {
-            modelRestrictionMode.value = 'mapping'
-            modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
-            allowedModels.value = []
-          REDACTED
-        REDACTED else {
-          modelRestrictionMode.value = 'whitelist'
-          modelMappings.value = []
-          allowedModels.value = []
-        REDACTED
-      REDACTED else if (newAccount.type === 'upstream' && newAccount.credentials) {
-        const credentials = newAccount.credentials as Record<string, unknown>
-        editBaseUrl.value = (credentials.base_url as string) || ''
+      if (isWhitelistMode) {
+        // Whitelist mode: populate allowedModels
+        modelRestrictionMode.value = 'whitelist'
+        allowedModels.value = entries.map(([from]) => from)
+        modelMappings.value = []
       REDACTED else {
-        const platformDefaultUrl =
-          newAccount.platform === 'openai' || newAccount.platform === 'sora'
-            ? 'https://api.openai.com'
-            : newAccount.platform === 'gemini'
-              ? 'https://generativelanguage.googleapis.com'
-              : 'https://api.anthropic.com'
-        editBaseUrl.value = platformDefaultUrl
+        // Mapping mode: populate modelMappings
+        modelRestrictionMode.value = 'mapping'
+        modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
+        allowedModels.value = []
+      REDACTED
+    REDACTED else {
+      // No mappings: default to whitelist mode with empty selection (allow all)
+      modelRestrictionMode.value = 'whitelist'
+      modelMappings.value = []
+      allowedModels.value = []
+    REDACTED
 
-        // Load model mappings for OpenAI OAuth accounts
-        if (newAccount.platform === 'openai' && newAccount.credentials) {
-          const oauthCredentials = newAccount.credentials as Record<string, unknown>
-          const existingMappings = oauthCredentials.model_mapping as Record<string, string> | undefined
-          if (existingMappings && typeof existingMappings === 'object') {
-            const entries = Object.entries(existingMappings)
-            const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
-            if (isWhitelistMode) {
-              modelRestrictionMode.value = 'whitelist'
-              allowedModels.value = entries.map(([from]) => from)
-              modelMappings.value = []
-            REDACTED else {
-              modelRestrictionMode.value = 'mapping'
-              modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
-              allowedModels.value = []
-            REDACTED
-          REDACTED else {
-            modelRestrictionMode.value = 'whitelist'
-            modelMappings.value = []
-            allowedModels.value = []
-          REDACTED
-        REDACTED else {
+    // Load pool mode
+    poolModeEnabled.value = credentials.pool_mode === true
+    poolModeRetryCount.value = normalizePoolModeRetryCount(
+      Number(credentials.pool_mode_retry_count ?? DEFAULT_POOL_MODE_RETRY_COUNT)
+    )
+
+    // Load custom error codes
+    customErrorCodesEnabled.value = credentials.custom_error_codes_enabled === true
+    const existingErrorCodes = credentials.custom_error_codes as number[] | undefined
+    if (existingErrorCodes && Array.isArray(existingErrorCodes)) {
+      selectedErrorCodes.value = [...existingErrorCodes]
+    REDACTED else {
+      selectedErrorCodes.value = []
+    REDACTED
+  REDACTED else if (newAccount.type === 'bedrock' && newAccount.credentials) {
+    const bedrockCreds = newAccount.credentials as Record<string, unknown>
+    const authMode = (bedrockCreds.auth_mode as string) || 'sigv4'
+    editBedrockRegion.value = (bedrockCreds.aws_region as string) || ''
+    editBedrockForceGlobal.value = (bedrockCreds.aws_force_global as string) === 'true'
+
+    if (authMode === 'apikey') {
+      editBedrockApiKeyValue.value = ''
+    REDACTED else {
+      editBedrockAccessKeyId.value = (bedrockCreds.aws_access_key_id as string) || ''
+      editBedrockSecretAccessKey.value = ''
+      editBedrockSessionToken.value = ''
+    REDACTED
+
+    // Load pool mode for bedrock
+    poolModeEnabled.value = bedrockCreds.pool_mode === true
+    const retryCount = bedrockCreds.pool_mode_retry_count
+    poolModeRetryCount.value = (typeof retryCount === 'number' && retryCount >= 0) ? retryCount : DEFAULT_POOL_MODE_RETRY_COUNT
+
+    // Load quota limits for bedrock
+    const bedrockExtra = (newAccount.extra as Record<string, unknown>) || {REDACTED
+    editQuotaLimit.value = typeof bedrockExtra.quota_limit === 'number' ? bedrockExtra.quota_limit : null
+    editQuotaDailyLimit.value = typeof bedrockExtra.quota_daily_limit === 'number' ? bedrockExtra.quota_daily_limit : null
+    editQuotaWeeklyLimit.value = typeof bedrockExtra.quota_weekly_limit === 'number' ? bedrockExtra.quota_weekly_limit : null
+
+    // Load model mappings for bedrock
+    const existingMappings = bedrockCreds.model_mapping as Record<string, string> | undefined
+    if (existingMappings && typeof existingMappings === 'object') {
+      const entries = Object.entries(existingMappings)
+      const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
+      if (isWhitelistMode) {
+        modelRestrictionMode.value = 'whitelist'
+        allowedModels.value = entries.map(([from]) => from)
+        modelMappings.value = []
+      REDACTED else {
+        modelRestrictionMode.value = 'mapping'
+        modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
+        allowedModels.value = []
+      REDACTED
+    REDACTED else {
+      modelRestrictionMode.value = 'whitelist'
+      modelMappings.value = []
+      allowedModels.value = []
+    REDACTED
+  REDACTED else if (newAccount.type === 'upstream' && newAccount.credentials) {
+    const credentials = newAccount.credentials as Record<string, unknown>
+    editBaseUrl.value = (credentials.base_url as string) || ''
+  REDACTED else {
+    const platformDefaultUrl =
+      newAccount.platform === 'openai' || newAccount.platform === 'sora'
+        ? 'https://api.openai.com'
+        : newAccount.platform === 'gemini'
+          ? 'https://generativelanguage.googleapis.com'
+          : 'https://api.anthropic.com'
+    editBaseUrl.value = platformDefaultUrl
+
+    // Load model mappings for OpenAI OAuth accounts
+    if (newAccount.platform === 'openai' && newAccount.credentials) {
+      const oauthCredentials = newAccount.credentials as Record<string, unknown>
+      const existingMappings = oauthCredentials.model_mapping as Record<string, string> | undefined
+      if (existingMappings && typeof existingMappings === 'object') {
+        const entries = Object.entries(existingMappings)
+        const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
+        if (isWhitelistMode) {
           modelRestrictionMode.value = 'whitelist'
+          allowedModels.value = entries.map(([from]) => from)
           modelMappings.value = []
+        REDACTED else {
+          modelRestrictionMode.value = 'mapping'
+          modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
           allowedModels.value = []
         REDACTED
-        poolModeEnabled.value = false
-        poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
-        customErrorCodesEnabled.value = false
-        selectedErrorCodes.value = []
+      REDACTED else {
+        modelRestrictionMode.value = 'whitelist'
+        modelMappings.value = []
+        allowedModels.value = []
       REDACTED
-      editApiKey.value = ''
+    REDACTED else {
+      modelRestrictionMode.value = 'whitelist'
+      modelMappings.value = []
+      allowedModels.value = []
+    REDACTED
+    poolModeEnabled.value = false
+    poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
+    customErrorCodesEnabled.value = false
+    selectedErrorCodes.value = []
+  REDACTED
+  editApiKey.value = ''
+REDACTED
+
+watch(
+  [() => props.show, () => props.account],
+  ([show, newAccount], [wasShow, previousAccount]) => {
+    if (!show || !newAccount) {
+      return
+    REDACTED
+    if (!wasShow || newAccount !== previousAccount) {
+      syncFormFromAccount(newAccount)
     REDACTED
   REDACTED,
   { immediate: true REDACTED
