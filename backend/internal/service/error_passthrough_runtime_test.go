@@ -220,7 +220,7 @@ func TestApplyErrorPassthroughRule_SkipMonitoringSetsContextKey(t *testing.T) {
 	v, exists := c.Get(OpsSkipPassthroughKey)
 	assert.True(t, exists, "OpsSkipPassthroughKey should be set when skip_monitoring=true")
 	boolVal, ok := v.(bool)
-	assert.True(t, ok, "value should be bool")
+	assert.True(t, ok, "value should be a bool")
 	assert.True(t, boolVal)
 }
 

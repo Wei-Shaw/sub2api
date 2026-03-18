@@ -33,7 +33,7 @@
 
     <template v-else>
       <div
-        v-for="(row, index) in sortedData"
+        v-for="(row, index) in displayedData"
         :key="resolveRowKey(row, index)"
         class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900"
       >
@@ -65,7 +65,8 @@
     class="table-wrapper hidden md:block"
     :class="{
       'actions-expanded': actionsExpanded,
-      'is-scrollable': isScrollable
+      'is-scrollable': isScrollable,
+      'virtual-scroll-container': virtualScroll
     }"
   >
     <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
@@ -147,28 +148,70 @@
           </td>
         </tr>
 
-        <!-- Data rows -->
-        <tr
-          v-else
-          v-for="(row, index) in sortedData"
-          :key="resolveRowKey(row, index)"
-          :data-row-id="resolveRowKey(row, index)"
-          class="hover:bg-gray-50 dark:hover:bg-dark-800"
-        >
-          <td
-            v-for="(column, colIndex) in columns"
-            :key="column.key"
-            :class="[
-              'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
-              getAdaptivePaddingClass(),
-              getStickyColumnClass(column, colIndex)
-            ]"
+        <!-- Data rows: non-virtual mode (original behavior) -->
+        <template v-else-if="!virtualScroll">
+          <tr
+            v-for="(row, index) in displayedData"
+            :key="resolveRowKey(row, index)"
+            :data-row-id="resolveRowKey(row, index)"
+            class="hover:bg-gray-50 dark:hover:bg-dark-800"
           >
-            <slot :name="`cell-${column.key}`" :row="row" :value="row[column.key]" :expanded="actionsExpanded">
-              {{ column.formatter ? column.formatter(row[column.key], row) : row[column.key] }}
-            </slot>
-          </td>
-        </tr>
+            <td
+              v-for="(column, colIndex) in columns"
+              :key="column.key"
+              :class="[
+                'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
+                getAdaptivePaddingClass(),
+                getStickyColumnClass(column, colIndex)
+              ]"
+            >
+              <slot :name="`cell-${column.key}`" :row="row" :value="row[column.key]" :expanded="actionsExpanded">
+                {{ column.formatter ? column.formatter(row[column.key], row) : row[column.key] }}
+              </slot>
+            </td>
+          </tr>
+        </template>
+
+        <!-- Data rows: virtual scroll mode -->
+        <template v-else>
+          <tr v-if="virtualPaddingTop > 0" aria-hidden="true">
+            <td :colspan="columns.length"
+                :style="{ height: virtualPaddingTop + 'px', padding: 0, border: 'none' }">
+            </td>
+          </tr>
+          <tr
+            v-for="virtualRow in virtualItems"
+            :key="resolveRowKey(sortedData[virtualRow.index], virtualRow.index)"
+            :data-row-id="resolveRowKey(sortedData[virtualRow.index], virtualRow.index)"
+            :data-index="virtualRow.index"
+            :ref="measureElement"
+            class="hover:bg-gray-50 dark:hover:bg-dark-800"
+          >
+            <td
+              v-for="(column, colIndex) in columns"
+              :key="column.key"
+              :class="[
+                'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
+                getAdaptivePaddingClass(),
+                getStickyColumnClass(column, colIndex)
+              ]"
+            >
+              <slot :name="`cell-${column.key}`"
+                    :row="sortedData[virtualRow.index]"
+                    :value="sortedData[virtualRow.index][column.key]"
+                    :expanded="actionsExpanded">
+                {{ column.formatter
+                   ? column.formatter(sortedData[virtualRow.index][column.key], sortedData[virtualRow.index])
+                   : sortedData[virtualRow.index][column.key] }}
+              </slot>
+            </td>
+          </tr>
+          <tr v-if="virtualPaddingBottom > 0" aria-hidden="true">
+            <td :colspan="columns.length"
+                :style="{ height: virtualPaddingBottom + 'px', padding: 0, border: 'none' }">
+            </td>
+          </tr>
+        </template>
       </tbody>
     </table>
   </div>
@@ -176,6 +219,7 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useVirtualizer } from '@tanstack/vue-virtual'
 import { useI18n } from 'vue-i18n'
 import type { Column } from './types'
 import Icon from '@/components/icons/Icon.vue'
@@ -251,6 +295,9 @@ let resizeHandler: (() => void) | null = null
 onMounted(() => {
   checkScrollable()
   checkActionsColumnWidth()
+  if (!props.virtualScroll) {
+    startProgressiveReveal(sortedData.value?.length ?? 0)
+  }
   if (tableWrapperRef.value && typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(() => {
       checkScrollable()
@@ -269,6 +316,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   resizeObserver?.disconnect()
+  cancelAnimationFrame(progressiveRAF)
   if (resizeHandler) {
     window.removeEventListener('resize', resizeHandler)
     resizeHandler = null
@@ -299,6 +347,12 @@ interface Props {
    * will emit 'sort' events instead of performing client-side sorting.
    */
   serverSideSort?: boolean
+  /** Enable virtual scrolling (opt-in, default false) */
+  virtualScroll?: boolean
+  /** Estimated row height in px for the virtualizer (default 56) */
+  estimateRowHeight?: number
+  /** Number of rows to render beyond visible area (default 5) */
+  overscan?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -499,6 +553,68 @@ const sortedData = computed(() => {
     .map(item => item.row)
 })
 
+// --- Virtual scrolling ---
+const rowVirtualizer = useVirtualizer(computed(() => ({
+  count: props.virtualScroll ? (sortedData.value?.length ?? 0) : 0,
+  getScrollElement: () => tableWrapperRef.value,
+  estimateSize: () => props.estimateRowHeight ?? 56,
+  overscan: props.overscan ?? 5,
+})))
+
+const virtualItems = computed(() => rowVirtualizer.value.getVirtualItems())
+
+const virtualPaddingTop = computed(() => {
+  const items = virtualItems.value
+  return items.length > 0 ? items[0].start : 0
+})
+
+const virtualPaddingBottom = computed(() => {
+  const items = virtualItems.value
+  if (items.length === 0) return 0
+  return rowVirtualizer.value.getTotalSize() - items[items.length - 1].end
+})
+
+const measureElement = (el: any) => {
+  if (el && props.virtualScroll) {
+    rowVirtualizer.value.measureElement(el as Element)
+  }
+}
+
+// --- Progressive rendering: render rows in chunks to avoid blocking the main thread ---
+const PROGRESSIVE_CHUNK = 30
+const visibleCount = ref(0)
+let progressiveRAF = 0
+
+const displayedData = computed(() => {
+  const all = sortedData.value
+  if (!all || visibleCount.value >= all.length) return all
+  return all.slice(0, visibleCount.value)
+})
+
+function startProgressiveReveal(total: number) {
+  cancelAnimationFrame(progressiveRAF)
+  visibleCount.value = Math.min(PROGRESSIVE_CHUNK, total)
+  if (total <= PROGRESSIVE_CHUNK) return
+  const step = () => {
+    if (visibleCount.value < total) {
+      visibleCount.value = Math.min(visibleCount.value + PROGRESSIVE_CHUNK, total)
+      if (visibleCount.value < total) {
+        progressiveRAF = requestAnimationFrame(step)
+      }
+    }
+  }
+  progressiveRAF = requestAnimationFrame(step)
+}
+
+// Restart progressive rendering when the underlying data array changes (page switch, filter, reload).
+// Use shallowRef identity check so sort-only changes (same array reference) don't re-trigger.
+const dataIdentity = computed(() => props.data)
+watch(dataIdentity, () => {
+  if (!props.virtualScroll) {
+    startProgressiveReveal(sortedData.value?.length ?? 0)
+  }
+})
+
 const hasActionsColumn = computed(() => {
   return props.columns.some(column => column.key === 'actions')
 })
@@ -595,6 +711,13 @@ watch(
   },
   { flush: 'post' }
 )
+
+defineExpose({
+  virtualizer: rowVirtualizer,
+  sortedData,
+  resolveRowKey,
+  tableWrapperEl: tableWrapperRef,
+})
 </script>
 
 <style scoped>
@@ -604,6 +727,13 @@ watch(
   position: relative;
   overflow-x: auto;
   isolation: isolate;
+}
+
+/* Virtual scroll mode: enable vertical scrolling, fill available height */
+.table-wrapper.virtual-scroll-container {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 /* 表头容器，确保在滚动时覆盖表体内容 */

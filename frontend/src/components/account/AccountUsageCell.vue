@@ -73,7 +73,7 @@
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
-    <!-- OpenAI OAuth accounts: single source from /usage API -->
+    <!-- OpenAI OAuth accounts: prefer /usage API, fallback to local Codex snapshot -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
@@ -91,6 +91,36 @@
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
           :window-stats="usageInfo.seven_day.window_stats"
+          :show-now-when-idle="true"
+          color="emerald"
+        />
+      </div>
+      <div v-else-if="isActiveOpenAIRateLimited && loading" class="space-y-1.5">
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else-if="hasCodexUsage" class="space-y-1">
+        <UsageProgressBar
+          v-if="codex5hUsedPercent !== null"
+          label="5h"
+          :utilization="codex5hUsedPercent"
+          :resets-at="codex5hResetAt"
+          :show-now-when-idle="true"
+          color="indigo"
+        />
+        <UsageProgressBar
+          v-if="codex7dUsedPercent !== null"
+          label="7d"
+          :utilization="codex7dUsedPercent"
+          :resets-at="codex7dResetAt"
           :show-now-when-idle="true"
           color="emerald"
         />
@@ -384,6 +414,7 @@
         label="1d"
         :utilization="quotaDailyBar.utilization"
         :resets-at="quotaDailyBar.resetsAt"
+:display-value="quotaDailyBar.displayValue"
         color="indigo"
       />
       <UsageProgressBar
@@ -391,12 +422,14 @@
         label="7d"
         :utilization="quotaWeeklyBar.utilization"
         :resets-at="quotaWeeklyBar.resetsAt"
+:display-value="quotaWeeklyBar.displayValue"
         color="emerald"
       />
       <UsageProgressBar
         v-if="quotaTotalBar"
         label="total"
         :utilization="quotaTotalBar.utilization"
+:display-value="quotaTotalBar.displayValue"
         color="purple"
       />
 
@@ -407,14 +440,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { resolveCodexUsageWindow } from '@/utils/codexUsage'
+import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
+
+// Module-level cache shared across all AccountUsageCell instances
+const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
+const USAGE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 const props = withDefaults(
   defineProps<{
@@ -431,6 +470,9 @@ const props = withDefaults(
 )
 
 const { t } = useI18n()
+
+const unmounted = ref(false)
+onBeforeUnmount(() => { unmounted.value = true })
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -470,10 +512,30 @@ const geminiUsageAvailable = computed(() => {
   )
 })
 
+const codex5hWindow = computed(() => resolveCodexUsageWindow(props.account.extra, '5h'))
+const codex7dWindow = computed(() => resolveCodexUsageWindow(props.account.extra, '7d'))
+
+const hasCodexUsage = computed(() => {
+  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
+  return codex5hWindow.value.usedPercent !== null || codex7dWindow.value.usedPercent !== null
+})
+
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
   return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
 })
+
+const isActiveOpenAIRateLimited = computed(() => {
+  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
+  if (!props.account.rate_limit_reset_at) return false
+  const resetAt = Date.parse(props.account.rate_limit_reset_at)
+  return !Number.isNaN(resetAt) && resetAt > Date.now()
+})
+
+const codex5hUsedPercent = computed(() => codex5hWindow.value.usedPercent)
+const codex5hResetAt = computed(() => codex5hWindow.value.resetAt)
+const codex7dUsedPercent = computed(() => codex7dWindow.value.usedPercent)
+const codex7dResetAt = computed(() => codex7dWindow.value.resetAt)
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
 
@@ -888,19 +950,36 @@ const copyValidationURL = async () => {
   }
 }
 
-const loadUsage = async () => {
+const loadUsage = async (bypassCache = false) => {
   if (!shouldFetchUsage.value) return
+
+  // Check cache
+  if (!bypassCache) {
+    const cached = _usageCache.get(props.account.id)
+    if (cached && Date.now() - cached.ts < USAGE_CACHE_TTL) {
+      usageInfo.value = cached.data
+      loading.value = false
+      return
+    }
+  }
 
   loading.value = true
   error.value = null
 
   try {
-    usageInfo.value = await adminAPI.accounts.getUsage(props.account.id)
+    const fetchFn = () => adminAPI.accounts.getUsage(props.account.id)
+    const result = await enqueueUsageRequest(props.account, fetchFn)
+    if (!unmounted.value) {
+      usageInfo.value = result
+      _usageCache.set(props.account.id, { data: result, ts: Date.now() })
+    }
   } catch (e: any) {
-    error.value = t('common.error')
-    console.error('Failed to load usage:', e)
+    if (!unmounted.value) {
+      error.value = t('common.error')
+      console.error('Failed to load usage:', e)
+    }
   } finally {
-    loading.value = false
+    if (!unmounted.value) loading.value = false
   }
 }
 
@@ -908,8 +987,11 @@ const loadUsage = async () => {
 
 interface QuotaBarInfo {
   utilization: number
+  displayValue: string
   resetsAt: string | null
 }
+
+const fmtCost = (v: number) => v.toFixed(2)
 
 const makeQuotaBar = (
   used: number,
@@ -917,6 +999,7 @@ const makeQuotaBar = (
   startKey?: string
 ): QuotaBarInfo => {
   const utilization = limit > 0 ? (used / limit) * 100 : 0
+  const displayValue = `${fmtCost(used)}/${fmtCost(limit)}`
   let resetsAt: string | null = null
   if (startKey) {
     const extra = props.account.extra as Record<string, unknown> | undefined
@@ -939,7 +1022,7 @@ const makeQuotaBar = (
       }
     }
   }
-  return { utilization, resetsAt }
+  return { utilization, displayValue, resetsAt }
 }
 
 const hasApiKeyQuota = computed(() => {
@@ -1011,7 +1094,8 @@ watch(
     if (nextToken === prevToken) return
     if (!shouldFetchUsage.value) return
 
-    loadUsage().catch((e) => {
+    _usageCache.delete(props.account.id)
+    loadUsage(true).catch((e) => {
       console.error('Failed to refresh usage after manual refresh:', e)
     })
   }

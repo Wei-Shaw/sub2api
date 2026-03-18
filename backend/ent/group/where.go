@@ -205,6 +205,11 @@ func DefaultMappedModel(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultMappedModel, v))
 }
 
+// SimulateClaudeMaxEnabled applies equality check predicate on the "simulate_claude_max_enabled" field. It's identical to SimulateClaudeMaxEnabledEQ.
+func SimulateClaudeMaxEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSimulateClaudeMaxEnabled, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1553,6 +1558,16 @@ func DefaultMappedModelEqualFold(v string) predicate.Group {
 // DefaultMappedModelContainsFold applies the ContainsFold predicate on the "default_mapped_model" field.
 func DefaultMappedModelContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDefaultMappedModel, v))
+}
+
+// SimulateClaudeMaxEnabledEQ applies the EQ predicate on the "simulate_claude_max_enabled" field.
+func SimulateClaudeMaxEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldSimulateClaudeMaxEnabled, v))
+}
+
+// SimulateClaudeMaxEnabledNEQ applies the NEQ predicate on the "simulate_claude_max_enabled" field.
+func SimulateClaudeMaxEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldSimulateClaudeMaxEnabled, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

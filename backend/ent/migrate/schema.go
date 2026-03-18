@@ -410,6 +410,7 @@ var (
 		{Name: "sort_order", Type: field.TypeInt, Default: 0},
 		{Name: "allow_messages_dispatch", Type: field.TypeBool, Default: false},
 		{Name: "default_mapped_model", Type: field.TypeString, Size: 100, Default: ""},
+		{Name: "simulate_claude_max_enabled", Type: field.TypeBool, Default: false},
 	}
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{

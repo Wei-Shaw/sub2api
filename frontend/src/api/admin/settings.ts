@@ -382,7 +382,7 @@ export async function updateBetaPolicySettings(
   return data
 }
 
-// ==================== Sora S3 Settings ====================
+// ==================== Sora Storage Settings ====================
 
 export interface SoraS3Settings {
   enabled: boolean
@@ -401,7 +401,9 @@ export interface SoraS3Profile {
   profile_id: string
   name: string
   is_active: boolean
+  provider: string // "s3" | "gdrive"
   enabled: boolean
+  access_mode: string // "direct" | "proxy"
   endpoint: string
   region: string
   bucket: string
@@ -412,6 +414,13 @@ export interface SoraS3Profile {
   cdn_url: string
   default_storage_quota_bytes: number
   updated_at: string
+  // Google Drive fields
+  auth_type: string // "oauth2" | "service_account"
+  client_id: string
+  client_secret_configured: boolean
+  refresh_token_configured: boolean
+  service_account_configured: boolean
+  folder_id: string
 }
 
 export interface ListSoraS3ProfilesResponse {
@@ -437,30 +446,47 @@ export interface CreateSoraS3ProfileRequest {
   profile_id: string
   name: string
   set_active?: boolean
+  provider?: string
   enabled: boolean
-  endpoint: string
-  region: string
-  bucket: string
-  access_key_id: string
+  access_mode?: string
+  endpoint?: string
+  region?: string
+  bucket?: string
+  access_key_id?: string
   secret_access_key?: string
-  prefix: string
-  force_path_style: boolean
-  cdn_url: string
-  default_storage_quota_bytes: number
+  prefix?: string
+  force_path_style?: boolean
+  cdn_url?: string
+  default_storage_quota_bytes?: number
+  // Google Drive fields
+  auth_type?: string
+  client_id?: string
+  client_secret?: string
+  refresh_token?: string
+  service_account_json?: string
+  folder_id?: string
 }
 
 export interface UpdateSoraS3ProfileRequest {
   name: string
   enabled: boolean
-  endpoint: string
-  region: string
-  bucket: string
-  access_key_id: string
+  access_mode?: string
+  endpoint?: string
+  region?: string
+  bucket?: string
+  access_key_id?: string
   secret_access_key?: string
-  prefix: string
-  force_path_style: boolean
-  cdn_url: string
-  default_storage_quota_bytes: number
+  prefix?: string
+  force_path_style?: boolean
+  cdn_url?: string
+  default_storage_quota_bytes?: number
+  // Google Drive fields
+  auth_type?: string
+  client_id?: string
+  client_secret?: string
+  refresh_token?: string
+  service_account_json?: string
+  folder_id?: string
 }
 
 export interface TestSoraS3ConnectionRequest {
@@ -477,44 +503,115 @@ export interface TestSoraS3ConnectionRequest {
   default_storage_quota_bytes?: number
 }
 
+export interface StartGDriveOAuthRequest {
+  client_id: string
+  client_secret: string
+  redirect_uri: string
+}
+
+export interface StartGDriveOAuthResponse {
+  auth_url: string
+  state: string
+}
+
+export interface ExchangeGDriveOAuthCodeRequest {
+  client_id: string
+  client_secret: string
+  redirect_uri: string
+  code: string
+  profile_id?: string
+}
+
+export interface ExchangeGDriveOAuthCodeResponse {
+  refresh_token: string
+  message: string
+}
+
 export async function getSoraS3Settings(): Promise<SoraS3Settings> {
-  const { data } = await apiClient.get<SoraS3Settings>('/admin/settings/sora-s3')
+  const { data } = await apiClient.get<SoraS3Settings>('/admin/settings/sora-storage')
   return data
 }
 
 export async function updateSoraS3Settings(settings: UpdateSoraS3SettingsRequest): Promise<SoraS3Settings> {
-  const { data } = await apiClient.put<SoraS3Settings>('/admin/settings/sora-s3', settings)
+  const { data } = await apiClient.put<SoraS3Settings>('/admin/settings/sora-storage', settings)
   return data
 }
 
 export async function testSoraS3Connection(
   settings: TestSoraS3ConnectionRequest
 ): Promise<{ message: string }> {
-  const { data } = await apiClient.post<{ message: string }>('/admin/settings/sora-s3/test', settings)
+  const { data } = await apiClient.post<{ message: string }>('/admin/settings/sora-storage/test', settings)
   return data
 }
 
 export async function listSoraS3Profiles(): Promise<ListSoraS3ProfilesResponse> {
-  const { data } = await apiClient.get<ListSoraS3ProfilesResponse>('/admin/settings/sora-s3/profiles')
+  const { data } = await apiClient.get<ListSoraS3ProfilesResponse>('/admin/settings/sora-storage/profiles')
   return data
 }
 
 export async function createSoraS3Profile(request: CreateSoraS3ProfileRequest): Promise<SoraS3Profile> {
-  const { data } = await apiClient.post<SoraS3Profile>('/admin/settings/sora-s3/profiles', request)
+  const { data } = await apiClient.post<SoraS3Profile>('/admin/settings/sora-storage/profiles', request)
   return data
 }
 
 export async function updateSoraS3Profile(profileID: string, request: UpdateSoraS3ProfileRequest): Promise<SoraS3Profile> {
-  const { data } = await apiClient.put<SoraS3Profile>(`/admin/settings/sora-s3/profiles/${profileID}`, request)
+  const { data } = await apiClient.put<SoraS3Profile>(`/admin/settings/sora-storage/profiles/${profileID}`, request)
   return data
 }
 
 export async function deleteSoraS3Profile(profileID: string): Promise<void> {
-  await apiClient.delete(`/admin/settings/sora-s3/profiles/${profileID}`)
+  await apiClient.delete(`/admin/settings/sora-storage/profiles/${profileID}`)
 }
 
 export async function setActiveSoraS3Profile(profileID: string): Promise<SoraS3Profile> {
-  const { data } = await apiClient.post<SoraS3Profile>(`/admin/settings/sora-s3/profiles/${profileID}/activate`)
+  const { data } = await apiClient.post<SoraS3Profile>(`/admin/settings/sora-storage/profiles/${profileID}/activate`)
+  return data
+}
+
+export async function startGDriveOAuth(request: StartGDriveOAuthRequest): Promise<StartGDriveOAuthResponse> {
+  const { data } = await apiClient.post<StartGDriveOAuthResponse>('/admin/settings/sora-storage/gdrive-oauth/start', request)
+  return data
+}
+
+export async function exchangeGDriveOAuthCode(request: ExchangeGDriveOAuthCodeRequest): Promise<ExchangeGDriveOAuthCodeResponse> {
+  const { data } = await apiClient.post<ExchangeGDriveOAuthCodeResponse>('/admin/settings/sora-storage/gdrive-oauth/callback', request)
+  return data
+}
+
+export interface TestGDriveStorageResponse {
+  status: string
+  quota_limit_bytes?: number
+  quota_used_bytes?: number
+  uploaded_file_id?: string
+  uploaded_file_name?: string
+  uploaded_file_size?: number
+  access_url?: string
+  web_view_link?: string
+  deleted?: boolean
+  delete_warning?: string
+}
+
+export async function testGDriveStorage(): Promise<TestGDriveStorageResponse> {
+  const { data } = await apiClient.post<TestGDriveStorageResponse>('/admin/settings/sora-storage/gdrive-test')
+  return data
+}
+
+export interface GDriveQuotaInfo {
+  limit_bytes: number
+  used_bytes: number
+}
+
+export interface StorageVideoStats {
+  [type: string]: { completed: number; in_progress: number }
+}
+
+export async function getGDriveQuota(): Promise<GDriveQuotaInfo> {
+  const { data } = await apiClient.get<GDriveQuotaInfo>('/admin/settings/sora-storage/gdrive-quota')
+  return data
+}
+
+export async function getStorageVideoStats(): Promise<StorageVideoStats> {
+  const { data } = await apiClient.get<StorageVideoStats>('/admin/settings/sora-storage/video-stats')
   return data
 }
 
@@ -541,7 +638,12 @@ export const settingsAPI = {
   createSoraS3Profile,
   updateSoraS3Profile,
   deleteSoraS3Profile,
-  setActiveSoraS3Profile
+  setActiveSoraS3Profile,
+  startGDriveOAuth,
+  exchangeGDriveOAuthCode,
+  testGDriveStorage,
+  getGDriveQuota,
+  getStorageVideoStats
 }
 
 export default settingsAPI

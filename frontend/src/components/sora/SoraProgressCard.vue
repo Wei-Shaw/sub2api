@@ -114,7 +114,7 @@
       <!-- 失败/取消 -->
       <template v-if="generation.status === 'failed' || generation.status === 'cancelled'">
         <button class="sora-action-btn primary" @click="emit('retry', generation)">
-          🔄 {{ generation.status === 'cancelled' ? t('sora.regenrate') : t('sora.retry') }}
+          🔄 {{ generation.status === 'cancelled' ? t('sora.regenerate') : t('sora.retry') }}
         </button>
         <button class="sora-action-btn secondary" @click="emit('delete', generation.id)">
           🗑 {{ t('sora.delete') }}
@@ -194,7 +194,7 @@ const progressWidth = computed(() => {
   if (s === 'generating') {
     // 根据创建时间估算进度
     const created = new Date(props.generation.created_at).getTime()
-    const elapsed = Date.now() - created
+    const elapsed = now.value - created
     // 假设平均 10 分钟完成，最多到 95%
     const progress = Math.min(95, (elapsed / (10 * 60 * 1000)) * 100)
     return `${Math.round(progress)}%`
@@ -207,7 +207,7 @@ const progressInfoText = computed(() => {
   if (s === 'pending') return t('sora.queueWaiting')
   if (s === 'generating') {
     const created = new Date(props.generation.created_at).getTime()
-    const elapsed = Date.now() - created
+    const elapsed = now.value - created
     return `${t('sora.waited')} ${formatElapsed(elapsed)}`
   }
   return ''
@@ -262,11 +262,19 @@ const countdownText = computed(() => {
   return `${m}:${s.toString().padStart(2, '0')}`
 })
 
+const needsTimer = computed(() => {
+  const s = props.generation.status
+  return s === 'pending' || s === 'generating' || isUpstream.value
+})
+
 onMounted(() => {
-  if (isUpstream.value) {
+  if (needsTimer.value) {
     countdownTimer = setInterval(() => {
       now.value = Date.now()
-      if (now.value >= expireTime.value && countdownTimer) {
+      // Stop timer when upstream countdown expires and no longer generating
+      const s = props.generation.status
+      const stillGenerating = s === 'pending' || s === 'generating'
+      if (!stillGenerating && isUpstream.value && now.value >= expireTime.value && countdownTimer) {
         clearInterval(countdownTimer)
         countdownTimer = null
       }

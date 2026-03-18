@@ -122,8 +122,11 @@
             >
               {{ siteName }}
             </h1>
-            <p class="mb-8 text-lg text-gray-600 dark:text-dark-300 md:text-xl">
-              {{ siteSubtitle }}
+            <p class="mb-3 text-xl font-semibold text-primary-600 dark:text-primary-400 md:text-2xl">
+              {{ t('home.heroSubtitle') }}
+            </p>
+            <p class="mb-8 text-base text-gray-600 dark:text-dark-300 md:text-lg">
+              {{ t('home.heroDescription') }}
             </p>
 
             <!-- CTA Button -->
@@ -177,7 +180,7 @@
         </div>
 
         <!-- Feature Tags - Centered -->
-        <div class="mb-12 flex flex-wrap items-center justify-center gap-4 md:gap-6">
+        <div class="mb-16 flex flex-wrap items-center justify-center gap-4 md:gap-6">
           <div
             class="inline-flex items-center gap-2.5 rounded-full border border-gray-200/50 bg-white/80 px-5 py-2.5 shadow-sm backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80"
           >
@@ -202,6 +205,63 @@
               t('home.tags.realtimeBilling')
             }}</span>
           </div>
+        </div>
+
+        <!-- Pain Points Section -->
+        <div class="mb-16">
+          <h2 class="mb-8 text-center text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">
+            {{ t('home.painPoints.title') }}
+          </h2>
+          <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <!-- Pain Point 1: Expensive -->
+            <div class="rounded-xl border border-red-200/50 bg-red-50/50 p-5 dark:border-red-900/30 dark:bg-red-950/20">
+              <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30">
+                <svg class="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 class="mb-1.5 font-semibold text-gray-900 dark:text-white">{{ t('home.painPoints.items.expensive.title') }}</h3>
+              <p class="text-sm text-gray-600 dark:text-dark-400">{{ t('home.painPoints.items.expensive.desc') }}</p>
+            </div>
+            <!-- Pain Point 2: Complex -->
+            <div class="rounded-xl border border-orange-200/50 bg-orange-50/50 p-5 dark:border-orange-900/30 dark:bg-orange-950/20">
+              <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30">
+                <svg class="h-5 w-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              </div>
+              <h3 class="mb-1.5 font-semibold text-gray-900 dark:text-white">{{ t('home.painPoints.items.complex.title') }}</h3>
+              <p class="text-sm text-gray-600 dark:text-dark-400">{{ t('home.painPoints.items.complex.desc') }}</p>
+            </div>
+            <!-- Pain Point 3: Unstable -->
+            <div class="rounded-xl border border-yellow-200/50 bg-yellow-50/50 p-5 dark:border-yellow-900/30 dark:bg-yellow-950/20">
+              <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-100 dark:bg-yellow-900/30">
+                <svg class="h-5 w-5 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 class="mb-1.5 font-semibold text-gray-900 dark:text-white">{{ t('home.painPoints.items.unstable.title') }}</h3>
+              <p class="text-sm text-gray-600 dark:text-dark-400">{{ t('home.painPoints.items.unstable.desc') }}</p>
+            </div>
+            <!-- Pain Point 4: No Control -->
+            <div class="rounded-xl border border-gray-200/50 bg-gray-50/50 p-5 dark:border-dark-700/50 dark:bg-dark-800/50">
+              <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 dark:bg-dark-700">
+                <svg class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+              </div>
+              <h3 class="mb-1.5 font-semibold text-gray-900 dark:text-white">{{ t('home.painPoints.items.noControl.title') }}</h3>
+              <p class="text-sm text-gray-600 dark:text-dark-400">{{ t('home.painPoints.items.noControl.desc') }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Solutions Section Title -->
+        <div class="mb-8 text-center">
+          <h2 class="mb-2 text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">
+            {{ t('home.solutions.title') }}
+          </h2>
+          <p class="text-gray-600 dark:text-dark-400">{{ t('home.solutions.subtitle') }}</p>
         </div>
 
         <!-- Features Grid -->
@@ -369,6 +429,77 @@
             >
           </div>
         </div>
+
+        <!-- Comparison Table -->
+        <div class="mb-16">
+          <h2 class="mb-8 text-center text-2xl font-bold text-gray-900 dark:text-white md:text-3xl">
+            {{ t('home.comparison.title') }}
+          </h2>
+          <div class="overflow-x-auto">
+            <table class="w-full rounded-xl border border-gray-200/50 bg-white/60 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/60">
+              <thead>
+                <tr class="border-b border-gray-200/50 dark:border-dark-700/50">
+                  <th class="px-6 py-4 text-left text-sm font-semibold text-gray-900 dark:text-white">{{ t('home.comparison.headers.feature') }}</th>
+                  <th class="px-6 py-4 text-center text-sm font-semibold text-gray-500 dark:text-dark-400">{{ t('home.comparison.headers.official') }}</th>
+                  <th class="px-6 py-4 text-center text-sm font-semibold text-primary-600 dark:text-primary-400">{{ t('home.comparison.headers.us') }}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200/50 dark:divide-dark-700/50">
+                <tr>
+                  <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{{ t('home.comparison.items.pricing.feature') }}</td>
+                  <td class="px-6 py-4 text-center text-sm text-gray-500 dark:text-dark-400">{{ t('home.comparison.items.pricing.official') }}</td>
+                  <td class="px-6 py-4 text-center text-sm font-medium text-primary-600 dark:text-primary-400">{{ t('home.comparison.items.pricing.us') }}</td>
+                </tr>
+                <tr>
+                  <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{{ t('home.comparison.items.models.feature') }}</td>
+                  <td class="px-6 py-4 text-center text-sm text-gray-500 dark:text-dark-400">{{ t('home.comparison.items.models.official') }}</td>
+                  <td class="px-6 py-4 text-center text-sm font-medium text-primary-600 dark:text-primary-400">{{ t('home.comparison.items.models.us') }}</td>
+                </tr>
+                <tr>
+                  <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{{ t('home.comparison.items.management.feature') }}</td>
+                  <td class="px-6 py-4 text-center text-sm text-gray-500 dark:text-dark-400">{{ t('home.comparison.items.management.official') }}</td>
+                  <td class="px-6 py-4 text-center text-sm font-medium text-primary-600 dark:text-primary-400">{{ t('home.comparison.items.management.us') }}</td>
+                </tr>
+                <tr>
+                  <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{{ t('home.comparison.items.stability.feature') }}</td>
+                  <td class="px-6 py-4 text-center text-sm text-gray-500 dark:text-dark-400">{{ t('home.comparison.items.stability.official') }}</td>
+                  <td class="px-6 py-4 text-center text-sm font-medium text-primary-600 dark:text-primary-400">{{ t('home.comparison.items.stability.us') }}</td>
+                </tr>
+                <tr>
+                  <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{{ t('home.comparison.items.control.feature') }}</td>
+                  <td class="px-6 py-4 text-center text-sm text-gray-500 dark:text-dark-400">{{ t('home.comparison.items.control.official') }}</td>
+                  <td class="px-6 py-4 text-center text-sm font-medium text-primary-600 dark:text-primary-400">{{ t('home.comparison.items.control.us') }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- CTA Section -->
+        <div class="mb-8 rounded-2xl bg-gradient-to-r from-primary-500 to-primary-600 p-8 text-center shadow-xl shadow-primary-500/20 md:p-12">
+          <h2 class="mb-3 text-2xl font-bold text-white md:text-3xl">
+            {{ t('home.cta.title') }}
+          </h2>
+          <p class="mb-6 text-primary-100">
+            {{ t('home.cta.description') }}
+          </p>
+          <router-link
+            v-if="!isAuthenticated"
+            to="/register"
+            class="inline-flex items-center gap-2 rounded-full bg-white px-8 py-3 font-semibold text-primary-600 shadow-lg transition-all hover:bg-gray-50 hover:shadow-xl"
+          >
+            {{ t('home.cta.button') }}
+            <Icon name="arrowRight" size="md" :stroke-width="2" />
+          </router-link>
+          <router-link
+            v-else
+            :to="dashboardPath"
+            class="inline-flex items-center gap-2 rounded-full bg-white px-8 py-3 font-semibold text-primary-600 shadow-lg transition-all hover:bg-gray-50 hover:shadow-xl"
+          >
+            {{ t('home.goToDashboard') }}
+            <Icon name="arrowRight" size="md" :stroke-width="2" />
+          </router-link>
+        </div>
       </div>
     </main>
 
@@ -380,27 +511,20 @@
         <p class="text-sm text-gray-500 dark:text-dark-400">
           &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
         </p>
-        <div class="flex items-center gap-4">
-          <a
-            v-if="docUrl"
-            :href="docUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
-          >
-            {{ t('home.docs') }}
-          </a>
-          <a
-            :href="githubUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
-          >
-            GitHub
-          </a>
-        </div>
+        <a
+          v-if="docUrl"
+          :href="docUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
+        >
+          {{ t('home.docs') }}
+        </a>
       </div>
     </footer>
+
+    <!-- 微信客服悬浮按钮 -->
+    <WechatServiceButton />
   </div>
 </template>
 
@@ -410,6 +534,7 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import WechatServiceButton from '@/components/common/WechatServiceButton.vue'
 
 const { t } = useI18n()
 
@@ -419,7 +544,6 @@ const appStore = useAppStore()
 // Site settings - directly from appStore (already initialized from injected config)
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
-const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
 const docUrl = computed(() => appStore.cachedPublicSettings?.doc_url || appStore.docUrl || '')
 const homeContent = computed(() => appStore.cachedPublicSettings?.home_content || '')
 
@@ -431,9 +555,6 @@ const isHomeContentUrl = computed(() => {
 
 // Theme
 const isDark = ref(document.documentElement.classList.contains('dark'))
-
-// GitHub URL
-const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
 
 // Auth state
 const isAuthenticated = computed(() => authStore.isAuthenticated)
