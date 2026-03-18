@@ -21,9 +21,6 @@ var (
 	// 带捕获组的版本提取正则
 	claudeCodeUAVersionPattern = regexp.MustCompile(`(?i)^claude-cli/(\d+\.\d+\.\d+)`)
 
-	// metadata.user_id 格式: user_{64位hexREDACTED_account__session_{uuidREDACTED
-	userIDPattern = regexp.MustCompile(`^user_[a-fA-F0-9]{64REDACTED_account__session_[\w-]+$`)
-
 	// System prompt 相似度阈值（默认 0.5，和 claude-relay-service 一致）
 	systemPromptThreshold = 0.5
 )
@@ -124,7 +121,7 @@ REDACTED
 		return false
 REDACTED
 
-	if !userIDPattern.MatchString(userID) {
+	if ParseMetadataUserID(userID) == nil {
 		return false
 REDACTED
 
@@ -278,11 +275,7 @@ REDACTED
 // ExtractVersion 从 User-Agent 中提取 Claude Code 版本号
 // 返回 "2.1.22" 形式的版本号，如果不匹配返回空字符串
 func (v *ClaudeCodeValidator) ExtractVersion(ua string) string {
-	matches := claudeCodeUAVersionPattern.FindStringSubmatch(ua)
-	if len(matches) >= 2 {
-		return matches[1]
-REDACTED
-	return ""
+	return ExtractCLIVersion(ua)
 REDACTED
 
 // SetClaudeCodeVersion 将 Claude Code 版本号设置到 context 中
