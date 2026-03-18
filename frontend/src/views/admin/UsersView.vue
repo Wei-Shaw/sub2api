@@ -521,6 +521,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
+import { getPersistedPageSize REDACTED from '@/composables/usePersistedPageSize'
 import { formatDateTime REDACTED from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -774,7 +775,7 @@ const attributeDefinitions = ref<UserAttributeDefinition[]>([])
 const userAttributeValues = ref<Record<number, Record<number, string>>>({REDACTED)
 const pagination = reactive({
   page: 1,
-  page_size: 20,
+  page_size: getPersistedPageSize(),
   total: 0,
   pages: 0
 REDACTED)

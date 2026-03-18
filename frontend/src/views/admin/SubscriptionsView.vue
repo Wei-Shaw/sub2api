@@ -744,6 +744,7 @@ import type { UserSubscription, Group, GroupPlatform, SubscriptionType REDACTED 
 import type { SimpleUser REDACTED from '@/api/admin/usage'
 import type { Column REDACTED from '@/components/common/types'
 import { formatDateOnly REDACTED from '@/utils/format'
+import { getPersistedPageSize REDACTED from '@/composables/usePersistedPageSize'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -928,7 +929,7 @@ REDACTED)
 
 const pagination = reactive({
   page: 1,
-  page_size: 20,
+  page_size: getPersistedPageSize(),
   total: 0,
   pages: 0
 REDACTED)
