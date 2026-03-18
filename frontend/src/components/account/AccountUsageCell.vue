@@ -73,7 +73,7 @@
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
-    <!-- OpenAI OAuth accounts: single source from /usage API -->
+    <!-- OpenAI OAuth accounts: prefer /usage API, fallback to local Codex snapshot -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
@@ -91,6 +91,36 @@
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
           :window-stats="usageInfo.seven_day.window_stats"
+          :show-now-when-idle="true"
+          color="emerald"
+        />
+      </div>
+      <div v-else-if="isActiveOpenAIRateLimited && loading" class="space-y-1.5">
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else-if="hasCodexUsage" class="space-y-1">
+        <UsageProgressBar
+          v-if="codex5hUsedPercent !== null"
+          label="5h"
+          :utilization="codex5hUsedPercent"
+          :resets-at="codex5hResetAt"
+          :show-now-when-idle="true"
+          color="indigo"
+        />
+        <UsageProgressBar
+          v-if="codex7dUsedPercent !== null"
+          label="7d"
+          :utilization="codex7dUsedPercent"
+          :resets-at="codex7dResetAt"
           :show-now-when-idle="true"
           color="emerald"
         />
@@ -415,6 +445,7 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import { resolveCodexUsageWindow } from '@/utils/codexUsage'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
@@ -477,10 +508,30 @@ const geminiUsageAvailable = computed(() => {
   )
 })
 
+const codex5hWindow = computed(() => resolveCodexUsageWindow(props.account.extra, '5h'))
+const codex7dWindow = computed(() => resolveCodexUsageWindow(props.account.extra, '7d'))
+
+const hasCodexUsage = computed(() => {
+  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
+  return codex5hWindow.value.usedPercent !== null || codex7dWindow.value.usedPercent !== null
+})
+
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
   return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
 })
+
+const isActiveOpenAIRateLimited = computed(() => {
+  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
+  if (!props.account.rate_limit_reset_at) return false
+  const resetAt = Date.parse(props.account.rate_limit_reset_at)
+  return !Number.isNaN(resetAt) && resetAt > Date.now()
+})
+
+const codex5hUsedPercent = computed(() => codex5hWindow.value.usedPercent)
+const codex5hResetAt = computed(() => codex5hWindow.value.resetAt)
+const codex7dUsedPercent = computed(() => codex7dWindow.value.usedPercent)
+const codex7dResetAt = computed(() => codex7dWindow.value.resetAt)
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
 
