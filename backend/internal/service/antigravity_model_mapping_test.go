@@ -57,16 +57,16 @@ REDACTED{
 			expected:       "claude-opus-4-6-thinking",
 	REDACTED,
 		{
-			name:           "默认映射 - claude-haiku-4-5 → claude-sonnet-4-5",
+			name:           "默认映射 - claude-haiku-4-5 → claude-sonnet-4-6",
 			requestedModel: "claude-haiku-4-5",
 			accountMapping: nil,
-			expected:       "claude-sonnet-4-5",
+			expected:       "claude-sonnet-4-6",
 	REDACTED,
 		{
-			name:           "默认映射 - REDACTED → claude-sonnet-4-5",
+			name:           "默认映射 - REDACTED → claude-sonnet-4-6",
 			requestedModel: "REDACTED",
 			accountMapping: nil,
-			expected:       "claude-sonnet-4-5",
+			expected:       "claude-sonnet-4-6",
 	REDACTED,
 		{
 			name:           "默认映射 - claude-sonnet-4-5-20250929 → claude-sonnet-4-5",
