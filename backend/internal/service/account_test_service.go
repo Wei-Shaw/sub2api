@@ -113,15 +113,18 @@ REDACTED
 	return normalized, nil
 REDACTED
 
-// generateSessionString generates a Claude Code style session string
+// generateSessionString generates a Claude Code style session string.
+// The output format is determined by the UA version in claude.DefaultHeaders,
+// ensuring consistency between the user_id format and the UA sent to upstream.
 func generateSessionString() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
 		return "", err
 REDACTED
-	hex64 := hex.EncodeToString(bytes)
+	hex64 := hex.EncodeToString(b)
 	sessionUUID := uuid.New().String()
-	return fmt.Sprintf("user_%s_account__session_%s", hex64, sessionUUID), nil
+	uaVersion := ExtractCLIVersion(claude.DefaultHeaders["User-Agent"])
+	return FormatMetadataUserID(hex64, "", sessionUUID, uaVersion), nil
 REDACTED
 
 // createTestPayload creates a Claude Code style test request payload
