@@ -6071,7 +6071,7 @@ REDACTED
 	// 例如: "all messages must have non-empty content"
 	//       "messages: text content blocks must be non-empty"
 	if strings.Contains(msg, "non-empty content") || strings.Contains(msg, "empty content") ||
-		strings.Contains(msg, "must be non-empty") {
+		strings.Contains(msg, "content blocks must be non-empty") {
 		logger.LegacyPrintf("service.gateway", "[SignatureCheck] Detected empty content error")
 		return true
 REDACTED

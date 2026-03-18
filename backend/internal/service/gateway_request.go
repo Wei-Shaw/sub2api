@@ -32,6 +32,8 @@ var (
 	// Fast-path patterns for empty text blocks: {"type":"text","text":""REDACTED
 	patternEmptyText       = []byte(`"text":""`)
 	patternEmptyTextSpaced = []byte(`"text": ""`)
+	patternEmptyTextSp1    = []byte(`"text" : ""`)
+	patternEmptyTextSp2    = []byte(`"text" :""`)
 )
 
 // SessionContext 粘性会话上下文，用于区分不同来源的请求。
@@ -247,7 +249,9 @@ func FilterThinkingBlocksForRetry(body []byte) []byte {
 	// Check for empty text blocks: {"type":"text","text":""REDACTED
 	// These cause upstream 400: "text content blocks must be non-empty"
 	hasEmptyTextBlock := bytes.Contains(body, patternEmptyText) ||
-		bytes.Contains(body, patternEmptyTextSpaced)
+		bytes.Contains(body, patternEmptyTextSpaced) ||
+		bytes.Contains(body, patternEmptyTextSp1) ||
+		bytes.Contains(body, patternEmptyTextSp2)
 
 	// Fast path: nothing to process
 	if !hasThinkingContent && !hasEmptyContent && !hasEmptyTextBlock {
