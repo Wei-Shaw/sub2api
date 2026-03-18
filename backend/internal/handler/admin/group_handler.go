@@ -9,6 +9,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -16,7 +17,9 @@ import (
 
 // GroupHandler handles admin group management
 type GroupHandler struct {
-	adminService service.AdminService
+	adminService         service.AdminService
+	dashboardService     *service.DashboardService
+	groupCapacityService *service.GroupCapacityService
 REDACTED
 
 type optionalLimitField struct {
@@ -69,9 +72,11 @@ REDACTED
 REDACTED
 
 // NewGroupHandler creates a new admin group handler
-func NewGroupHandler(adminService service.AdminService) *GroupHandler {
+func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService) *GroupHandler {
 	return &GroupHandler{
-		adminService: adminService,
+		adminService:         adminService,
+		dashboardService:     dashboardService,
+		groupCapacityService: groupCapacityService,
 REDACTED
 REDACTED
 
@@ -361,6 +366,33 @@ REDACTED
 		"total_cost":      0.0,
 REDACTED)
 	_ = groupID // TODO: implement actual stats
+REDACTED
+
+// GetUsageSummary returns today's and cumulative cost for all groups.
+// GET /api/v1/admin/groups/usage-summary?timezone=Asia/Shanghai
+func (h *GroupHandler) GetUsageSummary(c *gin.Context) {
+	userTZ := c.Query("timezone")
+	now := timezone.NowInUserLocation(userTZ)
+	todayStart := timezone.StartOfDayInUserLocation(now, userTZ)
+
+	results, err := h.dashboardService.GetGroupUsageSummary(c.Request.Context(), todayStart)
+	if err != nil {
+		response.Error(c, 500, "Failed to get group usage summary")
+		return
+REDACTED
+
+	response.Success(c, results)
+REDACTED
+
+// GetCapacitySummary returns aggregated capacity (concurrency/sessions/RPM) for all active groups.
+// GET /api/v1/admin/groups/capacity-summary
+func (h *GroupHandler) GetCapacitySummary(c *gin.Context) {
+	results, err := h.groupCapacityService.GetAllGroupCapacity(c.Request.Context())
+	if err != nil {
+		response.Error(c, 500, "Failed to get group capacity summary")
+		return
+REDACTED
+	response.Success(c, results)
 REDACTED
 
 // GetGroupAPIKeys handles getting API keys in a group

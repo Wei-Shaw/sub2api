@@ -40,7 +40,7 @@ REDACTED
 func (groupRepoNoop) ExistsByName(context.Context, string) (bool, error) {
 	panic("unexpected ExistsByName call")
 REDACTED
-func (groupRepoNoop) GetAccountCount(context.Context, int64) (int64, error) {
+func (groupRepoNoop) GetAccountCount(context.Context, int64) (int64, int64, error) {
 	panic("unexpected GetAccountCount call")
 REDACTED
 func (groupRepoNoop) DeleteAccountGroupsByGroupID(context.Context, int64) (int64, error) {
