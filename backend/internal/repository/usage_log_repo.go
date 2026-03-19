@@ -28,12 +28,13 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, media_type, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, media_type, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, created_at"
 
 var usageLogInsertArgTypes = [...]string{
 	"bigint",
 	"bigint",
 	"bigint",
+	"text",
 	"text",
 	"text",
 	"bigint",
@@ -277,6 +278,7 @@ REDACTED
 			account_id,
 			request_id,
 			model,
+			upstream_model,
 			group_id,
 			subscription_id,
 			input_tokens,
@@ -311,12 +313,12 @@ REDACTED
 			cache_ttl_overridden,
 			created_at
 		) VALUES (
-			$1, $2, $3, $4, $5,
-			$6, $7,
-			$8, $9, $10, $11,
-			$12, $13,
-			$14, $15, $16, $17, $18, $19,
-			$20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38
+			$1, $2, $3, $4, $5, $6,
+			$7, $8,
+			$9, $10, $11, $12,
+			$13, $14,
+			$15, $16, $17, $18, $19, $20,
+			$21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -707,6 +709,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			account_id,
 			request_id,
 			model,
+			upstream_model,
 			group_id,
 			subscription_id,
 			input_tokens,
@@ -742,7 +745,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(keys)*38)
+	args := make([]any, 0, len(keys)*39)
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -776,6 +779,7 @@ REDACTED
 				account_id,
 				request_id,
 				model,
+				upstream_model,
 				group_id,
 				subscription_id,
 				input_tokens,
@@ -816,6 +820,7 @@ REDACTED
 				account_id,
 				request_id,
 				model,
+				upstream_model,
 				group_id,
 				subscription_id,
 				input_tokens,
@@ -896,6 +901,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			account_id,
 			request_id,
 			model,
+			upstream_model,
 			group_id,
 			subscription_id,
 			input_tokens,
@@ -931,7 +937,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*38)
+	args := make([]any, 0, len(preparedList)*39)
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -962,6 +968,7 @@ REDACTED
 			account_id,
 			request_id,
 			model,
+			upstream_model,
 			group_id,
 			subscription_id,
 			input_tokens,
@@ -1002,6 +1009,7 @@ REDACTED
 			account_id,
 			request_id,
 			model,
+			upstream_model,
 			group_id,
 			subscription_id,
 			input_tokens,
@@ -1050,6 +1058,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			account_id,
 			request_id,
 			model,
+			upstream_model,
 			group_id,
 			subscription_id,
 			input_tokens,
@@ -1084,12 +1093,12 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			cache_ttl_overridden,
 			created_at
 		) VALUES (
-			$1, $2, $3, $4, $5,
-			$6, $7,
-			$8, $9, $10, $11,
-			$12, $13,
-			$14, $15, $16, $17, $18, $19,
-			$20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38
+			$1, $2, $3, $4, $5, $6,
+			$7, $8,
+			$9, $10, $11, $12,
+			$13, $14,
+			$15, $16, $17, $18, $19, $20,
+			$21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1121,6 +1130,7 @@ REDACTED
 	reasoningEffort := nullString(log.ReasoningEffort)
 	inboundEndpoint := nullString(log.InboundEndpoint)
 	upstreamEndpoint := nullString(log.UpstreamEndpoint)
+	upstreamModel := nullString(log.UpstreamModel)
 
 	var requestIDArg any
 	if requestID != "" {
@@ -1138,6 +1148,7 @@ REDACTED
 			log.AccountID,
 			requestIDArg,
 			log.Model,
+			upstreamModel,
 			groupID,
 			subscriptionID,
 			log.InputTokens,
@@ -2864,15 +2875,26 @@ REDACTED
 
 // GetModelStatsWithFilters returns model statistics with optional filters
 func (r *usageLogRepository) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8) (results []ModelStat, err error) {
+	return r.getModelStatsWithFiltersBySource(ctx, startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType, usagestats.ModelSourceRequested)
+REDACTED
+
+// GetModelStatsWithFiltersBySource returns model statistics with optional filters and model source dimension.
+// source: requested | upstream | mapping.
+func (r *usageLogRepository) GetModelStatsWithFiltersBySource(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8, source string) (results []ModelStat, err error) {
+	return r.getModelStatsWithFiltersBySource(ctx, startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType, source)
+REDACTED
+
+func (r *usageLogRepository) getModelStatsWithFiltersBySource(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8, source string) (results []ModelStat, err error) {
 	actualCostExpr := "COALESCE(SUM(actual_cost), 0) as actual_cost"
 	// 当仅按 account_id 聚合时，实际费用使用账号倍率（total_cost * account_rate_multiplier）。
 	if accountID > 0 && userID == 0 && apiKeyID == 0 {
 		actualCostExpr = "COALESCE(SUM(total_cost * COALESCE(account_rate_multiplier, 1)), 0) as actual_cost"
 REDACTED
+	modelExpr := resolveModelDimensionExpression(source)
 
 	query := fmt.Sprintf(`
 		SELECT
-			model,
+			%s as model,
 			COUNT(*) as requests,
 			COALESCE(SUM(input_tokens), 0) as input_tokens,
 			COALESCE(SUM(output_tokens), 0) as output_tokens,
@@ -2883,7 +2905,7 @@ REDACTED
 			%s
 		FROM usage_logs
 		WHERE created_at >= $1 AND created_at < $2
-	`, actualCostExpr)
+	`, modelExpr, actualCostExpr)
 
 	args := []any{startTime, endTimeREDACTED
 	if userID > 0 {
@@ -2907,7 +2929,7 @@ REDACTED
 		query += fmt.Sprintf(" AND billing_type = $%d", len(args)+1)
 		args = append(args, int16(*billingType))
 REDACTED
-	query += " GROUP BY model ORDER BY total_tokens DESC"
+	query += fmt.Sprintf(" GROUP BY %s ORDER BY total_tokens DESC", modelExpr)
 
 	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -3021,7 +3043,7 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		args = append(args, dim.GroupID)
 REDACTED
 	if dim.Model != "" {
-		query += fmt.Sprintf(" AND ul.model = $%d", len(args)+1)
+		query += fmt.Sprintf(" AND %s = $%d", resolveModelDimensionExpression(dim.ModelType), len(args)+1)
 		args = append(args, dim.Model)
 REDACTED
 	if dim.Endpoint != "" {
@@ -3065,6 +3087,53 @@ REDACTED
 		return nil, err
 REDACTED
 	return results, nil
+REDACTED
+
+// GetAllGroupUsageSummary returns today's and cumulative actual_cost for every group.
+// todayStart is the start-of-day in the caller's timezone (UTC-based).
+// TODO(perf): This query scans ALL usage_logs rows for total_cost aggregation.
+// When usage_logs exceeds ~1M rows, consider adding a short-lived cache (30s)
+// or a materialized view / pre-aggregation table for cumulative costs.
+func (r *usageLogRepository) GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
+	query := `
+		SELECT
+			g.id AS group_id,
+			COALESCE(SUM(ul.actual_cost), 0) AS total_cost,
+			COALESCE(SUM(CASE WHEN ul.created_at >= $1 THEN ul.actual_cost ELSE 0 END), 0) AS today_cost
+		FROM groups g
+		LEFT JOIN usage_logs ul ON ul.group_id = g.id
+		GROUP BY g.id
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, todayStart)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+	var results []usagestats.GroupUsageSummary
+	for rows.Next() {
+		var row usagestats.GroupUsageSummary
+		if err := rows.Scan(&row.GroupID, &row.TotalCost, &row.TodayCost); err != nil {
+			return nil, err
+	REDACTED
+		results = append(results, row)
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+	return results, nil
+REDACTED
+
+// resolveModelDimensionExpression maps model source type to a safe SQL expression.
+func resolveModelDimensionExpression(modelType string) string {
+	switch usagestats.NormalizeModelSource(modelType) {
+	case usagestats.ModelSourceUpstream:
+		return "COALESCE(NULLIF(TRIM(upstream_model), ''), model)"
+	case usagestats.ModelSourceMapping:
+		return "(model || ' -> ' || COALESCE(NULLIF(TRIM(upstream_model), ''), model))"
+	default:
+		return "model"
+REDACTED
 REDACTED
 
 // resolveEndpointColumn maps endpoint type to the corresponding DB column name.
@@ -3819,6 +3888,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.Usag
 		accountID             int64
 		requestID             sql.NullString
 		model                 string
+		upstreamModel         sql.NullString
 		groupID               sql.NullInt64
 		subscriptionID        sql.NullInt64
 		inputTokens           int
@@ -3861,6 +3931,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error REDACTED) (*service.Usag
 		&accountID,
 		&requestID,
 		&model,
+		&upstreamModel,
 		&groupID,
 		&subscriptionID,
 		&inputTokens,
@@ -3972,6 +4043,9 @@ REDACTED
 REDACTED
 	if upstreamEndpoint.Valid {
 		log.UpstreamEndpoint = &upstreamEndpoint.String
+REDACTED
+	if upstreamModel.Valid {
+		log.UpstreamModel = &upstreamModel.String
 REDACTED
 
 	return log, nil

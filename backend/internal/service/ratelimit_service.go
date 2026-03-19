@@ -1023,11 +1023,34 @@ REDACTED
 REDACTED
 
 // handle529 处理529过载错误
-// 根据配置设置过载冷却时间
+// 根据配置决定是否暂停账号调度及冷却时长
 func (s *RateLimitService) handle529(ctx context.Context, account *Account) {
-	cooldownMinutes := s.cfg.RateLimit.OverloadCooldownMinutes
+	var settings *OverloadCooldownSettings
+	if s.settingService != nil {
+		var err error
+		settings, err = s.settingService.GetOverloadCooldownSettings(ctx)
+		if err != nil {
+			slog.Warn("overload_settings_read_failed", "account_id", account.ID, "error", err)
+			settings = nil
+	REDACTED
+REDACTED
+	// 回退到配置文件
+	if settings == nil {
+		cooldown := s.cfg.RateLimit.OverloadCooldownMinutes
+		if cooldown <= 0 {
+			cooldown = 10
+	REDACTED
+		settings = &OverloadCooldownSettings{Enabled: true, CooldownMinutes: cooldownREDACTED
+REDACTED
+
+	if !settings.Enabled {
+		slog.Info("account_529_ignored", "account_id", account.ID, "reason", "overload_cooldown_disabled")
+		return
+REDACTED
+
+	cooldownMinutes := settings.CooldownMinutes
 	if cooldownMinutes <= 0 {
-		cooldownMinutes = 10 // 默认10分钟
+		cooldownMinutes = 10
 REDACTED
 
 	until := time.Now().Add(time.Duration(cooldownMinutes) * time.Minute)

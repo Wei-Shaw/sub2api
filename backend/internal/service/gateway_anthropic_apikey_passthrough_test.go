@@ -788,7 +788,7 @@ REDACTED
 		rateLimitService: &RateLimitService{REDACTED,
 REDACTED
 
-	result, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, newAnthropicAPIKeyAccountForTest(), body, "claude-3-5-sonnet-latest", false, time.Now())
+	result, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, newAnthropicAPIKeyAccountForTest(), body, "claude-3-5-sonnet-latest", "claude-3-5-sonnet-latest", false, time.Now())
 REDACTED
 	require.NotNil(t, result)
 	require.Equal(t, 12, result.Usage.InputTokens)
@@ -815,7 +815,7 @@ REDACTED
 REDACTED
 	svc := &GatewayService{REDACTED
 
-	result, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, account, []byte(`{REDACTED`), "claude-3-5-sonnet-latest", false, time.Now())
+	result, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, account, []byte(`{REDACTED`), "claude-3-5-sonnet-latest", "claude-3-5-sonnet-latest", false, time.Now())
 	require.Nil(t, result)
 REDACTED
 	require.Contains(t, err.Error(), "requires apikey token")
@@ -840,7 +840,7 @@ REDACTED
 REDACTED
 	account := newAnthropicAPIKeyAccountForTest()
 
-	result, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, account, []byte(`{"model":"x"REDACTED`), "x", false, time.Now())
+	result, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, account, []byte(`{"model":"x"REDACTED`), "x", "x", false, time.Now())
 	require.Nil(t, result)
 REDACTED
 	require.Contains(t, err.Error(), "upstream request failed")
@@ -873,7 +873,7 @@ REDACTED
 		httpUpstream: upstream,
 REDACTED
 
-	result, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, newAnthropicAPIKeyAccountForTest(), []byte(`{"model":"x"REDACTED`), "x", false, time.Now())
+	result, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, newAnthropicAPIKeyAccountForTest(), []byte(`{"model":"x"REDACTED`), "x", "x", false, time.Now())
 	require.Nil(t, result)
 REDACTED
 	require.Contains(t, err.Error(), "empty response")

@@ -218,7 +218,7 @@ export default {
       email: 'Email',
       password: 'Password',
       confirmPassword: 'Confirm Password',
-      passwordPlaceholder: 'Min 6 characters',
+      passwordPlaceholder: 'Min 8 characters',
       confirmPasswordPlaceholder: 'Confirm password',
       passwordMismatch: 'Passwords do not match'
     REDACTED,
@@ -718,11 +718,14 @@ export default {
     exporting: 'Exporting...',
     preparingExport: 'Preparing export...',
     model: 'Model',
+    requestedModel: 'Requested',
+    upstreamModel: 'Upstream',
     reasoningEffort: 'Reasoning Effort',
     endpoint: 'Endpoint',
     endpointDistribution: 'Endpoint Distribution',
     inbound: 'Inbound',
     upstream: 'Upstream',
+    mapping: 'Mapping',
     path: 'Path',
     inboundEndpoint: 'Inbound Endpoint',
     upstreamEndpoint: 'Upstream Endpoint',
@@ -1505,6 +1508,8 @@ export default {
         rateMultiplier: 'Rate Multiplier',
         type: 'Type',
         accounts: 'Accounts',
+        capacity: 'Capacity',
+        usage: 'Usage',
         status: 'Status',
         actions: 'Actions',
         billingType: 'Billing Type',
@@ -1513,6 +1518,12 @@ export default {
         userNotes: 'Notes',
         userStatus: 'Status'
       REDACTED,
+      usageToday: 'Today',
+      usageTotal: 'Total',
+      accountsAvailable: 'Avail:',
+      accountsRateLimited: 'Limited:',
+      accountsTotal: 'Total:',
+      accountsUnit: '',
       rateAndAccounts: '{rateREDACTEDx rate · {countREDACTED accounts',
       accountsCount: '{countREDACTED accounts',
       form: {
@@ -1694,6 +1705,7 @@ export default {
       revokeSubscription: 'Revoke Subscription',
       allStatus: 'All Status',
       allGroups: 'All Groups',
+      allPlatforms: 'All Platforms',
       daily: 'Daily',
       weekly: 'Weekly',
       monthly: 'Monthly',
@@ -1759,7 +1771,37 @@ export default {
       pleaseSelectGroup: 'Please select a group',
       validityDaysRequired: 'Please enter a valid number of days (at least 1)',
       revokeConfirm:
-        "Are you sure you want to revoke the subscription for '{userREDACTED'? This action cannot be undone."
+        "Are you sure you want to revoke the subscription for '{userREDACTED'? This action cannot be undone.",
+      guide: {
+        title: 'Subscription Management Guide',
+        subtitle: 'Subscription mode lets you assign time-based usage quotas to users, with daily/weekly/monthly limits. Follow these steps to get started.',
+        showGuide: 'Usage Guide',
+        step1: {
+          title: 'Create a Subscription Group',
+          line1: 'Go to "Group Management" page, click "Create Group"',
+          line2: 'Set billing type to "Subscription", configure daily/weekly/monthly quota limits',
+          line3: 'Save the group and ensure its status is "Active"',
+          link: 'Go to Group Management'
+        REDACTED,
+        step2: {
+          title: 'Assign Subscription to User',
+          line1: 'Click the "Assign Subscription" button in the top right',
+          line2: 'Search for a user by email and select them',
+          line3: 'Choose a subscription group, set validity days, then click "Assign"'
+        REDACTED,
+        step3: {
+          title: 'Manage Existing Subscriptions'
+        REDACTED,
+        actions: {
+          adjust: 'Adjust',
+          adjustDesc: 'Extend or shorten the subscription validity period',
+          resetQuota: 'Reset Quota',
+          resetQuotaDesc: 'Reset daily/weekly/monthly usage to zero',
+          revoke: 'Revoke',
+          revokeDesc: 'Immediately terminate the subscription (irreversible)'
+        REDACTED,
+        tip: 'Tip: Only groups with billing type "Subscription" and status "Active" appear in the group dropdown. If no options are available, create one in Group Management first.'
+      REDACTED
     REDACTED,
 
     // Accounts
@@ -4319,6 +4361,16 @@ export default {
           testSuccess: 'Google Drive storage test passed (upload, access, delete all OK)',
           testFailed: 'Google Drive storage test failed'
         REDACTED
+      REDACTED,
+      overloadCooldown: {
+        title: '529 Overload Cooldown',
+        description: 'Configure account scheduling pause strategy when upstream returns 529 (overloaded)',
+        enabled: 'Enable Overload Cooldown',
+        enabledHint: 'Pause account scheduling on 529 errors, auto-recover after cooldown',
+        cooldownMinutes: 'Cooldown Duration (minutes)',
+        cooldownMinutesHint: 'Duration to pause account scheduling (1-120 minutes)',
+        saved: 'Overload cooldown settings saved',
+        saveFailed: 'Failed to save overload cooldown settings'
       REDACTED,
       streamTimeout: {
         title: 'Stream Timeout Handling',

@@ -157,6 +157,12 @@ type ListSoraS3ProfilesResponse struct {
 	Items           []SoraS3Profile `json:"items"`
 REDACTED
 
+// OverloadCooldownSettings 529过载冷却配置 DTO
+type OverloadCooldownSettings struct {
+	Enabled         bool `json:"enabled"`
+	CooldownMinutes int  `json:"cooldown_minutes"`
+REDACTED
+
 // StreamTimeoutSettings 流超时处理配置 DTO
 type StreamTimeoutSettings struct {
 	Enabled                bool   `json:"enabled"`

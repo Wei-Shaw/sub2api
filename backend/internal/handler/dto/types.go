@@ -122,9 +122,11 @@ type AdminGroup struct {
 	DefaultMappedModel string `json:"default_mapped_model"`
 
 	// 支持的模型系列（仅 antigravity 平台使用）
-	SupportedModelScopes []string       `json:"supported_model_scopes"`
-	AccountGroups        []AccountGroup `json:"account_groups,omitempty"`
-	AccountCount         int64          `json:"account_count,omitempty"`
+	SupportedModelScopes    []string       `json:"supported_model_scopes"`
+	AccountGroups           []AccountGroup `json:"account_groups,omitempty"`
+	AccountCount            int64          `json:"account_count,omitempty"`
+	ActiveAccountCount      int64          `json:"active_account_count,omitempty"`
+	RateLimitedAccountCount int64          `json:"rate_limited_account_count,omitempty"`
 
 	// 分组排序
 	SortOrder int `json:"sort_order"`
@@ -332,6 +334,9 @@ type UsageLog struct {
 	AccountID int64  `json:"account_id"`
 	RequestID string `json:"request_id"`
 	Model     string `json:"model"`
+	// UpstreamModel is the actual model sent to the upstream provider after mapping.
+	// Omitted when no mapping was applied (requested model was used as-is).
+	UpstreamModel *string `json:"upstream_model,omitempty"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
 	// ReasoningEffort is the request's reasoning effort level.

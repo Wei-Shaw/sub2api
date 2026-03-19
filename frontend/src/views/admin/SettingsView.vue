@@ -168,8 +168,93 @@
         </div>
         </div><!-- /Tab: Security — Admin API Key -->
 
-        <!-- Tab: Gateway — Stream Timeout -->
+        <!-- Tab: Gateway -->
         <div v-show="activeTab === 'gateway'" class="space-y-6">
+
+        <!-- Overload Cooldown (529) Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.overloadCooldown.title') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.overloadCooldown.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div v-if="overloadCooldownLoading" class="flex items-center gap-2 text-gray-500">
+              <div class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"></div>
+              {{ t('common.loading') REDACTEDREDACTED
+            </div>
+
+            <template v-else>
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">{{
+                    t('admin.settings.overloadCooldown.enabled')
+                  REDACTEDREDACTED</label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.overloadCooldown.enabledHint') REDACTEDREDACTED
+                  </p>
+                </div>
+                <Toggle v-model="overloadCooldownForm.enabled" />
+              </div>
+
+              <div
+                v-if="overloadCooldownForm.enabled"
+                class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
+              >
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.overloadCooldown.cooldownMinutes') REDACTEDREDACTED
+                  </label>
+                  <input
+                    v-model.number="overloadCooldownForm.cooldown_minutes"
+                    type="number"
+                    min="1"
+                    max="120"
+                    class="input w-32"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.overloadCooldown.cooldownMinutesHint') REDACTEDREDACTED
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700">
+                <button
+                  type="button"
+                  @click="saveOverloadCooldownSettings"
+                  :disabled="overloadCooldownSaving"
+                  class="btn btn-primary btn-sm"
+                >
+                  <svg
+                    v-if="overloadCooldownSaving"
+                    class="mr-1 h-4 w-4 animate-spin"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      class="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      stroke-width="4"
+                    ></circle>
+                    <path
+                      class="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  {{ overloadCooldownSaving ? t('common.saving') : t('common.save') REDACTEDREDACTED
+                </button>
+              </div>
+            </template>
+          </div>
+        </div>
+
         <!-- Stream Timeout Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -1765,6 +1850,14 @@ const adminApiKeyOperating = ref(false)
 const newAdminApiKey = ref('')
 const subscriptionGroups = ref<AdminGroup[]>([])
 
+// Overload Cooldown (529) 状态
+const overloadCooldownLoading = ref(true)
+const overloadCooldownSaving = ref(false)
+const overloadCooldownForm = reactive({
+  enabled: true,
+  cooldown_minutes: 10
+REDACTED)
+
 // Stream Timeout 状态
 const streamTimeoutLoading = ref(true)
 const streamTimeoutSaving = ref(false)
@@ -2274,6 +2367,37 @@ function copyNewKey() {
     REDACTED)
 REDACTED
 
+// Overload Cooldown 方法
+async function loadOverloadCooldownSettings() {
+  overloadCooldownLoading.value = true
+  try {
+    const settings = await adminAPI.settings.getOverloadCooldownSettings()
+    Object.assign(overloadCooldownForm, settings)
+  REDACTED catch (error: any) {
+    console.error('Failed to load overload cooldown settings:', error)
+  REDACTED finally {
+    overloadCooldownLoading.value = false
+  REDACTED
+REDACTED
+
+async function saveOverloadCooldownSettings() {
+  overloadCooldownSaving.value = true
+  try {
+    const updated = await adminAPI.settings.updateOverloadCooldownSettings({
+      enabled: overloadCooldownForm.enabled,
+      cooldown_minutes: overloadCooldownForm.cooldown_minutes
+    REDACTED)
+    Object.assign(overloadCooldownForm, updated)
+    appStore.showSuccess(t('admin.settings.overloadCooldown.saved'))
+  REDACTED catch (error: any) {
+    appStore.showError(
+      t('admin.settings.overloadCooldown.saveFailed') + ': ' + (error.message || t('common.unknownError'))
+    )
+  REDACTED finally {
+    overloadCooldownSaving.value = false
+  REDACTED
+REDACTED
+
 // Stream Timeout 方法
 async function loadStreamTimeoutSettings() {
   streamTimeoutLoading.value = true
@@ -2396,6 +2520,7 @@ onMounted(() => {
   loadSettings()
   loadSubscriptionGroups()
   loadAdminApiKey()
+  loadOverloadCooldownSettings()
   loadStreamTimeoutSettings()
   loadRectifierSettings()
   loadBetaPolicySettings()

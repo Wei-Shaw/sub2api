@@ -6,7 +6,42 @@
           ? t('admin.dashboard.modelDistribution')
           : t('admin.dashboard.spendingRankingTitle') REDACTEDREDACTED
       </h3>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <div
+          v-if="showSourceToggle"
+          class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-dark-800"
+        >
+          <button
+            type="button"
+            class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+            :class="source === 'requested'
+              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+            @click="emit('update:source', 'requested')"
+          >
+            {{ t('usage.requestedModel') REDACTEDREDACTED
+          </button>
+          <button
+            type="button"
+            class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+            :class="source === 'upstream'
+              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+            @click="emit('update:source', 'upstream')"
+          >
+            {{ t('usage.upstreamModel') REDACTEDREDACTED
+          </button>
+          <button
+            type="button"
+            class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+            :class="source === 'mapping'
+              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+            @click="emit('update:source', 'mapping')"
+          >
+            {{ t('usage.mapping') REDACTEDREDACTED
+          </button>
+        </div>
         <div
           v-if="showMetricToggle"
           class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-dark-800"
@@ -215,9 +250,13 @@ ChartJS.register(ArcElement, Tooltip, Legend)
 const { t REDACTED = useI18n()
 
 type DistributionMetric = 'tokens' | 'actual_cost'
+type ModelSource = 'requested' | 'upstream' | 'mapping'
 type RankingDisplayItem = UserSpendingRankingItem & { isOther?: boolean REDACTED
 const props = withDefaults(defineProps<{
   modelStats: ModelStat[]
+  upstreamModelStats?: ModelStat[]
+  mappingModelStats?: ModelStat[]
+  source?: ModelSource
   enableRankingView?: boolean
   rankingItems?: UserSpendingRankingItem[]
   rankingTotalActualCost?: number
@@ -225,12 +264,16 @@ const props = withDefaults(defineProps<{
   rankingTotalTokens?: number
   loading?: boolean
   metric?: DistributionMetric
+  showSourceToggle?: boolean
   showMetricToggle?: boolean
   rankingLoading?: boolean
   rankingError?: boolean
   startDate?: string
   endDate?: string
 REDACTED>(), {
+  upstreamModelStats: () => [],
+  mappingModelStats: () => [],
+  source: 'requested',
   enableRankingView: false,
   rankingItems: () => [],
   rankingTotalActualCost: 0,
@@ -238,6 +281,7 @@ REDACTED>(), {
   rankingTotalTokens: 0,
   loading: false,
   metric: 'tokens',
+  showSourceToggle: false,
   showMetricToggle: false,
   rankingLoading: false,
   rankingError: false
@@ -261,6 +305,7 @@ const toggleBreakdown = async (type: string, id: string) => {
       start_date: props.startDate,
       end_date: props.endDate,
       model: id,
+      model_source: props.source,
     REDACTED)
     breakdownItems.value = res.users || []
   REDACTED catch {
@@ -272,6 +317,7 @@ REDACTED
 
 const emit = defineEmits<{
   'update:metric': [value: DistributionMetric]
+  'update:source': [value: ModelSource]
   'ranking-click': [item: UserSpendingRankingItem]
 REDACTED>()
 
@@ -294,14 +340,19 @@ const chartColors = [
 ]
 
 const displayModelStats = computed(() => {
-  if (!props.modelStats?.length) return []
+  const sourceStats = props.source === 'upstream'
+    ? props.upstreamModelStats
+    : props.source === 'mapping'
+      ? props.mappingModelStats
+      : props.modelStats
+  if (!sourceStats?.length) return []
 
   const metricKey = props.metric === 'actual_cost' ? 'actual_cost' : 'total_tokens'
-  return [...props.modelStats].sort((a, b) => b[metricKey] - a[metricKey])
+  return [...sourceStats].sort((a, b) => b[metricKey] - a[metricKey])
 REDACTED)
 
 const chartData = computed(() => {
-  if (!props.modelStats?.length) return null
+  if (!displayModelStats.value.length) return null
 
   return {
     labels: displayModelStats.value.map((m) => m.model),

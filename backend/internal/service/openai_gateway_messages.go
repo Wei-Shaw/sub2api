@@ -299,12 +299,13 @@ REDACTED
 	c.JSON(http.StatusOK, anthropicResp)
 
 	return &OpenAIForwardResult{
-		RequestID:    requestID,
-		Usage:        usage,
-		Model:        originalModel,
-		BillingModel: mappedModel,
-		Stream:       false,
-		Duration:     time.Since(startTime),
+		RequestID:     requestID,
+		Usage:         usage,
+		Model:         originalModel,
+		BillingModel:  mappedModel,
+		UpstreamModel: mappedModel,
+		Stream:        false,
+		Duration:      time.Since(startTime),
 REDACTED, nil
 REDACTED
 
@@ -347,13 +348,14 @@ REDACTED
 	// resultWithUsage builds the final result snapshot.
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
-			RequestID:    requestID,
-			Usage:        usage,
-			Model:        originalModel,
-			BillingModel: mappedModel,
-			Stream:       true,
-			Duration:     time.Since(startTime),
-			FirstTokenMs: firstTokenMs,
+			RequestID:     requestID,
+			Usage:         usage,
+			Model:         originalModel,
+			BillingModel:  mappedModel,
+			UpstreamModel: mappedModel,
+			Stream:        true,
+			Duration:      time.Since(startTime),
+			FirstTokenMs:  firstTokenMs,
 	REDACTED
 REDACTED
 

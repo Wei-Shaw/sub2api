@@ -273,8 +273,8 @@ REDACTED
 func (r *stubGroupRepo) ExistsByName(ctx context.Context, name string) (bool, error) {
 	return false, nil
 REDACTED
-func (r *stubGroupRepo) GetAccountCount(ctx context.Context, groupID int64) (int64, error) {
-	return 0, nil
+func (r *stubGroupRepo) GetAccountCount(ctx context.Context, groupID int64) (int64, int64, error) {
+	return 0, 0, nil
 REDACTED
 func (r *stubGroupRepo) DeleteAccountGroupsByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	return 0, nil
@@ -346,6 +346,9 @@ func (s *stubUsageLogRepo) GetGroupStatsWithFilters(ctx context.Context, startTi
 	return nil, nil
 REDACTED
 func (s *stubUsageLogRepo) GetUserBreakdownStats(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension, limit int) ([]usagestats.UserBreakdownItem, error) {
+	return nil, nil
+REDACTED
+func (s *stubUsageLogRepo) GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
 	return nil, nil
 REDACTED
 func (s *stubUsageLogRepo) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, error) {

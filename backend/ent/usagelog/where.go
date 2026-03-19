@@ -80,6 +80,11 @@ func Model(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldModel, v))
 REDACTED
 
+// UpstreamModel applies equality check predicate on the "upstream_model" field. It's identical to UpstreamModelEQ.
+func UpstreamModel(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldUpstreamModel, v))
+REDACTED
+
 // GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
 func GroupID(v int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldGroupID, v))
@@ -403,6 +408,81 @@ REDACTED
 // ModelContainsFold applies the ContainsFold predicate on the "model" field.
 func ModelContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldModel, v))
+REDACTED
+
+// UpstreamModelEQ applies the EQ predicate on the "upstream_model" field.
+func UpstreamModelEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldUpstreamModel, v))
+REDACTED
+
+// UpstreamModelNEQ applies the NEQ predicate on the "upstream_model" field.
+func UpstreamModelNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldUpstreamModel, v))
+REDACTED
+
+// UpstreamModelIn applies the In predicate on the "upstream_model" field.
+func UpstreamModelIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldUpstreamModel, vs...))
+REDACTED
+
+// UpstreamModelNotIn applies the NotIn predicate on the "upstream_model" field.
+func UpstreamModelNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldUpstreamModel, vs...))
+REDACTED
+
+// UpstreamModelGT applies the GT predicate on the "upstream_model" field.
+func UpstreamModelGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldUpstreamModel, v))
+REDACTED
+
+// UpstreamModelGTE applies the GTE predicate on the "upstream_model" field.
+func UpstreamModelGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldUpstreamModel, v))
+REDACTED
+
+// UpstreamModelLT applies the LT predicate on the "upstream_model" field.
+func UpstreamModelLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldUpstreamModel, v))
+REDACTED
+
+// UpstreamModelLTE applies the LTE predicate on the "upstream_model" field.
+func UpstreamModelLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldUpstreamModel, v))
+REDACTED
+
+// UpstreamModelContains applies the Contains predicate on the "upstream_model" field.
+func UpstreamModelContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldUpstreamModel, v))
+REDACTED
+
+// UpstreamModelHasPrefix applies the HasPrefix predicate on the "upstream_model" field.
+func UpstreamModelHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldUpstreamModel, v))
+REDACTED
+
+// UpstreamModelHasSuffix applies the HasSuffix predicate on the "upstream_model" field.
+func UpstreamModelHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldUpstreamModel, v))
+REDACTED
+
+// UpstreamModelIsNil applies the IsNil predicate on the "upstream_model" field.
+func UpstreamModelIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldUpstreamModel))
+REDACTED
+
+// UpstreamModelNotNil applies the NotNil predicate on the "upstream_model" field.
+func UpstreamModelNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldUpstreamModel))
+REDACTED
+
+// UpstreamModelEqualFold applies the EqualFold predicate on the "upstream_model" field.
+func UpstreamModelEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldUpstreamModel, v))
+REDACTED
+
+// UpstreamModelContainsFold applies the ContainsFold predicate on the "upstream_model" field.
+func UpstreamModelContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldUpstreamModel, v))
 REDACTED
 
 // GroupIDEQ applies the EQ predicate on the "group_id" field.

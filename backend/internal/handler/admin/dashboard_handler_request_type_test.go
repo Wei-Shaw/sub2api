@@ -149,6 +149,28 @@ func TestDashboardModelStatsInvalidStream(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 REDACTED
 
+func TestDashboardModelStatsInvalidModelSource(t *testing.T) {
+	repo := &dashboardUsageRepoCapture{REDACTED
+	router := newDashboardRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/models?model_source=invalid", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+REDACTED
+
+func TestDashboardModelStatsValidModelSource(t *testing.T) {
+	repo := &dashboardUsageRepoCapture{REDACTED
+	router := newDashboardRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/models?model_source=upstream", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+REDACTED
+
 func TestDashboardUsersRankingLimitAndCache(t *testing.T) {
 	dashboardUsersRankingCache = newSnapshotCache(5 * time.Minute)
 	repo := &dashboardUsageRepoCapture{

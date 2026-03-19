@@ -48,7 +48,7 @@
       </span>
 
       <!-- Reset time -->
-      <span v-if="resetsAt" class="shrink-0 text-[10px] text-gray-400">
+      <span v-if="shouldShowResetTime" class="shrink-0 text-[10px] text-gray-400">
         {{ formatResetTime REDACTEDREDACTED
       </span>
     </div>
@@ -68,6 +68,7 @@ const props = defineProps<{
   resetsAt?: string | null
   color: 'indigo' | 'emerald' | 'purple' | 'amber'
   windowStats?: WindowStats | null
+  showNowWhenIdle?: boolean
 REDACTED>()
 
 const { t REDACTED = useI18n()
@@ -139,9 +140,20 @@ const displayPercent = computed(() => {
   return percent > 999 ? '>999%' : `${percentREDACTED%`
 REDACTED)
 
+const shouldShowResetTime = computed(() => {
+  if (props.resetsAt) return true
+  return Boolean(props.showNowWhenIdle && props.utilization <= 0)
+REDACTED)
+
 // Format reset time
 const formatResetTime = computed(() => {
+  // For rolling windows, when utilization is 0%, treat as immediately available.
+  if (props.showNowWhenIdle && props.utilization <= 0) {
+    return '现在'
+  REDACTED
+
   if (!props.resetsAt) return '-'
+
   const date = new Date(props.resetsAt)
   const diffMs = date.getTime() - now.value.getTime()
 

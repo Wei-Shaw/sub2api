@@ -3,6 +3,7 @@ import { RouterView, useRouter, useRoute REDACTED from 'vue-router'
 import { onMounted, onBeforeUnmount, watch REDACTED from 'vue'
 import Toast from '@/components/common/Toast.vue'
 import NavigationProgress from '@/components/common/NavigationProgress.vue'
+import { resolveDocumentTitle REDACTED from '@/router/title'
 import AnnouncementPopup from '@/components/common/AnnouncementPopup.vue'
 import { useAppStore, useAuthStore, useSubscriptionStore, useAnnouncementStore REDACTED from '@/stores'
 import { getSetupStatus REDACTED from '@/api/setup'
@@ -104,6 +105,9 @@ onMounted(async () => {
 
   // Load public settings into appStore (will be cached for other components)
   await appStore.fetchPublicSettings()
+
+  // Re-resolve document title now that siteName is available
+  document.title = resolveDocumentTitle(route.meta.title, appStore.siteName, route.meta.titleKey as string)
 REDACTED)
 </script>
 

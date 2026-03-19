@@ -140,12 +140,42 @@ REDACTED
 	return stats, nil
 REDACTED
 
+func (s *DashboardService) GetModelStatsWithFiltersBySource(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8, modelSource string) ([]usagestats.ModelStat, error) {
+	normalizedSource := usagestats.NormalizeModelSource(modelSource)
+	if normalizedSource == usagestats.ModelSourceRequested {
+		return s.GetModelStatsWithFilters(ctx, startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType)
+REDACTED
+
+	type modelStatsBySourceRepo interface {
+		GetModelStatsWithFiltersBySource(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8, source string) ([]usagestats.ModelStat, error)
+REDACTED
+
+	if sourceRepo, ok := s.usageRepo.(modelStatsBySourceRepo); ok {
+		stats, err := sourceRepo.GetModelStatsWithFiltersBySource(ctx, startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType, normalizedSource)
+		if err != nil {
+			return nil, fmt.Errorf("get model stats with filters by source: %w", err)
+	REDACTED
+		return stats, nil
+REDACTED
+
+	return s.GetModelStatsWithFilters(ctx, startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType)
+REDACTED
+
 func (s *DashboardService) GetGroupStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8) ([]usagestats.GroupStat, error) {
 	stats, err := s.usageRepo.GetGroupStatsWithFilters(ctx, startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType)
 	if err != nil {
 		return nil, fmt.Errorf("get group stats with filters: %w", err)
 REDACTED
 	return stats, nil
+REDACTED
+
+// GetGroupUsageSummary returns today's and cumulative cost for all groups.
+func (s *DashboardService) GetGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
+	results, err := s.usageRepo.GetAllGroupUsageSummary(ctx, todayStart)
+	if err != nil {
+		return nil, fmt.Errorf("get group usage summary: %w", err)
+REDACTED
+	return results, nil
 REDACTED
 
 func (s *DashboardService) getCachedDashboardStats(ctx context.Context) (*usagestats.DashboardStats, bool, error) {

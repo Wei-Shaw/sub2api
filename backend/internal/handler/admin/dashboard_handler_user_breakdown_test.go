@@ -73,7 +73,33 @@ func TestGetUserBreakdown_ModelFilter(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, "claude-opus-4-6", repo.capturedDim.Model)
+	require.Equal(t, usagestats.ModelSourceRequested, repo.capturedDim.ModelType)
 	require.Equal(t, int64(0), repo.capturedDim.GroupID)
+REDACTED
+
+func TestGetUserBreakdown_ModelSourceFilter(t *testing.T) {
+	repo := &userBreakdownRepoCapture{REDACTED
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&model=claude-opus-4-6&model_source=upstream", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, usagestats.ModelSourceUpstream, repo.capturedDim.ModelType)
+REDACTED
+
+func TestGetUserBreakdown_InvalidModelSource(t *testing.T) {
+	repo := &userBreakdownRepoCapture{REDACTED
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&model_source=foobar", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
 REDACTED
 
 func TestGetUserBreakdown_EndpointFilter(t *testing.T) {

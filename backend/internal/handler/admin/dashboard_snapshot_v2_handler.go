@@ -200,6 +200,7 @@ REDACTED
 			filters.APIKeyID,
 			filters.AccountID,
 			filters.GroupID,
+			usagestats.ModelSourceRequested,
 			filters.RequestType,
 			filters.Stream,
 			filters.BillingType,

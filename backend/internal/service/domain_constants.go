@@ -171,6 +171,13 @@ const (
 	SettingKeyOpsRuntimeLogConfig = "ops_runtime_log_config"
 
 	// =========================
+	// Overload Cooldown (529)
+	// =========================
+
+	// SettingKeyOverloadCooldownSettings stores JSON config for 529 overload cooldown handling.
+	SettingKeyOverloadCooldownSettings = "overload_cooldown_settings"
+
+	// =========================
 	// Stream Timeout Handling
 	// =========================
 
