@@ -431,7 +431,7 @@ REDACTED
 		return schema
 REDACTED
 
-	typ, _ := m["type"]
+	typ := m["type"]
 	if string(typ) != `"object"` {
 		return schema
 REDACTED
