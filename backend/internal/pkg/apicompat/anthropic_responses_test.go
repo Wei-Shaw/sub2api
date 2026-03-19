@@ -1008,3 +1008,114 @@ REDACTED
 	// Should default to image/png when media_type is empty.
 	assert.Equal(t, "data:image/png;base64,iVBOR", parts[0].ImageURL)
 REDACTED
+
+// ---------------------------------------------------------------------------
+// normalizeToolParameters tests
+// ---------------------------------------------------------------------------
+
+func TestNormalizeToolParameters(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    json.RawMessage
+		expected string
+REDACTED{
+		{
+			name:     "nil input",
+			input:    nil,
+			expected: `{"type":"object","properties":{REDACTEDREDACTED`,
+	REDACTED,
+		{
+			name:     "empty input",
+			input:    json.RawMessage(``),
+			expected: `{"type":"object","properties":{REDACTEDREDACTED`,
+	REDACTED,
+		{
+			name:     "null input",
+			input:    json.RawMessage(`null`),
+			expected: `{"type":"object","properties":{REDACTEDREDACTED`,
+	REDACTED,
+		{
+			name:     "object without properties",
+			input:    json.RawMessage(`{"type":"object"REDACTED`),
+			expected: `{"type":"object","properties":{REDACTEDREDACTED`,
+	REDACTED,
+		{
+			name:     "object with properties",
+			input:    json.RawMessage(`{"type":"object","properties":{"city":{"type":"string"REDACTEDREDACTEDREDACTED`),
+			expected: `{"type":"object","properties":{"city":{"type":"string"REDACTEDREDACTEDREDACTED`,
+	REDACTED,
+		{
+			name:     "non-object type",
+			input:    json.RawMessage(`{"type":"string"REDACTED`),
+			expected: `{"type":"string"REDACTED`,
+	REDACTED,
+		{
+			name:     "object with additional fields preserved",
+			input:    json.RawMessage(`{"type":"object","required":["name"]REDACTED`),
+			expected: `{"type":"object","required":["name"],"properties":{REDACTEDREDACTED`,
+	REDACTED,
+		{
+			name:     "invalid JSON passthrough",
+			input:    json.RawMessage(`not json`),
+			expected: `not json`,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeToolParameters(tt.input)
+			if tt.name == "invalid JSON passthrough" {
+				assert.Equal(t, tt.expected, string(result))
+		REDACTED else {
+				assert.JSONEq(t, tt.expected, string(result))
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestAnthropicToResponses_ToolWithoutProperties(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Hello"`)REDACTED,
+	REDACTED,
+		Tools: []AnthropicTool{
+			{Name: "mcp__pencil__get_style_guide_tags", Description: "Get style tags", InputSchema: json.RawMessage(`{"type":"object"REDACTED`)REDACTED,
+	REDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+
+	require.Len(t, resp.Tools, 1)
+	assert.Equal(t, "function", resp.Tools[0].Type)
+	assert.Equal(t, "mcp__pencil__get_style_guide_tags", resp.Tools[0].Name)
+
+	// Parameters must have "properties" field after normalization.
+	var params map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(resp.Tools[0].Parameters, &params))
+	assert.Contains(t, params, "properties")
+REDACTED
+
+func TestAnthropicToResponses_ToolWithNilSchema(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "gpt-5.2",
+		MaxTokens: 1024,
+		Messages: []AnthropicMessage{
+			{Role: "user", Content: json.RawMessage(`"Hello"`)REDACTED,
+	REDACTED,
+		Tools: []AnthropicTool{
+			{Name: "simple_tool", Description: "A tool"REDACTED,
+	REDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+
+	require.Len(t, resp.Tools, 1)
+	var params map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(resp.Tools[0].Parameters, &params))
+	assert.JSONEq(t, `"object"`, string(params["type"]))
+	assert.JSONEq(t, `{REDACTED`, string(params["properties"]))
+REDACTED
