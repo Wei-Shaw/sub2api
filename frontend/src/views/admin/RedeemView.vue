@@ -395,6 +395,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch REDACTED from 'v
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { useClipboard REDACTED from '@/composables/useClipboard'
+import { getPersistedPageSize REDACTED from '@/composables/usePersistedPageSize'
 import { adminAPI REDACTED from '@/api/admin'
 import { formatDateTime REDACTED from '@/utils/format'
 import type { RedeemCode, RedeemCodeType, Group, GroupPlatform, SubscriptionType REDACTED from '@/types'
@@ -532,7 +533,7 @@ const filters = reactive({
 REDACTED)
 const pagination = reactive({
   page: 1,
-  page_size: 20,
+  page_size: getPersistedPageSize(),
   total: 0,
   pages: 0
 REDACTED)

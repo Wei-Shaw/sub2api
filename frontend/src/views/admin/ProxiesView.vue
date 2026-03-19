@@ -884,6 +884,7 @@ import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 import { useSwipeSelect REDACTED from '@/composables/useSwipeSelect'
 import { useTableSelection REDACTED from '@/composables/useTableSelection'
+import { getPersistedPageSize REDACTED from '@/composables/usePersistedPageSize'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -941,7 +942,7 @@ const filters = reactive({
 REDACTED)
 const pagination = reactive({
   page: 1,
-  page_size: 20,
+  page_size: getPersistedPageSize(),
   total: 0,
   pages: 0
 REDACTED)

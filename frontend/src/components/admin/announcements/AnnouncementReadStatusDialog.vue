@@ -69,6 +69,7 @@ import { adminAPI REDACTED from '@/api/admin'
 import { formatDateTime REDACTED from '@/utils/format'
 import type { AnnouncementUserReadStatus REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
+import { getPersistedPageSize REDACTED from '@/composables/usePersistedPageSize'
 
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -92,7 +93,7 @@ const search = ref('')
 
 const pagination = reactive({
   page: 1,
-  page_size: 20,
+  page_size: getPersistedPageSize(),
   total: 0,
   pages: 0
 REDACTED)

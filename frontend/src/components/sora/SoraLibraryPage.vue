@@ -126,6 +126,7 @@
 import { ref, computed, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import soraAPI, { type SoraGeneration REDACTED from '@/api/sora'
+import { getPersistedPageSize REDACTED from '@/composables/usePersistedPageSize'
 import SoraMediaPreview from './SoraMediaPreview.vue'
 
 const emit = defineEmits<{
@@ -190,7 +191,7 @@ async function loadItems(pageNum: number) {
       status: 'completed',
       storage_type: 's3,local',
       page: pageNum,
-      page_size: 20
+      page_size: getPersistedPageSize()
     REDACTED)
     const rows = Array.isArray(res.data) ? res.data : []
     if (pageNum === 1) {

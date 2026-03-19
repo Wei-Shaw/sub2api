@@ -239,6 +239,7 @@
 import { computed, onMounted, reactive, ref REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
+import { getPersistedPageSize REDACTED from '@/composables/usePersistedPageSize'
 import { adminAPI REDACTED from '@/api/admin'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput REDACTED from '@/utils/format'
 import type { AdminGroup, Announcement, AnnouncementTargeting REDACTED from '@/types'
@@ -270,7 +271,7 @@ const searchQuery = ref('')
 
 const pagination = reactive({
   page: 1,
-  page_size: 20,
+  page_size: getPersistedPageSize(),
   total: 0,
   pages: 0
 REDACTED)

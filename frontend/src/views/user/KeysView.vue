@@ -1035,6 +1035,7 @@
 	import { useAppStore REDACTED from '@/stores/app'
 	import { useOnboardingStore REDACTED from '@/stores/onboarding'
 	import { useClipboard REDACTED from '@/composables/useClipboard'
+import { getPersistedPageSize REDACTED from '@/composables/usePersistedPageSize'
 
 const { t REDACTED = useI18n()
 import { keysAPI, authAPI, usageAPI, userGroupsAPI REDACTED from '@/api'
@@ -1101,7 +1102,7 @@ const userGroupRates = ref<Record<number, number>>({REDACTED)
 
 const pagination = ref({
   page: 1,
-  page_size: 10,
+  page_size: getPersistedPageSize(),
   total: 0,
   pages: 0
 REDACTED)
