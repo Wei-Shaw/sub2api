@@ -34,6 +34,22 @@ var (
 		Mode:                            "chat",
 		SupportsPromptCaching:           true,
 REDACTED
+	openAIGPT54MiniFallbackPricing = &LiteLLMModelPricing{
+		InputCostPerToken:       7.5e-07,
+		OutputCostPerToken:      4.5e-06,
+		CacheReadInputTokenCost: 7.5e-08,
+		LiteLLMProvider:         "openai",
+		Mode:                    "chat",
+		SupportsPromptCaching:   true,
+REDACTED
+	openAIGPT54NanoFallbackPricing = &LiteLLMModelPricing{
+		InputCostPerToken:       2e-07,
+		OutputCostPerToken:      1.25e-06,
+		CacheReadInputTokenCost: 2e-08,
+		LiteLLMProvider:         "openai",
+		Mode:                    "chat",
+		SupportsPromptCaching:   true,
+REDACTED
 )
 
 // LiteLLMModelPricing LiteLLM价格数据结构
@@ -721,6 +737,18 @@ REDACTED
 				Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.2-codex"))
 			return pricing
 	REDACTED
+REDACTED
+
+	if strings.HasPrefix(model, "gpt-5.4-mini") {
+		logger.With(zap.String("component", "service.pricing")).
+			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.4-mini(static)"))
+		return openAIGPT54MiniFallbackPricing
+REDACTED
+
+	if strings.HasPrefix(model, "gpt-5.4-nano") {
+		logger.With(zap.String("component", "service.pricing")).
+			Info(fmt.Sprintf("[Pricing] OpenAI fallback matched %s -> %s", model, "gpt-5.4-nano(static)"))
+		return openAIGPT54NanoFallbackPricing
 REDACTED
 
 	if strings.HasPrefix(model, "gpt-5.4") {
