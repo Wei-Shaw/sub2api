@@ -53,6 +53,13 @@ REDACTED
 	c.Set(key, value)
 REDACTED
 
+// SetOpsUpstreamError is the exported wrapper for setOpsUpstreamError, used by
+// handler-layer code (e.g. failover-exhausted paths) that needs to record the
+// original upstream status code before mapping it to a client-facing code.
+func SetOpsUpstreamError(c *gin.Context, upstreamStatusCode int, upstreamMessage, upstreamDetail string) {
+	setOpsUpstreamError(c, upstreamStatusCode, upstreamMessage, upstreamDetail)
+REDACTED
+
 func setOpsUpstreamError(c *gin.Context, upstreamStatusCode int, upstreamMessage, upstreamDetail string) {
 	if c == nil {
 		return
