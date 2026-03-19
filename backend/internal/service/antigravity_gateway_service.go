@@ -1359,7 +1359,10 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	}
 	accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
-		return nil, s.writeClaudeError(c, http.StatusBadGateway, "authentication_error", "Failed to get upstream access token")
+		return nil, &UpstreamFailoverError{
+			StatusCode:   http.StatusBadGateway,
+			ResponseBody: []byte(`{"error":{"type":"authentication_error","message":"Failed to get upstream access token"},"type":"error"}`),
+		}
 	}
 
 	// 获取 project_id（部分账户类型可能没有）
@@ -2104,7 +2107,10 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 	}
 	accessToken, err := s.tokenProvider.GetAccessToken(ctx, account)
 	if err != nil {
-		return nil, s.writeGoogleError(c, http.StatusBadGateway, "Failed to get upstream access token")
+		return nil, &UpstreamFailoverError{
+			StatusCode:   http.StatusBadGateway,
+			ResponseBody: []byte(`{"error":{"message":"Failed to get upstream access token","status":"UNAVAILABLE"}}`),
+		}
 	}
 
 	// 获取 project_id（部分账户类型可能没有）

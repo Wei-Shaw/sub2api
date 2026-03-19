@@ -228,9 +228,18 @@ type Client struct {
 	httpClient *http.Client
 }
 
+const (
+	// proxyDialTimeout 代理 TCP 连接超时（含代理握手），代理不通时快速失败
+	proxyDialTimeout = 5 * time.Second
+	// proxyTLSHandshakeTimeout 代理 TLS 握手超时
+	proxyTLSHandshakeTimeout = 5 * time.Second
+	// clientTimeout 整体请求超时（含连接、发送、等待响应、读取 body）
+	clientTimeout = 10 * time.Second
+)
+
 func NewClient(proxyURL string) (*Client, error) {
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: clientTimeout,
 	}
 
 	_, parsed, err := proxyurl.Parse(proxyURL)
@@ -238,7 +247,12 @@ func NewClient(proxyURL string) (*Client, error) {
 		return nil, err
 	}
 	if parsed != nil {
-		transport := &http.Transport{}
+		transport := &http.Transport{
+			DialContext: (&net.Dialer{
+				Timeout: proxyDialTimeout,
+			}).DialContext,
+			TLSHandshakeTimeout: proxyTLSHandshakeTimeout,
+		}
 		if err := proxyutil.ConfigureTransportProxy(transport, parsed); err != nil {
 			return nil, fmt.Errorf("configure proxy: %w", err)
 		}
@@ -250,8 +264,8 @@ func NewClient(proxyURL string) (*Client, error) {
 	}, nil
 }
 
-// isConnectionError 判断是否为连接错误（网络超时、DNS 失败、连接拒绝）
-func isConnectionError(err error) bool {
+// IsConnectionError 判断是否为连接错误（网络超时、DNS 失败、连接拒绝）
+func IsConnectionError(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -276,7 +290,7 @@ func isConnectionError(err error) bool {
 // shouldFallbackToNextURL 判断是否应切换到下一个 URL
 // 与 Antigravity-Manager 保持一致：连接错误、429、408、404、5xx 触发 URL 降级
 func shouldFallbackToNextURL(err error, statusCode int) bool {
-	if isConnectionError(err) {
+	if IsConnectionError(err) {
 		return true
 	}
 	return statusCode == http.StatusTooManyRequests ||

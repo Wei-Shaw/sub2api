@@ -12,6 +12,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
+// tokenRefreshTempUnschedDuration token 刷新重试耗尽后临时不可调度的持续时间
+const tokenRefreshTempUnschedDuration = 10 * time.Minute
+
 // TokenRefreshService OAuth token自动刷新服务
 // 定期检查并刷新即将过期的token
 type TokenRefreshService struct {
@@ -317,13 +320,28 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 		}
 	}
 
-	// 可重试错误耗尽：仅记录日志，不标记 error（可能是临时网络问题，下个周期继续重试）
+	// 可重试错误耗尽：临时标记账号不可调度，避免请求路径反复命中已知失败的账号
 	slog.Warn("token_refresh.retry_exhausted",
 		"account_id", account.ID,
 		"platform", account.Platform,
 		"max_retries", s.cfg.MaxRetries,
 		"error", lastErr,
 	)
+
+	// 设置临时不可调度 10 分钟（不标记 error，保持 status=active 让下个刷新周期能继续尝试）
+	until := time.Now().Add(tokenRefreshTempUnschedDuration)
+	reason := fmt.Sprintf("token refresh retry exhausted: %v", lastErr)
+	if setErr := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); setErr != nil {
+		slog.Warn("token_refresh.set_temp_unschedulable_failed",
+			"account_id", account.ID,
+			"error", setErr,
+		)
+	} else {
+		slog.Info("token_refresh.temp_unschedulable_set",
+			"account_id", account.ID,
+			"until", until.Format(time.RFC3339),
+		)
+	}
 
 	return lastErr
 }
