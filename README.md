@@ -178,10 +178,10 @@ mkdir -p sub2api-deploy && cd sub2api-deploy
 curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
 
 # Start services
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f sub2api
+docker compose logs -f sub2api
 ```
 
 **What the script does:**
@@ -245,16 +245,16 @@ mkdir -p data postgres_data redis_data
 
 # 5. Start all services
 # Option A: Local directory version (recommended - easy migration)
-docker-compose -f docker-compose.local.yml up -d
+docker compose -f docker-compose.local.yml up -d
 
 # Option B: Named volumes version (simple setup)
-docker-compose up -d
+docker compose up -d
 
 # 6. Check status
-docker-compose -f docker-compose.local.yml ps
+docker compose -f docker-compose.local.yml ps
 
 # 7. View logs
-docker-compose -f docker-compose.local.yml logs -f sub2api
+docker compose -f docker-compose.local.yml logs -f sub2api
 ```
 
 #### Deployment Versions
@@ -272,15 +272,15 @@ Open `http://YOUR_SERVER_IP:8080` in your browser.
 
 If admin password was auto-generated, find it in logs:
 ```bash
-docker-compose -f docker-compose.local.yml logs sub2api | grep "admin password"
+docker compose -f docker-compose.local.yml logs sub2api | grep "admin password"
 ```
 
 #### Upgrade
 
 ```bash
 # Pull latest image and recreate container
-docker-compose -f docker-compose.local.yml pull
-docker-compose -f docker-compose.local.yml up -d
+docker compose -f docker-compose.local.yml pull
+docker compose -f docker-compose.local.yml up -d
 ```
 
 #### Easy Migration (Local Directory Version)
@@ -289,7 +289,7 @@ When using `docker-compose.local.yml`, migrate to a new server easily:
 
 ```bash
 # On source server
-docker-compose -f docker-compose.local.yml down
+docker compose -f docker-compose.local.yml down
 cd ..
 tar czf sub2api-complete.tar.gz sub2api-deploy/
 
@@ -299,23 +299,23 @@ scp sub2api-complete.tar.gz user@new-server:/path/
 # On new server
 tar xzf sub2api-complete.tar.gz
 cd sub2api-deploy/
-docker-compose -f docker-compose.local.yml up -d
+docker compose -f docker-compose.local.yml up -d
 ```
 
 #### Useful Commands
 
 ```bash
 # Stop all services
-docker-compose -f docker-compose.local.yml down
+docker compose -f docker-compose.local.yml down
 
 # Restart
-docker-compose -f docker-compose.local.yml restart
+docker compose -f docker-compose.local.yml restart
 
 # View all logs
-docker-compose -f docker-compose.local.yml logs -f
+docker compose -f docker-compose.local.yml logs -f
 
 # Remove all data (caution!)
-docker-compose -f docker-compose.local.yml down
+docker compose -f docker-compose.local.yml down
 rm -rf data/ postgres_data/ redis_data/
 ```
 
