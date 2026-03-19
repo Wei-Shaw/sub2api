@@ -688,6 +688,83 @@ REDACTED
 	require.Contains(t, req.Header.Get("anthropic-beta"), claude.BetaOAuth, "OAuth 链路仍应按原逻辑补齐 oauth beta")
 REDACTED
 
+func TestGatewayService_AnthropicOAuth_ForwardPreservesBillingHeaderSystemBlock(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name string
+		body string
+REDACTED{
+		{
+			name: "system array",
+			body: `{"model":"claude-3-5-sonnet-latest","system":[{"type":"text","text":"x-anthropic-billing-header keep"REDACTED],"messages":[{"role":"user","content":[{"type":"text","text":"hello"REDACTED]REDACTED]REDACTED`,
+	REDACTED,
+		{
+			name: "system string",
+			body: `{"model":"claude-3-5-sonnet-latest","system":"x-anthropic-billing-header keep","messages":[{"role":"user","content":[{"type":"text","text":"hello"REDACTED]REDACTED]REDACTED`,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+			parsed, err := ParseGatewayRequest([]byte(tt.body), PlatformAnthropic)
+		REDACTED
+
+			upstream := &anthropicHTTPUpstreamRecorder{
+				resp: &http.Response{
+					StatusCode: http.StatusOK,
+					Header: http.Header{
+						"Content-Type": []string{"application/json"REDACTED,
+						"x-request-id": []string{"rid-oauth-preserve"REDACTED,
+				REDACTED,
+					Body: io.NopCloser(strings.NewReader(`{"id":"msg_1","type":"message","role":"assistant","model":"claude-3-5-sonnet-20241022","content":[{"type":"text","text":"ok"REDACTED],"usage":{"input_tokens":12,"output_tokens":7REDACTEDREDACTED`)),
+			REDACTED,
+		REDACTED
+
+			cfg := &config.Config{
+				Gateway: config.GatewayConfig{
+					MaxLineSize: defaultMaxLineSize,
+			REDACTED,
+		REDACTED
+			svc := &GatewayService{
+				cfg:                  cfg,
+				responseHeaderFilter: compileResponseHeaderFilter(cfg),
+				httpUpstream:         upstream,
+				rateLimitService:     &RateLimitService{REDACTED,
+				deferredService:      &DeferredService{REDACTED,
+		REDACTED
+
+			account := &Account{
+				ID:          301,
+				Name:        "anthropic-oauth-preserve",
+				Platform:    PlatformAnthropic,
+				Type:        AccountTypeOAuth,
+				Concurrency: 1,
+		REDACTED
+					"access_token": "oauth-token",
+			REDACTED,
+				Status:      StatusActive,
+				Schedulable: true,
+		REDACTED
+
+			result, err := svc.Forward(context.Background(), c, account, parsed)
+		REDACTED
+			require.NotNil(t, result)
+			require.NotNil(t, upstream.lastReq)
+			require.Equal(t, "Bearer oauth-token", upstream.lastReq.Header.Get("authorization"))
+			require.Contains(t, upstream.lastReq.Header.Get("anthropic-beta"), claude.BetaOAuth)
+
+			system := gjson.GetBytes(upstream.lastBody, "system")
+			require.True(t, system.Exists())
+			require.Contains(t, system.Raw, "x-anthropic-billing-header keep")
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingStillCollectsUsageAfterClientDisconnect(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
