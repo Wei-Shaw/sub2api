@@ -473,7 +473,9 @@ REDACTED
 	if search != "" {
 		q = q.Where(dbaccount.NameContainsFold(search))
 REDACTED
-	if groupID > 0 {
+	if groupID == service.AccountListGroupUngrouped {
+		q = q.Where(dbaccount.Not(dbaccount.HasAccountGroups()))
+REDACTED else if groupID > 0 {
 		q = q.Where(dbaccount.HasAccountGroupsWith(dbaccountgroup.GroupIDEQ(groupID)))
 REDACTED
 
