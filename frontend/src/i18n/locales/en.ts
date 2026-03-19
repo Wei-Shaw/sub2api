@@ -2760,7 +2760,9 @@ export default {
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
         gemini3Image: 'G31FI',
-        claude: 'Claude'
+        claude: 'Claude',
+        passiveSampled: 'Passive',
+        activeQuery: 'Query'
       REDACTED,
       tier: {
         free: 'Free',

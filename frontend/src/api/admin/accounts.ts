@@ -223,8 +223,10 @@ REDACTED
  * @param id - Account ID
  * @returns Account usage info
  */
-export async function getUsage(id: number): Promise<AccountUsageInfo> {
-  const { data REDACTED = await apiClient.get<AccountUsageInfo>(`/admin/accounts/${idREDACTED/usage`)
+export async function getUsage(id: number, source?: 'passive' | 'active'): Promise<AccountUsageInfo> {
+  const { data REDACTED = await apiClient.get<AccountUsageInfo>(`/admin/accounts/${idREDACTED/usage`, {
+    params: source ? { source REDACTED : undefined
+  REDACTED)
   return data
 REDACTED
 

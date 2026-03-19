@@ -1110,10 +1110,13 @@ REDACTED
 		slog.Info("account_session_window_initialized", "account_id", account.ID, "window_start", start, "window_end", end, "status", status)
 REDACTED
 
-	// 窗口重置时清除旧的 utilization，避免残留上个窗口的数据
+	// 窗口重置时清除旧的 utilization 和被动采样数据，避免残留上个窗口的数据
 	if windowEnd != nil && needInitWindow {
 		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-			"session_window_utilization": nil,
+			"session_window_utilization":   nil,
+			"passive_usage_7d_utilization": nil,
+			"passive_usage_7d_reset":       nil,
+			"passive_usage_sampled_at":     nil,
 	REDACTED)
 REDACTED
 
@@ -1121,14 +1124,33 @@ REDACTED
 		slog.Warn("session_window_update_failed", "account_id", account.ID, "error", err)
 REDACTED
 
-	// 存储真实的 utilization 值（0-1 小数），供 estimateSetupTokenUsage 使用
+	// 被动采样：从响应头收集 5h + 7d utilization，合并为一次 DB 写入
+	extraUpdates := make(map[string]any, 4)
+	// 5h utilization（0-1 小数），供 estimateSetupTokenUsage 使用
 	if utilStr := headers.Get("anthropic-ratelimit-unified-5h-utilization"); utilStr != "" {
 		if util, err := strconv.ParseFloat(utilStr, 64); err == nil {
-			if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-				"session_window_utilization": util,
-		REDACTED); err != nil {
-				slog.Warn("session_window_utilization_update_failed", "account_id", account.ID, "error", err)
+			extraUpdates["session_window_utilization"] = util
+	REDACTED
+REDACTED
+	// 7d utilization（0-1 小数）
+	if utilStr := headers.Get("anthropic-ratelimit-unified-7d-utilization"); utilStr != "" {
+		if util, err := strconv.ParseFloat(utilStr, 64); err == nil {
+			extraUpdates["passive_usage_7d_utilization"] = util
+	REDACTED
+REDACTED
+	// 7d reset timestamp
+	if resetStr := headers.Get("anthropic-ratelimit-unified-7d-reset"); resetStr != "" {
+		if ts, err := strconv.ParseInt(resetStr, 10, 64); err == nil {
+			if ts > 1e11 {
+				ts = ts / 1000
 		REDACTED
+			extraUpdates["passive_usage_7d_reset"] = ts
+	REDACTED
+REDACTED
+	if len(extraUpdates) > 0 {
+		extraUpdates["passive_usage_sampled_at"] = time.Now().UTC().Format(time.RFC3339)
+		if err := s.accountRepo.UpdateExtra(ctx, account.ID, extraUpdates); err != nil {
+			slog.Warn("passive_usage_update_failed", "account_id", account.ID, "error", err)
 	REDACTED
 REDACTED
 

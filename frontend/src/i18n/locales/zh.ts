@@ -2163,7 +2163,9 @@ export default {
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
         gemini3Image: 'G31FI',
-        claude: 'Claude'
+        claude: 'Claude',
+        passiveSampled: '被动采样',
+        activeQuery: '查询'
       REDACTED,
       tier: {
         free: 'Free',
