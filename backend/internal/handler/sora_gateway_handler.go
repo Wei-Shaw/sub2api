@@ -484,6 +484,9 @@ func (h *SoraGatewayHandler) handleConcurrencyError(c *gin.Context, err error, s
 REDACTED
 
 func (h *SoraGatewayHandler) handleFailoverExhausted(c *gin.Context, statusCode int, responseHeaders http.Header, responseBody []byte, streamStarted bool) {
+	upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
+	service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
+
 	status, errType, errMsg := h.mapUpstreamError(statusCode, responseHeaders, responseBody)
 	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)
 REDACTED
