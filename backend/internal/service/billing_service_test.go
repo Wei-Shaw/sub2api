@@ -174,6 +174,30 @@ REDACTED
 	require.InDelta(t, 1.5, pricing.LongContextOutputMultiplier, 1e-12)
 REDACTED
 
+func TestGetModelPricing_OpenAIGPT54MiniFallback(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing, err := svc.GetModelPricing("gpt-5.4-mini")
+REDACTED
+	require.NotNil(t, pricing)
+	require.InDelta(t, 7.5e-7, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 4.5e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 7.5e-8, pricing.CacheReadPricePerToken, 1e-12)
+	require.Zero(t, pricing.LongContextInputThreshold)
+REDACTED
+
+func TestGetModelPricing_OpenAIGPT54NanoFallback(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing, err := svc.GetModelPricing("gpt-5.4-nano")
+REDACTED
+	require.NotNil(t, pricing)
+	require.InDelta(t, 2e-7, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 1.25e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 2e-8, pricing.CacheReadPricePerToken, 1e-12)
+	require.Zero(t, pricing.LongContextInputThreshold)
+REDACTED
+
 func TestCalculateCost_OpenAIGPT54LongContextAppliesWholeSessionMultipliers(t *testing.T) {
 	svc := newTestBillingService()
 
@@ -210,6 +234,8 @@ REDACTED{
 		{name: "gemini unknown no fallback", model: "gemini-2.0-pro", expectNilPricing: trueREDACTED,
 		{name: "openai gpt5.1", model: "gpt-5.1", expectedInput: 1.25e-6REDACTED,
 		{name: "openai gpt5.4", model: "gpt-5.4", expectedInput: 2.5e-6REDACTED,
+		{name: "openai gpt5.4 mini", model: "gpt-5.4-mini", expectedInput: 7.5e-7REDACTED,
+		{name: "openai gpt5.4 nano", model: "gpt-5.4-nano", expectedInput: 2e-7REDACTED,
 		{name: "openai gpt5.3 codex", model: "gpt-5.3-codex", expectedInput: 1.5e-6REDACTED,
 		{name: "openai gpt5.1 codex max alias", model: "gpt-5.1-codex-max", expectedInput: 1.5e-6REDACTED,
 		{name: "openai codex mini latest alias", model: "codex-mini-latest", expectedInput: 1.5e-6REDACTED,
@@ -555,6 +581,40 @@ func TestCalculateCostWithServiceTier_FlexAppliesHalfMultiplier(t *testing.T) {
 REDACTED
 
 	flexCost, err := svc.CalculateCostWithServiceTier("gpt-5.4", tokens, 1.0, "flex")
+REDACTED
+
+	require.InDelta(t, baseCost.InputCost*0.5, flexCost.InputCost, 1e-10)
+	require.InDelta(t, baseCost.OutputCost*0.5, flexCost.OutputCost, 1e-10)
+	require.InDelta(t, baseCost.CacheCreationCost*0.5, flexCost.CacheCreationCost, 1e-10)
+	require.InDelta(t, baseCost.CacheReadCost*0.5, flexCost.CacheReadCost, 1e-10)
+	require.InDelta(t, baseCost.TotalCost*0.5, flexCost.TotalCost, 1e-10)
+REDACTED
+
+func TestCalculateCostWithServiceTier_Gpt54MiniPriorityFallsBackToTierMultiplier(t *testing.T) {
+	svc := newTestBillingService()
+	tokens := UsageTokens{InputTokens: 120, OutputTokens: 30, CacheCreationTokens: 12, CacheReadTokens: 8REDACTED
+
+	baseCost, err := svc.CalculateCost("gpt-5.4-mini", tokens, 1.0)
+REDACTED
+
+	priorityCost, err := svc.CalculateCostWithServiceTier("gpt-5.4-mini", tokens, 1.0, "priority")
+REDACTED
+
+	require.InDelta(t, baseCost.InputCost*2, priorityCost.InputCost, 1e-10)
+	require.InDelta(t, baseCost.OutputCost*2, priorityCost.OutputCost, 1e-10)
+	require.InDelta(t, baseCost.CacheCreationCost*2, priorityCost.CacheCreationCost, 1e-10)
+	require.InDelta(t, baseCost.CacheReadCost*2, priorityCost.CacheReadCost, 1e-10)
+	require.InDelta(t, baseCost.TotalCost*2, priorityCost.TotalCost, 1e-10)
+REDACTED
+
+func TestCalculateCostWithServiceTier_Gpt54NanoFlexAppliesHalfMultiplier(t *testing.T) {
+	svc := newTestBillingService()
+	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50, CacheCreationTokens: 40, CacheReadTokens: 20REDACTED
+
+	baseCost, err := svc.CalculateCost("gpt-5.4-nano", tokens, 1.0)
+REDACTED
+
+	flexCost, err := svc.CalculateCostWithServiceTier("gpt-5.4-nano", tokens, 1.0, "flex")
 REDACTED
 
 	require.InDelta(t, baseCost.InputCost*0.5, flexCost.InputCost, 1e-10)

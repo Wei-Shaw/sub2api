@@ -98,6 +98,36 @@ REDACTED
 	require.InDelta(t, 1.5, got.LongContextOutputCostMultiplier, 1e-12)
 REDACTED
 
+func TestGetModelPricing_Gpt54MiniUsesDedicatedStaticFallbackWhenRemoteMissing(t *testing.T) {
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"gpt-5.1-codex": {InputCostPerToken: 1.25e-6REDACTED,
+	REDACTED,
+REDACTED
+
+	got := svc.GetModelPricing("gpt-5.4-mini")
+	require.NotNil(t, got)
+	require.InDelta(t, 7.5e-7, got.InputCostPerToken, 1e-12)
+	require.InDelta(t, 4.5e-6, got.OutputCostPerToken, 1e-12)
+	require.InDelta(t, 7.5e-8, got.CacheReadInputTokenCost, 1e-12)
+	require.Zero(t, got.LongContextInputTokenThreshold)
+REDACTED
+
+func TestGetModelPricing_Gpt54NanoUsesDedicatedStaticFallbackWhenRemoteMissing(t *testing.T) {
+	svc := &PricingService{
+		pricingData: map[string]*LiteLLMModelPricing{
+			"gpt-5.1-codex": {InputCostPerToken: 1.25e-6REDACTED,
+	REDACTED,
+REDACTED
+
+	got := svc.GetModelPricing("gpt-5.4-nano")
+	require.NotNil(t, got)
+	require.InDelta(t, 2e-7, got.InputCostPerToken, 1e-12)
+	require.InDelta(t, 1.25e-6, got.OutputCostPerToken, 1e-12)
+	require.InDelta(t, 2e-8, got.CacheReadInputTokenCost, 1e-12)
+	require.Zero(t, got.LongContextInputTokenThreshold)
+REDACTED
+
 func TestParsePricingData_PreservesPriorityAndServiceTierFields(t *testing.T) {
 	raw := map[string]any{
 		"gpt-5.4": map[string]any{
