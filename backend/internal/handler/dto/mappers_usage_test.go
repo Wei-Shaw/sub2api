@@ -133,6 +133,21 @@ REDACTED
 	require.Contains(t, string(adminJSON), `"upstream_model":"claude-sonnet-4-20250514"`)
 REDACTED
 
+func TestUsageLogFromService_FallsBackToLegacyModelWhenRequestedModelMissing(t *testing.T) {
+	t.Parallel()
+
+	log := &service.UsageLog{
+		RequestID: "req_legacy",
+		Model:     "claude-3",
+REDACTED
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	require.Equal(t, "claude-3", userDTO.Model)
+	require.Equal(t, "claude-3", adminDTO.Model)
+REDACTED
+
 func f64Ptr(value float64) *float64 {
 	return &value
 REDACTED
