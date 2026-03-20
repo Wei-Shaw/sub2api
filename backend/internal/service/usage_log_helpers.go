@@ -19,3 +19,10 @@ func optionalNonEqualStringPtr(value, compare string) *string {
 REDACTED
 	return &value
 REDACTED
+
+func forwardResultBillingModel(requestedModel, upstreamModel string) string {
+	if trimmedUpstream := strings.TrimSpace(upstreamModel); trimmedUpstream != "" {
+		return trimmedUpstream
+REDACTED
+	return strings.TrimSpace(requestedModel)
+REDACTED
