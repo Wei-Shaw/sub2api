@@ -528,8 +528,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		APIKeyID:              l.APIKeyID,
 		AccountID:             l.AccountID,
 		RequestID:             l.RequestID,
-		Model:                 l.Model,
-		UpstreamModel:         l.UpstreamModel,
+		Model:                 l.RequestedModel,
 		ServiceTier:           l.ServiceTier,
 		ReasoningEffort:       l.ReasoningEffort,
 		InboundEndpoint:       l.InboundEndpoint,
@@ -586,6 +585,7 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 REDACTED
 	return &AdminUsageLog{
 		UsageLog:              usageLogFromServiceUser(l),
+		UpstreamModel:         l.UpstreamModel,
 		AccountRateMultiplier: l.AccountRateMultiplier,
 		IPAddress:             l.IPAddress,
 		Account:               AccountSummaryFromService(l.Account),
