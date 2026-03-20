@@ -37,6 +37,16 @@ type OpenAIGatewayHandler struct {
 	cfg                     *config.Config
 REDACTED
 
+func resolveOpenAIForwardDefaultMappedModel(apiKey *service.APIKey, fallbackModel string) string {
+	if fallbackModel = strings.TrimSpace(fallbackModel); fallbackModel != "" {
+		return fallbackModel
+REDACTED
+	if apiKey == nil || apiKey.Group == nil {
+		return ""
+REDACTED
+	return strings.TrimSpace(apiKey.Group.DefaultMappedModel)
+REDACTED
+
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
 func NewOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
@@ -657,9 +667,9 @@ REDACTED
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
 
-		// 仅在调度时实际触发了降级（原模型无可用账号、改用默认模型重试成功）时，
-		// 才将降级模型传给 Forward 层做模型替换；否则保持用户请求的原始模型。
-		defaultMappedModel := c.GetString("openai_messages_fallback_model")
+		// Forward 层需要始终拿到 group 默认映射模型，这样未命中账号级映射的
+		// Claude 兼容模型才不会在后续 Codex 规范化中意外退化到 gpt-5.1。
+		defaultMappedModel := resolveOpenAIForwardDefaultMappedModel(apiKey, c.GetString("openai_messages_fallback_model"))
 		result, err := h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, body, promptCacheKey, defaultMappedModel)
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
