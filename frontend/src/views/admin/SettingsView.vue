@@ -1127,6 +1127,20 @@
                 {{ t('admin.settings.claudeCode.minVersionHint') REDACTEDREDACTED
               </p>
             </div>
+            <div class="mt-4">
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.claudeCode.maxVersion') REDACTEDREDACTED
+              </label>
+              <input
+                v-model="form.max_claude_code_version"
+                type="text"
+                class="input max-w-xs font-mono text-sm"
+                :placeholder="t('admin.settings.claudeCode.maxVersionPlaceholder')"
+              />
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.claudeCode.maxVersionHint') REDACTEDREDACTED
+              </p>
+            </div>
           </div>
         </div>
 
@@ -1967,6 +1981,7 @@ const form = reactive<SettingsForm>({
   ops_metrics_interval_seconds: 60,
   // Claude Code version check
   min_claude_code_version: '',
+  max_claude_code_version: '',
   // 分组隔离
   allow_ungrouped_key_scheduling: false
 REDACTED)
@@ -2232,6 +2247,7 @@ async function saveSettings() {
       enable_identity_patch: form.enable_identity_patch,
       identity_patch_prompt: form.identity_patch_prompt,
       min_claude_code_version: form.min_claude_code_version,
+      max_claude_code_version: form.max_claude_code_version,
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling
     REDACTED
     const updated = await adminAPI.settings.updateSettings(payload)

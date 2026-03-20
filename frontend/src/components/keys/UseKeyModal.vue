@@ -441,17 +441,20 @@ function generateAnthropicFiles(baseUrl: string, apiKey: string): FileConfig[] {
     case 'unix':
       path = 'Terminal'
       content = `export ANTHROPIC_BASE_URL="${baseUrlREDACTED"
-export ANTHROPIC_AUTH_TOKEN="${apiKeyREDACTED"`
+export ANTHROPIC_AUTH_TOKEN="${apiKeyREDACTED"
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
       break
     case 'cmd':
       path = 'Command Prompt'
       content = `set ANTHROPIC_BASE_URL=${baseUrlREDACTED
-set ANTHROPIC_AUTH_TOKEN=${apiKeyREDACTED`
+set ANTHROPIC_AUTH_TOKEN=${apiKeyREDACTED
+set CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
       break
     case 'powershell':
       path = 'PowerShell'
       content = `$env:ANTHROPIC_BASE_URL="${baseUrlREDACTED"
-$env:ANTHROPIC_AUTH_TOKEN="${apiKeyREDACTED"`
+$env:ANTHROPIC_AUTH_TOKEN="${apiKeyREDACTED"
+$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
       break
     default:
       path = 'Terminal'
@@ -466,6 +469,7 @@ $env:ANTHROPIC_AUTH_TOKEN="${apiKeyREDACTED"`
   "env": {
     "ANTHROPIC_BASE_URL": "${baseUrlREDACTED",
     "ANTHROPIC_AUTH_TOKEN": "${apiKeyREDACTED",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
   REDACTED
 REDACTED`

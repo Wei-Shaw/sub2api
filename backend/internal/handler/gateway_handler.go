@@ -1281,7 +1281,7 @@ REDACTED
 	return true
 REDACTED
 
-// checkClaudeCodeVersion 检查 Claude Code 客户端版本是否满足最低要求
+// checkClaudeCodeVersion 检查 Claude Code 客户端版本是否满足版本要求
 // 仅对已识别的 Claude Code 客户端执行，count_tokens 路径除外
 func (h *GatewayHandler) checkClaudeCodeVersion(c *gin.Context) bool {
 	ctx := c.Request.Context()
@@ -1294,8 +1294,8 @@ REDACTED
 		return true
 REDACTED
 
-	minVersion := h.settingService.GetMinClaudeCodeVersion(ctx)
-	if minVersion == "" {
+	minVersion, maxVersion := h.settingService.GetClaudeCodeVersionBounds(ctx)
+	if minVersion == "" && maxVersion == "" {
 		return true // 未设置，不检查
 REDACTED
 
@@ -1306,10 +1306,19 @@ REDACTED
 		return false
 REDACTED
 
-	if service.CompareVersions(clientVersion, minVersion) < 0 {
+	if minVersion != "" && service.CompareVersions(clientVersion, minVersion) < 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error",
 			fmt.Sprintf("Your Claude Code version (%s) is below the minimum required version (%s). Please update: npm update -g @anthropic-ai/claude-code",
 				clientVersion, minVersion))
+		return false
+REDACTED
+
+	if maxVersion != "" && service.CompareVersions(clientVersion, maxVersion) > 0 {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error",
+			fmt.Sprintf("Your Claude Code version (%s) exceeds the maximum allowed version (%s). "+
+				"Please downgrade: npm install -g @anthropic-ai/claude-code@%s && "+
+				"set CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 to prevent auto-upgrade",
+				clientVersion, maxVersion, maxVersion))
 		return false
 REDACTED
 
