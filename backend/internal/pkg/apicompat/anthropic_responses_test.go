@@ -632,8 +632,8 @@ REDACTED
 	resp, err := AnthropicToResponses(req)
 REDACTED
 	require.NotNil(t, resp.Reasoning)
-	// thinking.type is ignored for effort; default xhigh applies.
-	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
+	// thinking.type is ignored for effort; default high applies.
+	assert.Equal(t, "high", resp.Reasoning.Effort)
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
 	assert.Contains(t, resp.Include, "reasoning.encrypted_content")
 	assert.NotContains(t, resp.Include, "reasoning.summary")
@@ -650,8 +650,8 @@ REDACTED
 	resp, err := AnthropicToResponses(req)
 REDACTED
 	require.NotNil(t, resp.Reasoning)
-	// thinking.type is ignored for effort; default xhigh applies.
-	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
+	// thinking.type is ignored for effort; default high applies.
+	assert.Equal(t, "high", resp.Reasoning.Effort)
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
 	assert.NotContains(t, resp.Include, "reasoning.summary")
 REDACTED
@@ -666,9 +666,9 @@ REDACTED
 
 	resp, err := AnthropicToResponses(req)
 REDACTED
-	// Default effort applies (high → xhigh) even when thinking is disabled.
+	// Default effort applies (high → high) even when thinking is disabled.
 	require.NotNil(t, resp.Reasoning)
-	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
+	assert.Equal(t, "high", resp.Reasoning.Effort)
 REDACTED
 
 func TestAnthropicToResponses_NoThinking(t *testing.T) {
@@ -680,9 +680,9 @@ REDACTED
 
 	resp, err := AnthropicToResponses(req)
 REDACTED
-	// Default effort applies (high → xhigh) when no thinking/output_config is set.
+	// Default effort applies (high → high) when no thinking/output_config is set.
 	require.NotNil(t, resp.Reasoning)
-	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
+	assert.Equal(t, "high", resp.Reasoning.Effort)
 REDACTED
 
 // ---------------------------------------------------------------------------
@@ -690,7 +690,7 @@ REDACTED
 // ---------------------------------------------------------------------------
 
 func TestAnthropicToResponses_OutputConfigOverridesDefault(t *testing.T) {
-	// Default is xhigh, but output_config.effort="low" overrides. low→low after mapping.
+	// Default is high, but output_config.effort="low" overrides. low→low after mapping.
 	req := &AnthropicRequest{
 		Model:        "gpt-5.2",
 		MaxTokens:    1024,
@@ -708,7 +708,7 @@ REDACTED
 
 func TestAnthropicToResponses_OutputConfigWithoutThinking(t *testing.T) {
 	// No thinking field, but output_config.effort="medium" → creates reasoning.
-	// medium→high after mapping.
+	// medium→medium after 1:1 mapping.
 	req := &AnthropicRequest{
 		Model:        "gpt-5.2",
 		MaxTokens:    1024,
@@ -719,12 +719,12 @@ REDACTED
 	resp, err := AnthropicToResponses(req)
 REDACTED
 	require.NotNil(t, resp.Reasoning)
-	assert.Equal(t, "high", resp.Reasoning.Effort)
+	assert.Equal(t, "medium", resp.Reasoning.Effort)
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
 REDACTED
 
 func TestAnthropicToResponses_OutputConfigHigh(t *testing.T) {
-	// output_config.effort="high" → mapped to "xhigh".
+	// output_config.effort="high" → mapped to "high" (1:1, both sides' default).
 	req := &AnthropicRequest{
 		Model:        "gpt-5.2",
 		MaxTokens:    1024,
@@ -735,12 +735,28 @@ REDACTED
 	resp, err := AnthropicToResponses(req)
 REDACTED
 	require.NotNil(t, resp.Reasoning)
+	assert.Equal(t, "high", resp.Reasoning.Effort)
+	assert.Equal(t, "auto", resp.Reasoning.Summary)
+REDACTED
+
+func TestAnthropicToResponses_OutputConfigMax(t *testing.T) {
+	// output_config.effort="max" → mapped to OpenAI's highest supported level "xhigh".
+	req := &AnthropicRequest{
+		Model:        "gpt-5.2",
+		MaxTokens:    1024,
+		Messages:     []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)REDACTEDREDACTED,
+		OutputConfig: &AnthropicOutputConfig{Effort: "max"REDACTED,
+REDACTED
+
+	resp, err := AnthropicToResponses(req)
+REDACTED
+	require.NotNil(t, resp.Reasoning)
 	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
 	assert.Equal(t, "auto", resp.Reasoning.Summary)
 REDACTED
 
 func TestAnthropicToResponses_NoOutputConfig(t *testing.T) {
-	// No output_config → default xhigh regardless of thinking.type.
+	// No output_config → default high regardless of thinking.type.
 	req := &AnthropicRequest{
 		Model:     "gpt-5.2",
 		MaxTokens: 1024,
@@ -751,11 +767,11 @@ REDACTED
 	resp, err := AnthropicToResponses(req)
 REDACTED
 	require.NotNil(t, resp.Reasoning)
-	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
+	assert.Equal(t, "high", resp.Reasoning.Effort)
 REDACTED
 
 func TestAnthropicToResponses_OutputConfigWithoutEffort(t *testing.T) {
-	// output_config present but effort empty (e.g. only format set) → default xhigh.
+	// output_config present but effort empty (e.g. only format set) → default high.
 	req := &AnthropicRequest{
 		Model:        "gpt-5.2",
 		MaxTokens:    1024,
@@ -766,7 +782,7 @@ REDACTED
 	resp, err := AnthropicToResponses(req)
 REDACTED
 	require.NotNil(t, resp.Reasoning)
-	assert.Equal(t, "xhigh", resp.Reasoning.Effort)
+	assert.Equal(t, "high", resp.Reasoning.Effort)
 REDACTED
 
 // ---------------------------------------------------------------------------
