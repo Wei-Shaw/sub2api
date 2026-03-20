@@ -41,6 +41,12 @@ func (UsageLog) Fields() []ent.Field {
 		field.String("model").
 			MaxLen(100).
 			NotEmpty(),
+		// RequestedModel stores the client-requested model name for stable display and analytics.
+		// NULL means historical rows written before requested_model dual-write was introduced.
+		field.String("requested_model").
+			MaxLen(100).
+			Optional().
+			Nillable(),
 		// UpstreamModel stores the actual upstream model name when model mapping
 		// is applied. NULL means no mapping — the requested model was used as-is.
 		field.String("upstream_model").
@@ -181,6 +187,7 @@ func (UsageLog) Indexes() []ent.Index {
 		index.Fields("subscription_id"),
 		index.Fields("created_at"),
 		index.Fields("model"),
+		index.Fields("requested_model"),
 		index.Fields("request_id"),
 		// 复合索引用于时间范围查询
 		index.Fields("user_id", "created_at"),
