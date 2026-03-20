@@ -145,6 +145,11 @@ REDACTED
 		Platform: PlatformSora,
 		Status:   StatusActive,
 REDACTED
+			"model_mapping": map[string]any{
+				"prompt-enhance-short-10s": "prompt-enhance-short-15s",
+		REDACTED,
+	REDACTED,
+REDACTED
 	body := []byte(`{"model":"prompt-enhance-short-10s","messages":[{"role":"user","content":"cat running"REDACTED],"stream":falseREDACTED`)
 
 	result, err := svc.Forward(context.Background(), nil, account, body, false)
@@ -152,6 +157,7 @@ REDACTED
 	require.NotNil(t, result)
 	require.Equal(t, "prompt", result.MediaType)
 	require.Equal(t, "prompt-enhance-short-10s", result.Model)
+	require.Equal(t, "prompt-enhance-short-15s", result.UpstreamModel)
 REDACTED
 
 func TestSoraGatewayService_ForwardStoryboardPrompt(t *testing.T) {
