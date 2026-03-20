@@ -352,6 +352,30 @@ REDACTED)
 REDACTED)
 REDACTED
 
+func TestResolveOpenAIForwardDefaultMappedModel(t *testing.T) {
+	t.Run("prefers_explicit_fallback_model", func(t *testing.T) {
+		apiKey := &service.APIKey{
+			Group: &service.Group{DefaultMappedModel: "gpt-5.4"REDACTED,
+	REDACTED
+		require.Equal(t, "gpt-5.2", resolveOpenAIForwardDefaultMappedModel(apiKey, " gpt-5.2 "))
+REDACTED)
+
+	t.Run("uses_group_default_on_normal_path", func(t *testing.T) {
+		apiKey := &service.APIKey{
+			Group: &service.Group{DefaultMappedModel: "gpt-5.4"REDACTED,
+	REDACTED
+		require.Equal(t, "gpt-5.4", resolveOpenAIForwardDefaultMappedModel(apiKey, ""))
+REDACTED)
+
+	t.Run("returns_empty_without_group_default", func(t *testing.T) {
+		require.Empty(t, resolveOpenAIForwardDefaultMappedModel(nil, ""))
+		require.Empty(t, resolveOpenAIForwardDefaultMappedModel(&service.APIKey{REDACTED, ""))
+		require.Empty(t, resolveOpenAIForwardDefaultMappedModel(&service.APIKey{
+			Group: &service.Group{REDACTED,
+	REDACTED, ""))
+REDACTED)
+REDACTED
+
 func TestOpenAIResponses_MissingDependencies_ReturnsServiceUnavailable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
