@@ -482,10 +482,12 @@ REDACTED
 
 // ForwardResult 转发结果
 type ForwardResult struct {
-	RequestID        string
-	Usage            ClaudeUsage
-	Model            string
-	UpstreamModel    string // Actual upstream model after mapping (empty = no mapping)
+	RequestID string
+	Usage     ClaudeUsage
+	Model     string
+	// UpstreamModel is the actual upstream model after mapping.
+	// Prefer empty when it is identical to Model; persistence normalizes equal values away as no-op mappings.
+	UpstreamModel    string
 	Stream           bool
 	Duration         time.Duration
 	FirstTokenMs     *int // 首字时间（流式请求）
@@ -7516,6 +7518,7 @@ REDACTED
 REDACTED
 
 	var cost *CostBreakdown
+	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
 
 	// 根据请求类型选择计费方式
 	if result.MediaType == "image" || result.MediaType == "video" {
@@ -7531,7 +7534,7 @@ REDACTED
 		if result.MediaType == "image" {
 			cost = s.billingService.CalculateSoraImageCost(result.ImageSize, result.ImageCount, soraConfig, multiplier)
 	REDACTED else {
-			cost = s.billingService.CalculateSoraVideoCost(result.Model, soraConfig, multiplier)
+			cost = s.billingService.CalculateSoraVideoCost(billingModel, soraConfig, multiplier)
 	REDACTED
 REDACTED else if result.MediaType == "prompt" {
 		cost = &CostBreakdown{REDACTED
@@ -7545,7 +7548,7 @@ REDACTED else if result.ImageCount > 0 {
 				Price4K: apiKey.Group.ImagePrice4K,
 		REDACTED
 	REDACTED
-		cost = s.billingService.CalculateImageCost(result.Model, result.ImageSize, result.ImageCount, groupConfig, multiplier)
+		cost = s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)
 REDACTED else {
 		// Token 计费
 		tokens := UsageTokens{
@@ -7557,7 +7560,7 @@ REDACTED else {
 			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
 	REDACTED
 		var err error
-		cost, err = s.billingService.CalculateCost(result.Model, tokens, multiplier)
+		cost, err = s.billingService.CalculateCost(billingModel, tokens, multiplier)
 		if err != nil {
 			logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
 			cost = &CostBreakdown{ActualCost: 0REDACTED
@@ -7589,6 +7592,7 @@ REDACTED
 		AccountID:             account.ID,
 		RequestID:             requestID,
 		Model:                 result.Model,
+		RequestedModel:        result.Model,
 		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
@@ -7719,6 +7723,7 @@ REDACTED
 REDACTED
 
 	var cost *CostBreakdown
+	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
 
 	// 根据请求类型选择计费方式
 	if result.ImageCount > 0 {
@@ -7731,7 +7736,7 @@ REDACTED
 				Price4K: apiKey.Group.ImagePrice4K,
 		REDACTED
 	REDACTED
-		cost = s.billingService.CalculateImageCost(result.Model, result.ImageSize, result.ImageCount, groupConfig, multiplier)
+		cost = s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)
 REDACTED else {
 		// Token 计费（使用长上下文计费方法）
 		tokens := UsageTokens{
@@ -7743,7 +7748,7 @@ REDACTED else {
 			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
 	REDACTED
 		var err error
-		cost, err = s.billingService.CalculateCostWithLongContext(result.Model, tokens, multiplier, input.LongContextThreshold, input.LongContextMultiplier)
+		cost, err = s.billingService.CalculateCostWithLongContext(billingModel, tokens, multiplier, input.LongContextThreshold, input.LongContextMultiplier)
 		if err != nil {
 			logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
 			cost = &CostBreakdown{ActualCost: 0REDACTED
@@ -7771,6 +7776,7 @@ REDACTED
 		AccountID:             account.ID,
 		RequestID:             requestID,
 		Model:                 result.Model,
+		RequestedModel:        result.Model,
 		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
