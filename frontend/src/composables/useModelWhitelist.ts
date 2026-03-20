@@ -25,7 +25,7 @@ const openaiModels = [
   'gpt-5.2', 'gpt-5.2-2025-12-11', 'gpt-5.2-chat-latest',
   'gpt-5.2-codex', 'gpt-5.2-pro', 'gpt-5.2-pro-2025-12-11',
   // GPT-5.4 系列
-  'gpt-5.4', 'gpt-5.4-2026-03-05',
+  'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5.4-2026-03-05',
   // GPT-5.3 系列
   'gpt-5.3-codex', 'gpt-5.3-codex-spark',
   'chatgpt-4o-latest',
