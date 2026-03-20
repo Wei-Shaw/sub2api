@@ -79,7 +79,8 @@
               'sticky-header-cell py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
               getAdaptivePaddingClass(),
               { 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700': column.sortable REDACTED,
-              getStickyColumnClass(column, index)
+              getStickyColumnClass(column, index),
+              column.class
             ]"
             @click="column.sortable && handleSort(column.key)"
           >
@@ -168,7 +169,8 @@
               :class="[
                 'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
                 getAdaptivePaddingClass(),
-                getStickyColumnClass(column, colIndex)
+                getStickyColumnClass(column, colIndex),
+                column.class
               ]"
             >
               <slot :name="`cell-${column.keyREDACTED`"

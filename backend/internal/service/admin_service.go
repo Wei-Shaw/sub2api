@@ -50,6 +50,9 @@ type AdminService interface {
 	// API Key management (admin)
 	AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error)
 
+	// ReplaceUserGroup 替换用户的专属分组：授予新分组权限、迁移 Key、移除旧分组权限
+	ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*ReplaceUserGroupResult, error)
+
 	// Account management
 	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64) ([]Account, int64, error)
 	GetAccount(ctx context.Context, id int64) (*Account, error)
@@ -268,6 +271,11 @@ type AdminUpdateAPIKeyGroupIDResult struct {
 	AutoGrantedGroupAccess bool   // true if a new exclusive group permission was auto-added
 	GrantedGroupID         *int64 // the group ID that was auto-granted
 	GrantedGroupName       string // the group name that was auto-granted
+REDACTED
+
+// ReplaceUserGroupResult 分组替换操作的结果
+type ReplaceUserGroupResult struct {
+	MigratedKeys int64 // 迁移的 Key 数量
 REDACTED
 
 // BulkUpdateAccountsResult is the aggregated response for bulk updates.
@@ -1375,6 +1383,71 @@ REDACTED
 
 	result.APIKey = apiKey
 	return result, nil
+REDACTED
+
+// ReplaceUserGroup 替换用户的专属分组
+func (s *adminServiceImpl) ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*ReplaceUserGroupResult, error) {
+	if oldGroupID == newGroupID {
+		return nil, infraerrors.BadRequest("SAME_GROUP", "old and new group must be different")
+REDACTED
+
+	// 验证新分组存在且为活跃的专属标准分组
+	newGroup, err := s.groupRepo.GetByID(ctx, newGroupID)
+	if err != nil {
+		return nil, err
+REDACTED
+	if newGroup.Status != StatusActive {
+		return nil, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "target group is not active")
+REDACTED
+	if !newGroup.IsExclusive {
+		return nil, infraerrors.BadRequest("GROUP_NOT_EXCLUSIVE", "target group is not exclusive")
+REDACTED
+	if newGroup.IsSubscriptionType() {
+		return nil, infraerrors.BadRequest("GROUP_IS_SUBSCRIPTION", "subscription groups are not supported for replacement")
+REDACTED
+
+	// 事务保证原子性
+	if s.entClient == nil {
+		return nil, fmt.Errorf("entClient is nil, cannot perform group replacement")
+REDACTED
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+REDACTED
+	defer func() { _ = tx.Rollback() REDACTED()
+	opCtx := dbent.NewTxContext(ctx, tx)
+
+	// 1. 授予新分组权限
+	if err := s.userRepo.AddGroupToAllowedGroups(opCtx, userID, newGroupID); err != nil {
+		return nil, fmt.Errorf("add new group to allowed groups: %w", err)
+REDACTED
+
+	// 2. 迁移绑定旧分组的 Key 到新分组
+	migrated, err := s.apiKeyRepo.UpdateGroupIDByUserAndGroup(opCtx, userID, oldGroupID, newGroupID)
+	if err != nil {
+		return nil, fmt.Errorf("migrate api keys: %w", err)
+REDACTED
+
+	// 3. 移除旧分组权限
+	if err := s.userRepo.RemoveGroupFromUserAllowedGroups(opCtx, userID, oldGroupID); err != nil {
+		return nil, fmt.Errorf("remove old group from allowed groups: %w", err)
+REDACTED
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+REDACTED
+
+	// 失效该用户所有 Key 的认证缓存
+	if s.authCacheInvalidator != nil {
+		keys, keyErr := s.apiKeyRepo.ListKeysByUserID(ctx, userID)
+		if keyErr == nil {
+			for _, k := range keys {
+				s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, k)
+		REDACTED
+	REDACTED
+REDACTED
+
+	return &ReplaceUserGroupResult{MigratedKeys: migratedREDACTED, nil
 REDACTED
 
 // Account management implementations
