@@ -1056,24 +1056,21 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   REDACTED
 
   if (enableModelRestriction.value) {
-    const modelMapping = buildModelMappingObject()
-
     // 统一使用 model_mapping 字段
     if (modelRestrictionMode.value === 'whitelist') {
-      if (allowedModels.value.length > 0) {
-        // 白名单模式：将模型转换为 model_mapping 格式（key=value）
-        const mapping: Record<string, string> = {REDACTED
-        for (const m of allowedModels.value) {
-          mapping[m] = m
-        REDACTED
-        credentials.model_mapping = mapping
-        credentialsChanged = true
+      // 白名单模式：将模型转换为 model_mapping 格式（key=value）
+      // 空白名单表示“支持所有模型”，需显式发送空对象以覆盖已有限制。
+      const mapping: Record<string, string> = {REDACTED
+      for (const m of allowedModels.value) {
+        mapping[m] = m
       REDACTED
+      credentials.model_mapping = mapping
+      credentialsChanged = true
     REDACTED else {
-      if (modelMapping) {
-        credentials.model_mapping = modelMapping
-        credentialsChanged = true
-      REDACTED
+      // 映射模式下空配置同样表示“支持所有模型”。
+      const modelMapping = buildModelMappingObject()
+      credentials.model_mapping = modelMapping ?? {REDACTED
+      credentialsChanged = true
     REDACTED
   REDACTED
 
