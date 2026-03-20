@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"reflect"
 	"testing"
@@ -21,20 +22,21 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 
 	createdAt := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 	log := &service.UsageLog{
-		UserID:       1,
-		APIKeyID:     2,
-		AccountID:    3,
-		RequestID:    "req-1",
-		Model:        "gpt-5",
-		InputTokens:  10,
-		OutputTokens: 20,
-		TotalCost:    1,
-		ActualCost:   1,
-		BillingType:  service.BillingTypeBalance,
-		RequestType:  service.RequestTypeWSV2,
-		Stream:       false,
-		OpenAIWSMode: false,
-		CreatedAt:    createdAt,
+		UserID:         1,
+		APIKeyID:       2,
+		AccountID:      3,
+		RequestID:      "req-1",
+		Model:          "gpt-5",
+		RequestedModel: "gpt-5",
+		InputTokens:    10,
+		OutputTokens:   20,
+		TotalCost:      1,
+		ActualCost:     1,
+		BillingType:    service.BillingTypeBalance,
+		RequestType:    service.RequestTypeWSV2,
+		Stream:         false,
+		OpenAIWSMode:   false,
+		CreatedAt:      createdAt,
 REDACTED
 
 	mock.ExpectQuery("INSERT INTO usage_logs").
@@ -44,6 +46,7 @@ REDACTED
 			log.AccountID,
 			log.RequestID,
 			log.Model,
+			log.RequestedModel,
 			sqlmock.AnyArg(), // upstream_model
 			sqlmock.AnyArg(), // group_id
 			sqlmock.AnyArg(), // subscription_id
@@ -99,13 +102,14 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 	createdAt := time.Date(2025, 1, 2, 12, 0, 0, 0, time.UTC)
 	serviceTier := "priority"
 	log := &service.UsageLog{
-		UserID:      1,
-		APIKeyID:    2,
-		AccountID:   3,
-		RequestID:   "req-service-tier",
-		Model:       "gpt-5.4",
-		ServiceTier: &serviceTier,
-		CreatedAt:   createdAt,
+		UserID:         1,
+		APIKeyID:       2,
+		AccountID:      3,
+		RequestID:      "req-service-tier",
+		Model:          "gpt-5.4",
+		RequestedModel: "gpt-5.4",
+		ServiceTier:    &serviceTier,
+		CreatedAt:      createdAt,
 REDACTED
 
 	mock.ExpectQuery("INSERT INTO usage_logs").
@@ -115,6 +119,7 @@ REDACTED
 			log.AccountID,
 			log.RequestID,
 			log.Model,
+			log.RequestedModel,
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
@@ -156,6 +161,75 @@ REDACTED
 REDACTED
 	require.True(t, inserted)
 	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestBuildUsageLogBestEffortInsertQuery_IncludesRequestedModelColumn(t *testing.T) {
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:         1,
+		APIKeyID:       2,
+		AccountID:      3,
+		RequestID:      "req-best-effort-query",
+		Model:          "gpt-5",
+		RequestedModel: "gpt-5",
+		CreatedAt:      time.Date(2025, 1, 3, 12, 0, 0, 0, time.UTC),
+REDACTED)
+
+	query, args := buildUsageLogBestEffortInsertQuery([]usageLogInsertPrepared{preparedREDACTED)
+
+	require.Contains(t, query, "INSERT INTO usage_logs (")
+	require.Contains(t, query, "\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,")
+	require.Contains(t, query, "\n\t\t\trequest_id,\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,")
+	require.Len(t, args, len(prepared.args))
+	require.Equal(t, prepared.args[5], args[5])
+REDACTED
+
+func TestExecUsageLogInsertNoResult_PersistsRequestedModel(t *testing.T) {
+	db, mock := newSQLMock(t)
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:         1,
+		APIKeyID:       2,
+		AccountID:      3,
+		RequestID:      "req-best-effort-exec",
+		Model:          "gpt-5",
+		RequestedModel: "gpt-5",
+		CreatedAt:      time.Date(2025, 1, 4, 12, 0, 0, 0, time.UTC),
+REDACTED)
+
+	mock.ExpectExec("INSERT INTO usage_logs").
+		WithArgs(anySliceToDriverValues(prepared.args)...).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err := execUsageLogInsertNoResult(context.Background(), db, prepared)
+REDACTED
+	require.NoError(t, mock.ExpectationsWereMet())
+REDACTED
+
+func TestPrepareUsageLogInsert_ArgCountMatchesTypes(t *testing.T) {
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:         1,
+		APIKeyID:       2,
+		AccountID:      3,
+		RequestID:      "req-arg-count",
+		Model:          "gpt-5",
+		RequestedModel: "gpt-5",
+		CreatedAt:      time.Date(2025, 1, 5, 12, 0, 0, 0, time.UTC),
+REDACTED)
+
+	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+REDACTED
+
+func TestCoalesceTrimmedString(t *testing.T) {
+	require.Equal(t, "fallback", coalesceTrimmedString(sql.NullString{REDACTED, "fallback"))
+	require.Equal(t, "fallback", coalesceTrimmedString(sql.NullString{Valid: true, String: "   "REDACTED, "fallback"))
+	require.Equal(t, "value", coalesceTrimmedString(sql.NullString{Valid: true, String: "value"REDACTED, "fallback"))
+REDACTED
+
+func anySliceToDriverValues(values []any) []driver.Value {
+	out := make([]driver.Value, 0, len(values))
+	for _, value := range values {
+		out = append(out, value)
+REDACTED
+	return out
 REDACTED
 
 func TestUsageLogRepositoryListWithFiltersRequestTypePriority(t *testing.T) {
@@ -354,7 +428,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			int64(20), // api_key_id
 			int64(30), // account_id
 			sql.NullString{Valid: true, String: "req-1"REDACTED,
-			"gpt-5",           // model
+			"gpt-5", // model
+			sql.NullString{Valid: true, String: "gpt-5"REDACTED, // requested_model
 			sql.NullString{REDACTED,  // upstream_model
 			sql.NullInt64{REDACTED,   // group_id
 			sql.NullInt64{REDACTED,   // subscription_id
@@ -407,6 +482,7 @@ REDACTED)
 			int64(31),
 			sql.NullString{Valid: true, String: "req-2"REDACTED,
 			"gpt-5",
+			sql.NullString{Valid: true, String: "gpt-5"REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullInt64{REDACTED,
 			sql.NullInt64{REDACTED,
@@ -449,6 +525,7 @@ REDACTED)
 			int64(32),
 			sql.NullString{Valid: true, String: "req-3"REDACTED,
 			"gpt-5.4",
+			sql.NullString{Valid: true, String: "gpt-5.4"REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullInt64{REDACTED,
 			sql.NullInt64{REDACTED,
