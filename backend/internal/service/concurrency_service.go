@@ -343,8 +343,9 @@ func (s *ConcurrencyService) StartSlotCleanupWorker(accountRepo AccountRepositor
 	}()
 }
 
-// GetAccountConcurrencyBatch gets current concurrency counts for multiple accounts
-// Returns a map of accountID -> current concurrency count
+// GetAccountConcurrencyBatch gets current concurrency counts for multiple accounts.
+// Uses a detached context with timeout to prevent HTTP request cancellation from
+// causing the entire batch to fail (which would show all concurrency as 0).
 func (s *ConcurrencyService) GetAccountConcurrencyBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error) {
 	if len(accountIDs) == 0 {
 		return map[int64]int{}, nil
@@ -356,5 +357,11 @@ func (s *ConcurrencyService) GetAccountConcurrencyBatch(ctx context.Context, acc
 		}
 		return result, nil
 	}
-	return s.cache.GetAccountConcurrencyBatch(ctx, accountIDs)
+
+	// Use a detached context so that a cancelled HTTP request doesn't cause
+	// the Redis pipeline to fail and return all-zero concurrency counts.
+	redisCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	return s.cache.GetAccountConcurrencyBatch(redisCtx, accountIDs)
 }

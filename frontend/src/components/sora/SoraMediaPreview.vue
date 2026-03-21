@@ -82,7 +82,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SoraGeneration } from '@/api/sora'
 
-defineProps<{
+const props = defineProps<{
   visible: boolean
   generation: SoraGeneration | null
 }>()
@@ -100,6 +100,7 @@ function formatDateTime(iso: string): string {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  if (!props.visible) return
   if (e.key === 'Escape') emit('close')
 }
 

@@ -78,6 +78,7 @@ Desktop.ini
 # ===================
 tmp/
 temp/
+logs/
 *.tmp
 *.temp
 *.log
@@ -127,9 +128,17 @@ deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
+!docs/ACCOUNT_SCHEDULING_FLOW.md
 .serena/
+
+# ===================
+# 压测工具
+# ===================
+tools/loadtest/
+# Antigravity Manager
+Antigravity-Manager/
+antigravity_projectid_fix.patch
 .codex/
 frontend/coverage/
 aicodex
 output/
-

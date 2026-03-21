@@ -417,3 +417,22 @@ func (r *soraGenerationRepository) CountByUserAndStatus(ctx context.Context, use
 	err := r.sql.QueryRowContext(ctx, query, args...).Scan(&count)
 	return count, err
 }
+
+// CountByStorageType 按存储类型和状态统计生成记录数。
+func (r *soraGenerationRepository) CountByStorageType(ctx context.Context, storageType string, statuses []string) (int64, error) {
+	if len(statuses) == 0 {
+		return 0, nil
+	}
+
+	placeholders := make([]string, len(statuses))
+	args := []any{storageType}
+	for i, s := range statuses {
+		placeholders[i] = fmt.Sprintf("$%d", i+2)
+		args = append(args, s)
+	}
+
+	var count int64
+	query := fmt.Sprintf("SELECT COUNT(*) FROM sora_generations WHERE storage_type = $1 AND status IN (%s)", strings.Join(placeholders, ","))
+	err := r.sql.QueryRowContext(ctx, query, args...).Scan(&count)
+	return count, err
+}
