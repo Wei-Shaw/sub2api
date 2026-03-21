@@ -88,6 +88,7 @@ REDACTED
 		if s.stopCh == nil {
 			s.stopCh = make(chan struct{REDACTED)
 	REDACTED
+		s.wg.Add(1)
 		go s.run()
 REDACTED)
 REDACTED
@@ -105,7 +106,6 @@ REDACTED)
 REDACTED
 
 func (s *OpsAlertEvaluatorService) run() {
-	s.wg.Add(1)
 	defer s.wg.Done()
 
 	// Start immediately to produce early feedback in ops dashboard.
@@ -848,7 +848,9 @@ REDACTED
 		return nil, false
 REDACTED
 	return func() {
-		_, _ = opsAlertEvaluatorReleaseScript.Run(ctx, s.redisClient, []string{keyREDACTED, s.instanceID).Result()
+		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer releaseCancel()
+		_, _ = opsAlertEvaluatorReleaseScript.Run(releaseCtx, s.redisClient, []string{keyREDACTED, s.instanceID).Result()
 REDACTED, true
 REDACTED
 
