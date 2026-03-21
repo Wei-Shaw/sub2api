@@ -4197,7 +4197,7 @@ REDACTED
 						resp.Body = io.NopCloser(bytes.NewReader(respBody))
 						break
 				REDACTED
-					logger.LegacyPrintf("service.gateway", "Account %d: detected thinking block signature error, retrying with filtered thinking blocks", account.ID)
+					logger.LegacyPrintf("service.gateway", "[warn] Account %d: thinking blocks have invalid signature, retrying with filtered blocks", account.ID)
 
 					// Conservative two-stage fallback:
 					// 1) Disable thinking + thinking->text (preserve content)
@@ -4212,7 +4212,7 @@ REDACTED
 						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, account.IsTLSFingerprintEnabled())
 						if retryErr == nil {
 							if retryResp.StatusCode < 400 {
-								logger.LegacyPrintf("service.gateway", "Account %d: signature error retry succeeded (thinking downgraded)", account.ID)
+								logger.LegacyPrintf("service.gateway", "Account %d: thinking block retry succeeded (blocks downgraded)", account.ID)
 								resp = retryResp
 								break
 						REDACTED
@@ -6102,13 +6102,9 @@ func (s *GatewayService) isThinkingBlockSignatureError(respBody []byte) bool {
 		return false
 REDACTED
 
-	// Log for debugging
-	logger.LegacyPrintf("service.gateway", "[SignatureCheck] Checking error message: %s", msg)
-
 	// 检测signature相关的错误（更宽松的匹配）
 	// 例如: "Invalid `signature` in `thinking` block", "***.signature" 等
 	if strings.Contains(msg, "signature") {
-		logger.LegacyPrintf("service.gateway", "[SignatureCheck] Detected signature error")
 		return true
 REDACTED
 
