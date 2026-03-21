@@ -7,7 +7,7 @@
       </div>
 
       <!-- Settings Form -->
-      <form v-else @submit.prevent="saveSettings" class="space-y-6">
+      <form v-else @submit.prevent="saveSettings" class="space-y-6" novalidate>
         <!-- Tab Navigation -->
         <div class="sticky top-0 z-10 overflow-x-auto settings-tabs-scroll">
           <nav class="settings-tabs">
@@ -2196,6 +2196,35 @@ async function saveSettings() {
         REDACTED)
       )
       return
+    REDACTED
+
+    // Validate URL fields — novalidate disables browser-native checks, so we validate here
+    const isValidHttpUrl = (url: string): boolean => {
+      if (!url) return true
+      try {
+        const u = new URL(url)
+        return u.protocol === 'http:' || u.protocol === 'https:'
+      REDACTED catch {
+        return false
+      REDACTED
+    REDACTED
+    // Optional URL fields: auto-clear invalid values so they don't cause backend 400 errors
+    if (!isValidHttpUrl(form.frontend_url)) form.frontend_url = ''
+    if (!isValidHttpUrl(form.doc_url)) form.doc_url = ''
+    // Purchase URL: required when enabled; auto-clear when disabled to avoid backend rejection
+    if (form.purchase_subscription_enabled) {
+      if (!form.purchase_subscription_url) {
+        appStore.showError(t('admin.settings.purchase.url') + ': URL is required when purchase is enabled')
+        saving.value = false
+        return
+      REDACTED
+      if (!isValidHttpUrl(form.purchase_subscription_url)) {
+        appStore.showError(t('admin.settings.purchase.url') + ': must be an absolute http(s) URL (e.g. https://example.com)')
+        saving.value = false
+        return
+      REDACTED
+    REDACTED else if (!isValidHttpUrl(form.purchase_subscription_url)) {
+      form.purchase_subscription_url = ''
     REDACTED
 
     const payload: UpdateSettingsRequest = {
