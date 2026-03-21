@@ -404,6 +404,51 @@ func TestFilterThinkingBlocksForRetry_EmptyContentGetsPlaceholder(t *testing.T) 
 	require.NotEmpty(t, content0["text"])
 }
 
+func TestFilterThinkingBlocksForRetry_StripsEmptyTextBlocks(t *testing.T) {
+	// Empty text blocks cause upstream 400: "text content blocks must be non-empty"
+	input := []byte(`{
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"hello"},{"type":"text","text":""}]},
+			{"role":"assistant","content":[{"type":"text","text":""}]}
+		]
+	}`)
+
+	out := FilterThinkingBlocksForRetry(input)
+
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(out, &req))
+	msgs, ok := req["messages"].([]any)
+	require.True(t, ok)
+
+	// First message: empty text block stripped, "hello" preserved
+	msg0 := msgs[0].(map[string]any)
+	content0 := msg0["content"].([]any)
+	require.Len(t, content0, 1)
+	require.Equal(t, "hello", content0[0].(map[string]any)["text"])
+
+	// Second message: only had empty text block → gets placeholder
+	msg1 := msgs[1].(map[string]any)
+	content1 := msg1["content"].([]any)
+	require.Len(t, content1, 1)
+	block1 := content1[0].(map[string]any)
+	require.Equal(t, "text", block1["type"])
+	require.NotEmpty(t, block1["text"])
+}
+
+func TestFilterThinkingBlocksForRetry_PreservesNonEmptyTextBlocks(t *testing.T) {
+	// Non-empty text blocks should pass through unchanged
+	input := []byte(`{
+		"messages":[
+			{"role":"user","content":[{"type":"text","text":"hello"},{"type":"text","text":"world"}]}
+		]
+	}`)
+
+	out := FilterThinkingBlocksForRetry(input)
+
+	// Fast path: no thinking content, no empty content, no empty text blocks → unchanged
+	require.Equal(t, input, out)
+}
+
 func TestFilterSignatureSensitiveBlocksForRetry_DowngradesTools(t *testing.T) {
 	input := []byte(`{
 		"thinking":{"type":"enabled","budget_tokens":1024},

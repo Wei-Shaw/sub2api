@@ -411,6 +411,8 @@ export interface AdminGroup extends Group {
 
   // 分组下账号数量（仅管理员可见）
   account_count?: number
+  active_account_count?: number
+  rate_limited_account_count?: number
 
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   default_mapped_model?: string
@@ -731,6 +733,11 @@ export interface Account {
   affinity_client_count?: number | null
   affinity_clients?: string[] | null
 
+  // 二维亲和扩展
+  affinity_allow_switch?: boolean | null      // 允许切换
+  affinity_user_count?: number | null         // 关联用户数
+  pinned_user_ids?: number[] | null           // 指定亲和用户 ID 列表
+
   // API Key 账号配额限制
   quota_limit?: number | null
   quota_used?: number | null
@@ -753,6 +760,27 @@ export interface Account {
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
+}
+
+// Affinity Details types
+export interface AffinityClientInfo {
+  client_id: string
+  last_active: string
+}
+
+export interface AffinityUserGroup {
+  user_id: number
+  user_email: string
+  client_count: number
+  is_pinned: boolean
+  clients: AffinityClientInfo[]
+}
+
+export interface AffinityDetailsResponse {
+  users: AffinityUserGroup[]
+  total_users: number
+  total_clients: number
+  pinned_users: number[]
 }
 
 // Account Usage types
@@ -780,6 +808,7 @@ export interface AntigravityModelQuota {
 }
 
 export interface AccountUsageInfo {
+  source?: 'passive' | 'active'
   updated_at: string | null
   five_hour: UsageProgress | null
   seven_day: UsageProgress | null
@@ -976,6 +1005,7 @@ export interface UsageLog {
   account_id: number | null
   request_id: string
   model: string
+  upstream_model?: string | null
   service_tier?: string | null
   reasoning_effort?: string | null
   inbound_endpoint?: string | null
@@ -1201,6 +1231,15 @@ export interface GroupStat {
   total_tokens: number
   cost: number // 标准计费
   actual_cost: number // 实际扣除
+}
+
+export interface UserBreakdownItem {
+  user_id: number
+  email: string
+  requests: number
+  total_tokens: number
+  cost: number
+  actual_cost: number
 }
 
 export interface UserUsageTrendPoint {

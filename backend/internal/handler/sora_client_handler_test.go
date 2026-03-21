@@ -945,6 +945,9 @@ func (r *stubUserRepoForHandler) ExistsByEmail(context.Context, string) (bool, e
 func (r *stubUserRepoForHandler) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
 }
+func (r *stubUserRepoForHandler) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
+	return nil
+}
 func (r *stubUserRepoForHandler) UpdateTotpSecret(context.Context, int64, *string) error { return nil }
 func (r *stubUserRepoForHandler) EnableTotp(context.Context, int64) error                { return nil }
 func (r *stubUserRepoForHandler) DisableTotp(context.Context, int64) error               { return nil }
@@ -1019,6 +1022,20 @@ func (r *stubAPIKeyRepoForHandler) SearchAPIKeys(context.Context, int64, string,
 }
 func (r *stubAPIKeyRepoForHandler) ClearGroupIDByGroupID(context.Context, int64) (int64, error) {
 	return 0, nil
+}
+func (r *stubAPIKeyRepoForHandler) UpdateGroupIDByUserAndGroup(_ context.Context, userID, oldGroupID, newGroupID int64) (int64, error) {
+	var updated int64
+	for id, key := range r.keys {
+		if key.UserID != userID || key.GroupID == nil || *key.GroupID != oldGroupID {
+			continue
+		}
+		clone := *key
+		gid := newGroupID
+		clone.GroupID = &gid
+		r.keys[id] = &clone
+		updated++
+	}
+	return updated, nil
 }
 func (r *stubAPIKeyRepoForHandler) CountByGroupID(context.Context, int64) (int64, error) {
 	return 0, nil

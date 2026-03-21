@@ -8,7 +8,6 @@ describe('resolveCodexUsageWindow', () => {
   })
 
   it('优先使用后端提供的绝对重置时间', () => {
-    const now = new Date('2026-02-20T08:00:00Z')
     const result = resolveCodexUsageWindow(
       {
         codex_5h_used_percent: 55,
@@ -16,7 +15,7 @@ describe('resolveCodexUsageWindow', () => {
         codex_5h_reset_after_seconds: 1
       },
       '5h',
-      now
+      new Date('2026-02-20T08:00:00Z')
     )
 
     expect(result.usedPercent).toBe(55)
@@ -24,14 +23,13 @@ describe('resolveCodexUsageWindow', () => {
   })
 
   it('窗口已过期时自动归零', () => {
-    const now = new Date('2026-02-20T08:00:00Z')
     const result = resolveCodexUsageWindow(
       {
         codex_7d_used_percent: 100,
         codex_7d_reset_at: '2026-02-20T07:00:00Z'
       },
       '7d',
-      now
+      new Date('2026-02-20T08:00:00Z')
     )
 
     expect(result.usedPercent).toBe(0)
@@ -39,7 +37,6 @@ describe('resolveCodexUsageWindow', () => {
   })
 
   it('无绝对时间时使用 updated_at + seconds 回退计算', () => {
-    const now = new Date('2026-02-20T07:00:00Z')
     const result = resolveCodexUsageWindow(
       {
         codex_5h_used_percent: 20,
@@ -47,7 +44,7 @@ describe('resolveCodexUsageWindow', () => {
         codex_usage_updated_at: '2026-02-20T06:30:00Z'
       },
       '5h',
-      now
+      new Date('2026-02-20T07:00:00Z')
     )
 
     expect(result.usedPercent).toBe(20)
@@ -55,33 +52,18 @@ describe('resolveCodexUsageWindow', () => {
   })
 
   it('支持 legacy primary/secondary 字段映射', () => {
-    const now = new Date('2026-02-20T07:05:00Z')
-    const result5h = resolveCodexUsageWindow(
-      {
-        codex_primary_window_minutes: 10080,
-        codex_primary_used_percent: 70,
-        codex_primary_reset_after_seconds: 86400,
-        codex_secondary_window_minutes: 300,
-        codex_secondary_used_percent: 15,
-        codex_secondary_reset_after_seconds: 1200,
-        codex_usage_updated_at: '2026-02-20T07:00:00Z'
-      },
-      '5h',
-      now
-    )
-    const result7d = resolveCodexUsageWindow(
-      {
-        codex_primary_window_minutes: 10080,
-        codex_primary_used_percent: 70,
-        codex_primary_reset_after_seconds: 86400,
-        codex_secondary_window_minutes: 300,
-        codex_secondary_used_percent: 15,
-        codex_secondary_reset_after_seconds: 1200,
-        codex_usage_updated_at: '2026-02-20T07:00:00Z'
-      },
-      '7d',
-      now
-    )
+    const snapshot = {
+      codex_primary_window_minutes: 10080,
+      codex_primary_used_percent: 70,
+      codex_primary_reset_after_seconds: 86400,
+      codex_secondary_window_minutes: 300,
+      codex_secondary_used_percent: 15,
+      codex_secondary_reset_after_seconds: 1200,
+      codex_usage_updated_at: '2026-02-20T07:00:00Z'
+    }
+
+    const result5h = resolveCodexUsageWindow(snapshot, '5h', new Date('2026-02-20T07:05:00Z'))
+    const result7d = resolveCodexUsageWindow(snapshot, '7d', new Date('2026-02-20T07:05:00Z'))
 
     expect(result5h.usedPercent).toBe(15)
     expect(result5h.resetAt).toBe('2026-02-20T07:20:00.000Z')
@@ -124,7 +106,6 @@ describe('resolveCodexUsageWindow', () => {
   })
 
   it('legacy 场景下 secondary 为 7d 时能正确识别', () => {
-    const now = new Date('2026-02-20T07:30:00Z')
     const result = resolveCodexUsageWindow(
       {
         codex_primary_window_minutes: 300,
@@ -136,7 +117,7 @@ describe('resolveCodexUsageWindow', () => {
         codex_usage_updated_at: '2026-02-20T07:00:00Z'
       },
       '7d',
-      now
+      new Date('2026-02-20T07:30:00Z')
     )
 
     expect(result.usedPercent).toBe(66)
@@ -144,7 +125,6 @@ describe('resolveCodexUsageWindow', () => {
   })
 
   it('绝对时间非法时回退到 updated_at + seconds', () => {
-    const now = new Date('2026-02-20T07:40:00Z')
     const result = resolveCodexUsageWindow(
       {
         codex_5h_used_percent: 33,
@@ -153,7 +133,7 @@ describe('resolveCodexUsageWindow', () => {
         codex_usage_updated_at: '2026-02-20T07:30:00Z'
       },
       '5h',
-      now
+      new Date('2026-02-20T07:40:00Z')
     )
 
     expect(result.usedPercent).toBe(33)

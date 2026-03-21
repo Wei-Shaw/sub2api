@@ -139,17 +139,6 @@
           <Select v-model="filters.group_id" :options="groupOptions" searchable @change="emitChange" />
         </div>
 
-        <!-- Date Range Filter -->
-        <div class="w-full sm:w-auto [&_.date-picker-trigger]:w-full">
-          <label class="input-label">{{ t('usage.timeRange') }}</label>
-          <DateRangePicker
-            :start-date="startDate"
-            :end-date="endDate"
-            @update:startDate="updateStartDate"
-            @update:endDate="updateEndDate"
-            @change="emitChange"
-          />
-        </div>
       </div>
 
       <!-- Right: actions -->
@@ -177,7 +166,6 @@ import { ref, onMounted, onUnmounted, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
-import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import type { SimpleApiKey, SimpleUser } from '@/api/admin/usage'
 
 type ModelValue = Record<string, any>
@@ -195,8 +183,6 @@ const props = withDefaults(defineProps<Props>(), {
 })
 const emit = defineEmits([
   'update:modelValue',
-  'update:startDate',
-  'update:endDate',
   'change',
   'refresh',
   'reset',
@@ -247,16 +233,6 @@ const billingTypeOptions = ref<SelectOption[]>([
 ])
 
 const emitChange = () => emit('change')
-
-const updateStartDate = (value: string) => {
-  emit('update:startDate', value)
-  filters.value.start_date = value
-}
-
-const updateEndDate = (value: string) => {
-  emit('update:endDate', value)
-  filters.value.end_date = value
-}
 
 const debounceUserSearch = () => {
   if (userSearchTimeout) clearTimeout(userSearchTimeout)
@@ -441,7 +417,11 @@ onMounted(async () => {
     groupOptions.value.push(...gs.items.map((g: any) => ({ value: g.id, label: g.name })))
 
     const uniqueModels = new Set<string>()
-    ms.models?.forEach((s: any) => s.model && uniqueModels.add(s.model))
+    ms.models?.forEach((s: any) => {
+      if (s.model) {
+        uniqueModels.add(s.model)
+      }
+    })
     modelOptions.value.push(
       ...Array.from(uniqueModels)
         .sort()

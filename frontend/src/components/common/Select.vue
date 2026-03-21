@@ -77,7 +77,13 @@
               ]"
             >
               <slot name="option" :option="option" :selected="isSelected(option)">
-                <span class="select-option-label">{{ getOptionLabel(option) }}</span>
+                <Icon
+                  v-if="option._creatable"
+                  name="search"
+                  size="sm"
+                  class="flex-shrink-0 text-gray-400"
+                />
+                <span class="select-option-label" :class="option._creatable && 'italic text-gray-500 dark:text-dark-300'">{{ getOptionLabel(option) }}</span>
                 <Icon
                   v-if="isSelected(option)"
                   name="check"
@@ -127,6 +133,8 @@ interface Props {
   emptyText?: string
   valueKey?: string
   labelKey?: string
+  creatable?: boolean
+  creatablePrefix?: string
 }
 
 interface Emits {
@@ -138,6 +146,8 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   error: false,
   searchable: false,
+  creatable: false,
+  creatablePrefix: '',
   valueKey: 'value',
   labelKey: 'label'
 })
@@ -217,6 +227,10 @@ const selectedLabel = computed(() => {
   if (selectedOption.value) {
     return getOptionLabel(selectedOption.value)
   }
+  // In creatable mode, show the raw value if no matching option
+  if (props.creatable && props.modelValue) {
+    return String(props.modelValue)
+  }
   return placeholderText.value
 })
 
@@ -231,6 +245,12 @@ const filteredOptions = computed(() => {
       if (opt.description && String(opt.description).toLowerCase().includes(query)) return true
       return false
     })
+    // In creatable mode, always prepend a fuzzy search option
+    if (props.creatable && searchQuery.value.trim()) {
+      const trimmed = searchQuery.value.trim()
+      const prefix = props.creatablePrefix || t('common.search')
+      opts = [{ [props.valueKey]: trimmed, [props.labelKey]: `${prefix} "${trimmed}"`, _creatable: true }, ...opts]
+    }
   }
   return opts
 })

@@ -124,9 +124,11 @@ type AdminGroup struct {
 	DefaultMappedModel string `json:"default_mapped_model"`
 
 	// 支持的模型系列（仅 antigravity 平台使用）
-	SupportedModelScopes []string       `json:"supported_model_scopes"`
-	AccountGroups        []AccountGroup `json:"account_groups,omitempty"`
-	AccountCount         int64          `json:"account_count,omitempty"`
+	SupportedModelScopes    []string       `json:"supported_model_scopes"`
+	AccountGroups           []AccountGroup `json:"account_groups,omitempty"`
+	AccountCount            int64          `json:"account_count,omitempty"`
+	ActiveAccountCount      int64          `json:"active_account_count,omitempty"`
+	RateLimitedAccountCount int64          `json:"rate_limited_account_count,omitempty"`
 
 	// 分组排序
 	SortOrder int `json:"sort_order"`
@@ -200,6 +202,15 @@ type Account struct {
 	// 客户端亲和调度（Anthropic 和 Antigravity 账号有效）
 	// 启用后新会话会优先调度到客户端之前使用过的账号
 	ClientAffinityEnabled *bool `json:"client_affinity_enabled,omitempty"`
+
+	// 亲和允许切换（默认 true）
+	AffinityAllowSwitch *bool `json:"affinity_allow_switch,omitempty"`
+
+	// 亲和用户数量（admin 列表端点注入）
+	AffinityUserCount *int64 `json:"affinity_user_count,omitempty"`
+
+	// 指定亲和用户 ID 列表
+	PinnedUserIDs []int64 `json:"pinned_user_ids,omitempty"`
 
 	// 亲和客户端数据（仅 admin 列表端点注入，不由 mapper 填充）
 	AffinityClientCount *int64   `json:"affinity_client_count,omitempty"`
@@ -342,6 +353,9 @@ type UsageLog struct {
 	AccountID int64  `json:"account_id"`
 	RequestID string `json:"request_id"`
 	Model     string `json:"model"`
+	// UpstreamModel is the actual model sent to the upstream provider after mapping.
+	// Omitted when no mapping was applied (requested model was used as-is).
+	UpstreamModel *string `json:"upstream_model,omitempty"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
 	// ReasoningEffort is the request's reasoning effort level.

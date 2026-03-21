@@ -48,6 +48,19 @@
               />
             </div>
 
+            <!-- Group Filter (visible when enabled) -->
+            <div v-if="visibleFilters.has('group')" class="w-full sm:w-44">
+              <Select
+                v-model="filters.group"
+                :options="groupFilterOptions"
+                searchable
+                creatable
+                :creatable-prefix="t('admin.users.fuzzySearch')"
+                :search-placeholder="t('admin.users.searchGroups')"
+                @change="applyFilter"
+              />
+            </div>
+
             <!-- Dynamic Attribute Filters -->
             <template v-for="(value, attrId) in activeAttributeFilters" :key="attrId">
               <div
@@ -273,6 +286,71 @@
             <span :class="['badge', value === 'admin' ? 'badge-purple' : 'badge-gray']">
               {{ t('admin.users.roles.' + value) }}
             </span>
+          </template>
+
+          <template #cell-groups="{ row }">
+            <div v-if="allGroups.length > 0" class="flex flex-col gap-1">
+              <!-- 专属分组行 -->
+              <span
+                v-if="getUserGroups(row).exclusive.length > 0"
+                class="group/ex relative inline-flex cursor-pointer items-center gap-1 whitespace-nowrap text-xs"
+                @click.stop="toggleExpandedGroup(row.id)"
+              >
+                <Icon name="shield" size="xs" class="h-3.5 w-3.5 text-purple-500 dark:text-purple-400" />
+                <span class="font-medium text-purple-600 dark:text-purple-400">{{ getUserGroups(row).exclusive.length }}</span>
+                <span class="text-gray-500 dark:text-dark-400">{{ t('admin.users.exclusiveLabel') }}</span>
+                <!-- Hover tooltip（操作菜单未打开时显示） -->
+                <div
+                  v-if="expandedGroupUserId !== row.id"
+                  class="pointer-events-none absolute left-0 top-full z-50 mt-1.5 rounded bg-gray-900 px-2.5 py-1.5 text-xs text-white opacity-0 shadow-lg transition-opacity duration-75 group-hover/ex:opacity-100 dark:bg-dark-600"
+                >
+                  <div class="absolute left-4 bottom-full border-4 border-transparent border-b-gray-900 dark:border-b-dark-600"></div>
+                  <div class="flex flex-col gap-0.5 whitespace-nowrap">
+                    <span v-for="g in getUserGroups(row).exclusive" :key="g.id">{{ g.name }}</span>
+                  </div>
+                </div>
+                <!-- 点击展开分组操作菜单 -->
+                <div
+                  v-if="expandedGroupUserId === row.id"
+                  class="absolute left-0 top-full z-50 mt-1.5 min-w-[160px] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-xs shadow-xl dark:border-dark-600 dark:bg-dark-700"
+                >
+                  <div class="border-b border-gray-100 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-gray-400 dark:border-dark-600 dark:text-dark-400">
+                    {{ t('admin.users.clickToReplace') }}
+                  </div>
+                  <div
+                    v-for="g in getUserGroups(row).exclusive"
+                    :key="g.id"
+                    class="flex cursor-pointer items-center gap-2 px-3 py-2 text-gray-700 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:text-dark-200 dark:hover:bg-primary-900/30 dark:hover:text-primary-400"
+                    @click.stop="openGroupReplace(row, g)"
+                  >
+                    <Icon name="swap" size="xs" class="h-3.5 w-3.5 flex-shrink-0 opacity-50" />
+                    <span class="flex-1">{{ g.name }}</span>
+                  </div>
+                </div>
+              </span>
+              <!-- 公开分组行 -->
+              <span
+                v-if="getUserGroups(row).publicGroups.length > 0"
+                class="group/pub relative inline-flex cursor-default items-center gap-1 whitespace-nowrap text-xs"
+              >
+                <Icon name="globe" size="xs" class="h-3.5 w-3.5 text-gray-400 dark:text-dark-500" />
+                <span class="font-medium text-gray-600 dark:text-dark-300">{{ getUserGroups(row).publicGroups.length }}</span>
+                <span class="text-gray-400 dark:text-dark-500">{{ t('admin.users.publicLabel') }}</span>
+                <!-- Tooltip: 向下弹出 -->
+                <div class="pointer-events-none absolute left-0 top-full z-50 mt-1.5 rounded bg-gray-900 px-2.5 py-1.5 text-xs text-white opacity-0 shadow-lg transition-opacity duration-75 group-hover/pub:opacity-100 dark:bg-dark-600">
+                  <div class="absolute left-4 bottom-full border-4 border-transparent border-b-gray-900 dark:border-b-dark-600"></div>
+                  <div class="flex flex-col gap-0.5 whitespace-nowrap">
+                    <span v-for="g in getUserGroups(row).publicGroups" :key="g.id">{{ g.name }}</span>
+                  </div>
+                </div>
+              </span>
+              <!-- 都没有 -->
+              <span
+                v-if="getUserGroups(row).exclusive.length === 0 && getUserGroups(row).publicGroups.length === 0"
+                class="text-xs text-gray-400 dark:text-dark-500"
+              >-</span>
+            </div>
+            <span v-else class="text-xs text-gray-400 dark:text-dark-500">-</span>
           </template>
 
           <template #cell-subscriptions="{ row }">
@@ -513,6 +591,7 @@
     <UserAllowedGroupsModal :show="showAllowedGroupsModal" :user="allowedGroupsUser" @close="closeAllowedGroupsModal" @success="loadUsers" />
     <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="loadUsers" />
     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
+    <GroupReplaceModal :show="showGroupReplaceModal" :user="groupReplaceUser" :old-group="groupReplaceOldGroup" :all-groups="allGroups" @close="closeGroupReplaceModal" @success="loadUsers" />
     <UserAttributesConfigModal :show="showAttributesModal" @close="handleAttributesModalClose" />
   </AppLayout>
 </template>
@@ -521,12 +600,13 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
-import type { AdminUser, UserAttributeDefinition } from '@/types'
+import type { AdminUser, AdminGroup, UserAttributeDefinition } from '@/types'
 import type { BatchUserUsageStats } from '@/api/admin/dashboard'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -545,6 +625,7 @@ import UserApiKeysModal from '@/components/admin/user/UserApiKeysModal.vue'
 import UserAllowedGroupsModal from '@/components/admin/user/UserAllowedGroupsModal.vue'
 import UserBalanceModal from '@/components/admin/user/UserBalanceModal.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
+import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
 const appStore = useAppStore()
 
@@ -603,6 +684,7 @@ const allColumns = computed<Column[]>(() => [
   // Dynamic attribute columns
   ...attributeColumns.value,
   { key: 'role', label: t('admin.users.columns.role'), sortable: true },
+  { key: 'groups', label: t('admin.users.columns.groups'), sortable: false },
   { key: 'subscriptions', label: t('admin.users.columns.subscriptions'), sortable: false },
   { key: 'balance', label: t('admin.users.columns.balance'), sortable: true },
   { key: 'usage', label: t('admin.users.columns.usage'), sortable: false },
@@ -622,7 +704,7 @@ const toggleableColumns = computed(() =>
 const hiddenColumns = reactive<Set<string>>(new Set())
 
 // Default hidden columns (columns hidden by default on first load)
-const DEFAULT_HIDDEN_COLUMNS = ['notes', 'subscriptions', 'usage', 'concurrency']
+const DEFAULT_HIDDEN_COLUMNS = ['notes', 'groups', 'subscriptions', 'usage', 'concurrency']
 
 // localStorage key for column settings
 const HIDDEN_COLUMNS_KEY = 'user-hidden-columns'
@@ -668,12 +750,16 @@ const toggleColumn = (key: string) => {
   if (key === 'subscriptions') {
     loadUsers()
   }
+  if (wasHidden && key === 'groups') {
+    loadAllGroups()
+  }
 }
 
 // Check if column is visible (not in hidden set)
 const isColumnVisible = (key: string) => !hiddenColumns.has(key)
 const hasVisibleUsageColumn = computed(() => !hiddenColumns.has('usage'))
 const hasVisibleSubscriptionsColumn = computed(() => !hiddenColumns.has('subscriptions'))
+const hasVisibleGroupsColumn = computed(() => !hiddenColumns.has('groups'))
 const hasVisibleAttributeColumns = computed(() =>
   attributeDefinitions.value.some((def) => def.enabled && !hiddenColumns.has(`attr_${def.id}`))
 )
@@ -689,10 +775,50 @@ const users = ref<AdminUser[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
 
+// Groups data for the groups column
+const allGroups = ref<AdminGroup[]>([])
+const loadAllGroups = async () => {
+  if (allGroups.value.length > 0) return
+  try {
+    allGroups.value = await adminAPI.groups.getAll()
+  } catch (e) {
+    console.error('Failed to load groups:', e)
+  }
+}
+// Resolve user's accessible groups: exclusive groups first, then public groups
+const getUserGroups = (user: AdminUser) => {
+  const exclusive: AdminGroup[] = []
+  const publicGroups: AdminGroup[] = []
+  for (const g of allGroups.value) {
+    if (g.status !== 'active' || g.subscription_type !== 'standard') continue
+    if (g.is_exclusive) {
+      if (user.allowed_groups?.includes(g.id)) {
+        exclusive.push(g)
+      }
+    } else {
+      publicGroups.push(g)
+    }
+  }
+  return { exclusive, publicGroups }
+}
+
+// Group filter options: "All Groups" + active exclusive groups (value = group name for fuzzy match)
+const groupFilterOptions = computed(() => {
+  const options: { value: string; label: string }[] = [
+    { value: '', label: t('admin.users.allGroups') }
+  ]
+  for (const g of allGroups.value) {
+    if (g.status !== 'active' || !g.is_exclusive || g.subscription_type !== 'standard') continue
+    options.push({ value: g.name, label: g.name })
+  }
+  return options
+})
+
 // Filter values (role, status, and custom attributes)
 const filters = reactive({
   role: '',
-  status: ''
+  status: '',
+  group: ''  // group name for fuzzy match, '' = all
 })
 const activeAttributeFilters = reactive<Record<number, string>>({})
 
@@ -720,7 +846,8 @@ const filterableAttributes = computed(() =>
 // Built-in filter definitions
 const builtInFilters = computed(() => [
   { key: 'role', name: t('admin.users.columns.role'), type: 'select' as const },
-  { key: 'status', name: t('admin.users.columns.status'), type: 'select' as const }
+  { key: 'status', name: t('admin.users.columns.status'), type: 'select' as const },
+  { key: 'group', name: t('admin.users.columns.groups'), type: 'select' as const }
 ])
 
 // Load saved filters from localStorage
@@ -738,6 +865,7 @@ const loadSavedFilters = () => {
       const parsed = JSON.parse(savedValues)
       if (parsed.role) filters.role = parsed.role
       if (parsed.status) filters.status = parsed.status
+      if (parsed.group) filters.group = parsed.group
       if (parsed.attributes) {
         Object.assign(activeAttributeFilters, parsed.attributes)
       }
@@ -756,6 +884,7 @@ const saveFiltersToStorage = () => {
     const values = {
       role: filters.role,
       status: filters.status,
+      group: filters.group,
       attributes: activeAttributeFilters
     }
     localStorage.setItem(FILTER_VALUES_KEY, JSON.stringify(values))
@@ -774,7 +903,7 @@ const attributeDefinitions = ref<UserAttributeDefinition[]>([])
 const userAttributeValues = ref<Record<number, Record<number, string>>>({})
 const pagination = reactive({
   page: 1,
-  page_size: 20,
+  page_size: getPersistedPageSize(),
   total: 0,
   pages: 0
 })
@@ -919,11 +1048,26 @@ const handleClickOutside = (event: MouseEvent) => {
   if (columnDropdownRef.value && !columnDropdownRef.value.contains(target)) {
     showColumnDropdown.value = false
   }
+  // Close expanded group dropdown when clicking outside
+  if (expandedGroupUserId.value !== null) {
+    expandedGroupUserId.value = null
+  }
 }
 
 // Allowed groups modal state
 const showAllowedGroupsModal = ref(false)
 const allowedGroupsUser = ref<AdminUser | null>(null)
+
+// Expanded group dropdown state (click to show exclusive groups list)
+const expandedGroupUserId = ref<number | null>(null)
+const toggleExpandedGroup = (userId: number) => {
+  expandedGroupUserId.value = expandedGroupUserId.value === userId ? null : userId
+}
+
+// Group replace modal state
+const showGroupReplaceModal = ref(false)
+const groupReplaceUser = ref<AdminUser | null>(null)
+const groupReplaceOldGroup = ref<{ id: number; name: string } | null>(null)
 
 // Balance (Deposit/Withdraw) modal state
 const showBalanceModal = ref(false)
@@ -979,6 +1123,7 @@ const loadUsers = async () => {
         role: filters.role as any,
         status: filters.status as any,
         search: searchQuery.value || undefined,
+        group_name: filters.group || undefined,
         attributes: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
         include_subscriptions: hasVisibleSubscriptionsColumn.value
       },
@@ -1051,8 +1196,10 @@ const toggleBuiltInFilter = (key: string) => {
     visibleFilters.delete(key)
     if (key === 'role') filters.role = ''
     if (key === 'status') filters.status = ''
+    if (key === 'group') filters.group = ''
   } else {
     visibleFilters.add(key)
+    if (key === 'group') loadAllGroups()
   }
   saveFiltersToStorage()
   pagination.page = 1
@@ -1128,6 +1275,19 @@ const closeAllowedGroupsModal = () => {
   allowedGroupsUser.value = null
 }
 
+const openGroupReplace = (user: AdminUser, group: { id: number; name: string }) => {
+  expandedGroupUserId.value = null
+  groupReplaceUser.value = user
+  groupReplaceOldGroup.value = group
+  showGroupReplaceModal.value = true
+}
+
+const closeGroupReplaceModal = () => {
+  showGroupReplaceModal.value = false
+  groupReplaceUser.value = null
+  groupReplaceOldGroup.value = null
+}
+
 const handleDelete = (user: AdminUser) => {
   deletingUser.value = user
   showDeleteDialog.value = true
@@ -1198,6 +1358,9 @@ onMounted(async () => {
   loadSavedFilters()
   loadSavedColumns()
   loadUsers()
+  if (hasVisibleGroupsColumn.value || visibleFilters.has('group')) {
+    loadAllGroups()
+  }
   document.addEventListener('click', handleClickOutside)
   window.addEventListener('scroll', handleScroll, true)
 })

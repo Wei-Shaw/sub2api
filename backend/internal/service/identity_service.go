@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -15,14 +14,12 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // 预编译正则表达式（避免每次调用重新编译）
 var (
-	// 匹配 user_id 格式:
-	//   旧格式: user_{64位hex}_account__session_{uuid}        (account 后无 UUID)
-	//   新格式: user_{64位hex}_account_{uuid}_session_{uuid}  (account 后有 UUID)
-	userIDRegex = regexp.MustCompile(`^user_[a-f0-9]{64}_account_([a-f0-9-]*)_session_([a-f0-9-]{36})$`)
 	// 匹配 User-Agent 版本号: xxx/x.y.z
 	userAgentVersionRegex = regexp.MustCompile(`/(\d+)\.(\d+)\.(\d+)`)
 )
@@ -209,67 +206,57 @@ func (s *IdentityService) ApplyFingerprint(req *http.Request, fp *Fingerprint) {
 }
 
 // RewriteUserID 重写body中的metadata.user_id
-// 输入格式：user_{clientId}_account__session_{sessionUUID}
-// 输出格式：user_{cachedClientID}_account_{accountUUID}_session_{newHash}
+// 支持旧拼接格式和新 JSON 格式的 user_id 解析，
+// 根据 fingerprintUA 版本选择输出格式。
 //
 // 重要：此函数使用 json.RawMessage 保留其他字段的原始字节，
 // 避免重新序列化导致 thinking 块等内容被修改。
-func (s *IdentityService) RewriteUserID(body []byte, accountID int64, accountUUID, cachedClientID string) ([]byte, error) {
+func (s *IdentityService) RewriteUserID(body []byte, accountID int64, accountUUID, cachedClientID, fingerprintUA string) ([]byte, error) {
 	if len(body) == 0 || accountUUID == "" || cachedClientID == "" {
 		return body, nil
 	}
 
-	// 使用 RawMessage 保留其他字段的原始字节
-	var reqMap map[string]json.RawMessage
-	if err := json.Unmarshal(body, &reqMap); err != nil {
+	metadata := gjson.GetBytes(body, "metadata")
+	if !metadata.Exists() || metadata.Type == gjson.Null {
+		return body, nil
+	}
+	if !strings.HasPrefix(strings.TrimSpace(metadata.Raw), "{") {
 		return body, nil
 	}
 
-	// 解析 metadata 字段
-	metadataRaw, ok := reqMap["metadata"]
-	if !ok {
+	userIDResult := metadata.Get("user_id")
+	if !userIDResult.Exists() || userIDResult.Type != gjson.String {
+		return body, nil
+	}
+	userID := userIDResult.String()
+	if userID == "" {
 		return body, nil
 	}
 
-	var metadata map[string]any
-	if err := json.Unmarshal(metadataRaw, &metadata); err != nil {
+	// 解析 user_id（兼容旧拼接格式和新 JSON 格式）
+	parsed := ParseMetadataUserID(userID)
+	if parsed == nil {
 		return body, nil
 	}
 
-	userID, ok := metadata["user_id"].(string)
-	if !ok || userID == "" {
-		return body, nil
-	}
-
-	// 匹配格式:
-	//   旧格式: user_{64位hex}_account__session_{uuid}
-	//   新格式: user_{64位hex}_account_{uuid}_session_{uuid}
-	matches := userIDRegex.FindStringSubmatch(userID)
-	if matches == nil {
-		return body, nil
-	}
-
-	// matches[1] = account UUID (可能为空), matches[2] = session UUID
-	sessionTail := matches[2] // 原始session UUID
+	sessionTail := parsed.SessionID // 原始session UUID
 
 	// 生成新的session hash: SHA256(accountID::sessionTail) -> UUID格式
 	seed := fmt.Sprintf("%d::%s", accountID, sessionTail)
 	newSessionHash := generateUUIDFromSeed(seed)
 
-	// 构建新的user_id
-	// 格式: user_{cachedClientID}_account_{account_uuid}_session_{newSessionHash}
-	newUserID := fmt.Sprintf("user_%s_account_%s_session_%s", cachedClientID, accountUUID, newSessionHash)
+	// 根据客户端版本选择输出格式
+	version := ExtractCLIVersion(fingerprintUA)
+	newUserID := FormatMetadataUserID(cachedClientID, accountUUID, newSessionHash, version)
+	if newUserID == userID {
+		return body, nil
+	}
 
-	metadata["user_id"] = newUserID
-
-	// 只重新序列化 metadata 字段
-	newMetadataRaw, err := json.Marshal(metadata)
+	newBody, err := sjson.SetBytes(body, "metadata.user_id", newUserID)
 	if err != nil {
 		return body, nil
 	}
-	reqMap["metadata"] = newMetadataRaw
-
-	return json.Marshal(reqMap)
+	return newBody, nil
 }
 
 // RewriteUserIDWithMasking 重写body中的metadata.user_id，支持会话ID伪装
@@ -278,9 +265,9 @@ func (s *IdentityService) RewriteUserID(body []byte, accountID int64, accountUUI
 //
 // 重要：此函数使用 json.RawMessage 保留其他字段的原始字节，
 // 避免重新序列化导致 thinking 块等内容被修改。
-func (s *IdentityService) RewriteUserIDWithMasking(ctx context.Context, body []byte, account *Account, accountUUID, cachedClientID string) ([]byte, error) {
+func (s *IdentityService) RewriteUserIDWithMasking(ctx context.Context, body []byte, account *Account, accountUUID, cachedClientID, fingerprintUA string) ([]byte, error) {
 	// 先执行常规的 RewriteUserID 逻辑
-	newBody, err := s.RewriteUserID(body, account.ID, accountUUID, cachedClientID)
+	newBody, err := s.RewriteUserID(body, account.ID, accountUUID, cachedClientID, fingerprintUA)
 	if err != nil {
 		return newBody, err
 	}
@@ -290,32 +277,26 @@ func (s *IdentityService) RewriteUserIDWithMasking(ctx context.Context, body []b
 		return newBody, nil
 	}
 
-	// 使用 RawMessage 保留其他字段的原始字节
-	var reqMap map[string]json.RawMessage
-	if err := json.Unmarshal(newBody, &reqMap); err != nil {
+	metadata := gjson.GetBytes(newBody, "metadata")
+	if !metadata.Exists() || metadata.Type == gjson.Null {
+		return newBody, nil
+	}
+	if !strings.HasPrefix(strings.TrimSpace(metadata.Raw), "{") {
 		return newBody, nil
 	}
 
-	// 解析 metadata 字段
-	metadataRaw, ok := reqMap["metadata"]
-	if !ok {
+	userIDResult := metadata.Get("user_id")
+	if !userIDResult.Exists() || userIDResult.Type != gjson.String {
+		return newBody, nil
+	}
+	userID := userIDResult.String()
+	if userID == "" {
 		return newBody, nil
 	}
 
-	var metadata map[string]any
-	if err := json.Unmarshal(metadataRaw, &metadata); err != nil {
-		return newBody, nil
-	}
-
-	userID, ok := metadata["user_id"].(string)
-	if !ok || userID == "" {
-		return newBody, nil
-	}
-
-	// 查找 _session_ 的位置，替换其后的内容
-	const sessionMarker = "_session_"
-	idx := strings.LastIndex(userID, sessionMarker)
-	if idx == -1 {
+	// 解析已重写的 user_id
+	uidParsed := ParseMetadataUserID(userID)
+	if uidParsed == nil {
 		return newBody, nil
 	}
 
@@ -337,8 +318,9 @@ func (s *IdentityService) RewriteUserIDWithMasking(ctx context.Context, body []b
 		logger.LegacyPrintf("service.identity", "Warning: failed to set masked session ID for account %d: %v", account.ID, err)
 	}
 
-	// 替换 session 部分：保留 _session_ 之前的内容，替换之后的内容
-	newUserID := userID[:idx+len(sessionMarker)] + maskedSessionID
+	// 用 FormatMetadataUserID 重建（保持与 RewriteUserID 相同的格式）
+	version := ExtractCLIVersion(fingerprintUA)
+	newUserID := FormatMetadataUserID(uidParsed.DeviceID, uidParsed.AccountUUID, maskedSessionID, version)
 
 	slog.Debug("session_id_masking_applied",
 		"account_id", account.ID,
@@ -346,16 +328,15 @@ func (s *IdentityService) RewriteUserIDWithMasking(ctx context.Context, body []b
 		"after", newUserID,
 	)
 
-	metadata["user_id"] = newUserID
-
-	// 只重新序列化 metadata 字段
-	newMetadataRaw, marshalErr := json.Marshal(metadata)
-	if marshalErr != nil {
+	if newUserID == userID {
 		return newBody, nil
 	}
-	reqMap["metadata"] = newMetadataRaw
 
-	return json.Marshal(reqMap)
+	maskedBody, setErr := sjson.SetBytes(newBody, "metadata.user_id", newUserID)
+	if setErr != nil {
+		return newBody, nil
+	}
+	return maskedBody, nil
 }
 
 // generateRandomUUID 生成随机 UUID v4 格式字符串

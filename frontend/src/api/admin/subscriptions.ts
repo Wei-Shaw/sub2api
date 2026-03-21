@@ -27,6 +27,7 @@ export async function list(
     status?: 'active' | 'expired' | 'revoked'
     user_id?: number
     group_id?: number
+    platform?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
   },

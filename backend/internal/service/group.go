@@ -67,8 +67,10 @@ type Group struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
-	AccountGroups []AccountGroup
-	AccountCount  int64
+	AccountGroups           []AccountGroup
+	AccountCount            int64
+	ActiveAccountCount      int64
+	RateLimitedAccountCount int64
 }
 
 func (g *Group) IsActive() bool {

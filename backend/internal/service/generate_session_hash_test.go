@@ -24,7 +24,7 @@ func TestGenerateSessionHash_MetadataHasHighestPriority(t *testing.T) {
 	svc := &GatewayService{}
 
 	parsed := &ParsedRequest{
-		MetadataUserID: "session_123e4567-e89b-12d3-a456-426614174000",
+		MetadataUserID: "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account__session_123e4567-e89b-12d3-a456-426614174000",
 		System:         "You are a helpful assistant.",
 		HasSystem:      true,
 		Messages: []any{
@@ -196,7 +196,7 @@ func TestGenerateSessionHash_MetadataOverridesSessionContext(t *testing.T) {
 	svc := &GatewayService{}
 
 	parsed := &ParsedRequest{
-		MetadataUserID: "session_123e4567-e89b-12d3-a456-426614174000",
+		MetadataUserID: "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account__session_123e4567-e89b-12d3-a456-426614174000",
 		Messages: []any{
 			map[string]any{"role": "user", "content": "hello"},
 		},
@@ -210,6 +210,22 @@ func TestGenerateSessionHash_MetadataOverridesSessionContext(t *testing.T) {
 	hash := svc.GenerateSessionHash(parsed)
 	require.Equal(t, "123e4567-e89b-12d3-a456-426614174000", hash,
 		"metadata session_id should take priority over SessionContext")
+}
+
+func TestGenerateSessionHash_MetadataJSON_HasHighestPriority(t *testing.T) {
+	svc := &GatewayService{}
+
+	parsed := &ParsedRequest{
+		MetadataUserID: `{"device_id":"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2","account_uuid":"","session_id":"c72554f2-1234-5678-abcd-123456789abc"}`,
+		System:         "You are a helpful assistant.",
+		HasSystem:      true,
+		Messages: []any{
+			map[string]any{"role": "user", "content": "hello"},
+		},
+	}
+
+	hash := svc.GenerateSessionHash(parsed)
+	require.Equal(t, "c72554f2-1234-5678-abcd-123456789abc", hash, "JSON format metadata session_id should have highest priority")
 }
 
 func TestGenerateSessionHash_NilSessionContextBackwardCompatible(t *testing.T) {

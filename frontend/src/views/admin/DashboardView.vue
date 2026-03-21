@@ -246,6 +246,8 @@
               :loading="chartsLoading"
               :ranking-loading="rankingLoading"
               :ranking-error="rankingError"
+              :start-date="startDate"
+              :end-date="endDate"
               @ranking-click="goToUserUsage"
             />
             <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
@@ -348,12 +350,20 @@ const formatLocalDate = (date: Date): string => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-const getTodayLocalDate = () => formatLocalDate(new Date())
+const getLast24HoursRangeDates = (): { start: string; end: string } => {
+  const end = new Date()
+  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
+  return {
+    start: formatLocalDate(start),
+    end: formatLocalDate(end)
+  }
+}
 
 // Date range
 const granularity = ref<'day' | 'hour'>('hour')
-const startDate = ref(getTodayLocalDate())
-const endDate = ref(getTodayLocalDate())
+const defaultRange = getLast24HoursRangeDates()
+const startDate = ref(defaultRange.start)
+const endDate = ref(defaultRange.end)
 
 // Granularity options for Select component
 const granularityOptions = computed(() => [

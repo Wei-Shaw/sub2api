@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,11 +37,14 @@ func (m *mockAffinityCache) RefreshSessionTTL(_ context.Context, _ int64, _ stri
 func (m *mockAffinityCache) DeleteSessionAccountID(_ context.Context, _ int64, _ string) error {
 	return nil
 }
-func (m *mockAffinityCache) GetClientAffinityAccounts(_ context.Context, _ int64, _ string, _ time.Duration) ([]int64, error) {
+func (m *mockAffinityCache) GetAffinityAccounts(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
 	return nil, nil
 }
-func (m *mockAffinityCache) UpdateClientAffinity(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
+func (m *mockAffinityCache) UpdateAffinity(_ context.Context, _ int64, _ int64, _ string, _ int64, _ time.Duration) error {
 	return nil
+}
+func (m *mockAffinityCache) GetAffinityMultiCount(_ context.Context, _ int64, _ int64, _ int64, _ time.Duration) (int64, int64, int64, error) {
+	return 0, 0, 0, nil
 }
 func (m *mockAffinityCache) GetAccountAffinityCountBatch(ctx context.Context, groupID int64, accountIDs []int64, ttl time.Duration) (map[int64]int64, error) {
 	m.getCountBatchCalls++
@@ -613,6 +617,28 @@ func TestAffinityIsClientAffinityEnabled(t *testing.T) {
 		}
 		assert.False(t, acc.IsClientAffinityEnabled(), "string 'true' should not enable affinity")
 	})
+
+	t.Run("new flag false overrides legacy flag true", func(t *testing.T) {
+		acc := &Account{
+			Platform: PlatformAnthropic,
+			Extra: map[string]any{
+				"affinity_enabled":        false,
+				"client_affinity_enabled": true,
+			},
+		}
+		assert.False(t, acc.IsClientAffinityEnabled())
+	})
+
+	t.Run("new flag true overrides legacy flag false", func(t *testing.T) {
+		acc := &Account{
+			Platform: PlatformAnthropic,
+			Extra: map[string]any{
+				"affinity_enabled":        true,
+				"client_affinity_enabled": false,
+			},
+		}
+		assert.True(t, acc.IsClientAffinityEnabled())
+	})
 }
 
 // ===========================================================================
@@ -796,5 +822,938 @@ func TestClassifyByAffinityZone(t *testing.T) {
 		}
 		result := classifyByAffinityZone(accs)
 		require.Len(t, result, 2)
+	})
+}
+
+// ===========================================================================
+// GetMultiDimAffinityZone 测试
+// ===========================================================================
+
+func TestGetMultiDimAffinityZone(t *testing.T) {
+	makeAccount := func(opts map[string]any) *Account {
+		extra := map[string]any{"affinity_enabled": true}
+		for k, v := range opts {
+			extra[k] = v
+		}
+		return &Account{
+			Platform: PlatformAnthropic,
+			Extra:    extra,
+		}
+	}
+
+	t.Run("user green + client green = green", func(t *testing.T) {
+		acc := makeAccount(map[string]any{
+			"affinity_base":        10,
+			"affinity_buffer":      5,
+			"affinity_user_base":   3,
+			"affinity_user_buffer": 2,
+		})
+		assert.Equal(t, AffinityZoneGreen, acc.GetMultiDimAffinityZone(2, 5, 0))
+	})
+
+	t.Run("user green + client yellow = yellow", func(t *testing.T) {
+		acc := makeAccount(map[string]any{
+			"affinity_base":        10,
+			"affinity_buffer":      5,
+			"affinity_user_base":   3,
+			"affinity_user_buffer": 2,
+		})
+		assert.Equal(t, AffinityZoneYellow, acc.GetMultiDimAffinityZone(2, 12, 0))
+	})
+
+	t.Run("user yellow + client green = yellow", func(t *testing.T) {
+		acc := makeAccount(map[string]any{
+			"affinity_base":        10,
+			"affinity_buffer":      5,
+			"affinity_user_base":   3,
+			"affinity_user_buffer": 2,
+		})
+		assert.Equal(t, AffinityZoneYellow, acc.GetMultiDimAffinityZone(4, 5, 0))
+	})
+
+	t.Run("user red + client green = red", func(t *testing.T) {
+		acc := makeAccount(map[string]any{
+			"affinity_base":        10,
+			"affinity_buffer":      5,
+			"affinity_user_base":   3,
+			"affinity_user_buffer": 0, // no yellow, direct red
+		})
+		assert.Equal(t, AffinityZoneRed, acc.GetMultiDimAffinityZone(4, 5, 0))
+	})
+
+	t.Run("user green + client red = red", func(t *testing.T) {
+		acc := makeAccount(map[string]any{
+			"affinity_base":        10,
+			"affinity_buffer":      0, // no yellow, direct red
+			"affinity_user_base":   3,
+			"affinity_user_buffer": 2,
+		})
+		assert.Equal(t, AffinityZoneRed, acc.GetMultiDimAffinityZone(2, 11, 0))
+	})
+
+	t.Run("user_base=0 only checks client dimension", func(t *testing.T) {
+		acc := makeAccount(map[string]any{
+			"affinity_base":   10,
+			"affinity_buffer": 5,
+			// no affinity_user_base → 0 → user dimension always green
+		})
+		// client in yellow range
+		assert.Equal(t, AffinityZoneYellow, acc.GetMultiDimAffinityZone(100, 12, 0))
+	})
+
+	t.Run("perUserCount exceeds limit = red", func(t *testing.T) {
+		acc := makeAccount(map[string]any{
+			"affinity_base":         10,
+			"affinity_buffer":       5,
+			"per_user_client_limit": 3,
+		})
+		// client green, user green, but perUser > limit
+		assert.Equal(t, AffinityZoneRed, acc.GetMultiDimAffinityZone(1, 5, 4))
+	})
+
+	t.Run("perUserCount within limit = green", func(t *testing.T) {
+		acc := makeAccount(map[string]any{
+			"affinity_base":         10,
+			"affinity_buffer":       5,
+			"per_user_client_limit": 3,
+		})
+		assert.Equal(t, AffinityZoneGreen, acc.GetMultiDimAffinityZone(1, 5, 3))
+	})
+
+	t.Run("affinity disabled always green", func(t *testing.T) {
+		acc := &Account{
+			Platform: PlatformAnthropic,
+			Extra: map[string]any{
+				"affinity_enabled": false,
+				"affinity_base":    1,
+				"affinity_buffer":  0,
+			},
+		}
+		assert.Equal(t, AffinityZoneGreen, acc.GetMultiDimAffinityZone(100, 100, 100))
+	})
+}
+
+// ===========================================================================
+// IsAffinityAllowSwitch 测试
+// ===========================================================================
+
+func TestIsAffinityAllowSwitch(t *testing.T) {
+	t.Run("default true when no field in Extra", func(t *testing.T) {
+		acc := &Account{
+			Platform: PlatformAnthropic,
+			Extra:    map[string]any{"affinity_enabled": true},
+		}
+		assert.True(t, acc.IsAffinityAllowSwitch())
+	})
+
+	t.Run("explicit false", func(t *testing.T) {
+		acc := &Account{
+			Platform: PlatformAnthropic,
+			Extra:    map[string]any{"affinity_allow_switch": false},
+		}
+		assert.False(t, acc.IsAffinityAllowSwitch())
+	})
+
+	t.Run("Extra nil defaults to true", func(t *testing.T) {
+		acc := &Account{
+			Platform: PlatformAnthropic,
+			Extra:    nil,
+		}
+		assert.True(t, acc.IsAffinityAllowSwitch())
+	})
+
+	t.Run("explicit true", func(t *testing.T) {
+		acc := &Account{
+			Platform: PlatformAnthropic,
+			Extra:    map[string]any{"affinity_allow_switch": true},
+		}
+		assert.True(t, acc.IsAffinityAllowSwitch())
+	})
+}
+
+// ===========================================================================
+// GetPinnedUsers / IsPinnedUser 测试
+// ===========================================================================
+
+func TestGetPinnedUsers(t *testing.T) {
+	t.Run("normal list", func(t *testing.T) {
+		acc := &Account{
+			Platform: PlatformAnthropic,
+			Extra: map[string]any{
+				"pinned_users": []any{float64(10), float64(20), float64(30)},
+			},
+		}
+		result := acc.GetPinnedUsers()
+		assert.Equal(t, []int64{10, 20, 30}, result)
+	})
+
+	t.Run("empty list", func(t *testing.T) {
+		acc := &Account{
+			Platform: PlatformAnthropic,
+			Extra: map[string]any{
+				"pinned_users": []any{},
+			},
+		}
+		result := acc.GetPinnedUsers()
+		assert.Nil(t, result)
+	})
+
+	t.Run("Extra nil", func(t *testing.T) {
+		acc := &Account{
+			Platform: PlatformAnthropic,
+			Extra:    nil,
+		}
+		result := acc.GetPinnedUsers()
+		assert.Nil(t, result)
+	})
+
+	t.Run("pinned_users not set", func(t *testing.T) {
+		acc := &Account{
+			Platform: PlatformAnthropic,
+			Extra:    map[string]any{},
+		}
+		result := acc.GetPinnedUsers()
+		assert.Nil(t, result)
+	})
+}
+
+func TestIsPinnedUser(t *testing.T) {
+	acc := &Account{
+		Platform: PlatformAnthropic,
+		Extra: map[string]any{
+			"pinned_users": []any{float64(10), float64(20), float64(30)},
+		},
+	}
+
+	t.Run("hit", func(t *testing.T) {
+		assert.True(t, acc.IsPinnedUser(20))
+	})
+
+	t.Run("miss", func(t *testing.T) {
+		assert.False(t, acc.IsPinnedUser(99))
+	})
+
+	t.Run("nil Extra", func(t *testing.T) {
+		nilAcc := &Account{Platform: PlatformAnthropic, Extra: nil}
+		assert.False(t, nilAcc.IsPinnedUser(10))
+	})
+}
+
+// ===========================================================================
+// Enhanced mock for integration tests (supports affinity lookups + tracking)
+// ===========================================================================
+
+type affinityIntegrationCache struct {
+	mockAffinityCache
+	getAffinityAccountsFunc   func(ctx context.Context, groupID int64, userID int64, clientID string, ttl time.Duration) ([]int64, error)
+	updateAffinityCalls       []affinityUpdateCall
+	getMultiCountFunc         func(ctx context.Context, groupID int64, accountID int64, targetUserID int64, ttl time.Duration) (int64, int64, int64, error)
+	sessionBindings           map[string]int64
+	getAffinityAccountsCalled bool // 标记 GetAffinityAccounts 是否已被调用，用于区分预处理/Layer 2 阶段
+}
+
+type affinityUpdateCall struct {
+	groupID              int64
+	userID               int64
+	clientID             string
+	accountID            int64
+	beforeAffinityLookup bool // true 表示该调用发生在 GetAffinityAccounts 之前（预处理阶段）
+}
+
+func (c *affinityIntegrationCache) GetSessionAccountID(_ context.Context, _ int64, hash string) (int64, error) {
+	if c.sessionBindings != nil {
+		if id, ok := c.sessionBindings[hash]; ok {
+			return id, nil
+		}
+	}
+	return 0, errors.New("not found")
+}
+
+func (c *affinityIntegrationCache) GetAffinityAccounts(ctx context.Context, groupID int64, userID int64, clientID string, ttl time.Duration) ([]int64, error) {
+	c.getAffinityAccountsCalled = true
+	if c.getAffinityAccountsFunc != nil {
+		return c.getAffinityAccountsFunc(ctx, groupID, userID, clientID, ttl)
+	}
+	return nil, nil
+}
+
+func (c *affinityIntegrationCache) UpdateAffinity(_ context.Context, groupID int64, userID int64, clientID string, accountID int64, _ time.Duration) error {
+	c.updateAffinityCalls = append(c.updateAffinityCalls, affinityUpdateCall{
+		groupID: groupID, userID: userID, clientID: clientID, accountID: accountID,
+		beforeAffinityLookup: !c.getAffinityAccountsCalled,
+	})
+	return nil
+}
+
+func (c *affinityIntegrationCache) GetAffinityMultiCount(ctx context.Context, groupID int64, accountID int64, targetUserID int64, ttl time.Duration) (int64, int64, int64, error) {
+	if c.getMultiCountFunc != nil {
+		return c.getMultiCountFunc(ctx, groupID, accountID, targetUserID, ttl)
+	}
+	return 0, 0, 0, nil
+}
+
+// ===========================================================================
+// TestAffinityPreprocessPinnedUsers — 验证 pinned_users 预处理逻辑
+// ===========================================================================
+
+func TestAffinityPreprocessPinnedUsers(t *testing.T) {
+	ctx := context.Background()
+	testUserID := int64(42)
+	testClientID := "user_" + "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2" + "_account_test"
+
+	t.Run("pinned user triggers UpdateAffinity", func(t *testing.T) {
+		cache := &affinityIntegrationCache{}
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID: 1, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+					Extra: map[string]any{
+						"affinity_enabled": true,
+						"pinned_users":     []any{float64(42)},
+					},
+				},
+				{
+					ID: 2, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+					Extra: map[string]any{"affinity_enabled": true},
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		concCache := &mockConcurrencyCache{acquireResults: map[int64]bool{1: true, 2: true}}
+		concSvc := NewConcurrencyService(concCache)
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: concSvc,
+		}
+
+		_, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, testClientID, testUserID)
+		require.NoError(t, err)
+
+		// 验证 UpdateAffinity 至少被调用了一次（pinned preprocess for account 1）
+		found := false
+		for _, call := range cache.updateAffinityCalls {
+			if call.accountID == 1 && call.userID == testUserID {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "UpdateAffinity should be called for pinned account 1 with userID %d", testUserID)
+	})
+
+	t.Run("non-pinned user does not trigger UpdateAffinity preprocess", func(t *testing.T) {
+		cache := &affinityIntegrationCache{
+			getAffinityAccountsFunc: func(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
+				return nil, nil // 无亲和记录，直接进入 Layer 2
+			},
+		}
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID: 1, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+					Extra: map[string]any{
+						"affinity_enabled": true,
+						"pinned_users":     []any{float64(99)}, // different user
+					},
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		concCache := &mockConcurrencyCache{acquireResults: map[int64]bool{1: true}}
+		concSvc := NewConcurrencyService(concCache)
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: concSvc,
+		}
+
+		_, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, testClientID, testUserID)
+		require.NoError(t, err)
+
+		// 验证预处理阶段（beforeAffinityLookup=true）没有为 userID=42 在 account 1 上调用 UpdateAffinity
+		for _, call := range cache.updateAffinityCalls {
+			if call.beforeAffinityLookup && call.accountID == 1 && call.userID == testUserID {
+				t.Errorf("UpdateAffinity should NOT be called in preprocess for non-pinned user %d on account %d", testUserID, call.accountID)
+			}
+		}
+	})
+}
+
+// ===========================================================================
+// TestAffinityNoSwitchError — 验证 ErrAffinityNoSwitch 行为
+// ===========================================================================
+
+func TestAffinityNoSwitchError(t *testing.T) {
+	ctx := context.Background()
+	testUserID := int64(42)
+	testClientID := "user_" + "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2" + "_account_test"
+	futureTime := time.Now().Add(1 * time.Hour)
+
+	t.Run("affinity hit but unschedulable + allow_switch=false returns ErrAffinityNoSwitch", func(t *testing.T) {
+		cache := &affinityIntegrationCache{
+			getAffinityAccountsFunc: func(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
+				return []int64{1}, nil
+			},
+		}
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID: 1, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true,
+					RateLimitResetAt: &futureTime, // rate limited = unschedulable for selection
+					Concurrency:      5,
+					Extra: map[string]any{
+						"affinity_enabled":      true,
+						"affinity_allow_switch": false,
+					},
+				},
+				{
+					ID: 2, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		concCache := &mockConcurrencyCache{acquireResults: map[int64]bool{2: true}}
+		concSvc := NewConcurrencyService(concCache)
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: concSvc,
+		}
+
+		_, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, testClientID, testUserID)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrAffinityNoSwitch)
+	})
+
+	t.Run("affinity hit but unschedulable + allow_switch=true continues to Layer 2", func(t *testing.T) {
+		cache := &affinityIntegrationCache{
+			getAffinityAccountsFunc: func(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
+				return []int64{1}, nil
+			},
+		}
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID: 1, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true,
+					RateLimitResetAt: &futureTime, // rate limited = unschedulable
+					Concurrency:      5,
+					Extra: map[string]any{
+						"affinity_enabled":      true,
+						"affinity_allow_switch": true,
+					},
+				},
+				{
+					ID: 2, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		concCache := &mockConcurrencyCache{acquireResults: map[int64]bool{2: true}}
+		concSvc := NewConcurrencyService(concCache)
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: concSvc,
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, testClientID, testUserID)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, int64(2), result.Account.ID, "should fall through to Layer 2 and select account 2")
+	})
+
+	t.Run("no affinity records - not affected by allow_switch", func(t *testing.T) {
+		cache := &affinityIntegrationCache{} // returns nil from GetAffinityAccounts
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID: 1, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+					Extra: map[string]any{
+						"affinity_enabled":      true,
+						"affinity_allow_switch": false,
+					},
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		concCache := &mockConcurrencyCache{acquireResults: map[int64]bool{1: true}}
+		concSvc := NewConcurrencyService(concCache)
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: concSvc,
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, testClientID, testUserID)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, int64(1), result.Account.ID, "should select normally via Layer 2")
+	})
+
+	t.Run("affinity disabled account ignores allow_switch=false", func(t *testing.T) {
+		cache := &affinityIntegrationCache{
+			getAffinityAccountsFunc: func(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
+				return []int64{1}, nil
+			},
+		}
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID: 1, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+					Extra: map[string]any{
+						"affinity_enabled":      false,
+						"affinity_allow_switch": false,
+					},
+				},
+				{
+					ID: 2, Platform: PlatformAnthropic, Priority: 2,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		concCache := &mockConcurrencyCache{acquireResults: map[int64]bool{2: true}}
+		concSvc := NewConcurrencyService(concCache)
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: concSvc,
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, testClientID, testUserID)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		assert.NotEqual(t, int64(0), result.Account.ID)
+	})
+
+	t.Run("allow_switch=false + model_unsupported returns ErrAffinityNoSwitch", func(t *testing.T) {
+		cache := &affinityIntegrationCache{
+			getAffinityAccountsFunc: func(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
+				return []int64{1}, nil
+			},
+		}
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID: 1, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+					Extra: map[string]any{
+						"affinity_enabled":      true,
+						"affinity_allow_switch": false,
+					},
+					// model_mapping 仅包含 claude-3-haiku → 请求 claude-3-5-sonnet 将被拒绝
+					Credentials: map[string]any{
+						"model_mapping": map[string]any{
+							"claude-3-haiku-20240307": "claude-3-haiku-20240307",
+						},
+					},
+				},
+				{
+					ID: 2, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		concCache := &mockConcurrencyCache{acquireResults: map[int64]bool{2: true}}
+		concSvc := NewConcurrencyService(concCache)
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: concSvc,
+		}
+
+		_, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, testClientID, testUserID)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrAffinityNoSwitch)
+	})
+
+	t.Run("allow_switch=false + red_zone returns ErrAffinityNoSwitch", func(t *testing.T) {
+		cache := &affinityIntegrationCache{
+			getAffinityAccountsFunc: func(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
+				return []int64{1}, nil
+			},
+			getMultiCountFunc: func(_ context.Context, _ int64, _ int64, _ int64, _ time.Duration) (int64, int64, int64, error) {
+				// userCount=5, clientCount=5, perUserCount=0
+				// 账号 affinity_base=1, affinity_buffer=0 → clientCount(5) > base(1) + buffer(0) → 红区
+				return 5, 5, 0, nil
+			},
+		}
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID: 1, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+					Extra: map[string]any{
+						"affinity_enabled":      true,
+						"affinity_allow_switch": false,
+						"affinity_base":         1,
+						"affinity_buffer":       0, // buffer=0 → 超过 base 直接红区
+					},
+				},
+				{
+					ID: 2, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		concCache := &mockConcurrencyCache{acquireResults: map[int64]bool{2: true}}
+		concSvc := NewConcurrencyService(concCache)
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: concSvc,
+		}
+
+		_, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, testClientID, testUserID)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrAffinityNoSwitch)
+	})
+
+	t.Run("one_allow_switch=true overrides another allow_switch=false (一票放行)", func(t *testing.T) {
+		// 账号 1: allow_switch=false + rate limited（不可调度）
+		// 账号 3: allow_switch=true + rate limited（不可调度）
+		// 一票放行：账号 3 允许切换 → 不阻断 → 降级到 Layer 2 选中账号 2
+		cache := &affinityIntegrationCache{
+			getAffinityAccountsFunc: func(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
+				return []int64{1, 3}, nil
+			},
+		}
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID: 1, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true,
+					RateLimitResetAt: &futureTime, // rate limited
+					Concurrency:      5,
+					Extra: map[string]any{
+						"affinity_enabled":      true,
+						"affinity_allow_switch": false,
+					},
+				},
+				{
+					ID: 2, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+				},
+				{
+					ID: 3, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true,
+					RateLimitResetAt: &futureTime, // rate limited
+					Concurrency:      5,
+					Extra: map[string]any{
+						"affinity_enabled":      true,
+						"affinity_allow_switch": true,
+					},
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		concCache := &mockConcurrencyCache{acquireResults: map[int64]bool{2: true}}
+		concSvc := NewConcurrencyService(concCache)
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: concSvc,
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", nil, testClientID, testUserID)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, int64(2), result.Account.ID, "一票放行: should fall through to Layer 2")
+	})
+
+	t.Run("excluded affinity account with allow_switch=false returns ErrAffinityNoSwitch", func(t *testing.T) {
+		cache := &affinityIntegrationCache{
+			getAffinityAccountsFunc: func(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
+				return []int64{1}, nil
+			},
+		}
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID: 1, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+					Extra: map[string]any{
+						"affinity_enabled":      true,
+						"affinity_allow_switch": false,
+					},
+				},
+				{
+					ID: 2, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		concCache := &mockConcurrencyCache{acquireResults: map[int64]bool{2: true}}
+		concSvc := NewConcurrencyService(concCache)
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: concSvc,
+		}
+
+		excluded := map[int64]struct{}{1: {}}
+		_, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "", "claude-3-5-sonnet-20241022", excluded, testClientID, testUserID)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrAffinityNoSwitch)
+	})
+
+	t.Run("disabled affinity record does not suppress sticky fallback", func(t *testing.T) {
+		sessionHash := "sticky-disabled-affinity"
+		cache := &affinityIntegrationCache{
+			getAffinityAccountsFunc: func(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
+				return []int64{1}, nil
+			},
+			sessionBindings: map[string]int64{sessionHash: 2},
+		}
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID: 1, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+					Extra: map[string]any{
+						"affinity_enabled": false,
+					},
+				},
+				{
+					ID: 2, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		concCache := &mockConcurrencyCache{acquireResults: map[int64]bool{2: true}}
+		concSvc := NewConcurrencyService(concCache)
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: concSvc,
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, sessionHash, "claude-3-5-sonnet-20241022", nil, testClientID, testUserID)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		assert.Equal(t, int64(2), result.Account.ID)
+	})
+
+	t.Run("historical affinity record with disabled account still falls back to sticky account", func(t *testing.T) {
+		sessionHash := "sticky-disabled-status-affinity"
+		cache := &affinityIntegrationCache{
+			getAffinityAccountsFunc: func(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
+				return []int64{1}, nil
+			},
+			sessionBindings: map[string]int64{sessionHash: 2},
+		}
+
+		repo := &mockAccountRepoForPlatform{
+			accounts: []Account{
+				{
+					ID: 1, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusDisabled, Schedulable: true, Concurrency: 5,
+					Extra: map[string]any{
+						"affinity_enabled": true,
+					},
+				},
+				{
+					ID: 2, Platform: PlatformAnthropic, Priority: 1,
+					Status: StatusActive, Schedulable: true, Concurrency: 5,
+				},
+			},
+			accountsByID: map[int64]*Account{},
+		}
+		for i := range repo.accounts {
+			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+		}
+
+		concCache := &mockConcurrencyCache{acquireResults: map[int64]bool{2: true}}
+		concSvc := NewConcurrencyService(concCache)
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		cfg.Gateway.Scheduling.LoadBatchEnabled = true
+
+		svc := &GatewayService{
+			accountRepo:        repo,
+			cache:              cache,
+			cfg:                cfg,
+			concurrencyService: concSvc,
+		}
+
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, sessionHash, "claude-3-5-sonnet-20241022", nil, testClientID, testUserID)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.Account)
+		assert.Equal(t, int64(2), result.Account.ID)
+	})
+}
+
+// ===========================================================================
+// TestAffinityMultiDimClassify — 验证 classifyByAffinityZone 与多维度计数
+// ===========================================================================
+
+func TestAffinityMultiDimClassify(t *testing.T) {
+	t.Run("multi-dim zone classification with user and client dimensions", func(t *testing.T) {
+		makeAWL := func(id int64, extra map[string]any, count int64) accountWithLoad {
+			return accountWithLoad{
+				account:       &Account{ID: id, Platform: PlatformAnthropic, Extra: extra},
+				loadInfo:      &AccountLoadInfo{AccountID: id},
+				affinityCount: count,
+			}
+		}
+
+		// Account 1: client green (3 <= 5), classified as green by old classifyByAffinityZone
+		// Account 2: client red (10 > 8), classified as red
+		accs := []accountWithLoad{
+			makeAWL(1, map[string]any{
+				"affinity_enabled": true,
+				"affinity_base":    5,
+				"affinity_buffer":  3,
+			}, 3),
+			makeAWL(2, map[string]any{
+				"affinity_enabled": true,
+				"affinity_base":    5,
+				"affinity_buffer":  3,
+			}, 10),
+		}
+
+		result := classifyByAffinityZone(accs)
+		require.Len(t, result, 1)
+		assert.Equal(t, int64(1), result[0].account.ID, "only green account should remain")
+	})
+
+	t.Run("all green returns all", func(t *testing.T) {
+		makeAWL := func(id int64, count int64) accountWithLoad {
+			return accountWithLoad{
+				account: &Account{
+					ID:       id,
+					Platform: PlatformAnthropic,
+					Extra: map[string]any{
+						"affinity_enabled": true,
+						"affinity_base":    10,
+						"affinity_buffer":  5,
+					},
+				},
+				loadInfo:      &AccountLoadInfo{AccountID: id},
+				affinityCount: count,
+			}
+		}
+
+		accs := []accountWithLoad{
+			makeAWL(1, 3),
+			makeAWL(2, 5),
+			makeAWL(3, 10), // exactly at base
+		}
+
+		result := classifyByAffinityZone(accs)
+		require.Len(t, result, 3)
 	})
 }

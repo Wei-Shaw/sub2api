@@ -2,7 +2,10 @@ package antigravity
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestBuildParts_ThinkingBlockWithoutSignature 测试thinking block无signature时的处理
@@ -346,6 +349,54 @@ func TestBuildGenerationConfig_ThinkingDynamicBudget(t *testing.T) {
 			if cfg.ThinkingConfig != nil {
 				t.Fatalf("expected thinkingConfig to be nil, got %+v", cfg.ThinkingConfig)
 			}
+		})
+	}
+}
+
+func TestTransformClaudeToGeminiWithOptions_PreservesBillingHeaderSystemBlock(t *testing.T) {
+	tests := []struct {
+		name   string
+		system json.RawMessage
+	}{
+		{
+			name:   "system array",
+			system: json.RawMessage(`[{"type":"text","text":"x-anthropic-billing-header keep"}]`),
+		},
+		{
+			name:   "system string",
+			system: json.RawMessage(`"x-anthropic-billing-header keep"`),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claudeReq := &ClaudeRequest{
+				Model:  "claude-3-5-sonnet-latest",
+				System: tt.system,
+				Messages: []ClaudeMessage{
+					{
+						Role:    "user",
+						Content: json.RawMessage(`[{"type":"text","text":"hello"}]`),
+					},
+				},
+			}
+
+			body, err := TransformClaudeToGeminiWithOptions(claudeReq, "project-1", "gemini-2.5-flash", DefaultTransformOptions())
+			require.NoError(t, err)
+
+			var req V1InternalRequest
+			require.NoError(t, json.Unmarshal(body, &req))
+			require.NotNil(t, req.Request.SystemInstruction)
+
+			found := false
+			for _, part := range req.Request.SystemInstruction.Parts {
+				if strings.Contains(part.Text, "x-anthropic-billing-header keep") {
+					found = true
+					break
+				}
+			}
+
+			require.True(t, found, "转换后的 systemInstruction 应保留 x-anthropic-billing-header 内容")
 		})
 	}
 }

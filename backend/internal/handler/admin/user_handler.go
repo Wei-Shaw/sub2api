@@ -75,6 +75,7 @@ type UpdateBalanceRequest struct {
 //   - role: filter by user role
 //   - search: search in email, username
 //   - attr[{id}]: filter by custom attribute value, e.g. attr[1]=company
+//   - group_name: fuzzy filter by allowed group name
 func (h *UserHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
 
@@ -89,6 +90,7 @@ func (h *UserHandler) List(c *gin.Context) {
 		Status:     c.Query("status"),
 		Role:       c.Query("role"),
 		Search:     search,
+		GroupName:  strings.TrimSpace(c.Query("group_name")),
 		Attributes: parseAttributeFilters(c),
 	}
 	if raw, ok := c.GetQuery("include_subscriptions"); ok {
@@ -364,5 +366,37 @@ func (h *UserHandler) GetBalanceHistory(c *gin.Context) {
 		"page_size":       pageSize,
 		"pages":           pages,
 		"total_recharged": totalRecharged,
+	})
+}
+
+// ReplaceGroupRequest represents the request to replace a user's exclusive group
+type ReplaceGroupRequest struct {
+	OldGroupID int64 `json:"old_group_id" binding:"required,gt=0"`
+	NewGroupID int64 `json:"new_group_id" binding:"required,gt=0"`
+}
+
+// ReplaceGroup handles replacing a user's exclusive group
+// POST /api/v1/admin/users/:id/replace-group
+func (h *UserHandler) ReplaceGroup(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	var req ReplaceGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	result, err := h.adminService.ReplaceUserGroup(c.Request.Context(), userID, req.OldGroupID, req.NewGroupID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{
+		"migrated_keys": result.MigratedKeys,
 	})
 }

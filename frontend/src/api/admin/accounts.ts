@@ -17,7 +17,8 @@ import type {
   AdminDataPayload,
   AdminDataImportResult,
   CheckMixedChannelRequest,
-  CheckMixedChannelResponse
+  CheckMixedChannelResponse,
+  AffinityDetailsResponse
 } from '@/types'
 
 /**
@@ -66,6 +67,7 @@ export async function listWithEtag(
     platform?: string
     type?: string
     status?: string
+    group?: string
     search?: string
     lite?: string
   },
@@ -223,8 +225,10 @@ export async function clearError(id: number): Promise<Account> {
  * @param id - Account ID
  * @returns Account usage info
  */
-export async function getUsage(id: number): Promise<AccountUsageInfo> {
-  const { data } = await apiClient.get<AccountUsageInfo>(`/admin/accounts/${id}/usage`)
+export async function getUsage(id: number, source?: 'passive' | 'active'): Promise<AccountUsageInfo> {
+  const { data } = await apiClient.get<AccountUsageInfo>(`/admin/accounts/${id}/usage`, {
+    params: source ? { source } : undefined
+  })
   return data
 }
 
@@ -630,6 +634,18 @@ export async function getAffinityClients(id: number): Promise<{ client_id: strin
   return data
 }
 
+/**
+ * Get affinity details for an account with user-level grouping
+ * @param id - Account ID
+ * @returns Affinity details with user groups
+ */
+export async function getAffinityDetails(id: number): Promise<AffinityDetailsResponse> {
+  const { data } = await apiClient.get<AffinityDetailsResponse>(
+    `/admin/accounts/${id}/affinity-details`
+  )
+  return data
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -667,7 +683,8 @@ export const accountsAPI = {
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
-  getAffinityClients
+  getAffinityClients,
+  getAffinityDetails
 }
 
 export default accountsAPI

@@ -27,7 +27,7 @@ type GroupRepository interface {
 	ListActiveByPlatform(ctx context.Context, platform string) ([]Group, error)
 
 	ExistsByName(ctx context.Context, name string) (bool, error)
-	GetAccountCount(ctx context.Context, groupID int64) (int64, error)
+	GetAccountCount(ctx context.Context, groupID int64) (total int64, active int64, err error)
 	DeleteAccountGroupsByGroupID(ctx context.Context, groupID int64) (int64, error)
 	// GetAccountIDsByGroupIDs 获取多个分组的所有账号 ID（去重）
 	GetAccountIDsByGroupIDs(ctx context.Context, groupIDs []int64) ([]int64, error)
@@ -202,7 +202,7 @@ func (s *GroupService) GetStats(ctx context.Context, id int64) (map[string]any, 
 	}
 
 	// 获取账号数量
-	accountCount, err := s.groupRepo.GetAccountCount(ctx, id)
+	accountCount, _, err := s.groupRepo.GetAccountCount(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get account count: %w", err)
 	}

@@ -30,11 +30,14 @@ func (c *stubSmartRetryCache) DeleteSessionAccountID(_ context.Context, groupID 
 	c.deleteCalls = append(c.deleteCalls, deleteSessionCall{groupID: groupID, sessionHash: sessionHash})
 	return nil
 }
-func (c *stubSmartRetryCache) GetClientAffinityAccounts(_ context.Context, _ int64, _ string, _ time.Duration) ([]int64, error) {
+func (c *stubSmartRetryCache) GetAffinityAccounts(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
 	return nil, nil
 }
-func (c *stubSmartRetryCache) UpdateClientAffinity(_ context.Context, _ int64, _ string, _ int64, _ time.Duration) error {
+func (c *stubSmartRetryCache) UpdateAffinity(_ context.Context, _ int64, _ int64, _ string, _ int64, _ time.Duration) error {
 	return nil
+}
+func (c *stubSmartRetryCache) GetAffinityMultiCount(_ context.Context, _ int64, _ int64, _ int64, _ time.Duration) (int64, int64, int64, error) {
+	return 0, 0, 0, nil
 }
 func (c *stubSmartRetryCache) GetAccountAffinityCountBatch(_ context.Context, _ int64, _ []int64, _ time.Duration) (map[int64]int64, error) {
 	return map[int64]int64{}, nil
@@ -51,11 +54,13 @@ func (c *stubSmartRetryCache) ClearAccountAffinity(_ context.Context, _ int64, _
 
 // mockSmartRetryUpstream 用于 handleSmartRetry 测试的 mock upstream
 type mockSmartRetryUpstream struct {
-	responses     []*http.Response
-	errors        []error
-	callIdx       int
-	calls         []string
-	requestBodies [][]byte
+	responses      []*http.Response
+	responseBodies [][]byte // 缓存的 response body 字节（用于 repeatLast 重建）
+	errors         []error
+	callIdx        int
+	calls          []string
+	requestBodies  [][]byte
+	repeatLast     bool // 超出范围时重复最后一个响应
 }
 
 func (m *mockSmartRetryUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
@@ -69,10 +74,40 @@ func (m *mockSmartRetryUpstream) Do(req *http.Request, proxyURL string, accountI
 		m.requestBodies = append(m.requestBodies, nil)
 	}
 	m.callIdx++
-	if idx < len(m.responses) {
-		return m.responses[idx], m.errors[idx]
+
+	// 确定使用哪个索引
+	respIdx := idx
+	if respIdx >= len(m.responses) {
+		if !m.repeatLast || len(m.responses) == 0 {
+			return nil, nil
+		}
+		respIdx = len(m.responses) - 1
 	}
-	return nil, nil
+
+	resp := m.responses[respIdx]
+	respErr := m.errors[respIdx]
+	if resp == nil {
+		return nil, respErr
+	}
+
+	// 首次调用时缓存 body 字节
+	if respIdx >= len(m.responseBodies) {
+		for len(m.responseBodies) <= respIdx {
+			m.responseBodies = append(m.responseBodies, nil)
+		}
+	}
+	if m.responseBodies[respIdx] == nil && resp.Body != nil {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		m.responseBodies[respIdx] = bodyBytes
+	}
+
+	// 用缓存的 body 重建 reader（支持重试场景多次读取）
+	cloned := *resp
+	if m.responseBodies[respIdx] != nil {
+		cloned.Body = io.NopCloser(bytes.NewReader(m.responseBodies[respIdx]))
+	}
+	return &cloned, respErr
 }
 
 func (m *mockSmartRetryUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, enableTLSFingerprint bool) (*http.Response, error) {

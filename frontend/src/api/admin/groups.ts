@@ -218,6 +218,34 @@ export async function batchSetGroupRateMultipliers(
   return data
 }
 
+/**
+ * Get usage summary (today + cumulative cost) for all groups
+ * @param timezone - IANA timezone string (e.g. "Asia/Shanghai")
+ * @returns Array of group usage summaries
+ */
+export async function getUsageSummary(
+  timezone?: string
+): Promise<{ group_id: number; today_cost: number; total_cost: number }[]> {
+  const { data } = await apiClient.get<
+    { group_id: number; today_cost: number; total_cost: number }[]
+  >('/admin/groups/usage-summary', {
+    params: timezone ? { timezone } : undefined
+  })
+  return data
+}
+
+/**
+ * Get capacity summary (concurrency/sessions/RPM) for all active groups
+ */
+export async function getCapacitySummary(): Promise<
+  { group_id: number; concurrency_used: number; concurrency_max: number; sessions_used: number; sessions_max: number; rpm_used: number; rpm_max: number }[]
+> {
+  const { data } = await apiClient.get<
+    { group_id: number; concurrency_used: number; concurrency_max: number; sessions_used: number; sessions_max: number; rpm_used: number; rpm_max: number }[]
+  >('/admin/groups/capacity-summary')
+  return data
+}
+
 export const groupsAPI = {
   list,
   getAll,
@@ -232,7 +260,9 @@ export const groupsAPI = {
   getGroupRateMultipliers,
   clearGroupRateMultipliers,
   batchSetGroupRateMultipliers,
-  updateSortOrder
+  updateSortOrder,
+  getUsageSummary,
+  getCapacitySummary
 }
 
 export default groupsAPI

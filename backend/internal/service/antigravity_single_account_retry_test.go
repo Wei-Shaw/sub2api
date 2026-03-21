@@ -260,14 +260,15 @@ func TestHandleSmartRetry_429_LongDelay_SingleAccountRetry_StillSwitches(t *test
 
 // TestHandleSmartRetry_503_ShortDelay_SingleAccountRetry_NoRateLimit
 // 503 + retryDelay < 7s + SingleAccountRetry → 智能重试耗尽后直接返回 503，不设限流
+// 使用 RATE_LIMIT_EXCEEDED（走 1 次智能重试），避免 MODEL_CAPACITY_EXHAUSTED 的 60 次重试导致测试超时
 func TestHandleSmartRetry_503_ShortDelay_SingleAccountRetry_NoRateLimit(t *testing.T) {
 	// 智能重试也返回 503
 	failRespBody := `{
 		"error": {
 			"code": 503,
-			"status": "UNAVAILABLE",
+			"status": "RESOURCE_EXHAUSTED",
 			"details": [
-				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"}, "reason": "MODEL_CAPACITY_EXHAUSTED"},
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"}, "reason": "RATE_LIMIT_EXCEEDED"},
 				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"}
 			]
 		}
@@ -278,8 +279,9 @@ func TestHandleSmartRetry_503_ShortDelay_SingleAccountRetry_NoRateLimit(t *testi
 		Body:       io.NopCloser(strings.NewReader(failRespBody)),
 	}
 	upstream := &mockSmartRetryUpstream{
-		responses: []*http.Response{failResp},
-		errors:    []error{nil},
+		responses:  []*http.Response{failResp},
+		errors:     []error{nil},
+		repeatLast: true,
 	}
 
 	repo := &stubAntigravityAccountRepo{}
@@ -294,9 +296,9 @@ func TestHandleSmartRetry_503_ShortDelay_SingleAccountRetry_NoRateLimit(t *testi
 	respBody := []byte(`{
 		"error": {
 			"code": 503,
-			"status": "UNAVAILABLE",
+			"status": "RESOURCE_EXHAUSTED",
 			"details": [
-				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"}, "reason": "MODEL_CAPACITY_EXHAUSTED"},
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-flash"}, "reason": "RATE_LIMIT_EXCEEDED"},
 				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "0.1s"}
 			]
 		}
@@ -569,8 +571,9 @@ func TestHandleSingleAccountRetryInPlace_WaitDurationClamped(t *testing.T) {
 
 	svc := &AntigravityGatewayService{}
 
-	// 等待时间过大应被 clamp 到 antigravitySingleAccountSmartRetryMaxWait
-	result := svc.handleSingleAccountRetryInPlace(params, resp, nil, "https://ag-1.test", 999*time.Second, "gemini-3-pro")
+	// waitDuration=0 会被 clamp 到 antigravitySmartRetryMinWait=1s。
+	// 首次重试即成功（200），总耗时 ~1s。
+	result := svc.handleSingleAccountRetryInPlace(params, resp, nil, "https://ag-1.test", 0, "gemini-3-pro")
 	require.NotNil(t, result)
 	require.Equal(t, smartRetryActionBreakWithResp, result.action)
 	require.NotNil(t, result.resp)

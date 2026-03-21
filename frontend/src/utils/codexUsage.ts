@@ -30,7 +30,10 @@ function asISOTime(value: unknown): string | null {
   return date.toISOString()
 }
 
-function resolveLegacy5h(snapshot: Record<string, unknown>): { used: number | null; resetAfterSeconds: number | null } {
+function resolveLegacy5h(snapshot: Record<string, unknown>): {
+  used: number | null
+  resetAfterSeconds: number | null
+} {
   const primaryWindow = asNumber(snapshot.codex_primary_window_minutes)
   const secondaryWindow = asNumber(snapshot.codex_secondary_window_minutes)
   const primaryUsed = asNumber(snapshot.codex_primary_used_percent)
@@ -47,7 +50,10 @@ function resolveLegacy5h(snapshot: Record<string, unknown>): { used: number | nu
   return { used: secondaryUsed, resetAfterSeconds: secondaryReset }
 }
 
-function resolveLegacy7d(snapshot: Record<string, unknown>): { used: number | null; resetAfterSeconds: number | null } {
+function resolveLegacy7d(snapshot: Record<string, unknown>): {
+  used: number | null
+  resetAfterSeconds: number | null
+} {
   const primaryWindow = asNumber(snapshot.codex_primary_window_minutes)
   const secondaryWindow = asNumber(snapshot.codex_secondary_window_minutes)
   const primaryUsed = asNumber(snapshot.codex_primary_used_percent)
@@ -64,21 +70,25 @@ function resolveLegacy7d(snapshot: Record<string, unknown>): { used: number | nu
   return { used: primaryUsed, resetAfterSeconds: primaryReset }
 }
 
-function resolveFromSeconds(snapshot: Record<string, unknown>, resetAfterSeconds: number | null): string | null {
+function resolveFromSeconds(
+  snapshot: Record<string, unknown>,
+  resetAfterSeconds: number | null
+): string | null {
   if (resetAfterSeconds == null) return null
 
   const baseRaw = asString(snapshot.codex_usage_updated_at)
   const base = baseRaw ? new Date(baseRaw) : new Date()
-  if (Number.isNaN(base.getTime())) {
-    return null
-  }
+  if (Number.isNaN(base.getTime())) return null
 
   const sec = Math.max(0, resetAfterSeconds)
   const resetAt = new Date(base.getTime() + sec * 1000)
   return resetAt.toISOString()
 }
 
-function applyExpiredRule(window: ResolvedCodexUsageWindow, now: Date): ResolvedCodexUsageWindow {
+function applyExpiredRule(
+  window: ResolvedCodexUsageWindow,
+  now: Date
+): ResolvedCodexUsageWindow {
   if (window.usedPercent == null || !window.resetAt) return window
   const resetDate = new Date(window.resetAt)
   if (Number.isNaN(resetDate.getTime())) return window

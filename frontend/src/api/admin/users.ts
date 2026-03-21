@@ -21,6 +21,7 @@ export async function list(
     status?: 'active' | 'disabled'
     role?: 'admin' | 'user'
     search?: string
+    group_name?: string         // fuzzy filter by allowed group name
     attributes?: Record<number, string>  // attributeId -> value
     include_subscriptions?: boolean
   },
@@ -35,6 +36,7 @@ export async function list(
     status: filters?.status,
     role: filters?.role,
     search: filters?.search,
+    group_name: filters?.group_name,
     include_subscriptions: filters?.include_subscriptions
   }
 
@@ -223,6 +225,25 @@ export async function getUserBalanceHistory(
   return data
 }
 
+/**
+ * Replace user's exclusive group
+ * @param userId - User ID
+ * @param oldGroupId - Current group ID to replace
+ * @param newGroupId - New group ID to replace with
+ * @returns Number of migrated keys
+ */
+export async function replaceGroup(
+  userId: number,
+  oldGroupId: number,
+  newGroupId: number
+): Promise<{ migrated_keys: number }> {
+  const { data } = await apiClient.post<{ migrated_keys: number }>(
+    `/admin/users/${userId}/replace-group`,
+    { old_group_id: oldGroupId, new_group_id: newGroupId }
+  )
+  return data
+}
+
 export const usersAPI = {
   list,
   getById,
@@ -234,7 +255,8 @@ export const usersAPI = {
   toggleStatus,
   getUserApiKeys,
   getUserUsageStats,
-  getUserBalanceHistory
+  getUserBalanceHistory,
+  replaceGroup
 }
 
 export default usersAPI

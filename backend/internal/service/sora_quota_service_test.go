@@ -52,8 +52,8 @@ func (r *stubGroupRepoForQuota) ListActiveByPlatform(context.Context, string) ([
 func (r *stubGroupRepoForQuota) ExistsByName(context.Context, string) (bool, error) {
 	return false, nil
 }
-func (r *stubGroupRepoForQuota) GetAccountCount(context.Context, int64) (int64, error) {
-	return 0, nil
+func (r *stubGroupRepoForQuota) GetAccountCount(context.Context, int64) (int64, int64, error) {
+	return 0, 0, nil
 }
 func (r *stubGroupRepoForQuota) DeleteAccountGroupsByGroupID(context.Context, int64) (int64, error) {
 	return 0, nil

@@ -48,7 +48,7 @@
       </span>
 
       <!-- Reset time -->
-      <span v-if="resetsAt" class="shrink-0 text-[10px] text-gray-400">
+      <span v-if="shouldShowResetTime" class="shrink-0 text-[10px] text-gray-400">
         {{ formatResetTime }}
       </span>
     </div>
@@ -56,7 +56,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import type { WindowStats } from '@/types'
 import { formatCompactNumber } from '@/utils/format'
@@ -67,9 +68,33 @@ const props = defineProps<{
   resetsAt?: string | null
   color: 'indigo' | 'emerald' | 'purple' | 'amber'
   windowStats?: WindowStats | null
+  showNowWhenIdle?: boolean
 }>()
 
 const { t } = useI18n()
+
+// Reactive clock for countdown — only runs when a reset time is shown,
+// to avoid creating many idle timers across large account lists.
+const now = ref(new Date())
+const { pause: pauseClock, resume: resumeClock } = useIntervalFn(
+  () => {
+    now.value = new Date()
+  },
+  60_000,
+  { immediate: false },
+)
+if (props.resetsAt) resumeClock()
+watch(
+  () => props.resetsAt,
+  (val) => {
+    if (val) {
+      now.value = new Date()
+      resumeClock()
+    } else {
+      pauseClock()
+    }
+  },
+)
 
 // Label background colors
 const labelClass = computed(() => {
@@ -115,12 +140,22 @@ const displayPercent = computed(() => {
   return percent > 999 ? '>999%' : `${percent}%`
 })
 
+const shouldShowResetTime = computed(() => {
+  if (props.resetsAt) return true
+  return Boolean(props.showNowWhenIdle && props.utilization <= 0)
+})
+
 // Format reset time
 const formatResetTime = computed(() => {
+  // For rolling windows, when utilization is 0%, treat as immediately available.
+  if (props.showNowWhenIdle && props.utilization <= 0) {
+    return '现在'
+  }
+
   if (!props.resetsAt) return '-'
+
   const date = new Date(props.resetsAt)
-  const now = new Date()
-  const diffMs = date.getTime() - now.getTime()
+  const diffMs = date.getTime() - now.value.getTime()
 
   if (diffMs <= 0) return '现在'
 

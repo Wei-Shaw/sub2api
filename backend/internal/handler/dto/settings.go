@@ -79,6 +79,7 @@ type SystemSettings struct {
 	OpsMetricsIntervalSeconds    int    `json:"ops_metrics_interval_seconds"`
 
 	MinClaudeCodeVersion string `json:"min_claude_code_version"`
+	MaxClaudeCodeVersion string `json:"max_claude_code_version"`
 
 	// 分组隔离
 	AllowUngroupedKeyScheduling bool `json:"allow_ungrouped_key_scheduling"`
@@ -165,6 +166,12 @@ type SoraS3Profile struct {
 type ListSoraS3ProfilesResponse struct {
 	ActiveProfileID string          `json:"active_profile_id"`
 	Items           []SoraS3Profile `json:"items"`
+}
+
+// OverloadCooldownSettings 529过载冷却配置 DTO
+type OverloadCooldownSettings struct {
+	Enabled         bool `json:"enabled"`
+	CooldownMinutes int  `json:"cooldown_minutes"`
 }
 
 // StreamTimeoutSettings 流超时处理配置 DTO

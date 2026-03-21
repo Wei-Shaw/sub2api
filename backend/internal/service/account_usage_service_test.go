@@ -148,3 +148,54 @@ func TestAccountUsageService_PersistOpenAICodexProbeSnapshotSetsRateLimit(t *tes
 		t.Fatal("waiting for codex probe rate limit persistence timed out")
 	}
 }
+
+func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+
+	t.Run("expired 5h window zeroes utilization", func(t *testing.T) {
+		extra := map[string]any{
+			"codex_5h_used_percent": 42.0,
+			"codex_5h_reset_at":     "2026-03-16T10:00:00Z", // 2h ago
+		}
+		progress := buildCodexUsageProgressFromExtra(extra, "5h", now)
+		if progress == nil {
+			t.Fatal("expected non-nil progress")
+		}
+		if progress.Utilization != 0 {
+			t.Fatalf("expected Utilization=0 for expired window, got %v", progress.Utilization)
+		}
+		if progress.RemainingSeconds != 0 {
+			t.Fatalf("expected RemainingSeconds=0, got %v", progress.RemainingSeconds)
+		}
+	})
+
+	t.Run("active 5h window keeps utilization", func(t *testing.T) {
+		resetAt := now.Add(2 * time.Hour).Format(time.RFC3339)
+		extra := map[string]any{
+			"codex_5h_used_percent": 42.0,
+			"codex_5h_reset_at":     resetAt,
+		}
+		progress := buildCodexUsageProgressFromExtra(extra, "5h", now)
+		if progress == nil {
+			t.Fatal("expected non-nil progress")
+		}
+		if progress.Utilization != 42.0 {
+			t.Fatalf("expected Utilization=42, got %v", progress.Utilization)
+		}
+	})
+
+	t.Run("expired 7d window zeroes utilization", func(t *testing.T) {
+		extra := map[string]any{
+			"codex_7d_used_percent": 88.0,
+			"codex_7d_reset_at":     "2026-03-15T00:00:00Z", // yesterday
+		}
+		progress := buildCodexUsageProgressFromExtra(extra, "7d", now)
+		if progress == nil {
+			t.Fatal("expected non-nil progress")
+		}
+		if progress.Utilization != 0 {
+			t.Fatalf("expected Utilization=0 for expired 7d window, got %v", progress.Utilization)
+		}
+	})
+}

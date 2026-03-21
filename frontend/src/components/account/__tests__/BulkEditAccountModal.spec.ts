@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
 import BulkEditAccountModal from '../BulkEditAccountModal.vue'
+import ModelWhitelistSelector from '../ModelWhitelistSelector.vue'
+import { adminAPI } from '@/api/admin'
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
@@ -13,7 +15,8 @@ vi.mock('@/stores/app', () => ({
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
-      bulkEdit: vi.fn()
+      bulkUpdate: vi.fn(),
+      checkMixedChannelRisk: vi.fn()
     }
   }
 }))
@@ -32,18 +35,21 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
-function mountModal() {
+function mountModal(extraProps: Record<string, unknown> = {}) {
   return mount(BulkEditAccountModal, {
     props: {
       show: true,
       accountIds: [1, 2],
       selectedPlatforms: ['antigravity'],
+      selectedTypes: ['apikey'],
       proxies: [],
-      groups: []
+      groups: [],
+      ...extraProps
     } as any,
     global: {
       stubs: {
         BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
+        ConfirmDialog: true,
         Select: true,
         ProxySelector: true,
         GroupSelector: true,
@@ -54,12 +60,30 @@ function mountModal() {
 }
 
 describe('BulkEditAccountModal', () => {
-  it('antigravity 白名单包含 Gemini 图片模型且过滤掉普通 GPT 模型', () => {
-    const wrapper = mountModal()
+  beforeEach(() => {
+    vi.mocked(adminAPI.accounts.bulkUpdate).mockReset()
+    vi.mocked(adminAPI.accounts.checkMixedChannelRisk).mockReset()
 
-    expect(wrapper.text()).toContain('Gemini 3.1 Flash Image')
-    expect(wrapper.text()).toContain('Gemini 3 Pro Image (Legacy)')
-    expect(wrapper.text()).not.toContain('GPT-5.3 Codex')
+    vi.mocked(adminAPI.accounts.bulkUpdate).mockResolvedValue({
+      success: 2,
+      failed: 0,
+      results: []
+    } as any)
+    vi.mocked(adminAPI.accounts.checkMixedChannelRisk).mockResolvedValue({
+      has_risk: false
+    } as any)
+  })
+
+  it('antigravity 白名单包含 Gemini 图片模型且过滤掉普通 GPT 模型', async () => {
+    const wrapper = mountModal()
+    const selector = wrapper.findComponent(ModelWhitelistSelector)
+    expect(selector.exists()).toBe(true)
+
+    await selector.find('div.cursor-pointer').trigger('click')
+
+    expect(wrapper.text()).toContain('gemini-3.1-flash-image')
+    expect(wrapper.text()).toContain('gemini-2.5-flash-image')
+    expect(wrapper.text()).not.toContain('gpt-5.3-codex')
   })
 
   it('antigravity 映射预设包含图片映射并过滤 OpenAI 预设', async () => {
@@ -69,8 +93,26 @@ describe('BulkEditAccountModal', () => {
     expect(mappingTab).toBeTruthy()
     await mappingTab!.trigger('click')
 
-    expect(wrapper.text()).toContain('Gemini 3.1 Image')
-    expect(wrapper.text()).toContain('G3 Image→3.1')
-    expect(wrapper.text()).not.toContain('GPT-5.3 Codex')
+    expect(wrapper.text()).toContain('3.1-Flash-Image透传')
+    expect(wrapper.text()).toContain('3-Pro-Image→3.1')
+    expect(wrapper.text()).not.toContain('GPT-5.3 Codex Spark')
+  })
+
+  it('仅勾选模型限制且白名单留空时，应提交空 model_mapping 以支持所有模型', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['anthropic'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-model-restriction-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: {
+        model_mapping: {}
+      }
+    })
   })
 })

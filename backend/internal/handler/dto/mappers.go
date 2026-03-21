@@ -143,6 +143,8 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		SimulateClaudeMaxEnabled: g.SimulateClaudeMaxEnabled,
 		SupportedModelScopes:     g.SupportedModelScopes,
 		AccountCount:             g.AccountCount,
+		ActiveAccountCount:       g.ActiveAccountCount,
+		RateLimitedAccountCount:  g.RateLimitedAccountCount,
 		SortOrder:                g.SortOrder,
 	}
 	if len(g.AccountGroups) > 0 {
@@ -266,9 +268,14 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 	}
 
 	// 客户端亲和调度（Anthropic 和 Antigravity 账号）
-	if a.IsClientAffinityEnabled() {
+	if a.IsAffinityEnabled() {
 		enabled := true
 		out.ClientAffinityEnabled = &enabled
+		allow := a.IsAffinityAllowSwitch()
+		out.AffinityAllowSwitch = &allow
+		if pinnedUsers := a.GetPinnedUsers(); len(pinnedUsers) > 0 {
+			out.PinnedUserIDs = pinnedUsers
+		}
 	}
 
 	// 提取账号配额限制（apikey / bedrock 类型有效）
@@ -528,6 +535,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		AccountID:             l.AccountID,
 		RequestID:             l.RequestID,
 		Model:                 l.Model,
+		UpstreamModel:         l.UpstreamModel,
 		ServiceTier:           l.ServiceTier,
 		ReasoningEffort:       l.ReasoningEffort,
 		InboundEndpoint:       l.InboundEndpoint,

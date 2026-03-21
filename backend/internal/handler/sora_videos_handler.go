@@ -323,7 +323,7 @@ func (h *SoraVideosHandler) selectAccount(c *gin.Context, model string) (*servic
 	}
 
 	selection, err := h.gatewayService.SelectAccountWithLoadAwareness(
-		c.Request.Context(), apiKey.GroupID, "", model, nil, "",
+		c.Request.Context(), apiKey.GroupID, "", model, nil, "", int64(0),
 	)
 	if err != nil {
 		soraErrorResponse(c, http.StatusServiceUnavailable, "server_error", "No available accounts")

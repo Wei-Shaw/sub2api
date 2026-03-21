@@ -884,6 +884,7 @@ import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { useSwipeSelect } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
+import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -941,7 +942,7 @@ const filters = reactive({
 })
 const pagination = reactive({
   page: 1,
-  page_size: 20,
+  page_size: getPersistedPageSize(),
   total: 0,
   pages: 0
 })
@@ -972,7 +973,8 @@ const {
   deselect,
   clear: clearSelectedProxies,
   removeMany: removeSelectedProxies,
-  toggleVisible
+  toggleVisible,
+  batchUpdate
 } = useTableSelection<Proxy>({
   rows: proxies,
   getId: (proxy) => proxy.id
@@ -980,7 +982,8 @@ const {
 useSwipeSelect(proxyTableRef, {
   isSelected,
   select,
-  deselect
+  deselect,
+  batchUpdate
 })
 const accountsProxy = ref<Proxy | null>(null)
 const proxyAccounts = ref<ProxyAccountSummary[]>([])

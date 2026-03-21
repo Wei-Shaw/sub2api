@@ -40,7 +40,7 @@ func NewProxyExitInfoProber(cfg *config.Config) service.ProxyExitInfoProber {
 }
 
 const (
-	defaultProxyProbeTimeout          = 30 * time.Second
+	defaultProxyProbeTimeout          = 10 * time.Second
 	defaultProxyProbeResponseMaxBytes = int64(1024 * 1024)
 )
 

@@ -113,15 +113,18 @@ func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error)
 	return normalized, nil
 }
 
-// generateSessionString generates a Claude Code style session string
+// generateSessionString generates a Claude Code style session string.
+// The output format is determined by the UA version in claude.DefaultHeaders,
+// ensuring consistency between the user_id format and the UA sent to upstream.
 func generateSessionString() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	hex64 := hex.EncodeToString(bytes)
+	hex64 := hex.EncodeToString(b)
 	sessionUUID := uuid.New().String()
-	return fmt.Sprintf("user_%s_account__session_%s", hex64, sessionUUID), nil
+	uaVersion := ExtractCLIVersion(claude.DefaultHeaders["User-Agent"])
+	return FormatMetadataUserID(hex64, "", sessionUUID, uaVersion), nil
 }
 
 // createTestPayload creates a Claude Code style test request payload
@@ -305,7 +308,14 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
+
+		// 403 表示账号被上游封禁，标记为 error 状态
+		if resp.StatusCode == http.StatusForbidden {
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+
+		return s.sendErrorAndEnd(c, errMsg)
 	}
 
 	// Process SSE stream

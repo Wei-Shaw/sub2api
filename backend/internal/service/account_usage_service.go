@@ -48,6 +48,8 @@ type UsageLogRepository interface {
 	GetEndpointStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8) ([]usagestats.EndpointStat, error)
 	GetUpstreamEndpointStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8) ([]usagestats.EndpointStat, error)
 	GetGroupStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8) ([]usagestats.GroupStat, error)
+	GetUserBreakdownStats(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension, limit int) ([]usagestats.UserBreakdownItem, error)
+	GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error)
 	GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, error)
 	GetUserUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.UserUsageTrendPoint, error)
 	GetUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, limit int) (*usagestats.UserSpendingRankingResponse, error)
@@ -175,6 +177,7 @@ type AICredit struct {
 
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
+	Source             string         `json:"source,omitempty"`               // "passive" or "active"
 	UpdatedAt          *time.Time     `json:"updated_at,omitempty"`           // 更新时间
 	FiveHour           *UsageProgress `json:"five_hour"`                      // 5小时窗口
 	SevenDay           *UsageProgress `json:"seven_day,omitempty"`            // 7天窗口
@@ -391,6 +394,9 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*U
 		// 4. 添加窗口统计（有独立缓存，1 分钟）
 		s.addWindowStats(ctx, account, usage)
 
+		// 5. 将主动查询结果同步到被动缓存，下次 passive 加载即为最新值
+		s.syncActiveToPassive(ctx, account.ID, usage)
+
 		s.tryClearRecoverableAccountError(ctx, account)
 		return usage, nil
 	}
@@ -405,6 +411,81 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*U
 
 	// API Key账号不支持usage查询
 	return nil, fmt.Errorf("account type %s does not support usage query", account.Type)
+}
+
+// GetPassiveUsage 从 Account.Extra 中的被动采样数据构建 UsageInfo，不调用外部 API。
+// 仅适用于 Anthropic OAuth / SetupToken 账号。
+func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int64) (*UsageInfo, error) {
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("get account failed: %w", err)
+	}
+
+	if !account.IsAnthropicOAuthOrSetupToken() {
+		return nil, fmt.Errorf("passive usage only supported for Anthropic OAuth/SetupToken accounts")
+	}
+
+	// 复用 estimateSetupTokenUsage 构建 5h 窗口（OAuth 和 SetupToken 逻辑一致）
+	info := s.estimateSetupTokenUsage(account)
+	info.Source = "passive"
+
+	// 设置采样时间
+	if raw, ok := account.Extra["passive_usage_sampled_at"]; ok {
+		if str, ok := raw.(string); ok {
+			if t, err := time.Parse(time.RFC3339, str); err == nil {
+				info.UpdatedAt = &t
+			}
+		}
+	}
+
+	// 构建 7d 窗口（从被动采样数据）
+	util7d := parseExtraFloat64(account.Extra["passive_usage_7d_utilization"])
+	reset7dRaw := parseExtraFloat64(account.Extra["passive_usage_7d_reset"])
+	if util7d > 0 || reset7dRaw > 0 {
+		var resetAt *time.Time
+		var remaining int
+		if reset7dRaw > 0 {
+			t := time.Unix(int64(reset7dRaw), 0)
+			resetAt = &t
+			remaining = int(time.Until(t).Seconds())
+			if remaining < 0 {
+				remaining = 0
+			}
+		}
+		info.SevenDay = &UsageProgress{
+			Utilization:      util7d * 100,
+			ResetsAt:         resetAt,
+			RemainingSeconds: remaining,
+		}
+	}
+
+	// 添加窗口统计
+	s.addWindowStats(ctx, account, info)
+
+	return info, nil
+}
+
+// syncActiveToPassive 将主动查询的最新数据回写到 Extra 被动缓存，
+// 这样下次被动加载时能看到最新值。
+func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, accountID int64, usage *UsageInfo) {
+	extraUpdates := make(map[string]any, 4)
+
+	if usage.FiveHour != nil {
+		extraUpdates["session_window_utilization"] = usage.FiveHour.Utilization / 100
+	}
+	if usage.SevenDay != nil {
+		extraUpdates["passive_usage_7d_utilization"] = usage.SevenDay.Utilization / 100
+		if usage.SevenDay.ResetsAt != nil {
+			extraUpdates["passive_usage_7d_reset"] = usage.SevenDay.ResetsAt.Unix()
+		}
+	}
+
+	if len(extraUpdates) > 0 {
+		extraUpdates["passive_usage_sampled_at"] = time.Now().UTC().Format(time.RFC3339)
+		if err := s.accountRepo.UpdateExtra(ctx, accountID, extraUpdates); err != nil {
+			slog.Warn("sync_active_to_passive_failed", "account_id", accountID, "error", err)
+		}
+	}
 }
 
 func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
@@ -1040,6 +1121,11 @@ func buildCodexUsageProgressFromExtra(extra map[string]any, window string, now t
 				progress.RemainingSeconds = 0
 			}
 		}
+	}
+
+	// 窗口已过期（resetAt 在 now 之前）→ 额度已重置，归零
+	if progress.ResetsAt != nil && !now.Before(*progress.ResetsAt) {
+		progress.Utilization = 0
 	}
 
 	return progress

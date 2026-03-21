@@ -9,6 +9,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -272,6 +273,7 @@ func (h *DashboardHandler) GetModelStats(c *gin.Context) {
 
 	// Parse optional filter params
 	var userID, apiKeyID, accountID, groupID int64
+	modelSource := usagestats.ModelSourceRequested
 	var requestType *int16
 	var stream *bool
 	var billingType *int8
@@ -295,6 +297,13 @@ func (h *DashboardHandler) GetModelStats(c *gin.Context) {
 		if id, err := strconv.ParseInt(groupIDStr, 10, 64); err == nil {
 			groupID = id
 		}
+	}
+	if rawModelSource := strings.TrimSpace(c.Query("model_source")); rawModelSource != "" {
+		if !usagestats.IsValidModelSource(rawModelSource) {
+			response.BadRequest(c, "Invalid model_source, use requested/upstream/mapping")
+			return
+		}
+		modelSource = rawModelSource
 	}
 	if requestTypeStr := strings.TrimSpace(c.Query("request_type")); requestTypeStr != "" {
 		parsed, err := service.ParseUsageRequestType(requestTypeStr)
@@ -322,7 +331,7 @@ func (h *DashboardHandler) GetModelStats(c *gin.Context) {
 		}
 	}
 
-	stats, hit, err := h.getModelStatsCached(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType)
+	stats, hit, err := h.getModelStatsCached(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, modelSource, requestType, stream, billingType)
 	if err != nil {
 		response.Error(c, 500, "Failed to get model statistics")
 		return
@@ -603,4 +612,48 @@ func (h *DashboardHandler) GetBatchAPIKeysUsage(c *gin.Context) {
 	dashboardBatchAPIKeysUsageCache.Set(cacheKey, payload)
 	c.Header("X-Snapshot-Cache", "miss")
 	response.Success(c, payload)
+}
+
+// GetUserBreakdown handles getting per-user usage breakdown within a dimension.
+// GET /api/v1/admin/dashboard/user-breakdown
+// Query params: start_date, end_date, group_id, model, endpoint, endpoint_type, limit
+func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
+	startTime, endTime := parseTimeRange(c)
+
+	dim := usagestats.UserBreakdownDimension{}
+	if v := c.Query("group_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			dim.GroupID = id
+		}
+	}
+	dim.Model = c.Query("model")
+	rawModelSource := strings.TrimSpace(c.DefaultQuery("model_source", usagestats.ModelSourceRequested))
+	if !usagestats.IsValidModelSource(rawModelSource) {
+		response.BadRequest(c, "Invalid model_source, use requested/upstream/mapping")
+		return
+	}
+	dim.ModelType = rawModelSource
+	dim.Endpoint = c.Query("endpoint")
+	dim.EndpointType = c.DefaultQuery("endpoint_type", "inbound")
+
+	limit := 50
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+
+	stats, err := h.dashboardService.GetUserBreakdownStats(
+		c.Request.Context(), startTime, endTime, dim, limit,
+	)
+	if err != nil {
+		response.Error(c, 500, "Failed to get user breakdown stats")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"users":      stats,
+		"start_date": startTime.Format("2006-01-02"),
+		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+	})
 }

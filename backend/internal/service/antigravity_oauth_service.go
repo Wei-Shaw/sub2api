@@ -192,6 +192,10 @@ func (s *AntigravityOAuthService) RefreshToken(ctx context.Context, refreshToken
 		if isNonRetryableAntigravityOAuthError(err) {
 			return nil, err
 		}
+		// 代理连接错误（TCP 超时、连接拒绝、DNS 失败）不重试，立即返回
+		if antigravity.IsConnectionError(err) {
+			return nil, fmt.Errorf("proxy unavailable: %w", err)
+		}
 		lastErr = err
 	}
 

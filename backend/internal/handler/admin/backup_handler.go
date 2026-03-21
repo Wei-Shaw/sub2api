@@ -98,12 +98,12 @@ func (h *BackupHandler) CreateBackup(c *gin.Context) {
 		expireDays = *req.ExpireDays
 	}
 
-	record, err := h.backupService.CreateBackup(c.Request.Context(), "manual", expireDays)
+	record, err := h.backupService.StartBackup(c.Request.Context(), "manual", expireDays)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, record)
+	response.Accepted(c, record)
 }
 
 func (h *BackupHandler) ListBackups(c *gin.Context) {
@@ -196,9 +196,10 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 		return
 	}
 
-	if err := h.backupService.RestoreBackup(c.Request.Context(), backupID); err != nil {
+	record, err := h.backupService.StartRestore(c.Request.Context(), backupID)
+	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, gin.H{"restored": true})
+	response.Accepted(c, record)
 }

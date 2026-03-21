@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -12,9 +13,9 @@ import (
 )
 
 const (
-	stickySessionPrefix         = "sticky_session:"
-	clientAffinityPrefix        = "client_affinity:"
-	clientAffinityReversePrefix = "client_affinity_rev:"
+	stickySessionPrefix  = "sticky_session:"
+	affinityKeyPrefix    = "affinity:"
+	affinityRevKeyPrefix = "affinity_rev:"
 )
 
 var (
@@ -30,6 +31,8 @@ var (
 	getAffinityClientsWithScoresLua string
 	//go:embed lua/clear_account_affinity.lua
 	clearAccountAffinityLua string
+	//go:embed lua/get_affinity_multi_count.lua
+	getAffinityMultiCountLua string
 
 	getAffinityScript                  = redis.NewScript(getAffinityLua)
 	updateAffinityScript               = redis.NewScript(updateAffinityLua)
@@ -37,6 +40,7 @@ var (
 	getAffinityClientsScript           = redis.NewScript(getAffinityClientsLua)
 	getAffinityClientsWithScoresScript = redis.NewScript(getAffinityClientsWithScoresLua)
 	clearAccountAffinityScript         = redis.NewScript(clearAccountAffinityLua)
+	getAffinityMultiCountScript        = redis.NewScript(getAffinityMultiCountLua)
 )
 
 type gatewayCache struct {
@@ -84,20 +88,39 @@ func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64
 	return c.rdb.Del(ctx, key).Err()
 }
 
-// buildAffinityKey 构建正向亲和 key（client → accounts）
-// 格式: client_affinity:{groupID}:{clientID}
-func buildAffinityKey(groupID int64, clientID string) string {
-	return fmt.Sprintf("%s%d:%s", clientAffinityPrefix, groupID, clientID)
+// buildAffinityKey 构建正向亲和 key（member → accounts）
+// 格式: affinity:{groupID}:{userID}/{clientID}
+func buildAffinityKey(groupID int64, userID int64, clientID string) string {
+	return fmt.Sprintf("%s%d:%s", affinityKeyPrefix, groupID, buildAffinityMember(userID, clientID))
 }
 
-// buildAffinityReverseKey 构建反向亲和 key（account → clients）
-// 格式: client_affinity_rev:{groupID}:{accountID}
+// buildAffinityReverseKey 构建反向亲和 key（account → members）
+// 格式: affinity_rev:{groupID}:{accountID}
 func buildAffinityReverseKey(groupID int64, accountID int64) string {
-	return fmt.Sprintf("%s%d:%d", clientAffinityReversePrefix, groupID, accountID)
+	return fmt.Sprintf("%s%d:%d", affinityRevKeyPrefix, groupID, accountID)
 }
 
-func (c *gatewayCache) GetClientAffinityAccounts(ctx context.Context, groupID int64, clientID string, ttl time.Duration) ([]int64, error) {
-	key := buildAffinityKey(groupID, clientID)
+// buildAffinityMember 构建亲和成员标识
+// 格式: {userID}/{clientID}
+func buildAffinityMember(userID int64, clientID string) string {
+	return fmt.Sprintf("%d/%s", userID, clientID)
+}
+
+// parseAffinityMember 解析亲和成员标识为 userID 和 clientID
+func parseAffinityMember(member string) (userID int64, clientID string) {
+	idx := strings.IndexByte(member, '/')
+	if idx < 0 {
+		// 兼容旧格式（纯 clientID，无 userID 前缀）
+		return 0, member
+	}
+	userID, _ = strconv.ParseInt(member[:idx], 10, 64)
+	clientID = member[idx+1:]
+	return userID, clientID
+}
+
+// GetAffinityAccounts 获取亲和账号列表（按最近使用降序），同时清理过期成员
+func (c *gatewayCache) GetAffinityAccounts(ctx context.Context, groupID int64, userID int64, clientID string, ttl time.Duration) ([]int64, error) {
+	key := buildAffinityKey(groupID, userID, clientID)
 	now := time.Now().Unix()
 	expireThreshold := now - int64(ttl.Seconds())
 
@@ -120,19 +143,21 @@ func (c *gatewayCache) GetClientAffinityAccounts(ctx context.Context, groupID in
 	return accountIDs, nil
 }
 
-func (c *gatewayCache) UpdateClientAffinity(ctx context.Context, groupID int64, clientID string, accountID int64, ttl time.Duration) error {
-	fwdKey := buildAffinityKey(groupID, clientID)
+// UpdateAffinity 添加/更新亲和关系（更新 score 为当前时间戳，刷新 key TTL）
+func (c *gatewayCache) UpdateAffinity(ctx context.Context, groupID int64, userID int64, clientID string, accountID int64, ttl time.Duration) error {
+	fwdKey := buildAffinityKey(groupID, userID, clientID)
 	revKey := buildAffinityReverseKey(groupID, accountID)
 	now := time.Now().Unix()
 	ttlSeconds := int64(ttl.Seconds())
 	expireThreshold := now - ttlSeconds
 
+	member := buildAffinityMember(userID, clientID)
 	return updateAffinityScript.Run(ctx, c.rdb, []string{fwdKey, revKey},
-		now, ttlSeconds, accountID, expireThreshold, clientID,
+		now, ttlSeconds, accountID, expireThreshold, member,
 	).Err()
 }
 
-// GetAccountAffinityCountBatch 批量获取账号的亲和客户端数量（惰性清理过期成员）
+// GetAccountAffinityCountBatch 批量获取账号的亲和成员数量（惰性清理过期成员）
 func (c *gatewayCache) GetAccountAffinityCountBatch(ctx context.Context, groupID int64, accountIDs []int64, ttl time.Duration) (map[int64]int64, error) {
 	if len(accountIDs) == 0 {
 		return map[int64]int64{}, nil
@@ -162,8 +187,9 @@ func (c *gatewayCache) GetAccountAffinityCountBatch(ctx context.Context, groupID
 	return result, nil
 }
 
-// GetAccountAffinityClientsBatch 批量获取每个账号跨所有分组的亲和客户端列表（去重）。
+// GetAccountAffinityClientsBatch 批量获取每个账号跨所有分组的亲和成员列表（去重）。
 // accountGroups: map[accountID][]groupID，对每个 (groupID, accountID) 组合查询反向索引。
+// 返回值成员格式为 {userID}/{clientID}。
 func (c *gatewayCache) GetAccountAffinityClientsBatch(ctx context.Context, accountGroups map[int64][]int64, ttl time.Duration) (map[int64][]string, error) {
 	if len(accountGroups) == 0 {
 		return map[int64][]string{}, nil
@@ -197,21 +223,21 @@ func (c *gatewayCache) GetAccountAffinityClientsBatch(ctx context.Context, accou
 		return nil, err
 	}
 
-	// 合并结果：同一个 accountID 跨多个 group 的 clientID 去重
+	// 合并结果：同一个 accountID 跨多个 group 的成员去重
 	result := make(map[int64][]string, len(accountGroups))
 	seen := make(map[int64]map[string]struct{}, len(accountGroups))
 	for i, q := range queries {
-		clients, _ := cmds[i].StringSlice()
-		if len(clients) == 0 {
+		members, _ := cmds[i].StringSlice()
+		if len(members) == 0 {
 			continue
 		}
 		if seen[q.accountID] == nil {
 			seen[q.accountID] = make(map[string]struct{})
 		}
-		for _, clientID := range clients {
-			if _, exists := seen[q.accountID][clientID]; !exists {
-				seen[q.accountID][clientID] = struct{}{}
-				result[q.accountID] = append(result[q.accountID], clientID)
+		for _, member := range members {
+			if _, exists := seen[q.accountID][member]; !exists {
+				seen[q.accountID][member] = struct{}{}
+				result[q.accountID] = append(result[q.accountID], member)
 			}
 		}
 	}
@@ -245,25 +271,32 @@ func (c *gatewayCache) GetAccountAffinityClientsWithScores(
 		return nil, err
 	}
 
-	// 合并跨组结果，同一 clientID 取最近的 lastActive
-	seen := make(map[string]int64) // clientID → max timestamp
+	// 合并跨组结果，同一 member 取最近的 lastActive
+	type memberInfo struct {
+		userID   int64
+		clientID string
+		ts       int64
+	}
+	seen := make(map[string]*memberInfo) // member string → info
 	for _, cmd := range cmds {
 		vals, _ := cmd.StringSlice()
-		// vals 格式: [clientID1, score1, clientID2, score2, ...]
+		// vals 格式: [member1, score1, member2, score2, ...]
 		for j := 0; j+1 < len(vals); j += 2 {
-			clientID := vals[j]
+			member := vals[j]
 			ts, _ := strconv.ParseInt(vals[j+1], 10, 64)
-			if existing, ok := seen[clientID]; !ok || ts > existing {
-				seen[clientID] = ts
+			if existing, ok := seen[member]; !ok || ts > existing.ts {
+				uid, cid := parseAffinityMember(member)
+				seen[member] = &memberInfo{userID: uid, clientID: cid, ts: ts}
 			}
 		}
 	}
 
 	result := make([]service.AffinityClient, 0, len(seen))
-	for clientID, ts := range seen {
+	for _, info := range seen {
 		result = append(result, service.AffinityClient{
-			ClientID:   clientID,
-			LastActive: time.Unix(ts, 0),
+			UserID:     info.userID,
+			ClientID:   info.clientID,
+			LastActive: time.Unix(info.ts, 0),
 		})
 	}
 
@@ -274,8 +307,8 @@ func (c *gatewayCache) GetAccountAffinityClientsWithScores(
 }
 
 // ClearAccountAffinity 清除指定账号在所有分组的亲和记录（正向+反向索引）。
-// 对每个 groupID 执行 Lua 脚本：读取反向索引获取所有客户端，
-// 从每个客户端的正向索引中移除该账号，然后删除反向索引。
+// 对每个 groupID 执行 Lua 脚本：读取反向索引获取所有成员，
+// 从每个成员的正向索引中移除该账号，然后删除反向索引。
 func (c *gatewayCache) ClearAccountAffinity(ctx context.Context, accountID int64, groupIDs []int64) error {
 	if len(groupIDs) == 0 {
 		return nil
@@ -293,4 +326,38 @@ func (c *gatewayCache) ClearAccountAffinity(ctx context.Context, accountID int64
 		return err
 	}
 	return nil
+}
+
+// GetAffinityMultiCount 获取账号的多维度亲和计数。
+// 返回: uniqueUsers（独立用户数）, uniqueClients（独立客户端数）, perUserClients（目标用户的客户端数）
+func (c *gatewayCache) GetAffinityMultiCount(
+	ctx context.Context,
+	groupID int64,
+	accountID int64,
+	targetUserID int64,
+	ttl time.Duration,
+) (users, clients, perUser int64, err error) {
+	key := buildAffinityReverseKey(groupID, accountID)
+	now := time.Now().Unix()
+	expireThreshold := now - int64(ttl.Seconds())
+
+	targetUserStr := ""
+	if targetUserID > 0 {
+		targetUserStr = strconv.FormatInt(targetUserID, 10)
+	}
+
+	result, err := getAffinityMultiCountScript.Run(ctx, c.rdb, []string{key}, expireThreshold, targetUserStr).Int64Slice()
+	if err != nil {
+		if err == redis.Nil {
+			return 0, 0, 0, nil
+		}
+		return 0, 0, 0, err
+	}
+
+	if len(result) < 4 {
+		return 0, 0, 0, nil
+	}
+
+	// result: {totalMembers, uniqueUsers, uniqueClients, perUserClients}
+	return result[1], result[2], result[3], nil
 }

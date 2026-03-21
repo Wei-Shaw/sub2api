@@ -1,7 +1,9 @@
 package service
 
 import (
-	"fmt"
+	"net"
+	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -23,10 +25,14 @@ func (p *Proxy) IsActive() bool {
 }
 
 func (p *Proxy) URL() string {
-	if p.Username != "" && p.Password != "" {
-		return fmt.Sprintf("%s://%s:%s@%s:%d", p.Protocol, p.Username, p.Password, p.Host, p.Port)
+	u := &url.URL{
+		Scheme: p.Protocol,
+		Host:   net.JoinHostPort(p.Host, strconv.Itoa(p.Port)),
 	}
-	return fmt.Sprintf("%s://%s:%d", p.Protocol, p.Host, p.Port)
+	if p.Username != "" && p.Password != "" {
+		u.User = url.UserPassword(p.Username, p.Password)
+	}
+	return u.String()
 }
 
 type ProxyWithAccountCount struct {

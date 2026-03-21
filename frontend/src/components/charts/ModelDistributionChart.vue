@@ -6,7 +6,42 @@
           ? t('admin.dashboard.modelDistribution')
           : t('admin.dashboard.spendingRankingTitle') }}
       </h3>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <div
+          v-if="showSourceToggle"
+          class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-dark-800"
+        >
+          <button
+            type="button"
+            class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+            :class="source === 'requested'
+              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+            @click="emit('update:source', 'requested')"
+          >
+            {{ t('usage.requestedModel') }}
+          </button>
+          <button
+            type="button"
+            class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+            :class="source === 'upstream'
+              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+            @click="emit('update:source', 'upstream')"
+          >
+            {{ t('usage.upstreamModel') }}
+          </button>
+          <button
+            type="button"
+            class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+            :class="source === 'mapping'
+              ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white'
+              : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+            @click="emit('update:source', 'mapping')"
+          >
+            {{ t('usage.mapping') }}
+          </button>
+        </div>
         <div
           v-if="showMetricToggle"
           class="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-dark-800"
@@ -83,30 +118,43 @@
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="model in displayModelStats"
-              :key="model.model"
-              class="border-t border-gray-100 dark:border-gray-700"
-            >
-              <td
-                class="max-w-[100px] truncate py-1.5 font-medium text-gray-900 dark:text-white"
-                :title="model.model"
+            <template v-for="model in displayModelStats" :key="model.model">
+              <tr
+                class="border-t border-gray-100 cursor-pointer transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-dark-700/40"
+                @click="toggleBreakdown('model', model.model)"
               >
-                {{ model.model }}
-              </td>
-              <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
-                {{ formatNumber(model.requests) }}
-              </td>
-              <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
-                {{ formatTokens(model.total_tokens) }}
-              </td>
-              <td class="py-1.5 text-right text-green-600 dark:text-green-400">
-                ${{ formatCost(model.actual_cost) }}
-              </td>
-              <td class="py-1.5 text-right text-gray-400 dark:text-gray-500">
-                ${{ formatCost(model.cost) }}
-              </td>
-            </tr>
+                <td
+                  class="max-w-[100px] truncate py-1.5 font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                  :title="model.model"
+                >
+                  <span class="inline-flex items-center gap-1">
+                    <svg v-if="expandedKey === `model-${model.model}`" class="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    <svg v-else class="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    {{ model.model }}
+                  </span>
+                </td>
+                <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
+                  {{ formatNumber(model.requests) }}
+                </td>
+                <td class="py-1.5 text-right text-gray-600 dark:text-gray-400">
+                  {{ formatTokens(model.total_tokens) }}
+                </td>
+                <td class="py-1.5 text-right text-green-600 dark:text-green-400">
+                  ${{ formatCost(model.actual_cost) }}
+                </td>
+                <td class="py-1.5 text-right text-gray-400 dark:text-gray-500">
+                  ${{ formatCost(model.cost) }}
+                </td>
+              </tr>
+              <tr v-if="expandedKey === `model-${model.model}`">
+                <td colspan="5" class="p-0">
+                  <UserBreakdownSubTable
+                    :items="breakdownItems"
+                    :loading="breakdownLoading"
+                  />
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -193,16 +241,22 @@ import { useI18n } from 'vue-i18n'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import { Doughnut } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
-import type { ModelStat, UserSpendingRankingItem } from '@/types'
+import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
+import type { ModelStat, UserSpendingRankingItem, UserBreakdownItem } from '@/types'
+import { getUserBreakdown } from '@/api/admin/dashboard'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
 const { t } = useI18n()
 
 type DistributionMetric = 'tokens' | 'actual_cost'
+type ModelSource = 'requested' | 'upstream' | 'mapping'
 type RankingDisplayItem = UserSpendingRankingItem & { isOther?: boolean }
 const props = withDefaults(defineProps<{
   modelStats: ModelStat[]
+  upstreamModelStats?: ModelStat[]
+  mappingModelStats?: ModelStat[]
+  source?: ModelSource
   enableRankingView?: boolean
   rankingItems?: UserSpendingRankingItem[]
   rankingTotalActualCost?: number
@@ -210,10 +264,16 @@ const props = withDefaults(defineProps<{
   rankingTotalTokens?: number
   loading?: boolean
   metric?: DistributionMetric
+  showSourceToggle?: boolean
   showMetricToggle?: boolean
   rankingLoading?: boolean
   rankingError?: boolean
+  startDate?: string
+  endDate?: string
 }>(), {
+  upstreamModelStats: () => [],
+  mappingModelStats: () => [],
+  source: 'requested',
   enableRankingView: false,
   rankingItems: () => [],
   rankingTotalActualCost: 0,
@@ -221,13 +281,43 @@ const props = withDefaults(defineProps<{
   rankingTotalTokens: 0,
   loading: false,
   metric: 'tokens',
+  showSourceToggle: false,
   showMetricToggle: false,
   rankingLoading: false,
   rankingError: false
 })
 
+const expandedKey = ref<string | null>(null)
+const breakdownItems = ref<UserBreakdownItem[]>([])
+const breakdownLoading = ref(false)
+
+const toggleBreakdown = async (type: string, id: string) => {
+  const key = `${type}-${id}`
+  if (expandedKey.value === key) {
+    expandedKey.value = null
+    return
+  }
+  expandedKey.value = key
+  breakdownLoading.value = true
+  breakdownItems.value = []
+  try {
+    const res = await getUserBreakdown({
+      start_date: props.startDate,
+      end_date: props.endDate,
+      model: id,
+      model_source: props.source,
+    })
+    breakdownItems.value = res.users || []
+  } catch {
+    breakdownItems.value = []
+  } finally {
+    breakdownLoading.value = false
+  }
+}
+
 const emit = defineEmits<{
   'update:metric': [value: DistributionMetric]
+  'update:source': [value: ModelSource]
   'ranking-click': [item: UserSpendingRankingItem]
 }>()
 
@@ -250,14 +340,19 @@ const chartColors = [
 ]
 
 const displayModelStats = computed(() => {
-  if (!props.modelStats?.length) return []
+  const sourceStats = props.source === 'upstream'
+    ? props.upstreamModelStats
+    : props.source === 'mapping'
+      ? props.mappingModelStats
+      : props.modelStats
+  if (!sourceStats?.length) return []
 
   const metricKey = props.metric === 'actual_cost' ? 'actual_cost' : 'total_tokens'
-  return [...props.modelStats].sort((a, b) => b[metricKey] - a[metricKey])
+  return [...sourceStats].sort((a, b) => b[metricKey] - a[metricKey])
 })
 
 const chartData = computed(() => {
-  if (!props.modelStats?.length) return null
+  if (!displayModelStats.value.length) return null
 
   return {
     labels: displayModelStats.value.map((m) => m.model),

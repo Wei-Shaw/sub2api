@@ -181,6 +181,9 @@ func (r *stubUserRepoForQuota) ExistsByEmail(context.Context, string) (bool, err
 func (r *stubUserRepoForQuota) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
 }
+func (r *stubUserRepoForQuota) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
+	return nil
+}
 func (r *stubUserRepoForQuota) UpdateTotpSecret(context.Context, int64, *string) error { return nil }
 func (r *stubUserRepoForQuota) EnableTotp(context.Context, int64) error                { return nil }
 func (r *stubUserRepoForQuota) DisableTotp(context.Context, int64) error               { return nil }

@@ -67,13 +67,45 @@
           :resets-at="usageInfo.seven_day_sonnet.resets_at"
           color="purple"
         />
+
+        <!-- Passive sampling label + active query button -->
+        <div class="flex items-center gap-1.5 mt-0.5">
+          <span
+            v-if="usageInfo.source === 'passive'"
+            class="text-[9px] text-gray-400 dark:text-gray-500 italic"
+          >
+            {{ t('admin.accounts.usageWindow.passiveSampled') }}
+          </span>
+          <button
+            type="button"
+            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
+            :disabled="activeQueryLoading"
+            @click="loadActiveUsage"
+          >
+            <svg
+              class="h-2.5 w-2.5"
+              :class="{ 'animate-spin': activeQueryLoading }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {{ t('admin.accounts.usageWindow.activeQuery') }}
+          </button>
+        </div>
       </div>
 
       <!-- No data yet -->
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
-    <!-- OpenAI OAuth accounts: prefer fresh usage query for active rate-limited rows -->
+    <!-- OpenAI OAuth accounts: prefer /usage API, fallback to local Codex snapshot -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
@@ -82,6 +114,7 @@
           :utilization="usageInfo.five_hour.utilization"
           :resets-at="usageInfo.five_hour.resets_at"
           :window-stats="usageInfo.five_hour.window_stats"
+          :show-now-when-idle="true"
           color="indigo"
         />
         <UsageProgressBar
@@ -90,6 +123,7 @@
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
           :window-stats="usageInfo.seven_day.window_stats"
+          :show-now-when-idle="true"
           color="emerald"
         />
       </div>
@@ -106,21 +140,20 @@
         </div>
       </div>
       <div v-else-if="hasCodexUsage" class="space-y-1">
-        <!-- 5h Window -->
         <UsageProgressBar
           v-if="codex5hUsedPercent !== null"
           label="5h"
           :utilization="codex5hUsedPercent"
           :resets-at="codex5hResetAt"
+          :show-now-when-idle="true"
           color="indigo"
         />
-
-        <!-- 7d Window -->
         <UsageProgressBar
           v-if="codex7dUsedPercent !== null"
           label="7d"
           :utilization="codex7dUsedPercent"
           :resets-at="codex7dResetAt"
+          :show-now-when-idle="true"
           color="emerald"
         />
       </div>
@@ -450,6 +483,10 @@ import { formatCompactNumber } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 
+// Module-level cache shared across all AccountUsageCell instances
+const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
+const USAGE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
 const props = withDefaults(
   defineProps<{
     account: Account
@@ -470,6 +507,7 @@ const unmounted = ref(false)
 onBeforeUnmount(() => { unmounted.value = true })
 
 const loading = ref(false)
+const activeQueryLoading = ref(false)
 const error = ref<string | null>(null)
 const usageInfo = ref<AccountUsageInfo | null>(null)
 
@@ -510,8 +548,8 @@ const geminiUsageAvailable = computed(() => {
 const codex5hWindow = computed(() => resolveCodexUsageWindow(props.account.extra, '5h'))
 const codex7dWindow = computed(() => resolveCodexUsageWindow(props.account.extra, '7d'))
 
-// OpenAI Codex usage computed properties
 const hasCodexUsage = computed(() => {
+  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
   return codex5hWindow.value.usedPercent !== null || codex7dWindow.value.usedPercent !== null
 })
 
@@ -527,16 +565,16 @@ const isActiveOpenAIRateLimited = computed(() => {
   return !Number.isNaN(resetAt) && resetAt > Date.now()
 })
 
+const codex5hUsedPercent = computed(() => codex5hWindow.value.usedPercent)
+const codex5hResetAt = computed(() => codex5hWindow.value.resetAt)
+const codex7dUsedPercent = computed(() => codex7dWindow.value.usedPercent)
+const codex7dResetAt = computed(() => codex7dWindow.value.resetAt)
+
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
 
 const shouldAutoLoadUsageOnMount = computed(() => {
   return shouldFetchUsage.value
 })
-
-const codex5hUsedPercent = computed(() => codex5hWindow.value.usedPercent)
-const codex5hResetAt = computed(() => codex5hWindow.value.resetAt)
-const codex7dUsedPercent = computed(() => codex7dWindow.value.usedPercent)
-const codex7dResetAt = computed(() => codex7dWindow.value.resetAt)
 
 // Antigravity quota types (用于 API 返回的数据)
 interface AntigravityUsageResult {
@@ -945,16 +983,33 @@ const copyValidationURL = async () => {
   }
 }
 
-const loadUsage = async () => {
+const isAnthropicOAuthOrSetupToken = computed(() => {
+  return props.account.platform === 'anthropic' && (props.account.type === 'oauth' || props.account.type === 'setup-token')
+})
+
+const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?: boolean }) => {
   if (!shouldFetchUsage.value) return
+
+  // Check cache
+  if (!options?.bypassCache) {
+    const cached = _usageCache.get(props.account.id)
+    if (cached && Date.now() - cached.ts < USAGE_CACHE_TTL) {
+      usageInfo.value = cached.data
+      loading.value = false
+      return
+    }
+  }
 
   loading.value = true
   error.value = null
 
   try {
-    const fetchFn = () => adminAPI.accounts.getUsage(props.account.id)
+    const fetchFn = () => adminAPI.accounts.getUsage(props.account.id, options?.source)
     const result = await enqueueUsageRequest(props.account, fetchFn)
-    if (!unmounted.value) usageInfo.value = result
+    if (!unmounted.value) {
+      usageInfo.value = result
+      _usageCache.set(props.account.id, { data: result, ts: Date.now() })
+    }
   } catch (e: any) {
     if (!unmounted.value) {
       error.value = t('common.error')
@@ -962,6 +1017,17 @@ const loadUsage = async () => {
     }
   } finally {
     if (!unmounted.value) loading.value = false
+  }
+}
+
+const loadActiveUsage = async () => {
+  activeQueryLoading.value = true
+  try {
+    usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active')
+  } catch (e: any) {
+    console.error('Failed to load active usage:', e)
+  } finally {
+    activeQueryLoading.value = false
   }
 }
 
@@ -1058,7 +1124,8 @@ const formatKeyUserCost = computed(() => {
 
 onMounted(() => {
   if (!shouldAutoLoadUsageOnMount.value) return
-  loadUsage()
+  const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
+  loadUsage({ source })
 })
 
 watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
@@ -1076,7 +1143,9 @@ watch(
     if (nextToken === prevToken) return
     if (!shouldFetchUsage.value) return
 
-    loadUsage().catch((e) => {
+    const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
+    _usageCache.delete(props.account.id)
+    loadUsage({ source, bypassCache: true }).catch((e) => {
       console.error('Failed to refresh usage after manual refresh:', e)
     })
   }
