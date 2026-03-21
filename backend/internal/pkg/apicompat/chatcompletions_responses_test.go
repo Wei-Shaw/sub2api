@@ -181,6 +181,35 @@ REDACTED
 	assert.Equal(t, "data:image/png;base64,abc123", parts[1].ImageURL)
 REDACTED
 
+func TestChatCompletionsToResponses_SystemArrayContent(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "system", Content: json.RawMessage(`[{"type":"text","text":"You are a careful visual assistant."REDACTED]`)REDACTED,
+			{Role: "user", Content: json.RawMessage(`[{"type":"text","text":"Describe this image"REDACTED,{"type":"image_url","image_url":{"url":"data:image/png;base64,abc123"REDACTEDREDACTED]`)REDACTED,
+	REDACTED,
+REDACTED
+
+	resp, err := ChatCompletionsToResponses(req)
+REDACTED
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 2)
+
+	var systemParts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &systemParts))
+	require.Len(t, systemParts, 1)
+	assert.Equal(t, "input_text", systemParts[0].Type)
+	assert.Equal(t, "You are a careful visual assistant.", systemParts[0].Text)
+
+	var userParts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[1].Content, &userParts))
+	require.Len(t, userParts, 2)
+	assert.Equal(t, "input_image", userParts[1].Type)
+	assert.Equal(t, "data:image/png;base64,abc123", userParts[1].ImageURL)
+REDACTED
+
 func TestChatCompletionsToResponses_LegacyFunctions(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",
@@ -396,6 +425,45 @@ REDACTED
 	require.NoError(t, json.Unmarshal(chat.Choices[0].Message.Content, &content))
 	assert.Equal(t, "The answer is 42.", content)
 	assert.Equal(t, "I thought about it.", chat.Choices[0].Message.ReasoningContent)
+REDACTED
+
+func TestChatCompletionsToResponses_ToolArrayContent(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(`"Use the tool"`)REDACTED,
+			{
+				Role: "assistant",
+				ToolCalls: []ChatToolCall{
+					{
+						ID:   "call_1",
+						Type: "function",
+						Function: ChatFunctionCall{
+							Name:      "inspect_image",
+							Arguments: `{REDACTED`,
+					REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			{
+				Role:       "tool",
+				ToolCallID: "call_1",
+				Content: json.RawMessage(
+					`[{"type":"text","text":"image width: 100"REDACTED,{"type":"image_url","image_url":{"url":"data:image/png;base64,ignored"REDACTEDREDACTED,{"type":"text","text":"; image height: 200"REDACTED]`,
+				),
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	resp, err := ChatCompletionsToResponses(req)
+REDACTED
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 3)
+	assert.Equal(t, "function_call_output", items[2].Type)
+	assert.Equal(t, "call_1", items[2].CallID)
+	assert.Equal(t, "image width: 100; image height: 200", items[2].Output)
 REDACTED
 
 func TestResponsesToChatCompletions_Incomplete(t *testing.T) {
