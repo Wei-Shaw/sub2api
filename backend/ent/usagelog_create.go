@@ -57,6 +57,20 @@ func (_c *UsageLogCreate) SetModel(v string) *UsageLogCreate {
 	return _c
 REDACTED
 
+// SetRequestedModel sets the "requested_model" field.
+func (_c *UsageLogCreate) SetRequestedModel(v string) *UsageLogCreate {
+	_c.mutation.SetRequestedModel(v)
+	return _c
+REDACTED
+
+// SetNillableRequestedModel sets the "requested_model" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRequestedModel(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetRequestedModel(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetUpstreamModel sets the "upstream_model" field.
 func (_c *UsageLogCreate) SetUpstreamModel(v string) *UsageLogCreate {
 	_c.mutation.SetUpstreamModel(v)
@@ -610,6 +624,11 @@ REDACTED
 			return &ValidationError{Name: "model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model": %w`, err)REDACTED
 	REDACTED
 REDACTED
+	if v, ok := _c.mutation.RequestedModel(); ok {
+		if err := usagelog.RequestedModelValidator(v); err != nil {
+			return &ValidationError{Name: "requested_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.requested_model": %w`, err)REDACTED
+	REDACTED
+REDACTED
 	if v, ok := _c.mutation.UpstreamModel(); ok {
 		if err := usagelog.UpstreamModelValidator(v); err != nil {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)REDACTED
@@ -732,6 +751,10 @@ REDACTED
 	if value, ok := _c.mutation.Model(); ok {
 		_spec.SetField(usagelog.FieldModel, field.TypeString, value)
 		_node.Model = value
+REDACTED
+	if value, ok := _c.mutation.RequestedModel(); ok {
+		_spec.SetField(usagelog.FieldRequestedModel, field.TypeString, value)
+		_node.RequestedModel = &value
 REDACTED
 	if value, ok := _c.mutation.UpstreamModel(); ok {
 		_spec.SetField(usagelog.FieldUpstreamModel, field.TypeString, value)
@@ -1031,6 +1054,24 @@ REDACTED
 // UpdateModel sets the "model" field to the value that was provided on create.
 func (u *UsageLogUpsert) UpdateModel() *UsageLogUpsert {
 	u.SetExcluded(usagelog.FieldModel)
+	return u
+REDACTED
+
+// SetRequestedModel sets the "requested_model" field.
+func (u *UsageLogUpsert) SetRequestedModel(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldRequestedModel, v)
+	return u
+REDACTED
+
+// UpdateRequestedModel sets the "requested_model" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRequestedModel() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRequestedModel)
+	return u
+REDACTED
+
+// ClearRequestedModel clears the value of the "requested_model" field.
+func (u *UsageLogUpsert) ClearRequestedModel() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRequestedModel)
 	return u
 REDACTED
 
@@ -1638,6 +1679,27 @@ REDACTED
 func (u *UsageLogUpsertOne) UpdateModel() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateModel()
+REDACTED)
+REDACTED
+
+// SetRequestedModel sets the "requested_model" field.
+func (u *UsageLogUpsertOne) SetRequestedModel(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRequestedModel(v)
+REDACTED)
+REDACTED
+
+// UpdateRequestedModel sets the "requested_model" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRequestedModel() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRequestedModel()
+REDACTED)
+REDACTED
+
+// ClearRequestedModel clears the value of the "requested_model" field.
+func (u *UsageLogUpsertOne) ClearRequestedModel() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRequestedModel()
 REDACTED)
 REDACTED
 
@@ -2493,6 +2555,27 @@ REDACTED
 func (u *UsageLogUpsertBulk) UpdateModel() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateModel()
+REDACTED)
+REDACTED
+
+// SetRequestedModel sets the "requested_model" field.
+func (u *UsageLogUpsertBulk) SetRequestedModel(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRequestedModel(v)
+REDACTED)
+REDACTED
+
+// UpdateRequestedModel sets the "requested_model" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRequestedModel() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRequestedModel()
+REDACTED)
+REDACTED
+
+// ClearRequestedModel clears the value of the "requested_model" field.
+func (u *UsageLogUpsertBulk) ClearRequestedModel() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRequestedModel()
 REDACTED)
 REDACTED
 

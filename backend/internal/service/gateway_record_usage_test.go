@@ -162,6 +162,32 @@ REDACTED
 	require.Equal(t, "local:req-local-123", billingRepo.lastCmd.RequestPayloadHash)
 REDACTED
 
+func TestGatewayServiceRecordUsage_PreservesRequestedAndUpstreamModels(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED)
+	mappedModel := "claude-sonnet-4-20250514"
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:     "gateway_models_split",
+			Usage:         ClaudeUsage{InputTokens: 10, OutputTokens: 6REDACTED,
+			Model:         "claude-sonnet-4",
+			UpstreamModel: mappedModel,
+			Duration:      time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 501, Quota: 100REDACTED,
+		User:    &User{ID: 601REDACTED,
+		Account: &Account{ID: 701REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "claude-sonnet-4", usageRepo.lastLog.Model)
+	require.Equal(t, "claude-sonnet-4", usageRepo.lastLog.RequestedModel)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+	require.Equal(t, mappedModel, *usageRepo.lastLog.UpstreamModel)
+REDACTED
+
 func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: MarkUsageLogCreateNotPersisted(context.Canceled)REDACTED
 	userRepo := &openAIRecordUsageUserRepoStub{REDACTED

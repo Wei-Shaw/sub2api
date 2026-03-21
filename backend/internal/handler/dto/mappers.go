@@ -522,14 +522,17 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 	// 普通用户 DTO：严禁包含管理员字段（例如 account_rate_multiplier、ip_address、account）。
 	requestType := l.EffectiveRequestType()
 	stream, openAIWSMode := service.ApplyLegacyRequestFields(requestType, l.Stream, l.OpenAIWSMode)
+	requestedModel := l.RequestedModel
+	if requestedModel == "" {
+		requestedModel = l.Model
+REDACTED
 	return UsageLog{
 		ID:                    l.ID,
 		UserID:                l.UserID,
 		APIKeyID:              l.APIKeyID,
 		AccountID:             l.AccountID,
 		RequestID:             l.RequestID,
-		Model:                 l.Model,
-		UpstreamModel:         l.UpstreamModel,
+		Model:                 requestedModel,
 		ServiceTier:           l.ServiceTier,
 		ReasoningEffort:       l.ReasoningEffort,
 		InboundEndpoint:       l.InboundEndpoint,
@@ -586,6 +589,7 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 REDACTED
 	return &AdminUsageLog{
 		UsageLog:              usageLogFromServiceUser(l),
+		UpstreamModel:         l.UpstreamModel,
 		AccountRateMultiplier: l.AccountRateMultiplier,
 		IPAddress:             l.IPAddress,
 		Account:               AccountSummaryFromService(l.Account),

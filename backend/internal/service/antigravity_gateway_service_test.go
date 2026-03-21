@@ -542,7 +542,8 @@ REDACTED
 	result, err := svc.Forward(context.Background(), c, account, body, false)
 REDACTED
 	require.NotNil(t, result)
-	require.Equal(t, mappedModel, result.Model)
+	require.Equal(t, "claude-sonnet-4-5", result.Model)
+	require.Equal(t, mappedModel, result.UpstreamModel)
 REDACTED
 
 // TestAntigravityGatewayService_ForwardGemini_BillsWithMappedModel
@@ -594,7 +595,8 @@ REDACTED
 	result, err := svc.ForwardGemini(context.Background(), c, account, "gemini-2.5-flash", "generateContent", true, body, false)
 REDACTED
 	require.NotNil(t, result)
-	require.Equal(t, mappedModel, result.Model)
+	require.Equal(t, "gemini-2.5-flash", result.Model)
+	require.Equal(t, mappedModel, result.UpstreamModel)
 REDACTED
 
 func TestAntigravityGatewayService_ForwardGemini_RetriesCorruptedThoughtSignature(t *testing.T) {
@@ -664,7 +666,8 @@ REDACTED
 	result, err := svc.ForwardGemini(context.Background(), c, account, originalModel, "streamGenerateContent", true, body, false)
 REDACTED
 	require.NotNil(t, result)
-	require.Equal(t, mappedModel, result.Model)
+	require.Equal(t, originalModel, result.Model)
+	require.Equal(t, mappedModel, result.UpstreamModel)
 	require.Len(t, upstream.requestBodies, 2, "signature error should trigger exactly one retry")
 
 	firstReq := string(upstream.requestBodies[0])

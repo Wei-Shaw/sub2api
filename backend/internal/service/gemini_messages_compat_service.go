@@ -1028,14 +1028,15 @@ REDACTED
 REDACTED
 
 	return &ForwardResult{
-		RequestID:    requestID,
-		Usage:        *usage,
-		Model:        originalModel,
-		Stream:       req.Stream,
-		Duration:     time.Since(startTime),
-		FirstTokenMs: firstTokenMs,
-		ImageCount:   imageCount,
-		ImageSize:    imageSize,
+		RequestID:     requestID,
+		Usage:         *usage,
+		Model:         originalModel,
+		UpstreamModel: mappedModel,
+		Stream:        req.Stream,
+		Duration:      time.Since(startTime),
+		FirstTokenMs:  firstTokenMs,
+		ImageCount:    imageCount,
+		ImageSize:     imageSize,
 REDACTED, nil
 REDACTED
 
@@ -1241,12 +1242,13 @@ REDACTED
 				estimated := estimateGeminiCountTokens(body)
 				c.JSON(http.StatusOK, map[string]any{"totalTokens": estimatedREDACTED)
 				return &ForwardResult{
-					RequestID:    "",
-					Usage:        ClaudeUsage{REDACTED,
-					Model:        originalModel,
-					Stream:       false,
-					Duration:     time.Since(startTime),
-					FirstTokenMs: nil,
+					RequestID:     "",
+					Usage:         ClaudeUsage{REDACTED,
+					Model:         originalModel,
+					UpstreamModel: mappedModel,
+					Stream:        false,
+					Duration:      time.Since(startTime),
+					FirstTokenMs:  nil,
 			REDACTED, nil
 		REDACTED
 			setOpsUpstreamError(c, 0, safeErr, "")
@@ -1310,12 +1312,13 @@ REDACTED
 				estimated := estimateGeminiCountTokens(body)
 				c.JSON(http.StatusOK, map[string]any{"totalTokens": estimatedREDACTED)
 				return &ForwardResult{
-					RequestID:    "",
-					Usage:        ClaudeUsage{REDACTED,
-					Model:        originalModel,
-					Stream:       false,
-					Duration:     time.Since(startTime),
-					FirstTokenMs: nil,
+					RequestID:     "",
+					Usage:         ClaudeUsage{REDACTED,
+					Model:         originalModel,
+					UpstreamModel: mappedModel,
+					Stream:        false,
+					Duration:      time.Since(startTime),
+					FirstTokenMs:  nil,
 			REDACTED, nil
 		REDACTED
 			// Final attempt: surface the upstream error body (passed through below) instead of a generic retry error.
@@ -1350,12 +1353,13 @@ REDACTED
 			estimated := estimateGeminiCountTokens(body)
 			c.JSON(http.StatusOK, map[string]any{"totalTokens": estimatedREDACTED)
 			return &ForwardResult{
-				RequestID:    requestID,
-				Usage:        ClaudeUsage{REDACTED,
-				Model:        originalModel,
-				Stream:       false,
-				Duration:     time.Since(startTime),
-				FirstTokenMs: nil,
+				RequestID:     requestID,
+				Usage:         ClaudeUsage{REDACTED,
+				Model:         originalModel,
+				UpstreamModel: mappedModel,
+				Stream:        false,
+				Duration:      time.Since(startTime),
+				FirstTokenMs:  nil,
 		REDACTED, nil
 	REDACTED
 
@@ -1527,14 +1531,15 @@ REDACTED
 REDACTED
 
 	return &ForwardResult{
-		RequestID:    requestID,
-		Usage:        *usage,
-		Model:        originalModel,
-		Stream:       stream,
-		Duration:     time.Since(startTime),
-		FirstTokenMs: firstTokenMs,
-		ImageCount:   imageCount,
-		ImageSize:    imageSize,
+		RequestID:     requestID,
+		Usage:         *usage,
+		Model:         originalModel,
+		UpstreamModel: mappedModel,
+		Stream:        stream,
+		Duration:      time.Since(startTime),
+		FirstTokenMs:  firstTokenMs,
+		ImageCount:    imageCount,
+		ImageSize:     imageSize,
 REDACTED, nil
 REDACTED
 
