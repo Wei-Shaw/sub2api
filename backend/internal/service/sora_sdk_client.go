@@ -947,7 +947,7 @@ REDACTED
 REDACTED
 
 	if c.accountRepo != nil {
-		if err := c.accountRepo.Update(ctx, account); err != nil && c.debugEnabled() {
+		if err := persistAccountCredentials(ctx, c.accountRepo, account, account.Credentials); err != nil && c.debugEnabled() {
 			c.debugLogf("persist_recovered_token_failed account_id=%d err=%s", account.ID, logredact.RedactText(err.Error()))
 	REDACTED
 REDACTED
