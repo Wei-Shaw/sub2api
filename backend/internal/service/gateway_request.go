@@ -205,6 +205,118 @@ REDACTED
 	return []byte(r.Raw)
 REDACTED
 
+// stripEmptyTextBlocksFromSlice removes empty text blocks from a content slice (including nested tool_result content).
+// Returns (cleaned slice, true) if any blocks were removed, or (original, false) if unchanged.
+func stripEmptyTextBlocksFromSlice(blocks []any) ([]any, bool) {
+	var result []any
+	changed := false
+	for i, block := range blocks {
+		blockMap, ok := block.(map[string]any)
+		if !ok {
+			if result != nil {
+				result = append(result, block)
+		REDACTED
+			continue
+	REDACTED
+		blockType, _ := blockMap["type"].(string)
+
+		// Strip empty text blocks
+		if blockType == "text" {
+			if txt, _ := blockMap["text"].(string); txt == "" {
+				if result == nil {
+					result = make([]any, 0, len(blocks))
+					result = append(result, blocks[:i]...)
+			REDACTED
+				changed = true
+				continue
+		REDACTED
+	REDACTED
+
+		// Recurse into tool_result nested content
+		if blockType == "tool_result" {
+			if nestedContent, ok := blockMap["content"].([]any); ok {
+				if cleaned, nestedChanged := stripEmptyTextBlocksFromSlice(nestedContent); nestedChanged {
+					if result == nil {
+						result = make([]any, 0, len(blocks))
+						result = append(result, blocks[:i]...)
+				REDACTED
+					changed = true
+					blockCopy := make(map[string]any, len(blockMap))
+					for k, v := range blockMap {
+						blockCopy[k] = v
+				REDACTED
+					blockCopy["content"] = cleaned
+					result = append(result, blockCopy)
+					continue
+			REDACTED
+		REDACTED
+	REDACTED
+
+		if result != nil {
+			result = append(result, block)
+	REDACTED
+REDACTED
+	if !changed {
+		return blocks, false
+REDACTED
+	return result, true
+REDACTED
+
+// StripEmptyTextBlocks removes empty text blocks from the request body (including nested tool_result content).
+// This is a lightweight pre-filter for the initial request path to prevent upstream 400 errors.
+// Returns the original body unchanged if no empty text blocks are found.
+func StripEmptyTextBlocks(body []byte) []byte {
+	// Fast path: check if body contains empty text patterns
+	hasEmptyTextBlock := bytes.Contains(body, patternEmptyText) ||
+		bytes.Contains(body, patternEmptyTextSpaced) ||
+		bytes.Contains(body, patternEmptyTextSp1) ||
+		bytes.Contains(body, patternEmptyTextSp2)
+	if !hasEmptyTextBlock {
+		return body
+REDACTED
+
+	jsonStr := *(*string)(unsafe.Pointer(&body))
+	msgsRes := gjson.Get(jsonStr, "messages")
+	if !msgsRes.Exists() || !msgsRes.IsArray() {
+		return body
+REDACTED
+
+	var messages []any
+	if err := json.Unmarshal(sliceRawFromBody(body, msgsRes), &messages); err != nil {
+		return body
+REDACTED
+
+	modified := false
+	for _, msg := range messages {
+		msgMap, ok := msg.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		content, ok := msgMap["content"].([]any)
+		if !ok {
+			continue
+	REDACTED
+		if cleaned, changed := stripEmptyTextBlocksFromSlice(content); changed {
+			modified = true
+			msgMap["content"] = cleaned
+	REDACTED
+REDACTED
+
+	if !modified {
+		return body
+REDACTED
+
+	msgsBytes, err := json.Marshal(messages)
+	if err != nil {
+		return body
+REDACTED
+	out, err := sjson.SetRawBytes(body, "messages", msgsBytes)
+	if err != nil {
+		return body
+REDACTED
+	return out
+REDACTED
+
 // FilterThinkingBlocks removes thinking blocks from request body
 // Returns filtered body or original body if filtering fails (fail-safe)
 // This prevents 400 errors from invalid thinking block signatures
@@ -375,6 +487,23 @@ REDACTED
 					REDACTED
 				REDACTED
 					continue
+			REDACTED
+		REDACTED
+
+			// Recursively strip empty text blocks from tool_result nested content.
+			if blockType == "tool_result" {
+				if nestedContent, ok := blockMap["content"].([]any); ok {
+					if cleaned, changed := stripEmptyTextBlocksFromSlice(nestedContent); changed {
+						modifiedThisMsg = true
+						ensureNewContent(bi)
+						blockCopy := make(map[string]any, len(blockMap))
+						for k, v := range blockMap {
+							blockCopy[k] = v
+					REDACTED
+						blockCopy["content"] = cleaned
+						newContent = append(newContent, blockCopy)
+						continue
+				REDACTED
 			REDACTED
 		REDACTED
 

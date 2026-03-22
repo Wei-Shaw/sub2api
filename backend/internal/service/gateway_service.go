@@ -4119,6 +4119,9 @@ REDACTED
 	// 调试日志：记录即将转发的账号信息
 	logger.LegacyPrintf("service.gateway", "[Forward] Using account: ID=%d Name=%s Platform=%s Type=%s TLSFingerprint=%v Proxy=%s",
 		account.ID, account.Name, account.Platform, account.Type, account.IsTLSFingerprintEnabled(), proxyURL)
+	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
+	body = StripEmptyTextBlocks(body)
+
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, body)
 
@@ -4603,6 +4606,9 @@ REDACTED
 	if c != nil {
 		c.Set("anthropic_passthrough", true)
 REDACTED
+	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
+	input.Body = StripEmptyTextBlocks(input.Body)
+
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, input.Body)
 
@@ -7876,6 +7882,9 @@ REDACTED
 
 	body := parsed.Body
 	reqModel := parsed.Model
+
+	// Pre-filter: strip empty text blocks to prevent upstream 400.
+	body = StripEmptyTextBlocks(body)
 
 	isClaudeCode := isClaudeCodeRequest(ctx, c, parsed)
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
