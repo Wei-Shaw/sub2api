@@ -2635,10 +2635,8 @@ REDACTED
 	if s.privacyClientFactory == nil {
 		return ""
 REDACTED
-	if account.Extra != nil {
-		if _, ok := account.Extra["privacy_mode"]; ok {
-			return ""
-	REDACTED
+	if shouldSkipOpenAIPrivacyEnsure(account.Extra) {
+		return ""
 REDACTED
 
 	token, _ := account.Credentials["access_token"].(string)
