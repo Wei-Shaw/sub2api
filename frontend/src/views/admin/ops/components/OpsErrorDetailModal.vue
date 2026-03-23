@@ -59,13 +59,13 @@
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
           <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.model') REDACTEDREDACTED</div>
           <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-            <template v-if="detail.requested_model && detail.upstream_model && detail.requested_model !== detail.upstream_model">
+            <template v-if="hasModelMapping(detail)">
               <span class="font-mono">{{ detail.requested_model REDACTEDREDACTED</span>
               <span class="mx-1 text-gray-400">→</span>
               <span class="font-mono text-primary-600 dark:text-primary-400">{{ detail.upstream_model REDACTEDREDACTED</span>
             </template>
             <template v-else>
-              {{ detail.requested_model || detail.model || '—' REDACTEDREDACTED
+              {{ displayModel(detail) || '—' REDACTEDREDACTED
             </template>
           </div>
         </div>
@@ -248,6 +248,22 @@ function formatRequestTypeLabel(type: number | null | undefined): string {
     case 3: return t('admin.ops.errorDetail.requestTypeWs')
     default: return t('admin.ops.errorDetail.requestTypeUnknown')
   REDACTED
+REDACTED
+
+function hasModelMapping(d: OpsErrorDetail | null): boolean {
+  if (!d) return false
+  const requested = String(d.requested_model || '').trim()
+  const upstream = String(d.upstream_model || '').trim()
+  return !!requested && !!upstream && requested !== upstream
+REDACTED
+
+function displayModel(d: OpsErrorDetail | null): string {
+  if (!d) return ''
+  const upstream = String(d.upstream_model || '').trim()
+  if (upstream) return upstream
+  const requested = String(d.requested_model || '').trim()
+  if (requested) return requested
+  return String(d.model || '').trim()
 REDACTED
 
 const correlatedUpstream = ref<OpsErrorDetail[]>([])

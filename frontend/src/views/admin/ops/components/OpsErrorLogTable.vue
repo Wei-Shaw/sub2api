@@ -99,8 +99,8 @@
               <!-- Model -->
               <td class="px-4 py-2">
                 <div class="max-w-[160px]">
-                  <template v-if="log.requested_model && log.upstream_model && log.requested_model !== log.upstream_model">
-                    <el-tooltip :content="`${log.requested_modelREDACTED → ${log.upstream_modelREDACTED`" placement="top" :show-after="500">
+                  <template v-if="hasModelMapping(log)">
+                    <el-tooltip :content="modelMappingTooltip(log)" placement="top" :show-after="500">
                       <span class="flex items-center gap-1 truncate font-mono text-[11px] text-gray-700 dark:text-gray-300">
                         <span class="truncate">{{ log.requested_model REDACTEDREDACTED</span>
                         <span class="flex-shrink-0 text-gray-400">→</span>
@@ -232,8 +232,26 @@ function formatEndpointTooltip(log: OpsErrorLog): string {
   return parts.join('\n') || ''
 REDACTED
 
+function hasModelMapping(log: OpsErrorLog): boolean {
+  const requested = String(log.requested_model || '').trim()
+  const upstream = String(log.upstream_model || '').trim()
+  return !!requested && !!upstream && requested !== upstream
+REDACTED
+
+function modelMappingTooltip(log: OpsErrorLog): string {
+  const requested = String(log.requested_model || '').trim()
+  const upstream = String(log.upstream_model || '').trim()
+  if (!requested && !upstream) return ''
+  if (requested && upstream) return `${requestedREDACTED → ${upstreamREDACTED`
+  return upstream || requested
+REDACTED
+
 function displayModel(log: OpsErrorLog): string {
-  return log.requested_model || log.model || ''
+  const upstream = String(log.upstream_model || '').trim()
+  if (upstream) return upstream
+  const requested = String(log.requested_model || '').trim()
+  if (requested) return requested
+  return String(log.model || '').trim()
 REDACTED
 
 function formatRequestType(type: number | null | undefined): string {
