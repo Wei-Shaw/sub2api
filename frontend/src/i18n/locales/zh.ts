@@ -2009,6 +2009,8 @@ export default {
         expiresAt: '过期时间',
         actions: '操作'
       REDACTED,
+      allPrivacyModes: '全部Privacy状态',
+      privacyUnset: '未设置',
       privacyTrainingOff: '已关闭训练数据共享',
       privacyCfBlocked: '被 Cloudflare 拦截，训练可能仍开启',
       privacyFailed: '关闭训练数据共享失败',
