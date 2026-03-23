@@ -18,6 +18,9 @@
                 {{ t('admin.ops.errorLog.type') REDACTEDREDACTED
               </th>
               <th class="border-b border-gray-200 px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:border-dark-700 dark:text-dark-400">
+                {{ t('admin.ops.errorLog.endpoint') REDACTEDREDACTED
+              </th>
+              <th class="border-b border-gray-200 px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:border-dark-700 dark:text-dark-400">
                 {{ t('admin.ops.errorLog.platform') REDACTEDREDACTED
               </th>
               <th class="border-b border-gray-200 px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:border-dark-700 dark:text-dark-400">
@@ -42,7 +45,7 @@
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
             <tr v-if="rows.length === 0">
-              <td colspan="9" class="py-12 text-center text-sm text-gray-400 dark:text-dark-500">
+              <td colspan="10" class="py-12 text-center text-sm text-gray-400 dark:text-dark-500">
                 {{ t('admin.ops.errorLog.noErrors') REDACTEDREDACTED
               </td>
             </tr>
@@ -74,6 +77,18 @@
                 </span>
               </td>
 
+              <!-- Endpoint -->
+              <td class="px-4 py-2">
+                <div class="max-w-[160px]">
+                  <el-tooltip v-if="log.inbound_endpoint" :content="formatEndpointTooltip(log)" placement="top" :show-after="500">
+                    <span class="truncate font-mono text-[11px] text-gray-700 dark:text-gray-300">
+                      {{ log.inbound_endpoint REDACTEDREDACTED
+                    </span>
+                  </el-tooltip>
+                  <span v-else class="text-xs text-gray-400">-</span>
+                </div>
+              </td>
+
               <!-- Platform -->
               <td class="whitespace-nowrap px-4 py-2">
                 <span class="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-gray-600 dark:bg-dark-700 dark:text-gray-300">
@@ -83,7 +98,7 @@
 
               <!-- Model -->
               <td class="px-4 py-2">
-                <div class="max-w-[180px]">
+                <div class="max-w-[160px]">
                   <template v-if="hasModelMapping(log)">
                     <el-tooltip :content="modelMappingTooltip(log)" placement="top" :show-after="500">
                       <span class="flex items-center gap-1 truncate font-mono text-[11px] text-gray-700 dark:text-gray-300">
@@ -149,6 +164,12 @@
                   >
                     {{ log.severity REDACTEDREDACTED
                   </span>
+                  <span
+                    v-if="log.request_type != null && log.request_type > 0"
+                    class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+                  >
+                    {{ formatRequestType(log.request_type) REDACTEDREDACTED
+                  </span>
                 </div>
               </td>
 
@@ -204,6 +225,13 @@ function isUpstreamRow(log: OpsErrorLog): boolean {
   return phase === 'upstream' && owner === 'provider'
 REDACTED
 
+function formatEndpointTooltip(log: OpsErrorLog): string {
+  const parts: string[] = []
+  if (log.inbound_endpoint) parts.push(`Inbound: ${log.inbound_endpointREDACTED`)
+  if (log.upstream_endpoint) parts.push(`Upstream: ${log.upstream_endpointREDACTED`)
+  return parts.join('\n') || ''
+REDACTED
+
 function hasModelMapping(log: OpsErrorLog): boolean {
   const requested = String(log.requested_model || '').trim()
   const upstream = String(log.upstream_model || '').trim()
@@ -224,6 +252,15 @@ function displayModel(log: OpsErrorLog): string {
   const requested = String(log.requested_model || '').trim()
   if (requested) return requested
   return String(log.model || '').trim()
+REDACTED
+
+function formatRequestType(type: number | null | undefined): string {
+  switch (type) {
+    case 1: return t('admin.ops.errorLog.requestTypeSync')
+    case 2: return t('admin.ops.errorLog.requestTypeStream')
+    case 3: return t('admin.ops.errorLog.requestTypeWs')
+    default: return ''
+  REDACTED
 REDACTED
 
 function getTypeBadge(log: OpsErrorLog): { label: string; className: string REDACTED {

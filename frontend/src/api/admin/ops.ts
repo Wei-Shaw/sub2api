@@ -970,9 +970,12 @@ export interface OpsErrorLog {
   request_path?: string
   stream?: boolean
 
-  // Model mapping context for ops error observability
+  // Error observability context (endpoint + model mapping)
+  inbound_endpoint?: string
+  upstream_endpoint?: string
   requested_model?: string
   upstream_model?: string
+  request_type?: number | null
 REDACTED
 
 export interface OpsErrorDetail extends OpsErrorLog {
