@@ -69,12 +69,30 @@ REDACTED
 	REDACTED)
 		gateway.GET("/models", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
-		// OpenAI Responses API
-		gateway.POST("/responses", h.OpenAIGateway.Responses)
-		gateway.POST("/responses/*subpath", h.OpenAIGateway.Responses)
+		// OpenAI Responses API: auto-route based on group platform
+		gateway.POST("/responses", func(c *gin.Context) {
+			if getGroupPlatform(c) == service.PlatformOpenAI {
+				h.OpenAIGateway.Responses(c)
+				return
+		REDACTED
+			h.Gateway.Responses(c)
+	REDACTED)
+		gateway.POST("/responses/*subpath", func(c *gin.Context) {
+			if getGroupPlatform(c) == service.PlatformOpenAI {
+				h.OpenAIGateway.Responses(c)
+				return
+		REDACTED
+			h.Gateway.Responses(c)
+	REDACTED)
 		gateway.GET("/responses", h.OpenAIGateway.ResponsesWebSocket)
-		// OpenAI Chat Completions API
-		gateway.POST("/chat/completions", h.OpenAIGateway.ChatCompletions)
+		// OpenAI Chat Completions API: auto-route based on group platform
+		gateway.POST("/chat/completions", func(c *gin.Context) {
+			if getGroupPlatform(c) == service.PlatformOpenAI {
+				h.OpenAIGateway.ChatCompletions(c)
+				return
+		REDACTED
+			h.Gateway.ChatCompletions(c)
+	REDACTED)
 REDACTED
 
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）
@@ -92,12 +110,25 @@ REDACTED
 		gemini.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
 REDACTED
 
-	// OpenAI Responses API（不带v1前缀的别名）
-	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.Responses)
-	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.Responses)
+	// OpenAI Responses API（不带v1前缀的别名）— auto-route based on group platform
+	responsesHandler := func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformOpenAI {
+			h.OpenAIGateway.Responses(c)
+			return
+	REDACTED
+		h.Gateway.Responses(c)
+REDACTED
+	r.POST("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, responsesHandler)
+	r.POST("/responses/*subpath", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, responsesHandler)
 	r.GET("/responses", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.ResponsesWebSocket)
-	// OpenAI Chat Completions API（不带v1前缀的别名）
-	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.ChatCompletions)
+	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
+	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		if getGroupPlatform(c) == service.PlatformOpenAI {
+			h.OpenAIGateway.ChatCompletions(c)
+			return
+	REDACTED
+		h.Gateway.ChatCompletions(c)
+REDACTED)
 
 	// Antigravity 模型列表
 	r.GET("/antigravity/models", gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.Gateway.AntigravityModels)
