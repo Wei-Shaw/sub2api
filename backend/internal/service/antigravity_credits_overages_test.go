@@ -239,7 +239,7 @@ func TestAntigravityRetryLoop_ModelRateLimited_InjectsCredits(t *testing.T) {
 		Extra: map[string]any{
 			"allow_overages": true,
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-opus-4-6-thinking": map[string]any{
 					"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
 					"rate_limit_reset_at": time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
 				},
@@ -254,9 +254,9 @@ func TestAntigravityRetryLoop_ModelRateLimited_InjectsCredits(t *testing.T) {
 		account:        account,
 		accessToken:    "token",
 		action:         "generateContent",
-		body:           []byte(`{"model":"claude-sonnet-4-5","request":{}}`),
+		body:           []byte(`{"model":"claude-opus-4-6-thinking","request":{}}`),
 		httpUpstream:   upstream,
-		requestedModel: "claude-sonnet-4-5",
+		requestedModel: "claude-opus-4-6-thinking",
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 		},
@@ -290,7 +290,7 @@ func TestAntigravityRetryLoop_CreditsExhausted_DoesNotInject(t *testing.T) {
 		Extra: map[string]any{
 			"allow_overages": true,
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-opus-4-6-thinking": map[string]any{
 					"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
 					"rate_limit_reset_at": time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
 				},
@@ -309,8 +309,8 @@ func TestAntigravityRetryLoop_CreditsExhausted_DoesNotInject(t *testing.T) {
 		account:        account,
 		accessToken:    "token",
 		action:         "generateContent",
-		body:           []byte(`{"model":"claude-sonnet-4-5","request":{}}`),
-		requestedModel: "claude-sonnet-4-5",
+		body:           []byte(`{"model":"claude-opus-4-6-thinking","request":{}}`),
+		requestedModel: "claude-opus-4-6-thinking",
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 		},
@@ -355,7 +355,7 @@ func TestAntigravityRetryLoop_CreditErrorMarksExhausted(t *testing.T) {
 		Extra: map[string]any{
 			"allow_overages": true,
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-opus-4-6-thinking": map[string]any{
 					"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
 					"rate_limit_reset_at": time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
 				},
@@ -370,10 +370,10 @@ func TestAntigravityRetryLoop_CreditErrorMarksExhausted(t *testing.T) {
 		account:        account,
 		accessToken:    "token",
 		action:         "generateContent",
-		body:           []byte(`{"model":"claude-sonnet-4-5","request":{}}`),
+		body:           []byte(`{"model":"claude-opus-4-6-thinking","request":{}}`),
 		httpUpstream:   upstream,
 		accountRepo:    repo,
-		requestedModel: "claude-sonnet-4-5",
+		requestedModel: "claude-opus-4-6-thinking",
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			return nil
 		},

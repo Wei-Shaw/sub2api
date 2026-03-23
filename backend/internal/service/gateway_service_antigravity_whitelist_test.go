@@ -103,13 +103,23 @@ func TestGatewayService_isModelSupportedByAccountWithContext_ThinkingMode(t *tes
 			expected:        false,
 		},
 		// 场景 3: 配置 claude-sonnet-4-5（非 thinking），请求 claude-sonnet-4-5 + thinking=true
-		// 最终模型名 = claude-sonnet-4-5-thinking，不在 mapping 中，应该不匹配
+		// applyThinkingModelSuffix 不再做转换，所以 finalModel == mapped，映射直接通过
 		{
 			name: "thinking_enabled_no_match_non_thinking_mapping",
 			modelMapping: map[string]any{
 				"claude-sonnet-4-5": "claude-sonnet-4-5",
 			},
 			requestedModel:  "claude-sonnet-4-5",
+			thinkingEnabled: true,
+			expected:        true, // applyThinkingModelSuffix 不做转换，映射通过
+		},
+		// 场景 3b: 请求一个不在映射中的模型，thinking=true 时也不应支持
+		{
+			name: "thinking_enabled_unmapped_model_returns_false",
+			modelMapping: map[string]any{
+				"claude-sonnet-4-5": "claude-sonnet-4-5",
+			},
+			requestedModel:  "claude-unknown-model",
 			thinkingEnabled: true,
 			expected:        false,
 		},
