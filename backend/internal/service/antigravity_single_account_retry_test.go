@@ -678,6 +678,7 @@ func TestHandleSingleAccountRetryInPlace_NetworkError_ContinuesRetry(t *testing.
 // 预检查中，如果有 SingleAccountRetry 标记，即使账号已限流也跳过直接发请求
 func TestAntigravityRetryLoop_PreCheck_SingleAccountRetry_SkipsRateLimit(t *testing.T) {
 	// 创建一个已设模型限流的账号
+	// 限流 key 使用映射后的最终模型名：claude-sonnet-4-5 → claude-opus-4-6-thinking
 	upstream := &recordingOKUpstream{}
 	account := &Account{
 		ID:          20,
@@ -689,7 +690,7 @@ func TestAntigravityRetryLoop_PreCheck_SingleAccountRetry_SkipsRateLimit(t *test
 		Concurrency: 1,
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-opus-4-6-thinking": map[string]any{
 					"rate_limit_reset_at": time.Now().Add(30 * time.Second).Format(time.RFC3339),
 				},
 			},
@@ -723,6 +724,7 @@ func TestAntigravityRetryLoop_PreCheck_SingleAccountRetry_SkipsRateLimit(t *test
 // 对照组：无 SingleAccountRetry + 已限流 → 预检查返回 switchError
 func TestAntigravityRetryLoop_PreCheck_NoSingleAccountRetry_SwitchesOnRateLimit(t *testing.T) {
 	upstream := &recordingOKUpstream{}
+	// 限流 key 使用映射后的最终模型名：claude-sonnet-4-5 → claude-opus-4-6-thinking
 	account := &Account{
 		ID:          21,
 		Name:        "acc-rate-limited-multi",
@@ -733,7 +735,7 @@ func TestAntigravityRetryLoop_PreCheck_NoSingleAccountRetry_SwitchesOnRateLimit(
 		Concurrency: 1,
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-opus-4-6-thinking": map[string]any{
 					"rate_limit_reset_at": time.Now().Add(30 * time.Second).Format(time.RFC3339),
 				},
 			},

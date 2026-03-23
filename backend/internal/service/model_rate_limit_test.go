@@ -181,11 +181,13 @@ func TestIsModelRateLimited_Antigravity_ThinkingAffectsModelKey(t *testing.T) {
 	now := time.Now()
 	future := now.Add(10 * time.Minute).Format(time.RFC3339)
 
+	// applyThinkingModelSuffix 不再做转换，claude-sonnet-4-5 在默认映射中映射到 claude-opus-4-6-thinking
+	// 所以限流 key 应为 claude-opus-4-6-thinking
 	account := &Account{
 		Platform: PlatformAntigravity,
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5-thinking": map[string]any{
+				"claude-opus-4-6-thinking": map[string]any{
 					"rate_limit_reset_at": future,
 				},
 			},
@@ -343,7 +345,8 @@ func TestGetRateLimitRemainingTime(t *testing.T) {
 				Platform: PlatformAntigravity,
 				Extra: map[string]any{
 					modelRateLimitsKey: map[string]any{
-						"claude-sonnet-4-5": map[string]any{
+						// claude-sonnet-4-5 在默认映射中映射到 claude-opus-4-6-thinking
+						"claude-opus-4-6-thinking": map[string]any{
 							"rate_limit_reset_at": future15m,
 						},
 					},
@@ -359,7 +362,8 @@ func TestGetRateLimitRemainingTime(t *testing.T) {
 				Platform: PlatformAntigravity,
 				Extra: map[string]any{
 					modelRateLimitsKey: map[string]any{
-						"claude-sonnet-4-5": map[string]any{
+						// claude-sonnet-4-5 在默认映射中映射到 claude-opus-4-6-thinking
+						"claude-opus-4-6-thinking": map[string]any{
 							"rate_limit_reset_at": future5m,
 						},
 					},

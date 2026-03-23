@@ -75,15 +75,15 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"claude-opus-4-6-thinking":   "claude-opus-4-6-thinking", // 官方模型
 	"claude-opus-4-6":            "claude-opus-4-6-thinking", // 简称映射
 	"claude-opus-4-5-thinking":   "claude-opus-4-6-thinking", // 迁移旧模型
-	"claude-sonnet-4-6":          "claude-sonnet-4-6",
-	"claude-sonnet-4-5":          "claude-sonnet-4-5",
-	"claude-sonnet-4-5-thinking": "claude-sonnet-4-5-thinking",
+	"claude-sonnet-4-6":          "claude-opus-4-6-thinking", // Sonnet → Opus
+	"claude-sonnet-4-5":          "claude-opus-4-6-thinking", // Sonnet → Opus
+	"claude-sonnet-4-5-thinking": "claude-opus-4-6-thinking", // Sonnet → Opus
 	// Claude 详细版本 ID 映射
 	"claude-opus-4-5-20251101":   "claude-opus-4-6-thinking", // 迁移旧模型
-	"claude-sonnet-4-5-20250929": "claude-sonnet-4-5",
-	// Claude Haiku → Sonnet（无 Haiku 支持）
-	"claude-haiku-4-5":          "claude-sonnet-4-6",
-	"claude-haiku-4-5-20251001": "claude-sonnet-4-6",
+	"claude-sonnet-4-5-20250929": "claude-opus-4-6-thinking", // Sonnet → Opus
+	// Claude Haiku → Opus（无 Haiku/Sonnet 支持）
+	"claude-haiku-4-5":          "claude-opus-4-6-thinking",
+	"claude-haiku-4-5-20251001": "claude-opus-4-6-thinking",
 	// Gemini 2.5 白名单
 	"gemini-2.5-flash":               "gemini-2.5-flash",
 	"gemini-2.5-flash-image":         "gemini-2.5-flash-image",
