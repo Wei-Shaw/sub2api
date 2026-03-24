@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	internal500CounterPrefix    = "internal500_count:account:"
+	internal500CounterPrefix     = "internal500_count:account:"
 	internal500CounterTTLSeconds = 86400 // 24 小时兜底
 )
 
