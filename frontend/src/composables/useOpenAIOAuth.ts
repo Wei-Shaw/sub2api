@@ -13,6 +13,7 @@ export interface OpenAITokenInfo {
   scope?: string
   email?: string
   name?: string
+  plan_type?: string
   // OpenAI specific IDs (extracted from ID Token)
   chatgpt_account_id?: string
   chatgpt_user_id?: string
@@ -185,22 +186,23 @@ export function useOpenAIOAuth(options?: UseOpenAIOAuthOptions) {
     REDACTED
   REDACTED
 
-  // Build credentials for OpenAI OAuth account
+  // Build credentials for OpenAI OAuth account (aligned with backend BuildAccountCredentials)
   const buildCredentials = (tokenInfo: OpenAITokenInfo): Record<string, unknown> => {
     const creds: Record<string, unknown> = {
       access_token: tokenInfo.access_token,
-      refresh_token: tokenInfo.refresh_token,
-      token_type: tokenInfo.token_type,
-      expires_in: tokenInfo.expires_in,
-      expires_at: tokenInfo.expires_at,
-      scope: tokenInfo.scope
+      expires_at: tokenInfo.expires_at
     REDACTED
 
-    if (tokenInfo.client_id) {
-      creds.client_id = tokenInfo.client_id
+    // 仅在返回了新的 refresh_token 时才写入，防止用空值覆盖已有令牌
+    if (tokenInfo.refresh_token) {
+      creds.refresh_token = tokenInfo.refresh_token
     REDACTED
-
-    // Include OpenAI specific IDs (required for forwarding)
+    if (tokenInfo.id_token) {
+      creds.id_token = tokenInfo.id_token
+    REDACTED
+    if (tokenInfo.email) {
+      creds.email = tokenInfo.email
+    REDACTED
     if (tokenInfo.chatgpt_account_id) {
       creds.chatgpt_account_id = tokenInfo.chatgpt_account_id
     REDACTED
@@ -209,6 +211,12 @@ export function useOpenAIOAuth(options?: UseOpenAIOAuthOptions) {
     REDACTED
     if (tokenInfo.organization_id) {
       creds.organization_id = tokenInfo.organization_id
+    REDACTED
+    if (tokenInfo.plan_type) {
+      creds.plan_type = tokenInfo.plan_type
+    REDACTED
+    if (tokenInfo.client_id) {
+      creds.client_id = tokenInfo.client_id
     REDACTED
 
     return creds
