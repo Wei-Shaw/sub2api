@@ -71,11 +71,6 @@ const (
 
 	// MODEL_CAPACITY_EXHAUSTED 全局去重：重试全部失败后的 cooldown 时间
 	antigravityModelCapacityCooldown = 10 * time.Second
-
-	// INTERNAL 500 渐进惩罚：连续多轮全部返回特定 500 错误时的惩罚时长
-	internal500PenaltyTier1Duration  = 10 * time.Minute
-	internal500PenaltyTier2Duration  = 10 * time.Hour
-	internal500PenaltyTier3Threshold = 3 // 第 3+ 轮：永久禁用
 )
 
 // antigravityPassthroughErrorMessages 透传给客户端的错误消息白名单（小写）
@@ -781,16 +776,8 @@ urlFallbackLoop:
 			REDACTED
 
 				// INTERNAL 500 渐进惩罚：3 次重试全部命中特定 500 时递增计数器并惩罚
-				if allAttemptsInternal500 &&
-					isAntigravityInternalServerError(resp.StatusCode, respBody) &&
-					s.internal500Cache != nil {
-					count, incrErr := s.internal500Cache.IncrementInternal500Count(p.ctx, p.account.ID)
-					if incrErr != nil {
-						slog.Error("internal500_counter_increment_failed",
-							"prefix", p.prefix, "account_id", p.account.ID, "error", incrErr)
-				REDACTED else {
-						s.applyInternal500Penalty(p.ctx, p.prefix, p.account, count)
-				REDACTED
+				if allAttemptsInternal500 && isAntigravityInternalServerError(resp.StatusCode, respBody) {
+					s.handleInternal500RetryExhausted(p.ctx, p.prefix, p.account)
 			REDACTED
 
 				// 其他 4xx 错误或重试用尽，直接返回
@@ -812,11 +799,8 @@ REDACTED
 REDACTED
 
 	// 成功响应时清零 INTERNAL 500 连续失败计数器（覆盖所有成功路径，含 smart retry）
-	if resp != nil && resp.StatusCode < 400 && s.internal500Cache != nil {
-		if err := s.internal500Cache.ResetInternal500Count(p.ctx, p.account.ID); err != nil {
-			slog.Error("internal500_counter_reset_failed",
-				"prefix", p.prefix, "account_id", p.account.ID, "error", err)
-	REDACTED
+	if resp != nil && resp.StatusCode < 400 {
+		s.resetInternal500Counter(p.ctx, p.prefix, p.account.ID)
 REDACTED
 
 	return &antigravityRetryLoopResult{resp: respREDACTED, nil
@@ -829,56 +813,6 @@ func shouldRetryAntigravityError(statusCode int) bool {
 		return true
 	default:
 		return false
-REDACTED
-REDACTED
-
-// isAntigravityInternalServerError 检测特定的 INTERNAL 500 错误
-// 必须同时匹配 error.code==500, error.message=="Internal error encountered.", error.status=="INTERNAL"
-func isAntigravityInternalServerError(statusCode int, body []byte) bool {
-	if statusCode != http.StatusInternalServerError {
-		return false
-REDACTED
-	return gjson.GetBytes(body, "error.code").Int() == 500 &&
-		gjson.GetBytes(body, "error.message").String() == "Internal error encountered." &&
-		gjson.GetBytes(body, "error.status").String() == "INTERNAL"
-REDACTED
-
-// applyInternal500Penalty 根据连续 INTERNAL 500 轮次数应用渐进惩罚
-// count=1: temp_unschedulable 10 分钟
-// count=2: temp_unschedulable 10 小时
-// count>=3: SetError 永久禁用
-func (s *AntigravityGatewayService) applyInternal500Penalty(
-	ctx context.Context, prefix string, account *Account, count int64,
-) {
-	switch {
-	case count >= int64(internal500PenaltyTier3Threshold):
-		reason := fmt.Sprintf("INTERNAL 500 consecutive failures: %d rounds", count)
-		if err := s.accountRepo.SetError(ctx, account.ID, reason); err != nil {
-			slog.Error("internal500_set_error_failed", "account_id", account.ID, "error", err)
-			return
-	REDACTED
-		slog.Warn("internal500_account_disabled",
-			"account_id", account.ID, "account_name", account.Name, "consecutive_count", count)
-	case count == 2:
-		until := time.Now().Add(internal500PenaltyTier2Duration)
-		reason := fmt.Sprintf("INTERNAL 500 x%d (temp unsched 10h)", count)
-		if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
-			slog.Error("internal500_temp_unsched_failed", "account_id", account.ID, "error", err)
-			return
-	REDACTED
-		slog.Warn("internal500_temp_unschedulable",
-			"account_id", account.ID, "account_name", account.Name,
-			"duration", internal500PenaltyTier2Duration, "consecutive_count", count)
-	case count == 1:
-		until := time.Now().Add(internal500PenaltyTier1Duration)
-		reason := fmt.Sprintf("INTERNAL 500 x%d (temp unsched 10m)", count)
-		if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); err != nil {
-			slog.Error("internal500_temp_unsched_failed", "account_id", account.ID, "error", err)
-			return
-	REDACTED
-		slog.Info("internal500_temp_unschedulable",
-			"account_id", account.ID, "account_name", account.Name,
-			"duration", internal500PenaltyTier1Duration, "consecutive_count", count)
 REDACTED
 REDACTED
 
