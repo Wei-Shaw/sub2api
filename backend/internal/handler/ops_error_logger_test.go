@@ -274,3 +274,48 @@ REDACTED
 	REDACTED)
 REDACTED
 REDACTED
+
+func TestSetOpsEndpointContext_SetsContextKeys(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	setOpsEndpointContext(c, "claude-3-5-sonnet-20241022", int16(2)) // stream
+
+	v, ok := c.Get(opsUpstreamModelKey)
+	require.True(t, ok)
+	vStr, ok := v.(string)
+	require.True(t, ok)
+	require.Equal(t, "claude-3-5-sonnet-20241022", vStr)
+
+	rt, ok := c.Get(opsRequestTypeKey)
+	require.True(t, ok)
+	rtVal, ok := rt.(int16)
+	require.True(t, ok)
+	require.Equal(t, int16(2), rtVal)
+REDACTED
+
+func TestSetOpsEndpointContext_EmptyModelNotStored(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	setOpsEndpointContext(c, "", int16(1))
+
+	_, ok := c.Get(opsUpstreamModelKey)
+	require.False(t, ok, "empty upstream model should not be stored")
+
+	rt, ok := c.Get(opsRequestTypeKey)
+	require.True(t, ok)
+	rtVal, ok := rt.(int16)
+	require.True(t, ok)
+	require.Equal(t, int16(1), rtVal)
+REDACTED
+
+func TestSetOpsEndpointContext_NilContext(t *testing.T) {
+	require.NotPanics(t, func() {
+		setOpsEndpointContext(nil, "model", int16(1))
+REDACTED)
+REDACTED

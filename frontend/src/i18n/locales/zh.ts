@@ -3659,7 +3659,12 @@ export default {
         typeRequest: '请求',
         typeAuth: '认证',
         typeRouting: '路由',
-        typeInternal: '内部'
+        typeInternal: '内部',
+        endpoint: '端点',
+        requestType: '类型',
+        requestTypeSync: '同步',
+        requestTypeStream: '流式',
+        requestTypeWs: 'WS'
       REDACTED,
       // Error Details Modal
       errorDetails: {
@@ -3745,6 +3750,16 @@ export default {
         latency: '请求时长',
         businessLimited: '业务限制',
         requestPath: '请求路径',
+        inboundEndpoint: '入站端点',
+        upstreamEndpoint: '上游端点',
+        requestedModel: '请求模型',
+        upstreamModel: '上游模型',
+        requestType: '请求类型',
+        requestTypeUnknown: '未知',
+        requestTypeSync: '同步',
+        requestTypeStream: '流式',
+        requestTypeWs: 'WebSocket',
+        modelMapping: '模型映射',
         timings: '时序信息',
         auth: '认证',
         routing: '路由',

@@ -658,7 +658,7 @@ REDACTED
 	if parsed.SessionContext != nil {
 		_, _ = combined.WriteString(parsed.SessionContext.ClientIP)
 		_, _ = combined.WriteString(":")
-		_, _ = combined.WriteString(parsed.SessionContext.UserAgent)
+		_, _ = combined.WriteString(NormalizeSessionUserAgent(parsed.SessionContext.UserAgent))
 		_, _ = combined.WriteString(":")
 		_, _ = combined.WriteString(strconv.FormatInt(parsed.SessionContext.APIKeyID, 10))
 		_, _ = combined.WriteString("|")
@@ -4148,6 +4148,7 @@ REDACTED
 				AccountID:          account.ID,
 				AccountName:        account.Name,
 				UpstreamStatusCode: 0,
+				UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 				Kind:               "request_error",
 				Message:            safeErr,
 		REDACTED)
@@ -4174,6 +4175,7 @@ REDACTED
 						AccountName:        account.Name,
 						UpstreamStatusCode: resp.StatusCode,
 						UpstreamRequestID:  resp.Header.Get("x-request-id"),
+						UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 						Kind:               "signature_error",
 						Message:            extractUpstreamErrorMessage(respBody),
 						Detail: func() string {
@@ -4228,6 +4230,7 @@ REDACTED
 									AccountName:        account.Name,
 									UpstreamStatusCode: retryResp.StatusCode,
 									UpstreamRequestID:  retryResp.Header.Get("x-request-id"),
+									UpstreamURL:        safeUpstreamURL(retryReq.URL.String()),
 									Kind:               "signature_retry_thinking",
 									Message:            extractUpstreamErrorMessage(retryRespBody),
 									Detail: func() string {
@@ -4258,6 +4261,7 @@ REDACTED
 											AccountID:          account.ID,
 											AccountName:        account.Name,
 											UpstreamStatusCode: 0,
+											UpstreamURL:        safeUpstreamURL(retryReq2.URL.String()),
 											Kind:               "signature_retry_tools_request_error",
 											Message:            sanitizeUpstreamErrorMessage(retryErr2.Error()),
 									REDACTED)
@@ -4297,6 +4301,7 @@ REDACTED
 						AccountName:        account.Name,
 						UpstreamStatusCode: resp.StatusCode,
 						UpstreamRequestID:  resp.Header.Get("x-request-id"),
+						UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 						Kind:               "budget_constraint_error",
 						Message:            errMsg,
 						Detail: func() string {
@@ -4358,6 +4363,7 @@ REDACTED
 					AccountName:        account.Name,
 					UpstreamStatusCode: resp.StatusCode,
 					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 					Kind:               "retry",
 					Message:            extractUpstreamErrorMessage(respBody),
 					Detail: func() string {
@@ -4628,6 +4634,7 @@ REDACTED
 				AccountID:          account.ID,
 				AccountName:        account.Name,
 				UpstreamStatusCode: 0,
+				UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 				Passthrough:        true,
 				Kind:               "request_error",
 				Message:            safeErr,
@@ -4667,6 +4674,7 @@ REDACTED
 					AccountName:        account.Name,
 					UpstreamStatusCode: resp.StatusCode,
 					UpstreamRequestID:  resp.Header.Get("x-request-id"),
+					UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 					Passthrough:        true,
 					Kind:               "retry",
 					Message:            extractUpstreamErrorMessage(respBody),
@@ -5344,6 +5352,7 @@ func (s *GatewayService) executeBedrockUpstream(
 				AccountID:          account.ID,
 				AccountName:        account.Name,
 				UpstreamStatusCode: 0,
+				UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 				Kind:               "request_error",
 				Message:            safeErr,
 		REDACTED)
@@ -5380,6 +5389,7 @@ func (s *GatewayService) executeBedrockUpstream(
 					AccountID:          account.ID,
 					AccountName:        account.Name,
 					UpstreamStatusCode: resp.StatusCode,
+					UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 					Kind:               "retry",
 					Message:            extractUpstreamErrorMessage(respBody),
 					Detail: func() string {
@@ -8064,6 +8074,7 @@ REDACTED
 			AccountID:          account.ID,
 			AccountName:        account.Name,
 			UpstreamStatusCode: 0,
+			UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 			Passthrough:        true,
 			Kind:               "request_error",
 			Message:            sanitizeUpstreamErrorMessage(err.Error()),
@@ -8119,6 +8130,7 @@ REDACTED
 			AccountName:        account.Name,
 			UpstreamStatusCode: resp.StatusCode,
 			UpstreamRequestID:  resp.Header.Get("x-request-id"),
+			UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 			Passthrough:        true,
 			Kind:               "http_error",
 			Message:            upstreamMsg,

@@ -152,6 +152,24 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestGenerateGeminiPrefixHash_IgnoresUserAgentVersionNoise(t *testing.T) {
+	hash1 := GenerateGeminiPrefixHash(1, 100, "192.168.1.1", "Mozilla/5.0 codex_cli_rs/0.1.0", "antigravity", "gemini-2.5-pro")
+	hash2 := GenerateGeminiPrefixHash(1, 100, "192.168.1.1", "Mozilla/5.0 codex_cli_rs/0.1.1", "antigravity", "gemini-2.5-pro")
+
+	if hash1 != hash2 {
+		t.Fatalf("version-only User-Agent changes should not perturb Gemini prefix hash: %s vs %s", hash1, hash2)
+REDACTED
+REDACTED
+
+func TestGenerateGeminiPrefixHash_IgnoresFreeformUserAgentVersionNoise(t *testing.T) {
+	hash1 := GenerateGeminiPrefixHash(1, 100, "192.168.1.1", "Codex CLI 0.1.0", "antigravity", "gemini-2.5-pro")
+	hash2 := GenerateGeminiPrefixHash(1, 100, "192.168.1.1", "Codex CLI 0.1.1", "antigravity", "gemini-2.5-pro")
+
+	if hash1 != hash2 {
+		t.Fatalf("free-form version-only User-Agent changes should not perturb Gemini prefix hash: %s vs %s", hash1, hash2)
+REDACTED
+REDACTED
+
 func TestParseGeminiSessionValue(t *testing.T) {
 	tests := []struct {
 		name      string

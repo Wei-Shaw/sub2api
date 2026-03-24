@@ -62,6 +62,12 @@ type OpsErrorLog struct {
 	ClientIP    *string `json:"client_ip"`
 	RequestPath string  `json:"request_path"`
 	Stream      bool    `json:"stream"`
+
+	InboundEndpoint  string `json:"inbound_endpoint"`
+	UpstreamEndpoint string `json:"upstream_endpoint"`
+	RequestedModel   string `json:"requested_model"`
+	UpstreamModel    string `json:"upstream_model"`
+	RequestType      *int16 `json:"request_type"`
 REDACTED
 
 type OpsErrorLogDetail struct {
