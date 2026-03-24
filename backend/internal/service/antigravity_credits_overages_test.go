@@ -239,7 +239,7 @@ func TestAntigravityRetryLoop_ModelRateLimited_InjectsCredits(t *testing.T) {
 		Extra: map[string]any{
 			"allow_overages": true,
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-sonnet-4-6": map[string]any{
 					"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
 					"rate_limit_reset_at": time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
 				},
@@ -290,7 +290,7 @@ func TestAntigravityRetryLoop_CreditsExhausted_DoesNotInject(t *testing.T) {
 		Extra: map[string]any{
 			"allow_overages": true,
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-sonnet-4-6": map[string]any{
 					"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
 					"rate_limit_reset_at": time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
 				},
@@ -355,7 +355,7 @@ func TestAntigravityRetryLoop_CreditErrorMarksExhausted(t *testing.T) {
 		Extra: map[string]any{
 			"allow_overages": true,
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-sonnet-4-6": map[string]any{
 					"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
 					"rate_limit_reset_at": time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
 				},
@@ -503,7 +503,7 @@ func TestClearCreditsExhausted(t *testing.T) {
 			ID: 1,
 			Extra: map[string]any{
 				modelRateLimitsKey: map[string]any{
-					"claude-sonnet-4-5": map[string]any{
+					"claude-sonnet-4-6": map[string]any{
 						"rate_limited_at":     "2026-03-15T00:00:00Z",
 						"rate_limit_reset_at": "2099-03-15T00:00:00Z",
 					},
@@ -520,7 +520,7 @@ func TestClearCreditsExhausted(t *testing.T) {
 			ID: 1,
 			Extra: map[string]any{
 				modelRateLimitsKey: map[string]any{
-					"claude-sonnet-4-5": map[string]any{
+					"claude-sonnet-4-6": map[string]any{
 						"rate_limited_at":     "2026-03-15T00:00:00Z",
 						"rate_limit_reset_at": "2099-03-15T00:00:00Z",
 					},
@@ -538,7 +538,7 @@ func TestClearCreditsExhausted(t *testing.T) {
 		_, exists := rawLimits[creditsExhaustedKey]
 		require.False(t, exists, "AICredits key 应被删除")
 		// 普通模型限流应保留
-		_, exists = rawLimits["claude-sonnet-4-5"]
+		_, exists = rawLimits["claude-sonnet-4-6"]
 		require.True(t, exists, "普通模型限流应保留")
 	})
 }
