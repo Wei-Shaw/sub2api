@@ -658,7 +658,7 @@ REDACTED
 	if parsed.SessionContext != nil {
 		_, _ = combined.WriteString(parsed.SessionContext.ClientIP)
 		_, _ = combined.WriteString(":")
-		_, _ = combined.WriteString(parsed.SessionContext.UserAgent)
+		_, _ = combined.WriteString(NormalizeSessionUserAgent(parsed.SessionContext.UserAgent))
 		_, _ = combined.WriteString(":")
 		_, _ = combined.WriteString(strconv.FormatInt(parsed.SessionContext.APIKeyID, 10))
 		_, _ = combined.WriteString("|")

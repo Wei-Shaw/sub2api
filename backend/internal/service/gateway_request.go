@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
+	"sort"
 	"strings"
 	"unsafe"
 
@@ -34,6 +36,9 @@ var (
 	patternEmptyTextSpaced = []byte(`"text": ""`)
 	patternEmptyTextSp1    = []byte(`"text" : ""`)
 	patternEmptyTextSp2    = []byte(`"text" :""`)
+
+	sessionUserAgentProductPattern = regexp.MustCompile(`([A-Za-z0-9._-]+)/[A-Za-z0-9._-]+`)
+	sessionUserAgentVersionPattern = regexp.MustCompile(`\bv?\d+(?:\.\d+){1,3REDACTED\b`)
 )
 
 // SessionContext 粘性会话上下文，用于区分不同来源的请求。
@@ -73,6 +78,49 @@ type ParsedRequest struct {
 	// OnUpstreamAccepted 上游接受请求后立即调用（用于提前释放串行锁）
 	// 流式请求在收到 2xx 响应头后调用，避免持锁等流完成
 	OnUpstreamAccepted func()
+REDACTED
+
+// NormalizeSessionUserAgent reduces UA noise for sticky-session and digest hashing.
+// It preserves the set of product names from Product/Version tokens while
+// discarding version-only changes and incidental comments.
+func NormalizeSessionUserAgent(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+REDACTED
+
+	matches := sessionUserAgentProductPattern.FindAllStringSubmatch(raw, -1)
+	if len(matches) == 0 {
+		return normalizeSessionUserAgentFallback(raw)
+REDACTED
+
+	products := make([]string, 0, len(matches))
+	seen := make(map[string]struct{REDACTED, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+	REDACTED
+		product := strings.ToLower(strings.TrimSpace(match[1]))
+		if product == "" {
+			continue
+	REDACTED
+		if _, exists := seen[product]; exists {
+			continue
+	REDACTED
+		seen[product] = struct{REDACTED{REDACTED
+		products = append(products, product)
+REDACTED
+	if len(products) == 0 {
+		return normalizeSessionUserAgentFallback(raw)
+REDACTED
+	sort.Strings(products)
+	return strings.Join(products, "+")
+REDACTED
+
+func normalizeSessionUserAgentFallback(raw string) string {
+	normalized := strings.ToLower(strings.Join(strings.Fields(raw), " "))
+	normalized = sessionUserAgentVersionPattern.ReplaceAllString(normalized, "")
+	return strings.Join(strings.Fields(normalized), " ")
 REDACTED
 
 // ParseGatewayRequest 解析网关请求体并返回结构化结果。
