@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -171,17 +172,38 @@ REDACTED
 		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 REDACTED
 
-	// 13. Handle normal response
+	// 13. Extract reasoning effort from CC request body
+	reasoningEffort := extractCCReasoningEffortFromBody(body)
+
+	// 14. Handle normal response
 	// Read Anthropic SSE → convert to Responses events → convert to CC format
 	var result *ForwardResult
 	var handleErr error
 	if clientStream {
-		result, handleErr = s.handleCCStreamingFromAnthropic(resp, c, originalModel, mappedModel, startTime, includeUsage)
+		result, handleErr = s.handleCCStreamingFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime, includeUsage)
 REDACTED else {
-		result, handleErr = s.handleCCBufferedFromAnthropic(resp, c, originalModel, mappedModel, startTime)
+		result, handleErr = s.handleCCBufferedFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
 REDACTED
 
 	return result, handleErr
+REDACTED
+
+// extractCCReasoningEffortFromBody reads reasoning effort from a Chat Completions
+// request body. It checks both nested (reasoning.effort) and flat (reasoning_effort)
+// formats used by OpenAI-compatible clients.
+func extractCCReasoningEffortFromBody(body []byte) *string {
+	raw := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String())
+	if raw == "" {
+		raw = strings.TrimSpace(gjson.GetBytes(body, "reasoning_effort").String())
+REDACTED
+	if raw == "" {
+		return nil
+REDACTED
+	normalized := normalizeOpenAIReasoningEffort(raw)
+	if normalized == "" {
+		return nil
+REDACTED
+	return &normalized
 REDACTED
 
 // handleCCBufferedFromAnthropic reads Anthropic SSE events, assembles the full
@@ -191,6 +213,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	c *gin.Context,
 	originalModel string,
 	mappedModel string,
+	reasoningEffort *string,
 	startTime time.Time,
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
@@ -225,18 +248,16 @@ REDACTED
 			continue
 	REDACTED
 
+		// message_start carries the initial response structure and cache usage
 		if event.Type == "message_start" && event.Message != nil {
 			finalResp = event.Message
+			mergeAnthropicUsage(&usage, event.Message.Usage)
 	REDACTED
+
+		// message_delta carries final usage and stop_reason
 		if event.Type == "message_delta" {
 			if event.Usage != nil {
-				usage = ClaudeUsage{
-					InputTokens:  event.Usage.InputTokens,
-					OutputTokens: event.Usage.OutputTokens,
-			REDACTED
-				if event.Usage.CacheReadInputTokens > 0 {
-					usage.CacheReadInputTokens = event.Usage.CacheReadInputTokens
-			REDACTED
+				mergeAnthropicUsage(&usage, *event.Usage)
 		REDACTED
 			if event.Delta != nil && event.Delta.StopReason != "" && finalResp != nil {
 				finalResp.StopReason = event.Delta.StopReason
@@ -274,10 +295,13 @@ REDACTED
 		return nil, fmt.Errorf("upstream stream ended without response")
 REDACTED
 
+	// Update usage from accumulated delta
 	if usage.InputTokens > 0 || usage.OutputTokens > 0 {
 		finalResp.Usage = apicompat.AnthropicUsage{
-			InputTokens:  usage.InputTokens,
-			OutputTokens: usage.OutputTokens,
+			InputTokens:              usage.InputTokens,
+			OutputTokens:             usage.OutputTokens,
+			CacheCreationInputTokens: usage.CacheCreationInputTokens,
+			CacheReadInputTokens:     usage.CacheReadInputTokens,
 	REDACTED
 REDACTED
 
@@ -291,12 +315,13 @@ REDACTED
 	c.JSON(http.StatusOK, ccResp)
 
 	return &ForwardResult{
-		RequestID:     requestID,
-		Usage:         usage,
-		Model:         originalModel,
-		UpstreamModel: mappedModel,
-		Stream:        false,
-		Duration:      time.Since(startTime),
+		RequestID:       requestID,
+		Usage:           usage,
+		Model:           originalModel,
+		UpstreamModel:   mappedModel,
+		ReasoningEffort: reasoningEffort,
+		Stream:          false,
+		Duration:        time.Since(startTime),
 REDACTED, nil
 REDACTED
 
@@ -307,6 +332,7 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	c *gin.Context,
 	originalModel string,
 	mappedModel string,
+	reasoningEffort *string,
 	startTime time.Time,
 	includeUsage bool,
 ) (*ForwardResult, error) {
@@ -341,13 +367,14 @@ REDACTED
 
 	resultWithUsage := func() *ForwardResult {
 		return &ForwardResult{
-			RequestID:     requestID,
-			Usage:         usage,
-			Model:         originalModel,
-			UpstreamModel: mappedModel,
-			Stream:        true,
-			Duration:      time.Since(startTime),
-			FirstTokenMs:  firstTokenMs,
+			RequestID:       requestID,
+			Usage:           usage,
+			Model:           originalModel,
+			UpstreamModel:   mappedModel,
+			ReasoningEffort: reasoningEffort,
+			Stream:          true,
+			Duration:        time.Since(startTime),
+			FirstTokenMs:    firstTokenMs,
 	REDACTED
 REDACTED
 
@@ -369,18 +396,13 @@ REDACTED
 			firstTokenMs = &ms
 	REDACTED
 
-		// Extract usage
+		// Extract usage from message_delta
 		if event.Type == "message_delta" && event.Usage != nil {
-			usage = ClaudeUsage{
-				InputTokens:  event.Usage.InputTokens,
-				OutputTokens: event.Usage.OutputTokens,
-		REDACTED
-			if event.Usage.CacheReadInputTokens > 0 {
-				usage.CacheReadInputTokens = event.Usage.CacheReadInputTokens
-		REDACTED
+			mergeAnthropicUsage(&usage, *event.Usage)
 	REDACTED
-		if event.Type == "message_start" && event.Message != nil && event.Message.Usage.InputTokens > 0 {
-			usage.InputTokens = event.Message.Usage.InputTokens
+		// Also capture usage from message_start (carries cache fields)
+		if event.Type == "message_start" && event.Message != nil {
+			mergeAnthropicUsage(&usage, event.Message.Usage)
 	REDACTED
 
 		// Chain: Anthropic event → Responses events → CC chunks
