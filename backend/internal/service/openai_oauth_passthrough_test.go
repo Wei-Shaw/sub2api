@@ -536,6 +536,55 @@ REDACTED
 	require.True(t, arr[len(arr)-1].Passthrough)
 REDACTED
 
+func TestOpenAIGatewayService_OAuthPassthrough_429PersistsRateLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+
+	originalBody := []byte(`{"model":"gpt-5.2","stream":false,"instructions":"local-test-instructions","input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
+	resetAt := time.Now().Add(7 * 24 * time.Hour).Unix()
+	resp := &http.Response{
+		StatusCode: http.StatusTooManyRequests,
+		Header: http.Header{
+			"Content-Type": []string{"application/json"REDACTED,
+			"x-request-id": []string{"rid-rate-limit"REDACTED,
+	REDACTED,
+		Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{"error":{"message":"The usage limit has been reached","type":"usage_limit_reached","resets_at":%dREDACTEDREDACTED`, resetAt))),
+REDACTED
+	upstream := &httpUpstreamRecorder{resp: respREDACTED
+	repo := &openAIWSRateLimitSignalRepo{REDACTED
+	rateSvc := &RateLimitService{accountRepo: repoREDACTED
+
+	svc := &OpenAIGatewayService{
+		cfg:              &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: falseREDACTEDREDACTED,
+		httpUpstream:     upstream,
+		rateLimitService: rateSvc,
+REDACTED
+
+	account := &Account{
+		ID:             123,
+		Name:           "acc",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeOAuth,
+		Concurrency:    1,
+		Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
+		Extra:          map[string]any{"openai_passthrough": trueREDACTED,
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+REDACTED
+
+	_, err := svc.Forward(context.Background(), c, account, originalBody)
+REDACTED
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+	require.Contains(t, rec.Body.String(), "usage_limit_reached")
+	require.Len(t, repo.rateLimitCalls, 1)
+	require.WithinDuration(t, time.Unix(resetAt, 0), repo.rateLimitCalls[0], 2*time.Second)
+REDACTED
+
 func TestOpenAIGatewayService_OAuthPassthrough_NonCodexUAFallbackToCodexUA(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

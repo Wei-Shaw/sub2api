@@ -1979,6 +1979,8 @@ export default {
         expiresAt: 'Expires At',
         actions: 'Actions'
       REDACTED,
+      allPrivacyModes: 'All Privacy States',
+      privacyUnset: 'Unset',
       privacyTrainingOff: 'Training data sharing disabled',
       privacyCfBlocked: 'Blocked by Cloudflare, training may still be on',
       privacyFailed: 'Failed to disable training',
@@ -3494,7 +3496,12 @@ export default {
         typeRequest: 'Request',
         typeAuth: 'Auth',
         typeRouting: 'Routing',
-        typeInternal: 'Internal'
+        typeInternal: 'Internal',
+        endpoint: 'Endpoint',
+        requestType: 'Type',
+        requestTypeSync: 'Sync',
+        requestTypeStream: 'Stream',
+        requestTypeWs: 'WS'
       REDACTED,
       // Error Details Modal
       errorDetails: {
@@ -3580,6 +3587,16 @@ export default {
         latency: 'Request Duration',
         businessLimited: 'Business Limited',
         requestPath: 'Request Path',
+        inboundEndpoint: 'Inbound Endpoint',
+        upstreamEndpoint: 'Upstream Endpoint',
+        requestedModel: 'Requested Model',
+        upstreamModel: 'Upstream Model',
+        requestType: 'Request Type',
+        requestTypeUnknown: 'Unknown',
+        requestTypeSync: 'Sync',
+        requestTypeStream: 'Stream',
+        requestTypeWs: 'WebSocket',
+        modelMapping: 'Model Mapping',
         timings: 'Timings',
         auth: 'Auth',
         routing: 'Routing',

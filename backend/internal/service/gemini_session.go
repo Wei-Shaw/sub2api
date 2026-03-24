@@ -52,10 +52,11 @@ REDACTED
 // 返回 16 字符的 Base64 编码的 SHA256 前缀
 func GenerateGeminiPrefixHash(userID, apiKeyID int64, ip, userAgent, platform, model string) string {
 	// 组合所有标识符
+	normalizedUserAgent := NormalizeSessionUserAgent(userAgent)
 	combined := strconv.FormatInt(userID, 10) + ":" +
 		strconv.FormatInt(apiKeyID, 10) + ":" +
 		ip + ":" +
-		userAgent + ":" +
+		normalizedUserAgent + ":" +
 		platform + ":" +
 		model
 

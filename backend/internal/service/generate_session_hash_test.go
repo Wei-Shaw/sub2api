@@ -504,6 +504,48 @@ REDACTED
 	require.NotEqual(t, h1, h2, "different User-Agent should produce different hash")
 REDACTED
 
+func TestGenerateSessionHash_SessionContext_UAVersionNoiseIgnored(t *testing.T) {
+	svc := &GatewayService{REDACTED
+
+	base := func(ua string) *ParsedRequest {
+		return &ParsedRequest{
+			Messages: []any{
+				map[string]any{"role": "user", "content": "test"REDACTED,
+		REDACTED,
+			SessionContext: &SessionContext{
+				ClientIP:  "1.1.1.1",
+				UserAgent: ua,
+				APIKeyID:  1,
+		REDACTED,
+	REDACTED
+REDACTED
+
+	h1 := svc.GenerateSessionHash(base("Mozilla/5.0 codex_cli_rs/0.1.0"))
+	h2 := svc.GenerateSessionHash(base("Mozilla/5.0 codex_cli_rs/0.1.1"))
+	require.Equal(t, h1, h2, "version-only User-Agent changes should not perturb the sticky session hash")
+REDACTED
+
+func TestGenerateSessionHash_SessionContext_FreeformUAVersionNoiseIgnored(t *testing.T) {
+	svc := &GatewayService{REDACTED
+
+	base := func(ua string) *ParsedRequest {
+		return &ParsedRequest{
+			Messages: []any{
+				map[string]any{"role": "user", "content": "test"REDACTED,
+		REDACTED,
+			SessionContext: &SessionContext{
+				ClientIP:  "1.1.1.1",
+				UserAgent: ua,
+				APIKeyID:  1,
+		REDACTED,
+	REDACTED
+REDACTED
+
+	h1 := svc.GenerateSessionHash(base("Codex CLI 0.1.0"))
+	h2 := svc.GenerateSessionHash(base("Codex CLI 0.1.1"))
+	require.Equal(t, h1, h2, "free-form version-only User-Agent changes should not perturb the sticky session hash")
+REDACTED
+
 func TestGenerateSessionHash_SessionContext_APIKeyIDDifference(t *testing.T) {
 	svc := &GatewayService{REDACTED
 

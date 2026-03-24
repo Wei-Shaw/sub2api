@@ -29,6 +29,11 @@ INSERT INTO ops_error_logs (
   model,
   request_path,
   stream,
+  inbound_endpoint,
+  upstream_endpoint,
+  requested_model,
+  upstream_model,
+  request_type,
   user_agent,
   error_phase,
   error_type,
@@ -57,7 +62,7 @@ INSERT INTO ops_error_logs (
   retry_count,
   created_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43
 )`
 
 func NewOpsRepository(db *sql.DB) service.OpsRepository {
@@ -140,6 +145,11 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 		opsNullString(input.Model),
 		opsNullString(input.RequestPath),
 		input.Stream,
+		opsNullString(input.InboundEndpoint),
+		opsNullString(input.UpstreamEndpoint),
+		opsNullString(input.RequestedModel),
+		opsNullString(input.UpstreamModel),
+		opsNullInt16(input.RequestType),
 		opsNullString(input.UserAgent),
 		input.ErrorPhase,
 		input.ErrorType,
@@ -231,7 +241,12 @@ SELECT
   COALESCE(g.name, ''),
   CASE WHEN e.client_ip IS NULL THEN NULL ELSE e.client_ip::text END,
   COALESCE(e.request_path, ''),
-  e.stream
+  e.stream,
+  COALESCE(e.inbound_endpoint, ''),
+  COALESCE(e.upstream_endpoint, ''),
+  COALESCE(e.requested_model, ''),
+  COALESCE(e.upstream_model, ''),
+  e.request_type
 FROM ops_error_logs e
 LEFT JOIN accounts a ON e.account_id = a.id
 LEFT JOIN groups g ON e.group_id = g.id
@@ -263,6 +278,7 @@ REDACTED
 		var resolvedBy sql.NullInt64
 		var resolvedByName string
 		var resolvedRetryID sql.NullInt64
+		var requestType sql.NullInt64
 		if err := rows.Scan(
 			&item.ID,
 			&item.CreatedAt,
@@ -294,6 +310,11 @@ REDACTED
 			&clientIP,
 			&item.RequestPath,
 			&item.Stream,
+			&item.InboundEndpoint,
+			&item.UpstreamEndpoint,
+			&item.RequestedModel,
+			&item.UpstreamModel,
+			&requestType,
 		); err != nil {
 			return nil, err
 	REDACTED
@@ -334,6 +355,10 @@ REDACTED
 			item.GroupID = &v
 	REDACTED
 		item.GroupName = groupName
+		if requestType.Valid {
+			v := int16(requestType.Int64)
+			item.RequestType = &v
+	REDACTED
 		out = append(out, &item)
 REDACTED
 	if err := rows.Err(); err != nil {
@@ -393,6 +418,11 @@ SELECT
   CASE WHEN e.client_ip IS NULL THEN NULL ELSE e.client_ip::text END,
   COALESCE(e.request_path, ''),
   e.stream,
+  COALESCE(e.inbound_endpoint, ''),
+  COALESCE(e.upstream_endpoint, ''),
+  COALESCE(e.requested_model, ''),
+  COALESCE(e.upstream_model, ''),
+  e.request_type,
   COALESCE(e.user_agent, ''),
   e.auth_latency_ms,
   e.routing_latency_ms,
@@ -427,6 +457,7 @@ LIMIT 1`
 	var responseLatency sql.NullInt64
 	var ttft sql.NullInt64
 	var requestBodyBytes sql.NullInt64
+	var requestType sql.NullInt64
 
 	err := r.db.QueryRowContext(ctx, q, id).Scan(
 		&out.ID,
@@ -464,6 +495,11 @@ LIMIT 1`
 		&clientIP,
 		&out.RequestPath,
 		&out.Stream,
+		&out.InboundEndpoint,
+		&out.UpstreamEndpoint,
+		&out.RequestedModel,
+		&out.UpstreamModel,
+		&requestType,
 		&out.UserAgent,
 		&authLatency,
 		&routingLatency,
@@ -539,6 +575,10 @@ REDACTED
 	if requestBodyBytes.Valid {
 		v := int(requestBodyBytes.Int64)
 		out.RequestBodyBytes = &v
+REDACTED
+	if requestType.Valid {
+		v := int16(requestType.Int64)
+		out.RequestType = &v
 REDACTED
 
 	// Normalize request_body to empty string when stored as JSON null.
@@ -1478,4 +1518,11 @@ func opsNullInt(v any) any {
 	default:
 		return sql.NullInt64{REDACTED
 REDACTED
+REDACTED
+
+func opsNullInt16(v *int16) any {
+	if v == nil {
+		return sql.NullInt64{REDACTED
+REDACTED
+	return sql.NullInt64{Int64: int64(*v), Valid: trueREDACTED
 REDACTED

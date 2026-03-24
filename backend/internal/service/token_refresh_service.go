@@ -280,8 +280,7 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 			newCredentials, err = refresher.Refresh(ctx, account)
 			if newCredentials != nil {
 				newCredentials["_token_version"] = time.Now().UnixMilli()
-				account.Credentials = newCredentials
-				if saveErr := s.accountRepo.Update(ctx, account); saveErr != nil {
+				if saveErr := persistAccountCredentials(ctx, s.accountRepo, account, newCredentials); saveErr != nil {
 					return fmt.Errorf("failed to save credentials: %w", saveErr)
 			REDACTED
 		REDACTED

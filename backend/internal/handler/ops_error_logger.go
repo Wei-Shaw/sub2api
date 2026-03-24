@@ -27,6 +27,9 @@ const (
 	opsRequestBodyKey = "ops_request_body"
 	opsAccountIDKey   = "ops_account_id"
 
+	opsUpstreamModelKey = "ops_upstream_model"
+	opsRequestTypeKey   = "ops_request_type"
+
 	// 错误过滤匹配常量 — shouldSkipOpsErrorLog 和错误分类共用
 	opsErrContextCanceled            = "context canceled"
 	opsErrNoAvailableAccounts        = "no available accounts"
@@ -345,6 +348,18 @@ REDACTED
 REDACTED
 REDACTED
 
+// setOpsEndpointContext stores upstream model and request type for ops error logging.
+// Called by handlers after model mapping and request type determination.
+func setOpsEndpointContext(c *gin.Context, upstreamModel string, requestType int16) {
+	if c == nil {
+		return
+REDACTED
+	if upstreamModel = strings.TrimSpace(upstreamModel); upstreamModel != "" {
+		c.Set(opsUpstreamModelKey, upstreamModel)
+REDACTED
+	c.Set(opsRequestTypeKey, requestType)
+REDACTED
+
 func attachOpsRequestBodyToEntry(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
 	if c == nil || entry == nil {
 		return
@@ -628,7 +643,30 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				REDACTED
 					return ""
 			REDACTED(),
-				Stream:    stream,
+				Stream:           stream,
+				InboundEndpoint:  GetInboundEndpoint(c),
+				UpstreamEndpoint: GetUpstreamEndpoint(c, platform),
+				RequestedModel:   modelName,
+				UpstreamModel: func() string {
+					if v, ok := c.Get(opsUpstreamModelKey); ok {
+						if s, ok := v.(string); ok {
+							return strings.TrimSpace(s)
+					REDACTED
+				REDACTED
+					return ""
+			REDACTED(),
+				RequestType: func() *int16 {
+					if v, ok := c.Get(opsRequestTypeKey); ok {
+						switch t := v.(type) {
+						case int16:
+							return &t
+						case int:
+							v16 := int16(t)
+							return &v16
+					REDACTED
+				REDACTED
+					return nil
+			REDACTED(),
 				UserAgent: c.GetHeader("User-Agent"),
 
 				ErrorPhase: "upstream",
@@ -756,7 +794,30 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			REDACTED
 				return ""
 		REDACTED(),
-			Stream:    stream,
+			Stream:           stream,
+			InboundEndpoint:  GetInboundEndpoint(c),
+			UpstreamEndpoint: GetUpstreamEndpoint(c, platform),
+			RequestedModel:   modelName,
+			UpstreamModel: func() string {
+				if v, ok := c.Get(opsUpstreamModelKey); ok {
+					if s, ok := v.(string); ok {
+						return strings.TrimSpace(s)
+				REDACTED
+			REDACTED
+				return ""
+		REDACTED(),
+			RequestType: func() *int16 {
+				if v, ok := c.Get(opsRequestTypeKey); ok {
+					switch t := v.(type) {
+					case int16:
+						return &t
+					case int:
+						v16 := int16(t)
+						return &v16
+				REDACTED
+			REDACTED
+				return nil
+		REDACTED(),
 			UserAgent: c.GetHeader("User-Agent"),
 
 			ErrorPhase:        phase,
