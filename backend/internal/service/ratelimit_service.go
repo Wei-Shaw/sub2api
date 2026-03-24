@@ -163,7 +163,7 @@ REDACTED
 				account.Credentials = make(map[string]any)
 		REDACTED
 			account.Credentials["expires_at"] = time.Now().Format(time.RFC3339)
-			if err := s.accountRepo.Update(ctx, account); err != nil {
+			if err := persistAccountCredentials(ctx, s.accountRepo, account, account.Credentials); err != nil {
 				slog.Warn("oauth_401_force_refresh_update_failed", "account_id", account.ID, "error", err)
 		REDACTED else {
 				slog.Info("oauth_401_force_refresh_set", "account_id", account.ID, "platform", account.Platform)

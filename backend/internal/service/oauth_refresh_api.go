@@ -108,8 +108,7 @@ REDACTED
 	// 5. 设置版本号 + 更新 DB
 	if newCredentials != nil {
 		newCredentials["_token_version"] = time.Now().UnixMilli()
-		freshAccount.Credentials = newCredentials
-		if updateErr := api.accountRepo.Update(ctx, freshAccount); updateErr != nil {
+		if updateErr := persistAccountCredentials(ctx, api.accountRepo, freshAccount, newCredentials); updateErr != nil {
 			slog.Error("oauth_refresh_update_failed",
 				"account_id", freshAccount.ID,
 				"error", updateErr,

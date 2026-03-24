@@ -15,9 +15,11 @@ import (
 
 type rateLimitAccountRepoStub struct {
 	mockAccountRepoForGemini
-	setErrorCalls int
-	tempCalls     int
-	lastErrorMsg  string
+	setErrorCalls          int
+	tempCalls              int
+	updateCredentialsCalls int
+	lastCredentials        map[string]any
+	lastErrorMsg           string
 REDACTED
 
 func (r *rateLimitAccountRepoStub) SetError(ctx context.Context, id int64, errorMsg string) error {
@@ -28,6 +30,12 @@ REDACTED
 
 func (r *rateLimitAccountRepoStub) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
 	r.tempCalls++
+	return nil
+REDACTED
+
+func (r *rateLimitAccountRepoStub) UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error {
+	r.updateCredentialsCalls++
+	r.lastCredentials = cloneCredentials(credentials)
 	return nil
 REDACTED
 
@@ -110,6 +118,7 @@ REDACTED
 	require.True(t, shouldDisable)
 	require.Equal(t, 0, repo.setErrorCalls)
 	require.Equal(t, 1, repo.tempCalls)
+	require.Equal(t, 1, repo.updateCredentialsCalls)
 	require.Len(t, invalidator.accounts, 1)
 REDACTED
 
@@ -129,4 +138,23 @@ REDACTED
 	require.True(t, shouldDisable)
 	require.Equal(t, 1, repo.setErrorCalls)
 	require.Empty(t, invalidator.accounts)
+REDACTED
+
+func TestRateLimitService_HandleUpstreamError_OAuth401UsesCredentialsUpdater(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{REDACTED
+	service := NewRateLimitService(repo, nil, &config.Config{REDACTED, nil, nil)
+	account := &Account{
+		ID:       103,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+REDACTED
+			"access_token": "token",
+	REDACTED,
+REDACTED
+
+	shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{REDACTED, []byte("unauthorized"))
+
+	require.True(t, shouldDisable)
+	require.Equal(t, 1, repo.updateCredentialsCalls)
+	require.NotEmpty(t, repo.lastCredentials["expires_at"])
 REDACTED
