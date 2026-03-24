@@ -1979,6 +1979,8 @@ export default {
         expiresAt: 'Expires At',
         actions: 'Actions'
       REDACTED,
+      allPrivacyModes: 'All Privacy States',
+      privacyUnset: 'Unset',
       privacyTrainingOff: 'Training data sharing disabled',
       privacyCfBlocked: 'Blocked by Cloudflare, training may still be on',
       privacyFailed: 'Failed to disable training',

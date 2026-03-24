@@ -36,6 +36,7 @@ export async function list(
     status?: string
     group?: string
     search?: string
+    privacy_mode?: string
     lite?: string
   REDACTED,
   options?: {
@@ -68,6 +69,7 @@ export async function listWithEtag(
     status?: string
     group?: string
     search?: string
+    privacy_mode?: string
     lite?: string
   REDACTED,
   options?: {

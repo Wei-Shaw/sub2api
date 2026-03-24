@@ -208,15 +208,16 @@ REDACTED
 
 func (s *AccountRepoSuite) TestListWithFilters() {
 	tests := []struct {
-		name      string
-		setup     func(client *dbent.Client)
-		platform  string
-		accType   string
-		status    string
-		search    string
-		groupID   int64
-		wantCount int
-		validate  func(accounts []service.Account)
+		name        string
+		setup       func(client *dbent.Client)
+		platform    string
+		accType     string
+		status      string
+		search      string
+		groupID     int64
+		privacyMode string
+		wantCount   int
+		validate    func(accounts []service.Account)
 REDACTED{
 		{
 			name: "filter_by_platform",
@@ -281,6 +282,32 @@ REDACTED{
 				s.Require().Empty(accounts[0].GroupIDs)
 		REDACTED,
 	REDACTED,
+		{
+			name: "filter_by_privacy_mode",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "privacy-ok", Extra: map[string]any{"privacy_mode": service.PrivacyModeTrainingOffREDACTEDREDACTED)
+				mustCreateAccount(s.T(), client, &service.Account{Name: "privacy-fail", Extra: map[string]any{"privacy_mode": service.PrivacyModeFailedREDACTEDREDACTED)
+		REDACTED,
+			privacyMode: service.PrivacyModeTrainingOff,
+			wantCount:   1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("privacy-ok", accounts[0].Name)
+		REDACTED,
+	REDACTED,
+		{
+			name: "filter_by_privacy_mode_unset",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "privacy-unset", Extra: nilREDACTED)
+				mustCreateAccount(s.T(), client, &service.Account{Name: "privacy-empty", Extra: map[string]any{"privacy_mode": ""REDACTEDREDACTED)
+				mustCreateAccount(s.T(), client, &service.Account{Name: "privacy-set", Extra: map[string]any{"privacy_mode": service.PrivacyModeTrainingOffREDACTEDREDACTED)
+		REDACTED,
+			privacyMode: service.AccountPrivacyModeUnsetFilter,
+			wantCount:   2,
+			validate: func(accounts []service.Account) {
+				names := []string{accounts[0].Name, accounts[1].NameREDACTED
+				s.ElementsMatch([]string{"privacy-unset", "privacy-empty"REDACTED, names)
+		REDACTED,
+	REDACTED,
 REDACTED
 
 	for _, tt := range tests {
@@ -293,7 +320,7 @@ REDACTED
 
 			tt.setup(client)
 
-			accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, tt.platform, tt.accType, tt.status, tt.search, tt.groupID)
+			accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, tt.platform, tt.accType, tt.status, tt.search, tt.groupID, tt.privacyMode)
 			s.Require().NoError(err)
 			s.Require().Len(accounts, tt.wantCount)
 			if tt.validate != nil {
@@ -360,7 +387,7 @@ REDACTED)
 	s.Require().Len(got.Groups, 1, "expected Groups to be populated")
 	s.Require().Equal(group.ID, got.Groups[0].ID)
 
-	accounts, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", "", "acc", 0)
+	accounts, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED, "", "", "", "acc", 0, "")
 	s.Require().NoError(err, "ListWithFilters")
 	s.Require().Equal(int64(1), page.Total)
 	s.Require().Len(accounts, 1)

@@ -24,7 +24,7 @@ REDACTED
 		accounts, pageInfo, err := s.accountRepo.ListWithFilters(ctx, pagination.PaginationParams{
 			Page:     page,
 			PageSize: opsAccountsPageSize,
-	REDACTED, platformFilter, "", "", "", 0)
+	REDACTED, platformFilter, "", "", "", 0, "")
 		if err != nil {
 			return nil, err
 	REDACTED
