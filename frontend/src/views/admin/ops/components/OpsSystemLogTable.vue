@@ -344,7 +344,7 @@ REDACTED)
         <div class="text-xs font-semibold text-gray-700 dark:text-gray-200">运行时日志配置（实时生效）</div>
         <span v-if="runtimeLoading" class="text-xs text-gray-500">加载中...</span>
       </div>
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-6">
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
         <label class="text-xs text-gray-600 dark:text-gray-300">
           级别
           <select v-model="runtimeConfig.level" class="input mt-1">
@@ -374,21 +374,27 @@ REDACTED)
           保留天数
           <input v-model.number="runtimeConfig.retention_days" type="number" min="1" max="3650" class="input mt-1" />
         </label>
-        <div class="flex items-end gap-2">
-          <label class="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-            <input v-model="runtimeConfig.caller" type="checkbox" />
-            caller
-          </label>
-          <label class="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-            <input v-model="runtimeConfig.enable_sampling" type="checkbox" />
-            sampling
-          </label>
-          <button type="button" class="btn btn-primary btn-sm" :disabled="runtimeSaving" @click="saveRuntimeConfig">
-            {{ runtimeSaving ? '保存中...' : '保存并生效' REDACTEDREDACTED
-          </button>
-          <button type="button" class="btn btn-secondary btn-sm" :disabled="runtimeSaving" @click="resetRuntimeConfig">
-            回滚默认值
-          </button>
+        <div class="md:col-span-2 xl:col-span-6">
+          <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <label class="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                <input v-model="runtimeConfig.caller" type="checkbox" />
+                caller
+              </label>
+              <label class="inline-flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                <input v-model="runtimeConfig.enable_sampling" type="checkbox" />
+                sampling
+              </label>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 lg:justify-end">
+              <button type="button" class="btn btn-primary btn-sm" :disabled="runtimeSaving" @click="saveRuntimeConfig">
+                {{ runtimeSaving ? '保存中...' : '保存并生效' REDACTEDREDACTED
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" :disabled="runtimeSaving" @click="resetRuntimeConfig">
+                回滚默认值
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       <p v-if="health.last_error" class="mt-2 text-xs text-red-600 dark:text-red-400">最近写入错误：{{ health.last_error REDACTEDREDACTED</p>
