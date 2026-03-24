@@ -126,9 +126,11 @@ export function useOpenAIOAuth(options?: UseOpenAIOAuthOptions) {
   REDACTED
 
   // Validate refresh token and get full token info
+  // clientId: 指定 OAuth client_id（用于第三方渠道获取的 RT，如 app_LlGpXReQgckcGGUo2JrYvtJK）
   const validateRefreshToken = async (
     refreshToken: string,
-    proxyId?: number | null
+    proxyId?: number | null,
+    clientId?: string
   ): Promise<OpenAITokenInfo | null> => {
     if (!refreshToken.trim()) {
       error.value = 'Missing refresh token'
@@ -143,11 +145,12 @@ export function useOpenAIOAuth(options?: UseOpenAIOAuthOptions) {
       const tokenInfo = await adminAPI.accounts.refreshOpenAIToken(
         refreshToken.trim(),
         proxyId,
-        `${endpointPrefixREDACTED/refresh-token`
+        `${endpointPrefixREDACTED/refresh-token`,
+        clientId
       )
       return tokenInfo as OpenAITokenInfo
     REDACTED catch (err: any) {
-      error.value = err.response?.data?.detail || 'Failed to validate refresh token'
+      error.value = err.response?.data?.detail || err.message || 'Failed to validate refresh token'
       appStore.showError(error.value)
       return null
     REDACTED finally {
