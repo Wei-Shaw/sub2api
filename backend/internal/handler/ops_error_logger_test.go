@@ -285,11 +285,15 @@ func TestSetOpsEndpointContext_SetsContextKeys(t *testing.T) {
 
 	v, ok := c.Get(opsUpstreamModelKey)
 	require.True(t, ok)
-	require.Equal(t, "claude-3-5-sonnet-20241022", v.(string))
+	vStr, ok := v.(string)
+	require.True(t, ok)
+	require.Equal(t, "claude-3-5-sonnet-20241022", vStr)
 
 	rt, ok := c.Get(opsRequestTypeKey)
 	require.True(t, ok)
-	require.Equal(t, int16(2), rt.(int16))
+	rtVal, ok := rt.(int16)
+	require.True(t, ok)
+	require.Equal(t, int16(2), rtVal)
 REDACTED
 
 func TestSetOpsEndpointContext_EmptyModelNotStored(t *testing.T) {
@@ -305,7 +309,9 @@ func TestSetOpsEndpointContext_EmptyModelNotStored(t *testing.T) {
 
 	rt, ok := c.Get(opsRequestTypeKey)
 	require.True(t, ok)
-	require.Equal(t, int16(1), rt.(int16))
+	rtVal, ok := rt.(int16)
+	require.True(t, ok)
+	require.Equal(t, int16(1), rtVal)
 REDACTED
 
 func TestSetOpsEndpointContext_NilContext(t *testing.T) {
