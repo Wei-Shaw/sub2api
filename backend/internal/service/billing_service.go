@@ -222,10 +222,10 @@ REDACTED
 		LongContextOutputMultiplier:    openAIGPT54LongContextOutputMultiplier,
 REDACTED
 	s.fallbackPrices["gpt-5.4-mini"] = &ModelPricing{
-		InputPricePerToken:             7.5e-7,
-		OutputPricePerToken:            4.5e-6,
-		CacheReadPricePerToken:         7.5e-8,
-		SupportsCacheBreakdown:         false,
+		InputPricePerToken:     7.5e-7,
+		OutputPricePerToken:    4.5e-6,
+		CacheReadPricePerToken: 7.5e-8,
+		SupportsCacheBreakdown: false,
 REDACTED
 	s.fallbackPrices["gpt-5.4-nano"] = &ModelPricing{
 		InputPricePerToken:     2e-7,

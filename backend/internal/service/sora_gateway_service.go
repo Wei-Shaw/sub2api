@@ -148,10 +148,13 @@ REDACTED
 		s.writeSoraError(c, http.StatusBadRequest, "invalid_request_error", "model is required", clientStream)
 		return nil, errors.New("model is required")
 REDACTED
+	originalModel := reqModel
 
 	mappedModel := account.GetMappedModel(reqModel)
+	var upstreamModel string
 	if mappedModel != "" && mappedModel != reqModel {
 		reqModel = mappedModel
+		upstreamModel = mappedModel
 REDACTED
 
 	modelCfg, ok := GetSoraModelConfig(reqModel)
@@ -213,13 +216,14 @@ REDACTED
 			c.JSON(http.StatusOK, buildSoraNonStreamResponse(content, reqModel))
 	REDACTED
 		return &ForwardResult{
-			RequestID:    "",
-			Model:        reqModel,
-			Stream:       clientStream,
-			Duration:     time.Since(startTime),
-			FirstTokenMs: firstTokenMs,
-			Usage:        ClaudeUsage{REDACTED,
-			MediaType:    "prompt",
+			RequestID:     "",
+			Model:         originalModel,
+			UpstreamModel: upstreamModel,
+			Stream:        clientStream,
+			Duration:      time.Since(startTime),
+			FirstTokenMs:  firstTokenMs,
+			Usage:         ClaudeUsage{REDACTED,
+			MediaType:     "prompt",
 	REDACTED, nil
 REDACTED
 
@@ -269,13 +273,14 @@ REDACTED
 				c.JSON(http.StatusOK, resp)
 		REDACTED
 			return &ForwardResult{
-				RequestID:    "",
-				Model:        reqModel,
-				Stream:       clientStream,
-				Duration:     time.Since(startTime),
-				FirstTokenMs: firstTokenMs,
-				Usage:        ClaudeUsage{REDACTED,
-				MediaType:    "prompt",
+				RequestID:     "",
+				Model:         originalModel,
+				UpstreamModel: upstreamModel,
+				Stream:        clientStream,
+				Duration:      time.Since(startTime),
+				FirstTokenMs:  firstTokenMs,
+				Usage:         ClaudeUsage{REDACTED,
+				MediaType:     "prompt",
 		REDACTED, nil
 	REDACTED
 		if characterResult != nil && strings.TrimSpace(characterResult.Username) != "" {
@@ -419,16 +424,17 @@ REDACTED else if c != nil {
 REDACTED
 
 	return &ForwardResult{
-		RequestID:    taskID,
-		Model:        reqModel,
-		Stream:       clientStream,
-		Duration:     time.Since(startTime),
-		FirstTokenMs: firstTokenMs,
-		Usage:        ClaudeUsage{REDACTED,
-		MediaType:    mediaType,
-		MediaURL:     firstMediaURL(finalURLs),
-		ImageCount:   imageCount,
-		ImageSize:    imageSize,
+		RequestID:     taskID,
+		Model:         originalModel,
+		UpstreamModel: upstreamModel,
+		Stream:        clientStream,
+		Duration:      time.Since(startTime),
+		FirstTokenMs:  firstTokenMs,
+		Usage:         ClaudeUsage{REDACTED,
+		MediaType:     mediaType,
+		MediaURL:      firstMediaURL(finalURLs),
+		ImageCount:    imageCount,
+		ImageSize:     imageSize,
 REDACTED, nil
 REDACTED
 

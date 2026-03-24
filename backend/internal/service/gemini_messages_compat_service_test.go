@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,30 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type geminiCompatHTTPUpstreamStub struct {
+	response *http.Response
+	err      error
+	calls    int
+	lastReq  *http.Request
+REDACTED
+
+func (s *geminiCompatHTTPUpstreamStub) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	s.calls++
+	s.lastReq = req
+	if s.err != nil {
+		return nil, s.err
+REDACTED
+	if s.response == nil {
+		return nil, fmt.Errorf("missing stub response")
+REDACTED
+	resp := *s.response
+	return &resp, nil
+REDACTED
+
+func (s *geminiCompatHTTPUpstreamStub) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, enableTLSFingerprint bool) (*http.Response, error) {
+	return s.Do(req, proxyURL, accountID, accountConcurrency)
+REDACTED
 
 // TestConvertClaudeToolsToGeminiTools_CustomType 测试custom类型工具转换
 func TestConvertClaudeToolsToGeminiTools_CustomType(t *testing.T) {
@@ -168,6 +193,42 @@ REDACTED
 REDACTED
 	require.NotNil(t, usage)
 	require.False(t, logSink.ContainsMessage("[GeminiAPI]"), "debug 关闭时不应输出 Gemini 响应头日志")
+REDACTED
+
+func TestGeminiMessagesCompatServiceForward_PreservesRequestedModelAndMappedUpstreamModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	httpStub := &geminiCompatHTTPUpstreamStub{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"x-request-id": []string{"gemini-req-1"REDACTEDREDACTED,
+			Body:       io.NopCloser(strings.NewReader(`{"candidates":[{"content":{"parts":[{"text":"hello"REDACTED]REDACTEDREDACTED],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5REDACTEDREDACTED`)),
+	REDACTED,
+REDACTED
+	svc := &GeminiMessagesCompatService{httpUpstream: httpStub, cfg: &config.Config{REDACTEDREDACTED
+	account := &Account{
+		ID:   1,
+		Type: AccountTypeAPIKey,
+REDACTED
+			"api_key": "test-key",
+			"model_mapping": map[string]any{
+				"claude-sonnet-4": "claude-sonnet-4-20250514",
+		REDACTED,
+	REDACTED,
+REDACTED
+	body := []byte(`{"model":"claude-sonnet-4","max_tokens":16,"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, "claude-sonnet-4", result.Model)
+	require.Equal(t, "claude-sonnet-4-20250514", result.UpstreamModel)
+	require.Equal(t, 1, httpStub.calls)
+	require.NotNil(t, httpStub.lastReq)
+	require.Contains(t, httpStub.lastReq.URL.String(), "/models/claude-sonnet-4-20250514:")
 REDACTED
 
 func TestConvertClaudeMessagesToGeminiGenerateContent_AddsThoughtSignatureForToolUse(t *testing.T) {

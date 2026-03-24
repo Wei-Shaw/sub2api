@@ -4110,9 +4110,9 @@ REDACTED
 		multiplier = resolver.Resolve(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
 REDACTED
 
-	billingModel := result.Model
+	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
 	if result.BillingModel != "" {
-		billingModel = result.BillingModel
+		billingModel = strings.TrimSpace(result.BillingModel)
 REDACTED
 	serviceTier := ""
 	if result.ServiceTier != nil {
@@ -4140,6 +4140,7 @@ REDACTED
 		AccountID:             account.ID,
 		RequestID:             requestID,
 		Model:                 result.Model,
+		RequestedModel:        result.Model,
 		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
 		ServiceTier:           result.ServiceTier,
 		ReasoningEffort:       result.ReasoningEffort,
