@@ -799,19 +799,21 @@ urlFallbackLoop:
 				break urlFallbackLoop
 			}
 
-			// 成功响应（< 400）：清零 INTERNAL 500 连续失败计数器
-			if s.internal500Cache != nil {
-				if err := s.internal500Cache.ResetInternal500Count(p.ctx, p.account.ID); err != nil {
-					slog.Error("internal500_counter_reset_failed",
-						"prefix", p.prefix, "account_id", p.account.ID, "error", err)
-				}
-			}
+			// 成功响应（< 400）
 			break urlFallbackLoop
 		}
 	}
 
 	if resp != nil && resp.StatusCode < 400 && usedBaseURL != "" {
 		antigravity.DefaultURLAvailability.MarkSuccess(usedBaseURL)
+	}
+
+	// 成功响应时清零 INTERNAL 500 连续失败计数器（覆盖所有成功路径，含 smart retry）
+	if resp != nil && resp.StatusCode < 400 && s.internal500Cache != nil {
+		if err := s.internal500Cache.ResetInternal500Count(p.ctx, p.account.ID); err != nil {
+			slog.Error("internal500_counter_reset_failed",
+				"prefix", p.prefix, "account_id", p.account.ID, "error", err)
+		}
 	}
 
 	return &antigravityRetryLoopResult{resp: resp}, nil
