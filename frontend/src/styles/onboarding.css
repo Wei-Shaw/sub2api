@@ -104,10 +104,11 @@
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important; /* Push Left and Right apart */
-  padding: 16px 24px !important;
+  padding: 12px 20px !important;
   background-color: #f9fafb !important;
   border-top: 1px solid #f3f4f6 !important;
   margin: 0 !important;
+  gap: 12px !important;
 }
 .dark .theme-tour-popover .driver-popover-footer {
   background-color: #0f172a !important;
@@ -130,7 +131,7 @@
 
 /* Progress */
 .theme-tour-popover .driver-popover-progress-text {
-  font-size: 13px !important;
+  font-size: 12px !important;
   color: #6b7280 !important;
   margin: 0 !important;
   font-weight: 500 !important;
@@ -142,8 +143,8 @@
 .footer-shortcuts {
   display: flex !important;
   align-items: center !important;
-  gap: 12px !important;
-  padding-left: 16px !important;
+  gap: 10px !important;
+  padding-left: 12px !important;
   border-left: 1px solid #e5e7eb !important;
   height: 20px !important;
 }
@@ -152,8 +153,8 @@
 .shortcut-item {
   display: flex !important;
   align-items: center !important;
-  gap: 4px !important;
-  font-size: 12px !important;
+  gap: 3px !important;
+  font-size: 11px !important;
   color: #6b7280 !important;
   white-space: nowrap !important;
 }
@@ -163,13 +164,13 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace !important;
   background-color: #ffffff !important;
   border: 1px solid #e5e7eb !important;
-  border-radius: 4px !important;
-  padding: 1px 6px !important;
+  border-radius: 3px !important;
+  padding: 0 4px !important;
   font-size: 11px !important;
   font-weight: 600 !important;
   color: #4b5563 !important;
   box-shadow: 0 1px 0 rgba(0,0,0,0.05) !important;
-  min-width: 20px !important;
+  min-width: 16px !important;
   text-align: center !important;
   display: inline-block !important;
 }
@@ -184,7 +185,7 @@
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  padding: 8px 16px !important;
+  padding: 6px 14px !important;
   font-size: 13px !important;
   font-weight: 500 !important;
   border-radius: 6px !important;
