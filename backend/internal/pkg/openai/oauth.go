@@ -270,6 +270,7 @@ type OpenAIAuthClaims struct {
 	ChatGPTUserID    string              `json:"chatgpt_user_id"`
 	ChatGPTPlanType  string              `json:"chatgpt_plan_type"`
 	UserID           string              `json:"user_id"`
+	POID             string              `json:"poid"` // organization ID in access_token JWT
 	Organizations    []OrganizationClaim `json:"organizations"`
 REDACTED
 
