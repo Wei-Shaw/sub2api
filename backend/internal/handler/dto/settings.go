@@ -15,6 +15,13 @@ type CustomMenuItem struct {
 	SortOrder  int    `json:"sort_order"`
 REDACTED
 
+// CustomEndpoint represents an admin-configured API endpoint for quick copy.
+type CustomEndpoint struct {
+	Name        string `json:"name"`
+	Endpoint    string `json:"endpoint"`
+	Description string `json:"description"`
+REDACTED
+
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
 	RegistrationEnabled              bool     `json:"registration_enabled"`
@@ -56,6 +63,7 @@ type SystemSettings struct {
 	PurchaseSubscriptionURL     string           `json:"purchase_subscription_url"`
 	SoraClientEnabled           bool             `json:"sora_client_enabled"`
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
+	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
 	DefaultConcurrency   int                          `json:"default_concurrency"`
 	DefaultBalance       float64                      `json:"default_balance"`
@@ -114,6 +122,7 @@ type PublicSettings struct {
 	PurchaseSubscriptionEnabled      bool             `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL          string           `json:"purchase_subscription_url"`
 	CustomMenuItems                  []CustomMenuItem `json:"custom_menu_items"`
+	CustomEndpoints                  []CustomEndpoint `json:"custom_endpoints"`
 	LinuxDoOAuthEnabled              bool             `json:"linuxdo_oauth_enabled"`
 	SoraClientEnabled                bool             `json:"sora_client_enabled"`
 	BackendModeEnabled               bool             `json:"backend_mode_enabled"`
@@ -217,4 +226,18 @@ func ParseUserVisibleMenuItems(raw string) []CustomMenuItem {
 	REDACTED
 REDACTED
 	return filtered
+REDACTED
+
+// ParseCustomEndpoints parses a JSON string into a slice of CustomEndpoint.
+// Returns empty slice on empty/invalid input.
+func ParseCustomEndpoints(raw string) []CustomEndpoint {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "[]" {
+		return []CustomEndpoint{REDACTED
+REDACTED
+	var items []CustomEndpoint
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return []CustomEndpoint{REDACTED
+REDACTED
+	return items
 REDACTED

@@ -36,6 +36,7 @@ export async function list(
     status?: string
     group?: string
     search?: string
+    privacy_mode?: string
     lite?: string
   REDACTED,
   options?: {
@@ -68,6 +69,7 @@ export async function listWithEtag(
     status?: string
     group?: string
     search?: string
+    privacy_mode?: string
     lite?: string
   REDACTED,
   options?: {
@@ -550,13 +552,17 @@ REDACTED
 export async function refreshOpenAIToken(
   refreshToken: string,
   proxyId?: number | null,
-  endpoint: string = '/admin/openai/refresh-token'
+  endpoint: string = '/admin/openai/refresh-token',
+  clientId?: string
 ): Promise<Record<string, unknown>> {
-  const payload: { refresh_token: string; proxy_id?: number REDACTED = {
+  const payload: { refresh_token: string; proxy_id?: number; client_id?: string REDACTED = {
     refresh_token: refreshToken
   REDACTED
   if (proxyId) {
     payload.proxy_id = proxyId
+  REDACTED
+  if (clientId) {
+    payload.client_id = clientId
   REDACTED
   const { data REDACTED = await apiClient.post<Record<string, unknown>>(endpoint, payload)
   return data

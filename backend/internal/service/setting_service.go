@@ -150,6 +150,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyPurchaseSubscriptionURL,
 		SettingKeySoraClientEnabled,
 		SettingKeyCustomMenuItems,
+		SettingKeyCustomEndpoints,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyBackendModeEnabled,
 REDACTED
@@ -195,6 +196,7 @@ REDACTED
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		SoraClientEnabled:                settings[SettingKeySoraClientEnabled] == "true",
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
+		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
 		LinuxDoOAuthEnabled:              linuxDoEnabled,
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 REDACTED, nil
@@ -247,6 +249,7 @@ REDACTED
 		PurchaseSubscriptionURL          string          `json:"purchase_subscription_url,omitempty"`
 		SoraClientEnabled                bool            `json:"sora_client_enabled"`
 		CustomMenuItems                  json.RawMessage `json:"custom_menu_items"`
+		CustomEndpoints                  json.RawMessage `json:"custom_endpoints"`
 		LinuxDoOAuthEnabled              bool            `json:"linuxdo_oauth_enabled"`
 		BackendModeEnabled               bool            `json:"backend_mode_enabled"`
 		Version                          string          `json:"version,omitempty"`
@@ -272,6 +275,7 @@ REDACTED{
 		PurchaseSubscriptionURL:          settings.PurchaseSubscriptionURL,
 		SoraClientEnabled:                settings.SoraClientEnabled,
 		CustomMenuItems:                  filterUserVisibleMenuItems(settings.CustomMenuItems),
+		CustomEndpoints:                  safeRawJSONArray(settings.CustomEndpoints),
 		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		Version:                          s.version,
@@ -312,6 +316,18 @@ REDACTED
 		return json.RawMessage("[]")
 REDACTED
 	return result
+REDACTED
+
+// safeRawJSONArray returns raw as json.RawMessage if it's valid JSON, otherwise "[]".
+func safeRawJSONArray(raw string) json.RawMessage {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return json.RawMessage("[]")
+REDACTED
+	if json.Valid([]byte(raw)) {
+		return json.RawMessage(raw)
+REDACTED
+	return json.RawMessage("[]")
 REDACTED
 
 // GetFrameSrcOrigins returns deduplicated http(s) origins from purchase_subscription_url
@@ -454,6 +470,7 @@ REDACTED
 	updates[SettingKeyPurchaseSubscriptionURL] = strings.TrimSpace(settings.PurchaseSubscriptionURL)
 	updates[SettingKeySoraClientEnabled] = strconv.FormatBool(settings.SoraClientEnabled)
 	updates[SettingKeyCustomMenuItems] = settings.CustomMenuItems
+	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -740,6 +757,7 @@ REDACTED
 		SettingKeyPurchaseSubscriptionURL:          "",
 		SettingKeySoraClientEnabled:                "false",
 		SettingKeyCustomMenuItems:                  "[]",
+		SettingKeyCustomEndpoints:                  "[]",
 		SettingKeyDefaultConcurrency:               strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                   strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyDefaultSubscriptions:             "[]",
@@ -805,6 +823,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		SoraClientEnabled:                settings[SettingKeySoraClientEnabled] == "true",
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
+		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 REDACTED
 

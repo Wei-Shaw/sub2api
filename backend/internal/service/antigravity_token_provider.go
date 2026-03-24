@@ -138,7 +138,7 @@ REDACTED
 			p.markBackfillAttempted(account.ID)
 			if projectID, err := p.antigravityOAuthService.FillProjectID(ctx, account, accessToken); err == nil && projectID != "" {
 				account.Credentials["project_id"] = projectID
-				if updateErr := p.accountRepo.Update(ctx, account); updateErr != nil {
+				if updateErr := persistAccountCredentials(ctx, p.accountRepo, account, account.Credentials); updateErr != nil {
 					slog.Warn("antigravity_project_id_backfill_persist_failed",
 						"account_id", account.ID,
 						"error", updateErr,

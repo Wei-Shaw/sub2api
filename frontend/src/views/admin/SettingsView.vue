@@ -1248,6 +1248,81 @@
               </p>
             </div>
 
+            <!-- Custom Endpoints -->
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.site.customEndpoints.title') REDACTEDREDACTED
+              </label>
+              <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.site.customEndpoints.description') REDACTEDREDACTED
+              </p>
+
+              <div class="space-y-3">
+                <div
+                  v-for="(ep, index) in form.custom_endpoints"
+                  :key="index"
+                  class="rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+                >
+                  <div class="mb-3 flex items-center justify-between">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.site.customEndpoints.itemLabel', { n: index + 1 REDACTED) REDACTEDREDACTED
+                    </span>
+                    <button
+                      type="button"
+                      class="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                      @click="removeEndpoint(index)"
+                    >
+                      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                  </div>
+                  <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                        {{ t('admin.settings.site.customEndpoints.name') REDACTEDREDACTED
+                      </label>
+                      <input
+                        v-model="ep.name"
+                        type="text"
+                        class="input text-sm"
+                        :placeholder="t('admin.settings.site.customEndpoints.namePlaceholder')"
+                      />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                        {{ t('admin.settings.site.customEndpoints.endpointUrl') REDACTEDREDACTED
+                      </label>
+                      <input
+                        v-model="ep.endpoint"
+                        type="url"
+                        class="input font-mono text-sm"
+                        :placeholder="t('admin.settings.site.customEndpoints.endpointUrlPlaceholder')"
+                      />
+                    </div>
+                    <div class="sm:col-span-2">
+                      <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                        {{ t('admin.settings.site.customEndpoints.descriptionLabel') REDACTEDREDACTED
+                      </label>
+                      <input
+                        v-model="ep.description"
+                        type="text"
+                        class="input text-sm"
+                        :placeholder="t('admin.settings.site.customEndpoints.descriptionPlaceholder')"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-2.5 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+                @click="addEndpoint"
+              >
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>
+                {{ t('admin.settings.site.customEndpoints.add') REDACTEDREDACTED
+              </button>
+            </div>
+
             <!-- Contact Info -->
             <div>
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -1580,7 +1655,7 @@
             <button
               type="button"
               @click="testSmtpConnection"
-              :disabled="testingSmtp"
+              :disabled="testingSmtp || loadFailed"
               class="btn btn-secondary btn-sm"
             >
               <svg v-if="testingSmtp" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1650,6 +1725,11 @@
                   v-model="form.smtp_password"
                   type="password"
                   class="input"
+                  autocomplete="new-password"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  @keydown="smtpPasswordManuallyEdited = true"
+                  @paste="smtpPasswordManuallyEdited = true"
                   :placeholder="
                     form.smtp_password_configured
                       ? t('admin.settings.smtp.passwordConfiguredPlaceholder')
@@ -1732,7 +1812,7 @@
               <button
                 type="button"
                 @click="sendTestEmail"
-                :disabled="sendingTestEmail || !testEmailAddress"
+                :disabled="sendingTestEmail || !testEmailAddress || loadFailed"
                 class="btn btn-secondary"
               >
                 <svg
@@ -1778,7 +1858,7 @@
 
         <!-- Save Button -->
         <div v-show="activeTab !== 'backup' && activeTab !== 'data'" class="flex justify-end">
-          <button type="submit" :disabled="saving" class="btn btn-primary">
+          <button type="submit" :disabled="saving || loadFailed" class="btn btn-primary">
             <svg v-if="saving" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle
                 class="opacity-25"
@@ -1849,9 +1929,11 @@ const settingsTabs = [
 const { copyToClipboard REDACTED = useClipboard()
 
 const loading = ref(true)
+const loadFailed = ref(false)
 const saving = ref(false)
 const testingSmtp = ref(false)
 const sendingTestEmail = ref(false)
+const smtpPasswordManuallyEdited = ref(false)
 const testEmailAddress = ref('')
 const registrationEmailSuffixWhitelistTags = ref<string[]>([])
 const registrationEmailSuffixWhitelistDraft = ref('')
@@ -1945,6 +2027,7 @@ const form = reactive<SettingsForm>({
   purchase_subscription_url: '',
   sora_client_enabled: false,
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: numberREDACTED>,
+  custom_endpoints: [] as Array<{name: string; endpoint: string; description: stringREDACTED>,
   frontend_url: '',
   smtp_host: '',
   smtp_port: 587,
@@ -2114,8 +2197,18 @@ function moveMenuItem(index: number, direction: -1 | 1) {
   REDACTED)
 REDACTED
 
+// Custom endpoint management
+function addEndpoint() {
+  form.custom_endpoints.push({ name: '', endpoint: '', description: '' REDACTED)
+REDACTED
+
+function removeEndpoint(index: number) {
+  form.custom_endpoints.splice(index, 1)
+REDACTED
+
 async function loadSettings() {
   loading.value = true
+  loadFailed.value = false
   try {
     const settings = await adminAPI.settings.getSettings()
     Object.assign(form, settings)
@@ -2133,9 +2226,11 @@ async function loadSettings() {
     )
     registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''
+    smtpPasswordManuallyEdited.value = false
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
   REDACTED catch (error: any) {
+    loadFailed.value = true
     appStore.showError(
       t('admin.settings.failedToLoad') + ': ' + (error.message || t('common.unknownError'))
     )
@@ -2253,6 +2348,7 @@ async function saveSettings() {
       purchase_subscription_url: form.purchase_subscription_url,
       sora_client_enabled: form.sora_client_enabled,
       custom_menu_items: form.custom_menu_items,
+      custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
@@ -2286,6 +2382,7 @@ async function saveSettings() {
     )
     registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''
+    smtpPasswordManuallyEdited.value = false
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
     // Refresh cached settings so sidebar/header update immediately
@@ -2304,11 +2401,12 @@ REDACTED
 async function testSmtpConnection() {
   testingSmtp.value = true
   try {
+    const smtpPasswordForTest = smtpPasswordManuallyEdited.value ? form.smtp_password : ''
     const result = await adminAPI.settings.testSmtpConnection({
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,
-      smtp_password: form.smtp_password,
+      smtp_password: smtpPasswordForTest,
       smtp_use_tls: form.smtp_use_tls
     REDACTED)
     // API returns { message: "..." REDACTED on success, errors are thrown as exceptions
@@ -2330,12 +2428,13 @@ async function sendTestEmail() {
 
   sendingTestEmail.value = true
   try {
+    const smtpPasswordForSend = smtpPasswordManuallyEdited.value ? form.smtp_password : ''
     const result = await adminAPI.settings.sendTestEmail({
       email: testEmailAddress.value,
       smtp_host: form.smtp_host,
       smtp_port: form.smtp_port,
       smtp_username: form.smtp_username,
-      smtp_password: form.smtp_password,
+      smtp_password: smtpPasswordForSend,
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
       smtp_use_tls: form.smtp_use_tls

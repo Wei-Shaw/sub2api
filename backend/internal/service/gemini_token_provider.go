@@ -135,7 +135,7 @@ REDACTED
 			if tierID != "" {
 				account.Credentials["tier_id"] = tierID
 		REDACTED
-			_ = p.accountRepo.Update(ctx, account)
+			_ = persistAccountCredentials(ctx, p.accountRepo, account, account.Credentials)
 	REDACTED
 REDACTED
 

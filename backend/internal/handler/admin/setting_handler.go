@@ -110,6 +110,7 @@ REDACTED
 		PurchaseSubscriptionURL:              settings.PurchaseSubscriptionURL,
 		SoraClientEnabled:                    settings.SoraClientEnabled,
 		CustomMenuItems:                      dto.ParseCustomMenuItems(settings.CustomMenuItems),
+		CustomEndpoints:                      dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                   settings.DefaultConcurrency,
 		DefaultBalance:                       settings.DefaultBalance,
 		DefaultSubscriptions:                 defaultSubscriptions,
@@ -176,6 +177,7 @@ type UpdateSettingsRequest struct {
 	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
 	SoraClientEnabled           bool                  `json:"sora_client_enabled"`
 	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
+	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
 
 	// 默认配置
 	DefaultConcurrency   int                              `json:"default_concurrency"`
@@ -231,10 +233,26 @@ REDACTED
 	if req.DefaultBalance < 0 {
 		req.DefaultBalance = 0
 REDACTED
+	req.SMTPHost = strings.TrimSpace(req.SMTPHost)
+	req.SMTPUsername = strings.TrimSpace(req.SMTPUsername)
+	req.SMTPPassword = strings.TrimSpace(req.SMTPPassword)
+	req.SMTPFrom = strings.TrimSpace(req.SMTPFrom)
+	req.SMTPFromName = strings.TrimSpace(req.SMTPFromName)
 	if req.SMTPPort <= 0 {
 		req.SMTPPort = 587
 REDACTED
 	req.DefaultSubscriptions = normalizeDefaultSubscriptions(req.DefaultSubscriptions)
+
+	// SMTP 配置保护：如果请求中 smtp_host 为空但数据库中已有配置，则保留已有 SMTP 配置
+	// 防止前端加载设置失败时空表单覆盖已保存的 SMTP 配置
+	if req.SMTPHost == "" && previousSettings.SMTPHost != "" {
+		req.SMTPHost = previousSettings.SMTPHost
+		req.SMTPPort = previousSettings.SMTPPort
+		req.SMTPUsername = previousSettings.SMTPUsername
+		req.SMTPFrom = previousSettings.SMTPFrom
+		req.SMTPFromName = previousSettings.SMTPFromName
+		req.SMTPUseTLS = previousSettings.SMTPUseTLS
+REDACTED
 
 	// Turnstile 参数验证
 	if req.TurnstileEnabled {
@@ -417,6 +435,55 @@ REDACTED
 		customMenuJSON = string(menuBytes)
 REDACTED
 
+	// 自定义端点验证
+	const (
+		maxCustomEndpoints        = 10
+		maxEndpointNameLen        = 50
+		maxEndpointURLLen         = 2048
+		maxEndpointDescriptionLen = 200
+	)
+
+	customEndpointsJSON := previousSettings.CustomEndpoints
+	if req.CustomEndpoints != nil {
+		endpoints := *req.CustomEndpoints
+		if len(endpoints) > maxCustomEndpoints {
+			response.BadRequest(c, "Too many custom endpoints (max 10)")
+			return
+	REDACTED
+		for _, ep := range endpoints {
+			if strings.TrimSpace(ep.Name) == "" {
+				response.BadRequest(c, "Custom endpoint name is required")
+				return
+		REDACTED
+			if len(ep.Name) > maxEndpointNameLen {
+				response.BadRequest(c, "Custom endpoint name is too long (max 50 characters)")
+				return
+		REDACTED
+			if strings.TrimSpace(ep.Endpoint) == "" {
+				response.BadRequest(c, "Custom endpoint URL is required")
+				return
+		REDACTED
+			if len(ep.Endpoint) > maxEndpointURLLen {
+				response.BadRequest(c, "Custom endpoint URL is too long (max 2048 characters)")
+				return
+		REDACTED
+			if err := config.ValidateAbsoluteHTTPURL(strings.TrimSpace(ep.Endpoint)); err != nil {
+				response.BadRequest(c, "Custom endpoint URL must be an absolute http(s) URL")
+				return
+		REDACTED
+			if len(ep.Description) > maxEndpointDescriptionLen {
+				response.BadRequest(c, "Custom endpoint description is too long (max 200 characters)")
+				return
+		REDACTED
+	REDACTED
+		endpointBytes, err := json.Marshal(endpoints)
+		if err != nil {
+			response.BadRequest(c, "Failed to serialize custom endpoints")
+			return
+	REDACTED
+		customEndpointsJSON = string(endpointBytes)
+REDACTED
+
 	// Ops metrics collector interval validation (seconds).
 	if req.OpsMetricsIntervalSeconds != nil {
 		v := *req.OpsMetricsIntervalSeconds
@@ -495,6 +562,7 @@ REDACTED
 		PurchaseSubscriptionURL:          purchaseURL,
 		SoraClientEnabled:                req.SoraClientEnabled,
 		CustomMenuItems:                  customMenuJSON,
+		CustomEndpoints:                  customEndpointsJSON,
 		DefaultConcurrency:               req.DefaultConcurrency,
 		DefaultBalance:                   req.DefaultBalance,
 		DefaultSubscriptions:             defaultSubscriptions,
@@ -592,6 +660,7 @@ REDACTED
 		PurchaseSubscriptionURL:              updatedSettings.PurchaseSubscriptionURL,
 		SoraClientEnabled:                    updatedSettings.SoraClientEnabled,
 		CustomMenuItems:                      dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
+		CustomEndpoints:                      dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
 		DefaultBalance:                       updatedSettings.DefaultBalance,
 		DefaultSubscriptions:                 updatedDefaultSubscriptions,
@@ -828,7 +897,7 @@ REDACTED
 
 // TestSMTPRequest 测试SMTP连接请求
 type TestSMTPRequest struct {
-	SMTPHost     string `json:"smtp_host" binding:"required"`
+	SMTPHost     string `json:"smtp_host"`
 	SMTPPort     int    `json:"smtp_port"`
 	SMTPUsername string `json:"smtp_username"`
 	SMTPPassword string `json:"smtp_password"`
@@ -844,17 +913,34 @@ func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 		return
 REDACTED
 
-	if req.SMTPPort <= 0 {
-		req.SMTPPort = 587
+	req.SMTPHost = strings.TrimSpace(req.SMTPHost)
+	req.SMTPUsername = strings.TrimSpace(req.SMTPUsername)
+
+	var savedConfig *service.SMTPConfig
+	if cfg, err := h.emailService.GetSMTPConfig(c.Request.Context()); err == nil && cfg != nil {
+		savedConfig = cfg
 REDACTED
 
-	// 如果未提供密码，从数据库获取已保存的密码
-	password := req.SMTPPassword
-	if password == "" {
-		savedConfig, err := h.emailService.GetSMTPConfig(c.Request.Context())
-		if err == nil && savedConfig != nil {
-			password = savedConfig.Password
+	if req.SMTPHost == "" && savedConfig != nil {
+		req.SMTPHost = savedConfig.Host
+REDACTED
+	if req.SMTPPort <= 0 {
+		if savedConfig != nil && savedConfig.Port > 0 {
+			req.SMTPPort = savedConfig.Port
+	REDACTED else {
+			req.SMTPPort = 587
 	REDACTED
+REDACTED
+	if req.SMTPUsername == "" && savedConfig != nil {
+		req.SMTPUsername = savedConfig.Username
+REDACTED
+	password := strings.TrimSpace(req.SMTPPassword)
+	if password == "" && savedConfig != nil {
+		password = savedConfig.Password
+REDACTED
+	if req.SMTPHost == "" {
+		response.BadRequest(c, "SMTP host is required")
+		return
 REDACTED
 
 	config := &service.SMTPConfig{
@@ -877,7 +963,7 @@ REDACTED
 // SendTestEmailRequest 发送测试邮件请求
 type SendTestEmailRequest struct {
 	Email        string `json:"email" binding:"required,email"`
-	SMTPHost     string `json:"smtp_host" binding:"required"`
+	SMTPHost     string `json:"smtp_host"`
 	SMTPPort     int    `json:"smtp_port"`
 	SMTPUsername string `json:"smtp_username"`
 	SMTPPassword string `json:"smtp_password"`
@@ -895,17 +981,42 @@ func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 		return
 REDACTED
 
-	if req.SMTPPort <= 0 {
-		req.SMTPPort = 587
+	req.SMTPHost = strings.TrimSpace(req.SMTPHost)
+	req.SMTPUsername = strings.TrimSpace(req.SMTPUsername)
+	req.SMTPFrom = strings.TrimSpace(req.SMTPFrom)
+	req.SMTPFromName = strings.TrimSpace(req.SMTPFromName)
+
+	var savedConfig *service.SMTPConfig
+	if cfg, err := h.emailService.GetSMTPConfig(c.Request.Context()); err == nil && cfg != nil {
+		savedConfig = cfg
 REDACTED
 
-	// 如果未提供密码，从数据库获取已保存的密码
-	password := req.SMTPPassword
-	if password == "" {
-		savedConfig, err := h.emailService.GetSMTPConfig(c.Request.Context())
-		if err == nil && savedConfig != nil {
-			password = savedConfig.Password
+	if req.SMTPHost == "" && savedConfig != nil {
+		req.SMTPHost = savedConfig.Host
+REDACTED
+	if req.SMTPPort <= 0 {
+		if savedConfig != nil && savedConfig.Port > 0 {
+			req.SMTPPort = savedConfig.Port
+	REDACTED else {
+			req.SMTPPort = 587
 	REDACTED
+REDACTED
+	if req.SMTPUsername == "" && savedConfig != nil {
+		req.SMTPUsername = savedConfig.Username
+REDACTED
+	password := strings.TrimSpace(req.SMTPPassword)
+	if password == "" && savedConfig != nil {
+		password = savedConfig.Password
+REDACTED
+	if req.SMTPFrom == "" && savedConfig != nil {
+		req.SMTPFrom = savedConfig.From
+REDACTED
+	if req.SMTPFromName == "" && savedConfig != nil {
+		req.SMTPFromName = savedConfig.FromName
+REDACTED
+	if req.SMTPHost == "" {
+		response.BadRequest(c, "SMTP host is required")
+		return
 REDACTED
 
 	config := &service.SMTPConfig{
