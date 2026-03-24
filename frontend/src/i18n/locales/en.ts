@@ -2613,6 +2613,21 @@ export default {
           customTitle: 'Custom OAuth (AI Studio OAuth)',
           customDesc: 'Uses admin-configured OAuth client for org management.',
           customRequirement: 'Admin must configure Client ID and add you as a test user.',
+          googleOne: {
+            description: 'Personal account with Google One subscription quota',
+            recommendedForIndividuals: 'Recommended for individuals',
+            noGcpRequired: 'No GCP required'
+          },
+          gcpCodeAssist: {
+            description: 'Enterprise-grade, requires GCP project',
+            requiresGcpBilling: 'Requires GCP project activation and billing',
+            enterpriseUsers: 'Enterprise users',
+            highConcurrency: 'High concurrency'
+          },
+          advancedOptions: {
+            show: 'Show advanced options (Custom OAuth Client)',
+            hide: 'Hide advanced options (Custom OAuth Client)'
+          },
           badges: {
             recommended: 'Recommended',
             highConcurrency: 'High concurrency',
@@ -2635,6 +2650,7 @@ export default {
           },
           links: {
             countryCheck: 'Check country association',
+            changeCountry: 'Change country association',
             geminiWebActivation: 'Activate Gemini Web',
             gcpProject: 'Open GCP Console'
           }

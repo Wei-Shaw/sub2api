@@ -2746,6 +2746,21 @@ export default {
           customTitle: '自定义授权（AI Studio OAuth）',
           customDesc: '使用管理员预设的 OAuth 客户端，适合组织管理。',
           customRequirement: '需管理员配置 Client ID 并加入测试用户白名单。',
+          googleOne: {
+            description: '个人账号，享受 Google One 订阅配额',
+            recommendedForIndividuals: '推荐个人用户',
+            noGcpRequired: '无需 GCP'
+          },
+          gcpCodeAssist: {
+            description: '企业级，需要 GCP 项目',
+            requiresGcpBilling: '需要激活 GCP 项目并绑定信用卡',
+            enterpriseUsers: '企业用户',
+            highConcurrency: '高并发'
+          },
+          advancedOptions: {
+            show: '显示高级选项（自建 OAuth Client）',
+            hide: '隐藏高级选项（自建 OAuth Client）'
+          },
           badges: {
             recommended: '推荐',
             highConcurrency: '高并发',
@@ -2768,6 +2783,7 @@ export default {
           },
           links: {
             countryCheck: '检查归属地',
+            changeCountry: '修改归属地',
             geminiWebActivation: '激活 Gemini Web',
             gcpProject: '打开 GCP 控制台'
           }
