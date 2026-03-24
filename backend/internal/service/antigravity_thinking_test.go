@@ -27,12 +27,12 @@ func TestApplyThinkingModelSuffix(t *testing.T) {
 			expected:        "claude-opus-4-6-thinking",
 		},
 
-		// Thinking 开启 + claude-sonnet-4-5：自动添加后缀
+		// Thinking 开启 + claude-sonnet-4-5：Sonnet 4.5 已统一映射到 4.6，不再特殊处理
 		{
-			name:            "thinking enabled - claude-sonnet-4-5 becomes thinking version",
+			name:            "thinking enabled - claude-sonnet-4-5 unchanged (mapped to 4.6 elsewhere)",
 			mappedModel:     "claude-sonnet-4-5",
 			thinkingEnabled: true,
-			expected:        "claude-sonnet-4-5-thinking",
+			expected:        "claude-sonnet-4-5",
 		},
 
 		// Thinking 开启 + 其他模型：保持原样

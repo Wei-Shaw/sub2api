@@ -689,7 +689,7 @@ func TestAntigravityRetryLoop_PreCheck_SingleAccountRetry_SkipsRateLimit(t *test
 		Concurrency: 1,
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-sonnet-4-6": map[string]any{
 					"rate_limit_reset_at": time.Now().Add(30 * time.Second).Format(time.RFC3339),
 				},
 			},
@@ -733,7 +733,7 @@ func TestAntigravityRetryLoop_PreCheck_NoSingleAccountRetry_SwitchesOnRateLimit(
 		Concurrency: 1,
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-sonnet-4-6": map[string]any{
 					"rate_limit_reset_at": time.Now().Add(30 * time.Second).Format(time.RFC3339),
 				},
 			},
