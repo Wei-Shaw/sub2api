@@ -50,7 +50,21 @@ function mountModal(extraProps: Record<string, unknown> = {REDACTED) {
       stubs: {
         BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' REDACTED,
         ConfirmDialog: true,
-        Select: true,
+        Select: {
+          props: ['modelValue', 'options'],
+          emits: ['update:modelValue'],
+          template: `
+            <select
+              v-bind="$attrs"
+              :value="modelValue"
+              @change="$emit('update:modelValue', $event.target.value)"
+            >
+              <option v-for="option in options" :key="option.value" :value="option.value">
+                {{ option.label REDACTEDREDACTED
+              </option>
+            </select>
+          `
+        REDACTED,
         ProxySelector: true,
         GroupSelector: true,
         Icon: true
@@ -114,5 +128,34 @@ describe('BulkEditAccountModal', () => {
         model_mapping: {REDACTED
       REDACTED
     REDACTED)
+  REDACTED)
+
+  it('OpenAI OAuth 批量编辑应提交 OAuth 专属 WS mode 字段', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    REDACTED)
+
+    await wrapper.get('#bulk-edit-openai-ws-mode-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-ws-mode-select"]').setValue('passthrough')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        openai_oauth_responses_websockets_v2_mode: 'passthrough',
+        openai_oauth_responses_websockets_v2_enabled: true
+      REDACTED
+    REDACTED)
+  REDACTED)
+
+  it('OpenAI API Key 批量编辑不显示 WS mode 入口', () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    REDACTED)
+
+    expect(wrapper.find('#bulk-edit-openai-ws-mode-enabled').exists()).toBe(false)
   REDACTED)
 REDACTED)
