@@ -3503,6 +3503,71 @@ export default {
         requestTypeStream: 'Stream',
         requestTypeWs: 'WS'
       },
+      // System Log
+      systemLog: {
+        title: 'System Logs',
+        description: 'Sorted by latest time by default. Supports filtering, searching and conditional cleanup.',
+        health: {
+          queue: 'Queue',
+          written: 'Written',
+          dropped: 'Dropped',
+          failed: 'Failed',
+          lastError: 'Last write error'
+        },
+        runtimeConfig: {
+          title: 'Runtime Log Config (takes effect immediately)',
+          loading: 'Loading...',
+          level: 'Level',
+          stacktraceLevel: 'Stacktrace Level',
+          samplingInitial: 'Sampling Initial',
+          samplingThereafter: 'Sampling Thereafter',
+          retentionDays: 'Retention Days',
+          caller: 'caller',
+          sampling: 'sampling',
+          save: 'Save & Apply',
+          saving: 'Saving...',
+          rollback: 'Rollback to Default',
+          rollbackConfirm: 'Confirm rollback to startup config (env/yaml) and apply immediately?',
+          saveSuccess: 'Runtime log config applied',
+          saveFailed: 'Failed to save log config',
+          rollbackSuccess: 'Rolled back to startup log config',
+          rollbackFailed: 'Failed to rollback log config'
+        },
+        filters: {
+          timeRange: 'Time Range',
+          startTime: 'Start Time (optional)',
+          endTime: 'End Time (optional)',
+          level: 'Level',
+          levelAll: 'All',
+          component: 'Component',
+          componentPlaceholder: 'e.g. http.access',
+          requestId: 'request_id',
+          clientRequestId: 'client_request_id',
+          userId: 'user_id',
+          accountId: 'account_id',
+          platform: 'Platform',
+          model: 'Model',
+          keyword: 'Keyword',
+          keywordPlaceholder: 'message/request_id'
+        },
+        actions: {
+          search: 'Search',
+          reset: 'Reset',
+          cleanup: 'Cleanup by Filter',
+          cleanupConfirm: 'Confirm cleanup system logs by current filter? This action cannot be undone.',
+          cleanupSuccess: 'Cleanup complete, deleted {count} logs',
+          cleanupFailed: 'Failed to cleanup system logs',
+          refreshHealth: 'Refresh Health'
+        },
+        table: {
+          time: 'Time',
+          level: 'Level',
+          details: 'Log Details'
+        },
+        loading: 'Loading...',
+        empty: 'No system logs',
+        loadFailed: 'Failed to load system logs'
+      },
       // Error Details Modal
       errorDetails: {
         upstreamErrors: 'Upstream Errors',

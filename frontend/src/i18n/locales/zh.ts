@@ -3668,6 +3668,71 @@ export default {
         requestTypeStream: '流式',
         requestTypeWs: 'WS'
       },
+      // System Log
+      systemLog: {
+        title: '系统日志',
+        description: '默认按最新时间倒序，支持筛选搜索与按条件清理。',
+        health: {
+          queue: '队列',
+          written: '写入',
+          dropped: '丢弃',
+          failed: '失败',
+          lastError: '最近写入错误'
+        },
+        runtimeConfig: {
+          title: '运行时日志配置（实时生效）',
+          loading: '加载中...',
+          level: '级别',
+          stacktraceLevel: '堆栈阈值',
+          samplingInitial: '采样初始',
+          samplingThereafter: '采样后续',
+          retentionDays: '保留天数',
+          caller: 'caller',
+          sampling: 'sampling',
+          save: '保存并生效',
+          saving: '保存中...',
+          rollback: '回滚默认值',
+          rollbackConfirm: '确认回滚为启动配置（env/yaml）并立即生效？',
+          saveSuccess: '日志运行时配置已生效',
+          saveFailed: '保存日志配置失败',
+          rollbackSuccess: '已回滚到启动日志配置',
+          rollbackFailed: '回滚日志配置失败'
+        },
+        filters: {
+          timeRange: '时间范围',
+          startTime: '开始时间（可选）',
+          endTime: '结束时间（可选）',
+          level: '级别',
+          levelAll: '全部',
+          component: '组件',
+          componentPlaceholder: '如 http.access',
+          requestId: 'request_id',
+          clientRequestId: 'client_request_id',
+          userId: 'user_id',
+          accountId: 'account_id',
+          platform: '平台',
+          model: '模型',
+          keyword: '关键词',
+          keywordPlaceholder: '消息/request_id'
+        },
+        actions: {
+          search: '查询',
+          reset: '重置',
+          cleanup: '按当前筛选清理',
+          cleanupConfirm: '确认按当前筛选条件清理系统日志？该操作不可撤销。',
+          cleanupSuccess: '清理完成，删除 {count} 条日志',
+          cleanupFailed: '清理系统日志失败',
+          refreshHealth: '刷新健康指标'
+        },
+        table: {
+          time: '时间',
+          level: '级别',
+          details: '日志详细信息'
+        },
+        loading: '加载中...',
+        empty: '暂无系统日志',
+        loadFailed: '系统日志加载失败'
+      },
       // Error Details Modal
       errorDetails: {
         upstreamErrors: '上游错误',
