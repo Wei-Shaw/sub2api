@@ -48,6 +48,17 @@
                 t(getOAuthKey('refreshTokenAuth'))
               REDACTEDREDACTED</span>
             </label>
+            <label v-if="showMobileRefreshTokenOption" class="flex cursor-pointer items-center gap-2">
+              <input
+                v-model="inputMethod"
+                type="radio"
+                value="mobile_refresh_token"
+                class="text-blue-600 focus:ring-blue-500"
+              />
+              <span class="text-sm text-blue-900 dark:text-blue-200">{{
+                t('admin.accounts.oauth.openai.mobileRefreshTokenAuth', '手动输入 Mobile RT')
+              REDACTEDREDACTED</span>
+            </label>
             <label v-if="showSessionTokenOption" class="flex cursor-pointer items-center gap-2">
               <input
                 v-model="inputMethod"
@@ -73,8 +84,8 @@
           </div>
         </div>
 
-        <!-- Refresh Token Input (OpenAI / Antigravity) -->
-        <div v-if="inputMethod === 'refresh_token'" class="space-y-4">
+        <!-- Refresh Token Input (OpenAI / Antigravity / Mobile RT) -->
+        <div v-if="inputMethod === 'refresh_token' || inputMethod === 'mobile_refresh_token'" class="space-y-4">
           <div
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
           >
@@ -759,6 +770,7 @@ interface Props {
   methodLabel?: string
   showCookieOption?: boolean // Whether to show cookie auto-auth option
   showRefreshTokenOption?: boolean // Whether to show refresh token input option (OpenAI only)
+  showMobileRefreshTokenOption?: boolean // Whether to show mobile refresh token option (OpenAI only)
   showSessionTokenOption?: boolean // Whether to show session token input option (Sora only)
   showAccessTokenOption?: boolean // Whether to show access token input option (Sora only)
   platform?: AccountPlatform // Platform type for different UI/text
@@ -776,6 +788,7 @@ const props = withDefaults(defineProps<Props>(), {
   methodLabel: 'Authorization Method',
   showCookieOption: true,
   showRefreshTokenOption: false,
+  showMobileRefreshTokenOption: false,
   showSessionTokenOption: false,
   showAccessTokenOption: false,
   platform: 'anthropic',
@@ -787,6 +800,7 @@ const emit = defineEmits<{
   'exchange-code': [code: string]
   'cookie-auth': [sessionKey: string]
   'validate-refresh-token': [refreshToken: string]
+  'validate-mobile-refresh-token': [refreshToken: string]
   'validate-session-token': [sessionToken: string]
   'import-access-token': [accessToken: string]
   'update:inputMethod': [method: AuthInputMethod]
@@ -834,7 +848,7 @@ const oauthState = ref('')
 const projectId = ref('')
 
 // Computed: show method selection when either cookie or refresh token option is enabled
-const showMethodSelection = computed(() => props.showCookieOption || props.showRefreshTokenOption || props.showSessionTokenOption || props.showAccessTokenOption)
+const showMethodSelection = computed(() => props.showCookieOption || props.showRefreshTokenOption || props.showMobileRefreshTokenOption || props.showSessionTokenOption || props.showAccessTokenOption)
 
 // Clipboard
 const { copied, copyToClipboard REDACTED = useClipboard()
@@ -945,7 +959,11 @@ REDACTED
 
 const handleValidateRefreshToken = () => {
   if (refreshTokenInput.value.trim()) {
-    emit('validate-refresh-token', refreshTokenInput.value.trim())
+    if (inputMethod.value === 'mobile_refresh_token') {
+      emit('validate-mobile-refresh-token', refreshTokenInput.value.trim())
+    REDACTED else {
+      emit('validate-refresh-token', refreshTokenInput.value.trim())
+    REDACTED
   REDACTED
 REDACTED
 
