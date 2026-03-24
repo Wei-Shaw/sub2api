@@ -246,6 +246,7 @@ func TestNormalizeCodexModel_Gpt53(t *testing.T) {
 		"gpt-5.3-codex":             "gpt-5.3-codex",
 		"gpt-5.3-codex-xhigh":       "gpt-5.3-codex",
 		"gpt-5.3-codex-spark":       "gpt-5.3-codex",
+		"gpt 5.3 codex spark":       "gpt-5.3-codex",
 		"gpt-5.3-codex-spark-high":  "gpt-5.3-codex",
 		"gpt-5.3-codex-spark-xhigh": "gpt-5.3-codex",
 		"gpt 5.3 codex":             "gpt-5.3-codex",
@@ -254,6 +255,34 @@ REDACTED
 	for input, expected := range cases {
 		require.Equal(t, expected, normalizeCodexModel(input))
 REDACTED
+REDACTED
+
+func TestApplyCodexOAuthTransform_PreservesBareSparkModel(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.3-codex-spark",
+		"input": []any{REDACTED,
+REDACTED
+
+	result := applyCodexOAuthTransform(reqBody, false, false)
+
+	require.Equal(t, "gpt-5.3-codex-spark", reqBody["model"])
+	require.Equal(t, "gpt-5.3-codex-spark", result.NormalizedModel)
+	store, ok := reqBody["store"].(bool)
+	require.True(t, ok)
+	require.False(t, store)
+REDACTED
+
+func TestApplyCodexOAuthTransform_TrimmedModelWithoutPolicyRewrite(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "  gpt-5.3-codex-spark  ",
+		"input": []any{REDACTED,
+REDACTED
+
+	result := applyCodexOAuthTransform(reqBody, false, false)
+
+	require.Equal(t, "gpt-5.3-codex-spark", reqBody["model"])
+	require.Equal(t, "gpt-5.3-codex-spark", result.NormalizedModel)
+	require.True(t, result.Modified)
 REDACTED
 
 func TestApplyCodexOAuthTransform_CodexCLI_PreservesExistingInstructions(t *testing.T) {
