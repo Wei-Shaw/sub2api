@@ -202,11 +202,10 @@ func TestHandleUpstreamError_429_NonModelRateLimit(t *testing.T) {
 	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusTooManyRequests, http.Header{}, body, "claude-sonnet-4-5", 0, "", false)
 
 	// handleModelRateLimit 不会处理（因为没有 RATE_LIMIT_EXCEEDED），
-	// 但 429 兜底逻辑会使用 requestedModel 经过映射后的最终模型 key 设置模型级限流
-	// claude-sonnet-4-5 在默认映射中映射到 claude-opus-4-6-thinking
+	// 但 429 兜底逻辑会使用 requestedModel 设置模型级限流
 	require.Nil(t, result)
 	require.Len(t, repo.modelRateLimitCalls, 1)
-	require.Equal(t, "claude-opus-4-6-thinking", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
 }
 
 // TestHandleUpstreamError_429_NonModelRateLimit_UsesMappedModelKey 测试 429 非模型限流场景
@@ -823,7 +822,6 @@ func TestSetModelRateLimitByModelName_NotConvertToScope(t *testing.T) {
 
 func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRateLimited(t *testing.T) {
 	upstream := &recordingOKUpstream{}
-	// 限流 key 使用映射后的最终模型名：claude-sonnet-4-5 → claude-opus-4-6-thinking
 	account := &Account{
 		ID:          1,
 		Name:        "acc-1",
@@ -833,7 +831,7 @@ func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRateLimited(t *testing.T) {
 		Concurrency: 1,
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
-				"claude-opus-4-6-thinking": map[string]any{
+				"claude-sonnet-4-5": map[string]any{
 					"rate_limit_reset_at": time.Now().Add(2 * time.Second).Format(time.RFC3339),
 				},
 			},
@@ -867,7 +865,6 @@ func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRateLimited(t *testing.T) {
 
 func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRemainingLong(t *testing.T) {
 	upstream := &recordingOKUpstream{}
-	// 限流 key 使用映射后的最终模型名：claude-sonnet-4-5 → claude-opus-4-6-thinking
 	account := &Account{
 		ID:          2,
 		Name:        "acc-2",
@@ -877,7 +874,7 @@ func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRemainingLong(t *testing.T) {
 		Concurrency: 1,
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
-				"claude-opus-4-6-thinking": map[string]any{
+				"claude-sonnet-4-5": map[string]any{
 					"rate_limit_reset_at": time.Now().Add(11 * time.Second).Format(time.RFC3339),
 				},
 			},

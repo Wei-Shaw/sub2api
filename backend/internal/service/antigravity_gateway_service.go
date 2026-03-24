@@ -977,8 +977,14 @@ func (s *AntigravityGatewayService) getMappedModel(account *Account, requestedMo
 }
 
 // applyThinkingModelSuffix 根据 thinking 配置调整模型名
-// 所有 Sonnet 已统一映射到 Opus，此函数保留为扩展点
+// 当映射结果是 claude-sonnet-4-5 且请求开启了 thinking 时，改为 claude-sonnet-4-5-thinking
 func applyThinkingModelSuffix(mappedModel string, thinkingEnabled bool) string {
+	if !thinkingEnabled {
+		return mappedModel
+	}
+	if mappedModel == "claude-sonnet-4-5" {
+		return "claude-sonnet-4-5-thinking"
+	}
 	return mappedModel
 }
 
