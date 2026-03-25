@@ -2,7 +2,33 @@
 
 package service
 
-import "testing"
+import (
+	"testing"
+)
+
+func applyAntigravitySubscriptionResult(account *Account, result AntigravitySubscriptionResult) (map[string]any, map[string]any) {
+	credentials := make(map[string]any)
+	for k, v := range account.Credentials {
+		credentials[k] = v
+REDACTED
+	credentials["plan_type"] = result.PlanType
+
+	extra := make(map[string]any)
+	for k, v := range account.Extra {
+		extra[k] = v
+REDACTED
+	if result.SubscriptionStatus != "" {
+		extra["subscription_status"] = result.SubscriptionStatus
+REDACTED else {
+		delete(extra, "subscription_status")
+REDACTED
+	if result.SubscriptionError != "" {
+		extra["subscription_error"] = result.SubscriptionError
+REDACTED else {
+		delete(extra, "subscription_error")
+REDACTED
+	return credentials, extra
+REDACTED
 
 func TestApplyAntigravityPrivacyMode_SetsInMemoryExtra(t *testing.T) {
 	account := &Account{REDACTED

@@ -322,7 +322,7 @@ REDACTED
 // loadCodeAssistResult 封装 loadProjectIDWithRetry 的返回结果，
 // 同时携带从 LoadCodeAssist 响应中提取的 plan_type 信息。
 type loadCodeAssistResult struct {
-	ProjectID string
+	ProjectID    string
 	Subscription *AntigravitySubscriptionResult
 REDACTED
 

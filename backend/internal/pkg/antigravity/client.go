@@ -767,7 +767,7 @@ func (r *SetUserSettingsResponse) IsSuccess() bool {
 		return false
 REDACTED
 	// userSettings 为 nil 或空 map 均视为成功
-	if r.UserSettings == nil || len(r.UserSettings) == 0 {
+	if len(r.UserSettings) == 0 {
 		return true
 REDACTED
 	// 如果包含 telemetryEnabled 字段，说明未成功清除

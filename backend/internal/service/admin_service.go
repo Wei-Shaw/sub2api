@@ -2740,4 +2740,3 @@ REDACTED
 	applyAntigravityPrivacyMode(account, mode)
 	return mode
 REDACTED
-
