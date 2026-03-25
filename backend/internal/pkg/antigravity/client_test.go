@@ -250,6 +250,27 @@ func TestGetTier_两者都为nil(t *testing.T) {
 REDACTED
 REDACTED
 
+func TestTierIDToPlanType(t *testing.T) {
+	tests := []struct {
+		tierID string
+		want   string
+REDACTED{
+		{"free-tier", "Free"REDACTED,
+		{"g1-pro-tier", "Pro"REDACTED,
+		{"g1-ultra-tier", "Ultra"REDACTED,
+		{"FREE-TIER", "Free"REDACTED,
+		{"", "Free"REDACTED,
+		{"unknown-tier", "unknown-tier"REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.tierID, func(t *testing.T) {
+			if got := TierIDToPlanType(tt.tierID); got != tt.want {
+				t.Errorf("TierIDToPlanType(%q) = %q, want %q", tt.tierID, got, tt.want)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
 // ---------------------------------------------------------------------------
 // NewClient
 // ---------------------------------------------------------------------------
@@ -800,6 +821,12 @@ type redirectRoundTripper struct {
 	transport http.RoundTripper
 REDACTED
 
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+REDACTED
+
 func (rt *redirectRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	originalURL := req.URL.String()
 	for prefix, target := range rt.redirects {
@@ -1270,6 +1297,12 @@ func TestClient_LoadCodeAssist_Success_RealCall(t *testing.T) {
 	REDACTED
 		if reqBody.Metadata.IDEType != "ANTIGRAVITY" {
 			t.Errorf("IDEType 不匹配: got %s, want ANTIGRAVITY", reqBody.Metadata.IDEType)
+	REDACTED
+		if strings.TrimSpace(reqBody.Metadata.IDEVersion) == "" {
+			t.Errorf("IDEVersion 不应为空")
+	REDACTED
+		if reqBody.Metadata.IDEName != "antigravity" {
+			t.Errorf("IDEName 不匹配: got %s, want antigravity", reqBody.Metadata.IDEName)
 	REDACTED
 
 		w.Header().Set("Content-Type", "application/json")

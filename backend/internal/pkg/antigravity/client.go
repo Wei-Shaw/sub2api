@@ -78,7 +78,9 @@ REDACTED
 // LoadCodeAssistRequest loadCodeAssist 请求
 type LoadCodeAssistRequest struct {
 	Metadata struct {
-		IDEType string `json:"ideType"`
+		IDEType    string `json:"ideType"`
+		IDEVersion string `json:"ideVersion"`
+		IDEName    string `json:"ideName"`
 REDACTED `json:"metadata"`
 REDACTED
 
@@ -221,6 +223,23 @@ func (r *LoadCodeAssistResponse) GetAvailableCredits() []AvailableCredit {
 		return nil
 REDACTED
 	return r.PaidTier.AvailableCredits
+REDACTED
+
+// TierIDToPlanType 将 tier ID 映射为用户可见的套餐名。
+func TierIDToPlanType(tierID string) string {
+	switch strings.ToLower(strings.TrimSpace(tierID)) {
+	case "free-tier":
+		return "Free"
+	case "g1-pro-tier":
+		return "Pro"
+	case "g1-ultra-tier":
+		return "Ultra"
+	default:
+		if tierID == "" {
+			return "Free"
+	REDACTED
+		return tierID
+REDACTED
 REDACTED
 
 // Client Antigravity API 客户端
@@ -421,6 +440,8 @@ REDACTED
 func (c *Client) LoadCodeAssist(ctx context.Context, accessToken string) (*LoadCodeAssistResponse, map[string]any, error) {
 	reqBody := LoadCodeAssistRequest{REDACTED
 	reqBody.Metadata.IDEType = "ANTIGRAVITY"
+	reqBody.Metadata.IDEVersion = "1.20.6"
+	reqBody.Metadata.IDEName = "antigravity"
 
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {

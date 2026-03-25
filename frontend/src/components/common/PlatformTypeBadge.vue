@@ -31,7 +31,7 @@
     </div>
     <!-- Row 2: Plan type + Privacy mode (only if either exists) -->
     <div v-if="planLabel || privacyBadge" class="inline-flex items-center overflow-hidden rounded-md">
-      <span v-if="planLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1', typeClass]">
+      <span v-if="planLabel" :class="['inline-flex items-center gap-1 px-1.5 py-1', planBadgeClass]">
         <span>{{ planLabel REDACTEDREDACTED</span>
       </span>
       <span
@@ -102,6 +102,8 @@ const planLabel = computed(() => {
       return 'Pro'
     case 'free':
       return 'Free'
+    case 'abnormal':
+      return t('admin.accounts.subscriptionAbnormal')
     default:
       return props.planType
   REDACTED
@@ -137,6 +139,13 @@ const typeClass = computed(() => {
     return 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
   REDACTED
   return 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+REDACTED)
+
+const planBadgeClass = computed(() => {
+  if (props.planType && props.planType.toLowerCase() === 'abnormal') {
+    return 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+  REDACTED
+  return typeClass.value
 REDACTED)
 
 // Privacy badge — shows different states for OpenAI/Antigravity OAuth privacy setting

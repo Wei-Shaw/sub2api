@@ -2025,6 +2025,7 @@ export default {
       privacyAntigravitySet: '已关闭遥测和营销邮件',
       privacyAntigravityFailed: '隐私设置失败',
       setPrivacy: '设置隐私',
+      subscriptionAbnormal: '异常',
       // 容量状态提示
       capacity: {
         windowCost: {
