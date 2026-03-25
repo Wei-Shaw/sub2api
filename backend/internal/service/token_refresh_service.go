@@ -128,7 +128,7 @@ REDACTED
 	)
 REDACTED
 
-// Stop 停止刷新服务
+// Stop 停止刷新服务（可安全多次调用）
 func (s *TokenRefreshService) Stop() {
 	close(s.stopCh)
 	s.wg.Wait()
@@ -404,6 +404,8 @@ REDACTED
 REDACTED
 	// OpenAI OAuth: 刷新成功后，检查是否已设置 privacy_mode，未设置则尝试关闭训练数据共享
 	s.ensureOpenAIPrivacy(ctx, account)
+	// Antigravity OAuth: 刷新成功后，检查是否已设置 privacy_mode，未设置则调用 setUserSettings
+	s.ensureAntigravityPrivacy(ctx, account)
 REDACTED
 
 // errRefreshSkipped 表示刷新被跳过（锁竞争或已被其他路径刷新），不计入 failed 或 refreshed
@@ -477,3 +479,51 @@ REDACTED else {
 		)
 REDACTED
 REDACTED
+
+// ensureAntigravityPrivacy 后台刷新中检查 Antigravity OAuth 账号隐私状态。
+// 仅做 Extra["privacy_mode"] 存在性检查，不发起 HTTP 请求，避免每轮循环产生额外网络开销。
+// 用户可通过前端 SetPrivacy 按钮强制重新设置。
+func (s *TokenRefreshService) ensureAntigravityPrivacy(ctx context.Context, account *Account) {
+	if account.Platform != PlatformAntigravity || account.Type != AccountTypeOAuth {
+		return
+REDACTED
+	// 已设置过（无论成功或失败）则跳过，不发 HTTP
+	if account.Extra != nil {
+		if _, ok := account.Extra["privacy_mode"]; ok {
+			return
+	REDACTED
+REDACTED
+
+	token, _ := account.Credentials["access_token"].(string)
+	if token == "" {
+		return
+REDACTED
+
+	projectID, _ := account.Credentials["project_id"].(string)
+
+	var proxyURL string
+	if account.ProxyID != nil && s.proxyRepo != nil {
+		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
+			proxyURL = p.URL()
+	REDACTED
+REDACTED
+
+	mode := setAntigravityPrivacy(ctx, token, projectID, proxyURL)
+	if mode == "" {
+		return
+REDACTED
+
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": modeREDACTED); err != nil {
+		slog.Warn("token_refresh.update_antigravity_privacy_mode_failed",
+			"account_id", account.ID,
+			"error", err,
+		)
+REDACTED else {
+		applyAntigravityPrivacyMode(account, mode)
+		slog.Info("token_refresh.antigravity_privacy_mode_set",
+			"account_id", account.ID,
+			"privacy_mode", mode,
+		)
+REDACTED
+REDACTED
+
