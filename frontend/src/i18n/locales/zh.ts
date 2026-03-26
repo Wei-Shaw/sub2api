@@ -4637,6 +4637,14 @@ export default {
         thinkingSignatureHint: '当上游返回 thinking block 签名校验错误时，自动去除签名并重试',
         thinkingBudget: 'Thinking Budget 整流',
         thinkingBudgetHint: '当上游返回 budget_tokens 约束错误（≥1024）时，自动将 budget 设为 32000 并重试',
+        apikeySignature: 'API Key 签名整流',
+        apikeySignatureHint:
+          '当 API Key 账号的上游返回签名相关错误时，自动去除签名并重试（内置规则始终生效）',
+        apikeyPatterns: '自定义匹配关键词',
+        apikeyPatternsHint:
+          '额外的关键词，匹配响应体中的内容（不区分大小写）。内置规则始终生效，此处用于补充额外匹配。',
+        apikeyPatternPlaceholder: '例如：thinking_error 或 签名无效',
+        addPattern: '添加关键词',
         saved: '整流器设置保存成功',
         saveFailed: '保存整流器设置失败'
       REDACTED,
