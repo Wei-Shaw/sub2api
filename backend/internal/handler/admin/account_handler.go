@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -536,6 +537,8 @@ REDACTED
 		if execErr != nil {
 			return nil, execErr
 	REDACTED
+		// Antigravity OAuth: 新账号直接设置隐私
+		h.adminService.ForceAntigravityPrivacy(ctx, account)
 		return h.buildAccountResponseWithRuntime(ctx, account), nil
 REDACTED)
 	if err != nil {
@@ -883,6 +886,8 @@ REDACTED
 
 	// OpenAI OAuth: 刷新成功后检查并设置 privacy_mode
 	h.adminService.EnsureOpenAIPrivacy(ctx, updatedAccount)
+	// Antigravity OAuth: 刷新成功后检查并设置 privacy_mode
+	h.adminService.EnsureAntigravityPrivacy(ctx, updatedAccount)
 
 	return updatedAccount, "", nil
 REDACTED
@@ -1154,6 +1159,8 @@ REDACTED
 		success := 0
 		failed := 0
 		results := make([]gin.H, 0, len(req.Accounts))
+		// 收集需要异步设置隐私的 Antigravity OAuth 账号
+		var privacyAccounts []*service.Account
 
 		for _, item := range req.Accounts {
 			if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
@@ -1196,12 +1203,32 @@ REDACTED
 			REDACTED)
 				continue
 		REDACTED
+			// 收集 Antigravity OAuth 账号，稍后异步设置隐私
+			if account.Platform == service.PlatformAntigravity && account.Type == service.AccountTypeOAuth {
+				privacyAccounts = append(privacyAccounts, account)
+		REDACTED
 			success++
 			results = append(results, gin.H{
 				"name":    item.Name,
 				"id":      account.ID,
 				"success": true,
 		REDACTED)
+	REDACTED
+
+		// 异步设置 Antigravity 隐私，避免批量创建时阻塞请求
+		if len(privacyAccounts) > 0 {
+			adminSvc := h.adminService
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("batch_create_antigravity_privacy_panic", "recover", r)
+				REDACTED
+			REDACTED()
+				bgCtx := context.Background()
+				for _, acc := range privacyAccounts {
+					adminSvc.ForceAntigravityPrivacy(bgCtx, acc)
+			REDACTED
+		REDACTED()
 	REDACTED
 
 		return gin.H{
@@ -1867,6 +1894,42 @@ REDACTED
 REDACTED
 
 	response.Success(c, models)
+REDACTED
+
+// SetPrivacy handles setting privacy for a single Antigravity OAuth account
+// POST /api/v1/admin/accounts/:id/set-privacy
+func (h *AccountHandler) SetPrivacy(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+REDACTED
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.NotFound(c, "Account not found")
+		return
+REDACTED
+	if account.Platform != service.PlatformAntigravity || account.Type != service.AccountTypeOAuth {
+		response.BadRequest(c, "Only Antigravity OAuth accounts support privacy setting")
+		return
+REDACTED
+	mode := h.adminService.ForceAntigravityPrivacy(c.Request.Context(), account)
+	if mode == "" {
+		response.BadRequest(c, "Cannot set privacy: missing access_token")
+		return
+REDACTED
+	// 从 DB 重新读取以确保返回最新状态
+	updated, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		// 隐私已设置成功但读取失败，回退到内存更新
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+	REDACTED
+		account.Extra["privacy_mode"] = mode
+		response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+		return
+REDACTED
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), updated))
 REDACTED
 
 // RefreshTier handles refreshing Google One tier for a single account

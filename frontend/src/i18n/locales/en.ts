@@ -1984,6 +1984,10 @@ export default {
       privacyTrainingOff: 'Training data sharing disabled',
       privacyCfBlocked: 'Blocked by Cloudflare, training may still be on',
       privacyFailed: 'Failed to disable training',
+      privacyAntigravitySet: 'Telemetry and marketing emails disabled',
+      privacyAntigravityFailed: 'Privacy setting failed',
+      setPrivacy: 'Set Privacy',
+      subscriptionAbnormal: 'Abnormal',
       // Capacity status tooltips
       capacity: {
         windowCost: {

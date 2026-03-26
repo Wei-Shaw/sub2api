@@ -2022,6 +2022,10 @@ export default {
       privacyTrainingOff: '已关闭训练数据共享',
       privacyCfBlocked: '被 Cloudflare 拦截，训练可能仍开启',
       privacyFailed: '关闭训练数据共享失败',
+      privacyAntigravitySet: '已关闭遥测和营销邮件',
+      privacyAntigravityFailed: '隐私设置失败',
+      setPrivacy: '设置隐私',
+      subscriptionAbnormal: '异常',
       // 容量状态提示
       capacity: {
         windowCost: {

@@ -89,7 +89,8 @@ type AntigravityTokenInfo struct {
 	TokenType        string `json:"token_type"`
 	Email            string `json:"email,omitempty"`
 	ProjectID        string `json:"project_id,omitempty"`
-	ProjectIDMissing bool   `json:"-"` // LoadCodeAssist 未返回 project_id
+	ProjectIDMissing bool   `json:"-"`
+	PlanType         string `json:"-"`
 REDACTED
 
 // ExchangeCode 用 authorization code 交换 token
@@ -145,13 +146,17 @@ REDACTED else {
 		result.Email = userInfo.Email
 REDACTED
 
-	// 获取 project_id（部分账户类型可能没有），失败时重试
-	projectID, loadErr := s.loadProjectIDWithRetry(ctx, tokenResp.AccessToken, proxyURL, 3)
+	// 获取 project_id + plan_type（部分账户类型可能没有），失败时重试
+	loadResult, loadErr := s.loadProjectIDWithRetry(ctx, tokenResp.AccessToken, proxyURL, 3)
 	if loadErr != nil {
 		fmt.Printf("[AntigravityOAuth] 警告: 获取 project_id 失败（重试后）: %v\n", loadErr)
 		result.ProjectIDMissing = true
-REDACTED else {
-		result.ProjectID = projectID
+REDACTED
+	if loadResult != nil {
+		result.ProjectID = loadResult.ProjectID
+		if loadResult.Subscription != nil {
+			result.PlanType = loadResult.Subscription.PlanType
+	REDACTED
 REDACTED
 
 	return result, nil
@@ -230,13 +235,17 @@ REDACTED else {
 		tokenInfo.Email = userInfo.Email
 REDACTED
 
-	// 获取 project_id（容错，失败不阻塞）
-	projectID, loadErr := s.loadProjectIDWithRetry(ctx, tokenInfo.AccessToken, proxyURL, 3)
+	// 获取 project_id + plan_type（容错，失败不阻塞）
+	loadResult, loadErr := s.loadProjectIDWithRetry(ctx, tokenInfo.AccessToken, proxyURL, 3)
 	if loadErr != nil {
 		fmt.Printf("[AntigravityOAuth] 警告: 获取 project_id 失败（重试后）: %v\n", loadErr)
 		tokenInfo.ProjectIDMissing = true
-REDACTED else {
-		tokenInfo.ProjectID = projectID
+REDACTED
+	if loadResult != nil {
+		tokenInfo.ProjectID = loadResult.ProjectID
+		if loadResult.Subscription != nil {
+			tokenInfo.PlanType = loadResult.Subscription.PlanType
+	REDACTED
 REDACTED
 
 	return tokenInfo, nil
@@ -288,33 +297,42 @@ REDACTED
 		tokenInfo.Email = existingEmail
 REDACTED
 
-	// 每次刷新都调用 LoadCodeAssist 获取 project_id，失败时重试
+	// 每次刷新都调用 LoadCodeAssist 获取 project_id + plan_type，失败时重试
 	existingProjectID := strings.TrimSpace(account.GetCredential("project_id"))
-	projectID, loadErr := s.loadProjectIDWithRetry(ctx, tokenInfo.AccessToken, proxyURL, 3)
+	loadResult, loadErr := s.loadProjectIDWithRetry(ctx, tokenInfo.AccessToken, proxyURL, 3)
 
 	if loadErr != nil {
-		// LoadCodeAssist 失败，保留原有 project_id
 		tokenInfo.ProjectID = existingProjectID
-		// 只有从未获取过 project_id 且本次也获取失败时，才标记为真正缺失
-		// 如果之前有 project_id，本次只是临时故障，不应标记为错误
 		if existingProjectID == "" {
 			tokenInfo.ProjectIDMissing = true
 	REDACTED
-REDACTED else {
-		tokenInfo.ProjectID = projectID
+REDACTED
+	if loadResult != nil {
+		if loadResult.ProjectID != "" {
+			tokenInfo.ProjectID = loadResult.ProjectID
+	REDACTED
+		if loadResult.Subscription != nil {
+			tokenInfo.PlanType = loadResult.Subscription.PlanType
+	REDACTED
 REDACTED
 
 	return tokenInfo, nil
 REDACTED
 
-// loadProjectIDWithRetry 带重试机制获取 project_id
-// 返回 project_id 和错误，失败时会重试指定次数
-func (s *AntigravityOAuthService) loadProjectIDWithRetry(ctx context.Context, accessToken, proxyURL string, maxRetries int) (string, error) {
+// loadCodeAssistResult 封装 loadProjectIDWithRetry 的返回结果，
+// 同时携带从 LoadCodeAssist 响应中提取的 plan_type 信息。
+type loadCodeAssistResult struct {
+	ProjectID    string
+	Subscription *AntigravitySubscriptionResult
+REDACTED
+
+// loadProjectIDWithRetry 带重试机制获取 project_id，同时从响应中提取 plan_type。
+func (s *AntigravityOAuthService) loadProjectIDWithRetry(ctx context.Context, accessToken, proxyURL string, maxRetries int) (*loadCodeAssistResult, error) {
 	var lastErr error
+	var lastSubscription *AntigravitySubscriptionResult
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
-			// 指数退避：1s, 2s, 4s
 			backoff := time.Duration(1<<uint(attempt-1)) * time.Second
 			if backoff > 8*time.Second {
 				backoff = 8 * time.Second
@@ -324,24 +342,34 @@ func (s *AntigravityOAuthService) loadProjectIDWithRetry(ctx context.Context, ac
 
 		client, err := antigravity.NewClient(proxyURL)
 		if err != nil {
-			return "", fmt.Errorf("create antigravity client failed: %w", err)
+			return nil, fmt.Errorf("create antigravity client failed: %w", err)
 	REDACTED
 		loadResp, loadRaw, err := client.LoadCodeAssist(ctx, accessToken)
 
+		if loadResp != nil {
+			sub := NormalizeAntigravitySubscription(loadResp)
+			lastSubscription = &sub
+	REDACTED
+
 		if err == nil && loadResp != nil && loadResp.CloudAICompanionProject != "" {
-			return loadResp.CloudAICompanionProject, nil
+			return &loadCodeAssistResult{
+				ProjectID:    loadResp.CloudAICompanionProject,
+				Subscription: lastSubscription,
+		REDACTED, nil
 	REDACTED
 
 		if err == nil {
 			if projectID, onboardErr := tryOnboardProjectID(ctx, client, accessToken, loadRaw); onboardErr == nil && projectID != "" {
-				return projectID, nil
+				return &loadCodeAssistResult{
+					ProjectID:    projectID,
+					Subscription: lastSubscription,
+			REDACTED, nil
 		REDACTED else if onboardErr != nil {
 				lastErr = onboardErr
 				continue
 		REDACTED
 	REDACTED
 
-		// 记录错误
 		if err != nil {
 			lastErr = err
 	REDACTED else if loadResp == nil {
@@ -351,7 +379,10 @@ func (s *AntigravityOAuthService) loadProjectIDWithRetry(ctx context.Context, ac
 	REDACTED
 REDACTED
 
-	return "", fmt.Errorf("获取 project_id 失败 (重试 %d 次后): %w", maxRetries, lastErr)
+	if lastSubscription != nil {
+		return &loadCodeAssistResult{Subscription: lastSubscriptionREDACTED, fmt.Errorf("获取 project_id 失败 (重试 %d 次后): %w", maxRetries, lastErr)
+REDACTED
+	return nil, fmt.Errorf("获取 project_id 失败 (重试 %d 次后): %w", maxRetries, lastErr)
 REDACTED
 
 func tryOnboardProjectID(ctx context.Context, client *antigravity.Client, accessToken string, loadRaw map[string]any) (string, error) {
@@ -410,7 +441,11 @@ func (s *AntigravityOAuthService) FillProjectID(ctx context.Context, account *Ac
 			proxyURL = proxy.URL()
 	REDACTED
 REDACTED
-	return s.loadProjectIDWithRetry(ctx, accessToken, proxyURL, 3)
+	result, err := s.loadProjectIDWithRetry(ctx, accessToken, proxyURL, 3)
+	if result != nil {
+		return result.ProjectID, err
+REDACTED
+	return "", err
 REDACTED
 
 // BuildAccountCredentials 构建账户凭证
@@ -430,6 +465,9 @@ REDACTED
 REDACTED
 	if tokenInfo.ProjectID != "" {
 		creds["project_id"] = tokenInfo.ProjectID
+REDACTED
+	if tokenInfo.PlanType != "" {
+		creds["plan_type"] = tokenInfo.PlanType
 REDACTED
 	return creds
 REDACTED
