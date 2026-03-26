@@ -129,6 +129,8 @@ REDACTED
 		MaxClaudeCodeVersion:                 settings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:          settings.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                   settings.BackendModeEnabled,
+		EnableFingerprintUnification:         settings.EnableFingerprintUnification,
+		EnableMetadataPassthrough:            settings.EnableMetadataPassthrough,
 REDACTED)
 REDACTED
 
@@ -209,6 +211,10 @@ type UpdateSettingsRequest struct {
 
 	// Backend Mode
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
+
+	// Gateway forwarding behavior
+	EnableFingerprintUnification *bool `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough    *bool `json:"enable_metadata_passthrough"`
 REDACTED
 
 // UpdateSettings 更新系统设置
@@ -601,6 +607,18 @@ REDACTED
 		REDACTED
 			return previousSettings.OpsMetricsIntervalSeconds
 	REDACTED(),
+		EnableFingerprintUnification: func() bool {
+			if req.EnableFingerprintUnification != nil {
+				return *req.EnableFingerprintUnification
+		REDACTED
+			return previousSettings.EnableFingerprintUnification
+	REDACTED(),
+		EnableMetadataPassthrough: func() bool {
+			if req.EnableMetadataPassthrough != nil {
+				return *req.EnableMetadataPassthrough
+		REDACTED
+			return previousSettings.EnableMetadataPassthrough
+	REDACTED(),
 REDACTED
 
 	if err := h.settingService.UpdateSettings(c.Request.Context(), settings); err != nil {
@@ -679,6 +697,8 @@ REDACTED
 		MaxClaudeCodeVersion:                 updatedSettings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:          updatedSettings.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                   updatedSettings.BackendModeEnabled,
+		EnableFingerprintUnification:         updatedSettings.EnableFingerprintUnification,
+		EnableMetadataPassthrough:            updatedSettings.EnableMetadataPassthrough,
 REDACTED)
 REDACTED
 
@@ -850,6 +870,12 @@ REDACTED
 REDACTED
 	if before.CustomMenuItems != after.CustomMenuItems {
 		changed = append(changed, "custom_menu_items")
+REDACTED
+	if before.EnableFingerprintUnification != after.EnableFingerprintUnification {
+		changed = append(changed, "enable_fingerprint_unification")
+REDACTED
+	if before.EnableMetadataPassthrough != after.EnableMetadataPassthrough {
+		changed = append(changed, "enable_metadata_passthrough")
 REDACTED
 	return changed
 REDACTED

@@ -175,13 +175,13 @@ REDACTED
 
 	require.Equal(t, "claude-3-haiku-20240307", gjson.GetBytes(upstream.lastBody, "model").String(), "透传模式应应用账号级模型映射")
 
-	require.Equal(t, "upstream-anthropic-key", upstream.lastReq.Header.Get("x-api-key"))
-	require.Empty(t, upstream.lastReq.Header.Get("authorization"))
-	require.Empty(t, upstream.lastReq.Header.Get("x-goog-api-key"))
-	require.Empty(t, upstream.lastReq.Header.Get("cookie"))
-	require.Equal(t, "2023-06-01", upstream.lastReq.Header.Get("anthropic-version"))
-	require.Equal(t, "REDACTED", upstream.lastReq.Header.Get("anthropic-beta"))
-	require.Empty(t, upstream.lastReq.Header.Get("x-stainless-lang"), "API Key 透传不应注入 OAuth 指纹头")
+	require.Equal(t, "upstream-anthropic-key", getHeaderRaw(upstream.lastReq.Header, "x-api-key"))
+	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "authorization"))
+	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "x-goog-api-key"))
+	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "cookie"))
+	require.Equal(t, "2023-06-01", getHeaderRaw(upstream.lastReq.Header, "anthropic-version"))
+	require.Equal(t, "REDACTED", getHeaderRaw(upstream.lastReq.Header, "anthropic-beta"))
+	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "x-stainless-lang"), "API Key 透传不应注入 OAuth 指纹头")
 
 	require.Contains(t, rec.Body.String(), `"cached_tokens":7`)
 	require.NotContains(t, rec.Body.String(), `"cache_read_input_tokens":7`, "透传输出不应被网关改写")
@@ -257,9 +257,9 @@ REDACTED
 REDACTED
 
 	require.Equal(t, "claude-3-opus-20240229", gjson.GetBytes(upstream.lastBody, "model").String(), "count_tokens 透传模式应应用账号级模型映射")
-	require.Equal(t, "upstream-anthropic-key", upstream.lastReq.Header.Get("x-api-key"))
-	require.Empty(t, upstream.lastReq.Header.Get("authorization"))
-	require.Empty(t, upstream.lastReq.Header.Get("cookie"))
+	require.Equal(t, "upstream-anthropic-key", getHeaderRaw(upstream.lastReq.Header, "x-api-key"))
+	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "authorization"))
+	require.Empty(t, getHeaderRaw(upstream.lastReq.Header, "cookie"))
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.JSONEq(t, upstreamRespBody, rec.Body.String())
 	require.Empty(t, rec.Header().Get("Set-Cookie"))
@@ -684,8 +684,8 @@ REDACTED
 
 	req, err := svc.buildUpstreamRequest(context.Background(), c, account, []byte(`{"model":"claude-3-7-sonnet-20250219"REDACTED`), "oauth-token", "oauth", "claude-3-7-sonnet-20250219", true, false)
 REDACTED
-	require.Equal(t, "Bearer oauth-token", req.Header.Get("authorization"))
-	require.Contains(t, req.Header.Get("anthropic-beta"), claude.BetaOAuth, "OAuth 链路仍应按原逻辑补齐 oauth beta")
+	require.Equal(t, "Bearer oauth-token", getHeaderRaw(req.Header, "authorization"))
+	require.Contains(t, getHeaderRaw(req.Header, "anthropic-beta"), claude.BetaOAuth, "OAuth 链路仍应按原逻辑补齐 oauth beta")
 REDACTED
 
 func TestGatewayService_AnthropicOAuth_ForwardPreservesBillingHeaderSystemBlock(t *testing.T) {
@@ -755,8 +755,8 @@ REDACTED
 		REDACTED
 			require.NotNil(t, result)
 			require.NotNil(t, upstream.lastReq)
-			require.Equal(t, "Bearer oauth-token", upstream.lastReq.Header.Get("authorization"))
-			require.Contains(t, upstream.lastReq.Header.Get("anthropic-beta"), claude.BetaOAuth)
+			require.Equal(t, "Bearer oauth-token", getHeaderRaw(upstream.lastReq.Header, "authorization"))
+			require.Contains(t, getHeaderRaw(upstream.lastReq.Header, "anthropic-beta"), claude.BetaOAuth)
 
 			system := gjson.GetBytes(upstream.lastBody, "system")
 			require.True(t, system.Exists())

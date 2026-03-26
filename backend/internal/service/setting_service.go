@@ -79,6 +79,20 @@ const backendModeCacheTTL = 60 * time.Second
 const backendModeErrorTTL = 5 * time.Second
 const backendModeDBTimeout = 5 * time.Second
 
+// cachedGatewayForwardingSettings 缓存网关转发行为设置（进程内缓存，60s TTL）
+type cachedGatewayForwardingSettings struct {
+	fingerprintUnification bool
+	metadataPassthrough    bool
+	expiresAt              int64 // unix nano
+REDACTED
+
+var gatewayForwardingCache atomic.Value // *cachedGatewayForwardingSettings
+var gatewayForwardingSF singleflight.Group
+
+const gatewayForwardingCacheTTL = 60 * time.Second
+const gatewayForwardingErrorTTL = 5 * time.Second
+const gatewayForwardingDBTimeout = 5 * time.Second
+
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
 type DefaultSubscriptionGroupReader interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
@@ -510,6 +524,10 @@ REDACTED
 	// Backend Mode
 	updates[SettingKeyBackendModeEnabled] = strconv.FormatBool(settings.BackendModeEnabled)
 
+	// Gateway forwarding behavior
+	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
+	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
+
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
 		// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
@@ -523,6 +541,12 @@ REDACTED
 		backendModeCache.Store(&cachedBackendMode{
 			value:     settings.BackendModeEnabled,
 			expiresAt: time.Now().Add(backendModeCacheTTL).UnixNano(),
+	REDACTED)
+		gatewayForwardingSF.Forget("gateway_forwarding")
+		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
+			fingerprintUnification: settings.EnableFingerprintUnification,
+			metadataPassthrough:    settings.EnableMetadataPassthrough,
+			expiresAt:              time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 	REDACTED)
 		if s.onUpdate != nil {
 			s.onUpdate() // Invalidate cache after settings update
@@ -624,6 +648,57 @@ REDACTED)
 		return val
 REDACTED
 	return false
+REDACTED
+
+// GetGatewayForwardingSettings returns cached gateway forwarding settings.
+// Uses in-process atomic.Value cache with 60s TTL, zero-lock hot path.
+// Returns (fingerprintUnification, metadataPassthrough).
+func (s *SettingService) GetGatewayForwardingSettings(ctx context.Context) (fingerprintUnification, metadataPassthrough bool) {
+	if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.fingerprintUnification, cached.metadataPassthrough
+	REDACTED
+REDACTED
+	type gwfResult struct {
+		fp, mp bool
+REDACTED
+	val, _, _ := gatewayForwardingSF.Do("gateway_forwarding", func() (any, error) {
+		if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return gwfResult{cached.fingerprintUnification, cached.metadataPassthroughREDACTED, nil
+		REDACTED
+	REDACTED
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gatewayForwardingDBTimeout)
+		defer cancel()
+		values, err := s.settingRepo.GetMultiple(dbCtx, []string{
+			SettingKeyEnableFingerprintUnification,
+			SettingKeyEnableMetadataPassthrough,
+	REDACTED)
+		if err != nil {
+			slog.Warn("failed to get gateway forwarding settings", "error", err)
+			gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
+				fingerprintUnification: true,
+				metadataPassthrough:    false,
+				expiresAt:              time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
+		REDACTED)
+			return gwfResult{true, falseREDACTED, nil
+	REDACTED
+		fp := true
+		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
+			fp = v == "true"
+	REDACTED
+		mp := values[SettingKeyEnableMetadataPassthrough] == "true"
+		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
+			fingerprintUnification: fp,
+			metadataPassthrough:    mp,
+			expiresAt:              time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
+	REDACTED)
+		return gwfResult{fp, mpREDACTED, nil
+REDACTED)
+	if r, ok := val.(gwfResult); ok {
+		return r.fp, r.mp
+REDACTED
+	return true, false // fail-open defaults
 REDACTED
 
 // IsEmailVerifyEnabled 检查是否开启邮件验证
@@ -922,6 +997,14 @@ REDACTED
 
 	// 分组隔离
 	result.AllowUngroupedKeyScheduling = settings[SettingKeyAllowUngroupedKeyScheduling] == "true"
+
+	// Gateway forwarding behavior (defaults: fingerprint=true, metadata_passthrough=false)
+	if v, ok := settings[SettingKeyEnableFingerprintUnification]; ok && v != "" {
+		result.EnableFingerprintUnification = v == "true"
+REDACTED else {
+		result.EnableFingerprintUnification = true // default: enabled (current behavior)
+REDACTED
+	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
 
 	return result
 REDACTED

@@ -75,6 +75,10 @@ type SystemSettings struct {
 
 	// Backend 模式：禁用用户注册和自助服务，仅管理员可登录
 	BackendModeEnabled bool
+
+	// Gateway forwarding behavior
+	EnableFingerprintUnification bool // 是否统一 OAuth 账号的指纹头（默认 true）
+	EnableMetadataPassthrough    bool // 是否透传客户端原始 metadata（默认 false）
 REDACTED
 
 type DefaultSubscriptionSetting struct {

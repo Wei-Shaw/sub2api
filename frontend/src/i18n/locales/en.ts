@@ -4171,6 +4171,14 @@ export default {
         allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
         allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
       REDACTED,
+      gatewayForwarding: {
+        title: 'Request Forwarding',
+        description: 'Control how requests are forwarded to upstream OAuth accounts',
+        fingerprintUnification: 'Fingerprint Unification',
+        fingerprintUnificationHint: 'Unify X-Stainless-* headers across users sharing the same OAuth account. Disabling passes through each client\'s original headers.',
+        metadataPassthrough: 'Metadata Passthrough',
+        metadataPassthroughHint: 'Pass through client\'s original metadata.user_id without rewriting. May improve upstream cache hit rates.',
+      REDACTED,
       site: {
         title: 'Site Settings',
         description: 'Customize site branding',

@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"compress/flate"
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +14,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/andybalholm/brotli"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
@@ -143,6 +147,9 @@ REDACTED
 		return nil, err
 REDACTED
 
+	// 如果上游返回了压缩内容，解压后再交给业务层
+	decompressResponseBody(resp)
+
 	// 包装响应体，在关闭时自动减少计数并更新时间戳
 	// 这确保了流式响应（如 SSE）在完全读取前不会被淘汰
 	resp.Body = wrapTrackedBody(resp.Body, func() {
@@ -217,6 +224,9 @@ REDACTED
 REDACTED
 
 	slog.Debug("tls_fingerprint_request_success", "account_id", accountID, "status", resp.StatusCode)
+
+	// 如果上游返回了压缩内容，解压后再交给业务层
+	decompressResponseBody(resp)
 
 	// 包装响应体，在关闭时自动减少计数并更新时间戳
 	resp.Body = wrapTrackedBody(resp.Body, func() {
@@ -883,4 +893,57 @@ func wrapTrackedBody(body io.ReadCloser, onClose func()) io.ReadCloser {
 		return body
 REDACTED
 	return &trackedBody{ReadCloser: body, onClose: onCloseREDACTED
+REDACTED
+
+// decompressResponseBody 根据 Content-Encoding 解压响应体。
+// 当请求显式设置了 accept-encoding 时，Go 的 Transport 不会自动解压，需要手动处理。
+// 解压成功后会删除 Content-Encoding 和 Content-Length header（长度已不准确）。
+func decompressResponseBody(resp *http.Response) {
+	if resp == nil || resp.Body == nil {
+		return
+REDACTED
+	ce := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
+	if ce == "" {
+		return
+REDACTED
+
+	var reader io.Reader
+	switch ce {
+	case "gzip":
+		gr, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return // 解压失败，保持原样
+	REDACTED
+		reader = gr
+	case "br":
+		reader = brotli.NewReader(resp.Body)
+	case "deflate":
+		reader = flate.NewReader(resp.Body)
+	default:
+		return
+REDACTED
+
+	originalBody := resp.Body
+	resp.Body = &decompressedBody{reader: reader, closer: originalBodyREDACTED
+	resp.Header.Del("Content-Encoding")
+	resp.Header.Del("Content-Length") // 解压后长度不确定
+	resp.ContentLength = -1
+REDACTED
+
+// decompressedBody 组合解压 reader 和原始 body 的 close。
+type decompressedBody struct {
+	reader io.Reader
+	closer io.Closer
+REDACTED
+
+func (d *decompressedBody) Read(p []byte) (int, error) {
+	return d.reader.Read(p)
+REDACTED
+
+func (d *decompressedBody) Close() error {
+	// 如果 reader 本身也是 Closer（如 gzip.Reader），先关闭它
+	if rc, ok := d.reader.(io.Closer); ok {
+		_ = rc.Close()
+REDACTED
+	return d.closer.Close()
 REDACTED
