@@ -69,10 +69,10 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 			expected:       "claude-sonnet-4-6",
 		},
 		{
-			name:           "默认映射 - claude-sonnet-4-5-20250929 → claude-sonnet-4-5",
+			name:           "默认映射 - claude-sonnet-4-5-20250929 → claude-sonnet-4-6",
 			requestedModel: "claude-sonnet-4-5-20250929",
 			accountMapping: nil,
-			expected:       "claude-sonnet-4-5",
+			expected:       "claude-sonnet-4-6",
 		},
 
 		// 3. 默认映射中的透传（映射到自己）
@@ -83,10 +83,10 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 			expected:       "claude-sonnet-4-6",
 		},
 		{
-			name:           "默认映射透传 - claude-sonnet-4-5",
+			name:           "默认映射 - claude-sonnet-4-5 → claude-sonnet-4-6",
 			requestedModel: "claude-sonnet-4-5",
 			accountMapping: nil,
-			expected:       "claude-sonnet-4-5",
+			expected:       "claude-sonnet-4-6",
 		},
 		{
 			name:           "默认映射透传 - claude-opus-4-6-thinking",
@@ -95,10 +95,10 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 			expected:       "claude-opus-4-6-thinking",
 		},
 		{
-			name:           "默认映射透传 - claude-sonnet-4-5-thinking",
+			name:           "默认映射 - claude-sonnet-4-5-thinking → claude-sonnet-4-6",
 			requestedModel: "claude-sonnet-4-5-thinking",
 			accountMapping: nil,
-			expected:       "claude-sonnet-4-5-thinking",
+			expected:       "claude-sonnet-4-6",
 		},
 		{
 			name:           "默认映射透传 - gemini-2.5-flash",

@@ -1,5 +1,5 @@
 <template>
-  <div v-if="quota && quota.source !== 'none'" class="sora-quota-info">
+  <div v-if="quota && (quota.quota_source || quota.source) !== 'none'" class="sora-quota-info">
     <div class="sora-quota-bar-wrapper">
       <div
         class="sora-quota-bar-fill"

@@ -226,7 +226,7 @@ func (h *SoraGatewayHandler) ChatCompletions(c *gin.Context) {
 	var lastFailoverHeaders http.Header
 
 	for {
-		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionHash, reqModel, failedAccountIDs, "")
+		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionHash, reqModel, failedAccountIDs, "", int64(0))
 		if err != nil {
 			reqLog.Warn("sora.account_select_failed",
 				zap.Error(err),

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/stretchr/testify/require"
@@ -28,6 +29,27 @@ type deleteSessionCall struct {
 
 func (c *stubSmartRetryCache) DeleteSessionAccountID(_ context.Context, groupID int64, sessionHash string) error {
 	c.deleteCalls = append(c.deleteCalls, deleteSessionCall{groupID: groupID, sessionHash: sessionHash})
+	return nil
+}
+func (c *stubSmartRetryCache) GetAffinityAccounts(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
+	return nil, nil
+}
+func (c *stubSmartRetryCache) UpdateAffinity(_ context.Context, _ int64, _ int64, _ string, _ int64, _ time.Duration) error {
+	return nil
+}
+func (c *stubSmartRetryCache) GetAffinityMultiCount(_ context.Context, _ int64, _ int64, _ int64, _ time.Duration) (int64, int64, int64, error) {
+	return 0, 0, 0, nil
+}
+func (c *stubSmartRetryCache) GetAccountAffinityCountBatch(_ context.Context, _ int64, _ []int64, _ time.Duration) (map[int64]int64, error) {
+	return map[int64]int64{}, nil
+}
+func (c *stubSmartRetryCache) GetAccountAffinityClientsBatch(_ context.Context, _ map[int64][]int64, _ time.Duration) (map[int64][]string, error) {
+	return map[int64][]string{}, nil
+}
+func (c *stubSmartRetryCache) GetAccountAffinityClientsWithScores(_ context.Context, _ int64, _ []int64, _ time.Duration) ([]AffinityClient, error) {
+	return nil, nil
+}
+func (c *stubSmartRetryCache) ClearAccountAffinity(_ context.Context, _ int64, _ []int64) error {
 	return nil
 }
 
@@ -81,17 +103,12 @@ func (m *mockSmartRetryUpstream) Do(req *http.Request, proxyURL string, accountI
 		m.responseBodies[respIdx] = bodyBytes
 	}
 
-	// 用缓存的 body 字节重建新的 reader
-	var body io.ReadCloser
+	// 用缓存的 body 重建 reader（支持重试场景多次读取）
+	cloned := *resp
 	if m.responseBodies[respIdx] != nil {
-		body = io.NopCloser(bytes.NewReader(m.responseBodies[respIdx]))
+		cloned.Body = io.NopCloser(bytes.NewReader(m.responseBodies[respIdx]))
 	}
-
-	return &http.Response{
-		StatusCode: resp.StatusCode,
-		Header:     resp.Header.Clone(),
-		Body:       body,
-	}, respErr
+	return &cloned, respErr
 }
 
 func (m *mockSmartRetryUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {

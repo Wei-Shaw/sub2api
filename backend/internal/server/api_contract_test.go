@@ -210,10 +210,9 @@ func TestAPIContracts(t *testing.T) {
 							"sora_video_price_per_request": null,
 							"sora_video_price_per_request_hd": null,
 							"claude_code_only": false,
-						"allow_messages_dispatch": false,
-						"fallback_group_id": null,
-						"fallback_group_id_on_invalid_request": null,
-						"allow_messages_dispatch": false,
+							"allow_messages_dispatch": false,
+							"fallback_group_id": null,
+							"fallback_group_id_on_invalid_request": null,
 						"created_at": "2025-01-02T03:04:05Z",
 						"updated_at": "2025-01-02T03:04:05Z"
 					}
@@ -655,8 +654,8 @@ func newContractDeps(t *testing.T) *contractDeps {
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
-	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil)
-	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil, nil)
+	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{

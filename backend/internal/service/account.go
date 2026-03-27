@@ -1229,6 +1229,244 @@ func (a *Account) IsSessionIDMaskingEnabled() bool {
 	return false
 }
 
+// IsAffinityEnabled 检查是否启用亲和调度（统一入口）
+// 仅适用于 Anthropic 账号，同时检查新字段 affinity_enabled 和旧字段 client_affinity_enabled（向后兼容）
+func (a *Account) IsAffinityEnabled() bool {
+	if a.Platform != PlatformAnthropic {
+		return false
+	}
+	if a.Extra == nil {
+		return false
+	}
+	if v, ok := a.Extra["affinity_enabled"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+		}
+		return false
+	}
+	if v, ok := a.Extra["client_affinity_enabled"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+		}
+	}
+	return false
+}
+
+// IsClientAffinityEnabled 向后兼容别名，内部调用 IsAffinityEnabled
+func (a *Account) IsClientAffinityEnabled() bool {
+	return a.IsAffinityEnabled()
+}
+
+// AffinityZone 表示账号的客户端亲和分区
+type AffinityZone int
+
+const (
+	AffinityZoneGreen  AffinityZone = iota // 绿区：允许绑定新客户端，优先调度
+	AffinityZoneYellow                     // 黄区：允许绑定，仅在无绿区账号时降级调度
+	AffinityZoneRed                        // 红区：禁止调度
+)
+
+// GetAffinityBase 获取亲和基础限制（绿区上限），0 表示未配置
+func (a *Account) GetAffinityBase() int {
+	if a.Extra == nil {
+		return 0
+	}
+	if v, ok := a.Extra["affinity_base"]; ok {
+		return parseExtraInt(v)
+	}
+	return 0
+}
+
+// GetAffinityBuffer 获取亲和缓冲区大小（黄区范围）
+// 返回 (value, configured)：
+//   - (0, false): 未配置 → 无限黄区（超过 base 永远黄区，永不红区）
+//   - (0, true):  显式设为 0 → 无黄区，超过 base 直接红区
+//   - (n, true):  n > 0 → 黄区范围为 base+1 到 base+n
+func (a *Account) GetAffinityBuffer() (int, bool) {
+	if a.Extra == nil {
+		return 0, false
+	}
+	v, ok := a.Extra["affinity_buffer"]
+	if !ok {
+		return 0, false
+	}
+	// 显式设为 null/nil → 视为未配置
+	if v == nil {
+		return 0, false
+	}
+	return parseExtraInt(v), true
+}
+
+// GetAffinityZone 根据当前绑定的客户端数量计算账号的亲和分区。
+// 未开启亲和或未配置 base 的账号永远返回绿区。
+func (a *Account) GetAffinityZone(clientCount int64) AffinityZone {
+	if !a.IsClientAffinityEnabled() {
+		return AffinityZoneGreen
+	}
+	base := a.GetAffinityBase()
+	if base <= 0 {
+		return AffinityZoneGreen
+	}
+	if clientCount <= int64(base) {
+		return AffinityZoneGreen
+	}
+	buffer, configured := a.GetAffinityBuffer()
+	if !configured {
+		return AffinityZoneYellow // 未配置 buffer → 无限黄区
+	}
+	if buffer == 0 {
+		return AffinityZoneRed // buffer=0 → 无黄区，直接红区
+	}
+	if clientCount <= int64(base+buffer) {
+		return AffinityZoneYellow
+	}
+	return AffinityZoneRed
+}
+
+// IsAffinityAllowSwitch 检查亲和账号是否允许在无绿区时切换到其他账号
+// 默认 true（允许切换），设为 false 时即使全部红区也不切换
+func (a *Account) IsAffinityAllowSwitch() bool {
+	if a.Extra == nil {
+		return true
+	}
+	if v, ok := a.Extra["affinity_allow_switch"]; ok {
+		if allow, ok := v.(bool); ok {
+			return allow
+		}
+	}
+	return true
+}
+
+// GetPinnedUsers 获取指定亲和用户列表
+func (a *Account) GetPinnedUsers() []int64 {
+	if a.Extra == nil {
+		return nil
+	}
+	v, ok := a.Extra["pinned_users"]
+	if !ok || v == nil {
+		return nil
+	}
+	arr, ok := v.([]any)
+	if !ok || len(arr) == 0 {
+		return nil
+	}
+	result := make([]int64, 0, len(arr))
+	for _, item := range arr {
+		switch id := item.(type) {
+		case float64:
+			result = append(result, int64(id))
+		case int64:
+			result = append(result, id)
+		case int:
+			result = append(result, int64(id))
+		case json.Number:
+			if i, err := id.Int64(); err == nil {
+				result = append(result, i)
+			}
+		}
+	}
+	return result
+}
+
+// IsPinnedUser 检查 userID 是否在指定亲和用户列表中
+func (a *Account) IsPinnedUser(userID int64) bool {
+	for _, id := range a.GetPinnedUsers() {
+		if id == userID {
+			return true
+		}
+	}
+	return false
+}
+
+// GetAffinityUserBase 获取用户维度亲和基础限制（绿区上限），0 表示未配置
+func (a *Account) GetAffinityUserBase() int {
+	if a.Extra == nil {
+		return 0
+	}
+	if v, ok := a.Extra["affinity_user_base"]; ok {
+		return parseExtraInt(v)
+	}
+	return 0
+}
+
+// GetAffinityUserBuffer 获取用户维度亲和缓冲区大小（黄区范围）
+// 返回 (value, configured)，语义与 GetAffinityBuffer 相同
+func (a *Account) GetAffinityUserBuffer() (int, bool) {
+	if a.Extra == nil {
+		return 0, false
+	}
+	v, ok := a.Extra["affinity_user_buffer"]
+	if !ok {
+		return 0, false
+	}
+	if v == nil {
+		return 0, false
+	}
+	return parseExtraInt(v), true
+}
+
+// GetPerUserClientLimit 获取每用户客户端限制，0 表示不限制
+func (a *Account) GetPerUserClientLimit() int {
+	if a.Extra == nil {
+		return 0
+	}
+	if v, ok := a.Extra["per_user_client_limit"]; ok {
+		return parseExtraInt(v)
+	}
+	return 0
+}
+
+// getAffinityZoneForDim 根据单一维度的计数和三区参数计算亲和分区
+func getAffinityZoneForDim(count int64, base int, buffer int, bufferConfigured bool) AffinityZone {
+	if base <= 0 {
+		return AffinityZoneGreen
+	}
+	if count <= int64(base) {
+		return AffinityZoneGreen
+	}
+	if !bufferConfigured {
+		return AffinityZoneYellow
+	}
+	if buffer == 0 {
+		return AffinityZoneRed
+	}
+	if count <= int64(base+buffer) {
+		return AffinityZoneYellow
+	}
+	return AffinityZoneRed
+}
+
+// GetMultiDimAffinityZone 根据多维度计数计算亲和分区，取所有维度中最严格的区域。
+// 未开启亲和的账号永远返回绿区。
+func (a *Account) GetMultiDimAffinityZone(userCount, clientCount, perUserCount int64) AffinityZone {
+	if !a.IsAffinityEnabled() {
+		return AffinityZoneGreen
+	}
+	worst := AffinityZoneGreen
+
+	// 客户端维度
+	clientBase := a.GetAffinityBase()
+	clientBuffer, clientBufCfg := a.GetAffinityBuffer()
+	if z := getAffinityZoneForDim(clientCount, clientBase, clientBuffer, clientBufCfg); z > worst {
+		worst = z
+	}
+
+	// 用户维度
+	userBase := a.GetAffinityUserBase()
+	userBuffer, userBufCfg := a.GetAffinityUserBuffer()
+	if z := getAffinityZoneForDim(userCount, userBase, userBuffer, userBufCfg); z > worst {
+		worst = z
+	}
+
+	// 每用户客户端维度
+	perUserLimit := a.GetPerUserClientLimit()
+	if perUserLimit > 0 && perUserCount > int64(perUserLimit) {
+		worst = AffinityZoneRed
+	}
+
+	return worst
+}
+
 // IsCacheTTLOverrideEnabled 检查是否启用缓存 TTL 强制替换
 // 仅适用于 Anthropic OAuth/SetupToken 类型账号
 // 启用后将所有 cache creation tokens 归入指定的 TTL 类型（5m 或 1h）

@@ -1027,6 +1027,7 @@
         </div>
       </div>
 
+      <!-- Client Affinity (Anthropic accounts only) -->
       <div>
         <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
@@ -1149,10 +1150,63 @@
         </div>
       </div>
 
-      <!-- API Key / Bedrock 账号配额限制 -->
-      <div v-if="account?.type === 'apikey' || account?.type === 'bedrock'" class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
+      <!-- 配额控制 (Anthropic apikey/bedrock: 配额限制 + 亲和) -->
+      <div
+        v-if="account?.platform === 'anthropic' && (account?.type === 'apikey' || account?.type === 'bedrock')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
         <div class="mb-3">
-          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaLimit') }}</h3>
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.quotaControl.hint') }}
+          </p>
+        </div>
+        <QuotaLimitCard
+          :totalLimit="editQuotaLimit"
+          :dailyLimit="editQuotaDailyLimit"
+          :weeklyLimit="editQuotaWeeklyLimit"
+          :dailyResetMode="editDailyResetMode"
+          :dailyResetHour="editDailyResetHour"
+          :weeklyResetMode="editWeeklyResetMode"
+          :weeklyResetDay="editWeeklyResetDay"
+          :weeklyResetHour="editWeeklyResetHour"
+          :resetTimezone="editResetTimezone"
+          @update:totalLimit="editQuotaLimit = $event"
+          @update:dailyLimit="editQuotaDailyLimit = $event"
+          @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+          @update:dailyResetMode="editDailyResetMode = $event"
+          @update:dailyResetHour="editDailyResetHour = $event"
+          @update:weeklyResetMode="editWeeklyResetMode = $event"
+          @update:weeklyResetDay="editWeeklyResetDay = $event"
+          @update:weeklyResetHour="editWeeklyResetHour = $event"
+          @update:resetTimezone="editResetTimezone = $event"
+        />
+        <AffinityConfigCard
+          :enabled="clientAffinityEnabled"
+          :base="affinityBase"
+          :buffer="affinityBuffer"
+          :allow-switch="affinityAllowSwitch"
+          :user-base="affinityUserBase"
+          :user-buffer="affinityUserBuffer"
+          :per-user-limit="perUserClientLimit"
+          :pinned-users="pinnedUsers"
+          @update:enabled="clientAffinityEnabled = $event"
+          @update:base="affinityBase = $event"
+          @update:buffer="affinityBuffer = $event"
+          @update:allow-switch="affinityAllowSwitch = $event"
+          @update:user-base="affinityUserBase = $event"
+          @update:user-buffer="affinityUserBuffer = $event"
+          @update:per-user-limit="perUserClientLimit = $event"
+          @update:pinned-users="pinnedUsers = $event"
+        />
+      </div>
+      <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
+      <div
+        v-else-if="account?.type === 'apikey' || account?.type === 'bedrock'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
+        <div class="mb-3">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.accounts.quotaLimitHint') }}
           </p>
@@ -1237,7 +1291,7 @@
         </div>
       </div>
 
-      <!-- Quota Control Section (Anthropic OAuth/SetupToken only) -->
+      <!-- 配额控制 (Anthropic OAuth/SetupToken: 亲和 + 窗口费用 + 会话 + RPM 等) -->
       <div
         v-if="account?.platform === 'anthropic' && (account?.type === 'oauth' || account?.type === 'setup-token')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
@@ -1248,6 +1302,25 @@
             {{ t('admin.accounts.quotaControl.hint') }}
           </p>
         </div>
+
+        <AffinityConfigCard
+          :enabled="clientAffinityEnabled"
+          :base="affinityBase"
+          :buffer="affinityBuffer"
+          :allow-switch="affinityAllowSwitch"
+          :user-base="affinityUserBase"
+          :user-buffer="affinityUserBuffer"
+          :per-user-limit="perUserClientLimit"
+          :pinned-users="pinnedUsers"
+          @update:enabled="clientAffinityEnabled = $event"
+          @update:base="affinityBase = $event"
+          @update:buffer="affinityBuffer = $event"
+          @update:allow-switch="affinityAllowSwitch = $event"
+          @update:user-base="affinityUserBase = $event"
+          @update:user-buffer="affinityUserBuffer = $event"
+          @update:per-user-limit="perUserClientLimit = $event"
+          @update:pinned-users="pinnedUsers = $event"
+        />
 
         <!-- Window Cost Limit -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
@@ -1725,6 +1798,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
+import AffinityConfigCard from '@/components/account/AffinityConfigCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
@@ -1854,6 +1928,14 @@ const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
+const clientAffinityEnabled = ref(false)
+const affinityBase = ref<number | null>(null)
+const affinityBuffer = ref<number | null>(null)
+const affinityAllowSwitch = ref(true)
+const affinityUserBase = ref<number | null>(null)
+const affinityUserBuffer = ref<number | null>(null)
+const perUserClientLimit = ref<number | null>(null)
+const pinnedUsers = ref<number[]>([])
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
@@ -2482,9 +2564,47 @@ function loadQuotaControlSettings(account: Account) {
   sessionIdMaskingEnabled.value = false
   cacheTTLOverrideEnabled.value = false
   cacheTTLOverrideTarget.value = '5m'
+  clientAffinityEnabled.value = false
+  affinityBase.value = null
+  affinityBuffer.value = null
+  affinityAllowSwitch.value = true
+  affinityUserBase.value = null
+  affinityUserBuffer.value = null
+  perUserClientLimit.value = null
+  pinnedUsers.value = []
 
-  // Only applies to Anthropic OAuth/SetupToken accounts
-  if (account.platform !== 'anthropic' || (account.type !== 'oauth' && account.type !== 'setup-token')) {
+  // Remaining quota control settings only apply to Anthropic accounts
+  if (account.platform !== 'anthropic') {
+    return
+  }
+
+  // Client affinity (all Anthropic accounts)
+  if (account.client_affinity_enabled === true) {
+    clientAffinityEnabled.value = true
+  }
+  // Affinity base/buffer from extra
+  const extra = account.extra as Record<string, unknown> | undefined
+  if (extra) {
+    const base = extra.affinity_base
+    affinityBase.value = (typeof base === 'number' && base > 0) ? base : null
+    // buffer: null = infinite yellow, 0 = no yellow, >0 = yellow range
+    const buf = extra.affinity_buffer
+    affinityBuffer.value = (typeof buf === 'number') ? buf : null
+
+    // New v2 fields
+    affinityAllowSwitch.value = extra.affinity_allow_switch !== false
+    const ub = extra.affinity_user_base
+    affinityUserBase.value = (typeof ub === 'number' && ub > 0) ? ub : null
+    const ubuf = extra.affinity_user_buffer
+    affinityUserBuffer.value = (typeof ubuf === 'number') ? ubuf : null
+    const pul = extra.per_user_client_limit
+    perUserClientLimit.value = (typeof pul === 'number' && pul > 0) ? pul : null
+    const pu = extra.pinned_users
+    pinnedUsers.value = Array.isArray(pu) ? pu : []
+  }
+
+  // Window cost / session limit only apply to Anthropic OAuth/SetupToken accounts
+  if (account.type !== 'oauth' && account.type !== 'setup-token') {
     return
   }
 
@@ -2902,9 +3022,63 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
+    // For all Anthropic accounts, handle client_affinity in extra
+	    if (props.account.platform === 'anthropic') {
+	      const currentExtra = (props.account.extra as Record<string, unknown>) || {}
+	      const newExtra: Record<string, unknown> = { ...currentExtra }
+	      if (clientAffinityEnabled.value) {
+	        newExtra.affinity_enabled = true
+	        newExtra.client_affinity_enabled = true
+        if (affinityBase.value != null && affinityBase.value > 0) {
+          newExtra.affinity_base = affinityBase.value
+        } else {
+          delete newExtra.affinity_base
+        }
+        // buffer: null = infinite yellow, 0 = no yellow, >0 = yellow range
+        if (affinityBase.value != null && affinityBase.value > 0 && affinityBuffer.value != null) {
+          newExtra.affinity_buffer = affinityBuffer.value
+        } else {
+          delete newExtra.affinity_buffer
+        }
+        // v2 fields
+        newExtra.affinity_allow_switch = affinityAllowSwitch.value
+        if (affinityUserBase.value != null && affinityUserBase.value > 0) {
+          newExtra.affinity_user_base = affinityUserBase.value
+        } else {
+          delete newExtra.affinity_user_base
+        }
+        if (affinityUserBase.value != null && affinityUserBase.value > 0 && affinityUserBuffer.value != null) {
+          newExtra.affinity_user_buffer = affinityUserBuffer.value
+        } else {
+          delete newExtra.affinity_user_buffer
+        }
+        if (perUserClientLimit.value != null && perUserClientLimit.value > 0) {
+          newExtra.per_user_client_limit = perUserClientLimit.value
+        } else {
+          delete newExtra.per_user_client_limit
+        }
+        if (pinnedUsers.value.length > 0) {
+          newExtra.pinned_users = pinnedUsers.value
+        } else {
+          delete newExtra.pinned_users
+        }
+	      } else {
+	        newExtra.affinity_enabled = false
+	        newExtra.client_affinity_enabled = false
+	        delete newExtra.affinity_base
+	        delete newExtra.affinity_buffer
+	        delete newExtra.affinity_allow_switch
+        delete newExtra.affinity_user_base
+        delete newExtra.affinity_user_buffer
+        delete newExtra.per_user_client_limit
+        delete newExtra.pinned_users
+      }
+      updatePayload.extra = newExtra
+    }
+
     // For Anthropic OAuth/SetupToken accounts, handle quota control settings in extra
     if (props.account.platform === 'anthropic' && (props.account.type === 'oauth' || props.account.type === 'setup-token')) {
-      const currentExtra = (props.account.extra as Record<string, unknown>) || {}
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
 
       // Window cost limit settings
@@ -2985,7 +3159,7 @@ const handleSubmit = async () => {
 
     // For Anthropic API Key accounts, handle passthrough mode in extra
     if (props.account.platform === 'anthropic' && props.account.type === 'apikey') {
-      const currentExtra = (props.account.extra as Record<string, unknown>) || {}
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       if (anthropicPassthroughEnabled.value) {
         newExtra.anthropic_passthrough = true
@@ -3035,20 +3209,27 @@ const handleSubmit = async () => {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
         (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
+      // Total quota
       if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
         newExtra.quota_limit = editQuotaLimit.value
       } else {
         delete newExtra.quota_limit
       }
+      // Daily quota
       if (editQuotaDailyLimit.value != null && editQuotaDailyLimit.value > 0) {
         newExtra.quota_daily_limit = editQuotaDailyLimit.value
       } else {
         delete newExtra.quota_daily_limit
+        delete newExtra.quota_daily_used
+        delete newExtra.quota_daily_start
       }
+      // Weekly quota
       if (editQuotaWeeklyLimit.value != null && editQuotaWeeklyLimit.value > 0) {
         newExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
       } else {
         delete newExtra.quota_weekly_limit
+        delete newExtra.quota_weekly_used
+        delete newExtra.quota_weekly_start
       }
       // Quota reset mode config
       if (editDailyResetMode.value === 'fixed') {

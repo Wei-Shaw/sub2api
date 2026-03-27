@@ -225,6 +225,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
 
+  // ==================== Admin OAuth Callback Routes ====================
+  {
+    path: '/admin/gdrive-oauth-callback',
+    name: 'GDriveOAuthCallback',
+    component: () => import('@/views/admin/GDriveOAuthCallbackView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Google Drive OAuth'
+    }
+  },
+
   // ==================== Admin Routes ====================
   {
     path: '/admin',

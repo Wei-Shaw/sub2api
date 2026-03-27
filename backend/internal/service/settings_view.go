@@ -136,6 +136,8 @@ type SoraS3Profile struct {
 	ProfileID                 string `json:"profile_id"`
 	Name                      string `json:"name"`
 	IsActive                  bool   `json:"is_active"`
+	Provider                  string `json:"provider"`    // "s3" / "gdrive"，空值视为 "s3"
+	AccessMode                string `json:"access_mode"` // "direct" / "proxy"，空值视为 "direct"
 	Enabled                   bool   `json:"enabled"`
 	Endpoint                  string `json:"endpoint"`
 	Region                    string `json:"region"`
@@ -148,6 +150,25 @@ type SoraS3Profile struct {
 	CDNURL                    string `json:"cdn_url"`
 	DefaultStorageQuotaBytes  int64  `json:"default_storage_quota_bytes"`
 	UpdatedAt                 string `json:"updated_at"`
+
+	// --- Google Drive 专属 ---
+	AuthType                 string `json:"auth_type,omitempty"` // "oauth2" / "service_account"
+	ClientID                 string `json:"client_id,omitempty"`
+	ClientSecret             string `json:"-"`
+	ClientSecretConfigured   bool   `json:"client_secret_configured"`
+	RefreshToken             string `json:"-"`
+	RefreshTokenConfigured   bool   `json:"refresh_token_configured"`
+	ServiceAccountJSON       string `json:"-"`
+	ServiceAccountConfigured bool   `json:"service_account_configured"`
+	FolderID                 string `json:"folder_id,omitempty"`
+}
+
+// GetProvider 返回 Provider，空值视为 "s3"。
+func (p *SoraS3Profile) GetProvider() string {
+	if p.Provider == "" {
+		return SoraStorageTypeS3
+	}
+	return p.Provider
 }
 
 // SoraS3ProfileList Sora S3 多配置列表

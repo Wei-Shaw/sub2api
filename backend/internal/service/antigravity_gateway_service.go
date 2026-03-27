@@ -614,6 +614,7 @@ func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopP
 urlFallbackLoop:
 	for urlIdx, baseURL := range availableURLs {
 		usedBaseURL = baseURL
+		allAttemptsInternal500 := true // 追踪本轮所有 attempt 是否全部命中 INTERNAL 500
 		for attempt := 1; attempt <= antigravityMaxRetries; attempt++ {
 			select {
 			case <-p.ctx.Done():
@@ -766,8 +767,17 @@ urlFallbackLoop:
 							logger.LegacyPrintf("service.antigravity_gateway", "%s status=context_canceled_during_backoff", p.prefix)
 							return nil, p.ctx.Err()
 						}
+						// 追踪 INTERNAL 500：非匹配的 attempt 清除标记
+						if !isAntigravityInternalServerError(resp.StatusCode, respBody) {
+							allAttemptsInternal500 = false
+						}
 						continue
 					}
+				}
+
+				// INTERNAL 500 渐进惩罚：3 次重试全部命中特定 500 时递增计数器并惩罚
+				if allAttemptsInternal500 && isAntigravityInternalServerError(resp.StatusCode, respBody) {
+					s.handleInternal500RetryExhausted(p.ctx, p.prefix, p.account)
 				}
 
 				// 其他 4xx 错误或重试用尽，直接返回
@@ -786,6 +796,11 @@ urlFallbackLoop:
 
 	if resp != nil && resp.StatusCode < 400 && usedBaseURL != "" {
 		antigravity.DefaultURLAvailability.MarkSuccess(usedBaseURL)
+	}
+
+	// 成功响应时清零 INTERNAL 500 连续失败计数器（覆盖所有成功路径，含 smart retry）
+	if resp != nil && resp.StatusCode < 400 {
+		s.resetInternal500Counter(p.ctx, p.prefix, p.account.ID)
 	}
 
 	return &antigravityRetryLoopResult{resp: resp}, nil
@@ -862,6 +877,7 @@ type AntigravityGatewayService struct {
 	settingService    *SettingService
 	cache             GatewayCache // 用于模型级限流时清除粘性会话绑定
 	schedulerSnapshot *SchedulerSnapshotService
+	internal500Cache  Internal500CounterCache // INTERNAL 500 渐进惩罚计数器
 }
 
 func NewAntigravityGatewayService(
@@ -872,6 +888,7 @@ func NewAntigravityGatewayService(
 	rateLimitService *RateLimitService,
 	httpUpstream HTTPUpstream,
 	settingService *SettingService,
+	internal500Cache Internal500CounterCache,
 ) *AntigravityGatewayService {
 	return &AntigravityGatewayService{
 		accountRepo:       accountRepo,
@@ -881,6 +898,7 @@ func NewAntigravityGatewayService(
 		settingService:    settingService,
 		cache:             cache,
 		schedulerSnapshot: schedulerSnapshot,
+		internal500Cache:  internal500Cache,
 	}
 }
 
@@ -980,14 +998,8 @@ func (s *AntigravityGatewayService) getMappedModel(account *Account, requestedMo
 }
 
 // applyThinkingModelSuffix 根据 thinking 配置调整模型名
-// 当映射结果是 claude-sonnet-4-5 且请求开启了 thinking 时，改为 claude-sonnet-4-5-thinking
+// Sonnet 4.5 已统一映射到 4.6，此函数保留为扩展点
 func applyThinkingModelSuffix(mappedModel string, thinkingEnabled bool) string {
-	if !thinkingEnabled {
-		return mappedModel
-	}
-	if mappedModel == "claude-sonnet-4-5" {
-		return "claude-sonnet-4-5-thinking"
-	}
 	return mappedModel
 }
 
@@ -1723,7 +1735,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	var clientDisconnect bool
 	if claudeReq.Stream {
 		// 客户端要求流式，直接透传转换
-		streamRes, err := s.handleClaudeStreamingResponse(c, resp, startTime, originalModel)
+		streamRes, err := s.handleClaudeStreamingResponse(c, resp, startTime, originalModel, account.ID)
 		if err != nil {
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=stream_error error=%v", prefix, err)
 			return nil, err
@@ -1733,7 +1745,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		clientDisconnect = streamRes.clientDisconnect
 	} else {
 		// 客户端要求非流式，收集流式响应后转换返回
-		streamRes, err := s.handleClaudeStreamToNonStreaming(c, resp, startTime, originalModel)
+		streamRes, err := s.handleClaudeStreamToNonStreaming(c, resp, startTime, originalModel, account.ID)
 		if err != nil {
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=stream_collect_error error=%v", prefix, err)
 			return nil, err
@@ -1741,6 +1753,9 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		usage = streamRes.usage
 		firstTokenMs = streamRes.firstTokenMs
 	}
+
+	// Claude Max cache billing: 同步 ForwardResult.Usage 与客户端响应体一致
+	applyClaudeMaxCacheBillingPolicyToUsage(usage, parsedRequestFromGinContext(c), claudeMaxGroupFromGinContext(c), originalModel, account.ID)
 
 	return &ForwardResult{
 		RequestID:        requestID,
@@ -3681,7 +3696,7 @@ func (s *AntigravityGatewayService) writeGoogleError(c *gin.Context, status int,
 
 // handleClaudeStreamToNonStreaming 收集上游流式响应，转换为 Claude 非流式格式返回
 // 用于处理客户端非流式请求但上游只支持流式的情况
-func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
+func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string, accountID int64) (*antigravityStreamResult, error) {
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
@@ -3839,6 +3854,9 @@ returnResponse:
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 	}
 
+	// Claude Max cache billing simulation (non-streaming)
+	claudeResp = applyClaudeMaxNonStreamingRewrite(c, claudeResp, agUsage, originalModel, accountID)
+
 	c.Data(http.StatusOK, "application/json", claudeResp)
 
 	// 转换为 service.ClaudeUsage
@@ -3853,7 +3871,7 @@ returnResponse:
 }
 
 // handleClaudeStreamingResponse 处理 Claude 流式响应（Gemini SSE → Claude SSE 转换）
-func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
+func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string, accountID int64) (*antigravityStreamResult, error) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -3866,6 +3884,8 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	}
 
 	processor := antigravity.NewStreamingProcessor(originalModel)
+	setupClaudeMaxStreamingHook(c, processor, originalModel, accountID)
+
 	var firstTokenMs *int
 	// 使用 Scanner 并限制单行大小，避免 ReadString 无上限导致 OOM
 	scanner := bufio.NewScanner(resp.Body)

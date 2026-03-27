@@ -181,11 +181,12 @@ func TestIsModelRateLimited_Antigravity_ThinkingAffectsModelKey(t *testing.T) {
 	now := time.Now()
 	future := now.Add(10 * time.Minute).Format(time.RFC3339)
 
+	// Sonnet 4.5 now maps to Sonnet 4.6, so rate limit key is claude-sonnet-4-6
 	account := &Account{
 		Platform: PlatformAntigravity,
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5-thinking": map[string]any{
+				"claude-sonnet-4-6": map[string]any{
 					"rate_limit_reset_at": future,
 				},
 			},
@@ -343,7 +344,7 @@ func TestGetRateLimitRemainingTime(t *testing.T) {
 				Platform: PlatformAntigravity,
 				Extra: map[string]any{
 					modelRateLimitsKey: map[string]any{
-						"claude-sonnet-4-5": map[string]any{
+						"claude-sonnet-4-6": map[string]any{
 							"rate_limit_reset_at": future15m,
 						},
 					},
@@ -359,7 +360,7 @@ func TestGetRateLimitRemainingTime(t *testing.T) {
 				Platform: PlatformAntigravity,
 				Extra: map[string]any{
 					modelRateLimitsKey: map[string]any{
-						"claude-sonnet-4-5": map[string]any{
+						"claude-sonnet-4-6": map[string]any{
 							"rate_limit_reset_at": future5m,
 						},
 					},

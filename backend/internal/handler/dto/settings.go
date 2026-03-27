@@ -147,11 +147,13 @@ type SoraS3Settings struct {
 	DefaultStorageQuotaBytes  int64  `json:"default_storage_quota_bytes"`
 }
 
-// SoraS3Profile Sora S3 存储配置项 DTO（响应用，不含敏感字段）
+// SoraS3Profile Sora 存储配置项 DTO（响应用，不含敏感字段）
 type SoraS3Profile struct {
 	ProfileID                 string `json:"profile_id"`
 	Name                      string `json:"name"`
 	IsActive                  bool   `json:"is_active"`
+	Provider                  string `json:"provider"`    // "s3" / "gdrive"
+	AccessMode                string `json:"access_mode"` // "direct" / "proxy"
 	Enabled                   bool   `json:"enabled"`
 	Endpoint                  string `json:"endpoint"`
 	Region                    string `json:"region"`
@@ -163,6 +165,14 @@ type SoraS3Profile struct {
 	CDNURL                    string `json:"cdn_url"`
 	DefaultStorageQuotaBytes  int64  `json:"default_storage_quota_bytes"`
 	UpdatedAt                 string `json:"updated_at"`
+
+	// --- Google Drive 专属 ---
+	AuthType                 string `json:"auth_type,omitempty"`
+	ClientID                 string `json:"client_id,omitempty"`
+	ClientSecretConfigured   bool   `json:"client_secret_configured"`
+	RefreshTokenConfigured   bool   `json:"refresh_token_configured"`
+	ServiceAccountConfigured bool   `json:"service_account_configured"`
+	FolderID                 string `json:"folder_id,omitempty"`
 }
 
 // ListSoraS3ProfilesResponse Sora S3 配置列表响应
