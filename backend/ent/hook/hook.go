@@ -177,6 +177,18 @@ REDACTED
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SettingMutation", m)
 REDACTED
 
+// The TLSFingerprintProfileFunc type is an adapter to allow the use of ordinary
+// function as TLSFingerprintProfile mutator.
+type TLSFingerprintProfileFunc func(context.Context, *ent.TLSFingerprintProfileMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TLSFingerprintProfileFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TLSFingerprintProfileMutation); ok {
+		return f(ctx, mv)
+REDACTED
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TLSFingerprintProfileMutation", m)
+REDACTED
+
 // The UsageCleanupTaskFunc type is an adapter to allow the use of ordinary
 // function as UsageCleanupTask mutator.
 type UsageCleanupTaskFunc func(context.Context, *ent.UsageCleanupTaskMutation) (ent.Value, error)

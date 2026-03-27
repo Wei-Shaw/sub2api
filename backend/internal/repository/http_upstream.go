@@ -161,26 +161,14 @@ REDACTED)
 REDACTED
 
 // DoWithTLS 执行带 TLS 指纹伪装的 HTTP 请求
-// 根据 enableTLSFingerprint 参数决定是否使用 TLS 指纹
 //
-// 参数:
-//   - req: HTTP 请求对象
-//   - proxyURL: 代理地址，空字符串表示直连
-//   - accountID: 账户 ID，用于账户级隔离和 TLS 指纹模板选择
-//   - accountConcurrency: 账户并发限制，用于动态调整连接池大小
-//   - enableTLSFingerprint: 是否启用 TLS 指纹伪装
-//
-// TLS 指纹说明:
-//   - 当 enableTLSFingerprint=true 时，使用 utls 库模拟 Claude CLI 的 TLS 指纹
-//   - 指纹模板根据 accountID % len(profiles) 自动选择
-//   - 支持直连、HTTP/HTTPS 代理、SOCKS5 代理三种场景
-func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, enableTLSFingerprint bool) (*http.Response, error) {
-	// 如果未启用 TLS 指纹，直接使用标准请求路径
-	if !enableTLSFingerprint {
+// profile 为 nil 时不启用 TLS 指纹，行为与 Do 方法相同。
+// profile 非 nil 时使用指定的 Profile 进行 TLS 指纹伪装。
+func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	if profile == nil {
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
 REDACTED
 
-	// TLS 指纹已启用，记录调试日志
 	targetHost := ""
 	if req != nil && req.URL != nil {
 		targetHost = req.URL.Host
@@ -189,46 +177,28 @@ REDACTED
 	if proxyURL != "" {
 		proxyInfo = proxyURL
 REDACTED
-	slog.Debug("tls_fingerprint_enabled", "account_id", accountID, "target", targetHost, "proxy", proxyInfo)
+	slog.Debug("tls_fingerprint_enabled", "account_id", accountID, "target", targetHost, "proxy", proxyInfo, "profile", profile.Name)
 
 	if err := s.validateRequestHost(req); err != nil {
 		return nil, err
 REDACTED
 
-	// 获取 TLS 指纹 Profile
-	registry := tlsfingerprint.GlobalRegistry()
-	profile := registry.GetProfileByAccountID(accountID)
-	if profile == nil {
-		// 如果获取不到 profile，回退到普通请求
-		slog.Debug("tls_fingerprint_no_profile", "account_id", accountID, "fallback", "standard_request")
-		return s.Do(req, proxyURL, accountID, accountConcurrency)
-REDACTED
-
-	slog.Debug("tls_fingerprint_using_profile", "account_id", accountID, "profile", profile.Name, "grease", profile.EnableGREASE)
-
-	// 获取或创建带 TLS 指纹的客户端
 	entry, err := s.acquireClientWithTLS(proxyURL, accountID, accountConcurrency, profile)
 	if err != nil {
 		slog.Debug("tls_fingerprint_acquire_client_failed", "account_id", accountID, "error", err)
 		return nil, err
 REDACTED
 
-	// 执行请求
 	resp, err := entry.client.Do(req)
 	if err != nil {
-		// 请求失败，立即减少计数
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
 		slog.Debug("tls_fingerprint_request_failed", "account_id", accountID, "error", err)
 		return nil, err
 REDACTED
 
-	slog.Debug("tls_fingerprint_request_success", "account_id", accountID, "status", resp.StatusCode)
-
-	// 如果上游返回了压缩内容，解压后再交给业务层
 	decompressResponseBody(resp)
 
-	// 包装响应体，在关闭时自动减少计数并更新时间戳
 	resp.Body = wrapTrackedBody(resp.Body, func() {
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())

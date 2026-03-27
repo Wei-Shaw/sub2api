@@ -17,12 +17,19 @@ import (
 )
 
 // Profile contains TLS fingerprint configuration.
+// All slice fields use built-in defaults when empty.
 type Profile struct {
-	Name         string // Profile name for identification
-	CipherSuites []uint16
-	Curves       []uint16
-	PointFormats []uint8
-	EnableGREASE bool
+	Name                string // Profile name for identification
+	CipherSuites        []uint16
+	Curves              []uint16
+	PointFormats        []uint16
+	EnableGREASE        bool
+	SignatureAlgorithms []uint16 // Empty uses defaultSignatureAlgorithms
+	ALPNProtocols       []string // Empty uses ["http/1.1"]
+	SupportedVersions   []uint16 // Empty uses [TLS1.3, TLS1.2]
+	KeyShareGroups      []uint16 // Empty uses [X25519]
+	PSKModes            []uint16 // Empty uses [psk_dhe_ke]
+	Extensions          []uint16 // Extension type IDs in order; empty uses default Node.js 24.x order
 REDACTED
 
 // Dialer creates TLS connections with custom fingerprints.
@@ -45,154 +52,67 @@ type SOCKS5ProxyDialer struct {
 	proxyURL *url.URL
 REDACTED
 
-// Default TLS fingerprint values captured from Claude CLI 2.x (Node.js 20.x + OpenSSL 3.x)
-// Captured using: tshark -i lo -f "tcp port 8443" -Y "tls.handshake.type == 1" -V
-// JA3 Hash: 1a28e69016765d92e3b381168d68922c
-//
-// Note: JA3/JA4 may have slight variations due to:
-// - Session ticket presence/absence
-// - Extension negotiation state
+// Default TLS fingerprint values captured from Claude Code (Node.js 24.x)
+// Captured via tls-fingerprint-web capture server
+// JA3 Hash: 44f88fca027f27bab4bb08d4af15f23e
+// JA4:      t13d1714h1_5b57614c22b0_7baf387fc6ff
 var (
-	// defaultCipherSuites contains all 59 cipher suites from Claude CLI
+	// defaultCipherSuites contains the 17 cipher suites from Node.js 24.x
 	// Order is critical for JA3 fingerprint matching
 	defaultCipherSuites = []uint16{
-		// TLS 1.3 cipher suites (MUST be first)
+		// TLS 1.3 cipher suites
+		0x1301, // TLS_AES_128_GCM_SHA256
 		0x1302, // TLS_AES_256_GCM_SHA384
 		0x1303, // TLS_CHACHA20_POLY1305_SHA256
-		0x1301, // TLS_AES_128_GCM_SHA256
 
 		// ECDHE + AES-GCM
-		0xc02f, // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
 		0xc02b, // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-		0xc030, // TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+		0xc02f, // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
 		0xc02c, // TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+		0xc030, // TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 
-		// DHE + AES-GCM
-		0x009e, // TLS_DHE_RSA_WITH_AES_128_GCM_SHA256
-
-		// ECDHE/DHE + AES-CBC-SHA256/384
-		0xc027, // TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-		0x0067, // TLS_DHE_RSA_WITH_AES_128_CBC_SHA256
-		0xc028, // TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384
-		0x006b, // TLS_DHE_RSA_WITH_AES_256_CBC_SHA256
-
-		// DHE-DSS/RSA + AES-GCM
-		0x00a3, // TLS_DHE_DSS_WITH_AES_256_GCM_SHA384
-		0x009f, // TLS_DHE_RSA_WITH_AES_256_GCM_SHA384
-
-		// ChaCha20-Poly1305
+		// ECDHE + ChaCha20-Poly1305
 		0xcca9, // TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
 		0xcca8, // TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-		0xccaa, // TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256
 
-		// AES-CCM (256-bit)
-		0xc0af, // TLS_ECDHE_ECDSA_WITH_AES_256_CCM_8
-		0xc0ad, // TLS_ECDHE_ECDSA_WITH_AES_256_CCM
-		0xc0a3, // TLS_DHE_RSA_WITH_AES_256_CCM_8
-		0xc09f, // TLS_DHE_RSA_WITH_AES_256_CCM
-
-		// ARIA (256-bit)
-		0xc05d, // TLS_ECDHE_ECDSA_WITH_ARIA_256_GCM_SHA384
-		0xc061, // TLS_ECDHE_RSA_WITH_ARIA_256_GCM_SHA384
-		0xc057, // TLS_DHE_DSS_WITH_ARIA_256_GCM_SHA384
-		0xc053, // TLS_DHE_RSA_WITH_ARIA_256_GCM_SHA384
-
-		// DHE-DSS + AES-GCM (128-bit)
-		0x00a2, // TLS_DHE_DSS_WITH_AES_128_GCM_SHA256
-
-		// AES-CCM (128-bit)
-		0xc0ae, // TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8
-		0xc0ac, // TLS_ECDHE_ECDSA_WITH_AES_128_CCM
-		0xc0a2, // TLS_DHE_RSA_WITH_AES_128_CCM_8
-		0xc09e, // TLS_DHE_RSA_WITH_AES_128_CCM
-
-		// ARIA (128-bit)
-		0xc05c, // TLS_ECDHE_ECDSA_WITH_ARIA_128_GCM_SHA256
-		0xc060, // TLS_ECDHE_RSA_WITH_ARIA_128_GCM_SHA256
-		0xc056, // TLS_DHE_DSS_WITH_ARIA_128_GCM_SHA256
-		0xc052, // TLS_DHE_RSA_WITH_ARIA_128_GCM_SHA256
-
-		// ECDHE/DHE + AES-CBC-SHA384/256 (more)
-		0xc024, // TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384
-		0x006a, // TLS_DHE_DSS_WITH_AES_256_CBC_SHA256
-		0xc023, // TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-		0x0040, // TLS_DHE_DSS_WITH_AES_128_CBC_SHA256
-
-		// ECDHE/DHE + AES-CBC-SHA (legacy)
-		0xc00a, // TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-		0xc014, // TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-		0x0039, // TLS_DHE_RSA_WITH_AES_256_CBC_SHA
-		0x0038, // TLS_DHE_DSS_WITH_AES_256_CBC_SHA
+		// ECDHE + AES-CBC-SHA (legacy fallback)
 		0xc009, // TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
 		0xc013, // TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-		0x0033, // TLS_DHE_RSA_WITH_AES_128_CBC_SHA
-		0x0032, // TLS_DHE_DSS_WITH_AES_128_CBC_SHA
+		0xc00a, // TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
+		0xc014, // TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
 
-		// RSA + AES-GCM/CCM/ARIA (non-PFS, 256-bit)
-		0x009d, // TLS_RSA_WITH_AES_256_GCM_SHA384
-		0xc0a1, // TLS_RSA_WITH_AES_256_CCM_8
-		0xc09d, // TLS_RSA_WITH_AES_256_CCM
-		0xc051, // TLS_RSA_WITH_ARIA_256_GCM_SHA384
-
-		// RSA + AES-GCM/CCM/ARIA (non-PFS, 128-bit)
+		// RSA + AES-GCM (non-PFS)
 		0x009c, // TLS_RSA_WITH_AES_128_GCM_SHA256
-		0xc0a0, // TLS_RSA_WITH_AES_128_CCM_8
-		0xc09c, // TLS_RSA_WITH_AES_128_CCM
-		0xc050, // TLS_RSA_WITH_ARIA_128_GCM_SHA256
+		0x009d, // TLS_RSA_WITH_AES_256_GCM_SHA384
 
-		// RSA + AES-CBC (non-PFS, legacy)
-		0x003d, // TLS_RSA_WITH_AES_256_CBC_SHA256
-		0x003c, // TLS_RSA_WITH_AES_128_CBC_SHA256
-		0x0035, // TLS_RSA_WITH_AES_256_CBC_SHA
+		// RSA + AES-CBC-SHA (non-PFS, legacy)
 		0x002f, // TLS_RSA_WITH_AES_128_CBC_SHA
-
-		// Renegotiation indication
-		0x00ff, // TLS_EMPTY_RENEGOTIATION_INFO_SCSV
+		0x0035, // TLS_RSA_WITH_AES_256_CBC_SHA
 REDACTED
 
-	// defaultCurves contains the 10 supported groups from Claude CLI (including FFDHE)
+	// defaultCurves contains the 3 supported groups from Node.js 24.x
 	defaultCurves = []utls.CurveID{
-		utls.X25519,          // 0x001d
-		utls.CurveP256,       // 0x0017 (secp256r1)
-		utls.CurveID(0x001e), // x448
-		utls.CurveP521,       // 0x0019 (secp521r1)
-		utls.CurveP384,       // 0x0018 (secp384r1)
-		utls.CurveID(0x0100), // ffdhe2048
-		utls.CurveID(0x0101), // ffdhe3072
-		utls.CurveID(0x0102), // ffdhe4096
-		utls.CurveID(0x0103), // ffdhe6144
-		utls.CurveID(0x0104), // ffdhe8192
+		utls.X25519,    // 0x001d
+		utls.CurveP256, // 0x0017 (secp256r1)
+		utls.CurveP384, // 0x0018 (secp384r1)
 REDACTED
 
-	// defaultPointFormats contains all 3 point formats from Claude CLI
-	defaultPointFormats = []uint8{
+	// defaultPointFormats contains point formats from Node.js 24.x
+	defaultPointFormats = []uint16{
 		0, // uncompressed
-		1, // ansiX962_compressed_prime
-		2, // ansiX962_compressed_char2
 REDACTED
 
-	// defaultSignatureAlgorithms contains the 20 signature algorithms from Claude CLI
+	// defaultSignatureAlgorithms contains the 9 signature algorithms from Node.js 24.x
 	defaultSignatureAlgorithms = []utls.SignatureScheme{
 		0x0403, // ecdsa_secp256r1_sha256
-		0x0503, // ecdsa_secp384r1_sha384
-		0x0603, // ecdsa_secp521r1_sha512
-		0x0807, // ed25519
-		0x0808, // ed448
-		0x0809, // rsa_pss_pss_sha256
-		0x080a, // rsa_pss_pss_sha384
-		0x080b, // rsa_pss_pss_sha512
 		0x0804, // rsa_pss_rsae_sha256
-		0x0805, // rsa_pss_rsae_sha384
-		0x0806, // rsa_pss_rsae_sha512
 		0x0401, // rsa_pkcs1_sha256
+		0x0503, // ecdsa_secp384r1_sha384
+		0x0805, // rsa_pss_rsae_sha384
 		0x0501, // rsa_pkcs1_sha384
+		0x0806, // rsa_pss_rsae_sha512
 		0x0601, // rsa_pkcs1_sha512
-		0x0303, // ecdsa_sha224
-		0x0301, // rsa_pkcs1_sha224
-		0x0302, // dsa_sha224
-		0x0402, // dsa_sha256
-		0x0502, // dsa_sha384
-		0x0602, // dsa_sha512
+		0x0201, // rsa_pkcs1_sha1
 REDACTED
 )
 
@@ -256,49 +176,7 @@ REDACTED
 	slog.Debug("tls_fingerprint_socks5_tunnel_established")
 
 	// Step 3: Perform TLS handshake on the tunnel with utls fingerprint
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-REDACTED
-	slog.Debug("tls_fingerprint_socks5_starting_handshake", "host", host)
-
-	// Build ClientHello specification from profile (Node.js/Claude CLI fingerprint)
-	spec := buildClientHelloSpecFromProfile(d.profile)
-	slog.Debug("tls_fingerprint_socks5_clienthello_spec",
-		"cipher_suites", len(spec.CipherSuites),
-		"extensions", len(spec.Extensions),
-		"compression_methods", spec.CompressionMethods,
-		"tls_vers_max", spec.TLSVersMax,
-		"tls_vers_min", spec.TLSVersMin)
-
-	if d.profile != nil {
-		slog.Debug("tls_fingerprint_socks5_using_profile", "name", d.profile.Name, "grease", d.profile.EnableGREASE)
-REDACTED
-
-	// Create uTLS connection on the tunnel
-	tlsConn := utls.UClient(conn, &utls.Config{
-		ServerName: host,
-REDACTED, utls.HelloCustom)
-
-	if err := tlsConn.ApplyPreset(spec); err != nil {
-		slog.Debug("tls_fingerprint_socks5_apply_preset_failed", "error", err)
-		_ = conn.Close()
-		return nil, fmt.Errorf("apply TLS preset: %w", err)
-REDACTED
-
-	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		slog.Debug("tls_fingerprint_socks5_handshake_failed", "error", err)
-		_ = conn.Close()
-		return nil, fmt.Errorf("TLS handshake failed: %w", err)
-REDACTED
-
-	state := tlsConn.ConnectionState()
-	slog.Debug("tls_fingerprint_socks5_handshake_success",
-		"version", state.Version,
-		"cipher_suite", state.CipherSuite,
-		"alpn", state.NegotiatedProtocol)
-
-	return tlsConn, nil
+	return performTLSHandshake(ctx, conn, d.profile, addr)
 REDACTED
 
 // DialTLSContext establishes a TLS connection through HTTP proxy with the configured fingerprint.
@@ -358,7 +236,8 @@ REDACTED
 		slog.Debug("tls_fingerprint_http_proxy_read_response_failed", "error", err)
 		return nil, fmt.Errorf("read CONNECT response: %w", err)
 REDACTED
-	defer func() { _ = resp.Body.Close() REDACTED()
+	// CONNECT response has no body; do not defer resp.Body.Close() as it wraps the
+	// same conn that will be used for the TLS handshake.
 
 	if resp.StatusCode != http.StatusOK {
 		_ = conn.Close()
@@ -368,47 +247,7 @@ REDACTED
 	slog.Debug("tls_fingerprint_http_proxy_tunnel_established")
 
 	// Step 4: Perform TLS handshake on the tunnel with utls fingerprint
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-REDACTED
-	slog.Debug("tls_fingerprint_http_proxy_starting_handshake", "host", host)
-
-	// Build ClientHello specification (reuse the shared method)
-	spec := buildClientHelloSpecFromProfile(d.profile)
-	slog.Debug("tls_fingerprint_http_proxy_clienthello_spec",
-		"cipher_suites", len(spec.CipherSuites),
-		"extensions", len(spec.Extensions))
-
-	if d.profile != nil {
-		slog.Debug("tls_fingerprint_http_proxy_using_profile", "name", d.profile.Name, "grease", d.profile.EnableGREASE)
-REDACTED
-
-	// Create uTLS connection on the tunnel
-	// Note: TLS 1.3 cipher suites are handled automatically by utls when TLS 1.3 is in SupportedVersions
-	tlsConn := utls.UClient(conn, &utls.Config{
-		ServerName: host,
-REDACTED, utls.HelloCustom)
-
-	if err := tlsConn.ApplyPreset(spec); err != nil {
-		slog.Debug("tls_fingerprint_http_proxy_apply_preset_failed", "error", err)
-		_ = conn.Close()
-		return nil, fmt.Errorf("apply TLS preset: %w", err)
-REDACTED
-
-	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		slog.Debug("tls_fingerprint_http_proxy_handshake_failed", "error", err)
-		_ = conn.Close()
-		return nil, fmt.Errorf("TLS handshake failed: %w", err)
-REDACTED
-
-	state := tlsConn.ConnectionState()
-	slog.Debug("tls_fingerprint_http_proxy_handshake_success",
-		"version", state.Version,
-		"cipher_suite", state.CipherSuite,
-		"alpn", state.NegotiatedProtocol)
-
-	return tlsConn, nil
+	return performTLSHandshake(ctx, conn, d.profile, addr)
 REDACTED
 
 // DialTLSContext establishes a TLS connection with the configured fingerprint.
@@ -423,63 +262,40 @@ func (d *Dialer) DialTLSContext(ctx context.Context, network, addr string) (net.
 REDACTED
 	slog.Debug("tls_fingerprint_tcp_connected", "addr", addr)
 
-	// Extract hostname for SNI
+	// Perform TLS handshake with utls fingerprint
+	return performTLSHandshake(ctx, conn, d.profile, addr)
+REDACTED
+
+// performTLSHandshake performs the uTLS handshake on an established connection.
+// It builds a ClientHello spec from the profile, applies it, and completes the handshake.
+// On failure, conn is closed and an error is returned.
+func performTLSHandshake(ctx context.Context, conn net.Conn, profile *Profile, addr string) (net.Conn, error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		host = addr
 REDACTED
-	slog.Debug("tls_fingerprint_sni_hostname", "host", host)
 
-	// Build ClientHello specification
-	spec := d.buildClientHelloSpec()
-	slog.Debug("tls_fingerprint_clienthello_spec",
-		"cipher_suites", len(spec.CipherSuites),
-		"extensions", len(spec.Extensions))
+	spec := buildClientHelloSpecFromProfile(profile)
+	tlsConn := utls.UClient(conn, &utls.Config{ServerName: hostREDACTED, utls.HelloCustom)
 
-	// Log profile info
-	if d.profile != nil {
-		slog.Debug("tls_fingerprint_using_profile", "name", d.profile.Name, "grease", d.profile.EnableGREASE)
-REDACTED else {
-		slog.Debug("tls_fingerprint_using_default_profile")
-REDACTED
-
-	// Create uTLS connection
-	// Note: TLS 1.3 cipher suites are handled automatically by utls when TLS 1.3 is in SupportedVersions
-	tlsConn := utls.UClient(conn, &utls.Config{
-		ServerName: host,
-REDACTED, utls.HelloCustom)
-
-	// Apply fingerprint
 	if err := tlsConn.ApplyPreset(spec); err != nil {
-		slog.Debug("tls_fingerprint_apply_preset_failed", "error", err)
 		_ = conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("apply TLS preset: %w", err)
 REDACTED
-	slog.Debug("tls_fingerprint_preset_applied")
 
-	// Perform TLS handshake
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		slog.Debug("tls_fingerprint_handshake_failed",
-			"error", err,
-			"local_addr", conn.LocalAddr(),
-			"remote_addr", conn.RemoteAddr())
 		_ = conn.Close()
 		return nil, fmt.Errorf("TLS handshake failed: %w", err)
 REDACTED
 
-	// Log successful handshake details
 	state := tlsConn.ConnectionState()
 	slog.Debug("tls_fingerprint_handshake_success",
+		"host", host,
 		"version", state.Version,
 		"cipher_suite", state.CipherSuite,
 		"alpn", state.NegotiatedProtocol)
 
 	return tlsConn, nil
-REDACTED
-
-// buildClientHelloSpec constructs the ClientHello specification based on the profile.
-func (d *Dialer) buildClientHelloSpec() *utls.ClientHelloSpec {
-	return buildClientHelloSpecFromProfile(d.profile)
 REDACTED
 
 // toUTLSCurves converts uint16 slice to utls.CurveID slice.
@@ -491,70 +307,143 @@ REDACTED
 	return result
 REDACTED
 
+// defaultExtensionOrder is the Node.js 24.x extension order.
+// Used when Profile.Extensions is empty.
+var defaultExtensionOrder = []uint16{
+	0,     // server_name
+	65037, // encrypted_client_hello
+	23,    // extended_master_secret
+	65281, // renegotiation_info
+	10,    // supported_groups
+	11,    // ec_point_formats
+	35,    // session_ticket
+	16,    // alpn
+	5,     // status_request
+	13,    // signature_algorithms
+	18,    // signed_certificate_timestamp
+	51,    // key_share
+	45,    // psk_key_exchange_modes
+	43,    // supported_versions
+REDACTED
+
+// isGREASEValue checks if a uint16 value matches the TLS GREASE pattern (0x?a?a).
+func isGREASEValue(v uint16) bool {
+	return v&0x0f0f == 0x0a0a && v>>8 == v&0xff
+REDACTED
+
 // buildClientHelloSpecFromProfile constructs ClientHelloSpec from a Profile.
 // This is a standalone function that can be used by both Dialer and HTTPProxyDialer.
 func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
-	// Get cipher suites
-	var cipherSuites []uint16
+	// Resolve effective values (profile overrides or built-in defaults)
+	cipherSuites := defaultCipherSuites
 	if profile != nil && len(profile.CipherSuites) > 0 {
 		cipherSuites = profile.CipherSuites
-REDACTED else {
-		cipherSuites = defaultCipherSuites
 REDACTED
 
-	// Get curves
-	var curves []utls.CurveID
+	curves := defaultCurves
 	if profile != nil && len(profile.Curves) > 0 {
 		curves = toUTLSCurves(profile.Curves)
-REDACTED else {
-		curves = defaultCurves
 REDACTED
 
-	// Get point formats
-	var pointFormats []uint8
+	pointFormats := defaultPointFormats
 	if profile != nil && len(profile.PointFormats) > 0 {
 		pointFormats = profile.PointFormats
-REDACTED else {
-		pointFormats = defaultPointFormats
 REDACTED
 
-	// Check if GREASE is enabled
+	signatureAlgorithms := defaultSignatureAlgorithms
+	if profile != nil && len(profile.SignatureAlgorithms) > 0 {
+		signatureAlgorithms = make([]utls.SignatureScheme, len(profile.SignatureAlgorithms))
+		for i, s := range profile.SignatureAlgorithms {
+			signatureAlgorithms[i] = utls.SignatureScheme(s)
+	REDACTED
+REDACTED
+
+	alpnProtocols := []string{"http/1.1"REDACTED
+	if profile != nil && len(profile.ALPNProtocols) > 0 {
+		alpnProtocols = profile.ALPNProtocols
+REDACTED
+
+	supportedVersions := []uint16{utls.VersionTLS13, utls.VersionTLS12REDACTED
+	if profile != nil && len(profile.SupportedVersions) > 0 {
+		supportedVersions = profile.SupportedVersions
+REDACTED
+
+	keyShareGroups := []utls.CurveID{utls.X25519REDACTED
+	if profile != nil && len(profile.KeyShareGroups) > 0 {
+		keyShareGroups = toUTLSCurves(profile.KeyShareGroups)
+REDACTED
+
+	pskModes := []uint16{uint16(utls.PskModeDHE)REDACTED
+	if profile != nil && len(profile.PSKModes) > 0 {
+		pskModes = profile.PSKModes
+REDACTED
+
 	enableGREASE := profile != nil && profile.EnableGREASE
 
-	extensions := make([]utls.TLSExtension, 0, 16)
-
-	if enableGREASE {
-		extensions = append(extensions, &utls.UtlsGREASEExtension{REDACTED)
+	// Build key shares
+	keyShares := make([]utls.KeyShare, len(keyShareGroups))
+	for i, g := range keyShareGroups {
+		keyShares[i] = utls.KeyShare{Group: gREDACTED
 REDACTED
 
-	// SNI extension - MUST be explicitly added for HelloCustom mode
-	// utls will populate the server name from Config.ServerName
-	extensions = append(extensions, &utls.SNIExtension{REDACTED)
-
-	// Claude CLI extension order (captured from tshark):
-	// server_name(0), ec_point_formats(11), supported_groups(10), session_ticket(35),
-	// alpn(16), encrypt_then_mac(22), extended_master_secret(23),
-	// signature_algorithms(13), supported_versions(43),
-	// psk_key_exchange_modes(45), key_share(51)
-	extensions = append(extensions,
-		&utls.SupportedPointsExtension{SupportedPoints: pointFormatsREDACTED,
-		&utls.SupportedCurvesExtension{Curves: curvesREDACTED,
-		&utls.SessionTicketExtension{REDACTED,
-		&utls.ALPNExtension{AlpnProtocols: []string{"http/1.1"REDACTEDREDACTED,
-		&utls.GenericExtension{Id: 22REDACTED,
-		&utls.ExtendedMasterSecretExtension{REDACTED,
-		&utls.SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: defaultSignatureAlgorithmsREDACTED,
-		&utls.SupportedVersionsExtension{Versions: []uint16{
-			utls.VersionTLS13,
-			utls.VersionTLS12,
+	// Determine extension order
+	extOrder := defaultExtensionOrder
+	if profile != nil && len(profile.Extensions) > 0 {
+		extOrder = profile.Extensions
 REDACTED
-		&utls.PSKKeyExchangeModesExtension{Modes: []uint8{utls.PskModeDHEREDACTEDREDACTED,
-		&utls.KeyShareExtension{KeyShares: []utls.KeyShare{
-			{Group: utls.X25519REDACTED,
-REDACTED
-	)
 
-	if enableGREASE {
+	// Build extensions list from the ordered IDs.
+	// Parametric extensions (curves, sigalgs, etc.) are populated with resolved profile values.
+	// Unknown IDs use GenericExtension (sends type ID with empty data).
+	extensions := make([]utls.TLSExtension, 0, len(extOrder)+2)
+	for _, id := range extOrder {
+		if isGREASEValue(id) {
+			extensions = append(extensions, &utls.UtlsGREASEExtension{REDACTED)
+			continue
+	REDACTED
+		switch id {
+		case 0: // server_name
+			extensions = append(extensions, &utls.SNIExtension{REDACTED)
+		case 5: // status_request (OCSP)
+			extensions = append(extensions, &utls.StatusRequestExtension{REDACTED)
+		case 10: // supported_groups
+			extensions = append(extensions, &utls.SupportedCurvesExtension{Curves: curvesREDACTED)
+		case 11: // ec_point_formats
+			extensions = append(extensions, &utls.SupportedPointsExtension{SupportedPoints: toUint8s(pointFormats)REDACTED)
+		case 13: // signature_algorithms
+			extensions = append(extensions, &utls.SignatureAlgorithmsExtension{SupportedSignatureAlgorithms: signatureAlgorithmsREDACTED)
+		case 16: // alpn
+			extensions = append(extensions, &utls.ALPNExtension{AlpnProtocols: alpnProtocolsREDACTED)
+		case 18: // signed_certificate_timestamp
+			extensions = append(extensions, &utls.SCTExtension{REDACTED)
+		case 23: // extended_master_secret
+			extensions = append(extensions, &utls.ExtendedMasterSecretExtension{REDACTED)
+		case 35: // session_ticket
+			extensions = append(extensions, &utls.SessionTicketExtension{REDACTED)
+		case 43: // supported_versions
+			extensions = append(extensions, &utls.SupportedVersionsExtension{Versions: supportedVersionsREDACTED)
+		case 45: // psk_key_exchange_modes
+			extensions = append(extensions, &utls.PSKKeyExchangeModesExtension{Modes: toUint8s(pskModes)REDACTED)
+		case 50: // signature_algorithms_cert
+			extensions = append(extensions, &utls.SignatureAlgorithmsCertExtension{SupportedSignatureAlgorithms: signatureAlgorithmsREDACTED)
+		case 51: // key_share
+			extensions = append(extensions, &utls.KeyShareExtension{KeyShares: keySharesREDACTED)
+		case 0xfe0d: // encrypted_client_hello (ECH, 65037)
+			// Send GREASE ECH with random payload — mimics Node.js behavior when no real ECHConfig is available.
+			// An empty GenericExtension causes "error decoding message" from servers that validate ECH format.
+			extensions = append(extensions, &utls.GREASEEncryptedClientHelloExtension{REDACTED)
+		case 0xff01: // renegotiation_info
+			extensions = append(extensions, &utls.RenegotiationInfoExtension{REDACTED)
+		default:
+			// Unknown extension — send as GenericExtension (type ID + empty data).
+			// This covers encrypt_then_mac(22) and any future extensions.
+			extensions = append(extensions, &utls.GenericExtension{Id: idREDACTED)
+	REDACTED
+REDACTED
+
+	// For default extension order with EnableGREASE, wrap with GREASE bookends
+	if enableGREASE && (profile == nil || len(profile.Extensions) == 0) {
+		extensions = append([]utls.TLSExtension{&utls.UtlsGREASEExtension{REDACTEDREDACTED, extensions...)
 		extensions = append(extensions, &utls.UtlsGREASEExtension{REDACTED)
 REDACTED
 
@@ -565,4 +454,13 @@ REDACTED
 		TLSVersMax:         utls.VersionTLS13,
 		TLSVersMin:         utls.VersionTLS10,
 REDACTED
+REDACTED
+
+// toUint8s converts []uint16 to []uint8 (for utls fields that require []uint8).
+func toUint8s(vals []uint16) []uint8 {
+	out := make([]uint8, len(vals))
+	for i, v := range vals {
+		out[i] = uint8(v)
+REDACTED
+	return out
 REDACTED

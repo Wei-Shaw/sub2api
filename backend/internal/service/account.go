@@ -1165,6 +1165,31 @@ REDACTED
 	return false
 REDACTED
 
+// GetTLSFingerprintProfileID 获取账号绑定的 TLS 指纹模板 ID
+// 返回 0 表示未绑定（使用内置默认 profile）
+func (a *Account) GetTLSFingerprintProfileID() int64 {
+	if a.Extra == nil {
+		return 0
+REDACTED
+	v, ok := a.Extra["tls_fingerprint_profile_id"]
+	if !ok {
+		return 0
+REDACTED
+	switch id := v.(type) {
+	case float64:
+		return int64(id)
+	case int64:
+		return id
+	case int:
+		return int64(id)
+	case json.Number:
+		if i, err := id.Int64(); err == nil {
+			return i
+	REDACTED
+REDACTED
+	return 0
+REDACTED
+
 // GetUserMsgQueueMode 获取用户消息队列模式
 // "serialize" = 串行队列, "throttle" = 软性限速, "" = 未设置（使用全局配置）
 func (a *Account) GetUserMsgQueueMode() string {
