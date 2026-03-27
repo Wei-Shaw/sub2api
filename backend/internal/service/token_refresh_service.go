@@ -443,11 +443,8 @@ REDACTED
 	if s.privacyClientFactory == nil {
 		return
 REDACTED
-	// 已设置过则跳过
-	if account.Extra != nil {
-		if _, ok := account.Extra["privacy_mode"]; ok {
-			return
-	REDACTED
+	if shouldSkipOpenAIPrivacyEnsure(account.Extra) {
+		return
 REDACTED
 
 	token, _ := account.Credentials["access_token"].(string)
