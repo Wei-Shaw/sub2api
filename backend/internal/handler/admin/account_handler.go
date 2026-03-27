@@ -1896,7 +1896,7 @@ REDACTED
 	response.Success(c, models)
 REDACTED
 
-// SetPrivacy handles setting privacy for a single Antigravity OAuth account
+// SetPrivacy handles setting privacy for a single OpenAI/Antigravity OAuth account
 // POST /api/v1/admin/accounts/:id/set-privacy
 func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -1909,11 +1909,20 @@ REDACTED
 		response.NotFound(c, "Account not found")
 		return
 REDACTED
-	if account.Platform != service.PlatformAntigravity || account.Type != service.AccountTypeOAuth {
-		response.BadRequest(c, "Only Antigravity OAuth accounts support privacy setting")
+	if account.Type != service.AccountTypeOAuth {
+		response.BadRequest(c, "Only OAuth accounts support privacy setting")
 		return
 REDACTED
-	mode := h.adminService.ForceAntigravityPrivacy(c.Request.Context(), account)
+	var mode string
+	switch account.Platform {
+	case service.PlatformOpenAI:
+		mode = h.adminService.ForceOpenAIPrivacy(c.Request.Context(), account)
+	case service.PlatformAntigravity:
+		mode = h.adminService.ForceAntigravityPrivacy(c.Request.Context(), account)
+	default:
+		response.BadRequest(c, "Only OpenAI and Antigravity OAuth accounts support privacy setting")
+		return
+REDACTED
 	if mode == "" {
 		response.BadRequest(c, "Cannot set privacy: missing access_token")
 		return
