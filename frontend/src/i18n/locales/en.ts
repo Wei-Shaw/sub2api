@@ -4378,6 +4378,7 @@ export default {
           provider: 'Type',
           active: 'Active',
           endpoint: 'Endpoint',
+          bucket: 'Bucket',
           storagePath: 'Storage Path',
           capacityUsage: 'Capacity / Used',
           capacityUnlimited: 'Unlimited',
