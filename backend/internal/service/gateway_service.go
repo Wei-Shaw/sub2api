@@ -3749,9 +3749,28 @@ REDACTED
 	return isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID)
 REDACTED
 
+// normalizeSystemParam 将 json.RawMessage 类型的 system 参数转为标准 Go 类型（string / []any / nil），
+// 避免 type switch 中 json.RawMessage（底层 []byte）无法匹配 case string / case []any / case nil 的问题。
+// 这是 Go 的 typed nil 陷阱：(json.RawMessage, nil) ≠ (nil, nil)。
+func normalizeSystemParam(system any) any {
+	raw, ok := system.(json.RawMessage)
+	if !ok {
+		return system
+REDACTED
+	if len(raw) == 0 {
+		return nil
+REDACTED
+	var parsed any
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil
+REDACTED
+	return parsed
+REDACTED
+
 // systemIncludesClaudeCodePrompt 检查 system 中是否已包含 Claude Code 提示词
 // 使用前缀匹配支持多种变体（标准版、Agent SDK 版等）
 func systemIncludesClaudeCodePrompt(system any) bool {
+	system = normalizeSystemParam(system)
 	switch v := system.(type) {
 	case string:
 		return hasClaudeCodePrefix(v)
@@ -3780,6 +3799,7 @@ REDACTED
 // injectClaudeCodePrompt 在 system 开头注入 Claude Code 提示词
 // 处理 null、字符串、数组三种格式
 func injectClaudeCodePrompt(body []byte, system any) []byte {
+	system = normalizeSystemParam(system)
 	claudeCodeBlock, err := marshalAnthropicSystemTextBlock(claudeCodeSystemPrompt, true)
 	if err != nil {
 		logger.LegacyPrintf("service.gateway", "Warning: failed to build Claude Code prompt block: %v", err)

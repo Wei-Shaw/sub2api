@@ -67,6 +67,8 @@ type AdminService interface {
 	EnsureOpenAIPrivacy(ctx context.Context, account *Account) string
 	// EnsureAntigravityPrivacy 检查 Antigravity OAuth 账号 privacy_mode，未设置则调用 setUserSettings 并持久化。
 	EnsureAntigravityPrivacy(ctx context.Context, account *Account) string
+	// ForceOpenAIPrivacy 强制重新设置 OpenAI OAuth 账号隐私，无论当前状态。
+	ForceOpenAIPrivacy(ctx context.Context, account *Account) string
 	// ForceAntigravityPrivacy 强制重新设置 Antigravity OAuth 账号隐私，无论当前状态。
 	ForceAntigravityPrivacy(ctx context.Context, account *Account) string
 	SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error)
@@ -2661,6 +2663,43 @@ REDACTED
 REDACTED
 
 	_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": modeREDACTED)
+	return mode
+REDACTED
+
+// ForceOpenAIPrivacy 强制重新设置 OpenAI OAuth 账号隐私，无论当前状态。
+func (s *adminServiceImpl) ForceOpenAIPrivacy(ctx context.Context, account *Account) string {
+	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+		return ""
+REDACTED
+	if s.privacyClientFactory == nil {
+		return ""
+REDACTED
+
+	token, _ := account.Credentials["access_token"].(string)
+	if token == "" {
+		return ""
+REDACTED
+
+	var proxyURL string
+	if account.ProxyID != nil {
+		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
+			proxyURL = p.URL()
+	REDACTED
+REDACTED
+
+	mode := disableOpenAITraining(ctx, s.privacyClientFactory, token, proxyURL)
+	if mode == "" {
+		return ""
+REDACTED
+
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": modeREDACTED); err != nil {
+		logger.LegacyPrintf("service.admin", "force_update_openai_privacy_mode_failed: account_id=%d err=%v", account.ID, err)
+		return mode
+REDACTED
+	if account.Extra == nil {
+		account.Extra = make(map[string]any)
+REDACTED
+	account.Extra["privacy_mode"] = mode
 	return mode
 REDACTED
 

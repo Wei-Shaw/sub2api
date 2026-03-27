@@ -32,7 +32,7 @@
                 {{ t('admin.accounts.refreshToken') REDACTEDREDACTED
               </button>
             </template>
-            <button v-if="isAntigravityOAuth" @click="$emit('set-privacy', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-emerald-600 hover:bg-gray-100 dark:hover:bg-dark-700">
+            <button v-if="supportsPrivacy" @click="$emit('set-privacy', account); $emit('close')" class="flex w-full items-center gap-2 px-4 py-2 text-sm text-emerald-600 hover:bg-gray-100 dark:hover:bg-dark-700">
               <Icon name="shield" size="sm" />
               {{ t('admin.accounts.setPrivacy') REDACTEDREDACTED
             </button>
@@ -80,6 +80,8 @@ const hasRecoverableState = computed(() => {
   return props.account?.status === 'error' || Boolean(isRateLimited.value) || Boolean(isOverloaded.value) || Boolean(isTempUnschedulable.value)
 REDACTED)
 const isAntigravityOAuth = computed(() => props.account?.platform === 'antigravity' && props.account?.type === 'oauth')
+const isOpenAIOAuth = computed(() => props.account?.platform === 'openai' && props.account?.type === 'oauth')
+const supportsPrivacy = computed(() => isAntigravityOAuth.value || isOpenAIOAuth.value)
 const hasQuotaLimit = computed(() => {
   return (props.account?.type === 'apikey' || props.account?.type === 'bedrock') && (
     (props.account?.quota_limit ?? 0) > 0 ||
