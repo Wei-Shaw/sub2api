@@ -80,6 +80,10 @@ type Group struct {
 	SortOrder int `json:"sort_order,omitempty"`
 	// 是否允许 /v1/messages 调度到此 OpenAI 分组
 	AllowMessagesDispatch bool `json:"allow_messages_dispatch,omitempty"`
+	// 仅允许非 apikey 类型账号关联到此分组
+	RequireOauthOnly bool `json:"require_oauth_only,omitempty"`
+	// 调度时仅允许 privacy 已成功设置的账号
+	RequirePrivacySet bool `json:"require_privacy_set,omitempty"`
 	// 默认映射模型 ID，当账号级映射找不到时使用此值
 	DefaultMappedModel string `json:"default_mapped_model,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -190,7 +194,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldModelRouting, group.FieldSupportedModelScopes:
 			values[i] = new([]byte)
-		case group.FieldIsExclusive, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch:
+		case group.FieldIsExclusive, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldSoraImagePrice360, group.FieldSoraImagePrice540, group.FieldSoraVideoPricePerRequest, group.FieldSoraVideoPricePerRequestHd:
 			values[i] = new(sql.NullFloat64)
@@ -425,6 +429,18 @@ REDACTED
 		REDACTED else if value.Valid {
 				_m.AllowMessagesDispatch = value.Bool
 		REDACTED
+		case group.FieldRequireOauthOnly:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field require_oauth_only", values[i])
+		REDACTED else if value.Valid {
+				_m.RequireOauthOnly = value.Bool
+		REDACTED
+		case group.FieldRequirePrivacySet:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field require_privacy_set", values[i])
+		REDACTED else if value.Valid {
+				_m.RequirePrivacySet = value.Bool
+		REDACTED
 		case group.FieldDefaultMappedModel:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field default_mapped_model", values[i])
@@ -627,6 +643,12 @@ REDACTED
 	builder.WriteString(", ")
 	builder.WriteString("allow_messages_dispatch=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowMessagesDispatch))
+	builder.WriteString(", ")
+	builder.WriteString("require_oauth_only=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RequireOauthOnly))
+	builder.WriteString(", ")
+	builder.WriteString("require_privacy_set=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RequirePrivacySet))
 	builder.WriteString(", ")
 	builder.WriteString("default_mapped_model=")
 	builder.WriteString(_m.DefaultMappedModel)

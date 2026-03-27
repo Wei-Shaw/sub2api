@@ -141,6 +141,21 @@ func (a *Account) IsOAuth() bool {
 	return a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken
 REDACTED
 
+// IsPrivacySet 检查账号的 privacy 是否已成功设置。
+// OpenAI: privacy_mode == "training_off"
+// Antigravity: privacy_mode == "privacy_set"
+// 其他平台: 无 privacy 概念，始终返回 true
+func (a *Account) IsPrivacySet() bool {
+	switch a.Platform {
+	case PlatformOpenAI:
+		return a.getExtraString("privacy_mode") == PrivacyModeTrainingOff
+	case PlatformAntigravity:
+		return a.getExtraString("privacy_mode") == AntigravityPrivacySet
+	default:
+		return true
+REDACTED
+REDACTED
+
 func (a *Account) IsGemini() bool {
 	return a.Platform == PlatformGemini
 REDACTED

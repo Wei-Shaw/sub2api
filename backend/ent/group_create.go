@@ -438,6 +438,34 @@ REDACTED
 	return _c
 REDACTED
 
+// SetRequireOauthOnly sets the "require_oauth_only" field.
+func (_c *GroupCreate) SetRequireOauthOnly(v bool) *GroupCreate {
+	_c.mutation.SetRequireOauthOnly(v)
+	return _c
+REDACTED
+
+// SetNillableRequireOauthOnly sets the "require_oauth_only" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableRequireOauthOnly(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetRequireOauthOnly(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetRequirePrivacySet sets the "require_privacy_set" field.
+func (_c *GroupCreate) SetRequirePrivacySet(v bool) *GroupCreate {
+	_c.mutation.SetRequirePrivacySet(v)
+	return _c
+REDACTED
+
+// SetNillableRequirePrivacySet sets the "require_privacy_set" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableRequirePrivacySet(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetRequirePrivacySet(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetDefaultMappedModel sets the "default_mapped_model" field.
 func (_c *GroupCreate) SetDefaultMappedModel(v string) *GroupCreate {
 	_c.mutation.SetDefaultMappedModel(v)
@@ -645,6 +673,14 @@ REDACTED
 		v := group.DefaultAllowMessagesDispatch
 		_c.mutation.SetAllowMessagesDispatch(v)
 REDACTED
+	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
+		v := group.DefaultRequireOauthOnly
+		_c.mutation.SetRequireOauthOnly(v)
+REDACTED
+	if _, ok := _c.mutation.RequirePrivacySet(); !ok {
+		v := group.DefaultRequirePrivacySet
+		_c.mutation.SetRequirePrivacySet(v)
+REDACTED
 	if _, ok := _c.mutation.DefaultMappedModel(); !ok {
 		v := group.DefaultDefaultMappedModel
 		_c.mutation.SetDefaultMappedModel(v)
@@ -721,6 +757,12 @@ REDACTED
 REDACTED
 	if _, ok := _c.mutation.AllowMessagesDispatch(); !ok {
 		return &ValidationError{Name: "allow_messages_dispatch", err: errors.New(`ent: missing required field "Group.allow_messages_dispatch"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
+		return &ValidationError{Name: "require_oauth_only", err: errors.New(`ent: missing required field "Group.require_oauth_only"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.RequirePrivacySet(); !ok {
+		return &ValidationError{Name: "require_privacy_set", err: errors.New(`ent: missing required field "Group.require_privacy_set"`)REDACTED
 REDACTED
 	if _, ok := _c.mutation.DefaultMappedModel(); !ok {
 		return &ValidationError{Name: "default_mapped_model", err: errors.New(`ent: missing required field "Group.default_mapped_model"`)REDACTED
@@ -880,6 +922,14 @@ REDACTED
 	if value, ok := _c.mutation.AllowMessagesDispatch(); ok {
 		_spec.SetField(group.FieldAllowMessagesDispatch, field.TypeBool, value)
 		_node.AllowMessagesDispatch = value
+REDACTED
+	if value, ok := _c.mutation.RequireOauthOnly(); ok {
+		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
+		_node.RequireOauthOnly = value
+REDACTED
+	if value, ok := _c.mutation.RequirePrivacySet(); ok {
+		_spec.SetField(group.FieldRequirePrivacySet, field.TypeBool, value)
+		_node.RequirePrivacySet = value
 REDACTED
 	if value, ok := _c.mutation.DefaultMappedModel(); ok {
 		_spec.SetField(group.FieldDefaultMappedModel, field.TypeString, value)
@@ -1587,6 +1637,30 @@ func (u *GroupUpsert) UpdateAllowMessagesDispatch() *GroupUpsert {
 	return u
 REDACTED
 
+// SetRequireOauthOnly sets the "require_oauth_only" field.
+func (u *GroupUpsert) SetRequireOauthOnly(v bool) *GroupUpsert {
+	u.Set(group.FieldRequireOauthOnly, v)
+	return u
+REDACTED
+
+// UpdateRequireOauthOnly sets the "require_oauth_only" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateRequireOauthOnly() *GroupUpsert {
+	u.SetExcluded(group.FieldRequireOauthOnly)
+	return u
+REDACTED
+
+// SetRequirePrivacySet sets the "require_privacy_set" field.
+func (u *GroupUpsert) SetRequirePrivacySet(v bool) *GroupUpsert {
+	u.Set(group.FieldRequirePrivacySet, v)
+	return u
+REDACTED
+
+// UpdateRequirePrivacySet sets the "require_privacy_set" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateRequirePrivacySet() *GroupUpsert {
+	u.SetExcluded(group.FieldRequirePrivacySet)
+	return u
+REDACTED
+
 // SetDefaultMappedModel sets the "default_mapped_model" field.
 func (u *GroupUpsert) SetDefaultMappedModel(v string) *GroupUpsert {
 	u.Set(group.FieldDefaultMappedModel, v)
@@ -2278,6 +2352,34 @@ REDACTED
 func (u *GroupUpsertOne) UpdateAllowMessagesDispatch() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowMessagesDispatch()
+REDACTED)
+REDACTED
+
+// SetRequireOauthOnly sets the "require_oauth_only" field.
+func (u *GroupUpsertOne) SetRequireOauthOnly(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetRequireOauthOnly(v)
+REDACTED)
+REDACTED
+
+// UpdateRequireOauthOnly sets the "require_oauth_only" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateRequireOauthOnly() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateRequireOauthOnly()
+REDACTED)
+REDACTED
+
+// SetRequirePrivacySet sets the "require_privacy_set" field.
+func (u *GroupUpsertOne) SetRequirePrivacySet(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetRequirePrivacySet(v)
+REDACTED)
+REDACTED
+
+// UpdateRequirePrivacySet sets the "require_privacy_set" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateRequirePrivacySet() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateRequirePrivacySet()
 REDACTED)
 REDACTED
 
@@ -3140,6 +3242,34 @@ REDACTED
 func (u *GroupUpsertBulk) UpdateAllowMessagesDispatch() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowMessagesDispatch()
+REDACTED)
+REDACTED
+
+// SetRequireOauthOnly sets the "require_oauth_only" field.
+func (u *GroupUpsertBulk) SetRequireOauthOnly(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetRequireOauthOnly(v)
+REDACTED)
+REDACTED
+
+// UpdateRequireOauthOnly sets the "require_oauth_only" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateRequireOauthOnly() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateRequireOauthOnly()
+REDACTED)
+REDACTED
+
+// SetRequirePrivacySet sets the "require_privacy_set" field.
+func (u *GroupUpsertBulk) SetRequirePrivacySet(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetRequirePrivacySet(v)
+REDACTED)
+REDACTED
+
+// UpdateRequirePrivacySet sets the "require_privacy_set" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateRequirePrivacySet() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateRequirePrivacySet()
 REDACTED)
 REDACTED
 

@@ -77,6 +77,10 @@ const (
 	FieldSortOrder = "sort_order"
 	// FieldAllowMessagesDispatch holds the string denoting the allow_messages_dispatch field in the database.
 	FieldAllowMessagesDispatch = "allow_messages_dispatch"
+	// FieldRequireOauthOnly holds the string denoting the require_oauth_only field in the database.
+	FieldRequireOauthOnly = "require_oauth_only"
+	// FieldRequirePrivacySet holds the string denoting the require_privacy_set field in the database.
+	FieldRequirePrivacySet = "require_privacy_set"
 	// FieldDefaultMappedModel holds the string denoting the default_mapped_model field in the database.
 	FieldDefaultMappedModel = "default_mapped_model"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
@@ -185,6 +189,8 @@ var Columns = []string{
 	FieldSupportedModelScopes,
 	FieldSortOrder,
 	FieldAllowMessagesDispatch,
+	FieldRequireOauthOnly,
+	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
 REDACTED
 
@@ -255,6 +261,10 @@ var (
 	DefaultSortOrder int
 	// DefaultAllowMessagesDispatch holds the default value on creation for the "allow_messages_dispatch" field.
 	DefaultAllowMessagesDispatch bool
+	// DefaultRequireOauthOnly holds the default value on creation for the "require_oauth_only" field.
+	DefaultRequireOauthOnly bool
+	// DefaultRequirePrivacySet holds the default value on creation for the "require_privacy_set" field.
+	DefaultRequirePrivacySet bool
 	// DefaultDefaultMappedModel holds the default value on creation for the "default_mapped_model" field.
 	DefaultDefaultMappedModel string
 	// DefaultMappedModelValidator is a validator for the "default_mapped_model" field. It is called by the builders before save.
@@ -412,6 +422,16 @@ REDACTED
 // ByAllowMessagesDispatch orders the results by the allow_messages_dispatch field.
 func ByAllowMessagesDispatch(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowMessagesDispatch, opts...).ToFunc()
+REDACTED
+
+// ByRequireOauthOnly orders the results by the require_oauth_only field.
+func ByRequireOauthOnly(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRequireOauthOnly, opts...).ToFunc()
+REDACTED
+
+// ByRequirePrivacySet orders the results by the require_privacy_set field.
+func ByRequirePrivacySet(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRequirePrivacySet, opts...).ToFunc()
 REDACTED
 
 // ByDefaultMappedModel orders the results by the default_mapped_model field.

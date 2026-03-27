@@ -112,6 +112,8 @@ type CreateGroupRequest struct {
 	SoraStorageQuotaBytes int64 `json:"sora_storage_quota_bytes"`
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch bool   `json:"allow_messages_dispatch"`
+	RequireOAuthOnly      bool   `json:"require_oauth_only"`
+	RequirePrivacySet     bool   `json:"require_privacy_set"`
 	DefaultMappedModel    string `json:"default_mapped_model"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
@@ -150,6 +152,8 @@ type UpdateGroupRequest struct {
 	SoraStorageQuotaBytes *int64 `json:"sora_storage_quota_bytes"`
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch *bool   `json:"allow_messages_dispatch"`
+	RequireOAuthOnly      *bool   `json:"require_oauth_only"`
+	RequirePrivacySet     *bool   `json:"require_privacy_set"`
 	DefaultMappedModel    *string `json:"default_mapped_model"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
@@ -267,6 +271,8 @@ REDACTED
 		SupportedModelScopes:            req.SupportedModelScopes,
 		SoraStorageQuotaBytes:           req.SoraStorageQuotaBytes,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
+		RequireOAuthOnly:                req.RequireOAuthOnly,
+		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 REDACTED)
@@ -320,6 +326,8 @@ REDACTED
 		SupportedModelScopes:            req.SupportedModelScopes,
 		SoraStorageQuotaBytes:           req.SoraStorageQuotaBytes,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
+		RequireOAuthOnly:                req.RequireOAuthOnly,
+		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 REDACTED)

@@ -3139,7 +3139,7 @@ REDACTED
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "claude-3-5-sonnet-20241022", nil)
 REDACTED
 	require.NotNil(t, account)
-	require.Equal(t, 0, groupRepo.getByIDCalls)
+	require.Equal(t, 1, groupRepo.getByIDCalls) // +1 for require_privacy_set check
 	require.Equal(t, 0, groupRepo.getByIDLiteCalls)
 REDACTED
 
@@ -3182,7 +3182,7 @@ REDACTED
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "claude-3-5-sonnet-20241022", nil)
 REDACTED
 	require.NotNil(t, account)
-	require.Equal(t, 0, groupRepo.getByIDCalls)
+	require.Equal(t, 1, groupRepo.getByIDCalls) // +1 for require_privacy_set check
 	require.Equal(t, 1, groupRepo.getByIDLiteCalls)
 REDACTED
 
@@ -3252,7 +3252,7 @@ REDACTED
 	account, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "claude-3-5-sonnet-20241022", nil)
 REDACTED
 	require.NotNil(t, account)
-	require.Equal(t, 0, groupRepo.getByIDCalls)
+	require.Equal(t, 1, groupRepo.getByIDCalls) // +1 for require_privacy_set check
 	require.Equal(t, 1, groupRepo.getByIDLiteCalls)
 REDACTED
 
