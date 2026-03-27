@@ -13,7 +13,7 @@ import (
 // INTERNAL 500 渐进惩罚：连续多轮全部返回特定 500 错误时的惩罚时长
 const (
 	internal500PenaltyTier1Duration  = 30 * time.Minute // 第 1 轮：临时不可调度 30 分钟
-	internal500PenaltyTier2Duration  = 2 * time.Hour   // 第 2 轮：临时不可调度 2 小时
+	internal500PenaltyTier2Duration  = 2 * time.Hour    // 第 2 轮：临时不可调度 2 小时
 	internal500PenaltyTier3Threshold = 3                // 第 3+ 轮：永久禁用
 )
 
