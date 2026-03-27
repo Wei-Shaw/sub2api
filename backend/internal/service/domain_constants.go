@@ -235,6 +235,12 @@ const (
 
 	// SettingKeyBackendModeEnabled Backend 模式：禁用用户注册和自助服务，仅管理员可登录
 	SettingKeyBackendModeEnabled = "backend_mode_enabled"
+
+	// Gateway Forwarding Behavior
+	// SettingKeyEnableFingerprintUnification 是否统一 OAuth 账号的 X-Stainless-* 指纹头（默认 true）
+	SettingKeyEnableFingerprintUnification = "enable_fingerprint_unification"
+	// SettingKeyEnableMetadataPassthrough 是否透传客户端原始 metadata.user_id（默认 false）
+	SettingKeyEnableMetadataPassthrough = "enable_metadata_passthrough"
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

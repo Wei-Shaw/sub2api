@@ -212,7 +212,7 @@ REDACTED
 		SetContext(ctx).
 		SetHeader("Accept", "application/json, text/plain, */*").
 		SetHeader("Content-Type", "application/json").
-		SetHeader("User-Agent", "axios/1.8.4").
+		SetHeader("User-Agent", "axios/1.13.6").
 		SetBody(reqBody).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
@@ -250,7 +250,7 @@ REDACTED
 		SetContext(ctx).
 		SetHeader("Accept", "application/json, text/plain, */*").
 		SetHeader("Content-Type", "application/json").
-		SetHeader("User-Agent", "axios/1.8.4").
+		SetHeader("User-Agent", "axios/1.13.6").
 		SetBody(reqBody).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)

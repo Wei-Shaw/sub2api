@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/tidwall/gjson"
 )
 
 // RateLimitService 处理限流和过载状态管理
@@ -149,6 +150,17 @@ REDACTED
 	REDACTED
 		// 其他 400 错误（如参数问题）不处理，不禁用账号
 	case 401:
+		// OpenAI: token_invalidated / token_revoked 表示 token 被永久作废（非过期），直接标记 error
+		openai401Code := extractUpstreamErrorCode(responseBody)
+		if account.Platform == PlatformOpenAI && (openai401Code == "token_invalidated" || openai401Code == "token_revoked") {
+			msg := "Token revoked (401): account authentication permanently revoked"
+			if upstreamMsg != "" {
+				msg = "Token revoked (401): " + upstreamMsg
+		REDACTED
+			s.handleAuthError(ctx, account, msg)
+			shouldDisable = true
+			break
+	REDACTED
 		// OAuth 账号在 401 错误时临时不可调度（给 token 刷新窗口）；非 OAuth 账号保持原有 SetError 行为。
 		// Antigravity 除外：其 401 由 applyErrorPolicy 的 temp_unschedulable_rules 自行控制。
 		if account.Type == AccountTypeOAuth && account.Platform != PlatformAntigravity {
@@ -192,6 +204,13 @@ REDACTED
 			shouldDisable = true
 	REDACTED
 	case 402:
+		// OpenAI: deactivated_workspace 表示工作区已停用，直接标记 error
+		if account.Platform == PlatformOpenAI && gjson.GetBytes(responseBody, "detail.code").String() == "deactivated_workspace" {
+			msg := "Workspace deactivated (402): workspace has been deactivated"
+			s.handleAuthError(ctx, account, msg)
+			shouldDisable = true
+			break
+	REDACTED
 		// 支付要求：余额不足或计费问题，停止调度
 		msg := "Payment required (402): insufficient balance or billing issue"
 		if upstreamMsg != "" {

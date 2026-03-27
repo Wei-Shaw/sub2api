@@ -124,6 +124,27 @@ REDACTED{
 		REDACTED,
 			want: false,
 	REDACTED,
+		// json.RawMessage cases (conversion path: ForwardAsResponses / ForwardAsChatCompletions)
+		{
+			name:   "json.RawMessage string with Claude Code prompt",
+			system: json.RawMessage(`"` + claudeCodeSystemPrompt + `"`),
+			want:   true,
+	REDACTED,
+		{
+			name:   "json.RawMessage string without Claude Code prompt",
+			system: json.RawMessage(`"You are a helpful assistant"`),
+			want:   false,
+	REDACTED,
+		{
+			name:   "json.RawMessage nil (empty)",
+			system: json.RawMessage(nil),
+			want:   false,
+	REDACTED,
+		{
+			name:   "json.RawMessage empty string",
+			system: json.RawMessage(`""`),
+			want:   false,
+	REDACTED,
 REDACTED
 
 	for _, tt := range tests {
@@ -199,6 +220,29 @@ REDACTED{
 			name:          "empty array",
 			body:          `{"model":"claude-3"REDACTED`,
 			system:        []any{REDACTED,
+			wantSystemLen: 1,
+			wantFirstText: claudeCodeSystemPrompt,
+	REDACTED,
+		// json.RawMessage cases (conversion path: ForwardAsResponses / ForwardAsChatCompletions)
+		{
+			name:           "json.RawMessage string system",
+			body:           `{"model":"claude-3","system":"Custom prompt"REDACTED`,
+			system:         json.RawMessage(`"Custom prompt"`),
+			wantSystemLen:  2,
+			wantFirstText:  claudeCodeSystemPrompt,
+			wantSecondText: claudePrefix + "\n\nCustom prompt",
+	REDACTED,
+		{
+			name:          "json.RawMessage nil system",
+			body:          `{"model":"claude-3"REDACTED`,
+			system:        json.RawMessage(nil),
+			wantSystemLen: 1,
+			wantFirstText: claudeCodeSystemPrompt,
+	REDACTED,
+		{
+			name:          "json.RawMessage Claude Code prompt (should not duplicate)",
+			body:          `{"model":"claude-3","system":"` + claudeCodeSystemPrompt + `"REDACTED`,
+			system:        json.RawMessage(`"` + claudeCodeSystemPrompt + `"`),
 			wantSystemLen: 1,
 			wantFirstText: claudeCodeSystemPrompt,
 	REDACTED,

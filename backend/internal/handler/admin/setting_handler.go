@@ -129,6 +129,8 @@ REDACTED
 		MaxClaudeCodeVersion:                 settings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:          settings.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                   settings.BackendModeEnabled,
+		EnableFingerprintUnification:         settings.EnableFingerprintUnification,
+		EnableMetadataPassthrough:            settings.EnableMetadataPassthrough,
 REDACTED)
 REDACTED
 
@@ -209,6 +211,10 @@ type UpdateSettingsRequest struct {
 
 	// Backend Mode
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
+
+	// Gateway forwarding behavior
+	EnableFingerprintUnification *bool `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough    *bool `json:"enable_metadata_passthrough"`
 REDACTED
 
 // UpdateSettings 更新系统设置
@@ -601,6 +607,18 @@ REDACTED
 		REDACTED
 			return previousSettings.OpsMetricsIntervalSeconds
 	REDACTED(),
+		EnableFingerprintUnification: func() bool {
+			if req.EnableFingerprintUnification != nil {
+				return *req.EnableFingerprintUnification
+		REDACTED
+			return previousSettings.EnableFingerprintUnification
+	REDACTED(),
+		EnableMetadataPassthrough: func() bool {
+			if req.EnableMetadataPassthrough != nil {
+				return *req.EnableMetadataPassthrough
+		REDACTED
+			return previousSettings.EnableMetadataPassthrough
+	REDACTED(),
 REDACTED
 
 	if err := h.settingService.UpdateSettings(c.Request.Context(), settings); err != nil {
@@ -679,6 +697,8 @@ REDACTED
 		MaxClaudeCodeVersion:                 updatedSettings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:          updatedSettings.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                   updatedSettings.BackendModeEnabled,
+		EnableFingerprintUnification:         updatedSettings.EnableFingerprintUnification,
+		EnableMetadataPassthrough:            updatedSettings.EnableMetadataPassthrough,
 REDACTED)
 REDACTED
 
@@ -850,6 +870,12 @@ REDACTED
 REDACTED
 	if before.CustomMenuItems != after.CustomMenuItems {
 		changed = append(changed, "custom_menu_items")
+REDACTED
+	if before.EnableFingerprintUnification != after.EnableFingerprintUnification {
+		changed = append(changed, "enable_fingerprint_unification")
+REDACTED
+	if before.EnableMetadataPassthrough != after.EnableMetadataPassthrough {
+		changed = append(changed, "enable_metadata_passthrough")
 REDACTED
 	return changed
 REDACTED
@@ -1568,18 +1594,26 @@ func (h *SettingHandler) GetRectifierSettings(c *gin.Context) {
 		return
 REDACTED
 
+	patterns := settings.APIKeySignaturePatterns
+	if patterns == nil {
+		patterns = []string{REDACTED
+REDACTED
 	response.Success(c, dto.RectifierSettings{
 		Enabled:                  settings.Enabled,
 		ThinkingSignatureEnabled: settings.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    settings.ThinkingBudgetEnabled,
+		APIKeySignatureEnabled:   settings.APIKeySignatureEnabled,
+		APIKeySignaturePatterns:  patterns,
 REDACTED)
 REDACTED
 
 // UpdateRectifierSettingsRequest 更新整流器配置请求
 type UpdateRectifierSettingsRequest struct {
-	Enabled                  bool `json:"enabled"`
-	ThinkingSignatureEnabled bool `json:"thinking_signature_enabled"`
-	ThinkingBudgetEnabled    bool `json:"thinking_budget_enabled"`
+	Enabled                  bool     `json:"enabled"`
+	ThinkingSignatureEnabled bool     `json:"thinking_signature_enabled"`
+	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`
+	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`
+	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
 REDACTED
 
 // UpdateRectifierSettings 更新请求整流器配置
@@ -1591,10 +1625,32 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 		return
 REDACTED
 
+	// 校验并清理自定义匹配关键词
+	const maxPatterns = 50
+	const maxPatternLen = 500
+	if len(req.APIKeySignaturePatterns) > maxPatterns {
+		response.BadRequest(c, "Too many signature patterns (max 50)")
+		return
+REDACTED
+	var cleanedPatterns []string
+	for _, p := range req.APIKeySignaturePatterns {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+	REDACTED
+		if len(p) > maxPatternLen {
+			response.BadRequest(c, "Signature pattern too long (max 500 characters)")
+			return
+	REDACTED
+		cleanedPatterns = append(cleanedPatterns, p)
+REDACTED
+
 	settings := &service.RectifierSettings{
 		Enabled:                  req.Enabled,
 		ThinkingSignatureEnabled: req.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    req.ThinkingBudgetEnabled,
+		APIKeySignatureEnabled:   req.APIKeySignatureEnabled,
+		APIKeySignaturePatterns:  cleanedPatterns,
 REDACTED
 
 	if err := h.settingService.SetRectifierSettings(c.Request.Context(), settings); err != nil {
@@ -1609,10 +1665,16 @@ REDACTED
 		return
 REDACTED
 
+	updatedPatterns := updatedSettings.APIKeySignaturePatterns
+	if updatedPatterns == nil {
+		updatedPatterns = []string{REDACTED
+REDACTED
 	response.Success(c, dto.RectifierSettings{
 		Enabled:                  updatedSettings.Enabled,
 		ThinkingSignatureEnabled: updatedSettings.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    updatedSettings.ThinkingBudgetEnabled,
+		APIKeySignatureEnabled:   updatedSettings.APIKeySignatureEnabled,
+		APIKeySignaturePatterns:  updatedPatterns,
 REDACTED)
 REDACTED
 

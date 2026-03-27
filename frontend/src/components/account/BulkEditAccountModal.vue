@@ -31,6 +31,57 @@
         </p>
       </div>
 
+      <!-- OpenAI passthrough -->
+      <div
+        v-if="allOpenAIPassthroughCapable"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="mb-3 flex items-center justify-between">
+          <div class="flex-1 pr-4">
+            <label
+              id="bulk-edit-openai-passthrough-label"
+              class="input-label mb-0"
+              for="bulk-edit-openai-passthrough-enabled"
+            >
+              {{ t('admin.accounts.openai.oauthPassthrough') REDACTEDREDACTED
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.oauthPassthroughDesc') REDACTEDREDACTED
+            </p>
+          </div>
+          <input
+            v-model="enableOpenAIPassthrough"
+            id="bulk-edit-openai-passthrough-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-passthrough-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-passthrough-body"
+          :class="!enableOpenAIPassthrough && 'pointer-events-none opacity-50'"
+          role="group"
+          aria-labelledby="bulk-edit-openai-passthrough-label"
+        >
+          <button
+            id="bulk-edit-openai-passthrough-toggle"
+            type="button"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openaiPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+            @click="openaiPassthroughEnabled = !openaiPassthroughEnabled"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openaiPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- Base URL (API Key only) -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -89,100 +140,30 @@
           role="group"
           aria-labelledby="bulk-edit-model-restriction-label"
         >
-          <!-- Mode Toggle -->
-          <div class="mb-4 flex gap-2">
-            <button
-              type="button"
-              :class="[
-                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                modelRestrictionMode === 'whitelist'
-                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-              ]"
-              @click="modelRestrictionMode = 'whitelist'"
-            >
-              <svg
-                class="mr-1.5 inline h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
-            </button>
-            <button
-              type="button"
-              :class="[
-                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                modelRestrictionMode === 'mapping'
-                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-              ]"
-              @click="modelRestrictionMode = 'mapping'"
-            >
-              <svg
-                class="mr-1.5 inline h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-                />
-              </svg>
-              {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
-            </button>
-          </div>
-
-          <!-- Whitelist Mode -->
-          <div v-if="modelRestrictionMode === 'whitelist'">
-            <div class="mb-3 rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
-              <p class="text-xs text-blue-700 dark:text-blue-400">
-                <svg
-                  class="mr-1 inline h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                {{ t('admin.accounts.selectAllowedModels') REDACTEDREDACTED
-              </p>
-            </div>
-
-            <ModelWhitelistSelector
-              v-model="allowedModels"
-              :platforms="selectedPlatforms"
-            />
-
-            <p class="text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
-              <span v-if="allowedModels.length === 0">{{
-                t('admin.accounts.supportsAllModels')
-              REDACTEDREDACTED</span>
+          <div
+            v-if="isOpenAIModelRestrictionDisabled"
+            class="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20"
+          >
+            <p class="text-xs text-amber-700 dark:text-amber-400">
+              {{ t('admin.accounts.openai.modelRestrictionDisabledByPassthrough') REDACTEDREDACTED
             </p>
           </div>
 
-          <!-- Mapping Mode -->
-          <div v-else>
-            <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
-              <p class="text-xs text-purple-700 dark:text-purple-400">
+          <template v-else>
+            <!-- Mode Toggle -->
+            <div class="mb-4 flex gap-2">
+              <button
+                type="button"
+                :class="[
+                  'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                  modelRestrictionMode === 'whitelist'
+                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                ]"
+                @click="modelRestrictionMode = 'whitelist'"
+              >
                 <svg
-                  class="mr-1 inline h-4 w-4"
+                  class="mr-1.5 inline h-4 w-4"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -191,96 +172,177 @@
                     stroke-linecap="round"
                     stroke-linejoin="round"
                     stroke-width="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                {{ t('admin.accounts.mapRequestModels') REDACTEDREDACTED
-              </p>
+                {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
+              </button>
+              <button
+                type="button"
+                :class="[
+                  'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                  modelRestrictionMode === 'mapping'
+                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                ]"
+                @click="modelRestrictionMode = 'mapping'"
+              >
+                <svg
+                  class="mr-1.5 inline h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                  />
+                </svg>
+                {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
+              </button>
             </div>
 
-            <!-- Model Mapping List -->
-            <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
-              <div
-                v-for="(mapping, index) in modelMappings"
-                :key="index"
-                class="flex items-center gap-2"
-              >
-                <input
-                  v-model="mapping.from"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.requestModel')"
-                />
-                <svg
-                  class="h-4 w-4 flex-shrink-0 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M14 5l7 7m0 0l-7 7m7-7H3"
-                  />
-                </svg>
-                <input
-                  v-model="mapping.to"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.actualModel')"
-                />
-                <button
-                  type="button"
-                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                  @click="removeModelMapping(index)"
-                >
-                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <!-- Whitelist Mode -->
+            <div v-if="modelRestrictionMode === 'whitelist'">
+              <div class="mb-3 rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+                <p class="text-xs text-blue-700 dark:text-blue-400">
+                  <svg
+                    class="mr-1 inline h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
                       stroke-width="2"
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </svg>
+                  {{ t('admin.accounts.selectAllowedModels') REDACTEDREDACTED
+                </p>
+              </div>
+
+              <ModelWhitelistSelector
+                v-model="allowedModels"
+                :platforms="selectedPlatforms"
+              />
+
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
+                <span v-if="allowedModels.length === 0">{{
+                  t('admin.accounts.supportsAllModels')
+                REDACTEDREDACTED</span>
+              </p>
+            </div>
+
+            <!-- Mapping Mode -->
+            <div v-else>
+              <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+                <p class="text-xs text-purple-700 dark:text-purple-400">
+                  <svg
+                    class="mr-1 inline h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  {{ t('admin.accounts.mapRequestModels') REDACTEDREDACTED
+                </p>
+              </div>
+
+              <!-- Model Mapping List -->
+              <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+                <div
+                  v-for="(mapping, index) in modelMappings"
+                  :key="index"
+                  class="flex items-center gap-2"
+                >
+                  <input
+                    v-model="mapping.from"
+                    type="text"
+                    class="input flex-1"
+                    :placeholder="t('admin.accounts.requestModel')"
+                  />
+                  <svg
+                    class="h-4 w-4 flex-shrink-0 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M14 5l7 7m0 0l-7 7m7-7H3"
+                    />
+                  </svg>
+                  <input
+                    v-model="mapping.to"
+                    type="text"
+                    class="input flex-1"
+                    :placeholder="t('admin.accounts.actualModel')"
+                  />
+                  <button
+                    type="button"
+                    class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    @click="removeModelMapping(index)"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
+                @click="addModelMapping"
+              >
+                <svg
+                  class="mr-1 inline h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                {{ t('admin.accounts.addMapping') REDACTEDREDACTED
+              </button>
+
+              <!-- Quick Add Buttons -->
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="preset in filteredPresets"
+                  :key="preset.label"
+                  type="button"
+                  :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+                  @click="addPresetMapping(preset.from, preset.to)"
+                >
+                  + {{ preset.label REDACTEDREDACTED
                 </button>
               </div>
             </div>
-
-            <button
-              type="button"
-              class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
-              @click="addModelMapping"
-            >
-              <svg
-                class="mr-1 inline h-4 w-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              {{ t('admin.accounts.addMapping') REDACTEDREDACTED
-            </button>
-
-            <!-- Quick Add Buttons -->
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="preset in filteredPresets"
-                :key="preset.label"
-                type="button"
-                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
-                @click="addPresetMapping(preset.from, preset.to)"
-              >
-                + {{ preset.label REDACTEDREDACTED
-              </button>
-            </div>
-          </div>
+          </template>
         </div>
       </div>
 
@@ -865,7 +927,6 @@ import {
   resolveOpenAIWSModeConcurrencyHintKey
 REDACTED from '@/utils/openaiWsMode'
 import type { OpenAIWSMode REDACTED from '@/utils/openaiWsMode'
-
 interface Props {
   show: boolean
   accountIds: number[]
@@ -886,6 +947,15 @@ const appStore = useAppStore()
 
 // Platform awareness
 const isMixedPlatform = computed(() => props.selectedPlatforms.length > 1)
+
+const allOpenAIPassthroughCapable = computed(() => {
+  return (
+    props.selectedPlatforms.length === 1 &&
+    props.selectedPlatforms[0] === 'openai' &&
+    props.selectedTypes.length > 0 &&
+    props.selectedTypes.every(t => t === 'oauth' || t === 'apikey')
+  )
+REDACTED)
 
 const allOpenAIOAuth = computed(() => {
   return (
@@ -939,6 +1009,7 @@ const enablePriority = ref(false)
 const enableRateMultiplier = ref(false)
 const enableStatus = ref(false)
 const enableGroups = ref(false)
+const enableOpenAIPassthrough = ref(false)
 const enableOpenAIWSMode = ref(false)
 const enableRpmLimit = ref(false)
 
@@ -961,6 +1032,7 @@ const priority = ref(1)
 const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
 const groupIds = ref<number[]>([])
+const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const rpmLimitEnabled = ref(false)
 const bulkBaseRpm = ref<number | null>(null)
@@ -988,6 +1060,13 @@ const statusOptions = computed(() => [
   { value: 'active', label: t('common.active') REDACTED,
   { value: 'inactive', label: t('common.inactive') REDACTED
 ])
+const isOpenAIModelRestrictionDisabled = computed(
+  () =>
+    allOpenAIPassthroughCapable.value &&
+    enableOpenAIPassthrough.value &&
+    openaiPassthroughEnabled.value
+)
+
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') REDACTED,
   { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') REDACTED
@@ -1123,7 +1202,15 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     REDACTED
   REDACTED
 
-  if (enableModelRestriction.value) {
+  if (enableOpenAIPassthrough.value) {
+    const extra = ensureExtra()
+    extra.openai_passthrough = openaiPassthroughEnabled.value
+    if (!openaiPassthroughEnabled.value) {
+      extra.openai_oauth_passthrough = false
+    REDACTED
+  REDACTED
+
+  if (enableModelRestriction.value && !isOpenAIModelRestrictionDisabled.value) {
     // 统一使用 model_mapping 字段
     if (modelRestrictionMode.value === 'whitelist') {
       // 白名单模式：将模型转换为 model_mapping 格式（key=value）
@@ -1243,6 +1330,7 @@ const handleSubmit = async () => {
 
   const hasAnyFieldEnabled =
     enableBaseUrl.value ||
+    enableOpenAIPassthrough.value ||
     enableModelRestriction.value ||
     enableCustomErrorCodes.value ||
     enableInterceptWarmup.value ||
@@ -1345,11 +1433,13 @@ watch(
       enableRateMultiplier.value = false
       enableStatus.value = false
       enableGroups.value = false
+      enableOpenAIPassthrough.value = false
       enableOpenAIWSMode.value = false
       enableRpmLimit.value = false
 
       // Reset all values
       baseUrl.value = ''
+      openaiPassthroughEnabled.value = false
       modelRestrictionMode.value = 'whitelist'
       allowedModels.value = []
       modelMappings.value = []

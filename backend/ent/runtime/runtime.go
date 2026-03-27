@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/schema"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
+	"github.com/Wei-Shaw/sub2api/ent/tlsfingerprintprofile"
 	"github.com/Wei-Shaw/sub2api/ent/usagecleanuptask"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -746,6 +747,43 @@ REDACTED()
 	setting.DefaultUpdatedAt = settingDescUpdatedAt.Default.(func() time.Time)
 	// setting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	setting.UpdateDefaultUpdatedAt = settingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	tlsfingerprintprofileMixin := schema.TLSFingerprintProfile{REDACTED.Mixin()
+	tlsfingerprintprofileMixinFields0 := tlsfingerprintprofileMixin[0].Fields()
+	_ = tlsfingerprintprofileMixinFields0
+	tlsfingerprintprofileFields := schema.TLSFingerprintProfile{REDACTED.Fields()
+	_ = tlsfingerprintprofileFields
+	// tlsfingerprintprofileDescCreatedAt is the schema descriptor for created_at field.
+	tlsfingerprintprofileDescCreatedAt := tlsfingerprintprofileMixinFields0[0].Descriptor()
+	// tlsfingerprintprofile.DefaultCreatedAt holds the default value on creation for the created_at field.
+	tlsfingerprintprofile.DefaultCreatedAt = tlsfingerprintprofileDescCreatedAt.Default.(func() time.Time)
+	// tlsfingerprintprofileDescUpdatedAt is the schema descriptor for updated_at field.
+	tlsfingerprintprofileDescUpdatedAt := tlsfingerprintprofileMixinFields0[1].Descriptor()
+	// tlsfingerprintprofile.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	tlsfingerprintprofile.DefaultUpdatedAt = tlsfingerprintprofileDescUpdatedAt.Default.(func() time.Time)
+	// tlsfingerprintprofile.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	tlsfingerprintprofile.UpdateDefaultUpdatedAt = tlsfingerprintprofileDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// tlsfingerprintprofileDescName is the schema descriptor for name field.
+	tlsfingerprintprofileDescName := tlsfingerprintprofileFields[0].Descriptor()
+	// tlsfingerprintprofile.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	tlsfingerprintprofile.NameValidator = func() func(string) error {
+		validators := tlsfingerprintprofileDescName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+	REDACTED
+		return func(name string) error {
+			for _, fn := range fns {
+				if err := fn(name); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// tlsfingerprintprofileDescEnableGrease is the schema descriptor for enable_grease field.
+	tlsfingerprintprofileDescEnableGrease := tlsfingerprintprofileFields[2].Descriptor()
+	// tlsfingerprintprofile.DefaultEnableGrease holds the default value on creation for the enable_grease field.
+	tlsfingerprintprofile.DefaultEnableGrease = tlsfingerprintprofileDescEnableGrease.Default.(bool)
 	usagecleanuptaskMixin := schema.UsageCleanupTask{REDACTED.Mixin()
 	usagecleanuptaskMixinFields0 := usagecleanuptaskMixin[0].Fields()
 	_ = usagecleanuptaskMixinFields0

@@ -252,6 +252,10 @@ REDACTED
 			enabled := true
 			out.EnableTLSFingerprint = &enabled
 	REDACTED
+		// TLS指纹模板ID
+		if profileID := a.GetTLSFingerprintProfileID(); profileID > 0 {
+			out.TLSFingerprintProfileID = &profileID
+	REDACTED
 		// 会话ID伪装开关
 		if a.IsSessionIDMaskingEnabled() {
 			enabled := true

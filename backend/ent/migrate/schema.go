@@ -673,6 +673,30 @@ REDACTED
 		Columns:    SettingsColumns,
 		PrimaryKey: []*schema.Column{SettingsColumns[0]REDACTED,
 REDACTED
+	// TLSFingerprintProfilesColumns holds the columns for the "tls_fingerprint_profiles" table.
+	TLSFingerprintProfilesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "name", Type: field.TypeString, Unique: true, Size: 100REDACTED,
+		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647REDACTED,
+		{Name: "enable_grease", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "cipher_suites", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
+		{Name: "curves", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
+		{Name: "point_formats", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
+		{Name: "signature_algorithms", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
+		{Name: "alpn_protocols", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
+		{Name: "supported_versions", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
+		{Name: "key_share_groups", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
+		{Name: "psk_modes", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
+		{Name: "extensions", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
+REDACTED
+	// TLSFingerprintProfilesTable holds the schema information for the "tls_fingerprint_profiles" table.
+	TLSFingerprintProfilesTable = &schema.Table{
+		Name:       "tls_fingerprint_profiles",
+		Columns:    TLSFingerprintProfilesColumns,
+		PrimaryKey: []*schema.Column{TLSFingerprintProfilesColumns[0]REDACTED,
+REDACTED
 	// UsageCleanupTasksColumns holds the columns for the "usage_cleanup_tasks" table.
 	UsageCleanupTasksColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
@@ -1111,6 +1135,7 @@ REDACTED
 		RedeemCodesTable,
 		SecuritySecretsTable,
 		SettingsTable,
+		TLSFingerprintProfilesTable,
 		UsageCleanupTasksTable,
 		UsageLogsTable,
 		UsersTable,
@@ -1174,6 +1199,9 @@ REDACTED
 REDACTED
 	SettingsTable.Annotation = &entsql.Annotation{
 		Table: "settings",
+REDACTED
+	TLSFingerprintProfilesTable.Annotation = &entsql.Annotation{
+		Table: "tls_fingerprint_profiles",
 REDACTED
 	UsageCleanupTasksTable.Annotation = &entsql.Annotation{
 		Table: "usage_cleanup_tasks",

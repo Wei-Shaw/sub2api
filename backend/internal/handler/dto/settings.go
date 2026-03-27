@@ -94,6 +94,10 @@ type SystemSettings struct {
 
 	// Backend Mode
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
+
+	// Gateway forwarding behavior
+	EnableFingerprintUnification bool `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough    bool `json:"enable_metadata_passthrough"`
 REDACTED
 
 type DefaultSubscriptionSetting struct {
@@ -184,9 +188,11 @@ REDACTED
 
 // RectifierSettings 请求整流器配置 DTO
 type RectifierSettings struct {
-	Enabled                  bool `json:"enabled"`
-	ThinkingSignatureEnabled bool `json:"thinking_signature_enabled"`
-	ThinkingBudgetEnabled    bool `json:"thinking_budget_enabled"`
+	Enabled                  bool     `json:"enabled"`
+	ThinkingSignatureEnabled bool     `json:"thinking_signature_enabled"`
+	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`
+	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`
+	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
 REDACTED
 
 // BetaPolicyRule Beta 策略规则 DTO

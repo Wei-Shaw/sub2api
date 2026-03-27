@@ -8,6 +8,14 @@ type FingerprintResponse struct {
 	HTTP2 any     `json:"http2"`
 REDACTED
 
+// TestProfileExpectation defines expected fingerprint values for a profile.
+type TestProfileExpectation struct {
+	Profile       *Profile
+	ExpectedJA3   string // Expected JA3 hash (empty = don't check)
+	ExpectedJA4   string // Expected full JA4 (empty = don't check)
+	JA4CipherHash string // Expected JA4 cipher hash - the stable middle part (empty = don't check)
+REDACTED
+
 // TLSInfo contains TLS fingerprint details.
 type TLSInfo struct {
 	JA3           string `json:"ja3"`

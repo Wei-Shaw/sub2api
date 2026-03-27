@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -536,6 +537,10 @@ REDACTED
 		if execErr != nil {
 			return nil, execErr
 	REDACTED
+		// Antigravity OAuth: 新账号直接设置隐私
+		h.adminService.ForceAntigravityPrivacy(ctx, account)
+		// OpenAI OAuth: 新账号直接设置隐私
+		h.adminService.ForceOpenAIPrivacy(ctx, account)
 		return h.buildAccountResponseWithRuntime(ctx, account), nil
 REDACTED)
 	if err != nil {
@@ -782,6 +787,8 @@ REDACTED
 	if account.IsOpenAI() {
 		tokenInfo, err := h.openaiOAuthService.RefreshAccountToken(ctx, account)
 		if err != nil {
+			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
+			h.adminService.EnsureOpenAIPrivacy(ctx, account)
 			return nil, "", err
 	REDACTED
 
@@ -883,6 +890,8 @@ REDACTED
 
 	// OpenAI OAuth: 刷新成功后检查并设置 privacy_mode
 	h.adminService.EnsureOpenAIPrivacy(ctx, updatedAccount)
+	// Antigravity OAuth: 刷新成功后检查并设置 privacy_mode
+	h.adminService.EnsureAntigravityPrivacy(ctx, updatedAccount)
 
 	return updatedAccount, "", nil
 REDACTED
@@ -1154,6 +1163,9 @@ REDACTED
 		success := 0
 		failed := 0
 		results := make([]gin.H, 0, len(req.Accounts))
+		// 收集需要异步设置隐私的 OAuth 账号
+		var antigravityPrivacyAccounts []*service.Account
+		var openaiPrivacyAccounts []*service.Account
 
 		for _, item := range req.Accounts {
 			if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
@@ -1196,12 +1208,52 @@ REDACTED
 			REDACTED)
 				continue
 		REDACTED
+			// 收集需要异步设置隐私的 OAuth 账号
+			if account.Type == service.AccountTypeOAuth {
+				switch account.Platform {
+				case service.PlatformAntigravity:
+					antigravityPrivacyAccounts = append(antigravityPrivacyAccounts, account)
+				case service.PlatformOpenAI:
+					openaiPrivacyAccounts = append(openaiPrivacyAccounts, account)
+			REDACTED
+		REDACTED
 			success++
 			results = append(results, gin.H{
 				"name":    item.Name,
 				"id":      account.ID,
 				"success": true,
 		REDACTED)
+	REDACTED
+
+		// 异步设置隐私，避免批量创建时阻塞请求
+		adminSvc := h.adminService
+		if len(antigravityPrivacyAccounts) > 0 {
+			accounts := antigravityPrivacyAccounts
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("batch_create_antigravity_privacy_panic", "recover", r)
+				REDACTED
+			REDACTED()
+				bgCtx := context.Background()
+				for _, acc := range accounts {
+					adminSvc.ForceAntigravityPrivacy(bgCtx, acc)
+			REDACTED
+		REDACTED()
+	REDACTED
+		if len(openaiPrivacyAccounts) > 0 {
+			accounts := openaiPrivacyAccounts
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("batch_create_openai_privacy_panic", "recover", r)
+				REDACTED
+			REDACTED()
+				bgCtx := context.Background()
+				for _, acc := range accounts {
+					adminSvc.ForceOpenAIPrivacy(bgCtx, acc)
+			REDACTED
+		REDACTED()
 	REDACTED
 
 		return gin.H{
@@ -1867,6 +1919,51 @@ REDACTED
 REDACTED
 
 	response.Success(c, models)
+REDACTED
+
+// SetPrivacy handles setting privacy for a single OpenAI/Antigravity OAuth account
+// POST /api/v1/admin/accounts/:id/set-privacy
+func (h *AccountHandler) SetPrivacy(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+REDACTED
+	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.NotFound(c, "Account not found")
+		return
+REDACTED
+	if account.Type != service.AccountTypeOAuth {
+		response.BadRequest(c, "Only OAuth accounts support privacy setting")
+		return
+REDACTED
+	var mode string
+	switch account.Platform {
+	case service.PlatformOpenAI:
+		mode = h.adminService.ForceOpenAIPrivacy(c.Request.Context(), account)
+	case service.PlatformAntigravity:
+		mode = h.adminService.ForceAntigravityPrivacy(c.Request.Context(), account)
+	default:
+		response.BadRequest(c, "Only OpenAI and Antigravity OAuth accounts support privacy setting")
+		return
+REDACTED
+	if mode == "" {
+		response.BadRequest(c, "Cannot set privacy: missing access_token")
+		return
+REDACTED
+	// 从 DB 重新读取以确保返回最新状态
+	updated, err := h.adminService.GetAccount(c.Request.Context(), accountID)
+	if err != nil {
+		// 隐私已设置成功但读取失败，回退到内存更新
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+	REDACTED
+		account.Extra["privacy_mode"] = mode
+		response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+		return
+REDACTED
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), updated))
 REDACTED
 
 // RefreshTier handles refreshing Google One tier for a single account

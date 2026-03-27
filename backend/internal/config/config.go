@@ -656,17 +656,33 @@ type TLSFingerprintConfig struct {
 REDACTED
 
 // TLSProfileConfig 单个TLS指纹模板的配置
+// 所有列表字段为空时使用内置默认值（Claude CLI 2.x / Node.js 20.x）
+// 建议通过 TLS 指纹采集工具 (tests/tls-fingerprint-web) 获取完整配置
 type TLSProfileConfig struct {
 	// Name: 模板显示名称
 	Name string `mapstructure:"name"`
 	// EnableGREASE: 是否启用GREASE扩展（Chrome使用，Node.js不使用）
 	EnableGREASE bool `mapstructure:"enable_grease"`
-	// CipherSuites: TLS加密套件列表（空则使用内置默认值）
+	// CipherSuites: TLS加密套件列表
 	CipherSuites []uint16 `mapstructure:"cipher_suites"`
-	// Curves: 椭圆曲线列表（空则使用内置默认值）
+	// Curves: 椭圆曲线列表
 	Curves []uint16 `mapstructure:"curves"`
-	// PointFormats: 点格式列表（空则使用内置默认值）
-	PointFormats []uint8 `mapstructure:"point_formats"`
+	// PointFormats: 点格式列表
+	PointFormats []uint16 `mapstructure:"point_formats"`
+	// SignatureAlgorithms: 签名算法列表
+	SignatureAlgorithms []uint16 `mapstructure:"signature_algorithms"`
+	// ALPNProtocols: ALPN协议列表（如 ["h2", "http/1.1"]）
+	ALPNProtocols []string `mapstructure:"alpn_protocols"`
+	// SupportedVersions: 支持的TLS版本列表（如 [0x0304, 0x0303] 即 TLS1.3, TLS1.2）
+	SupportedVersions []uint16 `mapstructure:"supported_versions"`
+	// KeyShareGroups: Key Share中发送的曲线组（如 [29] 即 X25519）
+	KeyShareGroups []uint16 `mapstructure:"key_share_groups"`
+	// PSKModes: PSK密钥交换模式（如 [1] 即 psk_dhe_ke）
+	PSKModes []uint16 `mapstructure:"psk_modes"`
+	// Extensions: TLS扩展类型ID列表，按发送顺序排列
+	// 空则使用内置默认顺序 [0,11,10,35,16,22,23,13,43,45,51]
+	// GREASE值(如0x0a0a)会自动插入GREASE扩展
+	Extensions []uint16 `mapstructure:"extensions"`
 REDACTED
 
 // GatewaySchedulingConfig accounts scheduling configuration.
