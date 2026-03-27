@@ -539,6 +539,8 @@ REDACTED
 	REDACTED
 		// Antigravity OAuth: 新账号直接设置隐私
 		h.adminService.ForceAntigravityPrivacy(ctx, account)
+		// OpenAI OAuth: 新账号直接设置隐私
+		h.adminService.ForceOpenAIPrivacy(ctx, account)
 		return h.buildAccountResponseWithRuntime(ctx, account), nil
 REDACTED)
 	if err != nil {
@@ -1161,8 +1163,9 @@ REDACTED
 		success := 0
 		failed := 0
 		results := make([]gin.H, 0, len(req.Accounts))
-		// 收集需要异步设置隐私的 Antigravity OAuth 账号
-		var privacyAccounts []*service.Account
+		// 收集需要异步设置隐私的 OAuth 账号
+		var antigravityPrivacyAccounts []*service.Account
+		var openaiPrivacyAccounts []*service.Account
 
 		for _, item := range req.Accounts {
 			if item.RateMultiplier != nil && *item.RateMultiplier < 0 {
@@ -1205,9 +1208,14 @@ REDACTED
 			REDACTED)
 				continue
 		REDACTED
-			// 收集 Antigravity OAuth 账号，稍后异步设置隐私
-			if account.Platform == service.PlatformAntigravity && account.Type == service.AccountTypeOAuth {
-				privacyAccounts = append(privacyAccounts, account)
+			// 收集需要异步设置隐私的 OAuth 账号
+			if account.Type == service.AccountTypeOAuth {
+				switch account.Platform {
+				case service.PlatformAntigravity:
+					antigravityPrivacyAccounts = append(antigravityPrivacyAccounts, account)
+				case service.PlatformOpenAI:
+					openaiPrivacyAccounts = append(openaiPrivacyAccounts, account)
+			REDACTED
 		REDACTED
 			success++
 			results = append(results, gin.H{
@@ -1217,9 +1225,10 @@ REDACTED
 		REDACTED)
 	REDACTED
 
-		// 异步设置 Antigravity 隐私，避免批量创建时阻塞请求
-		if len(privacyAccounts) > 0 {
-			adminSvc := h.adminService
+		// 异步设置隐私，避免批量创建时阻塞请求
+		adminSvc := h.adminService
+		if len(antigravityPrivacyAccounts) > 0 {
+			accounts := antigravityPrivacyAccounts
 			go func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -1227,8 +1236,22 @@ REDACTED
 				REDACTED
 			REDACTED()
 				bgCtx := context.Background()
-				for _, acc := range privacyAccounts {
+				for _, acc := range accounts {
 					adminSvc.ForceAntigravityPrivacy(bgCtx, acc)
+			REDACTED
+		REDACTED()
+	REDACTED
+		if len(openaiPrivacyAccounts) > 0 {
+			accounts := openaiPrivacyAccounts
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("batch_create_openai_privacy_panic", "recover", r)
+				REDACTED
+			REDACTED()
+				bgCtx := context.Background()
+				for _, acc := range accounts {
+					adminSvc.ForceOpenAIPrivacy(bgCtx, acc)
 			REDACTED
 		REDACTED()
 	REDACTED
