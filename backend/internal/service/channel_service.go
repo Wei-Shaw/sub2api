@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -213,6 +214,11 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 		Status:       StatusActive,
 		GroupIDs:     input.GroupIDs,
 		ModelPricing: input.ModelPricing,
+		ModelMapping: input.ModelMapping,
+	}
+
+	if err := validateNoDuplicateModels(channel.ModelPricing); err != nil {
+		return nil, err
 	}
 
 	if err := s.repo.Create(ctx, channel); err != nil {
@@ -270,6 +276,14 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 		channel.ModelPricing = *input.ModelPricing
 	}
 
+	if input.ModelMapping != nil {
+		channel.ModelMapping = input.ModelMapping
+	}
+
+	if err := validateNoDuplicateModels(channel.ModelPricing); err != nil {
+		return nil, err
+	}
+
 	if err := s.repo.Update(ctx, channel); err != nil {
 		return nil, fmt.Errorf("update channel: %w", err)
 	}
@@ -318,6 +332,21 @@ func (s *ChannelService) List(ctx context.Context, params pagination.PaginationP
 	return s.repo.List(ctx, params, status, search)
 }
 
+// validateNoDuplicateModels 检查定价列表中是否有重复模型
+func validateNoDuplicateModels(pricingList []ChannelModelPricing) error {
+	seen := make(map[string]bool)
+	for _, p := range pricingList {
+		for _, model := range p.Models {
+			lower := strings.ToLower(model)
+			if seen[lower] {
+				return infraerrors.BadRequest("DUPLICATE_MODEL", fmt.Sprintf("model '%s' appears in multiple pricing entries", model))
+			}
+			seen[lower] = true
+		}
+	}
+	return nil
+}
+
 // --- Input types ---
 
 // CreateChannelInput 创建渠道输入
@@ -326,6 +355,7 @@ type CreateChannelInput struct {
 	Description  string
 	GroupIDs     []int64
 	ModelPricing []ChannelModelPricing
+	ModelMapping map[string]string
 }
 
 // UpdateChannelInput 更新渠道输入
@@ -335,4 +365,5 @@ type UpdateChannelInput struct {
 	Status       string
 	GroupIDs     *[]int64
 	ModelPricing *[]ChannelModelPricing
+	ModelMapping map[string]string
 }
