@@ -176,6 +176,19 @@
         <!-- Group Association -->
         <div>
           <label class="input-label">{{ t('admin.channels.form.groups', 'Associated Groups') }}</label>
+          <div class="relative mb-2">
+            <Icon
+              name="search"
+              size="md"
+              class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+            />
+            <input
+              v-model="groupSearchQuery"
+              type="text"
+              :placeholder="t('admin.channels.form.searchGroups', 'Search groups...')"
+              class="input pl-10"
+            />
+          </div>
           <div
             class="max-h-48 overflow-auto rounded-lg border border-gray-200 bg-white p-2 dark:border-dark-600 dark:bg-dark-800"
           >
@@ -185,8 +198,11 @@
             <div v-else-if="allGroups.length === 0" class="py-4 text-center text-sm text-gray-500">
               {{ t('admin.channels.form.noGroupsAvailable', 'No groups available') }}
             </div>
+            <div v-else-if="filteredGroups.length === 0" class="py-4 text-center text-sm text-gray-500">
+              {{ t('admin.channels.form.noGroupsMatch', 'No groups match your search') }}
+            </div>
             <label
-              v-for="group in allGroups"
+              v-for="group in filteredGroups"
               :key="group.id"
               class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-dark-700"
               :class="{ 'opacity-50': isGroupInOtherChannel(group.id) }"
@@ -198,18 +214,13 @@
                 class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                 @change="toggleGroup(group.id)"
               />
+              <PlatformIcon :platform="group.platform" size="xs" />
               <span class="text-sm text-gray-700 dark:text-gray-300">{{ group.name }}</span>
               <span
                 v-if="isGroupInOtherChannel(group.id)"
                 class="ml-auto text-xs text-gray-400"
               >
                 {{ getGroupInOtherChannelLabel(group.id) }}
-              </span>
-              <span
-                v-if="group.platform"
-                class="ml-auto text-xs text-gray-400 dark:text-gray-500"
-              >
-                {{ group.platform }}
               </span>
             </label>
           </div>
@@ -299,6 +310,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import PricingEntryCard from '@/components/admin/channel/PricingEntryCard.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
@@ -348,6 +360,7 @@ const deletingChannel = ref<Channel | null>(null)
 // Groups
 const allGroups = ref<AdminGroup[]>([])
 const groupsLoading = ref(false)
+const groupSearchQuery = ref('')
 
 // Form data
 const form = reactive({
@@ -367,6 +380,12 @@ function formatDate(value: string): string {
 }
 
 // ── Group helpers ──
+const filteredGroups = computed(() => {
+  const query = groupSearchQuery.value.trim().toLowerCase()
+  if (!query) return allGroups.value
+  return allGroups.value.filter(g => g.name.toLowerCase().includes(query))
+})
+
 const groupToChannelMap = computed(() => {
   const map = new Map<number, Channel>()
   for (const ch of channels.value) {
@@ -525,6 +544,7 @@ function resetForm() {
   form.status = 'active'
   form.group_ids = []
   form.model_pricing = []
+  groupSearchQuery.value = ''
 }
 
 function openCreateDialog() {
@@ -555,6 +575,14 @@ async function handleSubmit() {
   if (submitting.value) return
   if (!form.name.trim()) {
     appStore.showError(t('admin.channels.nameRequired', 'Please enter a channel name'))
+    return
+  }
+
+  // 检查模型重复
+  const allModels = form.model_pricing.flatMap(e => e.models.map(m => m.toLowerCase()))
+  const duplicates = allModels.filter((m, i) => allModels.indexOf(m) !== i)
+  if (duplicates.length > 0) {
+    appStore.showError(t('admin.channels.duplicateModels', `模型 "${duplicates[0]}" 在多个定价条目中重复`))
     return
   }
 
