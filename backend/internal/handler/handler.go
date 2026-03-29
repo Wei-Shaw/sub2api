@@ -31,6 +31,7 @@ type AdminHandlers struct {
 	APIKey                *admin.AdminAPIKeyHandler
 	ScheduledTest         *admin.ScheduledTestHandler
 	GDriveOAuth           *admin.GDriveOAuthHandler
+	Channel               *admin.ChannelHandler
 }
 
 // Handlers contains all HTTP handlers
