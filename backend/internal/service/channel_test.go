@@ -87,10 +87,13 @@ func TestGetIntervalForContext(t *testing.T) {
 		wantNil    bool
 	}{
 		{"first interval", 50000, channelTestPtrFloat64(1e-6), false},
-		{"boundary: at min of second", 128000, channelTestPtrFloat64(2e-6), false},
-		{"boundary: at max of first (exclusive)", 128000, channelTestPtrFloat64(2e-6), false},
+		// (min, max] — 128000 在第一个区间的 max，包含，所以匹配第一个
+		{"boundary: max of first (inclusive)", 128000, channelTestPtrFloat64(1e-6), false},
+		// 128001 > 128000，匹配第二个区间
+		{"boundary: just above first max", 128001, channelTestPtrFloat64(2e-6), false},
 		{"unbounded interval", 500000, channelTestPtrFloat64(2e-6), false},
-		{"zero tokens", 0, channelTestPtrFloat64(1e-6), false},
+		// (0, max] — 0 不匹配任何区间（左开）
+		{"zero tokens: no match", 0, nil, true},
 	}
 
 	for _, tt := range tests {
@@ -112,8 +115,10 @@ func TestGetIntervalForContext_NoMatch(t *testing.T) {
 			{MinTokens: 10000, MaxTokens: channelTestPtrInt(50000)},
 		},
 	}
-	require.Nil(t, p.GetIntervalForContext(5000))
-	require.Nil(t, p.GetIntervalForContext(50000))
+	require.Nil(t, p.GetIntervalForContext(5000))  // 5000 <= 10000, not > min
+	require.Nil(t, p.GetIntervalForContext(10000)) // 10000 not > 10000 (left-open)
+	require.NotNil(t, p.GetIntervalForContext(50000)) // 50000 <= 50000 (right-closed)
+	require.Nil(t, p.GetIntervalForContext(50001))    // 50001 > 50000
 }
 
 func TestGetIntervalForContext_Empty(t *testing.T) {

@@ -110,11 +110,12 @@ func (c *Channel) GetModelPricing(model string) *ChannelModelPricing {
 }
 
 // FindMatchingInterval 在区间列表中查找匹配 totalTokens 的区间。
-// 通用辅助函数，供 GetIntervalForContext、ModelPricingResolver 等复用。
+// 区间为左开右闭 (min, max]：min 不含，max 包含。
+// 第一个区间 min=0 时，0 token 不匹配任何区间（回退到默认价格）。
 func FindMatchingInterval(intervals []PricingInterval, totalTokens int) *PricingInterval {
 	for i := range intervals {
 		iv := &intervals[i]
-		if totalTokens >= iv.MinTokens && (iv.MaxTokens == nil || totalTokens < *iv.MaxTokens) {
+		if totalTokens > iv.MinTokens && (iv.MaxTokens == nil || totalTokens <= *iv.MaxTokens) {
 			return iv
 		}
 	}
