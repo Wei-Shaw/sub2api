@@ -565,6 +565,7 @@ type GatewayService struct {
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
 	debugModelRouting     atomic.Bool
 	debugClaudeMimic      atomic.Bool
+	channelService        *ChannelService
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 }
@@ -594,6 +595,7 @@ func NewGatewayService(
 	digestStore *DigestSessionStore,
 	settingService *SettingService,
 	tlsFPProfileService *TLSFingerprintProfileService,
+	channelService *ChannelService,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -626,6 +628,7 @@ func NewGatewayService(
 		modelsListCacheTTL:   modelsListTTL,
 		responseHeaderFilter: compileResponseHeaderFilter(cfg),
 		tlsFPProfileService:  tlsFPProfileService,
+		channelService:       channelService,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -7684,7 +7687,16 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
 		}
 		var err error
-		cost, err = s.billingService.CalculateCost(billingModel, tokens, multiplier)
+		// 渠道定价覆盖
+		var chPricing *ChannelModelPricing
+		if s.channelService != nil && apiKey.Group != nil {
+			chPricing = s.channelService.GetChannelModelPricing(ctx, apiKey.Group.ID, billingModel)
+		}
+		if chPricing != nil {
+			cost, err = s.billingService.CalculateCostWithChannel(billingModel, tokens, multiplier, chPricing)
+		} else {
+			cost, err = s.billingService.CalculateCost(billingModel, tokens, multiplier)
+		}
 		if err != nil {
 			logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
 			cost = &CostBreakdown{ActualCost: 0}
@@ -7872,7 +7884,16 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
 		}
 		var err error
-		cost, err = s.billingService.CalculateCostWithLongContext(billingModel, tokens, multiplier, input.LongContextThreshold, input.LongContextMultiplier)
+		// 渠道定价覆盖
+		var chPricing2 *ChannelModelPricing
+		if s.channelService != nil && apiKey.Group != nil {
+			chPricing2 = s.channelService.GetChannelModelPricing(ctx, apiKey.Group.ID, billingModel)
+		}
+		if chPricing2 != nil {
+			cost, err = s.billingService.CalculateCostWithChannel(billingModel, tokens, multiplier, chPricing2)
+		} else {
+			cost, err = s.billingService.CalculateCostWithLongContext(billingModel, tokens, multiplier, input.LongContextThreshold, input.LongContextMultiplier)
+		}
 		if err != nil {
 			logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
 			cost = &CostBreakdown{ActualCost: 0}
