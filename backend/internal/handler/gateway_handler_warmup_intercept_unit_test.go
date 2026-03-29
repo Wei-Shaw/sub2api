@@ -161,6 +161,7 @@ REDACTED
 		nil, // digestStore
 		nil, // settingService
 		nil, // tlsFPProfileService
+		nil, // channelService
 	)
 
 	// RunModeSimple：跳过计费检查，避免引入 repo/cache 依赖。

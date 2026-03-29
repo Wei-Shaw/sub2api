@@ -186,7 +186,7 @@ REDACTED
 	if err != nil {
 		return nil, nil, fmt.Errorf("query channels: %w", err)
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	var channels []service.Channel
 	var channelIDs []int64
@@ -240,7 +240,7 @@ func (r *channelRepository) ListAll(ctx context.Context) ([]service.Channel, err
 	if err != nil {
 		return nil, fmt.Errorf("query all channels: %w", err)
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	var channels []service.Channel
 	var channelIDs []int64
@@ -292,7 +292,7 @@ func (r *channelRepository) batchLoadGroupIDs(ctx context.Context, channelIDs []
 	if err != nil {
 		return nil, fmt.Errorf("batch load group ids: %w", err)
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	groupMap := make(map[int64][]int64, len(channelIDs))
 	for rows.Next() {
@@ -333,7 +333,7 @@ func (r *channelRepository) GetGroupIDs(ctx context.Context, channelID int64) ([
 	if err != nil {
 		return nil, fmt.Errorf("get group ids: %w", err)
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	var ids []int64
 	for rows.Next() {
@@ -375,7 +375,7 @@ REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("get groups in other channels: %w", err)
 REDACTED
-	defer rows.Close()
+	defer func() { _ = rows.Close() REDACTED()
 
 	var conflicting []int64
 	for rows.Next() {
