@@ -36,6 +36,8 @@ type Channel struct {
 	GroupIDs []int64
 	// 模型定价列表
 	ModelPricing []ChannelModelPricing
+	// 渠道级模型映射
+	ModelMapping map[string]string
 REDACTED
 
 // ChannelModelPricing 渠道模型定价条目
@@ -69,6 +71,33 @@ type PricingInterval struct {
 	SortOrder       int
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+REDACTED
+
+// ResolveMappedModel 解析渠道级模型映射，返回映射后的模型名。
+// 支持通配符（如 "claude-*" → "claude-sonnet-4"）。
+// 如果没有匹配的映射规则，返回原始模型名。
+func (c *Channel) ResolveMappedModel(requestedModel string) string {
+	if len(c.ModelMapping) == 0 {
+		return requestedModel
+REDACTED
+	lower := strings.ToLower(requestedModel)
+	// 精确匹配优先
+	for src, dst := range c.ModelMapping {
+		if strings.ToLower(src) == lower {
+			return dst
+	REDACTED
+REDACTED
+	// 通配符匹配
+	for src, dst := range c.ModelMapping {
+		srcLower := strings.ToLower(src)
+		if strings.HasSuffix(srcLower, "*") {
+			prefix := strings.TrimSuffix(srcLower, "*")
+			if strings.HasPrefix(lower, prefix) {
+				return dst
+		REDACTED
+	REDACTED
+REDACTED
+	return requestedModel
 REDACTED
 
 // IsActive 判断渠道是否启用
@@ -166,6 +195,12 @@ REDACTED
 		cp.ModelPricing = make([]ChannelModelPricing, len(c.ModelPricing))
 		for i := range c.ModelPricing {
 			cp.ModelPricing[i] = c.ModelPricing[i].Clone()
+	REDACTED
+REDACTED
+	if c.ModelMapping != nil {
+		cp.ModelMapping = make(map[string]string, len(c.ModelMapping))
+		for k, v := range c.ModelMapping {
+			cp.ModelMapping[k] = v
 	REDACTED
 REDACTED
 	return &cp
