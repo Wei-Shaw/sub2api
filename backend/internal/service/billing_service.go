@@ -413,12 +413,12 @@ func (s *BillingService) CalculateCostWithChannel(model string, tokens UsageToke
 type CostInput struct {
 	Ctx            context.Context
 	Model          string
-	GroupID        *int64         // 用于渠道定价查找
+	GroupID        *int64 // 用于渠道定价查找
 	Tokens         UsageTokens
-	RequestCount   int            // 按次计费时使用
-	SizeTier       string         // 按次/图片模式的层级标签（"1K","2K","4K","HD" 等）
+	RequestCount   int    // 按次计费时使用
+	SizeTier       string // 按次/图片模式的层级标签（"1K","2K","4K","HD" 等）
 	RateMultiplier float64
-	ServiceTier    string         // "priority","flex","" 等
+	ServiceTier    string                // "priority","flex","" 等
 	Resolver       *ModelPricingResolver // 定价解析器
 }
 

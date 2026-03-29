@@ -186,7 +186,7 @@ func (r *channelRepository) List(ctx context.Context, params pagination.Paginati
 	if err != nil {
 		return nil, nil, fmt.Errorf("query channels: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var channels []service.Channel
 	var channelIDs []int64
@@ -240,7 +240,7 @@ func (r *channelRepository) ListAll(ctx context.Context) ([]service.Channel, err
 	if err != nil {
 		return nil, fmt.Errorf("query all channels: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var channels []service.Channel
 	var channelIDs []int64
@@ -292,7 +292,7 @@ func (r *channelRepository) batchLoadGroupIDs(ctx context.Context, channelIDs []
 	if err != nil {
 		return nil, fmt.Errorf("batch load group ids: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	groupMap := make(map[int64][]int64, len(channelIDs))
 	for rows.Next() {
@@ -333,7 +333,7 @@ func (r *channelRepository) GetGroupIDs(ctx context.Context, channelID int64) ([
 	if err != nil {
 		return nil, fmt.Errorf("get group ids: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var ids []int64
 	for rows.Next() {
@@ -375,7 +375,7 @@ func (r *channelRepository) GetGroupsInOtherChannels(ctx context.Context, channe
 	if err != nil {
 		return nil, fmt.Errorf("get groups in other channels: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var conflicting []int64
 	for rows.Next() {

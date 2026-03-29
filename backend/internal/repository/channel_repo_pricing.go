@@ -21,7 +21,7 @@ func (r *channelRepository) ListModelPricing(ctx context.Context, channelID int6
 	if err != nil {
 		return nil, fmt.Errorf("list model pricing: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result, pricingIDs, err := scanModelPricingRows(rows)
 	if err != nil {
@@ -97,7 +97,7 @@ func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelID
 	if err != nil {
 		return nil, fmt.Errorf("batch load model pricing: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	allPricing, allPricingIDs, err := scanModelPricingRows(rows)
 	if err != nil {
@@ -139,7 +139,7 @@ func (r *channelRepository) batchLoadIntervals(ctx context.Context, pricingIDs [
 	if err != nil {
 		return nil, fmt.Errorf("batch load intervals: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	intervalMap := make(map[int64][]service.PricingInterval, len(pricingIDs))
 	for rows.Next() {

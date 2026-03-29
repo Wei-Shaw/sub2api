@@ -10,8 +10,8 @@ type BillingMode string
 
 const (
 	BillingModeToken      BillingMode = "token"       // 按 token 区间计费
-	BillingModePerRequest BillingMode = "per_request"  // 按次计费（支持上下文窗口分层）
-	BillingModeImage      BillingMode = "image"        // 图片计费（当前按次，预留 token 计费）
+	BillingModePerRequest BillingMode = "per_request" // 按次计费（支持上下文窗口分层）
+	BillingModeImage      BillingMode = "image"       // 图片计费（当前按次，预留 token 计费）
 )
 
 // IsValid 检查 BillingMode 是否为合法值
@@ -42,13 +42,13 @@ type Channel struct {
 type ChannelModelPricing struct {
 	ID               int64
 	ChannelID        int64
-	Models           []string    // 绑定的模型列表
-	BillingMode      BillingMode // 计费模式
-	InputPrice       *float64    // 每 token 输入价格（USD）— 向后兼容 flat 定价
-	OutputPrice      *float64    // 每 token 输出价格（USD）
-	CacheWritePrice  *float64    // 缓存写入价格
-	CacheReadPrice   *float64    // 缓存读取价格
-	ImageOutputPrice *float64    // 图片输出价格（向后兼容）
+	Models           []string          // 绑定的模型列表
+	BillingMode      BillingMode       // 计费模式
+	InputPrice       *float64          // 每 token 输入价格（USD）— 向后兼容 flat 定价
+	OutputPrice      *float64          // 每 token 输出价格（USD）
+	CacheWritePrice  *float64          // 缓存写入价格
+	CacheReadPrice   *float64          // 缓存读取价格
+	ImageOutputPrice *float64          // 图片输出价格（向后兼容）
 	Intervals        []PricingInterval // 区间定价列表
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
