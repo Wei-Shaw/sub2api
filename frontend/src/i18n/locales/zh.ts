@@ -1876,7 +1876,7 @@ export default {
         noMappingRules: '暂无映射规则，点击"添加"创建',
         mappingSource: '源模型',
         mappingTarget: '目标模型',
-        billingModelSource: '计费模型',
+        billingModelSource: '计费基准',
         billingModelSourceRequested: '以请求模型计费',
         billingModelSourceUpstream: '以最终模型计费',
         billingModelSourceHint: '控制使用哪个模型名称进行定价查找',
