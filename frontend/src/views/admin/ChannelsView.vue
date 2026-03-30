@@ -642,7 +642,7 @@ function addPricingEntry(sectionIdx: number) {
 }
 
 function updatePricingEntry(sectionIdx: number, idx: number, updated: PricingFormEntry) {
-  form.platforms[sectionIdx].model_pricing[idx] = updated
+  form.platforms[sectionIdx].model_pricing.splice(idx, 1, updated)
 }
 
 function removePricingEntry(sectionIdx: number, idx: number) {
@@ -877,6 +877,7 @@ async function handleSubmit() {
   }
 
   const { group_ids, model_pricing, model_mapping } = formToAPI()
+  console.log('[handleSubmit] model_pricing to send:', JSON.stringify(model_pricing))
 
   submitting.value = true
   try {
