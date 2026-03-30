@@ -64,7 +64,8 @@ const chartColors = computed(() => ({
   input: '#3b82f6',
   output: '#10b981',
   cacheCreation: '#f59e0b',
-  cacheRead: '#06b6d4'
+  cacheRead: '#06b6d4',
+  cacheHitRate: '#8b5cf6'
 REDACTED))
 
 const chartData = computed(() => {
@@ -104,6 +105,19 @@ const chartData = computed(() => {
         backgroundColor: `${chartColors.value.cacheReadREDACTED20`,
         fill: true,
         tension: 0.3
+      REDACTED,
+      {
+        label: 'Cache Hit Rate',
+        data: props.trendData.map((d) => {
+          const total = d.cache_read_tokens + d.cache_creation_tokens
+          return total > 0 ? (d.cache_read_tokens / total) * 100 : 0
+        REDACTED),
+        borderColor: chartColors.value.cacheHitRate,
+        backgroundColor: `${chartColors.value.cacheHitRateREDACTED20`,
+        borderDash: [5, 5],
+        fill: false,
+        tension: 0.3,
+        yAxisID: 'yPercent'
       REDACTED
     ]
   REDACTED
@@ -132,6 +146,9 @@ const lineOptions = computed(() => ({
     tooltip: {
       callbacks: {
         label: (context: any) => {
+          if (context.dataset.yAxisID === 'yPercent') {
+            return `${context.dataset.labelREDACTED: ${context.raw.toFixed(1)REDACTED%`
+          REDACTED
           return `${context.dataset.labelREDACTED: ${formatTokens(context.raw)REDACTED`
         REDACTED,
         footer: (tooltipItems: any) => {
@@ -167,6 +184,21 @@ const lineOptions = computed(() => ({
           size: 10
         REDACTED,
         callback: (value: string | number) => formatTokens(Number(value))
+      REDACTED
+    REDACTED,
+    yPercent: {
+      position: 'right' as const,
+      min: 0,
+      max: 100,
+      grid: {
+        drawOnChartArea: false
+      REDACTED,
+      ticks: {
+        color: chartColors.value.cacheHitRate,
+        font: {
+          size: 10
+        REDACTED,
+        callback: (value: string | number) => `${valueREDACTED%`
       REDACTED
     REDACTED
   REDACTED
