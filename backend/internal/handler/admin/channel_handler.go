@@ -14,11 +14,12 @@ import (
 // ChannelHandler handles admin channel management
 type ChannelHandler struct {
 	channelService *service.ChannelService
+	billingService *service.BillingService
 }
 
 // NewChannelHandler creates a new admin channel handler
-func NewChannelHandler(channelService *service.ChannelService) *ChannelHandler {
-	return &ChannelHandler{channelService: channelService}
+func NewChannelHandler(channelService *service.ChannelService, billingService *service.BillingService) *ChannelHandler {
+	return &ChannelHandler{channelService: channelService, billingService: billingService}
 }
 
 // --- Request / Response types ---
@@ -345,4 +346,29 @@ func (h *ChannelHandler) Delete(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"message": "Channel deleted successfully"})
+}
+
+// GetModelDefaultPricing 获取模型的默认定价（用于前端自动填充）
+// GET /api/v1/admin/channels/model-pricing?model=claude-sonnet-4
+func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
+	model := strings.TrimSpace(c.Query("model"))
+	if model == "" {
+		response.BadRequest(c, "model parameter is required")
+		return
+	}
+
+	pricing, err := h.billingService.GetModelPricing(model)
+	if err != nil {
+		// 模型不在定价列表中
+		response.Success(c, gin.H{"found": false})
+		return
+	}
+
+	response.Success(c, gin.H{
+		"found":             true,
+		"input_price":       pricing.InputPricePerToken,
+		"output_price":      pricing.OutputPricePerToken,
+		"cache_write_price": pricing.CacheCreationPricePerToken,
+		"cache_read_price":  pricing.CacheReadPricePerToken,
+	})
 }

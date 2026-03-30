@@ -74,7 +74,7 @@
             </label>
             <ModelTagInput
               :models="entry.models"
-              @update:models="emit('update', { ...entry, models: $event })"
+              @update:models="onModelsUpdate($event)"
               :placeholder="t('admin.channels.form.modelsPlaceholder', '输入模型名后按回车添加，支持通配符 *')"
               class="mt-1"
             />
@@ -232,7 +232,9 @@ import Icon from '@/components/icons/Icon.vue'
 import IntervalRow from './IntervalRow.vue'
 import ModelTagInput from './ModelTagInput.vue'
 import type { PricingFormEntry, IntervalFormEntry } from './types'
+import { perTokenToMTok } from './types'
 import type { BillingMode } from '@/api/admin/channels'
+import channelsAPI from '@/api/admin/channels'
 
 const { t } = useI18n()
 
@@ -296,6 +298,38 @@ function removeInterval(idx: number) {
   const intervals = [...(props.entry.intervals || [])]
   intervals.splice(idx, 1)
   emit('update', { ...props.entry, intervals })
+}
+
+async function onModelsUpdate(newModels: string[]) {
+  const oldModels = props.entry.models
+  emit('update', { ...props.entry, models: newModels })
+
+  // 只在新增模型且当前无价格时自动填充
+  const addedModels = newModels.filter(m => !oldModels.includes(m))
+  if (addedModels.length === 0) return
+
+  // 检查是否所有价格字段都为空
+  const e = props.entry
+  const hasPrice = e.input_price != null || e.output_price != null ||
+                   e.cache_write_price != null || e.cache_read_price != null
+  if (hasPrice) return
+
+  // 查询第一个新增模型的默认价格
+  try {
+    const result = await channelsAPI.getModelDefaultPricing(addedModels[0])
+    if (result.found) {
+      emit('update', {
+        ...props.entry,
+        models: newModels,
+        input_price: perTokenToMTok(result.input_price ?? null),
+        output_price: perTokenToMTok(result.output_price ?? null),
+        cache_write_price: perTokenToMTok(result.cache_write_price ?? null),
+        cache_read_price: perTokenToMTok(result.cache_read_price ?? null),
+      })
+    }
+  } catch {
+    // 查询失败不影响用户操作
+  }
 }
 </script>
 
