@@ -7776,6 +7776,17 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		CreatedAt:             time.Now(),
 	}
 
+	// 设置计费模式
+	if result.MediaType != "image" && result.MediaType != "video" && result.MediaType != "prompt" {
+		if result.ImageCount > 0 {
+			billingMode := "image"
+			usageLog.BillingMode = &billingMode
+		} else {
+			billingMode := "token"
+			usageLog.BillingMode = &billingMode
+		}
+	}
+
 	// 添加 UserAgent
 	if input.UserAgent != "" {
 		usageLog.UserAgent = &input.UserAgent
@@ -7984,6 +7995,15 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		ChannelID:             optionalInt64Ptr(input.ChannelID),
 		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
 		CreatedAt:             time.Now(),
+	}
+
+	// 设置计费模式
+	if result.ImageCount > 0 {
+		billingMode := "image"
+		usageLog.BillingMode = &billingMode
+	} else {
+		billingMode := "token"
+		usageLog.BillingMode = &billingMode
 	}
 
 	// 添加 UserAgent
