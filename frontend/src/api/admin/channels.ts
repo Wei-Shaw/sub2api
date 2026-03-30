@@ -29,6 +29,7 @@ export interface ChannelModelPricing {
   cache_write_price: number | null
   cache_read_price: number | null
   image_output_price: number | null
+  per_request_price: number | null
   intervals: PricingInterval[]
 }
 
@@ -37,8 +38,11 @@ export interface Channel {
   name: string
   description: string
   status: string
+  billing_model_source: string // "requested" | "upstream"
+  restrict_models: boolean
   group_ids: number[]
   model_pricing: ChannelModelPricing[]
+  model_mapping: Record<string, string>
   created_at: string
   updated_at: string
 }
@@ -48,6 +52,9 @@ export interface CreateChannelRequest {
   description?: string
   group_ids?: number[]
   model_pricing?: ChannelModelPricing[]
+  model_mapping?: Record<string, string>
+  billing_model_source?: string
+  restrict_models?: boolean
 }
 
 export interface UpdateChannelRequest {
@@ -56,6 +63,9 @@ export interface UpdateChannelRequest {
   status?: string
   group_ids?: number[]
   model_pricing?: ChannelModelPricing[]
+  model_mapping?: Record<string, string>
+  billing_model_source?: string
+  restrict_models?: boolean
 }
 
 interface PaginatedResponse<T> {

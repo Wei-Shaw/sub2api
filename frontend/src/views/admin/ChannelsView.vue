@@ -146,7 +146,7 @@
       <form id="channel-form" @submit.prevent="handleSubmit" class="space-y-5">
         <!-- Name -->
         <div>
-          <label class="input-label">{{ t('admin.channels.form.name', 'Name') }}</label>
+          <label class="input-label">{{ t('admin.channels.form.name', 'Name') }} <span class="text-red-500">*</span></label>
           <input
             v-model="form.name"
             type="text"
@@ -173,9 +173,29 @@
           <Select v-model="form.status" :options="statusEditOptions" />
         </div>
 
+        <!-- Model Restriction -->
+        <div>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              v-model="form.restrict_models"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span class="input-label mb-0">{{ t('admin.channels.form.restrictModels', 'Restrict Models') }}</span>
+          </label>
+          <p class="mt-1 ml-6 text-xs text-gray-400">
+            {{ t('admin.channels.form.restrictModelsHint', 'When enabled, only models in the pricing list are allowed. Others will be rejected.') }}
+          </p>
+        </div>
+
         <!-- Group Association -->
         <div>
-          <label class="input-label">{{ t('admin.channels.form.groups', 'Associated Groups') }}</label>
+          <label class="input-label">
+            {{ t('admin.channels.form.groups', 'Associated Groups') }}
+            <span v-if="selectedGroupCount > 0" class="ml-1 text-xs font-normal text-gray-400">
+              ({{ t('admin.channels.form.selectedCount', { count: selectedGroupCount }, `已选 ${selectedGroupCount} 个`) }})
+            </span>
+          </label>
           <div class="relative mb-2">
             <Icon
               name="search"
@@ -190,7 +210,7 @@
             />
           </div>
           <div
-            class="max-h-48 overflow-auto rounded-lg border border-gray-200 bg-white p-2 dark:border-dark-600 dark:bg-dark-800"
+            class="max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white p-2 dark:border-dark-600 dark:bg-dark-800"
           >
             <div v-if="groupsLoading" class="py-4 text-center text-sm text-gray-500">
               {{ t('common.loading', 'Loading...') }}
@@ -198,38 +218,61 @@
             <div v-else-if="allGroups.length === 0" class="py-4 text-center text-sm text-gray-500">
               {{ t('admin.channels.form.noGroupsAvailable', 'No groups available') }}
             </div>
-            <div v-else-if="filteredGroups.length === 0" class="py-4 text-center text-sm text-gray-500">
+            <div v-else-if="groupsByPlatform.length === 0" class="py-4 text-center text-sm text-gray-500">
               {{ t('admin.channels.form.noGroupsMatch', 'No groups match your search') }}
             </div>
-            <label
-              v-for="group in filteredGroups"
-              :key="group.id"
-              class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-dark-700"
-              :class="{ 'opacity-50': isGroupInOtherChannel(group.id) }"
-            >
-              <input
-                type="checkbox"
-                :checked="form.group_ids.includes(group.id)"
-                :disabled="isGroupInOtherChannel(group.id)"
-                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                @change="toggleGroup(group.id)"
-              />
-              <PlatformIcon :platform="group.platform" size="xs" />
-              <span class="text-sm text-gray-700 dark:text-gray-300">{{ group.name }}</span>
-              <span
-                v-if="isGroupInOtherChannel(group.id)"
-                class="ml-auto text-xs text-gray-400"
+            <template v-else>
+              <div
+                v-for="section in groupsByPlatform"
+                :key="section.platform"
+                class="mb-2 last:mb-0"
               >
-                {{ getGroupInOtherChannelLabel(group.id) }}
-              </span>
-            </label>
+                <!-- Platform header -->
+                <div class="flex items-center gap-1.5 px-2 py-1">
+                  <PlatformIcon :platform="section.platform" size="sm" :class="getPlatformTextColor(section.platform)" />
+                  <span :class="['text-xs font-semibold', getPlatformTextColor(section.platform)]">
+                    {{ t('admin.groups.platforms.' + section.platform, section.platform) }}
+                  </span>
+                </div>
+                <!-- Groups under this platform -->
+                <label
+                  v-for="group in section.groups"
+                  :key="group.id"
+                  class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 pl-7 hover:bg-gray-50 dark:hover:bg-dark-700"
+                  :class="{ 'opacity-50': isGroupInOtherChannel(group.id) }"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="form.group_ids.includes(group.id)"
+                    :disabled="isGroupInOtherChannel(group.id)"
+                    class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    @change="toggleGroup(group.id)"
+                  />
+                  <span class="text-sm text-gray-700 dark:text-gray-300">{{ group.name }}</span>
+                  <span
+                    :class="['ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-medium', getRateBadgeClass(group.platform)]"
+                  >
+                    {{ group.rate_multiplier }}x
+                  </span>
+                  <span class="text-xs text-gray-400">
+                    {{ group.account_count || 0 }}
+                  </span>
+                  <span
+                    v-if="isGroupInOtherChannel(group.id)"
+                    class="text-xs text-gray-400"
+                  >
+                    {{ getGroupInOtherChannelLabel(group.id) }}
+                  </span>
+                </label>
+              </div>
+            </template>
           </div>
         </div>
 
         <!-- Model Pricing -->
         <div>
           <div class="mb-2 flex items-center justify-between">
-            <label class="input-label mb-0">{{ t('admin.channels.form.modelPricing', 'Model Pricing') }}</label>
+            <label class="input-label mb-0">{{ t('admin.channels.form.modelPricing', 'Model Pricing') }} <span class="text-red-500">*</span></label>
             <button type="button" @click="addPricingEntry" class="btn btn-secondary btn-sm">
               <Icon name="plus" size="sm" class="mr-1" />
               {{ t('common.add', 'Add') }}
@@ -251,6 +294,65 @@
               @update="updatePricingEntry(idx, $event)"
               @remove="removePricingEntry(idx)"
             />
+          </div>
+        </div>
+
+        <!-- Billing Model Source -->
+        <div>
+          <label class="input-label">{{ t('admin.channels.form.billingModelSource', 'Billing Model') }}</label>
+          <Select v-model="form.billing_model_source" :options="billingModelSourceOptions" />
+          <p class="mt-1 text-xs text-gray-400">
+            {{ t('admin.channels.form.billingModelSourceHint', 'Controls which model name is used for pricing lookup') }}
+          </p>
+        </div>
+
+        <!-- Model Mapping -->
+        <div>
+          <div class="mb-2 flex items-center justify-between">
+            <label class="input-label mb-0">{{ t('admin.channels.form.modelMapping', 'Model Mapping') }}</label>
+            <button type="button" @click="addMappingEntry" class="btn btn-secondary btn-sm">
+              <Icon name="plus" size="sm" class="mr-1" />
+              {{ t('common.add', 'Add') }}
+            </button>
+          </div>
+          <p class="mb-2 text-xs text-gray-400">
+            {{ t('admin.channels.form.modelMappingHint', 'Map request model names to actual model names. Runs before account-level mapping.') }}
+          </p>
+          <div
+            v-if="Object.keys(form.model_mapping).length === 0"
+            class="rounded-lg border border-dashed border-gray-300 p-4 text-center text-sm text-gray-500 dark:border-dark-500 dark:text-gray-400"
+          >
+            {{ t('admin.channels.form.noMappingRules', 'No mapping rules. Click "Add" to create one.') }}
+          </div>
+          <div v-else class="space-y-2">
+            <div
+              v-for="(_, srcModel) in form.model_mapping"
+              :key="srcModel"
+              class="flex items-center gap-2"
+            >
+              <input
+                :value="srcModel"
+                type="text"
+                class="input flex-1 text-sm"
+                :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
+                @change="renameMappingKey(srcModel, ($event.target as HTMLInputElement).value)"
+              />
+              <span class="text-gray-400">→</span>
+              <input
+                :value="form.model_mapping[srcModel]"
+                type="text"
+                class="input flex-1 text-sm"
+                :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
+                @input="form.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
+              />
+              <button
+                type="button"
+                @click="removeMappingEntry(srcModel)"
+                class="rounded p-1 text-gray-400 hover:text-red-500"
+              >
+                <Icon name="trash" size="sm" />
+              </button>
+            </div>
           </div>
         </div>
       </form>
@@ -299,7 +401,7 @@ import { adminAPI } from '@/api/admin'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI } from '@/components/admin/channel/types'
-import type { AdminGroup } from '@/types'
+import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -339,6 +441,11 @@ const statusEditOptions = computed(() => [
   { value: 'disabled', label: t('admin.channels.statusDisabled', 'Disabled') }
 ])
 
+const billingModelSourceOptions = computed(() => [
+  { value: 'requested', label: t('admin.channels.form.billingModelSourceRequested', 'Bill by requested model') },
+  { value: 'upstream', label: t('admin.channels.form.billingModelSourceUpstream', 'Bill by final upstream model') }
+])
+
 // ── State ──
 const channels = ref<Channel[]>([])
 const loading = ref(false)
@@ -367,8 +474,11 @@ const form = reactive({
   name: '',
   description: '',
   status: 'active',
+  restrict_models: false,
   group_ids: [] as number[],
-  model_pricing: [] as PricingFormEntry[]
+  model_pricing: [] as PricingFormEntry[],
+  model_mapping: {} as Record<string, string>,
+  billing_model_source: 'requested' as string
 })
 
 let abortController: AbortController | null = null
@@ -380,11 +490,63 @@ function formatDate(value: string): string {
 }
 
 // ── Group helpers ──
-const filteredGroups = computed(() => {
+// Platform color helpers
+const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'sora']
+
+function getPlatformTextColor(platform: string): string {
+  switch (platform) {
+    case 'anthropic': return 'text-orange-600 dark:text-orange-400'
+    case 'openai': return 'text-emerald-600 dark:text-emerald-400'
+    case 'gemini': return 'text-blue-600 dark:text-blue-400'
+    case 'antigravity': return 'text-purple-600 dark:text-purple-400'
+    case 'sora': return 'text-rose-600 dark:text-rose-400'
+    default: return 'text-gray-600 dark:text-gray-400'
+  }
+}
+
+function getRateBadgeClass(platform: string): string {
+  switch (platform) {
+    case 'anthropic': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+    case 'openai': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+    case 'gemini': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+    case 'antigravity': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+    case 'sora': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+    default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+  }
+}
+
+const groupsByPlatform = computed(() => {
   const query = groupSearchQuery.value.trim().toLowerCase()
-  if (!query) return allGroups.value
-  return allGroups.value.filter(g => g.name.toLowerCase().includes(query))
+  const groups = query
+    ? allGroups.value.filter(g => g.name.toLowerCase().includes(query))
+    : allGroups.value
+
+  const grouped = new Map<GroupPlatform, typeof groups>()
+  for (const g of groups) {
+    const platform = g.platform
+    if (!platform) continue
+    if (!grouped.has(platform)) grouped.set(platform, [])
+    grouped.get(platform)!.push(g)
+  }
+
+  // Sort by platformOrder
+  const result: Array<{ platform: GroupPlatform; groups: typeof groups }> = []
+  for (const p of platformOrder) {
+    const list = grouped.get(p)
+    if (list && list.length > 0) {
+      result.push({ platform: p, groups: list })
+    }
+  }
+  // Add any remaining platforms not in platformOrder
+  for (const [p, list] of grouped) {
+    if (!platformOrder.includes(p) && list.length > 0) {
+      result.push({ platform: p, groups: list })
+    }
+  }
+  return result
 })
+
+const selectedGroupCount = computed(() => form.group_ids.length)
 
 const groupToChannelMap = computed(() => {
   const map = new Map<number, Channel>()
@@ -438,6 +600,7 @@ function addPricingEntry() {
     cache_write_price: null,
     cache_read_price: null,
     image_output_price: null,
+    per_request_price: null,
     intervals: []
   })
 }
@@ -461,6 +624,7 @@ function formPricingToAPI(): ChannelModelPricing[] {
       cache_write_price: mTokToPerToken(e.cache_write_price),
       cache_read_price: mTokToPerToken(e.cache_read_price),
       image_output_price: mTokToPerToken(e.image_output_price),
+      per_request_price: e.per_request_price != null && e.per_request_price !== '' ? Number(e.per_request_price) : null,
       intervals: formIntervalsToAPI(e.intervals || [])
     }))
 }
@@ -474,8 +638,34 @@ function apiPricingToForm(pricing: ChannelModelPricing[]): PricingFormEntry[] {
     cache_write_price: perTokenToMTok(p.cache_write_price),
     cache_read_price: perTokenToMTok(p.cache_read_price),
     image_output_price: perTokenToMTok(p.image_output_price),
+    per_request_price: p.per_request_price,
     intervals: apiIntervalsToForm(p.intervals || [])
   }))
+}
+
+// ── Model Mapping helpers ──
+function addMappingEntry() {
+  // Find a unique key
+  let key = ''
+  let i = 1
+  while (key === '' || key in form.model_mapping) {
+    key = `model-${i}`
+    i++
+  }
+  form.model_mapping[key] = ''
+}
+
+function removeMappingEntry(key: string) {
+  delete form.model_mapping[key]
+}
+
+function renameMappingKey(oldKey: string, newKey: string) {
+  newKey = newKey.trim()
+  if (!newKey || newKey === oldKey) return
+  if (newKey in form.model_mapping) return // prevent duplicate keys
+  const value = form.model_mapping[oldKey]
+  delete form.model_mapping[oldKey]
+  form.model_mapping[newKey] = value
 }
 
 // ── Load data ──
@@ -542,8 +732,11 @@ function resetForm() {
   form.name = ''
   form.description = ''
   form.status = 'active'
+  form.restrict_models = false
   form.group_ids = []
   form.model_pricing = []
+  form.model_mapping = {}
+  form.billing_model_source = 'requested'
   groupSearchQuery.value = ''
 }
 
@@ -559,8 +752,11 @@ function openEditDialog(channel: Channel) {
   form.name = channel.name
   form.description = channel.description || ''
   form.status = channel.status
+  form.restrict_models = channel.restrict_models || false
   form.group_ids = [...(channel.group_ids || [])]
   form.model_pricing = apiPricingToForm(channel.model_pricing || [])
+  form.model_mapping = { ...(channel.model_mapping || {}) }
+  form.billing_model_source = channel.billing_model_source || 'requested'
   loadGroups()
   showDialog.value = true
 }
@@ -594,7 +790,10 @@ async function handleSubmit() {
         description: form.description.trim() || undefined,
         status: form.status,
         group_ids: form.group_ids,
-        model_pricing: formPricingToAPI()
+        model_pricing: formPricingToAPI(),
+        model_mapping: Object.keys(form.model_mapping).length > 0 ? form.model_mapping : undefined,
+        billing_model_source: form.billing_model_source,
+        restrict_models: form.restrict_models
       }
       await adminAPI.channels.update(editingChannel.value.id, req)
       appStore.showSuccess(t('admin.channels.updateSuccess', 'Channel updated'))
@@ -603,7 +802,10 @@ async function handleSubmit() {
         name: form.name.trim(),
         description: form.description.trim() || undefined,
         group_ids: form.group_ids,
-        model_pricing: formPricingToAPI()
+        model_pricing: formPricingToAPI(),
+        model_mapping: Object.keys(form.model_mapping).length > 0 ? form.model_mapping : undefined,
+        billing_model_source: form.billing_model_source,
+        restrict_models: form.restrict_models
       }
       await adminAPI.channels.create(req)
       appStore.showSuccess(t('admin.channels.createSuccess', 'Channel created'))
