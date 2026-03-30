@@ -158,18 +158,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	reqStream := parsedReq.Stream
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
-	// 解析渠道级模型映射
-	var channelMapping service.ChannelMappingResult
-	if apiKey.GroupID != nil {
-		channelMapping = h.gatewayService.ResolveChannelMapping(c.Request.Context(), *apiKey.GroupID, reqModel)
-	}
-
-	// 渠道模型限制检查：先映射再判断，映射后的模型在定价列表中即放行
-	if apiKey.GroupID != nil {
-		if h.gatewayService.IsModelRestricted(c.Request.Context(), *apiKey.GroupID, channelMapping.MappedModel) {
-			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
-			return
-		}
+	// 解析渠道级模型映射 + 限制检查
+	channelMapping, restricted := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	if restricted {
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+		return
 	}
 
 	// 设置 max_tokens=1 + haiku 探测请求标识到 context 中
@@ -495,18 +488,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					ChannelID:          channelMapping.ChannelID,
 					OriginalModel:      reqModel,
 					BillingModelSource: channelMapping.BillingModelSource,
-					ModelMappingChain: func() string {
-						if !channelMapping.Mapped {
-							if result.UpstreamModel != "" && result.UpstreamModel != result.Model {
-								return reqModel + "→" + result.UpstreamModel
-							}
-							return ""
-						}
-						if result.UpstreamModel != "" && result.UpstreamModel != channelMapping.MappedModel {
-							return reqModel + "→" + channelMapping.MappedModel + "→" + result.UpstreamModel
-						}
-						return reqModel + "→" + channelMapping.MappedModel
-					}(),
+					ModelMappingChain:  channelMapping.BuildModelMappingChain(reqModel, result.UpstreamModel),
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),
@@ -849,18 +831,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					ChannelID:          channelMapping.ChannelID,
 					OriginalModel:      reqModel,
 					BillingModelSource: channelMapping.BillingModelSource,
-					ModelMappingChain: func() string {
-						if !channelMapping.Mapped {
-							if result.UpstreamModel != "" && result.UpstreamModel != result.Model {
-								return reqModel + "→" + result.UpstreamModel
-							}
-							return ""
-						}
-						if result.UpstreamModel != "" && result.UpstreamModel != channelMapping.MappedModel {
-							return reqModel + "→" + channelMapping.MappedModel + "→" + result.UpstreamModel
-						}
-						return reqModel + "→" + channelMapping.MappedModel
-					}(),
+					ModelMappingChain:  channelMapping.BuildModelMappingChain(reqModel, result.UpstreamModel),
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),

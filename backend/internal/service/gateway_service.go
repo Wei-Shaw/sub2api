@@ -8108,6 +8108,19 @@ func (s *GatewayService) IsModelRestricted(ctx context.Context, groupID int64, m
 	return s.channelService.IsModelRestricted(ctx, groupID, model)
 }
 
+// ResolveChannelMappingAndRestrict 解析渠道映射并检查模型限制。
+// 返回映射结果和是否被限制。
+func (s *GatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, model string) (ChannelMappingResult, bool) {
+	var mapping ChannelMappingResult
+	mapping.MappedModel = model
+	if groupID == nil {
+		return mapping, false
+	}
+	mapping = s.ResolveChannelMapping(ctx, *groupID, model)
+	restricted := s.IsModelRestricted(ctx, *groupID, mapping.MappedModel)
+	return mapping, restricted
+}
+
 // ForwardCountTokens 转发 count_tokens 请求到上游 API
 // 特点：不记录使用量、仅支持非流式响应
 func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) error {

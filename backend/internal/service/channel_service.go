@@ -92,6 +92,23 @@ type ChannelMappingResult struct {
 	BillingModelSource string // 计费模型来源（"requested" / "upstream"）
 }
 
+// BuildModelMappingChain 根据映射结果和上游实际模型构建映射链描述。
+// reqModel: 客户端请求的原始模型名。
+// upstreamModel: 上游实际使用的模型名（ForwardResult.UpstreamModel）。
+// 返回空字符串表示无映射。
+func (r ChannelMappingResult) BuildModelMappingChain(reqModel, upstreamModel string) string {
+	if !r.Mapped {
+		if upstreamModel != "" && upstreamModel != reqModel {
+			return reqModel + "→" + upstreamModel
+		}
+		return ""
+	}
+	if upstreamModel != "" && upstreamModel != r.MappedModel {
+		return reqModel + "→" + r.MappedModel + "→" + upstreamModel
+	}
+	return reqModel + "→" + r.MappedModel
+}
+
 const (
 	channelCacheTTL    = 60 * time.Second
 	channelErrorTTL    = 5 * time.Second // DB 错误时的短缓存
