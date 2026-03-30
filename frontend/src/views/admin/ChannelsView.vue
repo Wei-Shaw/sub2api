@@ -839,14 +839,14 @@ function resetForm() {
   showPlatformMenu.value = false
 REDACTED
 
-function openCreateDialog() {
+async function openCreateDialog() {
   editingChannel.value = null
   resetForm()
-  loadGroups()
+  await loadGroups()
   showDialog.value = true
 REDACTED
 
-function openEditDialog(channel: Channel) {
+async function openEditDialog(channel: Channel) {
   editingChannel.value = channel
   form.name = channel.name
   form.description = channel.description || ''
@@ -854,9 +854,8 @@ function openEditDialog(channel: Channel) {
   form.restrict_models = channel.restrict_models || false
   form.billing_model_source = channel.billing_model_source || 'requested'
   // Must load groups first so apiToForm can map groupID → platform
-  loadGroups().then(() => {
-    form.platforms = apiToForm(channel)
-  REDACTED)
+  await loadGroups()
+  form.platforms = apiToForm(channel)
   showDialog.value = true
 REDACTED
 
@@ -948,6 +947,7 @@ REDACTED
 // ── Lifecycle ──
 onMounted(() => {
   loadChannels()
+  loadGroups()
 REDACTED)
 
 onUnmounted(() => {
