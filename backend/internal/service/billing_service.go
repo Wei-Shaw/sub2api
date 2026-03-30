@@ -542,6 +542,11 @@ REDACTED
 		unitPrice = input.Resolver.GetRequestTierPriceByContext(resolved, totalContext)
 REDACTED
 
+	// 回退到默认按次价格
+	if unitPrice == 0 {
+		unitPrice = resolved.DefaultPerRequestPrice
+REDACTED
+
 	totalCost := unitPrice * float64(count)
 	actualCost := totalCost * input.RateMultiplier
 
