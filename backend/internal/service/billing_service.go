@@ -542,6 +542,11 @@ func (s *BillingService) calculatePerRequestCost(resolved *ResolvedPricing, inpu
 		unitPrice = input.Resolver.GetRequestTierPriceByContext(resolved, totalContext)
 	}
 
+	// 回退到默认按次价格
+	if unitPrice == 0 {
+		unitPrice = resolved.DefaultPerRequestPrice
+	}
+
 	totalCost := unitPrice * float64(count)
 	actualCost := totalCost * input.RateMultiplier
 
