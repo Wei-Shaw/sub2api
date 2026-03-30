@@ -502,6 +502,25 @@ REDACTED
 
 	refreshToken := account.GetCredential("refresh_token")
 	if refreshToken == "" {
+		accessToken := account.GetCredential("access_token")
+		if accessToken != "" {
+			tokenInfo := &OpenAITokenInfo{
+				AccessToken:      accessToken,
+				RefreshToken:     "",
+				IDToken:          account.GetCredential("id_token"),
+				ClientID:         account.GetCredential("client_id"),
+				Email:            account.GetCredential("email"),
+				ChatGPTAccountID: account.GetCredential("chatgpt_account_id"),
+				ChatGPTUserID:    account.GetCredential("chatgpt_user_id"),
+				OrganizationID:   account.GetCredential("organization_id"),
+				PlanType:         account.GetCredential("plan_type"),
+		REDACTED
+			if expiresAt := account.GetCredentialAsTime("expires_at"); expiresAt != nil {
+				tokenInfo.ExpiresAt = expiresAt.Unix()
+				tokenInfo.ExpiresIn = int64(time.Until(*expiresAt).Seconds())
+		REDACTED
+			return tokenInfo, nil
+	REDACTED
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_NO_REFRESH_TOKEN", "no refresh token available")
 REDACTED
 
