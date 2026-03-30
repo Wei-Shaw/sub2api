@@ -234,70 +234,25 @@
 
             <!-- Platform Management -->
             <div class="space-y-3">
-              <div class="flex items-center justify-between">
-                <label class="input-label mb-0">{{ t('admin.channels.form.platformConfig', '平台配置') }}</label>
-                <div class="relative" v-if="availablePlatformsToAdd.length > 0">
-                  <button type="button" @click="showPlatformMenu = !showPlatformMenu" class="btn btn-secondary btn-sm">
-                    <Icon name="plus" size="sm" class="mr-1" />
-                    {{ t('admin.channels.form.addPlatform', '添加平台') }}
-                  </button>
-                  <div
-                    v-if="showPlatformMenu"
-                    class="absolute right-0 z-10 mt-1 w-40 rounded-lg border border-gray-200 bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
-                  >
-                    <button
-                      v-for="p in availablePlatformsToAdd"
-                      :key="p"
-                      type="button"
-                      @click="addPlatformSection(p)"
-                      class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-700"
-                    >
-                      <PlatformIcon :platform="p" size="xs" :class="getPlatformTextColor(p)" />
-                      <span :class="getPlatformTextColor(p)">{{ t('admin.groups.platforms.' + p, p) }}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div
-                v-if="form.platforms.length === 0"
-                class="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-dark-500 dark:text-gray-400"
-              >
-                {{ t('admin.channels.form.noPlatforms', '点击"添加平台"开始配置渠道') }}
-              </div>
-
-              <!-- Platform summary list -->
-              <div v-else class="space-y-2">
-                <div
-                  v-for="(section, sIdx) in form.platforms"
-                  :key="section.platform"
-                  @click="activeTab = section.platform"
-                  class="flex cursor-pointer items-center justify-between rounded-lg border border-gray-200 px-3 py-2 transition-colors hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700"
+              <label class="input-label mb-0">{{ t('admin.channels.form.platformConfig', '平台配置') }}</label>
+              <div class="flex flex-wrap gap-2">
+                <label
+                  v-for="p in platformOrder"
+                  :key="p"
+                  class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors"
+                  :class="activePlatforms.includes(p)
+                    ? 'bg-primary-50 border-primary-300 dark:bg-primary-900/20 dark:border-primary-700'
+                    : 'border-gray-200 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700'"
                 >
-                  <div class="flex items-center gap-2">
-                    <PlatformIcon :platform="section.platform" size="xs" :class="getPlatformTextColor(section.platform)" />
-                    <span :class="['text-sm font-medium', getPlatformTextColor(section.platform)]">
-                      {{ t('admin.groups.platforms.' + section.platform, section.platform) }}
-                    </span>
-                    <span class="text-xs text-gray-400">
-                      {{ section.group_ids.length }} {{ t('admin.channels.groupsUnit', 'groups') }}
-                    </span>
-                    <span v-if="Object.keys(section.model_mapping).length > 0" class="text-xs text-gray-400">
-                      · {{ Object.keys(section.model_mapping).length }} {{ t('admin.channels.form.mappingCount', 'mappings') }}
-                    </span>
-                    <span v-if="section.model_pricing.length > 0" class="text-xs text-gray-400">
-                      · {{ section.model_pricing.length }} {{ t('admin.channels.pricingUnit', 'pricing rules') }}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    @click.stop="removePlatformSection(sIdx)"
-                    class="rounded p-1 text-gray-400 hover:text-red-500"
-                    :title="t('common.delete', 'Delete')"
-                  >
-                    <Icon name="trash" size="sm" />
-                  </button>
-                </div>
+                  <input
+                    type="checkbox"
+                    :checked="activePlatforms.includes(p)"
+                    class="h-3.5 w-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    @change="togglePlatform(p)"
+                  />
+                  <PlatformIcon :platform="p" size="xs" :class="getPlatformTextColor(p)" />
+                  <span :class="getPlatformTextColor(p)">{{ t('admin.groups.platforms.' + p, p) }}</span>
+                </label>
               </div>
             </div>
           </div>
@@ -544,7 +499,6 @@ const editingChannel = ref<Channel | null>(null)
 const submitting = ref(false)
 const showDeleteDialog = ref(false)
 const deletingChannel = ref<Channel | null>(null)
-const showPlatformMenu = ref(false)
 const activeTab = ref<string>('basic')
 
 // Groups
@@ -597,10 +551,6 @@ function formatDate(value: string): string {
 // ── Platform section helpers ──
 const activePlatforms = computed(() => form.platforms.map(s => s.platform))
 
-const availablePlatformsToAdd = computed(() =>
-  platformOrder.filter(p => !activePlatforms.value.includes(p))
-)
-
 function addPlatformSection(platform: GroupPlatform) {
   form.platforms.push({
     platform,
@@ -609,8 +559,15 @@ function addPlatformSection(platform: GroupPlatform) {
     model_mapping: {},
     model_pricing: []
   })
-  showPlatformMenu.value = false
-  activeTab.value = platform
+}
+
+function togglePlatform(platform: GroupPlatform) {
+  const idx = form.platforms.findIndex(s => s.platform === platform)
+  if (idx >= 0) {
+    removePlatformSection(idx)
+  } else {
+    addPlatformSection(platform)
+  }
 }
 
 function removePlatformSection(idx: number) {
@@ -873,7 +830,6 @@ function resetForm() {
   form.restrict_models = false
   form.billing_model_source = 'requested'
   form.platforms = []
-  showPlatformMenu.value = false
   activeTab.value = 'basic'
 }
 
