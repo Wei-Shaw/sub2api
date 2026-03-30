@@ -104,6 +104,7 @@ type CostBreakdown struct {
 	CacheReadCost     float64
 	TotalCost         float64
 	ActualCost        float64 // 应用倍率后的实际费用
+	BillingMode       string  // 计费模式（"token"/"per_request"/"image"），由 CalculateCostUnified 填充
 }
 
 // BillingService 计费服务
@@ -439,12 +440,21 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 		input.RateMultiplier = 1.0
 	}
 
+	var breakdown *CostBreakdown
+	var err error
 	switch resolved.Mode {
 	case BillingModePerRequest, BillingModeImage:
-		return s.calculatePerRequestCost(resolved, input)
+		breakdown, err = s.calculatePerRequestCost(resolved, input)
 	default: // BillingModeToken
-		return s.calculateTokenCost(resolved, input)
+		breakdown, err = s.calculateTokenCost(resolved, input)
 	}
+	if err == nil && breakdown != nil {
+		breakdown.BillingMode = string(resolved.Mode)
+		if breakdown.BillingMode == "" {
+			breakdown.BillingMode = string(BillingModeToken)
+		}
+	}
+	return breakdown, err
 }
 
 // calculateTokenCost 按 token 区间计费
