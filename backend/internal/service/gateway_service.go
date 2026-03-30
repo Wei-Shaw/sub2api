@@ -369,6 +369,8 @@ var allowedHeaders = map[string]bool{
 	"user-agent":                                true,
 	"content-type":                              true,
 	"accept-encoding":                           true,
+	"x-claude-code-session-id":                  true,
+	"x-client-request-id":                       true,
 REDACTED
 
 // GatewayCache 定义网关服务的缓存操作接口。
@@ -5756,6 +5758,15 @@ REDACTED else {
 	REDACTED
 REDACTED
 
+	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
+	if sessionHeader := getHeaderRaw(req.Header, "X-Claude-Code-Session-Id"); sessionHeader != "" {
+		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
+			if parsed := ParseMetadataUserID(uid); parsed != nil {
+				setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
+		REDACTED
+	REDACTED
+REDACTED
+
 	// === DEBUG: 打印上游转发请求（headers + body 摘要），与 CLIENT_ORIGINAL 对比 ===
 	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD", req.Header, body, map[string]string{
 		"url":                 req.URL.String(),
@@ -8471,6 +8482,15 @@ REDACTED else {
 				if beta := defaultAPIKeyBetaHeader(body); beta != "" {
 					setHeaderRaw(req.Header, "anthropic-beta", beta)
 			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+
+	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
+	if sessionHeader := getHeaderRaw(req.Header, "X-Claude-Code-Session-Id"); sessionHeader != "" {
+		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
+			if parsed := ParseMetadataUserID(uid); parsed != nil {
+				setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
 		REDACTED
 	REDACTED
 REDACTED
