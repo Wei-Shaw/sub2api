@@ -228,78 +228,49 @@
                 class="mb-2 last:mb-0"
               >
                 <!-- Platform header -->
-                <div class="flex items-center gap-1.5 px-2 py-1">
-                  <PlatformIcon :platform="section.platform" size="sm" :class="getPlatformTextColor(section.platform)" />
+                <div class="flex items-center gap-1.5 px-1 py-1">
+                  <PlatformIcon :platform="section.platform" size="xs" :class="getPlatformTextColor(section.platform)" />
                   <span :class="['text-xs font-semibold', getPlatformTextColor(section.platform)]">
                     {{ t('admin.groups.platforms.' + section.platform, section.platform) }}
                   </span>
                 </div>
-                <!-- Groups under this platform -->
-                <label
-                  v-for="group in section.groups"
-                  :key="group.id"
-                  class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 pl-7 hover:bg-gray-50 dark:hover:bg-dark-700"
-                  :class="{ 'opacity-50': isGroupInOtherChannel(group.id) }"
-                >
-                  <input
-                    type="checkbox"
-                    :checked="form.group_ids.includes(group.id)"
-                    :disabled="isGroupInOtherChannel(group.id)"
-                    class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                    @change="toggleGroup(group.id)"
-                  />
-                  <span class="text-sm text-gray-700 dark:text-gray-300">{{ group.name }}</span>
-                  <span
-                    :class="['ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-medium', getRateBadgeClass(group.platform)]"
+                <!-- Groups grid -->
+                <div class="flex flex-wrap gap-1 pl-1">
+                  <label
+                    v-for="group in section.groups"
+                    :key="group.id"
+                    class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs transition-colors hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700"
+                    :class="[
+                      form.group_ids.includes(group.id) ? 'bg-primary-50 border-primary-300 dark:bg-primary-900/20 dark:border-primary-700' : '',
+                      isGroupInOtherChannel(group.id) ? 'opacity-40' : ''
+                    ]"
                   >
-                    {{ group.rate_multiplier }}x
-                  </span>
-                  <span class="text-xs text-gray-400">
-                    {{ group.account_count || 0 }}
-                  </span>
-                  <span
-                    v-if="isGroupInOtherChannel(group.id)"
-                    class="text-xs text-gray-400"
-                  >
-                    {{ getGroupInOtherChannelLabel(group.id) }}
-                  </span>
-                </label>
+                    <input
+                      type="checkbox"
+                      :checked="form.group_ids.includes(group.id)"
+                      :disabled="isGroupInOtherChannel(group.id)"
+                      class="h-3 w-3 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      @change="toggleGroup(group.id)"
+                    />
+                    <span :class="['font-medium', getPlatformTextColor(group.platform)]">{{ group.name }}</span>
+                    <span
+                      :class="['rounded-full px-1 py-0 text-[10px]', getRateBadgeClass(group.platform)]"
+                    >{{ group.rate_multiplier }}x</span>
+                    <span class="text-[10px] text-gray-400">{{ group.account_count || 0 }}</span>
+                    <span
+                      v-if="isGroupInOtherChannel(group.id)"
+                      class="text-[10px] text-gray-400"
+                    >{{ getGroupInOtherChannelLabel(group.id) }}</span>
+                  </label>
+                </div>
               </div>
             </template>
           </div>
         </div>
 
-        <!-- Model Pricing -->
+        <!-- Billing Basis -->
         <div>
-          <div class="mb-2 flex items-center justify-between">
-            <label class="input-label mb-0">{{ t('admin.channels.form.modelPricing', 'Model Pricing') }} <span class="text-red-500">*</span></label>
-            <button type="button" @click="addPricingEntry" class="btn btn-secondary btn-sm">
-              <Icon name="plus" size="sm" class="mr-1" />
-              {{ t('common.add', 'Add') }}
-            </button>
-          </div>
-
-          <div
-            v-if="form.model_pricing.length === 0"
-            class="rounded-lg border border-dashed border-gray-300 p-4 text-center text-sm text-gray-500 dark:border-dark-500 dark:text-gray-400"
-          >
-            {{ t('admin.channels.form.noPricingRules', 'No pricing rules yet. Click "Add" to create one.') }}
-          </div>
-
-          <div v-else class="space-y-3">
-            <PricingEntryCard
-              v-for="(entry, idx) in form.model_pricing"
-              :key="idx"
-              :entry="entry"
-              @update="updatePricingEntry(idx, $event)"
-              @remove="removePricingEntry(idx)"
-            />
-          </div>
-        </div>
-
-        <!-- Billing Model Source -->
-        <div>
-          <label class="input-label">{{ t('admin.channels.form.billingModelSource', 'Billing Model') }}</label>
+          <label class="input-label">{{ t('admin.channels.form.billingModelSource', 'Billing Basis') }}</label>
           <Select v-model="form.billing_model_source" :options="billingModelSourceOptions" />
           <p class="mt-1 text-xs text-gray-400">
             {{ t('admin.channels.form.billingModelSourceHint', 'Controls which model name is used for pricing lookup') }}
@@ -353,6 +324,34 @@
                 <Icon name="trash" size="sm" />
               </button>
             </div>
+          </div>
+        </div>
+
+        <!-- Model Pricing -->
+        <div>
+          <div class="mb-2 flex items-center justify-between">
+            <label class="input-label mb-0">{{ t('admin.channels.form.modelPricing', 'Model Pricing') }} <span class="text-red-500">*</span></label>
+            <button type="button" @click="addPricingEntry" class="btn btn-secondary btn-sm">
+              <Icon name="plus" size="sm" class="mr-1" />
+              {{ t('common.add', 'Add') }}
+            </button>
+          </div>
+
+          <div
+            v-if="form.model_pricing.length === 0"
+            class="rounded-lg border border-dashed border-gray-300 p-4 text-center text-sm text-gray-500 dark:border-dark-500 dark:text-gray-400"
+          >
+            {{ t('admin.channels.form.noPricingRules', 'No pricing rules yet. Click "Add" to create one.') }}
+          </div>
+
+          <div v-else class="space-y-3">
+            <PricingEntryCard
+              v-for="(entry, idx) in form.model_pricing"
+              :key="idx"
+              :entry="entry"
+              @update="updatePricingEntry(idx, $event)"
+              @remove="removePricingEntry(idx)"
+            />
           </div>
         </div>
       </form>
