@@ -128,5 +128,20 @@ export async function remove(id: number): Promise<void> {
   await apiClient.delete(`/admin/channels/${idREDACTED`)
 REDACTED
 
-const channelsAPI = { list, getById, create, update, remove REDACTED
+export interface ModelDefaultPricing {
+  found: boolean
+  input_price?: number    // per-token price
+  output_price?: number
+  cache_write_price?: number
+  cache_read_price?: number
+REDACTED
+
+export async function getModelDefaultPricing(model: string): Promise<ModelDefaultPricing> {
+  const { data REDACTED = await apiClient.get<ModelDefaultPricing>('/admin/channels/model-pricing', {
+    params: { model REDACTED
+  REDACTED)
+  return data
+REDACTED
+
+const channelsAPI = { list, getById, create, update, remove, getModelDefaultPricing REDACTED
 export default channelsAPI
