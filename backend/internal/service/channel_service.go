@@ -47,13 +47,30 @@ type ChannelRepository interface {
 	ReplaceModelPricing(ctx context.Context, channelID int64, pricingList []ChannelModelPricing) error
 REDACTED
 
-// channelCache 渠道缓存快照
+// channelModelKey 渠道缓存复合键
+type channelModelKey struct {
+	groupID int64
+	model   string // lowercase
+REDACTED
+
+// channelCache 渠道缓存快照（扁平化哈希结构，热路径 O(1) 查找）
 type channelCache struct {
-	// byID: channelID -> *Channel（含 ModelPricing）
-	byID map[int64]*Channel
-	// byGroupID: groupID -> channelID
-	byGroupID map[int64]int64
-	loadedAt  time.Time
+	// 热路径查找
+	pricingByGroupModel map[channelModelKey]*ChannelModelPricing // (groupID, model) → 定价
+	mappingByGroupModel map[channelModelKey]string                // (groupID, model) → 映射目标
+	channelByGroupID    map[int64]*Channel                        // groupID → 渠道
+
+	// 冷路径（CRUD 操作）
+	byID     map[int64]*Channel
+	loadedAt time.Time
+REDACTED
+
+// ChannelMappingResult 渠道映射查找结果
+type ChannelMappingResult struct {
+	MappedModel        string // 映射后的模型名（无映射时等于原始模型名）
+	ChannelID          int64  // 渠道 ID（0 = 无渠道关联）
+	Mapped             bool   // 是否发生了映射
+	BillingModelSource string // 计费模型来源（"requested" / "upstream"）
 REDACTED
 
 const (
@@ -115,25 +132,46 @@ func (s *ChannelService) buildCache(ctx context.Context) (*channelCache, error) 
 		// error-TTL：失败时存入短 TTL 空缓存，防止紧密重试
 		slog.Warn("failed to build channel cache", "error", err)
 		errorCache := &channelCache{
-			byID:      make(map[int64]*Channel),
-			byGroupID: make(map[int64]int64),
-			loadedAt:  time.Now().Add(channelCacheTTL - channelErrorTTL), // 使剩余 TTL = errorTTL
+			pricingByGroupModel: make(map[channelModelKey]*ChannelModelPricing),
+			mappingByGroupModel: make(map[channelModelKey]string),
+			channelByGroupID:    make(map[int64]*Channel),
+			byID:                make(map[int64]*Channel),
+			loadedAt:            time.Now().Add(channelCacheTTL - channelErrorTTL), // 使剩余 TTL = errorTTL
 	REDACTED
 		s.cache.Store(errorCache)
 		return nil, fmt.Errorf("list all channels: %w", err)
 REDACTED
 
 	cache := &channelCache{
-		byID:      make(map[int64]*Channel, len(channels)),
-		byGroupID: make(map[int64]int64),
-		loadedAt:  time.Now(),
+		pricingByGroupModel: make(map[channelModelKey]*ChannelModelPricing),
+		mappingByGroupModel: make(map[channelModelKey]string),
+		channelByGroupID:    make(map[int64]*Channel),
+		byID:                make(map[int64]*Channel, len(channels)),
+		loadedAt:            time.Now(),
 REDACTED
 
 	for i := range channels {
 		ch := &channels[i]
 		cache.byID[ch.ID] = ch
+
+		// 展开到分组维度
 		for _, gid := range ch.GroupIDs {
-			cache.byGroupID[gid] = ch.ID
+			cache.channelByGroupID[gid] = ch
+
+			// 展开模型定价到 (groupID, model) → *ChannelModelPricing
+			for j := range ch.ModelPricing {
+				pricing := &ch.ModelPricing[j]
+				for _, model := range pricing.Models {
+					key := channelModelKey{groupID: gid, model: strings.ToLower(model)REDACTED
+					cache.pricingByGroupModel[key] = pricing
+			REDACTED
+		REDACTED
+
+			// 展开模型映射到 (groupID, model) → target
+			for src, dst := range ch.ModelMapping {
+				key := channelModelKey{groupID: gid, model: strings.ToLower(src)REDACTED
+				cache.mappingByGroupModel[key] = dst
+		REDACTED
 	REDACTED
 REDACTED
 
@@ -147,42 +185,94 @@ func (s *ChannelService) invalidateCache() {
 	s.cacheSF.Forget("channel_cache")
 REDACTED
 
-// GetChannelForGroup 获取分组关联的渠道（热路径，从缓存读取）
-// 返回深拷贝，不污染缓存。
+// GetChannelForGroup 获取分组关联的渠道（热路径 O(1)）
 func (s *ChannelService) GetChannelForGroup(ctx context.Context, groupID int64) (*Channel, error) {
 	cache, err := s.loadCache(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
 
-	channelID, ok := cache.byGroupID[groupID]
-	if !ok {
-		return nil, nil
-REDACTED
-
-	ch, ok := cache.byID[channelID]
-	if !ok {
-		return nil, nil
-REDACTED
-
-	if !ch.IsActive() {
+	ch, ok := cache.channelByGroupID[groupID]
+	if !ok || !ch.IsActive() {
 		return nil, nil
 REDACTED
 
 	return ch.Clone(), nil
 REDACTED
 
-// GetChannelModelPricing 获取指定分组+模型的渠道定价（热路径）
+// GetChannelModelPricing 获取指定分组+模型的渠道定价（热路径 O(1)）
 func (s *ChannelService) GetChannelModelPricing(ctx context.Context, groupID int64, model string) *ChannelModelPricing {
-	ch, err := s.GetChannelForGroup(ctx, groupID)
+	cache, err := s.loadCache(ctx)
 	if err != nil {
-		slog.Warn("failed to get channel for group", "group_id", groupID, "error", err)
+		slog.Warn("failed to load channel cache", "group_id", groupID, "error", err)
 		return nil
 REDACTED
-	if ch == nil {
+
+	// 检查渠道是否启用
+	ch, ok := cache.channelByGroupID[groupID]
+	if !ok || !ch.IsActive() {
 		return nil
 REDACTED
-	return ch.GetModelPricing(model)
+
+	key := channelModelKey{groupID: groupID, model: strings.ToLower(model)REDACTED
+	pricing, ok := cache.pricingByGroupModel[key]
+	if !ok {
+		return nil
+REDACTED
+
+	cp := pricing.Clone()
+	return &cp
+REDACTED
+
+// ResolveChannelMapping 解析渠道级模型映射（热路径 O(1)）
+// 返回映射结果，包含映射后的模型名、渠道 ID、计费模型来源。
+func (s *ChannelService) ResolveChannelMapping(ctx context.Context, groupID int64, model string) ChannelMappingResult {
+	cache, err := s.loadCache(ctx)
+	if err != nil {
+		return ChannelMappingResult{MappedModel: modelREDACTED
+REDACTED
+
+	ch, ok := cache.channelByGroupID[groupID]
+	if !ok || !ch.IsActive() {
+		return ChannelMappingResult{MappedModel: modelREDACTED
+REDACTED
+
+	result := ChannelMappingResult{
+		MappedModel:        model,
+		ChannelID:          ch.ID,
+		BillingModelSource: ch.BillingModelSource,
+REDACTED
+	if result.BillingModelSource == "" {
+		result.BillingModelSource = BillingModelSourceRequested
+REDACTED
+
+	key := channelModelKey{groupID: groupID, model: strings.ToLower(model)REDACTED
+	if mapped, ok := cache.mappingByGroupModel[key]; ok {
+		result.MappedModel = mapped
+		result.Mapped = true
+REDACTED
+
+	return result
+REDACTED
+
+// IsModelRestricted 检查模型是否被渠道限制。
+// 返回 true 表示模型被限制（不在允许列表中）。
+// 如果渠道未启用模型限制或分组无渠道关联，返回 false。
+func (s *ChannelService) IsModelRestricted(ctx context.Context, groupID int64, model string) bool {
+	cache, err := s.loadCache(ctx)
+	if err != nil {
+		return false // 缓存加载失败时不限制
+REDACTED
+
+	ch, ok := cache.channelByGroupID[groupID]
+	if !ok || !ch.IsActive() || !ch.RestrictModels {
+		return false
+REDACTED
+
+	// 检查模型是否在定价列表中
+	key := channelModelKey{groupID: groupID, model: strings.ToLower(model)REDACTED
+	_, exists := cache.pricingByGroupModel[key]
+	return !exists
 REDACTED
 
 // --- CRUD ---
@@ -209,12 +299,17 @@ REDACTED
 REDACTED
 
 	channel := &Channel{
-		Name:         input.Name,
-		Description:  input.Description,
-		Status:       StatusActive,
-		GroupIDs:     input.GroupIDs,
-		ModelPricing: input.ModelPricing,
-		ModelMapping: input.ModelMapping,
+		Name:               input.Name,
+		Description:        input.Description,
+		Status:             StatusActive,
+		BillingModelSource: input.BillingModelSource,
+		RestrictModels:     input.RestrictModels,
+		GroupIDs:            input.GroupIDs,
+		ModelPricing:        input.ModelPricing,
+		ModelMapping:        input.ModelMapping,
+REDACTED
+	if channel.BillingModelSource == "" {
+		channel.BillingModelSource = BillingModelSourceRequested
 REDACTED
 
 	if err := validateNoDuplicateModels(channel.ModelPricing); err != nil {
@@ -260,6 +355,10 @@ REDACTED
 		channel.Status = input.Status
 REDACTED
 
+	if input.RestrictModels != nil {
+		channel.RestrictModels = *input.RestrictModels
+REDACTED
+
 	// 检查分组冲突
 	if input.GroupIDs != nil {
 		conflicting, err := s.repo.GetGroupsInOtherChannels(ctx, id, *input.GroupIDs)
@@ -278,6 +377,10 @@ REDACTED
 
 	if input.ModelMapping != nil {
 		channel.ModelMapping = input.ModelMapping
+REDACTED
+
+	if input.BillingModelSource != "" {
+		channel.BillingModelSource = input.BillingModelSource
 REDACTED
 
 	if err := validateNoDuplicateModels(channel.ModelPricing); err != nil {
@@ -351,19 +454,23 @@ REDACTED
 
 // CreateChannelInput 创建渠道输入
 type CreateChannelInput struct {
-	Name         string
-	Description  string
-	GroupIDs     []int64
-	ModelPricing []ChannelModelPricing
-	ModelMapping map[string]string
+	Name               string
+	Description        string
+	GroupIDs           []int64
+	ModelPricing       []ChannelModelPricing
+	ModelMapping       map[string]string
+	BillingModelSource string
+	RestrictModels     bool
 REDACTED
 
 // UpdateChannelInput 更新渠道输入
 type UpdateChannelInput struct {
-	Name         string
-	Description  *string
-	Status       string
-	GroupIDs     *[]int64
-	ModelPricing *[]ChannelModelPricing
-	ModelMapping map[string]string
+	Name               string
+	Description        *string
+	Status             string
+	GroupIDs           *[]int64
+	ModelPricing       *[]ChannelModelPricing
+	ModelMapping       map[string]string
+	BillingModelSource string
+	RestrictModels     *bool
 REDACTED

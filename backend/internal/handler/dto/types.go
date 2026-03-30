@@ -406,6 +406,13 @@ type AdminUsageLog struct {
 	// Omitted when no mapping was applied (requested model was used as-is).
 	UpstreamModel *string `json:"upstream_model,omitempty"`
 
+	// ChannelID 渠道 ID
+	ChannelID *int64 `json:"channel_id,omitempty"`
+	// ModelMappingChain 模型映射链，如 "a→b→c"
+	ModelMappingChain *string `json:"model_mapping_chain,omitempty"`
+	// BillingTier 计费层级标签（per_request/image 模式）
+	BillingTier *string `json:"billing_tier,omitempty"`
+
 	// AccountRateMultiplier 账号计费倍率快照（nil 表示按 1.0 处理）
 	AccountRateMultiplier *float64 `json:"account_rate_multiplier"`
 

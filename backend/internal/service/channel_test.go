@@ -15,7 +15,6 @@ func TestGetModelPricing(t *testing.T) {
 	ch := &Channel{
 		ModelPricing: []ChannelModelPricing{
 			{ID: 1, Models: []string{"claude-sonnet-4"REDACTED, BillingMode: BillingModeToken, InputPrice: channelTestPtrFloat64(3e-6)REDACTED,
-			{ID: 2, Models: []string{"claude-*"REDACTED, BillingMode: BillingModeToken, InputPrice: channelTestPtrFloat64(5e-6)REDACTED,
 			{ID: 3, Models: []string{"gpt-5.1"REDACTED, BillingMode: BillingModePerRequestREDACTED,
 	REDACTED,
 REDACTED
@@ -28,9 +27,8 @@ REDACTED
 REDACTED{
 		{"exact match", "claude-sonnet-4", 1, falseREDACTED,
 		{"case insensitive", "Claude-Sonnet-4", 1, falseREDACTED,
-		{"wildcard match", "claude-opus-4-20250514", 2, falseREDACTED,
-		{"exact takes priority over wildcard", "claude-sonnet-4", 1, falseREDACTED,
 		{"not found", "gemini-3.1-pro", 0, trueREDACTED,
+		{"wildcard pattern not matched", "claude-opus-4-20250514", 0, trueREDACTED,
 		{"per_request model", "gpt-5.1", 3, falseREDACTED,
 REDACTED
 

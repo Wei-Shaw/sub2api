@@ -7413,6 +7413,12 @@ type RecordUsageInput struct {
 	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
+
+	// 渠道映射信息（由 handler 在 Forward 前解析）
+	ChannelID          int64  // 渠道 ID（0 = 无渠道）
+	OriginalModel      string // 用户原始请求模型（渠道映射前）
+	BillingModelSource string // 计费模型来源："requested" / "upstream"
+	ModelMappingChain  string // 映射链描述，如 "a→b→c"
 REDACTED
 
 // APIKeyQuotaUpdater defines the interface for updating API Key quota and rate limit usage
@@ -7732,7 +7738,17 @@ REDACTED
 REDACTED
 
 	var cost *CostBreakdown
+	// 确定计费模型
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
+		billingModel = input.OriginalModel
+REDACTED
+
+	// 确定 RequestedModel（渠道映射前的原始模型）
+	requestedModel := result.Model
+	if input.OriginalModel != "" {
+		requestedModel = input.OriginalModel
+REDACTED
 
 	// 根据请求类型选择计费方式
 	if result.MediaType == "image" || result.MediaType == "video" {
@@ -7815,7 +7831,7 @@ REDACTED
 		AccountID:             account.ID,
 		RequestID:             requestID,
 		Model:                 result.Model,
-		RequestedModel:        result.Model,
+		RequestedModel:        requestedModel,
 		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
@@ -7842,6 +7858,8 @@ REDACTED
 		ImageSize:             imageSize,
 		MediaType:             mediaType,
 		CacheTTLOverridden:    cacheTTLOverridden,
+		ChannelID:             optionalInt64Ptr(input.ChannelID),
+		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
 		CreatedAt:             time.Now(),
 REDACTED
 
@@ -7909,6 +7927,12 @@ type RecordUsageLongContextInput struct {
 	LongContextMultiplier float64            // 超出阈值部分的倍率（如 2.0）
 	ForceCacheBilling     bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService         APIKeyQuotaUpdater // API Key 配额服务（可选）
+
+	// 渠道映射信息（由 handler 在 Forward 前解析）
+	ChannelID          int64  // 渠道 ID（0 = 无渠道）
+	OriginalModel      string // 用户原始请求模型（渠道映射前）
+	BillingModelSource string // 计费模型来源："requested" / "upstream"
+	ModelMappingChain  string // 映射链描述，如 "a→b→c"
 REDACTED
 
 // RecordUsageWithLongContext 记录使用量并扣费，支持长上下文双倍计费（用于 Gemini）
@@ -7946,7 +7970,17 @@ REDACTED
 REDACTED
 
 	var cost *CostBreakdown
+	// 确定计费模型
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
+		billingModel = input.OriginalModel
+REDACTED
+
+	// 确定 RequestedModel（渠道映射前的原始模型）
+	requestedModel := result.Model
+	if input.OriginalModel != "" {
+		requestedModel = input.OriginalModel
+REDACTED
 
 	// 根据请求类型选择计费方式
 	if result.ImageCount > 0 {
@@ -8008,7 +8042,7 @@ REDACTED
 		AccountID:             account.ID,
 		RequestID:             requestID,
 		Model:                 result.Model,
-		RequestedModel:        result.Model,
+		RequestedModel:        requestedModel,
 		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
@@ -8034,6 +8068,8 @@ REDACTED
 		ImageCount:            result.ImageCount,
 		ImageSize:             imageSize,
 		CacheTTLOverridden:    cacheTTLOverridden,
+		ChannelID:             optionalInt64Ptr(input.ChannelID),
+		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
 		CreatedAt:             time.Now(),
 REDACTED
 
@@ -8083,6 +8119,27 @@ REDACTED
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 
 	return nil
+REDACTED
+
+// ResolveChannelMapping 委托渠道服务解析模型映射
+func (s *GatewayService) ResolveChannelMapping(ctx context.Context, groupID int64, model string) ChannelMappingResult {
+	if s.channelService == nil {
+		return ChannelMappingResult{MappedModel: modelREDACTED
+REDACTED
+	return s.channelService.ResolveChannelMapping(ctx, groupID, model)
+REDACTED
+
+// ReplaceModelInBody 替换请求体中的模型名（导出供 handler 使用）
+func (s *GatewayService) ReplaceModelInBody(body []byte, newModel string) []byte {
+	return s.replaceModelInBody(body, newModel)
+REDACTED
+
+// IsModelRestricted 检查模型是否被渠道限制
+func (s *GatewayService) IsModelRestricted(ctx context.Context, groupID int64, model string) bool {
+	if s.channelService == nil {
+		return false
+REDACTED
+	return s.channelService.IsModelRestricted(ctx, groupID, model)
 REDACTED
 
 // ForwardCountTokens 转发 count_tokens 请求到上游 API
