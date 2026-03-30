@@ -413,6 +413,34 @@ REDACTED
 	return s.channelService.IsModelRestricted(ctx, groupID, model)
 REDACTED
 
+// ResolveChannelMappingAndRestrict 解析渠道映射并检查模型限制。
+// 返回映射结果和是否被限制。
+func (s *OpenAIGatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, model string) (ChannelMappingResult, bool) {
+	var mapping ChannelMappingResult
+	mapping.MappedModel = model
+	if groupID == nil {
+		return mapping, false
+REDACTED
+	mapping = s.ResolveChannelMapping(ctx, *groupID, model)
+	restricted := s.IsModelRestricted(ctx, *groupID, mapping.MappedModel)
+	return mapping, restricted
+REDACTED
+
+// ReplaceModelInBody 替换请求体中的 JSON model 字段（通用 gjson/sjson 实现）。
+func (s *OpenAIGatewayService) ReplaceModelInBody(body []byte, newModel string) []byte {
+	if len(body) == 0 {
+		return body
+REDACTED
+	if current := gjson.GetBytes(body, "model"); current.Exists() && current.String() == newModel {
+		return body
+REDACTED
+	newBody, err := sjson.SetBytes(body, "model", newModel)
+	if err != nil {
+		return body
+REDACTED
+	return newBody
+REDACTED
+
 func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle {
 	if s != nil && s.codexSnapshotThrottle != nil {
 		return s.codexSnapshotThrottle

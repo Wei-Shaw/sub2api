@@ -185,17 +185,11 @@ REDACTED
 	setOpsRequestContext(c, reqModel, reqStream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
-	// 解析渠道级模型映射
-	var channelMapping service.ChannelMappingResult
-	if apiKey.GroupID != nil {
-		channelMapping = h.gatewayService.ResolveChannelMapping(c.Request.Context(), *apiKey.GroupID, reqModel)
-REDACTED
-
-	// 渠道模型限制检查：先映射再判断
-	if apiKey.GroupID != nil {
-		if h.gatewayService.IsModelRestricted(c.Request.Context(), *apiKey.GroupID, channelMapping.MappedModel) {
-			return
-	REDACTED
+	// 解析渠道级模型映射 + 限制检查
+	channelMapping, restricted := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	if restricted {
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+		return
 REDACTED
 
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
@@ -297,7 +291,12 @@ REDACTED
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
-		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, body)
+		// 应用渠道模型映射到请求体
+		forwardBody := body
+		if channelMapping.Mapped {
+			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
+	REDACTED
+		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
@@ -395,18 +394,7 @@ REDACTED
 				ChannelID:          channelMapping.ChannelID,
 				OriginalModel:      reqModel,
 				BillingModelSource: channelMapping.BillingModelSource,
-				ModelMappingChain: func() string {
-					if !channelMapping.Mapped {
-						if result.UpstreamModel != "" && result.UpstreamModel != result.Model {
-							return reqModel + "→" + result.UpstreamModel
-					REDACTED
-						return ""
-				REDACTED
-					if result.UpstreamModel != "" && result.UpstreamModel != channelMapping.MappedModel {
-						return reqModel + "→" + channelMapping.MappedModel + "→" + result.UpstreamModel
-				REDACTED
-					return reqModel + "→" + channelMapping.MappedModel
-			REDACTED(),
+				ModelMappingChain:  channelMapping.BuildModelMappingChain(reqModel, result.UpstreamModel),
 		REDACTED); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.responses"),
@@ -577,17 +565,11 @@ REDACTED
 	setOpsRequestContext(c, reqModel, reqStream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
-	// 解析渠道级模型映射
-	var channelMappingMsg service.ChannelMappingResult
-	if apiKey.GroupID != nil {
-		channelMappingMsg = h.gatewayService.ResolveChannelMapping(c.Request.Context(), *apiKey.GroupID, reqModel)
-REDACTED
-
-	// 渠道模型限制检查：先映射再判断
-	if apiKey.GroupID != nil {
-		if h.gatewayService.IsModelRestricted(c.Request.Context(), *apiKey.GroupID, channelMappingMsg.MappedModel) {
-			return
-	REDACTED
+	// 解析渠道级模型映射 + 限制检查
+	channelMappingMsg, restricted := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	if restricted {
+		h.anthropicErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+		return
 REDACTED
 
 	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
@@ -714,7 +696,12 @@ REDACTED
 		// Forward 层需要始终拿到 group 默认映射模型，这样未命中账号级映射的
 		// Claude 兼容模型才不会在后续 Codex 规范化中意外退化到 gpt-5.1。
 		defaultMappedModel := resolveOpenAIForwardDefaultMappedModel(apiKey, c.GetString("openai_messages_fallback_model"))
-		result, err := h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, body, promptCacheKey, defaultMappedModel)
+		// 应用渠道模型映射到请求体
+		forwardBody := body
+		if channelMappingMsg.Mapped {
+			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMappingMsg.MappedModel)
+	REDACTED
+		result, err := h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel)
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		if accountReleaseFunc != nil {
@@ -803,18 +790,7 @@ REDACTED
 				ChannelID:          channelMappingMsg.ChannelID,
 				OriginalModel:      reqModel,
 				BillingModelSource: channelMappingMsg.BillingModelSource,
-				ModelMappingChain: func() string {
-					if !channelMappingMsg.Mapped {
-						if result.UpstreamModel != "" && result.UpstreamModel != result.Model {
-							return reqModel + "→" + result.UpstreamModel
-					REDACTED
-						return ""
-				REDACTED
-					if result.UpstreamModel != "" && result.UpstreamModel != channelMappingMsg.MappedModel {
-						return reqModel + "→" + channelMappingMsg.MappedModel + "→" + result.UpstreamModel
-				REDACTED
-					return reqModel + "→" + channelMappingMsg.MappedModel
-			REDACTED(),
+				ModelMappingChain:  channelMappingMsg.BuildModelMappingChain(reqModel, result.UpstreamModel),
 		REDACTED); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.messages"),
@@ -1157,18 +1133,11 @@ REDACTED
 	setOpsRequestContext(c, reqModel, true, firstMessage)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeWSV2))
 
-	// 解析渠道级模型映射
-	var channelMappingWS service.ChannelMappingResult
-	if apiKey.GroupID != nil {
-		channelMappingWS = h.gatewayService.ResolveChannelMapping(ctx, *apiKey.GroupID, reqModel)
-REDACTED
-
-	// 渠道模型限制检查：先映射再判断
-	if apiKey.GroupID != nil {
-		if h.gatewayService.IsModelRestricted(ctx, *apiKey.GroupID, channelMappingWS.MappedModel) {
-			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model not allowed")
-			return
-	REDACTED
+	// 解析渠道级模型映射 + 限制检查
+	channelMappingWS, restricted := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
+	if restricted {
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model not allowed")
+		return
 REDACTED
 
 	var currentUserRelease func()
@@ -1332,18 +1301,7 @@ REDACTED
 					ChannelID:          channelMappingWS.ChannelID,
 					OriginalModel:      reqModel,
 					BillingModelSource: channelMappingWS.BillingModelSource,
-					ModelMappingChain: func() string {
-						if !channelMappingWS.Mapped {
-							if result.UpstreamModel != "" && result.UpstreamModel != result.Model {
-								return reqModel + "→" + result.UpstreamModel
-						REDACTED
-							return ""
-					REDACTED
-						if result.UpstreamModel != "" && result.UpstreamModel != channelMappingWS.MappedModel {
-							return reqModel + "→" + channelMappingWS.MappedModel + "→" + result.UpstreamModel
-					REDACTED
-						return reqModel + "→" + channelMappingWS.MappedModel
-				REDACTED(),
+					ModelMappingChain:  channelMappingWS.BuildModelMappingChain(reqModel, result.UpstreamModel),
 			REDACTED); err != nil {
 					reqLog.Error("openai.websocket_record_usage_failed",
 						zap.Int64("account_id", account.ID),
@@ -1355,7 +1313,13 @@ REDACTED
 	REDACTED,
 REDACTED
 
-	if err := h.gatewayService.ProxyResponsesWebSocketFromClient(ctx, c, wsConn, account, token, firstMessage, hooks); err != nil {
+	// 应用渠道模型映射到 WebSocket 首条消息
+	wsFirstMessage := firstMessage
+	if channelMappingWS.Mapped {
+		wsFirstMessage = h.gatewayService.ReplaceModelInBody(firstMessage, channelMappingWS.MappedModel)
+REDACTED
+
+	if err := h.gatewayService.ProxyResponsesWebSocketFromClient(ctx, c, wsConn, account, token, wsFirstMessage, hooks); err != nil {
 		h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 		closeStatus, closeReason := summarizeWSCloseErrorForLog(err)
 		reqLog.Warn("openai.websocket_proxy_failed",
