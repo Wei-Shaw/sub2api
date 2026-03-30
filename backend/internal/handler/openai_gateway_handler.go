@@ -185,6 +185,20 @@ REDACTED
 	setOpsRequestContext(c, reqModel, reqStream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
+	// 解析渠道级模型映射
+	var channelMapping service.ChannelMappingResult
+	if apiKey.GroupID != nil {
+		channelMapping = h.gatewayService.ResolveChannelMapping(c.Request.Context(), *apiKey.GroupID, reqModel)
+REDACTED
+
+	// 渠道模型限制检查
+	if apiKey.GroupID != nil {
+		if h.gatewayService.IsModelRestricted(c.Request.Context(), *apiKey.GroupID, reqModel) {
+			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+			return
+	REDACTED
+REDACTED
+
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
 	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {
 		return
@@ -379,6 +393,21 @@ REDACTED
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
+				ChannelID:          channelMapping.ChannelID,
+				OriginalModel:      reqModel,
+				BillingModelSource: channelMapping.BillingModelSource,
+				ModelMappingChain: func() string {
+					if !channelMapping.Mapped {
+						if result.UpstreamModel != "" && result.UpstreamModel != result.Model {
+							return reqModel + "→" + result.UpstreamModel
+					REDACTED
+						return ""
+				REDACTED
+					if result.UpstreamModel != "" && result.UpstreamModel != channelMapping.MappedModel {
+						return reqModel + "→" + channelMapping.MappedModel + "→" + result.UpstreamModel
+				REDACTED
+					return reqModel + "→" + channelMapping.MappedModel
+			REDACTED(),
 		REDACTED); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.responses"),
@@ -548,6 +577,20 @@ REDACTED
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+
+	// 解析渠道级模型映射
+	var channelMappingMsg service.ChannelMappingResult
+	if apiKey.GroupID != nil {
+		channelMappingMsg = h.gatewayService.ResolveChannelMapping(c.Request.Context(), *apiKey.GroupID, reqModel)
+REDACTED
+
+	// 渠道模型限制检查
+	if apiKey.GroupID != nil {
+		if h.gatewayService.IsModelRestricted(c.Request.Context(), *apiKey.GroupID, reqModel) {
+			h.anthropicErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+			return
+	REDACTED
+REDACTED
 
 	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
 	if h.errorPassthroughService != nil {
@@ -759,6 +802,21 @@ REDACTED
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
+				ChannelID:          channelMappingMsg.ChannelID,
+				OriginalModel:      reqModel,
+				BillingModelSource: channelMappingMsg.BillingModelSource,
+				ModelMappingChain: func() string {
+					if !channelMappingMsg.Mapped {
+						if result.UpstreamModel != "" && result.UpstreamModel != result.Model {
+							return reqModel + "→" + result.UpstreamModel
+					REDACTED
+						return ""
+				REDACTED
+					if result.UpstreamModel != "" && result.UpstreamModel != channelMappingMsg.MappedModel {
+						return reqModel + "→" + channelMappingMsg.MappedModel + "→" + result.UpstreamModel
+				REDACTED
+					return reqModel + "→" + channelMappingMsg.MappedModel
+			REDACTED(),
 		REDACTED); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.messages"),
@@ -1101,6 +1159,20 @@ REDACTED
 	setOpsRequestContext(c, reqModel, true, firstMessage)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeWSV2))
 
+	// 解析渠道级模型映射
+	var channelMappingWS service.ChannelMappingResult
+	if apiKey.GroupID != nil {
+		channelMappingWS = h.gatewayService.ResolveChannelMapping(ctx, *apiKey.GroupID, reqModel)
+REDACTED
+
+	// 渠道模型限制检查
+	if apiKey.GroupID != nil {
+		if h.gatewayService.IsModelRestricted(ctx, *apiKey.GroupID, reqModel) {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model not allowed")
+			return
+	REDACTED
+REDACTED
+
 	var currentUserRelease func()
 	var currentAccountRelease func()
 	releaseTurnSlots := func() {
@@ -1259,6 +1331,21 @@ REDACTED
 					IPAddress:          clientIP,
 					RequestPayloadHash: service.HashUsageRequestPayload(firstMessage),
 					APIKeyService:      h.apiKeyService,
+					ChannelID:          channelMappingWS.ChannelID,
+					OriginalModel:      reqModel,
+					BillingModelSource: channelMappingWS.BillingModelSource,
+					ModelMappingChain: func() string {
+						if !channelMappingWS.Mapped {
+							if result.UpstreamModel != "" && result.UpstreamModel != result.Model {
+								return reqModel + "→" + result.UpstreamModel
+						REDACTED
+							return ""
+					REDACTED
+						if result.UpstreamModel != "" && result.UpstreamModel != channelMappingWS.MappedModel {
+							return reqModel + "→" + channelMappingWS.MappedModel + "→" + result.UpstreamModel
+					REDACTED
+						return reqModel + "→" + channelMappingWS.MappedModel
+				REDACTED(),
 			REDACTED); err != nil {
 					reqLog.Error("openai.websocket_record_usage_failed",
 						zap.Int64("account_id", account.ID),

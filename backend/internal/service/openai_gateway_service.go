@@ -323,6 +323,7 @@ type OpenAIGatewayService struct {
 	toolCorrector         *CodexToolCorrector
 	openaiWSResolver      OpenAIWSProtocolResolver
 	resolver              *ModelPricingResolver
+	channelService        *ChannelService
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -359,6 +360,7 @@ func NewOpenAIGatewayService(
 	deferredService *DeferredService,
 	openAITokenProvider *OpenAITokenProvider,
 	resolver *ModelPricingResolver,
+	channelService *ChannelService,
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -387,11 +389,28 @@ func NewOpenAIGatewayService(
 		toolCorrector:         NewCodexToolCorrector(),
 		openaiWSResolver:      NewOpenAIWSProtocolResolver(cfg),
 		resolver:              resolver,
+		channelService:        channelService,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
 REDACTED
 	svc.logOpenAIWSModeBootstrap()
 	return svc
+REDACTED
+
+// ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）
+func (s *OpenAIGatewayService) ResolveChannelMapping(ctx context.Context, groupID int64, model string) ChannelMappingResult {
+	if s.channelService == nil {
+		return ChannelMappingResult{MappedModel: modelREDACTED
+REDACTED
+	return s.channelService.ResolveChannelMapping(ctx, groupID, model)
+REDACTED
+
+// IsModelRestricted 检查模型是否被渠道限制（代理到 ChannelService）
+func (s *OpenAIGatewayService) IsModelRestricted(ctx context.Context, groupID int64, model string) bool {
+	if s.channelService == nil {
+		return false
+REDACTED
+	return s.channelService.IsModelRestricted(ctx, groupID, model)
 REDACTED
 
 func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle {
@@ -4113,6 +4132,10 @@ type OpenAIRecordUsageInput struct {
 	IPAddress          string // 请求的客户端 IP 地址
 	RequestPayloadHash string
 	APIKeyService      APIKeyQuotaUpdater
+	ChannelID          int64
+	OriginalModel      string
+	BillingModelSource string
+	ModelMappingChain  string
 REDACTED
 
 // RecordUsage records usage and deducts balance
@@ -4158,6 +4181,12 @@ REDACTED
 	var cost *CostBreakdown
 	var err error
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	if result.BillingModel != "" {
+		billingModel = strings.TrimSpace(result.BillingModel)
+REDACTED
+	if input.BillingModelSource == "requested" && input.OriginalModel != "" {
+		billingModel = input.OriginalModel
+REDACTED
 	serviceTier := ""
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
@@ -4223,6 +4252,9 @@ REDACTED
 		FirstTokenMs:          result.FirstTokenMs,
 		CreatedAt:             time.Now(),
 REDACTED
+	// 设置渠道信息
+	usageLog.ChannelID = optionalInt64Ptr(input.ChannelID)
+	usageLog.ModelMappingChain = optionalTrimmedStringPtr(input.ModelMappingChain)
 	// 设置计费模式
 	if cost != nil && cost.BillingMode != "" {
 		billingMode := cost.BillingMode

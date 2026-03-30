@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -57,13 +58,26 @@ type channelModelKey struct {
 	model    string // lowercase
 REDACTED
 
+// channelGroupPlatformKey 通配符定价缓存键
+type channelGroupPlatformKey struct {
+	groupID  int64
+	platform string
+REDACTED
+
+// wildcardPricingEntry 通配符定价条目
+type wildcardPricingEntry struct {
+	prefix  string
+	pricing *ChannelModelPricing
+REDACTED
+
 // channelCache 渠道缓存快照（扁平化哈希结构，热路径 O(1) 查找）
 type channelCache struct {
 	// 热路径查找
-	pricingByGroupModel map[channelModelKey]*ChannelModelPricing // (groupID, platform, model) → 定价
-	mappingByGroupModel map[channelModelKey]string                // (groupID, platform, model) → 映射目标
-	channelByGroupID    map[int64]*Channel                        // groupID → 渠道
-	groupPlatform       map[int64]string                          // groupID → platform
+	pricingByGroupModel    map[channelModelKey]*ChannelModelPricing // (groupID, platform, model) → 定价
+	wildcardByGroupPlatform map[channelGroupPlatformKey][]*wildcardPricingEntry // (groupID, platform) → 通配符定价（前缀长度降序）
+	mappingByGroupModel    map[channelModelKey]string                // (groupID, platform, model) → 映射目标
+	channelByGroupID       map[int64]*Channel                        // groupID → 渠道
+	groupPlatform          map[int64]string                          // groupID → platform
 
 	// 冷路径（CRUD 操作）
 	byID     map[int64]*Channel
@@ -137,12 +151,13 @@ func (s *ChannelService) buildCache(ctx context.Context) (*channelCache, error) 
 		// error-TTL：失败时存入短 TTL 空缓存，防止紧密重试
 		slog.Warn("failed to build channel cache", "error", err)
 		errorCache := &channelCache{
-			pricingByGroupModel: make(map[channelModelKey]*ChannelModelPricing),
-			mappingByGroupModel: make(map[channelModelKey]string),
-			channelByGroupID:    make(map[int64]*Channel),
-			groupPlatform:       make(map[int64]string),
-			byID:                make(map[int64]*Channel),
-			loadedAt:            time.Now().Add(channelCacheTTL - channelErrorTTL), // 使剩余 TTL = errorTTL
+			pricingByGroupModel:    make(map[channelModelKey]*ChannelModelPricing),
+			wildcardByGroupPlatform: make(map[channelGroupPlatformKey][]*wildcardPricingEntry),
+			mappingByGroupModel:    make(map[channelModelKey]string),
+			channelByGroupID:       make(map[int64]*Channel),
+			groupPlatform:          make(map[int64]string),
+			byID:                   make(map[int64]*Channel),
+			loadedAt:               time.Now().Add(channelCacheTTL - channelErrorTTL), // 使剩余 TTL = errorTTL
 	REDACTED
 		s.cache.Store(errorCache)
 		return nil, fmt.Errorf("list all channels: %w", err)
@@ -163,12 +178,13 @@ REDACTED
 REDACTED
 
 	cache := &channelCache{
-		pricingByGroupModel: make(map[channelModelKey]*ChannelModelPricing),
-		mappingByGroupModel: make(map[channelModelKey]string),
-		channelByGroupID:    make(map[int64]*Channel),
-		groupPlatform:       groupPlatforms,
-		byID:                make(map[int64]*Channel, len(channels)),
-		loadedAt:            time.Now(),
+		pricingByGroupModel:    make(map[channelModelKey]*ChannelModelPricing),
+		wildcardByGroupPlatform: make(map[channelGroupPlatformKey][]*wildcardPricingEntry),
+		mappingByGroupModel:    make(map[channelModelKey]string),
+		channelByGroupID:       make(map[int64]*Channel),
+		groupPlatform:          groupPlatforms,
+		byID:                   make(map[int64]*Channel, len(channels)),
+		loadedAt:               time.Now(),
 REDACTED
 
 	for i := range channels {
@@ -187,8 +203,18 @@ REDACTED
 					continue // 跳过非本平台的定价
 			REDACTED
 				for _, model := range pricing.Models {
-					key := channelModelKey{groupID: gid, platform: platform, model: strings.ToLower(model)REDACTED
-					cache.pricingByGroupModel[key] = pricing
+					if strings.HasSuffix(model, "*") {
+						// 通配符模型 → 存入 wildcardByGroupPlatform
+						prefix := strings.ToLower(strings.TrimSuffix(model, "*"))
+						gpKey := channelGroupPlatformKey{groupID: gid, platform: platformREDACTED
+						cache.wildcardByGroupPlatform[gpKey] = append(cache.wildcardByGroupPlatform[gpKey], &wildcardPricingEntry{
+							prefix:  prefix,
+							pricing: pricing,
+					REDACTED)
+				REDACTED else {
+						key := channelModelKey{groupID: gid, platform: platform, model: strings.ToLower(model)REDACTED
+						cache.pricingByGroupModel[key] = pricing
+				REDACTED
 			REDACTED
 		REDACTED
 
@@ -202,6 +228,14 @@ REDACTED
 	REDACTED
 REDACTED
 
+	// 通配符条目按前缀长度降序排列（最长前缀优先匹配）
+	for gpKey, entries := range cache.wildcardByGroupPlatform {
+		sort.Slice(entries, func(i, j int) bool {
+			return len(entries[i].prefix) > len(entries[j].prefix)
+	REDACTED)
+		cache.wildcardByGroupPlatform[gpKey] = entries
+REDACTED
+
 	s.cache.Store(cache)
 	return cache, nil
 REDACTED
@@ -210,6 +244,18 @@ REDACTED
 func (s *ChannelService) invalidateCache() {
 	s.cache.Store((*channelCache)(nil))
 	s.cacheSF.Forget("channel_cache")
+REDACTED
+
+// matchWildcard 在通配符定价中查找匹配项（最长前缀优先）
+func (c *channelCache) matchWildcard(groupID int64, platform, modelLower string) *ChannelModelPricing {
+	gpKey := channelGroupPlatformKey{groupID: groupID, platform: platformREDACTED
+	wildcards := c.wildcardByGroupPlatform[gpKey]
+	for _, wc := range wildcards {
+		if strings.HasPrefix(modelLower, wc.prefix) {
+			return wc.pricing
+	REDACTED
+REDACTED
+	return nil
 REDACTED
 
 // GetChannelForGroup 获取分组关联的渠道（热路径 O(1)）
@@ -245,7 +291,11 @@ REDACTED
 	key := channelModelKey{groupID: groupID, platform: platform, model: strings.ToLower(model)REDACTED
 	pricing, ok := cache.pricingByGroupModel[key]
 	if !ok {
-		return nil
+		// 精确查找失败，尝试通配符匹配
+		pricing = cache.matchWildcard(groupID, platform, strings.ToLower(model))
+		if pricing == nil {
+			return nil
+	REDACTED
 REDACTED
 
 	cp := pricing.Clone()
@@ -302,7 +352,14 @@ REDACTED
 	platform := cache.groupPlatform[groupID]
 	key := channelModelKey{groupID: groupID, platform: platform, model: strings.ToLower(model)REDACTED
 	_, exists := cache.pricingByGroupModel[key]
-	return !exists
+	if exists {
+		return false
+REDACTED
+	// 精确查找失败，尝试通配符匹配
+	if cache.matchWildcard(groupID, platform, strings.ToLower(model)) != nil {
+		return false
+REDACTED
+	return true
 REDACTED
 
 // --- CRUD ---
