@@ -970,6 +970,7 @@ async function handleSubmit() {
   REDACTED
 
   const { group_ids, model_pricing, model_mapping REDACTED = formToAPI()
+  console.log('[handleSubmit] model_pricing to send:', JSON.stringify(model_pricing))
 
   submitting.value = true
   try {
