@@ -23,14 +23,21 @@ func (m BillingMode) IsValid() bool {
 	return false
 }
 
+const (
+	BillingModelSourceRequested = "requested"
+	BillingModelSourceUpstream  = "upstream"
+)
+
 // Channel 渠道实体
 type Channel struct {
-	ID          int64
-	Name        string
-	Description string
-	Status      string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID                 int64
+	Name               string
+	Description        string
+	Status             string
+	BillingModelSource string // "requested" or "upstream"
+	RestrictModels     bool   // 是否限制模型（仅允许定价列表中的模型）
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 
 	// 关联的分组 ID 列表
 	GroupIDs []int64
@@ -51,6 +58,7 @@ type ChannelModelPricing struct {
 	CacheWritePrice  *float64    // 缓存写入价格
 	CacheReadPrice   *float64    // 缓存读取价格
 	ImageOutputPrice *float64    // 图片输出价格（向后兼容）
+	PerRequestPrice  *float64    // 默认按次计费价格（USD）
 	Intervals        []PricingInterval // 区间定价列表
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
@@ -106,31 +114,15 @@ func (c *Channel) IsActive() bool {
 }
 
 // GetModelPricing 根据模型名查找渠道定价，未找到返回 nil。
-// 优先精确匹配，然后通配符匹配（如 claude-opus-*）。大小写不敏感。
-// 返回值拷贝，不污染缓存。
+// 精确匹配，大小写不敏感。返回值拷贝，不污染缓存。
 func (c *Channel) GetModelPricing(model string) *ChannelModelPricing {
 	modelLower := strings.ToLower(model)
 
-	// 第一轮：精确匹配
 	for i := range c.ModelPricing {
 		for _, m := range c.ModelPricing[i].Models {
 			if strings.ToLower(m) == modelLower {
 				cp := c.ModelPricing[i].Clone()
 				return &cp
-			}
-		}
-	}
-
-	// 第二轮：通配符匹配（仅支持末尾 *）
-	for i := range c.ModelPricing {
-		for _, m := range c.ModelPricing[i].Models {
-			mLower := strings.ToLower(m)
-			if strings.HasSuffix(mLower, "*") {
-				prefix := strings.TrimSuffix(mLower, "*")
-				if strings.HasPrefix(modelLower, prefix) {
-					cp := c.ModelPricing[i].Clone()
-					return &cp
-				}
 			}
 		}
 	}

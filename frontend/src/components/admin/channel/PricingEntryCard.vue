@@ -70,7 +70,7 @@
         <div class="mt-3 flex items-start gap-2">
           <div class="flex-1">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {{ t('admin.channels.form.models', '模型列表') }}
+              {{ t('admin.channels.form.models', '模型列表') }} <span class="text-red-500">*</span>
             </label>
             <ModelTagInput
               :models="entry.models"
@@ -153,6 +153,17 @@
 
         <!-- Per-request mode -->
         <div v-else-if="entry.billing_mode === 'per_request'">
+          <!-- Default per-request price -->
+          <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">
+            {{ t('admin.channels.form.defaultPerRequestPrice', '默认单次价格（未命中层级时使用）') }}
+            <span class="ml-1 font-normal text-gray-400">$</span>
+          </label>
+          <div class="mt-1 w-48">
+            <input :value="entry.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
+              type="number" step="any" min="0" class="input text-sm" :placeholder="t('admin.channels.form.pricePlaceholder', '默认')" />
+          </div>
+
+          <!-- Tiers -->
           <div class="mt-3 flex items-center justify-between">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
               {{ t('admin.channels.form.requestTiers', '按次计费层级') }}
@@ -176,8 +187,19 @@
           </div>
         </div>
 
-        <!-- Image mode (legacy per-request) -->
+        <!-- Image mode -->
         <div v-else-if="entry.billing_mode === 'image'">
+          <!-- Default image price -->
+          <label class="mt-3 block text-xs font-medium text-gray-500 dark:text-gray-400">
+            {{ t('admin.channels.form.defaultImagePrice', '默认图片价格（未命中层级时使用）') }}
+            <span class="ml-1 font-normal text-gray-400">$</span>
+          </label>
+          <div class="mt-1 w-48">
+            <input :value="entry.image_output_price" @input="emitField('image_output_price', ($event.target as HTMLInputElement).value)"
+              type="number" step="any" min="0" class="input text-sm" :placeholder="t('admin.channels.form.pricePlaceholder', '默认')" />
+          </div>
+
+          <!-- Image tiers -->
           <div class="mt-3 flex items-center justify-between">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
               {{ t('admin.channels.form.imageTiers', '图片计费层级（按次）') }}
@@ -195,15 +217,6 @@
               @update="updateInterval(idx, $event)"
               @remove="removeInterval(idx)"
             />
-          </div>
-          <div v-else>
-            <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div>
-                <label class="text-xs text-gray-400">{{ t('admin.channels.form.imageOutputPrice', '图片输出价格') }}</label>
-                <input :value="entry.image_output_price" @input="emitField('image_output_price', ($event.target as HTMLInputElement).value)"
-                  type="number" step="any" min="0" class="input mt-0.5 text-sm" :placeholder="t('admin.channels.form.pricePlaceholder', '默认')" />
-              </div>
-            </div>
           </div>
         </div>
       </div>
