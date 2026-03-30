@@ -1888,6 +1888,7 @@ export default {
         defaultPerRequestPrice: '默认单次价格（未命中层级时使用）',
         defaultImagePrice: '默认图片价格（未命中层级时使用）',
         platformConfig: '平台配置',
+        basicSettings: '基础设置',
         addPlatform: '添加平台',
         noPlatforms: '点击"添加平台"开始配置渠道',
         mappingCount: '条映射',

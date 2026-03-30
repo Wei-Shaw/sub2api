@@ -143,260 +143,291 @@
       width="extra-wide"
       @close="closeDialog"
     >
-      <form id="channel-form" @submit.prevent="handleSubmit" class="space-y-5">
-        <!-- Name -->
-        <div>
-          <label class="input-label">{{ t('admin.channels.form.name', 'Name') }} <span class="text-red-500">*</span></label>
-          <input
-            v-model="form.name"
-            type="text"
-            required
-            class="input"
-            :placeholder="t('admin.channels.form.namePlaceholder', 'Enter channel name')"
-          />
-        </div>
-
-        <!-- Description -->
-        <div>
-          <label class="input-label">{{ t('admin.channels.form.description', 'Description') }}</label>
-          <textarea
-            v-model="form.description"
-            rows="2"
-            class="input"
-            :placeholder="t('admin.channels.form.descriptionPlaceholder', 'Optional description')"
-          ></textarea>
-        </div>
-
-        <!-- Status (edit only) -->
-        <div v-if="editingChannel">
-          <label class="input-label">{{ t('admin.channels.form.status', 'Status') }}</label>
-          <Select v-model="form.status" :options="statusEditOptions" />
-        </div>
-
-        <!-- Model Restriction -->
-        <div>
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              v-model="form.restrict_models"
-              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-            />
-            <span class="input-label mb-0">{{ t('admin.channels.form.restrictModels', 'Restrict Models') }}</span>
-          </label>
-          <p class="mt-1 ml-6 text-xs text-gray-400">
-            {{ t('admin.channels.form.restrictModelsHint', 'When enabled, only models in the pricing list are allowed. Others will be rejected.') }}
-          </p>
-        </div>
-
-        <!-- Billing Basis -->
-        <div>
-          <label class="input-label">{{ t('admin.channels.form.billingModelSource', 'Billing Basis') }}</label>
-          <Select v-model="form.billing_model_source" :options="billingModelSourceOptions" />
-          <p class="mt-1 text-xs text-gray-400">
-            {{ t('admin.channels.form.billingModelSourceHint', 'Controls which model name is used for pricing lookup') }}
-          </p>
-        </div>
-
-        <!-- Platform Sections -->
-        <div class="space-y-3">
-          <div class="flex items-center justify-between">
-            <label class="input-label mb-0">{{ t('admin.channels.form.platformConfig', '平台配置') }}</label>
-            <!-- Add Platform -->
-            <div class="relative" v-if="availablePlatformsToAdd.length > 0">
-              <button type="button" @click="showPlatformMenu = !showPlatformMenu" class="btn btn-secondary btn-sm">
-                <Icon name="plus" size="sm" class="mr-1" />
-                {{ t('admin.channels.form.addPlatform', '添加平台') }}
-              </button>
-              <div
-                v-if="showPlatformMenu"
-                class="absolute right-0 z-10 mt-1 w-40 rounded-lg border border-gray-200 bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
-              >
-                <button
-                  v-for="p in availablePlatformsToAdd"
-                  :key="p"
-                  type="button"
-                  @click="addPlatformSection(p)"
-                  class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-700"
-                >
-                  <PlatformIcon :platform="p" size="xs" :class="getPlatformTextColor(p)" />
-                  <span :class="getPlatformTextColor(p)">{{ t('admin.groups.platforms.' + p, p) }}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div
-            v-if="form.platforms.length === 0"
-            class="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-dark-500 dark:text-gray-400"
+      <div class="channel-dialog-body">
+        <!-- Tab Bar -->
+        <div class="flex items-center border-b border-gray-200 dark:border-dark-700 flex-shrink-0 -mx-4 sm:-mx-6 px-4 sm:px-6 -mt-3 sm:-mt-4">
+          <!-- Basic Settings Tab -->
+          <button
+            type="button"
+            @click="activeTab = 'basic'"
+            class="channel-tab"
+            :class="activeTab === 'basic' ? 'channel-tab-active' : 'channel-tab-inactive'"
           >
-            {{ t('admin.channels.form.noPlatforms', '点击"添加平台"开始配置渠道') }}
-          </div>
-
-          <!-- Each Platform Section -->
-          <div
+            {{ t('admin.channels.form.basicSettings', '基础设置') }}
+          </button>
+          <!-- Platform Tabs -->
+          <button
             v-for="(section, sIdx) in form.platforms"
             :key="section.platform"
-            class="rounded-lg border border-gray-200 bg-white dark:border-dark-600 dark:bg-dark-800"
+            type="button"
+            @click="activeTab = section.platform"
+            class="channel-tab group"
+            :class="activeTab === section.platform ? 'channel-tab-active' : 'channel-tab-inactive'"
           >
-            <!-- Platform Header -->
-            <div
-              class="flex cursor-pointer select-none items-center justify-between rounded-t-lg border-b border-gray-100 px-3 py-2 dark:border-dark-700"
-              :class="section.collapsed ? 'rounded-b-lg border-b-0' : ''"
-              @click="section.collapsed = !section.collapsed"
+            <PlatformIcon :platform="section.platform" size="xs" :class="getPlatformTextColor(section.platform)" />
+            <span :class="getPlatformTextColor(section.platform)">{{ t('admin.groups.platforms.' + section.platform, section.platform) }}</span>
+            <span
+              @click.stop="removePlatformSection(sIdx)"
+              class="ml-1 rounded-full p-0.5 opacity-0 group-hover:opacity-100 hover:bg-gray-200 dark:hover:bg-dark-600 transition-opacity"
             >
-              <div class="flex items-center gap-2">
-                <Icon
-                  :name="section.collapsed ? 'chevronRight' : 'chevronDown'"
-                  size="sm"
-                  class="text-gray-400"
-                />
-                <PlatformIcon :platform="section.platform" size="xs" :class="getPlatformTextColor(section.platform)" />
-                <span :class="['text-sm font-semibold', getPlatformTextColor(section.platform)]">
-                  {{ t('admin.groups.platforms.' + section.platform, section.platform) }}
-                </span>
-                <!-- Summary badges -->
-                <span class="text-xs text-gray-400">
-                  {{ section.group_ids.length }} {{ t('admin.channels.groupsUnit', 'groups') }}
-                </span>
-                <span v-if="Object.keys(section.model_mapping).length > 0" class="text-xs text-gray-400">
-                  · {{ Object.keys(section.model_mapping).length }} {{ t('admin.channels.form.mappingCount', 'mappings') }}
-                </span>
-                <span v-if="section.model_pricing.length > 0" class="text-xs text-gray-400">
-                  · {{ section.model_pricing.length }} {{ t('admin.channels.pricingUnit', 'pricing rules') }}
-                </span>
-              </div>
-              <button
-                type="button"
-                @click.stop="removePlatformSection(sIdx)"
-                class="rounded p-1 text-gray-400 hover:text-red-500"
-                :title="t('common.delete', 'Delete')"
-              >
-                <Icon name="trash" size="sm" />
-              </button>
+              <Icon name="x" size="xs" class="text-gray-400 hover:text-red-500" />
+            </span>
+          </button>
+        </div>
+
+        <!-- Tab Content -->
+        <form id="channel-form" @submit.prevent="handleSubmit" class="flex-1 overflow-y-auto pt-4">
+          <!-- Basic Settings Tab -->
+          <div v-show="activeTab === 'basic'" class="space-y-5">
+            <!-- Name -->
+            <div>
+              <label class="input-label">{{ t('admin.channels.form.name', 'Name') }} <span class="text-red-500">*</span></label>
+              <input
+                v-model="form.name"
+                type="text"
+                required
+                class="input"
+                :placeholder="t('admin.channels.form.namePlaceholder', 'Enter channel name')"
+              />
             </div>
 
-            <!-- Platform Content -->
-            <div v-show="!section.collapsed" class="space-y-4 p-3">
-              <!-- Groups -->
-              <div>
-                <label class="input-label text-xs">
-                  {{ t('admin.channels.form.groups', 'Associated Groups') }}
-                  <span v-if="section.group_ids.length > 0" class="ml-1 font-normal text-gray-400">
-                    ({{ t('admin.channels.form.selectedCount', { count: section.group_ids.length }, `已选 ${section.group_ids.length} 个`) }})
-                  </span>
-                </label>
-                <div class="max-h-40 overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-900">
-                  <div v-if="groupsLoading" class="py-2 text-center text-xs text-gray-500">
-                    {{ t('common.loading', 'Loading...') }}
-                  </div>
-                  <div v-else-if="getGroupsForPlatform(section.platform).length === 0" class="py-2 text-center text-xs text-gray-500">
-                    {{ t('admin.channels.form.noGroupsAvailable', 'No groups available') }}
-                  </div>
-                  <div v-else class="flex flex-wrap gap-1">
-                    <label
-                      v-for="group in getGroupsForPlatform(section.platform)"
-                      :key="group.id"
-                      class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs transition-colors hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700"
-                      :class="[
-                        section.group_ids.includes(group.id) ? 'bg-primary-50 border-primary-300 dark:bg-primary-900/20 dark:border-primary-700' : '',
-                        isGroupInOtherChannel(group.id, section.platform) ? 'opacity-40' : ''
-                      ]"
-                    >
-                      <input
-                        type="checkbox"
-                        :checked="section.group_ids.includes(group.id)"
-                        :disabled="isGroupInOtherChannel(group.id, section.platform)"
-                        class="h-3 w-3 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                        @change="toggleGroupInSection(sIdx, group.id)"
-                      />
-                      <span :class="['font-medium', getPlatformTextColor(group.platform)]">{{ group.name }}</span>
-                      <span
-                        :class="['rounded-full px-1 py-0 text-[10px]', getRateBadgeClass(group.platform)]"
-                      >{{ group.rate_multiplier }}x</span>
-                      <span class="text-[10px] text-gray-400">{{ group.account_count || 0 }}</span>
-                      <span
-                        v-if="isGroupInOtherChannel(group.id, section.platform)"
-                        class="text-[10px] text-gray-400"
-                      >{{ getGroupInOtherChannelLabel(group.id) }}</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
+            <!-- Description -->
+            <div>
+              <label class="input-label">{{ t('admin.channels.form.description', 'Description') }}</label>
+              <textarea
+                v-model="form.description"
+                rows="2"
+                class="input"
+                :placeholder="t('admin.channels.form.descriptionPlaceholder', 'Optional description')"
+              ></textarea>
+            </div>
 
-              <!-- Model Mapping -->
-              <div>
-                <div class="mb-1 flex items-center justify-between">
-                  <label class="input-label text-xs mb-0">{{ t('admin.channels.form.modelMapping', 'Model Mapping') }}</label>
-                  <button type="button" @click="addMappingEntry(sIdx)" class="text-xs text-primary-600 hover:text-primary-700">
-                    + {{ t('common.add', 'Add') }}
+            <!-- Status (edit only) -->
+            <div v-if="editingChannel">
+              <label class="input-label">{{ t('admin.channels.form.status', 'Status') }}</label>
+              <Select v-model="form.status" :options="statusEditOptions" />
+            </div>
+
+            <!-- Model Restriction -->
+            <div>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  v-model="form.restrict_models"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <span class="input-label mb-0">{{ t('admin.channels.form.restrictModels', 'Restrict Models') }}</span>
+              </label>
+              <p class="mt-1 ml-6 text-xs text-gray-400">
+                {{ t('admin.channels.form.restrictModelsHint', 'When enabled, only models in the pricing list are allowed. Others will be rejected.') }}
+              </p>
+            </div>
+
+            <!-- Billing Basis -->
+            <div>
+              <label class="input-label">{{ t('admin.channels.form.billingModelSource', 'Billing Basis') }}</label>
+              <Select v-model="form.billing_model_source" :options="billingModelSourceOptions" />
+              <p class="mt-1 text-xs text-gray-400">
+                {{ t('admin.channels.form.billingModelSourceHint', 'Controls which model name is used for pricing lookup') }}
+              </p>
+            </div>
+
+            <!-- Platform Management -->
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <label class="input-label mb-0">{{ t('admin.channels.form.platformConfig', '平台配置') }}</label>
+                <div class="relative" v-if="availablePlatformsToAdd.length > 0">
+                  <button type="button" @click="showPlatformMenu = !showPlatformMenu" class="btn btn-secondary btn-sm">
+                    <Icon name="plus" size="sm" class="mr-1" />
+                    {{ t('admin.channels.form.addPlatform', '添加平台') }}
                   </button>
-                </div>
-                <div
-                  v-if="Object.keys(section.model_mapping).length === 0"
-                  class="rounded border border-dashed border-gray-300 p-2 text-center text-xs text-gray-400 dark:border-dark-500"
-                >
-                  {{ t('admin.channels.form.noMappingRules', 'No mapping rules. Click "Add" to create one.') }}
-                </div>
-                <div v-else class="space-y-1">
                   <div
-                    v-for="(_, srcModel) in section.model_mapping"
-                    :key="srcModel"
-                    class="flex items-center gap-2"
+                    v-if="showPlatformMenu"
+                    class="absolute right-0 z-10 mt-1 w-40 rounded-lg border border-gray-200 bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
                   >
-                    <input
-                      :value="srcModel"
-                      type="text"
-                      class="input flex-1 text-xs"
-                      :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
-                      @change="renameMappingKey(sIdx, srcModel, ($event.target as HTMLInputElement).value)"
-                    />
-                    <span class="text-gray-400 text-xs">→</span>
-                    <input
-                      :value="section.model_mapping[srcModel]"
-                      type="text"
-                      class="input flex-1 text-xs"
-                      :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
-                      @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
-                    />
                     <button
+                      v-for="p in availablePlatformsToAdd"
+                      :key="p"
                       type="button"
-                      @click="removeMappingEntry(sIdx, srcModel)"
-                      class="rounded p-0.5 text-gray-400 hover:text-red-500"
+                      @click="addPlatformSection(p)"
+                      class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-dark-700"
                     >
-                      <Icon name="trash" size="sm" />
+                      <PlatformIcon :platform="p" size="xs" :class="getPlatformTextColor(p)" />
+                      <span :class="getPlatformTextColor(p)">{{ t('admin.groups.platforms.' + p, p) }}</span>
                     </button>
                   </div>
                 </div>
               </div>
 
-              <!-- Model Pricing -->
-              <div>
-                <div class="mb-1 flex items-center justify-between">
-                  <label class="input-label text-xs mb-0">{{ t('admin.channels.form.modelPricing', 'Model Pricing') }}</label>
-                  <button type="button" @click="addPricingEntry(sIdx)" class="text-xs text-primary-600 hover:text-primary-700">
-                    + {{ t('common.add', 'Add') }}
-                  </button>
-                </div>
+              <div
+                v-if="form.platforms.length === 0"
+                class="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-dark-500 dark:text-gray-400"
+              >
+                {{ t('admin.channels.form.noPlatforms', '点击"添加平台"开始配置渠道') }}
+              </div>
+
+              <!-- Platform summary list -->
+              <div v-else class="space-y-2">
                 <div
-                  v-if="section.model_pricing.length === 0"
-                  class="rounded border border-dashed border-gray-300 p-2 text-center text-xs text-gray-400 dark:border-dark-500"
+                  v-for="(section, sIdx) in form.platforms"
+                  :key="section.platform"
+                  @click="activeTab = section.platform"
+                  class="flex cursor-pointer items-center justify-between rounded-lg border border-gray-200 px-3 py-2 transition-colors hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700"
                 >
-                  {{ t('admin.channels.form.noPricingRules', 'No pricing rules yet. Click "Add" to create one.') }}
-                </div>
-                <div v-else class="space-y-2">
-                  <PricingEntryCard
-                    v-for="(entry, idx) in section.model_pricing"
-                    :key="idx"
-                    :entry="entry"
-                    @update="updatePricingEntry(sIdx, idx, $event)"
-                    @remove="removePricingEntry(sIdx, idx)"
-                  />
+                  <div class="flex items-center gap-2">
+                    <PlatformIcon :platform="section.platform" size="xs" :class="getPlatformTextColor(section.platform)" />
+                    <span :class="['text-sm font-medium', getPlatformTextColor(section.platform)]">
+                      {{ t('admin.groups.platforms.' + section.platform, section.platform) }}
+                    </span>
+                    <span class="text-xs text-gray-400">
+                      {{ section.group_ids.length }} {{ t('admin.channels.groupsUnit', 'groups') }}
+                    </span>
+                    <span v-if="Object.keys(section.model_mapping).length > 0" class="text-xs text-gray-400">
+                      · {{ Object.keys(section.model_mapping).length }} {{ t('admin.channels.form.mappingCount', 'mappings') }}
+                    </span>
+                    <span v-if="section.model_pricing.length > 0" class="text-xs text-gray-400">
+                      · {{ section.model_pricing.length }} {{ t('admin.channels.pricingUnit', 'pricing rules') }}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    @click.stop="removePlatformSection(sIdx)"
+                    class="rounded p-1 text-gray-400 hover:text-red-500"
+                    :title="t('common.delete', 'Delete')"
+                  >
+                    <Icon name="trash" size="sm" />
+                  </button>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      </form>
+
+          <!-- Platform Tab Content -->
+          <div
+            v-for="(section, sIdx) in form.platforms"
+            :key="'tab-' + section.platform"
+            v-show="activeTab === section.platform"
+            class="space-y-4"
+          >
+            <!-- Groups -->
+            <div>
+              <label class="input-label text-xs">
+                {{ t('admin.channels.form.groups', 'Associated Groups') }}
+                <span v-if="section.group_ids.length > 0" class="ml-1 font-normal text-gray-400">
+                  ({{ t('admin.channels.form.selectedCount', { count: section.group_ids.length }, `已选 ${section.group_ids.length} 个`) }})
+                </span>
+              </label>
+              <div class="max-h-40 overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-900">
+                <div v-if="groupsLoading" class="py-2 text-center text-xs text-gray-500">
+                  {{ t('common.loading', 'Loading...') }}
+                </div>
+                <div v-else-if="getGroupsForPlatform(section.platform).length === 0" class="py-2 text-center text-xs text-gray-500">
+                  {{ t('admin.channels.form.noGroupsAvailable', 'No groups available') }}
+                </div>
+                <div v-else class="flex flex-wrap gap-1">
+                  <label
+                    v-for="group in getGroupsForPlatform(section.platform)"
+                    :key="group.id"
+                    class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs transition-colors hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700"
+                    :class="[
+                      section.group_ids.includes(group.id) ? 'bg-primary-50 border-primary-300 dark:bg-primary-900/20 dark:border-primary-700' : '',
+                      isGroupInOtherChannel(group.id, section.platform) ? 'opacity-40' : ''
+                    ]"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="section.group_ids.includes(group.id)"
+                      :disabled="isGroupInOtherChannel(group.id, section.platform)"
+                      class="h-3 w-3 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      @change="toggleGroupInSection(sIdx, group.id)"
+                    />
+                    <span :class="['font-medium', getPlatformTextColor(group.platform)]">{{ group.name }}</span>
+                    <span
+                      :class="['rounded-full px-1 py-0 text-[10px]', getRateBadgeClass(group.platform)]"
+                    >{{ group.rate_multiplier }}x</span>
+                    <span class="text-[10px] text-gray-400">{{ group.account_count || 0 }}</span>
+                    <span
+                      v-if="isGroupInOtherChannel(group.id, section.platform)"
+                      class="text-[10px] text-gray-400"
+                    >{{ getGroupInOtherChannelLabel(group.id) }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Model Mapping -->
+            <div>
+              <div class="mb-1 flex items-center justify-between">
+                <label class="input-label text-xs mb-0">{{ t('admin.channels.form.modelMapping', 'Model Mapping') }}</label>
+                <button type="button" @click="addMappingEntry(sIdx)" class="text-xs text-primary-600 hover:text-primary-700">
+                  + {{ t('common.add', 'Add') }}
+                </button>
+              </div>
+              <div
+                v-if="Object.keys(section.model_mapping).length === 0"
+                class="rounded border border-dashed border-gray-300 p-2 text-center text-xs text-gray-400 dark:border-dark-500"
+              >
+                {{ t('admin.channels.form.noMappingRules', 'No mapping rules. Click "Add" to create one.') }}
+              </div>
+              <div v-else class="space-y-1">
+                <div
+                  v-for="(_, srcModel) in section.model_mapping"
+                  :key="srcModel"
+                  class="flex items-center gap-2"
+                >
+                  <input
+                    :value="srcModel"
+                    type="text"
+                    class="input flex-1 text-xs"
+                    :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
+                    @change="renameMappingKey(sIdx, srcModel, ($event.target as HTMLInputElement).value)"
+                  />
+                  <span class="text-gray-400 text-xs">→</span>
+                  <input
+                    :value="section.model_mapping[srcModel]"
+                    type="text"
+                    class="input flex-1 text-xs"
+                    :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
+                    @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
+                  />
+                  <button
+                    type="button"
+                    @click="removeMappingEntry(sIdx, srcModel)"
+                    class="rounded p-0.5 text-gray-400 hover:text-red-500"
+                  >
+                    <Icon name="trash" size="sm" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Model Pricing -->
+            <div>
+              <div class="mb-1 flex items-center justify-between">
+                <label class="input-label text-xs mb-0">{{ t('admin.channels.form.modelPricing', 'Model Pricing') }}</label>
+                <button type="button" @click="addPricingEntry(sIdx)" class="text-xs text-primary-600 hover:text-primary-700">
+                  + {{ t('common.add', 'Add') }}
+                </button>
+              </div>
+              <div
+                v-if="section.model_pricing.length === 0"
+                class="rounded border border-dashed border-gray-300 p-2 text-center text-xs text-gray-400 dark:border-dark-500"
+              >
+                {{ t('admin.channels.form.noPricingRules', 'No pricing rules yet. Click "Add" to create one.') }}
+              </div>
+              <div v-else class="space-y-2">
+                <PricingEntryCard
+                  v-for="(entry, idx) in section.model_pricing"
+                  :key="idx"
+                  :entry="entry"
+                  @update="updatePricingEntry(sIdx, idx, $event)"
+                  @remove="removePricingEntry(sIdx, idx)"
+                />
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
 
       <template #footer>
         <div class="flex justify-end gap-3">
@@ -514,6 +545,7 @@ const submitting = ref(false)
 const showDeleteDialog = ref(false)
 const deletingChannel = ref<Channel | null>(null)
 const showPlatformMenu = ref(false)
+const activeTab = ref<string>('basic')
 
 // Groups
 const allGroups = ref<AdminGroup[]>([])
@@ -578,10 +610,15 @@ function addPlatformSection(platform: GroupPlatform) {
     model_pricing: []
   })
   showPlatformMenu.value = false
+  activeTab.value = platform
 }
 
 function removePlatformSection(idx: number) {
+  const removed = form.platforms[idx]
   form.platforms.splice(idx, 1)
+  if (activeTab.value === removed.platform) {
+    activeTab.value = 'basic'
+  }
 }
 
 function getGroupsForPlatform(platform: GroupPlatform): AdminGroup[] {
@@ -837,6 +874,7 @@ function resetForm() {
   form.billing_model_source = 'requested'
   form.platforms = []
   showPlatformMenu.value = false
+  activeTab.value = 'basic'
 }
 
 async function openCreateDialog() {
@@ -955,3 +993,24 @@ onUnmounted(() => {
   abortController?.abort()
 })
 </script>
+
+<style scoped>
+.channel-dialog-body {
+  display: flex;
+  flex-direction: column;
+  height: 70vh;
+  min-height: 400px;
+}
+
+.channel-tab {
+  @apply flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap;
+}
+
+.channel-tab-active {
+  @apply border-primary-600 text-primary-600 dark:border-primary-400 dark:text-primary-400;
+}
+
+.channel-tab-inactive {
+  @apply border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300;
+}
+</style>
