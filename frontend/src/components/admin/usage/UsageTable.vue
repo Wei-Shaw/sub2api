@@ -69,6 +69,12 @@
           </span>
         </template>
 
+        <template #cell-billing_mode="{ row }">
+          <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium" :class="getBillingModeBadgeClass(row.billing_mode)">
+            {{ getBillingModeLabel(row.billing_mode) }}
+          </span>
+        </template>
+
         <template #cell-tokens="{ row }">
           <!-- 图片生成请求 -->
           <div v-if="row.image_count > 0" class="flex items-center gap-1.5">
@@ -348,6 +354,18 @@ const getRequestTypeBadgeClass = (row: AdminUsageLog): string => {
   if (requestType === 'stream') return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
   if (requestType === 'sync') return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
   return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+}
+
+const getBillingModeLabel = (mode: string | null | undefined): string => {
+  if (mode === 'per_request') return t('admin.usage.billingModePerRequest')
+  if (mode === 'image') return t('admin.usage.billingModeImage')
+  return t('admin.usage.billingModeToken')
+}
+
+const getBillingModeBadgeClass = (mode: string | null | undefined): string => {
+  if (mode === 'per_request') return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+  if (mode === 'image') return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+  return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
 }
 
 const formatCacheTokens = (tokens: number): string => {

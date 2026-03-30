@@ -4207,6 +4207,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		FirstTokenMs:          result.FirstTokenMs,
 		CreatedAt:             time.Now(),
 	}
+	// 设置计费模式（OpenAI 网关都是 token 计费）
+	{
+		billingMode := "token"
+		usageLog.BillingMode = &billingMode
+	}
 	// 添加 UserAgent
 	if input.UserAgent != "" {
 		usageLog.UserAgent = &input.UserAgent

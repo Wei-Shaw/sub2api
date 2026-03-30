@@ -142,6 +142,93 @@ func (_u *UsageLogUpdate) ClearUpstreamModel() *UsageLogUpdate {
 	return _u
 }
 
+// SetChannelID sets the "channel_id" field.
+func (_u *UsageLogUpdate) SetChannelID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetChannelID()
+	_u.mutation.SetChannelID(v)
+	return _u
+}
+
+// SetNillableChannelID sets the "channel_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableChannelID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetChannelID(*v)
+	}
+	return _u
+}
+
+// AddChannelID adds value to the "channel_id" field.
+func (_u *UsageLogUpdate) AddChannelID(v int64) *UsageLogUpdate {
+	_u.mutation.AddChannelID(v)
+	return _u
+}
+
+// ClearChannelID clears the value of the "channel_id" field.
+func (_u *UsageLogUpdate) ClearChannelID() *UsageLogUpdate {
+	_u.mutation.ClearChannelID()
+	return _u
+}
+
+// SetModelMappingChain sets the "model_mapping_chain" field.
+func (_u *UsageLogUpdate) SetModelMappingChain(v string) *UsageLogUpdate {
+	_u.mutation.SetModelMappingChain(v)
+	return _u
+}
+
+// SetNillableModelMappingChain sets the "model_mapping_chain" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableModelMappingChain(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetModelMappingChain(*v)
+	}
+	return _u
+}
+
+// ClearModelMappingChain clears the value of the "model_mapping_chain" field.
+func (_u *UsageLogUpdate) ClearModelMappingChain() *UsageLogUpdate {
+	_u.mutation.ClearModelMappingChain()
+	return _u
+}
+
+// SetBillingTier sets the "billing_tier" field.
+func (_u *UsageLogUpdate) SetBillingTier(v string) *UsageLogUpdate {
+	_u.mutation.SetBillingTier(v)
+	return _u
+}
+
+// SetNillableBillingTier sets the "billing_tier" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableBillingTier(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetBillingTier(*v)
+	}
+	return _u
+}
+
+// ClearBillingTier clears the value of the "billing_tier" field.
+func (_u *UsageLogUpdate) ClearBillingTier() *UsageLogUpdate {
+	_u.mutation.ClearBillingTier()
+	return _u
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (_u *UsageLogUpdate) SetBillingMode(v string) *UsageLogUpdate {
+	_u.mutation.SetBillingMode(v)
+	return _u
+}
+
+// SetNillableBillingMode sets the "billing_mode" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableBillingMode(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetBillingMode(*v)
+	}
+	return _u
+}
+
+// ClearBillingMode clears the value of the "billing_mode" field.
+func (_u *UsageLogUpdate) ClearBillingMode() *UsageLogUpdate {
+	_u.mutation.ClearBillingMode()
+	return _u
+}
+
 // SetGroupID sets the "group_id" field.
 func (_u *UsageLogUpdate) SetGroupID(v int64) *UsageLogUpdate {
 	_u.mutation.SetGroupID(v)
@@ -795,6 +882,21 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ModelMappingChain(); ok {
+		if err := usagelog.ModelMappingChainValidator(v); err != nil {
+			return &ValidationError{Name: "model_mapping_chain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model_mapping_chain": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.BillingTier(); ok {
+		if err := usagelog.BillingTierValidator(v); err != nil {
+			return &ValidationError{Name: "billing_tier", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_tier": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.BillingMode(); ok {
+		if err := usagelog.BillingModeValidator(v); err != nil {
+			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UserAgent(); ok {
 		if err := usagelog.UserAgentValidator(v); err != nil {
 			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "UsageLog.user_agent": %w`, err)}
@@ -856,6 +958,33 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.UpstreamModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.ChannelID(); ok {
+		_spec.SetField(usagelog.FieldChannelID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedChannelID(); ok {
+		_spec.AddField(usagelog.FieldChannelID, field.TypeInt64, value)
+	}
+	if _u.mutation.ChannelIDCleared() {
+		_spec.ClearField(usagelog.FieldChannelID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ModelMappingChain(); ok {
+		_spec.SetField(usagelog.FieldModelMappingChain, field.TypeString, value)
+	}
+	if _u.mutation.ModelMappingChainCleared() {
+		_spec.ClearField(usagelog.FieldModelMappingChain, field.TypeString)
+	}
+	if value, ok := _u.mutation.BillingTier(); ok {
+		_spec.SetField(usagelog.FieldBillingTier, field.TypeString, value)
+	}
+	if _u.mutation.BillingTierCleared() {
+		_spec.ClearField(usagelog.FieldBillingTier, field.TypeString)
+	}
+	if value, ok := _u.mutation.BillingMode(); ok {
+		_spec.SetField(usagelog.FieldBillingMode, field.TypeString, value)
+	}
+	if _u.mutation.BillingModeCleared() {
+		_spec.ClearField(usagelog.FieldBillingMode, field.TypeString)
 	}
 	if value, ok := _u.mutation.InputTokens(); ok {
 		_spec.SetField(usagelog.FieldInputTokens, field.TypeInt, value)
@@ -1276,6 +1405,93 @@ func (_u *UsageLogUpdateOne) SetNillableUpstreamModel(v *string) *UsageLogUpdate
 // ClearUpstreamModel clears the value of the "upstream_model" field.
 func (_u *UsageLogUpdateOne) ClearUpstreamModel() *UsageLogUpdateOne {
 	_u.mutation.ClearUpstreamModel()
+	return _u
+}
+
+// SetChannelID sets the "channel_id" field.
+func (_u *UsageLogUpdateOne) SetChannelID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetChannelID()
+	_u.mutation.SetChannelID(v)
+	return _u
+}
+
+// SetNillableChannelID sets the "channel_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableChannelID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetChannelID(*v)
+	}
+	return _u
+}
+
+// AddChannelID adds value to the "channel_id" field.
+func (_u *UsageLogUpdateOne) AddChannelID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddChannelID(v)
+	return _u
+}
+
+// ClearChannelID clears the value of the "channel_id" field.
+func (_u *UsageLogUpdateOne) ClearChannelID() *UsageLogUpdateOne {
+	_u.mutation.ClearChannelID()
+	return _u
+}
+
+// SetModelMappingChain sets the "model_mapping_chain" field.
+func (_u *UsageLogUpdateOne) SetModelMappingChain(v string) *UsageLogUpdateOne {
+	_u.mutation.SetModelMappingChain(v)
+	return _u
+}
+
+// SetNillableModelMappingChain sets the "model_mapping_chain" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableModelMappingChain(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetModelMappingChain(*v)
+	}
+	return _u
+}
+
+// ClearModelMappingChain clears the value of the "model_mapping_chain" field.
+func (_u *UsageLogUpdateOne) ClearModelMappingChain() *UsageLogUpdateOne {
+	_u.mutation.ClearModelMappingChain()
+	return _u
+}
+
+// SetBillingTier sets the "billing_tier" field.
+func (_u *UsageLogUpdateOne) SetBillingTier(v string) *UsageLogUpdateOne {
+	_u.mutation.SetBillingTier(v)
+	return _u
+}
+
+// SetNillableBillingTier sets the "billing_tier" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableBillingTier(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetBillingTier(*v)
+	}
+	return _u
+}
+
+// ClearBillingTier clears the value of the "billing_tier" field.
+func (_u *UsageLogUpdateOne) ClearBillingTier() *UsageLogUpdateOne {
+	_u.mutation.ClearBillingTier()
+	return _u
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (_u *UsageLogUpdateOne) SetBillingMode(v string) *UsageLogUpdateOne {
+	_u.mutation.SetBillingMode(v)
+	return _u
+}
+
+// SetNillableBillingMode sets the "billing_mode" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableBillingMode(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetBillingMode(*v)
+	}
+	return _u
+}
+
+// ClearBillingMode clears the value of the "billing_mode" field.
+func (_u *UsageLogUpdateOne) ClearBillingMode() *UsageLogUpdateOne {
+	_u.mutation.ClearBillingMode()
 	return _u
 }
 
@@ -1945,6 +2161,21 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ModelMappingChain(); ok {
+		if err := usagelog.ModelMappingChainValidator(v); err != nil {
+			return &ValidationError{Name: "model_mapping_chain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model_mapping_chain": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.BillingTier(); ok {
+		if err := usagelog.BillingTierValidator(v); err != nil {
+			return &ValidationError{Name: "billing_tier", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_tier": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.BillingMode(); ok {
+		if err := usagelog.BillingModeValidator(v); err != nil {
+			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UserAgent(); ok {
 		if err := usagelog.UserAgentValidator(v); err != nil {
 			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "UsageLog.user_agent": %w`, err)}
@@ -2023,6 +2254,33 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.UpstreamModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.ChannelID(); ok {
+		_spec.SetField(usagelog.FieldChannelID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedChannelID(); ok {
+		_spec.AddField(usagelog.FieldChannelID, field.TypeInt64, value)
+	}
+	if _u.mutation.ChannelIDCleared() {
+		_spec.ClearField(usagelog.FieldChannelID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ModelMappingChain(); ok {
+		_spec.SetField(usagelog.FieldModelMappingChain, field.TypeString, value)
+	}
+	if _u.mutation.ModelMappingChainCleared() {
+		_spec.ClearField(usagelog.FieldModelMappingChain, field.TypeString)
+	}
+	if value, ok := _u.mutation.BillingTier(); ok {
+		_spec.SetField(usagelog.FieldBillingTier, field.TypeString, value)
+	}
+	if _u.mutation.BillingTierCleared() {
+		_spec.ClearField(usagelog.FieldBillingTier, field.TypeString)
+	}
+	if value, ok := _u.mutation.BillingMode(); ok {
+		_spec.SetField(usagelog.FieldBillingMode, field.TypeString, value)
+	}
+	if _u.mutation.BillingModeCleared() {
+		_spec.ClearField(usagelog.FieldBillingMode, field.TypeString)
 	}
 	if value, ok := _u.mutation.InputTokens(); ok {
 		_spec.SetField(usagelog.FieldInputTokens, field.TypeInt, value)
