@@ -191,10 +191,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		channelMapping = h.gatewayService.ResolveChannelMapping(c.Request.Context(), *apiKey.GroupID, reqModel)
 	}
 
-	// 渠道模型限制检查
+	// 渠道模型限制检查：先映射再判断
 	if apiKey.GroupID != nil {
-		if h.gatewayService.IsModelRestricted(c.Request.Context(), *apiKey.GroupID, reqModel) {
-			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+		if h.gatewayService.IsModelRestricted(c.Request.Context(), *apiKey.GroupID, channelMapping.MappedModel) {
 			return
 		}
 	}
@@ -583,10 +582,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		channelMappingMsg = h.gatewayService.ResolveChannelMapping(c.Request.Context(), *apiKey.GroupID, reqModel)
 	}
 
-	// 渠道模型限制检查
+	// 渠道模型限制检查：先映射再判断
 	if apiKey.GroupID != nil {
-		if h.gatewayService.IsModelRestricted(c.Request.Context(), *apiKey.GroupID, reqModel) {
-			h.anthropicErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+		if h.gatewayService.IsModelRestricted(c.Request.Context(), *apiKey.GroupID, channelMappingMsg.MappedModel) {
 			return
 		}
 	}
@@ -1164,9 +1162,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		channelMappingWS = h.gatewayService.ResolveChannelMapping(ctx, *apiKey.GroupID, reqModel)
 	}
 
-	// 渠道模型限制检查
+	// 渠道模型限制检查：先映射再判断
 	if apiKey.GroupID != nil {
-		if h.gatewayService.IsModelRestricted(ctx, *apiKey.GroupID, reqModel) {
+		if h.gatewayService.IsModelRestricted(ctx, *apiKey.GroupID, channelMappingWS.MappedModel) {
 			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model not allowed")
 			return
 		}

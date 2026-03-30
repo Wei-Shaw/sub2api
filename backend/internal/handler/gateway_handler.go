@@ -164,9 +164,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		channelMapping = h.gatewayService.ResolveChannelMapping(c.Request.Context(), *apiKey.GroupID, reqModel)
 	}
 
-	// 渠道模型限制检查：使用原始请求模型名，因为定价列表中注册的是用户请求的模型名
+	// 渠道模型限制检查：先映射再判断，映射后的模型在定价列表中即放行
 	if apiKey.GroupID != nil {
-		if h.gatewayService.IsModelRestricted(c.Request.Context(), *apiKey.GroupID, reqModel) {
+		if h.gatewayService.IsModelRestricted(c.Request.Context(), *apiKey.GroupID, channelMapping.MappedModel) {
 			h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
 			return
 		}

@@ -155,9 +155,9 @@
           >
             {{ t('admin.channels.form.basicSettings', '基础设置') }}
           </button>
-          <!-- Platform Tabs -->
+          <!-- Platform Tabs (only enabled) -->
           <button
-            v-for="(section, sIdx) in form.platforms"
+            v-for="section in form.platforms.filter(s => s.enabled)"
             :key="section.platform"
             type="button"
             @click="activeTab = section.platform"
@@ -166,12 +166,6 @@
           >
             <PlatformIcon :platform="section.platform" size="xs" :class="getPlatformTextColor(section.platform)" />
             <span :class="getPlatformTextColor(section.platform)">{{ t('admin.groups.platforms.' + section.platform, section.platform) }}</span>
-            <span
-              @click.stop="removePlatformSection(sIdx)"
-              class="ml-1 rounded-full p-0.5 opacity-0 group-hover:opacity-100 hover:bg-gray-200 dark:hover:bg-dark-600 transition-opacity"
-            >
-              <Icon name="x" size="xs" class="text-gray-400 hover:text-red-500" />
-            </span>
           </button>
         </div>
 
@@ -261,7 +255,7 @@
           <div
             v-for="(section, sIdx) in form.platforms"
             :key="'tab-' + section.platform"
-            v-show="activeTab === section.platform"
+            v-show="section.enabled && activeTab === section.platform"
             class="space-y-4"
           >
             <!-- Groups -->
@@ -449,6 +443,7 @@ const appStore = useAppStore()
 // ── Platform Section type ──
 interface PlatformSection {
   platform: GroupPlatform
+  enabled: boolean
   collapsed: boolean
   group_ids: number[]
   model_mapping: Record<string, string>
@@ -549,11 +544,12 @@ function formatDate(value: string): string {
 }
 
 // ── Platform section helpers ──
-const activePlatforms = computed(() => form.platforms.map(s => s.platform))
+const activePlatforms = computed(() => form.platforms.filter(s => s.enabled).map(s => s.platform))
 
 function addPlatformSection(platform: GroupPlatform) {
   form.platforms.push({
     platform,
+    enabled: true,
     collapsed: false,
     group_ids: [],
     model_mapping: {},
@@ -562,19 +558,14 @@ function addPlatformSection(platform: GroupPlatform) {
 }
 
 function togglePlatform(platform: GroupPlatform) {
-  const idx = form.platforms.findIndex(s => s.platform === platform)
-  if (idx >= 0) {
-    removePlatformSection(idx)
+  const section = form.platforms.find(s => s.platform === platform)
+  if (section) {
+    section.enabled = !section.enabled
+    if (!section.enabled && activeTab.value === platform) {
+      activeTab.value = 'basic'
+    }
   } else {
     addPlatformSection(platform)
-  }
-}
-
-function removePlatformSection(idx: number) {
-  const removed = form.platforms[idx]
-  form.platforms.splice(idx, 1)
-  if (activeTab.value === removed.platform) {
-    activeTab.value = 'basic'
   }
 }
 
@@ -682,6 +673,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
   const model_mapping: Record<string, Record<string, string>> = {}
 
   for (const section of form.platforms) {
+    if (!section.enabled) continue
     group_ids.push(...section.group_ids)
 
     // Model mapping per platform
@@ -755,6 +747,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
 
     sections.push({
       platform,
+      enabled: true,
       collapsed: false,
       group_ids: groupIds,
       model_mapping: { ...mapping },
@@ -868,16 +861,16 @@ async function handleSubmit() {
     return
   }
 
-  // Check duplicate models across all platform sections
-  const allModels = form.platforms.flatMap(s => s.model_pricing.flatMap(e => e.models.map(m => m.toLowerCase())))
+  // Check duplicate models across all enabled platform sections
+  const allModels = form.platforms.filter(s => s.enabled).flatMap(s => s.model_pricing.flatMap(e => e.models.map(m => m.toLowerCase())))
   const duplicates = allModels.filter((m, i) => allModels.indexOf(m) !== i)
   if (duplicates.length > 0) {
     appStore.showError(t('admin.channels.duplicateModels', `模型 "${duplicates[0]}" 在多个定价条目中重复`))
     return
   }
 
-  // 校验 per_request/image 模式必须有价格
-  for (const section of form.platforms) {
+  // 校验 per_request/image 模式必须有价格 (只校验启用的平台)
+  for (const section of form.platforms.filter(s => s.enabled)) {
     for (const entry of section.model_pricing) {
       if (entry.models.length === 0) continue
       if ((entry.billing_mode === 'per_request' || entry.billing_mode === 'image') &&
