@@ -1886,7 +1886,13 @@ export default {
         restrictModels: '限制模型',
         restrictModelsHint: '开启后，仅允许模型定价列表中的模型。不在列表中的模型请求将被拒绝。',
         defaultPerRequestPrice: '默认单次价格（未命中层级时使用）',
-        defaultImagePrice: '默认图片价格（未命中层级时使用）'
+        defaultImagePrice: '默认图片价格（未命中层级时使用）',
+        platformConfig: '平台配置',
+        addPlatform: '添加平台',
+        noPlatforms: '点击"添加平台"开始配置渠道',
+        mappingCount: '条映射',
+        pricingEntry: '定价配置',
+        noModels: '未添加模型'
       }
     },
 

@@ -1806,7 +1806,13 @@ export default {
         restrictModels: 'Restrict Models',
         restrictModelsHint: 'When enabled, only models in the pricing list are allowed. Others will be rejected.',
         defaultPerRequestPrice: 'Default per-request price (fallback when no tier matches)',
-        defaultImagePrice: 'Default image price (fallback when no tier matches)'
+        defaultImagePrice: 'Default image price (fallback when no tier matches)',
+        platformConfig: 'Platform Configuration',
+        addPlatform: 'Add Platform',
+        noPlatforms: 'Click "Add Platform" to start configuring the channel',
+        mappingCount: 'mappings',
+        pricingEntry: 'Pricing Entry',
+        noModels: 'No models added'
       }
     },
 
