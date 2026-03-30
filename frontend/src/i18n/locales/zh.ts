@@ -4547,6 +4547,7 @@ export default {
           provider: '存储类型',
           active: '生效状态',
           endpoint: '端点',
+          bucket: '存储桶',
           storagePath: '存储路径',
           capacityUsage: '容量 / 已用',
           capacityUnlimited: '无限制',
