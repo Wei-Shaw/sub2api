@@ -19,6 +19,9 @@ type ResolvedPricing struct {
 	// 按次/图片模式：分层定价
 	RequestTiers []PricingInterval
 
+	// 按次/图片模式：默认价格（未命中层级时使用）
+	DefaultPerRequestPrice float64
+
 	// 来源标识
 	Source string // "channel", "litellm", "fallback"
 
@@ -136,6 +139,9 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 // applyRequestTierOverrides 应用按次/图片模式的渠道覆盖
 func (r *ModelPricingResolver) applyRequestTierOverrides(chPricing *ChannelModelPricing, resolved *ResolvedPricing) {
 	resolved.RequestTiers = chPricing.Intervals
+	if chPricing.PerRequestPrice != nil {
+		resolved.DefaultPerRequestPrice = *chPricing.PerRequestPrice
+	}
 }
 
 // GetIntervalPricing 根据 context token 数获取区间定价。
