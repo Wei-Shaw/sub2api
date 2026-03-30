@@ -2462,6 +2462,11 @@ export default {
           target: '目标 TTL',
           targetHint: '选择计费使用的 TTL 类型'
         REDACTED,
+        customBaseUrl: {
+          label: '自定义转发地址',
+          hint: '启用后将请求转发到自定义中继服务，代理地址将作为 URL 参数传递给中继服务',
+          urlHint: '中继服务地址（如 https://relay.example.com）',
+        REDACTED,
         clientAffinity: {
           label: '客户端亲和调度',
           hint: '启用后，新会话会优先调度到该客户端之前使用过的账号，避免频繁切换账号'

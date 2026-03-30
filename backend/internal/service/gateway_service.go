@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	mathrand "math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -4150,10 +4151,12 @@ REDACTED
 		return nil, err
 REDACTED
 
-	// 获取代理URL
+	// 获取代理URL（自定义 base URL 模式下，proxy 通过 buildCustomRelayURL 作为查询参数传递）
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
+		if !account.IsCustomBaseURLEnabled() || account.GetCustomBaseURL() == "" {
+			proxyURL = account.Proxy.URL()
+	REDACTED
 REDACTED
 
 	// 解析 TLS 指纹 profile（同一请求生命周期内不变，避免重试循环中重复解析）
@@ -5628,6 +5631,16 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		REDACTED
 			targetURL = validatedURL + "/v1/messages?beta=true"
 	REDACTED
+REDACTED else if account.IsCustomBaseURLEnabled() {
+		customURL := account.GetCustomBaseURL()
+		if customURL == "" {
+			return nil, fmt.Errorf("custom_base_url is enabled but not configured for account %d", account.ID)
+	REDACTED
+		validatedURL, err := s.validateUpstreamBaseURL(customURL)
+		if err != nil {
+			return nil, err
+	REDACTED
+		targetURL = s.buildCustomRelayURL(validatedURL, "/v1/messages", account)
 REDACTED
 
 	clientHeaders := http.Header{REDACTED
@@ -8063,10 +8076,12 @@ REDACTED
 		return err
 REDACTED
 
-	// 获取代理URL
+	// 获取代理URL（自定义 base URL 模式下，proxy 通过 buildCustomRelayURL 作为查询参数传递）
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
+		if !account.IsCustomBaseURLEnabled() || account.GetCustomBaseURL() == "" {
+			proxyURL = account.Proxy.URL()
+	REDACTED
 REDACTED
 
 	// 发送请求
@@ -8345,6 +8360,16 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		REDACTED
 			targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
 	REDACTED
+REDACTED else if account.IsCustomBaseURLEnabled() {
+		customURL := account.GetCustomBaseURL()
+		if customURL == "" {
+			return nil, fmt.Errorf("custom_base_url is enabled but not configured for account %d", account.ID)
+	REDACTED
+		validatedURL, err := s.validateUpstreamBaseURL(customURL)
+		if err != nil {
+			return nil, err
+	REDACTED
+		targetURL = s.buildCustomRelayURL(validatedURL, "/v1/messages/count_tokens", account)
 REDACTED
 
 	clientHeaders := http.Header{REDACTED
@@ -8469,6 +8494,19 @@ func (s *GatewayService) countTokensError(c *gin.Context, status int, errType, m
 			"message": message,
 	REDACTED,
 REDACTED)
+REDACTED
+
+// buildCustomRelayURL 构建自定义中继转发 URL
+// 在 path 后附加 beta=true 和可选的 proxy 查询参数
+func (s *GatewayService) buildCustomRelayURL(baseURL, path string, account *Account) string {
+	u := strings.TrimRight(baseURL, "/") + path + "?beta=true"
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL := account.Proxy.URL()
+		if proxyURL != "" {
+			u += "&proxy=" + url.QueryEscape(proxyURL)
+	REDACTED
+REDACTED
+	return u
 REDACTED
 
 func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {

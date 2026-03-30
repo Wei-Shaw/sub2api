@@ -268,6 +268,14 @@ REDACTED
 			target := a.GetCacheTTLOverrideTarget()
 			out.CacheTTLOverrideTarget = &target
 	REDACTED
+		// 自定义 Base URL 中继转发
+		if a.IsCustomBaseURLEnabled() {
+			enabled := true
+			out.CustomBaseURLEnabled = &enabled
+			if customURL := a.GetCustomBaseURL(); customURL != "" {
+				out.CustomBaseURL = &customURL
+		REDACTED
+	REDACTED
 REDACTED
 
 	// 提取账号配额限制（apikey / bedrock 类型有效）

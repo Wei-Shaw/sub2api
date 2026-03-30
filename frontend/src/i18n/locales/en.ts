@@ -2318,6 +2318,11 @@ export default {
           target: 'Target TTL',
           targetHint: 'Select the TTL tier for billing'
         REDACTED,
+        customBaseUrl: {
+          label: 'Custom Relay URL',
+          hint: 'Forward requests to a custom relay service. Proxy URL will be passed as a query parameter.',
+          urlHint: 'Relay service URL (e.g., https://relay.example.com)',
+        REDACTED,
         clientAffinity: {
           label: 'Client Affinity Scheduling',
           hint: 'When enabled, new sessions prefer accounts previously used by this client to reduce account switching'
