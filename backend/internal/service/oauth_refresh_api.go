@@ -54,8 +54,13 @@ REDACTED
 
 // getLocalLock 返回指定 cacheKey 的进程内互斥锁
 func (api *OAuthRefreshAPI) getLocalLock(cacheKey string) *sync.Mutex {
-	val, _ := api.localLocks.LoadOrStore(cacheKey, &sync.Mutex{REDACTED)
-	return val.(*sync.Mutex)
+	actual, _ := api.localLocks.LoadOrStore(cacheKey, &sync.Mutex{REDACTED)
+	mu, ok := actual.(*sync.Mutex)
+	if !ok {
+		mu = &sync.Mutex{REDACTED
+		api.localLocks.Store(cacheKey, mu)
+REDACTED
+	return mu
 REDACTED
 
 // RefreshIfNeeded 在分布式锁保护下按需刷新 OAuth token
