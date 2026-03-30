@@ -41,16 +41,17 @@ type Channel struct {
 
 	// 关联的分组 ID 列表
 	GroupIDs []int64
-	// 模型定价列表
+	// 模型定价列表（每条含 Platform 字段）
 	ModelPricing []ChannelModelPricing
-	// 渠道级模型映射
-	ModelMapping map[string]string
+	// 渠道级模型映射（按平台分组：platform → {src→dst}）
+	ModelMapping map[string]map[string]string
 }
 
 // ChannelModelPricing 渠道模型定价条目
 type ChannelModelPricing struct {
 	ID               int64
 	ChannelID        int64
+	Platform         string      // 所属平台（anthropic/openai/gemini/...）
 	Models           []string    // 绑定的模型列表
 	BillingMode      BillingMode // 计费模式
 	InputPrice       *float64    // 每 token 输入价格（USD）— 向后兼容 flat 定价
@@ -82,21 +83,26 @@ type PricingInterval struct {
 }
 
 // ResolveMappedModel 解析渠道级模型映射，返回映射后的模型名。
+// platform 指定查找哪个平台的映射规则。
 // 支持通配符（如 "claude-*" → "claude-sonnet-4"）。
 // 如果没有匹配的映射规则，返回原始模型名。
-func (c *Channel) ResolveMappedModel(requestedModel string) string {
+func (c *Channel) ResolveMappedModel(platform, requestedModel string) string {
 	if len(c.ModelMapping) == 0 {
+		return requestedModel
+	}
+	platformMapping, ok := c.ModelMapping[platform]
+	if !ok || len(platformMapping) == 0 {
 		return requestedModel
 	}
 	lower := strings.ToLower(requestedModel)
 	// 精确匹配优先
-	for src, dst := range c.ModelMapping {
+	for src, dst := range platformMapping {
 		if strings.ToLower(src) == lower {
 			return dst
 		}
 	}
 	// 通配符匹配
-	for src, dst := range c.ModelMapping {
+	for src, dst := range platformMapping {
 		srcLower := strings.ToLower(src)
 		if strings.HasSuffix(srcLower, "*") {
 			prefix := strings.TrimSuffix(srcLower, "*")
@@ -190,9 +196,13 @@ func (c *Channel) Clone() *Channel {
 		}
 	}
 	if c.ModelMapping != nil {
-		cp.ModelMapping = make(map[string]string, len(c.ModelMapping))
-		for k, v := range c.ModelMapping {
-			cp.ModelMapping[k] = v
+		cp.ModelMapping = make(map[string]map[string]string, len(c.ModelMapping))
+		for platform, mapping := range c.ModelMapping {
+			inner := make(map[string]string, len(mapping))
+			for k, v := range mapping {
+				inner[k] = v
+			}
+			cp.ModelMapping[platform] = inner
 		}
 	}
 	return &cp

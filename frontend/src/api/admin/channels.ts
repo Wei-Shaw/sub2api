@@ -22,6 +22,7 @@ export interface PricingInterval {
 
 export interface ChannelModelPricing {
   id?: number
+  platform: string
   models: string[]
   billing_mode: BillingMode
   input_price: number | null
@@ -42,7 +43,7 @@ export interface Channel {
   restrict_models: boolean
   group_ids: number[]
   model_pricing: ChannelModelPricing[]
-  model_mapping: Record<string, string>
+  model_mapping: Record<string, Record<string, string>> // platform → {src→dst}
   created_at: string
   updated_at: string
 }
@@ -52,7 +53,7 @@ export interface CreateChannelRequest {
   description?: string
   group_ids?: number[]
   model_pricing?: ChannelModelPricing[]
-  model_mapping?: Record<string, string>
+  model_mapping?: Record<string, Record<string, string>>
   billing_model_source?: string
   restrict_models?: boolean
 }
@@ -63,7 +64,7 @@ export interface UpdateChannelRequest {
   status?: string
   group_ids?: number[]
   model_pricing?: ChannelModelPricing[]
-  model_mapping?: Record<string, string>
+  model_mapping?: Record<string, Record<string, string>>
   billing_model_source?: string
   restrict_models?: boolean
 }
