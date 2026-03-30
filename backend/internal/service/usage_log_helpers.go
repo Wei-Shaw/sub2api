@@ -21,8 +21,8 @@ REDACTED
 REDACTED
 
 func forwardResultBillingModel(requestedModel, upstreamModel string) string {
-	if trimmedUpstream := strings.TrimSpace(upstreamModel); trimmedUpstream != "" {
-		return trimmedUpstream
+	if trimmed := strings.TrimSpace(requestedModel); trimmed != "" {
+		return trimmed
 REDACTED
-	return strings.TrimSpace(requestedModel)
+	return strings.TrimSpace(upstreamModel)
 REDACTED

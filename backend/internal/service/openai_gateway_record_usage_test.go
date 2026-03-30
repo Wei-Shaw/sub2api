@@ -895,14 +895,16 @@ REDACTED
 	require.Equal(t, 1, userRepo.deductCalls)
 REDACTED
 
-func TestOpenAIGatewayServiceRecordUsage_BillsMappedRequestsUsingUpstreamModelFallback(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_BillsMappedRequestsUsingRequestedModel(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
 	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
 	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
 	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10REDACTED
 
-	expectedCost, err := svc.billingService.CalculateCost("gpt-5.1-codex", UsageTokens{
+	// Billing should use the requested model ("gpt-5.1"), not the upstream mapped model ("gpt-5.1-codex").
+	// This ensures pricing is always based on the model the user requested.
+	expectedCost, err := svc.billingService.CalculateCost("gpt-5.1", UsageTokens{
 		InputTokens:  20,
 		OutputTokens: 10,
 REDACTED, 1.1)
