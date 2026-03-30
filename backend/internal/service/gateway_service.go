@@ -631,6 +631,7 @@ type GatewayService struct {
 	debugModelRouting     atomic.Bool
 	debugClaudeMimic      atomic.Bool
 	channelService        *ChannelService
+	resolver              *ModelPricingResolver
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 }
@@ -661,6 +662,7 @@ func NewGatewayService(
 	settingService *SettingService,
 	tlsFPProfileService *TLSFingerprintProfileService,
 	channelService *ChannelService,
+	resolver *ModelPricingResolver,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -694,6 +696,7 @@ func NewGatewayService(
 		responseHeaderFilter: compileResponseHeaderFilter(cfg),
 		tlsFPProfileService:  tlsFPProfileService,
 		channelService:       channelService,
+		resolver:             resolver,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -7959,13 +7962,21 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
 		}
 		var err error
-		// 渠道定价覆盖
-		var chPricing *ChannelModelPricing
-		if s.channelService != nil && apiKey.Group != nil {
-			chPricing = s.channelService.GetChannelModelPricing(ctx, apiKey.Group.ID, billingModel)
-		}
-		if chPricing != nil {
-			cost, err = s.billingService.CalculateCostWithChannel(billingModel, tokens, multiplier, chPricing)
+		if s.resolver != nil && apiKey.Group != nil {
+			var groupID *int64
+			if apiKey.Group != nil {
+				gid := apiKey.Group.ID
+				groupID = &gid
+			}
+			cost, err = s.billingService.CalculateCostUnified(CostInput{
+				Ctx:            ctx,
+				Model:          billingModel,
+				GroupID:        groupID,
+				Tokens:         tokens,
+				RequestCount:   1,
+				RateMultiplier: multiplier,
+				Resolver:       s.resolver,
+			})
 		} else {
 			cost, err = s.billingService.CalculateCost(billingModel, tokens, multiplier)
 		}
@@ -8036,6 +8047,9 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	if result.MediaType != "image" && result.MediaType != "video" && result.MediaType != "prompt" {
 		if result.ImageCount > 0 {
 			billingMode := "image"
+			usageLog.BillingMode = &billingMode
+		} else if cost != nil && cost.BillingMode != "" {
+			billingMode := cost.BillingMode
 			usageLog.BillingMode = &billingMode
 		} else {
 			billingMode := "token"
@@ -8185,14 +8199,30 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
 		}
 		var err error
-		// 渠道定价覆盖
-		var chPricing2 *ChannelModelPricing
-		if s.channelService != nil && apiKey.Group != nil {
-			chPricing2 = s.channelService.GetChannelModelPricing(ctx, apiKey.Group.ID, billingModel)
+		// 优先尝试 Resolver + CalculateCostUnified（仅在有渠道定价时使用）
+		useUnified := false
+		if s.resolver != nil && apiKey.Group != nil {
+			gid := apiKey.Group.ID
+			resolved := s.resolver.Resolve(ctx, PricingInput{
+				Model:   billingModel,
+				GroupID: &gid,
+			})
+			if resolved.Source == "channel" {
+				// 有渠道定价，渠道区间已包含上下文分层
+				cost, err = s.billingService.CalculateCostUnified(CostInput{
+					Ctx:            ctx,
+					Model:          billingModel,
+					GroupID:        &gid,
+					Tokens:         tokens,
+					RequestCount:   1,
+					RateMultiplier: multiplier,
+					Resolver:       s.resolver,
+				})
+				useUnified = true
+			}
 		}
-		if chPricing2 != nil {
-			cost, err = s.billingService.CalculateCostWithChannel(billingModel, tokens, multiplier, chPricing2)
-		} else {
+		if !useUnified {
+			// 无渠道定价，保持原有长上下文双倍计费逻辑（如 Gemini 200K 阈值）
 			cost, err = s.billingService.CalculateCostWithLongContext(billingModel, tokens, multiplier, input.LongContextThreshold, input.LongContextMultiplier)
 		}
 		if err != nil {
@@ -8256,6 +8286,9 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 	// 设置计费模式
 	if result.ImageCount > 0 {
 		billingMode := "image"
+		usageLog.BillingMode = &billingMode
+	} else if cost != nil && cost.BillingMode != "" {
+		billingMode := cost.BillingMode
 		usageLog.BillingMode = &billingMode
 	} else {
 		billingMode := "token"
