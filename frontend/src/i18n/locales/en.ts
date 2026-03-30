@@ -1808,6 +1808,7 @@ export default {
         defaultPerRequestPrice: 'Default per-request price (fallback when no tier matches)',
         defaultImagePrice: 'Default image price (fallback when no tier matches)',
         platformConfig: 'Platform Configuration',
+        basicSettings: 'Basic Settings',
         addPlatform: 'Add Platform',
         noPlatforms: 'Click "Add Platform" to start configuring the channel',
         mappingCount: 'mappings',
