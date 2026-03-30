@@ -614,6 +614,7 @@ REDACTED
 urlFallbackLoop:
 	for urlIdx, baseURL := range availableURLs {
 		usedBaseURL = baseURL
+		allAttemptsInternal500 := true // 追踪本轮所有 attempt 是否全部命中 INTERNAL 500
 		for attempt := 1; attempt <= antigravityMaxRetries; attempt++ {
 			select {
 			case <-p.ctx.Done():
@@ -766,8 +767,17 @@ urlFallbackLoop:
 							logger.LegacyPrintf("service.antigravity_gateway", "%s status=context_canceled_during_backoff", p.prefix)
 							return nil, p.ctx.Err()
 					REDACTED
+						// 追踪 INTERNAL 500：非匹配的 attempt 清除标记
+						if !isAntigravityInternalServerError(resp.StatusCode, respBody) {
+							allAttemptsInternal500 = false
+					REDACTED
 						continue
 				REDACTED
+			REDACTED
+
+				// INTERNAL 500 渐进惩罚：3 次重试全部命中特定 500 时递增计数器并惩罚
+				if allAttemptsInternal500 && isAntigravityInternalServerError(resp.StatusCode, respBody) {
+					s.handleInternal500RetryExhausted(p.ctx, p.prefix, p.account)
 			REDACTED
 
 				// 其他 4xx 错误或重试用尽，直接返回
@@ -786,6 +796,11 @@ REDACTED
 
 	if resp != nil && resp.StatusCode < 400 && usedBaseURL != "" {
 		antigravity.DefaultURLAvailability.MarkSuccess(usedBaseURL)
+REDACTED
+
+	// 成功响应时清零 INTERNAL 500 连续失败计数器（覆盖所有成功路径，含 smart retry）
+	if resp != nil && resp.StatusCode < 400 {
+		s.resetInternal500Counter(p.ctx, p.prefix, p.account.ID)
 REDACTED
 
 	return &antigravityRetryLoopResult{resp: respREDACTED, nil
@@ -862,6 +877,7 @@ type AntigravityGatewayService struct {
 	settingService    *SettingService
 	cache             GatewayCache // 用于模型级限流时清除粘性会话绑定
 	schedulerSnapshot *SchedulerSnapshotService
+	internal500Cache  Internal500CounterCache // INTERNAL 500 渐进惩罚计数器
 REDACTED
 
 func NewAntigravityGatewayService(
@@ -872,6 +888,7 @@ func NewAntigravityGatewayService(
 	rateLimitService *RateLimitService,
 	httpUpstream HTTPUpstream,
 	settingService *SettingService,
+	internal500Cache Internal500CounterCache,
 ) *AntigravityGatewayService {
 	return &AntigravityGatewayService{
 		accountRepo:       accountRepo,
@@ -881,6 +898,7 @@ func NewAntigravityGatewayService(
 		settingService:    settingService,
 		cache:             cache,
 		schedulerSnapshot: schedulerSnapshot,
+		internal500Cache:  internal500Cache,
 REDACTED
 REDACTED
 
