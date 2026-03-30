@@ -518,7 +518,7 @@ const form = reactive({
 let abortController: AbortController | null = null
 
 // ── Platform config ──
-const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'sora']
+const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity']
 
 function getPlatformTextColor(platform: string): string {
   switch (platform) {
@@ -691,6 +691,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
 
     // Model pricing with platform tag
     for (const entry of section.model_pricing) {
+      console.log('[formToAPI] entry:', JSON.stringify({ models: entry.models, billing_mode: entry.billing_mode, per_request_price: entry.per_request_price }))
       if (entry.models.length === 0) continue
       model_pricing.push({
         platform: section.platform,
@@ -707,6 +708,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     }
   }
 
+  console.log('[formToAPI] result:', JSON.stringify({ group_ids, model_pricing_count: model_pricing.length, model_mapping_keys: Object.keys(model_mapping), platforms_count: form.platforms.length, pricing_entries: form.platforms.map(s => s.model_pricing.length) }))
   return { group_ids, model_pricing, model_mapping }
 }
 
