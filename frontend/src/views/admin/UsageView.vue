@@ -392,7 +392,7 @@ const resetFilters = () => {
   const range = getLast24HoursRangeDates()
   startDate.value = range.start
   endDate.value = range.end
-  filters.value = { start_date: startDate.value, end_date: endDate.value, request_type: undefined, billing_type: null REDACTED
+  filters.value = { start_date: startDate.value, end_date: endDate.value, request_type: undefined, billing_type: null, billing_mode: undefined REDACTED
   granularity.value = getGranularityForRange(startDate.value, endDate.value)
   applyFilters()
 REDACTED
@@ -477,6 +477,7 @@ const allColumns = computed(() => [
   { key: 'endpoint', label: t('usage.endpoint'), sortable: false REDACTED,
   { key: 'group', label: t('admin.usage.group'), sortable: false REDACTED,
   { key: 'stream', label: t('usage.type'), sortable: false REDACTED,
+  { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false REDACTED,
   { key: 'tokens', label: t('usage.tokens'), sortable: false REDACTED,
   { key: 'cost', label: t('usage.cost'), sortable: false REDACTED,
   { key: 'first_token', label: t('usage.firstToken'), sortable: false REDACTED,

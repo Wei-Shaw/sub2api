@@ -4204,6 +4204,11 @@ REDACTED
 		FirstTokenMs:          result.FirstTokenMs,
 		CreatedAt:             time.Now(),
 REDACTED
+	// 设置计费模式（OpenAI 网关都是 token 计费）
+	{
+		billingMode := "token"
+		usageLog.BillingMode = &billingMode
+REDACTED
 	// 添加 UserAgent
 	if input.UserAgent != "" {
 		usageLog.UserAgent = &input.UserAgent

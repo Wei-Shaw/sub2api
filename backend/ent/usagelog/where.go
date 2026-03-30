@@ -90,6 +90,26 @@ func UpstreamModel(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldUpstreamModel, v))
 REDACTED
 
+// ChannelID applies equality check predicate on the "channel_id" field. It's identical to ChannelIDEQ.
+func ChannelID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldChannelID, v))
+REDACTED
+
+// ModelMappingChain applies equality check predicate on the "model_mapping_chain" field. It's identical to ModelMappingChainEQ.
+func ModelMappingChain(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldModelMappingChain, v))
+REDACTED
+
+// BillingTier applies equality check predicate on the "billing_tier" field. It's identical to BillingTierEQ.
+func BillingTier(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingTier, v))
+REDACTED
+
+// BillingMode applies equality check predicate on the "billing_mode" field. It's identical to BillingModeEQ.
+func BillingMode(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingMode, v))
+REDACTED
+
 // GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
 func GroupID(v int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldGroupID, v))
@@ -563,6 +583,281 @@ REDACTED
 // UpstreamModelContainsFold applies the ContainsFold predicate on the "upstream_model" field.
 func UpstreamModelContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldUpstreamModel, v))
+REDACTED
+
+// ChannelIDEQ applies the EQ predicate on the "channel_id" field.
+func ChannelIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldChannelID, v))
+REDACTED
+
+// ChannelIDNEQ applies the NEQ predicate on the "channel_id" field.
+func ChannelIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldChannelID, v))
+REDACTED
+
+// ChannelIDIn applies the In predicate on the "channel_id" field.
+func ChannelIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldChannelID, vs...))
+REDACTED
+
+// ChannelIDNotIn applies the NotIn predicate on the "channel_id" field.
+func ChannelIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldChannelID, vs...))
+REDACTED
+
+// ChannelIDGT applies the GT predicate on the "channel_id" field.
+func ChannelIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldChannelID, v))
+REDACTED
+
+// ChannelIDGTE applies the GTE predicate on the "channel_id" field.
+func ChannelIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldChannelID, v))
+REDACTED
+
+// ChannelIDLT applies the LT predicate on the "channel_id" field.
+func ChannelIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldChannelID, v))
+REDACTED
+
+// ChannelIDLTE applies the LTE predicate on the "channel_id" field.
+func ChannelIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldChannelID, v))
+REDACTED
+
+// ChannelIDIsNil applies the IsNil predicate on the "channel_id" field.
+func ChannelIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldChannelID))
+REDACTED
+
+// ChannelIDNotNil applies the NotNil predicate on the "channel_id" field.
+func ChannelIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldChannelID))
+REDACTED
+
+// ModelMappingChainEQ applies the EQ predicate on the "model_mapping_chain" field.
+func ModelMappingChainEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldModelMappingChain, v))
+REDACTED
+
+// ModelMappingChainNEQ applies the NEQ predicate on the "model_mapping_chain" field.
+func ModelMappingChainNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldModelMappingChain, v))
+REDACTED
+
+// ModelMappingChainIn applies the In predicate on the "model_mapping_chain" field.
+func ModelMappingChainIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldModelMappingChain, vs...))
+REDACTED
+
+// ModelMappingChainNotIn applies the NotIn predicate on the "model_mapping_chain" field.
+func ModelMappingChainNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldModelMappingChain, vs...))
+REDACTED
+
+// ModelMappingChainGT applies the GT predicate on the "model_mapping_chain" field.
+func ModelMappingChainGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldModelMappingChain, v))
+REDACTED
+
+// ModelMappingChainGTE applies the GTE predicate on the "model_mapping_chain" field.
+func ModelMappingChainGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldModelMappingChain, v))
+REDACTED
+
+// ModelMappingChainLT applies the LT predicate on the "model_mapping_chain" field.
+func ModelMappingChainLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldModelMappingChain, v))
+REDACTED
+
+// ModelMappingChainLTE applies the LTE predicate on the "model_mapping_chain" field.
+func ModelMappingChainLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldModelMappingChain, v))
+REDACTED
+
+// ModelMappingChainContains applies the Contains predicate on the "model_mapping_chain" field.
+func ModelMappingChainContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldModelMappingChain, v))
+REDACTED
+
+// ModelMappingChainHasPrefix applies the HasPrefix predicate on the "model_mapping_chain" field.
+func ModelMappingChainHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldModelMappingChain, v))
+REDACTED
+
+// ModelMappingChainHasSuffix applies the HasSuffix predicate on the "model_mapping_chain" field.
+func ModelMappingChainHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldModelMappingChain, v))
+REDACTED
+
+// ModelMappingChainIsNil applies the IsNil predicate on the "model_mapping_chain" field.
+func ModelMappingChainIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldModelMappingChain))
+REDACTED
+
+// ModelMappingChainNotNil applies the NotNil predicate on the "model_mapping_chain" field.
+func ModelMappingChainNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldModelMappingChain))
+REDACTED
+
+// ModelMappingChainEqualFold applies the EqualFold predicate on the "model_mapping_chain" field.
+func ModelMappingChainEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldModelMappingChain, v))
+REDACTED
+
+// ModelMappingChainContainsFold applies the ContainsFold predicate on the "model_mapping_chain" field.
+func ModelMappingChainContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldModelMappingChain, v))
+REDACTED
+
+// BillingTierEQ applies the EQ predicate on the "billing_tier" field.
+func BillingTierEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingTier, v))
+REDACTED
+
+// BillingTierNEQ applies the NEQ predicate on the "billing_tier" field.
+func BillingTierNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldBillingTier, v))
+REDACTED
+
+// BillingTierIn applies the In predicate on the "billing_tier" field.
+func BillingTierIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldBillingTier, vs...))
+REDACTED
+
+// BillingTierNotIn applies the NotIn predicate on the "billing_tier" field.
+func BillingTierNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldBillingTier, vs...))
+REDACTED
+
+// BillingTierGT applies the GT predicate on the "billing_tier" field.
+func BillingTierGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldBillingTier, v))
+REDACTED
+
+// BillingTierGTE applies the GTE predicate on the "billing_tier" field.
+func BillingTierGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldBillingTier, v))
+REDACTED
+
+// BillingTierLT applies the LT predicate on the "billing_tier" field.
+func BillingTierLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldBillingTier, v))
+REDACTED
+
+// BillingTierLTE applies the LTE predicate on the "billing_tier" field.
+func BillingTierLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldBillingTier, v))
+REDACTED
+
+// BillingTierContains applies the Contains predicate on the "billing_tier" field.
+func BillingTierContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldBillingTier, v))
+REDACTED
+
+// BillingTierHasPrefix applies the HasPrefix predicate on the "billing_tier" field.
+func BillingTierHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldBillingTier, v))
+REDACTED
+
+// BillingTierHasSuffix applies the HasSuffix predicate on the "billing_tier" field.
+func BillingTierHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldBillingTier, v))
+REDACTED
+
+// BillingTierIsNil applies the IsNil predicate on the "billing_tier" field.
+func BillingTierIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldBillingTier))
+REDACTED
+
+// BillingTierNotNil applies the NotNil predicate on the "billing_tier" field.
+func BillingTierNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldBillingTier))
+REDACTED
+
+// BillingTierEqualFold applies the EqualFold predicate on the "billing_tier" field.
+func BillingTierEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldBillingTier, v))
+REDACTED
+
+// BillingTierContainsFold applies the ContainsFold predicate on the "billing_tier" field.
+func BillingTierContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldBillingTier, v))
+REDACTED
+
+// BillingModeEQ applies the EQ predicate on the "billing_mode" field.
+func BillingModeEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingMode, v))
+REDACTED
+
+// BillingModeNEQ applies the NEQ predicate on the "billing_mode" field.
+func BillingModeNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldBillingMode, v))
+REDACTED
+
+// BillingModeIn applies the In predicate on the "billing_mode" field.
+func BillingModeIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldBillingMode, vs...))
+REDACTED
+
+// BillingModeNotIn applies the NotIn predicate on the "billing_mode" field.
+func BillingModeNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldBillingMode, vs...))
+REDACTED
+
+// BillingModeGT applies the GT predicate on the "billing_mode" field.
+func BillingModeGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldBillingMode, v))
+REDACTED
+
+// BillingModeGTE applies the GTE predicate on the "billing_mode" field.
+func BillingModeGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldBillingMode, v))
+REDACTED
+
+// BillingModeLT applies the LT predicate on the "billing_mode" field.
+func BillingModeLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldBillingMode, v))
+REDACTED
+
+// BillingModeLTE applies the LTE predicate on the "billing_mode" field.
+func BillingModeLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldBillingMode, v))
+REDACTED
+
+// BillingModeContains applies the Contains predicate on the "billing_mode" field.
+func BillingModeContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldBillingMode, v))
+REDACTED
+
+// BillingModeHasPrefix applies the HasPrefix predicate on the "billing_mode" field.
+func BillingModeHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldBillingMode, v))
+REDACTED
+
+// BillingModeHasSuffix applies the HasSuffix predicate on the "billing_mode" field.
+func BillingModeHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldBillingMode, v))
+REDACTED
+
+// BillingModeIsNil applies the IsNil predicate on the "billing_mode" field.
+func BillingModeIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldBillingMode))
+REDACTED
+
+// BillingModeNotNil applies the NotNil predicate on the "billing_mode" field.
+func BillingModeNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldBillingMode))
+REDACTED
+
+// BillingModeEqualFold applies the EqualFold predicate on the "billing_mode" field.
+func BillingModeEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldBillingMode, v))
+REDACTED
+
+// BillingModeContainsFold applies the ContainsFold predicate on the "billing_mode" field.
+func BillingModeContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldBillingMode, v))
 REDACTED
 
 // GroupIDEQ applies the EQ predicate on the "group_id" field.

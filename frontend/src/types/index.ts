@@ -1036,6 +1036,9 @@ export interface UsageLog {
   // Cache TTL Override
   cache_ttl_overridden: boolean
 
+  // 计费模式
+  billing_mode?: string | null
+
   created_at: string
 
   user?: User

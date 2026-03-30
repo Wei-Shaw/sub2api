@@ -110,6 +110,8 @@ type UsageLog struct {
 	ModelMappingChain *string
 	// BillingTier 计费层级标签（per_request/image 模式）
 	BillingTier *string
+	// BillingMode 计费模式：token/image（sora 路径为 nil）
+	BillingMode *string
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string
 	// ReasoningEffort is the request's reasoning effort level.

@@ -110,6 +110,7 @@ REDACTED
 REDACTED
 
 	model := c.Query("model")
+	billingMode := strings.TrimSpace(c.Query("billing_mode"))
 
 	var requestType *int16
 	var stream *bool
@@ -174,6 +175,7 @@ REDACTED
 		RequestType: requestType,
 		Stream:      stream,
 		BillingType: billingType,
+		BillingMode: billingMode,
 		StartTime:   startTime,
 		EndTime:     endTime,
 		ExactTotal:  exactTotal,
@@ -234,6 +236,7 @@ REDACTED
 REDACTED
 
 	model := c.Query("model")
+	billingMode := strings.TrimSpace(c.Query("billing_mode"))
 
 	var requestType *int16
 	var stream *bool
@@ -312,6 +315,7 @@ REDACTED
 		RequestType: requestType,
 		Stream:      stream,
 		BillingType: billingType,
+		BillingMode: billingMode,
 		StartTime:   &startTime,
 		EndTime:     &endTime,
 REDACTED

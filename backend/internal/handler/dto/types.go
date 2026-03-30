@@ -390,6 +390,9 @@ type UsageLog struct {
 	// Cache TTL Override 标记
 	CacheTTLOverridden bool `json:"cache_ttl_overridden"`
 
+	// BillingMode 计费模式：token/image
+	BillingMode *string `json:"billing_mode,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 
 	User         *User             `json:"user,omitempty"`
