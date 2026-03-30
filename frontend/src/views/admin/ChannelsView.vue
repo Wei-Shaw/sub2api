@@ -876,6 +876,19 @@ async function handleSubmit() {
     return
   }
 
+  // 校验 per_request/image 模式必须有价格
+  for (const section of form.platforms) {
+    for (const entry of section.model_pricing) {
+      if (entry.models.length === 0) continue
+      if ((entry.billing_mode === 'per_request' || entry.billing_mode === 'image') &&
+          (entry.per_request_price == null || entry.per_request_price === '') &&
+          (!entry.intervals || entry.intervals.length === 0)) {
+        appStore.showError(t('admin.channels.perRequestPriceRequired', '按次/图片计费模式必须设置默认价格或至少一个计费层级'))
+        return
+      }
+    }
+  }
+
   const { group_ids, model_pricing, model_mapping } = formToAPI()
   console.log('[handleSubmit] model_pricing to send:', JSON.stringify(model_pricing))
 
