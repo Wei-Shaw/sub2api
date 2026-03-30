@@ -406,8 +406,9 @@ REDACTED
 	return conflicting, nil
 REDACTED
 
-// marshalModelMapping 将 model mapping 序列化为 JSON 字节，nil/空 map 返回 '{REDACTED'
-func marshalModelMapping(m map[string]string) ([]byte, error) {
+// marshalModelMapping 将 model mapping 序列化为嵌套 JSON 字节
+// 格式：{"platform": {"src": "dst"REDACTED, ...REDACTED
+func marshalModelMapping(m map[string]map[string]string) ([]byte, error) {
 	if len(m) == 0 {
 		return []byte("{REDACTED"), nil
 REDACTED
@@ -418,14 +419,43 @@ REDACTED
 	return data, nil
 REDACTED
 
-// unmarshalModelMapping 将 JSON 字节反序列化为 model mapping
-func unmarshalModelMapping(data []byte) map[string]string {
+// unmarshalModelMapping 将 JSON 字节反序列化为嵌套 model mapping
+func unmarshalModelMapping(data []byte) map[string]map[string]string {
 	if len(data) == 0 {
 		return nil
 REDACTED
-	var m map[string]string
+	var m map[string]map[string]string
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil
 REDACTED
 	return m
+REDACTED
+
+// GetGroupPlatforms 批量查询分组 ID 对应的平台
+func (r *channelRepository) GetGroupPlatforms(ctx context.Context, groupIDs []int64) (map[int64]string, error) {
+	if len(groupIDs) == 0 {
+		return make(map[int64]string), nil
+REDACTED
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, platform FROM groups WHERE id = ANY($1)`,
+		pq.Array(groupIDs),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get group platforms: %w", err)
+REDACTED
+	defer rows.Close()
+
+	result := make(map[int64]string, len(groupIDs))
+	for rows.Next() {
+		var id int64
+		var platform string
+		if err := rows.Scan(&id, &platform); err != nil {
+			return nil, fmt.Errorf("scan group platform: %w", err)
+	REDACTED
+		result[id] = platform
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate group platforms: %w", err)
+REDACTED
+	return result, nil
 REDACTED

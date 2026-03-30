@@ -24,27 +24,28 @@ REDACTED
 // --- Request / Response types ---
 
 type createChannelRequest struct {
-	Name               string                         `json:"name" binding:"required,max=100"`
-	Description        string                         `json:"description"`
-	GroupIDs           []int64                        `json:"group_ids"`
-	ModelPricing       []channelModelPricingRequest   `json:"model_pricing"`
-	ModelMapping       map[string]string              `json:"model_mapping"`
-	BillingModelSource string                         `json:"billing_model_source" binding:"omitempty,oneof=requested upstream"`
-	RestrictModels     bool                           `json:"restrict_models"`
+	Name               string                               `json:"name" binding:"required,max=100"`
+	Description        string                               `json:"description"`
+	GroupIDs           []int64                              `json:"group_ids"`
+	ModelPricing       []channelModelPricingRequest         `json:"model_pricing"`
+	ModelMapping       map[string]map[string]string         `json:"model_mapping"`
+	BillingModelSource string                               `json:"billing_model_source" binding:"omitempty,oneof=requested upstream"`
+	RestrictModels     bool                                 `json:"restrict_models"`
 REDACTED
 
 type updateChannelRequest struct {
-	Name               string                          `json:"name" binding:"omitempty,max=100"`
-	Description        *string                         `json:"description"`
-	Status             string                          `json:"status" binding:"omitempty,oneof=active disabled"`
-	GroupIDs           *[]int64                        `json:"group_ids"`
-	ModelPricing       *[]channelModelPricingRequest   `json:"model_pricing"`
-	ModelMapping       map[string]string               `json:"model_mapping"`
-	BillingModelSource string                          `json:"billing_model_source" binding:"omitempty,oneof=requested upstream"`
-	RestrictModels     *bool                           `json:"restrict_models"`
+	Name               string                                `json:"name" binding:"omitempty,max=100"`
+	Description        *string                               `json:"description"`
+	Status             string                                `json:"status" binding:"omitempty,oneof=active disabled"`
+	GroupIDs           *[]int64                              `json:"group_ids"`
+	ModelPricing       *[]channelModelPricingRequest         `json:"model_pricing"`
+	ModelMapping       map[string]map[string]string          `json:"model_mapping"`
+	BillingModelSource string                                `json:"billing_model_source" binding:"omitempty,oneof=requested upstream"`
+	RestrictModels     *bool                                 `json:"restrict_models"`
 REDACTED
 
 type channelModelPricingRequest struct {
+	Platform         string                     `json:"platform" binding:"omitempty,max=50"`
 	Models           []string                   `json:"models" binding:"required,min=1,max=100"`
 	BillingMode      string                     `json:"billing_mode" binding:"omitempty,oneof=token per_request image"`
 	InputPrice       *float64                   `json:"input_price" binding:"omitempty,min=0"`
@@ -69,21 +70,22 @@ type pricingIntervalRequest struct {
 REDACTED
 
 type channelResponse struct {
-	ID                 int64                          `json:"id"`
-	Name               string                         `json:"name"`
-	Description        string                         `json:"description"`
-	Status             string                         `json:"status"`
-	BillingModelSource string                         `json:"billing_model_source"`
-	RestrictModels     bool                           `json:"restrict_models"`
-	GroupIDs           []int64                        `json:"group_ids"`
-	ModelPricing       []channelModelPricingResponse  `json:"model_pricing"`
-	ModelMapping       map[string]string              `json:"model_mapping"`
-	CreatedAt          string                         `json:"created_at"`
-	UpdatedAt          string                         `json:"updated_at"`
+	ID                 int64                                `json:"id"`
+	Name               string                               `json:"name"`
+	Description        string                               `json:"description"`
+	Status             string                               `json:"status"`
+	BillingModelSource string                               `json:"billing_model_source"`
+	RestrictModels     bool                                 `json:"restrict_models"`
+	GroupIDs           []int64                              `json:"group_ids"`
+	ModelPricing       []channelModelPricingResponse        `json:"model_pricing"`
+	ModelMapping       map[string]map[string]string         `json:"model_mapping"`
+	CreatedAt          string                               `json:"created_at"`
+	UpdatedAt          string                               `json:"updated_at"`
 REDACTED
 
 type channelModelPricingResponse struct {
 	ID               int64                       `json:"id"`
+	Platform         string                      `json:"platform"`
 	Models           []string                    `json:"models"`
 	BillingMode      string                      `json:"billing_mode"`
 	InputPrice       *float64                    `json:"input_price"`
@@ -131,7 +133,7 @@ REDACTED
 		resp.GroupIDs = []int64{REDACTED
 REDACTED
 	if resp.ModelMapping == nil {
-		resp.ModelMapping = map[string]string{REDACTED
+		resp.ModelMapping = map[string]map[string]string{REDACTED
 REDACTED
 
 	resp.ModelPricing = make([]channelModelPricingResponse, 0, len(ch.ModelPricing))
@@ -143,6 +145,10 @@ REDACTED
 		billingMode := string(p.BillingMode)
 		if billingMode == "" {
 			billingMode = "token"
+	REDACTED
+		platform := p.Platform
+		if platform == "" {
+			platform = "anthropic"
 	REDACTED
 		intervals := make([]pricingIntervalResponse, 0, len(p.Intervals))
 		for _, iv := range p.Intervals {
@@ -161,6 +167,7 @@ REDACTED
 	REDACTED
 		resp.ModelPricing = append(resp.ModelPricing, channelModelPricingResponse{
 			ID:               p.ID,
+			Platform:         platform,
 			Models:           models,
 			BillingMode:      billingMode,
 			InputPrice:       p.InputPrice,
@@ -182,6 +189,10 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 		if billingMode == "" {
 			billingMode = service.BillingModeToken
 	REDACTED
+		platform := r.Platform
+		if platform == "" {
+			platform = "anthropic"
+	REDACTED
 		intervals := make([]service.PricingInterval, 0, len(r.Intervals))
 		for _, iv := range r.Intervals {
 			intervals = append(intervals, service.PricingInterval{
@@ -197,6 +208,7 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 		REDACTED)
 	REDACTED
 		result = append(result, service.ChannelModelPricing{
+			Platform:         platform,
 			Models:           r.Models,
 			BillingMode:      billingMode,
 			InputPrice:       r.InputPrice,
