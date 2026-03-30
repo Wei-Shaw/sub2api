@@ -276,11 +276,21 @@ func (h *ChannelHandler) Create(c *gin.Context) {
 		return
 	}
 
+	pricing := pricingRequestToService(req.ModelPricing)
+	for _, p := range pricing {
+		if p.BillingMode == service.BillingModePerRequest || p.BillingMode == service.BillingModeImage {
+			if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
+				response.BadRequest(c, "Per-request price or intervals required for per_request/image billing mode")
+				return
+			}
+		}
+	}
+
 	channel, err := h.channelService.Create(c.Request.Context(), &service.CreateChannelInput{
 		Name:               req.Name,
 		Description:        req.Description,
 		GroupIDs:            req.GroupIDs,
-		ModelPricing:        pricingRequestToService(req.ModelPricing),
+		ModelPricing:        pricing,
 		ModelMapping:        req.ModelMapping,
 		BillingModelSource: req.BillingModelSource,
 		RestrictModels:     req.RestrictModels,
@@ -319,6 +329,14 @@ func (h *ChannelHandler) Update(c *gin.Context) {
 	}
 	if req.ModelPricing != nil {
 		pricing := pricingRequestToService(*req.ModelPricing)
+		for _, p := range pricing {
+			if p.BillingMode == service.BillingModePerRequest || p.BillingMode == service.BillingModeImage {
+				if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
+					response.BadRequest(c, "Per-request price or intervals required for per_request/image billing mode")
+					return
+				}
+			}
+		}
 		input.ModelPricing = &pricing
 	}
 
