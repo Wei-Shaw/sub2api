@@ -184,6 +184,17 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	setOpsRequestContext(c, modelName, stream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(stream, false)))
 
+	// 解析渠道级模型映射 + 限制检查
+	channelMapping, restricted := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)
+	if restricted {
+		googleError(c, http.StatusServiceUnavailable, "The requested model is not available for this API key")
+		return
+	}
+	reqModel := modelName // 保存映射前的原始模型名
+	if channelMapping.Mapped {
+		modelName = channelMapping.MappedModel
+	}
+
 	// Get subscription (may be nil)
 	subscription, _ := middleware.GetSubscriptionFromContext(c)
 
@@ -523,6 +534,10 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				LongContextMultiplier: 2.0,    // 超出部分双倍计费
 				ForceCacheBilling:     fs.ForceCacheBilling,
 				APIKeyService:         h.apiKeyService,
+				ChannelID:             channelMapping.ChannelID,
+				OriginalModel:         reqModel,
+				BillingModelSource:    channelMapping.BillingModelSource,
+				ModelMappingChain:     channelMapping.BuildModelMappingChain(reqModel, result.UpstreamModel),
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.gemini_v1beta.models"),

@@ -11,6 +11,8 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -379,6 +381,34 @@ func (s *ChannelService) IsModelRestricted(ctx context.Context, groupID int64, m
 	return true
 }
 
+// ResolveChannelMappingAndRestrict 解析渠道映射并检查模型限制（组合方法）。
+// 返回映射结果和是否被限制。groupID 为 nil 时跳过。
+func (s *ChannelService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, model string) (ChannelMappingResult, bool) {
+	var mapping ChannelMappingResult
+	mapping.MappedModel = model
+	if groupID == nil {
+		return mapping, false
+	}
+	mapping = s.ResolveChannelMapping(ctx, *groupID, model)
+	restricted := s.IsModelRestricted(ctx, *groupID, mapping.MappedModel)
+	return mapping, restricted
+}
+
+// ReplaceModelInBody 替换请求体 JSON 中的 model 字段。
+func ReplaceModelInBody(body []byte, newModel string) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	if current := gjson.GetBytes(body, "model"); current.Exists() && current.String() == newModel {
+		return body
+	}
+	newBody, err := sjson.SetBytes(body, "model", newModel)
+	if err != nil {
+		return body
+	}
+	return newBody
+}
+
 // --- CRUD ---
 
 // Create 创建渠道
@@ -539,16 +569,16 @@ func (s *ChannelService) List(ctx context.Context, params pagination.PaginationP
 	return s.repo.List(ctx, params, status, search)
 }
 
-// validateNoDuplicateModels 检查定价列表中是否有重复模型
+// validateNoDuplicateModels 检查定价列表中是否有重复模型（同一平台下不允许重复）
 func validateNoDuplicateModels(pricingList []ChannelModelPricing) error {
 	seen := make(map[string]bool)
 	for _, p := range pricingList {
 		for _, model := range p.Models {
-			lower := strings.ToLower(model)
-			if seen[lower] {
-				return infraerrors.BadRequest("DUPLICATE_MODEL", fmt.Sprintf("model '%s' appears in multiple pricing entries", model))
+			key := p.Platform + ":" + strings.ToLower(model)
+			if seen[key] {
+				return infraerrors.BadRequest("DUPLICATE_MODEL", fmt.Sprintf("model '%s' appears in multiple pricing entries for platform '%s'", model, p.Platform))
 			}
-			seen[lower] = true
+			seen[key] = true
 		}
 	}
 	return nil
