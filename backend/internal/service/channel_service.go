@@ -137,7 +137,7 @@ func NewChannelService(repo ChannelRepository, authCacheInvalidator APIKeyAuthCa
 
 // loadCache 加载或返回缓存的渠道数据
 func (s *ChannelService) loadCache(ctx context.Context) (*channelCache, error) {
-	if cached, ok := s.cache.Load().(*channelCache); ok {
+	if cached, ok := s.cache.Load().(*channelCache); ok && cached != nil {
 		if time.Since(cached.loadedAt) < channelCacheTTL {
 			return cached, nil
 		}
@@ -145,7 +145,7 @@ func (s *ChannelService) loadCache(ctx context.Context) (*channelCache, error) {
 
 	result, err, _ := s.cacheSF.Do("channel_cache", func() (any, error) {
 		// 双重检查
-		if cached, ok := s.cache.Load().(*channelCache); ok {
+		if cached, ok := s.cache.Load().(*channelCache); ok && cached != nil {
 			if time.Since(cached.loadedAt) < channelCacheTTL {
 				return cached, nil
 			}
