@@ -3144,6 +3144,30 @@ REDACTED
 		query += fmt.Sprintf(" AND %s = $%d", col, len(args)+1)
 		args = append(args, dim.Endpoint)
 REDACTED
+	if dim.UserID > 0 {
+		query += fmt.Sprintf(" AND ul.user_id = $%d", len(args)+1)
+		args = append(args, dim.UserID)
+REDACTED
+	if dim.APIKeyID > 0 {
+		query += fmt.Sprintf(" AND ul.api_key_id = $%d", len(args)+1)
+		args = append(args, dim.APIKeyID)
+REDACTED
+	if dim.AccountID > 0 {
+		query += fmt.Sprintf(" AND ul.account_id = $%d", len(args)+1)
+		args = append(args, dim.AccountID)
+REDACTED
+	if dim.RequestType != nil {
+		query += fmt.Sprintf(" AND ul.request_type = $%d", len(args)+1)
+		args = append(args, *dim.RequestType)
+REDACTED
+	if dim.Stream != nil {
+		query += fmt.Sprintf(" AND ul.stream = $%d", len(args)+1)
+		args = append(args, *dim.Stream)
+REDACTED
+	if dim.BillingType != nil {
+		query += fmt.Sprintf(" AND ul.billing_type = $%d", len(args)+1)
+		args = append(args, *dim.BillingType)
+REDACTED
 
 	query += " GROUP BY ul.user_id, u.email ORDER BY actual_cost DESC"
 	if limit > 0 {

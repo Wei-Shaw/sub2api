@@ -391,10 +391,7 @@ REDACTED
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
-				ChannelID:          channelMapping.ChannelID,
-				OriginalModel:      reqModel,
-				BillingModelSource: channelMapping.BillingModelSource,
-				ModelMappingChain:  channelMapping.BuildModelMappingChain(reqModel, result.UpstreamModel),
+				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 		REDACTED); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.responses"),
@@ -787,10 +784,7 @@ REDACTED
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
-				ChannelID:          channelMappingMsg.ChannelID,
-				OriginalModel:      reqModel,
-				BillingModelSource: channelMappingMsg.BillingModelSource,
-				ModelMappingChain:  channelMappingMsg.BuildModelMappingChain(reqModel, result.UpstreamModel),
+				ChannelUsageFields: channelMappingMsg.ToUsageFields(reqModel, result.UpstreamModel),
 		REDACTED); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.messages"),
@@ -1298,10 +1292,7 @@ REDACTED
 					IPAddress:          clientIP,
 					RequestPayloadHash: service.HashUsageRequestPayload(firstMessage),
 					APIKeyService:      h.apiKeyService,
-					ChannelID:          channelMappingWS.ChannelID,
-					OriginalModel:      reqModel,
-					BillingModelSource: channelMappingWS.BillingModelSource,
-					ModelMappingChain:  channelMappingWS.BuildModelMappingChain(reqModel, result.UpstreamModel),
+					ChannelUsageFields: channelMappingWS.ToUsageFields(reqModel, result.UpstreamModel),
 			REDACTED); err != nil {
 					reqLog.Error("openai.websocket_record_usage_failed",
 						zap.Int64("account_id", account.ID),

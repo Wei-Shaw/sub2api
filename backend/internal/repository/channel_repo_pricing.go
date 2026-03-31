@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -274,7 +275,8 @@ REDACTED
 
 // isUniqueViolation 检查 pq 唯一约束违反错误
 func isUniqueViolation(err error) bool {
-	if pqErr, ok := err.(*pq.Error); ok {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr != nil {
 		return pqErr.Code == "23505"
 REDACTED
 	return false

@@ -7407,11 +7407,7 @@ type RecordUsageInput struct {
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
 
-	// 渠道映射信息（由 handler 在 Forward 前解析）
-	ChannelID          int64  // 渠道 ID（0 = 无渠道）
-	OriginalModel      string // 用户原始请求模型（渠道映射前）
-	BillingModelSource string // 计费模型来源："requested" / "upstream"
-	ModelMappingChain  string // 映射链描述，如 "a→b→c"
+	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 REDACTED
 
 // APIKeyQuotaUpdater defines the interface for updating API Key quota and rate limit usage
@@ -7940,11 +7936,7 @@ type RecordUsageLongContextInput struct {
 	ForceCacheBilling     bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService         APIKeyQuotaUpdater // API Key 配额服务（可选）
 
-	// 渠道映射信息（由 handler 在 Forward 前解析）
-	ChannelID          int64  // 渠道 ID（0 = 无渠道）
-	OriginalModel      string // 用户原始请求模型（渠道映射前）
-	BillingModelSource string // 计费模型来源："requested" / "upstream"
-	ModelMappingChain  string // 映射链描述，如 "a→b→c"
+	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 REDACTED
 
 // RecordUsageWithLongContext 记录使用量并扣费，支持长上下文双倍计费（用于 Gemini）

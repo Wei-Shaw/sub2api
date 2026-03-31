@@ -80,6 +80,10 @@ REDACTED
 			sqlmock.AnyArg(), // inbound_endpoint
 			sqlmock.AnyArg(), // upstream_endpoint
 			log.CacheTTLOverridden,
+			sqlmock.AnyArg(), // channel_id
+			sqlmock.AnyArg(), // model_mapping_chain
+			sqlmock.AnyArg(), // billing_tier
+			sqlmock.AnyArg(), // billing_mode
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"REDACTED).AddRow(int64(99), createdAt))
@@ -153,6 +157,10 @@ REDACTED
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			log.CacheTTLOverridden,
+			sqlmock.AnyArg(), // channel_id
+			sqlmock.AnyArg(), // model_mapping_chain
+			sqlmock.AnyArg(), // billing_tier
+			sqlmock.AnyArg(), // billing_mode
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"REDACTED).AddRow(int64(100), createdAt))
@@ -463,6 +471,10 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			false,
+			sql.NullInt64{REDACTED,  // channel_id
+			sql.NullString{REDACTED, // model_mapping_chain
+			sql.NullString{REDACTED, // billing_tier
+			sql.NullString{REDACTED, // billing_mode
 			now,
 	REDACTEDREDACTED)
 	REDACTED
@@ -506,6 +518,10 @@ REDACTED)
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			false,
+			sql.NullInt64{REDACTED,  // channel_id
+			sql.NullString{REDACTED, // model_mapping_chain
+			sql.NullString{REDACTED, // billing_tier
+			sql.NullString{REDACTED, // billing_mode
 			now,
 	REDACTEDREDACTED)
 	REDACTED
@@ -549,6 +565,10 @@ REDACTED)
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			false,
+			sql.NullInt64{REDACTED,  // channel_id
+			sql.NullString{REDACTED, // model_mapping_chain
+			sql.NullString{REDACTED, // billing_tier
+			sql.NullString{REDACTED, // billing_mode
 			now,
 	REDACTEDREDACTED)
 	REDACTED

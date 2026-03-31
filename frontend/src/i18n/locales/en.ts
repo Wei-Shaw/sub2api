@@ -1744,6 +1744,8 @@ export default {
       deleteError: 'Failed to delete channel',
       nameRequired: 'Please enter a channel name',
       duplicateModels: 'Model "{0REDACTED" appears in multiple pricing entries',
+      modelConflict: "Model patterns '{model1REDACTED' and '{model2REDACTED' conflict: overlapping match range",
+      mappingConflict: "Mapping source patterns '{model1REDACTED' and '{model2REDACTED' conflict: overlapping match range",
       deleteConfirm: 'Are you sure you want to delete channel "{nameREDACTED"? This cannot be undone.',
       columns: {
         name: 'Name',

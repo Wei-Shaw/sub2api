@@ -51,15 +51,15 @@ REDACTED
 type ChannelModelPricing struct {
 	ID               int64
 	ChannelID        int64
-	Platform         string      // 所属平台（anthropic/openai/gemini/...）
-	Models           []string    // 绑定的模型列表
-	BillingMode      BillingMode // 计费模式
-	InputPrice       *float64    // 每 token 输入价格（USD）— 向后兼容 flat 定价
-	OutputPrice      *float64    // 每 token 输出价格（USD）
-	CacheWritePrice  *float64    // 缓存写入价格
-	CacheReadPrice   *float64    // 缓存读取价格
-	ImageOutputPrice *float64    // 图片输出价格（向后兼容）
-	PerRequestPrice  *float64    // 默认按次计费价格（USD）
+	Platform         string            // 所属平台（anthropic/openai/gemini/...）
+	Models           []string          // 绑定的模型列表
+	BillingMode      BillingMode       // 计费模式
+	InputPrice       *float64          // 每 token 输入价格（USD）— 向后兼容 flat 定价
+	OutputPrice      *float64          // 每 token 输出价格（USD）
+	CacheWritePrice  *float64          // 缓存写入价格
+	CacheReadPrice   *float64          // 缓存读取价格
+	ImageOutputPrice *float64          // 图片输出价格（向后兼容）
+	PerRequestPrice  *float64          // 默认按次计费价格（USD）
 	Intervals        []PricingInterval // 区间定价列表
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
@@ -174,4 +174,12 @@ REDACTED
 	REDACTED
 REDACTED
 	return &cp
+REDACTED
+
+// ChannelUsageFields 渠道相关的使用记录字段（嵌入到各平台的 RecordUsageInput 中）
+type ChannelUsageFields struct {
+	ChannelID          int64  // 渠道 ID（0 = 无渠道）
+	OriginalModel      string // 用户原始请求模型（渠道映射前）
+	BillingModelSource string // 计费模型来源："requested" / "upstream"
+	ModelMappingChain  string // 映射链描述，如 "a→b→c"
 REDACTED
