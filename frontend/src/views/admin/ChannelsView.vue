@@ -877,12 +877,21 @@ async function handleSubmit() {
     REDACTED
   REDACTED
 
-  // Check duplicate models across all enabled platform sections
-  const allModels = form.platforms.filter(s => s.enabled).flatMap(s => s.model_pricing.flatMap(e => e.models.map(m => m.toLowerCase())))
-  const duplicates = allModels.filter((m, i) => allModels.indexOf(m) !== i)
-  if (duplicates.length > 0) {
-    appStore.showError(t('admin.channels.duplicateModels', `模型 "${duplicates[0]REDACTED" 在多个定价条目中重复`))
-    return
+  // Check duplicate models per platform (same model in different platforms is allowed)
+  for (const section of form.platforms.filter(s => s.enabled)) {
+    const seen = new Set()
+    for (const entry of section.model_pricing) {
+      for (const m of entry.models) {
+        const key = m.toLowerCase()
+        if (seen.has(key)) {
+          const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
+          appStore.showError(t('admin.channels.duplicateModels', `${platformLabelREDACTED 平台下模型 "${mREDACTED" 在多个定价条目中重复`))
+          activeTab.value = section.platform
+          return
+        REDACTED
+        seen.add(key)
+      REDACTED
+    REDACTED
   REDACTED
 
   // 校验 per_request/image 模式必须有价格 (只校验启用的平台)
