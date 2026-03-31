@@ -537,11 +537,11 @@ function getRateBadgeClass(platform: string): string {
 
 function getPlatformInputBorder(platform: string): string {
   switch (platform) {
-    case 'anthropic': return 'border-orange-300 focus:border-orange-500 dark:border-orange-700'
-    case 'openai': return 'border-emerald-300 focus:border-emerald-500 dark:border-emerald-700'
-    case 'gemini': return 'border-blue-300 focus:border-blue-500 dark:border-blue-700'
-    case 'antigravity': return 'border-purple-300 focus:border-purple-500 dark:border-purple-700'
-    case 'sora': return 'border-rose-300 focus:border-rose-500 dark:border-rose-700'
+    case 'anthropic': return 'text-orange-600 dark:text-orange-400'
+    case 'openai': return 'text-emerald-600 dark:text-emerald-400'
+    case 'gemini': return 'text-blue-600 dark:text-blue-400'
+    case 'antigravity': return 'text-purple-600 dark:text-purple-400'
+    case 'sora': return 'text-rose-600 dark:text-rose-400'
     default: return ''
   }
 }
