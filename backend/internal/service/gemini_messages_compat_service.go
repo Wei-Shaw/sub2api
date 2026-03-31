@@ -612,7 +612,8 @@ REDACTED
 				fullURL += "?alt=sse"
 		REDACTED
 
-			upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(geminiReq))
+			restGeminiReq := normalizeGeminiRequestForAIStudio(geminiReq)
+			upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(restGeminiReq))
 			if err != nil {
 				return nil, "", err
 		REDACTED
@@ -685,7 +686,8 @@ REDACTED
 					fullURL += "?alt=sse"
 			REDACTED
 
-				upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(geminiReq))
+				restGeminiReq := normalizeGeminiRequestForAIStudio(geminiReq)
+				upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(restGeminiReq))
 				if err != nil {
 					return nil, "", err
 			REDACTED
@@ -3238,6 +3240,46 @@ REDACTED
 		return nil
 REDACTED
 	return out
+REDACTED
+
+func normalizeGeminiRequestForAIStudio(body []byte) []byte {
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+REDACTED
+
+	tools, ok := payload["tools"].([]any)
+	if !ok || len(tools) == 0 {
+		return body
+REDACTED
+
+	modified := false
+	for _, rawTool := range tools {
+		tool, ok := rawTool.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		googleSearch, ok := tool["googleSearch"]
+		if !ok {
+			continue
+	REDACTED
+		if _, exists := tool["google_search"]; exists {
+			continue
+	REDACTED
+		tool["google_search"] = googleSearch
+		delete(tool, "googleSearch")
+		modified = true
+REDACTED
+
+	if !modified {
+		return body
+REDACTED
+
+	normalized, err := json.Marshal(payload)
+	if err != nil {
+		return body
+REDACTED
+	return normalized
 REDACTED
 
 func isClaudeWebSearchToolMap(tool map[string]any) bool {
