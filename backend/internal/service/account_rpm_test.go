@@ -90,28 +90,47 @@ REDACTED
 
 func TestGetRPMStickyBuffer(t *testing.T) {
 	tests := []struct {
-		name     string
-		extra    map[string]any
-		expected int
+		name        string
+		concurrency int
+		extra       map[string]any
+		expected    int
 REDACTED{
-		{"nil extra", nil, 0REDACTED,
-		{"no keys", map[string]any{REDACTED, 0REDACTED,
-		{"base_rpm=0", map[string]any{"base_rpm": 0REDACTED, 0REDACTED,
-		{"base_rpm=1 min buffer 1", map[string]any{"base_rpm": 1REDACTED, 1REDACTED,
-		{"base_rpm=4 min buffer 1", map[string]any{"base_rpm": 4REDACTED, 1REDACTED,
-		{"base_rpm=5 buffer 1", map[string]any{"base_rpm": 5REDACTED, 1REDACTED,
-		{"base_rpm=10 buffer 2", map[string]any{"base_rpm": 10REDACTED, 2REDACTED,
-		{"base_rpm=15 buffer 3", map[string]any{"base_rpm": 15REDACTED, 3REDACTED,
-		{"base_rpm=100 buffer 20", map[string]any{"base_rpm": 100REDACTED, 20REDACTED,
-		{"custom buffer=5", map[string]any{"base_rpm": 10, "rpm_sticky_buffer": 5REDACTED, 5REDACTED,
-		{"custom buffer=0 fallback to default", map[string]any{"base_rpm": 10, "rpm_sticky_buffer": 0REDACTED, 2REDACTED,
-		{"custom buffer negative fallback", map[string]any{"base_rpm": 10, "rpm_sticky_buffer": -1REDACTED, 2REDACTED,
-		{"custom buffer with float", map[string]any{"base_rpm": 10, "rpm_sticky_buffer": float64(7)REDACTED, 7REDACTED,
-		{"json.Number base_rpm", map[string]any{"base_rpm": json.Number("10")REDACTED, 2REDACTED,
+		// 基础退化
+		{"nil extra", 0, nil, 0REDACTED,
+		{"no keys", 0, map[string]any{REDACTED, 0REDACTED,
+		{"base_rpm=0", 0, map[string]any{"base_rpm": 0REDACTED, 0REDACTED,
+
+		// 新公式: concurrency + maxSessions, floor = base/5
+		{"conc=3 sess=10 → 13", 3, map[string]any{"base_rpm": 15, "max_sessions": 10REDACTED, 13REDACTED,
+		{"conc=2 sess=5 → 7", 2, map[string]any{"base_rpm": 10, "max_sessions": 5REDACTED, 7REDACTED,
+		{"conc=3 sess=15 → 18", 3, map[string]any{"base_rpm": 30, "max_sessions": 15REDACTED, 18REDACTED,
+
+		// floor 生效 (conc+sess < base/5)
+		{"conc=0 sess=0 base=15 → floor 3", 0, map[string]any{"base_rpm": 15REDACTED, 3REDACTED,
+		{"conc=0 sess=0 base=10 → floor 2", 0, map[string]any{"base_rpm": 10REDACTED, 2REDACTED,
+		{"conc=0 sess=0 base=1 → floor 1", 0, map[string]any{"base_rpm": 1REDACTED, 1REDACTED,
+		{"conc=0 sess=0 base=4 → floor 1", 0, map[string]any{"base_rpm": 4REDACTED, 1REDACTED,
+		{"conc=1 sess=0 base=15 → floor 3", 1, map[string]any{"base_rpm": 15REDACTED, 3REDACTED,
+
+		// 手动 override
+		{"custom buffer=5", 3, map[string]any{"base_rpm": 10, "rpm_sticky_buffer": 5, "max_sessions": 10REDACTED, 5REDACTED,
+		{"custom buffer=0 fallback", 3, map[string]any{"base_rpm": 10, "rpm_sticky_buffer": 0, "max_sessions": 10REDACTED, 13REDACTED,
+		{"custom buffer negative fallback", 3, map[string]any{"base_rpm": 10, "rpm_sticky_buffer": -1, "max_sessions": 10REDACTED, 13REDACTED,
+		{"custom buffer with float", 3, map[string]any{"base_rpm": 10, "rpm_sticky_buffer": float64(7)REDACTED, 7REDACTED,
+
+		// 负值 clamp
+		{"negative concurrency clamped", -5, map[string]any{"base_rpm": 15, "max_sessions": 10REDACTED, 10REDACTED,
+		{"negative maxSessions clamped", 3, map[string]any{"base_rpm": 15, "max_sessions": -5REDACTED, 3REDACTED,
+
+		// 高并发低会话
+		{"conc=10 sess=5 → 15", 10, map[string]any{"base_rpm": 10, "max_sessions": 5REDACTED, 15REDACTED,
+
+		// json.Number
+		{"json.Number base_rpm", 3, map[string]any{"base_rpm": json.Number("10"), "max_sessions": json.Number("5")REDACTED, 8REDACTED,
 REDACTED
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := &Account{Extra: tt.extraREDACTED
+			a := &Account{Concurrency: tt.concurrency, Extra: tt.extraREDACTED
 			if got := a.GetRPMStickyBuffer(); got != tt.expected {
 				t.Errorf("GetRPMStickyBuffer() = %d, want %d", got, tt.expected)
 		REDACTED
