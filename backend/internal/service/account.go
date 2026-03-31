@@ -1742,22 +1742,47 @@ REDACTED
 REDACTED
 
 // GetRPMStickyBuffer 获取 RPM 粘性缓冲数量
-// tiered 模式下的黄区大小，默认为 base_rpm 的 20%（至少 1）
+// Cache-driven: buffer = concurrency + maxSessions（覆盖幽灵窗口 + 稳态会话需求）
+// floor = baseRPM / 5（向后兼容 maxSessions=0 且 concurrency=0 场景）
 func (a *Account) GetRPMStickyBuffer() int {
 	if a.Extra == nil {
 		return 0
 REDACTED
+
+	// 手动 override 最高优先级
 	if v, ok := a.Extra["rpm_sticky_buffer"]; ok {
 		val := parseExtraInt(v)
 		if val > 0 {
 			return val
 	REDACTED
 REDACTED
+
 	base := a.GetBaseRPM()
-	buffer := base / 5
-	if buffer < 1 && base > 0 {
-		buffer = 1
+	if base <= 0 {
+		return 0
 REDACTED
+
+	// Cache-driven buffer = concurrency + maxSessions
+	conc := a.Concurrency
+	if conc < 0 {
+		conc = 0
+REDACTED
+	sess := a.GetMaxSessions()
+	if sess < 0 {
+		sess = 0
+REDACTED
+
+	buffer := conc + sess
+
+	// floor: 向后兼容
+	floor := base / 5
+	if floor < 1 {
+		floor = 1
+REDACTED
+	if buffer < floor {
+		buffer = floor
+REDACTED
+
 	return buffer
 REDACTED
 
