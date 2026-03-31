@@ -4146,10 +4146,7 @@ type OpenAIRecordUsageInput struct {
 	IPAddress          string // 请求的客户端 IP 地址
 	RequestPayloadHash string
 	APIKeyService      APIKeyQuotaUpdater
-	ChannelID          int64
-	OriginalModel      string
-	BillingModelSource string
-	ModelMappingChain  string
+	ChannelUsageFields
 }
 
 // RecordUsage records usage and deducts balance

@@ -486,10 +486,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					RequestPayloadHash: requestPayloadHash,
 					ForceCacheBilling:  fs.ForceCacheBilling,
 					APIKeyService:      h.apiKeyService,
-					ChannelID:          channelMapping.ChannelID,
-					OriginalModel:      reqModel,
-					BillingModelSource: channelMapping.BillingModelSource,
-					ModelMappingChain:  channelMapping.BuildModelMappingChain(reqModel, result.UpstreamModel),
+					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),
@@ -839,10 +836,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					RequestPayloadHash: requestPayloadHash,
 					ForceCacheBilling:  fs.ForceCacheBilling,
 					APIKeyService:      h.apiKeyService,
-					ChannelID:          channelMapping.ChannelID,
-					OriginalModel:      reqModel,
-					BillingModelSource: channelMapping.BillingModelSource,
-					ModelMappingChain:  channelMapping.BuildModelMappingChain(reqModel, result.UpstreamModel),
+					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),

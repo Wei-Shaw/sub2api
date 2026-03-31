@@ -278,10 +278,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				APIKeyService:      h.apiKeyService,
-				ChannelID:          channelMapping.ChannelID,
-				OriginalModel:      reqModel,
-				BillingModelSource: channelMapping.BillingModelSource,
-				ModelMappingChain:  channelMapping.BuildModelMappingChain(reqModel, result.UpstreamModel),
+				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.chat_completions"),

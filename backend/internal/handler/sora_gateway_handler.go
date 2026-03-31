@@ -30,6 +30,8 @@ import (
 )
 
 // SoraGatewayHandler handles Sora chat completions requests
+//
+// NOTE: Sora 平台计划后续移除，不集成渠道（Channel）功能。
 type SoraGatewayHandler struct {
 	gatewayService        *service.GatewayService
 	soraGatewayService    *service.SoraGatewayService

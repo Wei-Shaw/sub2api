@@ -1824,6 +1824,8 @@ export default {
       deleteError: '删除渠道失败',
       nameRequired: '请输入渠道名称',
       duplicateModels: '模型「{0}」在多个定价条目中重复',
+      modelConflict: "模型模式 '{model1}' 和 '{model2}' 冲突：匹配范围重叠",
+      mappingConflict: "模型映射源 '{model1}' 和 '{model2}' 冲突：匹配范围重叠",
       deleteConfirm: '确定要删除渠道「{name}」吗？此操作不可撤销。',
       columns: {
         name: '名称',

@@ -3144,6 +3144,30 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		query += fmt.Sprintf(" AND %s = $%d", col, len(args)+1)
 		args = append(args, dim.Endpoint)
 	}
+	if dim.UserID > 0 {
+		query += fmt.Sprintf(" AND ul.user_id = $%d", len(args)+1)
+		args = append(args, dim.UserID)
+	}
+	if dim.APIKeyID > 0 {
+		query += fmt.Sprintf(" AND ul.api_key_id = $%d", len(args)+1)
+		args = append(args, dim.APIKeyID)
+	}
+	if dim.AccountID > 0 {
+		query += fmt.Sprintf(" AND ul.account_id = $%d", len(args)+1)
+		args = append(args, dim.AccountID)
+	}
+	if dim.RequestType != nil {
+		query += fmt.Sprintf(" AND ul.request_type = $%d", len(args)+1)
+		args = append(args, *dim.RequestType)
+	}
+	if dim.Stream != nil {
+		query += fmt.Sprintf(" AND ul.stream = $%d", len(args)+1)
+		args = append(args, *dim.Stream)
+	}
+	if dim.BillingType != nil {
+		query += fmt.Sprintf(" AND ul.billing_type = $%d", len(args)+1)
+		args = append(args, *dim.BillingType)
+	}
 
 	query += " GROUP BY ul.user_id, u.email ORDER BY actual_cost DESC"
 	if limit > 0 {

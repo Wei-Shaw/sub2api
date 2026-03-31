@@ -73,6 +73,45 @@ export function formIntervalsToAPI(intervals: IntervalFormEntry[]): PricingInter
   }))
 }
 
+// ── 模型模式冲突检测 ──────────────────────────────────────
+
+interface ModelPattern {
+  pattern: string
+  prefix: string  // lowercase, 通配符去掉尾部 *
+  wildcard: boolean
+}
+
+function toModelPattern(model: string): ModelPattern {
+  const lower = model.toLowerCase()
+  const wildcard = lower.endsWith('*')
+  return {
+    pattern: model,
+    prefix: wildcard ? lower.slice(0, -1) : lower,
+    wildcard,
+  }
+}
+
+function patternsConflict(a: ModelPattern, b: ModelPattern): boolean {
+  if (!a.wildcard && !b.wildcard) return a.prefix === b.prefix
+  if (a.wildcard && !b.wildcard) return b.prefix.startsWith(a.prefix)
+  if (!a.wildcard && b.wildcard) return a.prefix.startsWith(b.prefix)
+  // 双通配符：任一前缀是另一前缀的前缀即冲突
+  return a.prefix.startsWith(b.prefix) || b.prefix.startsWith(a.prefix)
+}
+
+/** 检测模型模式列表中的冲突，返回冲突的两个模式名；无冲突返回 null */
+export function findModelConflict(models: string[]): [string, string] | null {
+  const patterns = models.map(toModelPattern)
+  for (let i = 0; i < patterns.length; i++) {
+    for (let j = i + 1; j < patterns.length; j++) {
+      if (patternsConflict(patterns[i], patterns[j])) {
+        return [patterns[i].pattern, patterns[j].pattern]
+      }
+    }
+  }
+  return null
+}
+
 /** 平台对应的模型 tag 样式（背景+文字） */
 export function getPlatformTagClass(platform: string): string {
   switch (platform) {

@@ -418,7 +418,7 @@ import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
-import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI } from '@/components/admin/channel/types'
+import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -875,19 +875,35 @@ async function handleSubmit() {
     }
   }
 
-  // Check duplicate models per platform (same model in different platforms is allowed)
+  // Check model pattern conflicts per platform (duplicate / wildcard overlap)
   for (const section of form.platforms.filter(s => s.enabled)) {
-    const seen = new Set()
+    // Collect all pricing models for this platform
+    const allModels: string[] = []
     for (const entry of section.model_pricing) {
-      for (const m of entry.models) {
-        const key = m.toLowerCase()
-        if (seen.has(key)) {
-          const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
-          appStore.showError(t('admin.channels.duplicateModels', `${platformLabel} 平台下模型 "${m}" 在多个定价条目中重复`))
-          activeTab.value = section.platform
-          return
-        }
-        seen.add(key)
+      allModels.push(...entry.models)
+    }
+    const pricingConflict = findModelConflict(allModels)
+    if (pricingConflict) {
+      appStore.showError(
+        t('admin.channels.modelConflict',
+          { model1: pricingConflict[0], model2: pricingConflict[1] },
+          `模型模式 '${pricingConflict[0]}' 和 '${pricingConflict[1]}' 冲突：匹配范围重叠`)
+      )
+      activeTab.value = section.platform
+      return
+    }
+    // Check model mapping source pattern conflicts
+    const mappingKeys = Object.keys(section.model_mapping)
+    if (mappingKeys.length > 0) {
+      const mappingConflict = findModelConflict(mappingKeys)
+      if (mappingConflict) {
+        appStore.showError(
+          t('admin.channels.mappingConflict',
+            { model1: mappingConflict[0], model2: mappingConflict[1] },
+            `模型映射源 '${mappingConflict[0]}' 和 '${mappingConflict[1]}' 冲突：匹配范围重叠`)
+        )
+        activeTab.value = section.platform
+        return
       }
     }
   }

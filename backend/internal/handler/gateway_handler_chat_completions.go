@@ -266,10 +266,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
-				ChannelID:          channelMapping.ChannelID,
-				OriginalModel:      reqModel,
-				BillingModelSource: channelMapping.BillingModelSource,
-				ModelMappingChain:  channelMapping.BuildModelMappingChain(reqModel, result.UpstreamModel),
+				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 			}); err != nil {
 				reqLog.Error("gateway.cc.record_usage_failed",
 					zap.Int64("account_id", account.ID),
