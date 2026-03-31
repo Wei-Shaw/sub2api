@@ -429,8 +429,9 @@ func (s *ChannelService) ResolveChannelMappingAndRestrict(ctx context.Context, g
 	if groupID == nil {
 		return mapping, false
 	}
+	// 先用原始模型检查定价列表限制，再做映射
+	restricted := s.IsModelRestricted(ctx, *groupID, model)
 	mapping = s.ResolveChannelMapping(ctx, *groupID, model)
-	restricted := s.IsModelRestricted(ctx, *groupID, mapping.MappedModel)
 	return mapping, restricted
 }
 
