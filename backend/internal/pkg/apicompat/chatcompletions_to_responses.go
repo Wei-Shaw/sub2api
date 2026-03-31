@@ -27,8 +27,9 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 	}
 
 	out := &ResponsesRequest{
-		Model:       req.Model,
-		Input:       inputJSON,
+		Model:        req.Model,
+		Instructions: req.Instructions,
+		Input:        inputJSON,
 		Temperature: req.Temperature,
 		TopP:        req.TopP,
 		Stream:      true, // upstream always streams
