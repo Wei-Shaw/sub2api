@@ -153,6 +153,12 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_messages_dispatch").
 			Default(false).
 			Comment("是否允许 /v1/messages 调度到此 OpenAI 分组"),
+		field.Bool("require_oauth_only").
+			Default(false).
+			Comment("仅允许非 apikey 类型账号关联到此分组"),
+		field.Bool("require_privacy_set").
+			Default(false).
+			Comment("调度时仅允许 privacy 已成功设置的账号"),
 		field.String("default_mapped_model").
 			MaxLen(100).
 			Default("").

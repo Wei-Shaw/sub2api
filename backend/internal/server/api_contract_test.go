@@ -214,6 +214,8 @@ REDACTED{
 						"fallback_group_id": null,
 						"fallback_group_id_on_invalid_request": null,
 						"allow_messages_dispatch": false,
+						"require_oauth_only": false,
+						"require_privacy_set": false,
 						"created_at": "2025-01-02T03:04:05Z",
 						"updated_at": "2025-01-02T03:04:05Z"
 				REDACTED

@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"context"
 	"errors"
+	"fmt"
 	"hash/fnv"
 	"math"
 	"sort"
@@ -575,6 +576,12 @@ REDACTED
 		return nil, 0, 0, 0, errors.New("no available OpenAI accounts")
 REDACTED
 
+	// require_privacy_set: 获取分组信息
+	var schedGroup *Group
+	if req.GroupID != nil && s.service.schedulerSnapshot != nil {
+		schedGroup, _ = s.service.schedulerSnapshot.GetGroupByID(ctx, *req.GroupID)
+REDACTED
+
 	filtered := make([]*Account, 0, len(accounts))
 	loadReq := make([]AccountWithConcurrency, 0, len(accounts))
 	for i := range accounts {
@@ -585,6 +592,12 @@ REDACTED
 		REDACTED
 	REDACTED
 		if !account.IsSchedulable() || !account.IsOpenAI() {
+			continue
+	REDACTED
+		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
+		if schedGroup != nil && schedGroup.RequirePrivacySet && !account.IsPrivacySet() {
+			_ = s.service.accountRepo.SetError(ctx, account.ID,
+				fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 			continue
 	REDACTED
 		if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {

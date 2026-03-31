@@ -458,8 +458,16 @@ REDACTED()
 	groupDescAllowMessagesDispatch := groupFields[27].Descriptor()
 	// group.DefaultAllowMessagesDispatch holds the default value on creation for the allow_messages_dispatch field.
 	group.DefaultAllowMessagesDispatch = groupDescAllowMessagesDispatch.Default.(bool)
+	// groupDescRequireOauthOnly is the schema descriptor for require_oauth_only field.
+	groupDescRequireOauthOnly := groupFields[28].Descriptor()
+	// group.DefaultRequireOauthOnly holds the default value on creation for the require_oauth_only field.
+	group.DefaultRequireOauthOnly = groupDescRequireOauthOnly.Default.(bool)
+	// groupDescRequirePrivacySet is the schema descriptor for require_privacy_set field.
+	groupDescRequirePrivacySet := groupFields[29].Descriptor()
+	// group.DefaultRequirePrivacySet holds the default value on creation for the require_privacy_set field.
+	group.DefaultRequirePrivacySet = groupDescRequirePrivacySet.Default.(bool)
 	// groupDescDefaultMappedModel is the schema descriptor for default_mapped_model field.
-	groupDescDefaultMappedModel := groupFields[28].Descriptor()
+	groupDescDefaultMappedModel := groupFields[30].Descriptor()
 	// group.DefaultDefaultMappedModel holds the default value on creation for the default_mapped_model field.
 	group.DefaultDefaultMappedModel = groupDescDefaultMappedModel.Default.(string)
 	// group.DefaultMappedModelValidator is a validator for the "default_mapped_model" field. It is called by the builders before save.
