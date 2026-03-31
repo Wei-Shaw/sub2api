@@ -57,17 +57,11 @@
             <span class="text-sm text-gray-600 dark:text-gray-400">{{ value || '-' }}</span>
           </template>
 
-          <template #cell-status="{ value }">
-            <span
-              :class="[
-                'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                value === 'active'
-                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                  : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-              ]"
-            >
-              {{ value === 'active' ? t('admin.channels.statusActive', 'Active') : t('admin.channels.statusDisabled', 'Disabled') }}
-            </span>
+          <template #cell-status="{ row }">
+            <Toggle
+              :modelValue="row.status === 'active'"
+              @update:modelValue="toggleChannelStatus(row)"
+            />
           </template>
 
           <template #cell-group_count="{ row }">
@@ -434,6 +428,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import Toggle from '@/components/common/Toggle.vue'
 import PricingEntryCard from '@/components/admin/channel/PricingEntryCard.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
@@ -947,6 +942,18 @@ async function handleSubmit() {
     console.error('Error saving channel:', error)
   } finally {
     submitting.value = false
+  }
+}
+
+// ── Toggle status ──
+async function toggleChannelStatus(channel: Channel) {
+  const newStatus = channel.status === 'active' ? 'disabled' : 'active'
+  try {
+    await adminAPI.channels.update(channel.id, { status: newStatus })
+    channel.status = newStatus
+  } catch (error) {
+    appStore.showError(t('admin.channels.updateError', 'Failed to update channel'))
+    console.error('Error toggling channel status:', error)
   }
 }
 
