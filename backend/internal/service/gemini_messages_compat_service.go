@@ -3169,10 +3169,15 @@ func convertClaudeToolsToGeminiTools(tools any) []any {
 		return nil
 REDACTED
 
+	hasWebSearch := false
 	funcDecls := make([]any, 0, len(arr))
 	for _, t := range arr {
 		tm, ok := t.(map[string]any)
 		if !ok {
+			continue
+	REDACTED
+		if isClaudeWebSearchToolMap(tm) {
+			hasWebSearch = true
 			continue
 	REDACTED
 
@@ -3218,13 +3223,35 @@ REDACTED
 	REDACTED)
 REDACTED
 
-	if len(funcDecls) == 0 {
+	out := make([]any, 0, 2)
+	if len(funcDecls) > 0 {
+		out = append(out, map[string]any{
+			"functionDeclarations": funcDecls,
+	REDACTED)
+REDACTED
+	if hasWebSearch {
+		out = append(out, map[string]any{
+			"googleSearch": map[string]any{REDACTED,
+	REDACTED)
+REDACTED
+	if len(out) == 0 {
 		return nil
 REDACTED
-	return []any{
-		map[string]any{
-			"functionDeclarations": funcDecls,
-	REDACTED,
+	return out
+REDACTED
+
+func isClaudeWebSearchToolMap(tool map[string]any) bool {
+	toolType, _ := tool["type"].(string)
+	if strings.HasPrefix(toolType, "web_search") || toolType == "google_search" {
+		return true
+REDACTED
+
+	name, _ := tool["name"].(string)
+	switch strings.TrimSpace(name) {
+	case "web_search", "google_search", "web_search_20250305":
+		return true
+	default:
+		return false
 REDACTED
 REDACTED
 
