@@ -418,13 +418,13 @@ func TestShouldMarkCreditsExhausted(t *testing.T) {
 		require.True(t, shouldMarkCreditsExhausted(resp, body, nil))
 	})
 
-	t.Run("结构化限流不标记", func(t *testing.T) {
+	t.Run("429 结构化限流也标记（积分注入后仍 429 即为耗尽）", func(t *testing.T) {
 		resp := &http.Response{StatusCode: http.StatusTooManyRequests}
 		body := []byte(`{"error":{"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"RATE_LIMIT_EXCEEDED"},{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"0.5s"}]}}`)
-		require.False(t, shouldMarkCreditsExhausted(resp, body, nil))
+		require.True(t, shouldMarkCreditsExhausted(resp, body, nil))
 	})
 
-	t.Run("含 credits 关键词时标记", func(t *testing.T) {
+	t.Run("含 credits 关键词时标记（403 场景）", func(t *testing.T) {
 		resp := &http.Response{StatusCode: http.StatusForbidden}
 		for _, keyword := range []string{
 			"Insufficient GOOGLE_ONE_AI credits",

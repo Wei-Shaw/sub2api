@@ -141,6 +141,10 @@ func resolveCreditsOveragesModelKey(ctx context.Context, account *Account, upstr
 }
 
 // shouldMarkCreditsExhausted 判断一次 credits 请求失败是否应标记为 credits 耗尽。
+// 此函数在积分注入后失败时调用（预检查注入 + attemptCreditsOveragesRetry 两条路径）。
+// - 429：积分注入后仍被限流 → 直接标记耗尽，不再检查 body 关键词。
+// - 403 等其他 4xx：检查 body 是否包含积分不足的关键词。
+// clearCreditsExhausted 会在后续成功时自动清除。
 func shouldMarkCreditsExhausted(resp *http.Response, respBody []byte, reqErr error) bool {
 	if reqErr != nil || resp == nil {
 		return false
@@ -148,12 +152,11 @@ func shouldMarkCreditsExhausted(resp *http.Response, respBody []byte, reqErr err
 	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusRequestTimeout {
 		return false
 	}
-	// 注意：不再检查 isURLLevelRateLimit。此函数仅在积分重试失败后调用，
-	// 如果注入 enabledCreditTypes 后仍返回 "Resource has been exhausted"，
-	// 说明积分也已耗尽，应该标记。clearCreditsExhausted 会在后续成功时自动清除。
-	if info := parseAntigravitySmartRetryInfo(respBody); info != nil {
-		return false
+	// 积分注入后仍 429 → 直接标记
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return true
 	}
+	// 其他 4xx：关键词匹配（如 403 + "Insufficient credits"）
 	bodyLower := strings.ToLower(string(respBody))
 	for _, keyword := range creditsExhaustedKeywords {
 		if strings.Contains(bodyLower, keyword) {
