@@ -41,6 +41,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 REDACTED
 	originalModel := anthropicReq.Model
 	applyOpenAICompatModelNormalization(&anthropicReq)
+	normalizedModel := anthropicReq.Model
 	clientStream := anthropicReq.Stream // client's original stream preference
 
 	// 2. Convert Anthropic → Responses
@@ -60,13 +61,14 @@ REDACTED
 REDACTED
 
 	// 3. Model mapping
-	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
+	billingModel := resolveOpenAIForwardModel(account, normalizedModel, defaultMappedModel)
 	upstreamModel := resolveOpenAIUpstreamModel(billingModel)
 	responsesReq.Model = upstreamModel
 
 	logger.L().Debug("openai messages: model mapping applied",
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
+		zap.String("normalized_model", normalizedModel),
 		zap.String("billing_model", billingModel),
 		zap.String("upstream_model", upstreamModel),
 		zap.Bool("stream", isStream),
