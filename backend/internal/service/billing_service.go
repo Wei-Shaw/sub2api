@@ -402,12 +402,6 @@ REDACTED
 	return pricing, nil
 REDACTED
 
-// CalculateCostWithChannel 使用渠道定价计算费用
-// Deprecated: 使用 CalculateCostUnified 代替
-func (s *BillingService) CalculateCostWithChannel(model string, tokens UsageTokens, rateMultiplier float64, channelPricing *ChannelModelPricing) (*CostBreakdown, error) {
-	return s.calculateCostInternal(model, tokens, rateMultiplier, "", channelPricing)
-REDACTED
-
 // --- 统一计费入口 ---
 
 // CostInput 统一计费输入

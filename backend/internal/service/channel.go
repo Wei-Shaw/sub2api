@@ -82,38 +82,6 @@ type PricingInterval struct {
 	UpdatedAt       time.Time
 REDACTED
 
-// ResolveMappedModel 解析渠道级模型映射，返回映射后的模型名。
-// platform 指定查找哪个平台的映射规则。
-// 支持通配符（如 "claude-*" → "claude-sonnet-4"）。
-// 如果没有匹配的映射规则，返回原始模型名。
-func (c *Channel) ResolveMappedModel(platform, requestedModel string) string {
-	if len(c.ModelMapping) == 0 {
-		return requestedModel
-REDACTED
-	platformMapping, ok := c.ModelMapping[platform]
-	if !ok || len(platformMapping) == 0 {
-		return requestedModel
-REDACTED
-	lower := strings.ToLower(requestedModel)
-	// 精确匹配优先
-	for src, dst := range platformMapping {
-		if strings.ToLower(src) == lower {
-			return dst
-	REDACTED
-REDACTED
-	// 通配符匹配
-	for src, dst := range platformMapping {
-		srcLower := strings.ToLower(src)
-		if strings.HasSuffix(srcLower, "*") {
-			prefix := strings.TrimSuffix(srcLower, "*")
-			if strings.HasPrefix(lower, prefix) {
-				return dst
-		REDACTED
-	REDACTED
-REDACTED
-	return requestedModel
-REDACTED
-
 // IsActive 判断渠道是否启用
 func (c *Channel) IsActive() bool {
 	return c.Status == StatusActive

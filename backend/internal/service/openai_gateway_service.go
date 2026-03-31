@@ -416,29 +416,15 @@ REDACTED
 // ResolveChannelMappingAndRestrict 解析渠道映射并检查模型限制。
 // 返回映射结果和是否被限制。
 func (s *OpenAIGatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, model string) (ChannelMappingResult, bool) {
-	var mapping ChannelMappingResult
-	mapping.MappedModel = model
-	if groupID == nil {
-		return mapping, false
+	if s.channelService == nil {
+		return ChannelMappingResult{MappedModel: modelREDACTED, false
 REDACTED
-	mapping = s.ResolveChannelMapping(ctx, *groupID, model)
-	restricted := s.IsModelRestricted(ctx, *groupID, mapping.MappedModel)
-	return mapping, restricted
+	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
 REDACTED
 
 // ReplaceModelInBody 替换请求体中的 JSON model 字段（通用 gjson/sjson 实现）。
 func (s *OpenAIGatewayService) ReplaceModelInBody(body []byte, newModel string) []byte {
-	if len(body) == 0 {
-		return body
-REDACTED
-	if current := gjson.GetBytes(body, "model"); current.Exists() && current.String() == newModel {
-		return body
-REDACTED
-	newBody, err := sjson.SetBytes(body, "model", newModel)
-	if err != nil {
-		return body
-REDACTED
-	return newBody
+	return ReplaceModelInBody(body, newModel)
 REDACTED
 
 func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle {
@@ -4249,13 +4235,20 @@ REDACTED
 	durationMs := int(result.Duration.Milliseconds())
 	accountRateMultiplier := account.BillingRateMultiplier()
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
+
+	// 确定 RequestedModel（渠道映射前的原始模型）
+	requestedModel := result.Model
+	if input.OriginalModel != "" {
+		requestedModel = input.OriginalModel
+REDACTED
+
 	usageLog := &UsageLog{
 		UserID:                user.ID,
 		APIKeyID:              apiKey.ID,
 		AccountID:             account.ID,
 		RequestID:             requestID,
 		Model:                 result.Model,
-		RequestedModel:        result.Model,
+		RequestedModel:        requestedModel,
 		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
 		ServiceTier:           result.ServiceTier,
 		ReasoningEffort:       result.ReasoningEffort,

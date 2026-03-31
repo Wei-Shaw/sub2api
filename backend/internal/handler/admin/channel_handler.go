@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 
@@ -224,6 +225,18 @@ REDACTED
 	return result
 REDACTED
 
+// validatePricingBillingMode 校验按次/图片计费模式必须配置 PerRequestPrice 或 Intervals
+func validatePricingBillingMode(pricing []service.ChannelModelPricing) error {
+	for _, p := range pricing {
+		if p.BillingMode == service.BillingModePerRequest || p.BillingMode == service.BillingModeImage {
+			if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
+				return errors.New("Per-request price or intervals required for per_request/image billing mode")
+		REDACTED
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
 // --- Handlers ---
 
 // List handles listing channels with pagination
@@ -277,13 +290,9 @@ func (h *ChannelHandler) Create(c *gin.Context) {
 REDACTED
 
 	pricing := pricingRequestToService(req.ModelPricing)
-	for _, p := range pricing {
-		if p.BillingMode == service.BillingModePerRequest || p.BillingMode == service.BillingModeImage {
-			if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
-				response.BadRequest(c, "Per-request price or intervals required for per_request/image billing mode")
-				return
-		REDACTED
-	REDACTED
+	if err := validatePricingBillingMode(pricing); err != nil {
+		response.BadRequest(c, err.Error())
+		return
 REDACTED
 
 	channel, err := h.channelService.Create(c.Request.Context(), &service.CreateChannelInput{
@@ -329,13 +338,9 @@ REDACTED
 REDACTED
 	if req.ModelPricing != nil {
 		pricing := pricingRequestToService(*req.ModelPricing)
-		for _, p := range pricing {
-			if p.BillingMode == service.BillingModePerRequest || p.BillingMode == service.BillingModeImage {
-				if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
-					response.BadRequest(c, "Per-request price or intervals required for per_request/image billing mode")
-					return
-			REDACTED
-		REDACTED
+		if err := validatePricingBillingMode(pricing); err != nil {
+			response.BadRequest(c, err.Error())
+			return
 	REDACTED
 		input.ModelPricing = &pricing
 REDACTED
