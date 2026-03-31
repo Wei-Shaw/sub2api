@@ -934,17 +934,7 @@ type anthropicMetadataPayload struct {
 // replaceModelInBody 替换请求体中的model字段
 // 优先使用定点修改，尽量保持客户端原始字段顺序。
 func (s *GatewayService) replaceModelInBody(body []byte, newModel string) []byte {
-	if len(body) == 0 {
-		return body
-	}
-	if current := gjson.GetBytes(body, "model"); current.Exists() && current.String() == newModel {
-		return body
-	}
-	newBody, err := sjson.SetBytes(body, "model", newModel)
-	if err != nil {
-		return body
-	}
-	return newBody
+	return ReplaceModelInBody(body, newModel)
 }
 
 type claudeOAuthNormalizeOptions struct {
@@ -7963,11 +7953,8 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		}
 		var err error
 		if s.resolver != nil && apiKey.Group != nil {
-			var groupID *int64
-			if apiKey.Group != nil {
-				gid := apiKey.Group.ID
-				groupID = &gid
-			}
+			gid := apiKey.Group.ID
+			groupID := &gid
 			cost, err = s.billingService.CalculateCostUnified(CostInput{
 				Ctx:            ctx,
 				Model:          billingModel,
@@ -8353,7 +8340,7 @@ func (s *GatewayService) ResolveChannelMapping(ctx context.Context, groupID int6
 
 // ReplaceModelInBody 替换请求体中的模型名（导出供 handler 使用）
 func (s *GatewayService) ReplaceModelInBody(body []byte, newModel string) []byte {
-	return s.replaceModelInBody(body, newModel)
+	return ReplaceModelInBody(body, newModel)
 }
 
 // IsModelRestricted 检查模型是否被渠道限制
@@ -8367,14 +8354,10 @@ func (s *GatewayService) IsModelRestricted(ctx context.Context, groupID int64, m
 // ResolveChannelMappingAndRestrict 解析渠道映射并检查模型限制。
 // 返回映射结果和是否被限制。
 func (s *GatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, model string) (ChannelMappingResult, bool) {
-	var mapping ChannelMappingResult
-	mapping.MappedModel = model
-	if groupID == nil {
-		return mapping, false
+	if s.channelService == nil {
+		return ChannelMappingResult{MappedModel: model}, false
 	}
-	mapping = s.ResolveChannelMapping(ctx, *groupID, model)
-	restricted := s.IsModelRestricted(ctx, *groupID, mapping.MappedModel)
-	return mapping, restricted
+	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
 }
 
 // ForwardCountTokens 转发 count_tokens 请求到上游 API

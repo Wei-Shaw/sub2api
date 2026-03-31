@@ -161,7 +161,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// 解析渠道级模型映射 + 限制检查
 	channelMapping, restricted := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 	if restricted {
-		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "The requested model is not available for this API key")
 		return
 	}
 
