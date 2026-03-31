@@ -84,15 +84,3 @@ export function getPlatformTagClass(platform: string): string {
     default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
   }
 }
-
-/** 平台对应的输入框边框色 */
-export function getPlatformBorderClass(platform: string): string {
-  switch (platform) {
-    case 'anthropic': return 'border-orange-300 dark:border-orange-700'
-    case 'openai': return 'border-emerald-300 dark:border-emerald-700'
-    case 'gemini': return 'border-blue-300 dark:border-blue-700'
-    case 'antigravity': return 'border-purple-300 dark:border-purple-700'
-    case 'sora': return 'border-rose-300 dark:border-rose-700'
-    default: return 'border-gray-300 dark:border-dark-600'
-  }
-}

@@ -322,7 +322,7 @@
                     :value="srcModel"
                     type="text"
                     class="input flex-1 text-xs"
-                    :class="getPlatformInputBorder(section.platform)"
+                    :class="getPlatformTextColor(section.platform)"
                     :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
                     @change="renameMappingKey(sIdx, srcModel, ($event.target as HTMLInputElement).value)"
                   />
@@ -331,7 +331,7 @@
                     :value="section.model_mapping[srcModel]"
                     type="text"
                     class="input flex-1 text-xs"
-                    :class="getPlatformInputBorder(section.platform)"
+                    :class="getPlatformTextColor(section.platform)"
                     :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
                     @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
                   />
@@ -532,17 +532,6 @@ function getRateBadgeClass(platform: string): string {
     case 'antigravity': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
     case 'sora': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
     default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
-  }
-}
-
-function getPlatformInputBorder(platform: string): string {
-  switch (platform) {
-    case 'anthropic': return 'text-orange-600 dark:text-orange-400'
-    case 'openai': return 'text-emerald-600 dark:text-emerald-400'
-    case 'gemini': return 'text-blue-600 dark:text-blue-400'
-    case 'antigravity': return 'text-purple-600 dark:text-purple-400'
-    case 'sora': return 'text-rose-600 dark:text-rose-400'
-    default: return ''
   }
 }
 
