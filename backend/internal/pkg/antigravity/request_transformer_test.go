@@ -263,6 +263,29 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestBuildTools_PreservesWebSearchAlongsideFunctions(t *testing.T) {
+	tools := []ClaudeTool{
+		{
+			Name:        "get_weather",
+			Description: "Get weather information",
+			InputSchema: map[string]any{"type": "object"REDACTED,
+	REDACTED,
+		{
+			Type: "web_search_20250305",
+			Name: "web_search",
+	REDACTED,
+REDACTED
+
+	result := buildTools(tools)
+	require.Len(t, result, 2)
+	require.Len(t, result[0].FunctionDeclarations, 1)
+	require.Equal(t, "get_weather", result[0].FunctionDeclarations[0].Name)
+	require.NotNil(t, result[1].GoogleSearch)
+	require.NotNil(t, result[1].GoogleSearch.EnhancedContent)
+	require.NotNil(t, result[1].GoogleSearch.EnhancedContent.ImageSearch)
+	require.Equal(t, 5, result[1].GoogleSearch.EnhancedContent.ImageSearch.MaxResultCount)
+REDACTED
+
 func TestBuildGenerationConfig_ThinkingDynamicBudget(t *testing.T) {
 	tests := []struct {
 		name        string

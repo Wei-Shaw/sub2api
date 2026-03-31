@@ -730,13 +730,14 @@ REDACTED
 	REDACTED)
 REDACTED
 
-	if len(funcDecls) == 0 {
-		if !hasWebSearch {
-			return nil
-	REDACTED
-
-		// Web Search 工具映射
-		return []GeminiToolDeclaration{{
+	var declarations []GeminiToolDeclaration
+	if len(funcDecls) > 0 {
+		declarations = append(declarations, GeminiToolDeclaration{
+			FunctionDeclarations: funcDecls,
+	REDACTED)
+REDACTED
+	if hasWebSearch {
+		declarations = append(declarations, GeminiToolDeclaration{
 			GoogleSearch: &GeminiGoogleSearch{
 				EnhancedContent: &GeminiEnhancedContent{
 					ImageSearch: &GeminiImageSearch{
@@ -744,10 +745,11 @@ REDACTED
 				REDACTED,
 			REDACTED,
 		REDACTED,
-	REDACTEDREDACTED
+	REDACTED)
+REDACTED
+	if len(declarations) == 0 {
+		return nil
 REDACTED
 
-	return []GeminiToolDeclaration{{
-		FunctionDeclarations: funcDecls,
-REDACTEDREDACTED
+	return declarations
 REDACTED
