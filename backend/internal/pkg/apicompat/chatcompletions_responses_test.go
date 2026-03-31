@@ -181,6 +181,50 @@ REDACTED
 	assert.Equal(t, "data:image/png;base64,abc123", parts[1].ImageURL)
 REDACTED
 
+func TestChatCompletionsToResponses_EmptyBase64ImageURLSkipped(t *testing.T) {
+	content := `[{"type":"text","text":"Describe this"REDACTED,{"type":"image_url","image_url":{"url":"data:image/png;base64,"REDACTEDREDACTED]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)REDACTED,
+	REDACTED,
+REDACTED
+	resp, err := ChatCompletionsToResponses(req)
+REDACTED
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_text", parts[0].Type)
+	assert.Equal(t, "Describe this", parts[0].Text)
+REDACTED
+
+func TestChatCompletionsToResponses_WhitespaceOnlyBase64ImageURLSkipped(t *testing.T) {
+	content := `[{"type":"text","text":"Describe this"REDACTED,{"type":"image_url","image_url":{"url":"data:image/png;base64,   "REDACTEDREDACTED]`
+	req := &ChatCompletionsRequest{
+		Model: "gpt-4o",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(content)REDACTED,
+	REDACTED,
+REDACTED
+	resp, err := ChatCompletionsToResponses(req)
+REDACTED
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 1)
+
+	var parts []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[0].Content, &parts))
+	require.Len(t, parts, 1)
+	assert.Equal(t, "input_text", parts[0].Type)
+	assert.Equal(t, "Describe this", parts[0].Text)
+REDACTED
+
 func TestChatCompletionsToResponses_SystemArrayContent(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",
