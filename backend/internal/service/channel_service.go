@@ -72,12 +72,19 @@ type wildcardPricingEntry struct {
 	pricing *ChannelModelPricing
 }
 
+// wildcardMappingEntry 通配符映射条目
+type wildcardMappingEntry struct {
+	prefix string
+	target string
+}
+
 // channelCache 渠道缓存快照（扁平化哈希结构，热路径 O(1) 查找）
 type channelCache struct {
 	// 热路径查找
 	pricingByGroupModel    map[channelModelKey]*ChannelModelPricing // (groupID, platform, model) → 定价
 	wildcardByGroupPlatform map[channelGroupPlatformKey][]*wildcardPricingEntry // (groupID, platform) → 通配符定价（前缀长度降序）
 	mappingByGroupModel    map[channelModelKey]string                // (groupID, platform, model) → 映射目标
+	wildcardMappingByGP    map[channelGroupPlatformKey][]*wildcardMappingEntry // (groupID, platform) → 通配符映射（前缀长度降序）
 	channelByGroupID       map[int64]*Channel                        // groupID → 渠道
 	groupPlatform          map[int64]string                          // groupID → platform
 
@@ -173,6 +180,7 @@ func (s *ChannelService) buildCache(ctx context.Context) (*channelCache, error) 
 			pricingByGroupModel:    make(map[channelModelKey]*ChannelModelPricing),
 			wildcardByGroupPlatform: make(map[channelGroupPlatformKey][]*wildcardPricingEntry),
 			mappingByGroupModel:    make(map[channelModelKey]string),
+			wildcardMappingByGP:    make(map[channelGroupPlatformKey][]*wildcardMappingEntry),
 			channelByGroupID:       make(map[int64]*Channel),
 			groupPlatform:          make(map[int64]string),
 			byID:                   make(map[int64]*Channel),
@@ -200,6 +208,7 @@ func (s *ChannelService) buildCache(ctx context.Context) (*channelCache, error) 
 		pricingByGroupModel:    make(map[channelModelKey]*ChannelModelPricing),
 		wildcardByGroupPlatform: make(map[channelGroupPlatformKey][]*wildcardPricingEntry),
 		mappingByGroupModel:    make(map[channelModelKey]string),
+		wildcardMappingByGP:    make(map[channelGroupPlatformKey][]*wildcardMappingEntry),
 		channelByGroupID:       make(map[int64]*Channel),
 		groupPlatform:          groupPlatforms,
 		byID:                   make(map[int64]*Channel, len(channels)),
@@ -240,8 +249,18 @@ func (s *ChannelService) buildCache(ctx context.Context) (*channelCache, error) 
 			// 只展开该平台的模型映射到 (groupID, platform, model) → target
 			if platformMapping, ok := ch.ModelMapping[platform]; ok {
 				for src, dst := range platformMapping {
-					key := channelModelKey{groupID: gid, platform: platform, model: strings.ToLower(src)}
-					cache.mappingByGroupModel[key] = dst
+					if strings.HasSuffix(src, "*") {
+						// 通配符映射 → 存入 wildcardMappingByGP
+						prefix := strings.ToLower(strings.TrimSuffix(src, "*"))
+						gpKey := channelGroupPlatformKey{groupID: gid, platform: platform}
+						cache.wildcardMappingByGP[gpKey] = append(cache.wildcardMappingByGP[gpKey], &wildcardMappingEntry{
+							prefix: prefix,
+							target: dst,
+						})
+					} else {
+						key := channelModelKey{groupID: gid, platform: platform, model: strings.ToLower(src)}
+						cache.mappingByGroupModel[key] = dst
+					}
 				}
 			}
 		}
@@ -253,6 +272,12 @@ func (s *ChannelService) buildCache(ctx context.Context) (*channelCache, error) 
 			return len(entries[i].prefix) > len(entries[j].prefix)
 		})
 		cache.wildcardByGroupPlatform[gpKey] = entries
+	}
+	for gpKey, entries := range cache.wildcardMappingByGP {
+		sort.Slice(entries, func(i, j int) bool {
+			return len(entries[i].prefix) > len(entries[j].prefix)
+		})
+		cache.wildcardMappingByGP[gpKey] = entries
 	}
 
 	s.cache.Store(cache)
@@ -275,6 +300,18 @@ func (c *channelCache) matchWildcard(groupID int64, platform, modelLower string)
 		}
 	}
 	return nil
+}
+
+// matchWildcardMapping 在通配符映射中查找匹配项（最长前缀优先）
+func (c *channelCache) matchWildcardMapping(groupID int64, platform, modelLower string) string {
+	gpKey := channelGroupPlatformKey{groupID: groupID, platform: platform}
+	wildcards := c.wildcardMappingByGP[gpKey]
+	for _, wc := range wildcards {
+		if strings.HasPrefix(modelLower, wc.prefix) {
+			return wc.target
+		}
+	}
+	return ""
 }
 
 // GetChannelForGroup 获取分组关联的渠道（热路径 O(1)）
@@ -346,6 +383,9 @@ func (s *ChannelService) ResolveChannelMapping(ctx context.Context, groupID int6
 	platform := cache.groupPlatform[groupID]
 	key := channelModelKey{groupID: groupID, platform: platform, model: strings.ToLower(model)}
 	if mapped, ok := cache.mappingByGroupModel[key]; ok {
+		result.MappedModel = mapped
+		result.Mapped = true
+	} else if mapped := cache.matchWildcardMapping(groupID, platform, strings.ToLower(model)); mapped != "" {
 		result.MappedModel = mapped
 		result.Mapped = true
 	}
