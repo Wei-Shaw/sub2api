@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"testing"
 
@@ -138,4 +139,62 @@ REDACTED
 	cachedMap, ok := cached.(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, got, cachedMap)
+REDACTED
+
+func TestSanitizeEmptyBase64InputImagesInOpenAIRequestBodyMap(t *testing.T) {
+	var reqBody map[string]any
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"model":"gpt-5.4",
+		"input":[
+			{"role":"user","content":[
+				{"type":"input_text","text":"Describe this"REDACTED,
+				{"type":"input_image","image_url":"data:image/png;base64,   "REDACTED,
+				{"type":"input_image","image_url":"data:image/png;base64,abc123"REDACTED
+			]REDACTED,
+			{"role":"user","content":[
+				{"type":"input_image","image_url":"data:image/png;base64,"REDACTED
+			]REDACTED,
+			{"type":"input_image","image_url":"data:image/png;base64,"REDACTED,
+			{"type":"input_image","image_url":"data:image/png;base64,top-level-valid"REDACTED
+		]
+REDACTED`), &reqBody))
+
+	require.True(t, sanitizeEmptyBase64InputImagesInOpenAIRequestBodyMap(reqBody))
+
+	normalized, err := json.Marshal(reqBody)
+REDACTED
+	require.JSONEq(t, `{
+		"model":"gpt-5.4",
+		"input":[
+			{"role":"user","content":[
+				{"type":"input_text","text":"Describe this"REDACTED,
+				{"type":"input_image","image_url":"data:image/png;base64,abc123"REDACTED
+			]REDACTED,
+			{"type":"input_image","image_url":"data:image/png;base64,top-level-valid"REDACTED
+		]
+REDACTED`, string(normalized))
+REDACTED
+
+func TestSanitizeEmptyBase64InputImagesInOpenAIBody(t *testing.T) {
+	body, changed, err := sanitizeEmptyBase64InputImagesInOpenAIBody([]byte(`{
+		"model":"gpt-5.4",
+		"stream":true,
+		"input":[
+			{"role":"user","content":[
+				{"type":"input_text","text":"Describe this"REDACTED,
+				{"type":"input_image","image_url":"data:image/png;base64,"REDACTED
+			]REDACTED
+		]
+REDACTED`))
+REDACTED
+	require.True(t, changed)
+	require.JSONEq(t, `{
+		"model":"gpt-5.4",
+		"stream":true,
+		"input":[
+			{"role":"user","content":[
+				{"type":"input_text","text":"Describe this"REDACTED
+			]REDACTED
+		]
+REDACTED`, string(body))
 REDACTED
