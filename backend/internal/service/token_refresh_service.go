@@ -32,8 +32,9 @@ type TokenRefreshService struct {
 	privacyClientFactory PrivacyClientFactory
 	proxyRepo            ProxyRepository
 
-	stopCh chan struct{REDACTED
-	wg     sync.WaitGroup
+	stopCh   chan struct{REDACTED
+	stopOnce sync.Once
+	wg       sync.WaitGroup
 REDACTED
 
 // NewTokenRefreshService 创建token刷新服务
@@ -130,7 +131,9 @@ REDACTED
 
 // Stop 停止刷新服务（可安全多次调用）
 func (s *TokenRefreshService) Stop() {
-	close(s.stopCh)
+	s.stopOnce.Do(func() {
+		close(s.stopCh)
+REDACTED)
 	s.wg.Wait()
 	slog.Info("token_refresh.service_stopped")
 REDACTED
@@ -430,6 +433,7 @@ REDACTED
 		"unauthorized_client", // 客户端未授权
 		"access_denied",       // 访问被拒绝
 		"missing_project_id",  // 缺少 project_id
+		"no refresh token available",
 REDACTED
 	for _, needle := range nonRetryable {
 		if strings.Contains(msg, needle) {

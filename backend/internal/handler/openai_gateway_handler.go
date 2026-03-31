@@ -541,6 +541,7 @@ REDACTED
 		return
 REDACTED
 	reqModel := modelResult.String()
+	routingModel := service.NormalizeOpenAICompatRequestedModel(reqModel)
 	reqStream := gjson.GetBytes(body, "stream").Bool()
 
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
@@ -606,7 +607,7 @@ REDACTED
 			apiKey.GroupID,
 			"", // no previous_response_id
 			sessionHash,
-			reqModel,
+			routingModel,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
 		)
@@ -621,7 +622,7 @@ REDACTED
 				if apiKey.Group != nil {
 					defaultModel = apiKey.Group.DefaultMappedModel
 			REDACTED
-				if defaultModel != "" && defaultModel != reqModel {
+				if defaultModel != "" && defaultModel != routingModel {
 					reqLog.Info("openai_messages.fallback_to_default_model",
 						zap.String("default_mapped_model", defaultModel),
 					)

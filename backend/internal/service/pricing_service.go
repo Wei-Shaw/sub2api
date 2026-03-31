@@ -189,10 +189,38 @@ func (s *PricingService) checkAndUpdatePricing() error {
 		return s.downloadPricingData()
 REDACTED
 
-	// 检查文件是否过期
+	// 先加载本地文件（确保服务可用），再检查是否需要更新
+	if err := s.loadPricingData(pricingFile); err != nil {
+		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to load local file, downloading: %v", err)
+		return s.downloadPricingData()
+REDACTED
+
+	// 如果配置了哈希URL，通过远程哈希检查是否有更新
+	if s.cfg.Pricing.HashURL != "" {
+		remoteHash, err := s.fetchRemoteHash()
+		if err != nil {
+			logger.LegacyPrintf("service.pricing", "[Pricing] Failed to fetch remote hash on startup: %v", err)
+			return nil // 已加载本地文件，哈希获取失败不影响启动
+	REDACTED
+
+		s.mu.RLock()
+		localHash := s.localHash
+		s.mu.RUnlock()
+
+		if localHash == "" || remoteHash != localHash {
+			logger.LegacyPrintf("service.pricing", "[Pricing] Remote hash differs on startup (local=%s remote=%s), downloading...",
+				localHash[:min(8, len(localHash))], remoteHash[:min(8, len(remoteHash))])
+			if err := s.downloadPricingData(); err != nil {
+				logger.LegacyPrintf("service.pricing", "[Pricing] Download failed, using existing file: %v", err)
+		REDACTED
+	REDACTED
+		return nil
+REDACTED
+
+	// 没有哈希URL时，基于文件年龄检查
 	info, err := os.Stat(pricingFile)
 	if err != nil {
-		return s.downloadPricingData()
+		return nil // 已加载本地文件
 REDACTED
 
 	fileAge := time.Since(info.ModTime())
@@ -205,21 +233,11 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// 加载本地文件
-	return s.loadPricingData(pricingFile)
+	return nil
 REDACTED
 
 // syncWithRemote 与远程同步（基于哈希校验）
 func (s *PricingService) syncWithRemote() error {
-	pricingFile := s.getPricingFilePath()
-
-	// 计算本地文件哈希
-	localHash, err := s.computeFileHash(pricingFile)
-	if err != nil {
-		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to compute local hash: %v", err)
-		return s.downloadPricingData()
-REDACTED
-
 	// 如果配置了哈希URL，从远程获取哈希进行比对
 	if s.cfg.Pricing.HashURL != "" {
 		remoteHash, err := s.fetchRemoteHash()
@@ -228,8 +246,13 @@ REDACTED
 			return nil // 哈希获取失败不影响正常使用
 	REDACTED
 
-		if remoteHash != localHash {
-			logger.LegacyPrintf("service.pricing", "%s", "[Pricing] Remote hash differs, downloading new version...")
+		s.mu.RLock()
+		localHash := s.localHash
+		s.mu.RUnlock()
+
+		if localHash == "" || remoteHash != localHash {
+			logger.LegacyPrintf("service.pricing", "[Pricing] Remote hash differs (local=%s remote=%s), downloading new version...",
+				localHash[:min(8, len(localHash))], remoteHash[:min(8, len(remoteHash))])
 			return s.downloadPricingData()
 	REDACTED
 		logger.LegacyPrintf("service.pricing", "%s", "[Pricing] Hash check passed, no update needed")
@@ -237,6 +260,7 @@ REDACTED
 REDACTED
 
 	// 没有哈希URL时，基于时间检查
+	pricingFile := s.getPricingFilePath()
 	info, err := os.Stat(pricingFile)
 	if err != nil {
 		return s.downloadPricingData()
@@ -264,11 +288,12 @@ REDACTED
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	var expectedHash string
+	// 获取远程哈希（用于同步锚点，不作为完整性校验）
+	var remoteHash string
 	if strings.TrimSpace(s.cfg.Pricing.HashURL) != "" {
-		expectedHash, err = s.fetchRemoteHash()
+		remoteHash, err = s.fetchRemoteHash()
 		if err != nil {
-			return fmt.Errorf("fetch remote hash: %w", err)
+			logger.LegacyPrintf("service.pricing", "[Pricing] Failed to fetch remote hash (continuing): %v", err)
 	REDACTED
 REDACTED
 
@@ -277,11 +302,13 @@ REDACTED
 		return fmt.Errorf("download failed: %w", err)
 REDACTED
 
-	if expectedHash != "" {
-		actualHash := sha256.Sum256(body)
-		if !strings.EqualFold(expectedHash, hex.EncodeToString(actualHash[:])) {
-			return fmt.Errorf("pricing hash mismatch")
-	REDACTED
+	// 哈希校验：不匹配时仅告警，不阻止更新
+	// 远程哈希文件可能与数据文件不同步（如维护者更新了数据但未更新哈希文件）
+	dataHash := sha256.Sum256(body)
+	dataHashStr := hex.EncodeToString(dataHash[:])
+	if remoteHash != "" && !strings.EqualFold(remoteHash, dataHashStr) {
+		logger.LegacyPrintf("service.pricing", "[Pricing] Hash mismatch warning: remote=%s data=%s (hash file may be out of sync)",
+			remoteHash[:min(8, len(remoteHash))], dataHashStr[:8])
 REDACTED
 
 	// 解析JSON数据（使用灵活的解析方式）
@@ -296,11 +323,14 @@ REDACTED
 		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to save file: %v", err)
 REDACTED
 
-	// 保存哈希
-	hash := sha256.Sum256(body)
-	hashStr := hex.EncodeToString(hash[:])
+	// 使用远程哈希作为同步锚点，防止重复下载
+	// 当远程哈希不可用时，回退到数据本身的哈希
+	syncHash := dataHashStr
+	if remoteHash != "" {
+		syncHash = remoteHash
+REDACTED
 	hashFile := s.getHashFilePath()
-	if err := os.WriteFile(hashFile, []byte(hashStr+"\n"), 0644); err != nil {
+	if err := os.WriteFile(hashFile, []byte(syncHash+"\n"), 0644); err != nil {
 		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to save hash: %v", err)
 REDACTED
 
@@ -308,7 +338,7 @@ REDACTED
 	s.mu.Lock()
 	s.pricingData = data
 	s.lastUpdated = time.Now()
-	s.localHash = hashStr
+	s.localHash = syncHash
 	s.mu.Unlock()
 
 	logger.LegacyPrintf("service.pricing", "[Pricing] Downloaded %d models successfully", len(data))
@@ -484,16 +514,6 @@ REDACTED)
 		return "", fmt.Errorf("invalid pricing url: %w", err)
 REDACTED
 	return normalized, nil
-REDACTED
-
-// computeFileHash 计算文件哈希
-func (s *PricingService) computeFileHash(filePath string) (string, error) {
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return "", err
-REDACTED
-	hash := sha256.Sum256(data)
-	return hex.EncodeToString(hash[:]), nil
 REDACTED
 
 // GetModelPricing 获取模型价格（带模糊匹配）

@@ -1580,6 +1580,41 @@
             </p>
           </div>
         </div>
+
+        <!-- Custom Base URL Relay -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.customBaseUrl.label') REDACTEDREDACTED</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.customBaseUrl.hint') REDACTEDREDACTED
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="customBaseUrlEnabled = !customBaseUrlEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                customBaseUrlEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  customBaseUrlEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <div v-if="customBaseUrlEnabled" class="mt-3">
+            <input
+              v-model="customBaseUrl"
+              type="text"
+              class="input"
+              :placeholder="t('admin.accounts.quotaControl.customBaseUrl.urlHint')"
+            />
+          </div>
+        </div>
       </div>
 
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -1854,6 +1889,8 @@ const tlsFingerprintProfiles = ref<{ id: number; name: string REDACTED[]>([])
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
+const customBaseUrlEnabled = ref(false)
+const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
@@ -2482,6 +2519,8 @@ function loadQuotaControlSettings(account: Account) {
   sessionIdMaskingEnabled.value = false
   cacheTTLOverrideEnabled.value = false
   cacheTTLOverrideTarget.value = '5m'
+  customBaseUrlEnabled.value = false
+  customBaseUrl.value = ''
 
   // Only applies to Anthropic OAuth/SetupToken accounts
   if (account.platform !== 'anthropic' || (account.type !== 'oauth' && account.type !== 'setup-token')) {
@@ -2527,6 +2566,12 @@ function loadQuotaControlSettings(account: Account) {
   if (account.cache_ttl_override_enabled === true) {
     cacheTTLOverrideEnabled.value = true
     cacheTTLOverrideTarget.value = account.cache_ttl_override_target || '5m'
+  REDACTED
+
+  // Load custom base URL setting
+  if (account.custom_base_url_enabled === true) {
+    customBaseUrlEnabled.value = true
+    customBaseUrl.value = account.custom_base_url || ''
   REDACTED
 REDACTED
 
@@ -2978,6 +3023,15 @@ const handleSubmit = async () => {
       REDACTED else {
         delete newExtra.cache_ttl_override_enabled
         delete newExtra.cache_ttl_override_target
+      REDACTED
+
+      // Custom base URL relay setting
+      if (customBaseUrlEnabled.value && customBaseUrl.value.trim()) {
+        newExtra.custom_base_url_enabled = true
+        newExtra.custom_base_url = customBaseUrl.value.trim()
+      REDACTED else {
+        delete newExtra.custom_base_url_enabled
+        delete newExtra.custom_base_url
       REDACTED
 
       updatePayload.extra = newExtra

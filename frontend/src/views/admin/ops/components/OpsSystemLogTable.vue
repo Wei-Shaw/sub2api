@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, watch REDACTED from 'vue'
 import { opsAPI, type OpsRuntimeLogConfig, type OpsSystemLog, type OpsSystemLogSinkHealth REDACTED from '@/api/admin/ops'
 import Pagination from '@/components/common/Pagination.vue'
+import Select from '@/components/common/Select.vue'
 import { useAppStore REDACTED from '@/stores'
 
 const appStore = useAppStore()
@@ -55,6 +56,37 @@ const filters = reactive({
   model: '',
   q: ''
 REDACTED)
+
+const runtimeLevelOptions = [
+  { value: 'debug', label: 'debug' REDACTED,
+  { value: 'info', label: 'info' REDACTED,
+  { value: 'warn', label: 'warn' REDACTED,
+  { value: 'error', label: 'error' REDACTED
+]
+
+const stacktraceLevelOptions = [
+  { value: 'none', label: 'none' REDACTED,
+  { value: 'error', label: 'error' REDACTED,
+  { value: 'fatal', label: 'fatal' REDACTED
+]
+
+const timeRangeOptions = [
+  { value: '5m', label: '5m' REDACTED,
+  { value: '30m', label: '30m' REDACTED,
+  { value: '1h', label: '1h' REDACTED,
+  { value: '6h', label: '6h' REDACTED,
+  { value: '24h', label: '24h' REDACTED,
+  { value: '7d', label: '7d' REDACTED,
+  { value: '30d', label: '30d' REDACTED
+]
+
+const filterLevelOptions = [
+  { value: '', label: '全部' REDACTED,
+  { value: 'debug', label: 'debug' REDACTED,
+  { value: 'info', label: 'info' REDACTED,
+  { value: 'warn', label: 'warn' REDACTED,
+  { value: 'error', label: 'error' REDACTED
+]
 
 const levelBadgeClass = (level: string) => {
   const v = String(level || '').toLowerCase()
@@ -347,20 +379,11 @@ REDACTED)
       <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
         <label class="text-xs text-gray-600 dark:text-gray-300">
           级别
-          <select v-model="runtimeConfig.level" class="input mt-1">
-            <option value="debug">debug</option>
-            <option value="info">info</option>
-            <option value="warn">warn</option>
-            <option value="error">error</option>
-          </select>
+          <Select v-model="runtimeConfig.level" class="mt-1" :options="runtimeLevelOptions" />
         </label>
         <label class="text-xs text-gray-600 dark:text-gray-300">
           堆栈阈值
-          <select v-model="runtimeConfig.stacktrace_level" class="input mt-1">
-            <option value="none">none</option>
-            <option value="error">error</option>
-            <option value="fatal">fatal</option>
-          </select>
+          <Select v-model="runtimeConfig.stacktrace_level" class="mt-1" :options="stacktraceLevelOptions" />
         </label>
         <label class="text-xs text-gray-600 dark:text-gray-300">
           采样初始
@@ -403,15 +426,7 @@ REDACTED)
     <div class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-5">
       <label class="text-xs text-gray-600 dark:text-gray-300">
         时间范围
-        <select v-model="filters.time_range" class="input mt-1">
-          <option value="5m">5m</option>
-          <option value="30m">30m</option>
-          <option value="1h">1h</option>
-          <option value="6h">6h</option>
-          <option value="24h">24h</option>
-          <option value="7d">7d</option>
-          <option value="30d">30d</option>
-        </select>
+        <Select v-model="filters.time_range" class="mt-1" :options="timeRangeOptions" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         开始时间（可选）
@@ -423,13 +438,7 @@ REDACTED)
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         级别
-        <select v-model="filters.level" class="input mt-1">
-          <option value="">全部</option>
-          <option value="debug">debug</option>
-          <option value="info">info</option>
-          <option value="warn">warn</option>
-          <option value="error">error</option>
-        </select>
+        <Select v-model="filters.level" class="mt-1" :options="filterLevelOptions" />
       </label>
       <label class="text-xs text-gray-600 dark:text-gray-300">
         组件

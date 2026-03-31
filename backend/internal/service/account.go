@@ -1229,6 +1229,28 @@ REDACTED
 	return false
 REDACTED
 
+// IsCustomBaseURLEnabled 检查是否启用自定义 base URL 中继转发
+// 仅适用于 Anthropic OAuth/SetupToken 类型账号
+func (a *Account) IsCustomBaseURLEnabled() bool {
+	if !a.IsAnthropicOAuthOrSetupToken() {
+		return false
+REDACTED
+	if a.Extra == nil {
+		return false
+REDACTED
+	if v, ok := a.Extra["custom_base_url_enabled"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+// GetCustomBaseURL 返回自定义中继服务的 base URL
+func (a *Account) GetCustomBaseURL() string {
+	return a.GetExtraString("custom_base_url")
+REDACTED
+
 // IsCacheTTLOverrideEnabled 检查是否启用缓存 TTL 强制替换
 // 仅适用于 Anthropic OAuth/SetupToken 类型账号
 // 启用后将所有 cache creation tokens 归入指定的 TTL 类型（5m 或 1h）
