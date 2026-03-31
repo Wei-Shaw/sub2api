@@ -15,11 +15,11 @@
       <!-- Summary: model tags + billing badge -->
       <div v-if="collapsed" class="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
         <!-- Compact model tags (show first 3) -->
-        <div class="flex min-w-0 flex-shrink items-center gap-1 overflow-hidden">
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1">
           <span
             v-for="(m, i) in entry.models.slice(0, 3)"
             :key="i"
-            class="inline-flex max-w-[120px] truncate rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-700 dark:bg-dark-600 dark:text-gray-300"
+            class="inline-flex shrink-0 rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-700 dark:bg-dark-600 dark:text-gray-300"
           >
             {{ m }}
           </span>
