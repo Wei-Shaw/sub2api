@@ -5,7 +5,8 @@
       <span
         v-for="(model, idx) in models"
         :key="idx"
-        class="inline-flex items-center gap-1 rounded-md bg-primary-50 px-2 py-0.5 text-sm text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+        class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-sm"
+        :class="getPlatformTagClass(props.platform || '')"
       >
         {{ model }}
         <button
@@ -38,12 +39,14 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import { getPlatformTagClass } from './types'
 
 const { t } = useI18n()
 
 const props = defineProps<{
   models: string[]
   placeholder?: string
+  platform?: string
 }>()
 
 const emit = defineEmits<{

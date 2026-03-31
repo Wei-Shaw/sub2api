@@ -322,6 +322,7 @@
                     :value="srcModel"
                     type="text"
                     class="input flex-1 text-xs"
+                    :class="getPlatformInputBorder(section.platform)"
                     :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
                     @change="renameMappingKey(sIdx, srcModel, ($event.target as HTMLInputElement).value)"
                   />
@@ -330,6 +331,7 @@
                     :value="section.model_mapping[srcModel]"
                     type="text"
                     class="input flex-1 text-xs"
+                    :class="getPlatformInputBorder(section.platform)"
                     :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
                     @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
                   />
@@ -363,6 +365,7 @@
                   v-for="(entry, idx) in section.model_pricing"
                   :key="idx"
                   :entry="entry"
+                  :platform="section.platform"
                   @update="updatePricingEntry(sIdx, idx, $event)"
                   @remove="removePricingEntry(sIdx, idx)"
                 />
@@ -529,6 +532,17 @@ function getRateBadgeClass(platform: string): string {
     case 'antigravity': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
     case 'sora': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
     default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
+  }
+}
+
+function getPlatformInputBorder(platform: string): string {
+  switch (platform) {
+    case 'anthropic': return 'border-orange-300 focus:border-orange-500 dark:border-orange-700'
+    case 'openai': return 'border-emerald-300 focus:border-emerald-500 dark:border-emerald-700'
+    case 'gemini': return 'border-blue-300 focus:border-blue-500 dark:border-blue-700'
+    case 'antigravity': return 'border-purple-300 focus:border-purple-500 dark:border-purple-700'
+    case 'sora': return 'border-rose-300 focus:border-rose-500 dark:border-rose-700'
+    default: return ''
   }
 }
 

@@ -19,7 +19,8 @@
           <span
             v-for="(m, i) in entry.models.slice(0, 3)"
             :key="i"
-            class="inline-flex shrink-0 rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-700 dark:bg-dark-600 dark:text-gray-300"
+            class="inline-flex shrink-0 rounded px-1.5 py-0.5 text-xs"
+            :class="getPlatformTagClass(props.platform || '')"
           >
             {{ m }}
           </span>
@@ -74,6 +75,7 @@
             </label>
             <ModelTagInput
               :models="entry.models"
+              :platform="props.platform"
               @update:models="onModelsUpdate($event)"
               :placeholder="t('admin.channels.form.modelsPlaceholder', '输入模型名后按回车添加，支持通配符 *')"
               class="mt-1"
@@ -232,7 +234,7 @@ import Icon from '@/components/icons/Icon.vue'
 import IntervalRow from './IntervalRow.vue'
 import ModelTagInput from './ModelTagInput.vue'
 import type { PricingFormEntry, IntervalFormEntry } from './types'
-import { perTokenToMTok } from './types'
+import { perTokenToMTok, getPlatformTagClass } from './types'
 import type { BillingMode } from '@/api/admin/channels'
 import channelsAPI from '@/api/admin/channels'
 
@@ -240,6 +242,7 @@ const { t } = useI18n()
 
 const props = defineProps<{
   entry: PricingFormEntry
+  platform?: string
 }>()
 
 const emit = defineEmits<{
