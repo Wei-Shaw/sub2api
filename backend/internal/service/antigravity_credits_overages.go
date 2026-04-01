@@ -40,30 +40,31 @@ func (s *AntigravityGatewayService) checkAccountCredits(
 		return true // 出错时假设有积分，不阻断
 	}
 
-	if usageInfo == nil || len(usageInfo.AICredits) == 0 {
+	hasCredits := hasEnoughCredits(usageInfo)
+	if !hasCredits {
 		logger.LegacyPrintf("service.antigravity_gateway",
-			"check_credits: account=%d has_credits=false amount=0 (no credits field)",
-			account.ID)
+			"check_credits: account=%d has_credits=false", account.ID)
+	}
+	return hasCredits
+}
+
+// hasEnoughCredits 检查 UsageInfo 中是否有足够的 GOOGLE_ONE_AI 积分。
+// 返回 true 表示积分可用，false 表示积分不足或无积分信息。
+func hasEnoughCredits(info *UsageInfo) bool {
+	if info == nil || len(info.AICredits) == 0 {
 		return false
 	}
 
-	for _, credit := range usageInfo.AICredits {
+	for _, credit := range info.AICredits {
 		if credit.CreditType == "GOOGLE_ONE_AI" {
 			minimum := credit.MinimumBalance
 			if minimum <= 0 {
 				minimum = 5
 			}
-			hasCredits := credit.Amount >= minimum
-			logger.LegacyPrintf("service.antigravity_gateway",
-				"check_credits: account=%d has_credits=%t amount=%.0f minimum=%.0f",
-				account.ID, hasCredits, credit.Amount, minimum)
-			return hasCredits
+			return credit.Amount >= minimum
 		}
 	}
 
-	logger.LegacyPrintf("service.antigravity_gateway",
-		"check_credits: account=%d has_credits=false (no GOOGLE_ONE_AI credit)",
-		account.ID)
 	return false
 }
 

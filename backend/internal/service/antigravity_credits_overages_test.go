@@ -548,3 +548,105 @@ func TestClearCreditsExhausted(t *testing.T) {
 		require.True(t, exists, "普通模型限流应保留")
 	})
 }
+
+// ===========================================================================
+// hasEnoughCredits — standalone credits balance check
+// ===========================================================================
+
+func TestHasEnoughCredits(t *testing.T) {
+	tests := []struct {
+		name string
+		info *UsageInfo
+		want bool
+	}{
+		{
+			name: "nil UsageInfo",
+			info: nil,
+			want: false,
+		},
+		{
+			name: "empty AICredits list",
+			info: &UsageInfo{AICredits: []AICredit{}},
+			want: false,
+		},
+		{
+			name: "GOOGLE_ONE_AI with enough credits (amount=18778, minimum=50)",
+			info: &UsageInfo{
+				AICredits: []AICredit{
+					{CreditType: "GOOGLE_ONE_AI", Amount: 18778, MinimumBalance: 50},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "GOOGLE_ONE_AI below minimum (amount=3, minimum=5)",
+			info: &UsageInfo{
+				AICredits: []AICredit{
+					{CreditType: "GOOGLE_ONE_AI", Amount: 3, MinimumBalance: 5},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "GOOGLE_ONE_AI with zero MinimumBalance defaults to 5, amount=6",
+			info: &UsageInfo{
+				AICredits: []AICredit{
+					{CreditType: "GOOGLE_ONE_AI", Amount: 6, MinimumBalance: 0},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "GOOGLE_ONE_AI with zero MinimumBalance defaults to 5, amount=4",
+			info: &UsageInfo{
+				AICredits: []AICredit{
+					{CreditType: "GOOGLE_ONE_AI", Amount: 4, MinimumBalance: 0},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "GOOGLE_ONE_AI exactly at minimum (amount=5, minimum=5)",
+			info: &UsageInfo{
+				AICredits: []AICredit{
+					{CreditType: "GOOGLE_ONE_AI", Amount: 5, MinimumBalance: 5},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "no GOOGLE_ONE_AI credit type",
+			info: &UsageInfo{
+				AICredits: []AICredit{
+					{CreditType: "OTHER_CREDIT", Amount: 10000, MinimumBalance: 5},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "multiple credits, GOOGLE_ONE_AI present with enough",
+			info: &UsageInfo{
+				AICredits: []AICredit{
+					{CreditType: "OTHER_CREDIT", Amount: 0, MinimumBalance: 5},
+					{CreditType: "GOOGLE_ONE_AI", Amount: 100, MinimumBalance: 10},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "negative MinimumBalance defaults to 5",
+			info: &UsageInfo{
+				AICredits: []AICredit{
+					{CreditType: "GOOGLE_ONE_AI", Amount: 6, MinimumBalance: -1},
+				},
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, hasEnoughCredits(tt.info))
+		})
+	}
+}
