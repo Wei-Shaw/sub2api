@@ -106,9 +106,12 @@ func (r *ModelPricingResolver) applyChannelOverrides(ctx context.Context, groupI
 
 // applyTokenOverrides 应用 token 模式的渠道覆盖
 func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricing, resolved *ResolvedPricing) {
-	// 如果有区间定价，使用区间
-	if len(chPricing.Intervals) > 0 {
-		resolved.Intervals = chPricing.Intervals
+	// 过滤掉所有价格字段都为空的无效 interval
+	validIntervals := filterValidIntervals(chPricing.Intervals)
+
+	// 如果有有效的区间定价，使用区间
+	if len(validIntervals) > 0 {
+		resolved.Intervals = validIntervals
 		return
 	}
 
@@ -145,6 +148,20 @@ func (r *ModelPricingResolver) applyRequestTierOverrides(chPricing *ChannelModel
 	if chPricing.PerRequestPrice != nil {
 		resolved.DefaultPerRequestPrice = *chPricing.PerRequestPrice
 	}
+}
+
+// filterValidIntervals 过滤掉所有价格字段都为空的无效 interval。
+// 前端可能创建了只有 min/max 但无价格的空 interval。
+func filterValidIntervals(intervals []PricingInterval) []PricingInterval {
+	var valid []PricingInterval
+	for _, iv := range intervals {
+		if iv.InputPrice != nil || iv.OutputPrice != nil ||
+			iv.CacheWritePrice != nil || iv.CacheReadPrice != nil ||
+			iv.PerRequestPrice != nil {
+			valid = append(valid, iv)
+		}
+	}
+	return valid
 }
 
 // GetIntervalPricing 根据 context token 数获取区间定价。

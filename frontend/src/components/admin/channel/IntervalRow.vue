@@ -1,5 +1,6 @@
 <template>
-  <div class="flex items-start gap-2 rounded border border-gray-200 bg-white p-2 dark:border-dark-500 dark:bg-dark-700">
+  <div class="flex items-start gap-2 rounded border p-2"
+       :class="isEmpty ? 'border-red-400 bg-red-50 dark:border-red-500 dark:bg-red-950/20' : 'border-gray-200 bg-white dark:border-dark-500 dark:bg-dark-700'">
     <!-- Token mode: context range + prices ($/MTok) -->
     <template v-if="mode === 'token'">
       <div class="w-20">
@@ -13,12 +14,12 @@
           type="number" min="0" class="input mt-0.5 text-xs" :placeholder="'∞'" />
       </div>
       <div class="flex-1">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputPrice', '输入') }} <span class="text-gray-300">$/M</span></label>
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputPrice', '输入') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$/M</span></label>
         <input :value="interval.input_price" @input="emitField('input_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
       </div>
       <div class="flex-1">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.outputPrice', '输出') }} <span class="text-gray-300">$/M</span></label>
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.outputPrice', '输出') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$/M</span></label>
         <input :value="interval.output_price" @input="emitField('output_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
       </div>
@@ -54,7 +55,7 @@
           type="number" min="0" class="input mt-0.5 text-xs" :placeholder="'∞'" />
       </div>
       <div class="flex-1">
-        <label class="text-xs text-gray-400">{{ t('admin.channels.form.perRequestPrice', '单次价格') }} <span class="text-gray-300">$</span></label>
+        <label class="text-xs text-gray-400">{{ t('admin.channels.form.perRequestPrice', '单次价格') }} <span v-if="isEmpty" class="text-red-500">*</span> <span class="text-gray-300">$</span></label>
         <input :value="interval.per_request_price" @input="emitField('per_request_price', ($event.target as HTMLInputElement).value)"
           type="number" step="any" min="0" class="input mt-0.5 text-xs" />
       </div>
@@ -67,6 +68,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import type { IntervalFormEntry } from './types'
@@ -83,6 +85,16 @@ const emit = defineEmits<{
   update: [interval: IntervalFormEntry]
   remove: []
 }>()
+
+// 检测所有价格字段是否都为空
+const isEmpty = computed(() => {
+  const iv = props.interval
+  return (iv.input_price == null || iv.input_price === '') &&
+    (iv.output_price == null || iv.output_price === '') &&
+    (iv.cache_write_price == null || iv.cache_write_price === '') &&
+    (iv.cache_read_price == null || iv.cache_read_price === '') &&
+    (iv.per_request_price == null || iv.per_request_price === '')
+})
 
 function emitField(field: keyof IntervalFormEntry, value: string | number | null) {
   emit('update', { ...props.interval, [field]: value === '' ? null : value })
