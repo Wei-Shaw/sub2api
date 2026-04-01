@@ -3174,6 +3174,14 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 				// 解包 v1internal 响应
 				inner, parseErr := s.unwrapV1InternalResponse([]byte(payload))
 				if parseErr == nil && inner != nil {
+					// 调试：检查解包前后 candidatesTokensDetails 是否存在
+					outerHas := gjson.Get(payload, "response.usageMetadata.candidatesTokensDetails").Exists()
+					innerHas := gjson.GetBytes(inner, "usageMetadata.candidatesTokensDetails").Exists()
+					if !outerHas && !innerHas && gjson.GetBytes(inner, "usageMetadata.candidatesTokenCount").Int() > 0 {
+						logger.LegacyPrintf("service.antigravity_gateway",
+							"gemini_stream_debug: candidatesTokensDetails missing outer=%t inner=%t outer_usage=%s",
+							outerHas, innerHas, truncateForLog([]byte(gjson.Get(payload, "response.usageMetadata").Raw), 500))
+					}
 					payload = string(inner)
 				}
 
