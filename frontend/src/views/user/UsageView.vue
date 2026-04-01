@@ -189,8 +189,8 @@
           </template>
 
           <template #cell-tokens="{ row }">
-            <!-- 图片生成请求 -->
-            <div v-if="row.image_count > 0" class="flex items-center gap-1.5">
+            <!-- 图片生成请求（仅按次计费时显示图片格式） -->
+            <div v-if="row.image_count > 0 && row.billing_mode === 'image'" class="flex items-center gap-1.5">
               <svg
                 class="h-4 w-4 text-indigo-500"
                 fill="none"
@@ -464,7 +464,7 @@
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.rate') }}</span>
             <span class="font-semibold text-blue-400"
-              >{{ (tooltipData?.rate_multiplier || 1).toFixed(2) }}x</span
+              >{{ formatMultiplier(tooltipData?.rate_multiplier || 1) }}x</span
             >
           </div>
           <div class="flex items-center justify-between gap-6">
@@ -667,6 +667,13 @@ const formatCacheTokens = (value: number): string => {
     return `${(value / 1_000).toFixed(1)}K`
   }
   return value.toLocaleString()
+}
+
+const formatMultiplier = (val: number): string => {
+  if (val >= 0.01) return val.toFixed(2)
+  if (val >= 0.001) return val.toFixed(3)
+  if (val >= 0.0001) return val.toFixed(4)
+  return val.toPrecision(2)
 }
 
 const loadUsageLogs = async () => {

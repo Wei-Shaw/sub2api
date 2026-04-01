@@ -84,8 +84,8 @@
         </template>
 
         <template #cell-tokens="{ row }">
-          <!-- 图片生成请求 -->
-          <div v-if="row.image_count > 0" class="flex items-center gap-1.5">
+          <!-- 图片生成请求（仅按次计费时显示图片格式） -->
+          <div v-if="row.image_count > 0 && row.billing_mode === 'image'" class="flex items-center gap-1.5">
             <svg class="h-4 w-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
@@ -295,11 +295,11 @@
           </div>
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.rate') }}</span>
-            <span class="font-semibold text-blue-400">{{ (tooltipData?.rate_multiplier || 1).toFixed(2) }}x</span>
+            <span class="font-semibold text-blue-400">{{ formatMultiplier(tooltipData?.rate_multiplier || 1) }}x</span>
           </div>
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.accountMultiplier') }}</span>
-            <span class="font-semibold text-blue-400">{{ (tooltipData?.account_rate_multiplier ?? 1).toFixed(2) }}x</span>
+            <span class="font-semibold text-blue-400">{{ formatMultiplier(tooltipData?.account_rate_multiplier ?? 1) }}x</span>
           </div>
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.original') }}</span>
@@ -380,6 +380,14 @@ const formatCacheTokens = (tokens: number): string => {
   if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`
   if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`
   return tokens.toString()
+}
+
+// 自适应精度：保留足够位数显示有效数字（如 0.001 → "0.001"，1.5 → "1.50"）
+const formatMultiplier = (val: number): string => {
+  if (val >= 0.01) return val.toFixed(2)
+  if (val >= 0.001) return val.toFixed(3)
+  if (val >= 0.0001) return val.toFixed(4)
+  return val.toPrecision(2)
 }
 
 const formatUserAgent = (ua: string): string => {
