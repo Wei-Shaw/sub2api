@@ -1880,6 +1880,7 @@ export default {
         mappingSource: '源模型',
         mappingTarget: '目标模型',
         billingModelSource: '计费基准',
+        billingModelSourceChannelMapped: '以渠道映射后的模型计费',
         billingModelSourceRequested: '以请求模型计费',
         billingModelSourceUpstream: '以最终模型计费',
         billingModelSourceHint: '控制使用哪个模型名称进行定价查找',

@@ -1800,6 +1800,7 @@ export default {
         mappingSource: 'Source model',
         mappingTarget: 'Target model',
         billingModelSource: 'Billing Model',
+        billingModelSourceChannelMapped: 'Bill by channel-mapped model',
         billingModelSourceRequested: 'Bill by requested model',
         billingModelSourceUpstream: 'Bill by final upstream model',
         billingModelSourceHint: 'Controls which model name is used for pricing lookup',

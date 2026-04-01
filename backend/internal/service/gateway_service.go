@@ -483,6 +483,7 @@ type ClaudeUsage struct {
 	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 	CacheCreation5mTokens    int // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
 	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
+	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
 REDACTED
 
 // ForwardResult 转发结果
@@ -7729,6 +7730,9 @@ REDACTED
 	var cost *CostBreakdown
 	// 确定计费模型
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
+		billingModel = input.ChannelMappedModel
+REDACTED
 	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
 		billingModel = input.OriginalModel
 REDACTED
@@ -7777,6 +7781,7 @@ REDACTED else {
 			CacheReadTokens:       result.Usage.CacheReadInputTokens,
 			CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
 			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
+			ImageOutputTokens:     result.Usage.ImageOutputTokens,
 	REDACTED
 		var err error
 		if s.resolver != nil && apiKey.Group != nil {
@@ -7836,8 +7841,10 @@ REDACTED
 		CacheReadTokens:       result.Usage.CacheReadInputTokens,
 		CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
 		CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
+		ImageOutputTokens:     result.Usage.ImageOutputTokens,
 		InputCost:             cost.InputCost,
 		OutputCost:            cost.OutputCost,
+		ImageOutputCost:       cost.ImageOutputCost,
 		CacheCreationCost:     cost.CacheCreationCost,
 		CacheReadCost:         cost.CacheReadCost,
 		TotalCost:             cost.TotalCost,
@@ -7976,6 +7983,9 @@ REDACTED
 	var cost *CostBreakdown
 	// 确定计费模型
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
+		billingModel = input.ChannelMappedModel
+REDACTED
 	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
 		billingModel = input.OriginalModel
 REDACTED
@@ -8007,6 +8017,7 @@ REDACTED else {
 			CacheReadTokens:       result.Usage.CacheReadInputTokens,
 			CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
 			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
+			ImageOutputTokens:     result.Usage.ImageOutputTokens,
 	REDACTED
 		var err error
 		// 优先尝试 Resolver + CalculateCostUnified（仅在有渠道定价时使用）
@@ -8073,8 +8084,10 @@ REDACTED
 		CacheReadTokens:       result.Usage.CacheReadInputTokens,
 		CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
 		CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
+		ImageOutputTokens:     result.Usage.ImageOutputTokens,
 		InputCost:             cost.InputCost,
 		OutputCost:            cost.OutputCost,
+		ImageOutputCost:       cost.ImageOutputCost,
 		CacheCreationCost:     cost.CacheCreationCost,
 		CacheReadCost:         cost.CacheReadCost,
 		TotalCost:             cost.TotalCost,
