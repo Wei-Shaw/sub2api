@@ -176,7 +176,11 @@ REDACTED)
 	if err != nil {
 		return nil, err
 REDACTED
-	return result.(*channelCache), nil
+	cache, ok := result.(*channelCache)
+	if !ok {
+		return nil, fmt.Errorf("unexpected cache type")
+REDACTED
+	return cache, nil
 REDACTED
 
 // buildCache 从数据库构建渠道缓存。

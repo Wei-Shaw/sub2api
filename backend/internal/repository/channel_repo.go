@@ -443,7 +443,7 @@ REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("get group platforms: %w", err)
 REDACTED
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	result := make(map[int64]string, len(groupIDs))
 	for rows.Next() {

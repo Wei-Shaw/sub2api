@@ -27,13 +27,14 @@ REDACTED
 REDACTED
 
 	out := &ResponsesRequest{
-		Model:       req.Model,
-		Input:       inputJSON,
-		Temperature: req.Temperature,
-		TopP:        req.TopP,
-		Stream:      true, // upstream always streams
-		Include:     []string{"reasoning.encrypted_content"REDACTED,
-		ServiceTier: req.ServiceTier,
+		Model:        req.Model,
+		Instructions: req.Instructions,
+		Input:        inputJSON,
+		Temperature:  req.Temperature,
+		TopP:         req.TopP,
+		Stream:       true, // upstream always streams
+		Include:      []string{"reasoning.encrypted_content"REDACTED,
+		ServiceTier:  req.ServiceTier,
 REDACTED
 
 	storeFalse := false
