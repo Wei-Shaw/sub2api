@@ -890,8 +890,9 @@ func (s *BillingService) CalculateImageCost(model string, imageSize string, imag
 	actualCost := totalCost * rateMultiplier
 
 	return &CostBreakdown{
-		TotalCost:  totalCost,
-		ActualCost: actualCost,
+		TotalCost:   totalCost,
+		ActualCost:  actualCost,
+		BillingMode: string(BillingModeImage),
 	}
 }
 

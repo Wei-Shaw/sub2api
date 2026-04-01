@@ -7931,17 +7931,17 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	} else if result.MediaType == "prompt" {
 		cost = &CostBreakdown{}
 	} else if result.ImageCount > 0 {
-		// 图片生成计费：渠道 token 定价优先，否则走按次计费（兼容旧版本）
-		useImageTokenBilling := false
+		// 图片生成计费：渠道级别定价优先，否则走按次计费（兼容旧版本）
+		hasChannelPricing := false
 		if s.resolver != nil && apiKey.Group != nil {
 			gid := apiKey.Group.ID
 			resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
-			if resolved.Source == "channel" && resolved.Mode == BillingModeToken {
-				useImageTokenBilling = true
+			if resolved.Source == "channel" {
+				hasChannelPricing = true
 			}
 		}
-		if useImageTokenBilling {
-			// 渠道配置了 token 定价 → 用 token 计费（image_output_tokens 独立计价）
+		if hasChannelPricing {
+			// 渠道定价优先 → 由 CalculateCostUnified 按 resolved.Mode 分发计费
 			tokens := UsageTokens{
 				InputTokens:       result.Usage.InputTokens,
 				OutputTokens:      result.Usage.OutputTokens,
@@ -8070,11 +8070,11 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 
 	// 设置计费模式
 	if result.MediaType != "image" && result.MediaType != "video" && result.MediaType != "prompt" {
-		if result.ImageCount > 0 {
-			billingMode := "image"
-			usageLog.BillingMode = &billingMode
-		} else if cost != nil && cost.BillingMode != "" {
+		if cost != nil && cost.BillingMode != "" {
 			billingMode := cost.BillingMode
+			usageLog.BillingMode = &billingMode
+		} else if result.ImageCount > 0 {
+			billingMode := "image"
 			usageLog.BillingMode = &billingMode
 		} else {
 			billingMode := "token"
@@ -8202,26 +8202,16 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 
 	// 根据请求类型选择计费方式
 	if result.ImageCount > 0 {
-		// 图片生成计费：渠道 token 定价优先，否则走按次计费（兼容旧版本）
-		useImageTokenBilling := false
+		// 图片生成计费：渠道级别定价优先，否则走按次计费（兼容旧版本）
+		hasChannelPricing := false
 		if s.resolver != nil && apiKey.Group != nil {
 			gid := apiKey.Group.ID
 			resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
-			slog.Info("image billing resolve debug",
-				"billing_model", billingModel,
-				"group_id", gid,
-				"resolved_source", resolved.Source,
-				"resolved_mode", resolved.Mode,
-				"has_base_pricing", resolved.BasePricing != nil,
-				"billing_model_source", input.BillingModelSource,
-				"channel_mapped_model", input.ChannelMappedModel,
-				"original_model", input.OriginalModel,
-			)
-			if resolved.Source == "channel" && resolved.Mode == BillingModeToken {
-				useImageTokenBilling = true
+			if resolved.Source == "channel" {
+				hasChannelPricing = true
 			}
 		}
-		if useImageTokenBilling {
+		if hasChannelPricing {
 			tokens := UsageTokens{
 				InputTokens:       result.Usage.InputTokens,
 				OutputTokens:      result.Usage.OutputTokens,
@@ -8354,11 +8344,11 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 	}
 
 	// 设置计费模式
-	if result.ImageCount > 0 {
-		billingMode := "image"
-		usageLog.BillingMode = &billingMode
-	} else if cost != nil && cost.BillingMode != "" {
+	if cost != nil && cost.BillingMode != "" {
 		billingMode := cost.BillingMode
+		usageLog.BillingMode = &billingMode
+	} else if result.ImageCount > 0 {
+		billingMode := "image"
 		usageLog.BillingMode = &billingMode
 	} else {
 		billingMode := "token"
