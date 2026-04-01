@@ -1887,3 +1887,127 @@ func TestReplaceModelInBody_InvalidJSON(t *testing.T) {
 	result2 := ReplaceModelInBody(arrayBody, "new-model")
 	require.Equal(t, arrayBody, result2)
 REDACTED
+
+// ===========================================================================
+// 7. isPlatformPricingMatch
+// ===========================================================================
+
+func TestIsPlatformPricingMatch(t *testing.T) {
+	tests := []struct {
+		name            string
+		groupPlatform   string
+		pricingPlatform string
+		want            bool
+REDACTED{
+		{"antigravity matches anthropic", PlatformAntigravity, PlatformAnthropic, trueREDACTED,
+		{"antigravity matches gemini", PlatformAntigravity, PlatformGemini, trueREDACTED,
+		{"antigravity matches antigravity", PlatformAntigravity, PlatformAntigravity, trueREDACTED,
+		{"antigravity does NOT match openai", PlatformAntigravity, PlatformOpenAI, falseREDACTED,
+		{"anthropic matches anthropic", PlatformAnthropic, PlatformAnthropic, trueREDACTED,
+		{"anthropic does NOT match antigravity", PlatformAnthropic, PlatformAntigravity, falseREDACTED,
+		{"anthropic does NOT match gemini", PlatformAnthropic, PlatformGemini, falseREDACTED,
+		{"gemini matches gemini", PlatformGemini, PlatformGemini, trueREDACTED,
+		{"gemini does NOT match antigravity", PlatformGemini, PlatformAntigravity, falseREDACTED,
+		{"gemini does NOT match anthropic", PlatformGemini, PlatformAnthropic, falseREDACTED,
+		{"empty string matches nothing", "", PlatformAnthropic, falseREDACTED,
+		{"empty string matches empty", "", "", trueREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isPlatformPricingMatch(tt.groupPlatform, tt.pricingPlatform))
+	REDACTED)
+REDACTED
+REDACTED
+
+// ===========================================================================
+// 8. matchingPlatforms
+// ===========================================================================
+
+func TestMatchingPlatforms(t *testing.T) {
+	tests := []struct {
+		name          string
+		groupPlatform string
+		want          []string
+REDACTED{
+		{"antigravity returns all three", PlatformAntigravity, []string{PlatformAntigravity, PlatformAnthropic, PlatformGeminiREDACTEDREDACTED,
+		{"anthropic returns itself", PlatformAnthropic, []string{PlatformAnthropicREDACTEDREDACTED,
+		{"gemini returns itself", PlatformGemini, []string{PlatformGeminiREDACTEDREDACTED,
+		{"openai returns itself", PlatformOpenAI, []string{PlatformOpenAIREDACTEDREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := matchingPlatforms(tt.groupPlatform)
+			require.Equal(t, tt.want, result)
+	REDACTED)
+REDACTED
+REDACTED
+
+// ===========================================================================
+// 9. Antigravity cross-platform channel pricing
+// ===========================================================================
+
+func TestGetChannelModelPricing_AntigravityCrossPlatform(t *testing.T) {
+	// Channel has anthropic pricing for claude-opus-4-6.
+	// Group 10 is antigravity — should see the anthropic pricing.
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10REDACTED,
+		ModelPricing: []ChannelModelPricing{
+			{ID: 100, Platform: PlatformAnthropic, Models: []string{"claude-opus-4-6"REDACTED, InputPrice: testPtrFloat64(15e-6)REDACTED,
+	REDACTED,
+REDACTED
+	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAntigravityREDACTED)
+	svc := newTestChannelService(repo)
+
+	result := svc.GetChannelModelPricing(context.Background(), 10, "claude-opus-4-6")
+	require.NotNil(t, result, "antigravity group should see anthropic pricing")
+	require.Equal(t, int64(100), result.ID)
+	require.InDelta(t, 15e-6, *result.InputPrice, 1e-12)
+REDACTED
+
+func TestGetChannelModelPricing_AnthropicCannotSeeAntigravityPricing(t *testing.T) {
+	// Channel has antigravity-platform pricing for claude-opus-4-6.
+	// Group 10 is anthropic — should NOT see antigravity pricing (no cross-platform leakage).
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10REDACTED,
+		ModelPricing: []ChannelModelPricing{
+			{ID: 100, Platform: PlatformAntigravity, Models: []string{"claude-opus-4-6"REDACTED, InputPrice: testPtrFloat64(15e-6)REDACTED,
+	REDACTED,
+REDACTED
+	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAnthropicREDACTED)
+	svc := newTestChannelService(repo)
+
+	result := svc.GetChannelModelPricing(context.Background(), 10, "claude-opus-4-6")
+	require.Nil(t, result, "anthropic group should NOT see antigravity-platform pricing")
+REDACTED
+
+// ===========================================================================
+// 10. Antigravity cross-platform model mapping
+// ===========================================================================
+
+func TestResolveChannelMapping_AntigravityCrossPlatform(t *testing.T) {
+	// Channel has anthropic model mapping: claude-opus-4-5 → claude-opus-4-6.
+	// Group 10 is antigravity — should apply the anthropic mapping.
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10REDACTED,
+		ModelMapping: map[string]map[string]string{
+			PlatformAnthropic: {
+				"claude-opus-4-5": "claude-opus-4-6",
+		REDACTED,
+	REDACTED,
+REDACTED
+	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAntigravityREDACTED)
+	svc := newTestChannelService(repo)
+
+	result := svc.ResolveChannelMapping(context.Background(), 10, "claude-opus-4-5")
+	require.True(t, result.Mapped, "antigravity group should apply anthropic mapping")
+	require.Equal(t, "claude-opus-4-6", result.MappedModel)
+	require.Equal(t, int64(1), result.ChannelID)
+REDACTED
