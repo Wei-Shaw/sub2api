@@ -36,7 +36,7 @@ func TestChannelToResponse_FullChannel(t *testing.T) {
 		RestrictModels:     true,
 		CreatedAt:          now,
 		UpdatedAt:          now.Add(time.Hour),
-		GroupIDs:            []int64{1, 2, 3},
+		GroupIDs:           []int64{1, 2, 3},
 		ModelPricing: []service.ChannelModelPricing{
 			{
 				ID:              10,
@@ -94,8 +94,8 @@ func TestChannelToResponse_EmptyDefaults(t *testing.T) {
 		BillingModelSource: "",
 		CreatedAt:          now,
 		UpdatedAt:          now,
-		GroupIDs:            nil,
-		ModelMapping:        nil,
+		GroupIDs:           nil,
+		ModelMapping:       nil,
 		ModelPricing: []service.ChannelModelPricing{
 			{
 				Platform:    "",
@@ -106,7 +106,7 @@ func TestChannelToResponse_EmptyDefaults(t *testing.T) {
 	}
 
 	resp := channelToResponse(ch)
-	require.Equal(t, "requested", resp.BillingModelSource)
+	require.Equal(t, "channel_mapped", resp.BillingModelSource)
 	require.NotNil(t, resp.GroupIDs)
 	require.Empty(t, resp.GroupIDs)
 	require.NotNil(t, resp.ModelMapping)

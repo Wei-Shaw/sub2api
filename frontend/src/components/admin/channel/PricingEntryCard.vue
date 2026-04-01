@@ -328,6 +328,7 @@ async function onModelsUpdate(newModels: string[]) {
         output_price: perTokenToMTok(result.output_price ?? null),
         cache_write_price: perTokenToMTok(result.cache_write_price ?? null),
         cache_read_price: perTokenToMTok(result.cache_read_price ?? null),
+        image_output_price: perTokenToMTok(result.image_output_price ?? null),
       })
     }
   } catch {

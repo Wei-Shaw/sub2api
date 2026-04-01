@@ -97,7 +97,7 @@ type ChannelMappingResult struct {
 	MappedModel        string // 映射后的模型名（无映射时等于原始模型名）
 	ChannelID          int64  // 渠道 ID（0 = 无渠道关联）
 	Mapped             bool   // 是否发生了映射
-	BillingModelSource string // 计费模型来源（"requested" / "upstream"）
+	BillingModelSource string // 计费模型来源（"requested" / "upstream" / "channel_mapped"）
 }
 
 // BuildModelMappingChain 根据映射结果和上游实际模型构建映射链描述。
@@ -119,9 +119,14 @@ func (r ChannelMappingResult) BuildModelMappingChain(reqModel, upstreamModel str
 
 // ToUsageFields 将渠道映射结果转为使用记录字段
 func (r ChannelMappingResult) ToUsageFields(reqModel, upstreamModel string) ChannelUsageFields {
+	channelMappedModel := reqModel
+	if r.Mapped {
+		channelMappedModel = r.MappedModel
+	}
 	return ChannelUsageFields{
 		ChannelID:          r.ChannelID,
 		OriginalModel:      reqModel,
+		ChannelMappedModel: channelMappedModel,
 		BillingModelSource: r.BillingModelSource,
 		ModelMappingChain:  r.BuildModelMappingChain(reqModel, upstreamModel),
 	}
@@ -193,7 +198,7 @@ func (s *ChannelService) buildCache(ctx context.Context) (*channelCache, error) 
 			channelByGroupID:        make(map[int64]*Channel),
 			groupPlatform:           make(map[int64]string),
 			byID:                    make(map[int64]*Channel),
-			loadedAt:                time.Now().Add(channelCacheTTL - channelErrorTTL), // 使剩余 TTL = errorTTL
+			loadedAt:                time.Now().Add(-(channelCacheTTL - channelErrorTTL)), // 使剩余 TTL = errorTTL
 		}
 		s.cache.Store(errorCache)
 		return nil, fmt.Errorf("list all channels: %w", err)
@@ -374,7 +379,7 @@ func (s *ChannelService) ResolveChannelMapping(ctx context.Context, groupID int6
 		BillingModelSource: ch.BillingModelSource,
 	}
 	if result.BillingModelSource == "" {
-		result.BillingModelSource = BillingModelSourceRequested
+		result.BillingModelSource = BillingModelSourceChannelMapped
 	}
 
 	platform := cache.groupPlatform[groupID]
@@ -481,7 +486,7 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 		ModelMapping:       input.ModelMapping,
 	}
 	if channel.BillingModelSource == "" {
-		channel.BillingModelSource = BillingModelSourceRequested
+		channel.BillingModelSource = BillingModelSourceChannelMapped
 	}
 
 	if err := validateNoConflictingModels(channel.ModelPricing); err != nil {
@@ -565,20 +570,36 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 		return nil, err
 	}
 
+	// 先获取旧分组，Update 后旧分组关联已删除，无法再查到
+	var oldGroupIDs []int64
+	if s.authCacheInvalidator != nil {
+		var err2 error
+		oldGroupIDs, err2 = s.repo.GetGroupIDs(ctx, id)
+		if err2 != nil {
+			slog.Warn("failed to get old group IDs for cache invalidation", "channel_id", id, "error", err2)
+		}
+	}
+
 	if err := s.repo.Update(ctx, channel); err != nil {
 		return nil, fmt.Errorf("update channel: %w", err)
 	}
 
 	s.invalidateCache()
 
-	// 失效关联分组的 auth 缓存
+	// 失效新旧分组的 auth 缓存
 	if s.authCacheInvalidator != nil {
-		groupIDs, err := s.repo.GetGroupIDs(ctx, id)
-		if err != nil {
-			slog.Warn("failed to get group IDs for cache invalidation", "channel_id", id, "error", err)
+		seen := make(map[int64]struct{}, len(oldGroupIDs)+len(channel.GroupIDs))
+		for _, gid := range oldGroupIDs {
+			if _, ok := seen[gid]; !ok {
+				seen[gid] = struct{}{}
+				s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, gid)
+			}
 		}
-		for _, gid := range groupIDs {
-			s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, gid)
+		for _, gid := range channel.GroupIDs {
+			if _, ok := seen[gid]; !ok {
+				seen[gid] = struct{}{}
+				s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, gid)
+			}
 		}
 	}
 

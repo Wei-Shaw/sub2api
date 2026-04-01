@@ -418,6 +418,12 @@ func TestShouldMarkCreditsExhausted(t *testing.T) {
 		require.True(t, shouldMarkCreditsExhausted(resp, body, nil))
 	})
 
+	t.Run("单模型配额耗尽不标记（积分对此无效）", func(t *testing.T) {
+		resp := &http.Response{StatusCode: http.StatusTooManyRequests}
+		body := []byte(`{"error":{"code":429,"message":"You have exhausted your capacity on this model. Your quota will reset after 146h11m17s.","status":"RESOURCE_EXHAUSTED"}}`)
+		require.False(t, shouldMarkCreditsExhausted(resp, body, nil))
+	})
+
 	t.Run("429 结构化限流也标记（积分注入后仍 429 即为耗尽）", func(t *testing.T) {
 		resp := &http.Response{StatusCode: http.StatusTooManyRequests}
 		body := []byte(`{"error":{"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"RATE_LIMIT_EXCEEDED"},{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"0.5s"}]}}`)

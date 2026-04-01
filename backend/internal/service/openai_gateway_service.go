@@ -204,6 +204,7 @@ type OpenAIUsage struct {
 	OutputTokens             int `json:"output_tokens"`
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
 	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
 }
 
 // OpenAIForwardResult represents the result of forwarding
@@ -4177,6 +4178,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		OutputTokens:        result.Usage.OutputTokens,
 		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
 		CacheReadTokens:     result.Usage.CacheReadInputTokens,
+		ImageOutputTokens:   result.Usage.ImageOutputTokens,
 	}
 
 	// Get rate multiplier
@@ -4194,6 +4196,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
 	if result.BillingModel != "" {
 		billingModel = strings.TrimSpace(result.BillingModel)
+	}
+	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
+		billingModel = input.ChannelMappedModel
 	}
 	if input.BillingModelSource == "requested" && input.OriginalModel != "" {
 		billingModel = input.OriginalModel
@@ -4255,8 +4260,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		OutputTokens:          result.Usage.OutputTokens,
 		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
 		CacheReadTokens:       result.Usage.CacheReadInputTokens,
+		ImageOutputTokens:     result.Usage.ImageOutputTokens,
 		InputCost:             cost.InputCost,
 		OutputCost:            cost.OutputCost,
+		ImageOutputCost:       cost.ImageOutputCost,
 		CacheCreationCost:     cost.CacheCreationCost,
 		CacheReadCost:         cost.CacheReadCost,
 		TotalCost:             cost.TotalCost,

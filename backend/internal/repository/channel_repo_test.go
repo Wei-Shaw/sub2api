@@ -97,7 +97,7 @@ func TestUnmarshalModelMapping(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name: "valid JSON",
+			name:  "valid JSON",
 			input: []byte(`{"openai":{"gpt-4":"gpt-4-turbo"},"anthropic":{"old":"new"}}`),
 			want: map[string]map[string]string{
 				"openai":    {"gpt-4": "gpt-4-turbo"},

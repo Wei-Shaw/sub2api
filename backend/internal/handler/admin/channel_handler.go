@@ -31,7 +31,7 @@ type createChannelRequest struct {
 	GroupIDs           []int64                      `json:"group_ids"`
 	ModelPricing       []channelModelPricingRequest `json:"model_pricing"`
 	ModelMapping       map[string]map[string]string `json:"model_mapping"`
-	BillingModelSource string                       `json:"billing_model_source" binding:"omitempty,oneof=requested upstream"`
+	BillingModelSource string                       `json:"billing_model_source" binding:"omitempty,oneof=requested upstream channel_mapped"`
 	RestrictModels     bool                         `json:"restrict_models"`
 }
 
@@ -42,7 +42,7 @@ type updateChannelRequest struct {
 	GroupIDs           *[]int64                      `json:"group_ids"`
 	ModelPricing       *[]channelModelPricingRequest `json:"model_pricing"`
 	ModelMapping       map[string]map[string]string  `json:"model_mapping"`
-	BillingModelSource string                        `json:"billing_model_source" binding:"omitempty,oneof=requested upstream"`
+	BillingModelSource string                        `json:"billing_model_source" binding:"omitempty,oneof=requested upstream channel_mapped"`
 	RestrictModels     *bool                         `json:"restrict_models"`
 }
 
@@ -129,7 +129,7 @@ func channelToResponse(ch *service.Channel) *channelResponse {
 	}
 	resp.BillingModelSource = ch.BillingModelSource
 	if resp.BillingModelSource == "" {
-		resp.BillingModelSource = "requested"
+		resp.BillingModelSource = "channel_mapped"
 	}
 	if resp.GroupIDs == nil {
 		resp.GroupIDs = []int64{}
@@ -388,10 +388,11 @@ func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"found":             true,
-		"input_price":       pricing.InputPricePerToken,
-		"output_price":      pricing.OutputPricePerToken,
-		"cache_write_price": pricing.CacheCreationPricePerToken,
-		"cache_read_price":  pricing.CacheReadPricePerToken,
+		"found":              true,
+		"input_price":        pricing.InputPricePerToken,
+		"output_price":       pricing.OutputPricePerToken,
+		"cache_write_price":  pricing.CacheCreationPricePerToken,
+		"cache_read_price":   pricing.CacheReadPricePerToken,
+		"image_output_price": pricing.ImageOutputPricePerToken,
 	})
 }

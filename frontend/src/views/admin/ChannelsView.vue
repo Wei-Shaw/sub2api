@@ -471,6 +471,7 @@ const statusEditOptions = computed(() => [
 ])
 
 const billingModelSourceOptions = computed(() => [
+  { value: 'channel_mapped', label: t('admin.channels.form.billingModelSourceChannelMapped', 'Bill by channel-mapped model') },
   { value: 'requested', label: t('admin.channels.form.billingModelSourceRequested', 'Bill by requested model') },
   { value: 'upstream', label: t('admin.channels.form.billingModelSourceUpstream', 'Bill by final upstream model') }
 ])
@@ -504,7 +505,7 @@ const form = reactive({
   description: '',
   status: 'active',
   restrict_models: false,
-  billing_model_source: 'requested' as string,
+  billing_model_source: 'channel_mapped' as string,
   platforms: [] as PlatformSection[]
 })
 
@@ -819,7 +820,7 @@ function resetForm() {
   form.description = ''
   form.status = 'active'
   form.restrict_models = false
-  form.billing_model_source = 'requested'
+  form.billing_model_source = 'channel_mapped'
   form.platforms = []
   activeTab.value = 'basic'
 }
@@ -837,7 +838,7 @@ async function openEditDialog(channel: Channel) {
   form.description = channel.description || ''
   form.status = channel.status
   form.restrict_models = channel.restrict_models || false
-  form.billing_model_source = channel.billing_model_source || 'requested'
+  form.billing_model_source = channel.billing_model_source || 'channel_mapped'
   // Must load groups first so apiToForm can map groupID → platform
   await loadGroups()
   form.platforms = apiToForm(channel)
@@ -932,7 +933,7 @@ async function handleSubmit() {
         status: form.status,
         group_ids,
         model_pricing,
-        model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : undefined,
+        model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {},
         billing_model_source: form.billing_model_source,
         restrict_models: form.restrict_models
       }
@@ -944,7 +945,7 @@ async function handleSubmit() {
         description: form.description.trim() || undefined,
         group_ids,
         model_pricing,
-        model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : undefined,
+        model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {},
         billing_model_source: form.billing_model_source,
         restrict_models: form.restrict_models
       }

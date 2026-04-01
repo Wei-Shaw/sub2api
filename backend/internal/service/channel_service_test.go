@@ -16,24 +16,24 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockChannelRepository struct {
-	listAllFn              func(ctx context.Context) ([]Channel, error)
-	getGroupPlatformsFn    func(ctx context.Context, groupIDs []int64) (map[int64]string, error)
-	createFn               func(ctx context.Context, channel *Channel) error
-	getByIDFn              func(ctx context.Context, id int64) (*Channel, error)
-	updateFn               func(ctx context.Context, channel *Channel) error
-	deleteFn               func(ctx context.Context, id int64) error
-	listFn                 func(ctx context.Context, params pagination.PaginationParams, status, search string) ([]Channel, *pagination.PaginationResult, error)
-	existsByNameFn         func(ctx context.Context, name string) (bool, error)
-	existsByNameExcludingFn func(ctx context.Context, name string, excludeID int64) (bool, error)
-	getGroupIDsFn          func(ctx context.Context, channelID int64) ([]int64, error)
-	setGroupIDsFn          func(ctx context.Context, channelID int64, groupIDs []int64) error
-	getChannelIDByGroupIDFn func(ctx context.Context, groupID int64) (int64, error)
+	listAllFn                  func(ctx context.Context) ([]Channel, error)
+	getGroupPlatformsFn        func(ctx context.Context, groupIDs []int64) (map[int64]string, error)
+	createFn                   func(ctx context.Context, channel *Channel) error
+	getByIDFn                  func(ctx context.Context, id int64) (*Channel, error)
+	updateFn                   func(ctx context.Context, channel *Channel) error
+	deleteFn                   func(ctx context.Context, id int64) error
+	listFn                     func(ctx context.Context, params pagination.PaginationParams, status, search string) ([]Channel, *pagination.PaginationResult, error)
+	existsByNameFn             func(ctx context.Context, name string) (bool, error)
+	existsByNameExcludingFn    func(ctx context.Context, name string, excludeID int64) (bool, error)
+	getGroupIDsFn              func(ctx context.Context, channelID int64) ([]int64, error)
+	setGroupIDsFn              func(ctx context.Context, channelID int64, groupIDs []int64) error
+	getChannelIDByGroupIDFn    func(ctx context.Context, groupID int64) (int64, error)
 	getGroupsInOtherChannelsFn func(ctx context.Context, channelID int64, groupIDs []int64) ([]int64, error)
-	listModelPricingFn     func(ctx context.Context, channelID int64) ([]ChannelModelPricing, error)
-	createModelPricingFn   func(ctx context.Context, pricing *ChannelModelPricing) error
-	updateModelPricingFn   func(ctx context.Context, pricing *ChannelModelPricing) error
-	deleteModelPricingFn   func(ctx context.Context, id int64) error
-	replaceModelPricingFn  func(ctx context.Context, channelID int64, pricingList []ChannelModelPricing) error
+	listModelPricingFn         func(ctx context.Context, channelID int64) ([]ChannelModelPricing, error)
+	createModelPricingFn       func(ctx context.Context, pricing *ChannelModelPricing) error
+	updateModelPricingFn       func(ctx context.Context, pricing *ChannelModelPricing) error
+	deleteModelPricingFn       func(ctx context.Context, id int64) error
+	replaceModelPricingFn      func(ctx context.Context, channelID int64, pricingList []ChannelModelPricing) error
 }
 
 func (m *mockChannelRepository) Create(ctx context.Context, channel *Channel) error {
@@ -195,7 +195,6 @@ func newTestChannelService(repo *mockChannelRepository) *ChannelService {
 func newTestChannelServiceWithAuth(repo *mockChannelRepository, auth *mockChannelAuthCacheInvalidator) *ChannelService {
 	return NewChannelService(repo, auth)
 }
-
 
 // makeStandardRepo returns a repo that serves one active channel with anthropic pricing
 // for group 1, with the given model pricing and model mapping.
@@ -907,21 +906,21 @@ func TestResolveChannelMapping_DefaultBillingModelSource(t *testing.T) {
 	ch := Channel{
 		ID:                 1,
 		Status:             StatusActive,
-		GroupIDs:            []int64{10},
+		GroupIDs:           []int64{10},
 		BillingModelSource: "", // empty
 	}
 	repo := makeStandardRepo(ch, map[int64]string{10: "anthropic"})
 	svc := newTestChannelService(repo)
 
 	result := svc.ResolveChannelMapping(context.Background(), 10, "claude-opus-4")
-	require.Equal(t, BillingModelSourceRequested, result.BillingModelSource)
+	require.Equal(t, BillingModelSourceChannelMapped, result.BillingModelSource)
 }
 
 func TestResolveChannelMapping_UpstreamBillingModelSource(t *testing.T) {
 	ch := Channel{
 		ID:                 1,
 		Status:             StatusActive,
-		GroupIDs:            []int64{10},
+		GroupIDs:           []int64{10},
 		BillingModelSource: BillingModelSourceUpstream,
 	}
 	repo := makeStandardRepo(ch, map[int64]string{10: "anthropic"})
@@ -957,7 +956,7 @@ func TestIsModelRestricted_NoChannel(t *testing.T) {
 	ch := Channel{
 		ID:             1,
 		Status:         StatusActive,
-		GroupIDs:        []int64{10},
+		GroupIDs:       []int64{10},
 		RestrictModels: true,
 	}
 	repo := makeStandardRepo(ch, map[int64]string{10: "anthropic"})
@@ -972,7 +971,7 @@ func TestIsModelRestricted_RestrictDisabled(t *testing.T) {
 	ch := Channel{
 		ID:             1,
 		Status:         StatusActive,
-		GroupIDs:        []int64{10},
+		GroupIDs:       []int64{10},
 		RestrictModels: false,
 		ModelPricing: []ChannelModelPricing{
 			{Platform: "anthropic", Models: []string{"claude-opus-4"}},
@@ -990,7 +989,7 @@ func TestIsModelRestricted_InactiveChannel(t *testing.T) {
 	ch := Channel{
 		ID:             1,
 		Status:         StatusDisabled,
-		GroupIDs:        []int64{10},
+		GroupIDs:       []int64{10},
 		RestrictModels: true,
 	}
 	repo := makeStandardRepo(ch, map[int64]string{10: "anthropic"})
@@ -1004,7 +1003,7 @@ func TestIsModelRestricted_ModelInPricing(t *testing.T) {
 	ch := Channel{
 		ID:             1,
 		Status:         StatusActive,
-		GroupIDs:        []int64{10},
+		GroupIDs:       []int64{10},
 		RestrictModels: true,
 		ModelPricing: []ChannelModelPricing{
 			{Platform: "anthropic", Models: []string{"claude-opus-4", "claude-sonnet-4"}},
@@ -1021,7 +1020,7 @@ func TestIsModelRestricted_ModelInWildcard(t *testing.T) {
 	ch := Channel{
 		ID:             1,
 		Status:         StatusActive,
-		GroupIDs:        []int64{10},
+		GroupIDs:       []int64{10},
 		RestrictModels: true,
 		ModelPricing: []ChannelModelPricing{
 			{Platform: "anthropic", Models: []string{"claude-*"}},
@@ -1038,7 +1037,7 @@ func TestIsModelRestricted_ModelNotFound(t *testing.T) {
 	ch := Channel{
 		ID:             1,
 		Status:         StatusActive,
-		GroupIDs:        []int64{10},
+		GroupIDs:       []int64{10},
 		RestrictModels: true,
 		ModelPricing: []ChannelModelPricing{
 			{Platform: "anthropic", Models: []string{"claude-opus-4"}},
@@ -1055,7 +1054,7 @@ func TestIsModelRestricted_CaseInsensitive(t *testing.T) {
 	ch := Channel{
 		ID:             1,
 		Status:         StatusActive,
-		GroupIDs:        []int64{10},
+		GroupIDs:       []int64{10},
 		RestrictModels: true,
 		ModelPricing: []ChannelModelPricing{
 			{Platform: "anthropic", Models: []string{"claude-opus-4"}},
@@ -1088,7 +1087,7 @@ func TestResolveChannelMappingAndRestrict_ModelInPricing_WithMapping(t *testing.
 	ch := Channel{
 		ID:             1,
 		Status:         StatusActive,
-		GroupIDs:        []int64{10},
+		GroupIDs:       []int64{10},
 		RestrictModels: true,
 		ModelPricing: []ChannelModelPricing{
 			{Platform: "anthropic", Models: []string{"claude-sonnet-4"}},
@@ -1117,7 +1116,7 @@ func TestResolveChannelMappingAndRestrict_ModelNotInPricing_WithMapping(t *testi
 	ch := Channel{
 		ID:             1,
 		Status:         StatusActive,
-		GroupIDs:        []int64{10},
+		GroupIDs:       []int64{10},
 		RestrictModels: true,
 		ModelPricing: []ChannelModelPricing{
 			{Platform: "anthropic", Models: []string{"claude-sonnet-4"}},
@@ -1142,7 +1141,7 @@ func TestResolveChannelMappingAndRestrict_ModelNotInPricing_NoMapping(t *testing
 	ch := Channel{
 		ID:             1,
 		Status:         StatusActive,
-		GroupIDs:        []int64{10},
+		GroupIDs:       []int64{10},
 		RestrictModels: true,
 		ModelPricing: []ChannelModelPricing{
 			{Platform: "anthropic", Models: []string{"claude-sonnet-4"}},
@@ -1451,11 +1450,11 @@ func TestCreate_DefaultBillingModelSource(t *testing.T) {
 
 	result, err := svc.Create(context.Background(), &CreateChannelInput{
 		Name:               "new-channel",
-		BillingModelSource: "", // empty, should default to "requested"
+		BillingModelSource: "", // empty, should default to "channel_mapped"
 	})
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, BillingModelSourceRequested, result.BillingModelSource)
+	require.Equal(t, BillingModelSourceChannelMapped, result.BillingModelSource)
 }
 
 func TestCreate_InvalidatesCache(t *testing.T) {

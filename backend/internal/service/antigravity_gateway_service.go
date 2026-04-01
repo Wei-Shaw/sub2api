@@ -557,7 +557,13 @@ func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopP
 	if p.requestedModel != "" && p.account.Platform == PlatformAntigravity &&
 		p.account.IsOveragesEnabled() && !p.account.isCreditsExhausted() &&
 		p.account.isModelRateLimitedWithContext(p.ctx, p.requestedModel) {
-		if creditsBody := injectEnabledCreditTypes(p.body); creditsBody != nil {
+		// Check actual credits balance before injection
+		if !s.checkAccountCredits(p.ctx, p.account, p.accessToken, p.proxyURL) {
+			// No credits available - mark as exhausted and skip injection
+			s.setCreditsExhausted(p.ctx, p.account)
+			logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: no_credits_available account=%d (skipping credits injection)",
+				p.prefix, p.account.ID)
+		} else if creditsBody := injectEnabledCreditTypes(p.body); creditsBody != nil {
 			p.body = creditsBody
 			overagesInjected = true
 			logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: model_rate_limited_credits_inject model=%s account=%d (injecting enabledCreditTypes)",
@@ -870,14 +876,15 @@ func logPrefix(sessionID, accountName string) string {
 
 // AntigravityGatewayService 处理 Antigravity 平台的 API 转发
 type AntigravityGatewayService struct {
-	accountRepo       AccountRepository
-	tokenProvider     *AntigravityTokenProvider
-	rateLimitService  *RateLimitService
-	httpUpstream      HTTPUpstream
-	settingService    *SettingService
-	cache             GatewayCache // 用于模型级限流时清除粘性会话绑定
-	schedulerSnapshot *SchedulerSnapshotService
-	internal500Cache  Internal500CounterCache // INTERNAL 500 渐进惩罚计数器
+	accountRepo         AccountRepository
+	tokenProvider       *AntigravityTokenProvider
+	rateLimitService    *RateLimitService
+	httpUpstream        HTTPUpstream
+	settingService      *SettingService
+	cache               GatewayCache // 用于模型级限流时清除粘性会话绑定
+	schedulerSnapshot   *SchedulerSnapshotService
+	internal500Cache    Internal500CounterCache // INTERNAL 500 渐进惩罚计数器
+	accountUsageService *AccountUsageService    // 共享 usage 缓存，用于积分余额检查
 }
 
 func NewAntigravityGatewayService(
@@ -889,16 +896,18 @@ func NewAntigravityGatewayService(
 	httpUpstream HTTPUpstream,
 	settingService *SettingService,
 	internal500Cache Internal500CounterCache,
+	accountUsageService *AccountUsageService,
 ) *AntigravityGatewayService {
 	return &AntigravityGatewayService{
-		accountRepo:       accountRepo,
-		tokenProvider:     tokenProvider,
-		rateLimitService:  rateLimitService,
-		httpUpstream:      httpUpstream,
-		settingService:    settingService,
-		cache:             cache,
-		schedulerSnapshot: schedulerSnapshot,
-		internal500Cache:  internal500Cache,
+		accountRepo:         accountRepo,
+		tokenProvider:       tokenProvider,
+		rateLimitService:    rateLimitService,
+		httpUpstream:        httpUpstream,
+		settingService:      settingService,
+		cache:               cache,
+		schedulerSnapshot:   schedulerSnapshot,
+		internal500Cache:    internal500Cache,
+		accountUsageService: accountUsageService,
 	}
 }
 

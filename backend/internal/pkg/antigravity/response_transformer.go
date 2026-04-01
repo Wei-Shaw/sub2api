@@ -284,6 +284,7 @@ func (p *NonStreamingProcessor) buildResponse(geminiResp *GeminiResponse, respon
 		usage.InputTokens = geminiResp.UsageMetadata.PromptTokenCount - cached
 		usage.OutputTokens = geminiResp.UsageMetadata.CandidatesTokenCount + geminiResp.UsageMetadata.ThoughtsTokenCount
 		usage.CacheReadInputTokens = cached
+		usage.ImageOutputTokens = geminiResp.UsageMetadata.ImageOutputTokens()
 	}
 
 	// 生成响应 ID
