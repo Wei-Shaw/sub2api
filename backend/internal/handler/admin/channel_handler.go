@@ -142,48 +142,56 @@ func channelToResponse(ch *service.Channel) *channelResponse {
 
 	resp.ModelPricing = make([]channelModelPricingResponse, 0, len(ch.ModelPricing))
 	for _, p := range ch.ModelPricing {
-		models := p.Models
-		if models == nil {
-			models = []string{}
-		}
-		billingMode := string(p.BillingMode)
-		if billingMode == "" {
-			billingMode = string(service.BillingModeToken)
-		}
-		platform := p.Platform
-		if platform == "" {
-			platform = service.PlatformAnthropic
-		}
-		intervals := make([]pricingIntervalResponse, 0, len(p.Intervals))
-		for _, iv := range p.Intervals {
-			intervals = append(intervals, pricingIntervalResponse{
-				ID:              iv.ID,
-				MinTokens:       iv.MinTokens,
-				MaxTokens:       iv.MaxTokens,
-				TierLabel:       iv.TierLabel,
-				InputPrice:      iv.InputPrice,
-				OutputPrice:     iv.OutputPrice,
-				CacheWritePrice: iv.CacheWritePrice,
-				CacheReadPrice:  iv.CacheReadPrice,
-				PerRequestPrice: iv.PerRequestPrice,
-				SortOrder:       iv.SortOrder,
-			})
-		}
-		resp.ModelPricing = append(resp.ModelPricing, channelModelPricingResponse{
-			ID:               p.ID,
-			Platform:         platform,
-			Models:           models,
-			BillingMode:      billingMode,
-			InputPrice:       p.InputPrice,
-			OutputPrice:      p.OutputPrice,
-			CacheWritePrice:  p.CacheWritePrice,
-			CacheReadPrice:   p.CacheReadPrice,
-			ImageOutputPrice: p.ImageOutputPrice,
-			PerRequestPrice:  p.PerRequestPrice,
-			Intervals:        intervals,
-		})
+		resp.ModelPricing = append(resp.ModelPricing, pricingToResponse(&p))
 	}
 	return resp
+}
+
+func pricingToResponse(p *service.ChannelModelPricing) channelModelPricingResponse {
+	models := p.Models
+	if models == nil {
+		models = []string{}
+	}
+	billingMode := string(p.BillingMode)
+	if billingMode == "" {
+		billingMode = string(service.BillingModeToken)
+	}
+	platform := p.Platform
+	if platform == "" {
+		platform = service.PlatformAnthropic
+	}
+	intervals := make([]pricingIntervalResponse, 0, len(p.Intervals))
+	for _, iv := range p.Intervals {
+		intervals = append(intervals, intervalToResponse(iv))
+	}
+	return channelModelPricingResponse{
+		ID:               p.ID,
+		Platform:         platform,
+		Models:           models,
+		BillingMode:      billingMode,
+		InputPrice:       p.InputPrice,
+		OutputPrice:      p.OutputPrice,
+		CacheWritePrice:  p.CacheWritePrice,
+		CacheReadPrice:   p.CacheReadPrice,
+		ImageOutputPrice: p.ImageOutputPrice,
+		PerRequestPrice:  p.PerRequestPrice,
+		Intervals:        intervals,
+	}
+}
+
+func intervalToResponse(iv service.PricingInterval) pricingIntervalResponse {
+	return pricingIntervalResponse{
+		ID:              iv.ID,
+		MinTokens:       iv.MinTokens,
+		MaxTokens:       iv.MaxTokens,
+		TierLabel:       iv.TierLabel,
+		InputPrice:      iv.InputPrice,
+		OutputPrice:     iv.OutputPrice,
+		CacheWritePrice: iv.CacheWritePrice,
+		CacheReadPrice:  iv.CacheReadPrice,
+		PerRequestPrice: iv.PerRequestPrice,
+		SortOrder:       iv.SortOrder,
+	}
 }
 
 func pricingRequestToService(reqs []channelModelPricingRequest) []service.ChannelModelPricing {
