@@ -36,7 +36,7 @@ export function toNullableNumber(val: number | string | null | undefined): numbe
 /** 前端显示值($/MTok) → 后端存储值(per-token) */
 export function mTokToPerToken(val: number | string | null | undefined): number | null {
   const num = toNullableNumber(val)
-  return num === null ? null : num / MTOK
+  return num === null ? null : parseFloat((num / MTOK).toPrecision(10))
 }
 
 /** 后端存储值(per-token) → 前端显示值($/MTok) */
