@@ -243,9 +243,10 @@ func (s *ChannelService) buildCache(ctx context.Context) (*channelCache, error) 
 			platform := groupPlatforms[gid] // e.g. "anthropic"
 
 			// 只展开该平台的模型定价到 (groupID, platform, model) → *ChannelModelPricing
+			// antigravity 平台同时服务 Claude 和 Gemini 模型，需匹配 anthropic/gemini 的定价条目
 			for j := range ch.ModelPricing {
 				pricing := &ch.ModelPricing[j]
-				if pricing.Platform != platform {
+				if !isPlatformPricingMatch(platform, pricing.Platform) {
 					continue // 跳过非本平台的定价
 				}
 				for _, model := range pricing.Models {
@@ -265,7 +266,12 @@ func (s *ChannelService) buildCache(ctx context.Context) (*channelCache, error) 
 			}
 
 			// 只展开该平台的模型映射到 (groupID, platform, model) → target
-			if platformMapping, ok := ch.ModelMapping[platform]; ok {
+			// antigravity 平台同时服务 Claude 和 Gemini 模型
+			for _, mappingPlatform := range matchingPlatforms(platform) {
+				platformMapping, ok := ch.ModelMapping[mappingPlatform]
+				if !ok {
+					continue
+				}
 				for src, dst := range platformMapping {
 					if strings.HasSuffix(src, "*") {
 						// 通配符映射 → 存入 wildcardMappingByGP
@@ -291,6 +297,27 @@ func (s *ChannelService) buildCache(ctx context.Context) (*channelCache, error) 
 }
 
 // invalidateCache 使缓存失效，让下次读取时自然重建
+
+// isPlatformPricingMatch 判断定价条目的平台是否匹配分组平台。
+// antigravity 平台同时服务 Claude（anthropic）和 Gemini（gemini）模型，
+// 因此 antigravity 分组应匹配 anthropic 和 gemini 的定价条目。
+func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
+	if groupPlatform == pricingPlatform {
+		return true
+	}
+	if groupPlatform == PlatformAntigravity {
+		return pricingPlatform == PlatformAnthropic || pricingPlatform == PlatformGemini
+	}
+	return false
+}
+
+// matchingPlatforms 返回分组平台对应的所有可匹配平台列表。
+func matchingPlatforms(groupPlatform string) []string {
+	if groupPlatform == PlatformAntigravity {
+		return []string{PlatformAntigravity, PlatformAnthropic, PlatformGemini}
+	}
+	return []string{groupPlatform}
+}
 func (s *ChannelService) invalidateCache() {
 	s.cache.Store((*channelCache)(nil))
 	s.cacheSF.Forget("channel_cache")
