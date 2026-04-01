@@ -24,23 +24,23 @@ REDACTED
 	var b strings.Builder
 
 	if model := gjson.GetBytes(body, "model").String(); model != "" {
-		b.WriteString("model=")
-		b.WriteString(model)
+		_, _ = b.WriteString("model=")
+		_, _ = b.WriteString(model)
 REDACTED
 
 	if tools := gjson.GetBytes(body, "tools"); tools.Exists() && tools.IsArray() && tools.Raw != "[]" {
-		b.WriteString("|tools=")
-		b.WriteString(normalizeCompatSeedJSON(json.RawMessage(tools.Raw)))
+		_, _ = b.WriteString("|tools=")
+		_, _ = b.WriteString(normalizeCompatSeedJSON(json.RawMessage(tools.Raw)))
 REDACTED
 
 	if funcs := gjson.GetBytes(body, "functions"); funcs.Exists() && funcs.IsArray() && funcs.Raw != "[]" {
-		b.WriteString("|functions=")
-		b.WriteString(normalizeCompatSeedJSON(json.RawMessage(funcs.Raw)))
+		_, _ = b.WriteString("|functions=")
+		_, _ = b.WriteString(normalizeCompatSeedJSON(json.RawMessage(funcs.Raw)))
 REDACTED
 
 	if instr := gjson.GetBytes(body, "instructions").String(); instr != "" {
-		b.WriteString("|instructions=")
-		b.WriteString(instr)
+		_, _ = b.WriteString("|instructions=")
+		_, _ = b.WriteString(instr)
 REDACTED
 
 	firstUserCaptured := false
@@ -51,15 +51,15 @@ REDACTED
 			role := msg.Get("role").String()
 			switch role {
 			case "system", "developer":
-				b.WriteString("|system=")
+				_, _ = b.WriteString("|system=")
 				if c := msg.Get("content"); c.Exists() {
-					b.WriteString(normalizeCompatSeedJSON(json.RawMessage(c.Raw)))
+					_, _ = b.WriteString(normalizeCompatSeedJSON(json.RawMessage(c.Raw)))
 			REDACTED
 			case "user":
 				if !firstUserCaptured {
-					b.WriteString("|first_user=")
+					_, _ = b.WriteString("|first_user=")
 					if c := msg.Get("content"); c.Exists() {
-						b.WriteString(normalizeCompatSeedJSON(json.RawMessage(c.Raw)))
+						_, _ = b.WriteString(normalizeCompatSeedJSON(json.RawMessage(c.Raw)))
 				REDACTED
 					firstUserCaptured = true
 			REDACTED
@@ -68,30 +68,30 @@ REDACTED
 	REDACTED)
 REDACTED else if inp := gjson.GetBytes(body, "input"); inp.Exists() {
 		if inp.Type == gjson.String {
-			b.WriteString("|input=")
-			b.WriteString(inp.String())
+			_, _ = b.WriteString("|input=")
+			_, _ = b.WriteString(inp.String())
 	REDACTED else if inp.IsArray() {
 			inp.ForEach(func(_, item gjson.Result) bool {
 				role := item.Get("role").String()
 				switch role {
 				case "system", "developer":
-					b.WriteString("|system=")
+					_, _ = b.WriteString("|system=")
 					if c := item.Get("content"); c.Exists() {
-						b.WriteString(normalizeCompatSeedJSON(json.RawMessage(c.Raw)))
+						_, _ = b.WriteString(normalizeCompatSeedJSON(json.RawMessage(c.Raw)))
 				REDACTED
 				case "user":
 					if !firstUserCaptured {
-						b.WriteString("|first_user=")
+						_, _ = b.WriteString("|first_user=")
 						if c := item.Get("content"); c.Exists() {
-							b.WriteString(normalizeCompatSeedJSON(json.RawMessage(c.Raw)))
+							_, _ = b.WriteString(normalizeCompatSeedJSON(json.RawMessage(c.Raw)))
 					REDACTED
 						firstUserCaptured = true
 				REDACTED
 			REDACTED
 				if !firstUserCaptured && item.Get("type").String() == "input_text" {
-					b.WriteString("|first_user=")
+					_, _ = b.WriteString("|first_user=")
 					if text := item.Get("text").String(); text != "" {
-						b.WriteString(text)
+						_, _ = b.WriteString(text)
 				REDACTED
 					firstUserCaptured = true
 			REDACTED
