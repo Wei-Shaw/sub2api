@@ -5,6 +5,13 @@ import (
 	"log/slog"
 )
 
+// PricingSource 定价来源标识
+const (
+	PricingSourceChannel  = "channel"
+	PricingSourceLiteLLM  = "litellm"
+	PricingSourceFallback = "fallback"
+)
+
 // ResolvedPricing 统一定价解析结果
 type ResolvedPricing struct {
 	// Mode 计费模式
@@ -78,9 +85,9 @@ func (r *ModelPricingResolver) resolveBasePricing(model string) (*ModelPricing, 
 	if err != nil {
 		slog.Debug("failed to get model pricing from LiteLLM, using fallback",
 			"model", model, "error", err)
-		return nil, "fallback"
+		return nil, PricingSourceFallback
 	}
-	return pricing, "litellm"
+	return pricing, PricingSourceLiteLLM
 }
 
 // applyChannelOverrides 应用渠道定价覆盖
@@ -90,7 +97,7 @@ func (r *ModelPricingResolver) applyChannelOverrides(ctx context.Context, groupI
 		return
 	}
 
-	resolved.Source = "channel"
+	resolved.Source = PricingSourceChannel
 	resolved.Mode = chPricing.BillingMode
 	if resolved.Mode == "" {
 		resolved.Mode = BillingModeToken

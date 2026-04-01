@@ -4290,7 +4290,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		billingMode := cost.BillingMode
 		usageLog.BillingMode = &billingMode
 	} else {
-		billingMode := "token"
+		billingMode := string(BillingModeToken)
 		usageLog.BillingMode = &billingMode
 	}
 	// 添加 UserAgent

@@ -130,7 +130,7 @@ func channelToResponse(ch *service.Channel) *channelResponse {
 	}
 	resp.BillingModelSource = ch.BillingModelSource
 	if resp.BillingModelSource == "" {
-		resp.BillingModelSource = "channel_mapped"
+		resp.BillingModelSource = service.BillingModelSourceChannelMapped
 	}
 	if resp.GroupIDs == nil {
 		resp.GroupIDs = []int64{}
@@ -147,11 +147,11 @@ func channelToResponse(ch *service.Channel) *channelResponse {
 		}
 		billingMode := string(p.BillingMode)
 		if billingMode == "" {
-			billingMode = "token"
+			billingMode = string(service.BillingModeToken)
 		}
 		platform := p.Platform
 		if platform == "" {
-			platform = "anthropic"
+			platform = service.PlatformAnthropic
 		}
 		intervals := make([]pricingIntervalResponse, 0, len(p.Intervals))
 		for _, iv := range p.Intervals {
@@ -194,7 +194,7 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 		}
 		platform := r.Platform
 		if platform == "" {
-			platform = "anthropic"
+			platform = service.PlatformAnthropic
 		}
 		intervals := make([]service.PricingInterval, 0, len(r.Intervals))
 		for _, iv := range r.Intervals {

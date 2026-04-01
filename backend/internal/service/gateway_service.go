@@ -60,6 +60,13 @@ const (
 	claudeMimicDebugInfoKey = "claude_mimic_debug_info"
 )
 
+// MediaType 媒体类型常量
+const (
+	MediaTypeImage  = "image"
+	MediaTypeVideo  = "video"
+	MediaTypePrompt = "prompt"
+)
+
 const (
 	claudeMaxMessageOverheadTokens = 3
 	claudeMaxBlockOverheadTokens   = 1
@@ -7913,7 +7920,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	}
 
 	// 根据请求类型选择计费方式
-	if result.MediaType == "image" || result.MediaType == "video" {
+	if result.MediaType == MediaTypeImage || result.MediaType == MediaTypeVideo {
 		var soraConfig *SoraPriceConfig
 		if apiKey.Group != nil {
 			soraConfig = &SoraPriceConfig{
@@ -7923,12 +7930,12 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 				VideoPricePerRequestHD: apiKey.Group.SoraVideoPricePerRequestHD,
 			}
 		}
-		if result.MediaType == "image" {
+		if result.MediaType == MediaTypeImage {
 			cost = s.billingService.CalculateSoraImageCost(result.ImageSize, result.ImageCount, soraConfig, multiplier)
 		} else {
 			cost = s.billingService.CalculateSoraVideoCost(billingModel, soraConfig, multiplier)
 		}
-	} else if result.MediaType == "prompt" {
+	} else if result.MediaType == MediaTypePrompt {
 		cost = &CostBreakdown{}
 	} else if result.ImageCount > 0 {
 		// 图片生成计费：渠道级别定价优先，否则走按次计费（兼容旧版本）
@@ -7936,7 +7943,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		if s.resolver != nil && apiKey.Group != nil {
 			gid := apiKey.Group.ID
 			resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
-			if resolved.Source == "channel" {
+			if resolved.Source == PricingSourceChannel {
 				hasChannelPricing = true
 			}
 		}
@@ -8069,15 +8076,15 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	}
 
 	// 设置计费模式
-	if result.MediaType != "image" && result.MediaType != "video" && result.MediaType != "prompt" {
+	if result.MediaType != MediaTypeImage && result.MediaType != MediaTypeVideo && result.MediaType != MediaTypePrompt {
 		if cost != nil && cost.BillingMode != "" {
 			billingMode := cost.BillingMode
 			usageLog.BillingMode = &billingMode
 		} else if result.ImageCount > 0 {
-			billingMode := "image"
+			billingMode := string(BillingModeImage)
 			usageLog.BillingMode = &billingMode
 		} else {
-			billingMode := "token"
+			billingMode := string(BillingModeToken)
 			usageLog.BillingMode = &billingMode
 		}
 	}
@@ -8207,7 +8214,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		if s.resolver != nil && apiKey.Group != nil {
 			gid := apiKey.Group.ID
 			resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
-			if resolved.Source == "channel" {
+			if resolved.Source == PricingSourceChannel {
 				hasChannelPricing = true
 			}
 		}
@@ -8263,7 +8270,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 				Model:   billingModel,
 				GroupID: &gid,
 			})
-			if resolved.Source == "channel" {
+			if resolved.Source == PricingSourceChannel {
 				// 有渠道定价，渠道区间已包含上下文分层
 				cost, err = s.billingService.CalculateCostUnified(CostInput{
 					Ctx:            ctx,
@@ -8348,10 +8355,10 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		billingMode := cost.BillingMode
 		usageLog.BillingMode = &billingMode
 	} else if result.ImageCount > 0 {
-		billingMode := "image"
+		billingMode := string(BillingModeImage)
 		usageLog.BillingMode = &billingMode
 	} else {
-		billingMode := "token"
+		billingMode := string(BillingModeToken)
 		usageLog.BillingMode = &billingMode
 	}
 
