@@ -230,7 +230,7 @@ func validatePricingBillingMode(pricing []service.ChannelModelPricing) error {
 	for _, p := range pricing {
 		if p.BillingMode == service.BillingModePerRequest || p.BillingMode == service.BillingModeImage {
 			if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
-				return errors.New("Per-request price or intervals required for per_request/image billing mode")
+				return errors.New("per-request price or intervals required for per_request/image billing mode")
 			}
 		}
 	}

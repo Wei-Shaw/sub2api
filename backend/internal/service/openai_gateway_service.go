@@ -4261,22 +4261,24 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
 		CacheReadTokens:       result.Usage.CacheReadInputTokens,
 		ImageOutputTokens:     result.Usage.ImageOutputTokens,
-		InputCost:             cost.InputCost,
-		OutputCost:            cost.OutputCost,
-		ImageOutputCost:       cost.ImageOutputCost,
-		CacheCreationCost:     cost.CacheCreationCost,
-		CacheReadCost:         cost.CacheReadCost,
-		TotalCost:             cost.TotalCost,
-		ActualCost:            cost.ActualCost,
-		RateMultiplier:        multiplier,
-		AccountRateMultiplier: &accountRateMultiplier,
-		BillingType:           billingType,
-		Stream:                result.Stream,
-		OpenAIWSMode:          result.OpenAIWSMode,
-		DurationMs:            &durationMs,
-		FirstTokenMs:          result.FirstTokenMs,
-		CreatedAt:             time.Now(),
 	}
+	if cost != nil {
+		usageLog.InputCost = cost.InputCost
+		usageLog.OutputCost = cost.OutputCost
+		usageLog.ImageOutputCost = cost.ImageOutputCost
+		usageLog.CacheCreationCost = cost.CacheCreationCost
+		usageLog.CacheReadCost = cost.CacheReadCost
+		usageLog.TotalCost = cost.TotalCost
+		usageLog.ActualCost = cost.ActualCost
+	}
+	usageLog.RateMultiplier = multiplier
+	usageLog.AccountRateMultiplier = &accountRateMultiplier
+	usageLog.BillingType = billingType
+	usageLog.Stream = result.Stream
+	usageLog.OpenAIWSMode = result.OpenAIWSMode
+	usageLog.DurationMs = &durationMs
+	usageLog.FirstTokenMs = result.FirstTokenMs
+	usageLog.CreatedAt = time.Now()
 	// 设置渠道信息
 	usageLog.ChannelID = optionalInt64Ptr(input.ChannelID)
 	usageLog.ModelMappingChain = optionalTrimmedStringPtr(input.ModelMappingChain)

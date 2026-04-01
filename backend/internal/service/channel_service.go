@@ -176,7 +176,11 @@ func (s *ChannelService) loadCache(ctx context.Context) (*channelCache, error) {
 	if err != nil {
 		return nil, err
 	}
-	return result.(*channelCache), nil
+	cache, ok := result.(*channelCache)
+	if !ok {
+		return nil, fmt.Errorf("unexpected cache type")
+	}
+	return cache, nil
 }
 
 // buildCache 从数据库构建渠道缓存。
