@@ -3361,6 +3361,12 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 			// 提取 usage
 			if u := extractGeminiUsage(inner); u != nil {
 				usage = u
+				// 调试：打印 v1internal 原始 payload 查看 candidatesTokensDetails
+				if u.OutputTokens > 100 {
+					logger.LegacyPrintf("service.antigravity_gateway",
+						"gemini_nonstream_debug: outer_payload=%s",
+						truncateForLog([]byte(payload), 1000))
+				}
 			}
 
 			// Check for MALFORMED_FUNCTION_CALL
