@@ -23,7 +23,7 @@ const (
 // 缓存 TTL 不足时会自动从 Google loadCodeAssist API 刷新。
 // 返回 true 表示积分可用。
 func (s *AntigravityGatewayService) checkAccountCredits(
-	ctx context.Context, account *Account, accessToken, proxyURL string,
+	ctx context.Context, account *Account,
 ) bool {
 	if account == nil || account.ID == 0 {
 		return false
@@ -241,7 +241,7 @@ func (s *AntigravityGatewayService) attemptCreditsOveragesRetry(
 	}
 
 	// Check actual credits balance before attempting retry
-	if !s.checkAccountCredits(p.ctx, p.account, p.accessToken, p.proxyURL) {
+	if !s.checkAccountCredits(p.ctx, p.account) {
 		s.setCreditsExhausted(p.ctx, p.account)
 		modelKey := resolveCreditsOveragesModelKey(p.ctx, p.account, modelName, p.requestedModel)
 		logger.LegacyPrintf("service.antigravity_gateway", "%s credit_overages_no_credits model=%s account=%d (skipping credits retry)",

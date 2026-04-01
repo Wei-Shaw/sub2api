@@ -558,7 +558,7 @@ func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopP
 		p.account.IsOveragesEnabled() && !p.account.isCreditsExhausted() &&
 		p.account.isModelRateLimitedWithContext(p.ctx, p.requestedModel) {
 		// Check actual credits balance before injection
-		if !s.checkAccountCredits(p.ctx, p.account, p.accessToken, p.proxyURL) {
+		if !s.checkAccountCredits(p.ctx, p.account) {
 			// No credits available - mark as exhausted and skip injection
 			s.setCreditsExhausted(p.ctx, p.account)
 			logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: no_credits_available account=%d (skipping credits injection)",
