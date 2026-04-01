@@ -8207,6 +8207,16 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		if s.resolver != nil && apiKey.Group != nil {
 			gid := apiKey.Group.ID
 			resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
+			slog.Info("image billing resolve debug",
+				"billing_model", billingModel,
+				"group_id", gid,
+				"resolved_source", resolved.Source,
+				"resolved_mode", resolved.Mode,
+				"has_base_pricing", resolved.BasePricing != nil,
+				"billing_model_source", input.BillingModelSource,
+				"channel_mapped_model", input.ChannelMappedModel,
+				"original_model", input.OriginalModel,
+			)
 			if resolved.Source == "channel" && resolved.Mode == BillingModeToken {
 				useImageTokenBilling = true
 			}
