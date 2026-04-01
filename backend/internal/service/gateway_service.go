@@ -7931,16 +7931,49 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	} else if result.MediaType == "prompt" {
 		cost = &CostBreakdown{}
 	} else if result.ImageCount > 0 {
-		// 图片生成计费
-		var groupConfig *ImagePriceConfig
-		if apiKey.Group != nil {
-			groupConfig = &ImagePriceConfig{
-				Price1K: apiKey.Group.ImagePrice1K,
-				Price2K: apiKey.Group.ImagePrice2K,
-				Price4K: apiKey.Group.ImagePrice4K,
+		// 图片生成计费：渠道 token 定价优先，否则走按次计费（兼容旧版本）
+		useImageTokenBilling := false
+		if s.resolver != nil && apiKey.Group != nil {
+			gid := apiKey.Group.ID
+			resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
+			if resolved.Source == "channel" && resolved.Mode == BillingModeToken {
+				useImageTokenBilling = true
 			}
 		}
-		cost = s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)
+		if useImageTokenBilling {
+			// 渠道配置了 token 定价 → 用 token 计费（image_output_tokens 独立计价）
+			tokens := UsageTokens{
+				InputTokens:       result.Usage.InputTokens,
+				OutputTokens:      result.Usage.OutputTokens,
+				ImageOutputTokens: result.Usage.ImageOutputTokens,
+			}
+			gid := apiKey.Group.ID
+			var err error
+			cost, err = s.billingService.CalculateCostUnified(CostInput{
+				Ctx:            ctx,
+				Model:          billingModel,
+				GroupID:        &gid,
+				Tokens:         tokens,
+				RequestCount:   1,
+				RateMultiplier: multiplier,
+				Resolver:       s.resolver,
+			})
+			if err != nil {
+				logger.LegacyPrintf("service.gateway", "Calculate image token cost failed: %v", err)
+				cost = &CostBreakdown{ActualCost: 0}
+			}
+		} else {
+			// 无渠道定价 → 走按次计费（默认，兼容旧版本）
+			var groupConfig *ImagePriceConfig
+			if apiKey.Group != nil {
+				groupConfig = &ImagePriceConfig{
+					Price1K: apiKey.Group.ImagePrice1K,
+					Price2K: apiKey.Group.ImagePrice2K,
+					Price4K: apiKey.Group.ImagePrice4K,
+				}
+			}
+			cost = s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)
+		}
 	} else {
 		// Token 计费
 		tokens := UsageTokens{
@@ -8169,16 +8202,47 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 
 	// 根据请求类型选择计费方式
 	if result.ImageCount > 0 {
-		// 图片生成计费
-		var groupConfig *ImagePriceConfig
-		if apiKey.Group != nil {
-			groupConfig = &ImagePriceConfig{
-				Price1K: apiKey.Group.ImagePrice1K,
-				Price2K: apiKey.Group.ImagePrice2K,
-				Price4K: apiKey.Group.ImagePrice4K,
+		// 图片生成计费：渠道 token 定价优先，否则走按次计费（兼容旧版本）
+		useImageTokenBilling := false
+		if s.resolver != nil && apiKey.Group != nil {
+			gid := apiKey.Group.ID
+			resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
+			if resolved.Source == "channel" && resolved.Mode == BillingModeToken {
+				useImageTokenBilling = true
 			}
 		}
-		cost = s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)
+		if useImageTokenBilling {
+			tokens := UsageTokens{
+				InputTokens:       result.Usage.InputTokens,
+				OutputTokens:      result.Usage.OutputTokens,
+				ImageOutputTokens: result.Usage.ImageOutputTokens,
+			}
+			gid := apiKey.Group.ID
+			var err error
+			cost, err = s.billingService.CalculateCostUnified(CostInput{
+				Ctx:            ctx,
+				Model:          billingModel,
+				GroupID:        &gid,
+				Tokens:         tokens,
+				RequestCount:   1,
+				RateMultiplier: multiplier,
+				Resolver:       s.resolver,
+			})
+			if err != nil {
+				logger.LegacyPrintf("service.gateway", "Calculate image token cost failed: %v", err)
+				cost = &CostBreakdown{ActualCost: 0}
+			}
+		} else {
+			var groupConfig *ImagePriceConfig
+			if apiKey.Group != nil {
+				groupConfig = &ImagePriceConfig{
+					Price1K: apiKey.Group.ImagePrice1K,
+					Price2K: apiKey.Group.ImagePrice2K,
+					Price4K: apiKey.Group.ImagePrice4K,
+				}
+			}
+			cost = s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)
+		}
 	} else {
 		// Token 计费（使用长上下文计费方法）
 		tokens := UsageTokens{
