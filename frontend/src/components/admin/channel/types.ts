@@ -42,7 +42,8 @@ export function mTokToPerToken(val: number | string | null | undefined): number 
 /** 后端存储值(per-token) → 前端显示值($/MTok) */
 export function perTokenToMTok(val: number | null | undefined): number | null {
   if (val === null || val === undefined) return null
-  return val * MTOK
+  // toPrecision(10) 消除 IEEE 754 浮点乘法精度误差，如 5e-8 * 1e6 = 0.04999...96 → 0.05
+  return parseFloat((val * MTOK).toPrecision(10))
 }
 
 export function apiIntervalsToForm(intervals: PricingInterval[]): IntervalFormEntry[] {
