@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -311,7 +312,7 @@ func (h *ChannelHandler) List(c *gin.Context) {
 func (h *ChannelHandler) GetByID(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "Invalid channel ID")
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_CHANNEL_ID", "Invalid channel ID"))
 		return
 	}
 
@@ -329,13 +330,13 @@ func (h *ChannelHandler) GetByID(c *gin.Context) {
 func (h *ChannelHandler) Create(c *gin.Context) {
 	var req createChannelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+		response.ErrorFrom(c, infraerrors.BadRequest("VALIDATION_ERROR", err.Error()))
 		return
 	}
 
 	pricing := pricingRequestToService(req.ModelPricing)
 	if err := validatePricingBillingMode(pricing); err != nil {
-		response.BadRequest(c, err.Error())
+		response.ErrorFrom(c, infraerrors.BadRequest("VALIDATION_ERROR", err.Error()))
 		return
 	}
 
@@ -361,13 +362,13 @@ func (h *ChannelHandler) Create(c *gin.Context) {
 func (h *ChannelHandler) Update(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "Invalid channel ID")
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_CHANNEL_ID", "Invalid channel ID"))
 		return
 	}
 
 	var req updateChannelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+		response.ErrorFrom(c, infraerrors.BadRequest("VALIDATION_ERROR", err.Error()))
 		return
 	}
 
@@ -383,7 +384,7 @@ func (h *ChannelHandler) Update(c *gin.Context) {
 	if req.ModelPricing != nil {
 		pricing := pricingRequestToService(*req.ModelPricing)
 		if err := validatePricingBillingMode(pricing); err != nil {
-			response.BadRequest(c, err.Error())
+			response.ErrorFrom(c, infraerrors.BadRequest("VALIDATION_ERROR", err.Error()))
 			return
 		}
 		input.ModelPricing = &pricing
@@ -403,7 +404,7 @@ func (h *ChannelHandler) Update(c *gin.Context) {
 func (h *ChannelHandler) Delete(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "Invalid channel ID")
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_CHANNEL_ID", "Invalid channel ID"))
 		return
 	}
 
@@ -420,7 +421,8 @@ func (h *ChannelHandler) Delete(c *gin.Context) {
 func (h *ChannelHandler) GetModelDefaultPricing(c *gin.Context) {
 	model := strings.TrimSpace(c.Query("model"))
 	if model == "" {
-		response.BadRequest(c, "model parameter is required")
+		response.ErrorFrom(c, infraerrors.BadRequest("MISSING_PARAMETER", "model parameter is required").
+			WithMetadata(map[string]string{"param": "model"}))
 		return
 	}
 
