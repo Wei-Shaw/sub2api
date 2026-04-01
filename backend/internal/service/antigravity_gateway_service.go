@@ -3174,14 +3174,6 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 				// 解包 v1internal 响应
 				inner, parseErr := s.unwrapV1InternalResponse([]byte(payload))
 				if parseErr == nil && inner != nil {
-					// 调试：检查解包前后 candidatesTokensDetails 是否存在
-					outerHas := gjson.Get(payload, "response.usageMetadata.candidatesTokensDetails").Exists()
-					innerHas := gjson.GetBytes(inner, "usageMetadata.candidatesTokensDetails").Exists()
-					if !outerHas && !innerHas && gjson.GetBytes(inner, "usageMetadata.candidatesTokenCount").Int() > 0 {
-						logger.LegacyPrintf("service.antigravity_gateway",
-							"gemini_stream_debug: candidatesTokensDetails missing outer=%t inner=%t outer_usage=%s",
-							outerHas, innerHas, truncateForLog([]byte(gjson.Get(payload, "response.usageMetadata").Raw), 500))
-					}
 					payload = string(inner)
 				}
 
@@ -3361,12 +3353,6 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 			// 提取 usage
 			if u := extractGeminiUsage(inner); u != nil {
 				usage = u
-				// 调试：打印 v1internal 原始 payload 查看 candidatesTokensDetails
-				if u.OutputTokens > 100 {
-					logger.LegacyPrintf("service.antigravity_gateway",
-						"gemini_nonstream_debug: outer_payload=%s",
-						truncateForLog([]byte(payload), 1000))
-				}
 			}
 
 			// Check for MALFORMED_FUNCTION_CALL

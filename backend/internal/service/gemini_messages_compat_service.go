@@ -2705,12 +2705,6 @@ func extractGeminiUsage(data []byte) *ClaudeUsage {
 			return true
 		})
 	}
-	if cand > 0 && imageTokens == 0 {
-		// 调试日志：上游是否返回了 candidatesTokensDetails
-		logger.LegacyPrintf("service.gemini_compat",
-			"extractGeminiUsage: candidatesTokensDetails_exists=%t cand=%d imageTokens=%d raw_usage=%s",
-			candidateDetails.Exists(), cand, imageTokens, truncateForLog([]byte(usage.Raw), 500))
-	}
 
 	// 注意：Gemini 的 promptTokenCount 包含 cachedContentTokenCount，
 	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去
