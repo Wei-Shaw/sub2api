@@ -2,6 +2,7 @@ package admin
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -233,8 +234,24 @@ func validatePricingBillingMode(pricing []service.ChannelModelPricing) error {
 				return errors.New("per-request price or intervals required for per_request/image billing mode")
 		REDACTED
 	REDACTED
+		// 校验 interval：至少有一个价格字段非空
+		for _, iv := range p.Intervals {
+			if iv.InputPrice == nil && iv.OutputPrice == nil &&
+				iv.CacheWritePrice == nil && iv.CacheReadPrice == nil &&
+				iv.PerRequestPrice == nil {
+				return fmt.Errorf("interval [%d, %s] has no price fields set for model %v",
+					iv.MinTokens, formatMaxTokens(iv.MaxTokens), p.Models)
+		REDACTED
+	REDACTED
 REDACTED
 	return nil
+REDACTED
+
+func formatMaxTokens(max *int) string {
+	if max == nil {
+		return "∞"
+REDACTED
+	return fmt.Sprintf("%d", *max)
 REDACTED
 
 // --- Handlers ---
