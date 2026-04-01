@@ -493,7 +493,7 @@ func TestValidatePricingBillingMode(t *testing.T) {
 			err := validatePricingBillingMode(tt.pricing)
 			if tt.wantErr {
 				require.Error(t, err)
-				require.Contains(t, err.Error(), "Per-request price or intervals required")
+				require.Contains(t, err.Error(), "per-request price or intervals required")
 			} else {
 				require.NoError(t, err)
 			}
