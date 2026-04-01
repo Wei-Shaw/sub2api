@@ -493,7 +493,7 @@ REDACTED
 			err := validatePricingBillingMode(tt.pricing)
 			if tt.wantErr {
 			REDACTED
-				require.Contains(t, err.Error(), "Per-request price or intervals required")
+				require.Contains(t, err.Error(), "per-request price or intervals required")
 		REDACTED else {
 			REDACTED
 		REDACTED
