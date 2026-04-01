@@ -130,7 +130,7 @@ REDACTED
 REDACTED
 	resp.BillingModelSource = ch.BillingModelSource
 	if resp.BillingModelSource == "" {
-		resp.BillingModelSource = "channel_mapped"
+		resp.BillingModelSource = service.BillingModelSourceChannelMapped
 REDACTED
 	if resp.GroupIDs == nil {
 		resp.GroupIDs = []int64{REDACTED
@@ -147,11 +147,11 @@ REDACTED
 	REDACTED
 		billingMode := string(p.BillingMode)
 		if billingMode == "" {
-			billingMode = "token"
+			billingMode = string(service.BillingModeToken)
 	REDACTED
 		platform := p.Platform
 		if platform == "" {
-			platform = "anthropic"
+			platform = service.PlatformAnthropic
 	REDACTED
 		intervals := make([]pricingIntervalResponse, 0, len(p.Intervals))
 		for _, iv := range p.Intervals {
@@ -194,7 +194,7 @@ func pricingRequestToService(reqs []channelModelPricingRequest) []service.Channe
 	REDACTED
 		platform := r.Platform
 		if platform == "" {
-			platform = "anthropic"
+			platform = service.PlatformAnthropic
 	REDACTED
 		intervals := make([]service.PricingInterval, 0, len(r.Intervals))
 		for _, iv := range r.Intervals {

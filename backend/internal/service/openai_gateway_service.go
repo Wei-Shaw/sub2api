@@ -4290,7 +4290,7 @@ REDACTED
 		billingMode := cost.BillingMode
 		usageLog.BillingMode = &billingMode
 REDACTED else {
-		billingMode := "token"
+		billingMode := string(BillingModeToken)
 		usageLog.BillingMode = &billingMode
 REDACTED
 	// 添加 UserAgent
