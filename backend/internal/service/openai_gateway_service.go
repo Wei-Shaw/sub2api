@@ -1044,6 +1044,7 @@ REDACTED
 //  1. Header: session_id
 //  2. Header: conversation_id
 //  3. Body:   prompt_cache_key (opencode)
+//  4. Body:   content-based fallback (model + system + tools + first user message)
 func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) string {
 	if c == nil {
 		return ""
@@ -1055,6 +1056,9 @@ REDACTED
 REDACTED
 	if sessionID == "" && len(body) > 0 {
 		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
+REDACTED
+	if sessionID == "" && len(body) > 0 {
+		sessionID = deriveOpenAIContentSessionSeed(body)
 REDACTED
 	if sessionID == "" {
 		return ""
