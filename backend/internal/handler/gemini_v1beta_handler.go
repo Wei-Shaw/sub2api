@@ -121,7 +121,7 @@ REDACTED
 		googleError(c, http.StatusBadGateway, err.Error())
 		return
 REDACTED
-	if shouldFallbackGeminiModels(res) {
+	if shouldFallbackGeminiModel(modelName, res) {
 		c.JSON(http.StatusOK, gemini.FallbackModel(modelName))
 		return
 REDACTED
@@ -672,6 +672,16 @@ REDACTED
 		return true
 REDACTED
 	return false
+REDACTED
+
+func shouldFallbackGeminiModel(modelName string, res *service.UpstreamHTTPResult) bool {
+	if shouldFallbackGeminiModels(res) {
+		return true
+REDACTED
+	if res == nil || res.StatusCode != http.StatusNotFound {
+		return false
+REDACTED
+	return gemini.HasFallbackModel(modelName)
 REDACTED
 
 // extractGeminiCLISessionHash 从 Gemini CLI 请求中提取会话标识。

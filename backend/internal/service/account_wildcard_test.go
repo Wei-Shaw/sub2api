@@ -133,6 +133,7 @@ REDACTED
 func TestAccountIsModelSupported(t *testing.T) {
 	tests := []struct {
 		name           string
+		platform       string
 		credentials    map[string]any
 		requestedModel string
 		expected       bool
@@ -185,6 +186,17 @@ REDACTED{
 			expected:       true,
 	REDACTED,
 		{
+			name:     "gemini customtools alias matches normalized mapping",
+			platform: PlatformGemini,
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gemini-3.1-pro-preview": "gemini-3.1-pro-preview",
+			REDACTED,
+		REDACTED,
+			requestedModel: "gemini-3.1-pro-preview-customtools",
+			expected:       true,
+	REDACTED,
+		{
 			name: "wildcard match not supported",
 			credentials: map[string]any{
 				"model_mapping": map[string]any{
@@ -199,6 +211,7 @@ REDACTED
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			account := &Account{
+				Platform:    tt.platform,
 				Credentials: tt.credentials,
 		REDACTED
 			result := account.IsModelSupported(tt.requestedModel)
@@ -212,6 +225,7 @@ REDACTED
 func TestAccountGetMappedModel(t *testing.T) {
 	tests := []struct {
 		name           string
+		platform       string
 		credentials    map[string]any
 		requestedModel string
 		expected       string
@@ -222,6 +236,13 @@ REDACTED{
 			credentials:    nil,
 			requestedModel: "claude-sonnet-4-5",
 			expected:       "claude-sonnet-4-5",
+	REDACTED,
+		{
+			name:           "no mapping preserves gemini customtools model",
+			platform:       PlatformGemini,
+			credentials:    nil,
+			requestedModel: "gemini-3.1-pro-preview-customtools",
+			expected:       "gemini-3.1-pro-preview-customtools",
 	REDACTED,
 
 		// 精确匹配
@@ -251,6 +272,29 @@ REDACTED{
 
 		// 无匹配返回原始模型
 		{
+			name:     "gemini customtools alias resolves through normalized mapping",
+			platform: PlatformGemini,
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gemini-3.1-pro-preview": "gemini-3.1-pro-preview",
+			REDACTED,
+		REDACTED,
+			requestedModel: "gemini-3.1-pro-preview-customtools",
+			expected:       "gemini-3.1-pro-preview",
+	REDACTED,
+		{
+			name:     "gemini customtools exact mapping wins over normalized fallback",
+			platform: PlatformGemini,
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gemini-3.1-pro-preview":             "gemini-3.1-pro-preview",
+					"gemini-3.1-pro-preview-customtools": "gemini-3.1-pro-preview-customtools",
+			REDACTED,
+		REDACTED,
+			requestedModel: "gemini-3.1-pro-preview-customtools",
+			expected:       "gemini-3.1-pro-preview-customtools",
+	REDACTED,
+		{
 			name: "no match returns original",
 			credentials: map[string]any{
 				"model_mapping": map[string]any{
@@ -265,6 +309,7 @@ REDACTED
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			account := &Account{
+				Platform:    tt.platform,
 				Credentials: tt.credentials,
 		REDACTED
 			result := account.GetMappedModel(tt.requestedModel)
@@ -278,6 +323,7 @@ REDACTED
 func TestAccountResolveMappedModel(t *testing.T) {
 	tests := []struct {
 		name           string
+		platform       string
 		credentials    map[string]any
 		requestedModel string
 		expectedModel  string
@@ -313,6 +359,31 @@ REDACTED{
 			expectedMatch:  true,
 	REDACTED,
 		{
+			name:     "gemini customtools alias reports normalized match",
+			platform: PlatformGemini,
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gemini-3.1-pro-preview": "gemini-3.1-pro-preview",
+			REDACTED,
+		REDACTED,
+			requestedModel: "gemini-3.1-pro-preview-customtools",
+			expectedModel:  "gemini-3.1-pro-preview",
+			expectedMatch:  true,
+	REDACTED,
+		{
+			name:     "gemini customtools exact mapping reports exact match",
+			platform: PlatformGemini,
+			credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gemini-3.1-pro-preview":             "gemini-3.1-pro-preview",
+					"gemini-3.1-pro-preview-customtools": "gemini-3.1-pro-preview-customtools",
+			REDACTED,
+		REDACTED,
+			requestedModel: "gemini-3.1-pro-preview-customtools",
+			expectedModel:  "gemini-3.1-pro-preview-customtools",
+			expectedMatch:  true,
+	REDACTED,
+		{
 			name: "missing mapping reports unmatched",
 			credentials: map[string]any{
 				"model_mapping": map[string]any{
@@ -328,6 +399,7 @@ REDACTED
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			account := &Account{
+				Platform:    tt.platform,
 				Credentials: tt.credentials,
 		REDACTED
 			mappedModel, matched := account.ResolveMappedModel(tt.requestedModel)
