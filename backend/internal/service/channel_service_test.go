@@ -1401,6 +1401,32 @@ func TestCreate_DuplicateModel(t *testing.T) {
 	require.Contains(t, err.Error(), "claude-opus-4")
 }
 
+func TestCreate_InvalidPricingIntervals(t *testing.T) {
+	repo := &mockChannelRepository{
+		existsByNameFn: func(_ context.Context, _ string) (bool, error) {
+			return false, nil
+		},
+	}
+	svc := newTestChannelService(repo)
+
+	_, err := svc.Create(context.Background(), &CreateChannelInput{
+		Name: "new-channel",
+		ModelPricing: []ChannelModelPricing{
+			{
+				Platform: "anthropic",
+				Models:   []string{"claude-opus-4"},
+				Intervals: []PricingInterval{
+					{MinTokens: 0, MaxTokens: testPtrInt(2000), InputPrice: testPtrFloat64(1e-6)},
+					{MinTokens: 1000, MaxTokens: testPtrInt(3000), InputPrice: testPtrFloat64(2e-6)},
+				},
+			},
+		},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "INVALID_PRICING_INTERVALS")
+	require.Contains(t, err.Error(), "overlap")
+}
+
 func TestCreate_DefaultBillingModelSource(t *testing.T) {
 	var capturedChannel *Channel
 	repo := &mockChannelRepository{
@@ -1590,6 +1616,37 @@ func TestUpdate_DuplicateModel(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "claude-opus-4")
+}
+
+func TestUpdate_InvalidPricingIntervals(t *testing.T) {
+	existing := &Channel{
+		ID:     1,
+		Name:   "original",
+		Status: StatusActive,
+	}
+	repo := &mockChannelRepository{
+		getByIDFn: func(_ context.Context, _ int64) (*Channel, error) {
+			return existing.Clone(), nil
+		},
+	}
+	svc := newTestChannelService(repo)
+
+	invalidPricing := []ChannelModelPricing{
+		{
+			Platform: "anthropic",
+			Models:   []string{"claude-opus-4"},
+			Intervals: []PricingInterval{
+				{MinTokens: 0, MaxTokens: nil, InputPrice: testPtrFloat64(1e-6)},
+				{MinTokens: 2000, MaxTokens: testPtrInt(4000), InputPrice: testPtrFloat64(2e-6)},
+			},
+		},
+	}
+	_, err := svc.Update(context.Background(), 1, &UpdateChannelInput{
+		ModelPricing: &invalidPricing,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "INVALID_PRICING_INTERVALS")
+	require.Contains(t, err.Error(), "unbounded")
 }
 
 func TestUpdate_InvalidatesChannelCache(t *testing.T) {
@@ -1983,4 +2040,145 @@ func TestResolveChannelMapping_AntigravityCrossPlatform(t *testing.T) {
 	require.True(t, result.Mapped, "antigravity group should apply anthropic mapping")
 	require.Equal(t, "claude-opus-4-6", result.MappedModel)
 	require.Equal(t, int64(1), result.ChannelID)
+}
+
+// ===========================================================================
+// 11. Antigravity cross-platform same-name model — no overwrite
+// ===========================================================================
+
+func TestGetChannelModelPricing_AntigravitySameModelDifferentPlatforms(t *testing.T) {
+	// anthropic 和 gemini 都定义了同名模型 "shared-model"，价格不同。
+	// antigravity 分组应能分别查到各自的定价，而不是后者覆盖前者。
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelPricing: []ChannelModelPricing{
+			{ID: 200, Platform: PlatformAnthropic, Models: []string{"shared-model"}, InputPrice: testPtrFloat64(10e-6)},
+			{ID: 201, Platform: PlatformGemini, Models: []string{"shared-model"}, InputPrice: testPtrFloat64(5e-6)},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAntigravity})
+	svc := newTestChannelService(repo)
+
+	// antigravity 分组查找 "shared-model"：应命中第一个匹配（按 matchingPlatforms 顺序 antigravity→anthropic→gemini）
+	result := svc.GetChannelModelPricing(context.Background(), 10, "shared-model")
+	require.NotNil(t, result, "antigravity group should find pricing for shared-model")
+	// 第一个匹配应该是 anthropic（matchingPlatforms 返回 [antigravity, anthropic, gemini]）
+	require.Equal(t, int64(200), result.ID)
+	require.InDelta(t, 10e-6, *result.InputPrice, 1e-12)
+}
+
+func TestGetChannelModelPricing_AntigravityOnlyGeminiPricing(t *testing.T) {
+	// 只有 gemini 平台定义了模型 "gemini-model"。
+	// antigravity 分组应能查到 gemini 的定价。
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelPricing: []ChannelModelPricing{
+			{ID: 300, Platform: PlatformGemini, Models: []string{"gemini-model"}, InputPrice: testPtrFloat64(2e-6)},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAntigravity})
+	svc := newTestChannelService(repo)
+
+	result := svc.GetChannelModelPricing(context.Background(), 10, "gemini-model")
+	require.NotNil(t, result, "antigravity group should find gemini pricing")
+	require.Equal(t, int64(300), result.ID)
+	require.InDelta(t, 2e-6, *result.InputPrice, 1e-12)
+}
+
+func TestGetChannelModelPricing_AntigravityWildcardCrossPlatformNoOverwrite(t *testing.T) {
+	// anthropic 和 gemini 都有 "shared-*" 通配符定价，价格不同。
+	// antigravity 分组查找 "shared-model" 应命中第一个匹配而非被覆盖。
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelPricing: []ChannelModelPricing{
+			{ID: 400, Platform: PlatformAnthropic, Models: []string{"shared-*"}, InputPrice: testPtrFloat64(10e-6)},
+			{ID: 401, Platform: PlatformGemini, Models: []string{"shared-*"}, InputPrice: testPtrFloat64(5e-6)},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAntigravity})
+	svc := newTestChannelService(repo)
+
+	result := svc.GetChannelModelPricing(context.Background(), 10, "shared-model")
+	require.NotNil(t, result, "antigravity group should find wildcard pricing for shared-model")
+	// 两个通配符都存在，应命中 anthropic 的（matchingPlatforms 顺序）
+	require.Equal(t, int64(400), result.ID)
+	require.InDelta(t, 10e-6, *result.InputPrice, 1e-12)
+}
+
+func TestResolveChannelMapping_AntigravitySameModelDifferentPlatforms(t *testing.T) {
+	// anthropic 和 gemini 都定义了同名模型映射 "alias" → 不同目标。
+	// antigravity 分组应命中 anthropic 的映射（按 matchingPlatforms 顺序）。
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10},
+		ModelMapping: map[string]map[string]string{
+			PlatformAnthropic: {"alias": "anthropic-target"},
+			PlatformGemini:    {"alias": "gemini-target"},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAntigravity})
+	svc := newTestChannelService(repo)
+
+	result := svc.ResolveChannelMapping(context.Background(), 10, "alias")
+	require.True(t, result.Mapped)
+	require.Equal(t, "anthropic-target", result.MappedModel)
+}
+
+func TestCheckRestricted_AntigravitySameModelDifferentPlatforms(t *testing.T) {
+	// anthropic 和 gemini 都定义了同名模型 "shared-model"。
+	// antigravity 分组启用了 RestrictModels，"shared-model" 应不被限制。
+	ch := Channel{
+		ID:             1,
+		Status:         StatusActive,
+		RestrictModels: true,
+		GroupIDs:       []int64{10},
+		ModelPricing: []ChannelModelPricing{
+			{ID: 500, Platform: PlatformAnthropic, Models: []string{"shared-model"}, InputPrice: testPtrFloat64(10e-6)},
+			{ID: 501, Platform: PlatformGemini, Models: []string{"shared-model"}, InputPrice: testPtrFloat64(5e-6)},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAntigravity})
+	svc := newTestChannelService(repo)
+
+	restricted := svc.IsModelRestricted(context.Background(), 10, "shared-model")
+	require.False(t, restricted, "shared-model should not be restricted for antigravity")
+
+	// 未定义的模型应被限制
+	restricted = svc.IsModelRestricted(context.Background(), 10, "unknown-model")
+	require.True(t, restricted, "unknown-model should be restricted for antigravity")
+}
+
+func TestGetChannelModelPricing_NonAntigravityUnaffected(t *testing.T) {
+	// 确保非 antigravity 平台的行为不受影响。
+	// anthropic 分组只能看到 anthropic 的定价，看不到 gemini 的。
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10, 20},
+		ModelPricing: []ChannelModelPricing{
+			{ID: 600, Platform: PlatformAnthropic, Models: []string{"shared-model"}, InputPrice: testPtrFloat64(10e-6)},
+			{ID: 601, Platform: PlatformGemini, Models: []string{"shared-model"}, InputPrice: testPtrFloat64(5e-6)},
+		},
+	}
+	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAnthropic, 20: PlatformGemini})
+	svc := newTestChannelService(repo)
+
+	// anthropic 分组应该只看到 anthropic 的定价
+	result := svc.GetChannelModelPricing(context.Background(), 10, "shared-model")
+	require.NotNil(t, result)
+	require.Equal(t, int64(600), result.ID)
+	require.InDelta(t, 10e-6, *result.InputPrice, 1e-12)
+
+	// gemini 分组应该只看到 gemini 的定价
+	result = svc.GetChannelModelPricing(context.Background(), 20, "shared-model")
+	require.NotNil(t, result)
+	require.Equal(t, int64(601), result.ID)
+	require.InDelta(t, 5e-6, *result.InputPrice, 1e-12)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -17,33 +18,116 @@ const (
 	// 与普通模型限流完全同构：通过 SetModelRateLimit / isRateLimitActiveForKey 读写。
 	creditsExhaustedKey      = "AICredits"
 	creditsExhaustedDuration = 5 * time.Hour
+
+	// credits 降级响应重试参数
+	creditsRetryMaxAttempts  = 3
+	creditsRetryBaseInterval = 500 * time.Millisecond
 )
+
+// creditsRetryableErrorCodes 是降级响应中可重试的错误码集合。
+// forbidden 是稳定的封号状态，不属于可恢复的瞬态错误，不重试。
+var creditsRetryableErrorCodes = map[string]bool{
+	errorCodeUnauthenticated: true,
+	errorCodeRateLimited:     true,
+	errorCodeNetworkError:    true,
+}
+
+// isAntigravityDegradedResponse 检查 UsageInfo 是否为可重试的降级响应。
+// 仅检测 3 个瞬态错误码（unauthenticated/rate_limited/network_error），
+// forbidden 是稳定的封号状态，不属于降级。
+func isAntigravityDegradedResponse(info *UsageInfo) bool {
+	if info == nil || info.ErrorCode == "" {
+		return false
+	}
+	return creditsRetryableErrorCodes[info.ErrorCode]
+}
 
 // checkAccountCredits 通过共享的 AccountUsageService 缓存检查账号是否有足够的 AI Credits。
 // 缓存 TTL 不足时会自动从 Google loadCodeAssist API 刷新。
-// 返回 true 表示积分可用。
+// 检测到降级响应时会清除缓存并重试，最终 fail-open（返回 true）。
 func (s *AntigravityGatewayService) checkAccountCredits(
 	ctx context.Context, account *Account,
 ) bool {
 	if account == nil || account.ID == 0 {
 		return false
 	}
-
 	if s.accountUsageService == nil {
 		return true // 无 usage service 时不阻断
 	}
 
 	usageInfo, err := s.accountUsageService.GetAntigravityCredits(ctx, account)
 	if err != nil {
-		logger.LegacyPrintf("service.antigravity_gateway",
-			"check_credits: get_credits_failed account=%d err=%v", account.ID, err)
-		return true // 出错时假设有积分，不阻断
+		slog.Error("check_credits: get_credits_failed",
+			"account_id", account.ID, "error", err)
+		return true // 出错时 fail-open
 	}
 
-	hasCredits := hasEnoughCredits(usageInfo)
+	// 非降级响应：直接检查积分余额
+	if !isAntigravityDegradedResponse(usageInfo) {
+		return s.logCreditsResult(account, usageInfo)
+	}
+
+	// 降级响应：清除缓存后重试
+	return s.retryCreditsOnDegraded(ctx, account, usageInfo)
+}
+
+// retryCreditsOnDegraded 在检测到降级响应后，清除缓存并重试获取 credits。
+// 使用指数退避（500ms → 1s → 2s），最多重试 creditsRetryMaxAttempts 次。
+// 所有重试失败后 fail-open（返回 true），不做熔断。
+func (s *AntigravityGatewayService) retryCreditsOnDegraded(
+	ctx context.Context, account *Account, lastInfo *UsageInfo,
+) bool {
+	for attempt := 1; attempt <= creditsRetryMaxAttempts; attempt++ {
+		delay := creditsRetryBaseInterval << (attempt - 1) // 指数退避：500ms, 1s, 2s
+		slog.Warn("check_credits: degraded response, retrying",
+			"account_id", account.ID,
+			"attempt", attempt,
+			"max_attempts", creditsRetryMaxAttempts,
+			"error_code", lastInfo.ErrorCode,
+			"delay", delay,
+		)
+
+		select {
+		case <-ctx.Done():
+			slog.Warn("check_credits: context cancelled during retry, fail-open",
+				"account_id", account.ID, "attempt", attempt)
+			return true
+		case <-time.After(delay):
+		}
+
+		// 清除缓存，强制下次 GetAntigravityCredits 重新拉取
+		s.accountUsageService.InvalidateAntigravityCreditsCache(account.ID)
+
+		info, err := s.accountUsageService.GetAntigravityCredits(ctx, account)
+		if err != nil {
+			slog.Error("check_credits: retry get_credits_failed",
+				"account_id", account.ID, "attempt", attempt, "error", err)
+			continue
+		}
+
+		// 重试成功（不再是降级响应）：检查积分余额
+		if !isAntigravityDegradedResponse(info) {
+			slog.Info("check_credits: retry succeeded",
+				"account_id", account.ID, "attempt", attempt)
+			return s.logCreditsResult(account, info)
+		}
+		lastInfo = info
+	}
+
+	// 所有重试失败：fail-open，不做熔断
+	slog.Warn("check_credits: all retries exhausted, fail-open",
+		"account_id", account.ID,
+		"last_error_code", lastInfo.ErrorCode,
+	)
+	return true
+}
+
+// logCreditsResult 检查积分并记录不足日志，返回是否有积分。
+func (s *AntigravityGatewayService) logCreditsResult(account *Account, info *UsageInfo) bool {
+	hasCredits := hasEnoughCredits(info)
 	if !hasCredits {
-		logger.LegacyPrintf("service.antigravity_gateway",
-			"check_credits: account=%d has_credits=false", account.ID)
+		slog.Warn("check_credits: insufficient credits",
+			"account_id", account.ID)
 	}
 	return hasCredits
 }
