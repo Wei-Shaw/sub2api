@@ -2026,6 +2026,7 @@ export default {
       privacyAntigravityFailed: '隐私设置失败',
       setPrivacy: '设置隐私',
       subscriptionAbnormal: '异常',
+      subscriptionExpires: '到期',
       // 容量状态提示
       capacity: {
         windowCost: {

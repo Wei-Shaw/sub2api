@@ -88,8 +88,9 @@ REDACTED
 
 // ChatGPTAccountInfo 从 chatgpt.com/backend-api/accounts/check 获取的账号信息
 type ChatGPTAccountInfo struct {
-	PlanType string
-	Email    string
+	PlanType              string
+	Email                 string
+	SubscriptionExpiresAt string // entitlement.expires_at (RFC3339)
 REDACTED
 
 const chatGPTAccountsCheckURL = "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27"
@@ -142,14 +143,20 @@ REDACTED
 
 	// 优先匹配 orgID 对应的账号（access_token JWT 中的 poid）
 	if orgID != "" {
-		if matched := extractPlanFromAccount(accounts, orgID); matched != "" {
-			info.PlanType = matched
+		if acctRaw, ok := accounts[orgID]; ok {
+			if acct, ok := acctRaw.(map[string]any); ok {
+				fillAccountInfo(info, acct)
+		REDACTED
 	REDACTED
 REDACTED
 
 	// 未匹配到时，遍历所有账号：优先 is_default，次选非 free
 	if info.PlanType == "" {
-		var defaultPlan, paidPlan, anyPlan string
+		type candidate struct {
+			planType  string
+			expiresAt string
+	REDACTED
+		var defaultC, paidC, anyC candidate
 		for _, acctRaw := range accounts {
 			acct, ok := acctRaw.(map[string]any)
 			if !ok {
@@ -159,26 +166,27 @@ REDACTED
 			if planType == "" {
 				continue
 		REDACTED
-			if anyPlan == "" {
-				anyPlan = planType
+			ea := extractEntitlementExpiresAt(acct)
+			if anyC.planType == "" {
+				anyC = candidate{planType, eaREDACTED
 		REDACTED
 			if account, ok := acct["account"].(map[string]any); ok {
 				if isDefault, _ := account["is_default"].(bool); isDefault {
-					defaultPlan = planType
+					defaultC = candidate{planType, eaREDACTED
 			REDACTED
 		REDACTED
-			if !strings.EqualFold(planType, "free") && paidPlan == "" {
-				paidPlan = planType
+			if !strings.EqualFold(planType, "free") && paidC.planType == "" {
+				paidC = candidate{planType, eaREDACTED
 		REDACTED
 	REDACTED
 		// 优先级：default > 非 free > 任意
 		switch {
-		case defaultPlan != "":
-			info.PlanType = defaultPlan
-		case paidPlan != "":
-			info.PlanType = paidPlan
+		case defaultC.planType != "":
+			info.PlanType, info.SubscriptionExpiresAt = defaultC.planType, defaultC.expiresAt
+		case paidC.planType != "":
+			info.PlanType, info.SubscriptionExpiresAt = paidC.planType, paidC.expiresAt
 		default:
-			info.PlanType = anyPlan
+			info.PlanType, info.SubscriptionExpiresAt = anyC.planType, anyC.expiresAt
 	REDACTED
 REDACTED
 
@@ -187,21 +195,14 @@ REDACTED
 		return nil
 REDACTED
 
-	slog.Info("chatgpt_account_check_success", "plan_type", info.PlanType, "org_id", orgID)
+	slog.Info("chatgpt_account_check_success", "plan_type", info.PlanType, "subscription_expires_at", info.SubscriptionExpiresAt, "org_id", orgID)
 	return info
 REDACTED
 
-// extractPlanFromAccount 从 accounts map 中按 key（account_id）精确匹配并提取 plan_type
-func extractPlanFromAccount(accounts map[string]any, accountKey string) string {
-	acctRaw, ok := accounts[accountKey]
-	if !ok {
-		return ""
-REDACTED
-	acct, ok := acctRaw.(map[string]any)
-	if !ok {
-		return ""
-REDACTED
-	return extractPlanType(acct)
+// fillAccountInfo 从单个 account 对象中提取 plan_type 和 subscription_expires_at
+func fillAccountInfo(info *ChatGPTAccountInfo, acct map[string]any) {
+	info.PlanType = extractPlanType(acct)
+	info.SubscriptionExpiresAt = extractEntitlementExpiresAt(acct)
 REDACTED
 
 // extractPlanType 从单个 account 对象中提取 plan_type
@@ -217,6 +218,17 @@ REDACTED
 	REDACTED
 REDACTED
 	return ""
+REDACTED
+
+// extractEntitlementExpiresAt 从 entitlement 中提取 expires_at。
+// 预期为 RFC3339 字符串格式，如 "2026-05-02T20:32:12+00:00"。
+func extractEntitlementExpiresAt(acct map[string]any) string {
+	entitlement, ok := acct["entitlement"].(map[string]any)
+	if !ok {
+		return ""
+REDACTED
+	ea, _ := entitlement["expires_at"].(string)
+	return ea
 REDACTED
 
 func truncate(s string, n int) string {
