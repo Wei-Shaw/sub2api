@@ -418,7 +418,10 @@ func (s *ChannelService) GetChannelModelPricing(ctx context.Context, groupID int
 // ResolveChannelMapping 解析渠道级模型映射（热路径 O(1)）
 // 返回映射结果，包含映射后的模型名、渠道 ID、计费模型来源。
 func (s *ChannelService) ResolveChannelMapping(ctx context.Context, groupID int64, model string) ChannelMappingResult {
-	lk, _ := s.lookupGroupChannel(ctx, groupID)
+	lk, err := s.lookupGroupChannel(ctx, groupID)
+	if err != nil {
+		slog.Warn("failed to load channel cache for mapping", "group_id", groupID, "error", err)
+	}
 	if lk == nil {
 		return ChannelMappingResult{MappedModel: model}
 	}

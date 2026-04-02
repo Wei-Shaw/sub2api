@@ -414,8 +414,8 @@ func (s *OpenAIGatewayService) IsModelRestricted(ctx context.Context, groupID in
 	return s.channelService.IsModelRestricted(ctx, groupID, model)
 }
 
-// ResolveChannelMappingAndRestrict 解析渠道映射并检查模型限制。
-// 返回映射结果和是否被限制。
+// ResolveChannelMappingAndRestrict 解析渠道映射。
+// 模型限制检查已移至调度阶段，restricted 始终返回 false。
 func (s *OpenAIGatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, model string) (ChannelMappingResult, bool) {
 	if s.channelService == nil {
 		return ChannelMappingResult{MappedModel: model}, false

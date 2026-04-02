@@ -1118,7 +1118,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, true, firstMessage)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeWSV2))
 
-	// 解析渠道级模型映射 + 限制检查
+	// 解析渠道级模型映射
 	channelMappingWS, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, reqModel)
 
 	var currentUserRelease func()
