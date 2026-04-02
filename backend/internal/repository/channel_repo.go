@@ -188,7 +188,7 @@ func (r *channelRepository) List(ctx context.Context, params pagination.Paginati
 	// 查询 channel 列表
 	dataQuery := fmt.Sprintf(
 		`SELECT c.id, c.name, c.description, c.status, c.model_mapping, c.billing_model_source, c.restrict_models, c.created_at, c.updated_at
-		 FROM channels c WHERE %s ORDER BY c.id DESC LIMIT $%d OFFSET $%d`,
+		 FROM channels c WHERE %s ORDER BY c.id ASC LIMIT $%d OFFSET $%d`,
 		whereClause, argIdx, argIdx+1,
 	)
 	args = append(args, pageSize, offset)

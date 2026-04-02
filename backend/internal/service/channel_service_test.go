@@ -1182,12 +1182,15 @@ func TestBuildCache_GroupPlatformError(t *testing.T) {
 	}
 	svc := newTestChannelService(repo)
 
-	// Should degrade gracefully: channel is found, but without platform info
-	// pricing won't match because platform will be "" and pricing platform is "anthropic"
+	// Should fail-close: error propagated when group platforms cannot be loaded
 	result, err := svc.GetChannelForGroup(context.Background(), 10)
-	require.NoError(t, err)
-	require.NotNil(t, result) // channel still found
-	require.Equal(t, int64(1), result.ID)
+	require.Error(t, err)
+	require.Nil(t, result)
+
+	// Within error-TTL, second call should hit cache (empty) and return nil, nil
+	result2, err2 := svc.GetChannelForGroup(context.Background(), 10)
+	require.NoError(t, err2)
+	require.Nil(t, result2)
 }
 
 func TestBuildCache_MultipleGroupsSameChannel(t *testing.T) {

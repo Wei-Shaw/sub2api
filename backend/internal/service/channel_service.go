@@ -278,7 +278,10 @@ func (s *ChannelService) buildCache(ctx context.Context) (*channelCache, error) 
 		groupPlatforms, err = s.repo.GetGroupPlatforms(dbCtx, allGroupIDs)
 		if err != nil {
 			slog.Warn("failed to load group platforms for channel cache", "error", err)
-			// 降级：继续构建缓存但无法按平台过滤
+			errorCache := newEmptyChannelCache()
+			errorCache.loadedAt = time.Now().Add(-(channelCacheTTL - channelErrorTTL))
+			s.cache.Store(errorCache)
+			return nil, fmt.Errorf("get group platforms: %w", err)
 		}
 	}
 
