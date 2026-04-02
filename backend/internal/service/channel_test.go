@@ -307,3 +307,129 @@ REDACTED)
 		require.Equal(t, "gpt-4-turbo", original.ModelMapping["openai"]["gpt-4"])
 REDACTED)
 REDACTED
+
+// --- ValidateIntervals ---
+
+func TestValidateIntervals_Empty(t *testing.T) {
+	require.NoError(t, ValidateIntervals(nil))
+	require.NoError(t, ValidateIntervals([]PricingInterval{REDACTED))
+REDACTED
+
+func TestValidateIntervals_ValidIntervals(t *testing.T) {
+	tests := []struct {
+		name      string
+		intervals []PricingInterval
+REDACTED{
+		{
+			name: "single bounded interval",
+			intervals: []PricingInterval{
+				{MinTokens: 0, MaxTokens: testPtrInt(128000), InputPrice: testPtrFloat64(1e-6)REDACTED,
+		REDACTED,
+	REDACTED,
+		{
+			name: "two intervals with gap",
+			intervals: []PricingInterval{
+				{MinTokens: 0, MaxTokens: testPtrInt(100000), InputPrice: testPtrFloat64(1e-6)REDACTED,
+				{MinTokens: 128000, MaxTokens: nil, InputPrice: testPtrFloat64(2e-6)REDACTED,
+		REDACTED,
+	REDACTED,
+		{
+			name: "two contiguous intervals",
+			intervals: []PricingInterval{
+				{MinTokens: 0, MaxTokens: testPtrInt(128000), InputPrice: testPtrFloat64(1e-6)REDACTED,
+				{MinTokens: 128000, MaxTokens: nil, InputPrice: testPtrFloat64(2e-6)REDACTED,
+		REDACTED,
+	REDACTED,
+		{
+			name: "unsorted input (auto-sorted by validator)",
+			intervals: []PricingInterval{
+				{MinTokens: 128000, MaxTokens: nil, InputPrice: testPtrFloat64(2e-6)REDACTED,
+				{MinTokens: 0, MaxTokens: testPtrInt(128000), InputPrice: testPtrFloat64(1e-6)REDACTED,
+		REDACTED,
+	REDACTED,
+		{
+			name: "single unbounded interval",
+			intervals: []PricingInterval{
+				{MinTokens: 0, MaxTokens: nil, InputPrice: testPtrFloat64(1e-6)REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NoError(t, ValidateIntervals(tt.intervals))
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestValidateIntervals_NegativeMinTokens(t *testing.T) {
+	intervals := []PricingInterval{
+		{MinTokens: -1, MaxTokens: testPtrInt(100), InputPrice: testPtrFloat64(1e-6)REDACTED,
+REDACTED
+	err := ValidateIntervals(intervals)
+REDACTED
+	require.Contains(t, err.Error(), "min_tokens")
+	require.Contains(t, err.Error(), ">= 0")
+REDACTED
+
+func TestValidateIntervals_MaxTokensZero(t *testing.T) {
+	intervals := []PricingInterval{
+		{MinTokens: 0, MaxTokens: testPtrInt(0), InputPrice: testPtrFloat64(1e-6)REDACTED,
+REDACTED
+	err := ValidateIntervals(intervals)
+REDACTED
+	require.Contains(t, err.Error(), "max_tokens")
+	require.Contains(t, err.Error(), "> 0")
+REDACTED
+
+func TestValidateIntervals_MaxLessThanMin(t *testing.T) {
+	intervals := []PricingInterval{
+		{MinTokens: 100, MaxTokens: testPtrInt(50), InputPrice: testPtrFloat64(1e-6)REDACTED,
+REDACTED
+	err := ValidateIntervals(intervals)
+REDACTED
+	require.Contains(t, err.Error(), "max_tokens")
+	require.Contains(t, err.Error(), "> min_tokens")
+REDACTED
+
+func TestValidateIntervals_MaxEqualsMin(t *testing.T) {
+	intervals := []PricingInterval{
+		{MinTokens: 100, MaxTokens: testPtrInt(100), InputPrice: testPtrFloat64(1e-6)REDACTED,
+REDACTED
+	err := ValidateIntervals(intervals)
+REDACTED
+	require.Contains(t, err.Error(), "max_tokens")
+	require.Contains(t, err.Error(), "> min_tokens")
+REDACTED
+
+func TestValidateIntervals_NegativePrice(t *testing.T) {
+	negPrice := -0.01
+	intervals := []PricingInterval{
+		{MinTokens: 0, MaxTokens: testPtrInt(100), InputPrice: &negPriceREDACTED,
+REDACTED
+	err := ValidateIntervals(intervals)
+REDACTED
+	require.Contains(t, err.Error(), "input_price")
+	require.Contains(t, err.Error(), ">= 0")
+REDACTED
+
+func TestValidateIntervals_OverlappingIntervals(t *testing.T) {
+	intervals := []PricingInterval{
+		{MinTokens: 0, MaxTokens: testPtrInt(200), InputPrice: testPtrFloat64(1e-6)REDACTED,
+		{MinTokens: 100, MaxTokens: testPtrInt(300), InputPrice: testPtrFloat64(2e-6)REDACTED,
+REDACTED
+	err := ValidateIntervals(intervals)
+REDACTED
+	require.Contains(t, err.Error(), "overlap")
+REDACTED
+
+func TestValidateIntervals_UnboundedNotLast(t *testing.T) {
+	intervals := []PricingInterval{
+		{MinTokens: 0, MaxTokens: nil, InputPrice: testPtrFloat64(1e-6)REDACTED,
+		{MinTokens: 128000, MaxTokens: testPtrInt(256000), InputPrice: testPtrFloat64(2e-6)REDACTED,
+REDACTED
+	err := ValidateIntervals(intervals)
+REDACTED
+	require.Contains(t, err.Error(), "unbounded")
+	require.Contains(t, err.Error(), "last")
+REDACTED

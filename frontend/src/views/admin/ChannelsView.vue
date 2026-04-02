@@ -418,7 +418,7 @@ import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest REDACTED from '@/api/admin/channels'
 import type { PricingFormEntry REDACTED from '@/components/admin/channel/types'
-import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict REDACTED from '@/components/admin/channel/types'
+import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals REDACTED from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -917,6 +917,21 @@ async function handleSubmit() {
           (entry.per_request_price == null || entry.per_request_price === '') &&
           (!entry.intervals || entry.intervals.length === 0)) {
         appStore.showError(t('admin.channels.form.perRequestPriceRequired', '按次/图片计费模式必须设置默认价格或至少一个计费层级'))
+        return
+      REDACTED
+    REDACTED
+  REDACTED
+
+  // 校验区间合法性（范围、重叠等）
+  for (const section of form.platforms.filter(s => s.enabled)) {
+    for (const entry of section.model_pricing) {
+      if (!entry.intervals || entry.intervals.length === 0) continue
+      const intervalErr = validateIntervals(entry.intervals)
+      if (intervalErr) {
+        const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
+        const modelLabel = entry.models.join(', ') || '未命名'
+        appStore.showError(`${platformLabelREDACTED - ${modelLabelREDACTED: ${intervalErrREDACTED`)
+        activeTab.value = section.platform
         return
       REDACTED
     REDACTED

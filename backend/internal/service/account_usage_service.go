@@ -855,6 +855,13 @@ REDACTED
 	return s.getAntigravityUsage(ctx, account)
 REDACTED
 
+// InvalidateAntigravityCreditsCache 清除指定账号的 Antigravity 用量缓存，
+// 使下次调用 GetAntigravityCredits 时强制重新拉取。
+// 用于 credits 降级响应重试场景：避免重试命中同一个降级缓存。
+func (s *AccountUsageService) InvalidateAntigravityCreditsCache(accountID int64) {
+	s.cache.antigravityCache.Delete(accountID)
+REDACTED
+
 // recalcAntigravityRemainingSeconds 重新计算 Antigravity UsageInfo 中各窗口的 RemainingSeconds
 // 用于从缓存取出时更新倒计时，避免返回过时的剩余秒数
 func recalcAntigravityRemainingSeconds(info *UsageInfo) {
