@@ -56,6 +56,10 @@ REDACTED
 		SetHeader("Authorization", "Bearer "+accessToken).
 		SetHeader("Origin", "https://chatgpt.com").
 		SetHeader("Referer", "https://chatgpt.com/").
+		SetHeader("Accept", "application/json").
+		SetHeader("sec-fetch-mode", "cors").
+		SetHeader("sec-fetch-site", "same-origin").
+		SetHeader("sec-fetch-dest", "empty").
 		SetQueryParam("feature", "training_allowed").
 		SetQueryParam("value", "false").
 		Patch(openAISettingsURL)
