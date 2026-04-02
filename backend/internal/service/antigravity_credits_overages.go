@@ -279,9 +279,10 @@ func resolveCreditsOveragesModelKey(ctx context.Context, account *Account, upstr
 
 // shouldMarkCreditsExhausted 判断一次 credits 请求失败是否应标记为 credits 耗尽。
 // 此函数在积分注入后失败时调用（预检查注入 + attemptCreditsOveragesRetry 两条路径）。
-//   - 429 + 非单模型限流：积分注入后仍 429 → 标记耗尽。
 //   - 429 + 单模型限流（"exhausted your capacity on this model"）：该模型免费配额用完，
 //     积分注入对此无效，但账号积分对其他模型可能仍可用 → 不标记积分耗尽。
+//   - 429 + 积分关键词（如 "insufficient credits"）：积分确实不足 → 标记耗尽。
+//   - 429 + 无积分关键词（节点限流、瞬时 rate limit 等）：与积分无关 → 不标记。
 //   - 403 等其他 4xx：检查 body 是否包含积分不足的关键词。
 //
 // clearCreditsExhausted 会在后续成功时自动清除。
@@ -299,9 +300,16 @@ func shouldMarkCreditsExhausted(resp *http.Response, respBody []byte, reqErr err
 		if strings.Contains(bodyLower, "exhausted your capacity on this model") {
 			return false
 		}
-		return true
+		// 仅当 body 包含积分相关关键词时才标记耗尽；
+		// 节点限流、瞬时 rate limit 等非积分 429 不应触发 5 小时熔断。
+		return containsCreditsExhaustedKeyword(bodyLower)
 	}
 	// 其他 4xx：关键词匹配（如 403 + "Insufficient credits"）
+	return containsCreditsExhaustedKeyword(bodyLower)
+}
+
+// containsCreditsExhaustedKeyword 检查响应体是否包含积分耗尽的关键词。
+func containsCreditsExhaustedKeyword(bodyLower string) bool {
 	for _, keyword := range creditsExhaustedKeywords {
 		if strings.Contains(bodyLower, keyword) {
 			return true

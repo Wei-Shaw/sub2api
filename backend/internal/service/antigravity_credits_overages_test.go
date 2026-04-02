@@ -424,9 +424,15 @@ func TestShouldMarkCreditsExhausted(t *testing.T) {
 		require.False(t, shouldMarkCreditsExhausted(resp, body, nil))
 	})
 
-	t.Run("429 结构化限流也标记（积分注入后仍 429 即为耗尽）", func(t *testing.T) {
+	t.Run("429 结构化限流不标记（节点限流/瞬时 rate limit 与积分无关）", func(t *testing.T) {
 		resp := &http.Response{StatusCode: http.StatusTooManyRequests}
 		body := []byte(`{"error":{"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"RATE_LIMIT_EXCEEDED"},{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"0.5s"}]}}`)
+		require.False(t, shouldMarkCreditsExhausted(resp, body, nil))
+	})
+
+	t.Run("429 含积分关键词时标记", func(t *testing.T) {
+		resp := &http.Response{StatusCode: http.StatusTooManyRequests}
+		body := []byte(`{"error":{"message":"Insufficient credits to complete this request"}}`)
 		require.True(t, shouldMarkCreditsExhausted(resp, body, nil))
 	})
 
