@@ -436,8 +436,9 @@ REDACTED
 	return checkRestricted(lk, groupID, model)
 REDACTED
 
-// ResolveChannelMappingAndRestrict 解析渠道映射并检查模型限制（组合方法）。
-// 返回映射结果和是否被限制。groupID 为 nil 时跳过。
+// ResolveChannelMappingAndRestrict 解析渠道映射。
+// 返回映射结果。模型限制检查已移至调度阶段（GatewayService.checkChannelPricingRestriction），
+// restricted 始终返回 false，保留签名兼容性。
 func (s *ChannelService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, model string) (ChannelMappingResult, bool) {
 	if groupID == nil {
 		return ChannelMappingResult{MappedModel: modelREDACTED, false
@@ -446,10 +447,7 @@ REDACTED
 	if lk == nil {
 		return ChannelMappingResult{MappedModel: modelREDACTED, false
 REDACTED
-	// 先用原始模型检查定价列表限制，再做映射
-	restricted := checkRestricted(lk, *groupID, model)
-	mapping := resolveMapping(lk, *groupID, model)
-	return mapping, restricted
+	return resolveMapping(lk, *groupID, model), false
 REDACTED
 
 // resolveMapping 基于已查找的渠道信息解析模型映射
