@@ -161,6 +161,16 @@ REDACTED
 			shouldDisable = true
 			break
 	REDACTED
+		// OpenAI: {"detail":"Unauthorized"REDACTED 表示 token 完全无效（非标准 OpenAI 错误格式），直接标记 error
+		if account.Platform == PlatformOpenAI && gjson.GetBytes(responseBody, "detail").String() == "Unauthorized" {
+			msg := "Unauthorized (401): account authentication failed permanently"
+			if upstreamMsg != "" {
+				msg = "Unauthorized (401): " + upstreamMsg
+		REDACTED
+			s.handleAuthError(ctx, account, msg)
+			shouldDisable = true
+			break
+	REDACTED
 		// OAuth 账号在 401 错误时临时不可调度（给 token 刷新窗口）；非 OAuth 账号保持原有 SetError 行为。
 		// Antigravity 除外：其 401 由 applyErrorPolicy 的 temp_unschedulable_rules 自行控制。
 		if account.Type == AccountTypeOAuth && account.Platform != PlatformAntigravity {
