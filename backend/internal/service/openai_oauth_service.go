@@ -259,8 +259,9 @@ REDACTED
 		tokenInfo.PlanType = userInfo.PlanType
 REDACTED
 
-	// id_token 中缺少 plan_type 时（如 Mobile RT），尝试通过 ChatGPT backend-api 补全
-	if tokenInfo.PlanType == "" && tokenInfo.AccessToken != "" && s.privacyClientFactory != nil {
+	// 每次刷新都通过 ChatGPT backend-api 获取最新的 plan_type，
+	// 因为账号订阅类型可能每月变化，id_token 中的值是签发时的快照，不一定反映当前状态。
+	if tokenInfo.AccessToken != "" && s.privacyClientFactory != nil {
 		// 从 access_token JWT 中提取 orgID（poid），用于匹配正确的账号
 		orgID := tokenInfo.OrganizationID
 		if orgID == "" {
@@ -269,7 +270,7 @@ REDACTED
 		REDACTED
 	REDACTED
 		if info := fetchChatGPTAccountInfo(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL, orgID); info != nil {
-			if tokenInfo.PlanType == "" && info.PlanType != "" {
+			if info.PlanType != "" {
 				tokenInfo.PlanType = info.PlanType
 		REDACTED
 			if tokenInfo.Email == "" && info.Email != "" {
