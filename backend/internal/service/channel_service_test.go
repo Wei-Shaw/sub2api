@@ -1068,6 +1068,8 @@ func TestIsModelRestricted_CaseInsensitive(t *testing.T) {
 }
 
 // --- 4.5 ResolveChannelMappingAndRestrict ---
+// 注意：模型限制检查已移至调度阶段（GatewayService.checkChannelPricingRestriction），
+// ResolveChannelMappingAndRestrict 仅做映射，restricted 始终为 false。
 
 func TestResolveChannelMappingAndRestrict_NilGroupID(t *testing.T) {
 	repo := &mockChannelRepository{
@@ -1083,7 +1085,7 @@ func TestResolveChannelMappingAndRestrict_NilGroupID(t *testing.T) {
 	require.Equal(t, "claude-opus-4", mapping.MappedModel)
 }
 
-func TestResolveChannelMappingAndRestrict_ModelInPricing_WithMapping(t *testing.T) {
+func TestResolveChannelMappingAndRestrict_WithMapping(t *testing.T) {
 	ch := Channel{
 		ID:             1,
 		Status:         StatusActive,
@@ -1103,41 +1105,12 @@ func TestResolveChannelMappingAndRestrict_ModelInPricing_WithMapping(t *testing.
 
 	gid := int64(10)
 	mapping, restricted := svc.ResolveChannelMappingAndRestrict(context.Background(), &gid, "claude-sonnet-4")
-	require.False(t, restricted) // model IS in pricing
+	require.False(t, restricted) // restricted 始终为 false，限制检查在调度阶段
 	require.True(t, mapping.Mapped)
 	require.Equal(t, "claude-sonnet-4-20250514", mapping.MappedModel)
 }
 
-func TestResolveChannelMappingAndRestrict_ModelNotInPricing_WithMapping(t *testing.T) {
-	// CRITICAL: this test verifies that restriction checks the ORIGINAL model
-	// against pricing BEFORE applying mapping. The model "unknown-model" is NOT
-	// in pricing, so even though the wildcard mapping "*" matches it, it should
-	// still be restricted.
-	ch := Channel{
-		ID:             1,
-		Status:         StatusActive,
-		GroupIDs:       []int64{10},
-		RestrictModels: true,
-		ModelPricing: []ChannelModelPricing{
-			{Platform: "anthropic", Models: []string{"claude-sonnet-4"}},
-		},
-		ModelMapping: map[string]map[string]string{
-			"anthropic": {
-				"*": "catch-all-target",
-			},
-		},
-	}
-	repo := makeStandardRepo(ch, map[int64]string{10: "anthropic"})
-	svc := newTestChannelService(repo)
-
-	gid := int64(10)
-	mapping, restricted := svc.ResolveChannelMappingAndRestrict(context.Background(), &gid, "unknown-model")
-	require.True(t, restricted) // model NOT in pricing, even though mapping exists
-	require.True(t, mapping.Mapped)
-	require.Equal(t, "catch-all-target", mapping.MappedModel)
-}
-
-func TestResolveChannelMappingAndRestrict_ModelNotInPricing_NoMapping(t *testing.T) {
+func TestResolveChannelMappingAndRestrict_NoMapping(t *testing.T) {
 	ch := Channel{
 		ID:             1,
 		Status:         StatusActive,
@@ -1152,7 +1125,7 @@ func TestResolveChannelMappingAndRestrict_ModelNotInPricing_NoMapping(t *testing
 
 	gid := int64(10)
 	mapping, restricted := svc.ResolveChannelMappingAndRestrict(context.Background(), &gid, "unknown-model")
-	require.True(t, restricted) // model NOT in pricing
+	require.False(t, restricted) // restricted 始终为 false，限制检查在调度阶段
 	require.False(t, mapping.Mapped)
 	require.Equal(t, "unknown-model", mapping.MappedModel)
 }

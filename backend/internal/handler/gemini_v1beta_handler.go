@@ -185,11 +185,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(stream, false)))
 
 	// 解析渠道级模型映射 + 限制检查
-	channelMapping, restricted := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)
-	if restricted {
-		googleError(c, http.StatusServiceUnavailable, "The requested model is not available for this API key")
-		return
-	}
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)
 	reqModel := modelName // 保存映射前的原始模型名
 	if channelMapping.Mapped {
 		modelName = channelMapping.MappedModel
