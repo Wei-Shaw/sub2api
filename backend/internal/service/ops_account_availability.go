@@ -55,7 +55,7 @@ func (s *OpsService) GetAccountAvailabilityStats(ctx context.Context, platformFi
 			isTempUnsched = true
 		}
 
-		isRateLimited := acc.RateLimitResetAt != nil && now.Before(*acc.RateLimitResetAt)
+		isRateLimited := acc.IsTemporarilyRateLimited()
 		isOverloaded := acc.OverloadUntil != nil && now.Before(*acc.OverloadUntil)
 		hasError := acc.Status == StatusError
 

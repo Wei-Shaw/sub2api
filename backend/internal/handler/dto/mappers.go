@@ -192,6 +192,12 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 	if a == nil {
 		return nil
 	}
+	rateLimitedAt := a.RateLimitedAt
+	rateLimitResetAt := a.RateLimitResetAt
+	if !a.IsTemporarilyRateLimited() {
+		rateLimitedAt = nil
+		rateLimitResetAt = nil
+	}
 	out := &Account{
 		ID:                      a.ID,
 		Name:                    a.Name,
@@ -213,8 +219,8 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		CreatedAt:               a.CreatedAt,
 		UpdatedAt:               a.UpdatedAt,
 		Schedulable:             a.Schedulable,
-		RateLimitedAt:           a.RateLimitedAt,
-		RateLimitResetAt:        a.RateLimitResetAt,
+		RateLimitedAt:           rateLimitedAt,
+		RateLimitResetAt:        rateLimitResetAt,
 		OverloadUntil:           a.OverloadUntil,
 		TempUnschedulableUntil:  a.TempUnschedulableUntil,
 		TempUnschedulableReason: a.TempUnschedulableReason,

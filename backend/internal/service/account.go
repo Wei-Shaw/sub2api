@@ -185,6 +185,13 @@ func (a *Account) IsRateLimited() bool {
 	return time.Now().Before(*a.RateLimitResetAt)
 }
 
+func (a *Account) IsTemporarilyRateLimited() bool {
+	if !a.IsRateLimited() {
+		return false
+	}
+	return !a.IsExhausted()
+}
+
 func (a *Account) IsOverloaded() bool {
 	if a.OverloadUntil == nil {
 		return false
