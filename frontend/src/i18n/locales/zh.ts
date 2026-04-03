@@ -4343,7 +4343,9 @@ export default {
         title: '网关调度设置',
         description: '控制 API Key 的调度行为',
         allowUngroupedKey: '允许未分组 Key 调度',
-        allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。'
+        allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。',
+        openaiGlobalPoolForUngroupedKeys: '未分组 Key 使用 OpenAI 全局池',
+        openaiGlobalPoolForUngroupedKeysHint: '仅对未分组 Key 生效。开启后，这些 Key 会按 OpenAI 平台处理，并从全部 OpenAI 账号中选择可用账号。'
       },
       gatewayForwarding: {
         title: '请求转发行为',

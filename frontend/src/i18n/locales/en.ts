@@ -4180,7 +4180,9 @@ export default {
         title: 'Gateway Scheduling Settings',
         description: 'Control API Key scheduling behavior',
         allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
-        allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
+        allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.',
+        openaiGlobalPoolForUngroupedKeys: 'Use OpenAI Global Pool For Ungrouped Keys',
+        openaiGlobalPoolForUngroupedKeysHint: 'Only applies to ungrouped API Keys. When enabled, those keys are treated as OpenAI traffic and can select from all OpenAI accounts.'
       },
       gatewayForwarding: {
         title: 'Request Forwarding',
