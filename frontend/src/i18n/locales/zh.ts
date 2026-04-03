@@ -4647,7 +4647,7 @@ export default {
       },
       soraS3: {
         title: 'Sora 存储配置',
-        description: '以多配置列表管理 Sora 媒体存储，支持 S3 和 Google Drive',
+        description: '以多配置列表管理 Sora 媒体存储，支持 S3',
         newProfile: '新建配置',
         reloadProfiles: '刷新列表',
         empty: '暂无存储配置，请先创建',
@@ -4655,7 +4655,6 @@ export default {
         editTitle: '编辑存储配置',
         selectProvider: '选择存储类型',
         providerS3Desc: 'S3 兼容对象存储',
-        providerGDriveDesc: 'Google Drive 云盘',
         profileID: '配置 ID',
         profileName: '配置名称',
         setActive: '创建后设为生效',
@@ -4713,29 +4712,7 @@ export default {
         testSuccess: '连接测试成功',
         testFailed: '连接测试失败',
         saved: '存储设置保存成功',
-        saveFailed: '保存存储设置失败',
-        gdrive: {
-          authType: '认证方式',
-          serviceAccount: '服务账号',
-          clientId: 'Client ID',
-          clientSecret: 'Client Secret',
-          clientSecretConfigured: '(已配置，留空保持不变)',
-          refreshToken: 'Refresh Token',
-          refreshTokenConfigured: '(已配置，留空保持不变)',
-          serviceAccountJson: '服务账号 JSON',
-          serviceAccountConfigured: '(已配置，留空保持不变)',
-          folderId: 'Folder ID（可选）',
-          authorize: '授权 Google Drive',
-          authorizeHint: '通过 OAuth2 获取 Refresh Token',
-          oauthFieldsRequired: '请先填写 Client ID 和 Client Secret',
-          oauthSuccess: 'Google Drive 授权成功',
-          oauthFailed: 'Google Drive 授权失败',
-          closeWindow: '此窗口将自动关闭',
-          processing: '正在处理授权...',
-          testStorage: '测试存储',
-          testSuccess: 'Google Drive 存储测试成功（上传、访问、删除均正常）',
-          testFailed: 'Google Drive 存储测试失败'
-        }
+        saveFailed: '保存存储设置失败'
       },
       overloadCooldown: {
         title: '529 过载冷却',

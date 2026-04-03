@@ -30,7 +30,6 @@ type AdminHandlers struct {
 	TLSFingerprintProfile *admin.TLSFingerprintProfileHandler
 	APIKey                *admin.AdminAPIKeyHandler
 	ScheduledTest         *admin.ScheduledTestHandler
-	GDriveOAuth           *admin.GDriveOAuthHandler
 	Channel               *admin.ChannelHandler
 }
 

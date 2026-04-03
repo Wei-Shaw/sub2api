@@ -4483,7 +4483,7 @@ export default {
       },
       soraS3: {
         title: 'Sora Storage',
-        description: 'Manage Sora media storage profiles with S3 and Google Drive support',
+        description: 'Manage Sora media storage profiles with S3 support',
         newProfile: 'New Profile',
         reloadProfiles: 'Reload Profiles',
         empty: 'No storage profiles yet, create one first',
@@ -4491,7 +4491,6 @@ export default {
         editTitle: 'Edit Storage Profile',
         selectProvider: 'Select Storage Type',
         providerS3Desc: 'S3-compatible object storage',
-        providerGDriveDesc: 'Google Drive cloud storage',
         profileID: 'Profile ID',
         profileName: 'Profile Name',
         setActive: 'Set as active after creation',
@@ -4549,29 +4548,7 @@ export default {
         testSuccess: 'Connection test successful',
         testFailed: 'Connection test failed',
         saved: 'Storage settings saved successfully',
-        saveFailed: 'Failed to save storage settings',
-        gdrive: {
-          authType: 'Authentication Method',
-          serviceAccount: 'Service Account',
-          clientId: 'Client ID',
-          clientSecret: 'Client Secret',
-          clientSecretConfigured: '(Configured, leave blank to keep)',
-          refreshToken: 'Refresh Token',
-          refreshTokenConfigured: '(Configured, leave blank to keep)',
-          serviceAccountJson: 'Service Account JSON',
-          serviceAccountConfigured: '(Configured, leave blank to keep)',
-          folderId: 'Folder ID (optional)',
-          authorize: 'Authorize Google Drive',
-          authorizeHint: 'Get Refresh Token via OAuth2',
-          oauthFieldsRequired: 'Please fill in Client ID and Client Secret first',
-          oauthSuccess: 'Google Drive authorization successful',
-          oauthFailed: 'Google Drive authorization failed',
-          closeWindow: 'This window will close automatically',
-          processing: 'Processing authorization...',
-          testStorage: 'Test Storage',
-          testSuccess: 'Google Drive storage test passed (upload, access, delete all OK)',
-          testFailed: 'Google Drive storage test failed'
-        }
+        saveFailed: 'Failed to save storage settings'
       },
       overloadCooldown: {
         title: '529 Overload Cooldown',
