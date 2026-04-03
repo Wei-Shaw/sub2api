@@ -399,7 +399,7 @@ const currentFiles = computed((): FileConfig[] => {
       case 'anthropic':
         return [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
       case 'openai':
-        return [generateOpenCodeConfig('openai', apiBase, apiKey)]
+        return [generateOpenCodeConfig('sub2api-openai', apiBase, apiKey)]
       case 'gemini':
         return [generateOpenCodeConfig('gemini', geminiBase, apiKey)]
       case 'antigravity':
@@ -408,7 +408,7 @@ const currentFiles = computed((): FileConfig[] => {
           generateOpenCodeConfig('antigravity-gemini', antigravityGeminiBase, apiKey, 'opencode.json (Gemini)')
         ]
       default:
-        return [generateOpenCodeConfig('openai', apiBase, apiKey)]
+        return [generateOpenCodeConfig('sub2api-openai', apiBase, apiKey)]
     }
   }
 
@@ -616,7 +616,21 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       }
     }
   }
-  const openaiModels = {
+  const withSysVariants = <T extends { name: string }>(models: Record<string, T>) => {
+    const expanded: Record<string, T> = {}
+
+    for (const [id, config] of Object.entries(models)) {
+      expanded[id] = config
+      expanded[`${id}-Sys`] = {
+        ...config,
+        name: `${config.name} (Sys)`
+      }
+    }
+
+    return expanded
+  }
+
+  const openCodeOpenAIBaseModels = {
     'gpt-5-codex': {
       name: 'GPT-5 Codex',
       limit: {
@@ -805,6 +819,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       }
     }
   }
+  const openaiModels = withSysVariants(openCodeOpenAIBaseModels)
   const geminiModels = {
     'gemini-2.0-flash': {
       name: 'Gemini 2.0 Flash',
@@ -1082,10 +1097,14 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     provider[platform].models = antigravityGeminiModels
   } else if (platform === 'openai') {
     provider[platform].models = openaiModels
+  } else if (platform === 'sub2api-openai') {
+    provider[platform].npm = '@ai-sdk/openai'
+    provider[platform].name = 'sub2api OpenAI'
+    provider[platform].models = openaiModels
   }
 
   const agent =
-    platform === 'openai'
+    platform === 'openai' || platform === 'sub2api-openai'
       ? {
           build: {
             options: {
