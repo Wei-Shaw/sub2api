@@ -551,6 +551,11 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 				account.RateLimitResetAt = resetAt
 			}
 		}
+		// 401 Unauthorized: 标记账号为永久错误
+		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 

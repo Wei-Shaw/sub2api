@@ -109,11 +109,11 @@ func (r *OpenAITokenRefresher) CanRefresh(account *Account) bool {
 }
 
 // NeedsRefresh 检查token是否需要刷新
-// 基于 expires_at 字段判断是否在刷新窗口内
+// expires_at 缺失且处于限流状态时需要刷新，防止限流期间 token 静默过期
 func (r *OpenAITokenRefresher) NeedsRefresh(account *Account, refreshWindow time.Duration) bool {
 	expiresAt := account.GetCredentialAsTime("expires_at")
 	if expiresAt == nil {
-		return false
+		return account.IsRateLimited()
 	}
 
 	return time.Until(*expiresAt) < refreshWindow

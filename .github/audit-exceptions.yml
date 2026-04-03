@@ -14,3 +14,17 @@ exceptions:
     mitigation: "Load only on export; restrict export permissions and data scope"
     expires_on: "2026-04-05"
     owner: "security@your-domain"
+  - package: lodash
+    advisory: "GHSA-r5fr-rjxr-66jc"
+    severity: high
+    reason: "lodash _.template not used with untrusted input; only internal admin UI templates"
+    mitigation: "No user-controlled template strings; plan to migrate to lodash-es tree-shaken imports"
+    expires_on: "2026-07-02"
+    owner: "security@your-domain"
+  - package: lodash-es
+    advisory: "GHSA-r5fr-rjxr-66jc"
+    severity: high
+    reason: "lodash-es _.template not used with untrusted input; only internal admin UI templates"
+    mitigation: "No user-controlled template strings; plan to migrate to native JS alternatives"
+    expires_on: "2026-07-02"
+    owner: "security@your-domain"

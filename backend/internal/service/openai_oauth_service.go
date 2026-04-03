@@ -127,18 +127,19 @@ type OpenAIExchangeCodeInput struct {
 
 // OpenAITokenInfo represents the token information for OpenAI
 type OpenAITokenInfo struct {
-	AccessToken      string `json:"access_token"`
-	RefreshToken     string `json:"refresh_token"`
-	IDToken          string `json:"id_token,omitempty"`
-	ExpiresIn        int64  `json:"expires_in"`
-	ExpiresAt        int64  `json:"expires_at"`
-	ClientID         string `json:"client_id,omitempty"`
-	Email            string `json:"email,omitempty"`
-	ChatGPTAccountID string `json:"chatgpt_account_id,omitempty"`
-	ChatGPTUserID    string `json:"chatgpt_user_id,omitempty"`
-	OrganizationID   string `json:"organization_id,omitempty"`
-	PlanType         string `json:"plan_type,omitempty"`
-	PrivacyMode      string `json:"privacy_mode,omitempty"`
+	AccessToken           string `json:"access_token"`
+	RefreshToken          string `json:"refresh_token"`
+	IDToken               string `json:"id_token,omitempty"`
+	ExpiresIn             int64  `json:"expires_in"`
+	ExpiresAt             int64  `json:"expires_at"`
+	ClientID              string `json:"client_id,omitempty"`
+	Email                 string `json:"email,omitempty"`
+	ChatGPTAccountID      string `json:"chatgpt_account_id,omitempty"`
+	ChatGPTUserID         string `json:"chatgpt_user_id,omitempty"`
+	OrganizationID        string `json:"organization_id,omitempty"`
+	PlanType              string `json:"plan_type,omitempty"`
+	SubscriptionExpiresAt string `json:"subscription_expires_at,omitempty"`
+	PrivacyMode           string `json:"privacy_mode,omitempty"`
 }
 
 // ExchangeCode exchanges authorization code for tokens
@@ -214,6 +215,8 @@ func (s *OpenAIOAuthService) ExchangeCode(ctx context.Context, input *OpenAIExch
 		tokenInfo.PlanType = userInfo.PlanType
 	}
 
+	s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
+
 	return tokenInfo, nil
 }
 
@@ -259,31 +262,40 @@ func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 		tokenInfo.PlanType = userInfo.PlanType
 	}
 
-	// id_token 中缺少 plan_type 时（如 Mobile RT），尝试通过 ChatGPT backend-api 补全
-	if tokenInfo.PlanType == "" && tokenInfo.AccessToken != "" && s.privacyClientFactory != nil {
-		// 从 access_token JWT 中提取 orgID（poid），用于匹配正确的账号
-		orgID := tokenInfo.OrganizationID
-		if orgID == "" {
-			if atClaims, err := openai.DecodeIDToken(tokenInfo.AccessToken); err == nil && atClaims.OpenAIAuth != nil {
-				orgID = atClaims.OpenAIAuth.POID
-			}
+	s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
+
+	return tokenInfo, nil
+}
+
+// enrichTokenInfo 通过 ChatGPT backend-api 补全 tokenInfo 并设置隐私（best-effort）。
+// 从 accounts/check 获取最新 plan_type、subscription_expires_at、email，
+// 然后尝试关闭训练数据共享。适用于所有获取/刷新 token 的路径。
+func (s *OpenAIOAuthService) enrichTokenInfo(ctx context.Context, tokenInfo *OpenAITokenInfo, proxyURL string) {
+	if tokenInfo.AccessToken == "" || s.privacyClientFactory == nil {
+		return
+	}
+
+	// 从 access_token JWT 中提取 orgID（poid），用于匹配正确的账号
+	orgID := tokenInfo.OrganizationID
+	if orgID == "" {
+		if atClaims, err := openai.DecodeIDToken(tokenInfo.AccessToken); err == nil && atClaims.OpenAIAuth != nil {
+			orgID = atClaims.OpenAIAuth.POID
 		}
-		if info := fetchChatGPTAccountInfo(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL, orgID); info != nil {
-			if tokenInfo.PlanType == "" && info.PlanType != "" {
-				tokenInfo.PlanType = info.PlanType
-			}
-			if tokenInfo.Email == "" && info.Email != "" {
-				tokenInfo.Email = info.Email
-			}
+	}
+	if info := fetchChatGPTAccountInfo(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL, orgID); info != nil {
+		if info.PlanType != "" {
+			tokenInfo.PlanType = info.PlanType
+		}
+		if info.SubscriptionExpiresAt != "" {
+			tokenInfo.SubscriptionExpiresAt = info.SubscriptionExpiresAt
+		}
+		if tokenInfo.Email == "" && info.Email != "" {
+			tokenInfo.Email = info.Email
 		}
 	}
 
 	// 尝试设置隐私（关闭训练数据共享），best-effort
-	if tokenInfo.AccessToken != "" && s.privacyClientFactory != nil {
-		tokenInfo.PrivacyMode = disableOpenAITraining(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL)
-	}
-
-	return tokenInfo, nil
+	tokenInfo.PrivacyMode = disableOpenAITraining(ctx, s.privacyClientFactory, tokenInfo.AccessToken, proxyURL)
 }
 
 // ExchangeSoraSessionToken exchanges Sora session_token to access_token.
@@ -566,6 +578,9 @@ func (s *OpenAIOAuthService) BuildAccountCredentials(tokenInfo *OpenAITokenInfo)
 	}
 	if tokenInfo.PlanType != "" {
 		creds["plan_type"] = tokenInfo.PlanType
+	}
+	if tokenInfo.SubscriptionExpiresAt != "" {
+		creds["subscription_expires_at"] = tokenInfo.SubscriptionExpiresAt
 	}
 	if strings.TrimSpace(tokenInfo.ClientID) != "" {
 		creds["client_id"] = strings.TrimSpace(tokenInfo.ClientID)

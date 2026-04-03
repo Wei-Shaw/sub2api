@@ -45,6 +45,10 @@
         <span>{{ privacyBadge.label }}</span>
       </span>
     </div>
+    <!-- Row 3: Subscription expiration (non-free paid accounts only) -->
+    <div v-if="expiresLabel" class="text-[10px] leading-tight text-gray-400 dark:text-gray-500 pl-0.5" :title="subscriptionExpiresAt">
+      {{ expiresLabel }}
+    </div>
   </div>
 </template>
 
@@ -62,6 +66,7 @@ interface Props {
   type: AccountType
   planType?: string
   privacyMode?: string
+  subscriptionExpiresAt?: string
 }
 
 const props = defineProps<Props>()
@@ -146,6 +151,22 @@ const planBadgeClass = computed(() => {
     return 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
   }
   return typeClass.value
+})
+
+// Subscription expiration label (non-free only)
+const expiresLabel = computed(() => {
+  if (!props.subscriptionExpiresAt || !props.planType) return ''
+  if (props.planType.toLowerCase() === 'free') return ''
+  try {
+    const d = new Date(props.subscriptionExpiresAt)
+    if (isNaN(d.getTime())) return ''
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${t('admin.accounts.subscriptionExpires')} ${yyyy}-${mm}-${dd}`
+  } catch {
+    return ''
+  }
 })
 
 // Privacy badge — shows different states for OpenAI/Antigravity OAuth privacy setting
