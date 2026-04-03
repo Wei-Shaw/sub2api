@@ -616,6 +616,18 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       }
     }
   }
+  const buildReasoningVariants = (levels: string[]) =>
+    Object.fromEntries(
+      levels.map((level) => [
+        level,
+        {
+          reasoningEffort: level,
+          reasoningSummary: 'auto',
+          include: ['reasoning.encrypted_content']
+        }
+      ])
+    )
+
   const withSysVariants = <T extends { name: string }>(models: Record<string, T>) => {
     const expanded: Record<string, T> = {}
 
@@ -633,6 +645,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
   const openCodeOpenAIBaseModels = {
     'gpt-5-codex': {
       name: 'GPT-5 Codex',
+      reasoning: true,
       limit: {
         context: 400000,
         output: 128000
@@ -640,14 +653,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         store: false
       },
-      variants: {
-        low: {},
-        medium: {},
-        high: {}
-      }
+      variants: buildReasoningVariants(['low', 'medium', 'high'])
     },
     'gpt-5.1-codex': {
       name: 'GPT-5.1 Codex',
+      reasoning: true,
       limit: {
         context: 400000,
         output: 128000
@@ -655,14 +665,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         store: false
       },
-      variants: {
-        low: {},
-        medium: {},
-        high: {}
-      }
+      variants: buildReasoningVariants(['low', 'medium', 'high'])
     },
     'gpt-5.1-codex-max': {
       name: 'GPT-5.1 Codex Max',
+      reasoning: true,
       limit: {
         context: 400000,
         output: 128000
@@ -670,14 +677,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         store: false
       },
-      variants: {
-        low: {},
-        medium: {},
-        high: {}
-      }
+      variants: buildReasoningVariants(['low', 'medium', 'high'])
     },
     'gpt-5.1-codex-mini': {
       name: 'GPT-5.1 Codex Mini',
+      reasoning: true,
       limit: {
         context: 400000,
         output: 128000
@@ -685,14 +689,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         store: false
       },
-      variants: {
-        low: {},
-        medium: {},
-        high: {}
-      }
+      variants: buildReasoningVariants(['low', 'medium', 'high'])
     },
     'gpt-5.2': {
       name: 'GPT-5.2',
+      reasoning: true,
       limit: {
         context: 400000,
         output: 128000
@@ -700,15 +701,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         store: false
       },
-      variants: {
-        low: {},
-        medium: {},
-        high: {},
-        xhigh: {}
-      }
+      variants: buildReasoningVariants(['none', 'low', 'medium', 'high', 'xhigh'])
     },
     'gpt-5.4': {
       name: 'GPT-5.4',
+      reasoning: true,
       limit: {
         context: 1050000,
         output: 128000
@@ -716,15 +713,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         store: false
       },
-      variants: {
-        low: {},
-        medium: {},
-        high: {},
-        xhigh: {}
-      }
+      variants: buildReasoningVariants(['none', 'low', 'medium', 'high', 'xhigh'])
     },
     'gpt-5.4-mini': {
       name: 'GPT-5.4 Mini',
+      reasoning: true,
       limit: {
         context: 400000,
         output: 128000
@@ -732,15 +725,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         store: false
       },
-      variants: {
-        low: {},
-        medium: {},
-        high: {},
-        xhigh: {}
-      }
+      variants: buildReasoningVariants(['none', 'low', 'medium', 'high', 'xhigh'])
     },
     'gpt-5.4-nano': {
       name: 'GPT-5.4 Nano',
+      reasoning: true,
       limit: {
         context: 400000,
         output: 128000
@@ -748,15 +737,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         store: false
       },
-      variants: {
-        low: {},
-        medium: {},
-        high: {},
-        xhigh: {}
-      }
+      variants: buildReasoningVariants(['none', 'low', 'medium', 'high', 'xhigh'])
     },
     'gpt-5.3-codex-spark': {
       name: 'GPT-5.3 Codex Spark',
+      reasoning: true,
       limit: {
         context: 128000,
         output: 32000
@@ -764,15 +749,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         store: false
       },
-      variants: {
-        low: {},
-        medium: {},
-        high: {},
-        xhigh: {}
-      }
+      variants: buildReasoningVariants(['low', 'medium', 'high', 'xhigh'])
     },
     'gpt-5.3-codex': {
       name: 'GPT-5.3 Codex',
+      reasoning: true,
       limit: {
         context: 400000,
         output: 128000
@@ -780,15 +761,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         store: false
       },
-      variants: {
-        low: {},
-        medium: {},
-        high: {},
-        xhigh: {}
-      }
+      variants: buildReasoningVariants(['low', 'medium', 'high', 'xhigh'])
     },
     'gpt-5.2-codex': {
       name: 'GPT-5.2 Codex',
+      reasoning: true,
       limit: {
         context: 400000,
         output: 128000
@@ -796,15 +773,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         store: false
       },
-      variants: {
-        low: {},
-        medium: {},
-        high: {},
-        xhigh: {}
-      }
+      variants: buildReasoningVariants(['low', 'medium', 'high', 'xhigh'])
     },
     'codex-mini-latest': {
       name: 'Codex Mini',
+      reasoning: true,
       limit: {
         context: 200000,
         output: 100000
@@ -812,11 +785,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         store: false
       },
-      variants: {
-        low: {},
-        medium: {},
-        high: {}
-      }
+      variants: buildReasoningVariants(['low', 'medium', 'high'])
     }
   }
   const openaiModels = withSysVariants(openCodeOpenAIBaseModels)

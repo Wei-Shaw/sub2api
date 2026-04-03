@@ -87,6 +87,7 @@ describe('UseKeyModal', () => {
     expect(codeBlock.text()).toContain('"baseURL": "https://example.com/v1"')
     expect(codeBlock.text()).toContain('"gpt-5.4-Sys"')
     expect(codeBlock.text()).toContain('"name": "GPT-5.4 (Sys)"')
+    expect(codeBlock.text()).toContain('"reasoningEffort": "xhigh"')
     expect(codeBlock.text()).not.toContain('"provider": {\n    "openai"')
   })
 

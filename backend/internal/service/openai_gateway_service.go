@@ -4312,14 +4312,29 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	durationMs := int(result.Duration.Milliseconds())
 	accountRateMultiplier := account.BillingRateMultiplier()
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
+	usageModel := strings.TrimSpace(result.Model)
+	requestedModel := usageModel
+	effectiveModel := strings.TrimSpace(result.UpstreamModel)
+	if effectiveModel == "" {
+		effectiveModel = usageModel
+	}
+	if snapshot := input.RoutingSnapshot; snapshot != nil {
+		if value := strings.TrimSpace(snapshot.RequestedModel); value != "" {
+			usageModel = value
+			requestedModel = value
+		}
+		if value := strings.TrimSpace(snapshot.EffectiveModel); value != "" {
+			effectiveModel = value
+		}
+	}
 	usageLog := &UsageLog{
 		UserID:                user.ID,
 		APIKeyID:              apiKey.ID,
 		AccountID:             account.ID,
 		RequestID:             requestID,
-		Model:                 result.Model,
-		RequestedModel:        result.Model,
-		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
+		Model:                 usageModel,
+		RequestedModel:        requestedModel,
+		UpstreamModel:         optionalNonEqualStringPtr(effectiveModel, usageModel),
 		ServiceTier:           result.ServiceTier,
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),

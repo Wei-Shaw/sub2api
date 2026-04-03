@@ -253,7 +253,7 @@ func TestOpenAIGatewayServiceRecordUsage_PersistsOpenAIRoutingFields(t *testing.
 				InputTokens:  12,
 				OutputTokens: 3,
 			},
-			Model:    "gpt-5.4-Sys",
+			Model:    "gpt-5.4",
 			Duration: time.Second,
 		},
 		APIKey: &APIKey{ID: 1001},
@@ -266,6 +266,10 @@ func TestOpenAIGatewayServiceRecordUsage_PersistsOpenAIRoutingFields(t *testing.
 
 	require.NoError(t, err)
 	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, snapshot.RequestedModel, usageRepo.lastLog.Model)
+	require.Equal(t, snapshot.RequestedModel, usageRepo.lastLog.RequestedModel)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+	require.Equal(t, snapshot.EffectiveModel, *usageRepo.lastLog.UpstreamModel)
 	require.Equal(t, &snapshot.TargetGroup, usageRepo.lastLog.RoutingTargetGroup)
 	require.Equal(t, &snapshot.ScheduleLayer, usageRepo.lastLog.RoutingScheduleLayer)
 	require.Equal(t, snapshot.SelectedAccountID, usageRepo.lastLog.RoutingSelectedAccountID)
