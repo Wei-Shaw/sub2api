@@ -1199,6 +1199,9 @@ REDACTED
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+		slog.Warn("channel pricing restriction blocked request",
+			"group_id", derefGroupID(groupID),
+			"model", requestedModel)
 		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
 REDACTED
 
@@ -1241,6 +1244,9 @@ REDACTED
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+		slog.Warn("channel pricing restriction blocked request",
+			"group_id", derefGroupID(groupID),
+			"model", requestedModel)
 		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
 REDACTED
 
