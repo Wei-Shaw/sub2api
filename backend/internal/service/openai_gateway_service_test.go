@@ -248,6 +248,11 @@ type cancelReadCloser struct{}
 func (c cancelReadCloser) Read(p []byte) (int, error) { return 0, context.Canceled }
 func (c cancelReadCloser) Close() error               { return nil }
 
+type resetReadCloser struct{ err error }
+
+func (r resetReadCloser) Read(p []byte) (int, error) { return 0, r.err }
+func (r resetReadCloser) Close() error               { return nil }
+
 type failingGinWriter struct {
 	gin.ResponseWriter
 	failAfter int
@@ -1310,6 +1315,37 @@ func TestOpenAIStreamingClientDisconnectDrainsUpstreamUsage(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), "event: error") || strings.Contains(rec.Body.String(), "write_failed") {
 		t.Fatalf("expected no injected SSE error event, got %q", rec.Body.String())
+	}
+}
+
+func TestOpenAIStreamingReadErrorBeforeFirstTokenReturnsFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       resetReadCloser{err: errors.New("stream error: stream ID 1; INTERNAL_ERROR; received from peer")},
+		Header:     http.Header{},
+	}
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1}, time.Now(), "gpt-5.4", "gpt-5.4")
+	var failoverErr *UpstreamFailoverError
+	if !errors.As(err, &failoverErr) {
+		t.Fatalf("expected UpstreamFailoverError, got %v", err)
+	}
+	if strings.Contains(rec.Body.String(), "stream_read_error") {
+		t.Fatalf("expected no injected stream error event, got %q", rec.Body.String())
 	}
 }
 
