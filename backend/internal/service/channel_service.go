@@ -133,8 +133,8 @@ func (r ChannelMappingResult) ToUsageFields(reqModel, upstreamModel string) Chan
 }
 
 const (
-	channelCacheTTL       = 60 * time.Second
-	channelErrorTTL       = 5 * time.Second // DB 错误时的短缓存
+	channelCacheTTL       = 10 * time.Minute
+	channelErrorTTL       = 5 * time.Second  // DB 错误时的短缓存
 	channelCacheDBTimeout = 10 * time.Second
 )
 
@@ -333,6 +333,11 @@ func matchingPlatforms(groupPlatform string) []string {
 func (s *ChannelService) invalidateCache() {
 	s.cache.Store((*channelCache)(nil))
 	s.cacheSF.Forget("channel_cache")
+
+	// 主动重建缓存，确保 CRUD 后立即生效
+	if _, err := s.buildCache(context.Background()); err != nil {
+		slog.Warn("failed to rebuild channel cache after invalidation", "error", err)
+	}
 }
 
 // matchWildcard 在通配符定价中查找匹配项（最先匹配到优先）
