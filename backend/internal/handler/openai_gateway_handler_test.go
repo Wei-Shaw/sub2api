@@ -376,6 +376,117 @@ func TestResolveOpenAIForwardDefaultMappedModel(t *testing.T) {
 	})
 }
 
+func TestPrepareResponsesRequestForScheduling_FunctionCallOutputUsesExhaustedGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	body := []byte(`{"model":"gpt-5.4","input":[{"type":"function_call_output","call_id":"call_1","output":"ok"}]}`)
+
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4")
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4", patchedModel)
+	require.Equal(t, service.TargetGroupExhausted, targetGroup)
+	require.JSONEq(t, string(body), string(patchedBody))
+}
+
+func TestPrepareResponsesRequestForScheduling_FunctionCallOutputTypeVariantUsesExhaustedGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	body := []byte(`{"model":"gpt-5.4","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},{"type":" Function_Call_Output ","call_id":"call_2","output":"ok"}]}`)
+
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4")
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4", patchedModel)
+	require.Equal(t, service.TargetGroupExhausted, targetGroup)
+	require.JSONEq(t, string(body), string(patchedBody))
+}
+
+func TestPrepareResponsesRequestForScheduling_SysModelAppendsContinuation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	body := []byte(`{"model":"gpt-5.4-Sys","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}]}`)
+
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4-Sys")
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4", patchedModel)
+	require.Equal(t, "gpt-5.4", gjson.GetBytes(patchedBody, "model").String())
+	require.Equal(t, service.TargetGroupExhausted, targetGroup)
+	require.Contains(t, string(patchedBody), `"type":"tool_call"`)
+	require.Contains(t, string(patchedBody), `"output":"ready"`)
+}
+
+func TestPrepareResponsesRequestForScheduling_SysModelStripEmptyReturnsInvalidModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	body := []byte(`{"model":"-Sys","input":[{"type":"message","role":"user","content":[]}]}`)
+
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "-Sys")
+	require.Error(t, err)
+	require.ErrorIs(t, err, errPrepareResponsesRequestInvalidModel)
+	require.Nil(t, patchedBody)
+	require.Equal(t, "", patchedModel)
+	require.Equal(t, service.TargetGroupActive, targetGroup)
+}
+
+func TestResponsesNoAvailableAccountsError(t *testing.T) {
+	status, code, message := responsesNoAvailableAccountsError(service.TargetGroupExhausted)
+	require.Equal(t, http.StatusTooManyRequests, status)
+	require.Equal(t, "rate_limit_exceeded", code)
+	require.Equal(t, "No available accounts in target group (exhausted)", message)
+
+	status, code, message = responsesNoAvailableAccountsError(service.TargetGroupActive)
+	require.Equal(t, http.StatusServiceUnavailable, status)
+	require.Equal(t, "service_unavailable", code)
+	require.Equal(t, "No available accounts in target group (active)", message)
+}
+
+func TestResponsesSelectionFailure_FirstAttemptNoAvailableUsesTargetGroup(t *testing.T) {
+	action := classifyResponsesSelectionFailure(
+		service.ErrNoAvailableAccounts,
+		nil,
+		0,
+		nil,
+	)
+	require.Equal(t, responsesSelectionFailureActionTargetGroupAware, action)
+}
+
+func TestResponsesSelectionFailure_FailoverExhaustedPreservesFailoverSemantics(t *testing.T) {
+	action := classifyResponsesSelectionFailure(
+		service.ErrNoAvailableAccounts,
+		nil,
+		1,
+		&service.UpstreamFailoverError{StatusCode: http.StatusBadGateway},
+	)
+	require.Equal(t, responsesSelectionFailureActionFailoverExhausted, action)
+}
+
+func TestResponsesSelectionFailure_NilSelectionUsesFailoverPathWhenAlreadyFailingOver(t *testing.T) {
+	action := classifyResponsesSelectionFailure(
+		nil,
+		nil,
+		1,
+		&service.UpstreamFailoverError{StatusCode: http.StatusBadGateway},
+	)
+	require.Equal(t, responsesSelectionFailureActionFailoverExhausted, action)
+}
+
+func TestResponsesSelectionFailure_NilSelectionUsesTargetGroupWhenNotFailover(t *testing.T) {
+	action := classifyResponsesSelectionFailure(
+		nil,
+		nil,
+		0,
+		nil,
+	)
+	require.Equal(t, responsesSelectionFailureActionTargetGroupAware, action)
+}
+
 func TestOpenAIResponses_MissingDependencies_ReturnsServiceUnavailable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

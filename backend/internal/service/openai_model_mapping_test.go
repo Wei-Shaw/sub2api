@@ -101,3 +101,47 @@ func TestResolveOpenAIUpstreamModel(t *testing.T) {
 		}
 	}
 }
+
+func TestIsSysModel(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+		want  bool
+	}{
+		{name: "plain", model: "gpt-5", want: false},
+		{name: "sys lower", model: "gpt-5-sys", want: true},
+		{name: "sys mixed case", model: "gpt-5-SyS", want: true},
+		{name: "trimmed", model: "  gpt-5-sYs  ", want: true},
+		{name: "empty", model: "   ", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsSysModel(tt.model); got != tt.want {
+				t.Fatalf("IsSysModel(%q) = %v, want %v", tt.model, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripSysSuffix(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+		want  string
+	}{
+		{name: "plain", model: "gpt-5", want: "gpt-5"},
+		{name: "trim non sys", model: "  gpt-5  ", want: "gpt-5"},
+		{name: "strip lower", model: "gpt-5-sys", want: "gpt-5"},
+		{name: "strip mixed case", model: "gpt-5-SyS", want: "gpt-5"},
+		{name: "strip with spaces", model: "  GPT-5-sYs  ", want: "GPT-5"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := StripSysSuffix(tt.model); got != tt.want {
+				t.Fatalf("StripSysSuffix(%q) = %q, want %q", tt.model, got, tt.want)
+			}
+		})
+	}
+}

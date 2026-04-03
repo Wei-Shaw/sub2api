@@ -140,6 +140,13 @@ func anthropicStreamEventIsTerminal(eventName, data string) bool {
 	return gjson.Get(trimmed, "type").String() == "message_stop"
 }
 
+func anthropicStreamClientDisconnectTimedOut(lastReadAt, now time.Time, streamInterval time.Duration) bool {
+	if streamInterval <= 0 {
+		return false
+	}
+	return !lastReadAt.IsZero() && now.Sub(lastReadAt) >= streamInterval
+}
+
 func cloneStringSlice(src []string) []string {
 	if len(src) == 0 {
 		return nil
@@ -457,6 +464,31 @@ func shouldClearStickySession(account *Account, requestedModel string) bool {
 	// 检查模型限流和 scope 限流，有限流即清除粘性会话
 	if remaining := account.GetRateLimitRemainingTimeWithContext(context.Background(), requestedModel); remaining > 0 {
 		return true
+	}
+	return false
+}
+
+func shouldClearStickySessionForTargetGroup(account *Account, requestedModel string, targetGroup AccountTargetGroup) bool {
+	if account == nil {
+		return false
+	}
+	if account.Status == StatusError || account.Status == StatusDisabled || !account.Schedulable {
+		return true
+	}
+	now := time.Now()
+	if account.AutoPauseOnExpired && account.ExpiresAt != nil && !now.Before(*account.ExpiresAt) {
+		return true
+	}
+	if account.OverloadUntil != nil && now.Before(*account.OverloadUntil) {
+		return true
+	}
+	if account.TempUnschedulableUntil != nil && now.Before(*account.TempUnschedulableUntil) {
+		return true
+	}
+	if normalizeTargetGroup(targetGroup) != TargetGroupExhausted {
+		if remaining := account.GetRateLimitRemainingTimeWithContext(context.Background(), requestedModel); remaining > 0 {
+			return true
+		}
 	}
 	return false
 }
@@ -5073,6 +5105,9 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				if clientDisconnected && anthropicStreamClientDisconnectTimedOut(time.Unix(0, atomic.LoadInt64(&lastReadAt)), time.Now(), streamInterval) {
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete after timeout")
+				}
 				if !clientDisconnected {
 					// 兜底补刷，确保最后一个未以空行结尾的事件也能及时送达客户端。
 					flusher.Flush()

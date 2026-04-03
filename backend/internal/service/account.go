@@ -123,6 +123,61 @@ func (a *Account) IsSchedulable() bool {
 	return true
 }
 
+func (a *Account) IsExhausted() bool {
+	if a == nil {
+		return false
+	}
+	if a.IsOpenAIOAuth() {
+		if a.getExtraFloat64("codex_7d_used_percent") >= 100 {
+			return true
+		}
+		if a.getExtraFloat64("codex_primary_used_percent") >= 100 {
+			return true
+		}
+		return false
+	}
+	if a.IsOpenAIApiKey() {
+		return a.IsQuotaExceeded()
+	}
+	return false
+}
+
+func (a *Account) MatchesTargetGroup(group AccountTargetGroup) bool {
+	switch normalizeTargetGroup(group) {
+	case TargetGroupActive:
+		return !a.IsExhausted()
+	case TargetGroupExhausted:
+		return a.IsExhausted()
+	default:
+		return true
+	}
+}
+
+func (a *Account) IsSchedulableForTargetGroup(group AccountTargetGroup) bool {
+	if !a.IsActive() || !a.Schedulable {
+		return false
+	}
+	if !a.MatchesTargetGroup(group) {
+		return false
+	}
+	now := time.Now()
+	if a.AutoPauseOnExpired && a.ExpiresAt != nil && !now.Before(*a.ExpiresAt) {
+		return false
+	}
+	if a.OverloadUntil != nil && now.Before(*a.OverloadUntil) {
+		return false
+	}
+	if normalizeTargetGroup(group) != TargetGroupExhausted {
+		if a.RateLimitResetAt != nil && now.Before(*a.RateLimitResetAt) {
+			return false
+		}
+	}
+	if a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {
+		return false
+	}
+	return true
+}
+
 func (a *Account) IsRateLimited() bool {
 	if a.RateLimitResetAt == nil {
 		return false

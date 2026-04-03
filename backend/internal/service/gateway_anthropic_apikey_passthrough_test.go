@@ -97,6 +97,15 @@ func (w *failWriteResponseWriter) WriteString(_ string) (int, error) {
 	return 0, errors.New("client disconnected")
 }
 
+func TestAnthropicStreamClientDisconnectTimeoutElapsed(t *testing.T) {
+	now := time.Unix(100, 0)
+	lastReadAt := now.Add(-1500 * time.Millisecond)
+
+	require.True(t, anthropicStreamClientDisconnectTimedOut(lastReadAt, now, time.Second))
+	require.False(t, anthropicStreamClientDisconnectTimedOut(lastReadAt, now, 2*time.Second))
+	require.False(t, anthropicStreamClientDisconnectTimedOut(lastReadAt, now, 0))
+}
+
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardStreamPreservesBodyAndAuthReplacement(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
