@@ -151,6 +151,31 @@ func (s *APIKeyRepoSuite) TestDelete() {
 	s.Require().Error(err, "expected error after delete")
 }
 
+func (s *APIKeyRepoSuite) TestCreate_AfterSoftDelete_AllowsSameKey() {
+	user := s.mustCreateUser("recreate-after-soft-delete@test.com")
+	const reusedKey = "sk-reuse-after-soft-delete"
+
+	first := &service.APIKey{
+		UserID: user.ID,
+		Key:    reusedKey,
+		Name:   "First Key",
+		Status: service.StatusActive,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, first), "create first key")
+
+	s.Require().NoError(s.repo.Delete(s.ctx, first.ID), "soft delete first key")
+
+	second := &service.APIKey{
+		UserID: user.ID,
+		Key:    reusedKey,
+		Name:   "Second Key",
+		Status: service.StatusActive,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, second), "create second key with same key")
+	s.Require().NotZero(second.ID)
+	s.Require().NotEqual(first.ID, second.ID, "recreated key should be a new row")
+}
+
 // --- ListByUserID / CountByUserID ---
 
 func (s *APIKeyRepoSuite) TestListByUserID() {

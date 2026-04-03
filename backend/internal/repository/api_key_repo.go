@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -258,9 +259,12 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey) erro
 }
 
 func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
+	// 存在唯一键约束 生成tombstone key 用来释放原key，长度远小于 128，满足 schema 限制
+	tombstoneKey := fmt.Sprintf("__deleted__%d__%d", id, time.Now().UnixNano())
 	// 显式软删除：避免依赖 Hook 行为，确保 deleted_at 一定被设置。
 	affected, err := r.client.APIKey.Update().
 		Where(apikey.IDEQ(id), apikey.DeletedAtIsNil()).
+		SetKey(tombstoneKey).
 		SetDeletedAt(time.Now()).
 		Save(ctx)
 	if err != nil {

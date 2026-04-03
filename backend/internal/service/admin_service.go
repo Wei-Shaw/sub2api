@@ -1885,6 +1885,18 @@ func (s *adminServiceImpl) ClearAccountError(ctx context.Context, id int64) (*Ac
 	if err := s.accountRepo.ClearError(ctx, id); err != nil {
 		return nil, err
 	}
+	if err := s.accountRepo.ClearRateLimit(ctx, id); err != nil {
+		return nil, err
+	}
+	if err := s.accountRepo.ClearAntigravityQuotaScopes(ctx, id); err != nil {
+		return nil, err
+	}
+	if err := s.accountRepo.ClearModelRateLimits(ctx, id); err != nil {
+		return nil, err
+	}
+	if err := s.accountRepo.ClearTempUnschedulable(ctx, id); err != nil {
+		return nil, err
+	}
 	return s.accountRepo.GetByID(ctx, id)
 }
 

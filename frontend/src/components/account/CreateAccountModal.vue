@@ -2318,6 +2318,41 @@
             </p>
           </div>
         </div>
+
+        <!-- Custom Base URL Relay -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.customBaseUrl.label') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.customBaseUrl.hint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="customBaseUrlEnabled = !customBaseUrlEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                customBaseUrlEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  customBaseUrlEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <div v-if="customBaseUrlEnabled" class="mt-3">
+            <input
+              v-model="customBaseUrl"
+              type="text"
+              class="input"
+              :placeholder="t('admin.accounts.quotaControl.customBaseUrl.urlHint')"
+            />
+          </div>
+        </div>
       </div>
 
       <div>
@@ -3179,6 +3214,8 @@ const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
+const customBaseUrlEnabled = ref(false)
+const customBaseUrl = ref('')
 
 // Gemini tier selection (used as fallback when auto-detection is unavailable/fails)
 const geminiTierGoogleOne = ref<'google_one_free' | 'google_ai_pro' | 'google_ai_ultra'>('google_one_free')
@@ -3857,6 +3894,8 @@ const resetForm = () => {
   sessionIdMaskingEnabled.value = false
   cacheTTLOverrideEnabled.value = false
   cacheTTLOverrideTarget.value = '5m'
+  customBaseUrlEnabled.value = false
+  customBaseUrl.value = ''
   allowOverages.value = false
   antigravityAccountType.value = 'oauth'
   upstreamBaseUrl.value = ''
@@ -5002,6 +5041,12 @@ const handleAnthropicExchange = async (authCode: string) => {
     // Add client affinity setting
     applyClientAffinity(extra)
 
+    // Add custom base URL settings
+    if (customBaseUrlEnabled.value && customBaseUrl.value.trim()) {
+      extra.custom_base_url_enabled = true
+      extra.custom_base_url = customBaseUrl.value.trim()
+    }
+
     const credentials: Record<string, unknown> = { ...tokenInfo }
     applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
     await createAccountAndFinish(form.platform, addMethod.value as AccountType, credentials, extra)
@@ -5118,6 +5163,12 @@ const handleCookieAuth = async (sessionKey: string) => {
         if (cacheTTLOverrideEnabled.value) {
           extra.cache_ttl_override_enabled = true
           extra.cache_ttl_override_target = cacheTTLOverrideTarget.value
+        }
+
+        // Add custom base URL settings
+        if (customBaseUrlEnabled.value && customBaseUrl.value.trim()) {
+          extra.custom_base_url_enabled = true
+          extra.custom_base_url = customBaseUrl.value.trim()
         }
 
         const accountName = keys.length > 1 ? `${form.name} #${i + 1}` : form.name

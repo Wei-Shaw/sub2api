@@ -1252,6 +1252,23 @@ func (a *Account) IsAffinityEnabled() bool {
 	return false
 }
 
+// IsCustomBaseURLEnabled 检查是否启用自定义 base URL 中继转发
+// 仅适用于 Anthropic OAuth/SetupToken 类型账号
+func (a *Account) IsCustomBaseURLEnabled() bool {
+	if !a.IsAnthropicOAuthOrSetupToken() {
+		return false
+	}
+	if a.Extra == nil {
+		return false
+	}
+	if v, ok := a.Extra["custom_base_url_enabled"]; ok {
+		if enabled, ok := v.(bool); ok {
+			return enabled
+		}
+	}
+	return false
+}
+
 // IsClientAffinityEnabled 向后兼容别名，内部调用 IsAffinityEnabled
 func (a *Account) IsClientAffinityEnabled() bool {
 	return a.IsAffinityEnabled()
@@ -1465,6 +1482,11 @@ func (a *Account) GetMultiDimAffinityZone(userCount, clientCount, perUserCount i
 	}
 
 	return worst
+}
+
+// GetCustomBaseURL 返回自定义中继服务的 base URL
+func (a *Account) GetCustomBaseURL() string {
+	return a.GetExtraString("custom_base_url")
 }
 
 // IsCacheTTLOverrideEnabled 检查是否启用缓存 TTL 强制替换

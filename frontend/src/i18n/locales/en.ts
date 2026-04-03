@@ -2420,6 +2420,11 @@ export default {
           target: 'Target TTL',
           targetHint: 'Select the TTL tier for billing'
         },
+        customBaseUrl: {
+          label: 'Custom Relay URL',
+          hint: 'Forward requests to a custom relay service. Proxy URL will be passed as a query parameter.',
+          urlHint: 'Relay service URL (e.g., https://relay.example.com)',
+        },
         clientAffinity: {
           label: 'Client Affinity Scheduling',
           hint: 'When enabled, new sessions prefer accounts previously used by this client to reduce account switching'
@@ -4510,6 +4515,7 @@ export default {
           provider: 'Type',
           active: 'Active',
           endpoint: 'Endpoint',
+          bucket: 'Bucket',
           storagePath: 'Storage Path',
           capacityUsage: 'Capacity / Used',
           capacityUnlimited: 'Unlimited',

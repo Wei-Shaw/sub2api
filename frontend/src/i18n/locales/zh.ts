@@ -2564,6 +2564,11 @@ export default {
           target: '目标 TTL',
           targetHint: '选择计费使用的 TTL 类型'
         },
+        customBaseUrl: {
+          label: '自定义转发地址',
+          hint: '启用后将请求转发到自定义中继服务，代理地址将作为 URL 参数传递给中继服务',
+          urlHint: '中继服务地址（如 https://relay.example.com）',
+        },
         clientAffinity: {
           label: '客户端亲和调度',
           hint: '启用后，新会话会优先调度到该客户端之前使用过的账号，避免频繁切换账号'
@@ -4674,6 +4679,7 @@ export default {
           provider: '存储类型',
           active: '生效状态',
           endpoint: '端点',
+          bucket: '存储桶',
           storagePath: '存储路径',
           capacityUsage: '容量 / 已用',
           capacityUnlimited: '无限制',
