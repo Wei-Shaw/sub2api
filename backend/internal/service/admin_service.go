@@ -1642,16 +1642,29 @@ REDACTED
 	REDACTED
 REDACTED
 
-	// Antigravity OAuth 账号：创建后异步设置隐私
-	if account.Platform == PlatformAntigravity && account.Type == AccountTypeOAuth {
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					slog.Error("create_account_antigravity_privacy_panic", "account_id", account.ID, "recover", r)
-			REDACTED
+	// OAuth 账号：创建后异步设置隐私。
+	// 使用 Ensure（幂等）而非 Force：新建账号 Extra 为空时效果相同，但更安全。
+	if account.Type == AccountTypeOAuth {
+		switch account.Platform {
+		case PlatformOpenAI:
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("create_account_openai_privacy_panic", "account_id", account.ID, "recover", r)
+				REDACTED
+			REDACTED()
+				s.EnsureOpenAIPrivacy(context.Background(), account)
 		REDACTED()
-			s.EnsureAntigravityPrivacy(context.Background(), account)
-	REDACTED()
+		case PlatformAntigravity:
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("create_account_antigravity_privacy_panic", "account_id", account.ID, "recover", r)
+				REDACTED
+			REDACTED()
+				s.EnsureAntigravityPrivacy(context.Background(), account)
+		REDACTED()
+	REDACTED
 REDACTED
 
 	return account, nil
