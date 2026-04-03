@@ -233,6 +233,9 @@ const (
 	// SettingKeyAllowUngroupedKeyScheduling 允许未分组 API Key 调度（默认 false：未分组 Key 返回 403）
 	SettingKeyAllowUngroupedKeyScheduling = "allow_ungrouped_key_scheduling"
 
+	// SettingKeyOpenAIGlobalPoolForUngroupedKeys 允许未分组 API Key 以 OpenAI 全局池语义工作（默认 false）
+	SettingKeyOpenAIGlobalPoolForUngroupedKeys = "openai_global_pool_for_ungrouped_keys"
+
 	// SettingKeyBackendModeEnabled Backend 模式：禁用用户注册和自助服务，仅管理员可登录
 	SettingKeyBackendModeEnabled = "backend_mode_enabled"
 

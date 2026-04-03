@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
@@ -316,6 +317,7 @@ type OpenAIGatewayService struct {
 	billingService        *BillingService
 	rateLimitService      *RateLimitService
 	billingCacheService   *BillingCacheService
+	settingService        *SettingService
 	userGroupRateResolver *userGroupRateResolver
 	httpUpstream          HTTPUpstream
 	deferredService       *DeferredService
@@ -357,6 +359,7 @@ func NewOpenAIGatewayService(
 	httpUpstream HTTPUpstream,
 	deferredService *DeferredService,
 	openAITokenProvider *OpenAITokenProvider,
+	settingService *SettingService,
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -372,6 +375,7 @@ func NewOpenAIGatewayService(
 		billingService:      billingService,
 		rateLimitService:    rateLimitService,
 		billingCacheService: billingCacheService,
+		settingService:      settingService,
 		userGroupRateResolver: newUserGroupRateResolver(
 			userGroupRateRepo,
 			nil,
@@ -1526,7 +1530,8 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, targetGroup AccountTargetGroup) ([]Account, error) {
 	targetGroup = normalizeTargetGroup(targetGroup)
-	if s.schedulerSnapshot != nil {
+	useGlobalPool := s.useOpenAIGlobalPoolForUngroupedKey(ctx, groupID)
+	if s.schedulerSnapshot != nil && !useGlobalPool {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, PlatformOpenAI, false)
 		if err != nil {
 			return nil, err
@@ -1554,6 +1559,8 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, PlatformOpenAI)
 	} else if groupID != nil {
 		accounts, err = s.accountRepo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
+	} else if useGlobalPool {
+		accounts, err = s.accountRepo.ListSchedulableByPlatform(ctx, PlatformOpenAI)
 	} else {
 		accounts, err = s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, PlatformOpenAI)
 	}
@@ -1631,6 +1638,9 @@ func (s *OpenAIGatewayService) listOpenAIAccountsFromBroadSource(ctx context.Con
 		}
 		return filtered, nil
 	}
+	if s.useOpenAIGlobalPoolForUngroupedKey(ctx, groupID) {
+		return s.accountRepo.ListByPlatform(ctx, PlatformOpenAI)
+	}
 	accounts, err := s.accountRepo.ListByPlatform(ctx, PlatformOpenAI)
 	if err != nil {
 		return nil, err
@@ -1642,6 +1652,17 @@ func (s *OpenAIGatewayService) listOpenAIAccountsFromBroadSource(ctx context.Con
 		}
 	}
 	return filtered, nil
+}
+
+func (s *OpenAIGatewayService) useOpenAIGlobalPoolForUngroupedKey(ctx context.Context, groupID *int64) bool {
+	if s == nil || groupID != nil || s.settingService == nil {
+		return false
+	}
+	if !s.settingService.IsOpenAIGlobalPoolForUngroupedKeys(ctx) {
+		return false
+	}
+	platform, _ := ctx.Value(ctxkey.EffectivePlatform).(string)
+	return strings.TrimSpace(platform) == PlatformOpenAI
 }
 
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {

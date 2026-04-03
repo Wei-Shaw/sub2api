@@ -128,6 +128,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		MinClaudeCodeVersion:                 settings.MinClaudeCodeVersion,
 		MaxClaudeCodeVersion:                 settings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:          settings.AllowUngroupedKeyScheduling,
+		OpenAIGlobalPoolForUngroupedKeys:     settings.OpenAIGlobalPoolForUngroupedKeys,
 		BackendModeEnabled:                   settings.BackendModeEnabled,
 		EnableFingerprintUnification:         settings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            settings.EnableMetadataPassthrough,
@@ -207,7 +208,8 @@ type UpdateSettingsRequest struct {
 	MaxClaudeCodeVersion string `json:"max_claude_code_version"`
 
 	// 分组隔离
-	AllowUngroupedKeyScheduling bool `json:"allow_ungrouped_key_scheduling"`
+	AllowUngroupedKeyScheduling      bool `json:"allow_ungrouped_key_scheduling"`
+	OpenAIGlobalPoolForUngroupedKeys bool `json:"openai_global_pool_for_ungrouped_keys"`
 
 	// Backend Mode
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
@@ -582,6 +584,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		MinClaudeCodeVersion:             req.MinClaudeCodeVersion,
 		MaxClaudeCodeVersion:             req.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:      req.AllowUngroupedKeyScheduling,
+		OpenAIGlobalPoolForUngroupedKeys: req.OpenAIGlobalPoolForUngroupedKeys,
 		BackendModeEnabled:               req.BackendModeEnabled,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
@@ -696,6 +699,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		MinClaudeCodeVersion:                 updatedSettings.MinClaudeCodeVersion,
 		MaxClaudeCodeVersion:                 updatedSettings.MaxClaudeCodeVersion,
 		AllowUngroupedKeyScheduling:          updatedSettings.AllowUngroupedKeyScheduling,
+		OpenAIGlobalPoolForUngroupedKeys:     updatedSettings.OpenAIGlobalPoolForUngroupedKeys,
 		BackendModeEnabled:                   updatedSettings.BackendModeEnabled,
 		EnableFingerprintUnification:         updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            updatedSettings.EnableMetadataPassthrough,

@@ -72,6 +72,8 @@ type SystemSettings struct {
 
 	// 分组隔离：允许未分组 Key 调度（默认 false → 403）
 	AllowUngroupedKeyScheduling bool
+	// 未分组 Key 是否启用 OpenAI 全局池语义（默认 false）
+	OpenAIGlobalPoolForUngroupedKeys bool
 
 	// Backend 模式：禁用用户注册和自助服务，仅管理员可登录
 	BackendModeEnabled bool

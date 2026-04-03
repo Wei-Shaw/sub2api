@@ -317,7 +317,7 @@ func AppendMinimalSysToolContinuation(reqBody map[string]any) {
 	if !exists {
 		input := []any{}
 		input = append(input,
-			map[string]any{"type": "tool_call", "call_id": "sys_dummy", "name": "sys_status", "arguments": "{}"},
+			map[string]any{"type": "function_call", "call_id": "sys_dummy", "name": "sys_status", "arguments": "{}"},
 			map[string]any{"type": "function_call_output", "call_id": "sys_dummy", "output": "ready"},
 		)
 		reqBody["input"] = input
@@ -328,7 +328,7 @@ func AppendMinimalSysToolContinuation(reqBody map[string]any) {
 		return
 	}
 	input = append(input,
-		map[string]any{"type": "tool_call", "call_id": "sys_dummy", "name": "sys_status", "arguments": "{}"},
+		map[string]any{"type": "function_call", "call_id": "sys_dummy", "name": "sys_status", "arguments": "{}"},
 		map[string]any{"type": "function_call_output", "call_id": "sys_dummy", "output": "ready"},
 	)
 	reqBody["input"] = input

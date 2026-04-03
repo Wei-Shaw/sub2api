@@ -416,7 +416,7 @@ func TestPrepareResponsesRequestForScheduling_SysModelAppendsContinuation(t *tes
 	require.Equal(t, "gpt-5.4", patchedModel)
 	require.Equal(t, "gpt-5.4", gjson.GetBytes(patchedBody, "model").String())
 	require.Equal(t, service.TargetGroupExhausted, targetGroup)
-	require.Contains(t, string(patchedBody), `"type":"tool_call"`)
+	require.Contains(t, string(patchedBody), `"type":"function_call"`)
 	require.Contains(t, string(patchedBody), `"output":"ready"`)
 }
 

@@ -94,6 +94,91 @@ func TestForcePlatform_SetsContextAndGinValue(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+type effectivePlatformSettingRepoStub struct {
+	values map[string]string
+}
+
+func (s *effectivePlatformSettingRepoStub) Get(context.Context, string) (*service.Setting, error) {
+	panic("unexpected Get call")
+}
+
+func (s *effectivePlatformSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
+	return s.values[key], nil
+}
+
+func (s *effectivePlatformSettingRepoStub) Set(context.Context, string, string) error {
+	panic("unexpected Set call")
+}
+
+func (s *effectivePlatformSettingRepoStub) GetMultiple(context.Context, []string) (map[string]string, error) {
+	panic("unexpected GetMultiple call")
+}
+
+func (s *effectivePlatformSettingRepoStub) SetMultiple(context.Context, map[string]string) error {
+	panic("unexpected SetMultiple call")
+}
+
+func (s *effectivePlatformSettingRepoStub) GetAll(context.Context) (map[string]string, error) {
+	panic("unexpected GetAll call")
+}
+
+func (s *effectivePlatformSettingRepoStub) Delete(context.Context, string) error {
+	panic("unexpected Delete call")
+}
+
+func TestResolveEffectivePlatform_SetsOpenAIForUngroupedKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	settingSvc := service.NewSettingService(&effectivePlatformSettingRepoStub{values: map[string]string{
+		service.SettingKeyOpenAIGlobalPoolForUngroupedKeys: "true",
+	}}, nil)
+
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Set(string(ContextKeyAPIKey), &service.APIKey{ID: 1, GroupID: nil, Group: nil})
+		c.Next()
+	})
+	r.Use(ResolveEffectivePlatform(settingSvc))
+	r.GET("/t", func(c *gin.Context) {
+		v, ok := GetEffectivePlatformFromContext(c)
+		require.True(t, ok)
+		require.Equal(t, service.PlatformOpenAI, v)
+		require.Equal(t, service.PlatformOpenAI, c.Request.Context().Value(ctxkey.EffectivePlatform))
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestResolveEffectivePlatform_PrefersForcePlatform(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	settingSvc := service.NewSettingService(&effectivePlatformSettingRepoStub{values: map[string]string{
+		service.SettingKeyOpenAIGlobalPoolForUngroupedKeys: "true",
+	}}, nil)
+
+	r := gin.New()
+	r.Use(ForcePlatform(service.PlatformAntigravity))
+	r.Use(func(c *gin.Context) {
+		c.Set(string(ContextKeyAPIKey), &service.APIKey{ID: 1, GroupID: nil, Group: nil})
+		c.Next()
+	})
+	r.Use(ResolveEffectivePlatform(settingSvc))
+	r.GET("/t", func(c *gin.Context) {
+		v, ok := GetEffectivePlatformFromContext(c)
+		require.True(t, ok)
+		require.Equal(t, service.PlatformAntigravity, v)
+		require.Equal(t, service.PlatformAntigravity, c.Request.Context().Value(ctxkey.EffectivePlatform))
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestAuthSubjectHelpers_RoundTrip(t *testing.T) {
 	c := &gin.Context{}
 	c.Set(string(ContextKeyUser), AuthSubject{UserID: 1, Concurrency: 2})

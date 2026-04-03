@@ -7,6 +7,8 @@ type Key string
 const (
 	// ForcePlatform 强制平台（用于 /antigravity 路由），由 middleware.ForcePlatform 设置
 	ForcePlatform Key = "ctx_force_platform"
+	// EffectivePlatform 请求期解析出的有效平台，由中间件派生
+	EffectivePlatform Key = "ctx_effective_platform"
 
 	// RequestID 为服务端生成/透传的请求 ID。
 	RequestID Key = "ctx_request_id"

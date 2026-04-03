@@ -24,6 +24,8 @@ const (
 	ContextKeySubscription ContextKey = "subscription"
 	// ContextKeyForcePlatform 强制平台（用于 /antigravity 路由）
 	ContextKeyForcePlatform ContextKey = "force_platform"
+	// ContextKeyEffectivePlatform 请求期解析出的有效平台
+	ContextKeyEffectivePlatform ContextKey = "effective_platform"
 )
 
 // ForcePlatform 返回设置强制平台的中间件
@@ -48,6 +50,49 @@ func HasForcePlatform(c *gin.Context) bool {
 // GetForcePlatformFromContext 从 gin.Context 获取强制平台
 func GetForcePlatformFromContext(c *gin.Context) (string, bool) {
 	value, exists := c.Get(string(ContextKeyForcePlatform))
+	if !exists {
+		return "", false
+	}
+	platform, ok := value.(string)
+	return platform, ok
+}
+
+// ResolveEffectivePlatform 为当前请求解析 effective platform。
+func ResolveEffectivePlatform(settingService *service.SettingService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if forcedPlatform, ok := GetForcePlatformFromContext(c); ok && forcedPlatform != "" {
+			ctx := context.WithValue(c.Request.Context(), ctxkey.EffectivePlatform, forcedPlatform)
+			c.Request = c.Request.WithContext(ctx)
+			c.Set(string(ContextKeyEffectivePlatform), forcedPlatform)
+			c.Next()
+			return
+		}
+
+		apiKey, ok := GetAPIKeyFromContext(c)
+		if !ok || apiKey == nil {
+			c.Next()
+			return
+		}
+
+		platform := ""
+		if apiKey.Group != nil {
+			platform = apiKey.Group.Platform
+		}
+		if platform == "" && apiKey.GroupID == nil && settingService != nil && settingService.IsOpenAIGlobalPoolForUngroupedKeys(c.Request.Context()) {
+			platform = service.PlatformOpenAI
+		}
+		if platform != "" {
+			ctx := context.WithValue(c.Request.Context(), ctxkey.EffectivePlatform, platform)
+			c.Request = c.Request.WithContext(ctx)
+			c.Set(string(ContextKeyEffectivePlatform), platform)
+		}
+		c.Next()
+	}
+}
+
+// GetEffectivePlatformFromContext 从 gin.Context 获取 effective platform。
+func GetEffectivePlatformFromContext(c *gin.Context) (string, bool) {
+	value, exists := c.Get(string(ContextKeyEffectivePlatform))
 	if !exists {
 		return "", false
 	}

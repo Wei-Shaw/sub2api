@@ -9,6 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -48,4 +49,17 @@ func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {
 		router.ServeHTTP(w, req)
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI responses handler", path)
 	}
+}
+
+func TestGetEffectivePlatform_UsesContextValue(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set(string(servermiddleware.ContextKeyEffectivePlatform), service.PlatformOpenAI)
+	require.Equal(t, service.PlatformOpenAI, getEffectivePlatform(c))
+}
+
+func TestGetEffectivePlatform_PrefersForcePlatform(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set(string(servermiddleware.ContextKeyEffectivePlatform), service.PlatformOpenAI)
+	c.Set(string(servermiddleware.ContextKeyForcePlatform), service.PlatformAntigravity)
+	require.Equal(t, service.PlatformAntigravity, getEffectivePlatform(c))
 }
