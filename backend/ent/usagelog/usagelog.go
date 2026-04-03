@@ -28,6 +28,20 @@ const (
 	FieldRequestedModel = "requested_model"
 	// FieldUpstreamModel holds the string denoting the upstream_model field in the database.
 	FieldUpstreamModel = "upstream_model"
+	// FieldRoutingTargetGroup holds the string denoting the routing_target_group field in the database.
+	FieldRoutingTargetGroup = "routing_target_group"
+	// FieldRoutingScheduleLayer holds the string denoting the routing_schedule_layer field in the database.
+	FieldRoutingScheduleLayer = "routing_schedule_layer"
+	// FieldRoutingSelectedAccountID holds the string denoting the routing_selected_account_id field in the database.
+	FieldRoutingSelectedAccountID = "routing_selected_account_id"
+	// FieldRoutingSelectedAccountName holds the string denoting the routing_selected_account_name field in the database.
+	FieldRoutingSelectedAccountName = "routing_selected_account_name"
+	// FieldRoutingEffectiveModel holds the string denoting the routing_effective_model field in the database.
+	FieldRoutingEffectiveModel = "routing_effective_model"
+	// FieldRoutingFailoverCount holds the string denoting the routing_failover_count field in the database.
+	FieldRoutingFailoverCount = "routing_failover_count"
+	// FieldRoutingFailoverFinalReason holds the string denoting the routing_failover_final_reason field in the database.
+	FieldRoutingFailoverFinalReason = "routing_failover_final_reason"
 	// FieldGroupID holds the string denoting the group_id field in the database.
 	FieldGroupID = "group_id"
 	// FieldSubscriptionID holds the string denoting the subscription_id field in the database.
@@ -141,6 +155,13 @@ var Columns = []string{
 	FieldModel,
 	FieldRequestedModel,
 	FieldUpstreamModel,
+	FieldRoutingTargetGroup,
+	FieldRoutingScheduleLayer,
+	FieldRoutingSelectedAccountID,
+	FieldRoutingSelectedAccountName,
+	FieldRoutingEffectiveModel,
+	FieldRoutingFailoverCount,
+	FieldRoutingFailoverFinalReason,
 	FieldGroupID,
 	FieldSubscriptionID,
 	FieldInputTokens,
@@ -189,6 +210,16 @@ var (
 	RequestedModelValidator func(string) error
 	// UpstreamModelValidator is a validator for the "upstream_model" field. It is called by the builders before save.
 	UpstreamModelValidator func(string) error
+	// RoutingTargetGroupValidator is a validator for the "routing_target_group" field. It is called by the builders before save.
+	RoutingTargetGroupValidator func(string) error
+	// RoutingScheduleLayerValidator is a validator for the "routing_schedule_layer" field. It is called by the builders before save.
+	RoutingScheduleLayerValidator func(string) error
+	// RoutingSelectedAccountNameValidator is a validator for the "routing_selected_account_name" field. It is called by the builders before save.
+	RoutingSelectedAccountNameValidator func(string) error
+	// RoutingEffectiveModelValidator is a validator for the "routing_effective_model" field. It is called by the builders before save.
+	RoutingEffectiveModelValidator func(string) error
+	// RoutingFailoverFinalReasonValidator is a validator for the "routing_failover_final_reason" field. It is called by the builders before save.
+	RoutingFailoverFinalReasonValidator func(string) error
 	// DefaultInputTokens holds the default value on creation for the "input_tokens" field.
 	DefaultInputTokens int
 	// DefaultOutputTokens holds the default value on creation for the "output_tokens" field.
@@ -276,6 +307,41 @@ func ByRequestedModel(opts ...sql.OrderTermOption) OrderOption {
 // ByUpstreamModel orders the results by the upstream_model field.
 func ByUpstreamModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpstreamModel, opts...).ToFunc()
+}
+
+// ByRoutingTargetGroup orders the results by the routing_target_group field.
+func ByRoutingTargetGroup(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRoutingTargetGroup, opts...).ToFunc()
+}
+
+// ByRoutingScheduleLayer orders the results by the routing_schedule_layer field.
+func ByRoutingScheduleLayer(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRoutingScheduleLayer, opts...).ToFunc()
+}
+
+// ByRoutingSelectedAccountID orders the results by the routing_selected_account_id field.
+func ByRoutingSelectedAccountID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRoutingSelectedAccountID, opts...).ToFunc()
+}
+
+// ByRoutingSelectedAccountName orders the results by the routing_selected_account_name field.
+func ByRoutingSelectedAccountName(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRoutingSelectedAccountName, opts...).ToFunc()
+}
+
+// ByRoutingEffectiveModel orders the results by the routing_effective_model field.
+func ByRoutingEffectiveModel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRoutingEffectiveModel, opts...).ToFunc()
+}
+
+// ByRoutingFailoverCount orders the results by the routing_failover_count field.
+func ByRoutingFailoverCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRoutingFailoverCount, opts...).ToFunc()
+}
+
+// ByRoutingFailoverFinalReason orders the results by the routing_failover_final_reason field.
+func ByRoutingFailoverFinalReason(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRoutingFailoverFinalReason, opts...).ToFunc()
 }
 
 // ByGroupID orders the results by the group_id field.

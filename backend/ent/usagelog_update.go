@@ -142,6 +142,160 @@ func (_u *UsageLogUpdate) ClearUpstreamModel() *UsageLogUpdate {
 	return _u
 }
 
+// SetRoutingTargetGroup sets the "routing_target_group" field.
+func (_u *UsageLogUpdate) SetRoutingTargetGroup(v string) *UsageLogUpdate {
+	_u.mutation.SetRoutingTargetGroup(v)
+	return _u
+}
+
+// SetNillableRoutingTargetGroup sets the "routing_target_group" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableRoutingTargetGroup(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetRoutingTargetGroup(*v)
+	}
+	return _u
+}
+
+// ClearRoutingTargetGroup clears the value of the "routing_target_group" field.
+func (_u *UsageLogUpdate) ClearRoutingTargetGroup() *UsageLogUpdate {
+	_u.mutation.ClearRoutingTargetGroup()
+	return _u
+}
+
+// SetRoutingScheduleLayer sets the "routing_schedule_layer" field.
+func (_u *UsageLogUpdate) SetRoutingScheduleLayer(v string) *UsageLogUpdate {
+	_u.mutation.SetRoutingScheduleLayer(v)
+	return _u
+}
+
+// SetNillableRoutingScheduleLayer sets the "routing_schedule_layer" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableRoutingScheduleLayer(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetRoutingScheduleLayer(*v)
+	}
+	return _u
+}
+
+// ClearRoutingScheduleLayer clears the value of the "routing_schedule_layer" field.
+func (_u *UsageLogUpdate) ClearRoutingScheduleLayer() *UsageLogUpdate {
+	_u.mutation.ClearRoutingScheduleLayer()
+	return _u
+}
+
+// SetRoutingSelectedAccountID sets the "routing_selected_account_id" field.
+func (_u *UsageLogUpdate) SetRoutingSelectedAccountID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetRoutingSelectedAccountID()
+	_u.mutation.SetRoutingSelectedAccountID(v)
+	return _u
+}
+
+// SetNillableRoutingSelectedAccountID sets the "routing_selected_account_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableRoutingSelectedAccountID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetRoutingSelectedAccountID(*v)
+	}
+	return _u
+}
+
+// AddRoutingSelectedAccountID adds value to the "routing_selected_account_id" field.
+func (_u *UsageLogUpdate) AddRoutingSelectedAccountID(v int64) *UsageLogUpdate {
+	_u.mutation.AddRoutingSelectedAccountID(v)
+	return _u
+}
+
+// ClearRoutingSelectedAccountID clears the value of the "routing_selected_account_id" field.
+func (_u *UsageLogUpdate) ClearRoutingSelectedAccountID() *UsageLogUpdate {
+	_u.mutation.ClearRoutingSelectedAccountID()
+	return _u
+}
+
+// SetRoutingSelectedAccountName sets the "routing_selected_account_name" field.
+func (_u *UsageLogUpdate) SetRoutingSelectedAccountName(v string) *UsageLogUpdate {
+	_u.mutation.SetRoutingSelectedAccountName(v)
+	return _u
+}
+
+// SetNillableRoutingSelectedAccountName sets the "routing_selected_account_name" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableRoutingSelectedAccountName(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetRoutingSelectedAccountName(*v)
+	}
+	return _u
+}
+
+// ClearRoutingSelectedAccountName clears the value of the "routing_selected_account_name" field.
+func (_u *UsageLogUpdate) ClearRoutingSelectedAccountName() *UsageLogUpdate {
+	_u.mutation.ClearRoutingSelectedAccountName()
+	return _u
+}
+
+// SetRoutingEffectiveModel sets the "routing_effective_model" field.
+func (_u *UsageLogUpdate) SetRoutingEffectiveModel(v string) *UsageLogUpdate {
+	_u.mutation.SetRoutingEffectiveModel(v)
+	return _u
+}
+
+// SetNillableRoutingEffectiveModel sets the "routing_effective_model" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableRoutingEffectiveModel(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetRoutingEffectiveModel(*v)
+	}
+	return _u
+}
+
+// ClearRoutingEffectiveModel clears the value of the "routing_effective_model" field.
+func (_u *UsageLogUpdate) ClearRoutingEffectiveModel() *UsageLogUpdate {
+	_u.mutation.ClearRoutingEffectiveModel()
+	return _u
+}
+
+// SetRoutingFailoverCount sets the "routing_failover_count" field.
+func (_u *UsageLogUpdate) SetRoutingFailoverCount(v int) *UsageLogUpdate {
+	_u.mutation.ResetRoutingFailoverCount()
+	_u.mutation.SetRoutingFailoverCount(v)
+	return _u
+}
+
+// SetNillableRoutingFailoverCount sets the "routing_failover_count" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableRoutingFailoverCount(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetRoutingFailoverCount(*v)
+	}
+	return _u
+}
+
+// AddRoutingFailoverCount adds value to the "routing_failover_count" field.
+func (_u *UsageLogUpdate) AddRoutingFailoverCount(v int) *UsageLogUpdate {
+	_u.mutation.AddRoutingFailoverCount(v)
+	return _u
+}
+
+// ClearRoutingFailoverCount clears the value of the "routing_failover_count" field.
+func (_u *UsageLogUpdate) ClearRoutingFailoverCount() *UsageLogUpdate {
+	_u.mutation.ClearRoutingFailoverCount()
+	return _u
+}
+
+// SetRoutingFailoverFinalReason sets the "routing_failover_final_reason" field.
+func (_u *UsageLogUpdate) SetRoutingFailoverFinalReason(v string) *UsageLogUpdate {
+	_u.mutation.SetRoutingFailoverFinalReason(v)
+	return _u
+}
+
+// SetNillableRoutingFailoverFinalReason sets the "routing_failover_final_reason" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableRoutingFailoverFinalReason(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetRoutingFailoverFinalReason(*v)
+	}
+	return _u
+}
+
+// ClearRoutingFailoverFinalReason clears the value of the "routing_failover_final_reason" field.
+func (_u *UsageLogUpdate) ClearRoutingFailoverFinalReason() *UsageLogUpdate {
+	_u.mutation.ClearRoutingFailoverFinalReason()
+	return _u
+}
+
 // SetGroupID sets the "group_id" field.
 func (_u *UsageLogUpdate) SetGroupID(v int64) *UsageLogUpdate {
 	_u.mutation.SetGroupID(v)
@@ -795,6 +949,31 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RoutingTargetGroup(); ok {
+		if err := usagelog.RoutingTargetGroupValidator(v); err != nil {
+			return &ValidationError{Name: "routing_target_group", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_target_group": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RoutingScheduleLayer(); ok {
+		if err := usagelog.RoutingScheduleLayerValidator(v); err != nil {
+			return &ValidationError{Name: "routing_schedule_layer", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_schedule_layer": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RoutingSelectedAccountName(); ok {
+		if err := usagelog.RoutingSelectedAccountNameValidator(v); err != nil {
+			return &ValidationError{Name: "routing_selected_account_name", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_selected_account_name": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RoutingEffectiveModel(); ok {
+		if err := usagelog.RoutingEffectiveModelValidator(v); err != nil {
+			return &ValidationError{Name: "routing_effective_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_effective_model": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RoutingFailoverFinalReason(); ok {
+		if err := usagelog.RoutingFailoverFinalReasonValidator(v); err != nil {
+			return &ValidationError{Name: "routing_failover_final_reason", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_failover_final_reason": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UserAgent(); ok {
 		if err := usagelog.UserAgentValidator(v); err != nil {
 			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "UsageLog.user_agent": %w`, err)}
@@ -856,6 +1035,54 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.UpstreamModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingTargetGroup(); ok {
+		_spec.SetField(usagelog.FieldRoutingTargetGroup, field.TypeString, value)
+	}
+	if _u.mutation.RoutingTargetGroupCleared() {
+		_spec.ClearField(usagelog.FieldRoutingTargetGroup, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingScheduleLayer(); ok {
+		_spec.SetField(usagelog.FieldRoutingScheduleLayer, field.TypeString, value)
+	}
+	if _u.mutation.RoutingScheduleLayerCleared() {
+		_spec.ClearField(usagelog.FieldRoutingScheduleLayer, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingSelectedAccountID(); ok {
+		_spec.SetField(usagelog.FieldRoutingSelectedAccountID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedRoutingSelectedAccountID(); ok {
+		_spec.AddField(usagelog.FieldRoutingSelectedAccountID, field.TypeInt64, value)
+	}
+	if _u.mutation.RoutingSelectedAccountIDCleared() {
+		_spec.ClearField(usagelog.FieldRoutingSelectedAccountID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.RoutingSelectedAccountName(); ok {
+		_spec.SetField(usagelog.FieldRoutingSelectedAccountName, field.TypeString, value)
+	}
+	if _u.mutation.RoutingSelectedAccountNameCleared() {
+		_spec.ClearField(usagelog.FieldRoutingSelectedAccountName, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingEffectiveModel(); ok {
+		_spec.SetField(usagelog.FieldRoutingEffectiveModel, field.TypeString, value)
+	}
+	if _u.mutation.RoutingEffectiveModelCleared() {
+		_spec.ClearField(usagelog.FieldRoutingEffectiveModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingFailoverCount(); ok {
+		_spec.SetField(usagelog.FieldRoutingFailoverCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRoutingFailoverCount(); ok {
+		_spec.AddField(usagelog.FieldRoutingFailoverCount, field.TypeInt, value)
+	}
+	if _u.mutation.RoutingFailoverCountCleared() {
+		_spec.ClearField(usagelog.FieldRoutingFailoverCount, field.TypeInt)
+	}
+	if value, ok := _u.mutation.RoutingFailoverFinalReason(); ok {
+		_spec.SetField(usagelog.FieldRoutingFailoverFinalReason, field.TypeString, value)
+	}
+	if _u.mutation.RoutingFailoverFinalReasonCleared() {
+		_spec.ClearField(usagelog.FieldRoutingFailoverFinalReason, field.TypeString)
 	}
 	if value, ok := _u.mutation.InputTokens(); ok {
 		_spec.SetField(usagelog.FieldInputTokens, field.TypeInt, value)
@@ -1276,6 +1503,160 @@ func (_u *UsageLogUpdateOne) SetNillableUpstreamModel(v *string) *UsageLogUpdate
 // ClearUpstreamModel clears the value of the "upstream_model" field.
 func (_u *UsageLogUpdateOne) ClearUpstreamModel() *UsageLogUpdateOne {
 	_u.mutation.ClearUpstreamModel()
+	return _u
+}
+
+// SetRoutingTargetGroup sets the "routing_target_group" field.
+func (_u *UsageLogUpdateOne) SetRoutingTargetGroup(v string) *UsageLogUpdateOne {
+	_u.mutation.SetRoutingTargetGroup(v)
+	return _u
+}
+
+// SetNillableRoutingTargetGroup sets the "routing_target_group" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableRoutingTargetGroup(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetRoutingTargetGroup(*v)
+	}
+	return _u
+}
+
+// ClearRoutingTargetGroup clears the value of the "routing_target_group" field.
+func (_u *UsageLogUpdateOne) ClearRoutingTargetGroup() *UsageLogUpdateOne {
+	_u.mutation.ClearRoutingTargetGroup()
+	return _u
+}
+
+// SetRoutingScheduleLayer sets the "routing_schedule_layer" field.
+func (_u *UsageLogUpdateOne) SetRoutingScheduleLayer(v string) *UsageLogUpdateOne {
+	_u.mutation.SetRoutingScheduleLayer(v)
+	return _u
+}
+
+// SetNillableRoutingScheduleLayer sets the "routing_schedule_layer" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableRoutingScheduleLayer(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetRoutingScheduleLayer(*v)
+	}
+	return _u
+}
+
+// ClearRoutingScheduleLayer clears the value of the "routing_schedule_layer" field.
+func (_u *UsageLogUpdateOne) ClearRoutingScheduleLayer() *UsageLogUpdateOne {
+	_u.mutation.ClearRoutingScheduleLayer()
+	return _u
+}
+
+// SetRoutingSelectedAccountID sets the "routing_selected_account_id" field.
+func (_u *UsageLogUpdateOne) SetRoutingSelectedAccountID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetRoutingSelectedAccountID()
+	_u.mutation.SetRoutingSelectedAccountID(v)
+	return _u
+}
+
+// SetNillableRoutingSelectedAccountID sets the "routing_selected_account_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableRoutingSelectedAccountID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetRoutingSelectedAccountID(*v)
+	}
+	return _u
+}
+
+// AddRoutingSelectedAccountID adds value to the "routing_selected_account_id" field.
+func (_u *UsageLogUpdateOne) AddRoutingSelectedAccountID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddRoutingSelectedAccountID(v)
+	return _u
+}
+
+// ClearRoutingSelectedAccountID clears the value of the "routing_selected_account_id" field.
+func (_u *UsageLogUpdateOne) ClearRoutingSelectedAccountID() *UsageLogUpdateOne {
+	_u.mutation.ClearRoutingSelectedAccountID()
+	return _u
+}
+
+// SetRoutingSelectedAccountName sets the "routing_selected_account_name" field.
+func (_u *UsageLogUpdateOne) SetRoutingSelectedAccountName(v string) *UsageLogUpdateOne {
+	_u.mutation.SetRoutingSelectedAccountName(v)
+	return _u
+}
+
+// SetNillableRoutingSelectedAccountName sets the "routing_selected_account_name" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableRoutingSelectedAccountName(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetRoutingSelectedAccountName(*v)
+	}
+	return _u
+}
+
+// ClearRoutingSelectedAccountName clears the value of the "routing_selected_account_name" field.
+func (_u *UsageLogUpdateOne) ClearRoutingSelectedAccountName() *UsageLogUpdateOne {
+	_u.mutation.ClearRoutingSelectedAccountName()
+	return _u
+}
+
+// SetRoutingEffectiveModel sets the "routing_effective_model" field.
+func (_u *UsageLogUpdateOne) SetRoutingEffectiveModel(v string) *UsageLogUpdateOne {
+	_u.mutation.SetRoutingEffectiveModel(v)
+	return _u
+}
+
+// SetNillableRoutingEffectiveModel sets the "routing_effective_model" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableRoutingEffectiveModel(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetRoutingEffectiveModel(*v)
+	}
+	return _u
+}
+
+// ClearRoutingEffectiveModel clears the value of the "routing_effective_model" field.
+func (_u *UsageLogUpdateOne) ClearRoutingEffectiveModel() *UsageLogUpdateOne {
+	_u.mutation.ClearRoutingEffectiveModel()
+	return _u
+}
+
+// SetRoutingFailoverCount sets the "routing_failover_count" field.
+func (_u *UsageLogUpdateOne) SetRoutingFailoverCount(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetRoutingFailoverCount()
+	_u.mutation.SetRoutingFailoverCount(v)
+	return _u
+}
+
+// SetNillableRoutingFailoverCount sets the "routing_failover_count" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableRoutingFailoverCount(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetRoutingFailoverCount(*v)
+	}
+	return _u
+}
+
+// AddRoutingFailoverCount adds value to the "routing_failover_count" field.
+func (_u *UsageLogUpdateOne) AddRoutingFailoverCount(v int) *UsageLogUpdateOne {
+	_u.mutation.AddRoutingFailoverCount(v)
+	return _u
+}
+
+// ClearRoutingFailoverCount clears the value of the "routing_failover_count" field.
+func (_u *UsageLogUpdateOne) ClearRoutingFailoverCount() *UsageLogUpdateOne {
+	_u.mutation.ClearRoutingFailoverCount()
+	return _u
+}
+
+// SetRoutingFailoverFinalReason sets the "routing_failover_final_reason" field.
+func (_u *UsageLogUpdateOne) SetRoutingFailoverFinalReason(v string) *UsageLogUpdateOne {
+	_u.mutation.SetRoutingFailoverFinalReason(v)
+	return _u
+}
+
+// SetNillableRoutingFailoverFinalReason sets the "routing_failover_final_reason" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableRoutingFailoverFinalReason(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetRoutingFailoverFinalReason(*v)
+	}
+	return _u
+}
+
+// ClearRoutingFailoverFinalReason clears the value of the "routing_failover_final_reason" field.
+func (_u *UsageLogUpdateOne) ClearRoutingFailoverFinalReason() *UsageLogUpdateOne {
+	_u.mutation.ClearRoutingFailoverFinalReason()
 	return _u
 }
 
@@ -1945,6 +2326,31 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RoutingTargetGroup(); ok {
+		if err := usagelog.RoutingTargetGroupValidator(v); err != nil {
+			return &ValidationError{Name: "routing_target_group", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_target_group": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RoutingScheduleLayer(); ok {
+		if err := usagelog.RoutingScheduleLayerValidator(v); err != nil {
+			return &ValidationError{Name: "routing_schedule_layer", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_schedule_layer": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RoutingSelectedAccountName(); ok {
+		if err := usagelog.RoutingSelectedAccountNameValidator(v); err != nil {
+			return &ValidationError{Name: "routing_selected_account_name", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_selected_account_name": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RoutingEffectiveModel(); ok {
+		if err := usagelog.RoutingEffectiveModelValidator(v); err != nil {
+			return &ValidationError{Name: "routing_effective_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_effective_model": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.RoutingFailoverFinalReason(); ok {
+		if err := usagelog.RoutingFailoverFinalReasonValidator(v); err != nil {
+			return &ValidationError{Name: "routing_failover_final_reason", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_failover_final_reason": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UserAgent(); ok {
 		if err := usagelog.UserAgentValidator(v); err != nil {
 			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "UsageLog.user_agent": %w`, err)}
@@ -2023,6 +2429,54 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.UpstreamModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingTargetGroup(); ok {
+		_spec.SetField(usagelog.FieldRoutingTargetGroup, field.TypeString, value)
+	}
+	if _u.mutation.RoutingTargetGroupCleared() {
+		_spec.ClearField(usagelog.FieldRoutingTargetGroup, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingScheduleLayer(); ok {
+		_spec.SetField(usagelog.FieldRoutingScheduleLayer, field.TypeString, value)
+	}
+	if _u.mutation.RoutingScheduleLayerCleared() {
+		_spec.ClearField(usagelog.FieldRoutingScheduleLayer, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingSelectedAccountID(); ok {
+		_spec.SetField(usagelog.FieldRoutingSelectedAccountID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedRoutingSelectedAccountID(); ok {
+		_spec.AddField(usagelog.FieldRoutingSelectedAccountID, field.TypeInt64, value)
+	}
+	if _u.mutation.RoutingSelectedAccountIDCleared() {
+		_spec.ClearField(usagelog.FieldRoutingSelectedAccountID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.RoutingSelectedAccountName(); ok {
+		_spec.SetField(usagelog.FieldRoutingSelectedAccountName, field.TypeString, value)
+	}
+	if _u.mutation.RoutingSelectedAccountNameCleared() {
+		_spec.ClearField(usagelog.FieldRoutingSelectedAccountName, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingEffectiveModel(); ok {
+		_spec.SetField(usagelog.FieldRoutingEffectiveModel, field.TypeString, value)
+	}
+	if _u.mutation.RoutingEffectiveModelCleared() {
+		_spec.ClearField(usagelog.FieldRoutingEffectiveModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingFailoverCount(); ok {
+		_spec.SetField(usagelog.FieldRoutingFailoverCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRoutingFailoverCount(); ok {
+		_spec.AddField(usagelog.FieldRoutingFailoverCount, field.TypeInt, value)
+	}
+	if _u.mutation.RoutingFailoverCountCleared() {
+		_spec.ClearField(usagelog.FieldRoutingFailoverCount, field.TypeInt)
+	}
+	if value, ok := _u.mutation.RoutingFailoverFinalReason(); ok {
+		_spec.SetField(usagelog.FieldRoutingFailoverFinalReason, field.TypeString, value)
+	}
+	if _u.mutation.RoutingFailoverFinalReasonCleared() {
+		_spec.ClearField(usagelog.FieldRoutingFailoverFinalReason, field.TypeString)
 	}
 	if value, ok := _u.mutation.InputTokens(); ok {
 		_spec.SetField(usagelog.FieldInputTokens, field.TypeInt, value)

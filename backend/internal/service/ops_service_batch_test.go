@@ -98,6 +98,43 @@ func TestOpsServiceRecordErrorBatch_FallsBackToSingleInsert(t *testing.T) {
 	require.Equal(t, 2, singleCalls)
 }
 
+func TestOpsServiceRecordErrorBatch_PreservesOpenAIRoutingFields(t *testing.T) {
+	t.Parallel()
+
+	var captured []*OpsInsertErrorLogInput
+	repo := &opsRepoMock{
+		InsertErrorLogFn: func(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error) {
+			captured = append(captured, input)
+			return 1, nil
+		},
+	}
+	svc := NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	entry := &OpsInsertErrorLogInput{
+		ErrorPhase:                 "upstream",
+		ErrorType:                  "upstream_error",
+		RoutingTargetGroup:         "exhausted",
+		RoutingScheduleLayer:       "load_balance",
+		RoutingSelectedAccountID:   i64p(66),
+		RoutingSelectedAccountName: strPtr("acc-66"),
+		RoutingRequestedModel:      "gpt-5.4-Sys",
+		RoutingEffectiveModel:      "gpt-5.4",
+		RoutingFailoverCount:       1,
+		RoutingFailoverFinalReason: "selected_exhausted_fallback",
+	}
+
+	require.NoError(t, svc.RecordErrorBatch(context.Background(), []*OpsInsertErrorLogInput{entry}))
+	require.Len(t, captured, 1)
+	require.Equal(t, entry.RoutingTargetGroup, captured[0].RoutingTargetGroup)
+	require.Equal(t, entry.RoutingScheduleLayer, captured[0].RoutingScheduleLayer)
+	require.Equal(t, entry.RoutingSelectedAccountID, captured[0].RoutingSelectedAccountID)
+	require.Equal(t, entry.RoutingSelectedAccountName, captured[0].RoutingSelectedAccountName)
+	require.Equal(t, entry.RoutingRequestedModel, captured[0].RoutingRequestedModel)
+	require.Equal(t, entry.RoutingEffectiveModel, captured[0].RoutingEffectiveModel)
+	require.Equal(t, entry.RoutingFailoverCount, captured[0].RoutingFailoverCount)
+	require.Equal(t, entry.RoutingFailoverFinalReason, captured[0].RoutingFailoverFinalReason)
+}
+
 func strPtr(v string) *string {
 	return &v
 }

@@ -205,6 +205,9 @@ const kindBadgeClass = (kind: string) => {
                     {{ t('admin.ops.requestDetails.table.model') }}
                   </th>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    {{ t('admin.ops.requestDetails.table.routing') }}
+                  </th>
+                  <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     {{ t('admin.ops.requestDetails.table.duration') }}
                   </th>
                   <th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
@@ -231,8 +234,37 @@ const kindBadgeClass = (kind: string) => {
                   <td class="whitespace-nowrap px-4 py-3 text-xs font-medium text-gray-700 dark:text-gray-200">
                     {{ (row.platform || 'unknown').toUpperCase() }}
                   </td>
-                  <td class="max-w-[240px] truncate px-4 py-3 text-xs text-gray-600 dark:text-gray-300" :title="row.model || ''">
-                    {{ row.model || '-' }}
+                  <td class="max-w-[240px] px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                    <div class="space-y-1">
+                      <div class="break-all" :title="row.model || ''">{{ row.model || '-' }}</div>
+                      <div v-if="row.routing_effective_model && row.routing_effective_model !== row.model" class="break-all text-gray-500 dark:text-gray-400" :title="row.routing_effective_model">
+                        <span class="font-medium">{{ t('admin.usage.effectiveModel') }}:</span>
+                        <span class="ml-1">{{ row.routing_effective_model }}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="max-w-[260px] px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                    <div v-if="row.routing_target_group || row.routing_schedule_layer || row.routing_selected_account_name || row.routing_failover_count != null" class="space-y-1">
+                      <div v-if="row.routing_target_group">
+                        <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.routingTargetGroup') }}:</span>
+                        <span class="ml-1">{{ row.routing_target_group }}</span>
+                      </div>
+                      <div v-if="row.routing_schedule_layer">
+                        <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.routingScheduleLayer') }}:</span>
+                        <span class="ml-1">{{ row.routing_schedule_layer }}</span>
+                      </div>
+                      <div v-if="row.routing_selected_account_name">
+                        <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.routedAccount') }}:</span>
+                        <span class="ml-1">{{ row.routing_selected_account_name }}</span>
+                        <span v-if="row.routing_selected_account_id" class="ml-1 font-mono text-gray-400">#{{ row.routing_selected_account_id }}</span>
+                      </div>
+                      <div v-if="row.routing_failover_count != null">
+                        <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.routingFailover') }}:</span>
+                        <span class="ml-1">{{ row.routing_failover_count }}</span>
+                        <span v-if="row.routing_failover_final_reason" class="ml-1 text-gray-400">({{ row.routing_failover_final_reason }})</span>
+                      </div>
+                    </div>
+                    <span v-else>-</span>
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
                     {{ typeof row.duration_ms === 'number' ? `${row.duration_ms} ms` : '-' }}

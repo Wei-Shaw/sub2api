@@ -227,6 +227,8 @@ type UsageLogFilters struct {
 	AccountID   int64
 	GroupID     int64
 	Model       string
+	RoutingTargetGroup   string
+	RoutingScheduleLayer string
 	RequestType *int16
 	Stream      *bool
 	BillingType *int8

@@ -85,6 +85,104 @@ func (_c *UsageLogCreate) SetNillableUpstreamModel(v *string) *UsageLogCreate {
 	return _c
 }
 
+// SetRoutingTargetGroup sets the "routing_target_group" field.
+func (_c *UsageLogCreate) SetRoutingTargetGroup(v string) *UsageLogCreate {
+	_c.mutation.SetRoutingTargetGroup(v)
+	return _c
+}
+
+// SetNillableRoutingTargetGroup sets the "routing_target_group" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRoutingTargetGroup(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetRoutingTargetGroup(*v)
+	}
+	return _c
+}
+
+// SetRoutingScheduleLayer sets the "routing_schedule_layer" field.
+func (_c *UsageLogCreate) SetRoutingScheduleLayer(v string) *UsageLogCreate {
+	_c.mutation.SetRoutingScheduleLayer(v)
+	return _c
+}
+
+// SetNillableRoutingScheduleLayer sets the "routing_schedule_layer" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRoutingScheduleLayer(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetRoutingScheduleLayer(*v)
+	}
+	return _c
+}
+
+// SetRoutingSelectedAccountID sets the "routing_selected_account_id" field.
+func (_c *UsageLogCreate) SetRoutingSelectedAccountID(v int64) *UsageLogCreate {
+	_c.mutation.SetRoutingSelectedAccountID(v)
+	return _c
+}
+
+// SetNillableRoutingSelectedAccountID sets the "routing_selected_account_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRoutingSelectedAccountID(v *int64) *UsageLogCreate {
+	if v != nil {
+		_c.SetRoutingSelectedAccountID(*v)
+	}
+	return _c
+}
+
+// SetRoutingSelectedAccountName sets the "routing_selected_account_name" field.
+func (_c *UsageLogCreate) SetRoutingSelectedAccountName(v string) *UsageLogCreate {
+	_c.mutation.SetRoutingSelectedAccountName(v)
+	return _c
+}
+
+// SetNillableRoutingSelectedAccountName sets the "routing_selected_account_name" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRoutingSelectedAccountName(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetRoutingSelectedAccountName(*v)
+	}
+	return _c
+}
+
+// SetRoutingEffectiveModel sets the "routing_effective_model" field.
+func (_c *UsageLogCreate) SetRoutingEffectiveModel(v string) *UsageLogCreate {
+	_c.mutation.SetRoutingEffectiveModel(v)
+	return _c
+}
+
+// SetNillableRoutingEffectiveModel sets the "routing_effective_model" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRoutingEffectiveModel(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetRoutingEffectiveModel(*v)
+	}
+	return _c
+}
+
+// SetRoutingFailoverCount sets the "routing_failover_count" field.
+func (_c *UsageLogCreate) SetRoutingFailoverCount(v int) *UsageLogCreate {
+	_c.mutation.SetRoutingFailoverCount(v)
+	return _c
+}
+
+// SetNillableRoutingFailoverCount sets the "routing_failover_count" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRoutingFailoverCount(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetRoutingFailoverCount(*v)
+	}
+	return _c
+}
+
+// SetRoutingFailoverFinalReason sets the "routing_failover_final_reason" field.
+func (_c *UsageLogCreate) SetRoutingFailoverFinalReason(v string) *UsageLogCreate {
+	_c.mutation.SetRoutingFailoverFinalReason(v)
+	return _c
+}
+
+// SetNillableRoutingFailoverFinalReason sets the "routing_failover_final_reason" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRoutingFailoverFinalReason(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetRoutingFailoverFinalReason(*v)
+	}
+	return _c
+}
+
 // SetGroupID sets the "group_id" field.
 func (_c *UsageLogCreate) SetGroupID(v int64) *UsageLogCreate {
 	_c.mutation.SetGroupID(v)
@@ -634,6 +732,31 @@ func (_c *UsageLogCreate) check() error {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.RoutingTargetGroup(); ok {
+		if err := usagelog.RoutingTargetGroupValidator(v); err != nil {
+			return &ValidationError{Name: "routing_target_group", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_target_group": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.RoutingScheduleLayer(); ok {
+		if err := usagelog.RoutingScheduleLayerValidator(v); err != nil {
+			return &ValidationError{Name: "routing_schedule_layer", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_schedule_layer": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.RoutingSelectedAccountName(); ok {
+		if err := usagelog.RoutingSelectedAccountNameValidator(v); err != nil {
+			return &ValidationError{Name: "routing_selected_account_name", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_selected_account_name": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.RoutingEffectiveModel(); ok {
+		if err := usagelog.RoutingEffectiveModelValidator(v); err != nil {
+			return &ValidationError{Name: "routing_effective_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_effective_model": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.RoutingFailoverFinalReason(); ok {
+		if err := usagelog.RoutingFailoverFinalReasonValidator(v); err != nil {
+			return &ValidationError{Name: "routing_failover_final_reason", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_failover_final_reason": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.InputTokens(); !ok {
 		return &ValidationError{Name: "input_tokens", err: errors.New(`ent: missing required field "UsageLog.input_tokens"`)}
 	}
@@ -759,6 +882,34 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.UpstreamModel(); ok {
 		_spec.SetField(usagelog.FieldUpstreamModel, field.TypeString, value)
 		_node.UpstreamModel = &value
+	}
+	if value, ok := _c.mutation.RoutingTargetGroup(); ok {
+		_spec.SetField(usagelog.FieldRoutingTargetGroup, field.TypeString, value)
+		_node.RoutingTargetGroup = &value
+	}
+	if value, ok := _c.mutation.RoutingScheduleLayer(); ok {
+		_spec.SetField(usagelog.FieldRoutingScheduleLayer, field.TypeString, value)
+		_node.RoutingScheduleLayer = &value
+	}
+	if value, ok := _c.mutation.RoutingSelectedAccountID(); ok {
+		_spec.SetField(usagelog.FieldRoutingSelectedAccountID, field.TypeInt64, value)
+		_node.RoutingSelectedAccountID = &value
+	}
+	if value, ok := _c.mutation.RoutingSelectedAccountName(); ok {
+		_spec.SetField(usagelog.FieldRoutingSelectedAccountName, field.TypeString, value)
+		_node.RoutingSelectedAccountName = &value
+	}
+	if value, ok := _c.mutation.RoutingEffectiveModel(); ok {
+		_spec.SetField(usagelog.FieldRoutingEffectiveModel, field.TypeString, value)
+		_node.RoutingEffectiveModel = &value
+	}
+	if value, ok := _c.mutation.RoutingFailoverCount(); ok {
+		_spec.SetField(usagelog.FieldRoutingFailoverCount, field.TypeInt, value)
+		_node.RoutingFailoverCount = &value
+	}
+	if value, ok := _c.mutation.RoutingFailoverFinalReason(); ok {
+		_spec.SetField(usagelog.FieldRoutingFailoverFinalReason, field.TypeString, value)
+		_node.RoutingFailoverFinalReason = &value
 	}
 	if value, ok := _c.mutation.InputTokens(); ok {
 		_spec.SetField(usagelog.FieldInputTokens, field.TypeInt, value)
@@ -1090,6 +1241,144 @@ func (u *UsageLogUpsert) UpdateUpstreamModel() *UsageLogUpsert {
 // ClearUpstreamModel clears the value of the "upstream_model" field.
 func (u *UsageLogUpsert) ClearUpstreamModel() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldUpstreamModel)
+	return u
+}
+
+// SetRoutingTargetGroup sets the "routing_target_group" field.
+func (u *UsageLogUpsert) SetRoutingTargetGroup(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldRoutingTargetGroup, v)
+	return u
+}
+
+// UpdateRoutingTargetGroup sets the "routing_target_group" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRoutingTargetGroup() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRoutingTargetGroup)
+	return u
+}
+
+// ClearRoutingTargetGroup clears the value of the "routing_target_group" field.
+func (u *UsageLogUpsert) ClearRoutingTargetGroup() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRoutingTargetGroup)
+	return u
+}
+
+// SetRoutingScheduleLayer sets the "routing_schedule_layer" field.
+func (u *UsageLogUpsert) SetRoutingScheduleLayer(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldRoutingScheduleLayer, v)
+	return u
+}
+
+// UpdateRoutingScheduleLayer sets the "routing_schedule_layer" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRoutingScheduleLayer() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRoutingScheduleLayer)
+	return u
+}
+
+// ClearRoutingScheduleLayer clears the value of the "routing_schedule_layer" field.
+func (u *UsageLogUpsert) ClearRoutingScheduleLayer() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRoutingScheduleLayer)
+	return u
+}
+
+// SetRoutingSelectedAccountID sets the "routing_selected_account_id" field.
+func (u *UsageLogUpsert) SetRoutingSelectedAccountID(v int64) *UsageLogUpsert {
+	u.Set(usagelog.FieldRoutingSelectedAccountID, v)
+	return u
+}
+
+// UpdateRoutingSelectedAccountID sets the "routing_selected_account_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRoutingSelectedAccountID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRoutingSelectedAccountID)
+	return u
+}
+
+// AddRoutingSelectedAccountID adds v to the "routing_selected_account_id" field.
+func (u *UsageLogUpsert) AddRoutingSelectedAccountID(v int64) *UsageLogUpsert {
+	u.Add(usagelog.FieldRoutingSelectedAccountID, v)
+	return u
+}
+
+// ClearRoutingSelectedAccountID clears the value of the "routing_selected_account_id" field.
+func (u *UsageLogUpsert) ClearRoutingSelectedAccountID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRoutingSelectedAccountID)
+	return u
+}
+
+// SetRoutingSelectedAccountName sets the "routing_selected_account_name" field.
+func (u *UsageLogUpsert) SetRoutingSelectedAccountName(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldRoutingSelectedAccountName, v)
+	return u
+}
+
+// UpdateRoutingSelectedAccountName sets the "routing_selected_account_name" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRoutingSelectedAccountName() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRoutingSelectedAccountName)
+	return u
+}
+
+// ClearRoutingSelectedAccountName clears the value of the "routing_selected_account_name" field.
+func (u *UsageLogUpsert) ClearRoutingSelectedAccountName() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRoutingSelectedAccountName)
+	return u
+}
+
+// SetRoutingEffectiveModel sets the "routing_effective_model" field.
+func (u *UsageLogUpsert) SetRoutingEffectiveModel(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldRoutingEffectiveModel, v)
+	return u
+}
+
+// UpdateRoutingEffectiveModel sets the "routing_effective_model" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRoutingEffectiveModel() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRoutingEffectiveModel)
+	return u
+}
+
+// ClearRoutingEffectiveModel clears the value of the "routing_effective_model" field.
+func (u *UsageLogUpsert) ClearRoutingEffectiveModel() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRoutingEffectiveModel)
+	return u
+}
+
+// SetRoutingFailoverCount sets the "routing_failover_count" field.
+func (u *UsageLogUpsert) SetRoutingFailoverCount(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldRoutingFailoverCount, v)
+	return u
+}
+
+// UpdateRoutingFailoverCount sets the "routing_failover_count" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRoutingFailoverCount() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRoutingFailoverCount)
+	return u
+}
+
+// AddRoutingFailoverCount adds v to the "routing_failover_count" field.
+func (u *UsageLogUpsert) AddRoutingFailoverCount(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldRoutingFailoverCount, v)
+	return u
+}
+
+// ClearRoutingFailoverCount clears the value of the "routing_failover_count" field.
+func (u *UsageLogUpsert) ClearRoutingFailoverCount() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRoutingFailoverCount)
+	return u
+}
+
+// SetRoutingFailoverFinalReason sets the "routing_failover_final_reason" field.
+func (u *UsageLogUpsert) SetRoutingFailoverFinalReason(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldRoutingFailoverFinalReason, v)
+	return u
+}
+
+// UpdateRoutingFailoverFinalReason sets the "routing_failover_final_reason" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRoutingFailoverFinalReason() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRoutingFailoverFinalReason)
+	return u
+}
+
+// ClearRoutingFailoverFinalReason clears the value of the "routing_failover_final_reason" field.
+func (u *UsageLogUpsert) ClearRoutingFailoverFinalReason() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRoutingFailoverFinalReason)
 	return u
 }
 
@@ -1721,6 +2010,167 @@ func (u *UsageLogUpsertOne) UpdateUpstreamModel() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearUpstreamModel() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearUpstreamModel()
+	})
+}
+
+// SetRoutingTargetGroup sets the "routing_target_group" field.
+func (u *UsageLogUpsertOne) SetRoutingTargetGroup(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingTargetGroup(v)
+	})
+}
+
+// UpdateRoutingTargetGroup sets the "routing_target_group" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRoutingTargetGroup() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingTargetGroup()
+	})
+}
+
+// ClearRoutingTargetGroup clears the value of the "routing_target_group" field.
+func (u *UsageLogUpsertOne) ClearRoutingTargetGroup() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingTargetGroup()
+	})
+}
+
+// SetRoutingScheduleLayer sets the "routing_schedule_layer" field.
+func (u *UsageLogUpsertOne) SetRoutingScheduleLayer(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingScheduleLayer(v)
+	})
+}
+
+// UpdateRoutingScheduleLayer sets the "routing_schedule_layer" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRoutingScheduleLayer() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingScheduleLayer()
+	})
+}
+
+// ClearRoutingScheduleLayer clears the value of the "routing_schedule_layer" field.
+func (u *UsageLogUpsertOne) ClearRoutingScheduleLayer() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingScheduleLayer()
+	})
+}
+
+// SetRoutingSelectedAccountID sets the "routing_selected_account_id" field.
+func (u *UsageLogUpsertOne) SetRoutingSelectedAccountID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingSelectedAccountID(v)
+	})
+}
+
+// AddRoutingSelectedAccountID adds v to the "routing_selected_account_id" field.
+func (u *UsageLogUpsertOne) AddRoutingSelectedAccountID(v int64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRoutingSelectedAccountID(v)
+	})
+}
+
+// UpdateRoutingSelectedAccountID sets the "routing_selected_account_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRoutingSelectedAccountID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingSelectedAccountID()
+	})
+}
+
+// ClearRoutingSelectedAccountID clears the value of the "routing_selected_account_id" field.
+func (u *UsageLogUpsertOne) ClearRoutingSelectedAccountID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingSelectedAccountID()
+	})
+}
+
+// SetRoutingSelectedAccountName sets the "routing_selected_account_name" field.
+func (u *UsageLogUpsertOne) SetRoutingSelectedAccountName(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingSelectedAccountName(v)
+	})
+}
+
+// UpdateRoutingSelectedAccountName sets the "routing_selected_account_name" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRoutingSelectedAccountName() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingSelectedAccountName()
+	})
+}
+
+// ClearRoutingSelectedAccountName clears the value of the "routing_selected_account_name" field.
+func (u *UsageLogUpsertOne) ClearRoutingSelectedAccountName() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingSelectedAccountName()
+	})
+}
+
+// SetRoutingEffectiveModel sets the "routing_effective_model" field.
+func (u *UsageLogUpsertOne) SetRoutingEffectiveModel(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingEffectiveModel(v)
+	})
+}
+
+// UpdateRoutingEffectiveModel sets the "routing_effective_model" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRoutingEffectiveModel() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingEffectiveModel()
+	})
+}
+
+// ClearRoutingEffectiveModel clears the value of the "routing_effective_model" field.
+func (u *UsageLogUpsertOne) ClearRoutingEffectiveModel() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingEffectiveModel()
+	})
+}
+
+// SetRoutingFailoverCount sets the "routing_failover_count" field.
+func (u *UsageLogUpsertOne) SetRoutingFailoverCount(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingFailoverCount(v)
+	})
+}
+
+// AddRoutingFailoverCount adds v to the "routing_failover_count" field.
+func (u *UsageLogUpsertOne) AddRoutingFailoverCount(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRoutingFailoverCount(v)
+	})
+}
+
+// UpdateRoutingFailoverCount sets the "routing_failover_count" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRoutingFailoverCount() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingFailoverCount()
+	})
+}
+
+// ClearRoutingFailoverCount clears the value of the "routing_failover_count" field.
+func (u *UsageLogUpsertOne) ClearRoutingFailoverCount() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingFailoverCount()
+	})
+}
+
+// SetRoutingFailoverFinalReason sets the "routing_failover_final_reason" field.
+func (u *UsageLogUpsertOne) SetRoutingFailoverFinalReason(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingFailoverFinalReason(v)
+	})
+}
+
+// UpdateRoutingFailoverFinalReason sets the "routing_failover_final_reason" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRoutingFailoverFinalReason() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingFailoverFinalReason()
+	})
+}
+
+// ClearRoutingFailoverFinalReason clears the value of the "routing_failover_final_reason" field.
+func (u *UsageLogUpsertOne) ClearRoutingFailoverFinalReason() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingFailoverFinalReason()
 	})
 }
 
@@ -2597,6 +3047,167 @@ func (u *UsageLogUpsertBulk) UpdateUpstreamModel() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearUpstreamModel() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearUpstreamModel()
+	})
+}
+
+// SetRoutingTargetGroup sets the "routing_target_group" field.
+func (u *UsageLogUpsertBulk) SetRoutingTargetGroup(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingTargetGroup(v)
+	})
+}
+
+// UpdateRoutingTargetGroup sets the "routing_target_group" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRoutingTargetGroup() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingTargetGroup()
+	})
+}
+
+// ClearRoutingTargetGroup clears the value of the "routing_target_group" field.
+func (u *UsageLogUpsertBulk) ClearRoutingTargetGroup() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingTargetGroup()
+	})
+}
+
+// SetRoutingScheduleLayer sets the "routing_schedule_layer" field.
+func (u *UsageLogUpsertBulk) SetRoutingScheduleLayer(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingScheduleLayer(v)
+	})
+}
+
+// UpdateRoutingScheduleLayer sets the "routing_schedule_layer" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRoutingScheduleLayer() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingScheduleLayer()
+	})
+}
+
+// ClearRoutingScheduleLayer clears the value of the "routing_schedule_layer" field.
+func (u *UsageLogUpsertBulk) ClearRoutingScheduleLayer() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingScheduleLayer()
+	})
+}
+
+// SetRoutingSelectedAccountID sets the "routing_selected_account_id" field.
+func (u *UsageLogUpsertBulk) SetRoutingSelectedAccountID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingSelectedAccountID(v)
+	})
+}
+
+// AddRoutingSelectedAccountID adds v to the "routing_selected_account_id" field.
+func (u *UsageLogUpsertBulk) AddRoutingSelectedAccountID(v int64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRoutingSelectedAccountID(v)
+	})
+}
+
+// UpdateRoutingSelectedAccountID sets the "routing_selected_account_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRoutingSelectedAccountID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingSelectedAccountID()
+	})
+}
+
+// ClearRoutingSelectedAccountID clears the value of the "routing_selected_account_id" field.
+func (u *UsageLogUpsertBulk) ClearRoutingSelectedAccountID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingSelectedAccountID()
+	})
+}
+
+// SetRoutingSelectedAccountName sets the "routing_selected_account_name" field.
+func (u *UsageLogUpsertBulk) SetRoutingSelectedAccountName(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingSelectedAccountName(v)
+	})
+}
+
+// UpdateRoutingSelectedAccountName sets the "routing_selected_account_name" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRoutingSelectedAccountName() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingSelectedAccountName()
+	})
+}
+
+// ClearRoutingSelectedAccountName clears the value of the "routing_selected_account_name" field.
+func (u *UsageLogUpsertBulk) ClearRoutingSelectedAccountName() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingSelectedAccountName()
+	})
+}
+
+// SetRoutingEffectiveModel sets the "routing_effective_model" field.
+func (u *UsageLogUpsertBulk) SetRoutingEffectiveModel(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingEffectiveModel(v)
+	})
+}
+
+// UpdateRoutingEffectiveModel sets the "routing_effective_model" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRoutingEffectiveModel() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingEffectiveModel()
+	})
+}
+
+// ClearRoutingEffectiveModel clears the value of the "routing_effective_model" field.
+func (u *UsageLogUpsertBulk) ClearRoutingEffectiveModel() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingEffectiveModel()
+	})
+}
+
+// SetRoutingFailoverCount sets the "routing_failover_count" field.
+func (u *UsageLogUpsertBulk) SetRoutingFailoverCount(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingFailoverCount(v)
+	})
+}
+
+// AddRoutingFailoverCount adds v to the "routing_failover_count" field.
+func (u *UsageLogUpsertBulk) AddRoutingFailoverCount(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddRoutingFailoverCount(v)
+	})
+}
+
+// UpdateRoutingFailoverCount sets the "routing_failover_count" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRoutingFailoverCount() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingFailoverCount()
+	})
+}
+
+// ClearRoutingFailoverCount clears the value of the "routing_failover_count" field.
+func (u *UsageLogUpsertBulk) ClearRoutingFailoverCount() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingFailoverCount()
+	})
+}
+
+// SetRoutingFailoverFinalReason sets the "routing_failover_final_reason" field.
+func (u *UsageLogUpsertBulk) SetRoutingFailoverFinalReason(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingFailoverFinalReason(v)
+	})
+}
+
+// UpdateRoutingFailoverFinalReason sets the "routing_failover_final_reason" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRoutingFailoverFinalReason() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingFailoverFinalReason()
+	})
+}
+
+// ClearRoutingFailoverFinalReason clears the value of the "routing_failover_final_reason" field.
+func (u *UsageLogUpsertBulk) ClearRoutingFailoverFinalReason() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingFailoverFinalReason()
 	})
 }
 

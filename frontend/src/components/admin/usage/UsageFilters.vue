@@ -139,6 +139,16 @@
           <Select v-model="filters.group_id" :options="groupOptions" searchable @change="emitChange" />
         </div>
 
+        <div class="w-full sm:w-auto sm:min-w-[180px]">
+          <label class="input-label">{{ t('admin.usage.routingTargetGroup') }}</label>
+          <Select v-model="filters.routing_target_group" :options="routingTargetGroupOptions" @change="emitChange" />
+        </div>
+
+        <div class="w-full sm:w-auto sm:min-w-[220px]">
+          <label class="input-label">{{ t('admin.usage.routingScheduleLayer') }}</label>
+          <Select v-model="filters.routing_schedule_layer" :options="routingScheduleLayerOptions" @change="emitChange" />
+        </div>
+
       </div>
 
       <!-- Right: actions -->
@@ -230,6 +240,19 @@ const billingTypeOptions = ref<SelectOption[]>([
   { value: null, label: t('admin.usage.allBillingTypes') },
   { value: 0, label: t('admin.usage.billingTypeBalance') },
   { value: 1, label: t('admin.usage.billingTypeSubscription') }
+])
+
+const routingTargetGroupOptions = ref<SelectOption[]>([
+  { value: null, label: t('admin.usage.allRoutingTargetGroups') },
+  { value: 'active', label: t('admin.usage.routingTargetGroupActive') },
+  { value: 'exhausted', label: t('admin.usage.routingTargetGroupExhausted') }
+])
+
+const routingScheduleLayerOptions = ref<SelectOption[]>([
+  { value: null, label: t('admin.usage.allRoutingScheduleLayers') },
+  { value: 'previous_response_id', label: t('admin.usage.routingScheduleLayerPreviousResponse') },
+  { value: 'session_hash', label: t('admin.usage.routingScheduleLayerSessionHash') },
+  { value: 'load_balance', label: t('admin.usage.routingScheduleLayerLoadBalance') }
 ])
 
 const emitChange = () => emit('change')

@@ -1051,6 +1051,13 @@ export interface UsageLogAccountSummary {
 
 export interface AdminUsageLog extends UsageLog {
   upstream_model?: string | null
+  routing_target_group?: string | null
+  routing_schedule_layer?: string | null
+  routing_selected_account_id?: number | null
+  routing_selected_account_name?: string | null
+  routing_effective_model?: string | null
+  routing_failover_count?: number | null
+  routing_failover_final_reason?: string | null
 
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null
@@ -1362,6 +1369,8 @@ export interface UsageQueryParams {
   account_id?: number
   group_id?: number
   model?: string
+  routing_target_group?: string
+  routing_schedule_layer?: string
   request_type?: UsageRequestType
   stream?: boolean
   billing_type?: number | null

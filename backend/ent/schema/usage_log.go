@@ -53,6 +53,32 @@ func (UsageLog) Fields() []ent.Field {
 			MaxLen(100).
 			Optional().
 			Nillable(),
+		field.String("routing_target_group").
+			MaxLen(32).
+			Optional().
+			Nillable(),
+		field.String("routing_schedule_layer").
+			MaxLen(64).
+			Optional().
+			Nillable(),
+		field.Int64("routing_selected_account_id").
+			Optional().
+			Nillable(),
+		field.String("routing_selected_account_name").
+			MaxLen(255).
+			Optional().
+			Nillable(),
+		field.String("routing_effective_model").
+			MaxLen(100).
+			Optional().
+			Nillable(),
+		field.Int("routing_failover_count").
+			Optional().
+			Nillable(),
+		field.String("routing_failover_final_reason").
+			MaxLen(128).
+			Optional().
+			Nillable(),
 		field.Int64("group_id").
 			Optional().
 			Nillable(),
@@ -188,6 +214,8 @@ func (UsageLog) Indexes() []ent.Index {
 		index.Fields("created_at"),
 		index.Fields("model"),
 		index.Fields("requested_model"),
+		index.Fields("routing_target_group"),
+		index.Fields("routing_schedule_layer"),
 		index.Fields("request_id"),
 		// 复合索引用于时间范围查询
 		index.Fields("user_id", "created_at"),

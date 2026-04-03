@@ -90,6 +90,41 @@ func UpstreamModel(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldUpstreamModel, v))
 }
 
+// RoutingTargetGroup applies equality check predicate on the "routing_target_group" field. It's identical to RoutingTargetGroupEQ.
+func RoutingTargetGroup(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingTargetGroup, v))
+}
+
+// RoutingScheduleLayer applies equality check predicate on the "routing_schedule_layer" field. It's identical to RoutingScheduleLayerEQ.
+func RoutingScheduleLayer(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingScheduleLayer, v))
+}
+
+// RoutingSelectedAccountID applies equality check predicate on the "routing_selected_account_id" field. It's identical to RoutingSelectedAccountIDEQ.
+func RoutingSelectedAccountID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingSelectedAccountID, v))
+}
+
+// RoutingSelectedAccountName applies equality check predicate on the "routing_selected_account_name" field. It's identical to RoutingSelectedAccountNameEQ.
+func RoutingSelectedAccountName(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingSelectedAccountName, v))
+}
+
+// RoutingEffectiveModel applies equality check predicate on the "routing_effective_model" field. It's identical to RoutingEffectiveModelEQ.
+func RoutingEffectiveModel(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingEffectiveModel, v))
+}
+
+// RoutingFailoverCount applies equality check predicate on the "routing_failover_count" field. It's identical to RoutingFailoverCountEQ.
+func RoutingFailoverCount(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingFailoverCount, v))
+}
+
+// RoutingFailoverFinalReason applies equality check predicate on the "routing_failover_final_reason" field. It's identical to RoutingFailoverFinalReasonEQ.
+func RoutingFailoverFinalReason(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingFailoverFinalReason, v))
+}
+
 // GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
 func GroupID(v int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldGroupID, v))
@@ -563,6 +598,481 @@ func UpstreamModelEqualFold(v string) predicate.UsageLog {
 // UpstreamModelContainsFold applies the ContainsFold predicate on the "upstream_model" field.
 func UpstreamModelContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldUpstreamModel, v))
+}
+
+// RoutingTargetGroupEQ applies the EQ predicate on the "routing_target_group" field.
+func RoutingTargetGroupEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingTargetGroup, v))
+}
+
+// RoutingTargetGroupNEQ applies the NEQ predicate on the "routing_target_group" field.
+func RoutingTargetGroupNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldRoutingTargetGroup, v))
+}
+
+// RoutingTargetGroupIn applies the In predicate on the "routing_target_group" field.
+func RoutingTargetGroupIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldRoutingTargetGroup, vs...))
+}
+
+// RoutingTargetGroupNotIn applies the NotIn predicate on the "routing_target_group" field.
+func RoutingTargetGroupNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldRoutingTargetGroup, vs...))
+}
+
+// RoutingTargetGroupGT applies the GT predicate on the "routing_target_group" field.
+func RoutingTargetGroupGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldRoutingTargetGroup, v))
+}
+
+// RoutingTargetGroupGTE applies the GTE predicate on the "routing_target_group" field.
+func RoutingTargetGroupGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldRoutingTargetGroup, v))
+}
+
+// RoutingTargetGroupLT applies the LT predicate on the "routing_target_group" field.
+func RoutingTargetGroupLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldRoutingTargetGroup, v))
+}
+
+// RoutingTargetGroupLTE applies the LTE predicate on the "routing_target_group" field.
+func RoutingTargetGroupLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldRoutingTargetGroup, v))
+}
+
+// RoutingTargetGroupContains applies the Contains predicate on the "routing_target_group" field.
+func RoutingTargetGroupContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldRoutingTargetGroup, v))
+}
+
+// RoutingTargetGroupHasPrefix applies the HasPrefix predicate on the "routing_target_group" field.
+func RoutingTargetGroupHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldRoutingTargetGroup, v))
+}
+
+// RoutingTargetGroupHasSuffix applies the HasSuffix predicate on the "routing_target_group" field.
+func RoutingTargetGroupHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldRoutingTargetGroup, v))
+}
+
+// RoutingTargetGroupIsNil applies the IsNil predicate on the "routing_target_group" field.
+func RoutingTargetGroupIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldRoutingTargetGroup))
+}
+
+// RoutingTargetGroupNotNil applies the NotNil predicate on the "routing_target_group" field.
+func RoutingTargetGroupNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldRoutingTargetGroup))
+}
+
+// RoutingTargetGroupEqualFold applies the EqualFold predicate on the "routing_target_group" field.
+func RoutingTargetGroupEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldRoutingTargetGroup, v))
+}
+
+// RoutingTargetGroupContainsFold applies the ContainsFold predicate on the "routing_target_group" field.
+func RoutingTargetGroupContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldRoutingTargetGroup, v))
+}
+
+// RoutingScheduleLayerEQ applies the EQ predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingScheduleLayer, v))
+}
+
+// RoutingScheduleLayerNEQ applies the NEQ predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldRoutingScheduleLayer, v))
+}
+
+// RoutingScheduleLayerIn applies the In predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldRoutingScheduleLayer, vs...))
+}
+
+// RoutingScheduleLayerNotIn applies the NotIn predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldRoutingScheduleLayer, vs...))
+}
+
+// RoutingScheduleLayerGT applies the GT predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldRoutingScheduleLayer, v))
+}
+
+// RoutingScheduleLayerGTE applies the GTE predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldRoutingScheduleLayer, v))
+}
+
+// RoutingScheduleLayerLT applies the LT predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldRoutingScheduleLayer, v))
+}
+
+// RoutingScheduleLayerLTE applies the LTE predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldRoutingScheduleLayer, v))
+}
+
+// RoutingScheduleLayerContains applies the Contains predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldRoutingScheduleLayer, v))
+}
+
+// RoutingScheduleLayerHasPrefix applies the HasPrefix predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldRoutingScheduleLayer, v))
+}
+
+// RoutingScheduleLayerHasSuffix applies the HasSuffix predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldRoutingScheduleLayer, v))
+}
+
+// RoutingScheduleLayerIsNil applies the IsNil predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldRoutingScheduleLayer))
+}
+
+// RoutingScheduleLayerNotNil applies the NotNil predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldRoutingScheduleLayer))
+}
+
+// RoutingScheduleLayerEqualFold applies the EqualFold predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldRoutingScheduleLayer, v))
+}
+
+// RoutingScheduleLayerContainsFold applies the ContainsFold predicate on the "routing_schedule_layer" field.
+func RoutingScheduleLayerContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldRoutingScheduleLayer, v))
+}
+
+// RoutingSelectedAccountIDEQ applies the EQ predicate on the "routing_selected_account_id" field.
+func RoutingSelectedAccountIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingSelectedAccountID, v))
+}
+
+// RoutingSelectedAccountIDNEQ applies the NEQ predicate on the "routing_selected_account_id" field.
+func RoutingSelectedAccountIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldRoutingSelectedAccountID, v))
+}
+
+// RoutingSelectedAccountIDIn applies the In predicate on the "routing_selected_account_id" field.
+func RoutingSelectedAccountIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldRoutingSelectedAccountID, vs...))
+}
+
+// RoutingSelectedAccountIDNotIn applies the NotIn predicate on the "routing_selected_account_id" field.
+func RoutingSelectedAccountIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldRoutingSelectedAccountID, vs...))
+}
+
+// RoutingSelectedAccountIDGT applies the GT predicate on the "routing_selected_account_id" field.
+func RoutingSelectedAccountIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldRoutingSelectedAccountID, v))
+}
+
+// RoutingSelectedAccountIDGTE applies the GTE predicate on the "routing_selected_account_id" field.
+func RoutingSelectedAccountIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldRoutingSelectedAccountID, v))
+}
+
+// RoutingSelectedAccountIDLT applies the LT predicate on the "routing_selected_account_id" field.
+func RoutingSelectedAccountIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldRoutingSelectedAccountID, v))
+}
+
+// RoutingSelectedAccountIDLTE applies the LTE predicate on the "routing_selected_account_id" field.
+func RoutingSelectedAccountIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldRoutingSelectedAccountID, v))
+}
+
+// RoutingSelectedAccountIDIsNil applies the IsNil predicate on the "routing_selected_account_id" field.
+func RoutingSelectedAccountIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldRoutingSelectedAccountID))
+}
+
+// RoutingSelectedAccountIDNotNil applies the NotNil predicate on the "routing_selected_account_id" field.
+func RoutingSelectedAccountIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldRoutingSelectedAccountID))
+}
+
+// RoutingSelectedAccountNameEQ applies the EQ predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingSelectedAccountName, v))
+}
+
+// RoutingSelectedAccountNameNEQ applies the NEQ predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldRoutingSelectedAccountName, v))
+}
+
+// RoutingSelectedAccountNameIn applies the In predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldRoutingSelectedAccountName, vs...))
+}
+
+// RoutingSelectedAccountNameNotIn applies the NotIn predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldRoutingSelectedAccountName, vs...))
+}
+
+// RoutingSelectedAccountNameGT applies the GT predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldRoutingSelectedAccountName, v))
+}
+
+// RoutingSelectedAccountNameGTE applies the GTE predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldRoutingSelectedAccountName, v))
+}
+
+// RoutingSelectedAccountNameLT applies the LT predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldRoutingSelectedAccountName, v))
+}
+
+// RoutingSelectedAccountNameLTE applies the LTE predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldRoutingSelectedAccountName, v))
+}
+
+// RoutingSelectedAccountNameContains applies the Contains predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldRoutingSelectedAccountName, v))
+}
+
+// RoutingSelectedAccountNameHasPrefix applies the HasPrefix predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldRoutingSelectedAccountName, v))
+}
+
+// RoutingSelectedAccountNameHasSuffix applies the HasSuffix predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldRoutingSelectedAccountName, v))
+}
+
+// RoutingSelectedAccountNameIsNil applies the IsNil predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldRoutingSelectedAccountName))
+}
+
+// RoutingSelectedAccountNameNotNil applies the NotNil predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldRoutingSelectedAccountName))
+}
+
+// RoutingSelectedAccountNameEqualFold applies the EqualFold predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldRoutingSelectedAccountName, v))
+}
+
+// RoutingSelectedAccountNameContainsFold applies the ContainsFold predicate on the "routing_selected_account_name" field.
+func RoutingSelectedAccountNameContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldRoutingSelectedAccountName, v))
+}
+
+// RoutingEffectiveModelEQ applies the EQ predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingEffectiveModel, v))
+}
+
+// RoutingEffectiveModelNEQ applies the NEQ predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldRoutingEffectiveModel, v))
+}
+
+// RoutingEffectiveModelIn applies the In predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldRoutingEffectiveModel, vs...))
+}
+
+// RoutingEffectiveModelNotIn applies the NotIn predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldRoutingEffectiveModel, vs...))
+}
+
+// RoutingEffectiveModelGT applies the GT predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldRoutingEffectiveModel, v))
+}
+
+// RoutingEffectiveModelGTE applies the GTE predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldRoutingEffectiveModel, v))
+}
+
+// RoutingEffectiveModelLT applies the LT predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldRoutingEffectiveModel, v))
+}
+
+// RoutingEffectiveModelLTE applies the LTE predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldRoutingEffectiveModel, v))
+}
+
+// RoutingEffectiveModelContains applies the Contains predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldRoutingEffectiveModel, v))
+}
+
+// RoutingEffectiveModelHasPrefix applies the HasPrefix predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldRoutingEffectiveModel, v))
+}
+
+// RoutingEffectiveModelHasSuffix applies the HasSuffix predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldRoutingEffectiveModel, v))
+}
+
+// RoutingEffectiveModelIsNil applies the IsNil predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldRoutingEffectiveModel))
+}
+
+// RoutingEffectiveModelNotNil applies the NotNil predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldRoutingEffectiveModel))
+}
+
+// RoutingEffectiveModelEqualFold applies the EqualFold predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldRoutingEffectiveModel, v))
+}
+
+// RoutingEffectiveModelContainsFold applies the ContainsFold predicate on the "routing_effective_model" field.
+func RoutingEffectiveModelContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldRoutingEffectiveModel, v))
+}
+
+// RoutingFailoverCountEQ applies the EQ predicate on the "routing_failover_count" field.
+func RoutingFailoverCountEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingFailoverCount, v))
+}
+
+// RoutingFailoverCountNEQ applies the NEQ predicate on the "routing_failover_count" field.
+func RoutingFailoverCountNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldRoutingFailoverCount, v))
+}
+
+// RoutingFailoverCountIn applies the In predicate on the "routing_failover_count" field.
+func RoutingFailoverCountIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldRoutingFailoverCount, vs...))
+}
+
+// RoutingFailoverCountNotIn applies the NotIn predicate on the "routing_failover_count" field.
+func RoutingFailoverCountNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldRoutingFailoverCount, vs...))
+}
+
+// RoutingFailoverCountGT applies the GT predicate on the "routing_failover_count" field.
+func RoutingFailoverCountGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldRoutingFailoverCount, v))
+}
+
+// RoutingFailoverCountGTE applies the GTE predicate on the "routing_failover_count" field.
+func RoutingFailoverCountGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldRoutingFailoverCount, v))
+}
+
+// RoutingFailoverCountLT applies the LT predicate on the "routing_failover_count" field.
+func RoutingFailoverCountLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldRoutingFailoverCount, v))
+}
+
+// RoutingFailoverCountLTE applies the LTE predicate on the "routing_failover_count" field.
+func RoutingFailoverCountLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldRoutingFailoverCount, v))
+}
+
+// RoutingFailoverCountIsNil applies the IsNil predicate on the "routing_failover_count" field.
+func RoutingFailoverCountIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldRoutingFailoverCount))
+}
+
+// RoutingFailoverCountNotNil applies the NotNil predicate on the "routing_failover_count" field.
+func RoutingFailoverCountNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldRoutingFailoverCount))
+}
+
+// RoutingFailoverFinalReasonEQ applies the EQ predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingFailoverFinalReason, v))
+}
+
+// RoutingFailoverFinalReasonNEQ applies the NEQ predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldRoutingFailoverFinalReason, v))
+}
+
+// RoutingFailoverFinalReasonIn applies the In predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldRoutingFailoverFinalReason, vs...))
+}
+
+// RoutingFailoverFinalReasonNotIn applies the NotIn predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldRoutingFailoverFinalReason, vs...))
+}
+
+// RoutingFailoverFinalReasonGT applies the GT predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldRoutingFailoverFinalReason, v))
+}
+
+// RoutingFailoverFinalReasonGTE applies the GTE predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldRoutingFailoverFinalReason, v))
+}
+
+// RoutingFailoverFinalReasonLT applies the LT predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldRoutingFailoverFinalReason, v))
+}
+
+// RoutingFailoverFinalReasonLTE applies the LTE predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldRoutingFailoverFinalReason, v))
+}
+
+// RoutingFailoverFinalReasonContains applies the Contains predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldRoutingFailoverFinalReason, v))
+}
+
+// RoutingFailoverFinalReasonHasPrefix applies the HasPrefix predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldRoutingFailoverFinalReason, v))
+}
+
+// RoutingFailoverFinalReasonHasSuffix applies the HasSuffix predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldRoutingFailoverFinalReason, v))
+}
+
+// RoutingFailoverFinalReasonIsNil applies the IsNil predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldRoutingFailoverFinalReason))
+}
+
+// RoutingFailoverFinalReasonNotNil applies the NotNil predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldRoutingFailoverFinalReason))
+}
+
+// RoutingFailoverFinalReasonEqualFold applies the EqualFold predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldRoutingFailoverFinalReason, v))
+}
+
+// RoutingFailoverFinalReasonContainsFold applies the ContainsFold predicate on the "routing_failover_final_reason" field.
+func RoutingFailoverFinalReasonContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldRoutingFailoverFinalReason, v))
 }
 
 // GroupIDEQ applies the EQ predicate on the "group_id" field.

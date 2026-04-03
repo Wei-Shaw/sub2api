@@ -3242,6 +3242,8 @@ export default {
       allAccounts: 'All Accounts',
       allGroups: 'All Groups',
       allTypes: 'All Types',
+      allRoutingTargetGroups: 'All Target Groups',
+      allRoutingScheduleLayers: 'All Schedule Layers',
       inputCost: 'Input Cost',
       outputCost: 'Output Cost',
       cacheCreationCost: 'Cache Creation Cost',
@@ -3257,6 +3259,17 @@ export default {
       allBillingTypes: 'All Billing Types',
       billingTypeBalance: 'Balance',
       billingTypeSubscription: 'Subscription',
+      routingTargetGroup: 'Target Group',
+      routingTargetGroupActive: 'Active',
+      routingTargetGroupExhausted: 'Exhausted',
+      routingScheduleLayer: 'Schedule Layer',
+      routingScheduleLayerPreviousResponse: 'previous_response',
+      routingScheduleLayerSessionHash: 'sticky_session',
+      routingScheduleLayerLoadBalance: 'load_balance',
+      routedAccount: 'Routed Account',
+      effectiveModel: 'Effective Model',
+      routingFailover: 'Failover',
+      routingFailoverReason: 'Failover Result',
       ipAddress: 'IP',
       clickToViewBalance: 'Click to view balance history',
       failedToLoadUser: 'Failed to load user info',
@@ -3414,6 +3427,16 @@ export default {
           avgDurationMs: 'Avg Duration (ms)',
           requestsWithFirstToken: 'Requests With First Token'
         }
+      },
+      openaiRouting: {
+        title: 'OpenAI Routing Distribution',
+        subtitle: 'Compare how traffic and token volume are distributed between active and exhausted target groups.',
+        failedToLoad: 'Failed to load OpenAI routing stats',
+        empty: 'No OpenAI routing stats for the current filters',
+        requestCount: 'Requests',
+        totalTokens: 'Total Tokens',
+        inputTokens: 'Input Tokens',
+        outputTokens: 'Output Tokens'
       },
       fullscreen: {
         enter: 'Enter Fullscreen'
@@ -3683,6 +3706,7 @@ export default {
           kind: 'Kind',
           platform: 'Platform',
           model: 'Model',
+          routing: 'Routing',
           duration: 'Duration',
           status: 'Status',
           requestId: 'Request ID',

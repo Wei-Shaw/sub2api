@@ -41,6 +41,8 @@ var errPrepareResponsesRequestParse = errors.New("prepare responses request pars
 var errPrepareResponsesRequestRewrite = errors.New("prepare responses request rewrite")
 var errPrepareResponsesRequestInvalidModel = errors.New("prepare responses request invalid model")
 
+const openAIRoutingSnapshotKey = "openai_routing_snapshot"
+
 func resolveOpenAIForwardDefaultMappedModel(apiKey *service.APIKey, fallbackModel string) string {
 	if fallbackModel = strings.TrimSpace(fallbackModel); fallbackModel != "" {
 		return fallbackModel
@@ -49,6 +51,37 @@ func resolveOpenAIForwardDefaultMappedModel(apiKey *service.APIKey, fallbackMode
 		return ""
 	}
 	return strings.TrimSpace(apiKey.Group.DefaultMappedModel)
+}
+
+func storeOpenAIRoutingSnapshot(c *gin.Context, input service.OpenAIRoutingSnapshotInput) *service.OpenAIRoutingSnapshot {
+	built := service.NewOpenAIRoutingSnapshot(input)
+	if c == nil || built == nil {
+		return built
+	}
+	if existing := getOpenAIRoutingSnapshot(c); existing != nil {
+		existing.TargetGroup = built.TargetGroup
+		existing.ScheduleLayer = built.ScheduleLayer
+		existing.SelectedAccountID = built.SelectedAccountID
+		existing.SelectedAccountName = built.SelectedAccountName
+		existing.RequestedModel = built.RequestedModel
+		existing.EffectiveModel = built.EffectiveModel
+		c.Set(openAIRoutingSnapshotKey, existing)
+		return existing
+	}
+	c.Set(openAIRoutingSnapshotKey, built)
+	return built
+}
+
+func getOpenAIRoutingSnapshot(c *gin.Context) *service.OpenAIRoutingSnapshot {
+	if c == nil {
+		return nil
+	}
+	v, ok := c.Get(openAIRoutingSnapshotKey)
+	if !ok {
+		return nil
+	}
+	snapshot, _ := v.(*service.OpenAIRoutingSnapshot)
+	return snapshot
 }
 
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
@@ -161,6 +194,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+	requestedModel := reqModel
 
 	streamResult := gjson.GetBytes(body, "stream")
 	if streamResult.Exists() && streamResult.Type != gjson.True && streamResult.Type != gjson.False {
@@ -294,6 +328,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		storeOpenAIRoutingSnapshot(c, service.OpenAIRoutingSnapshotInput{
+			TargetGroup:    targetGroup,
+			ScheduleLayer:  string(scheduleDecision.Layer),
+			Account:        account,
+			RequestedModel: requestedModel,
+			EffectiveModel: reqModel,
+		})
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
@@ -339,6 +380,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						}
 						continue
 					}
+				}
+				if snapshot := getOpenAIRoutingSnapshot(c); snapshot != nil && failoverErr.StatusCode > 0 {
+					snapshot.RecordFailover(fmt.Sprintf("upstream_%d", failoverErr.StatusCode))
 				}
 				h.gatewayService.RecordOpenAIAccountSwitch()
 				failedAccountIDs[account.ID] = struct{}{}
@@ -392,6 +436,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				User:               apiKey.User,
 				Account:            account,
 				Subscription:       subscription,
+				RoutingSnapshot:    getOpenAIRoutingSnapshot(c),
 				InboundEndpoint:    GetInboundEndpoint(c),
 				UpstreamEndpoint:   GetUpstreamEndpoint(c, account.Platform),
 				UserAgent:          userAgent,

@@ -172,6 +172,13 @@ export interface OpsRequestDetail {
 
   platform?: string
   model?: string
+  routing_target_group?: string | null
+  routing_schedule_layer?: string | null
+  routing_selected_account_id?: number | null
+  routing_selected_account_name?: string | null
+  routing_effective_model?: string | null
+  routing_failover_count?: number | null
+  routing_failover_final_reason?: string | null
   duration_ms?: number | null
   status_code?: number | null
 
@@ -197,6 +204,8 @@ export interface OpsRequestDetailsParams {
 
   platform?: string
   group_id?: number | null
+  routing_target_group?: string
+  routing_schedule_layer?: string
 
   user_id?: number
   api_key_id?: number
@@ -298,6 +307,26 @@ export interface OpsOpenAITokenStatsParams {
   page?: number
   page_size?: number
   top_n?: number
+}
+
+export interface OpsOpenAIRoutingStatsResponse {
+  time_range: '5m' | '30m' | '1h' | '6h' | '24h' | '7d' | '30d' | 'custom'
+  start_time: string
+  end_time: string
+  platform?: string
+  group_id?: number | null
+  request_count_by_group: Record<string, number>
+  total_tokens_by_group: Record<string, number>
+  input_tokens_by_group: Record<string, number>
+  output_tokens_by_group: Record<string, number>
+}
+
+export interface OpsOpenAIRoutingStatsParams {
+  time_range?: '5m' | '30m' | '1h' | '6h' | '24h' | '7d' | '30d' | 'custom'
+  start_time?: string
+  end_time?: string
+  platform?: string
+  group_id?: number | null
 }
 
 export interface OpsSystemMetricsSnapshot {
@@ -1122,6 +1151,17 @@ export async function getOpenAITokenStats(
   return data
 }
 
+export async function getOpenAIRoutingStats(
+  params: OpsOpenAIRoutingStatsParams,
+  options: OpsRequestOptions = {}
+): Promise<OpsOpenAIRoutingStatsResponse> {
+  const { data } = await apiClient.get<OpsOpenAIRoutingStatsResponse>('/admin/ops/dashboard/openai-routing', {
+    params,
+    signal: options.signal
+  })
+  return data
+}
+
 export type OpsErrorListView = 'errors' | 'excluded' | 'all'
 
 export type OpsErrorListQueryParams = {
@@ -1371,6 +1411,7 @@ export const opsAPI = {
   getErrorTrend,
   getErrorDistribution,
   getOpenAITokenStats,
+  getOpenAIRoutingStats,
   getConcurrencyStats,
   getUserConcurrencyStats,
   getAccountAvailabilityStats,
