@@ -74,11 +74,13 @@ type openAIRecordUsageSubRepoStub struct {
 	incrementCalls int
 	incrementErr   error
 	lastCtxErr     error
+	lastCost       float64
 }
 
 func (s *openAIRecordUsageSubRepoStub) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
 	s.incrementCalls++
 	s.lastCtxErr = ctx.Err()
+	s.lastCost = costUSD
 	return s.incrementErr
 }
 
@@ -984,6 +986,7 @@ func TestOpenAIGatewayServiceRecordUsage_SubscriptionBillingSetsSubscriptionFiel
 	subRepo := &openAIRecordUsageSubRepoStub{}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
 	subscription := &UserSubscription{ID: 99}
+	expectedCost := expectedOpenAICost(t, svc, "gpt-5.1", OpenAIUsage{InputTokens: 10, OutputTokens: 5}, 1)
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
@@ -1004,7 +1007,47 @@ func TestOpenAIGatewayServiceRecordUsage_SubscriptionBillingSetsSubscriptionFiel
 	require.NotNil(t, usageRepo.lastLog.SubscriptionID)
 	require.Equal(t, subscription.ID, *usageRepo.lastLog.SubscriptionID)
 	require.Equal(t, 1, subRepo.incrementCalls)
+	require.InDelta(t, expectedCost.ActualCost, subRepo.lastCost, 1e-12)
 	require.Equal(t, 0, userRepo.deductCalls)
+}
+
+func TestPostUsageBilling_SubscriptionUsesActualCostForUsage(t *testing.T) {
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	cache := &billingCacheWorkerStub{}
+	billingCache := NewBillingCacheService(cache, nil, nil, nil, &config.Config{})
+	t.Cleanup(billingCache.Stop)
+
+	postUsageBilling(context.Background(), &postUsageBillingParams{
+		Cost:               &CostBreakdown{TotalCost: 12.5, ActualCost: 0.125},
+		User:               &User{ID: 1},
+		APIKey:             &APIKey{ID: 2, GroupID: i64p(88), Group: &Group{ID: 88, SubscriptionType: SubscriptionTypeSubscription}},
+		Account:            &Account{ID: 3, Type: AccountTypeOAuth},
+		Subscription:       &UserSubscription{ID: 99},
+		IsSubscriptionBill: true,
+	}, &billingDeps{
+		userSubRepo:         subRepo,
+		billingCacheService: billingCache,
+		deferredService:     &DeferredService{},
+	})
+
+	require.Equal(t, 1, subRepo.incrementCalls)
+	require.InDelta(t, 0.125, subRepo.lastCost, 1e-12)
+}
+
+func TestBuildUsageBillingCommand_SubscriptionUsesActualCost(t *testing.T) {
+	usageLog := &UsageLog{SubscriptionID: i64p(99)}
+	cmd := buildUsageBillingCommand("req-subscription-cost", usageLog, &postUsageBillingParams{
+		Cost:               &CostBreakdown{TotalCost: 12.5, ActualCost: 0.125},
+		User:               &User{ID: 1},
+		APIKey:             &APIKey{ID: 2, GroupID: i64p(88), Group: &Group{ID: 88, SubscriptionType: SubscriptionTypeSubscription}},
+		Account:            &Account{ID: 3, Type: AccountTypeOAuth},
+		Subscription:       &UserSubscription{ID: 99},
+		IsSubscriptionBill: true,
+	})
+
+	require.NotNil(t, cmd)
+	require.NotNil(t, cmd.SubscriptionID)
+	require.InDelta(t, 0.125, cmd.SubscriptionCost, 1e-12)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_SimpleModeSkipsBillingAfterPersist(t *testing.T) {
