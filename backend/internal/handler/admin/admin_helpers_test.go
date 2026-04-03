@@ -148,6 +148,44 @@ func TestParseOpsOpenAITokenStatsFilter_InvalidParams(t *testing.T) {
 	}
 }
 
+func TestParseOpsOpenAIRoutingStatsFilter_Defaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+
+	before := time.Now().UTC()
+	filter, err := parseOpsOpenAIRoutingStatsFilter(c)
+	after := time.Now().UTC()
+
+	require.NoError(t, err)
+	require.NotNil(t, filter)
+	require.Equal(t, "30d", filter.TimeRange)
+	require.Nil(t, filter.GroupID)
+	require.Equal(t, "", filter.Platform)
+	require.True(t, filter.StartTime.Before(filter.EndTime))
+	require.WithinDuration(t, before.Add(-30*24*time.Hour), filter.StartTime, 2*time.Second)
+	require.WithinDuration(t, after, filter.EndTime, 2*time.Second)
+}
+
+func TestParseOpsOpenAIRoutingStatsFilter_InvalidParams(t *testing.T) {
+	tests := []string{
+		"/?group_id=0",
+		"/?group_id=abc",
+		"/?start_time=bad",
+	}
+
+	gin.SetMode(gin.TestMode)
+	for _, rawURL := range tests {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, rawURL, nil)
+
+		_, err := parseOpsOpenAIRoutingStatsFilter(c)
+		require.Error(t, err, "url=%s", rawURL)
+	}
+}
+
 func TestParseOpsTimeRange(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

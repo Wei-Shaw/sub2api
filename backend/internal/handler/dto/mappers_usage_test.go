@@ -148,6 +148,47 @@ func TestUsageLogFromService_FallsBackToLegacyModelWhenRequestedModelMissing(t *
 	require.Equal(t, "claude-3", adminDTO.Model)
 }
 
+func TestUsageLogFromServiceAdmin_IncludesRoutingSnapshot(t *testing.T) {
+	t.Parallel()
+
+	routingTargetGroup := "exhausted"
+	routingScheduleLayer := "load_balance"
+	routingSelectedAccountID := int64(66)
+	routingSelectedAccountName := "acc-66"
+	routingEffectiveModel := "gpt-5.4"
+	routingFailoverCount := 1
+	routingFailoverFinalReason := "upstream_502"
+
+	log := &service.UsageLog{
+		RequestID:                  "req-routing-1",
+		Model:                      "gpt-5.4-Sys",
+		RoutingTargetGroup:         &routingTargetGroup,
+		RoutingScheduleLayer:       &routingScheduleLayer,
+		RoutingSelectedAccountID:   &routingSelectedAccountID,
+		RoutingSelectedAccountName: &routingSelectedAccountName,
+		RoutingEffectiveModel:      &routingEffectiveModel,
+		RoutingFailoverCount:       &routingFailoverCount,
+		RoutingFailoverFinalReason: &routingFailoverFinalReason,
+	}
+
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	require.NotNil(t, adminDTO.RoutingTargetGroup)
+	require.Equal(t, routingTargetGroup, *adminDTO.RoutingTargetGroup)
+	require.NotNil(t, adminDTO.RoutingScheduleLayer)
+	require.Equal(t, routingScheduleLayer, *adminDTO.RoutingScheduleLayer)
+	require.NotNil(t, adminDTO.RoutingSelectedAccountID)
+	require.Equal(t, routingSelectedAccountID, *adminDTO.RoutingSelectedAccountID)
+	require.NotNil(t, adminDTO.RoutingSelectedAccountName)
+	require.Equal(t, routingSelectedAccountName, *adminDTO.RoutingSelectedAccountName)
+	require.NotNil(t, adminDTO.RoutingEffectiveModel)
+	require.Equal(t, routingEffectiveModel, *adminDTO.RoutingEffectiveModel)
+	require.NotNil(t, adminDTO.RoutingFailoverCount)
+	require.Equal(t, routingFailoverCount, *adminDTO.RoutingFailoverCount)
+	require.NotNil(t, adminDTO.RoutingFailoverFinalReason)
+	require.Equal(t, routingFailoverFinalReason, *adminDTO.RoutingFailoverFinalReason)
+}
+
 func f64Ptr(value float64) *float64 {
 	return &value
 }

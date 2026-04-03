@@ -57,6 +57,12 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 		if model := strings.TrimSpace(filter.Model); model != "" {
 			addCondition(fmt.Sprintf("model = $%d", len(args)+1), model)
 		}
+		if targetGroup := strings.TrimSpace(strings.ToLower(filter.RoutingTargetGroup)); targetGroup != "" {
+			addCondition(fmt.Sprintf("routing_target_group = $%d", len(args)+1), targetGroup)
+		}
+		if scheduleLayer := strings.TrimSpace(filter.RoutingScheduleLayer); scheduleLayer != "" {
+			addCondition(fmt.Sprintf("routing_schedule_layer = $%d", len(args)+1), scheduleLayer)
+		}
 		if requestID := strings.TrimSpace(filter.RequestID); requestID != "" {
 			addCondition(fmt.Sprintf("request_id = $%d", len(args)+1), requestID)
 		}
@@ -91,7 +97,14 @@ WITH combined AS (
     ul.created_at AS created_at,
     ul.request_id AS request_id,
     COALESCE(NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
-    ul.model AS model,
+    COALESCE(NULLIF(ul.requested_model, ''), ul.model) AS model,
+    COALESCE(NULLIF(ul.routing_target_group, ''), '') AS routing_target_group,
+    COALESCE(NULLIF(ul.routing_schedule_layer, ''), '') AS routing_schedule_layer,
+    COALESCE(ul.routing_selected_account_id, ul.account_id) AS routing_selected_account_id,
+    NULLIF(ul.routing_selected_account_name, '') AS routing_selected_account_name,
+    COALESCE(NULLIF(ul.routing_effective_model, ''), NULLIF(ul.upstream_model, ''), '') AS routing_effective_model,
+    ul.routing_failover_count AS routing_failover_count,
+    COALESCE(NULLIF(ul.routing_failover_final_reason, ''), '') AS routing_failover_final_reason,
     ul.duration_ms AS duration_ms,
     NULL::INT AS status_code,
     NULL::BIGINT AS error_id,
@@ -115,7 +128,14 @@ WITH combined AS (
     o.created_at AS created_at,
     COALESCE(NULLIF(o.request_id,''), NULLIF(o.client_request_id,''), '') AS request_id,
     COALESCE(NULLIF(o.platform, ''), NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
-    o.model AS model,
+    COALESCE(NULLIF(o.routing_requested_model, ''), NULLIF(o.model, ''), '') AS model,
+    COALESCE(NULLIF(o.routing_target_group, ''), '') AS routing_target_group,
+    COALESCE(NULLIF(o.routing_schedule_layer, ''), '') AS routing_schedule_layer,
+    COALESCE(o.routing_selected_account_id, o.account_id) AS routing_selected_account_id,
+    NULLIF(o.routing_selected_account_name, '') AS routing_selected_account_name,
+    COALESCE(NULLIF(o.routing_effective_model, ''), NULLIF(o.upstream_model, ''), '') AS routing_effective_model,
+    o.routing_failover_count AS routing_failover_count,
+    COALESCE(NULLIF(o.routing_failover_final_reason, ''), '') AS routing_failover_final_reason,
     o.duration_ms AS duration_ms,
     o.status_code AS status_code,
     o.id AS error_id,
@@ -165,6 +185,13 @@ SELECT
   request_id,
   platform,
   model,
+  routing_target_group,
+  routing_schedule_layer,
+  routing_selected_account_id,
+  routing_selected_account_name,
+  routing_effective_model,
+  routing_failover_count,
+  routing_failover_final_reason,
   duration_ms,
   status_code,
   error_id,
@@ -207,11 +234,18 @@ LIMIT $%d OFFSET $%d
 	out := make([]*service.OpsRequestDetail, 0, pageSize)
 	for rows.Next() {
 		var (
-			kind      string
-			createdAt time.Time
-			requestID sql.NullString
-			platform  sql.NullString
-			model     sql.NullString
+			kind                       string
+			createdAt                  time.Time
+			requestID                  sql.NullString
+			platform                   sql.NullString
+			model                      sql.NullString
+			routingTargetGroup         sql.NullString
+			routingScheduleLayer       sql.NullString
+			routingSelectedAccountID   sql.NullInt64
+			routingSelectedAccountName sql.NullString
+			routingEffectiveModel      sql.NullString
+			routingFailoverCount       sql.NullInt64
+			routingFailoverFinalReason sql.NullString
 
 			durationMs sql.NullInt64
 			statusCode sql.NullInt64
@@ -235,6 +269,13 @@ LIMIT $%d OFFSET $%d
 			&requestID,
 			&platform,
 			&model,
+			&routingTargetGroup,
+			&routingScheduleLayer,
+			&routingSelectedAccountID,
+			&routingSelectedAccountName,
+			&routingEffectiveModel,
+			&routingFailoverCount,
+			&routingFailoverFinalReason,
 			&durationMs,
 			&statusCode,
 			&errorID,
@@ -251,11 +292,18 @@ LIMIT $%d OFFSET $%d
 		}
 
 		item := &service.OpsRequestDetail{
-			Kind:      service.OpsRequestKind(kind),
-			CreatedAt: createdAt,
-			RequestID: strings.TrimSpace(requestID.String),
-			Platform:  strings.TrimSpace(platform.String),
-			Model:     strings.TrimSpace(model.String),
+			Kind:                       service.OpsRequestKind(kind),
+			CreatedAt:                  createdAt,
+			RequestID:                  strings.TrimSpace(requestID.String),
+			Platform:                   strings.TrimSpace(platform.String),
+			Model:                      strings.TrimSpace(model.String),
+			RoutingTargetGroup:         strings.TrimSpace(routingTargetGroup.String),
+			RoutingScheduleLayer:       strings.TrimSpace(routingScheduleLayer.String),
+			RoutingSelectedAccountID:   toInt64Ptr(routingSelectedAccountID),
+			RoutingSelectedAccountName: nullStringPtr(routingSelectedAccountName),
+			RoutingEffectiveModel:      strings.TrimSpace(routingEffectiveModel.String),
+			RoutingFailoverCount:       toIntPtr(routingFailoverCount),
+			RoutingFailoverFinalReason: strings.TrimSpace(routingFailoverFinalReason.String),
 
 			DurationMs: toIntPtr(durationMs),
 			StatusCode: toIntPtr(statusCode),
@@ -283,4 +331,15 @@ LIMIT $%d OFFSET $%d
 	}
 
 	return out, total, nil
+}
+
+func nullStringPtr(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+	trimmed := strings.TrimSpace(value.String)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }

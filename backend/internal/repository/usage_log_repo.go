@@ -28,7 +28,7 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, media_type, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, media_type, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, routing_target_group, routing_schedule_layer, routing_selected_account_id, routing_selected_account_name, routing_effective_model, routing_failover_count, routing_failover_final_reason, cache_ttl_overridden, created_at"
 
 // usageLogInsertArgTypes must stay in the same order as:
 //  1. prepareUsageLogInsert().args
@@ -76,6 +76,13 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // reasoning_effort
 	"text",        // inbound_endpoint
 	"text",        // upstream_endpoint
+	"text",        // routing_target_group
+	"text",        // routing_schedule_layer
+	"bigint",      // routing_selected_account_id
+	"text",        // routing_selected_account_name
+	"text",        // routing_effective_model
+	"integer",     // routing_failover_count
+	"text",        // routing_failover_final_reason
 	"boolean",     // cache_ttl_overridden
 	"timestamptz", // created_at
 }
@@ -349,6 +356,13 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			reasoning_effort,
 			inbound_endpoint,
 			upstream_endpoint,
+			routing_target_group,
+			routing_schedule_layer,
+			routing_selected_account_id,
+			routing_selected_account_name,
+			routing_effective_model,
+			routing_failover_count,
+			routing_failover_final_reason,
 			cache_ttl_overridden,
 			created_at
 		) VALUES (
@@ -357,7 +371,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			$10, $11, $12, $13,
 			$14, $15,
 			$16, $17, $18, $19, $20, $21,
-			$22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40
+			$22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -781,11 +795,18 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			reasoning_effort,
 			inbound_endpoint,
 			upstream_endpoint,
+			routing_target_group,
+			routing_schedule_layer,
+			routing_selected_account_id,
+			routing_selected_account_name,
+			routing_effective_model,
+			routing_failover_count,
+			routing_failover_final_reason,
 			cache_ttl_overridden,
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(keys)*39)
+	args := make([]any, 0, len(keys)*47)
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -852,6 +873,13 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				reasoning_effort,
 				inbound_endpoint,
 				upstream_endpoint,
+				routing_target_group,
+				routing_schedule_layer,
+				routing_selected_account_id,
+				routing_selected_account_name,
+				routing_effective_model,
+				routing_failover_count,
+				routing_failover_final_reason,
 				cache_ttl_overridden,
 				created_at
 			)
@@ -894,6 +922,13 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				reasoning_effort,
 				inbound_endpoint,
 				upstream_endpoint,
+				routing_target_group,
+				routing_schedule_layer,
+				routing_selected_account_id,
+				routing_selected_account_name,
+				routing_effective_model,
+				routing_failover_count,
+				routing_failover_final_reason,
 				cache_ttl_overridden,
 				created_at
 			FROM input
@@ -976,11 +1011,18 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			reasoning_effort,
 			inbound_endpoint,
 			upstream_endpoint,
+			routing_target_group,
+			routing_schedule_layer,
+			routing_selected_account_id,
+			routing_selected_account_name,
+			routing_effective_model,
+			routing_failover_count,
+			routing_failover_final_reason,
 			cache_ttl_overridden,
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*40)
+	args := make([]any, 0, len(preparedList)*47)
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1044,6 +1086,13 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			reasoning_effort,
 			inbound_endpoint,
 			upstream_endpoint,
+			routing_target_group,
+			routing_schedule_layer,
+			routing_selected_account_id,
+			routing_selected_account_name,
+			routing_effective_model,
+			routing_failover_count,
+			routing_failover_final_reason,
 			cache_ttl_overridden,
 			created_at
 		)
@@ -1086,6 +1135,13 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			reasoning_effort,
 			inbound_endpoint,
 			upstream_endpoint,
+			routing_target_group,
+			routing_schedule_layer,
+			routing_selected_account_id,
+			routing_selected_account_name,
+			routing_effective_model,
+			routing_failover_count,
+			routing_failover_final_reason,
 			cache_ttl_overridden,
 			created_at
 		FROM input
@@ -1136,6 +1192,13 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			reasoning_effort,
 			inbound_endpoint,
 			upstream_endpoint,
+			routing_target_group,
+			routing_schedule_layer,
+			routing_selected_account_id,
+			routing_selected_account_name,
+			routing_effective_model,
+			routing_failover_count,
+			routing_failover_final_reason,
 			cache_ttl_overridden,
 			created_at
 		) VALUES (
@@ -1144,7 +1207,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			$10, $11, $12, $13,
 			$14, $15,
 			$16, $17, $18, $19, $20, $21,
-			$22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40
+			$22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1176,6 +1239,13 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	reasoningEffort := nullString(log.ReasoningEffort)
 	inboundEndpoint := nullString(log.InboundEndpoint)
 	upstreamEndpoint := nullString(log.UpstreamEndpoint)
+	routingTargetGroup := nullString(log.RoutingTargetGroup)
+	routingScheduleLayer := nullString(log.RoutingScheduleLayer)
+	routingSelectedAccountID := nullInt64(log.RoutingSelectedAccountID)
+	routingSelectedAccountName := nullString(log.RoutingSelectedAccountName)
+	routingEffectiveModel := nullString(log.RoutingEffectiveModel)
+	routingFailoverCount := nullInt(log.RoutingFailoverCount)
+	routingFailoverFinalReason := nullString(log.RoutingFailoverFinalReason)
 	requestedModel := strings.TrimSpace(log.RequestedModel)
 	if requestedModel == "" {
 		requestedModel = strings.TrimSpace(log.Model)
@@ -1231,6 +1301,13 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			reasoningEffort,
 			inboundEndpoint,
 			upstreamEndpoint,
+			routingTargetGroup,
+			routingScheduleLayer,
+			routingSelectedAccountID,
+			routingSelectedAccountName,
+			routingEffectiveModel,
+			routingFailoverCount,
+			routingFailoverFinalReason,
 			log.CacheTTLOverridden,
 			createdAt,
 		},
@@ -2584,6 +2661,14 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 		args = append(args, filters.GroupID)
 	}
 	conditions, args = appendRawUsageLogModelWhereCondition(conditions, args, filters.Model)
+	if filters.RoutingTargetGroup != "" {
+		conditions = append(conditions, fmt.Sprintf("routing_target_group = $%d", len(args)+1))
+		args = append(args, filters.RoutingTargetGroup)
+	}
+	if filters.RoutingScheduleLayer != "" {
+		conditions = append(conditions, fmt.Sprintf("routing_schedule_layer = $%d", len(args)+1))
+		args = append(args, filters.RoutingScheduleLayer)
+	}
 	conditions, args = appendRequestTypeOrStreamWhereCondition(conditions, args, filters.RequestType, filters.Stream)
 	if filters.BillingType != nil {
 		conditions = append(conditions, fmt.Sprintf("billing_type = $%d", len(args)+1))
@@ -3919,47 +4004,54 @@ func (r *usageLogRepository) loadSubscriptions(ctx context.Context, ids []int64)
 
 func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, error) {
 	var (
-		id                    int64
-		userID                int64
-		apiKeyID              int64
-		accountID             int64
-		requestID             sql.NullString
-		model                 string
-		requestedModel        sql.NullString
-		upstreamModel         sql.NullString
-		groupID               sql.NullInt64
-		subscriptionID        sql.NullInt64
-		inputTokens           int
-		outputTokens          int
-		cacheCreationTokens   int
-		cacheReadTokens       int
-		cacheCreation5m       int
-		cacheCreation1h       int
-		inputCost             float64
-		outputCost            float64
-		cacheCreationCost     float64
-		cacheReadCost         float64
-		totalCost             float64
-		actualCost            float64
-		rateMultiplier        float64
-		accountRateMultiplier sql.NullFloat64
-		billingType           int16
-		requestTypeRaw        int16
-		stream                bool
-		openaiWSMode          bool
-		durationMs            sql.NullInt64
-		firstTokenMs          sql.NullInt64
-		userAgent             sql.NullString
-		ipAddress             sql.NullString
-		imageCount            int
-		imageSize             sql.NullString
-		mediaType             sql.NullString
-		serviceTier           sql.NullString
-		reasoningEffort       sql.NullString
-		inboundEndpoint       sql.NullString
-		upstreamEndpoint      sql.NullString
-		cacheTTLOverridden    bool
-		createdAt             time.Time
+		id                         int64
+		userID                     int64
+		apiKeyID                   int64
+		accountID                  int64
+		requestID                  sql.NullString
+		model                      string
+		requestedModel             sql.NullString
+		upstreamModel              sql.NullString
+		groupID                    sql.NullInt64
+		subscriptionID             sql.NullInt64
+		inputTokens                int
+		outputTokens               int
+		cacheCreationTokens        int
+		cacheReadTokens            int
+		cacheCreation5m            int
+		cacheCreation1h            int
+		inputCost                  float64
+		outputCost                 float64
+		cacheCreationCost          float64
+		cacheReadCost              float64
+		totalCost                  float64
+		actualCost                 float64
+		rateMultiplier             float64
+		accountRateMultiplier      sql.NullFloat64
+		billingType                int16
+		requestTypeRaw             int16
+		stream                     bool
+		openaiWSMode               bool
+		durationMs                 sql.NullInt64
+		firstTokenMs               sql.NullInt64
+		userAgent                  sql.NullString
+		ipAddress                  sql.NullString
+		imageCount                 int
+		imageSize                  sql.NullString
+		mediaType                  sql.NullString
+		serviceTier                sql.NullString
+		reasoningEffort            sql.NullString
+		inboundEndpoint            sql.NullString
+		upstreamEndpoint           sql.NullString
+		routingTargetGroup         sql.NullString
+		routingScheduleLayer       sql.NullString
+		routingSelectedAccountID   sql.NullInt64
+		routingSelectedAccountName sql.NullString
+		routingEffectiveModel      sql.NullString
+		routingFailoverCount       sql.NullInt64
+		routingFailoverFinalReason sql.NullString
+		cacheTTLOverridden         bool
+		createdAt                  time.Time
 	)
 
 	if err := scanner.Scan(
@@ -4002,6 +4094,13 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&reasoningEffort,
 		&inboundEndpoint,
 		&upstreamEndpoint,
+		&routingTargetGroup,
+		&routingScheduleLayer,
+		&routingSelectedAccountID,
+		&routingSelectedAccountName,
+		&routingEffectiveModel,
+		&routingFailoverCount,
+		&routingFailoverFinalReason,
 		&cacheTTLOverridden,
 		&createdAt,
 	); err != nil {
@@ -4086,6 +4185,29 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 	}
 	if upstreamModel.Valid {
 		log.UpstreamModel = &upstreamModel.String
+	}
+	if routingTargetGroup.Valid {
+		log.RoutingTargetGroup = &routingTargetGroup.String
+	}
+	if routingScheduleLayer.Valid {
+		log.RoutingScheduleLayer = &routingScheduleLayer.String
+	}
+	if routingSelectedAccountID.Valid {
+		value := routingSelectedAccountID.Int64
+		log.RoutingSelectedAccountID = &value
+	}
+	if routingSelectedAccountName.Valid {
+		log.RoutingSelectedAccountName = &routingSelectedAccountName.String
+	}
+	if routingEffectiveModel.Valid {
+		log.RoutingEffectiveModel = &routingEffectiveModel.String
+	}
+	if routingFailoverCount.Valid {
+		value := int(routingFailoverCount.Int64)
+		log.RoutingFailoverCount = &value
+	}
+	if routingFailoverFinalReason.Valid {
+		log.RoutingFailoverFinalReason = &routingFailoverFinalReason.String
 	}
 
 	return log, nil

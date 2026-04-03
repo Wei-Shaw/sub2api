@@ -360,6 +360,20 @@ func setOpsEndpointContext(c *gin.Context, upstreamModel string, requestType int
 	c.Set(opsRequestTypeKey, requestType)
 }
 
+func applyOpenAIRoutingSnapshotToOpsEntry(entry *service.OpsInsertErrorLogInput, snapshot *service.OpenAIRoutingSnapshot) {
+	if entry == nil || snapshot == nil {
+		return
+	}
+	entry.RoutingTargetGroup = strings.TrimSpace(snapshot.TargetGroup)
+	entry.RoutingScheduleLayer = strings.TrimSpace(snapshot.ScheduleLayer)
+	entry.RoutingSelectedAccountID = snapshot.SelectedAccountID
+	entry.RoutingSelectedAccountName = snapshot.SelectedAccountName
+	entry.RoutingRequestedModel = strings.TrimSpace(snapshot.RequestedModel)
+	entry.RoutingEffectiveModel = strings.TrimSpace(snapshot.EffectiveModel)
+	entry.RoutingFailoverCount = snapshot.FailoverCount
+	entry.RoutingFailoverFinalReason = strings.TrimSpace(snapshot.FailoverFinalReason)
+}
+
 func attachOpsRequestBodyToEntry(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
 	if c == nil || entry == nil {
 		return
@@ -693,6 +707,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				CreatedAt:   time.Now(),
 			}
 			applyOpsLatencyFieldsFromContext(c, entry)
+			applyOpenAIRoutingSnapshotToOpsEntry(entry, getOpenAIRoutingSnapshot(c))
 
 			if apiKey != nil {
 				entry.APIKeyID = &apiKey.ID
@@ -839,6 +854,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			CreatedAt:   time.Now(),
 		}
 		applyOpsLatencyFieldsFromContext(c, entry)
+		applyOpenAIRoutingSnapshotToOpsEntry(entry, getOpenAIRoutingSnapshot(c))
 
 		// Capture upstream error context set by gateway services (if present).
 		// This does NOT affect the client response; it enriches Ops troubleshooting data.

@@ -4227,6 +4227,7 @@ type OpenAIRecordUsageInput struct {
 	User               *User
 	Account            *Account
 	Subscription       *UserSubscription
+	RoutingSnapshot    *OpenAIRoutingSnapshot
 	InboundEndpoint    string
 	UpstreamEndpoint   string
 	UserAgent          string // 请求的 User-Agent
@@ -4326,6 +4327,15 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		DurationMs:            &durationMs,
 		FirstTokenMs:          result.FirstTokenMs,
 		CreatedAt:             time.Now(),
+	}
+	if snapshot := input.RoutingSnapshot; snapshot != nil {
+		usageLog.RoutingTargetGroup = optionalTrimmedStringPtr(snapshot.TargetGroup)
+		usageLog.RoutingScheduleLayer = optionalTrimmedStringPtr(snapshot.ScheduleLayer)
+		usageLog.RoutingSelectedAccountID = snapshot.SelectedAccountID
+		usageLog.RoutingSelectedAccountName = snapshot.SelectedAccountName
+		usageLog.RoutingEffectiveModel = optionalTrimmedStringPtr(snapshot.EffectiveModel)
+		usageLog.RoutingFailoverCount = intPtrValue(snapshot.FailoverCount)
+		usageLog.RoutingFailoverFinalReason = optionalTrimmedStringPtr(snapshot.FailoverFinalReason)
 	}
 	// 添加 UserAgent
 	if input.UserAgent != "" {

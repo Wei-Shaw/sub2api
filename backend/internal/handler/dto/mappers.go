@@ -608,11 +608,18 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 		return nil
 	}
 	return &AdminUsageLog{
-		UsageLog:              usageLogFromServiceUser(l),
-		UpstreamModel:         l.UpstreamModel,
-		AccountRateMultiplier: l.AccountRateMultiplier,
-		IPAddress:             l.IPAddress,
-		Account:               AccountSummaryFromService(l.Account),
+		UsageLog:                   usageLogFromServiceUser(l),
+		UpstreamModel:              l.UpstreamModel,
+		RoutingTargetGroup:         l.RoutingTargetGroup,
+		RoutingScheduleLayer:       l.RoutingScheduleLayer,
+		RoutingSelectedAccountID:   l.RoutingSelectedAccountID,
+		RoutingSelectedAccountName: l.RoutingSelectedAccountName,
+		RoutingEffectiveModel:      l.RoutingEffectiveModel,
+		RoutingFailoverCount:       l.RoutingFailoverCount,
+		RoutingFailoverFinalReason: l.RoutingFailoverFinalReason,
+		AccountRateMultiplier:      l.AccountRateMultiplier,
+		IPAddress:                  l.IPAddress,
+		Account:                    AccountSummaryFromService(l.Account),
 	}
 }
 

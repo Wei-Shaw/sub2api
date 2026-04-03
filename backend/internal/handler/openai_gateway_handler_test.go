@@ -447,6 +447,32 @@ func TestResponsesNoAvailableAccountsError(t *testing.T) {
 	require.Equal(t, "No available accounts in target group (active)", message)
 }
 
+func TestStoreOpenAIRoutingSnapshot(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	account := &service.Account{ID: 66, Name: "acc-66"}
+	snap := storeOpenAIRoutingSnapshot(c, service.OpenAIRoutingSnapshotInput{
+		TargetGroup:    service.TargetGroupExhausted,
+		ScheduleLayer:  "load_balance",
+		Account:        account,
+		RequestedModel: "gpt-5.4-Sys",
+		EffectiveModel: "gpt-5.4",
+	})
+
+	require.NotNil(t, snap)
+	require.Same(t, snap, getOpenAIRoutingSnapshot(c))
+	require.Equal(t, "exhausted", snap.TargetGroup)
+	require.Equal(t, "load_balance", snap.ScheduleLayer)
+	if assert.NotNil(t, snap.SelectedAccountID) {
+		assert.Equal(t, int64(66), *snap.SelectedAccountID)
+	}
+	if assert.NotNil(t, snap.SelectedAccountName) {
+		assert.Equal(t, "acc-66", *snap.SelectedAccountName)
+	}
+}
+
 func TestResponsesSelectionFailure_FirstAttemptNoAvailableUsesTargetGroup(t *testing.T) {
 	action := classifyResponsesSelectionFailure(
 		service.ErrNoAvailableAccounts,

@@ -36,6 +36,20 @@ type UsageLog struct {
 	RequestedModel *string `json:"requested_model,omitempty"`
 	// UpstreamModel holds the value of the "upstream_model" field.
 	UpstreamModel *string `json:"upstream_model,omitempty"`
+	// RoutingTargetGroup holds the value of the "routing_target_group" field.
+	RoutingTargetGroup *string `json:"routing_target_group,omitempty"`
+	// RoutingScheduleLayer holds the value of the "routing_schedule_layer" field.
+	RoutingScheduleLayer *string `json:"routing_schedule_layer,omitempty"`
+	// RoutingSelectedAccountID holds the value of the "routing_selected_account_id" field.
+	RoutingSelectedAccountID *int64 `json:"routing_selected_account_id,omitempty"`
+	// RoutingSelectedAccountName holds the value of the "routing_selected_account_name" field.
+	RoutingSelectedAccountName *string `json:"routing_selected_account_name,omitempty"`
+	// RoutingEffectiveModel holds the value of the "routing_effective_model" field.
+	RoutingEffectiveModel *string `json:"routing_effective_model,omitempty"`
+	// RoutingFailoverCount holds the value of the "routing_failover_count" field.
+	RoutingFailoverCount *int `json:"routing_failover_count,omitempty"`
+	// RoutingFailoverFinalReason holds the value of the "routing_failover_final_reason" field.
+	RoutingFailoverFinalReason *string `json:"routing_failover_final_reason,omitempty"`
 	// GroupID holds the value of the "group_id" field.
 	GroupID *int64 `json:"group_id,omitempty"`
 	// SubscriptionID holds the value of the "subscription_id" field.
@@ -177,9 +191,9 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount:
+		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldRoutingSelectedAccountID, usagelog.FieldRoutingFailoverCount, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldMediaType:
+		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldRoutingTargetGroup, usagelog.FieldRoutingScheduleLayer, usagelog.FieldRoutingSelectedAccountName, usagelog.FieldRoutingEffectiveModel, usagelog.FieldRoutingFailoverFinalReason, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldMediaType:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -247,6 +261,55 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.UpstreamModel = new(string)
 				*_m.UpstreamModel = value.String
+			}
+		case usagelog.FieldRoutingTargetGroup:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field routing_target_group", values[i])
+			} else if value.Valid {
+				_m.RoutingTargetGroup = new(string)
+				*_m.RoutingTargetGroup = value.String
+			}
+		case usagelog.FieldRoutingScheduleLayer:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field routing_schedule_layer", values[i])
+			} else if value.Valid {
+				_m.RoutingScheduleLayer = new(string)
+				*_m.RoutingScheduleLayer = value.String
+			}
+		case usagelog.FieldRoutingSelectedAccountID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field routing_selected_account_id", values[i])
+			} else if value.Valid {
+				_m.RoutingSelectedAccountID = new(int64)
+				*_m.RoutingSelectedAccountID = value.Int64
+			}
+		case usagelog.FieldRoutingSelectedAccountName:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field routing_selected_account_name", values[i])
+			} else if value.Valid {
+				_m.RoutingSelectedAccountName = new(string)
+				*_m.RoutingSelectedAccountName = value.String
+			}
+		case usagelog.FieldRoutingEffectiveModel:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field routing_effective_model", values[i])
+			} else if value.Valid {
+				_m.RoutingEffectiveModel = new(string)
+				*_m.RoutingEffectiveModel = value.String
+			}
+		case usagelog.FieldRoutingFailoverCount:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field routing_failover_count", values[i])
+			} else if value.Valid {
+				_m.RoutingFailoverCount = new(int)
+				*_m.RoutingFailoverCount = int(value.Int64)
+			}
+		case usagelog.FieldRoutingFailoverFinalReason:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field routing_failover_final_reason", values[i])
+			} else if value.Valid {
+				_m.RoutingFailoverFinalReason = new(string)
+				*_m.RoutingFailoverFinalReason = value.String
 			}
 		case usagelog.FieldGroupID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -502,6 +565,41 @@ func (_m *UsageLog) String() string {
 	builder.WriteString(", ")
 	if v := _m.UpstreamModel; v != nil {
 		builder.WriteString("upstream_model=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.RoutingTargetGroup; v != nil {
+		builder.WriteString("routing_target_group=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.RoutingScheduleLayer; v != nil {
+		builder.WriteString("routing_schedule_layer=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.RoutingSelectedAccountID; v != nil {
+		builder.WriteString("routing_selected_account_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.RoutingSelectedAccountName; v != nil {
+		builder.WriteString("routing_selected_account_name=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.RoutingEffectiveModel; v != nil {
+		builder.WriteString("routing_effective_model=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.RoutingFailoverCount; v != nil {
+		builder.WriteString("routing_failover_count=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.RoutingFailoverFinalReason; v != nil {
+		builder.WriteString("routing_failover_final_reason=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")

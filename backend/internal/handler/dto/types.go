@@ -405,6 +405,14 @@ type AdminUsageLog struct {
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).
 	UpstreamModel *string `json:"upstream_model,omitempty"`
+	// OpenAI routing observability fields. Omitted when snapshot is unavailable.
+	RoutingTargetGroup         *string `json:"routing_target_group,omitempty"`
+	RoutingScheduleLayer       *string `json:"routing_schedule_layer,omitempty"`
+	RoutingSelectedAccountID   *int64  `json:"routing_selected_account_id,omitempty"`
+	RoutingSelectedAccountName *string `json:"routing_selected_account_name,omitempty"`
+	RoutingEffectiveModel      *string `json:"routing_effective_model,omitempty"`
+	RoutingFailoverCount       *int    `json:"routing_failover_count,omitempty"`
+	RoutingFailoverFinalReason *string `json:"routing_failover_final_reason,omitempty"`
 
 	// AccountRateMultiplier 账号计费倍率快照（nil 表示按 1.0 处理）
 	AccountRateMultiplier *float64 `json:"account_rate_multiplier"`

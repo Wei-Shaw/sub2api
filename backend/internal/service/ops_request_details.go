@@ -19,8 +19,15 @@ type OpsRequestDetail struct {
 	CreatedAt time.Time      `json:"created_at"`
 	RequestID string         `json:"request_id"`
 
-	Platform string `json:"platform,omitempty"`
-	Model    string `json:"model,omitempty"`
+	Platform                   string  `json:"platform,omitempty"`
+	Model                      string  `json:"model,omitempty"`
+	RoutingTargetGroup         string  `json:"routing_target_group,omitempty"`
+	RoutingScheduleLayer       string  `json:"routing_schedule_layer,omitempty"`
+	RoutingSelectedAccountID   *int64  `json:"routing_selected_account_id,omitempty"`
+	RoutingSelectedAccountName *string `json:"routing_selected_account_name,omitempty"`
+	RoutingEffectiveModel      string  `json:"routing_effective_model,omitempty"`
+	RoutingFailoverCount       *int    `json:"routing_failover_count,omitempty"`
+	RoutingFailoverFinalReason string  `json:"routing_failover_final_reason,omitempty"`
 
 	DurationMs *int `json:"duration_ms,omitempty"`
 	StatusCode *int `json:"status_code,omitempty"`
@@ -54,9 +61,11 @@ type OpsRequestDetailFilter struct {
 	APIKeyID  *int64
 	AccountID *int64
 
-	Model     string
-	RequestID string
-	Query     string
+	Model                string
+	RoutingTargetGroup   string
+	RoutingScheduleLayer string
+	RequestID            string
+	Query                string
 
 	MinDurationMs *int
 	MaxDurationMs *int

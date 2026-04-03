@@ -19718,70 +19718,79 @@ func (m *UsageCleanupTaskMutation) ResetEdge(name string) error {
 // UsageLogMutation represents an operation that mutates the UsageLog nodes in the graph.
 type UsageLogMutation struct {
 	config
-	op                          Op
-	typ                         string
-	id                          *int64
-	request_id                  *string
-	model                       *string
-	requested_model             *string
-	upstream_model              *string
-	input_tokens                *int
-	addinput_tokens             *int
-	output_tokens               *int
-	addoutput_tokens            *int
-	cache_creation_tokens       *int
-	addcache_creation_tokens    *int
-	cache_read_tokens           *int
-	addcache_read_tokens        *int
-	cache_creation_5m_tokens    *int
-	addcache_creation_5m_tokens *int
-	cache_creation_1h_tokens    *int
-	addcache_creation_1h_tokens *int
-	input_cost                  *float64
-	addinput_cost               *float64
-	output_cost                 *float64
-	addoutput_cost              *float64
-	cache_creation_cost         *float64
-	addcache_creation_cost      *float64
-	cache_read_cost             *float64
-	addcache_read_cost          *float64
-	total_cost                  *float64
-	addtotal_cost               *float64
-	actual_cost                 *float64
-	addactual_cost              *float64
-	rate_multiplier             *float64
-	addrate_multiplier          *float64
-	account_rate_multiplier     *float64
-	addaccount_rate_multiplier  *float64
-	billing_type                *int8
-	addbilling_type             *int8
-	stream                      *bool
-	duration_ms                 *int
-	addduration_ms              *int
-	first_token_ms              *int
-	addfirst_token_ms           *int
-	user_agent                  *string
-	ip_address                  *string
-	image_count                 *int
-	addimage_count              *int
-	image_size                  *string
-	media_type                  *string
-	cache_ttl_overridden        *bool
-	created_at                  *time.Time
-	clearedFields               map[string]struct{}
-	user                        *int64
-	cleareduser                 bool
-	api_key                     *int64
-	clearedapi_key              bool
-	account                     *int64
-	clearedaccount              bool
-	group                       *int64
-	clearedgroup                bool
-	subscription                *int64
-	clearedsubscription         bool
-	done                        bool
-	oldValue                    func(context.Context) (*UsageLog, error)
-	predicates                  []predicate.UsageLog
+	op                             Op
+	typ                            string
+	id                             *int64
+	request_id                     *string
+	model                          *string
+	requested_model                *string
+	upstream_model                 *string
+	routing_target_group           *string
+	routing_schedule_layer         *string
+	routing_selected_account_id    *int64
+	addrouting_selected_account_id *int64
+	routing_selected_account_name  *string
+	routing_effective_model        *string
+	routing_failover_count         *int
+	addrouting_failover_count      *int
+	routing_failover_final_reason  *string
+	input_tokens                   *int
+	addinput_tokens                *int
+	output_tokens                  *int
+	addoutput_tokens               *int
+	cache_creation_tokens          *int
+	addcache_creation_tokens       *int
+	cache_read_tokens              *int
+	addcache_read_tokens           *int
+	cache_creation_5m_tokens       *int
+	addcache_creation_5m_tokens    *int
+	cache_creation_1h_tokens       *int
+	addcache_creation_1h_tokens    *int
+	input_cost                     *float64
+	addinput_cost                  *float64
+	output_cost                    *float64
+	addoutput_cost                 *float64
+	cache_creation_cost            *float64
+	addcache_creation_cost         *float64
+	cache_read_cost                *float64
+	addcache_read_cost             *float64
+	total_cost                     *float64
+	addtotal_cost                  *float64
+	actual_cost                    *float64
+	addactual_cost                 *float64
+	rate_multiplier                *float64
+	addrate_multiplier             *float64
+	account_rate_multiplier        *float64
+	addaccount_rate_multiplier     *float64
+	billing_type                   *int8
+	addbilling_type                *int8
+	stream                         *bool
+	duration_ms                    *int
+	addduration_ms                 *int
+	first_token_ms                 *int
+	addfirst_token_ms              *int
+	user_agent                     *string
+	ip_address                     *string
+	image_count                    *int
+	addimage_count                 *int
+	image_size                     *string
+	media_type                     *string
+	cache_ttl_overridden           *bool
+	created_at                     *time.Time
+	clearedFields                  map[string]struct{}
+	user                           *int64
+	cleareduser                    bool
+	api_key                        *int64
+	clearedapi_key                 bool
+	account                        *int64
+	clearedaccount                 bool
+	group                          *int64
+	clearedgroup                   bool
+	subscription                   *int64
+	clearedsubscription            bool
+	done                           bool
+	oldValue                       func(context.Context) (*UsageLog, error)
+	predicates                     []predicate.UsageLog
 }
 
 var _ ent.Mutation = (*UsageLogMutation)(nil)
@@ -20158,6 +20167,391 @@ func (m *UsageLogMutation) UpstreamModelCleared() bool {
 func (m *UsageLogMutation) ResetUpstreamModel() {
 	m.upstream_model = nil
 	delete(m.clearedFields, usagelog.FieldUpstreamModel)
+}
+
+// SetRoutingTargetGroup sets the "routing_target_group" field.
+func (m *UsageLogMutation) SetRoutingTargetGroup(s string) {
+	m.routing_target_group = &s
+}
+
+// RoutingTargetGroup returns the value of the "routing_target_group" field in the mutation.
+func (m *UsageLogMutation) RoutingTargetGroup() (r string, exists bool) {
+	v := m.routing_target_group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRoutingTargetGroup returns the old "routing_target_group" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRoutingTargetGroup(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRoutingTargetGroup is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRoutingTargetGroup requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRoutingTargetGroup: %w", err)
+	}
+	return oldValue.RoutingTargetGroup, nil
+}
+
+// ClearRoutingTargetGroup clears the value of the "routing_target_group" field.
+func (m *UsageLogMutation) ClearRoutingTargetGroup() {
+	m.routing_target_group = nil
+	m.clearedFields[usagelog.FieldRoutingTargetGroup] = struct{}{}
+}
+
+// RoutingTargetGroupCleared returns if the "routing_target_group" field was cleared in this mutation.
+func (m *UsageLogMutation) RoutingTargetGroupCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRoutingTargetGroup]
+	return ok
+}
+
+// ResetRoutingTargetGroup resets all changes to the "routing_target_group" field.
+func (m *UsageLogMutation) ResetRoutingTargetGroup() {
+	m.routing_target_group = nil
+	delete(m.clearedFields, usagelog.FieldRoutingTargetGroup)
+}
+
+// SetRoutingScheduleLayer sets the "routing_schedule_layer" field.
+func (m *UsageLogMutation) SetRoutingScheduleLayer(s string) {
+	m.routing_schedule_layer = &s
+}
+
+// RoutingScheduleLayer returns the value of the "routing_schedule_layer" field in the mutation.
+func (m *UsageLogMutation) RoutingScheduleLayer() (r string, exists bool) {
+	v := m.routing_schedule_layer
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRoutingScheduleLayer returns the old "routing_schedule_layer" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRoutingScheduleLayer(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRoutingScheduleLayer is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRoutingScheduleLayer requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRoutingScheduleLayer: %w", err)
+	}
+	return oldValue.RoutingScheduleLayer, nil
+}
+
+// ClearRoutingScheduleLayer clears the value of the "routing_schedule_layer" field.
+func (m *UsageLogMutation) ClearRoutingScheduleLayer() {
+	m.routing_schedule_layer = nil
+	m.clearedFields[usagelog.FieldRoutingScheduleLayer] = struct{}{}
+}
+
+// RoutingScheduleLayerCleared returns if the "routing_schedule_layer" field was cleared in this mutation.
+func (m *UsageLogMutation) RoutingScheduleLayerCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRoutingScheduleLayer]
+	return ok
+}
+
+// ResetRoutingScheduleLayer resets all changes to the "routing_schedule_layer" field.
+func (m *UsageLogMutation) ResetRoutingScheduleLayer() {
+	m.routing_schedule_layer = nil
+	delete(m.clearedFields, usagelog.FieldRoutingScheduleLayer)
+}
+
+// SetRoutingSelectedAccountID sets the "routing_selected_account_id" field.
+func (m *UsageLogMutation) SetRoutingSelectedAccountID(i int64) {
+	m.routing_selected_account_id = &i
+	m.addrouting_selected_account_id = nil
+}
+
+// RoutingSelectedAccountID returns the value of the "routing_selected_account_id" field in the mutation.
+func (m *UsageLogMutation) RoutingSelectedAccountID() (r int64, exists bool) {
+	v := m.routing_selected_account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRoutingSelectedAccountID returns the old "routing_selected_account_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRoutingSelectedAccountID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRoutingSelectedAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRoutingSelectedAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRoutingSelectedAccountID: %w", err)
+	}
+	return oldValue.RoutingSelectedAccountID, nil
+}
+
+// AddRoutingSelectedAccountID adds i to the "routing_selected_account_id" field.
+func (m *UsageLogMutation) AddRoutingSelectedAccountID(i int64) {
+	if m.addrouting_selected_account_id != nil {
+		*m.addrouting_selected_account_id += i
+	} else {
+		m.addrouting_selected_account_id = &i
+	}
+}
+
+// AddedRoutingSelectedAccountID returns the value that was added to the "routing_selected_account_id" field in this mutation.
+func (m *UsageLogMutation) AddedRoutingSelectedAccountID() (r int64, exists bool) {
+	v := m.addrouting_selected_account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearRoutingSelectedAccountID clears the value of the "routing_selected_account_id" field.
+func (m *UsageLogMutation) ClearRoutingSelectedAccountID() {
+	m.routing_selected_account_id = nil
+	m.addrouting_selected_account_id = nil
+	m.clearedFields[usagelog.FieldRoutingSelectedAccountID] = struct{}{}
+}
+
+// RoutingSelectedAccountIDCleared returns if the "routing_selected_account_id" field was cleared in this mutation.
+func (m *UsageLogMutation) RoutingSelectedAccountIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRoutingSelectedAccountID]
+	return ok
+}
+
+// ResetRoutingSelectedAccountID resets all changes to the "routing_selected_account_id" field.
+func (m *UsageLogMutation) ResetRoutingSelectedAccountID() {
+	m.routing_selected_account_id = nil
+	m.addrouting_selected_account_id = nil
+	delete(m.clearedFields, usagelog.FieldRoutingSelectedAccountID)
+}
+
+// SetRoutingSelectedAccountName sets the "routing_selected_account_name" field.
+func (m *UsageLogMutation) SetRoutingSelectedAccountName(s string) {
+	m.routing_selected_account_name = &s
+}
+
+// RoutingSelectedAccountName returns the value of the "routing_selected_account_name" field in the mutation.
+func (m *UsageLogMutation) RoutingSelectedAccountName() (r string, exists bool) {
+	v := m.routing_selected_account_name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRoutingSelectedAccountName returns the old "routing_selected_account_name" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRoutingSelectedAccountName(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRoutingSelectedAccountName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRoutingSelectedAccountName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRoutingSelectedAccountName: %w", err)
+	}
+	return oldValue.RoutingSelectedAccountName, nil
+}
+
+// ClearRoutingSelectedAccountName clears the value of the "routing_selected_account_name" field.
+func (m *UsageLogMutation) ClearRoutingSelectedAccountName() {
+	m.routing_selected_account_name = nil
+	m.clearedFields[usagelog.FieldRoutingSelectedAccountName] = struct{}{}
+}
+
+// RoutingSelectedAccountNameCleared returns if the "routing_selected_account_name" field was cleared in this mutation.
+func (m *UsageLogMutation) RoutingSelectedAccountNameCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRoutingSelectedAccountName]
+	return ok
+}
+
+// ResetRoutingSelectedAccountName resets all changes to the "routing_selected_account_name" field.
+func (m *UsageLogMutation) ResetRoutingSelectedAccountName() {
+	m.routing_selected_account_name = nil
+	delete(m.clearedFields, usagelog.FieldRoutingSelectedAccountName)
+}
+
+// SetRoutingEffectiveModel sets the "routing_effective_model" field.
+func (m *UsageLogMutation) SetRoutingEffectiveModel(s string) {
+	m.routing_effective_model = &s
+}
+
+// RoutingEffectiveModel returns the value of the "routing_effective_model" field in the mutation.
+func (m *UsageLogMutation) RoutingEffectiveModel() (r string, exists bool) {
+	v := m.routing_effective_model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRoutingEffectiveModel returns the old "routing_effective_model" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRoutingEffectiveModel(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRoutingEffectiveModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRoutingEffectiveModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRoutingEffectiveModel: %w", err)
+	}
+	return oldValue.RoutingEffectiveModel, nil
+}
+
+// ClearRoutingEffectiveModel clears the value of the "routing_effective_model" field.
+func (m *UsageLogMutation) ClearRoutingEffectiveModel() {
+	m.routing_effective_model = nil
+	m.clearedFields[usagelog.FieldRoutingEffectiveModel] = struct{}{}
+}
+
+// RoutingEffectiveModelCleared returns if the "routing_effective_model" field was cleared in this mutation.
+func (m *UsageLogMutation) RoutingEffectiveModelCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRoutingEffectiveModel]
+	return ok
+}
+
+// ResetRoutingEffectiveModel resets all changes to the "routing_effective_model" field.
+func (m *UsageLogMutation) ResetRoutingEffectiveModel() {
+	m.routing_effective_model = nil
+	delete(m.clearedFields, usagelog.FieldRoutingEffectiveModel)
+}
+
+// SetRoutingFailoverCount sets the "routing_failover_count" field.
+func (m *UsageLogMutation) SetRoutingFailoverCount(i int) {
+	m.routing_failover_count = &i
+	m.addrouting_failover_count = nil
+}
+
+// RoutingFailoverCount returns the value of the "routing_failover_count" field in the mutation.
+func (m *UsageLogMutation) RoutingFailoverCount() (r int, exists bool) {
+	v := m.routing_failover_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRoutingFailoverCount returns the old "routing_failover_count" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRoutingFailoverCount(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRoutingFailoverCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRoutingFailoverCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRoutingFailoverCount: %w", err)
+	}
+	return oldValue.RoutingFailoverCount, nil
+}
+
+// AddRoutingFailoverCount adds i to the "routing_failover_count" field.
+func (m *UsageLogMutation) AddRoutingFailoverCount(i int) {
+	if m.addrouting_failover_count != nil {
+		*m.addrouting_failover_count += i
+	} else {
+		m.addrouting_failover_count = &i
+	}
+}
+
+// AddedRoutingFailoverCount returns the value that was added to the "routing_failover_count" field in this mutation.
+func (m *UsageLogMutation) AddedRoutingFailoverCount() (r int, exists bool) {
+	v := m.addrouting_failover_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearRoutingFailoverCount clears the value of the "routing_failover_count" field.
+func (m *UsageLogMutation) ClearRoutingFailoverCount() {
+	m.routing_failover_count = nil
+	m.addrouting_failover_count = nil
+	m.clearedFields[usagelog.FieldRoutingFailoverCount] = struct{}{}
+}
+
+// RoutingFailoverCountCleared returns if the "routing_failover_count" field was cleared in this mutation.
+func (m *UsageLogMutation) RoutingFailoverCountCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRoutingFailoverCount]
+	return ok
+}
+
+// ResetRoutingFailoverCount resets all changes to the "routing_failover_count" field.
+func (m *UsageLogMutation) ResetRoutingFailoverCount() {
+	m.routing_failover_count = nil
+	m.addrouting_failover_count = nil
+	delete(m.clearedFields, usagelog.FieldRoutingFailoverCount)
+}
+
+// SetRoutingFailoverFinalReason sets the "routing_failover_final_reason" field.
+func (m *UsageLogMutation) SetRoutingFailoverFinalReason(s string) {
+	m.routing_failover_final_reason = &s
+}
+
+// RoutingFailoverFinalReason returns the value of the "routing_failover_final_reason" field in the mutation.
+func (m *UsageLogMutation) RoutingFailoverFinalReason() (r string, exists bool) {
+	v := m.routing_failover_final_reason
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRoutingFailoverFinalReason returns the old "routing_failover_final_reason" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRoutingFailoverFinalReason(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRoutingFailoverFinalReason is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRoutingFailoverFinalReason requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRoutingFailoverFinalReason: %w", err)
+	}
+	return oldValue.RoutingFailoverFinalReason, nil
+}
+
+// ClearRoutingFailoverFinalReason clears the value of the "routing_failover_final_reason" field.
+func (m *UsageLogMutation) ClearRoutingFailoverFinalReason() {
+	m.routing_failover_final_reason = nil
+	m.clearedFields[usagelog.FieldRoutingFailoverFinalReason] = struct{}{}
+}
+
+// RoutingFailoverFinalReasonCleared returns if the "routing_failover_final_reason" field was cleared in this mutation.
+func (m *UsageLogMutation) RoutingFailoverFinalReasonCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRoutingFailoverFinalReason]
+	return ok
+}
+
+// ResetRoutingFailoverFinalReason resets all changes to the "routing_failover_final_reason" field.
+func (m *UsageLogMutation) ResetRoutingFailoverFinalReason() {
+	m.routing_failover_final_reason = nil
+	delete(m.clearedFields, usagelog.FieldRoutingFailoverFinalReason)
 }
 
 // SetGroupID sets the "group_id" field.
@@ -21781,7 +22175,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 34)
+	fields := make([]string, 0, 41)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -21802,6 +22196,27 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.upstream_model != nil {
 		fields = append(fields, usagelog.FieldUpstreamModel)
+	}
+	if m.routing_target_group != nil {
+		fields = append(fields, usagelog.FieldRoutingTargetGroup)
+	}
+	if m.routing_schedule_layer != nil {
+		fields = append(fields, usagelog.FieldRoutingScheduleLayer)
+	}
+	if m.routing_selected_account_id != nil {
+		fields = append(fields, usagelog.FieldRoutingSelectedAccountID)
+	}
+	if m.routing_selected_account_name != nil {
+		fields = append(fields, usagelog.FieldRoutingSelectedAccountName)
+	}
+	if m.routing_effective_model != nil {
+		fields = append(fields, usagelog.FieldRoutingEffectiveModel)
+	}
+	if m.routing_failover_count != nil {
+		fields = append(fields, usagelog.FieldRoutingFailoverCount)
+	}
+	if m.routing_failover_final_reason != nil {
+		fields = append(fields, usagelog.FieldRoutingFailoverFinalReason)
 	}
 	if m.group != nil {
 		fields = append(fields, usagelog.FieldGroupID)
@@ -21906,6 +22321,20 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.RequestedModel()
 	case usagelog.FieldUpstreamModel:
 		return m.UpstreamModel()
+	case usagelog.FieldRoutingTargetGroup:
+		return m.RoutingTargetGroup()
+	case usagelog.FieldRoutingScheduleLayer:
+		return m.RoutingScheduleLayer()
+	case usagelog.FieldRoutingSelectedAccountID:
+		return m.RoutingSelectedAccountID()
+	case usagelog.FieldRoutingSelectedAccountName:
+		return m.RoutingSelectedAccountName()
+	case usagelog.FieldRoutingEffectiveModel:
+		return m.RoutingEffectiveModel()
+	case usagelog.FieldRoutingFailoverCount:
+		return m.RoutingFailoverCount()
+	case usagelog.FieldRoutingFailoverFinalReason:
+		return m.RoutingFailoverFinalReason()
 	case usagelog.FieldGroupID:
 		return m.GroupID()
 	case usagelog.FieldSubscriptionID:
@@ -21983,6 +22412,20 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldRequestedModel(ctx)
 	case usagelog.FieldUpstreamModel:
 		return m.OldUpstreamModel(ctx)
+	case usagelog.FieldRoutingTargetGroup:
+		return m.OldRoutingTargetGroup(ctx)
+	case usagelog.FieldRoutingScheduleLayer:
+		return m.OldRoutingScheduleLayer(ctx)
+	case usagelog.FieldRoutingSelectedAccountID:
+		return m.OldRoutingSelectedAccountID(ctx)
+	case usagelog.FieldRoutingSelectedAccountName:
+		return m.OldRoutingSelectedAccountName(ctx)
+	case usagelog.FieldRoutingEffectiveModel:
+		return m.OldRoutingEffectiveModel(ctx)
+	case usagelog.FieldRoutingFailoverCount:
+		return m.OldRoutingFailoverCount(ctx)
+	case usagelog.FieldRoutingFailoverFinalReason:
+		return m.OldRoutingFailoverFinalReason(ctx)
 	case usagelog.FieldGroupID:
 		return m.OldGroupID(ctx)
 	case usagelog.FieldSubscriptionID:
@@ -22094,6 +22537,55 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUpstreamModel(v)
+		return nil
+	case usagelog.FieldRoutingTargetGroup:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRoutingTargetGroup(v)
+		return nil
+	case usagelog.FieldRoutingScheduleLayer:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRoutingScheduleLayer(v)
+		return nil
+	case usagelog.FieldRoutingSelectedAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRoutingSelectedAccountID(v)
+		return nil
+	case usagelog.FieldRoutingSelectedAccountName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRoutingSelectedAccountName(v)
+		return nil
+	case usagelog.FieldRoutingEffectiveModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRoutingEffectiveModel(v)
+		return nil
+	case usagelog.FieldRoutingFailoverCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRoutingFailoverCount(v)
+		return nil
+	case usagelog.FieldRoutingFailoverFinalReason:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRoutingFailoverFinalReason(v)
 		return nil
 	case usagelog.FieldGroupID:
 		v, ok := value.(int64)
@@ -22292,6 +22784,12 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *UsageLogMutation) AddedFields() []string {
 	var fields []string
+	if m.addrouting_selected_account_id != nil {
+		fields = append(fields, usagelog.FieldRoutingSelectedAccountID)
+	}
+	if m.addrouting_failover_count != nil {
+		fields = append(fields, usagelog.FieldRoutingFailoverCount)
+	}
 	if m.addinput_tokens != nil {
 		fields = append(fields, usagelog.FieldInputTokens)
 	}
@@ -22354,6 +22852,10 @@ func (m *UsageLogMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case usagelog.FieldRoutingSelectedAccountID:
+		return m.AddedRoutingSelectedAccountID()
+	case usagelog.FieldRoutingFailoverCount:
+		return m.AddedRoutingFailoverCount()
 	case usagelog.FieldInputTokens:
 		return m.AddedInputTokens()
 	case usagelog.FieldOutputTokens:
@@ -22399,6 +22901,20 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case usagelog.FieldRoutingSelectedAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRoutingSelectedAccountID(v)
+		return nil
+	case usagelog.FieldRoutingFailoverCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRoutingFailoverCount(v)
+		return nil
 	case usagelog.FieldInputTokens:
 		v, ok := value.(int)
 		if !ok {
@@ -22539,6 +23055,27 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldUpstreamModel) {
 		fields = append(fields, usagelog.FieldUpstreamModel)
 	}
+	if m.FieldCleared(usagelog.FieldRoutingTargetGroup) {
+		fields = append(fields, usagelog.FieldRoutingTargetGroup)
+	}
+	if m.FieldCleared(usagelog.FieldRoutingScheduleLayer) {
+		fields = append(fields, usagelog.FieldRoutingScheduleLayer)
+	}
+	if m.FieldCleared(usagelog.FieldRoutingSelectedAccountID) {
+		fields = append(fields, usagelog.FieldRoutingSelectedAccountID)
+	}
+	if m.FieldCleared(usagelog.FieldRoutingSelectedAccountName) {
+		fields = append(fields, usagelog.FieldRoutingSelectedAccountName)
+	}
+	if m.FieldCleared(usagelog.FieldRoutingEffectiveModel) {
+		fields = append(fields, usagelog.FieldRoutingEffectiveModel)
+	}
+	if m.FieldCleared(usagelog.FieldRoutingFailoverCount) {
+		fields = append(fields, usagelog.FieldRoutingFailoverCount)
+	}
+	if m.FieldCleared(usagelog.FieldRoutingFailoverFinalReason) {
+		fields = append(fields, usagelog.FieldRoutingFailoverFinalReason)
+	}
 	if m.FieldCleared(usagelog.FieldGroupID) {
 		fields = append(fields, usagelog.FieldGroupID)
 	}
@@ -22585,6 +23122,27 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldUpstreamModel:
 		m.ClearUpstreamModel()
+		return nil
+	case usagelog.FieldRoutingTargetGroup:
+		m.ClearRoutingTargetGroup()
+		return nil
+	case usagelog.FieldRoutingScheduleLayer:
+		m.ClearRoutingScheduleLayer()
+		return nil
+	case usagelog.FieldRoutingSelectedAccountID:
+		m.ClearRoutingSelectedAccountID()
+		return nil
+	case usagelog.FieldRoutingSelectedAccountName:
+		m.ClearRoutingSelectedAccountName()
+		return nil
+	case usagelog.FieldRoutingEffectiveModel:
+		m.ClearRoutingEffectiveModel()
+		return nil
+	case usagelog.FieldRoutingFailoverCount:
+		m.ClearRoutingFailoverCount()
+		return nil
+	case usagelog.FieldRoutingFailoverFinalReason:
+		m.ClearRoutingFailoverFinalReason()
 		return nil
 	case usagelog.FieldGroupID:
 		m.ClearGroupID()
@@ -22641,6 +23199,27 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldUpstreamModel:
 		m.ResetUpstreamModel()
+		return nil
+	case usagelog.FieldRoutingTargetGroup:
+		m.ResetRoutingTargetGroup()
+		return nil
+	case usagelog.FieldRoutingScheduleLayer:
+		m.ResetRoutingScheduleLayer()
+		return nil
+	case usagelog.FieldRoutingSelectedAccountID:
+		m.ResetRoutingSelectedAccountID()
+		return nil
+	case usagelog.FieldRoutingSelectedAccountName:
+		m.ResetRoutingSelectedAccountName()
+		return nil
+	case usagelog.FieldRoutingEffectiveModel:
+		m.ResetRoutingEffectiveModel()
+		return nil
+	case usagelog.FieldRoutingFailoverCount:
+		m.ResetRoutingFailoverCount()
+		return nil
+	case usagelog.FieldRoutingFailoverFinalReason:
+		m.ResetRoutingFailoverFinalReason()
 		return nil
 	case usagelog.FieldGroupID:
 		m.ResetGroupID()

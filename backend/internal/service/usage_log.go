@@ -114,6 +114,14 @@ type UsageLog struct {
 	InboundEndpoint *string
 	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.
 	UpstreamEndpoint *string
+	// OpenAI routing observability fields. Nil means non-OpenAI or snapshot unavailable.
+	RoutingTargetGroup         *string
+	RoutingScheduleLayer       *string
+	RoutingSelectedAccountID   *int64
+	RoutingSelectedAccountName *string
+	RoutingEffectiveModel      *string
+	RoutingFailoverCount       *int
+	RoutingFailoverFinalReason *string
 
 	GroupID        *int64
 	SubscriptionID *int64

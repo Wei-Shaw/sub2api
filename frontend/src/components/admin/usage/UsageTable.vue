@@ -26,15 +26,51 @@
         </template>
 
         <template #cell-model="{ row }">
-          <div v-if="row.upstream_model && row.upstream_model !== row.model" class="space-y-0.5 text-xs">
+          <div v-if="hasDistinctModelMapping(row)" class="space-y-0.5 text-xs">
             <div class="break-all font-medium text-gray-900 dark:text-white">
               {{ row.model }}
             </div>
-            <div class="break-all text-gray-500 dark:text-gray-400">
+            <div v-if="row.routing_effective_model && row.routing_effective_model !== row.model" class="break-all text-gray-500 dark:text-gray-400">
+              <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.effectiveModel') }}:</span>
+              <span class="ml-1">{{ row.routing_effective_model }}</span>
+            </div>
+            <div v-if="row.upstream_model && row.upstream_model !== row.routing_effective_model && row.upstream_model !== row.model" class="break-all text-gray-500 dark:text-gray-400">
               <span class="mr-0.5">↳</span>{{ row.upstream_model }}
             </div>
           </div>
           <span v-else class="font-medium text-gray-900 dark:text-white">{{ row.model }}</span>
+        </template>
+
+        <template #cell-routing_target_group="{ row }">
+          <span v-if="row.routing_target_group" class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium" :class="getRoutingTargetGroupBadgeClass(row.routing_target_group)">
+            {{ getRoutingTargetGroupLabel(row.routing_target_group) }}
+          </span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
+        <template #cell-routing_schedule_layer="{ row }">
+          <span v-if="row.routing_schedule_layer" class="text-xs text-gray-700 dark:text-gray-300">
+            {{ getRoutingScheduleLayerLabel(row.routing_schedule_layer) }}
+          </span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
+        <template #cell-routing_selected_account_name="{ row }">
+          <div v-if="row.routing_selected_account_name" class="space-y-0.5 text-xs text-gray-700 dark:text-gray-300">
+            <div class="font-medium text-gray-900 dark:text-white">{{ row.routing_selected_account_name }}</div>
+            <div v-if="row.routing_selected_account_id" class="font-mono text-gray-500 dark:text-gray-400">#{{ row.routing_selected_account_id }}</div>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
+        <template #cell-routing_failover_count="{ row }">
+          <div v-if="row.routing_failover_count != null" class="space-y-0.5 text-xs text-gray-700 dark:text-gray-300">
+            <div class="font-medium text-gray-900 dark:text-white">{{ row.routing_failover_count }}</div>
+            <div v-if="row.routing_failover_final_reason" class="max-w-[220px] truncate text-gray-500 dark:text-gray-400" :title="row.routing_failover_final_reason">
+              {{ row.routing_failover_final_reason }}
+            </div>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
         <template #cell-reasoning_effort="{ row }">
@@ -354,6 +390,32 @@ const formatCacheTokens = (tokens: number): string => {
   if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`
   if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`
   return tokens.toString()
+}
+
+const hasDistinctModelMapping = (row: AdminUsageLog): boolean => {
+  return Boolean(
+    (row.routing_effective_model && row.routing_effective_model !== row.model) ||
+    (row.upstream_model && row.upstream_model !== row.model && row.upstream_model !== row.routing_effective_model)
+  )
+}
+
+const getRoutingTargetGroupLabel = (value: string): string => {
+  if (value === 'active') return t('admin.usage.routingTargetGroupActive')
+  if (value === 'exhausted') return t('admin.usage.routingTargetGroupExhausted')
+  return value
+}
+
+const getRoutingTargetGroupBadgeClass = (value: string): string => {
+  if (value === 'active') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+  if (value === 'exhausted') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+  return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+}
+
+const getRoutingScheduleLayerLabel = (value: string): string => {
+  if (value === 'previous_response_id') return t('admin.usage.routingScheduleLayerPreviousResponse')
+  if (value === 'session_hash') return t('admin.usage.routingScheduleLayerSessionHash')
+  if (value === 'load_balance') return t('admin.usage.routingScheduleLayerLoadBalance')
+  return value
 }
 
 const formatUserAgent = (ua: string): string => {

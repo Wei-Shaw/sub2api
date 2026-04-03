@@ -79,6 +79,13 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // reasoning_effort
 			sqlmock.AnyArg(), // inbound_endpoint
 			sqlmock.AnyArg(), // upstream_endpoint
+			sqlmock.AnyArg(), // routing_target_group
+			sqlmock.AnyArg(), // routing_schedule_layer
+			sqlmock.AnyArg(), // routing_selected_account_id
+			sqlmock.AnyArg(), // routing_selected_account_name
+			sqlmock.AnyArg(), // routing_effective_model
+			sqlmock.AnyArg(), // routing_failover_count
+			sqlmock.AnyArg(), // routing_failover_final_reason
 			log.CacheTTLOverridden,
 			createdAt,
 		).
@@ -152,6 +159,13 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
 			log.CacheTTLOverridden,
 			createdAt,
 		).
@@ -218,6 +232,42 @@ func TestPrepareUsageLogInsert_ArgCountMatchesTypes(t *testing.T) {
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
 }
 
+func TestPrepareUsageLogInsert_IncludesOpenAIRoutingFields(t *testing.T) {
+	routingTargetGroup := "exhausted"
+	routingScheduleLayer := "load_balance"
+	routingAccountID := int64(66)
+	routingAccountName := "acc-66"
+	routingEffectiveModel := "gpt-5.4"
+	routingFailoverCount := 1
+	routingFailoverFinalReason := "selected_exhausted_fallback"
+
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:                     1,
+		APIKeyID:                   2,
+		AccountID:                  3,
+		RequestID:                  "req-routing-fields",
+		Model:                      "gpt-5.4-Sys",
+		RequestedModel:             "gpt-5.4-Sys",
+		RoutingTargetGroup:         &routingTargetGroup,
+		RoutingScheduleLayer:       &routingScheduleLayer,
+		RoutingSelectedAccountID:   &routingAccountID,
+		RoutingSelectedAccountName: &routingAccountName,
+		RoutingEffectiveModel:      &routingEffectiveModel,
+		RoutingFailoverCount:       &routingFailoverCount,
+		RoutingFailoverFinalReason: &routingFailoverFinalReason,
+		CreatedAt:                  time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC),
+	})
+
+	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+	require.Equal(t, sql.NullString{String: routingTargetGroup, Valid: true}, prepared.args[38])
+	require.Equal(t, sql.NullString{String: routingScheduleLayer, Valid: true}, prepared.args[39])
+	require.Equal(t, sql.NullInt64{Int64: routingAccountID, Valid: true}, prepared.args[40])
+	require.Equal(t, sql.NullString{String: routingAccountName, Valid: true}, prepared.args[41])
+	require.Equal(t, sql.NullString{String: routingEffectiveModel, Valid: true}, prepared.args[42])
+	require.Equal(t, sql.NullInt64{Int64: int64(routingFailoverCount), Valid: true}, prepared.args[43])
+	require.Equal(t, sql.NullString{String: routingFailoverFinalReason, Valid: true}, prepared.args[44])
+}
+
 func TestCoalesceTrimmedString(t *testing.T) {
 	require.Equal(t, "fallback", coalesceTrimmedString(sql.NullString{}, "fallback"))
 	require.Equal(t, "fallback", coalesceTrimmedString(sql.NullString{Valid: true, String: "   "}, "fallback"))
@@ -249,6 +299,31 @@ func TestUsageLogRepositoryListWithFiltersRequestTypePriority(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
 	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE \\(request_type = \\$1 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\) ORDER BY id DESC LIMIT \\$2 OFFSET \\$3").
 		WithArgs(requestType, 20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	logs, page, err := repo.ListWithFilters(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20}, filters)
+	require.NoError(t, err)
+	require.Empty(t, logs)
+	require.NotNil(t, page)
+	require.Equal(t, int64(0), page.Total)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryListWithFilters_RoutingFilters(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	filters := usagestats.UsageLogFilters{
+		RoutingTargetGroup:   "exhausted",
+		RoutingScheduleLayer: "load_balance",
+		ExactTotal:           true,
+	}
+
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM usage_logs WHERE routing_target_group = \\$1 AND routing_schedule_layer = \\$2").
+		WithArgs("exhausted", "load_balance").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
+	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE routing_target_group = \\$1 AND routing_schedule_layer = \\$2 ORDER BY id DESC LIMIT \\$3 OFFSET \\$4").
+		WithArgs("exhausted", "load_balance", 20, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 	logs, page, err := repo.ListWithFilters(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20}, filters)
@@ -462,6 +537,13 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullInt64{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullInt64{},
+			sql.NullString{},
 			false,
 			now,
 		}})
@@ -505,6 +587,13 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullInt64{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullInt64{},
+			sql.NullString{},
 			false,
 			now,
 		}})
@@ -547,6 +636,13 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{Valid: true, String: "priority"},
 			sql.NullString{},
 			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullInt64{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullInt64{},
 			sql.NullString{},
 			false,
 			now,

@@ -245,6 +245,32 @@ func (h *OpsHandler) GetDashboardOpenAITokenStats(c *gin.Context) {
 	response.Success(c, data)
 }
 
+// GetOpenAIRoutingStats returns OpenAI routing distribution stats grouped by target group.
+// GET /api/v1/admin/ops/dashboard/openai-routing
+func (h *OpsHandler) GetOpenAIRoutingStats(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	filter, err := parseOpsOpenAIRoutingStatsFilter(c)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	data, err := h.opsService.GetOpenAIRoutingStats(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, data)
+}
+
 func parseOpsOpenAITokenStatsFilter(c *gin.Context) (*service.OpsOpenAITokenStatsFilter, error) {
 	if c == nil {
 		return nil, fmt.Errorf("invalid request")
@@ -308,6 +334,38 @@ func parseOpsOpenAITokenStatsFilter(c *gin.Context) (*service.OpsOpenAITokenStat
 		}
 		filter.PageSize = pageSize
 	}
+	return filter, nil
+}
+
+func parseOpsOpenAIRoutingStatsFilter(c *gin.Context) (*service.OpsOpenAIRoutingStatsFilter, error) {
+	if c == nil {
+		return nil, fmt.Errorf("invalid request")
+	}
+
+	timeRange := strings.TrimSpace(c.Query("time_range"))
+	if timeRange == "" {
+		timeRange = "30d"
+	}
+	start, end, err := parseOpsTimeRange(c, "30d")
+	if err != nil {
+		return nil, err
+	}
+
+	filter := &service.OpsOpenAIRoutingStatsFilter{
+		TimeRange: timeRange,
+		StartTime: start.UTC(),
+		EndTime:   end.UTC(),
+		Platform:  strings.TrimSpace(c.Query("platform")),
+	}
+
+	if v := strings.TrimSpace(c.Query("group_id")); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || id <= 0 {
+			return nil, fmt.Errorf("invalid group_id")
+		}
+		filter.GroupID = &id
+	}
+
 	return filter, nil
 }
 

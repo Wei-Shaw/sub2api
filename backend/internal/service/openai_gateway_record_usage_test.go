@@ -227,6 +227,52 @@ func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T)
 	require.Equal(t, 1, userRepo.deductCalls)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_PersistsOpenAIRoutingFields(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	snapshot := &OpenAIRoutingSnapshot{
+		TargetGroup:         "exhausted",
+		ScheduleLayer:       "load_balance",
+		SelectedAccountID:   i64p(66),
+		SelectedAccountName: strPtr("acc-66"),
+		RequestedModel:      "gpt-5.4-Sys",
+		EffectiveModel:      "gpt-5.4",
+		FailoverCount:       1,
+		FailoverFinalReason: "selected_exhausted_fallback",
+	}
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp-routing-usage",
+			Usage: OpenAIUsage{
+				InputTokens:  12,
+				OutputTokens: 3,
+			},
+			Model:    "gpt-5.4-Sys",
+			Duration: time.Second,
+		},
+		APIKey: &APIKey{ID: 1001},
+		User:   &User{ID: 2001},
+		Account: &Account{
+			ID: 3001,
+		},
+		RoutingSnapshot: snapshot,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, &snapshot.TargetGroup, usageRepo.lastLog.RoutingTargetGroup)
+	require.Equal(t, &snapshot.ScheduleLayer, usageRepo.lastLog.RoutingScheduleLayer)
+	require.Equal(t, snapshot.SelectedAccountID, usageRepo.lastLog.RoutingSelectedAccountID)
+	require.Equal(t, snapshot.SelectedAccountName, usageRepo.lastLog.RoutingSelectedAccountName)
+	require.Equal(t, &snapshot.EffectiveModel, usageRepo.lastLog.RoutingEffectiveModel)
+	require.Equal(t, &snapshot.FailoverCount, usageRepo.lastLog.RoutingFailoverCount)
+	require.Equal(t, &snapshot.FailoverFinalReason, usageRepo.lastLog.RoutingFailoverFinalReason)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_IncludesEndpointMetadata(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}

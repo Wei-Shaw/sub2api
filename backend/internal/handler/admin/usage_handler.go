@@ -110,6 +110,8 @@ func (h *UsageHandler) List(c *gin.Context) {
 	}
 
 	model := c.Query("model")
+	routingTargetGroup := strings.TrimSpace(c.Query("routing_target_group"))
+	routingScheduleLayer := strings.TrimSpace(c.Query("routing_schedule_layer"))
 
 	var requestType *int16
 	var stream *bool
@@ -166,17 +168,19 @@ func (h *UsageHandler) List(c *gin.Context) {
 
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
 	filters := usagestats.UsageLogFilters{
-		UserID:      userID,
-		APIKeyID:    apiKeyID,
-		AccountID:   accountID,
-		GroupID:     groupID,
-		Model:       model,
-		RequestType: requestType,
-		Stream:      stream,
-		BillingType: billingType,
-		StartTime:   startTime,
-		EndTime:     endTime,
-		ExactTotal:  exactTotal,
+		UserID:               userID,
+		APIKeyID:             apiKeyID,
+		AccountID:            accountID,
+		GroupID:              groupID,
+		Model:                model,
+		RoutingTargetGroup:   routingTargetGroup,
+		RoutingScheduleLayer: routingScheduleLayer,
+		RequestType:          requestType,
+		Stream:               stream,
+		BillingType:          billingType,
+		StartTime:            startTime,
+		EndTime:              endTime,
+		ExactTotal:           exactTotal,
 	}
 
 	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)

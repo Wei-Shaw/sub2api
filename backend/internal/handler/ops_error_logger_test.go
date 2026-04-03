@@ -87,6 +87,31 @@ func TestAttachOpsRequestBodyToEntry_InvalidJSONKeepsSize(t *testing.T) {
 	require.Equal(t, int64(1), OpsErrorLogSanitizedTotal())
 }
 
+func TestApplyOpenAIRoutingSnapshotToOpsEntry(t *testing.T) {
+	entry := &service.OpsInsertErrorLogInput{}
+	snapshot := &service.OpenAIRoutingSnapshot{
+		TargetGroup:         "exhausted",
+		ScheduleLayer:       "load_balance",
+		SelectedAccountID:   int64Ptr(66),
+		SelectedAccountName: stringPtr("acc-66"),
+		RequestedModel:      "gpt-5.4-Sys",
+		EffectiveModel:      "gpt-5.4",
+		FailoverCount:       1,
+		FailoverFinalReason: "selected_exhausted_fallback",
+	}
+
+	applyOpenAIRoutingSnapshotToOpsEntry(entry, snapshot)
+
+	require.Equal(t, snapshot.TargetGroup, entry.RoutingTargetGroup)
+	require.Equal(t, snapshot.ScheduleLayer, entry.RoutingScheduleLayer)
+	require.Equal(t, snapshot.SelectedAccountID, entry.RoutingSelectedAccountID)
+	require.Equal(t, snapshot.SelectedAccountName, entry.RoutingSelectedAccountName)
+	require.Equal(t, snapshot.RequestedModel, entry.RoutingRequestedModel)
+	require.Equal(t, snapshot.EffectiveModel, entry.RoutingEffectiveModel)
+	require.Equal(t, snapshot.FailoverCount, entry.RoutingFailoverCount)
+	require.Equal(t, snapshot.FailoverFinalReason, entry.RoutingFailoverFinalReason)
+}
+
 func TestEnqueueOpsErrorLog_QueueFullDrop(t *testing.T) {
 	resetOpsErrorLoggerStateForTest(t)
 
@@ -213,6 +238,14 @@ func TestOpsErrorLoggerMiddleware_DoesNotBreakOuterMiddlewares(t *testing.T) {
 		r.ServeHTTP(rec, req)
 	})
 	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func int64Ptr(v int64) *int64 {
+	return &v
+}
+
+func stringPtr(v string) *string {
+	return &v
 }
 
 func TestIsKnownOpsErrorType(t *testing.T) {
