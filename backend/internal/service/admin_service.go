@@ -2783,16 +2783,14 @@ REDACTED
 REDACTED
 
 // EnsureAntigravityPrivacy 检查 Antigravity OAuth 账号隐私状态。
-// 如果 Extra["privacy_mode"] 已存在（无论成功或失败），直接跳过。
-// 仅对从未设置过隐私的账号执行 setUserSettings + fetchUserInfo 流程。
-// 用户可通过前端 ForceAntigravityPrivacy（SetPrivacy 按钮）强制重新设置。
+// 仅当 privacy_mode 已成功设置（"privacy_set"）时跳过；
+// 未设置或之前失败（"privacy_set_failed"）均会重试。
 func (s *adminServiceImpl) EnsureAntigravityPrivacy(ctx context.Context, account *Account) string {
 	if account.Platform != PlatformAntigravity || account.Type != AccountTypeOAuth {
 		return ""
 REDACTED
-	// 已设置过则跳过（无论成功或失败），用户可通过 Force 手动重试
 	if account.Extra != nil {
-		if existing, ok := account.Extra["privacy_mode"].(string); ok && existing != "" {
+		if existing, ok := account.Extra["privacy_mode"].(string); ok && existing == AntigravityPrivacySet {
 			return existing
 	REDACTED
 REDACTED
