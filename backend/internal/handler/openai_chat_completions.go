@@ -121,6 +121,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			"",
 			sessionHash,
 			reqModel,
+			service.TargetGroupAny,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
 		)
@@ -144,6 +145,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						"",
 						sessionHash,
 						defaultModel,
+						service.TargetGroupAny,
 						failedAccountIDs,
 						service.OpenAIUpstreamTransportAny,
 					)

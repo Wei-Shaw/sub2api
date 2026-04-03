@@ -37,6 +37,10 @@ type OpenAIGatewayHandler struct {
 	cfg                     *config.Config
 }
 
+var errPrepareResponsesRequestParse = errors.New("prepare responses request parse")
+var errPrepareResponsesRequestRewrite = errors.New("prepare responses request rewrite")
+var errPrepareResponsesRequestInvalidModel = errors.New("prepare responses request invalid model")
+
 func resolveOpenAIForwardDefaultMappedModel(apiKey *service.APIKey, fallbackModel string) string {
 	if fallbackModel = strings.TrimSpace(fallbackModel); fallbackModel != "" {
 		return fallbackModel
@@ -190,6 +194,19 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
+	body, reqModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, reqModel)
+	if err != nil {
+		switch {
+		case errors.Is(err, errPrepareResponsesRequestParse):
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+		case errors.Is(err, errPrepareResponsesRequestInvalidModel):
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+		default:
+			h.errorResponse(c, http.StatusInternalServerError, "server_error", "Failed to rewrite request body")
+		}
+		return
+	}
+
 	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
@@ -236,6 +253,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			previousResponseID,
 			sessionHash,
 			reqModel,
+			targetGroup,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
 		)
@@ -244,19 +262,20 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
-			if len(failedAccountIDs) == 0 {
+		}
+		if err != nil || selection == nil || selection.Account == nil {
+			action := classifyResponsesSelectionFailure(err, selection, len(failedAccountIDs), lastFailoverErr)
+			switch action {
+			case responsesSelectionFailureActionTargetGroupAware:
+				status, code, message := responsesNoAvailableAccountsError(targetGroup)
+				h.handleStreamingAwareError(c, status, code, message, streamStarted)
+			case responsesSelectionFailureActionServiceUnavailable:
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
-				return
-			}
-			if lastFailoverErr != nil {
+			case responsesSelectionFailureActionFailoverExhausted:
 				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
-			} else {
+			default:
 				h.handleFailoverExhaustedSimple(c, 502, streamStarted)
 			}
-			return
-		}
-		if selection == nil || selection.Account == nil {
-			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
 			return
 		}
 		if previousResponseID != "" && selection != nil && selection.Account != nil {
@@ -608,6 +627,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			"", // no previous_response_id
 			sessionHash,
 			routingModel,
+			service.TargetGroupAny,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
 		)
@@ -632,6 +652,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						"",
 						sessionHash,
 						defaultModel,
+						service.TargetGroupAny,
 						failedAccountIDs,
 						service.OpenAIUpstreamTransportAny,
 					)
@@ -863,6 +884,127 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 	)
 	h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id, or previous_response_id/tool_call context; if relying on history, ensure store=true and reuse previous_response_id")
 	return false
+}
+
+func getResponsesRequestBody(c *gin.Context, body []byte) (map[string]any, error) {
+	if c != nil {
+		if cached, ok := c.Get(service.OpenAIParsedRequestBodyKey); ok {
+			if reqBody, ok := cached.(map[string]any); ok && reqBody != nil {
+				return reqBody, nil
+			}
+		}
+	}
+
+	var reqBody map[string]any
+	if err := json.Unmarshal(body, &reqBody); err != nil {
+		return nil, err
+	}
+	if c != nil {
+		c.Set(service.OpenAIParsedRequestBodyKey, reqBody)
+	}
+	return reqBody, nil
+}
+
+func prepareResponsesRequestForScheduling(c *gin.Context, body []byte, reqModel string) ([]byte, string, service.AccountTargetGroup, error) {
+	targetGroup := service.TargetGroupActive
+	isSysModel := service.IsSysModel(reqModel)
+	var reqBody map[string]any
+	needsParsedBody := isSysModel
+	if !needsParsedBody {
+		if cached, err := getResponsesRequestBody(c, body); err == nil {
+			reqBody = cached
+			needsParsedBody = service.GetRequestTargetGroup(cached) == service.TargetGroupExhausted
+		}
+	}
+	if !needsParsedBody {
+		return body, reqModel, targetGroup, nil
+	}
+
+	if reqBody == nil {
+		var err error
+		reqBody, err = getResponsesRequestBody(c, body)
+		if err != nil {
+			return nil, "", targetGroup, fmt.Errorf("%w: %v", errPrepareResponsesRequestParse, err)
+		}
+	}
+
+	rewriteBody := false
+	if isSysModel {
+		reqModel = service.StripSysSuffix(reqModel)
+		if strings.TrimSpace(reqModel) == "" {
+			return nil, "", targetGroup, fmt.Errorf("%w", errPrepareResponsesRequestInvalidModel)
+		}
+		reqBody["model"] = reqModel
+		rewriteBody = true
+		if service.NeedsSysToolContinuation(reqBody) {
+			service.AppendMinimalSysToolContinuation(reqBody)
+		}
+	}
+
+	if rewriteBody {
+		patchedBody, err := json.Marshal(reqBody)
+		if err != nil {
+			return nil, "", targetGroup, fmt.Errorf("%w: %v", errPrepareResponsesRequestRewrite, err)
+		}
+		body = patchedBody
+		if c != nil {
+			c.Set(service.OpenAIParsedRequestBodyKey, reqBody)
+		}
+	}
+	targetGroup = service.GetRequestTargetGroup(reqBody)
+	return body, reqModel, targetGroup, nil
+}
+
+type responsesSelectionFailureAction string
+
+const (
+	responsesSelectionFailureActionTargetGroupAware   responsesSelectionFailureAction = "target_group_aware"
+	responsesSelectionFailureActionServiceUnavailable responsesSelectionFailureAction = "service_unavailable"
+	responsesSelectionFailureActionFailoverExhausted  responsesSelectionFailureAction = "failover_exhausted"
+	responsesSelectionFailureActionFailoverSimple     responsesSelectionFailureAction = "failover_simple"
+)
+
+func classifyResponsesSelectionFailure(
+	err error,
+	selection *service.AccountSelectionResult,
+	failedAccountCount int,
+	lastFailoverErr *service.UpstreamFailoverError,
+) responsesSelectionFailureAction {
+	noAvailable := isResponsesNoAvailableAccountsError(err) || (err == nil && (selection == nil || selection.Account == nil))
+	if noAvailable {
+		if failedAccountCount == 0 {
+			return responsesSelectionFailureActionTargetGroupAware
+		}
+		if lastFailoverErr != nil {
+			return responsesSelectionFailureActionFailoverExhausted
+		}
+		return responsesSelectionFailureActionFailoverSimple
+	}
+
+	if failedAccountCount == 0 {
+		return responsesSelectionFailureActionServiceUnavailable
+	}
+	if lastFailoverErr != nil {
+		return responsesSelectionFailureActionFailoverExhausted
+	}
+	return responsesSelectionFailureActionFailoverSimple
+}
+
+func isResponsesNoAvailableAccountsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, service.ErrNoAvailableAccounts) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "no available openai accounts")
+}
+
+func responsesNoAvailableAccountsError(targetGroup service.AccountTargetGroup) (int, string, string) {
+	if targetGroup == service.TargetGroupExhausted {
+		return http.StatusTooManyRequests, "rate_limit_exceeded", "No available accounts in target group (exhausted)"
+	}
+	return http.StatusServiceUnavailable, "service_unavailable", "No available accounts in target group (active)"
 }
 
 func (h *OpenAIGatewayHandler) acquireResponsesUserSlot(
@@ -1146,6 +1288,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		previousResponseID,
 		sessionHash,
 		reqModel,
+		service.TargetGroupAny,
 		nil,
 		service.OpenAIUpstreamTransportResponsesWebsocketV2,
 	)

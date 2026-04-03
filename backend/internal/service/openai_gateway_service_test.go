@@ -78,6 +78,60 @@ func (r stubOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Co
 	return r.ListSchedulableByPlatform(ctx, platform)
 }
 
+func (r stubOpenAIAccountRepo) ListByPlatform(ctx context.Context, platform string) ([]Account, error) {
+	var result []Account
+	for _, acc := range r.accounts {
+		if acc.Platform == platform {
+			result = append(result, acc)
+		}
+	}
+	return result, nil
+}
+
+func (r stubOpenAIAccountRepo) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
+	result := make([]Account, 0, len(r.accounts))
+	result = append(result, r.accounts...)
+	return result, nil
+}
+
+type rateLimitedFilteredOpenAIAccountRepo struct {
+	stubOpenAIAccountRepo
+}
+
+func (r rateLimitedFilteredOpenAIAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
+	accounts, err := r.stubOpenAIAccountRepo.ListSchedulableByGroupIDAndPlatform(ctx, groupID, platform)
+	if err != nil {
+		return nil, err
+	}
+	return filterSchedulableAccounts(accounts), nil
+}
+
+func (r rateLimitedFilteredOpenAIAccountRepo) ListSchedulableByPlatform(ctx context.Context, platform string) ([]Account, error) {
+	accounts, err := r.stubOpenAIAccountRepo.ListSchedulableByPlatform(ctx, platform)
+	if err != nil {
+		return nil, err
+	}
+	return filterSchedulableAccounts(accounts), nil
+}
+
+func (r rateLimitedFilteredOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error) {
+	accounts, err := r.stubOpenAIAccountRepo.ListSchedulableUngroupedByPlatform(ctx, platform)
+	if err != nil {
+		return nil, err
+	}
+	return filterSchedulableAccounts(accounts), nil
+}
+
+func filterSchedulableAccounts(accounts []Account) []Account {
+	filtered := make([]Account, 0, len(accounts))
+	for _, acc := range accounts {
+		if acc.IsSchedulable() {
+			filtered = append(filtered, acc)
+		}
+	}
+	return filtered
+}
+
 type stubConcurrencyCache struct {
 	ConcurrencyCache
 	loadBatchErr    error
@@ -201,6 +255,170 @@ func TestOpenAIGatewayService_GenerateSessionHash_UsesXXHash64(t *testing.T) {
 	got := svc.GenerateSessionHash(c, nil)
 	want := fmt.Sprintf("%016x", xxhash.Sum64String("sess-fixed-value"))
 	require.Equal(t, want, got)
+}
+
+func TestOpenAIGatewayService_ListSchedulableAccounts_ExhaustedIncludesRateLimitedAccountWhenSourceIsSchedulableOnly(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(42)
+	rateLimitedUntil := time.Now().Add(30 * time.Minute)
+
+	exhaustedRateLimited := Account{
+		ID:               5001,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeAPIKey,
+		Status:           StatusActive,
+		Schedulable:      true,
+		RateLimitResetAt: &rateLimitedUntil,
+		Extra: map[string]any{
+			"quota_limit": float64(100),
+			"quota_used":  float64(100),
+		},
+	}
+	active := Account{
+		ID:          5002,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			"quota_limit": float64(100),
+			"quota_used":  float64(10),
+		},
+	}
+
+	repo := rateLimitedFilteredOpenAIAccountRepo{stubOpenAIAccountRepo{accounts: []Account{exhaustedRateLimited, active}}}
+
+	t.Run("repository path", func(t *testing.T) {
+		svc := &OpenAIGatewayService{accountRepo: repo, cfg: &config.Config{}}
+
+		exhaustedAccounts, err := svc.listSchedulableAccounts(ctx, &groupID, TargetGroupExhausted)
+		require.NoError(t, err)
+		require.Len(t, exhaustedAccounts, 1)
+		require.Equal(t, exhaustedRateLimited.ID, exhaustedAccounts[0].ID)
+
+		activeAccounts, err := svc.listSchedulableAccounts(ctx, &groupID, TargetGroupActive)
+		require.NoError(t, err)
+		require.Len(t, activeAccounts, 1)
+		require.Equal(t, active.ID, activeAccounts[0].ID)
+
+		anyAccounts, err := svc.listSchedulableAccounts(ctx, &groupID, TargetGroupAny)
+		require.NoError(t, err)
+		require.Len(t, anyAccounts, 1)
+		require.Equal(t, active.ID, anyAccounts[0].ID)
+	})
+
+	t.Run("snapshot path", func(t *testing.T) {
+		snapshotCache := &openAISnapshotCacheStub{
+			snapshotAccounts: []*Account{&active},
+		}
+		svc := &OpenAIGatewayService{
+			accountRepo:       repo,
+			cfg:               &config.Config{},
+			schedulerSnapshot: &SchedulerSnapshotService{cache: snapshotCache},
+		}
+
+		exhaustedAccounts, err := svc.listSchedulableAccounts(ctx, &groupID, TargetGroupExhausted)
+		require.NoError(t, err)
+		require.Len(t, exhaustedAccounts, 1)
+		require.Equal(t, exhaustedRateLimited.ID, exhaustedAccounts[0].ID)
+
+		activeAccounts, err := svc.listSchedulableAccounts(ctx, &groupID, TargetGroupActive)
+		require.NoError(t, err)
+		require.Len(t, activeAccounts, 1)
+		require.Equal(t, active.ID, activeAccounts[0].ID)
+
+		anyAccounts, err := svc.listSchedulableAccounts(ctx, &groupID, TargetGroupAny)
+		require.NoError(t, err)
+		require.Len(t, anyAccounts, 1)
+		require.Equal(t, active.ID, anyAccounts[0].ID)
+	})
+}
+
+func TestOpenAIGatewayService_ListSchedulableAccounts_ExhaustedSnapshotSameIDUsesBroadLatestState(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(420)
+	rateLimitedUntil := time.Now().Add(30 * time.Minute)
+
+	staleSnapshotActive := Account{
+		ID:          6101,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			"quota_limit": float64(100),
+			"quota_used":  float64(10),
+		},
+	}
+	broadLatestExhausted := Account{
+		ID:               6101,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeAPIKey,
+		Status:           StatusActive,
+		Schedulable:      true,
+		RateLimitResetAt: &rateLimitedUntil,
+		Extra: map[string]any{
+			"quota_limit": float64(100),
+			"quota_used":  float64(100),
+		},
+	}
+
+	repo := stubOpenAIAccountRepo{accounts: []Account{broadLatestExhausted}}
+	snapshotCache := &openAISnapshotCacheStub{snapshotAccounts: []*Account{&staleSnapshotActive}}
+	svc := &OpenAIGatewayService{
+		accountRepo:       repo,
+		cfg:               &config.Config{},
+		schedulerSnapshot: &SchedulerSnapshotService{cache: snapshotCache},
+	}
+
+	exhaustedAccounts, err := svc.listSchedulableAccounts(ctx, &groupID, TargetGroupExhausted)
+	require.NoError(t, err)
+	require.Len(t, exhaustedAccounts, 1)
+	require.Equal(t, broadLatestExhausted.ID, exhaustedAccounts[0].ID)
+	require.True(t, exhaustedAccounts[0].IsExhausted())
+	require.True(t, exhaustedAccounts[0].IsRateLimited())
+}
+
+func TestOpenAIGatewayService_ListSchedulableAccounts_ExhaustedSnapshotStaleSameIDDropsWhenBroadLatestActive(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(421)
+	rateLimitedUntil := time.Now().Add(30 * time.Minute)
+
+	staleSnapshotExhausted := Account{
+		ID:               6201,
+		Platform:         PlatformOpenAI,
+		Type:             AccountTypeAPIKey,
+		Status:           StatusActive,
+		Schedulable:      true,
+		RateLimitResetAt: &rateLimitedUntil,
+		Extra: map[string]any{
+			"quota_limit": float64(100),
+			"quota_used":  float64(100),
+		},
+	}
+	broadLatestActive := Account{
+		ID:          6201,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			"quota_limit": float64(100),
+			"quota_used":  float64(10),
+		},
+	}
+
+	repo := stubOpenAIAccountRepo{accounts: []Account{broadLatestActive}}
+	snapshotCache := &openAISnapshotCacheStub{snapshotAccounts: []*Account{&staleSnapshotExhausted}}
+	svc := &OpenAIGatewayService{
+		accountRepo:       repo,
+		cfg:               &config.Config{},
+		schedulerSnapshot: &SchedulerSnapshotService{cache: snapshotCache},
+	}
+
+	exhaustedAccounts, err := svc.listSchedulableAccounts(ctx, &groupID, TargetGroupExhausted)
+	require.NoError(t, err)
+	require.Empty(t, exhaustedAccounts)
 }
 
 func TestOpenAIGatewayService_GenerateSessionHash_AttachesLegacyHashToContext(t *testing.T) {

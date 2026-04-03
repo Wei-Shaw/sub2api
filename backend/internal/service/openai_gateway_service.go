@@ -1133,7 +1133,7 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 
 	// 2. 获取可调度的 OpenAI 账号
 	// Get schedulable OpenAI accounts
-	accounts, err := s.listSchedulableAccounts(ctx, groupID)
+	accounts, err := s.listSchedulableAccounts(ctx, groupID, TargetGroupAny)
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
@@ -1201,7 +1201,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
 		return nil
 	}
-	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel)
+	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, TargetGroupAny)
 	if account == nil {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
@@ -1230,11 +1230,11 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, accounts [
 			continue
 		}
 
-		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel)
+		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, TargetGroupAny)
 		if fresh == nil {
 			continue
 		}
-		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel)
+		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, TargetGroupAny)
 		if fresh == nil {
 			continue
 		}
@@ -1334,7 +1334,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 		}, nil
 	}
 
-	accounts, err := s.listSchedulableAccounts(ctx, groupID)
+	accounts, err := s.listSchedulableAccounts(ctx, groupID, TargetGroupAny)
 	if err != nil {
 		return nil, err
 	}
@@ -1362,7 +1362,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 				}
 				if !clearSticky && account.IsSchedulable() && account.IsOpenAI() &&
 					(requestedModel == "" || account.IsModelSupported(requestedModel)) {
-					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel)
+					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, TargetGroupAny)
 					if account == nil {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else {
@@ -1430,7 +1430,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 		ordered := append([]*Account(nil), candidates...)
 		sortAccountsByPriorityAndLastUsed(ordered, false)
 		for _, acc := range ordered {
-			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel)
+			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, TargetGroupAny)
 			if fresh == nil {
 				continue
 			}
@@ -1484,7 +1484,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 			shuffleWithinSortGroups(available)
 
 			for _, item := range available {
-				fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, item.account, requestedModel)
+				fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, item.account, requestedModel, TargetGroupAny)
 				if fresh == nil {
 					continue
 				}
@@ -1506,7 +1506,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	// ============ Layer 3: Fallback wait ============
 	sortAccountsByPriorityAndLastUsed(candidates, false)
 	for _, acc := range candidates {
-		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel)
+		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, TargetGroupAny)
 		if fresh == nil {
 			continue
 		}
@@ -1524,10 +1524,29 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	return nil, ErrNoAvailableAccounts
 }
 
-func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
+func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, targetGroup AccountTargetGroup) ([]Account, error) {
+	targetGroup = normalizeTargetGroup(targetGroup)
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, PlatformOpenAI, false)
-		return accounts, err
+		if err != nil {
+			return nil, err
+		}
+		if targetGroup == TargetGroupExhausted {
+			accounts, err = s.mergeExhaustedFromBroadSource(ctx, groupID, accounts)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if targetGroup == TargetGroupAny {
+			return accounts, nil
+		}
+		filtered := make([]Account, 0, len(accounts))
+		for _, account := range accounts {
+			if account.MatchesTargetGroup(targetGroup) {
+				filtered = append(filtered, account)
+			}
+		}
+		return filtered, nil
 	}
 	var accounts []Account
 	var err error
@@ -1541,7 +1560,88 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
-	return accounts, nil
+	if targetGroup == TargetGroupExhausted {
+		accounts, err = s.mergeExhaustedFromBroadSource(ctx, groupID, accounts)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if targetGroup == TargetGroupAny {
+		return accounts, nil
+	}
+	filtered := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account.MatchesTargetGroup(targetGroup) {
+			filtered = append(filtered, account)
+		}
+	}
+	return filtered, nil
+}
+
+func (s *OpenAIGatewayService) mergeExhaustedFromBroadSource(ctx context.Context, groupID *int64, base []Account) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return base, nil
+	}
+	broad, err := s.listOpenAIAccountsFromBroadSource(ctx, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("query accounts failed: %w", err)
+	}
+
+	seen := make(map[int64]struct{}, len(base))
+	baseIndex := make(map[int64]int, len(base))
+	merged := make([]Account, 0, len(base)+len(broad))
+	for _, acc := range base {
+		baseIndex[acc.ID] = len(merged)
+		merged = append(merged, acc)
+		seen[acc.ID] = struct{}{}
+	}
+	for _, acc := range broad {
+		if _, exists := seen[acc.ID]; exists {
+			if idx, ok := baseIndex[acc.ID]; ok && acc.IsOpenAI() {
+				merged[idx] = acc
+			}
+			continue
+		}
+		if !acc.IsOpenAI() || !acc.IsSchedulableForTargetGroup(TargetGroupExhausted) {
+			continue
+		}
+		merged = append(merged, acc)
+		seen[acc.ID] = struct{}{}
+	}
+	return merged, nil
+}
+
+func (s *OpenAIGatewayService) listOpenAIAccountsFromBroadSource(ctx context.Context, groupID *int64) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, nil
+	}
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		return s.accountRepo.ListByPlatform(ctx, PlatformOpenAI)
+	}
+	if groupID != nil {
+		accounts, err := s.accountRepo.ListByGroup(ctx, *groupID)
+		if err != nil {
+			return nil, err
+		}
+		filtered := make([]Account, 0, len(accounts))
+		for _, acc := range accounts {
+			if acc.Platform == PlatformOpenAI {
+				filtered = append(filtered, acc)
+			}
+		}
+		return filtered, nil
+	}
+	accounts, err := s.accountRepo.ListByPlatform(ctx, PlatformOpenAI)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]Account, 0, len(accounts))
+	for _, acc := range accounts {
+		if len(acc.AccountGroups) == 0 && len(acc.GroupIDs) == 0 && len(acc.Groups) == 0 {
+			filtered = append(filtered, acc)
+		}
+	}
+	return filtered, nil
 }
 
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
@@ -1551,10 +1651,11 @@ func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accoun
 	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
 }
 
-func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.Context, account *Account, requestedModel string) *Account {
+func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.Context, account *Account, requestedModel string, targetGroup AccountTargetGroup) *Account {
 	if account == nil {
 		return nil
 	}
+	targetGroup = normalizeTargetGroup(targetGroup)
 
 	fresh := account
 	if s.schedulerSnapshot != nil {
@@ -1565,7 +1666,7 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.
 		fresh = current
 	}
 
-	if !fresh.IsSchedulable() || !fresh.IsOpenAI() {
+	if !fresh.IsOpenAI() || !fresh.MatchesTargetGroup(targetGroup) || !fresh.IsSchedulableForTargetGroup(targetGroup) {
 		return nil
 	}
 	if requestedModel != "" && !fresh.IsModelSupported(requestedModel) {
@@ -1574,10 +1675,11 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.
 	return fresh
 }
 
-func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Context, account *Account, requestedModel string) *Account {
+func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Context, account *Account, requestedModel string, targetGroup AccountTargetGroup) *Account {
 	if account == nil {
 		return nil
 	}
+	targetGroup = normalizeTargetGroup(targetGroup)
 	if s.schedulerSnapshot == nil || s.accountRepo == nil {
 		return account
 	}
@@ -1587,7 +1689,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 		return nil
 	}
 	syncOpenAICodexRateLimitFromExtra(ctx, s.accountRepo, latest, time.Now())
-	if !latest.IsSchedulable() || !latest.IsOpenAI() {
+	if !latest.IsOpenAI() || !latest.MatchesTargetGroup(targetGroup) || !latest.IsSchedulableForTargetGroup(targetGroup) {
 		return nil
 	}
 	if requestedModel != "" && !latest.IsModelSupported(requestedModel) {

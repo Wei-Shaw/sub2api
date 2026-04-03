@@ -39,3 +39,19 @@ func isBareGPT53CodexSparkModel(model string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(modelID))
 	return normalized == "gpt-5.3-codex-spark" || normalized == "gpt 5.3 codex spark"
 }
+
+func IsSysModel(model string) bool {
+	modelID := strings.TrimSpace(model)
+	if modelID == "" || len(modelID) < len("-sys") {
+		return false
+	}
+	return strings.EqualFold(modelID[len(modelID)-len("-sys"):], "-sys")
+}
+
+func StripSysSuffix(model string) string {
+	modelID := strings.TrimSpace(model)
+	if !IsSysModel(modelID) {
+		return modelID
+	}
+	return strings.TrimSpace(modelID[:len(modelID)-len("-sys")])
+}

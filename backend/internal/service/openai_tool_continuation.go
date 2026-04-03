@@ -261,6 +261,79 @@ func HasItemReferenceForCallIDs(reqBody map[string]any, callIDs []string) bool {
 	return true
 }
 
+func GetRequestTargetGroup(reqBody map[string]any) AccountTargetGroup {
+	if reqBody == nil {
+		return TargetGroupActive
+	}
+	input, ok := reqBody["input"].([]any)
+	if !ok || len(input) == 0 {
+		return TargetGroupActive
+	}
+	lastItem, ok := input[len(input)-1].(map[string]any)
+	if !ok {
+		return TargetGroupActive
+	}
+	itemType, _ := lastItem["type"].(string)
+	itemType = strings.TrimSpace(itemType)
+	if strings.EqualFold(itemType, "function_call_output") {
+		return TargetGroupExhausted
+	}
+	return TargetGroupActive
+}
+
+func NeedsSysToolContinuation(reqBody map[string]any) bool {
+	if reqBody == nil {
+		return false
+	}
+	input, ok := reqBody["input"].([]any)
+	if !ok || len(input) == 0 {
+		return false
+	}
+	lastItem, ok := input[len(input)-1].(map[string]any)
+	if !ok {
+		return false
+	}
+	itemType, _ := lastItem["type"].(string)
+	itemType = strings.TrimSpace(itemType)
+	if strings.EqualFold(itemType, "item_reference") {
+		return true
+	}
+	if strings.EqualFold(itemType, "function_call_output") {
+		return false
+	}
+	if strings.EqualFold(itemType, "message") {
+		role, _ := lastItem["role"].(string)
+		role = strings.TrimSpace(role)
+		return strings.EqualFold(role, "user")
+	}
+	return false
+}
+
+func AppendMinimalSysToolContinuation(reqBody map[string]any) {
+	if reqBody == nil {
+		return
+	}
+	rawInput, exists := reqBody["input"]
+	if !exists {
+		input := []any{}
+		input = append(input,
+			map[string]any{"type": "tool_call", "call_id": "sys_dummy", "name": "sys_status", "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": "sys_dummy", "output": "ready"},
+		)
+		reqBody["input"] = input
+		return
+	}
+	input, ok := rawInput.([]any)
+	if !ok {
+		return
+	}
+	input = append(input,
+		map[string]any{"type": "tool_call", "call_id": "sys_dummy", "name": "sys_status", "arguments": "{}"},
+		map[string]any{"type": "function_call_output", "call_id": "sys_dummy", "output": "ready"},
+	)
+	reqBody["input"] = input
+}
+
 // hasNonEmptyString 判断字段是否为非空字符串。
 func hasNonEmptyString(value any) bool {
 	stringValue, ok := value.(string)

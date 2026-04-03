@@ -869,6 +869,9 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 				CreatedAt:   "2024-01-01T00:00:00Z",
 			})
 		}
+		if platform == service.PlatformOpenAI {
+			models = expandClaudeSysAliases(models)
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
 			"data":   models,
@@ -877,10 +880,10 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	}
 
 	// Fallback to default models
-	if platform == "openai" {
+	if platform == service.PlatformOpenAI {
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
-			"data":   openai.DefaultModels,
+			"data":   expandOpenAISysAliases(openai.DefaultModels),
 		})
 		return
 	}
@@ -889,6 +892,86 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		"object": "list",
 		"data":   claude.DefaultModels,
 	})
+}
+
+func expandOpenAISysAliases(models []openai.Model) []openai.Model {
+	if len(models) == 0 {
+		return models
+	}
+
+	existingIDs := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		existingIDs[strings.ToLower(model.ID)] = struct{}{}
+	}
+
+	result := make([]openai.Model, 0, len(models)*2)
+	seen := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		key := strings.ToLower(model.ID)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, model)
+
+		if strings.HasSuffix(key, "-sys") {
+			continue
+		}
+
+		aliasID := model.ID + "-Sys"
+		aliasKey := strings.ToLower(aliasID)
+		if _, ok := existingIDs[aliasKey]; ok {
+			continue
+		}
+
+		alias := model
+		alias.ID = aliasID
+		alias.DisplayName = model.DisplayName + " (Sys)"
+		result = append(result, alias)
+		existingIDs[aliasKey] = struct{}{}
+	}
+
+	return result
+}
+
+func expandClaudeSysAliases(models []claude.Model) []claude.Model {
+	if len(models) == 0 {
+		return models
+	}
+
+	existingIDs := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		existingIDs[strings.ToLower(model.ID)] = struct{}{}
+	}
+
+	result := make([]claude.Model, 0, len(models)*2)
+	seen := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		key := strings.ToLower(model.ID)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, model)
+
+		if strings.HasSuffix(key, "-sys") {
+			continue
+		}
+
+		aliasID := model.ID + "-Sys"
+		aliasKey := strings.ToLower(aliasID)
+		if _, ok := existingIDs[aliasKey]; ok {
+			continue
+		}
+
+		alias := model
+		alias.ID = aliasID
+		alias.DisplayName = model.DisplayName + " (Sys)"
+		result = append(result, alias)
+		existingIDs[aliasKey] = struct{}{}
+	}
+
+	return result
 }
 
 // AntigravityModels 返回 Antigravity 支持的全部模型

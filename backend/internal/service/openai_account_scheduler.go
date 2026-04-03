@@ -21,8 +21,28 @@ const (
 	openAIAccountScheduleLayerLoadBalance      = "load_balance"
 )
 
+type AccountTargetGroup string
+
+const (
+	TargetGroupAny       AccountTargetGroup = ""
+	TargetGroupActive    AccountTargetGroup = "active"
+	TargetGroupExhausted AccountTargetGroup = "exhausted"
+)
+
+func normalizeTargetGroup(group AccountTargetGroup) AccountTargetGroup {
+	switch strings.ToLower(strings.TrimSpace(string(group))) {
+	case string(TargetGroupActive):
+		return TargetGroupActive
+	case string(TargetGroupExhausted):
+		return TargetGroupExhausted
+	default:
+		return TargetGroupAny
+	}
+}
+
 type OpenAIAccountScheduleRequest struct {
 	GroupID            *int64
+	TargetGroup        AccountTargetGroup
 	SessionHash        string
 	StickyAccountID    int64
 	PreviousResponseID string
@@ -227,6 +247,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	req OpenAIAccountScheduleRequest,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	decision := OpenAIAccountScheduleDecision{}
+	req.TargetGroup = normalizeTargetGroup(req.TargetGroup)
 	start := time.Now()
 	defer func() {
 		decision.LatencyMs = time.Since(start).Milliseconds()
@@ -240,6 +261,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			req.GroupID,
 			previousResponseID,
 			req.RequestedModel,
+			req.TargetGroup,
 			req.ExcludedIDs,
 		)
 		if err != nil {
@@ -320,7 +342,18 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
-	if shouldClearStickySession(account, req.RequestedModel) || !account.IsOpenAI() || !account.IsSchedulable() {
+	if !account.IsOpenAI() {
+		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		return nil, nil
+	}
+	if !account.MatchesTargetGroup(req.TargetGroup) {
+		return nil, nil
+	}
+	if shouldClearStickySessionForTargetGroup(account, req.RequestedModel, req.TargetGroup) {
+		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		return nil, nil
+	}
+	if !account.IsSchedulableForTargetGroup(req.TargetGroup) {
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
@@ -331,7 +364,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
-	account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.RequestedModel)
+	account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.RequestedModel, req.TargetGroup)
 	if account == nil {
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
@@ -568,7 +601,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
 ) (*AccountSelectionResult, int, int, float64, error) {
-	accounts, err := s.service.listSchedulableAccounts(ctx, req.GroupID)
+	accounts, err := s.service.listSchedulableAccounts(ctx, req.GroupID, req.TargetGroup)
 	if err != nil {
 		return nil, 0, 0, 0, err
 	}
@@ -591,7 +624,13 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 				continue
 			}
 		}
-		if !account.IsSchedulable() || !account.IsOpenAI() {
+		if !account.IsOpenAI() {
+			continue
+		}
+		if !account.MatchesTargetGroup(req.TargetGroup) {
+			continue
+		}
+		if !account.IsSchedulableForTargetGroup(req.TargetGroup) {
 			continue
 		}
 		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
@@ -705,11 +744,11 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 
 	for i := 0; i < len(selectionOrder); i++ {
 		candidate := selectionOrder[i]
-		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel)
+		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, req.TargetGroup)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
 			continue
 		}
-		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel)
+		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel, req.TargetGroup)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
 			continue
 		}
@@ -732,7 +771,11 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	cfg := s.service.schedulingConfig()
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	for _, candidate := range selectionOrder {
-		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel)
+		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, req.TargetGroup)
+		if fresh == nil {
+			continue
+		}
+		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel, req.TargetGroup)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
 			continue
 		}
@@ -826,6 +869,7 @@ func (s *OpenAIGatewayService) SelectAccountWithScheduler(
 	previousResponseID string,
 	sessionHash string,
 	requestedModel string,
+	targetGroup AccountTargetGroup,
 	excludedIDs map[int64]struct{},
 	requiredTransport OpenAIUpstreamTransport,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
@@ -846,6 +890,7 @@ func (s *OpenAIGatewayService) SelectAccountWithScheduler(
 
 	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
 		GroupID:            groupID,
+		TargetGroup:        targetGroup,
 		SessionHash:        sessionHash,
 		StickyAccountID:    stickyAccountID,
 		PreviousResponseID: previousResponseID,

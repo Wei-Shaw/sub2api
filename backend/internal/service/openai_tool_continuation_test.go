@@ -96,3 +96,93 @@ func TestHasItemReferenceForCallIDs(t *testing.T) {
 	require.True(t, HasItemReferenceForCallIDs(req, []string{"call_1", "call_2"}))
 	require.False(t, HasItemReferenceForCallIDs(req, []string{"call_1", "call_3"}))
 }
+
+func TestGetRequestTargetGroup(t *testing.T) {
+	tests := []struct {
+		name string
+		body map[string]any
+		want AccountTargetGroup
+	}{
+		{name: "nil", body: nil, want: TargetGroupActive},
+		{name: "missing input", body: map[string]any{}, want: TargetGroupActive},
+		{name: "empty input", body: map[string]any{"input": []any{}}, want: TargetGroupActive},
+		{name: "last is function_call_output", body: map[string]any{"input": []any{map[string]any{"type": "message"}, map[string]any{"type": "function_call_output"}}}, want: TargetGroupExhausted},
+		{name: "last type whitespace and mixed case", body: map[string]any{"input": []any{map[string]any{"type": "  Function_Call_Output  "}}}, want: TargetGroupExhausted},
+		{name: "function_call_output not last", body: map[string]any{"input": []any{map[string]any{"type": "function_call_output"}, map[string]any{"type": "message"}}}, want: TargetGroupActive},
+		{name: "last is message", body: map[string]any{"input": []any{map[string]any{"type": "message"}}}, want: TargetGroupActive},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, GetRequestTargetGroup(tt.body))
+		})
+	}
+}
+
+func TestNeedsSysToolContinuation(t *testing.T) {
+	tests := []struct {
+		name string
+		body map[string]any
+		want bool
+	}{
+		{name: "nil", body: nil, want: false},
+		{name: "empty input", body: map[string]any{"input": []any{}}, want: false},
+		{name: "last user message", body: map[string]any{"input": []any{map[string]any{"type": "message", "role": "user"}}}, want: true},
+		{name: "last user message whitespace and mixed case", body: map[string]any{"input": []any{map[string]any{"type": "  MeSsaGe ", "role": "  UsEr  "}}}, want: true},
+		{name: "message but non user", body: map[string]any{"input": []any{map[string]any{"type": "message", "role": "assistant"}}}, want: false},
+		{name: "last item reference", body: map[string]any{"input": []any{map[string]any{"type": "item_reference", "id": "x"}}}, want: true},
+		{name: "last function_call_output", body: map[string]any{"input": []any{map[string]any{"type": "function_call_output", "call_id": "c1"}}}, want: false},
+		{name: "other type", body: map[string]any{"input": []any{map[string]any{"type": "foo"}}}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, NeedsSysToolContinuation(tt.body))
+		})
+	}
+}
+
+func TestAppendMinimalSysToolContinuation(t *testing.T) {
+	req := map[string]any{
+		"input": []any{
+			map[string]any{"type": "message", "role": "user"},
+		},
+	}
+
+	AppendMinimalSysToolContinuation(req)
+
+	input, ok := req["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 3)
+
+	toolCall, ok := input[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "tool_call", toolCall["type"])
+	require.Equal(t, "sys_dummy", toolCall["call_id"])
+	require.Equal(t, "sys_status", toolCall["name"])
+	require.Equal(t, "{}", toolCall["arguments"])
+
+	functionCallOutput, ok := input[2].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "function_call_output", functionCallOutput["type"])
+	require.Equal(t, "sys_dummy", functionCallOutput["call_id"])
+	require.Equal(t, "ready", functionCallOutput["output"])
+}
+
+func TestAppendMinimalSysToolContinuation_MissingInput(t *testing.T) {
+	req := map[string]any{}
+
+	AppendMinimalSysToolContinuation(req)
+
+	input, ok := req["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 2)
+}
+
+func TestAppendMinimalSysToolContinuation_InvalidInputTypeDoesNotOverwrite(t *testing.T) {
+	req := map[string]any{"input": "keep-me"}
+
+	AppendMinimalSysToolContinuation(req)
+
+	require.Equal(t, "keep-me", req["input"])
+}
