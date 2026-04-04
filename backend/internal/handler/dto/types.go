@@ -364,13 +364,20 @@ type UsageLog struct {
 	CacheCreation5mTokens int `json:"cache_creation_5m_tokens"`
 	CacheCreation1hTokens int `json:"cache_creation_1h_tokens"`
 
-	InputCost         float64 `json:"input_cost"`
-	OutputCost        float64 `json:"output_cost"`
-	CacheCreationCost float64 `json:"cache_creation_cost"`
-	CacheReadCost     float64 `json:"cache_read_cost"`
-	TotalCost         float64 `json:"total_cost"`
-	ActualCost        float64 `json:"actual_cost"`
-	RateMultiplier    float64 `json:"rate_multiplier"`
+	InputCost                   float64  `json:"input_cost"`
+	OutputCost                  float64  `json:"output_cost"`
+	CacheCreationCost           float64  `json:"cache_creation_cost"`
+	CacheReadCost               float64  `json:"cache_read_cost"`
+	TotalCost                   float64  `json:"total_cost"`
+	ActualCost                  float64  `json:"actual_cost"`
+	RateMultiplier              float64  `json:"rate_multiplier"`
+	AccountRateMultiplier       *float64 `json:"account_rate_multiplier,omitempty"`
+	PriorityAccountMultiplier   *float64 `json:"priority_account_multiplier,omitempty"`
+	EffectiveMultiplier         *float64 `json:"effective_multiplier,omitempty"`
+	EffectiveInputUnitPrice     *float64 `json:"effective_input_unit_price,omitempty"`
+	EffectiveOutputUnitPrice    *float64 `json:"effective_output_unit_price,omitempty"`
+	EffectiveCacheReadUnitPrice *float64 `json:"effective_cache_read_unit_price,omitempty"`
+	PricingSource               *string  `json:"pricing_source,omitempty"`
 
 	BillingType  int8   `json:"billing_type"`
 	RequestType  string `json:"request_type"`

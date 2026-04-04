@@ -28,7 +28,7 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, media_type, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, routing_target_group, routing_schedule_layer, routing_selected_account_id, routing_selected_account_name, routing_effective_model, routing_failover_count, routing_failover_final_reason, cache_ttl_overridden, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, priority_account_multiplier, effective_multiplier, effective_input_unit_price, effective_output_unit_price, effective_cache_read_unit_price, pricing_source, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, media_type, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, routing_target_group, routing_schedule_layer, routing_selected_account_id, routing_selected_account_name, routing_effective_model, routing_failover_count, routing_failover_final_reason, cache_ttl_overridden, created_at"
 
 // usageLogInsertArgTypes must stay in the same order as:
 //  1. prepareUsageLogInsert().args
@@ -61,6 +61,12 @@ var usageLogInsertArgTypes = [...]string{
 	"numeric",     // actual_cost
 	"numeric",     // rate_multiplier
 	"numeric",     // account_rate_multiplier
+	"numeric",     // priority_account_multiplier
+	"numeric",     // effective_multiplier
+	"numeric",     // effective_input_unit_price
+	"numeric",     // effective_output_unit_price
+	"numeric",     // effective_cache_read_unit_price
+	"text",        // pricing_source
 	"smallint",    // billing_type
 	"smallint",    // request_type
 	"boolean",     // stream
@@ -341,6 +347,12 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			actual_cost,
 			rate_multiplier,
 			account_rate_multiplier,
+			priority_account_multiplier,
+			effective_multiplier,
+			effective_input_unit_price,
+			effective_output_unit_price,
+			effective_cache_read_unit_price,
+			pricing_source,
 			billing_type,
 			request_type,
 			stream,
@@ -371,7 +383,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			$10, $11, $12, $13,
 			$14, $15,
 			$16, $17, $18, $19, $20, $21,
-			$22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47
+			$22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -780,6 +792,12 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			actual_cost,
 			rate_multiplier,
 			account_rate_multiplier,
+			priority_account_multiplier,
+			effective_multiplier,
+			effective_input_unit_price,
+			effective_output_unit_price,
+			effective_cache_read_unit_price,
+			pricing_source,
 			billing_type,
 			request_type,
 			stream,
@@ -996,6 +1014,12 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			actual_cost,
 			rate_multiplier,
 			account_rate_multiplier,
+			priority_account_multiplier,
+			effective_multiplier,
+			effective_input_unit_price,
+			effective_output_unit_price,
+			effective_cache_read_unit_price,
+			pricing_source,
 			billing_type,
 			request_type,
 			stream,
@@ -1022,7 +1046,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*47)
+	args := make([]any, 0, len(preparedList)*53)
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1071,6 +1095,12 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			actual_cost,
 			rate_multiplier,
 			account_rate_multiplier,
+			priority_account_multiplier,
+			effective_multiplier,
+			effective_input_unit_price,
+			effective_output_unit_price,
+			effective_cache_read_unit_price,
+			pricing_source,
 			billing_type,
 			request_type,
 			stream,
@@ -1120,6 +1150,12 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			actual_cost,
 			rate_multiplier,
 			account_rate_multiplier,
+			priority_account_multiplier,
+			effective_multiplier,
+			effective_input_unit_price,
+			effective_output_unit_price,
+			effective_cache_read_unit_price,
+			pricing_source,
 			billing_type,
 			request_type,
 			stream,
@@ -1177,6 +1213,12 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			actual_cost,
 			rate_multiplier,
 			account_rate_multiplier,
+			priority_account_multiplier,
+			effective_multiplier,
+			effective_input_unit_price,
+			effective_output_unit_price,
+			effective_cache_read_unit_price,
+			pricing_source,
 			billing_type,
 			request_type,
 			stream,
@@ -1207,7 +1249,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			$10, $11, $12, $13,
 			$14, $15,
 			$16, $17, $18, $19, $20, $21,
-			$22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47
+			$22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1246,6 +1288,12 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	routingEffectiveModel := nullString(log.RoutingEffectiveModel)
 	routingFailoverCount := nullInt(log.RoutingFailoverCount)
 	routingFailoverFinalReason := nullString(log.RoutingFailoverFinalReason)
+	priorityAccountMultiplier := nullFloat64(log.PriorityAccountMultiplier)
+	effectiveMultiplier := nullFloat64(log.EffectiveMultiplier)
+	effectiveInputUnitPrice := nullFloat64(log.EffectiveInputUnitPrice)
+	effectiveOutputUnitPrice := nullFloat64(log.EffectiveOutputUnitPrice)
+	effectiveCacheReadUnitPrice := nullFloat64(log.EffectiveCacheReadUnitPrice)
+	pricingSource := nullString(log.PricingSource)
 	requestedModel := strings.TrimSpace(log.RequestedModel)
 	if requestedModel == "" {
 		requestedModel = strings.TrimSpace(log.Model)
@@ -1286,6 +1334,12 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			log.ActualCost,
 			rateMultiplier,
 			log.AccountRateMultiplier,
+			priorityAccountMultiplier,
+			effectiveMultiplier,
+			effectiveInputUnitPrice,
+			effectiveOutputUnitPrice,
+			effectiveCacheReadUnitPrice,
+			pricingSource,
 			log.BillingType,
 			requestType,
 			log.Stream,
@@ -4004,54 +4058,60 @@ func (r *usageLogRepository) loadSubscriptions(ctx context.Context, ids []int64)
 
 func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, error) {
 	var (
-		id                         int64
-		userID                     int64
-		apiKeyID                   int64
-		accountID                  int64
-		requestID                  sql.NullString
-		model                      string
-		requestedModel             sql.NullString
-		upstreamModel              sql.NullString
-		groupID                    sql.NullInt64
-		subscriptionID             sql.NullInt64
-		inputTokens                int
-		outputTokens               int
-		cacheCreationTokens        int
-		cacheReadTokens            int
-		cacheCreation5m            int
-		cacheCreation1h            int
-		inputCost                  float64
-		outputCost                 float64
-		cacheCreationCost          float64
-		cacheReadCost              float64
-		totalCost                  float64
-		actualCost                 float64
-		rateMultiplier             float64
-		accountRateMultiplier      sql.NullFloat64
-		billingType                int16
-		requestTypeRaw             int16
-		stream                     bool
-		openaiWSMode               bool
-		durationMs                 sql.NullInt64
-		firstTokenMs               sql.NullInt64
-		userAgent                  sql.NullString
-		ipAddress                  sql.NullString
-		imageCount                 int
-		imageSize                  sql.NullString
-		mediaType                  sql.NullString
-		serviceTier                sql.NullString
-		reasoningEffort            sql.NullString
-		inboundEndpoint            sql.NullString
-		upstreamEndpoint           sql.NullString
-		routingTargetGroup         sql.NullString
-		routingScheduleLayer       sql.NullString
-		routingSelectedAccountID   sql.NullInt64
-		routingSelectedAccountName sql.NullString
-		routingEffectiveModel      sql.NullString
-		routingFailoverCount       sql.NullInt64
-		routingFailoverFinalReason sql.NullString
-		cacheTTLOverridden         bool
-		createdAt                  time.Time
+		id                          int64
+		userID                      int64
+		apiKeyID                    int64
+		accountID                   int64
+		requestID                   sql.NullString
+		model                       string
+		requestedModel              sql.NullString
+		upstreamModel               sql.NullString
+		groupID                     sql.NullInt64
+		subscriptionID              sql.NullInt64
+		inputTokens                 int
+		outputTokens                int
+		cacheCreationTokens         int
+		cacheReadTokens             int
+		cacheCreation5m             int
+		cacheCreation1h             int
+		inputCost                   float64
+		outputCost                  float64
+		cacheCreationCost           float64
+		cacheReadCost               float64
+		totalCost                   float64
+		actualCost                  float64
+		rateMultiplier              float64
+		accountRateMultiplier       sql.NullFloat64
+		priorityAccountMultiplier   sql.NullFloat64
+		effectiveMultiplier         sql.NullFloat64
+		effectiveInputUnitPrice     sql.NullFloat64
+		effectiveOutputUnitPrice    sql.NullFloat64
+		effectiveCacheReadUnitPrice sql.NullFloat64
+		pricingSource               sql.NullString
+		billingType                 int16
+		requestTypeRaw              int16
+		stream                      bool
+		openaiWSMode                bool
+		durationMs                  sql.NullInt64
+		firstTokenMs                sql.NullInt64
+		userAgent                   sql.NullString
+		ipAddress                   sql.NullString
+		imageCount                  int
+		imageSize                   sql.NullString
+		mediaType                   sql.NullString
+		serviceTier                 sql.NullString
+		reasoningEffort             sql.NullString
+		inboundEndpoint             sql.NullString
+		upstreamEndpoint            sql.NullString
+		routingTargetGroup          sql.NullString
+		routingScheduleLayer        sql.NullString
+		routingSelectedAccountID    sql.NullInt64
+		routingSelectedAccountName  sql.NullString
+		routingEffectiveModel       sql.NullString
+		routingFailoverCount        sql.NullInt64
+		routingFailoverFinalReason  sql.NullString
+		cacheTTLOverridden          bool
+		createdAt                   time.Time
 	)
 
 	if err := scanner.Scan(
@@ -4079,6 +4139,12 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&actualCost,
 		&rateMultiplier,
 		&accountRateMultiplier,
+		&priorityAccountMultiplier,
+		&effectiveMultiplier,
+		&effectiveInputUnitPrice,
+		&effectiveOutputUnitPrice,
+		&effectiveCacheReadUnitPrice,
+		&pricingSource,
 		&billingType,
 		&requestTypeRaw,
 		&stream,
@@ -4108,31 +4174,36 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 	}
 
 	log := &service.UsageLog{
-		ID:                    id,
-		UserID:                userID,
-		APIKeyID:              apiKeyID,
-		AccountID:             accountID,
-		Model:                 model,
-		RequestedModel:        coalesceTrimmedString(requestedModel, model),
-		InputTokens:           inputTokens,
-		OutputTokens:          outputTokens,
-		CacheCreationTokens:   cacheCreationTokens,
-		CacheReadTokens:       cacheReadTokens,
-		CacheCreation5mTokens: cacheCreation5m,
-		CacheCreation1hTokens: cacheCreation1h,
-		InputCost:             inputCost,
-		OutputCost:            outputCost,
-		CacheCreationCost:     cacheCreationCost,
-		CacheReadCost:         cacheReadCost,
-		TotalCost:             totalCost,
-		ActualCost:            actualCost,
-		RateMultiplier:        rateMultiplier,
-		AccountRateMultiplier: nullFloat64Ptr(accountRateMultiplier),
-		BillingType:           int8(billingType),
-		RequestType:           service.RequestTypeFromInt16(requestTypeRaw),
-		ImageCount:            imageCount,
-		CacheTTLOverridden:    cacheTTLOverridden,
-		CreatedAt:             createdAt,
+		ID:                          id,
+		UserID:                      userID,
+		APIKeyID:                    apiKeyID,
+		AccountID:                   accountID,
+		Model:                       model,
+		RequestedModel:              coalesceTrimmedString(requestedModel, model),
+		InputTokens:                 inputTokens,
+		OutputTokens:                outputTokens,
+		CacheCreationTokens:         cacheCreationTokens,
+		CacheReadTokens:             cacheReadTokens,
+		CacheCreation5mTokens:       cacheCreation5m,
+		CacheCreation1hTokens:       cacheCreation1h,
+		InputCost:                   inputCost,
+		OutputCost:                  outputCost,
+		CacheCreationCost:           cacheCreationCost,
+		CacheReadCost:               cacheReadCost,
+		TotalCost:                   totalCost,
+		ActualCost:                  actualCost,
+		RateMultiplier:              rateMultiplier,
+		AccountRateMultiplier:       nullFloat64Ptr(accountRateMultiplier),
+		PriorityAccountMultiplier:   nullFloat64Ptr(priorityAccountMultiplier),
+		EffectiveMultiplier:         nullFloat64Ptr(effectiveMultiplier),
+		EffectiveInputUnitPrice:     nullFloat64Ptr(effectiveInputUnitPrice),
+		EffectiveOutputUnitPrice:    nullFloat64Ptr(effectiveOutputUnitPrice),
+		EffectiveCacheReadUnitPrice: nullFloat64Ptr(effectiveCacheReadUnitPrice),
+		BillingType:                 int8(billingType),
+		RequestType:                 service.RequestTypeFromInt16(requestTypeRaw),
+		ImageCount:                  imageCount,
+		CacheTTLOverridden:          cacheTTLOverridden,
+		CreatedAt:                   createdAt,
 	}
 	// 先回填 legacy 字段，再基于 legacy + request_type 计算最终请求类型，保证历史数据兼容。
 	log.Stream = stream
@@ -4176,6 +4247,9 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 	}
 	if reasoningEffort.Valid {
 		log.ReasoningEffort = &reasoningEffort.String
+	}
+	if pricingSource.Valid {
+		log.PricingSource = &pricingSource.String
 	}
 	if inboundEndpoint.Valid {
 		log.InboundEndpoint = &inboundEndpoint.String
@@ -4326,6 +4400,13 @@ func nullInt(v *int) sql.NullInt64 {
 		return sql.NullInt64{}
 	}
 	return sql.NullInt64{Int64: int64(*v), Valid: true}
+}
+
+func nullFloat64(v *float64) sql.NullFloat64 {
+	if v == nil {
+		return sql.NullFloat64{}
+	}
+	return sql.NullFloat64{Float64: *v, Valid: true}
 }
 
 func nullFloat64Ptr(v sql.NullFloat64) *float64 {

@@ -189,6 +189,47 @@ func TestUsageLogFromServiceAdmin_IncludesRoutingSnapshot(t *testing.T) {
 	require.Equal(t, routingFailoverFinalReason, *adminDTO.RoutingFailoverFinalReason)
 }
 
+func TestUsageLogFromService_IncludesBillingBreakdownFields(t *testing.T) {
+	t.Parallel()
+
+	accountRateMultiplier := 1.5
+	priorityAccountMultiplier := 100.0
+	effectiveMultiplier := 150.0
+	effectiveInputUnitPrice := 5e-6
+	effectiveOutputUnitPrice := 30e-6
+	effectiveCacheReadUnitPrice := 0.5e-6
+	pricingSource := "priority_pricing,priority_account_multiplier"
+
+	log := &service.UsageLog{
+		RequestID:                   "req-billing-breakdown",
+		Model:                       "gpt-5.4",
+		AccountRateMultiplier:       &accountRateMultiplier,
+		PriorityAccountMultiplier:   &priorityAccountMultiplier,
+		EffectiveMultiplier:         &effectiveMultiplier,
+		EffectiveInputUnitPrice:     &effectiveInputUnitPrice,
+		EffectiveOutputUnitPrice:    &effectiveOutputUnitPrice,
+		EffectiveCacheReadUnitPrice: &effectiveCacheReadUnitPrice,
+		PricingSource:               &pricingSource,
+	}
+
+	userDTO := UsageLogFromService(log)
+
+	require.NotNil(t, userDTO.AccountRateMultiplier)
+	require.InDelta(t, accountRateMultiplier, *userDTO.AccountRateMultiplier, 1e-12)
+	require.NotNil(t, userDTO.PriorityAccountMultiplier)
+	require.InDelta(t, priorityAccountMultiplier, *userDTO.PriorityAccountMultiplier, 1e-12)
+	require.NotNil(t, userDTO.EffectiveMultiplier)
+	require.InDelta(t, effectiveMultiplier, *userDTO.EffectiveMultiplier, 1e-12)
+	require.NotNil(t, userDTO.EffectiveInputUnitPrice)
+	require.InDelta(t, effectiveInputUnitPrice, *userDTO.EffectiveInputUnitPrice, 1e-12)
+	require.NotNil(t, userDTO.EffectiveOutputUnitPrice)
+	require.InDelta(t, effectiveOutputUnitPrice, *userDTO.EffectiveOutputUnitPrice, 1e-12)
+	require.NotNil(t, userDTO.EffectiveCacheReadUnitPrice)
+	require.InDelta(t, effectiveCacheReadUnitPrice, *userDTO.EffectiveCacheReadUnitPrice, 1e-12)
+	require.NotNil(t, userDTO.PricingSource)
+	require.Equal(t, pricingSource, *userDTO.PricingSource)
+}
+
 func f64Ptr(value float64) *float64 {
 	return &value
 }

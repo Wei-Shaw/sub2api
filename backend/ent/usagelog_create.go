@@ -407,6 +407,90 @@ func (_c *UsageLogCreate) SetNillableAccountRateMultiplier(v *float64) *UsageLog
 	return _c
 }
 
+// SetPriorityAccountMultiplier sets the "priority_account_multiplier" field.
+func (_c *UsageLogCreate) SetPriorityAccountMultiplier(v float64) *UsageLogCreate {
+	_c.mutation.SetPriorityAccountMultiplier(v)
+	return _c
+}
+
+// SetNillablePriorityAccountMultiplier sets the "priority_account_multiplier" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillablePriorityAccountMultiplier(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetPriorityAccountMultiplier(*v)
+	}
+	return _c
+}
+
+// SetEffectiveMultiplier sets the "effective_multiplier" field.
+func (_c *UsageLogCreate) SetEffectiveMultiplier(v float64) *UsageLogCreate {
+	_c.mutation.SetEffectiveMultiplier(v)
+	return _c
+}
+
+// SetNillableEffectiveMultiplier sets the "effective_multiplier" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableEffectiveMultiplier(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetEffectiveMultiplier(*v)
+	}
+	return _c
+}
+
+// SetEffectiveInputUnitPrice sets the "effective_input_unit_price" field.
+func (_c *UsageLogCreate) SetEffectiveInputUnitPrice(v float64) *UsageLogCreate {
+	_c.mutation.SetEffectiveInputUnitPrice(v)
+	return _c
+}
+
+// SetNillableEffectiveInputUnitPrice sets the "effective_input_unit_price" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableEffectiveInputUnitPrice(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetEffectiveInputUnitPrice(*v)
+	}
+	return _c
+}
+
+// SetEffectiveOutputUnitPrice sets the "effective_output_unit_price" field.
+func (_c *UsageLogCreate) SetEffectiveOutputUnitPrice(v float64) *UsageLogCreate {
+	_c.mutation.SetEffectiveOutputUnitPrice(v)
+	return _c
+}
+
+// SetNillableEffectiveOutputUnitPrice sets the "effective_output_unit_price" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableEffectiveOutputUnitPrice(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetEffectiveOutputUnitPrice(*v)
+	}
+	return _c
+}
+
+// SetEffectiveCacheReadUnitPrice sets the "effective_cache_read_unit_price" field.
+func (_c *UsageLogCreate) SetEffectiveCacheReadUnitPrice(v float64) *UsageLogCreate {
+	_c.mutation.SetEffectiveCacheReadUnitPrice(v)
+	return _c
+}
+
+// SetNillableEffectiveCacheReadUnitPrice sets the "effective_cache_read_unit_price" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableEffectiveCacheReadUnitPrice(v *float64) *UsageLogCreate {
+	if v != nil {
+		_c.SetEffectiveCacheReadUnitPrice(*v)
+	}
+	return _c
+}
+
+// SetPricingSource sets the "pricing_source" field.
+func (_c *UsageLogCreate) SetPricingSource(v string) *UsageLogCreate {
+	_c.mutation.SetPricingSource(v)
+	return _c
+}
+
+// SetNillablePricingSource sets the "pricing_source" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillablePricingSource(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetPricingSource(*v)
+	}
+	return _c
+}
+
 // SetBillingType sets the "billing_type" field.
 func (_c *UsageLogCreate) SetBillingType(v int8) *UsageLogCreate {
 	_c.mutation.SetBillingType(v)
@@ -796,6 +880,11 @@ func (_c *UsageLogCreate) check() error {
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "UsageLog.rate_multiplier"`)}
 	}
+	if v, ok := _c.mutation.PricingSource(); ok {
+		if err := usagelog.PricingSourceValidator(v); err != nil {
+			return &ValidationError{Name: "pricing_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.pricing_source": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.BillingType(); !ok {
 		return &ValidationError{Name: "billing_type", err: errors.New(`ent: missing required field "UsageLog.billing_type"`)}
 	}
@@ -966,6 +1055,30 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)
 		_node.AccountRateMultiplier = &value
+	}
+	if value, ok := _c.mutation.PriorityAccountMultiplier(); ok {
+		_spec.SetField(usagelog.FieldPriorityAccountMultiplier, field.TypeFloat64, value)
+		_node.PriorityAccountMultiplier = &value
+	}
+	if value, ok := _c.mutation.EffectiveMultiplier(); ok {
+		_spec.SetField(usagelog.FieldEffectiveMultiplier, field.TypeFloat64, value)
+		_node.EffectiveMultiplier = &value
+	}
+	if value, ok := _c.mutation.EffectiveInputUnitPrice(); ok {
+		_spec.SetField(usagelog.FieldEffectiveInputUnitPrice, field.TypeFloat64, value)
+		_node.EffectiveInputUnitPrice = &value
+	}
+	if value, ok := _c.mutation.EffectiveOutputUnitPrice(); ok {
+		_spec.SetField(usagelog.FieldEffectiveOutputUnitPrice, field.TypeFloat64, value)
+		_node.EffectiveOutputUnitPrice = &value
+	}
+	if value, ok := _c.mutation.EffectiveCacheReadUnitPrice(); ok {
+		_spec.SetField(usagelog.FieldEffectiveCacheReadUnitPrice, field.TypeFloat64, value)
+		_node.EffectiveCacheReadUnitPrice = &value
+	}
+	if value, ok := _c.mutation.PricingSource(); ok {
+		_spec.SetField(usagelog.FieldPricingSource, field.TypeString, value)
+		_node.PricingSource = &value
 	}
 	if value, ok := _c.mutation.BillingType(); ok {
 		_spec.SetField(usagelog.FieldBillingType, field.TypeInt8, value)
@@ -1673,6 +1786,144 @@ func (u *UsageLogUpsert) AddAccountRateMultiplier(v float64) *UsageLogUpsert {
 // ClearAccountRateMultiplier clears the value of the "account_rate_multiplier" field.
 func (u *UsageLogUpsert) ClearAccountRateMultiplier() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldAccountRateMultiplier)
+	return u
+}
+
+// SetPriorityAccountMultiplier sets the "priority_account_multiplier" field.
+func (u *UsageLogUpsert) SetPriorityAccountMultiplier(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldPriorityAccountMultiplier, v)
+	return u
+}
+
+// UpdatePriorityAccountMultiplier sets the "priority_account_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdatePriorityAccountMultiplier() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldPriorityAccountMultiplier)
+	return u
+}
+
+// AddPriorityAccountMultiplier adds v to the "priority_account_multiplier" field.
+func (u *UsageLogUpsert) AddPriorityAccountMultiplier(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldPriorityAccountMultiplier, v)
+	return u
+}
+
+// ClearPriorityAccountMultiplier clears the value of the "priority_account_multiplier" field.
+func (u *UsageLogUpsert) ClearPriorityAccountMultiplier() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldPriorityAccountMultiplier)
+	return u
+}
+
+// SetEffectiveMultiplier sets the "effective_multiplier" field.
+func (u *UsageLogUpsert) SetEffectiveMultiplier(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldEffectiveMultiplier, v)
+	return u
+}
+
+// UpdateEffectiveMultiplier sets the "effective_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateEffectiveMultiplier() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldEffectiveMultiplier)
+	return u
+}
+
+// AddEffectiveMultiplier adds v to the "effective_multiplier" field.
+func (u *UsageLogUpsert) AddEffectiveMultiplier(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldEffectiveMultiplier, v)
+	return u
+}
+
+// ClearEffectiveMultiplier clears the value of the "effective_multiplier" field.
+func (u *UsageLogUpsert) ClearEffectiveMultiplier() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldEffectiveMultiplier)
+	return u
+}
+
+// SetEffectiveInputUnitPrice sets the "effective_input_unit_price" field.
+func (u *UsageLogUpsert) SetEffectiveInputUnitPrice(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldEffectiveInputUnitPrice, v)
+	return u
+}
+
+// UpdateEffectiveInputUnitPrice sets the "effective_input_unit_price" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateEffectiveInputUnitPrice() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldEffectiveInputUnitPrice)
+	return u
+}
+
+// AddEffectiveInputUnitPrice adds v to the "effective_input_unit_price" field.
+func (u *UsageLogUpsert) AddEffectiveInputUnitPrice(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldEffectiveInputUnitPrice, v)
+	return u
+}
+
+// ClearEffectiveInputUnitPrice clears the value of the "effective_input_unit_price" field.
+func (u *UsageLogUpsert) ClearEffectiveInputUnitPrice() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldEffectiveInputUnitPrice)
+	return u
+}
+
+// SetEffectiveOutputUnitPrice sets the "effective_output_unit_price" field.
+func (u *UsageLogUpsert) SetEffectiveOutputUnitPrice(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldEffectiveOutputUnitPrice, v)
+	return u
+}
+
+// UpdateEffectiveOutputUnitPrice sets the "effective_output_unit_price" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateEffectiveOutputUnitPrice() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldEffectiveOutputUnitPrice)
+	return u
+}
+
+// AddEffectiveOutputUnitPrice adds v to the "effective_output_unit_price" field.
+func (u *UsageLogUpsert) AddEffectiveOutputUnitPrice(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldEffectiveOutputUnitPrice, v)
+	return u
+}
+
+// ClearEffectiveOutputUnitPrice clears the value of the "effective_output_unit_price" field.
+func (u *UsageLogUpsert) ClearEffectiveOutputUnitPrice() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldEffectiveOutputUnitPrice)
+	return u
+}
+
+// SetEffectiveCacheReadUnitPrice sets the "effective_cache_read_unit_price" field.
+func (u *UsageLogUpsert) SetEffectiveCacheReadUnitPrice(v float64) *UsageLogUpsert {
+	u.Set(usagelog.FieldEffectiveCacheReadUnitPrice, v)
+	return u
+}
+
+// UpdateEffectiveCacheReadUnitPrice sets the "effective_cache_read_unit_price" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateEffectiveCacheReadUnitPrice() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldEffectiveCacheReadUnitPrice)
+	return u
+}
+
+// AddEffectiveCacheReadUnitPrice adds v to the "effective_cache_read_unit_price" field.
+func (u *UsageLogUpsert) AddEffectiveCacheReadUnitPrice(v float64) *UsageLogUpsert {
+	u.Add(usagelog.FieldEffectiveCacheReadUnitPrice, v)
+	return u
+}
+
+// ClearEffectiveCacheReadUnitPrice clears the value of the "effective_cache_read_unit_price" field.
+func (u *UsageLogUpsert) ClearEffectiveCacheReadUnitPrice() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldEffectiveCacheReadUnitPrice)
+	return u
+}
+
+// SetPricingSource sets the "pricing_source" field.
+func (u *UsageLogUpsert) SetPricingSource(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldPricingSource, v)
+	return u
+}
+
+// UpdatePricingSource sets the "pricing_source" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdatePricingSource() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldPricingSource)
+	return u
+}
+
+// ClearPricingSource clears the value of the "pricing_source" field.
+func (u *UsageLogUpsert) ClearPricingSource() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldPricingSource)
 	return u
 }
 
@@ -2514,6 +2765,167 @@ func (u *UsageLogUpsertOne) UpdateAccountRateMultiplier() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearAccountRateMultiplier() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearAccountRateMultiplier()
+	})
+}
+
+// SetPriorityAccountMultiplier sets the "priority_account_multiplier" field.
+func (u *UsageLogUpsertOne) SetPriorityAccountMultiplier(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPriorityAccountMultiplier(v)
+	})
+}
+
+// AddPriorityAccountMultiplier adds v to the "priority_account_multiplier" field.
+func (u *UsageLogUpsertOne) AddPriorityAccountMultiplier(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddPriorityAccountMultiplier(v)
+	})
+}
+
+// UpdatePriorityAccountMultiplier sets the "priority_account_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdatePriorityAccountMultiplier() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePriorityAccountMultiplier()
+	})
+}
+
+// ClearPriorityAccountMultiplier clears the value of the "priority_account_multiplier" field.
+func (u *UsageLogUpsertOne) ClearPriorityAccountMultiplier() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPriorityAccountMultiplier()
+	})
+}
+
+// SetEffectiveMultiplier sets the "effective_multiplier" field.
+func (u *UsageLogUpsertOne) SetEffectiveMultiplier(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetEffectiveMultiplier(v)
+	})
+}
+
+// AddEffectiveMultiplier adds v to the "effective_multiplier" field.
+func (u *UsageLogUpsertOne) AddEffectiveMultiplier(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddEffectiveMultiplier(v)
+	})
+}
+
+// UpdateEffectiveMultiplier sets the "effective_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateEffectiveMultiplier() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateEffectiveMultiplier()
+	})
+}
+
+// ClearEffectiveMultiplier clears the value of the "effective_multiplier" field.
+func (u *UsageLogUpsertOne) ClearEffectiveMultiplier() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearEffectiveMultiplier()
+	})
+}
+
+// SetEffectiveInputUnitPrice sets the "effective_input_unit_price" field.
+func (u *UsageLogUpsertOne) SetEffectiveInputUnitPrice(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetEffectiveInputUnitPrice(v)
+	})
+}
+
+// AddEffectiveInputUnitPrice adds v to the "effective_input_unit_price" field.
+func (u *UsageLogUpsertOne) AddEffectiveInputUnitPrice(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddEffectiveInputUnitPrice(v)
+	})
+}
+
+// UpdateEffectiveInputUnitPrice sets the "effective_input_unit_price" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateEffectiveInputUnitPrice() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateEffectiveInputUnitPrice()
+	})
+}
+
+// ClearEffectiveInputUnitPrice clears the value of the "effective_input_unit_price" field.
+func (u *UsageLogUpsertOne) ClearEffectiveInputUnitPrice() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearEffectiveInputUnitPrice()
+	})
+}
+
+// SetEffectiveOutputUnitPrice sets the "effective_output_unit_price" field.
+func (u *UsageLogUpsertOne) SetEffectiveOutputUnitPrice(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetEffectiveOutputUnitPrice(v)
+	})
+}
+
+// AddEffectiveOutputUnitPrice adds v to the "effective_output_unit_price" field.
+func (u *UsageLogUpsertOne) AddEffectiveOutputUnitPrice(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddEffectiveOutputUnitPrice(v)
+	})
+}
+
+// UpdateEffectiveOutputUnitPrice sets the "effective_output_unit_price" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateEffectiveOutputUnitPrice() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateEffectiveOutputUnitPrice()
+	})
+}
+
+// ClearEffectiveOutputUnitPrice clears the value of the "effective_output_unit_price" field.
+func (u *UsageLogUpsertOne) ClearEffectiveOutputUnitPrice() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearEffectiveOutputUnitPrice()
+	})
+}
+
+// SetEffectiveCacheReadUnitPrice sets the "effective_cache_read_unit_price" field.
+func (u *UsageLogUpsertOne) SetEffectiveCacheReadUnitPrice(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetEffectiveCacheReadUnitPrice(v)
+	})
+}
+
+// AddEffectiveCacheReadUnitPrice adds v to the "effective_cache_read_unit_price" field.
+func (u *UsageLogUpsertOne) AddEffectiveCacheReadUnitPrice(v float64) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddEffectiveCacheReadUnitPrice(v)
+	})
+}
+
+// UpdateEffectiveCacheReadUnitPrice sets the "effective_cache_read_unit_price" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateEffectiveCacheReadUnitPrice() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateEffectiveCacheReadUnitPrice()
+	})
+}
+
+// ClearEffectiveCacheReadUnitPrice clears the value of the "effective_cache_read_unit_price" field.
+func (u *UsageLogUpsertOne) ClearEffectiveCacheReadUnitPrice() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearEffectiveCacheReadUnitPrice()
+	})
+}
+
+// SetPricingSource sets the "pricing_source" field.
+func (u *UsageLogUpsertOne) SetPricingSource(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPricingSource(v)
+	})
+}
+
+// UpdatePricingSource sets the "pricing_source" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdatePricingSource() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePricingSource()
+	})
+}
+
+// ClearPricingSource clears the value of the "pricing_source" field.
+func (u *UsageLogUpsertOne) ClearPricingSource() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPricingSource()
 	})
 }
 
@@ -3551,6 +3963,167 @@ func (u *UsageLogUpsertBulk) UpdateAccountRateMultiplier() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearAccountRateMultiplier() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearAccountRateMultiplier()
+	})
+}
+
+// SetPriorityAccountMultiplier sets the "priority_account_multiplier" field.
+func (u *UsageLogUpsertBulk) SetPriorityAccountMultiplier(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPriorityAccountMultiplier(v)
+	})
+}
+
+// AddPriorityAccountMultiplier adds v to the "priority_account_multiplier" field.
+func (u *UsageLogUpsertBulk) AddPriorityAccountMultiplier(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddPriorityAccountMultiplier(v)
+	})
+}
+
+// UpdatePriorityAccountMultiplier sets the "priority_account_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdatePriorityAccountMultiplier() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePriorityAccountMultiplier()
+	})
+}
+
+// ClearPriorityAccountMultiplier clears the value of the "priority_account_multiplier" field.
+func (u *UsageLogUpsertBulk) ClearPriorityAccountMultiplier() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPriorityAccountMultiplier()
+	})
+}
+
+// SetEffectiveMultiplier sets the "effective_multiplier" field.
+func (u *UsageLogUpsertBulk) SetEffectiveMultiplier(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetEffectiveMultiplier(v)
+	})
+}
+
+// AddEffectiveMultiplier adds v to the "effective_multiplier" field.
+func (u *UsageLogUpsertBulk) AddEffectiveMultiplier(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddEffectiveMultiplier(v)
+	})
+}
+
+// UpdateEffectiveMultiplier sets the "effective_multiplier" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateEffectiveMultiplier() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateEffectiveMultiplier()
+	})
+}
+
+// ClearEffectiveMultiplier clears the value of the "effective_multiplier" field.
+func (u *UsageLogUpsertBulk) ClearEffectiveMultiplier() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearEffectiveMultiplier()
+	})
+}
+
+// SetEffectiveInputUnitPrice sets the "effective_input_unit_price" field.
+func (u *UsageLogUpsertBulk) SetEffectiveInputUnitPrice(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetEffectiveInputUnitPrice(v)
+	})
+}
+
+// AddEffectiveInputUnitPrice adds v to the "effective_input_unit_price" field.
+func (u *UsageLogUpsertBulk) AddEffectiveInputUnitPrice(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddEffectiveInputUnitPrice(v)
+	})
+}
+
+// UpdateEffectiveInputUnitPrice sets the "effective_input_unit_price" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateEffectiveInputUnitPrice() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateEffectiveInputUnitPrice()
+	})
+}
+
+// ClearEffectiveInputUnitPrice clears the value of the "effective_input_unit_price" field.
+func (u *UsageLogUpsertBulk) ClearEffectiveInputUnitPrice() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearEffectiveInputUnitPrice()
+	})
+}
+
+// SetEffectiveOutputUnitPrice sets the "effective_output_unit_price" field.
+func (u *UsageLogUpsertBulk) SetEffectiveOutputUnitPrice(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetEffectiveOutputUnitPrice(v)
+	})
+}
+
+// AddEffectiveOutputUnitPrice adds v to the "effective_output_unit_price" field.
+func (u *UsageLogUpsertBulk) AddEffectiveOutputUnitPrice(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddEffectiveOutputUnitPrice(v)
+	})
+}
+
+// UpdateEffectiveOutputUnitPrice sets the "effective_output_unit_price" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateEffectiveOutputUnitPrice() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateEffectiveOutputUnitPrice()
+	})
+}
+
+// ClearEffectiveOutputUnitPrice clears the value of the "effective_output_unit_price" field.
+func (u *UsageLogUpsertBulk) ClearEffectiveOutputUnitPrice() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearEffectiveOutputUnitPrice()
+	})
+}
+
+// SetEffectiveCacheReadUnitPrice sets the "effective_cache_read_unit_price" field.
+func (u *UsageLogUpsertBulk) SetEffectiveCacheReadUnitPrice(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetEffectiveCacheReadUnitPrice(v)
+	})
+}
+
+// AddEffectiveCacheReadUnitPrice adds v to the "effective_cache_read_unit_price" field.
+func (u *UsageLogUpsertBulk) AddEffectiveCacheReadUnitPrice(v float64) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddEffectiveCacheReadUnitPrice(v)
+	})
+}
+
+// UpdateEffectiveCacheReadUnitPrice sets the "effective_cache_read_unit_price" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateEffectiveCacheReadUnitPrice() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateEffectiveCacheReadUnitPrice()
+	})
+}
+
+// ClearEffectiveCacheReadUnitPrice clears the value of the "effective_cache_read_unit_price" field.
+func (u *UsageLogUpsertBulk) ClearEffectiveCacheReadUnitPrice() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearEffectiveCacheReadUnitPrice()
+	})
+}
+
+// SetPricingSource sets the "pricing_source" field.
+func (u *UsageLogUpsertBulk) SetPricingSource(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetPricingSource(v)
+	})
+}
+
+// UpdatePricingSource sets the "pricing_source" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdatePricingSource() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdatePricingSource()
+	})
+}
+
+// ClearPricingSource clears the value of the "pricing_source" field.
+func (u *UsageLogUpsertBulk) ClearPricingSource() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearPricingSource()
 	})
 }
 

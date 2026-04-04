@@ -64,6 +64,12 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			log.ActualCost,
 			log.RateMultiplier,
 			log.AccountRateMultiplier,
+			sqlmock.AnyArg(), // priority_account_multiplier
+			sqlmock.AnyArg(), // effective_multiplier
+			sqlmock.AnyArg(), // effective_input_unit_price
+			sqlmock.AnyArg(), // effective_output_unit_price
+			sqlmock.AnyArg(), // effective_cache_read_unit_price
+			sqlmock.AnyArg(), // pricing_source
 			log.BillingType,
 			int16(service.RequestTypeWSV2),
 			true,
@@ -144,6 +150,12 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			log.ActualCost,
 			log.RateMultiplier,
 			log.AccountRateMultiplier,
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
 			log.BillingType,
 			int16(service.RequestTypeSync),
 			false,
@@ -191,6 +203,10 @@ func TestBuildUsageLogBestEffortInsertQuery_IncludesRequestedModelColumn(t *test
 	query, args := buildUsageLogBestEffortInsertQuery([]usageLogInsertPrepared{prepared})
 
 	require.Contains(t, query, "INSERT INTO usage_logs (")
+	require.Contains(t, query, "WITH input (\n\t\t\tuser_id,\n\t\t\tapi_key_id,\n\t\t\taccount_id,\n\t\t\trequest_id,\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,\n\t\t\tgroup_id,\n\t\t\tsubscription_id,\n\t\t\tinput_tokens,\n\t\t\toutput_tokens,\n\t\t\tcache_creation_tokens,\n\t\t\tcache_read_tokens,\n\t\t\tcache_creation_5m_tokens,\n\t\t\tcache_creation_1h_tokens,\n\t\t\tinput_cost,\n\t\t\toutput_cost,\n\t\t\tcache_creation_cost,\n\t\t\tcache_read_cost,\n\t\t\ttotal_cost,\n\t\t\tactual_cost,\n\t\t\trate_multiplier,\n\t\t\taccount_rate_multiplier,\n\t\t\tpriority_account_multiplier,\n\t\t\teffective_multiplier,\n\t\t\teffective_input_unit_price,\n\t\t\teffective_output_unit_price,\n\t\t\teffective_cache_read_unit_price,\n\t\t\tpricing_source,\n\t\t\tbilling_type,")
+	require.Contains(t, query, "\n\t\t\tactual_cost,\n\t\t\trate_multiplier,\n\t\t\taccount_rate_multiplier,\n\t\t\tpriority_account_multiplier,\n\t\t\teffective_multiplier,\n\t\t\teffective_input_unit_price,\n\t\t\teffective_output_unit_price,\n\t\t\teffective_cache_read_unit_price,\n\t\t\tpricing_source,\n\t\t\tbilling_type,")
+	require.Contains(t, query, "\n\t\t\taccount_rate_multiplier,\n\t\t\tpriority_account_multiplier,\n\t\t\teffective_multiplier,")
+	require.Contains(t, query, "\n\t\t\teffective_input_unit_price,\n\t\t\teffective_output_unit_price,\n\t\t\teffective_cache_read_unit_price,\n\t\t\tpricing_source,")
 	require.Contains(t, query, "\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,")
 	require.Contains(t, query, "\n\t\t\trequest_id,\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,")
 	require.Len(t, args, len(prepared.args))
@@ -207,6 +223,40 @@ func TestExecUsageLogInsertNoResult_PersistsRequestedModel(t *testing.T) {
 		Model:          "gpt-5",
 		RequestedModel: "gpt-5",
 		CreatedAt:      time.Date(2025, 1, 4, 12, 0, 0, 0, time.UTC),
+	})
+
+	mock.ExpectExec("INSERT INTO usage_logs[\\s\\S]*actual_cost,[\\s\\S]*rate_multiplier,[\\s\\S]*account_rate_multiplier,[\\s\\S]*priority_account_multiplier,[\\s\\S]*effective_multiplier,[\\s\\S]*effective_input_unit_price,[\\s\\S]*effective_output_unit_price,[\\s\\S]*effective_cache_read_unit_price,[\\s\\S]*pricing_source,[\\s\\S]*billing_type").
+		WithArgs(anySliceToDriverValues(prepared.args)...).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err := execUsageLogInsertNoResult(context.Background(), db, prepared)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestExecUsageLogInsertNoResult_IncludesBillingBreakdownColumns(t *testing.T) {
+	db, mock := newSQLMock(t)
+	priorityAccountMultiplier := 100.0
+	effectiveMultiplier := 150.0
+	effectiveInputUnitPrice := 5e-6
+	effectiveOutputUnitPrice := 30e-6
+	effectiveCacheReadUnitPrice := 0.5e-6
+	pricingSource := "priority_pricing,priority_account_multiplier"
+
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:                      1,
+		APIKeyID:                    2,
+		AccountID:                   3,
+		RequestID:                   "req-best-effort-billing-columns",
+		Model:                       "gpt-5.4",
+		RequestedModel:              "gpt-5.4",
+		PriorityAccountMultiplier:   &priorityAccountMultiplier,
+		EffectiveMultiplier:         &effectiveMultiplier,
+		EffectiveInputUnitPrice:     &effectiveInputUnitPrice,
+		EffectiveOutputUnitPrice:    &effectiveOutputUnitPrice,
+		EffectiveCacheReadUnitPrice: &effectiveCacheReadUnitPrice,
+		PricingSource:               &pricingSource,
+		CreatedAt:                   time.Date(2025, 1, 4, 12, 30, 0, 0, time.UTC),
 	})
 
 	mock.ExpectExec("INSERT INTO usage_logs").
@@ -259,13 +309,46 @@ func TestPrepareUsageLogInsert_IncludesOpenAIRoutingFields(t *testing.T) {
 	})
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
-	require.Equal(t, sql.NullString{String: routingTargetGroup, Valid: true}, prepared.args[38])
-	require.Equal(t, sql.NullString{String: routingScheduleLayer, Valid: true}, prepared.args[39])
-	require.Equal(t, sql.NullInt64{Int64: routingAccountID, Valid: true}, prepared.args[40])
-	require.Equal(t, sql.NullString{String: routingAccountName, Valid: true}, prepared.args[41])
-	require.Equal(t, sql.NullString{String: routingEffectiveModel, Valid: true}, prepared.args[42])
-	require.Equal(t, sql.NullInt64{Int64: int64(routingFailoverCount), Valid: true}, prepared.args[43])
-	require.Equal(t, sql.NullString{String: routingFailoverFinalReason, Valid: true}, prepared.args[44])
+	require.Equal(t, sql.NullString{String: routingTargetGroup, Valid: true}, prepared.args[44])
+	require.Equal(t, sql.NullString{String: routingScheduleLayer, Valid: true}, prepared.args[45])
+	require.Equal(t, sql.NullInt64{Int64: routingAccountID, Valid: true}, prepared.args[46])
+	require.Equal(t, sql.NullString{String: routingAccountName, Valid: true}, prepared.args[47])
+	require.Equal(t, sql.NullString{String: routingEffectiveModel, Valid: true}, prepared.args[48])
+	require.Equal(t, sql.NullInt64{Int64: int64(routingFailoverCount), Valid: true}, prepared.args[49])
+	require.Equal(t, sql.NullString{String: routingFailoverFinalReason, Valid: true}, prepared.args[50])
+}
+
+func TestPrepareUsageLogInsert_IncludesBillingBreakdownFields(t *testing.T) {
+	priorityAccountMultiplier := 100.0
+	effectiveMultiplier := 150.0
+	effectiveInputUnitPrice := 5e-6
+	effectiveOutputUnitPrice := 30e-6
+	effectiveCacheReadUnitPrice := 0.5e-6
+	pricingSource := "priority_pricing,priority_account_multiplier"
+
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:                      1,
+		APIKeyID:                    2,
+		AccountID:                   3,
+		RequestID:                   "req-billing-breakdown",
+		Model:                       "gpt-5.4-Sys",
+		RequestedModel:              "gpt-5.4-Sys",
+		PriorityAccountMultiplier:   &priorityAccountMultiplier,
+		EffectiveMultiplier:         &effectiveMultiplier,
+		EffectiveInputUnitPrice:     &effectiveInputUnitPrice,
+		EffectiveOutputUnitPrice:    &effectiveOutputUnitPrice,
+		EffectiveCacheReadUnitPrice: &effectiveCacheReadUnitPrice,
+		PricingSource:               &pricingSource,
+		CreatedAt:                   time.Date(2025, 1, 6, 13, 0, 0, 0, time.UTC),
+	})
+
+	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+	require.Equal(t, sql.NullFloat64{Float64: priorityAccountMultiplier, Valid: true}, prepared.args[23])
+	require.Equal(t, sql.NullFloat64{Float64: effectiveMultiplier, Valid: true}, prepared.args[24])
+	require.Equal(t, sql.NullFloat64{Float64: effectiveInputUnitPrice, Valid: true}, prepared.args[25])
+	require.Equal(t, sql.NullFloat64{Float64: effectiveOutputUnitPrice, Valid: true}, prepared.args[26])
+	require.Equal(t, sql.NullFloat64{Float64: effectiveCacheReadUnitPrice, Valid: true}, prepared.args[27])
+	require.Equal(t, sql.NullString{String: pricingSource, Valid: true}, prepared.args[28])
 }
 
 func TestCoalesceTrimmedString(t *testing.T) {
@@ -522,6 +605,12 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			0.9,               // actual_cost
 			1.0,               // rate_multiplier
 			sql.NullFloat64{}, // account_rate_multiplier
+			sql.NullFloat64{}, // priority_account_multiplier
+			sql.NullFloat64{}, // effective_multiplier
+			sql.NullFloat64{}, // effective_input_unit_price
+			sql.NullFloat64{}, // effective_output_unit_price
+			sql.NullFloat64{}, // effective_cache_read_unit_price
+			sql.NullString{},  // pricing_source
 			int16(service.BillingTypeBalance),
 			int16(service.RequestTypeWSV2),
 			false, // legacy stream
@@ -572,6 +661,12 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			0.1, 0.2, 0.3, 0.4, 1.0, 0.9,
 			1.0,
 			sql.NullFloat64{},
+			sql.NullFloat64{},
+			sql.NullFloat64{},
+			sql.NullFloat64{},
+			sql.NullFloat64{},
+			sql.NullFloat64{},
+			sql.NullString{},
 			int16(service.BillingTypeBalance),
 			int16(service.RequestTypeUnknown),
 			true,
@@ -622,6 +717,12 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			0.1, 0.2, 0.3, 0.4, 1.0, 0.9,
 			1.0,
 			sql.NullFloat64{},
+			sql.NullFloat64{},
+			sql.NullFloat64{},
+			sql.NullFloat64{},
+			sql.NullFloat64{},
+			sql.NullFloat64{},
+			sql.NullString{},
 			int16(service.BillingTypeBalance),
 			int16(service.RequestTypeSync),
 			false,
@@ -652,4 +753,67 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		require.Equal(t, "priority", *log.ServiceTier)
 	})
 
+}
+
+func TestScanUsageLog_PreservesBillingBreakdownFields(t *testing.T) {
+	now := time.Now().UTC()
+	log, err := scanUsageLog(usageLogScannerStub{values: []any{
+		int64(4),
+		int64(13),
+		int64(23),
+		int64(33),
+		sql.NullString{Valid: true, String: "req-breakdown"},
+		"gpt-5.4",
+		sql.NullString{Valid: true, String: "gpt-5.4"},
+		sql.NullString{},
+		sql.NullInt64{},
+		sql.NullInt64{},
+		1, 2, 3, 4, 5, 6,
+		0.1, 0.2, 0.3, 0.4, 1.0, 90.0,
+		1.5,
+		sql.NullFloat64{Valid: true, Float64: 2.0},
+		sql.NullFloat64{Valid: true, Float64: 100.0},
+		sql.NullFloat64{Valid: true, Float64: 300.0},
+		sql.NullFloat64{Valid: true, Float64: 5e-6},
+		sql.NullFloat64{Valid: true, Float64: 30e-6},
+		sql.NullFloat64{Valid: true, Float64: 0.5e-6},
+		sql.NullString{Valid: true, String: "priority_pricing,priority_account_multiplier"},
+		int16(service.BillingTypeBalance),
+		int16(service.RequestTypeSync),
+		false,
+		false,
+		sql.NullInt64{},
+		sql.NullInt64{},
+		sql.NullString{},
+		sql.NullString{},
+		0,
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullString{Valid: true, String: "priority"},
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullInt64{},
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullInt64{},
+		sql.NullString{},
+		false,
+		now,
+	}})
+	require.NoError(t, err)
+	require.NotNil(t, log.PriorityAccountMultiplier)
+	require.Equal(t, 100.0, *log.PriorityAccountMultiplier)
+	require.NotNil(t, log.EffectiveMultiplier)
+	require.Equal(t, 300.0, *log.EffectiveMultiplier)
+	require.NotNil(t, log.EffectiveInputUnitPrice)
+	require.Equal(t, 5e-6, *log.EffectiveInputUnitPrice)
+	require.NotNil(t, log.EffectiveOutputUnitPrice)
+	require.Equal(t, 30e-6, *log.EffectiveOutputUnitPrice)
+	require.NotNil(t, log.EffectiveCacheReadUnitPrice)
+	require.Equal(t, 0.5e-6, *log.EffectiveCacheReadUnitPrice)
+	require.NotNil(t, log.PricingSource)
+	require.Equal(t, "priority_pricing,priority_account_multiplier", *log.PricingSource)
 }

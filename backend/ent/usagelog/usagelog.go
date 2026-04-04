@@ -74,6 +74,18 @@ const (
 	FieldRateMultiplier = "rate_multiplier"
 	// FieldAccountRateMultiplier holds the string denoting the account_rate_multiplier field in the database.
 	FieldAccountRateMultiplier = "account_rate_multiplier"
+	// FieldPriorityAccountMultiplier holds the string denoting the priority_account_multiplier field in the database.
+	FieldPriorityAccountMultiplier = "priority_account_multiplier"
+	// FieldEffectiveMultiplier holds the string denoting the effective_multiplier field in the database.
+	FieldEffectiveMultiplier = "effective_multiplier"
+	// FieldEffectiveInputUnitPrice holds the string denoting the effective_input_unit_price field in the database.
+	FieldEffectiveInputUnitPrice = "effective_input_unit_price"
+	// FieldEffectiveOutputUnitPrice holds the string denoting the effective_output_unit_price field in the database.
+	FieldEffectiveOutputUnitPrice = "effective_output_unit_price"
+	// FieldEffectiveCacheReadUnitPrice holds the string denoting the effective_cache_read_unit_price field in the database.
+	FieldEffectiveCacheReadUnitPrice = "effective_cache_read_unit_price"
+	// FieldPricingSource holds the string denoting the pricing_source field in the database.
+	FieldPricingSource = "pricing_source"
 	// FieldBillingType holds the string denoting the billing_type field in the database.
 	FieldBillingType = "billing_type"
 	// FieldStream holds the string denoting the stream field in the database.
@@ -178,6 +190,12 @@ var Columns = []string{
 	FieldActualCost,
 	FieldRateMultiplier,
 	FieldAccountRateMultiplier,
+	FieldPriorityAccountMultiplier,
+	FieldEffectiveMultiplier,
+	FieldEffectiveInputUnitPrice,
+	FieldEffectiveOutputUnitPrice,
+	FieldEffectiveCacheReadUnitPrice,
+	FieldPricingSource,
 	FieldBillingType,
 	FieldStream,
 	FieldDurationMs,
@@ -246,6 +264,8 @@ var (
 	DefaultActualCost float64
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
 	DefaultRateMultiplier float64
+	// PricingSourceValidator is a validator for the "pricing_source" field. It is called by the builders before save.
+	PricingSourceValidator func(string) error
 	// DefaultBillingType holds the default value on creation for the "billing_type" field.
 	DefaultBillingType int8
 	// DefaultStream holds the default value on creation for the "stream" field.
@@ -422,6 +442,36 @@ func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 // ByAccountRateMultiplier orders the results by the account_rate_multiplier field.
 func ByAccountRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAccountRateMultiplier, opts...).ToFunc()
+}
+
+// ByPriorityAccountMultiplier orders the results by the priority_account_multiplier field.
+func ByPriorityAccountMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPriorityAccountMultiplier, opts...).ToFunc()
+}
+
+// ByEffectiveMultiplier orders the results by the effective_multiplier field.
+func ByEffectiveMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEffectiveMultiplier, opts...).ToFunc()
+}
+
+// ByEffectiveInputUnitPrice orders the results by the effective_input_unit_price field.
+func ByEffectiveInputUnitPrice(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEffectiveInputUnitPrice, opts...).ToFunc()
+}
+
+// ByEffectiveOutputUnitPrice orders the results by the effective_output_unit_price field.
+func ByEffectiveOutputUnitPrice(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEffectiveOutputUnitPrice, opts...).ToFunc()
+}
+
+// ByEffectiveCacheReadUnitPrice orders the results by the effective_cache_read_unit_price field.
+func ByEffectiveCacheReadUnitPrice(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEffectiveCacheReadUnitPrice, opts...).ToFunc()
+}
+
+// ByPricingSource orders the results by the pricing_source field.
+func ByPricingSource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPricingSource, opts...).ToFunc()
 }
 
 // ByBillingType orders the results by the billing_type field.

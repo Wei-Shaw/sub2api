@@ -1018,6 +1018,13 @@ export interface UsageLog {
   total_cost: number
   actual_cost: number
   rate_multiplier: number
+  account_rate_multiplier?: number | null
+  priority_account_multiplier?: number | null
+  effective_multiplier?: number | null
+  effective_input_unit_price?: number | null
+  effective_output_unit_price?: number | null
+  effective_cache_read_unit_price?: number | null
+  pricing_source?: string | null
   billing_type: number
 
   request_type?: UsageRequestType

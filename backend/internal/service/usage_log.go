@@ -143,6 +143,18 @@ type UsageLog struct {
 	RateMultiplier    float64
 	// AccountRateMultiplier 账号计费倍率快照（nil 表示历史数据，按 1.0 处理）
 	AccountRateMultiplier *float64
+	// PriorityAccountMultiplier 命中优先账号组时的账号组倍率快照。
+	PriorityAccountMultiplier *float64
+	// EffectiveMultiplier 记录写 usage 时最终固化的综合倍率。
+	EffectiveMultiplier *float64
+	// EffectiveInputUnitPrice 记录本次请求实际生效的输入单价。
+	EffectiveInputUnitPrice *float64
+	// EffectiveOutputUnitPrice 记录本次请求实际生效的输出单价。
+	EffectiveOutputUnitPrice *float64
+	// EffectiveCacheReadUnitPrice 记录本次请求实际生效的缓存读取单价。
+	EffectiveCacheReadUnitPrice *float64
+	// PricingSource 记录本次价格来源标签，如 priority_pricing / priority_account_multiplier。
+	PricingSource *string
 
 	BillingType  int8
 	RequestType  RequestType

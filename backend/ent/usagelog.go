@@ -82,6 +82,18 @@ type UsageLog struct {
 	RateMultiplier float64 `json:"rate_multiplier,omitempty"`
 	// AccountRateMultiplier holds the value of the "account_rate_multiplier" field.
 	AccountRateMultiplier *float64 `json:"account_rate_multiplier,omitempty"`
+	// PriorityAccountMultiplier holds the value of the "priority_account_multiplier" field.
+	PriorityAccountMultiplier *float64 `json:"priority_account_multiplier,omitempty"`
+	// EffectiveMultiplier holds the value of the "effective_multiplier" field.
+	EffectiveMultiplier *float64 `json:"effective_multiplier,omitempty"`
+	// EffectiveInputUnitPrice holds the value of the "effective_input_unit_price" field.
+	EffectiveInputUnitPrice *float64 `json:"effective_input_unit_price,omitempty"`
+	// EffectiveOutputUnitPrice holds the value of the "effective_output_unit_price" field.
+	EffectiveOutputUnitPrice *float64 `json:"effective_output_unit_price,omitempty"`
+	// EffectiveCacheReadUnitPrice holds the value of the "effective_cache_read_unit_price" field.
+	EffectiveCacheReadUnitPrice *float64 `json:"effective_cache_read_unit_price,omitempty"`
+	// PricingSource holds the value of the "pricing_source" field.
+	PricingSource *string `json:"pricing_source,omitempty"`
 	// BillingType holds the value of the "billing_type" field.
 	BillingType int8 `json:"billing_type,omitempty"`
 	// Stream holds the value of the "stream" field.
@@ -189,11 +201,11 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case usagelog.FieldStream, usagelog.FieldCacheTTLOverridden:
 			values[i] = new(sql.NullBool)
-		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier:
+		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier, usagelog.FieldPriorityAccountMultiplier, usagelog.FieldEffectiveMultiplier, usagelog.FieldEffectiveInputUnitPrice, usagelog.FieldEffectiveOutputUnitPrice, usagelog.FieldEffectiveCacheReadUnitPrice:
 			values[i] = new(sql.NullFloat64)
 		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldRoutingSelectedAccountID, usagelog.FieldRoutingFailoverCount, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldRoutingTargetGroup, usagelog.FieldRoutingScheduleLayer, usagelog.FieldRoutingSelectedAccountName, usagelog.FieldRoutingEffectiveModel, usagelog.FieldRoutingFailoverFinalReason, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldMediaType:
+		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldRoutingTargetGroup, usagelog.FieldRoutingScheduleLayer, usagelog.FieldRoutingSelectedAccountName, usagelog.FieldRoutingEffectiveModel, usagelog.FieldRoutingFailoverFinalReason, usagelog.FieldPricingSource, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldMediaType:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -409,6 +421,48 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.AccountRateMultiplier = new(float64)
 				*_m.AccountRateMultiplier = value.Float64
+			}
+		case usagelog.FieldPriorityAccountMultiplier:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field priority_account_multiplier", values[i])
+			} else if value.Valid {
+				_m.PriorityAccountMultiplier = new(float64)
+				*_m.PriorityAccountMultiplier = value.Float64
+			}
+		case usagelog.FieldEffectiveMultiplier:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field effective_multiplier", values[i])
+			} else if value.Valid {
+				_m.EffectiveMultiplier = new(float64)
+				*_m.EffectiveMultiplier = value.Float64
+			}
+		case usagelog.FieldEffectiveInputUnitPrice:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field effective_input_unit_price", values[i])
+			} else if value.Valid {
+				_m.EffectiveInputUnitPrice = new(float64)
+				*_m.EffectiveInputUnitPrice = value.Float64
+			}
+		case usagelog.FieldEffectiveOutputUnitPrice:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field effective_output_unit_price", values[i])
+			} else if value.Valid {
+				_m.EffectiveOutputUnitPrice = new(float64)
+				*_m.EffectiveOutputUnitPrice = value.Float64
+			}
+		case usagelog.FieldEffectiveCacheReadUnitPrice:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field effective_cache_read_unit_price", values[i])
+			} else if value.Valid {
+				_m.EffectiveCacheReadUnitPrice = new(float64)
+				*_m.EffectiveCacheReadUnitPrice = value.Float64
+			}
+		case usagelog.FieldPricingSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field pricing_source", values[i])
+			} else if value.Valid {
+				_m.PricingSource = new(string)
+				*_m.PricingSource = value.String
 			}
 		case usagelog.FieldBillingType:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -655,6 +709,36 @@ func (_m *UsageLog) String() string {
 	if v := _m.AccountRateMultiplier; v != nil {
 		builder.WriteString("account_rate_multiplier=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.PriorityAccountMultiplier; v != nil {
+		builder.WriteString("priority_account_multiplier=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.EffectiveMultiplier; v != nil {
+		builder.WriteString("effective_multiplier=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.EffectiveInputUnitPrice; v != nil {
+		builder.WriteString("effective_input_unit_price=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.EffectiveOutputUnitPrice; v != nil {
+		builder.WriteString("effective_output_unit_price=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.EffectiveCacheReadUnitPrice; v != nil {
+		builder.WriteString("effective_cache_read_unit_price=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.PricingSource; v != nil {
+		builder.WriteString("pricing_source=")
+		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
 	builder.WriteString("billing_type=")

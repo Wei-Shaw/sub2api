@@ -455,10 +455,41 @@
             <span class="font-semibold text-cyan-300">{{ getUsageServiceTierLabel(tooltipData?.service_tier, t) }}</span>
           </div>
           <div class="flex items-center justify-between gap-6">
-            <span class="text-gray-400">{{ t('usage.rate') }}</span>
+            <span class="text-gray-400">{{ t('usage.baseRateMultiplier') }}</span>
             <span class="font-semibold text-blue-400"
               >{{ (tooltipData?.rate_multiplier || 1).toFixed(2) }}x</span
             >
+          </div>
+          <div class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.accountRateMultiplier') }}</span>
+            <span class="font-semibold text-blue-300">{{ ((tooltipData?.account_rate_multiplier ?? 1)).toFixed(2) }}x</span>
+          </div>
+          <div class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.priorityAccountMultiplier') }}</span>
+            <span class="font-semibold text-amber-300">{{ ((tooltipData?.priority_account_multiplier ?? 1)).toFixed(2) }}x</span>
+          </div>
+          <div class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.effectiveMultiplier') }}</span>
+            <span class="font-semibold text-indigo-300">{{ ((tooltipData?.effective_multiplier ?? (tooltipData?.rate_multiplier || 1))).toFixed(2) }}x</span>
+          </div>
+          <div v-if="tooltipData?.effective_input_unit_price != null" class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.effectiveInputUnitPrice') }}</span>
+            <span class="font-medium text-sky-300">{{ formatStoredPricePerMillion(tooltipData.effective_input_unit_price) }} {{ t('usage.perMillionTokens') }}</span>
+          </div>
+          <div v-if="tooltipData?.effective_output_unit_price != null" class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.effectiveOutputUnitPrice') }}</span>
+            <span class="font-medium text-violet-300">{{ formatStoredPricePerMillion(tooltipData.effective_output_unit_price) }} {{ t('usage.perMillionTokens') }}</span>
+          </div>
+          <div v-if="tooltipData?.effective_cache_read_unit_price != null && (tooltipData.effective_cache_read_unit_price ?? 0) > 0" class="flex items-center justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.effectiveCacheReadUnitPrice') }}</span>
+            <span class="font-medium text-cyan-300">{{ formatStoredPricePerMillion(tooltipData.effective_cache_read_unit_price) }} {{ t('usage.perMillionTokens') }}</span>
+          </div>
+          <div v-if="tooltipData?.pricing_source" class="flex items-start justify-between gap-6">
+            <span class="text-gray-400">{{ t('usage.pricingSource') }}</span>
+            <span class="font-medium text-white text-right">{{ formatPricingSource(tooltipData.pricing_source) }}</span>
+          </div>
+          <div v-if="(tooltipData?.priority_account_multiplier ?? 1) > 1" class="border-t border-gray-700 pt-1.5 text-[11px] text-amber-300">
+            {{ t('usage.sysHint') }}
           </div>
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.original') }}</span>
@@ -647,6 +678,25 @@ const formatCacheTokens = (value: number): string => {
     return `${(value / 1_000).toFixed(1)}K`
   }
   return value.toLocaleString()
+}
+
+const formatStoredPricePerMillion = (unitPrice?: number | null): string => {
+  if (unitPrice == null) return '$0.00'
+  return `$${(unitPrice * 1_000_000).toFixed(2)}`
+}
+
+const formatPricingSource = (value?: string | null): string => {
+  if (!value) return '-'
+  return value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      if (part === 'priority_pricing') return t('usage.pricingSourcePriority')
+      if (part === 'priority_account_multiplier') return t('usage.pricingSourcePriorityAccount')
+      return part
+    })
+    .join(' · ')
 }
 
 const loadUsageLogs = async () => {

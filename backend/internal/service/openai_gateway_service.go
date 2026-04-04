@@ -4369,6 +4369,52 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if err != nil {
 		cost = &CostBreakdown{ActualCost: 0}
 	}
+	accountRateMultiplier := account.BillingRateMultiplier()
+	effectiveInputUnitPrice := (*float64)(nil)
+	effectiveOutputUnitPrice := (*float64)(nil)
+	effectiveCacheReadUnitPrice := (*float64)(nil)
+	pricingSourceParts := make([]string, 0, 2)
+	if pricing, priceErr := s.billingService.GetModelPricing(billingModel); priceErr == nil && pricing != nil {
+		pricing = s.billingService.applyModelSpecificPricingPolicy(billingModel, pricing)
+		inputUnitPrice := pricing.InputPricePerToken
+		outputUnitPrice := pricing.OutputPricePerToken
+		cacheReadUnitPrice := pricing.CacheReadPricePerToken
+		if usePriorityServiceTierPricing(serviceTier, pricing) {
+			if pricing.InputPricePerTokenPriority > 0 {
+				inputUnitPrice = pricing.InputPricePerTokenPriority
+			}
+			if pricing.OutputPricePerTokenPriority > 0 {
+				outputUnitPrice = pricing.OutputPricePerTokenPriority
+			}
+			if pricing.CacheReadPricePerTokenPriority > 0 {
+				cacheReadUnitPrice = pricing.CacheReadPricePerTokenPriority
+			}
+			pricingSourceParts = append(pricingSourceParts, "priority_pricing")
+		} else {
+			tierMultiplier := serviceTierCostMultiplier(serviceTier)
+			if tierMultiplier != 1.0 {
+				inputUnitPrice *= tierMultiplier
+				outputUnitPrice *= tierMultiplier
+				cacheReadUnitPrice *= tierMultiplier
+			}
+		}
+		if s.billingService.shouldApplySessionLongContextPricing(tokens, pricing) {
+			inputUnitPrice *= pricing.LongContextInputMultiplier
+			outputUnitPrice *= pricing.LongContextOutputMultiplier
+			pricingSourceParts = append(pricingSourceParts, "long_context_pricing")
+		}
+		effectiveInputUnitPrice = &inputUnitPrice
+		effectiveOutputUnitPrice = &outputUnitPrice
+		effectiveCacheReadUnitPrice = &cacheReadUnitPrice
+	}
+	priorityAccountMultiplier := 1.0
+	if snapshot := input.RoutingSnapshot; snapshot != nil && normalizeTargetGroup(AccountTargetGroup(snapshot.TargetGroup)) == TargetGroupActive {
+		priorityAccountMultiplier = 100.0
+		pricingSourceParts = append(pricingSourceParts, "priority_account_multiplier")
+	}
+	effectiveMultiplier := multiplier * accountRateMultiplier * priorityAccountMultiplier
+	cost.ActualCost = cost.TotalCost * effectiveMultiplier
+	pricingSource := strings.Join(pricingSourceParts, ",")
 
 	// Determine billing type
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
@@ -4379,7 +4425,6 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	// Create usage log
 	durationMs := int(result.Duration.Milliseconds())
-	accountRateMultiplier := account.BillingRateMultiplier()
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
 	usageModel := strings.TrimSpace(result.Model)
 	requestedModel := usageModel
@@ -4397,35 +4442,41 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		}
 	}
 	usageLog := &UsageLog{
-		UserID:                user.ID,
-		APIKeyID:              apiKey.ID,
-		AccountID:             account.ID,
-		RequestID:             requestID,
-		Model:                 usageModel,
-		RequestedModel:        requestedModel,
-		UpstreamModel:         optionalNonEqualStringPtr(effectiveModel, usageModel),
-		ServiceTier:           result.ServiceTier,
-		ReasoningEffort:       result.ReasoningEffort,
-		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
-		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
-		InputTokens:           actualInputTokens,
-		OutputTokens:          result.Usage.OutputTokens,
-		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:       result.Usage.CacheReadInputTokens,
-		InputCost:             cost.InputCost,
-		OutputCost:            cost.OutputCost,
-		CacheCreationCost:     cost.CacheCreationCost,
-		CacheReadCost:         cost.CacheReadCost,
-		TotalCost:             cost.TotalCost,
-		ActualCost:            cost.ActualCost,
-		RateMultiplier:        multiplier,
-		AccountRateMultiplier: &accountRateMultiplier,
-		BillingType:           billingType,
-		Stream:                result.Stream,
-		OpenAIWSMode:          result.OpenAIWSMode,
-		DurationMs:            &durationMs,
-		FirstTokenMs:          result.FirstTokenMs,
-		CreatedAt:             time.Now(),
+		UserID:                      user.ID,
+		APIKeyID:                    apiKey.ID,
+		AccountID:                   account.ID,
+		RequestID:                   requestID,
+		Model:                       usageModel,
+		RequestedModel:              requestedModel,
+		UpstreamModel:               optionalNonEqualStringPtr(effectiveModel, usageModel),
+		ServiceTier:                 result.ServiceTier,
+		ReasoningEffort:             result.ReasoningEffort,
+		InboundEndpoint:             optionalTrimmedStringPtr(input.InboundEndpoint),
+		UpstreamEndpoint:            optionalTrimmedStringPtr(input.UpstreamEndpoint),
+		InputTokens:                 actualInputTokens,
+		OutputTokens:                result.Usage.OutputTokens,
+		CacheCreationTokens:         result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:             result.Usage.CacheReadInputTokens,
+		InputCost:                   cost.InputCost,
+		OutputCost:                  cost.OutputCost,
+		CacheCreationCost:           cost.CacheCreationCost,
+		CacheReadCost:               cost.CacheReadCost,
+		TotalCost:                   cost.TotalCost,
+		ActualCost:                  cost.ActualCost,
+		RateMultiplier:              multiplier,
+		AccountRateMultiplier:       &accountRateMultiplier,
+		PriorityAccountMultiplier:   &priorityAccountMultiplier,
+		EffectiveMultiplier:         &effectiveMultiplier,
+		EffectiveInputUnitPrice:     effectiveInputUnitPrice,
+		EffectiveOutputUnitPrice:    effectiveOutputUnitPrice,
+		EffectiveCacheReadUnitPrice: effectiveCacheReadUnitPrice,
+		PricingSource:               optionalTrimmedStringPtr(pricingSource),
+		BillingType:                 billingType,
+		Stream:                      result.Stream,
+		OpenAIWSMode:                result.OpenAIWSMode,
+		DurationMs:                  &durationMs,
+		FirstTokenMs:                result.FirstTokenMs,
+		CreatedAt:                   time.Now(),
 	}
 	if snapshot := input.RoutingSnapshot; snapshot != nil {
 		usageLog.RoutingTargetGroup = optionalTrimmedStringPtr(snapshot.TargetGroup)

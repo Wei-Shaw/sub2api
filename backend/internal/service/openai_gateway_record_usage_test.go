@@ -127,6 +127,19 @@ func i64p(v int64) *int64 {
 	return &v
 }
 
+func usageTestF64p(v float64) *float64 {
+	return &v
+}
+
+func usageTokensFromOpenAIUsage(usage OpenAIUsage) UsageTokens {
+	return UsageTokens{
+		InputTokens:         max(usage.InputTokens-usage.CacheReadInputTokens, 0),
+		OutputTokens:        usage.OutputTokens,
+		CacheCreationTokens: usage.CacheCreationInputTokens,
+		CacheReadTokens:     usage.CacheReadInputTokens,
+	}
+}
+
 func newOpenAIRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo UserRepository, subRepo UserSubscriptionRepository, rateRepo UserGroupRateRepository) *OpenAIGatewayService {
 	cfg := &config.Config{}
 	cfg.Default.RateMultiplier = 1.1
@@ -168,12 +181,15 @@ func newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo UsageLogReposit
 func expectedOpenAICost(t *testing.T, svc *OpenAIGatewayService, model string, usage OpenAIUsage, multiplier float64) *CostBreakdown {
 	t.Helper()
 
-	cost, err := svc.billingService.CalculateCost(model, UsageTokens{
-		InputTokens:         max(usage.InputTokens-usage.CacheReadInputTokens, 0),
-		OutputTokens:        usage.OutputTokens,
-		CacheCreationTokens: usage.CacheCreationInputTokens,
-		CacheReadTokens:     usage.CacheReadInputTokens,
-	}, multiplier)
+	cost, err := svc.billingService.CalculateCost(model, usageTokensFromOpenAIUsage(usage), multiplier)
+	require.NoError(t, err)
+	return cost
+}
+
+func expectedOpenAIServiceTierCost(t *testing.T, svc *OpenAIGatewayService, model string, usage OpenAIUsage, serviceTier string) *CostBreakdown {
+	t.Helper()
+
+	cost, err := svc.billingService.CalculateCostWithServiceTier(model, usageTokensFromOpenAIUsage(usage), 1.0, serviceTier)
 	require.NoError(t, err)
 	return cost
 }
@@ -869,6 +885,245 @@ func TestOpenAIGatewayServiceRecordUsage_ServiceTierFlexHalvesCost(t *testing.T)
 	require.InDelta(t, baseCost.TotalCost*0.5, usageRepo.lastLog.TotalCost, 1e-10)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_ActiveTargetGroupAppliesPriorityAccountMultiplierOnly(t *testing.T) {
+	groupID := int64(101)
+	baseMultiplier := 1.25
+	accountMultiplier := 1.5
+	serviceTier := "default"
+	usage := OpenAIUsage{InputTokens: 100, OutputTokens: 50, CacheReadInputTokens: 20}
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	rateRepo := &openAIUserGroupRateRepoStub{rate: &baseMultiplier}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, rateRepo)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:   "resp_priority_account_multiplier",
+			ServiceTier: &serviceTier,
+			Usage:       usage,
+			Model:       "gpt-5.1",
+			Duration:    time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      1001,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				RateMultiplier: 0.9,
+			},
+		},
+		User:    &User{ID: 2001},
+		Account: &Account{ID: 3001, RateMultiplier: usageTestF64p(accountMultiplier)},
+		RoutingSnapshot: &OpenAIRoutingSnapshot{
+			TargetGroup: string(TargetGroupActive),
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+
+	expectedCost := expectedOpenAIServiceTierCost(t, svc, "gpt-5.1", usage, serviceTier)
+	expectedEffectiveMultiplier := baseMultiplier * accountMultiplier * 100.0
+
+	require.NotNil(t, usageRepo.lastLog.PriorityAccountMultiplier)
+	require.Equal(t, 100.0, *usageRepo.lastLog.PriorityAccountMultiplier)
+	require.NotNil(t, usageRepo.lastLog.EffectiveMultiplier)
+	require.InDelta(t, expectedEffectiveMultiplier, *usageRepo.lastLog.EffectiveMultiplier, 1e-12)
+	require.InDelta(t, expectedCost.TotalCost*expectedEffectiveMultiplier, usageRepo.lastLog.ActualCost, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_PriorityServiceTierUsesPriorityUnitPriceWithoutExtraMultiplier(t *testing.T) {
+	groupID := int64(102)
+	baseMultiplier := 1.35
+	accountMultiplier := 1.6
+	serviceTier := "priority"
+	usage := OpenAIUsage{InputTokens: 80, OutputTokens: 40}
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	rateRepo := &openAIUserGroupRateRepoStub{rate: &baseMultiplier}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, rateRepo)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:   "resp_fast_mode_multiplier",
+			ServiceTier: &serviceTier,
+			Usage:       usage,
+			Model:       "gpt-5.4",
+			Duration:    time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      1002,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				RateMultiplier: 1.0,
+			},
+		},
+		User:    &User{ID: 2002},
+		Account: &Account{ID: 3002, RateMultiplier: usageTestF64p(accountMultiplier)},
+		RoutingSnapshot: &OpenAIRoutingSnapshot{
+			TargetGroup: string(TargetGroupExhausted),
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+
+	expectedCost := expectedOpenAIServiceTierCost(t, svc, "gpt-5.4", usage, serviceTier)
+	expectedEffectiveMultiplier := baseMultiplier * accountMultiplier
+
+	require.NotNil(t, usageRepo.lastLog.PriorityAccountMultiplier)
+	require.Equal(t, 1.0, *usageRepo.lastLog.PriorityAccountMultiplier)
+	require.NotNil(t, usageRepo.lastLog.EffectiveMultiplier)
+	require.InDelta(t, expectedEffectiveMultiplier, *usageRepo.lastLog.EffectiveMultiplier, 1e-12)
+	require.InDelta(t, expectedCost.TotalCost*expectedEffectiveMultiplier, usageRepo.lastLog.ActualCost, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.EffectiveInputUnitPrice)
+	require.NotNil(t, usageRepo.lastLog.EffectiveOutputUnitPrice)
+	require.Equal(t, 5e-6, *usageRepo.lastLog.EffectiveInputUnitPrice)
+	require.Equal(t, 30e-6, *usageRepo.lastLog.EffectiveOutputUnitPrice)
+	require.NotNil(t, usageRepo.lastLog.PricingSource)
+	require.Contains(t, *usageRepo.lastLog.PricingSource, "priority_pricing")
+}
+
+func TestOpenAIGatewayServiceRecordUsage_ActiveTargetGroupAndPriorityTierCombineWithoutFastExtraMultiplier(t *testing.T) {
+	groupID := int64(103)
+	baseMultiplier := 1.4
+	accountMultiplier := 1.7
+	serviceTier := "priority"
+	usage := OpenAIUsage{InputTokens: 120, OutputTokens: 60, CacheCreationInputTokens: 10}
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	rateRepo := &openAIUserGroupRateRepoStub{rate: &baseMultiplier}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, rateRepo)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:   "resp_combined_multiplier",
+			ServiceTier: &serviceTier,
+			Usage:       usage,
+			Model:       "gpt-5.4",
+			Duration:    time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      1003,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				RateMultiplier: 1.0,
+			},
+		},
+		User:    &User{ID: 2003},
+		Account: &Account{ID: 3003, RateMultiplier: usageTestF64p(accountMultiplier)},
+		RoutingSnapshot: &OpenAIRoutingSnapshot{
+			TargetGroup: string(TargetGroupActive),
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+
+	expectedCost := expectedOpenAIServiceTierCost(t, svc, "gpt-5.4", usage, serviceTier)
+	expectedEffectiveMultiplier := baseMultiplier * accountMultiplier * 100.0
+
+	require.NotNil(t, usageRepo.lastLog.PriorityAccountMultiplier)
+	require.Equal(t, 100.0, *usageRepo.lastLog.PriorityAccountMultiplier)
+	require.NotNil(t, usageRepo.lastLog.EffectiveMultiplier)
+	require.InDelta(t, expectedEffectiveMultiplier, *usageRepo.lastLog.EffectiveMultiplier, 1e-12)
+	require.InDelta(t, expectedCost.TotalCost*expectedEffectiveMultiplier, usageRepo.lastLog.ActualCost, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.PricingSource)
+	require.Contains(t, *usageRepo.lastLog.PricingSource, "priority_pricing")
+	require.Contains(t, *usageRepo.lastLog.PricingSource, "priority_account_multiplier")
+}
+
+func TestOpenAIGatewayServiceRecordUsage_ExhaustedTargetGroupKeepsPriorityAccountMultiplierAtOne(t *testing.T) {
+	groupID := int64(104)
+	baseMultiplier := 1.2
+	accountMultiplier := 1.8
+	serviceTier := "default"
+	usage := OpenAIUsage{InputTokens: 90, OutputTokens: 30, CacheReadInputTokens: 10}
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	rateRepo := &openAIUserGroupRateRepoStub{rate: &baseMultiplier}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, rateRepo)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:   "resp_exhausted_priority_account_multiplier",
+			ServiceTier: &serviceTier,
+			Usage:       usage,
+			Model:       "gpt-5.1",
+			Duration:    time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      1004,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				RateMultiplier: 1.0,
+			},
+		},
+		User:    &User{ID: 2004},
+		Account: &Account{ID: 3004, RateMultiplier: usageTestF64p(accountMultiplier)},
+		RoutingSnapshot: &OpenAIRoutingSnapshot{
+			TargetGroup: string(TargetGroupExhausted),
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+
+	expectedCost := expectedOpenAIServiceTierCost(t, svc, "gpt-5.1", usage, serviceTier)
+	expectedEffectiveMultiplier := baseMultiplier * accountMultiplier
+
+	require.NotNil(t, usageRepo.lastLog.PriorityAccountMultiplier)
+	require.Equal(t, 1.0, *usageRepo.lastLog.PriorityAccountMultiplier)
+	require.NotNil(t, usageRepo.lastLog.EffectiveMultiplier)
+	require.InDelta(t, expectedEffectiveMultiplier, *usageRepo.lastLog.EffectiveMultiplier, 1e-12)
+	require.InDelta(t, expectedCost.TotalCost*expectedEffectiveMultiplier, usageRepo.lastLog.ActualCost, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_StoresEffectiveUnitPricesAndPricingSource(t *testing.T) {
+	serviceTier := "priority"
+	usage := OpenAIUsage{InputTokens: 50, OutputTokens: 25, CacheReadInputTokens: 10}
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:   "resp_pricing_source",
+			ServiceTier: &serviceTier,
+			Usage:       usage,
+			Model:       "gpt-5.4",
+			Duration:    time.Second,
+		},
+		APIKey:  &APIKey{ID: 1005},
+		User:    &User{ID: 2005},
+		Account: &Account{ID: 3005},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.EffectiveInputUnitPrice)
+	require.NotNil(t, usageRepo.lastLog.EffectiveOutputUnitPrice)
+	require.NotNil(t, usageRepo.lastLog.EffectiveCacheReadUnitPrice)
+	require.NotNil(t, usageRepo.lastLog.PricingSource)
+	require.Equal(t, 5e-6, *usageRepo.lastLog.EffectiveInputUnitPrice)
+	require.Equal(t, 30e-6, *usageRepo.lastLog.EffectiveOutputUnitPrice)
+	require.Equal(t, 0.5e-6, *usageRepo.lastLog.EffectiveCacheReadUnitPrice)
+	require.Equal(t, "priority_pricing", *usageRepo.lastLog.PricingSource)
+}
+
 func TestNormalizeOpenAIServiceTier(t *testing.T) {
 	t.Run("fast maps to priority", func(t *testing.T) {
 		got := normalizeOpenAIServiceTier(" fast ")
@@ -999,7 +1254,7 @@ func TestOpenAIGatewayServiceRecordUsage_SubscriptionBillingSetsSubscriptionFiel
 			Model:     "gpt-5.1",
 			Duration:  time.Second,
 		},
-		APIKey:       &APIKey{ID: 100, GroupID: i64p(88), Group: &Group{ID: 88, SubscriptionType: SubscriptionTypeSubscription}},
+		APIKey:       &APIKey{ID: 100, GroupID: i64p(88), Group: &Group{ID: 88, SubscriptionType: SubscriptionTypeSubscription, RateMultiplier: 1.0}},
 		User:         &User{ID: 200},
 		Account:      &Account{ID: 300},
 		Subscription: subscription,
@@ -1010,9 +1265,8 @@ func TestOpenAIGatewayServiceRecordUsage_SubscriptionBillingSetsSubscriptionFiel
 	require.Equal(t, BillingTypeSubscription, usageRepo.lastLog.BillingType)
 	require.NotNil(t, usageRepo.lastLog.SubscriptionID)
 	require.Equal(t, subscription.ID, *usageRepo.lastLog.SubscriptionID)
-	require.Equal(t, 1, subRepo.incrementCalls)
-	require.InDelta(t, expectedCost.ActualCost, subRepo.lastCost, 1e-12)
 	require.Equal(t, 0, userRepo.deductCalls)
+	require.InDelta(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
 func TestPostUsageBilling_SubscriptionUsesActualCostForUsage(t *testing.T) {

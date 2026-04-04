@@ -636,6 +636,161 @@ func (_u *UsageLogUpdate) ClearAccountRateMultiplier() *UsageLogUpdate {
 	return _u
 }
 
+// SetPriorityAccountMultiplier sets the "priority_account_multiplier" field.
+func (_u *UsageLogUpdate) SetPriorityAccountMultiplier(v float64) *UsageLogUpdate {
+	_u.mutation.ResetPriorityAccountMultiplier()
+	_u.mutation.SetPriorityAccountMultiplier(v)
+	return _u
+}
+
+// SetNillablePriorityAccountMultiplier sets the "priority_account_multiplier" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillablePriorityAccountMultiplier(v *float64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetPriorityAccountMultiplier(*v)
+	}
+	return _u
+}
+
+// AddPriorityAccountMultiplier adds value to the "priority_account_multiplier" field.
+func (_u *UsageLogUpdate) AddPriorityAccountMultiplier(v float64) *UsageLogUpdate {
+	_u.mutation.AddPriorityAccountMultiplier(v)
+	return _u
+}
+
+// ClearPriorityAccountMultiplier clears the value of the "priority_account_multiplier" field.
+func (_u *UsageLogUpdate) ClearPriorityAccountMultiplier() *UsageLogUpdate {
+	_u.mutation.ClearPriorityAccountMultiplier()
+	return _u
+}
+
+// SetEffectiveMultiplier sets the "effective_multiplier" field.
+func (_u *UsageLogUpdate) SetEffectiveMultiplier(v float64) *UsageLogUpdate {
+	_u.mutation.ResetEffectiveMultiplier()
+	_u.mutation.SetEffectiveMultiplier(v)
+	return _u
+}
+
+// SetNillableEffectiveMultiplier sets the "effective_multiplier" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableEffectiveMultiplier(v *float64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetEffectiveMultiplier(*v)
+	}
+	return _u
+}
+
+// AddEffectiveMultiplier adds value to the "effective_multiplier" field.
+func (_u *UsageLogUpdate) AddEffectiveMultiplier(v float64) *UsageLogUpdate {
+	_u.mutation.AddEffectiveMultiplier(v)
+	return _u
+}
+
+// ClearEffectiveMultiplier clears the value of the "effective_multiplier" field.
+func (_u *UsageLogUpdate) ClearEffectiveMultiplier() *UsageLogUpdate {
+	_u.mutation.ClearEffectiveMultiplier()
+	return _u
+}
+
+// SetEffectiveInputUnitPrice sets the "effective_input_unit_price" field.
+func (_u *UsageLogUpdate) SetEffectiveInputUnitPrice(v float64) *UsageLogUpdate {
+	_u.mutation.ResetEffectiveInputUnitPrice()
+	_u.mutation.SetEffectiveInputUnitPrice(v)
+	return _u
+}
+
+// SetNillableEffectiveInputUnitPrice sets the "effective_input_unit_price" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableEffectiveInputUnitPrice(v *float64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetEffectiveInputUnitPrice(*v)
+	}
+	return _u
+}
+
+// AddEffectiveInputUnitPrice adds value to the "effective_input_unit_price" field.
+func (_u *UsageLogUpdate) AddEffectiveInputUnitPrice(v float64) *UsageLogUpdate {
+	_u.mutation.AddEffectiveInputUnitPrice(v)
+	return _u
+}
+
+// ClearEffectiveInputUnitPrice clears the value of the "effective_input_unit_price" field.
+func (_u *UsageLogUpdate) ClearEffectiveInputUnitPrice() *UsageLogUpdate {
+	_u.mutation.ClearEffectiveInputUnitPrice()
+	return _u
+}
+
+// SetEffectiveOutputUnitPrice sets the "effective_output_unit_price" field.
+func (_u *UsageLogUpdate) SetEffectiveOutputUnitPrice(v float64) *UsageLogUpdate {
+	_u.mutation.ResetEffectiveOutputUnitPrice()
+	_u.mutation.SetEffectiveOutputUnitPrice(v)
+	return _u
+}
+
+// SetNillableEffectiveOutputUnitPrice sets the "effective_output_unit_price" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableEffectiveOutputUnitPrice(v *float64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetEffectiveOutputUnitPrice(*v)
+	}
+	return _u
+}
+
+// AddEffectiveOutputUnitPrice adds value to the "effective_output_unit_price" field.
+func (_u *UsageLogUpdate) AddEffectiveOutputUnitPrice(v float64) *UsageLogUpdate {
+	_u.mutation.AddEffectiveOutputUnitPrice(v)
+	return _u
+}
+
+// ClearEffectiveOutputUnitPrice clears the value of the "effective_output_unit_price" field.
+func (_u *UsageLogUpdate) ClearEffectiveOutputUnitPrice() *UsageLogUpdate {
+	_u.mutation.ClearEffectiveOutputUnitPrice()
+	return _u
+}
+
+// SetEffectiveCacheReadUnitPrice sets the "effective_cache_read_unit_price" field.
+func (_u *UsageLogUpdate) SetEffectiveCacheReadUnitPrice(v float64) *UsageLogUpdate {
+	_u.mutation.ResetEffectiveCacheReadUnitPrice()
+	_u.mutation.SetEffectiveCacheReadUnitPrice(v)
+	return _u
+}
+
+// SetNillableEffectiveCacheReadUnitPrice sets the "effective_cache_read_unit_price" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableEffectiveCacheReadUnitPrice(v *float64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetEffectiveCacheReadUnitPrice(*v)
+	}
+	return _u
+}
+
+// AddEffectiveCacheReadUnitPrice adds value to the "effective_cache_read_unit_price" field.
+func (_u *UsageLogUpdate) AddEffectiveCacheReadUnitPrice(v float64) *UsageLogUpdate {
+	_u.mutation.AddEffectiveCacheReadUnitPrice(v)
+	return _u
+}
+
+// ClearEffectiveCacheReadUnitPrice clears the value of the "effective_cache_read_unit_price" field.
+func (_u *UsageLogUpdate) ClearEffectiveCacheReadUnitPrice() *UsageLogUpdate {
+	_u.mutation.ClearEffectiveCacheReadUnitPrice()
+	return _u
+}
+
+// SetPricingSource sets the "pricing_source" field.
+func (_u *UsageLogUpdate) SetPricingSource(v string) *UsageLogUpdate {
+	_u.mutation.SetPricingSource(v)
+	return _u
+}
+
+// SetNillablePricingSource sets the "pricing_source" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillablePricingSource(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetPricingSource(*v)
+	}
+	return _u
+}
+
+// ClearPricingSource clears the value of the "pricing_source" field.
+func (_u *UsageLogUpdate) ClearPricingSource() *UsageLogUpdate {
+	_u.mutation.ClearPricingSource()
+	return _u
+}
+
 // SetBillingType sets the "billing_type" field.
 func (_u *UsageLogUpdate) SetBillingType(v int8) *UsageLogUpdate {
 	_u.mutation.ResetBillingType()
@@ -974,6 +1129,11 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "routing_failover_final_reason", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_failover_final_reason": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PricingSource(); ok {
+		if err := usagelog.PricingSourceValidator(v); err != nil {
+			return &ValidationError{Name: "pricing_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.pricing_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UserAgent(); ok {
 		if err := usagelog.UserAgentValidator(v); err != nil {
 			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "UsageLog.user_agent": %w`, err)}
@@ -1170,6 +1330,57 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.AccountRateMultiplierCleared() {
 		_spec.ClearField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.PriorityAccountMultiplier(); ok {
+		_spec.SetField(usagelog.FieldPriorityAccountMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedPriorityAccountMultiplier(); ok {
+		_spec.AddField(usagelog.FieldPriorityAccountMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.PriorityAccountMultiplierCleared() {
+		_spec.ClearField(usagelog.FieldPriorityAccountMultiplier, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EffectiveMultiplier(); ok {
+		_spec.SetField(usagelog.FieldEffectiveMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEffectiveMultiplier(); ok {
+		_spec.AddField(usagelog.FieldEffectiveMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.EffectiveMultiplierCleared() {
+		_spec.ClearField(usagelog.FieldEffectiveMultiplier, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EffectiveInputUnitPrice(); ok {
+		_spec.SetField(usagelog.FieldEffectiveInputUnitPrice, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEffectiveInputUnitPrice(); ok {
+		_spec.AddField(usagelog.FieldEffectiveInputUnitPrice, field.TypeFloat64, value)
+	}
+	if _u.mutation.EffectiveInputUnitPriceCleared() {
+		_spec.ClearField(usagelog.FieldEffectiveInputUnitPrice, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EffectiveOutputUnitPrice(); ok {
+		_spec.SetField(usagelog.FieldEffectiveOutputUnitPrice, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEffectiveOutputUnitPrice(); ok {
+		_spec.AddField(usagelog.FieldEffectiveOutputUnitPrice, field.TypeFloat64, value)
+	}
+	if _u.mutation.EffectiveOutputUnitPriceCleared() {
+		_spec.ClearField(usagelog.FieldEffectiveOutputUnitPrice, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EffectiveCacheReadUnitPrice(); ok {
+		_spec.SetField(usagelog.FieldEffectiveCacheReadUnitPrice, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEffectiveCacheReadUnitPrice(); ok {
+		_spec.AddField(usagelog.FieldEffectiveCacheReadUnitPrice, field.TypeFloat64, value)
+	}
+	if _u.mutation.EffectiveCacheReadUnitPriceCleared() {
+		_spec.ClearField(usagelog.FieldEffectiveCacheReadUnitPrice, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.PricingSource(); ok {
+		_spec.SetField(usagelog.FieldPricingSource, field.TypeString, value)
+	}
+	if _u.mutation.PricingSourceCleared() {
+		_spec.ClearField(usagelog.FieldPricingSource, field.TypeString)
 	}
 	if value, ok := _u.mutation.BillingType(); ok {
 		_spec.SetField(usagelog.FieldBillingType, field.TypeInt8, value)
@@ -2000,6 +2211,161 @@ func (_u *UsageLogUpdateOne) ClearAccountRateMultiplier() *UsageLogUpdateOne {
 	return _u
 }
 
+// SetPriorityAccountMultiplier sets the "priority_account_multiplier" field.
+func (_u *UsageLogUpdateOne) SetPriorityAccountMultiplier(v float64) *UsageLogUpdateOne {
+	_u.mutation.ResetPriorityAccountMultiplier()
+	_u.mutation.SetPriorityAccountMultiplier(v)
+	return _u
+}
+
+// SetNillablePriorityAccountMultiplier sets the "priority_account_multiplier" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillablePriorityAccountMultiplier(v *float64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetPriorityAccountMultiplier(*v)
+	}
+	return _u
+}
+
+// AddPriorityAccountMultiplier adds value to the "priority_account_multiplier" field.
+func (_u *UsageLogUpdateOne) AddPriorityAccountMultiplier(v float64) *UsageLogUpdateOne {
+	_u.mutation.AddPriorityAccountMultiplier(v)
+	return _u
+}
+
+// ClearPriorityAccountMultiplier clears the value of the "priority_account_multiplier" field.
+func (_u *UsageLogUpdateOne) ClearPriorityAccountMultiplier() *UsageLogUpdateOne {
+	_u.mutation.ClearPriorityAccountMultiplier()
+	return _u
+}
+
+// SetEffectiveMultiplier sets the "effective_multiplier" field.
+func (_u *UsageLogUpdateOne) SetEffectiveMultiplier(v float64) *UsageLogUpdateOne {
+	_u.mutation.ResetEffectiveMultiplier()
+	_u.mutation.SetEffectiveMultiplier(v)
+	return _u
+}
+
+// SetNillableEffectiveMultiplier sets the "effective_multiplier" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableEffectiveMultiplier(v *float64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetEffectiveMultiplier(*v)
+	}
+	return _u
+}
+
+// AddEffectiveMultiplier adds value to the "effective_multiplier" field.
+func (_u *UsageLogUpdateOne) AddEffectiveMultiplier(v float64) *UsageLogUpdateOne {
+	_u.mutation.AddEffectiveMultiplier(v)
+	return _u
+}
+
+// ClearEffectiveMultiplier clears the value of the "effective_multiplier" field.
+func (_u *UsageLogUpdateOne) ClearEffectiveMultiplier() *UsageLogUpdateOne {
+	_u.mutation.ClearEffectiveMultiplier()
+	return _u
+}
+
+// SetEffectiveInputUnitPrice sets the "effective_input_unit_price" field.
+func (_u *UsageLogUpdateOne) SetEffectiveInputUnitPrice(v float64) *UsageLogUpdateOne {
+	_u.mutation.ResetEffectiveInputUnitPrice()
+	_u.mutation.SetEffectiveInputUnitPrice(v)
+	return _u
+}
+
+// SetNillableEffectiveInputUnitPrice sets the "effective_input_unit_price" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableEffectiveInputUnitPrice(v *float64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetEffectiveInputUnitPrice(*v)
+	}
+	return _u
+}
+
+// AddEffectiveInputUnitPrice adds value to the "effective_input_unit_price" field.
+func (_u *UsageLogUpdateOne) AddEffectiveInputUnitPrice(v float64) *UsageLogUpdateOne {
+	_u.mutation.AddEffectiveInputUnitPrice(v)
+	return _u
+}
+
+// ClearEffectiveInputUnitPrice clears the value of the "effective_input_unit_price" field.
+func (_u *UsageLogUpdateOne) ClearEffectiveInputUnitPrice() *UsageLogUpdateOne {
+	_u.mutation.ClearEffectiveInputUnitPrice()
+	return _u
+}
+
+// SetEffectiveOutputUnitPrice sets the "effective_output_unit_price" field.
+func (_u *UsageLogUpdateOne) SetEffectiveOutputUnitPrice(v float64) *UsageLogUpdateOne {
+	_u.mutation.ResetEffectiveOutputUnitPrice()
+	_u.mutation.SetEffectiveOutputUnitPrice(v)
+	return _u
+}
+
+// SetNillableEffectiveOutputUnitPrice sets the "effective_output_unit_price" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableEffectiveOutputUnitPrice(v *float64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetEffectiveOutputUnitPrice(*v)
+	}
+	return _u
+}
+
+// AddEffectiveOutputUnitPrice adds value to the "effective_output_unit_price" field.
+func (_u *UsageLogUpdateOne) AddEffectiveOutputUnitPrice(v float64) *UsageLogUpdateOne {
+	_u.mutation.AddEffectiveOutputUnitPrice(v)
+	return _u
+}
+
+// ClearEffectiveOutputUnitPrice clears the value of the "effective_output_unit_price" field.
+func (_u *UsageLogUpdateOne) ClearEffectiveOutputUnitPrice() *UsageLogUpdateOne {
+	_u.mutation.ClearEffectiveOutputUnitPrice()
+	return _u
+}
+
+// SetEffectiveCacheReadUnitPrice sets the "effective_cache_read_unit_price" field.
+func (_u *UsageLogUpdateOne) SetEffectiveCacheReadUnitPrice(v float64) *UsageLogUpdateOne {
+	_u.mutation.ResetEffectiveCacheReadUnitPrice()
+	_u.mutation.SetEffectiveCacheReadUnitPrice(v)
+	return _u
+}
+
+// SetNillableEffectiveCacheReadUnitPrice sets the "effective_cache_read_unit_price" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableEffectiveCacheReadUnitPrice(v *float64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetEffectiveCacheReadUnitPrice(*v)
+	}
+	return _u
+}
+
+// AddEffectiveCacheReadUnitPrice adds value to the "effective_cache_read_unit_price" field.
+func (_u *UsageLogUpdateOne) AddEffectiveCacheReadUnitPrice(v float64) *UsageLogUpdateOne {
+	_u.mutation.AddEffectiveCacheReadUnitPrice(v)
+	return _u
+}
+
+// ClearEffectiveCacheReadUnitPrice clears the value of the "effective_cache_read_unit_price" field.
+func (_u *UsageLogUpdateOne) ClearEffectiveCacheReadUnitPrice() *UsageLogUpdateOne {
+	_u.mutation.ClearEffectiveCacheReadUnitPrice()
+	return _u
+}
+
+// SetPricingSource sets the "pricing_source" field.
+func (_u *UsageLogUpdateOne) SetPricingSource(v string) *UsageLogUpdateOne {
+	_u.mutation.SetPricingSource(v)
+	return _u
+}
+
+// SetNillablePricingSource sets the "pricing_source" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillablePricingSource(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetPricingSource(*v)
+	}
+	return _u
+}
+
+// ClearPricingSource clears the value of the "pricing_source" field.
+func (_u *UsageLogUpdateOne) ClearPricingSource() *UsageLogUpdateOne {
+	_u.mutation.ClearPricingSource()
+	return _u
+}
+
 // SetBillingType sets the "billing_type" field.
 func (_u *UsageLogUpdateOne) SetBillingType(v int8) *UsageLogUpdateOne {
 	_u.mutation.ResetBillingType()
@@ -2351,6 +2717,11 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "routing_failover_final_reason", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_failover_final_reason": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PricingSource(); ok {
+		if err := usagelog.PricingSourceValidator(v); err != nil {
+			return &ValidationError{Name: "pricing_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.pricing_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UserAgent(); ok {
 		if err := usagelog.UserAgentValidator(v); err != nil {
 			return &ValidationError{Name: "user_agent", err: fmt.Errorf(`ent: validator failed for field "UsageLog.user_agent": %w`, err)}
@@ -2564,6 +2935,57 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.AccountRateMultiplierCleared() {
 		_spec.ClearField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.PriorityAccountMultiplier(); ok {
+		_spec.SetField(usagelog.FieldPriorityAccountMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedPriorityAccountMultiplier(); ok {
+		_spec.AddField(usagelog.FieldPriorityAccountMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.PriorityAccountMultiplierCleared() {
+		_spec.ClearField(usagelog.FieldPriorityAccountMultiplier, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EffectiveMultiplier(); ok {
+		_spec.SetField(usagelog.FieldEffectiveMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEffectiveMultiplier(); ok {
+		_spec.AddField(usagelog.FieldEffectiveMultiplier, field.TypeFloat64, value)
+	}
+	if _u.mutation.EffectiveMultiplierCleared() {
+		_spec.ClearField(usagelog.FieldEffectiveMultiplier, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EffectiveInputUnitPrice(); ok {
+		_spec.SetField(usagelog.FieldEffectiveInputUnitPrice, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEffectiveInputUnitPrice(); ok {
+		_spec.AddField(usagelog.FieldEffectiveInputUnitPrice, field.TypeFloat64, value)
+	}
+	if _u.mutation.EffectiveInputUnitPriceCleared() {
+		_spec.ClearField(usagelog.FieldEffectiveInputUnitPrice, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EffectiveOutputUnitPrice(); ok {
+		_spec.SetField(usagelog.FieldEffectiveOutputUnitPrice, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEffectiveOutputUnitPrice(); ok {
+		_spec.AddField(usagelog.FieldEffectiveOutputUnitPrice, field.TypeFloat64, value)
+	}
+	if _u.mutation.EffectiveOutputUnitPriceCleared() {
+		_spec.ClearField(usagelog.FieldEffectiveOutputUnitPrice, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.EffectiveCacheReadUnitPrice(); ok {
+		_spec.SetField(usagelog.FieldEffectiveCacheReadUnitPrice, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedEffectiveCacheReadUnitPrice(); ok {
+		_spec.AddField(usagelog.FieldEffectiveCacheReadUnitPrice, field.TypeFloat64, value)
+	}
+	if _u.mutation.EffectiveCacheReadUnitPriceCleared() {
+		_spec.ClearField(usagelog.FieldEffectiveCacheReadUnitPrice, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.PricingSource(); ok {
+		_spec.SetField(usagelog.FieldPricingSource, field.TypeString, value)
+	}
+	if _u.mutation.PricingSourceCleared() {
+		_spec.ClearField(usagelog.FieldPricingSource, field.TypeString)
 	}
 	if value, ok := _u.mutation.BillingType(); ok {
 		_spec.SetField(usagelog.FieldBillingType, field.TypeInt8, value)

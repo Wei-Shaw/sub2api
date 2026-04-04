@@ -30,6 +30,17 @@ const messages: Record<string, string> = {
   'usage.rate': 'Rate',
   'usage.original': 'Original',
   'usage.billed': 'Billed',
+  'usage.baseRateMultiplier': 'Base rate',
+  'usage.accountRateMultiplier': 'Account rate',
+  'usage.priorityAccountMultiplier': 'Priority account',
+  'usage.effectiveMultiplier': 'Final rate',
+  'usage.effectiveInputUnitPrice': 'Effective input price',
+  'usage.effectiveOutputUnitPrice': 'Effective output price',
+  'usage.effectiveCacheReadUnitPrice': 'Effective cache read price',
+  'usage.pricingSource': 'Pricing source',
+  'usage.pricingSourcePriority': 'Fast/priority pricing active',
+  'usage.pricingSourcePriorityAccount': 'Priority account 100x',
+  'usage.sysHint': 'Use -Sys to avoid priority-account surcharge',
   'usage.allApiKeys': 'All API Keys',
   'usage.apiKeyFilter': 'API Key',
   'usage.model': 'Model',
@@ -108,6 +119,13 @@ describe('user UsageView tooltip', () => {
           actual_cost: 0.092883,
           total_cost: 0.092883,
           rate_multiplier: 1,
+          account_rate_multiplier: 1.5,
+          priority_account_multiplier: 100,
+          effective_multiplier: 150,
+          effective_input_unit_price: 0.000005,
+          effective_output_unit_price: 0.00003,
+          effective_cache_read_unit_price: 0.0000005,
+          pricing_source: 'priority_pricing,priority_account_multiplier',
           service_tier: 'priority',
           input_cost: 0.020285,
           output_cost: 0.00303,
@@ -161,6 +179,13 @@ describe('user UsageView tooltip', () => {
       actual_cost: 0.092883,
       total_cost: 0.092883,
       rate_multiplier: 1,
+      account_rate_multiplier: 1.5,
+      priority_account_multiplier: 100,
+      effective_multiplier: 150,
+      effective_input_unit_price: 0.000005,
+      effective_output_unit_price: 0.00003,
+      effective_cache_read_unit_price: 0.0000005,
+      pricing_source: 'priority_pricing,priority_account_multiplier',
       service_tier: 'priority',
       input_cost: 0.020285,
       output_cost: 0.00303,
@@ -175,12 +200,17 @@ describe('user UsageView tooltip', () => {
     const text = wrapper.text()
     expect(text).toContain('Service tier')
     expect(text).toContain('Fast')
-    expect(text).toContain('Rate')
-    expect(text).toContain('1.00x')
+    expect(text).toContain('Base rate')
+    expect(text).toContain('Account rate')
+    expect(text).toContain('Priority account')
+    expect(text).toContain('Final rate')
+    expect(text).toContain('Priority account 100x')
+    expect(text).toContain('Fast/priority pricing active')
+    expect(text).toContain('Use -Sys to avoid priority-account surcharge')
     expect(text).toContain('Billed')
     expect(text).toContain('$0.092883')
-    expect(text).toContain('$5.0000 / 1M tokens')
-    expect(text).toContain('$30.0000 / 1M tokens')
+    expect(text).toContain('$5.00 / 1M tokens')
+    expect(text).toContain('$30.00 / 1M tokens')
   })
 
   it('exports csv with input and output unit price columns', async () => {

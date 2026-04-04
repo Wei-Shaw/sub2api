@@ -19718,79 +19718,90 @@ func (m *UsageCleanupTaskMutation) ResetEdge(name string) error {
 // UsageLogMutation represents an operation that mutates the UsageLog nodes in the graph.
 type UsageLogMutation struct {
 	config
-	op                             Op
-	typ                            string
-	id                             *int64
-	request_id                     *string
-	model                          *string
-	requested_model                *string
-	upstream_model                 *string
-	routing_target_group           *string
-	routing_schedule_layer         *string
-	routing_selected_account_id    *int64
-	addrouting_selected_account_id *int64
-	routing_selected_account_name  *string
-	routing_effective_model        *string
-	routing_failover_count         *int
-	addrouting_failover_count      *int
-	routing_failover_final_reason  *string
-	input_tokens                   *int
-	addinput_tokens                *int
-	output_tokens                  *int
-	addoutput_tokens               *int
-	cache_creation_tokens          *int
-	addcache_creation_tokens       *int
-	cache_read_tokens              *int
-	addcache_read_tokens           *int
-	cache_creation_5m_tokens       *int
-	addcache_creation_5m_tokens    *int
-	cache_creation_1h_tokens       *int
-	addcache_creation_1h_tokens    *int
-	input_cost                     *float64
-	addinput_cost                  *float64
-	output_cost                    *float64
-	addoutput_cost                 *float64
-	cache_creation_cost            *float64
-	addcache_creation_cost         *float64
-	cache_read_cost                *float64
-	addcache_read_cost             *float64
-	total_cost                     *float64
-	addtotal_cost                  *float64
-	actual_cost                    *float64
-	addactual_cost                 *float64
-	rate_multiplier                *float64
-	addrate_multiplier             *float64
-	account_rate_multiplier        *float64
-	addaccount_rate_multiplier     *float64
-	billing_type                   *int8
-	addbilling_type                *int8
-	stream                         *bool
-	duration_ms                    *int
-	addduration_ms                 *int
-	first_token_ms                 *int
-	addfirst_token_ms              *int
-	user_agent                     *string
-	ip_address                     *string
-	image_count                    *int
-	addimage_count                 *int
-	image_size                     *string
-	media_type                     *string
-	cache_ttl_overridden           *bool
-	created_at                     *time.Time
-	clearedFields                  map[string]struct{}
-	user                           *int64
-	cleareduser                    bool
-	api_key                        *int64
-	clearedapi_key                 bool
-	account                        *int64
-	clearedaccount                 bool
-	group                          *int64
-	clearedgroup                   bool
-	subscription                   *int64
-	clearedsubscription            bool
-	done                           bool
-	oldValue                       func(context.Context) (*UsageLog, error)
-	predicates                     []predicate.UsageLog
+	op                                 Op
+	typ                                string
+	id                                 *int64
+	request_id                         *string
+	model                              *string
+	requested_model                    *string
+	upstream_model                     *string
+	routing_target_group               *string
+	routing_schedule_layer             *string
+	routing_selected_account_id        *int64
+	addrouting_selected_account_id     *int64
+	routing_selected_account_name      *string
+	routing_effective_model            *string
+	routing_failover_count             *int
+	addrouting_failover_count          *int
+	routing_failover_final_reason      *string
+	input_tokens                       *int
+	addinput_tokens                    *int
+	output_tokens                      *int
+	addoutput_tokens                   *int
+	cache_creation_tokens              *int
+	addcache_creation_tokens           *int
+	cache_read_tokens                  *int
+	addcache_read_tokens               *int
+	cache_creation_5m_tokens           *int
+	addcache_creation_5m_tokens        *int
+	cache_creation_1h_tokens           *int
+	addcache_creation_1h_tokens        *int
+	input_cost                         *float64
+	addinput_cost                      *float64
+	output_cost                        *float64
+	addoutput_cost                     *float64
+	cache_creation_cost                *float64
+	addcache_creation_cost             *float64
+	cache_read_cost                    *float64
+	addcache_read_cost                 *float64
+	total_cost                         *float64
+	addtotal_cost                      *float64
+	actual_cost                        *float64
+	addactual_cost                     *float64
+	rate_multiplier                    *float64
+	addrate_multiplier                 *float64
+	account_rate_multiplier            *float64
+	addaccount_rate_multiplier         *float64
+	priority_account_multiplier        *float64
+	addpriority_account_multiplier     *float64
+	effective_multiplier               *float64
+	addeffective_multiplier            *float64
+	effective_input_unit_price         *float64
+	addeffective_input_unit_price      *float64
+	effective_output_unit_price        *float64
+	addeffective_output_unit_price     *float64
+	effective_cache_read_unit_price    *float64
+	addeffective_cache_read_unit_price *float64
+	pricing_source                     *string
+	billing_type                       *int8
+	addbilling_type                    *int8
+	stream                             *bool
+	duration_ms                        *int
+	addduration_ms                     *int
+	first_token_ms                     *int
+	addfirst_token_ms                  *int
+	user_agent                         *string
+	ip_address                         *string
+	image_count                        *int
+	addimage_count                     *int
+	image_size                         *string
+	media_type                         *string
+	cache_ttl_overridden               *bool
+	created_at                         *time.Time
+	clearedFields                      map[string]struct{}
+	user                               *int64
+	cleareduser                        bool
+	api_key                            *int64
+	clearedapi_key                     bool
+	account                            *int64
+	clearedaccount                     bool
+	group                              *int64
+	clearedgroup                       bool
+	subscription                       *int64
+	clearedsubscription                bool
+	done                               bool
+	oldValue                           func(context.Context) (*UsageLog, error)
+	predicates                         []predicate.UsageLog
 }
 
 var _ ent.Mutation = (*UsageLogMutation)(nil)
@@ -21450,6 +21461,405 @@ func (m *UsageLogMutation) ResetAccountRateMultiplier() {
 	delete(m.clearedFields, usagelog.FieldAccountRateMultiplier)
 }
 
+// SetPriorityAccountMultiplier sets the "priority_account_multiplier" field.
+func (m *UsageLogMutation) SetPriorityAccountMultiplier(f float64) {
+	m.priority_account_multiplier = &f
+	m.addpriority_account_multiplier = nil
+}
+
+// PriorityAccountMultiplier returns the value of the "priority_account_multiplier" field in the mutation.
+func (m *UsageLogMutation) PriorityAccountMultiplier() (r float64, exists bool) {
+	v := m.priority_account_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPriorityAccountMultiplier returns the old "priority_account_multiplier" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldPriorityAccountMultiplier(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPriorityAccountMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPriorityAccountMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPriorityAccountMultiplier: %w", err)
+	}
+	return oldValue.PriorityAccountMultiplier, nil
+}
+
+// AddPriorityAccountMultiplier adds f to the "priority_account_multiplier" field.
+func (m *UsageLogMutation) AddPriorityAccountMultiplier(f float64) {
+	if m.addpriority_account_multiplier != nil {
+		*m.addpriority_account_multiplier += f
+	} else {
+		m.addpriority_account_multiplier = &f
+	}
+}
+
+// AddedPriorityAccountMultiplier returns the value that was added to the "priority_account_multiplier" field in this mutation.
+func (m *UsageLogMutation) AddedPriorityAccountMultiplier() (r float64, exists bool) {
+	v := m.addpriority_account_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPriorityAccountMultiplier clears the value of the "priority_account_multiplier" field.
+func (m *UsageLogMutation) ClearPriorityAccountMultiplier() {
+	m.priority_account_multiplier = nil
+	m.addpriority_account_multiplier = nil
+	m.clearedFields[usagelog.FieldPriorityAccountMultiplier] = struct{}{}
+}
+
+// PriorityAccountMultiplierCleared returns if the "priority_account_multiplier" field was cleared in this mutation.
+func (m *UsageLogMutation) PriorityAccountMultiplierCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldPriorityAccountMultiplier]
+	return ok
+}
+
+// ResetPriorityAccountMultiplier resets all changes to the "priority_account_multiplier" field.
+func (m *UsageLogMutation) ResetPriorityAccountMultiplier() {
+	m.priority_account_multiplier = nil
+	m.addpriority_account_multiplier = nil
+	delete(m.clearedFields, usagelog.FieldPriorityAccountMultiplier)
+}
+
+// SetEffectiveMultiplier sets the "effective_multiplier" field.
+func (m *UsageLogMutation) SetEffectiveMultiplier(f float64) {
+	m.effective_multiplier = &f
+	m.addeffective_multiplier = nil
+}
+
+// EffectiveMultiplier returns the value of the "effective_multiplier" field in the mutation.
+func (m *UsageLogMutation) EffectiveMultiplier() (r float64, exists bool) {
+	v := m.effective_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEffectiveMultiplier returns the old "effective_multiplier" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldEffectiveMultiplier(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEffectiveMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEffectiveMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEffectiveMultiplier: %w", err)
+	}
+	return oldValue.EffectiveMultiplier, nil
+}
+
+// AddEffectiveMultiplier adds f to the "effective_multiplier" field.
+func (m *UsageLogMutation) AddEffectiveMultiplier(f float64) {
+	if m.addeffective_multiplier != nil {
+		*m.addeffective_multiplier += f
+	} else {
+		m.addeffective_multiplier = &f
+	}
+}
+
+// AddedEffectiveMultiplier returns the value that was added to the "effective_multiplier" field in this mutation.
+func (m *UsageLogMutation) AddedEffectiveMultiplier() (r float64, exists bool) {
+	v := m.addeffective_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearEffectiveMultiplier clears the value of the "effective_multiplier" field.
+func (m *UsageLogMutation) ClearEffectiveMultiplier() {
+	m.effective_multiplier = nil
+	m.addeffective_multiplier = nil
+	m.clearedFields[usagelog.FieldEffectiveMultiplier] = struct{}{}
+}
+
+// EffectiveMultiplierCleared returns if the "effective_multiplier" field was cleared in this mutation.
+func (m *UsageLogMutation) EffectiveMultiplierCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldEffectiveMultiplier]
+	return ok
+}
+
+// ResetEffectiveMultiplier resets all changes to the "effective_multiplier" field.
+func (m *UsageLogMutation) ResetEffectiveMultiplier() {
+	m.effective_multiplier = nil
+	m.addeffective_multiplier = nil
+	delete(m.clearedFields, usagelog.FieldEffectiveMultiplier)
+}
+
+// SetEffectiveInputUnitPrice sets the "effective_input_unit_price" field.
+func (m *UsageLogMutation) SetEffectiveInputUnitPrice(f float64) {
+	m.effective_input_unit_price = &f
+	m.addeffective_input_unit_price = nil
+}
+
+// EffectiveInputUnitPrice returns the value of the "effective_input_unit_price" field in the mutation.
+func (m *UsageLogMutation) EffectiveInputUnitPrice() (r float64, exists bool) {
+	v := m.effective_input_unit_price
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEffectiveInputUnitPrice returns the old "effective_input_unit_price" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldEffectiveInputUnitPrice(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEffectiveInputUnitPrice is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEffectiveInputUnitPrice requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEffectiveInputUnitPrice: %w", err)
+	}
+	return oldValue.EffectiveInputUnitPrice, nil
+}
+
+// AddEffectiveInputUnitPrice adds f to the "effective_input_unit_price" field.
+func (m *UsageLogMutation) AddEffectiveInputUnitPrice(f float64) {
+	if m.addeffective_input_unit_price != nil {
+		*m.addeffective_input_unit_price += f
+	} else {
+		m.addeffective_input_unit_price = &f
+	}
+}
+
+// AddedEffectiveInputUnitPrice returns the value that was added to the "effective_input_unit_price" field in this mutation.
+func (m *UsageLogMutation) AddedEffectiveInputUnitPrice() (r float64, exists bool) {
+	v := m.addeffective_input_unit_price
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearEffectiveInputUnitPrice clears the value of the "effective_input_unit_price" field.
+func (m *UsageLogMutation) ClearEffectiveInputUnitPrice() {
+	m.effective_input_unit_price = nil
+	m.addeffective_input_unit_price = nil
+	m.clearedFields[usagelog.FieldEffectiveInputUnitPrice] = struct{}{}
+}
+
+// EffectiveInputUnitPriceCleared returns if the "effective_input_unit_price" field was cleared in this mutation.
+func (m *UsageLogMutation) EffectiveInputUnitPriceCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldEffectiveInputUnitPrice]
+	return ok
+}
+
+// ResetEffectiveInputUnitPrice resets all changes to the "effective_input_unit_price" field.
+func (m *UsageLogMutation) ResetEffectiveInputUnitPrice() {
+	m.effective_input_unit_price = nil
+	m.addeffective_input_unit_price = nil
+	delete(m.clearedFields, usagelog.FieldEffectiveInputUnitPrice)
+}
+
+// SetEffectiveOutputUnitPrice sets the "effective_output_unit_price" field.
+func (m *UsageLogMutation) SetEffectiveOutputUnitPrice(f float64) {
+	m.effective_output_unit_price = &f
+	m.addeffective_output_unit_price = nil
+}
+
+// EffectiveOutputUnitPrice returns the value of the "effective_output_unit_price" field in the mutation.
+func (m *UsageLogMutation) EffectiveOutputUnitPrice() (r float64, exists bool) {
+	v := m.effective_output_unit_price
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEffectiveOutputUnitPrice returns the old "effective_output_unit_price" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldEffectiveOutputUnitPrice(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEffectiveOutputUnitPrice is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEffectiveOutputUnitPrice requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEffectiveOutputUnitPrice: %w", err)
+	}
+	return oldValue.EffectiveOutputUnitPrice, nil
+}
+
+// AddEffectiveOutputUnitPrice adds f to the "effective_output_unit_price" field.
+func (m *UsageLogMutation) AddEffectiveOutputUnitPrice(f float64) {
+	if m.addeffective_output_unit_price != nil {
+		*m.addeffective_output_unit_price += f
+	} else {
+		m.addeffective_output_unit_price = &f
+	}
+}
+
+// AddedEffectiveOutputUnitPrice returns the value that was added to the "effective_output_unit_price" field in this mutation.
+func (m *UsageLogMutation) AddedEffectiveOutputUnitPrice() (r float64, exists bool) {
+	v := m.addeffective_output_unit_price
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearEffectiveOutputUnitPrice clears the value of the "effective_output_unit_price" field.
+func (m *UsageLogMutation) ClearEffectiveOutputUnitPrice() {
+	m.effective_output_unit_price = nil
+	m.addeffective_output_unit_price = nil
+	m.clearedFields[usagelog.FieldEffectiveOutputUnitPrice] = struct{}{}
+}
+
+// EffectiveOutputUnitPriceCleared returns if the "effective_output_unit_price" field was cleared in this mutation.
+func (m *UsageLogMutation) EffectiveOutputUnitPriceCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldEffectiveOutputUnitPrice]
+	return ok
+}
+
+// ResetEffectiveOutputUnitPrice resets all changes to the "effective_output_unit_price" field.
+func (m *UsageLogMutation) ResetEffectiveOutputUnitPrice() {
+	m.effective_output_unit_price = nil
+	m.addeffective_output_unit_price = nil
+	delete(m.clearedFields, usagelog.FieldEffectiveOutputUnitPrice)
+}
+
+// SetEffectiveCacheReadUnitPrice sets the "effective_cache_read_unit_price" field.
+func (m *UsageLogMutation) SetEffectiveCacheReadUnitPrice(f float64) {
+	m.effective_cache_read_unit_price = &f
+	m.addeffective_cache_read_unit_price = nil
+}
+
+// EffectiveCacheReadUnitPrice returns the value of the "effective_cache_read_unit_price" field in the mutation.
+func (m *UsageLogMutation) EffectiveCacheReadUnitPrice() (r float64, exists bool) {
+	v := m.effective_cache_read_unit_price
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEffectiveCacheReadUnitPrice returns the old "effective_cache_read_unit_price" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldEffectiveCacheReadUnitPrice(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEffectiveCacheReadUnitPrice is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEffectiveCacheReadUnitPrice requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEffectiveCacheReadUnitPrice: %w", err)
+	}
+	return oldValue.EffectiveCacheReadUnitPrice, nil
+}
+
+// AddEffectiveCacheReadUnitPrice adds f to the "effective_cache_read_unit_price" field.
+func (m *UsageLogMutation) AddEffectiveCacheReadUnitPrice(f float64) {
+	if m.addeffective_cache_read_unit_price != nil {
+		*m.addeffective_cache_read_unit_price += f
+	} else {
+		m.addeffective_cache_read_unit_price = &f
+	}
+}
+
+// AddedEffectiveCacheReadUnitPrice returns the value that was added to the "effective_cache_read_unit_price" field in this mutation.
+func (m *UsageLogMutation) AddedEffectiveCacheReadUnitPrice() (r float64, exists bool) {
+	v := m.addeffective_cache_read_unit_price
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearEffectiveCacheReadUnitPrice clears the value of the "effective_cache_read_unit_price" field.
+func (m *UsageLogMutation) ClearEffectiveCacheReadUnitPrice() {
+	m.effective_cache_read_unit_price = nil
+	m.addeffective_cache_read_unit_price = nil
+	m.clearedFields[usagelog.FieldEffectiveCacheReadUnitPrice] = struct{}{}
+}
+
+// EffectiveCacheReadUnitPriceCleared returns if the "effective_cache_read_unit_price" field was cleared in this mutation.
+func (m *UsageLogMutation) EffectiveCacheReadUnitPriceCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldEffectiveCacheReadUnitPrice]
+	return ok
+}
+
+// ResetEffectiveCacheReadUnitPrice resets all changes to the "effective_cache_read_unit_price" field.
+func (m *UsageLogMutation) ResetEffectiveCacheReadUnitPrice() {
+	m.effective_cache_read_unit_price = nil
+	m.addeffective_cache_read_unit_price = nil
+	delete(m.clearedFields, usagelog.FieldEffectiveCacheReadUnitPrice)
+}
+
+// SetPricingSource sets the "pricing_source" field.
+func (m *UsageLogMutation) SetPricingSource(s string) {
+	m.pricing_source = &s
+}
+
+// PricingSource returns the value of the "pricing_source" field in the mutation.
+func (m *UsageLogMutation) PricingSource() (r string, exists bool) {
+	v := m.pricing_source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPricingSource returns the old "pricing_source" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldPricingSource(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPricingSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPricingSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPricingSource: %w", err)
+	}
+	return oldValue.PricingSource, nil
+}
+
+// ClearPricingSource clears the value of the "pricing_source" field.
+func (m *UsageLogMutation) ClearPricingSource() {
+	m.pricing_source = nil
+	m.clearedFields[usagelog.FieldPricingSource] = struct{}{}
+}
+
+// PricingSourceCleared returns if the "pricing_source" field was cleared in this mutation.
+func (m *UsageLogMutation) PricingSourceCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldPricingSource]
+	return ok
+}
+
+// ResetPricingSource resets all changes to the "pricing_source" field.
+func (m *UsageLogMutation) ResetPricingSource() {
+	m.pricing_source = nil
+	delete(m.clearedFields, usagelog.FieldPricingSource)
+}
+
 // SetBillingType sets the "billing_type" field.
 func (m *UsageLogMutation) SetBillingType(i int8) {
 	m.billing_type = &i
@@ -22175,7 +22585,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 41)
+	fields := make([]string, 0, 47)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -22265,6 +22675,24 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.account_rate_multiplier != nil {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
+	}
+	if m.priority_account_multiplier != nil {
+		fields = append(fields, usagelog.FieldPriorityAccountMultiplier)
+	}
+	if m.effective_multiplier != nil {
+		fields = append(fields, usagelog.FieldEffectiveMultiplier)
+	}
+	if m.effective_input_unit_price != nil {
+		fields = append(fields, usagelog.FieldEffectiveInputUnitPrice)
+	}
+	if m.effective_output_unit_price != nil {
+		fields = append(fields, usagelog.FieldEffectiveOutputUnitPrice)
+	}
+	if m.effective_cache_read_unit_price != nil {
+		fields = append(fields, usagelog.FieldEffectiveCacheReadUnitPrice)
+	}
+	if m.pricing_source != nil {
+		fields = append(fields, usagelog.FieldPricingSource)
 	}
 	if m.billing_type != nil {
 		fields = append(fields, usagelog.FieldBillingType)
@@ -22367,6 +22795,18 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.RateMultiplier()
 	case usagelog.FieldAccountRateMultiplier:
 		return m.AccountRateMultiplier()
+	case usagelog.FieldPriorityAccountMultiplier:
+		return m.PriorityAccountMultiplier()
+	case usagelog.FieldEffectiveMultiplier:
+		return m.EffectiveMultiplier()
+	case usagelog.FieldEffectiveInputUnitPrice:
+		return m.EffectiveInputUnitPrice()
+	case usagelog.FieldEffectiveOutputUnitPrice:
+		return m.EffectiveOutputUnitPrice()
+	case usagelog.FieldEffectiveCacheReadUnitPrice:
+		return m.EffectiveCacheReadUnitPrice()
+	case usagelog.FieldPricingSource:
+		return m.PricingSource()
 	case usagelog.FieldBillingType:
 		return m.BillingType()
 	case usagelog.FieldStream:
@@ -22458,6 +22898,18 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldRateMultiplier(ctx)
 	case usagelog.FieldAccountRateMultiplier:
 		return m.OldAccountRateMultiplier(ctx)
+	case usagelog.FieldPriorityAccountMultiplier:
+		return m.OldPriorityAccountMultiplier(ctx)
+	case usagelog.FieldEffectiveMultiplier:
+		return m.OldEffectiveMultiplier(ctx)
+	case usagelog.FieldEffectiveInputUnitPrice:
+		return m.OldEffectiveInputUnitPrice(ctx)
+	case usagelog.FieldEffectiveOutputUnitPrice:
+		return m.OldEffectiveOutputUnitPrice(ctx)
+	case usagelog.FieldEffectiveCacheReadUnitPrice:
+		return m.OldEffectiveCacheReadUnitPrice(ctx)
+	case usagelog.FieldPricingSource:
+		return m.OldPricingSource(ctx)
 	case usagelog.FieldBillingType:
 		return m.OldBillingType(ctx)
 	case usagelog.FieldStream:
@@ -22699,6 +23151,48 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetAccountRateMultiplier(v)
 		return nil
+	case usagelog.FieldPriorityAccountMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPriorityAccountMultiplier(v)
+		return nil
+	case usagelog.FieldEffectiveMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEffectiveMultiplier(v)
+		return nil
+	case usagelog.FieldEffectiveInputUnitPrice:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEffectiveInputUnitPrice(v)
+		return nil
+	case usagelog.FieldEffectiveOutputUnitPrice:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEffectiveOutputUnitPrice(v)
+		return nil
+	case usagelog.FieldEffectiveCacheReadUnitPrice:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEffectiveCacheReadUnitPrice(v)
+		return nil
+	case usagelog.FieldPricingSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPricingSource(v)
+		return nil
 	case usagelog.FieldBillingType:
 		v, ok := value.(int8)
 		if !ok {
@@ -22832,6 +23326,21 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addaccount_rate_multiplier != nil {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
 	}
+	if m.addpriority_account_multiplier != nil {
+		fields = append(fields, usagelog.FieldPriorityAccountMultiplier)
+	}
+	if m.addeffective_multiplier != nil {
+		fields = append(fields, usagelog.FieldEffectiveMultiplier)
+	}
+	if m.addeffective_input_unit_price != nil {
+		fields = append(fields, usagelog.FieldEffectiveInputUnitPrice)
+	}
+	if m.addeffective_output_unit_price != nil {
+		fields = append(fields, usagelog.FieldEffectiveOutputUnitPrice)
+	}
+	if m.addeffective_cache_read_unit_price != nil {
+		fields = append(fields, usagelog.FieldEffectiveCacheReadUnitPrice)
+	}
 	if m.addbilling_type != nil {
 		fields = append(fields, usagelog.FieldBillingType)
 	}
@@ -22884,6 +23393,16 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedRateMultiplier()
 	case usagelog.FieldAccountRateMultiplier:
 		return m.AddedAccountRateMultiplier()
+	case usagelog.FieldPriorityAccountMultiplier:
+		return m.AddedPriorityAccountMultiplier()
+	case usagelog.FieldEffectiveMultiplier:
+		return m.AddedEffectiveMultiplier()
+	case usagelog.FieldEffectiveInputUnitPrice:
+		return m.AddedEffectiveInputUnitPrice()
+	case usagelog.FieldEffectiveOutputUnitPrice:
+		return m.AddedEffectiveOutputUnitPrice()
+	case usagelog.FieldEffectiveCacheReadUnitPrice:
+		return m.AddedEffectiveCacheReadUnitPrice()
 	case usagelog.FieldBillingType:
 		return m.AddedBillingType()
 	case usagelog.FieldDurationMs:
@@ -23013,6 +23532,41 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddAccountRateMultiplier(v)
 		return nil
+	case usagelog.FieldPriorityAccountMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPriorityAccountMultiplier(v)
+		return nil
+	case usagelog.FieldEffectiveMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEffectiveMultiplier(v)
+		return nil
+	case usagelog.FieldEffectiveInputUnitPrice:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEffectiveInputUnitPrice(v)
+		return nil
+	case usagelog.FieldEffectiveOutputUnitPrice:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEffectiveOutputUnitPrice(v)
+		return nil
+	case usagelog.FieldEffectiveCacheReadUnitPrice:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddEffectiveCacheReadUnitPrice(v)
+		return nil
 	case usagelog.FieldBillingType:
 		v, ok := value.(int8)
 		if !ok {
@@ -23085,6 +23639,24 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldAccountRateMultiplier) {
 		fields = append(fields, usagelog.FieldAccountRateMultiplier)
 	}
+	if m.FieldCleared(usagelog.FieldPriorityAccountMultiplier) {
+		fields = append(fields, usagelog.FieldPriorityAccountMultiplier)
+	}
+	if m.FieldCleared(usagelog.FieldEffectiveMultiplier) {
+		fields = append(fields, usagelog.FieldEffectiveMultiplier)
+	}
+	if m.FieldCleared(usagelog.FieldEffectiveInputUnitPrice) {
+		fields = append(fields, usagelog.FieldEffectiveInputUnitPrice)
+	}
+	if m.FieldCleared(usagelog.FieldEffectiveOutputUnitPrice) {
+		fields = append(fields, usagelog.FieldEffectiveOutputUnitPrice)
+	}
+	if m.FieldCleared(usagelog.FieldEffectiveCacheReadUnitPrice) {
+		fields = append(fields, usagelog.FieldEffectiveCacheReadUnitPrice)
+	}
+	if m.FieldCleared(usagelog.FieldPricingSource) {
+		fields = append(fields, usagelog.FieldPricingSource)
+	}
 	if m.FieldCleared(usagelog.FieldDurationMs) {
 		fields = append(fields, usagelog.FieldDurationMs)
 	}
@@ -23152,6 +23724,24 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		m.ClearAccountRateMultiplier()
+		return nil
+	case usagelog.FieldPriorityAccountMultiplier:
+		m.ClearPriorityAccountMultiplier()
+		return nil
+	case usagelog.FieldEffectiveMultiplier:
+		m.ClearEffectiveMultiplier()
+		return nil
+	case usagelog.FieldEffectiveInputUnitPrice:
+		m.ClearEffectiveInputUnitPrice()
+		return nil
+	case usagelog.FieldEffectiveOutputUnitPrice:
+		m.ClearEffectiveOutputUnitPrice()
+		return nil
+	case usagelog.FieldEffectiveCacheReadUnitPrice:
+		m.ClearEffectiveCacheReadUnitPrice()
+		return nil
+	case usagelog.FieldPricingSource:
+		m.ClearPricingSource()
 		return nil
 	case usagelog.FieldDurationMs:
 		m.ClearDurationMs()
@@ -23268,6 +23858,24 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldAccountRateMultiplier:
 		m.ResetAccountRateMultiplier()
+		return nil
+	case usagelog.FieldPriorityAccountMultiplier:
+		m.ResetPriorityAccountMultiplier()
+		return nil
+	case usagelog.FieldEffectiveMultiplier:
+		m.ResetEffectiveMultiplier()
+		return nil
+	case usagelog.FieldEffectiveInputUnitPrice:
+		m.ResetEffectiveInputUnitPrice()
+		return nil
+	case usagelog.FieldEffectiveOutputUnitPrice:
+		m.ResetEffectiveOutputUnitPrice()
+		return nil
+	case usagelog.FieldEffectiveCacheReadUnitPrice:
+		m.ResetEffectiveCacheReadUnitPrice()
+		return nil
+	case usagelog.FieldPricingSource:
+		m.ResetPricingSource()
 		return nil
 	case usagelog.FieldBillingType:
 		m.ResetBillingType()
