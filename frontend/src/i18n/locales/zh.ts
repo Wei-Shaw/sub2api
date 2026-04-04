@@ -2566,10 +2566,6 @@ export default {
           hint: '启用后将请求转发到自定义中继服务，代理地址将作为 URL 参数传递给中继服务',
           urlHint: '中继服务地址（如 https://relay.example.com）',
         },
-        clientAffinity: {
-          label: '客户端亲和调度',
-          hint: '启用后，新会话会优先调度到该客户端之前使用过的账号，避免频繁切换账号'
-        }
       },
       expired: '已过期',
       proxy: '代理',
