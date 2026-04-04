@@ -1026,6 +1026,69 @@ func isOpenAITransientProcessingError(upstreamStatusCode int, upstreamMsg string
 	return match(string(upstreamBody))
 }
 
+type openAIUpstreamErrorEnvelope struct {
+	Error openAIUpstreamErrorEnvelopeError `json:"error"`
+}
+
+type openAIUpstreamErrorEnvelopeError struct {
+	Type     string         `json:"type"`
+	Message  string         `json:"message"`
+	Upstream map[string]any `json:"upstream,omitempty"`
+}
+
+func hasOpenAIStructuredError(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	if gjson.GetBytes(body, "error").Exists() {
+		return true
+	}
+	if strings.TrimSpace(gjson.GetBytes(body, "detail").String()) != "" {
+		return true
+	}
+	return false
+}
+
+func buildOpenAIUpstreamErrorEnvelope(status int, body []byte, fallback string) (int, openAIUpstreamErrorEnvelope) {
+	msg := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	if msg == "" {
+		msg = strings.TrimSpace(fallback)
+	}
+	if msg == "" {
+		msg = fmt.Sprintf("Upstream error: %d", status)
+	}
+
+	envelope := openAIUpstreamErrorEnvelope{}
+	envelope.Error.Type = "upstream_error"
+	envelope.Error.Message = msg
+
+	upstream := map[string]any{
+		"status":  status,
+		"message": msg,
+	}
+	if code := strings.TrimSpace(gjson.GetBytes(body, "error.code").String()); code != "" {
+		upstream["code"] = code
+	}
+	if typ := strings.TrimSpace(gjson.GetBytes(body, "error.type").String()); typ != "" {
+		upstream["type"] = typ
+	}
+	if param := strings.TrimSpace(gjson.GetBytes(body, "error.param").String()); param != "" {
+		upstream["param"] = param
+	}
+
+	var raw any
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &raw); err == nil {
+			upstream["raw"] = raw
+		} else {
+			upstream["raw"] = string(body)
+		}
+	}
+
+	envelope.Error.Upstream = upstream
+	return status, envelope
+}
+
 // ExtractSessionID extracts the raw session ID from headers or body without hashing.
 // Used by ForwardAsAnthropic to pass as prompt_cache_key for upstream cache.
 func (s *OpenAIGatewayService) ExtractSessionID(c *gin.Context, body []byte) string {
@@ -3233,6 +3296,12 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		}
 	}
 
+	if hasOpenAIStructuredError(body) {
+		statusCode, envelope := buildOpenAIUpstreamErrorEnvelope(resp.StatusCode, body, upstreamMsg)
+		c.JSON(statusCode, envelope)
+		return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
+	}
+
 	// Return appropriate error response
 	var errType, errMsg string
 	var statusCode int
@@ -4776,6 +4845,19 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 			normalized = next
 			changed = true
 		}
+	}
+
+	var reqBody map[string]any
+	if err := json.Unmarshal(normalized, &reqBody); err != nil {
+		return body, false, fmt.Errorf("normalize passthrough body parse: %w", err)
+	}
+	if applyInstructions(reqBody, false) {
+		encoded, err := json.Marshal(reqBody)
+		if err != nil {
+			return body, false, fmt.Errorf("normalize passthrough body instructions: %w", err)
+		}
+		normalized = encoded
+		changed = true
 	}
 
 	return normalized, changed, nil

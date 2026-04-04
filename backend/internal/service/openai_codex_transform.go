@@ -386,6 +386,9 @@ func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
 	if !isInstructionsEmpty(reqBody) {
 		return false
 	}
+	if extractSystemMessagesFromInput(reqBody) {
+		return true
+	}
 	reqBody["instructions"] = "You are a helpful coding assistant."
 	return true
 }

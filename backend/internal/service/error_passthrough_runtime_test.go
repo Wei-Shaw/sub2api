@@ -78,14 +78,19 @@ func TestOpenAIHandleErrorResponse_NoRuleKeepsDefault(t *testing.T) {
 
 	_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil)
 	require.Error(t, err)
-	assert.Equal(t, http.StatusBadGateway, rec.Code)
+	assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
 	errField, ok := payload["error"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "upstream_error", errField["type"])
-	assert.Equal(t, "Upstream request failed", errField["message"])
+	assert.Equal(t, "Invalid schema for field messages", errField["message"])
+
+	upstreamField, ok := errField["upstream"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, float64(http.StatusUnprocessableEntity), upstreamField["status"])
+	assert.Equal(t, "Invalid schema for field messages", upstreamField["message"])
 }
 
 func TestGeminiWriteGeminiMappedError_NoRuleKeepsDefault(t *testing.T) {
@@ -167,6 +172,47 @@ func TestOpenAIHandleErrorResponse_AppliesRuleFor422(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "upstream_error", errField["type"])
 	assert.Equal(t, "OpenAI上游失败", errField["message"])
+}
+
+func TestOpenAIHandleErrorResponse_PreservesStructuredUpstream400(t *testing.T) {
+
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	svc := &OpenAIGatewayService{}
+	respBody := []byte(`{"error":{"code":"invalid_value","message":"The image data you provided does not represent a valid image.","param":"input","type":"invalid_request_error"}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+	}
+	account := &Account{ID: 14, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil)
+	require.Error(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	errField, ok := payload["error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "upstream_error", errField["type"])
+	assert.Equal(t, "The image data you provided does not represent a valid image.", errField["message"])
+
+	upstreamField, ok := errField["upstream"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, float64(http.StatusBadRequest), upstreamField["status"])
+	assert.Equal(t, "invalid_value", upstreamField["code"])
+	assert.Equal(t, "invalid_request_error", upstreamField["type"])
+	assert.Equal(t, "input", upstreamField["param"])
+	assert.Equal(t, "The image data you provided does not represent a valid image.", upstreamField["message"])
+
+	rawField, ok := upstreamField["raw"].(map[string]any)
+	require.True(t, ok)
+	rawError, ok := rawField["error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "invalid_value", rawError["code"])
 }
 
 func TestGeminiWriteGeminiMappedError_AppliesRuleFor422(t *testing.T) {

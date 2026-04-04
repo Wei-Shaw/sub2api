@@ -527,3 +527,23 @@ func TestIsInstructionsEmpty(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyInstructions_PrefersSystemMessages(t *testing.T) {
+	reqBody := map[string]any{
+		"input": []any{
+			map[string]any{"role": "system", "content": "You are a coding assistant."},
+			map[string]any{"role": "user", "content": "Write a function."},
+		},
+	}
+
+	changed := applyInstructions(reqBody, false)
+
+	require.True(t, changed)
+	require.Equal(t, "You are a coding assistant.", reqBody["instructions"])
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 1)
+	msg, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "user", msg["role"])
+}

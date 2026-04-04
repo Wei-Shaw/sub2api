@@ -19,6 +19,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // 编译期接口断言
@@ -1868,6 +1869,36 @@ func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t 
 			require.Equal(t, tt.wantOriginator, req.Header.Get("originator"))
 		})
 	}
+}
+
+func TestNormalizeOpenAIPassthroughOAuthBody_PromotesSystemMessagesToInstructions(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","input":[{"role":"system","content":"You are a coding assistant."},{"role":"user","content":"Write a function."}]}`)
+
+	normalized, changed, err := normalizeOpenAIPassthroughOAuthBody(body, false)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "You are a coding assistant.", gjson.GetBytes(normalized, "instructions").String())
+	require.Len(t, gjson.GetBytes(normalized, "input").Array(), 1)
+	require.Equal(t, "user", gjson.GetBytes(normalized, "input.0.role").String())
+}
+
+func TestBuildOpenAIUpstreamErrorEnvelope(t *testing.T) {
+	body := []byte(`{"error":{"code":"invalid_value","message":"The image data you provided does not represent a valid image.","param":"input","type":"invalid_request_error"}}`)
+
+	status, envelope := buildOpenAIUpstreamErrorEnvelope(http.StatusBadRequest, body, "Upstream request failed")
+	require.Equal(t, http.StatusBadRequest, status)
+	require.Equal(t, "upstream_error", envelope.Error.Type)
+	require.Equal(t, "The image data you provided does not represent a valid image.", envelope.Error.Message)
+	require.NotNil(t, envelope.Error.Upstream)
+	require.Equal(t, http.StatusBadRequest, envelope.Error.Upstream["status"])
+	require.Equal(t, "invalid_value", envelope.Error.Upstream["code"])
+	require.Equal(t, "invalid_request_error", envelope.Error.Upstream["type"])
+	require.Equal(t, "input", envelope.Error.Upstream["param"])
+	require.Equal(t, "The image data you provided does not represent a valid image.", envelope.Error.Upstream["message"])
+
+	raw, ok := envelope.Error.Upstream["raw"].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, raw, "error")
 }
 
 // ==================== P1-08 修复：model 替换性能优化测试 ====================
