@@ -2515,7 +2515,7 @@ REDACTED
 		REDACTED
 			normalized = next
 	REDACTED
-		upstreamModel := resolveOpenAIUpstreamModel(account.GetMappedModel(originalModel))
+		upstreamModel := normalizeCodexModel(account.GetMappedModel(originalModel))
 		if upstreamModel != originalModel {
 			next, setErr := applyPayloadMutation(normalized, "model", upstreamModel)
 			if setErr != nil {
@@ -2773,7 +2773,7 @@ REDACTED
 		mappedModel := ""
 		var mappedModelBytes []byte
 		if originalModel != "" {
-			mappedModel = resolveOpenAIUpstreamModel(account.GetMappedModel(originalModel))
+			mappedModel = normalizeCodexModel(account.GetMappedModel(originalModel))
 			needModelReplace = mappedModel != "" && mappedModel != originalModel
 			if needModelReplace {
 				mappedModelBytes = []byte(mappedModel)

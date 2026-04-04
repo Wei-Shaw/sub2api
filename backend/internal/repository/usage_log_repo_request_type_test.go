@@ -56,6 +56,8 @@ REDACTED
 			log.CacheReadTokens,
 			log.CacheCreation5mTokens,
 			log.CacheCreation1hTokens,
+			log.ImageOutputTokens,
+			log.ImageOutputCost,
 			log.InputCost,
 			log.OutputCost,
 			log.CacheCreationCost,
@@ -80,6 +82,10 @@ REDACTED
 			sqlmock.AnyArg(), // inbound_endpoint
 			sqlmock.AnyArg(), // upstream_endpoint
 			log.CacheTTLOverridden,
+			sqlmock.AnyArg(), // channel_id
+			sqlmock.AnyArg(), // model_mapping_chain
+			sqlmock.AnyArg(), // billing_tier
+			sqlmock.AnyArg(), // billing_mode
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"REDACTED).AddRow(int64(99), createdAt))
@@ -129,6 +135,8 @@ REDACTED
 			log.CacheReadTokens,
 			log.CacheCreation5mTokens,
 			log.CacheCreation1hTokens,
+			log.ImageOutputTokens,
+			log.ImageOutputCost,
 			log.InputCost,
 			log.OutputCost,
 			log.CacheCreationCost,
@@ -153,6 +161,10 @@ REDACTED
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			log.CacheTTLOverridden,
+			sqlmock.AnyArg(), // channel_id
+			sqlmock.AnyArg(), // model_mapping_chain
+			sqlmock.AnyArg(), // billing_tier
+			sqlmock.AnyArg(), // billing_mode
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"REDACTED).AddRow(int64(100), createdAt))
@@ -439,6 +451,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			4,                 // cache_read_tokens
 			5,                 // cache_creation_5m_tokens
 			6,                 // cache_creation_1h_tokens
+			0,                 // image_output_tokens
+			0.0,               // image_output_cost
 			0.1,               // input_cost
 			0.2,               // output_cost
 			0.3,               // cache_creation_cost
@@ -463,6 +477,10 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			false,
+			sql.NullInt64{REDACTED,  // channel_id
+			sql.NullString{REDACTED, // model_mapping_chain
+			sql.NullString{REDACTED, // billing_tier
+			sql.NullString{REDACTED, // billing_mode
 			now,
 	REDACTEDREDACTED)
 	REDACTED
@@ -487,6 +505,7 @@ REDACTED)
 			sql.NullInt64{REDACTED,
 			sql.NullInt64{REDACTED,
 			1, 2, 3, 4, 5, 6,
+			0, 0.0, // image_output_tokens, image_output_cost
 			0.1, 0.2, 0.3, 0.4, 1.0, 0.9,
 			1.0,
 			sql.NullFloat64{REDACTED,
@@ -506,6 +525,10 @@ REDACTED)
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			false,
+			sql.NullInt64{REDACTED,  // channel_id
+			sql.NullString{REDACTED, // model_mapping_chain
+			sql.NullString{REDACTED, // billing_tier
+			sql.NullString{REDACTED, // billing_mode
 			now,
 	REDACTEDREDACTED)
 	REDACTED
@@ -530,6 +553,7 @@ REDACTED)
 			sql.NullInt64{REDACTED,
 			sql.NullInt64{REDACTED,
 			1, 2, 3, 4, 5, 6,
+			0, 0.0, // image_output_tokens, image_output_cost
 			0.1, 0.2, 0.3, 0.4, 1.0, 0.9,
 			1.0,
 			sql.NullFloat64{REDACTED,
@@ -549,6 +573,10 @@ REDACTED)
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			false,
+			sql.NullInt64{REDACTED,  // channel_id
+			sql.NullString{REDACTED, // model_mapping_chain
+			sql.NullString{REDACTED, // billing_tier
+			sql.NullString{REDACTED, // billing_mode
 			now,
 	REDACTEDREDACTED)
 	REDACTED

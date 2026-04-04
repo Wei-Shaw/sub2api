@@ -26,3 +26,10 @@ func forwardResultBillingModel(requestedModel, upstreamModel string) string {
 REDACTED
 	return strings.TrimSpace(upstreamModel)
 REDACTED
+
+func optionalInt64Ptr(v int64) *int64 {
+	if v == 0 {
+		return nil
+REDACTED
+	return &v
+REDACTED

@@ -636,6 +636,40 @@ REDACTED
 	dim.Endpoint = c.Query("endpoint")
 	dim.EndpointType = c.DefaultQuery("endpoint_type", "inbound")
 
+	// Additional filter conditions
+	if v := c.Query("user_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			dim.UserID = id
+	REDACTED
+REDACTED
+	if v := c.Query("api_key_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			dim.APIKeyID = id
+	REDACTED
+REDACTED
+	if v := c.Query("account_id"); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			dim.AccountID = id
+	REDACTED
+REDACTED
+	if v := c.Query("request_type"); v != "" {
+		if rt, err := strconv.ParseInt(v, 10, 16); err == nil {
+			rtVal := int16(rt)
+			dim.RequestType = &rtVal
+	REDACTED
+REDACTED
+	if v := c.Query("stream"); v != "" {
+		if s, err := strconv.ParseBool(v); err == nil {
+			dim.Stream = &s
+	REDACTED
+REDACTED
+	if v := c.Query("billing_type"); v != "" {
+		if bt, err := strconv.ParseInt(v, 10, 8); err == nil {
+			btVal := int8(bt)
+			dim.BillingType = &btVal
+	REDACTED
+REDACTED
+
 	limit := 50
 	if v := c.Query("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {

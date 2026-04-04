@@ -732,7 +732,7 @@ REDACTED
 			modelsListCacheTTL: time.Minute,
 	REDACTED
 
-		result, err := svc.SelectAccountWithLoadAwareness(baseCtx, nil, "sess-hash", "", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(baseCtx, nil, "sess-hash", "", nil, "", int64(0))
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -754,7 +754,7 @@ REDACTED)
 
 		ctx := context.WithValue(baseCtx, ctxkey.PrefetchedStickyAccountID, account.ID)
 		ctx = context.WithValue(ctx, ctxkey.PrefetchedStickyGroupID, int64(0))
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sess-hash", "", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sess-hash", "", nil, "", int64(0))
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)
@@ -776,7 +776,7 @@ REDACTED)
 
 		ctx := context.WithValue(baseCtx, ctxkey.PrefetchedStickyAccountID, int64(999))
 		ctx = context.WithValue(ctx, ctxkey.PrefetchedStickyGroupID, int64(77))
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sess-hash", "", nil, "")
+		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "sess-hash", "", nil, "", int64(0))
 	REDACTED
 		require.NotNil(t, result)
 		require.NotNil(t, result.Account)

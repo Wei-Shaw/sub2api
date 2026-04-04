@@ -1036,6 +1036,9 @@ export interface UsageLog {
   // Cache TTL Override
   cache_ttl_overridden: boolean
 
+  // 计费模式
+  billing_mode?: string | null
+
   created_at: string
 
   user?: User
@@ -1051,6 +1054,7 @@ REDACTED
 
 export interface AdminUsageLog extends UsageLog {
   upstream_model?: string | null
+  model_mapping_chain?: string | null
 
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null

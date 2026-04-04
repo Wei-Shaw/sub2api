@@ -32,9 +32,10 @@ type StreamingProcessor struct {
 	groundingChunks   []GeminiGroundingChunk
 
 	// 累计 usage
-	inputTokens     int
-	outputTokens    int
-	cacheReadTokens int
+	inputTokens       int
+	outputTokens      int
+	cacheReadTokens   int
+	imageOutputTokens int
 REDACTED
 
 // NewStreamingProcessor 创建流式响应处理器
@@ -87,6 +88,7 @@ REDACTED
 		p.inputTokens = geminiResp.UsageMetadata.PromptTokenCount - cached
 		p.outputTokens = geminiResp.UsageMetadata.CandidatesTokenCount + geminiResp.UsageMetadata.ThoughtsTokenCount
 		p.cacheReadTokens = cached
+		p.imageOutputTokens = geminiResp.UsageMetadata.ImageOutputTokens()
 REDACTED
 
 	// 处理 parts
@@ -127,6 +129,7 @@ func (p *StreamingProcessor) Finish() ([]byte, *ClaudeUsage) {
 		InputTokens:          p.inputTokens,
 		OutputTokens:         p.outputTokens,
 		CacheReadInputTokens: p.cacheReadTokens,
+		ImageOutputTokens:    p.imageOutputTokens,
 REDACTED
 
 	if !p.messageStartSent {
@@ -158,6 +161,7 @@ REDACTED
 		usage.InputTokens = v1Resp.Response.UsageMetadata.PromptTokenCount - cached
 		usage.OutputTokens = v1Resp.Response.UsageMetadata.CandidatesTokenCount + v1Resp.Response.UsageMetadata.ThoughtsTokenCount
 		usage.CacheReadInputTokens = cached
+		usage.ImageOutputTokens = v1Resp.Response.UsageMetadata.ImageOutputTokens()
 REDACTED
 
 	responseID := v1Resp.ResponseID
@@ -485,6 +489,7 @@ REDACTED
 		InputTokens:          p.inputTokens,
 		OutputTokens:         p.outputTokens,
 		CacheReadInputTokens: p.cacheReadTokens,
+		ImageOutputTokens:    p.imageOutputTokens,
 REDACTED
 
 	deltaEvent := map[string]any{

@@ -34,6 +34,7 @@
             :show-metric-toggle="true"
             :start-date="startDate"
             :end-date="endDate"
+            :filters="breakdownFilters"
           />
           <GroupDistributionChart
             v-model:metric="groupDistributionMetric"
@@ -42,6 +43,7 @@
             :show-metric-toggle="true"
             :start-date="startDate"
             :end-date="endDate"
+            :filters="breakdownFilters"
           />
         </div>
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -57,6 +59,7 @@
             :title="t('usage.endpointDistribution')"
             :start-date="startDate"
             :end-date="endDate"
+            :filters="breakdownFilters"
           />
           <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
         </div>
@@ -168,6 +171,17 @@ const cleanupDialogVisible = ref(false)
 // Balance history modal state
 const showBalanceHistoryModal = ref(false)
 const balanceHistoryUser = ref<AdminUser | null>(null)
+
+const breakdownFilters = computed(() => {
+  const f: Record<string, any> = {REDACTED
+  if (filters.value.user_id) f.user_id = filters.value.user_id
+  if (filters.value.api_key_id) f.api_key_id = filters.value.api_key_id
+  if (filters.value.account_id) f.account_id = filters.value.account_id
+  if (filters.value.group_id) f.group_id = filters.value.group_id
+  if (filters.value.request_type != null) f.request_type = filters.value.request_type
+  if (filters.value.billing_type != null) f.billing_type = filters.value.billing_type
+  return f
+REDACTED)
 
 const handleUserClick = async (userId: number) => {
   try {
@@ -392,7 +406,7 @@ const resetFilters = () => {
   const range = getLast24HoursRangeDates()
   startDate.value = range.start
   endDate.value = range.end
-  filters.value = { start_date: startDate.value, end_date: endDate.value, request_type: undefined, billing_type: null REDACTED
+  filters.value = { start_date: startDate.value, end_date: endDate.value, request_type: undefined, billing_type: null, billing_mode: undefined REDACTED
   granularity.value = getGranularityForRange(startDate.value, endDate.value)
   applyFilters()
 REDACTED
@@ -440,7 +454,7 @@ const exportToExcel = async () => {
         log.input_tokens, log.output_tokens, log.cache_read_tokens, log.cache_creation_tokens,
         log.input_cost?.toFixed(6) || '0.000000', log.output_cost?.toFixed(6) || '0.000000',
         log.cache_read_cost?.toFixed(6) || '0.000000', log.cache_creation_cost?.toFixed(6) || '0.000000',
-        log.rate_multiplier?.toFixed(2) || '1.00', (log.account_rate_multiplier ?? 1).toFixed(2),
+        log.rate_multiplier?.toPrecision(4) || '1.00', (log.account_rate_multiplier ?? 1).toPrecision(4),
         log.total_cost?.toFixed(6) || '0.000000', log.actual_cost?.toFixed(6) || '0.000000',
         (log.total_cost * (log.account_rate_multiplier ?? 1)).toFixed(6), log.first_token_ms ?? '', log.duration_ms,
         log.request_id || '', log.user_agent || '', log.ip_address || ''
@@ -477,6 +491,7 @@ const allColumns = computed(() => [
   { key: 'endpoint', label: t('usage.endpoint'), sortable: false REDACTED,
   { key: 'group', label: t('admin.usage.group'), sortable: false REDACTED,
   { key: 'stream', label: t('usage.type'), sortable: false REDACTED,
+  { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false REDACTED,
   { key: 'tokens', label: t('usage.tokens'), sortable: false REDACTED,
   { key: 'cost', label: t('usage.cost'), sortable: false REDACTED,
   { key: 'first_token', label: t('usage.firstToken'), sortable: false REDACTED,
