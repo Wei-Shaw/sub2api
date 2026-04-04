@@ -739,26 +739,6 @@ func (_u *UsageLogUpdate) ClearImageSize() *UsageLogUpdate {
 	return _u
 }
 
-// SetMediaType sets the "media_type" field.
-func (_u *UsageLogUpdate) SetMediaType(v string) *UsageLogUpdate {
-	_u.mutation.SetMediaType(v)
-	return _u
-}
-
-// SetNillableMediaType sets the "media_type" field if the given value is not nil.
-func (_u *UsageLogUpdate) SetNillableMediaType(v *string) *UsageLogUpdate {
-	if v != nil {
-		_u.SetMediaType(*v)
-	}
-	return _u
-}
-
-// ClearMediaType clears the value of the "media_type" field.
-func (_u *UsageLogUpdate) ClearMediaType() *UsageLogUpdate {
-	_u.mutation.ClearMediaType()
-	return _u
-}
-
 // SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
 func (_u *UsageLogUpdate) SetCacheTTLOverridden(v bool) *UsageLogUpdate {
 	_u.mutation.SetCacheTTLOverridden(v)
@@ -910,11 +890,6 @@ func (_u *UsageLogUpdate) check() error {
 	if v, ok := _u.mutation.ImageSize(); ok {
 		if err := usagelog.ImageSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.MediaType(); ok {
-		if err := usagelog.MediaTypeValidator(v); err != nil {
-			return &ValidationError{Name: "media_type", err: fmt.Errorf(`ent: validator failed for field "UsageLog.media_type": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -1123,12 +1098,6 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ImageSizeCleared() {
 		_spec.ClearField(usagelog.FieldImageSize, field.TypeString)
-	}
-	if value, ok := _u.mutation.MediaType(); ok {
-		_spec.SetField(usagelog.FieldMediaType, field.TypeString, value)
-	}
-	if _u.mutation.MediaTypeCleared() {
-		_spec.ClearField(usagelog.FieldMediaType, field.TypeString)
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
@@ -2005,26 +1974,6 @@ func (_u *UsageLogUpdateOne) ClearImageSize() *UsageLogUpdateOne {
 	return _u
 }
 
-// SetMediaType sets the "media_type" field.
-func (_u *UsageLogUpdateOne) SetMediaType(v string) *UsageLogUpdateOne {
-	_u.mutation.SetMediaType(v)
-	return _u
-}
-
-// SetNillableMediaType sets the "media_type" field if the given value is not nil.
-func (_u *UsageLogUpdateOne) SetNillableMediaType(v *string) *UsageLogUpdateOne {
-	if v != nil {
-		_u.SetMediaType(*v)
-	}
-	return _u
-}
-
-// ClearMediaType clears the value of the "media_type" field.
-func (_u *UsageLogUpdateOne) ClearMediaType() *UsageLogUpdateOne {
-	_u.mutation.ClearMediaType()
-	return _u
-}
-
 // SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
 func (_u *UsageLogUpdateOne) SetCacheTTLOverridden(v bool) *UsageLogUpdateOne {
 	_u.mutation.SetCacheTTLOverridden(v)
@@ -2189,11 +2138,6 @@ func (_u *UsageLogUpdateOne) check() error {
 	if v, ok := _u.mutation.ImageSize(); ok {
 		if err := usagelog.ImageSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.MediaType(); ok {
-		if err := usagelog.MediaTypeValidator(v); err != nil {
-			return &ValidationError{Name: "media_type", err: fmt.Errorf(`ent: validator failed for field "UsageLog.media_type": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -2419,12 +2363,6 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.ImageSizeCleared() {
 		_spec.ClearField(usagelog.FieldImageSize, field.TypeString)
-	}
-	if value, ok := _u.mutation.MediaType(); ok {
-		_spec.SetField(usagelog.FieldMediaType, field.TypeString, value)
-	}
-	if _u.mutation.MediaTypeCleared() {
-		_spec.ClearField(usagelog.FieldMediaType, field.TypeString)
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)

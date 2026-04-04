@@ -8230,16 +8230,6 @@ type GroupMutation struct {
 	addimage_price_2k                       *float64
 	image_price_4k                          *float64
 	addimage_price_4k                       *float64
-	sora_image_price_360                    *float64
-	addsora_image_price_360                 *float64
-	sora_image_price_540                    *float64
-	addsora_image_price_540                 *float64
-	sora_video_price_per_request            *float64
-	addsora_video_price_per_request         *float64
-	sora_video_price_per_request_hd         *float64
-	addsora_video_price_per_request_hd      *float64
-	sora_storage_quota_bytes                *int64
-	addsora_storage_quota_bytes             *int64
 	claude_code_only                        *bool
 	fallback_group_id                       *int64
 	addfallback_group_id                    *int64
@@ -9258,342 +9248,6 @@ func (m *GroupMutation) ResetImagePrice4k() {
 	delete(m.clearedFields, group.FieldImagePrice4k)
 }
 
-// SetSoraImagePrice360 sets the "sora_image_price_360" field.
-func (m *GroupMutation) SetSoraImagePrice360(f float64) {
-	m.sora_image_price_360 = &f
-	m.addsora_image_price_360 = nil
-}
-
-// SoraImagePrice360 returns the value of the "sora_image_price_360" field in the mutation.
-func (m *GroupMutation) SoraImagePrice360() (r float64, exists bool) {
-	v := m.sora_image_price_360
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSoraImagePrice360 returns the old "sora_image_price_360" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldSoraImagePrice360(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSoraImagePrice360 is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSoraImagePrice360 requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSoraImagePrice360: %w", err)
-	}
-	return oldValue.SoraImagePrice360, nil
-}
-
-// AddSoraImagePrice360 adds f to the "sora_image_price_360" field.
-func (m *GroupMutation) AddSoraImagePrice360(f float64) {
-	if m.addsora_image_price_360 != nil {
-		*m.addsora_image_price_360 += f
-	} else {
-		m.addsora_image_price_360 = &f
-	}
-}
-
-// AddedSoraImagePrice360 returns the value that was added to the "sora_image_price_360" field in this mutation.
-func (m *GroupMutation) AddedSoraImagePrice360() (r float64, exists bool) {
-	v := m.addsora_image_price_360
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearSoraImagePrice360 clears the value of the "sora_image_price_360" field.
-func (m *GroupMutation) ClearSoraImagePrice360() {
-	m.sora_image_price_360 = nil
-	m.addsora_image_price_360 = nil
-	m.clearedFields[group.FieldSoraImagePrice360] = struct{}{}
-}
-
-// SoraImagePrice360Cleared returns if the "sora_image_price_360" field was cleared in this mutation.
-func (m *GroupMutation) SoraImagePrice360Cleared() bool {
-	_, ok := m.clearedFields[group.FieldSoraImagePrice360]
-	return ok
-}
-
-// ResetSoraImagePrice360 resets all changes to the "sora_image_price_360" field.
-func (m *GroupMutation) ResetSoraImagePrice360() {
-	m.sora_image_price_360 = nil
-	m.addsora_image_price_360 = nil
-	delete(m.clearedFields, group.FieldSoraImagePrice360)
-}
-
-// SetSoraImagePrice540 sets the "sora_image_price_540" field.
-func (m *GroupMutation) SetSoraImagePrice540(f float64) {
-	m.sora_image_price_540 = &f
-	m.addsora_image_price_540 = nil
-}
-
-// SoraImagePrice540 returns the value of the "sora_image_price_540" field in the mutation.
-func (m *GroupMutation) SoraImagePrice540() (r float64, exists bool) {
-	v := m.sora_image_price_540
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSoraImagePrice540 returns the old "sora_image_price_540" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldSoraImagePrice540(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSoraImagePrice540 is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSoraImagePrice540 requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSoraImagePrice540: %w", err)
-	}
-	return oldValue.SoraImagePrice540, nil
-}
-
-// AddSoraImagePrice540 adds f to the "sora_image_price_540" field.
-func (m *GroupMutation) AddSoraImagePrice540(f float64) {
-	if m.addsora_image_price_540 != nil {
-		*m.addsora_image_price_540 += f
-	} else {
-		m.addsora_image_price_540 = &f
-	}
-}
-
-// AddedSoraImagePrice540 returns the value that was added to the "sora_image_price_540" field in this mutation.
-func (m *GroupMutation) AddedSoraImagePrice540() (r float64, exists bool) {
-	v := m.addsora_image_price_540
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearSoraImagePrice540 clears the value of the "sora_image_price_540" field.
-func (m *GroupMutation) ClearSoraImagePrice540() {
-	m.sora_image_price_540 = nil
-	m.addsora_image_price_540 = nil
-	m.clearedFields[group.FieldSoraImagePrice540] = struct{}{}
-}
-
-// SoraImagePrice540Cleared returns if the "sora_image_price_540" field was cleared in this mutation.
-func (m *GroupMutation) SoraImagePrice540Cleared() bool {
-	_, ok := m.clearedFields[group.FieldSoraImagePrice540]
-	return ok
-}
-
-// ResetSoraImagePrice540 resets all changes to the "sora_image_price_540" field.
-func (m *GroupMutation) ResetSoraImagePrice540() {
-	m.sora_image_price_540 = nil
-	m.addsora_image_price_540 = nil
-	delete(m.clearedFields, group.FieldSoraImagePrice540)
-}
-
-// SetSoraVideoPricePerRequest sets the "sora_video_price_per_request" field.
-func (m *GroupMutation) SetSoraVideoPricePerRequest(f float64) {
-	m.sora_video_price_per_request = &f
-	m.addsora_video_price_per_request = nil
-}
-
-// SoraVideoPricePerRequest returns the value of the "sora_video_price_per_request" field in the mutation.
-func (m *GroupMutation) SoraVideoPricePerRequest() (r float64, exists bool) {
-	v := m.sora_video_price_per_request
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSoraVideoPricePerRequest returns the old "sora_video_price_per_request" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldSoraVideoPricePerRequest(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSoraVideoPricePerRequest is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSoraVideoPricePerRequest requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSoraVideoPricePerRequest: %w", err)
-	}
-	return oldValue.SoraVideoPricePerRequest, nil
-}
-
-// AddSoraVideoPricePerRequest adds f to the "sora_video_price_per_request" field.
-func (m *GroupMutation) AddSoraVideoPricePerRequest(f float64) {
-	if m.addsora_video_price_per_request != nil {
-		*m.addsora_video_price_per_request += f
-	} else {
-		m.addsora_video_price_per_request = &f
-	}
-}
-
-// AddedSoraVideoPricePerRequest returns the value that was added to the "sora_video_price_per_request" field in this mutation.
-func (m *GroupMutation) AddedSoraVideoPricePerRequest() (r float64, exists bool) {
-	v := m.addsora_video_price_per_request
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearSoraVideoPricePerRequest clears the value of the "sora_video_price_per_request" field.
-func (m *GroupMutation) ClearSoraVideoPricePerRequest() {
-	m.sora_video_price_per_request = nil
-	m.addsora_video_price_per_request = nil
-	m.clearedFields[group.FieldSoraVideoPricePerRequest] = struct{}{}
-}
-
-// SoraVideoPricePerRequestCleared returns if the "sora_video_price_per_request" field was cleared in this mutation.
-func (m *GroupMutation) SoraVideoPricePerRequestCleared() bool {
-	_, ok := m.clearedFields[group.FieldSoraVideoPricePerRequest]
-	return ok
-}
-
-// ResetSoraVideoPricePerRequest resets all changes to the "sora_video_price_per_request" field.
-func (m *GroupMutation) ResetSoraVideoPricePerRequest() {
-	m.sora_video_price_per_request = nil
-	m.addsora_video_price_per_request = nil
-	delete(m.clearedFields, group.FieldSoraVideoPricePerRequest)
-}
-
-// SetSoraVideoPricePerRequestHd sets the "sora_video_price_per_request_hd" field.
-func (m *GroupMutation) SetSoraVideoPricePerRequestHd(f float64) {
-	m.sora_video_price_per_request_hd = &f
-	m.addsora_video_price_per_request_hd = nil
-}
-
-// SoraVideoPricePerRequestHd returns the value of the "sora_video_price_per_request_hd" field in the mutation.
-func (m *GroupMutation) SoraVideoPricePerRequestHd() (r float64, exists bool) {
-	v := m.sora_video_price_per_request_hd
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSoraVideoPricePerRequestHd returns the old "sora_video_price_per_request_hd" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldSoraVideoPricePerRequestHd(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSoraVideoPricePerRequestHd is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSoraVideoPricePerRequestHd requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSoraVideoPricePerRequestHd: %w", err)
-	}
-	return oldValue.SoraVideoPricePerRequestHd, nil
-}
-
-// AddSoraVideoPricePerRequestHd adds f to the "sora_video_price_per_request_hd" field.
-func (m *GroupMutation) AddSoraVideoPricePerRequestHd(f float64) {
-	if m.addsora_video_price_per_request_hd != nil {
-		*m.addsora_video_price_per_request_hd += f
-	} else {
-		m.addsora_video_price_per_request_hd = &f
-	}
-}
-
-// AddedSoraVideoPricePerRequestHd returns the value that was added to the "sora_video_price_per_request_hd" field in this mutation.
-func (m *GroupMutation) AddedSoraVideoPricePerRequestHd() (r float64, exists bool) {
-	v := m.addsora_video_price_per_request_hd
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearSoraVideoPricePerRequestHd clears the value of the "sora_video_price_per_request_hd" field.
-func (m *GroupMutation) ClearSoraVideoPricePerRequestHd() {
-	m.sora_video_price_per_request_hd = nil
-	m.addsora_video_price_per_request_hd = nil
-	m.clearedFields[group.FieldSoraVideoPricePerRequestHd] = struct{}{}
-}
-
-// SoraVideoPricePerRequestHdCleared returns if the "sora_video_price_per_request_hd" field was cleared in this mutation.
-func (m *GroupMutation) SoraVideoPricePerRequestHdCleared() bool {
-	_, ok := m.clearedFields[group.FieldSoraVideoPricePerRequestHd]
-	return ok
-}
-
-// ResetSoraVideoPricePerRequestHd resets all changes to the "sora_video_price_per_request_hd" field.
-func (m *GroupMutation) ResetSoraVideoPricePerRequestHd() {
-	m.sora_video_price_per_request_hd = nil
-	m.addsora_video_price_per_request_hd = nil
-	delete(m.clearedFields, group.FieldSoraVideoPricePerRequestHd)
-}
-
-// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
-func (m *GroupMutation) SetSoraStorageQuotaBytes(i int64) {
-	m.sora_storage_quota_bytes = &i
-	m.addsora_storage_quota_bytes = nil
-}
-
-// SoraStorageQuotaBytes returns the value of the "sora_storage_quota_bytes" field in the mutation.
-func (m *GroupMutation) SoraStorageQuotaBytes() (r int64, exists bool) {
-	v := m.sora_storage_quota_bytes
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSoraStorageQuotaBytes returns the old "sora_storage_quota_bytes" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldSoraStorageQuotaBytes(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSoraStorageQuotaBytes is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSoraStorageQuotaBytes requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSoraStorageQuotaBytes: %w", err)
-	}
-	return oldValue.SoraStorageQuotaBytes, nil
-}
-
-// AddSoraStorageQuotaBytes adds i to the "sora_storage_quota_bytes" field.
-func (m *GroupMutation) AddSoraStorageQuotaBytes(i int64) {
-	if m.addsora_storage_quota_bytes != nil {
-		*m.addsora_storage_quota_bytes += i
-	} else {
-		m.addsora_storage_quota_bytes = &i
-	}
-}
-
-// AddedSoraStorageQuotaBytes returns the value that was added to the "sora_storage_quota_bytes" field in this mutation.
-func (m *GroupMutation) AddedSoraStorageQuotaBytes() (r int64, exists bool) {
-	v := m.addsora_storage_quota_bytes
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetSoraStorageQuotaBytes resets all changes to the "sora_storage_quota_bytes" field.
-func (m *GroupMutation) ResetSoraStorageQuotaBytes() {
-	m.sora_storage_quota_bytes = nil
-	m.addsora_storage_quota_bytes = nil
-}
-
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (m *GroupMutation) SetClaudeCodeOnly(b bool) {
 	m.claude_code_only = &b
@@ -10428,7 +10082,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 33)
+	fields := make([]string, 0, 27)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -10479,21 +10133,6 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.image_price_4k != nil {
 		fields = append(fields, group.FieldImagePrice4k)
-	}
-	if m.sora_image_price_360 != nil {
-		fields = append(fields, group.FieldSoraImagePrice360)
-	}
-	if m.sora_image_price_540 != nil {
-		fields = append(fields, group.FieldSoraImagePrice540)
-	}
-	if m.sora_video_price_per_request != nil {
-		fields = append(fields, group.FieldSoraVideoPricePerRequest)
-	}
-	if m.sora_video_price_per_request_hd != nil {
-		fields = append(fields, group.FieldSoraVideoPricePerRequestHd)
-	}
-	if m.sora_storage_quota_bytes != nil {
-		fields = append(fields, group.FieldSoraStorageQuotaBytes)
 	}
 	if m.claude_code_only != nil {
 		fields = append(fields, group.FieldClaudeCodeOnly)
@@ -10567,16 +10206,6 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ImagePrice2k()
 	case group.FieldImagePrice4k:
 		return m.ImagePrice4k()
-	case group.FieldSoraImagePrice360:
-		return m.SoraImagePrice360()
-	case group.FieldSoraImagePrice540:
-		return m.SoraImagePrice540()
-	case group.FieldSoraVideoPricePerRequest:
-		return m.SoraVideoPricePerRequest()
-	case group.FieldSoraVideoPricePerRequestHd:
-		return m.SoraVideoPricePerRequestHd()
-	case group.FieldSoraStorageQuotaBytes:
-		return m.SoraStorageQuotaBytes()
 	case group.FieldClaudeCodeOnly:
 		return m.ClaudeCodeOnly()
 	case group.FieldFallbackGroupID:
@@ -10640,16 +10269,6 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldImagePrice2k(ctx)
 	case group.FieldImagePrice4k:
 		return m.OldImagePrice4k(ctx)
-	case group.FieldSoraImagePrice360:
-		return m.OldSoraImagePrice360(ctx)
-	case group.FieldSoraImagePrice540:
-		return m.OldSoraImagePrice540(ctx)
-	case group.FieldSoraVideoPricePerRequest:
-		return m.OldSoraVideoPricePerRequest(ctx)
-	case group.FieldSoraVideoPricePerRequestHd:
-		return m.OldSoraVideoPricePerRequestHd(ctx)
-	case group.FieldSoraStorageQuotaBytes:
-		return m.OldSoraStorageQuotaBytes(ctx)
 	case group.FieldClaudeCodeOnly:
 		return m.OldClaudeCodeOnly(ctx)
 	case group.FieldFallbackGroupID:
@@ -10798,41 +10417,6 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetImagePrice4k(v)
 		return nil
-	case group.FieldSoraImagePrice360:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSoraImagePrice360(v)
-		return nil
-	case group.FieldSoraImagePrice540:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSoraImagePrice540(v)
-		return nil
-	case group.FieldSoraVideoPricePerRequest:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSoraVideoPricePerRequest(v)
-		return nil
-	case group.FieldSoraVideoPricePerRequestHd:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSoraVideoPricePerRequestHd(v)
-		return nil
-	case group.FieldSoraStorageQuotaBytes:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSoraStorageQuotaBytes(v)
-		return nil
 	case group.FieldClaudeCodeOnly:
 		v, ok := value.(bool)
 		if !ok {
@@ -10935,21 +10519,6 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addimage_price_4k != nil {
 		fields = append(fields, group.FieldImagePrice4k)
 	}
-	if m.addsora_image_price_360 != nil {
-		fields = append(fields, group.FieldSoraImagePrice360)
-	}
-	if m.addsora_image_price_540 != nil {
-		fields = append(fields, group.FieldSoraImagePrice540)
-	}
-	if m.addsora_video_price_per_request != nil {
-		fields = append(fields, group.FieldSoraVideoPricePerRequest)
-	}
-	if m.addsora_video_price_per_request_hd != nil {
-		fields = append(fields, group.FieldSoraVideoPricePerRequestHd)
-	}
-	if m.addsora_storage_quota_bytes != nil {
-		fields = append(fields, group.FieldSoraStorageQuotaBytes)
-	}
 	if m.addfallback_group_id != nil {
 		fields = append(fields, group.FieldFallbackGroupID)
 	}
@@ -10983,16 +10552,6 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedImagePrice2k()
 	case group.FieldImagePrice4k:
 		return m.AddedImagePrice4k()
-	case group.FieldSoraImagePrice360:
-		return m.AddedSoraImagePrice360()
-	case group.FieldSoraImagePrice540:
-		return m.AddedSoraImagePrice540()
-	case group.FieldSoraVideoPricePerRequest:
-		return m.AddedSoraVideoPricePerRequest()
-	case group.FieldSoraVideoPricePerRequestHd:
-		return m.AddedSoraVideoPricePerRequestHd()
-	case group.FieldSoraStorageQuotaBytes:
-		return m.AddedSoraStorageQuotaBytes()
 	case group.FieldFallbackGroupID:
 		return m.AddedFallbackGroupID()
 	case group.FieldFallbackGroupIDOnInvalidRequest:
@@ -11064,41 +10623,6 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddImagePrice4k(v)
 		return nil
-	case group.FieldSoraImagePrice360:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddSoraImagePrice360(v)
-		return nil
-	case group.FieldSoraImagePrice540:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddSoraImagePrice540(v)
-		return nil
-	case group.FieldSoraVideoPricePerRequest:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddSoraVideoPricePerRequest(v)
-		return nil
-	case group.FieldSoraVideoPricePerRequestHd:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddSoraVideoPricePerRequestHd(v)
-		return nil
-	case group.FieldSoraStorageQuotaBytes:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddSoraStorageQuotaBytes(v)
-		return nil
 	case group.FieldFallbackGroupID:
 		v, ok := value.(int64)
 		if !ok {
@@ -11152,18 +10676,6 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldImagePrice4k) {
 		fields = append(fields, group.FieldImagePrice4k)
 	}
-	if m.FieldCleared(group.FieldSoraImagePrice360) {
-		fields = append(fields, group.FieldSoraImagePrice360)
-	}
-	if m.FieldCleared(group.FieldSoraImagePrice540) {
-		fields = append(fields, group.FieldSoraImagePrice540)
-	}
-	if m.FieldCleared(group.FieldSoraVideoPricePerRequest) {
-		fields = append(fields, group.FieldSoraVideoPricePerRequest)
-	}
-	if m.FieldCleared(group.FieldSoraVideoPricePerRequestHd) {
-		fields = append(fields, group.FieldSoraVideoPricePerRequestHd)
-	}
 	if m.FieldCleared(group.FieldFallbackGroupID) {
 		fields = append(fields, group.FieldFallbackGroupID)
 	}
@@ -11210,18 +10722,6 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldImagePrice4k:
 		m.ClearImagePrice4k()
-		return nil
-	case group.FieldSoraImagePrice360:
-		m.ClearSoraImagePrice360()
-		return nil
-	case group.FieldSoraImagePrice540:
-		m.ClearSoraImagePrice540()
-		return nil
-	case group.FieldSoraVideoPricePerRequest:
-		m.ClearSoraVideoPricePerRequest()
-		return nil
-	case group.FieldSoraVideoPricePerRequestHd:
-		m.ClearSoraVideoPricePerRequestHd()
 		return nil
 	case group.FieldFallbackGroupID:
 		m.ClearFallbackGroupID()
@@ -11290,21 +10790,6 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldImagePrice4k:
 		m.ResetImagePrice4k()
-		return nil
-	case group.FieldSoraImagePrice360:
-		m.ResetSoraImagePrice360()
-		return nil
-	case group.FieldSoraImagePrice540:
-		m.ResetSoraImagePrice540()
-		return nil
-	case group.FieldSoraVideoPricePerRequest:
-		m.ResetSoraVideoPricePerRequest()
-		return nil
-	case group.FieldSoraVideoPricePerRequestHd:
-		m.ResetSoraVideoPricePerRequestHd()
-		return nil
-	case group.FieldSoraStorageQuotaBytes:
-		m.ResetSoraStorageQuotaBytes()
 		return nil
 	case group.FieldClaudeCodeOnly:
 		m.ResetClaudeCodeOnly()
@@ -19662,7 +19147,6 @@ type UsageLogMutation struct {
 	image_count                 *int
 	addimage_count              *int
 	image_size                  *string
-	media_type                  *string
 	cache_ttl_overridden        *bool
 	created_at                  *time.Time
 	clearedFields               map[string]struct{}
@@ -21605,55 +21089,6 @@ func (m *UsageLogMutation) ResetImageSize() {
 	delete(m.clearedFields, usagelog.FieldImageSize)
 }
 
-// SetMediaType sets the "media_type" field.
-func (m *UsageLogMutation) SetMediaType(s string) {
-	m.media_type = &s
-}
-
-// MediaType returns the value of the "media_type" field in the mutation.
-func (m *UsageLogMutation) MediaType() (r string, exists bool) {
-	v := m.media_type
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldMediaType returns the old "media_type" field's value of the UsageLog entity.
-// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UsageLogMutation) OldMediaType(ctx context.Context) (v *string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldMediaType is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldMediaType requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldMediaType: %w", err)
-	}
-	return oldValue.MediaType, nil
-}
-
-// ClearMediaType clears the value of the "media_type" field.
-func (m *UsageLogMutation) ClearMediaType() {
-	m.media_type = nil
-	m.clearedFields[usagelog.FieldMediaType] = struct{}{}
-}
-
-// MediaTypeCleared returns if the "media_type" field was cleared in this mutation.
-func (m *UsageLogMutation) MediaTypeCleared() bool {
-	_, ok := m.clearedFields[usagelog.FieldMediaType]
-	return ok
-}
-
-// ResetMediaType resets all changes to the "media_type" field.
-func (m *UsageLogMutation) ResetMediaType() {
-	m.media_type = nil
-	delete(m.clearedFields, usagelog.FieldMediaType)
-}
-
 // SetCacheTTLOverridden sets the "cache_ttl_overridden" field.
 func (m *UsageLogMutation) SetCacheTTLOverridden(b bool) {
 	m.cache_ttl_overridden = &b
@@ -21895,7 +21330,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 38)
+	fields := make([]string, 0, 37)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -22001,9 +21436,6 @@ func (m *UsageLogMutation) Fields() []string {
 	if m.image_size != nil {
 		fields = append(fields, usagelog.FieldImageSize)
 	}
-	if m.media_type != nil {
-		fields = append(fields, usagelog.FieldMediaType)
-	}
 	if m.cache_ttl_overridden != nil {
 		fields = append(fields, usagelog.FieldCacheTTLOverridden)
 	}
@@ -22088,8 +21520,6 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.ImageCount()
 	case usagelog.FieldImageSize:
 		return m.ImageSize()
-	case usagelog.FieldMediaType:
-		return m.MediaType()
 	case usagelog.FieldCacheTTLOverridden:
 		return m.CacheTTLOverridden()
 	case usagelog.FieldCreatedAt:
@@ -22173,8 +21603,6 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldImageCount(ctx)
 	case usagelog.FieldImageSize:
 		return m.OldImageSize(ctx)
-	case usagelog.FieldMediaType:
-		return m.OldMediaType(ctx)
 	case usagelog.FieldCacheTTLOverridden:
 		return m.OldCacheTTLOverridden(ctx)
 	case usagelog.FieldCreatedAt:
@@ -22432,13 +21860,6 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetImageSize(v)
-		return nil
-	case usagelog.FieldMediaType:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetMediaType(v)
 		return nil
 	case usagelog.FieldCacheTTLOverridden:
 		v, ok := value.(bool)
@@ -22757,9 +22178,6 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldImageSize) {
 		fields = append(fields, usagelog.FieldImageSize)
 	}
-	if m.FieldCleared(usagelog.FieldMediaType) {
-		fields = append(fields, usagelog.FieldMediaType)
-	}
 	return fields
 }
 
@@ -22815,9 +22233,6 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldImageSize:
 		m.ClearImageSize()
-		return nil
-	case usagelog.FieldMediaType:
-		m.ClearMediaType()
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog nullable field %s", name)
@@ -22931,9 +22346,6 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldImageSize:
 		m.ResetImageSize()
-		return nil
-	case usagelog.FieldMediaType:
-		m.ResetMediaType()
 		return nil
 	case usagelog.FieldCacheTTLOverridden:
 		m.ResetCacheTTLOverridden()
@@ -23113,10 +22525,6 @@ type UserMutation struct {
 	totp_secret_encrypted         *string
 	totp_enabled                  *bool
 	totp_enabled_at               *time.Time
-	sora_storage_quota_bytes      *int64
-	addsora_storage_quota_bytes   *int64
-	sora_storage_used_bytes       *int64
-	addsora_storage_used_bytes    *int64
 	clearedFields                 map[string]struct{}
 	api_keys                      map[int64]struct{}
 	removedapi_keys               map[int64]struct{}
@@ -23831,118 +23239,6 @@ func (m *UserMutation) ResetTotpEnabledAt() {
 	delete(m.clearedFields, user.FieldTotpEnabledAt)
 }
 
-// SetSoraStorageQuotaBytes sets the "sora_storage_quota_bytes" field.
-func (m *UserMutation) SetSoraStorageQuotaBytes(i int64) {
-	m.sora_storage_quota_bytes = &i
-	m.addsora_storage_quota_bytes = nil
-}
-
-// SoraStorageQuotaBytes returns the value of the "sora_storage_quota_bytes" field in the mutation.
-func (m *UserMutation) SoraStorageQuotaBytes() (r int64, exists bool) {
-	v := m.sora_storage_quota_bytes
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSoraStorageQuotaBytes returns the old "sora_storage_quota_bytes" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldSoraStorageQuotaBytes(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSoraStorageQuotaBytes is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSoraStorageQuotaBytes requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSoraStorageQuotaBytes: %w", err)
-	}
-	return oldValue.SoraStorageQuotaBytes, nil
-}
-
-// AddSoraStorageQuotaBytes adds i to the "sora_storage_quota_bytes" field.
-func (m *UserMutation) AddSoraStorageQuotaBytes(i int64) {
-	if m.addsora_storage_quota_bytes != nil {
-		*m.addsora_storage_quota_bytes += i
-	} else {
-		m.addsora_storage_quota_bytes = &i
-	}
-}
-
-// AddedSoraStorageQuotaBytes returns the value that was added to the "sora_storage_quota_bytes" field in this mutation.
-func (m *UserMutation) AddedSoraStorageQuotaBytes() (r int64, exists bool) {
-	v := m.addsora_storage_quota_bytes
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetSoraStorageQuotaBytes resets all changes to the "sora_storage_quota_bytes" field.
-func (m *UserMutation) ResetSoraStorageQuotaBytes() {
-	m.sora_storage_quota_bytes = nil
-	m.addsora_storage_quota_bytes = nil
-}
-
-// SetSoraStorageUsedBytes sets the "sora_storage_used_bytes" field.
-func (m *UserMutation) SetSoraStorageUsedBytes(i int64) {
-	m.sora_storage_used_bytes = &i
-	m.addsora_storage_used_bytes = nil
-}
-
-// SoraStorageUsedBytes returns the value of the "sora_storage_used_bytes" field in the mutation.
-func (m *UserMutation) SoraStorageUsedBytes() (r int64, exists bool) {
-	v := m.sora_storage_used_bytes
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldSoraStorageUsedBytes returns the old "sora_storage_used_bytes" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldSoraStorageUsedBytes(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldSoraStorageUsedBytes is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldSoraStorageUsedBytes requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldSoraStorageUsedBytes: %w", err)
-	}
-	return oldValue.SoraStorageUsedBytes, nil
-}
-
-// AddSoraStorageUsedBytes adds i to the "sora_storage_used_bytes" field.
-func (m *UserMutation) AddSoraStorageUsedBytes(i int64) {
-	if m.addsora_storage_used_bytes != nil {
-		*m.addsora_storage_used_bytes += i
-	} else {
-		m.addsora_storage_used_bytes = &i
-	}
-}
-
-// AddedSoraStorageUsedBytes returns the value that was added to the "sora_storage_used_bytes" field in this mutation.
-func (m *UserMutation) AddedSoraStorageUsedBytes() (r int64, exists bool) {
-	v := m.addsora_storage_used_bytes
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetSoraStorageUsedBytes resets all changes to the "sora_storage_used_bytes" field.
-func (m *UserMutation) ResetSoraStorageUsedBytes() {
-	m.sora_storage_used_bytes = nil
-	m.addsora_storage_used_bytes = nil
-}
-
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *UserMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -24463,7 +23759,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 14)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -24506,12 +23802,6 @@ func (m *UserMutation) Fields() []string {
 	if m.totp_enabled_at != nil {
 		fields = append(fields, user.FieldTotpEnabledAt)
 	}
-	if m.sora_storage_quota_bytes != nil {
-		fields = append(fields, user.FieldSoraStorageQuotaBytes)
-	}
-	if m.sora_storage_used_bytes != nil {
-		fields = append(fields, user.FieldSoraStorageUsedBytes)
-	}
 	return fields
 }
 
@@ -24548,10 +23838,6 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.TotpEnabled()
 	case user.FieldTotpEnabledAt:
 		return m.TotpEnabledAt()
-	case user.FieldSoraStorageQuotaBytes:
-		return m.SoraStorageQuotaBytes()
-	case user.FieldSoraStorageUsedBytes:
-		return m.SoraStorageUsedBytes()
 	}
 	return nil, false
 }
@@ -24589,10 +23875,6 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldTotpEnabled(ctx)
 	case user.FieldTotpEnabledAt:
 		return m.OldTotpEnabledAt(ctx)
-	case user.FieldSoraStorageQuotaBytes:
-		return m.OldSoraStorageQuotaBytes(ctx)
-	case user.FieldSoraStorageUsedBytes:
-		return m.OldSoraStorageUsedBytes(ctx)
 	}
 	return nil, fmt.Errorf("unknown User field %s", name)
 }
@@ -24700,20 +23982,6 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetTotpEnabledAt(v)
 		return nil
-	case user.FieldSoraStorageQuotaBytes:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSoraStorageQuotaBytes(v)
-		return nil
-	case user.FieldSoraStorageUsedBytes:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetSoraStorageUsedBytes(v)
-		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)
 }
@@ -24728,12 +23996,6 @@ func (m *UserMutation) AddedFields() []string {
 	if m.addconcurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
 	}
-	if m.addsora_storage_quota_bytes != nil {
-		fields = append(fields, user.FieldSoraStorageQuotaBytes)
-	}
-	if m.addsora_storage_used_bytes != nil {
-		fields = append(fields, user.FieldSoraStorageUsedBytes)
-	}
 	return fields
 }
 
@@ -24746,10 +24008,6 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedBalance()
 	case user.FieldConcurrency:
 		return m.AddedConcurrency()
-	case user.FieldSoraStorageQuotaBytes:
-		return m.AddedSoraStorageQuotaBytes()
-	case user.FieldSoraStorageUsedBytes:
-		return m.AddedSoraStorageUsedBytes()
 	}
 	return nil, false
 }
@@ -24772,20 +24030,6 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddConcurrency(v)
-		return nil
-	case user.FieldSoraStorageQuotaBytes:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddSoraStorageQuotaBytes(v)
-		return nil
-	case user.FieldSoraStorageUsedBytes:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddSoraStorageUsedBytes(v)
 		return nil
 	}
 	return fmt.Errorf("unknown User numeric field %s", name)
@@ -24876,12 +24120,6 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldTotpEnabledAt:
 		m.ResetTotpEnabledAt()
-		return nil
-	case user.FieldSoraStorageQuotaBytes:
-		m.ResetSoraStorageQuotaBytes()
-		return nil
-	case user.FieldSoraStorageUsedBytes:
-		m.ResetSoraStorageUsedBytes()
 		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)

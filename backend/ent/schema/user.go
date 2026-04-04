@@ -73,11 +73,6 @@ func (User) Fields() []ent.Field {
 			Optional().
 			Nillable(),
 
-		// Sora 存储配额
-		field.Int64("sora_storage_quota_bytes").
-			Default(0),
-		field.Int64("sora_storage_used_bytes").
-			Default(0),
 	}
 }
 
