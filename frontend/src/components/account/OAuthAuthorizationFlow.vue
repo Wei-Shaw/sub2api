@@ -630,7 +630,6 @@ const authCodeInput = ref('')
 const sessionKeyInput = ref('')
 const refreshTokenInput = ref('')
 const sessionTokenInput = ref('')
-const accessTokenInput = ref('')
 const showHelpDialog = ref(false)
 const oauthState = ref('')
 const projectId = ref('')
@@ -656,10 +655,6 @@ const parsedRefreshTokenCount = computed(() => {
     .map((rt) => rt.trim())
     .filter((rt) => rt).length
 REDACTED)
-
-const parsedSessionTokenCount = computed(() => 0)
-
-const parsedSessionTokensText = computed(() => '')
 
 // Watchers
 watch(inputMethod, (newVal) => {
@@ -729,12 +724,6 @@ const handleValidateRefreshToken = () => {
     REDACTED else {
       emit('validate-refresh-token', refreshTokenInput.value.trim())
     REDACTED
-  REDACTED
-REDACTED
-
-const handleValidateSessionToken = () => {
-  if (parsedSessionTokenCount.value > 0) {
-    emit('validate-session-token', parsedSessionTokensText.value)
   REDACTED
 REDACTED
 
