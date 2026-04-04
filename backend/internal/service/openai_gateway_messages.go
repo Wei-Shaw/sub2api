@@ -62,7 +62,7 @@ REDACTED
 
 	// 3. Model mapping
 	billingModel := resolveOpenAIForwardModel(account, normalizedModel, defaultMappedModel)
-	upstreamModel := resolveOpenAIUpstreamModel(billingModel)
+	upstreamModel := normalizeCodexModel(billingModel)
 	responsesReq.Model = upstreamModel
 
 	logger.L().Debug("openai messages: model mapping applied",

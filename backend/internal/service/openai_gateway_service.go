@@ -1939,7 +1939,7 @@ REDACTED
 
 	// 针对所有 OpenAI 账号执行 Codex 模型名规范化，确保上游识别一致。
 	if model, ok := reqBody["model"].(string); ok {
-		upstreamModel = resolveOpenAIUpstreamModel(model)
+		upstreamModel = normalizeCodexModel(model)
 		if upstreamModel != "" && upstreamModel != model {
 			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Upstream model resolved: %s -> %s (account: %s, type: %s, isCodexCLI: %v)",
 				model, upstreamModel, account.Name, account.Type, isCodexCLI)
