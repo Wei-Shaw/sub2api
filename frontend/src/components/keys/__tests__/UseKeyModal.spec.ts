@@ -87,8 +87,21 @@ describe('UseKeyModal', () => {
     expect(codeBlock.text()).toContain('"baseURL": "https://example.com/v1"')
     expect(codeBlock.text()).toContain('"gpt-5.4-Sys"')
     expect(codeBlock.text()).toContain('"name": "GPT-5.4 (Sys)"')
-    expect(codeBlock.text()).toContain('"reasoningEffort": "xhigh"')
     expect(codeBlock.text()).not.toContain('"provider": {\n    "openai"')
+
+    const parsed = JSON.parse(codeBlock.text())
+    const gpt54Variants = parsed.provider['sub2api-openai'].models['gpt-5.4'].variants
+    const gpt54SysVariants = parsed.provider['sub2api-openai'].models['gpt-5.4-Sys'].variants
+    const gpt52Variants = parsed.provider['sub2api-openai'].models['gpt-5.2'].variants
+
+    expect(gpt54Variants['fast-low'].serviceTier).toBe('priority')
+    expect(gpt54Variants['fast-medium'].serviceTier).toBe('priority')
+    expect(gpt54Variants['fast-high'].serviceTier).toBe('priority')
+    expect(gpt54Variants['fast-xhigh'].serviceTier).toBe('priority')
+    expect(gpt54Variants['fast-xhigh'].reasoningEffort).toBe('xhigh')
+    expect(gpt54SysVariants['fast-xhigh'].serviceTier).toBe('priority')
+    expect(gpt54SysVariants['fast-xhigh'].reasoningEffort).toBe('xhigh')
+    expect(gpt52Variants['fast-low']).toBeUndefined()
   })
 
   it('describes OpenCode config as custom provider based', async () => {

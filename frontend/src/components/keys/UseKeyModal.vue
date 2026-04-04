@@ -616,16 +616,30 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       }
     }
   }
-  const buildReasoningVariants = (levels: string[]) =>
+  const buildReasoningVariants = (levels: string[], withFast = false) =>
     Object.fromEntries(
-      levels.map((level) => [
-        level,
-        {
+      levels.flatMap((level) => {
+        const variant = {
           reasoningEffort: level,
           reasoningSummary: 'auto',
           include: ['reasoning.encrypted_content']
         }
-      ])
+
+        if (!withFast) {
+          return [[level, variant] as const]
+        }
+
+        return [
+          [level, variant] as const,
+          [
+            `fast-${level}`,
+            {
+              ...variant,
+              serviceTier: 'priority'
+            }
+          ] as const
+        ]
+      })
     )
 
   const withSysVariants = <T extends { name: string }>(models: Record<string, T>) => {
@@ -713,7 +727,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: {
         store: false
       },
-      variants: buildReasoningVariants(['none', 'low', 'medium', 'high', 'xhigh'])
+      variants: buildReasoningVariants(['none', 'low', 'medium', 'high', 'xhigh'], true)
     },
     'gpt-5.4-mini': {
       name: 'GPT-5.4 Mini',
