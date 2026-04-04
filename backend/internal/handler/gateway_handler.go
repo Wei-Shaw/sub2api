@@ -521,14 +521,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 选择支持该模型的账号
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
-				if errors.Is(err, service.ErrAffinityNoSwitch) {
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Affinity account unavailable and switching is disabled", streamStarted)
-					return
-				}
-				if errors.Is(err, service.ErrAffinityLimitExceeded) {
-					h.handleStreamingAwareError(c, http.StatusTooManyRequests, "api_error", "Affinity client limit exceeded", streamStarted)
-					return
-				}
 				if len(fs.FailedAccountIDs) == 0 {
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
 					return

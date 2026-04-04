@@ -31,28 +31,6 @@ func (c *stubSmartRetryCache) DeleteSessionAccountID(_ context.Context, groupID 
 	c.deleteCalls = append(c.deleteCalls, deleteSessionCall{groupID: groupID, sessionHash: sessionHash})
 	return nil
 }
-func (c *stubSmartRetryCache) GetAffinityAccounts(_ context.Context, _ int64, _ int64, _ string, _ time.Duration) ([]int64, error) {
-	return nil, nil
-}
-func (c *stubSmartRetryCache) UpdateAffinity(_ context.Context, _ int64, _ int64, _ string, _ int64, _ time.Duration) error {
-	return nil
-}
-func (c *stubSmartRetryCache) GetAffinityMultiCount(_ context.Context, _ int64, _ int64, _ int64, _ time.Duration) (int64, int64, int64, error) {
-	return 0, 0, 0, nil
-}
-func (c *stubSmartRetryCache) GetAccountAffinityCountBatch(_ context.Context, _ int64, _ []int64, _ time.Duration) (map[int64]int64, error) {
-	return map[int64]int64{}, nil
-}
-func (c *stubSmartRetryCache) GetAccountAffinityClientsBatch(_ context.Context, _ map[int64][]int64, _ time.Duration) (map[int64][]string, error) {
-	return map[int64][]string{}, nil
-}
-func (c *stubSmartRetryCache) GetAccountAffinityClientsWithScores(_ context.Context, _ int64, _ []int64, _ time.Duration) ([]AffinityClient, error) {
-	return nil, nil
-}
-func (c *stubSmartRetryCache) ClearAccountAffinity(_ context.Context, _ int64, _ []int64) error {
-	return nil
-}
-
 // mockSmartRetryUpstream 用于 handleSmartRetry 测试的 mock upstream
 type mockSmartRetryUpstream struct {
 	responses      []*http.Response

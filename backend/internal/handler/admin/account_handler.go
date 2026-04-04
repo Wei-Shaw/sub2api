@@ -58,7 +58,6 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
-	gatewayCache            service.GatewayCache
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -76,7 +75,6 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
-	gatewayCache service.GatewayCache,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -92,7 +90,6 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
-		gatewayCache:            gatewayCache,
 	}
 }
 
@@ -209,34 +206,6 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 			if rpm, err := h.rpmCache.GetRPM(ctx, account.ID); err == nil {
 				item.CurrentRPM = &rpm
 			}
-		}
-	}
-
-	// 亲和客户端数据（启用亲和的账号始终返回 count，即使为 0）
-	if account.IsAffinityEnabled() {
-		if h.gatewayCache != nil && len(account.GroupIDs) > 0 {
-			accountGroups := map[int64][]int64{account.ID: account.GroupIDs}
-			if clients, err := h.gatewayCache.GetAccountAffinityClientsBatch(ctx, accountGroups, service.ClientAffinityTTL); err == nil {
-				if cl, ok := clients[account.ID]; ok && len(cl) > 0 {
-					count := int64(len(cl))
-					item.AffinityClientCount = &count
-					item.AffinityClients = cl
-					userCount := countUniqueUsersFromAffinityMembers(cl)
-					item.AffinityUserCount = &userCount
-				} else {
-					zero := int64(0)
-					item.AffinityClientCount = &zero
-					item.AffinityUserCount = &zero
-				}
-			} else {
-				zero := int64(0)
-				item.AffinityClientCount = &zero
-				item.AffinityUserCount = &zero
-			}
-		} else {
-			zero := int64(0)
-			item.AffinityClientCount = &zero
-			item.AffinityUserCount = &zero
 		}
 	}
 
@@ -366,21 +335,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 		_ = g.Wait()
 	}
 
-	// 获取亲和客户端数据（Redis Pipeline，低开销）
-	var affinityClients map[int64][]string
-	if h.gatewayCache != nil {
-		accountGroups := make(map[int64][]int64)
-		for i := range accounts {
-			acc := &accounts[i]
-			if acc.IsAffinityEnabled() && len(acc.GroupIDs) > 0 {
-				accountGroups[acc.ID] = acc.GroupIDs
-			}
-		}
-		if len(accountGroups) > 0 {
-			affinityClients, _ = h.gatewayCache.GetAccountAffinityClientsBatch(c.Request.Context(), accountGroups, service.ClientAffinityTTL)
-		}
-	}
-
 	// Build response with concurrency info
 	result := make([]AccountWithConcurrency, len(accounts))
 	for i := range accounts {
@@ -408,22 +362,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 		if rpmCounts != nil {
 			if rpm, ok := rpmCounts[acc.ID]; ok {
 				item.CurrentRPM = &rpm
-			}
-		}
-
-		// 注入亲和客户端数据到 DTO（启用亲和的账号始终返回 count，即使为 0）
-		if acc.IsAffinityEnabled() {
-			if clients, ok := affinityClients[acc.ID]; ok && len(clients) > 0 {
-				count := int64(len(clients))
-				item.AffinityClientCount = &count
-				item.AffinityClients = clients
-				// 从成员列表中解析唯一用户数
-				userCount := countUniqueUsersFromAffinityMembers(clients)
-				item.AffinityUserCount = &userCount
-			} else {
-				zero := int64(0)
-				item.AffinityClientCount = &zero
-				item.AffinityUserCount = &zero
 			}
 		}
 
@@ -651,8 +589,6 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
 
-	oldStates := h.captureAffinityStates(c.Request.Context(), []int64{accountID})
-
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
@@ -688,8 +624,6 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-
-	h.clearAffinityCacheForBulkIfDisabled(c.Request.Context(), []int64{accountID}, oldStates)
 
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
@@ -1454,8 +1388,6 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		return
 	}
 
-	oldStates := h.captureAffinityStates(c.Request.Context(), req.AccountIDs)
-
 	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
 		AccountIDs:            req.AccountIDs,
 		Name:                  req.Name,
@@ -1489,8 +1421,6 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-
-	h.clearAffinityCacheForBulkIfDisabled(c.Request.Context(), req.AccountIDs, oldStates)
 
 	response.Success(c, result)
 }

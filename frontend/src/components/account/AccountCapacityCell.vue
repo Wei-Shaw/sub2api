@@ -28,9 +28,6 @@
       </svg>
     </CapacityBadge>
 
-    <!-- 客户端亲和 -->
-    <AffinityBadge v-if="showAffinity" :account-id="account.id" :client-count="affinityClientCount" :user-count="affinityUserCount" :base="affinityBase" :buffer="affinityBuffer" :user-base="affinityUserBase" :user-buffer="affinityUserBuffer" />
-
     <!-- API Key 账号配额限制 -->
     <QuotaBadge v-if="showDailyQuota" :used="account.quota_daily_used ?? 0" :limit="account.quota_daily_limit!" label="D" />
     <QuotaBadge v-if="showWeeklyQuota" :used="account.quota_weekly_used ?? 0" :limit="account.quota_weekly_limit!" label="W" />
@@ -43,7 +40,6 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Account } from '@/types'
 import CapacityBadge from '@/components/account/CapacityBadge.vue'
-import AffinityBadge from '@/components/account/AffinityBadge.vue'
 import QuotaBadge from '@/components/account/QuotaBadge.vue'
 
 const props = defineProps<{
@@ -171,46 +167,6 @@ const rpmTooltip = computed(() => {
     if (current >= base * 0.8) return t('admin.accounts.capacity.rpm.stickyExemptWarning')
     return t('admin.accounts.capacity.rpm.stickyExemptNormal')
   }
-})
-
-// ====== 客户端亲和 ======
-const showAffinity = computed(() =>
-  props.account.platform === 'anthropic' &&
-  props.account.client_affinity_enabled === true &&
-  (props.account.affinity_client_count != null || props.account.affinity_user_count != null)
-)
-
-const affinityClientCount = computed(() => props.account.affinity_client_count ?? 0)
-const affinityUserCount = computed(() => props.account.affinity_user_count ?? 0)
-
-const affinityBase = computed(() => {
-  const extra = props.account.extra as Record<string, unknown> | undefined
-  if (!extra) return 0
-  const v = extra.affinity_base
-  return (typeof v === 'number' && v > 0) ? v : 0
-})
-
-const affinityBuffer = computed((): number | null => {
-  const extra = props.account.extra as Record<string, unknown> | undefined
-  if (!extra) return null
-  const v = extra.affinity_buffer
-  if (typeof v === 'number') return v
-  return null
-})
-
-const affinityUserBase = computed(() => {
-  const extra = props.account.extra as Record<string, unknown> | undefined
-  if (!extra) return 0
-  const v = extra.affinity_user_base
-  return (typeof v === 'number' && v > 0) ? v : 0
-})
-
-const affinityUserBuffer = computed((): number | null => {
-  const extra = props.account.extra as Record<string, unknown> | undefined
-  if (!extra) return null
-  const v = extra.affinity_user_buffer
-  if (typeof v === 'number') return v
-  return null
 })
 
 // 格式化费用显示

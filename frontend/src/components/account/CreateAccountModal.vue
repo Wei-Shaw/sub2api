@@ -1587,24 +1587,6 @@
           @update:weeklyResetHour="editWeeklyResetHour = $event"
           @update:resetTimezone="editResetTimezone = $event"
         />
-        <AffinityConfigCard
-          :enabled="clientAffinityEnabled"
-          :base="affinityBase"
-          :buffer="affinityBuffer"
-          :allow-switch="affinityAllowSwitch"
-          :user-base="affinityUserBase"
-          :user-buffer="affinityUserBuffer"
-          :per-user-limit="perUserClientLimit"
-          :pinned-users="pinnedUsers"
-          @update:enabled="clientAffinityEnabled = $event"
-          @update:base="affinityBase = $event"
-          @update:buffer="affinityBuffer = $event"
-          @update:allow-switch="affinityAllowSwitch = $event"
-          @update:user-base="affinityUserBase = $event"
-          @update:user-buffer="affinityUserBuffer = $event"
-          @update:per-user-limit="perUserClientLimit = $event"
-          @update:pinned-users="pinnedUsers = $event"
-        />
       </div>
 
       <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
@@ -1967,25 +1949,6 @@
             {{ t('admin.accounts.quotaControl.hint') }}
           </p>
         </div>
-
-        <AffinityConfigCard
-          :enabled="clientAffinityEnabled"
-          :base="affinityBase"
-          :buffer="affinityBuffer"
-          :allow-switch="affinityAllowSwitch"
-          :user-base="affinityUserBase"
-          :user-buffer="affinityUserBuffer"
-          :per-user-limit="perUserClientLimit"
-          :pinned-users="pinnedUsers"
-          @update:enabled="clientAffinityEnabled = $event"
-          @update:base="affinityBase = $event"
-          @update:buffer="affinityBuffer = $event"
-          @update:allow-switch="affinityAllowSwitch = $event"
-          @update:user-base="affinityUserBase = $event"
-          @update:user-buffer="affinityUserBuffer = $event"
-          @update:per-user-limit="perUserClientLimit = $event"
-          @update:pinned-users="pinnedUsers = $event"
-        />
 
         <!-- Window Cost Limit -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
@@ -2986,7 +2949,6 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
-import AffinityConfigCard from '@/components/account/AffinityConfigCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
@@ -3180,16 +3142,6 @@ const mixedChannelWarningAction = ref<(() => Promise<void>) | null>(null)
 const antigravityMixedChannelConfirmed = ref(false)
 const showAdvancedOAuth = ref(false)
 const showGeminiHelpDialog = ref(false)
-
-// Client affinity (all Anthropic accounts)
-const clientAffinityEnabled = ref(false)
-const affinityBase = ref<number | null>(null)
-const affinityBuffer = ref<number | null>(null)
-const affinityAllowSwitch = ref(true)
-const affinityUserBase = ref<number | null>(null)
-const affinityUserBuffer = ref<number | null>(null)
-const perUserClientLimit = ref<number | null>(null)
-const pinnedUsers = ref<number[]>([])
 
 // Quota control state (Anthropic OAuth/SetupToken only)
 const windowCostEnabled = ref(false)
@@ -3848,14 +3800,6 @@ const resetForm = () => {
   editWeeklyResetDay.value = null
   editWeeklyResetHour.value = null
   editResetTimezone.value = null
-  clientAffinityEnabled.value = false
-  affinityBase.value = null
-  affinityBuffer.value = null
-  affinityAllowSwitch.value = true
-  affinityUserBase.value = null
-  affinityUserBuffer.value = null
-  perUserClientLimit.value = null
-  pinnedUsers.value = []
   modelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
@@ -3965,59 +3909,8 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
   } else {
     delete extra.anthropic_passthrough
   }
-  applyClientAffinity(extra)
 
   return Object.keys(extra).length > 0 ? extra : undefined
-}
-
-/** 将客户端亲和设置写入 extra（Anthropic 全类型通用） */
-const applyClientAffinity = (extra: Record<string, unknown>) => {
-  if (clientAffinityEnabled.value) {
-    extra.affinity_enabled = true
-    extra.client_affinity_enabled = true
-    if (affinityBase.value != null && affinityBase.value > 0) {
-      extra.affinity_base = affinityBase.value
-    } else {
-      delete extra.affinity_base
-    }
-    if (affinityBase.value != null && affinityBase.value > 0 && affinityBuffer.value != null) {
-      extra.affinity_buffer = affinityBuffer.value
-    } else {
-      delete extra.affinity_buffer
-    }
-    // v2 fields
-    extra.affinity_allow_switch = affinityAllowSwitch.value
-    if (affinityUserBase.value != null && affinityUserBase.value > 0) {
-      extra.affinity_user_base = affinityUserBase.value
-    } else {
-      delete extra.affinity_user_base
-    }
-    if (affinityUserBase.value != null && affinityUserBase.value > 0 && affinityUserBuffer.value != null) {
-      extra.affinity_user_buffer = affinityUserBuffer.value
-    } else {
-      delete extra.affinity_user_buffer
-    }
-    if (perUserClientLimit.value != null && perUserClientLimit.value > 0) {
-      extra.per_user_client_limit = perUserClientLimit.value
-    } else {
-      delete extra.per_user_client_limit
-    }
-    if (pinnedUsers.value.length > 0) {
-      extra.pinned_users = pinnedUsers.value
-    } else {
-      delete extra.pinned_users
-    }
-  } else {
-    delete extra.affinity_enabled
-    delete extra.client_affinity_enabled
-    delete extra.affinity_base
-    delete extra.affinity_buffer
-    delete extra.affinity_allow_switch
-    delete extra.affinity_user_base
-    delete extra.affinity_user_buffer
-    delete extra.per_user_client_limit
-    delete extra.pinned_users
-  }
 }
 
 const buildSoraExtra = (
@@ -5037,9 +4930,6 @@ const handleAnthropicExchange = async (authCode: string) => {
       extra.cache_ttl_override_enabled = true
       extra.cache_ttl_override_target = cacheTTLOverrideTarget.value
     }
-
-    // Add client affinity setting
-    applyClientAffinity(extra)
 
     // Add custom base URL settings
     if (customBaseUrlEnabled.value && customBaseUrl.value.trim()) {

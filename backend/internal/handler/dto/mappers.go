@@ -140,7 +140,6 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		ModelRoutingEnabled:      g.ModelRoutingEnabled,
 		MCPXMLInject:             g.MCPXMLInject,
 		DefaultMappedModel:       g.DefaultMappedModel,
-		SimulateClaudeMaxEnabled: g.SimulateClaudeMaxEnabled,
 		SupportedModelScopes:     g.SupportedModelScopes,
 		AccountCount:             g.AccountCount,
 		ActiveAccountCount:       g.ActiveAccountCount,
@@ -276,17 +275,6 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 			if customURL := a.GetCustomBaseURL(); customURL != "" {
 				out.CustomBaseURL = &customURL
 			}
-		}
-	}
-
-	// 客户端亲和调度（Anthropic 和 Antigravity 账号）
-	if a.IsAffinityEnabled() {
-		enabled := true
-		out.ClientAffinityEnabled = &enabled
-		allow := a.IsAffinityAllowSwitch()
-		out.AffinityAllowSwitch = &allow
-		if pinnedUsers := a.GetPinnedUsers(); len(pinnedUsers) > 0 {
-			out.PinnedUserIDs = pinnedUsers
 		}
 	}
 

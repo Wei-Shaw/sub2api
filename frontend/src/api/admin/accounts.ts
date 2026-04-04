@@ -18,7 +18,6 @@ import type {
   AdminDataImportResult,
   CheckMixedChannelRequest,
   CheckMixedChannelResponse,
-  AffinityDetailsResponse
 } from '@/types'
 
 /**
@@ -570,28 +569,6 @@ export async function refreshOpenAIToken(
 }
 
 /**
- * Validate Sora session token and exchange to access token
- * @param sessionToken - Sora session token
- * @param proxyId - Optional proxy ID
- * @param endpoint - API endpoint path
- * @returns Token information including access_token
- */
-export async function validateSoraSessionToken(
-  sessionToken: string,
-  proxyId?: number | null,
-  endpoint: string = '/admin/sora/st2at'
-): Promise<Record<string, unknown>> {
-  const payload: { session_token: string; proxy_id?: number } = {
-    session_token: sessionToken
-  }
-  if (proxyId) {
-    payload.proxy_id = proxyId
-  }
-  const { data } = await apiClient.post<Record<string, unknown>>(endpoint, payload)
-  return data
-}
-
-/**
  * Batch operation result type
  */
 export interface BatchOperationResult {
@@ -638,30 +615,6 @@ export async function setPrivacy(id: number): Promise<Account> {
   return data
 }
 
-/**
- * Get affinity clients for an account with last active timestamps
- * @param id - Account ID
- * @returns List of affinity clients
- */
-export async function getAffinityClients(id: number): Promise<{ client_id: string; last_active: string }[]> {
-  const { data } = await apiClient.get<{ client_id: string; last_active: string }[]>(
-    `/admin/accounts/${id}/affinity-clients`
-  )
-  return data
-}
-
-/**
- * Get affinity details for an account with user-level grouping
- * @param id - Account ID
- * @returns Affinity details with user groups
- */
-export async function getAffinityDetails(id: number): Promise<AffinityDetailsResponse> {
-  const { data } = await apiClient.get<AffinityDetailsResponse>(
-    `/admin/accounts/${id}/affinity-details`
-  )
-  return data
-}
-
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -688,7 +641,6 @@ export const accountsAPI = {
   generateAuthUrl,
   exchangeCode,
   refreshOpenAIToken,
-  validateSoraSessionToken,
   batchCreate,
   batchUpdateCredentials,
   bulkUpdate,
@@ -700,8 +652,6 @@ export const accountsAPI = {
   batchClearError,
   batchRefresh,
   setPrivacy,
-  getAffinityClients,
-  getAffinityDetails
 }
 
 export default accountsAPI

@@ -88,7 +88,6 @@ func ProvideHandlers(
 	openaiGatewayHandler *OpenAIGatewayHandler,
 	soraGatewayHandler *SoraGatewayHandler,
 	soraClientHandler *SoraClientHandler,
-	soraVideosHandler *SoraVideosHandler,
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
 	_ *service.IdempotencyCoordinator,
@@ -107,7 +106,6 @@ func ProvideHandlers(
 		OpenAIGateway: openaiGatewayHandler,
 		SoraGateway:   soraGatewayHandler,
 		SoraClient:    soraClientHandler,
-		SoraVideos:    soraVideosHandler,
 		Setting:       settingHandler,
 		Totp:          totpHandler,
 	}

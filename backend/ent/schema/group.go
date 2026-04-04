@@ -145,9 +145,6 @@ func (Group) Fields() []ent.Field {
 			MaxLen(100).
 			Default("").
 			Comment("默认映射模型 ID，当账号级映射找不到时使用此值"),
-		field.Bool("simulate_claude_max_enabled").
-			Default(false).
-			Comment("simulate claude usage as claude-max style (1h cache write)"),
 	}
 }
 

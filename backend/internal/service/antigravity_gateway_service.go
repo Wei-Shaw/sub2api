@@ -1763,9 +1763,6 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		firstTokenMs = streamRes.firstTokenMs
 	}
 
-	// Claude Max cache billing: 同步 ForwardResult.Usage 与客户端响应体一致
-	applyClaudeMaxCacheBillingPolicyToUsage(usage, parsedRequestFromGinContext(c), claudeMaxGroupFromGinContext(c), originalModel, account.ID)
-
 	return &ForwardResult{
 		RequestID:        requestID,
 		Usage:            *usage,
@@ -3863,9 +3860,6 @@ returnResponse:
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 	}
 
-	// Claude Max cache billing simulation (non-streaming)
-	claudeResp = applyClaudeMaxNonStreamingRewrite(c, claudeResp, agUsage, originalModel, accountID)
-
 	c.Data(http.StatusOK, "application/json", claudeResp)
 
 	// 转换为 service.ClaudeUsage
@@ -3893,7 +3887,6 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	}
 
 	processor := antigravity.NewStreamingProcessor(originalModel)
-	setupClaudeMaxStreamingHook(c, processor, originalModel, accountID)
 
 	var firstTokenMs *int
 	// 使用 Scanner 并限制单行大小，避免 ReadString 无上限导致 OOM
