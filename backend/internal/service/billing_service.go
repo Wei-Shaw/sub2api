@@ -422,6 +422,7 @@ type CostInput struct {
 	RateMultiplier float64
 	ServiceTier    string                // "priority","flex","" 等
 	Resolver       *ModelPricingResolver // 定价解析器
+	Resolved       *ResolvedPricing      // 可选：预解析的定价结果（避免重复 Resolve 调用）
 REDACTED
 
 // CalculateCostUnified 统一计费入口，支持三种计费模式。
@@ -432,10 +433,14 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 		return s.calculateCostInternal(input.Model, input.Tokens, input.RateMultiplier, input.ServiceTier, nil)
 REDACTED
 
-	resolved := input.Resolver.Resolve(input.Ctx, PricingInput{
-		Model:   input.Model,
-		GroupID: input.GroupID,
-REDACTED)
+	// 优先使用预解析结果，避免重复 Resolve 调用
+	resolved := input.Resolved
+	if resolved == nil {
+		resolved = input.Resolver.Resolve(input.Ctx, PricingInput{
+			Model:   input.Model,
+			GroupID: input.GroupID,
+	REDACTED)
+REDACTED
 
 	if input.RateMultiplier <= 0 {
 		input.RateMultiplier = 1.0

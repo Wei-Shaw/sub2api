@@ -8007,7 +8007,7 @@ func (s *GatewayService) calculateImageCost(
 	billingModel string,
 	multiplier float64,
 ) *CostBreakdown {
-	if s.resolveChannelPricing(ctx, billingModel, apiKey) != nil {
+	if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil {
 		tokens := UsageTokens{
 			InputTokens:       result.Usage.InputTokens,
 			OutputTokens:      result.Usage.OutputTokens,
@@ -8022,6 +8022,7 @@ func (s *GatewayService) calculateImageCost(
 			RequestCount:   1,
 			RateMultiplier: multiplier,
 			Resolver:       s.resolver,
+			Resolved:       resolved,
 	REDACTED)
 		if err != nil {
 			logger.LegacyPrintf("service.gateway", "Calculate image token cost failed: %v", err)
@@ -8064,7 +8065,7 @@ REDACTED
 	var err error
 
 	// 优先尝试渠道定价 → CalculateCostUnified
-	if s.resolveChannelPricing(ctx, billingModel, apiKey) != nil {
+	if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil {
 		gid := apiKey.Group.ID
 		cost, err = s.billingService.CalculateCostUnified(CostInput{
 			Ctx:            ctx,
@@ -8074,6 +8075,7 @@ REDACTED
 			RequestCount:   1,
 			RateMultiplier: multiplier,
 			Resolver:       s.resolver,
+			Resolved:       resolved,
 	REDACTED)
 REDACTED else if opts.LongContextThreshold > 0 {
 		// 长上下文双倍计费（如 Gemini 200K 阈值）
