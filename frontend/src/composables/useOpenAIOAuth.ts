@@ -30,7 +30,6 @@ REDACTED
 
 export function useOpenAIOAuth(options?: UseOpenAIOAuthOptions) {
   const appStore = useAppStore()
-  const oauthPlatform = options?.platform ?? 'openai'
   const endpointPrefix = '/admin/openai'
 
   // State

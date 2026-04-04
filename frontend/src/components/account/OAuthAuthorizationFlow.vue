@@ -542,7 +542,6 @@
 import { ref, computed, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useClipboard REDACTED from '@/composables/useClipboard'
-import { useAppStore REDACTED from '@/stores'
 import Icon from '@/components/icons/Icon.vue'
 import type { AddMethod, AuthInputMethod REDACTED from '@/composables/useAccountOAuth'
 import type { AccountPlatform REDACTED from '@/types'
@@ -662,17 +661,6 @@ const parsedSessionTokenCount = computed(() => 0)
 
 const parsedSessionTokensText = computed(() => '')
 
-const parsedAccessTokenFromSessionInputCount = computed(() => 0)
-
-const parsedAccessTokensText = computed(() => '')
-
-const parsedAccessTokenCount = computed(() => {
-  return accessTokenInput.value
-    .split('\n')
-    .map((at) => at.trim())
-    .filter((at) => at).length
-REDACTED)
-
 // Watchers
 watch(inputMethod, (newVal) => {
   emit('update:inputMethod', newVal)
@@ -747,12 +735,6 @@ REDACTED
 const handleValidateSessionToken = () => {
   if (parsedSessionTokenCount.value > 0) {
     emit('validate-session-token', parsedSessionTokensText.value)
-  REDACTED
-REDACTED
-
-const handleImportAccessToken = () => {
-  if (accessTokenInput.value.trim()) {
-    emit('import-access-token', accessTokenInput.value.trim())
   REDACTED
 REDACTED
 

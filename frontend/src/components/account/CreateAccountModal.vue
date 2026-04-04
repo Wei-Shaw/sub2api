@@ -2478,7 +2478,6 @@
         @validate-refresh-token="handleValidateRefreshToken"
         @validate-mobile-refresh-token="handleOpenAIValidateMobileRT"
         @validate-session-token="handleValidateSessionToken"
-        @import-access-token="handleImportAccessToken"
       />
 
     </div>
