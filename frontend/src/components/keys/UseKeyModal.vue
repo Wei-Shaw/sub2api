@@ -632,7 +632,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
         return [
           [level, variant] as const,
           [
-            `fast-${level}`,
+            `${level}-fast`,
             {
               ...variant,
               serviceTier: 'priority'

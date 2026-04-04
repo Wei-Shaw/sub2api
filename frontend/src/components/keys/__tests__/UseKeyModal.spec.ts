@@ -94,14 +94,16 @@ describe('UseKeyModal', () => {
     const gpt54SysVariants = parsed.provider['sub2api-openai'].models['gpt-5.4-Sys'].variants
     const gpt52Variants = parsed.provider['sub2api-openai'].models['gpt-5.2'].variants
 
-    expect(gpt54Variants['fast-low'].serviceTier).toBe('priority')
-    expect(gpt54Variants['fast-medium'].serviceTier).toBe('priority')
-    expect(gpt54Variants['fast-high'].serviceTier).toBe('priority')
-    expect(gpt54Variants['fast-xhigh'].serviceTier).toBe('priority')
-    expect(gpt54Variants['fast-xhigh'].reasoningEffort).toBe('xhigh')
-    expect(gpt54SysVariants['fast-xhigh'].serviceTier).toBe('priority')
-    expect(gpt54SysVariants['fast-xhigh'].reasoningEffort).toBe('xhigh')
-    expect(gpt52Variants['fast-low']).toBeUndefined()
+    expect(gpt54Variants['low-fast'].serviceTier).toBe('priority')
+    expect(gpt54Variants['medium-fast'].serviceTier).toBe('priority')
+    expect(gpt54Variants['high-fast'].serviceTier).toBe('priority')
+    expect(gpt54Variants['xhigh-fast'].serviceTier).toBe('priority')
+    expect(gpt54Variants['xhigh-fast'].reasoningEffort).toBe('xhigh')
+    expect(gpt54SysVariants['xhigh-fast'].serviceTier).toBe('priority')
+    expect(gpt54SysVariants['xhigh-fast'].reasoningEffort).toBe('xhigh')
+    expect(gpt54Variants['fast-low']).toBeUndefined()
+    expect(gpt54SysVariants['fast-low']).toBeUndefined()
+    expect(gpt52Variants['low-fast']).toBeUndefined()
   })
 
   it('describes OpenCode config as custom provider based', async () => {
