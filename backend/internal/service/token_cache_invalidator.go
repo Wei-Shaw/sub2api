@@ -42,7 +42,7 @@ func (c *CompositeTokenCacheInvalidator) InvalidateToken(ctx context.Context, ac
 		// Antigravity 同样可能有两种缓存键
 		keysToDelete = append(keysToDelete, AntigravityTokenCacheKey(account))
 		keysToDelete = append(keysToDelete, "ag:"+accountIDKey)
-	case PlatformOpenAI, PlatformSora:
+	case PlatformOpenAI:
 		keysToDelete = append(keysToDelete, OpenAITokenCacheKey(account))
 	case PlatformAnthropic:
 		keysToDelete = append(keysToDelete, ClaudeTokenCacheKey(account))

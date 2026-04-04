@@ -60,7 +60,6 @@ func NewTokenRefreshService(
 	}
 
 	openAIRefresher := NewOpenAITokenRefresher(openaiOAuthService, accountRepo)
-	openAIRefresher.SetSyncLinkedSoraAccounts(cfg.TokenRefresh.SyncLinkedSoraAccounts)
 
 	claudeRefresher := NewClaudeTokenRefresher(oauthService)
 	geminiRefresher := NewGeminiTokenRefresher(geminiOAuthService)
@@ -83,18 +82,6 @@ func NewTokenRefreshService(
 	}
 
 	return s
-}
-
-// SetSoraAccountRepo 设置 Sora 账号扩展表仓储
-// 用于在 OpenAI Token 刷新时同步更新 sora_accounts 表
-// 需要在 Start() 之前调用
-func (s *TokenRefreshService) SetSoraAccountRepo(repo SoraAccountRepository) {
-	// 将 soraAccountRepo 注入到 OpenAITokenRefresher
-	for _, refresher := range s.refreshers {
-		if openaiRefresher, ok := refresher.(*OpenAITokenRefresher); ok {
-			openaiRefresher.SetSoraAccountRepo(repo)
-		}
-	}
 }
 
 // SetPrivacyDeps 注入 OpenAI privacy opt-out 所需依赖

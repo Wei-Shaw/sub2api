@@ -9,35 +9,35 @@ import (
 
 func TestCollectSelectionFailureStats(t *testing.T) {
 	svc := &GatewayService{}
-	model := "sora2-landscape-10s"
+	model := "gpt-5.4"
 	resetAt := time.Now().Add(2 * time.Minute).Format(time.RFC3339)
 
 	accounts := []Account{
 		// excluded
 		{
 			ID:          1,
-			Platform:    PlatformSora,
+			Platform:    PlatformOpenAI,
 			Status:      StatusActive,
 			Schedulable: true,
 		},
 		// unschedulable
 		{
 			ID:          2,
-			Platform:    PlatformSora,
+			Platform:    PlatformOpenAI,
 			Status:      StatusActive,
 			Schedulable: false,
 		},
 		// platform filtered
 		{
 			ID:          3,
-			Platform:    PlatformOpenAI,
+			Platform:    PlatformAntigravity,
 			Status:      StatusActive,
 			Schedulable: true,
 		},
 		// model unsupported
 		{
 			ID:          4,
-			Platform:    PlatformSora,
+			Platform:    PlatformOpenAI,
 			Status:      StatusActive,
 			Schedulable: true,
 			Credentials: map[string]any{
@@ -49,7 +49,7 @@ func TestCollectSelectionFailureStats(t *testing.T) {
 		// model rate limited
 		{
 			ID:          5,
-			Platform:    PlatformSora,
+			Platform:    PlatformOpenAI,
 			Status:      StatusActive,
 			Schedulable: true,
 			Extra: map[string]any{
@@ -63,14 +63,14 @@ func TestCollectSelectionFailureStats(t *testing.T) {
 		// eligible
 		{
 			ID:          6,
-			Platform:    PlatformSora,
+			Platform:    PlatformOpenAI,
 			Status:      StatusActive,
 			Schedulable: true,
 		},
 	}
 
 	excluded := map[int64]struct{}{1: {}}
-	stats := svc.collectSelectionFailureStats(context.Background(), accounts, model, PlatformSora, excluded, false)
+	stats := svc.collectSelectionFailureStats(context.Background(), accounts, model, PlatformOpenAI, excluded, false)
 
 	if stats.Total != 6 {
 		t.Fatalf("total=%d want=6", stats.Total)
@@ -95,31 +95,31 @@ func TestCollectSelectionFailureStats(t *testing.T) {
 	}
 }
 
-func TestDiagnoseSelectionFailure_SoraUnschedulableDetail(t *testing.T) {
+func TestDiagnoseSelectionFailure_UnschedulableDetail(t *testing.T) {
 	svc := &GatewayService{}
 	acc := &Account{
 		ID:          7,
-		Platform:    PlatformSora,
+		Platform:    PlatformOpenAI,
 		Status:      StatusActive,
 		Schedulable: false,
 	}
 
-	diagnosis := svc.diagnoseSelectionFailure(context.Background(), acc, "sora2-landscape-10s", PlatformSora, map[int64]struct{}{}, false)
+	diagnosis := svc.diagnoseSelectionFailure(context.Background(), acc, "gpt-5.4", PlatformOpenAI, map[int64]struct{}{}, false)
 	if diagnosis.Category != "unschedulable" {
 		t.Fatalf("category=%s want=unschedulable", diagnosis.Category)
 	}
-	if diagnosis.Detail != "schedulable=false" {
-		t.Fatalf("detail=%s want=schedulable=false", diagnosis.Detail)
+	if diagnosis.Detail != "generic_unschedulable" {
+		t.Fatalf("detail=%s want=generic_unschedulable", diagnosis.Detail)
 	}
 }
 
-func TestDiagnoseSelectionFailure_SoraModelRateLimitedDetail(t *testing.T) {
+func TestDiagnoseSelectionFailure_ModelRateLimitedDetail(t *testing.T) {
 	svc := &GatewayService{}
-	model := "sora2-landscape-10s"
+	model := "gpt-5.4"
 	resetAt := time.Now().Add(2 * time.Minute).UTC().Format(time.RFC3339)
 	acc := &Account{
 		ID:          8,
-		Platform:    PlatformSora,
+		Platform:    PlatformOpenAI,
 		Status:      StatusActive,
 		Schedulable: true,
 		Extra: map[string]any{
@@ -131,7 +131,7 @@ func TestDiagnoseSelectionFailure_SoraModelRateLimitedDetail(t *testing.T) {
 		},
 	}
 
-	diagnosis := svc.diagnoseSelectionFailure(context.Background(), acc, model, PlatformSora, map[int64]struct{}{}, false)
+	diagnosis := svc.diagnoseSelectionFailure(context.Background(), acc, model, PlatformOpenAI, map[int64]struct{}{}, false)
 	if diagnosis.Category != "model_rate_limited" {
 		t.Fatalf("category=%s want=model_rate_limited", diagnosis.Category)
 	}

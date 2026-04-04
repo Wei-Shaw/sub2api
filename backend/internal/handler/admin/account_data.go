@@ -567,15 +567,15 @@ func defaultProxyName(name string) string {
 
 // enrichCredentialsFromIDToken performs best-effort extraction of user info fields
 // (email, plan_type, chatgpt_account_id, etc.) from id_token in credentials.
-// Only applies to OpenAI/Sora OAuth accounts. Skips expired token errors silently.
+// Only applies to OpenAI OAuth accounts. Skips expired token errors silently.
 // Existing credential values are never overwritten — only missing fields are filled.
 func enrichCredentialsFromIDToken(item *DataAccount) {
 	if item.Credentials == nil {
 		return
 	}
-	// Only enrich OpenAI/Sora OAuth accounts
+	// Only enrich OpenAI OAuth accounts
 	platform := strings.ToLower(strings.TrimSpace(item.Platform))
-	if platform != service.PlatformOpenAI && platform != service.PlatformSora {
+	if platform != service.PlatformOpenAI {
 		return
 	}
 	if strings.ToLower(strings.TrimSpace(item.Type)) != service.AccountTypeOAuth {

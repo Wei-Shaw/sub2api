@@ -41,7 +41,6 @@ type CreateUserRequest struct {
 	Balance               float64 `json:"balance"`
 	Concurrency           int     `json:"concurrency"`
 	AllowedGroups         []int64 `json:"allowed_groups"`
-	SoraStorageQuotaBytes int64   `json:"sora_storage_quota_bytes"`
 }
 
 // UpdateUserRequest represents admin update user request
@@ -58,7 +57,6 @@ type UpdateUserRequest struct {
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]*rate，nil 表示删除该分组的专属倍率
 	GroupRates            map[int64]*float64 `json:"group_rates"`
-	SoraStorageQuotaBytes *int64             `json:"sora_storage_quota_bytes"`
 }
 
 // UpdateBalanceRequest represents balance update request
@@ -189,7 +187,6 @@ func (h *UserHandler) Create(c *gin.Context) {
 		Balance:               req.Balance,
 		Concurrency:           req.Concurrency,
 		AllowedGroups:         req.AllowedGroups,
-		SoraStorageQuotaBytes: req.SoraStorageQuotaBytes,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -225,7 +222,6 @@ func (h *UserHandler) Update(c *gin.Context) {
 		Status:                req.Status,
 		AllowedGroups:         req.AllowedGroups,
 		GroupRates:            req.GroupRates,
-		SoraStorageQuotaBytes: req.SoraStorageQuotaBytes,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

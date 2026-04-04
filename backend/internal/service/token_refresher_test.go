@@ -243,12 +243,6 @@ func TestOpenAITokenRefresher_CanRefresh(t *testing.T) {
 			want:     true,
 		},
 		{
-			name:     "sora oauth - cannot refresh directly",
-			platform: PlatformSora,
-			accType:  AccountTypeOAuth,
-			want:     false,
-		},
-		{
 			name:     "openai apikey - cannot refresh",
 			platform: PlatformOpenAI,
 			accType:  AccountTypeAPIKey,
