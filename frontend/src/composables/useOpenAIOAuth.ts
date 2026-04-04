@@ -28,7 +28,7 @@ interface UseOpenAIOAuthOptions {
   platform?: OpenAIOAuthPlatform
 }
 
-export function useOpenAIOAuth(options?: UseOpenAIOAuthOptions) {
+export function useOpenAIOAuth(_options?: UseOpenAIOAuthOptions) {
   const appStore = useAppStore()
   const endpointPrefix = '/admin/openai'
 
