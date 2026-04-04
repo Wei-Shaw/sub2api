@@ -125,13 +125,6 @@ REDACTED
 	return r.countValue, nil
 REDACTED
 
-func (r *stubSoraGenRepo) CountByStorageType(_ context.Context, _ string, _ []string) (int64, error) {
-	if r.countErr != nil {
-		return 0, r.countErr
-REDACTED
-	return r.countValue, nil
-REDACTED
-
 // ==================== 辅助函数 ====================
 
 func newTestSoraClientHandler(repo *stubSoraGenRepo) *SoraClientHandler {
@@ -1664,8 +1657,8 @@ func TestStoreMediaWithDegradation_S3SuccessSingleURL(t *testing.T) {
 	fakeS3 := newFakeS3Server("ok")
 	defer fakeS3.Close()
 
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
-	h := &SoraClientHandler{objectStorage: objectStorageREDACTED
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
+	h := &SoraClientHandler{s3Storage: s3StorageREDACTED
 
 	storedURL, storedURLs, storageType, s3Keys, fileSize := h.storeMediaWithDegradation(
 		context.Background(), 1, "video", sourceServer.URL+"/v.mp4", nil,
@@ -1686,8 +1679,8 @@ func TestStoreMediaWithDegradation_S3SuccessMultiURL(t *testing.T) {
 	fakeS3 := newFakeS3Server("ok")
 	defer fakeS3.Close()
 
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
-	h := &SoraClientHandler{objectStorage: objectStorageREDACTED
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
+	h := &SoraClientHandler{s3Storage: s3StorageREDACTED
 
 	urls := []string{sourceServer.URL + "/a.mp4", sourceServer.URL + "/b.mp4"REDACTED
 	storedURL, storedURLs, storageType, s3Keys, fileSize := h.storeMediaWithDegradation(
@@ -1711,8 +1704,8 @@ func TestStoreMediaWithDegradation_S3DownloadFails(t *testing.T) {
 REDACTED))
 	defer badSource.Close()
 
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
-	h := &SoraClientHandler{objectStorage: objectStorageREDACTED
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
+	h := &SoraClientHandler{s3Storage: s3StorageREDACTED
 
 	_, _, storageType, _, _ := h.storeMediaWithDegradation(
 		context.Background(), 1, "video", badSource.URL+"/missing.mp4", nil,
@@ -1726,8 +1719,8 @@ func TestStoreMediaWithDegradation_S3FailsSingleURL(t *testing.T) {
 	fakeS3 := newFakeS3Server("fail")
 	defer fakeS3.Close()
 
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
-	h := &SoraClientHandler{objectStorage: objectStorageREDACTED
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
+	h := &SoraClientHandler{s3Storage: s3StorageREDACTED
 
 	_, _, storageType, s3Keys, _ := h.storeMediaWithDegradation(
 		context.Background(), 1, "video", sourceServer.URL+"/v.mp4", nil,
@@ -1743,8 +1736,8 @@ func TestStoreMediaWithDegradation_S3PartialFailureCleanup(t *testing.T) {
 	fakeS3 := newFakeS3Server("fail-second")
 	defer fakeS3.Close()
 
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
-	h := &SoraClientHandler{objectStorage: objectStorageREDACTED
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
+	h := &SoraClientHandler{s3Storage: s3StorageREDACTED
 
 	urls := []string{sourceServer.URL + "/a.mp4", sourceServer.URL + "/b.mp4"REDACTED
 	_, _, storageType, s3Keys, _ := h.storeMediaWithDegradation(
@@ -1815,7 +1808,7 @@ REDACTED
 	fakeS3 := newFakeS3Server("fail")
 	defer fakeS3.Close()
 
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
 	cfg := &config.Config{
 		Sora: config.SoraConfig{
 			Storage: config.SoraStorageConfig{
@@ -1828,8 +1821,8 @@ REDACTED
 REDACTED
 	mediaStorage := service.NewSoraMediaStorage(cfg)
 	h := &SoraClientHandler{
-		objectStorage: objectStorage,
-		mediaStorage:  mediaStorage,
+		s3Storage:    s3Storage,
+		mediaStorage: mediaStorage,
 REDACTED
 
 	_, _, storageType, _, _ := h.storeMediaWithDegradation(
@@ -1853,9 +1846,9 @@ func TestSaveToStorage_S3EnabledButUploadFails(t *testing.T) {
 		StorageType: "upstream",
 		MediaURL:    sourceServer.URL + "/v.mp4",
 REDACTED
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
 	genService := service.NewSoraGenerationService(repo, nil, nil)
-	h := &SoraClientHandler{genService: genService, objectStorage: objectStorageREDACTED
+	h := &SoraClientHandler{genService: genService, s3Storage: s3StorageREDACTED
 
 	c, rec := makeGinContext("POST", "/api/v1/sora/generations/1/save", "", 1)
 	c.Params = gin.Params{{Key: "id", Value: "1"REDACTEDREDACTED
@@ -1879,9 +1872,9 @@ REDACTED))
 		StorageType: "upstream",
 		MediaURL:    expiredServer.URL + "/v.mp4",
 REDACTED
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
 	genService := service.NewSoraGenerationService(repo, nil, nil)
-	h := &SoraClientHandler{genService: genService, objectStorage: objectStorageREDACTED
+	h := &SoraClientHandler{genService: genService, s3Storage: s3StorageREDACTED
 
 	c, rec := makeGinContext("POST", "/api/v1/sora/generations/1/save", "", 1)
 	c.Params = gin.Params{{Key: "id", Value: "1"REDACTEDREDACTED
@@ -1903,9 +1896,9 @@ func TestSaveToStorage_S3EnabledUploadSuccess(t *testing.T) {
 		StorageType: "upstream",
 		MediaURL:    sourceServer.URL + "/v.mp4",
 REDACTED
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
 	genService := service.NewSoraGenerationService(repo, nil, nil)
-	h := &SoraClientHandler{genService: genService, objectStorage: objectStorageREDACTED
+	h := &SoraClientHandler{genService: genService, s3Storage: s3StorageREDACTED
 
 	c, rec := makeGinContext("POST", "/api/v1/sora/generations/1/save", "", 1)
 	c.Params = gin.Params{{Key: "id", Value: "1"REDACTEDREDACTED
@@ -1913,7 +1906,7 @@ REDACTED
 	require.Equal(t, http.StatusOK, rec.Code)
 	resp := parseResponse(t, rec)
 	data := resp["data"].(map[string]any)
-	require.Contains(t, data["message"], "云存储")
+	require.Contains(t, data["message"], "S3")
 	require.NotEmpty(t, data["object_key"])
 	// 验证记录已更新为 S3 存储
 	require.Equal(t, service.SoraStorageTypeS3, repo.gens[1].StorageType)
@@ -1935,9 +1928,9 @@ func TestSaveToStorage_S3EnabledUploadSuccess_MultiMediaURLs(t *testing.T) {
 			sourceServer.URL + "/v2.mp4",
 	REDACTED,
 REDACTED
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
 	genService := service.NewSoraGenerationService(repo, nil, nil)
-	h := &SoraClientHandler{genService: genService, objectStorage: objectStorageREDACTED
+	h := &SoraClientHandler{genService: genService, s3Storage: s3StorageREDACTED
 
 	c, rec := makeGinContext("POST", "/api/v1/sora/generations/1/save", "", 1)
 	c.Params = gin.Params{{Key: "id", Value: "1"REDACTEDREDACTED
@@ -1963,7 +1956,7 @@ func TestSaveToStorage_S3EnabledUploadSuccessWithQuota(t *testing.T) {
 		StorageType: "upstream",
 		MediaURL:    sourceServer.URL + "/v.mp4",
 REDACTED
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
 	genService := service.NewSoraGenerationService(repo, nil, nil)
 
 	userRepo := newStubUserRepoForHandler()
@@ -1973,7 +1966,7 @@ REDACTED
 		SoraStorageUsedBytes:  0,
 REDACTED
 	quotaService := service.NewSoraQuotaService(userRepo, nil, nil)
-	h := &SoraClientHandler{genService: genService, objectStorage: objectStorage, quotaService: quotaServiceREDACTED
+	h := &SoraClientHandler{genService: genService, s3Storage: s3Storage, quotaService: quotaServiceREDACTED
 
 	c, rec := makeGinContext("POST", "/api/v1/sora/generations/1/save", "", 1)
 	c.Params = gin.Params{{Key: "id", Value: "1"REDACTEDREDACTED
@@ -1997,9 +1990,9 @@ func TestSaveToStorage_S3UploadSuccessMarkCompletedFails(t *testing.T) {
 REDACTED
 	// S3 上传成功后，MarkCompleted 会调用 repo.Update → 失败
 	repo.updateErr = fmt.Errorf("db error")
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
 	genService := service.NewSoraGenerationService(repo, nil, nil)
-	h := &SoraClientHandler{genService: genService, objectStorage: objectStorageREDACTED
+	h := &SoraClientHandler{genService: genService, s3Storage: s3StorageREDACTED
 
 	c, rec := makeGinContext("POST", "/api/v1/sora/generations/1/save", "", 1)
 	c.Params = gin.Params{{Key: "id", Value: "1"REDACTEDREDACTED
@@ -2014,8 +2007,8 @@ func TestGetStorageStatus_S3EnabledNotHealthy(t *testing.T) {
 	fakeS3 := newFakeS3Server("fail")
 	defer fakeS3.Close()
 
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
-	h := &SoraClientHandler{objectStorage: objectStorageREDACTED
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
+	h := &SoraClientHandler{s3Storage: s3StorageREDACTED
 
 	c, rec := makeGinContext("GET", "/api/v1/sora/storage-status", "", 0)
 	h.GetStorageStatus(c)
@@ -2030,8 +2023,8 @@ func TestGetStorageStatus_S3EnabledHealthy(t *testing.T) {
 	fakeS3 := newFakeS3Server("ok")
 	defer fakeS3.Close()
 
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
-	h := &SoraClientHandler{objectStorage: objectStorageREDACTED
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
+	h := &SoraClientHandler{s3Storage: s3StorageREDACTED
 
 	c, rec := makeGinContext("GET", "/api/v1/sora/storage-status", "", 0)
 	h.GetStorageStatus(c)
@@ -2460,7 +2453,7 @@ REDACTED
 	REDACTED,
 REDACTED
 	soraGatewayService := newMinimalSoraGatewayService(soraClient)
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
 
 	userRepo := newStubUserRepoForHandler()
 	userRepo.users[1] = &service.User{
@@ -2472,7 +2465,7 @@ REDACTED
 		genService:         genService,
 		gatewayService:     gatewayService,
 		soraGatewayService: soraGatewayService,
-		objectStorage:      objectStorage,
+		s3Storage:          s3Storage,
 		quotaService:       quotaService,
 REDACTED
 
@@ -2522,7 +2515,7 @@ REDACTED
 // ==================== cleanupStoredMedia 直接测试 ====================
 
 func TestCleanupStoredMedia_S3Path(t *testing.T) {
-	// S3 清理路径：objectStorage 为 nil 时不 panic
+	// S3 清理路径：s3Storage 为 nil 时不 panic
 	h := &SoraClientHandler{REDACTED
 	// 不应 panic
 	h.cleanupStoredMedia(context.Background(), service.SoraStorageTypeS3, []string{"key1"REDACTED, nil)
@@ -2969,7 +2962,7 @@ func TestSaveToStorage_QuotaExceeded(t *testing.T) {
 		StorageType: "upstream",
 		MediaURL:    sourceServer.URL + "/v.mp4",
 REDACTED
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
 	genService := service.NewSoraGenerationService(repo, nil, nil)
 
 	// 用户配额已满
@@ -2980,7 +2973,7 @@ REDACTED
 		SoraStorageUsedBytes:  10,
 REDACTED
 	quotaService := service.NewSoraQuotaService(userRepo, nil, nil)
-	h := &SoraClientHandler{genService: genService, objectStorage: objectStorage, quotaService: quotaServiceREDACTED
+	h := &SoraClientHandler{genService: genService, s3Storage: s3Storage, quotaService: quotaServiceREDACTED
 
 	c, rec := makeGinContext("POST", "/api/v1/sora/generations/1/save", "", 1)
 	c.Params = gin.Params{{Key: "id", Value: "1"REDACTEDREDACTED
@@ -3002,13 +2995,13 @@ func TestSaveToStorage_QuotaNonQuotaError(t *testing.T) {
 		StorageType: "upstream",
 		MediaURL:    sourceServer.URL + "/v.mp4",
 REDACTED
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
 	genService := service.NewSoraGenerationService(repo, nil, nil)
 
 	// 用户不存在 → GetByID 失败 → AddUsage 返回普通 error
 	userRepo := newStubUserRepoForHandler()
 	quotaService := service.NewSoraQuotaService(userRepo, nil, nil)
-	h := &SoraClientHandler{genService: genService, objectStorage: objectStorage, quotaService: quotaServiceREDACTED
+	h := &SoraClientHandler{genService: genService, s3Storage: s3Storage, quotaService: quotaServiceREDACTED
 
 	c, rec := makeGinContext("POST", "/api/v1/sora/generations/1/save", "", 1)
 	c.Params = gin.Params{{Key: "id", Value: "1"REDACTEDREDACTED
@@ -3029,9 +3022,9 @@ func TestSaveToStorage_EmptyMediaURLs(t *testing.T) {
 		MediaURL:    "",
 		MediaURLs:   []string{REDACTED,
 REDACTED
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
 	genService := service.NewSoraGenerationService(repo, nil, nil)
-	h := &SoraClientHandler{genService: genService, objectStorage: objectStorageREDACTED
+	h := &SoraClientHandler{genService: genService, s3Storage: s3StorageREDACTED
 
 	c, rec := makeGinContext("POST", "/api/v1/sora/generations/1/save", "", 1)
 	c.Params = gin.Params{{Key: "id", Value: "1"REDACTEDREDACTED
@@ -3056,9 +3049,9 @@ func TestSaveToStorage_MultiURL_SecondUploadFails(t *testing.T) {
 		MediaURL:    sourceServer.URL + "/v1.mp4",
 		MediaURLs:   []string{sourceServer.URL + "/v1.mp4", sourceServer.URL + "/v2.mp4"REDACTED,
 REDACTED
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
 	genService := service.NewSoraGenerationService(repo, nil, nil)
-	h := &SoraClientHandler{genService: genService, objectStorage: objectStorageREDACTED
+	h := &SoraClientHandler{genService: genService, s3Storage: s3StorageREDACTED
 
 	c, rec := makeGinContext("POST", "/api/v1/sora/generations/1/save", "", 1)
 	c.Params = gin.Params{{Key: "id", Value: "1"REDACTEDREDACTED
@@ -3081,7 +3074,7 @@ func TestSaveToStorage_MarkCompletedFailsWithQuotaRollback(t *testing.T) {
 		MediaURL:    sourceServer.URL + "/v.mp4",
 REDACTED
 	repo.updateErr = fmt.Errorf("db error")
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
 	genService := service.NewSoraGenerationService(repo, nil, nil)
 
 	userRepo := newStubUserRepoForHandler()
@@ -3091,7 +3084,7 @@ REDACTED
 		SoraStorageUsedBytes:  0,
 REDACTED
 	quotaService := service.NewSoraQuotaService(userRepo, nil, nil)
-	h := &SoraClientHandler{genService: genService, objectStorage: objectStorage, quotaService: quotaServiceREDACTED
+	h := &SoraClientHandler{genService: genService, s3Storage: s3Storage, quotaService: quotaServiceREDACTED
 
 	c, rec := makeGinContext("POST", "/api/v1/sora/generations/1/save", "", 1)
 	c.Params = gin.Params{{Key: "id", Value: "1"REDACTEDREDACTED
@@ -3104,8 +3097,8 @@ REDACTED
 func TestCleanupStoredMedia_WithS3Storage_ActualDelete(t *testing.T) {
 	fakeS3 := newFakeS3Server("ok")
 	defer fakeS3.Close()
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
-	h := &SoraClientHandler{objectStorage: objectStorageREDACTED
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
+	h := &SoraClientHandler{s3Storage: s3StorageREDACTED
 
 	h.cleanupStoredMedia(context.Background(), service.SoraStorageTypeS3, []string{"key1", "key2"REDACTED, nil)
 REDACTED
@@ -3113,8 +3106,8 @@ REDACTED
 func TestCleanupStoredMedia_S3DeleteFails_LogOnly(t *testing.T) {
 	fakeS3 := newFakeS3Server("fail")
 	defer fakeS3.Close()
-	objectStorage := newS3StorageForHandler(fakeS3.URL)
-	h := &SoraClientHandler{objectStorage: objectStorageREDACTED
+	s3Storage := newS3StorageForHandler(fakeS3.URL)
+	h := &SoraClientHandler{s3Storage: s3StorageREDACTED
 
 	h.cleanupStoredMedia(context.Background(), service.SoraStorageTypeS3, []string{"key1"REDACTED, nil)
 REDACTED

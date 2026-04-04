@@ -278,13 +278,9 @@ REDACTED
 REDACTED
 
 // shouldMarkCreditsExhausted 判断一次 credits 请求失败是否应标记为 credits 耗尽。
-// 此函数在积分注入后失败时调用（预检查注入 + attemptCreditsOveragesRetry 两条路径）。
-//   - 429 + 非单模型限流：积分注入后仍 429 → 标记耗尽。
-//   - 429 + 单模型限流（"exhausted your capacity on this model"）：该模型免费配额用完，
-//     积分注入对此无效，但账号积分对其他模型可能仍可用 → 不标记积分耗尽。
-//   - 403 等其他 4xx：检查 body 是否包含积分不足的关键词。
-//
-// clearCreditsExhausted 会在后续成功时自动清除。
+// 注意：不再检查 isURLLevelRateLimit。此函数仅在积分重试失败后调用，
+// 如果注入 enabledCreditTypes 后仍返回 "Resource has been exhausted"，
+// 说明积分也已耗尽，应该标记。clearCreditsExhausted 会在后续成功时自动清除。
 func shouldMarkCreditsExhausted(resp *http.Response, respBody []byte, reqErr error) bool {
 	if reqErr != nil || resp == nil {
 		return false
@@ -292,16 +288,10 @@ REDACTED
 	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusRequestTimeout {
 		return false
 REDACTED
-	bodyLower := strings.ToLower(string(respBody))
-	// 积分注入后仍 429
-	if resp.StatusCode == http.StatusTooManyRequests {
-		// 单模型配额耗尽：积分注入对此无效，不标记整个账号积分耗尽
-		if strings.Contains(bodyLower, "exhausted your capacity on this model") {
-			return false
-	REDACTED
-		return true
+	if info := parseAntigravitySmartRetryInfo(respBody); info != nil {
+		return false
 REDACTED
-	// 其他 4xx：关键词匹配（如 403 + "Insufficient credits"）
+	bodyLower := strings.ToLower(string(respBody))
 	for _, keyword := range creditsExhaustedKeywords {
 		if strings.Contains(bodyLower, keyword) {
 			return true

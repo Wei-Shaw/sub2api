@@ -18,6 +18,9 @@ const (
 	BlockTypeFunction
 )
 
+// UsageMapHook is a callback that can modify usage data before it's emitted in SSE events.
+type UsageMapHook func(usageMap map[string]any)
+
 // StreamingProcessor 流式响应处理器
 type StreamingProcessor struct {
 	blockType         BlockType
@@ -30,6 +33,7 @@ type StreamingProcessor struct {
 	originalModel     string
 	webSearchQueries  []string
 	groundingChunks   []GeminiGroundingChunk
+	usageMapHook      UsageMapHook
 
 	// 累计 usage
 	inputTokens       int
