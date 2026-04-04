@@ -33,7 +33,7 @@ REDACTED
 		TopP:        req.TopP,
 		Stream:      true, // upstream always streams
 		Include:     []string{"reasoning.encrypted_content"REDACTED,
-		ServiceTier:  req.ServiceTier,
+		ServiceTier: req.ServiceTier,
 REDACTED
 
 	storeFalse := false

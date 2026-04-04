@@ -67,12 +67,6 @@ const (
 	MediaTypePrompt = "prompt"
 )
 
-const (
-	claudeMaxMessageOverheadTokens = 3
-	claudeMaxBlockOverheadTokens   = 1
-	claudeMaxUnknownContentTokens  = 4
-)
-
 // ForceCacheBillingContextKey 强制缓存计费上下文键
 // 用于粘性会话切换时，将 input_tokens 转为 cache_read_input_tokens 计费
 type forceCacheBillingKeyType struct{REDACTED

@@ -87,10 +87,10 @@ REDACTED
 
 func TestNormalizeCodexModel(t *testing.T) {
 	cases := map[string]string{
-		"gpt-5.3-codex-spark":          "gpt-5.3-codex",
-		"gpt-5.3-codex-spark-high":     "gpt-5.3-codex",
-		"gpt-5.3-codex-spark-xhigh":    "gpt-5.3-codex",
-		"gpt-5.3":                      "gpt-5.3-codex",
+		"gpt-5.3-codex-spark":       "gpt-5.3-codex",
+		"gpt-5.3-codex-spark-high":  "gpt-5.3-codex",
+		"gpt-5.3-codex-spark-xhigh": "gpt-5.3-codex",
+		"gpt-5.3":                   "gpt-5.3-codex",
 REDACTED
 
 	for input, expected := range cases {
