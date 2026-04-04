@@ -273,8 +273,7 @@ func GetRequestTargetGroup(reqBody map[string]any) AccountTargetGroup {
 	if !ok {
 		return TargetGroupActive
 	}
-	itemType, _ := lastItem["type"].(string)
-	itemType = strings.TrimSpace(itemType)
+	itemType := normalizeResponsesInputItemType(lastItem)
 	if strings.EqualFold(itemType, "function_call_output") {
 		return TargetGroupExhausted
 	}
@@ -293,8 +292,7 @@ func NeedsSysToolContinuation(reqBody map[string]any) bool {
 	if !ok {
 		return false
 	}
-	itemType, _ := lastItem["type"].(string)
-	itemType = strings.TrimSpace(itemType)
+	itemType := normalizeResponsesInputItemType(lastItem)
 	if strings.EqualFold(itemType, "item_reference") {
 		return true
 	}
@@ -307,6 +305,22 @@ func NeedsSysToolContinuation(reqBody map[string]any) bool {
 		return strings.EqualFold(role, "user")
 	}
 	return false
+}
+
+func normalizeResponsesInputItemType(item map[string]any) string {
+	if item == nil {
+		return ""
+	}
+	itemType, _ := item["type"].(string)
+	itemType = strings.TrimSpace(itemType)
+	if itemType != "" {
+		return itemType
+	}
+	role, _ := item["role"].(string)
+	if strings.TrimSpace(role) != "" {
+		return "message"
+	}
+	return ""
 }
 
 func AppendMinimalSysToolContinuation(reqBody map[string]any) {

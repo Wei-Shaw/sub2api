@@ -420,6 +420,21 @@ func TestPrepareResponsesRequestForScheduling_SysModelAppendsContinuation(t *tes
 	require.Contains(t, string(patchedBody), `"output":"ready"`)
 }
 
+func TestPrepareResponsesRequestForScheduling_SysModelAppendsContinuationForRoleBasedUserItem(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	body := []byte(`{"model":"gpt-5.4-Sys","input":[{"role":"user","content":[{"type":"input_text","text":"hello"}]}]}`)
+
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4-Sys")
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4", patchedModel)
+	require.Equal(t, service.TargetGroupExhausted, targetGroup)
+	require.Contains(t, string(patchedBody), `"type":"function_call"`)
+	require.Contains(t, string(patchedBody), `"type":"function_call_output"`)
+}
+
 func TestPrepareResponsesRequestForScheduling_SysModelStripEmptyReturnsInvalidModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

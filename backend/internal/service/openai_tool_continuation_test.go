@@ -128,6 +128,7 @@ func TestNeedsSysToolContinuation(t *testing.T) {
 		{name: "nil", body: nil, want: false},
 		{name: "empty input", body: map[string]any{"input": []any{}}, want: false},
 		{name: "last user message", body: map[string]any{"input": []any{map[string]any{"type": "message", "role": "user"}}}, want: true},
+		{name: "last role-based user item without explicit type", body: map[string]any{"input": []any{map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "hi"}}}}}, want: true},
 		{name: "last user message whitespace and mixed case", body: map[string]any{"input": []any{map[string]any{"type": "  MeSsaGe ", "role": "  UsEr  "}}}, want: true},
 		{name: "message but non user", body: map[string]any{"input": []any{map[string]any{"type": "message", "role": "assistant"}}}, want: false},
 		{name: "last item reference", body: map[string]any{"input": []any{map[string]any{"type": "item_reference", "id": "x"}}}, want: true},
@@ -167,6 +168,26 @@ func TestAppendMinimalSysToolContinuation(t *testing.T) {
 	require.Equal(t, "function_call_output", functionCallOutput["type"])
 	require.Equal(t, "sys_dummy", functionCallOutput["call_id"])
 	require.Equal(t, "ready", functionCallOutput["output"])
+}
+
+func TestAppendMinimalSysToolContinuation_RoleBasedUserItemWithoutType(t *testing.T) {
+	req := map[string]any{
+		"input": []any{
+			map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "hello"}}},
+		},
+	}
+
+	AppendMinimalSysToolContinuation(req)
+
+	input, ok := req["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 3)
+	toolCall, ok := input[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "function_call", toolCall["type"])
+	functionCallOutput, ok := input[2].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "function_call_output", functionCallOutput["type"])
 }
 
 func TestAppendMinimalSysToolContinuation_MissingInput(t *testing.T) {
