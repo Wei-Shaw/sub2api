@@ -10,8 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	stripe "github.com/stripe/stripe-go/v82"
-	"github.com/stripe/stripe-go/v82/paymentintent"
-	"github.com/stripe/stripe-go/v82/refund"
+	"github.com/stripe/stripe-go/v82/client"
 	"github.com/stripe/stripe-go/v82/webhook"
 )
 
@@ -22,6 +21,7 @@ type Stripe struct {
 
 	mu          sync.Mutex
 	initialized bool
+	api         *client.API
 }
 
 // NewStripe creates a new Stripe provider instance.
@@ -39,7 +39,8 @@ func (s *Stripe) ensureInit() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.initialized {
-		stripe.Key = s.config["secretKey"]
+		s.api = &client.API{}
+		s.api.Init(s.config["secretKey"], nil)
 		s.initialized = true
 	}
 }
@@ -85,7 +86,7 @@ func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 	params.SetIdempotencyKey(fmt.Sprintf("pi-%s", req.OrderID))
 	params.Context = ctx
 
-	pi, err := paymentintent.New(params)
+	pi, err := s.api.PaymentIntents.New(params)
 	if err != nil {
 		return nil, fmt.Errorf("stripe create payment: %w", err)
 	}
@@ -103,7 +104,7 @@ func (s *Stripe) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 	params := &stripe.PaymentIntentParams{}
 	params.Context = ctx
 
-	pi, err := paymentintent.Get(tradeNo, params)
+	pi, err := s.api.PaymentIntents.Get(tradeNo, params)
 	if err != nil {
 		return nil, fmt.Errorf("stripe query order: %w", err)
 	}
@@ -182,7 +183,7 @@ func (s *Stripe) Refund(ctx context.Context, req payment.RefundRequest) (*paymen
 	}
 	params.Context = ctx
 
-	r, err := refund.New(params)
+	r, err := s.api.Refunds.New(params)
 	if err != nil {
 		return nil, fmt.Errorf("stripe refund: %w", err)
 	}
@@ -205,7 +206,7 @@ func (s *Stripe) CancelPayment(ctx context.Context, tradeNo string) error {
 	params := &stripe.PaymentIntentCancelParams{}
 	params.Context = ctx
 
-	_, err := paymentintent.Cancel(tradeNo, params)
+	_, err := s.api.PaymentIntents.Cancel(tradeNo, params)
 	if err != nil {
 		return fmt.Errorf("stripe cancel payment: %w", err)
 	}

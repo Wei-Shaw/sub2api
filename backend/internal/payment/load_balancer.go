@@ -30,6 +30,7 @@ type InstanceLimits map[string]struct {
 
 // LoadBalancer selects a provider instance for a given payment type.
 type LoadBalancer interface {
+	GetInstanceConfig(ctx context.Context, instanceID int64) (map[string]string, error)
 	SelectInstance(ctx context.Context, providerKey string, paymentType PaymentType) (*InstanceSelection, error)
 }
 
@@ -131,4 +132,13 @@ func containsType(supportedTypes string, target PaymentType) bool {
 		}
 	}
 	return false
+}
+
+// GetInstanceConfig decrypts and returns the configuration for a provider instance by ID.
+func (lb *DefaultLoadBalancer) GetInstanceConfig(ctx context.Context, instanceID int64) (map[string]string, error) {
+	inst, err := lb.db.PaymentProviderInstance.Get(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("get instance %d: %w", instanceID, err)
+	}
+	return lb.decryptConfig(inst.Config)
 }

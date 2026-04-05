@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"log"
+	"sync"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -13,7 +15,9 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -92,15 +96,38 @@ type RefundResult struct {
 }
 
 type DashboardStats struct {
-	TotalOrders     int     `json:"totalOrders"`
-	TotalRevenue    float64 `json:"totalRevenue"`
-	TotalRefunded   float64 `json:"totalRefunded"`
-	PendingOrders   int     `json:"pendingOrders"`
-	CompletedOrders int     `json:"completedOrders"`
-	FailedOrders    int     `json:"failedOrders"`
+	TodayAmount    float64 `json:"today_amount"`
+	TotalAmount    float64 `json:"total_amount"`
+	TodayCount     int     `json:"today_count"`
+	TotalCount     int     `json:"total_count"`
+	AvgAmount      float64 `json:"avg_amount"`
+	PendingOrders  int     `json:"pending_orders"`
+
+	DailySeries    []DailyStats       `json:"daily_series"`
+	PaymentMethods []PaymentMethodStat `json:"payment_methods"`
+	TopUsers       []TopUserStat       `json:"top_users"`
+}
+
+type DailyStats struct {
+	Date   string  `json:"date"`
+	Amount float64 `json:"amount"`
+	Count  int     `json:"count"`
+}
+
+type PaymentMethodStat struct {
+	Type   string  `json:"type"`
+	Amount float64 `json:"amount"`
+	Count  int     `json:"count"`
+}
+
+type TopUserStat struct {
+	UserID int64   `json:"user_id"`
+	Email  string  `json:"email"`
+	Amount float64 `json:"amount"`
 }
 
 type PaymentService struct {
+	providerOnce sync.Once
 	entClient       *dbent.Client
 	registry        *payment.Registry
 	loadBalancer    payment.LoadBalancer
@@ -113,6 +140,13 @@ type PaymentService struct {
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository) *PaymentService {
 	return &PaymentService{entClient: entClient, registry: registry, loadBalancer: loadBalancer, redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo}
+}
+
+// Start performs one-time startup tasks such as legacy settings migration.
+func (s *PaymentService) Start(ctx context.Context) {
+	if err := s.configService.MigrateLegacyPurchaseURL(ctx); err != nil {
+		slog.Error("[payment] legacy purchase URL migration failed", "error", err)
+	}
 }
 
 func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest) (*CreateOrderResponse, error) {
@@ -260,6 +294,7 @@ func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, user
 }
 
 func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.PaymentOrder, req CreateOrderRequest, cfg *PaymentConfig, payAmountStr string, payAmount float64, plan *dbent.SubscriptionPlan) (*CreateOrderResponse, error) {
+	s.EnsureProviders(ctx)
 	provider, err := s.registry.GetProvider(req.PaymentType)
 	if err != nil {
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", fmt.Sprintf("payment method (%s) is not configured", req.PaymentType))
@@ -393,6 +428,7 @@ func (s *PaymentService) cancelCore(ctx context.Context, o *dbent.PaymentOrder, 
 }
 
 func (s *PaymentService) checkPaid(ctx context.Context, o *dbent.PaymentOrder) string {
+	s.EnsureProviders(ctx)
 	prov, err := s.registry.GetProvider(o.PaymentType)
 	if err != nil {
 		return ""
@@ -724,6 +760,7 @@ func (s *PaymentService) gwRefund(ctx context.Context, p *RefundPlan) error {
 		s.writeAuditLog(ctx, p.Order.ID, "REFUND_NO_TRADE_NO", "admin", map[string]any{"detail": "skipped"})
 		return nil
 	}
+	s.EnsureProviders(ctx)
 	prov, err := s.registry.GetProvider(p.Order.PaymentType)
 	if err != nil {
 		return fmt.Errorf("get provider: %w", err)
@@ -797,38 +834,136 @@ func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) 
 	}
 	return n, nil
 }
-
 func (s *PaymentService) GetDashboardStats(ctx context.Context, days int) (*DashboardStats, error) {
 	if days <= 0 {
 		days = 30
 	}
-	since := time.Now().AddDate(0, 0, -days)
+	now := time.Now()
+	since := now.AddDate(0, 0, -days)
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	paidStatuses := []string{OrderStatusCompleted, OrderStatusPaid, OrderStatusRecharging}
+
+	// Fetch all paid orders in the date range
+	orders, err := s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.StatusIn(paidStatuses...),
+			paymentorder.PaidAtGTE(since),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	st := &DashboardStats{}
-	var err error
-	st.TotalOrders, err = s.entClient.PaymentOrder.Query().Where(paymentorder.CreatedAtGTE(since)).Count(ctx)
+
+	// Compute basic stats
+	var totalAmount float64
+	var todayAmount float64
+	var todayCount int
+	for _, o := range orders {
+		totalAmount += o.PayAmount
+		if o.PaidAt != nil && !o.PaidAt.Before(todayStart) {
+			todayAmount += o.PayAmount
+			todayCount++
+		}
+	}
+	st.TotalAmount = math.Round(totalAmount*100) / 100
+	st.TodayAmount = math.Round(todayAmount*100) / 100
+	st.TotalCount = len(orders)
+	st.TodayCount = todayCount
+	if st.TotalCount > 0 {
+		st.AvgAmount = math.Round(totalAmount/float64(st.TotalCount)*100) / 100
+	}
+
+	// Pending orders count
+	st.PendingOrders, err = s.entClient.PaymentOrder.Query().
+		Where(paymentorder.StatusEQ(OrderStatusPending)).
+		Count(ctx)
 	if err != nil {
 		return nil, err
 	}
-	st.PendingOrders, err = s.entClient.PaymentOrder.Query().Where(paymentorder.StatusEQ(OrderStatusPending), paymentorder.CreatedAtGTE(since)).Count(ctx)
-	if err != nil {
-		return nil, err
+
+	// Daily series: GROUP BY date(paid_at)
+	dailyMap := make(map[string]*DailyStats)
+	for _, o := range orders {
+		if o.PaidAt == nil {
+			continue
+		}
+		date := o.PaidAt.Format("2006-01-02")
+		ds, ok := dailyMap[date]
+		if !ok {
+			ds = &DailyStats{Date: date}
+			dailyMap[date] = ds
+		}
+		ds.Amount += o.PayAmount
+		ds.Count++
 	}
-	st.CompletedOrders, err = s.entClient.PaymentOrder.Query().Where(paymentorder.StatusEQ(OrderStatusCompleted), paymentorder.CreatedAtGTE(since)).Count(ctx)
-	if err != nil {
-		return nil, err
+	// Build sorted daily series for all days in range
+	st.DailySeries = make([]DailyStats, 0, days)
+	for i := 0; i < days; i++ {
+		date := since.AddDate(0, 0, i+1).Format("2006-01-02")
+		if ds, ok := dailyMap[date]; ok {
+			ds.Amount = math.Round(ds.Amount*100) / 100
+			st.DailySeries = append(st.DailySeries, *ds)
+		} else {
+			st.DailySeries = append(st.DailySeries, DailyStats{Date: date})
+		}
 	}
-	st.FailedOrders, err = s.entClient.PaymentOrder.Query().Where(paymentorder.StatusEQ(OrderStatusFailed), paymentorder.CreatedAtGTE(since)).Count(ctx)
-	if err != nil {
-		return nil, err
+
+	// Payment methods: GROUP BY payment_type
+	methodMap := make(map[string]*PaymentMethodStat)
+	for _, o := range orders {
+		ms, ok := methodMap[o.PaymentType]
+		if !ok {
+			ms = &PaymentMethodStat{Type: o.PaymentType}
+			methodMap[o.PaymentType] = ms
+		}
+		ms.Amount += o.PayAmount
+		ms.Count++
 	}
-	st.TotalRevenue, err = s.sumAmt(ctx, []string{OrderStatusCompleted}, since, true)
-	if err != nil {
-		return nil, err
+	st.PaymentMethods = make([]PaymentMethodStat, 0, len(methodMap))
+	for _, ms := range methodMap {
+		ms.Amount = math.Round(ms.Amount*100) / 100
+		st.PaymentMethods = append(st.PaymentMethods, *ms)
 	}
-	st.TotalRefunded, err = s.sumAmt(ctx, []string{OrderStatusRefunded, OrderStatusPartiallyRefunded}, since, false)
-	if err != nil {
-		return nil, err
+
+	// Top users: GROUP BY user_id, ORDER BY amount DESC, LIMIT 10
+	userMap := make(map[int64]*TopUserStat)
+	for _, o := range orders {
+		us, ok := userMap[o.UserID]
+		if !ok {
+			us = &TopUserStat{UserID: o.UserID, Email: o.UserEmail}
+			userMap[o.UserID] = us
+		}
+		us.Amount += o.PayAmount
 	}
+	type userEntry struct {
+		stat   *TopUserStat
+		amount float64
+	}
+	userList := make([]userEntry, 0, len(userMap))
+	for _, us := range userMap {
+		us.Amount = math.Round(us.Amount*100) / 100
+		userList = append(userList, userEntry{stat: us, amount: us.Amount})
+	}
+	// Sort descending by amount
+	for i := 0; i < len(userList); i++ {
+		for j := i + 1; j < len(userList); j++ {
+			if userList[j].amount > userList[i].amount {
+				userList[i], userList[j] = userList[j], userList[i]
+			}
+		}
+	}
+	limit := 10
+	if len(userList) < limit {
+		limit = len(userList)
+	}
+	st.TopUsers = make([]TopUserStat, 0, limit)
+	for i := 0; i < limit; i++ {
+		st.TopUsers = append(st.TopUsers, *userList[i].stat)
+	}
+
 	return st, nil
 }
 
@@ -950,4 +1085,46 @@ func (s *PaymentService) AdminListOrders(ctx context.Context, userID int64, p Or
 		return nil, 0, fmt.Errorf("query admin orders: %w", err)
 	}
 	return orders, total, nil
+}
+
+// EnsureProviders lazily initializes the provider registry on first call.
+// It queries all enabled PaymentProviderInstance records, decrypts their config,
+// creates providers via provider.CreateProvider, and registers them.
+func (s *PaymentService) EnsureProviders(ctx context.Context) {
+	s.providerOnce.Do(func() {
+		s.loadProviders(ctx)
+	})
+}
+
+// RefreshProviders clears and re-registers all providers from the database.
+// Call this when provider instances are created, updated, or deleted.
+func (s *PaymentService) RefreshProviders(ctx context.Context) {
+	s.registry.Clear()
+	s.providerOnce = sync.Once{}
+	s.EnsureProviders(ctx)
+}
+
+func (s *PaymentService) loadProviders(ctx context.Context) {
+	instances, err := s.entClient.PaymentProviderInstance.Query().
+		Where(paymentproviderinstance.EnabledEQ(true)).
+		All(ctx)
+	if err != nil {
+		log.Printf("[PaymentService] failed to query provider instances: %v", err)
+		return
+	}
+	for _, inst := range instances {
+		cfg, err := s.loadBalancer.GetInstanceConfig(ctx, int64(inst.ID))
+		if err != nil {
+			log.Printf("[PaymentService] failed to decrypt config for instance %d: %v", inst.ID, err)
+			continue
+		}
+		instID := fmt.Sprintf("%d", inst.ID)
+		p, err := provider.CreateProvider(inst.ProviderKey, instID, cfg)
+		if err != nil {
+			log.Printf("[PaymentService] failed to create provider for instance %d (key=%s): %v", inst.ID, inst.ProviderKey, err)
+			continue
+		}
+		s.registry.Register(p)
+	}
+	log.Printf("[PaymentService] registered %d payment types from %d instances", len(s.registry.SupportedTypes()), len(instances))
 }

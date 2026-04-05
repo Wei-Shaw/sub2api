@@ -76,3 +76,12 @@ func (r *Registry) SupportedTypes() []PaymentType {
 	}
 	return types
 }
+
+// Clear removes all registered providers.
+func (r *Registry) Clear() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for k := range r.providers {
+		delete(r.providers, k)
+	}
+}

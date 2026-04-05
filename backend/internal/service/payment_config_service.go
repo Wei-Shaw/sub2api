@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -442,4 +443,67 @@ func pcParseInt(s string, defaultVal int) int {
 		return defaultVal
 	}
 	return v
+}
+
+// MigrateLegacyPurchaseURL checks if the old purchase_subscription_url setting
+// exists and is enabled, and if so, migrates it to a custom_menu_item entry.
+// This is a one-time migration that runs at startup.
+func (s *PaymentConfigService) MigrateLegacyPurchaseURL(ctx context.Context) error {
+	enabled, _ := s.settingRepo.GetValue(ctx, SettingKeyPurchaseSubscriptionEnabled)
+	if enabled != "true" {
+		return nil
+	}
+	url, _ := s.settingRepo.GetValue(ctx, SettingKeyPurchaseSubscriptionURL)
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return nil
+	}
+
+	// Read current custom_menu_items
+	raw, _ := s.settingRepo.GetValue(ctx, SettingKeyCustomMenuItems)
+	type menuItem struct {
+		ID         string `json:"id"`
+		Label      string `json:"label"`
+		IconSVG    string `json:"icon_svg"`
+		URL        string `json:"url"`
+		Visibility string `json:"visibility"`
+		SortOrder  int    `json:"sort_order"`
+	}
+	var items []menuItem
+	if raw != "" {
+		_ = json.Unmarshal([]byte(raw), &items)
+	}
+
+	// Check if already migrated (same URL exists)
+	for _, item := range items {
+		if item.URL == url {
+			return nil
+		}
+	}
+
+	// Append migrated item
+	items = append(items, menuItem{
+		ID:         "migrated_purchase_subscription",
+		Label:      "Purchase Subscription",
+		IconSVG:    "",
+		URL:        url,
+		Visibility: "user",
+		SortOrder:  0,
+	})
+
+	data, err := json.Marshal(items)
+	if err != nil {
+		return fmt.Errorf("marshal custom_menu_items: %w", err)
+	}
+
+	// Save updated menu items and clear old settings
+	if err := s.settingRepo.SetMultiple(ctx, map[string]string{
+		SettingKeyCustomMenuItems:            string(data),
+		SettingKeyPurchaseSubscriptionEnabled: "false",
+	}); err != nil {
+		return fmt.Errorf("save migrated settings: %w", err)
+	}
+
+	slog.Info("[payment] Migrated legacy purchase_subscription_url to custom menu item", "url", url)
+	return nil
 }

@@ -496,6 +496,7 @@ var ProviderSet = wire.NewSet(
 	NewModelPricingResolver,
 	ProvidePaymentConfigService,
 	NewPaymentService,
+	ProvidePaymentOrderExpiryService,
 	NewSoraS3Storage,
 	NewSoraGenerationService,
 	NewSoraQuotaService,
@@ -505,4 +506,11 @@ var ProviderSet = wire.NewSet(
 // payment.EncryptionKey type instead of raw []byte, avoiding Wire ambiguity.
 func ProvidePaymentConfigService(entClient *dbent.Client, settingRepo SettingRepository, key payment.EncryptionKey) *PaymentConfigService {
 	return NewPaymentConfigService(entClient, settingRepo, []byte(key))
+}
+
+// ProvidePaymentOrderExpiryService creates and starts PaymentOrderExpiryService.
+func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService) *PaymentOrderExpiryService {
+	svc := NewPaymentOrderExpiryService(paymentSvc, 60*time.Second)
+	svc.Start()
+	return svc
 }
