@@ -1,0 +1,130 @@
+/**
+ * Admin Payment API endpoints
+ * Handles payment management operations for administrators
+ */
+
+import { apiClient } from '../client'
+import type {
+  DashboardStats,
+  PaymentOrder,
+  PaymentChannel,
+  SubscriptionPlan,
+  ProviderInstance
+} from '@/types/payment'
+import type { BasePaginationResponse } from '@/types'
+
+export const adminPaymentAPI = {
+  // ==================== Dashboard ====================
+
+  /** Get payment dashboard statistics */
+  getDashboard(days?: number) {
+    return apiClient.get<DashboardStats>('/admin/payment/dashboard', {
+      params: days ? { days } : undefined
+    })
+  },
+
+  // ==================== Orders ====================
+
+  /** Get all orders (paginated, with filters) */
+  getOrders(params?: {
+    page?: number
+    page_size?: number
+    status?: string
+    payment_type?: string
+    user_id?: number
+    keyword?: string
+    start_date?: string
+    end_date?: string
+    order_type?: string
+  }) {
+    return apiClient.get<BasePaginationResponse<PaymentOrder>>('/admin/payment/orders', { params })
+  },
+
+  /** Get a specific order by ID */
+  getOrder(id: number) {
+    return apiClient.get<PaymentOrder>(`/admin/payment/orders/${id}`)
+  },
+
+  /** Cancel an order (admin) */
+  cancelOrder(id: number) {
+    return apiClient.post(`/admin/payment/orders/${id}/cancel`)
+  },
+
+  /** Retry recharge for a failed order */
+  retryRecharge(id: number) {
+    return apiClient.post(`/admin/payment/orders/${id}/retry`)
+  },
+
+  /** Process a refund */
+  refundOrder(id: number, data: { amount: number; reason: string; deduct_balance?: boolean }) {
+    return apiClient.post(`/admin/payment/orders/${id}/refund`, data)
+  },
+
+  // ==================== Channels ====================
+
+  /** Get all payment channels */
+  getChannels() {
+    return apiClient.get<PaymentChannel[]>('/admin/payment/channels')
+  },
+
+  /** Create a payment channel */
+  createChannel(data: Partial<PaymentChannel>) {
+    return apiClient.post<PaymentChannel>('/admin/payment/channels', data)
+  },
+
+  /** Update a payment channel */
+  updateChannel(id: number, data: Partial<PaymentChannel>) {
+    return apiClient.put<PaymentChannel>(`/admin/payment/channels/${id}`, data)
+  },
+
+  /** Delete a payment channel */
+  deleteChannel(id: number) {
+    return apiClient.delete(`/admin/payment/channels/${id}`)
+  },
+
+  // ==================== Subscription Plans ====================
+
+  /** Get all subscription plans */
+  getPlans() {
+    return apiClient.get<SubscriptionPlan[]>('/admin/payment/plans')
+  },
+
+  /** Create a subscription plan */
+  createPlan(data: Partial<SubscriptionPlan>) {
+    return apiClient.post<SubscriptionPlan>('/admin/payment/plans', data)
+  },
+
+  /** Update a subscription plan */
+  updatePlan(id: number, data: Partial<SubscriptionPlan>) {
+    return apiClient.put<SubscriptionPlan>(`/admin/payment/plans/${id}`, data)
+  },
+
+  /** Delete a subscription plan */
+  deletePlan(id: number) {
+    return apiClient.delete(`/admin/payment/plans/${id}`)
+  },
+
+  // ==================== Provider Instances ====================
+
+  /** Get all provider instances */
+  getProviders() {
+    return apiClient.get<ProviderInstance[]>('/admin/payment/providers')
+  },
+
+  /** Create a provider instance */
+  createProvider(data: Partial<ProviderInstance>) {
+    return apiClient.post<ProviderInstance>('/admin/payment/providers', data)
+  },
+
+  /** Update a provider instance */
+  updateProvider(id: number, data: Partial<ProviderInstance>) {
+    return apiClient.put<ProviderInstance>(`/admin/payment/providers/${id}`, data)
+  },
+
+  /** Delete a provider instance */
+  deleteProvider(id: number) {
+    return apiClient.delete(`/admin/payment/providers/${id}`)
+  }
+}
+
+export default adminPaymentAPI

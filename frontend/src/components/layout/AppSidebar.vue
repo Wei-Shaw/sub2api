@@ -467,6 +467,66 @@ const ChevronDoubleLeftIcon = {
     )
 }
 
+const SoraIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z'
+        })
+      ]
+    )
+}
+
+const ReceiptIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M9 14.25l6-6m4.5-3.493V21.75l-3.75-1.5-3.75 1.5-3.75-1.5-3.75 1.5V4.757c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0c1.1.128 1.907 1.077 1.907 2.185zM9.75 9h.008v.008H9.75V9zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm4.125 4.5h.008v.008h-.008V13.5zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z'
+        })
+      ]
+    )
+}
+
+const OrderIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z'
+        })
+      ]
+    )
+}
+
+const OrderListIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z'
+        })
+      ]
+    )
+}
+
 const ChevronDoubleRightIcon = {
   render: () =>
     h(
@@ -489,12 +549,21 @@ const userNavItems = computed((): NavItem[] => {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-    ...(appStore.cachedPublicSettings?.purchase_subscription_enabled
+    ...(appStore.cachedPublicSettings?.sora_client_enabled
+      ? [{ path: '/sora', label: t('nav.sora'), icon: SoraIcon }]
+      : []),
+    ...(appStore.cachedPublicSettings?.payment_enabled || appStore.cachedPublicSettings?.purchase_subscription_enabled
       ? [
           {
             path: '/purchase',
             label: t('nav.buySubscription'),
             icon: RechargeSubscriptionIcon,
+            hideInSimpleMode: true
+          },
+          {
+            path: '/orders',
+            label: t('nav.myOrders'),
+            icon: OrderListIcon,
             hideInSimpleMode: true
           }
         ]
@@ -517,12 +586,21 @@ const personalNavItems = computed((): NavItem[] => {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-    ...(appStore.cachedPublicSettings?.purchase_subscription_enabled
+    ...(appStore.cachedPublicSettings?.sora_client_enabled
+      ? [{ path: '/sora', label: t('nav.sora'), icon: SoraIcon }]
+      : []),
+    ...(appStore.cachedPublicSettings?.payment_enabled || appStore.cachedPublicSettings?.purchase_subscription_enabled
       ? [
           {
             path: '/purchase',
             label: t('nav.buySubscription'),
             icon: RechargeSubscriptionIcon,
+            hideInSimpleMode: true
+          },
+          {
+            path: '/orders',
+            label: t('nav.myOrders'),
+            icon: OrderListIcon,
             hideInSimpleMode: true
           }
         ]
@@ -569,6 +647,9 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
+    ...(adminSettingsStore.paymentEnabled
+      ? [{ path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon, hideInSimpleMode: true }]
+      : []),
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon }
   ]
 
