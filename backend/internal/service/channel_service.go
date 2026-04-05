@@ -197,10 +197,8 @@ func newEmptyChannelCache() *channelCache {
 }
 
 // expandPricingToCache 将渠道的模型定价展开到缓存（按分组+平台维度）。
-// antigravity 平台同时服务 Claude 和 Gemini 模型，需匹配 anthropic/gemini 的定价条目。
-// 缓存 key 使用定价条目的原始平台（pricing.Platform），而非分组平台，
-// 避免跨平台同名模型（如 anthropic 和 gemini 都有 "model-x"）互相覆盖。
-// 查找时通过 lookupPricingAcrossPlatforms() 依次尝试所有匹配平台。
+// 各平台严格独立：antigravity 分组只匹配 antigravity 定价，不会匹配 anthropic/gemini 的定价。
+// 查找时通过 lookupPricingAcrossPlatforms() 在本平台内查找。
 func expandPricingToCache(cache *channelCache, ch *Channel, gid int64, platform string) {
 	for j := range ch.ModelPricing {
 		pricing := &ch.ModelPricing[j]
@@ -226,8 +224,7 @@ func expandPricingToCache(cache *channelCache, ch *Channel, gid int64, platform 
 }
 
 // expandMappingToCache 将渠道的模型映射展开到缓存（按分组+平台维度）。
-// antigravity 平台同时服务 Claude 和 Gemini 模型。
-// 缓存 key 使用映射条目的原始平台（mappingPlatform），避免跨平台同名映射覆盖。
+// 各平台严格独立：antigravity 分组只匹配 antigravity 映射。
 func expandMappingToCache(cache *channelCache, ch *Channel, gid int64, platform string) {
 	for _, mappingPlatform := range matchingPlatforms(platform) {
 		platformMapping, ok := ch.ModelMapping[mappingPlatform]
@@ -311,23 +308,14 @@ func (s *ChannelService) buildCache(ctx context.Context) (*channelCache, error) 
 // invalidateCache 使缓存失效，让下次读取时自然重建
 
 // isPlatformPricingMatch 判断定价条目的平台是否匹配分组平台。
-// antigravity 平台同时服务 Claude（anthropic）和 Gemini（gemini）模型，
-// 因此 antigravity 分组应匹配 anthropic 和 gemini 的定价条目。
+// 各平台（antigravity / anthropic / gemini / openai）严格独立，不跨平台匹配。
 func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
-	if groupPlatform == pricingPlatform {
-		return true
-	}
-	if groupPlatform == PlatformAntigravity {
-		return pricingPlatform == PlatformAnthropic || pricingPlatform == PlatformGemini
-	}
-	return false
+	return groupPlatform == pricingPlatform
 }
 
-// matchingPlatforms 返回分组平台对应的所有可匹配平台列表。
+// matchingPlatforms 返回分组平台对应的可匹配平台列表。
+// 各平台严格独立，只返回自身。
 func matchingPlatforms(groupPlatform string) []string {
-	if groupPlatform == PlatformAntigravity {
-		return []string{PlatformAntigravity, PlatformAnthropic, PlatformGemini}
-	}
 	return []string{groupPlatform}
 }
 func (s *ChannelService) invalidateCache() {
@@ -364,10 +352,8 @@ func (c *channelCache) matchWildcardMapping(groupID int64, platform, modelLower 
 	return ""
 }
 
-// lookupPricingAcrossPlatforms 在所有匹配平台中查找模型定价。
-// antigravity 分组的缓存 key 使用定价条目的原始平台，因此查找时需依次尝试
-// matchingPlatforms() 返回的所有平台（antigravity → anthropic → gemini），
-// 返回第一个命中的结果。非 antigravity 平台只尝试自身。
+// lookupPricingAcrossPlatforms 在分组平台内查找模型定价。
+// 各平台严格独立，只在本平台内查找（先精确匹配，再通配符）。
 func lookupPricingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatform, modelLower string) *ChannelModelPricing {
 	for _, p := range matchingPlatforms(groupPlatform) {
 		key := channelModelKey{groupID: groupID, platform: p, model: modelLower}
@@ -384,7 +370,7 @@ func lookupPricingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatf
 	return nil
 }
 
-// lookupMappingAcrossPlatforms 在所有匹配平台中查找模型映射。
+// lookupMappingAcrossPlatforms 在分组平台内查找模型映射。
 // 逻辑与 lookupPricingAcrossPlatforms 相同：先精确查找，再通配符。
 func lookupMappingAcrossPlatforms(cache *channelCache, groupID int64, groupPlatform, modelLower string) string {
 	for _, p := range matchingPlatforms(groupPlatform) {
@@ -442,8 +428,7 @@ func (s *ChannelService) lookupGroupChannel(ctx context.Context, groupID int64) 
 }
 
 // GetChannelModelPricing 获取指定分组+模型的渠道定价（热路径 O(1)）。
-// antigravity 分组依次尝试所有匹配平台（antigravity → anthropic → gemini），
-// 确保跨平台同名模型各自独立匹配。
+// 各平台严格独立，只在本平台内查找定价。
 func (s *ChannelService) GetChannelModelPricing(ctx context.Context, groupID int64, model string) *ChannelModelPricing {
 	lk, err := s.lookupGroupChannel(ctx, groupID)
 	if err != nil {
@@ -524,7 +509,7 @@ func resolveMapping(lk *channelLookup, groupID int64, model string) ChannelMappi
 }
 
 // checkRestricted 基于已查找的渠道信息检查模型是否被限制。
-// antigravity 分组依次尝试所有匹配平台的定价列表。
+// 只在本平台的定价列表中查找。
 func checkRestricted(lk *channelLookup, groupID int64, model string) bool {
 	if !lk.channel.RestrictModels {
 		return false
