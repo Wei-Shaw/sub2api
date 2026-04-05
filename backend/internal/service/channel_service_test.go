@@ -1932,8 +1932,8 @@ func TestIsPlatformPricingMatch(t *testing.T) {
 		pricingPlatform string
 		want            bool
 REDACTED{
-		{"antigravity matches anthropic", PlatformAntigravity, PlatformAnthropic, trueREDACTED,
-		{"antigravity matches gemini", PlatformAntigravity, PlatformGemini, trueREDACTED,
+		{"antigravity does NOT match anthropic", PlatformAntigravity, PlatformAnthropic, falseREDACTED,
+		{"antigravity does NOT match gemini", PlatformAntigravity, PlatformGemini, falseREDACTED,
 		{"antigravity matches antigravity", PlatformAntigravity, PlatformAntigravity, trueREDACTED,
 		{"antigravity does NOT match openai", PlatformAntigravity, PlatformOpenAI, falseREDACTED,
 		{"anthropic matches anthropic", PlatformAnthropic, PlatformAnthropic, trueREDACTED,
@@ -1963,7 +1963,7 @@ func TestMatchingPlatforms(t *testing.T) {
 		groupPlatform string
 		want          []string
 REDACTED{
-		{"antigravity returns all three", PlatformAntigravity, []string{PlatformAntigravity, PlatformAnthropic, PlatformGeminiREDACTEDREDACTED,
+		{"antigravity returns itself only", PlatformAntigravity, []string{PlatformAntigravityREDACTEDREDACTED,
 		{"anthropic returns itself", PlatformAnthropic, []string{PlatformAnthropicREDACTEDREDACTED,
 		{"gemini returns itself", PlatformGemini, []string{PlatformGeminiREDACTEDREDACTED,
 		{"openai returns itself", PlatformOpenAI, []string{PlatformOpenAIREDACTEDREDACTED,
@@ -1978,12 +1978,12 @@ REDACTED
 REDACTED
 
 // ===========================================================================
-// 9. Antigravity cross-platform channel pricing
+// 9. Antigravity platform isolation — no cross-platform pricing leakage
 // ===========================================================================
 
-func TestGetChannelModelPricing_AntigravityCrossPlatform(t *testing.T) {
+func TestGetChannelModelPricing_AntigravityDoesNotSeeCrossPlatformPricing(t *testing.T) {
 	// Channel has anthropic pricing for claude-opus-4-6.
-	// Group 10 is antigravity — should see the anthropic pricing.
+	// Group 10 is antigravity — should NOT see the anthropic pricing.
 	ch := Channel{
 		ID:       1,
 		Status:   StatusActive,
@@ -1996,9 +1996,7 @@ REDACTED
 	svc := newTestChannelService(repo)
 
 	result := svc.GetChannelModelPricing(context.Background(), 10, "claude-opus-4-6")
-	require.NotNil(t, result, "antigravity group should see anthropic pricing")
-	require.Equal(t, int64(100), result.ID)
-	require.InDelta(t, 15e-6, *result.InputPrice, 1e-12)
+	require.Nil(t, result, "antigravity group should NOT see anthropic-platform pricing")
 REDACTED
 
 func TestGetChannelModelPricing_AnthropicCannotSeeAntigravityPricing(t *testing.T) {
@@ -2020,12 +2018,12 @@ REDACTED
 REDACTED
 
 // ===========================================================================
-// 10. Antigravity cross-platform model mapping
+// 10. Antigravity platform isolation — no cross-platform model mapping
 // ===========================================================================
 
-func TestResolveChannelMapping_AntigravityCrossPlatform(t *testing.T) {
+func TestResolveChannelMapping_AntigravityDoesNotSeeCrossPlatformMapping(t *testing.T) {
 	// Channel has anthropic model mapping: claude-opus-4-5 → claude-opus-4-6.
-	// Group 10 is antigravity — should apply the anthropic mapping.
+	// Group 10 is antigravity — should NOT apply the anthropic mapping.
 	ch := Channel{
 		ID:       1,
 		Status:   StatusActive,
@@ -2040,18 +2038,17 @@ REDACTED
 	svc := newTestChannelService(repo)
 
 	result := svc.ResolveChannelMapping(context.Background(), 10, "claude-opus-4-5")
-	require.True(t, result.Mapped, "antigravity group should apply anthropic mapping")
-	require.Equal(t, "claude-opus-4-6", result.MappedModel)
-	require.Equal(t, int64(1), result.ChannelID)
+	require.False(t, result.Mapped, "antigravity group should NOT apply anthropic mapping")
+	require.Equal(t, "claude-opus-4-5", result.MappedModel)
 REDACTED
 
 // ===========================================================================
-// 11. Antigravity cross-platform same-name model — no overwrite
+// 11. Antigravity platform isolation — same-name model across platforms
 // ===========================================================================
 
-func TestGetChannelModelPricing_AntigravitySameModelDifferentPlatforms(t *testing.T) {
+func TestGetChannelModelPricing_AntigravityDoesNotSeeSameModelFromOtherPlatforms(t *testing.T) {
 	// anthropic 和 gemini 都定义了同名模型 "shared-model"，价格不同。
-	// antigravity 分组应能分别查到各自的定价，而不是后者覆盖前者。
+	// antigravity 分组不应看到任何一个（各平台严格独立）。
 	ch := Channel{
 		ID:       1,
 		Status:   StatusActive,
@@ -2064,17 +2061,13 @@ REDACTED
 	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAntigravityREDACTED)
 	svc := newTestChannelService(repo)
 
-	// antigravity 分组查找 "shared-model"：应命中第一个匹配（按 matchingPlatforms 顺序 antigravity→anthropic→gemini）
 	result := svc.GetChannelModelPricing(context.Background(), 10, "shared-model")
-	require.NotNil(t, result, "antigravity group should find pricing for shared-model")
-	// 第一个匹配应该是 anthropic（matchingPlatforms 返回 [antigravity, anthropic, gemini]）
-	require.Equal(t, int64(200), result.ID)
-	require.InDelta(t, 10e-6, *result.InputPrice, 1e-12)
+	require.Nil(t, result, "antigravity group should NOT see anthropic/gemini-platform pricing")
 REDACTED
 
-func TestGetChannelModelPricing_AntigravityOnlyGeminiPricing(t *testing.T) {
+func TestGetChannelModelPricing_AntigravityDoesNotSeeGeminiOnlyPricing(t *testing.T) {
 	// 只有 gemini 平台定义了模型 "gemini-model"。
-	// antigravity 分组应能查到 gemini 的定价。
+	// antigravity 分组不应看到 gemini 的定价。
 	ch := Channel{
 		ID:       1,
 		Status:   StatusActive,
@@ -2087,14 +2080,12 @@ REDACTED
 	svc := newTestChannelService(repo)
 
 	result := svc.GetChannelModelPricing(context.Background(), 10, "gemini-model")
-	require.NotNil(t, result, "antigravity group should find gemini pricing")
-	require.Equal(t, int64(300), result.ID)
-	require.InDelta(t, 2e-6, *result.InputPrice, 1e-12)
+	require.Nil(t, result, "antigravity group should NOT see gemini-platform pricing")
 REDACTED
 
-func TestGetChannelModelPricing_AntigravityWildcardCrossPlatformNoOverwrite(t *testing.T) {
-	// anthropic 和 gemini 都有 "shared-*" 通配符定价，价格不同。
-	// antigravity 分组查找 "shared-model" 应命中第一个匹配而非被覆盖。
+func TestGetChannelModelPricing_AntigravityDoesNotSeeWildcardFromOtherPlatforms(t *testing.T) {
+	// anthropic 和 gemini 都有 "shared-*" 通配符定价。
+	// antigravity 分组不应命中任何一个。
 	ch := Channel{
 		ID:       1,
 		Status:   StatusActive,
@@ -2108,15 +2099,12 @@ REDACTED
 	svc := newTestChannelService(repo)
 
 	result := svc.GetChannelModelPricing(context.Background(), 10, "shared-model")
-	require.NotNil(t, result, "antigravity group should find wildcard pricing for shared-model")
-	// 两个通配符都存在，应命中 anthropic 的（matchingPlatforms 顺序）
-	require.Equal(t, int64(400), result.ID)
-	require.InDelta(t, 10e-6, *result.InputPrice, 1e-12)
+	require.Nil(t, result, "antigravity group should NOT see wildcard pricing from other platforms")
 REDACTED
 
-func TestResolveChannelMapping_AntigravitySameModelDifferentPlatforms(t *testing.T) {
+func TestResolveChannelMapping_AntigravityDoesNotSeeMappingFromOtherPlatforms(t *testing.T) {
 	// anthropic 和 gemini 都定义了同名模型映射 "alias" → 不同目标。
-	// antigravity 分组应命中 anthropic 的映射（按 matchingPlatforms 顺序）。
+	// antigravity 分组不应命中任何一个。
 	ch := Channel{
 		ID:       1,
 		Status:   StatusActive,
@@ -2130,13 +2118,13 @@ REDACTED
 	svc := newTestChannelService(repo)
 
 	result := svc.ResolveChannelMapping(context.Background(), 10, "alias")
-	require.True(t, result.Mapped)
-	require.Equal(t, "anthropic-target", result.MappedModel)
+	require.False(t, result.Mapped, "antigravity group should NOT see mapping from other platforms")
+	require.Equal(t, "alias", result.MappedModel)
 REDACTED
 
-func TestCheckRestricted_AntigravitySameModelDifferentPlatforms(t *testing.T) {
+func TestCheckRestricted_AntigravityDoesNotSeeModelsFromOtherPlatforms(t *testing.T) {
 	// anthropic 和 gemini 都定义了同名模型 "shared-model"。
-	// antigravity 分组启用了 RestrictModels，"shared-model" 应不被限制。
+	// antigravity 分组启用了 RestrictModels，"shared-model" 应被限制（各平台独立）。
 	ch := Channel{
 		ID:             1,
 		Status:         StatusActive,
@@ -2151,11 +2139,37 @@ REDACTED
 	svc := newTestChannelService(repo)
 
 	restricted := svc.IsModelRestricted(context.Background(), 10, "shared-model")
-	require.False(t, restricted, "shared-model should not be restricted for antigravity")
+	require.True(t, restricted, "shared-model from other platforms should be restricted for antigravity")
 
-	// 未定义的模型应被限制
 	restricted = svc.IsModelRestricted(context.Background(), 10, "unknown-model")
 	require.True(t, restricted, "unknown-model should be restricted for antigravity")
+REDACTED
+
+func TestGetChannelModelPricing_AntigravityOwnPricingWorks(t *testing.T) {
+	// antigravity 平台自己配置的定价应正常生效（覆盖 Claude 和 Gemini 模型）。
+	ch := Channel{
+		ID:       1,
+		Status:   StatusActive,
+		GroupIDs: []int64{10REDACTED,
+		ModelPricing: []ChannelModelPricing{
+			{ID: 600, Platform: PlatformAntigravity, Models: []string{"claude-*"REDACTED, InputPrice: testPtrFloat64(15e-6)REDACTED,
+			{ID: 601, Platform: PlatformAntigravity, Models: []string{"gemini-*"REDACTED, InputPrice: testPtrFloat64(2e-6)REDACTED,
+	REDACTED,
+REDACTED
+	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAntigravityREDACTED)
+	svc := newTestChannelService(repo)
+
+	// Claude 模型匹配 antigravity 定价
+	result := svc.GetChannelModelPricing(context.Background(), 10, "claude-sonnet-4")
+	require.NotNil(t, result)
+	require.Equal(t, int64(600), result.ID)
+	require.InDelta(t, 15e-6, *result.InputPrice, 1e-12)
+
+	// Gemini 模型匹配 antigravity 定价
+	result = svc.GetChannelModelPricing(context.Background(), 10, "gemini-2.5-flash")
+	require.NotNil(t, result)
+	require.Equal(t, int64(601), result.ID)
+	require.InDelta(t, 2e-6, *result.InputPrice, 1e-12)
 REDACTED
 
 func TestGetChannelModelPricing_NonAntigravityUnaffected(t *testing.T) {
