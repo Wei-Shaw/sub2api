@@ -150,10 +150,8 @@ func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, load
 }
 
 // Start performs one-time startup tasks.
-func (s *PaymentService) Start(ctx context.Context) {
-	if err := s.configService.MigrateLegacyPurchaseURL(ctx); err != nil {
-		slog.Error("[payment] failed to migrate legacy purchase URL", "error", err)
-	}
+// Legacy purchase_subscription_url migration is handled by SQL migration 096.
+func (s *PaymentService) Start(_ context.Context) {
 }
 
 func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest) (*CreateOrderResponse, error) {
