@@ -363,7 +363,6 @@ func TestCalculateImageCost(t *testing.T) {
 	require.InDelta(t, 0.134*3, cost.ActualCost, 1e-10)
 }
 
-
 func TestIsModelSupported(t *testing.T) {
 	svc := newTestBillingService()
 
