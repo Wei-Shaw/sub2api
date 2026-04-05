@@ -11,8 +11,7 @@ vi.mock('@/api/admin', () => ({
     accounts: {
       generateAuthUrl: vi.fn(),
       exchangeCode: vi.fn(),
-      refreshOpenAIToken: vi.fn(),
-      validateSoraSessionToken: vi.fn()
+      refreshOpenAIToken: vi.fn()
     REDACTED
   REDACTED
 REDACTED))
@@ -21,15 +20,15 @@ import { useOpenAIOAuth REDACTED from '@/composables/useOpenAIOAuth'
 
 describe('useOpenAIOAuth.buildCredentials', () => {
   it('should keep client_id when token response contains it', () => {
-    const oauth = useOpenAIOAuth({ platform: 'sora' REDACTED)
+    const oauth = useOpenAIOAuth({ platform: 'openai' REDACTED)
     const creds = oauth.buildCredentials({
       access_token: 'at',
       refresh_token: 'rt',
-      client_id: 'app_sora_client',
+      client_id: 'app_test_client',
       expires_at: 1700000000
     REDACTED)
 
-    expect(creds.client_id).toBe('app_sora_client')
+    expect(creds.client_id).toBe('app_test_client')
     expect(creds.access_token).toBe('at')
     expect(creds.refresh_token).toBe('rt')
   REDACTED)

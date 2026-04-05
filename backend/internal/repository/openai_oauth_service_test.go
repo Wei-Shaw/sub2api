@@ -158,30 +158,6 @@ REDACTED))
 	require.Equal(s.T(), []string{openai.ClientIDREDACTED, seenClientIDs)
 REDACTED
 
-// TestRefreshToken_UseSoraClientID 验证显式传入 Sora ClientID 时直接使用，不回退。
-func (s *OpenAIOAuthServiceSuite) TestRefreshToken_UseSoraClientID() {
-	var seenClientIDs []string
-	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := r.ParseForm(); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-	REDACTED
-		clientID := r.PostForm.Get("client_id")
-		seenClientIDs = append(seenClientIDs, clientID)
-		if clientID == openai.SoraClientID {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(w, `{"access_token":"at-sora","refresh_token":"rt-sora","token_type":"bearer","expires_in":3600REDACTED`)
-			return
-	REDACTED
-		w.WriteHeader(http.StatusBadRequest)
-REDACTED))
-
-	resp, err := s.svc.RefreshTokenWithClientID(s.ctx, "rt", "", openai.SoraClientID)
-	require.NoError(s.T(), err, "RefreshTokenWithClientID")
-	require.Equal(s.T(), "at-sora", resp.AccessToken)
-	require.Equal(s.T(), []string{openai.SoraClientIDREDACTED, seenClientIDs)
-REDACTED
-
 func (s *OpenAIOAuthServiceSuite) TestRefreshToken_UseProvidedClientID() {
 	const customClientID = "custom-client-id"
 	var seenClientIDs []string
@@ -276,7 +252,7 @@ REDACTED
 REDACTED
 
 func (s *OpenAIOAuthServiceSuite) TestExchangeCode_UseProvidedClientID() {
-	wantClientID := openai.SoraClientID
+	wantClientID := "custom-exchange-client-id"
 	errCh := make(chan string, 1)
 	s.setupServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()

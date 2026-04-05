@@ -27,7 +27,7 @@ REDACTED
 	require.Contains(t, result.Summary, "挑战 1 项")
 REDACTED
 
-func TestRunProxyQualityTarget_SoraChallenge(t *testing.T) {
+func TestRunProxyQualityTarget_CloudflareChallenge(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.Header().Set("cf-ray", "test-ray-123")
@@ -37,7 +37,7 @@ REDACTED))
 	defer server.Close()
 
 	target := proxyQualityTarget{
-		Target: "sora",
+		Target: "openai",
 		URL:    server.URL,
 		Method: http.MethodGet,
 		AllowedStatuses: map[int]struct{REDACTED{

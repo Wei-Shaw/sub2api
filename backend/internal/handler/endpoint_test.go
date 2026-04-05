@@ -27,11 +27,10 @@ REDACTED{
 		{"/v1/responses", EndpointResponsesREDACTED,
 		{"/v1beta/models", EndpointGeminiModelsREDACTED,
 
-		// Prefixed paths (antigravity, openai, sora).
+		// Prefixed paths (antigravity, openai).
 		{"/antigravity/v1/messages", EndpointMessagesREDACTED,
 		{"/openai/v1/responses", EndpointResponsesREDACTED,
 		{"/openai/v1/responses/compact", EndpointResponsesREDACTED,
-		{"/sora/v1/chat/completions", EndpointChatCompletionsREDACTED,
 		{"/antigravity/v1beta/models/gemini:generateContent", EndpointGeminiModelsREDACTED,
 
 		// Gin route patterns with wildcards.
@@ -67,9 +66,6 @@ REDACTED{
 
 		// Gemini.
 		{"gemini models", EndpointGeminiModels, "/v1beta/models/gemini:gen", service.PlatformGemini, EndpointGeminiModelsREDACTED,
-
-		// Sora.
-		{"sora completions", EndpointChatCompletions, "/sora/v1/chat/completions", service.PlatformSora, EndpointChatCompletionsREDACTED,
 
 		// OpenAI — always /v1/responses.
 		{"openai responses root", EndpointResponses, "/v1/responses", service.PlatformOpenAI, EndpointResponsesREDACTED,

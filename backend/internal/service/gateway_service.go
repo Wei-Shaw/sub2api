@@ -60,13 +60,6 @@ const (
 	claudeMimicDebugInfoKey = "claude_mimic_debug_info"
 )
 
-// MediaType 媒体类型常量
-const (
-	MediaTypeImage  = "image"
-	MediaTypeVideo  = "video"
-	MediaTypePrompt = "prompt"
-)
-
 // ForceCacheBillingContextKey 强制缓存计费上下文键
 // 用于粘性会话切换时，将 input_tokens 转为 cache_read_input_tokens 计费
 type forceCacheBillingKeyType struct{REDACTED
@@ -510,10 +503,6 @@ type ForwardResult struct {
 	// 图片生成计费字段（图片生成模型使用）
 	ImageCount int    // 生成的图片数量
 	ImageSize  string // 图片尺寸 "1K", "2K", "4K"
-
-	// Sora 媒体字段
-	MediaType string // image / video / prompt
-	MediaURL  string // 生成后的媒体地址（可选）
 REDACTED
 
 // UpstreamFailoverError indicates an upstream error that should trigger account failover.
@@ -1341,18 +1330,17 @@ REDACTED
 	ctx = s.withWindowCostPrefetch(ctx, accounts)
 	ctx = s.withRPMPrefetch(ctx, accounts)
 
+	// 提前构建 accountByID（供 Layer 1 和 Layer 1.5 使用）
+	accountByID := make(map[int64]*Account, len(accounts))
+	for i := range accounts {
+		accountByID[accounts[i].ID] = &accounts[i]
+REDACTED
 	isExcluded := func(accountID int64) bool {
 		if excludedIDs == nil {
 			return false
 	REDACTED
 		_, excluded := excludedIDs[accountID]
 		return excluded
-REDACTED
-
-	// 提前构建 accountByID（供 Layer 1 和 Layer 1.5 使用）
-	accountByID := make(map[int64]*Account, len(accounts))
-	for i := range accounts {
-		accountByID[accounts[i].ID] = &accounts[i]
 REDACTED
 
 	// 获取模型路由配置（仅 anthropic 平台）
@@ -1442,24 +1430,19 @@ REDACTED
 				if containsInt64(routingAccountIDs, stickyAccountID) && !isExcluded(stickyAccountID) {
 					// 粘性账号在路由列表中，优先使用
 					if stickyAccount, ok := accountByID[stickyAccountID]; ok {
-						var stickyCacheMissReason string
-
-						gatePass := s.isAccountSchedulableForSelection(stickyAccount) &&
+						if s.isAccountSchedulableForSelection(stickyAccount) &&
 							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
 							(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel)) &&
 							s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
 							s.isAccountSchedulableForQuota(stickyAccount) &&
-							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true)
+							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true) &&
 
-						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
-
-						if rpmPass { // 粘性会话窗口费用+RPM 检查
+							s.isAccountSchedulableForRPM(ctx, stickyAccount, true) { // 粘性会话窗口费用+RPM 检查
 							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
 							if err == nil && result.Acquired {
 								// 会话数量限制检查
 								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
 									result.ReleaseFunc() // 释放槽位
-									stickyCacheMissReason = "session_limit"
 									// 继续到负载感知选择
 							REDACTED else {
 									if s.debugModelRoutingEnabled() {
@@ -1473,49 +1456,27 @@ REDACTED
 							REDACTED
 						REDACTED
 
-							if stickyCacheMissReason == "" {
-								waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, stickyAccountID)
-								if waitingCount < cfg.StickySessionMaxWaiting {
-									// 会话数量限制检查（等待计划也需要占用会话配额）
-									if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
-										stickyCacheMissReason = "session_limit"
-										// 会话限制已满，继续到负载感知选择
-								REDACTED else {
-										return &AccountSelectionResult{
-											Account: stickyAccount,
-											WaitPlan: &AccountWaitPlan{
-												AccountID:      stickyAccountID,
-												MaxConcurrency: stickyAccount.Concurrency,
-												Timeout:        cfg.StickySessionWaitTimeout,
-												MaxWaiting:     cfg.StickySessionMaxWaiting,
-										REDACTED,
-									REDACTED, nil
-								REDACTED
+							waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, stickyAccountID)
+							if waitingCount < cfg.StickySessionMaxWaiting {
+								// 会话数量限制检查（等待计划也需要占用会话配额）
+								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
+									// 会话限制已满，继续到负载感知选择
 							REDACTED else {
-									stickyCacheMissReason = "wait_queue_full"
+									return &AccountSelectionResult{
+										Account: stickyAccount,
+										WaitPlan: &AccountWaitPlan{
+											AccountID:      stickyAccountID,
+											MaxConcurrency: stickyAccount.Concurrency,
+											Timeout:        cfg.StickySessionWaitTimeout,
+											MaxWaiting:     cfg.StickySessionMaxWaiting,
+									REDACTED,
+								REDACTED, nil
 							REDACTED
 						REDACTED
 							// 粘性账号槽位满且等待队列已满，继续使用负载感知选择
-					REDACTED else if !gatePass {
-							stickyCacheMissReason = "gate_check"
-					REDACTED else {
-							stickyCacheMissReason = "rpm_red"
-					REDACTED
-
-						// 记录粘性缓存未命中的结构化日志
-						if stickyCacheMissReason != "" {
-							baseRPM := stickyAccount.GetBaseRPM()
-							var currentRPM int
-							if count, ok := rpmFromPrefetchContext(ctx, stickyAccount.ID); ok {
-								currentRPM = count
-						REDACTED
-							logger.LegacyPrintf("service.gateway", "[StickyCacheMiss] reason=%s account_id=%d session=%s current_rpm=%d base_rpm=%d",
-								stickyCacheMissReason, stickyAccountID, shortSessionHash(sessionHash), currentRPM, baseRPM)
 					REDACTED
 				REDACTED else {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
-						logger.LegacyPrintf("service.gateway", "[StickyCacheMiss] reason=account_cleared account_id=%d session=%s current_rpm=0 base_rpm=0",
-							stickyAccountID, shortSessionHash(sessionHash))
 				REDACTED
 			REDACTED
 		REDACTED
@@ -1621,7 +1582,6 @@ REDACTED
 			account, ok := accountByID[accountID]
 			if ok {
 				// 检查账户是否需要清理粘性会话绑定
-				// Check if the account needs sticky session cleanup
 				clearSticky := shouldClearStickySession(account, requestedModel)
 				if clearSticky {
 					_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
@@ -1637,7 +1597,6 @@ REDACTED
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
-						// Session count limit check
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 							result.ReleaseFunc() // 释放槽位，继续到 Layer 2
 					REDACTED else {
@@ -1652,10 +1611,8 @@ REDACTED
 					waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
 					if waitingCount < cfg.StickySessionMaxWaiting {
 						// 会话数量限制检查（等待计划也需要占用会话配额）
-						// Session count limit check (wait plan also requires session quota)
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 							// 会话限制已满，继续到 Layer 2
-							// Session limit full, continue to Layer 2
 					REDACTED else {
 							return &AccountSelectionResult{
 								Account: account,
@@ -1971,9 +1928,6 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
-	if platform == PlatformSora {
-		return s.listSoraSchedulableAccounts(ctx, groupID)
-REDACTED
 	if s.schedulerSnapshot != nil {
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		if err == nil {
@@ -2070,53 +2024,6 @@ REDACTED
 	return accounts, useMixed, nil
 REDACTED
 
-func (s *GatewayService) listSoraSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, bool, error) {
-	const useMixed = false
-
-	var accounts []Account
-	var err error
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		accounts, err = s.accountRepo.ListByPlatform(ctx, PlatformSora)
-REDACTED else if groupID != nil {
-		accounts, err = s.accountRepo.ListByGroup(ctx, *groupID)
-REDACTED else {
-		accounts, err = s.accountRepo.ListByPlatform(ctx, PlatformSora)
-REDACTED
-	if err != nil {
-		slog.Debug("account_scheduling_list_failed",
-			"group_id", derefGroupID(groupID),
-			"platform", PlatformSora,
-			"error", err)
-		return nil, useMixed, err
-REDACTED
-
-	filtered := make([]Account, 0, len(accounts))
-	for _, acc := range accounts {
-		if acc.Platform != PlatformSora {
-			continue
-	REDACTED
-		if !s.isSoraAccountSchedulable(&acc) {
-			continue
-	REDACTED
-		filtered = append(filtered, acc)
-REDACTED
-	slog.Debug("account_scheduling_list_sora",
-		"group_id", derefGroupID(groupID),
-		"platform", PlatformSora,
-		"raw_count", len(accounts),
-		"filtered_count", len(filtered))
-	for _, acc := range filtered {
-		slog.Debug("account_scheduling_account_detail",
-			"account_id", acc.ID,
-			"name", acc.Name,
-			"platform", acc.Platform,
-			"type", acc.Type,
-			"status", acc.Status,
-			"tls_fingerprint", acc.IsTLSFingerprintEnabled())
-REDACTED
-	return filtered, useMixed, nil
-REDACTED
-
 // IsSingleAntigravityAccountGroup 检查指定分组是否只有一个 antigravity 平台的可调度账号。
 // 用于 Handler 层在首次请求时提前设置 SingleAccountRetry context，
 // 避免单账号分组收到 503 时错误地设置模型限流标记导致后续请求连续快速失败。
@@ -2141,32 +2048,9 @@ REDACTED
 	return account.Platform == platform
 REDACTED
 
-func (s *GatewayService) isSoraAccountSchedulable(account *Account) bool {
-	return s.soraUnschedulableReason(account) == ""
-REDACTED
-
-func (s *GatewayService) soraUnschedulableReason(account *Account) string {
-	if account == nil {
-		return "account_nil"
-REDACTED
-	if account.Status != StatusActive {
-		return fmt.Sprintf("status=%s", account.Status)
-REDACTED
-	if !account.Schedulable {
-		return "schedulable=false"
-REDACTED
-	if account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) {
-		return fmt.Sprintf("temp_unschedulable_until=%s", account.TempUnschedulableUntil.UTC().Format(time.RFC3339))
-REDACTED
-	return ""
-REDACTED
-
 func (s *GatewayService) isAccountSchedulableForSelection(account *Account) bool {
 	if account == nil {
 		return false
-REDACTED
-	if account.Platform == PlatformSora {
-		return s.isSoraAccountSchedulable(account)
 REDACTED
 	return account.IsSchedulable()
 REDACTED
@@ -2174,12 +2058,6 @@ REDACTED
 func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Context, account *Account, requestedModel string) bool {
 	if account == nil {
 		return false
-REDACTED
-	if account.Platform == PlatformSora {
-		if !s.isSoraAccountSchedulable(account) {
-			return false
-	REDACTED
-		return account.GetRateLimitRemainingTimeWithContext(ctx, requestedModel) <= 0
 REDACTED
 	return account.IsSchedulableForModelWithContext(ctx, requestedModel)
 REDACTED
@@ -2795,12 +2673,6 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	preferOAuth := platform == PlatformGemini
 	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, platform)
 
-	// require_privacy_set: 获取分组信息
-	var schedGroup *Group
-	if groupID != nil && s.groupRepo != nil {
-		schedGroup, _ = s.groupRepo.GetByID(ctx, *groupID)
-REDACTED
-
 	var accounts []Account
 	accountsLoaded := false
 
@@ -2824,7 +2696,7 @@ REDACTED
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					REDACTED
-						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && account.Platform == platform && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 						REDACTED
@@ -2870,12 +2742,6 @@ REDACTED
 			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 			// avoid selecting accounts that were recently rate-limited/overloaded.
 			if !s.isAccountSchedulableForSelection(acc) {
-				continue
-		REDACTED
-			// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
-			if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
-				_ = s.accountRepo.SetError(ctx, acc.ID,
-					fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 				continue
 		REDACTED
 			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
@@ -2983,12 +2849,6 @@ REDACTED
 		if !s.isAccountSchedulableForSelection(acc) {
 			continue
 	REDACTED
-		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
-		if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
-			_ = s.accountRepo.SetError(ctx, acc.ID,
-				fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
-			continue
-	REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
 			continue
 	REDACTED
@@ -3055,12 +2915,6 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	preferOAuth := nativePlatform == PlatformGemini
 	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, nativePlatform)
 
-	// require_privacy_set: 获取分组信息
-	var schedGroup *Group
-	if groupID != nil && s.groupRepo != nil {
-		schedGroup, _ = s.groupRepo.GetByID(ctx, *groupID)
-REDACTED
-
 	var accounts []Account
 	accountsLoaded := false
 
@@ -3126,12 +2980,6 @@ REDACTED
 			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 			// avoid selecting accounts that were recently rate-limited/overloaded.
 			if !s.isAccountSchedulableForSelection(acc) {
-				continue
-		REDACTED
-			// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
-			if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
-				_ = s.accountRepo.SetError(ctx, acc.ID,
-					fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 				continue
 		REDACTED
 			// 过滤：原生平台直接通过，antigravity 需要启用混合调度
@@ -3203,7 +3051,7 @@ REDACTED
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 				REDACTED
-					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 							return account, nil
 					REDACTED
@@ -3227,7 +3075,6 @@ REDACTED
 	ctx = s.withRPMPrefetch(ctx, accounts)
 
 	// 3. 按优先级+最久未用选择（考虑模型支持和混合调度）
-	// needsUpstreamCheck 仅在主选择循环中使用；粘性会话命中时跳过此检查。
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 	var selected *Account
 	for i := range accounts {
@@ -3238,12 +3085,6 @@ REDACTED
 		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 		// avoid selecting accounts that were recently rate-limited/overloaded.
 		if !s.isAccountSchedulableForSelection(acc) {
-			continue
-	REDACTED
-		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
-		if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
-			_ = s.accountRepo.SetError(ctx, acc.ID,
-				fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 			continue
 	REDACTED
 		// 过滤：原生平台直接通过，antigravity 需要启用混合调度
@@ -3357,9 +3198,6 @@ func (s *GatewayService) logDetailedSelectionFailure(
 		stats.SampleMappingIDs,
 		stats.SampleRateLimitIDs,
 	)
-	if platform == PlatformSora {
-		s.logSoraSelectionFailureDetails(ctx, groupID, sessionHash, requestedModel, accounts, excludedIDs, allowMixedScheduling)
-REDACTED
 	return stats
 REDACTED
 
@@ -3417,9 +3255,6 @@ REDACTED
 REDACTED
 	if !s.isAccountSchedulableForSelection(acc) {
 		detail := "generic_unschedulable"
-		if acc.Platform == PlatformSora {
-			detail = s.soraUnschedulableReason(acc)
-	REDACTED
 		return selectionFailureDiagnosis{Category: "unschedulable", Detail: detailREDACTED
 REDACTED
 	if isPlatformFilteredForSelection(acc, platform, allowMixedScheduling) {
@@ -3444,57 +3279,7 @@ REDACTED
 	return selectionFailureDiagnosis{Category: "eligible"REDACTED
 REDACTED
 
-func (s *GatewayService) logSoraSelectionFailureDetails(
-	ctx context.Context,
-	groupID *int64,
-	sessionHash string,
-	requestedModel string,
-	accounts []Account,
-	excludedIDs map[int64]struct{REDACTED,
-	allowMixedScheduling bool,
-) {
-	const maxLines = 30
-	logged := 0
-
-	for i := range accounts {
-		if logged >= maxLines {
-			break
-	REDACTED
-		acc := &accounts[i]
-		diagnosis := s.diagnoseSelectionFailure(ctx, acc, requestedModel, PlatformSora, excludedIDs, allowMixedScheduling)
-		if diagnosis.Category == "eligible" {
-			continue
-	REDACTED
-		detail := diagnosis.Detail
-		if detail == "" {
-			detail = "-"
-	REDACTED
-		logger.LegacyPrintf(
-			"service.gateway",
-			"[SelectAccountDetailed:Sora] group_id=%v model=%s session=%s account_id=%d account_platform=%s category=%s detail=%s",
-			derefGroupID(groupID),
-			requestedModel,
-			shortSessionHash(sessionHash),
-			acc.ID,
-			acc.Platform,
-			diagnosis.Category,
-			detail,
-		)
-		logged++
-REDACTED
-	if len(accounts) > maxLines {
-		logger.LegacyPrintf(
-			"service.gateway",
-			"[SelectAccountDetailed:Sora] group_id=%v model=%s session=%s truncated=true total=%d logged=%d",
-			derefGroupID(groupID),
-			requestedModel,
-			shortSessionHash(sessionHash),
-			len(accounts),
-			logged,
-		)
-REDACTED
-REDACTED
-
+// GetAccessToken 获取账号凭证
 func isPlatformFilteredForSelection(acc *Account, platform string, allowMixedScheduling bool) bool {
 	if acc == nil {
 		return true
@@ -3573,12 +3358,13 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	REDACTED
 		return mapAntigravityModel(account, requestedModel) != ""
 REDACTED
-	if account.Platform == PlatformSora {
-		return s.isSoraModelSupportedByAccount(account, requestedModel)
-REDACTED
 	if account.IsBedrock() {
 		_, ok := ResolveBedrockModelID(account, requestedModel)
 		return ok
+REDACTED
+	// OpenAI 透传模式：仅替换认证，允许所有模型
+	if account.Platform == PlatformOpenAI && account.IsOpenAIPassthroughEnabled() {
+		return true
 REDACTED
 	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
 	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
@@ -3586,143 +3372,6 @@ REDACTED
 REDACTED
 	// 其他平台使用账户的模型支持检查
 	return account.IsModelSupported(requestedModel)
-REDACTED
-
-func (s *GatewayService) isSoraModelSupportedByAccount(account *Account, requestedModel string) bool {
-	if account == nil {
-		return false
-REDACTED
-	if strings.TrimSpace(requestedModel) == "" {
-		return true
-REDACTED
-
-	// 先走原始精确/通配符匹配。
-	mapping := account.GetModelMapping()
-	if len(mapping) == 0 || account.IsModelSupported(requestedModel) {
-		return true
-REDACTED
-
-	aliases := buildSoraModelAliases(requestedModel)
-	if len(aliases) == 0 {
-		return false
-REDACTED
-
-	hasSoraSelector := false
-	for pattern := range mapping {
-		if !isSoraModelSelector(pattern) {
-			continue
-	REDACTED
-		hasSoraSelector = true
-		if matchPatternAnyAlias(pattern, aliases) {
-			return true
-	REDACTED
-REDACTED
-
-	// 兼容旧账号：mapping 存在但未配置任何 Sora 选择器（例如只含 gpt-*），
-	// 此时不应误拦截 Sora 模型请求。
-	if !hasSoraSelector {
-		return true
-REDACTED
-
-	return false
-REDACTED
-
-func matchPatternAnyAlias(pattern string, aliases []string) bool {
-	normalizedPattern := strings.ToLower(strings.TrimSpace(pattern))
-	if normalizedPattern == "" {
-		return false
-REDACTED
-	for _, alias := range aliases {
-		if matchWildcard(normalizedPattern, alias) {
-			return true
-	REDACTED
-REDACTED
-	return false
-REDACTED
-
-func isSoraModelSelector(pattern string) bool {
-	p := strings.ToLower(strings.TrimSpace(pattern))
-	if p == "" {
-		return false
-REDACTED
-
-	switch {
-	case strings.HasPrefix(p, "sora"),
-		strings.HasPrefix(p, "gpt-image"),
-		strings.HasPrefix(p, "prompt-enhance"),
-		strings.HasPrefix(p, "sy_"):
-		return true
-REDACTED
-
-	return p == "video" || p == "image"
-REDACTED
-
-func buildSoraModelAliases(requestedModel string) []string {
-	modelID := strings.ToLower(strings.TrimSpace(requestedModel))
-	if modelID == "" {
-		return nil
-REDACTED
-
-	aliases := make([]string, 0, 8)
-	addAlias := func(value string) {
-		v := strings.ToLower(strings.TrimSpace(value))
-		if v == "" {
-			return
-	REDACTED
-		for _, existing := range aliases {
-			if existing == v {
-				return
-		REDACTED
-	REDACTED
-		aliases = append(aliases, v)
-REDACTED
-
-	addAlias(modelID)
-	cfg, ok := GetSoraModelConfig(modelID)
-	if ok {
-		addAlias(cfg.Model)
-		switch cfg.Type {
-		case "video":
-			addAlias("video")
-			addAlias("sora")
-			addAlias(soraVideoFamilyAlias(modelID))
-		case "image":
-			addAlias("image")
-			addAlias("gpt-image")
-		case "prompt_enhance":
-			addAlias("prompt-enhance")
-	REDACTED
-		return aliases
-REDACTED
-
-	switch {
-	case strings.HasPrefix(modelID, "sora"):
-		addAlias("video")
-		addAlias("sora")
-		addAlias(soraVideoFamilyAlias(modelID))
-	case strings.HasPrefix(modelID, "gpt-image"):
-		addAlias("image")
-		addAlias("gpt-image")
-	case strings.HasPrefix(modelID, "prompt-enhance"):
-		addAlias("prompt-enhance")
-	default:
-		return nil
-REDACTED
-
-	return aliases
-REDACTED
-
-func soraVideoFamilyAlias(modelID string) string {
-	switch {
-	case strings.HasPrefix(modelID, "sora2pro-hd"):
-		return "sora2pro-hd"
-	case strings.HasPrefix(modelID, "sora2pro"):
-		return "sora2pro"
-	case strings.HasPrefix(modelID, "sora2"):
-		return "sora2"
-	default:
-		return ""
-REDACTED
 REDACTED
 
 // GetAccessToken 获取账号凭证
@@ -7434,6 +7083,7 @@ REDACTED
 // RecordUsageInput 记录使用量的输入参数
 type RecordUsageInput struct {
 	Result             *ForwardResult
+	ParsedRequest      *ParsedRequest
 	APIKey             *APIKey
 	User               *User
 	Account            *Account
@@ -7745,12 +7395,10 @@ REDACTED
 
 // recordUsageOpts 内部选项，参数化 RecordUsage 与 RecordUsageWithLongContext 的差异点。
 type recordUsageOpts struct {
-	// Claude Max 策略所需的 ParsedRequest（可选，仅 Claude 路径传入）
+	// ParsedRequest（可选，仅 Claude 路径传入）
 	ParsedRequest *ParsedRequest
 
 	// EnableClaudePath 启用 Claude 路径特有逻辑：
-	// - Claude Max 缓存计费策略
-	// - Sora 媒体类型分支（image/video/prompt）
 	// - MediaType 字段写入使用日志
 	EnableClaudePath bool
 
@@ -7776,6 +7424,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		APIKeyService:      input.APIKeyService,
 		ChannelUsageFields: input.ChannelUsageFields,
 REDACTED, &recordUsageOpts{
+		ParsedRequest:    input.ParsedRequest,
 		EnableClaudePath: true,
 REDACTED)
 REDACTED
@@ -7841,8 +7490,6 @@ REDACTED
 
 // recordUsageCore 是 RecordUsage 和 RecordUsageWithLongContext 的统一实现。
 // opts 中的字段控制两者之间的差异行为：
-// - ParsedRequest != nil → 启用 Claude Max 缓存计费策略
-// - EnableSoraMedia → 启用 Sora MediaType 分支（image/video/prompt）
 // - LongContextThreshold > 0 → Token 计费回退走 CalculateCostWithLongContext
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput, opts *recordUsageOpts) error {
 	result := input.Result
@@ -7944,16 +7591,6 @@ func (s *GatewayService) calculateRecordUsageCost(
 	multiplier float64,
 	opts *recordUsageOpts,
 ) *CostBreakdown {
-	// Sora 媒体类型分支（仅 Claude 路径启用）
-	if opts.EnableClaudePath {
-		if result.MediaType == MediaTypeImage || result.MediaType == MediaTypeVideo {
-			return s.calculateSoraMediaCost(result, apiKey, billingModel, multiplier)
-	REDACTED
-		if result.MediaType == MediaTypePrompt {
-			return &CostBreakdown{REDACTED
-	REDACTED
-REDACTED
-
 	// 图片生成计费
 	if result.ImageCount > 0 {
 		return s.calculateImageCost(ctx, result, apiKey, billingModel, multiplier)
@@ -7961,28 +7598,6 @@ REDACTED
 
 	// Token 计费
 	return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, opts)
-REDACTED
-
-// calculateSoraMediaCost 计算 Sora 图片/视频的费用。
-func (s *GatewayService) calculateSoraMediaCost(
-	result *ForwardResult,
-	apiKey *APIKey,
-	billingModel string,
-	multiplier float64,
-) *CostBreakdown {
-	var soraConfig *SoraPriceConfig
-	if apiKey.Group != nil {
-		soraConfig = &SoraPriceConfig{
-			ImagePrice360:          apiKey.Group.SoraImagePrice360,
-			ImagePrice540:          apiKey.Group.SoraImagePrice540,
-			VideoPricePerRequest:   apiKey.Group.SoraVideoPricePerRequest,
-			VideoPricePerRequestHD: apiKey.Group.SoraVideoPricePerRequestHD,
-	REDACTED
-REDACTED
-	if result.MediaType == MediaTypeImage {
-		return s.billingService.CalculateSoraImageCost(result.ImageSize, result.ImageCount, soraConfig, multiplier)
-REDACTED
-	return s.billingService.CalculateSoraVideoCost(billingModel, soraConfig, multiplier)
 REDACTED
 
 // resolveChannelPricing 检查指定模型是否存在渠道级别定价。
@@ -8163,13 +7778,7 @@ REDACTED
 REDACTED
 
 // resolveBillingMode 根据计费结果和请求类型确定计费模式。
-// Sora 媒体类型自身已确定计费模式（由上游处理），返回 nil 跳过。
 func resolveBillingMode(opts *recordUsageOpts, result *ForwardResult, cost *CostBreakdown) *string {
-	isSoraMedia := opts.EnableClaudePath &&
-		(result.MediaType == MediaTypeImage || result.MediaType == MediaTypeVideo || result.MediaType == MediaTypePrompt)
-	if isSoraMedia {
-		return nil
-REDACTED
 	var mode string
 	switch {
 	case cost != nil && cost.BillingMode != "":
@@ -8183,9 +7792,6 @@ REDACTED
 REDACTED
 
 func resolveMediaType(opts *recordUsageOpts, result *ForwardResult) *string {
-	if opts.EnableClaudePath && strings.TrimSpace(result.MediaType) != "" {
-		return &result.MediaType
-REDACTED
 	return nil
 REDACTED
 
@@ -8291,6 +7897,19 @@ REDACTED
 		return false
 REDACTED
 	return ch.BillingModelSource == BillingModelSourceUpstream
+REDACTED
+
+// isStickyAccountUpstreamRestricted 检查粘性会话命中的账号是否受 upstream 渠道限制。
+// 合并 needsUpstreamChannelRestrictionCheck + isUpstreamModelRestrictedByChannel 两步调用，
+// 供 sticky session 条件链使用，避免内联多个函数调用导致行过长。
+func (s *GatewayService) isStickyAccountUpstreamRestricted(ctx context.Context, groupID *int64, account *Account, requestedModel string) bool {
+	if groupID == nil {
+		return false
+REDACTED
+	if !s.needsUpstreamChannelRestrictionCheck(ctx, groupID) {
+		return false
+REDACTED
+	return s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel)
 REDACTED
 
 // ForwardCountTokens 转发 count_tokens 请求到上游 API

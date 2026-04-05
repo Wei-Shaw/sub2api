@@ -380,7 +380,6 @@ func (s *stubAdminService) CheckProxyQuality(ctx context.Context, id int64) (*se
 			{Target: "openai", Status: "pass", HTTPStatus: 401REDACTED,
 			{Target: "anthropic", Status: "pass", HTTPStatus: 401REDACTED,
 			{Target: "gemini", Status: "pass", HTTPStatus: 200REDACTED,
-			{Target: "sora", Status: "pass", HTTPStatus: 401REDACTED,
 	REDACTED,
 REDACTED, nil
 REDACTED

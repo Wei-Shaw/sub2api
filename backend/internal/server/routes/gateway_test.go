@@ -22,7 +22,6 @@ func newGatewayRoutesTestRouter() *gin.Engine {
 		&handler.Handlers{
 			Gateway:       &handler.GatewayHandler{REDACTED,
 			OpenAIGateway: &handler.OpenAIGatewayHandler{REDACTED,
-			SoraGateway:   &handler.SoraGatewayHandler{REDACTED,
 	REDACTED,
 		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
 			c.Next()

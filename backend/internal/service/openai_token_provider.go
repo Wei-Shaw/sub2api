@@ -75,7 +75,7 @@ REDACTED
 // OpenAITokenCache token cache interface.
 type OpenAITokenCache = GeminiTokenCache
 
-// OpenAITokenProvider manages access_token for OpenAI/Sora OAuth accounts.
+// OpenAITokenProvider manages access_token for OpenAI OAuth accounts.
 type OpenAITokenProvider struct {
 	accountRepo        AccountRepository
 	tokenCache         OpenAITokenCache
@@ -131,8 +131,8 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	if account == nil {
 		return "", errors.New("account is nil")
 REDACTED
-	if (account.Platform != PlatformOpenAI && account.Platform != PlatformSora) || account.Type != AccountTypeOAuth {
-		return "", errors.New("not an openai/sora oauth account")
+	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+		return "", errors.New("not an openai oauth account")
 REDACTED
 
 	cacheKey := OpenAITokenCacheKey(account)
@@ -158,40 +158,34 @@ REDACTED
 		p.metrics.refreshRequests.Add(1)
 		p.metrics.touchNow()
 
-		// Sora accounts skip OpenAI OAuth refresh and keep existing token path.
-		if account.Platform == PlatformSora {
-			slog.Debug("openai_token_refresh_skipped_for_sora", "account_id", account.ID)
-			refreshFailed = true
-	REDACTED else {
-			result, err := p.refreshAPI.RefreshIfNeeded(ctx, account, p.executor, openAITokenRefreshSkew)
-			if err != nil {
-				if p.refreshPolicy.OnRefreshError == ProviderRefreshErrorReturn {
-					return "", err
-			REDACTED
-				slog.Warn("openai_token_refresh_failed", "account_id", account.ID, "error", err)
-				p.metrics.refreshFailure.Add(1)
-				refreshFailed = true
-		REDACTED else if result.LockHeld {
-				if p.refreshPolicy.OnLockHeld == ProviderLockHeldWaitForCache {
-					p.metrics.lockContention.Add(1)
-					p.metrics.touchNow()
-					token, waitErr := p.waitForTokenAfterLockRace(ctx, cacheKey)
-					if waitErr != nil {
-						return "", waitErr
-				REDACTED
-					if strings.TrimSpace(token) != "" {
-						slog.Debug("openai_token_cache_hit_after_wait", "account_id", account.ID)
-						return token, nil
-				REDACTED
-			REDACTED
-		REDACTED else if result.Refreshed {
-				p.metrics.refreshSuccess.Add(1)
-				account = result.Account
-				expiresAt = account.GetCredentialAsTime("expires_at")
-		REDACTED else {
-				account = result.Account
-				expiresAt = account.GetCredentialAsTime("expires_at")
+		result, err := p.refreshAPI.RefreshIfNeeded(ctx, account, p.executor, openAITokenRefreshSkew)
+		if err != nil {
+			if p.refreshPolicy.OnRefreshError == ProviderRefreshErrorReturn {
+				return "", err
 		REDACTED
+			slog.Warn("openai_token_refresh_failed", "account_id", account.ID, "error", err)
+			p.metrics.refreshFailure.Add(1)
+			refreshFailed = true
+	REDACTED else if result.LockHeld {
+			if p.refreshPolicy.OnLockHeld == ProviderLockHeldWaitForCache {
+				p.metrics.lockContention.Add(1)
+				p.metrics.touchNow()
+				token, waitErr := p.waitForTokenAfterLockRace(ctx, cacheKey)
+				if waitErr != nil {
+					return "", waitErr
+			REDACTED
+				if strings.TrimSpace(token) != "" {
+					slog.Debug("openai_token_cache_hit_after_wait", "account_id", account.ID)
+					return token, nil
+			REDACTED
+		REDACTED
+	REDACTED else if result.Refreshed {
+			p.metrics.refreshSuccess.Add(1)
+			account = result.Account
+			expiresAt = account.GetCredentialAsTime("expires_at")
+	REDACTED else {
+			account = result.Account
+			expiresAt = account.GetCredentialAsTime("expires_at")
 	REDACTED
 REDACTED else if needsRefresh && p.tokenCache != nil {
 		// Backward-compatible test path when refreshAPI is not injected.
