@@ -19,9 +19,6 @@ type OpenAIOAuthHandler struct {
 REDACTED
 
 func oauthPlatformFromPath(c *gin.Context) string {
-	if strings.Contains(c.FullPath(), "/admin/sora/") {
-		return service.PlatformSora
-REDACTED
 	return service.PlatformOpenAI
 REDACTED
 
@@ -105,7 +102,6 @@ REDACTED
 
 // RefreshToken refreshes an OpenAI OAuth token
 // POST /api/v1/admin/openai/refresh-token
-// POST /api/v1/admin/sora/rt2at
 func (h *OpenAIOAuthHandler) RefreshToken(c *gin.Context) {
 	var req OpenAIRefreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -145,39 +141,8 @@ REDACTED
 	response.Success(c, tokenInfo)
 REDACTED
 
-// ExchangeSoraSessionToken exchanges Sora session token to access token
-// POST /api/v1/admin/sora/st2at
-func (h *OpenAIOAuthHandler) ExchangeSoraSessionToken(c *gin.Context) {
-	var req struct {
-		SessionToken string `json:"session_token"`
-		ST           string `json:"st"`
-		ProxyID      *int64 `json:"proxy_id"`
-REDACTED
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-REDACTED
-
-	sessionToken := strings.TrimSpace(req.SessionToken)
-	if sessionToken == "" {
-		sessionToken = strings.TrimSpace(req.ST)
-REDACTED
-	if sessionToken == "" {
-		response.BadRequest(c, "session_token is required")
-		return
-REDACTED
-
-	tokenInfo, err := h.openaiOAuthService.ExchangeSoraSessionToken(c.Request.Context(), sessionToken, req.ProxyID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-	response.Success(c, tokenInfo)
-REDACTED
-
-// RefreshAccountToken refreshes token for a specific OpenAI/Sora account
+// RefreshAccountToken refreshes token for a specific OpenAI account
 // POST /api/v1/admin/openai/accounts/:id/refresh
-// POST /api/v1/admin/sora/accounts/:id/refresh
 func (h *OpenAIOAuthHandler) RefreshAccountToken(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -232,9 +197,8 @@ REDACTED
 	response.Success(c, dto.AccountFromService(updatedAccount))
 REDACTED
 
-// CreateAccountFromOAuth creates a new OpenAI/Sora OAuth account from token info
+// CreateAccountFromOAuth creates a new OpenAI OAuth account from token info
 // POST /api/v1/admin/openai/create-from-oauth
-// POST /api/v1/admin/sora/create-from-oauth
 func (h *OpenAIOAuthHandler) CreateAccountFromOAuth(c *gin.Context) {
 	var req struct {
 		SessionID   string  `json:"session_id" binding:"required"`
@@ -276,11 +240,7 @@ REDACTED
 		name = tokenInfo.Email
 REDACTED
 	if name == "" {
-		if platform == service.PlatformSora {
-			name = "Sora OAuth Account"
-	REDACTED else {
-			name = "OpenAI OAuth Account"
-	REDACTED
+		name = "OpenAI OAuth Account"
 REDACTED
 
 	// Create account

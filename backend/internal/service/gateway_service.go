@@ -60,13 +60,6 @@ const (
 	claudeMimicDebugInfoKey = "claude_mimic_debug_info"
 )
 
-// MediaType 媒体类型常量
-const (
-	MediaTypeImage  = "image"
-	MediaTypeVideo  = "video"
-	MediaTypePrompt = "prompt"
-)
-
 // ForceCacheBillingContextKey 强制缓存计费上下文键
 // 用于粘性会话切换时，将 input_tokens 转为 cache_read_input_tokens 计费
 type forceCacheBillingKeyType struct{REDACTED
@@ -511,9 +504,6 @@ type ForwardResult struct {
 	ImageCount int    // 生成的图片数量
 	ImageSize  string // 图片尺寸 "1K", "2K", "4K"
 
-	// Sora 媒体字段
-	MediaType string // image / video / prompt
-	MediaURL  string // 生成后的媒体地址（可选）
 REDACTED
 
 // UpstreamFailoverError indicates an upstream error that should trigger account failover.
@@ -1971,9 +1961,6 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
-	if platform == PlatformSora {
-		return s.listSoraSchedulableAccounts(ctx, groupID)
-REDACTED
 	if s.schedulerSnapshot != nil {
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		if err == nil {
@@ -2070,53 +2057,6 @@ REDACTED
 	return accounts, useMixed, nil
 REDACTED
 
-func (s *GatewayService) listSoraSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, bool, error) {
-	const useMixed = false
-
-	var accounts []Account
-	var err error
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		accounts, err = s.accountRepo.ListByPlatform(ctx, PlatformSora)
-REDACTED else if groupID != nil {
-		accounts, err = s.accountRepo.ListByGroup(ctx, *groupID)
-REDACTED else {
-		accounts, err = s.accountRepo.ListByPlatform(ctx, PlatformSora)
-REDACTED
-	if err != nil {
-		slog.Debug("account_scheduling_list_failed",
-			"group_id", derefGroupID(groupID),
-			"platform", PlatformSora,
-			"error", err)
-		return nil, useMixed, err
-REDACTED
-
-	filtered := make([]Account, 0, len(accounts))
-	for _, acc := range accounts {
-		if acc.Platform != PlatformSora {
-			continue
-	REDACTED
-		if !s.isSoraAccountSchedulable(&acc) {
-			continue
-	REDACTED
-		filtered = append(filtered, acc)
-REDACTED
-	slog.Debug("account_scheduling_list_sora",
-		"group_id", derefGroupID(groupID),
-		"platform", PlatformSora,
-		"raw_count", len(accounts),
-		"filtered_count", len(filtered))
-	for _, acc := range filtered {
-		slog.Debug("account_scheduling_account_detail",
-			"account_id", acc.ID,
-			"name", acc.Name,
-			"platform", acc.Platform,
-			"type", acc.Type,
-			"status", acc.Status,
-			"tls_fingerprint", acc.IsTLSFingerprintEnabled())
-REDACTED
-	return filtered, useMixed, nil
-REDACTED
-
 // IsSingleAntigravityAccountGroup 检查指定分组是否只有一个 antigravity 平台的可调度账号。
 // 用于 Handler 层在首次请求时提前设置 SingleAccountRetry context，
 // 避免单账号分组收到 503 时错误地设置模型限流标记导致后续请求连续快速失败。
@@ -2141,32 +2081,9 @@ REDACTED
 	return account.Platform == platform
 REDACTED
 
-func (s *GatewayService) isSoraAccountSchedulable(account *Account) bool {
-	return s.soraUnschedulableReason(account) == ""
-REDACTED
-
-func (s *GatewayService) soraUnschedulableReason(account *Account) string {
-	if account == nil {
-		return "account_nil"
-REDACTED
-	if account.Status != StatusActive {
-		return fmt.Sprintf("status=%s", account.Status)
-REDACTED
-	if !account.Schedulable {
-		return "schedulable=false"
-REDACTED
-	if account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) {
-		return fmt.Sprintf("temp_unschedulable_until=%s", account.TempUnschedulableUntil.UTC().Format(time.RFC3339))
-REDACTED
-	return ""
-REDACTED
-
 func (s *GatewayService) isAccountSchedulableForSelection(account *Account) bool {
 	if account == nil {
 		return false
-REDACTED
-	if account.Platform == PlatformSora {
-		return s.isSoraAccountSchedulable(account)
 REDACTED
 	return account.IsSchedulable()
 REDACTED
@@ -2174,12 +2091,6 @@ REDACTED
 func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Context, account *Account, requestedModel string) bool {
 	if account == nil {
 		return false
-REDACTED
-	if account.Platform == PlatformSora {
-		if !s.isSoraAccountSchedulable(account) {
-			return false
-	REDACTED
-		return account.GetRateLimitRemainingTimeWithContext(ctx, requestedModel) <= 0
 REDACTED
 	return account.IsSchedulableForModelWithContext(ctx, requestedModel)
 REDACTED
@@ -3357,9 +3268,6 @@ func (s *GatewayService) logDetailedSelectionFailure(
 		stats.SampleMappingIDs,
 		stats.SampleRateLimitIDs,
 	)
-	if platform == PlatformSora {
-		s.logSoraSelectionFailureDetails(ctx, groupID, sessionHash, requestedModel, accounts, excludedIDs, allowMixedScheduling)
-REDACTED
 	return stats
 REDACTED
 
@@ -3416,11 +3324,7 @@ REDACTED
 		return selectionFailureDiagnosis{Category: "excluded"REDACTED
 REDACTED
 	if !s.isAccountSchedulableForSelection(acc) {
-		detail := "generic_unschedulable"
-		if acc.Platform == PlatformSora {
-			detail = s.soraUnschedulableReason(acc)
-	REDACTED
-		return selectionFailureDiagnosis{Category: "unschedulable", Detail: detailREDACTED
+		return selectionFailureDiagnosis{Category: "unschedulable", Detail: "generic_unschedulable"REDACTED
 REDACTED
 	if isPlatformFilteredForSelection(acc, platform, allowMixedScheduling) {
 		return selectionFailureDiagnosis{
@@ -3442,57 +3346,6 @@ REDACTED
 	REDACTED
 REDACTED
 	return selectionFailureDiagnosis{Category: "eligible"REDACTED
-REDACTED
-
-func (s *GatewayService) logSoraSelectionFailureDetails(
-	ctx context.Context,
-	groupID *int64,
-	sessionHash string,
-	requestedModel string,
-	accounts []Account,
-	excludedIDs map[int64]struct{REDACTED,
-	allowMixedScheduling bool,
-) {
-	const maxLines = 30
-	logged := 0
-
-	for i := range accounts {
-		if logged >= maxLines {
-			break
-	REDACTED
-		acc := &accounts[i]
-		diagnosis := s.diagnoseSelectionFailure(ctx, acc, requestedModel, PlatformSora, excludedIDs, allowMixedScheduling)
-		if diagnosis.Category == "eligible" {
-			continue
-	REDACTED
-		detail := diagnosis.Detail
-		if detail == "" {
-			detail = "-"
-	REDACTED
-		logger.LegacyPrintf(
-			"service.gateway",
-			"[SelectAccountDetailed:Sora] group_id=%v model=%s session=%s account_id=%d account_platform=%s category=%s detail=%s",
-			derefGroupID(groupID),
-			requestedModel,
-			shortSessionHash(sessionHash),
-			acc.ID,
-			acc.Platform,
-			diagnosis.Category,
-			detail,
-		)
-		logged++
-REDACTED
-	if len(accounts) > maxLines {
-		logger.LegacyPrintf(
-			"service.gateway",
-			"[SelectAccountDetailed:Sora] group_id=%v model=%s session=%s truncated=true total=%d logged=%d",
-			derefGroupID(groupID),
-			requestedModel,
-			shortSessionHash(sessionHash),
-			len(accounts),
-			logged,
-		)
-REDACTED
 REDACTED
 
 func isPlatformFilteredForSelection(acc *Account, platform string, allowMixedScheduling bool) bool {
@@ -3573,9 +3426,6 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	REDACTED
 		return mapAntigravityModel(account, requestedModel) != ""
 REDACTED
-	if account.Platform == PlatformSora {
-		return s.isSoraModelSupportedByAccount(account, requestedModel)
-REDACTED
 	if account.IsBedrock() {
 		_, ok := ResolveBedrockModelID(account, requestedModel)
 		return ok
@@ -3586,143 +3436,6 @@ REDACTED
 REDACTED
 	// 其他平台使用账户的模型支持检查
 	return account.IsModelSupported(requestedModel)
-REDACTED
-
-func (s *GatewayService) isSoraModelSupportedByAccount(account *Account, requestedModel string) bool {
-	if account == nil {
-		return false
-REDACTED
-	if strings.TrimSpace(requestedModel) == "" {
-		return true
-REDACTED
-
-	// 先走原始精确/通配符匹配。
-	mapping := account.GetModelMapping()
-	if len(mapping) == 0 || account.IsModelSupported(requestedModel) {
-		return true
-REDACTED
-
-	aliases := buildSoraModelAliases(requestedModel)
-	if len(aliases) == 0 {
-		return false
-REDACTED
-
-	hasSoraSelector := false
-	for pattern := range mapping {
-		if !isSoraModelSelector(pattern) {
-			continue
-	REDACTED
-		hasSoraSelector = true
-		if matchPatternAnyAlias(pattern, aliases) {
-			return true
-	REDACTED
-REDACTED
-
-	// 兼容旧账号：mapping 存在但未配置任何 Sora 选择器（例如只含 gpt-*），
-	// 此时不应误拦截 Sora 模型请求。
-	if !hasSoraSelector {
-		return true
-REDACTED
-
-	return false
-REDACTED
-
-func matchPatternAnyAlias(pattern string, aliases []string) bool {
-	normalizedPattern := strings.ToLower(strings.TrimSpace(pattern))
-	if normalizedPattern == "" {
-		return false
-REDACTED
-	for _, alias := range aliases {
-		if matchWildcard(normalizedPattern, alias) {
-			return true
-	REDACTED
-REDACTED
-	return false
-REDACTED
-
-func isSoraModelSelector(pattern string) bool {
-	p := strings.ToLower(strings.TrimSpace(pattern))
-	if p == "" {
-		return false
-REDACTED
-
-	switch {
-	case strings.HasPrefix(p, "sora"),
-		strings.HasPrefix(p, "gpt-image"),
-		strings.HasPrefix(p, "prompt-enhance"),
-		strings.HasPrefix(p, "sy_"):
-		return true
-REDACTED
-
-	return p == "video" || p == "image"
-REDACTED
-
-func buildSoraModelAliases(requestedModel string) []string {
-	modelID := strings.ToLower(strings.TrimSpace(requestedModel))
-	if modelID == "" {
-		return nil
-REDACTED
-
-	aliases := make([]string, 0, 8)
-	addAlias := func(value string) {
-		v := strings.ToLower(strings.TrimSpace(value))
-		if v == "" {
-			return
-	REDACTED
-		for _, existing := range aliases {
-			if existing == v {
-				return
-		REDACTED
-	REDACTED
-		aliases = append(aliases, v)
-REDACTED
-
-	addAlias(modelID)
-	cfg, ok := GetSoraModelConfig(modelID)
-	if ok {
-		addAlias(cfg.Model)
-		switch cfg.Type {
-		case "video":
-			addAlias("video")
-			addAlias("sora")
-			addAlias(soraVideoFamilyAlias(modelID))
-		case "image":
-			addAlias("image")
-			addAlias("gpt-image")
-		case "prompt_enhance":
-			addAlias("prompt-enhance")
-	REDACTED
-		return aliases
-REDACTED
-
-	switch {
-	case strings.HasPrefix(modelID, "sora"):
-		addAlias("video")
-		addAlias("sora")
-		addAlias(soraVideoFamilyAlias(modelID))
-	case strings.HasPrefix(modelID, "gpt-image"):
-		addAlias("image")
-		addAlias("gpt-image")
-	case strings.HasPrefix(modelID, "prompt-enhance"):
-		addAlias("prompt-enhance")
-	default:
-		return nil
-REDACTED
-
-	return aliases
-REDACTED
-
-func soraVideoFamilyAlias(modelID string) string {
-	switch {
-	case strings.HasPrefix(modelID, "sora2pro-hd"):
-		return "sora2pro-hd"
-	case strings.HasPrefix(modelID, "sora2pro"):
-		return "sora2pro"
-	case strings.HasPrefix(modelID, "sora2"):
-		return "sora2"
-	default:
-		return ""
-REDACTED
 REDACTED
 
 // GetAccessToken 获取账号凭证
@@ -7592,9 +7305,6 @@ REDACTED
 		cmd.CacheCreationTokens = usageLog.CacheCreationTokens
 		cmd.CacheReadTokens = usageLog.CacheReadTokens
 		cmd.ImageCount = usageLog.ImageCount
-		if usageLog.MediaType != nil {
-			cmd.MediaType = *usageLog.MediaType
-	REDACTED
 		if usageLog.ServiceTier != nil {
 			cmd.ServiceTier = *usageLog.ServiceTier
 	REDACTED
@@ -7750,8 +7460,6 @@ type recordUsageOpts struct {
 
 	// EnableClaudePath 启用 Claude 路径特有逻辑：
 	// - Claude Max 缓存计费策略
-	// - Sora 媒体类型分支（image/video/prompt）
-	// - MediaType 字段写入使用日志
 	EnableClaudePath bool
 
 	// 长上下文计费（仅 Gemini 路径需要）
@@ -7842,7 +7550,6 @@ REDACTED
 // recordUsageCore 是 RecordUsage 和 RecordUsageWithLongContext 的统一实现。
 // opts 中的字段控制两者之间的差异行为：
 // - ParsedRequest != nil → 启用 Claude Max 缓存计费策略
-// - EnableSoraMedia → 启用 Sora MediaType 分支（image/video/prompt）
 // - LongContextThreshold > 0 → Token 计费回退走 CalculateCostWithLongContext
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput, opts *recordUsageOpts) error {
 	result := input.Result
@@ -7944,16 +7651,6 @@ func (s *GatewayService) calculateRecordUsageCost(
 	multiplier float64,
 	opts *recordUsageOpts,
 ) *CostBreakdown {
-	// Sora 媒体类型分支（仅 Claude 路径启用）
-	if opts.EnableClaudePath {
-		if result.MediaType == MediaTypeImage || result.MediaType == MediaTypeVideo {
-			return s.calculateSoraMediaCost(result, apiKey, billingModel, multiplier)
-	REDACTED
-		if result.MediaType == MediaTypePrompt {
-			return &CostBreakdown{REDACTED
-	REDACTED
-REDACTED
-
 	// 图片生成计费
 	if result.ImageCount > 0 {
 		return s.calculateImageCost(ctx, result, apiKey, billingModel, multiplier)
@@ -7961,28 +7658,6 @@ REDACTED
 
 	// Token 计费
 	return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, opts)
-REDACTED
-
-// calculateSoraMediaCost 计算 Sora 图片/视频的费用。
-func (s *GatewayService) calculateSoraMediaCost(
-	result *ForwardResult,
-	apiKey *APIKey,
-	billingModel string,
-	multiplier float64,
-) *CostBreakdown {
-	var soraConfig *SoraPriceConfig
-	if apiKey.Group != nil {
-		soraConfig = &SoraPriceConfig{
-			ImagePrice360:          apiKey.Group.SoraImagePrice360,
-			ImagePrice540:          apiKey.Group.SoraImagePrice540,
-			VideoPricePerRequest:   apiKey.Group.SoraVideoPricePerRequest,
-			VideoPricePerRequestHD: apiKey.Group.SoraVideoPricePerRequestHD,
-	REDACTED
-REDACTED
-	if result.MediaType == MediaTypeImage {
-		return s.billingService.CalculateSoraImageCost(result.ImageSize, result.ImageCount, soraConfig, multiplier)
-REDACTED
-	return s.billingService.CalculateSoraVideoCost(billingModel, soraConfig, multiplier)
 REDACTED
 
 // resolveChannelPricing 检查指定模型是否存在渠道级别定价。
@@ -8133,13 +7808,12 @@ func (s *GatewayService) buildRecordUsageLog(
 		RateMultiplier:        multiplier,
 		AccountRateMultiplier: &accountRateMultiplier,
 		BillingType:           billingType,
-		BillingMode:           resolveBillingMode(opts, result, cost),
+		BillingMode:           resolveBillingMode(result, cost),
 		Stream:                result.Stream,
 		DurationMs:            &durationMs,
 		FirstTokenMs:          result.FirstTokenMs,
 		ImageCount:            result.ImageCount,
 		ImageSize:             optionalTrimmedStringPtr(result.ImageSize),
-		MediaType:             resolveMediaType(opts, result),
 		CacheTTLOverridden:    cacheTTLOverridden,
 		ChannelID:             optionalInt64Ptr(input.ChannelID),
 		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
@@ -8163,13 +7837,7 @@ REDACTED
 REDACTED
 
 // resolveBillingMode 根据计费结果和请求类型确定计费模式。
-// Sora 媒体类型自身已确定计费模式（由上游处理），返回 nil 跳过。
-func resolveBillingMode(opts *recordUsageOpts, result *ForwardResult, cost *CostBreakdown) *string {
-	isSoraMedia := opts.EnableClaudePath &&
-		(result.MediaType == MediaTypeImage || result.MediaType == MediaTypeVideo || result.MediaType == MediaTypePrompt)
-	if isSoraMedia {
-		return nil
-REDACTED
+func resolveBillingMode(result *ForwardResult, cost *CostBreakdown) *string {
 	var mode string
 	switch {
 	case cost != nil && cost.BillingMode != "":
@@ -8180,13 +7848,6 @@ REDACTED
 		mode = string(BillingModeToken)
 REDACTED
 	return &mode
-REDACTED
-
-func resolveMediaType(opts *recordUsageOpts, result *ForwardResult) *string {
-	if opts.EnableClaudePath && strings.TrimSpace(result.MediaType) != "" {
-		return &result.MediaType
-REDACTED
-	return nil
 REDACTED
 
 func optionalSubscriptionID(subscription *UserSubscription) *int64 {

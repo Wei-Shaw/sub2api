@@ -808,14 +808,6 @@ type ImagePriceConfig struct {
 	Price4K *float64 // 4K 尺寸价格（nil 表示使用默认值）
 REDACTED
 
-// SoraPriceConfig Sora 按次计费配置
-type SoraPriceConfig struct {
-	ImagePrice360          *float64
-	ImagePrice540          *float64
-	VideoPricePerRequest   *float64
-	VideoPricePerRequestHD *float64
-REDACTED
-
 // CalculateImageCost 计算图片生成费用
 // model: 请求的模型名称（用于获取 LiteLLM 默认价格）
 // imageSize: 图片尺寸 "1K", "2K", "4K"
@@ -843,65 +835,6 @@ REDACTED
 		TotalCost:   totalCost,
 		ActualCost:  actualCost,
 		BillingMode: string(BillingModeImage),
-REDACTED
-REDACTED
-
-// CalculateSoraImageCost 计算 Sora 图片按次费用
-func (s *BillingService) CalculateSoraImageCost(imageSize string, imageCount int, groupConfig *SoraPriceConfig, rateMultiplier float64) *CostBreakdown {
-	if imageCount <= 0 {
-		return &CostBreakdown{REDACTED
-REDACTED
-
-	unitPrice := 0.0
-	if groupConfig != nil {
-		switch imageSize {
-		case "540":
-			if groupConfig.ImagePrice540 != nil {
-				unitPrice = *groupConfig.ImagePrice540
-		REDACTED
-		default:
-			if groupConfig.ImagePrice360 != nil {
-				unitPrice = *groupConfig.ImagePrice360
-		REDACTED
-	REDACTED
-REDACTED
-
-	totalCost := unitPrice * float64(imageCount)
-	if rateMultiplier <= 0 {
-		rateMultiplier = 1.0
-REDACTED
-	actualCost := totalCost * rateMultiplier
-
-	return &CostBreakdown{
-		TotalCost:  totalCost,
-		ActualCost: actualCost,
-REDACTED
-REDACTED
-
-// CalculateSoraVideoCost 计算 Sora 视频按次费用
-func (s *BillingService) CalculateSoraVideoCost(model string, groupConfig *SoraPriceConfig, rateMultiplier float64) *CostBreakdown {
-	unitPrice := 0.0
-	if groupConfig != nil {
-		modelLower := strings.ToLower(model)
-		if strings.Contains(modelLower, "sora2pro-hd") {
-			if groupConfig.VideoPricePerRequestHD != nil {
-				unitPrice = *groupConfig.VideoPricePerRequestHD
-		REDACTED
-	REDACTED
-		if unitPrice <= 0 && groupConfig.VideoPricePerRequest != nil {
-			unitPrice = *groupConfig.VideoPricePerRequest
-	REDACTED
-REDACTED
-
-	totalCost := unitPrice
-	if rateMultiplier <= 0 {
-		rateMultiplier = 1.0
-REDACTED
-	actualCost := totalCost * rateMultiplier
-
-	return &CostBreakdown{
-		TotalCost:  totalCost,
-		ActualCost: actualCost,
 REDACTED
 REDACTED
 

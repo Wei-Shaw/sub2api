@@ -4,15 +4,60 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 )
+
+// --- shared test helpers ---
+
+type queuedHTTPUpstream struct {
+	responses []*http.Response
+	requests  []*http.Request
+	tlsFlags  []bool
+REDACTED
+
+func (u *queuedHTTPUpstream) Do(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	return nil, fmt.Errorf("unexpected Do call")
+REDACTED
+
+func (u *queuedHTTPUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	u.requests = append(u.requests, req)
+	u.tlsFlags = append(u.tlsFlags, profile != nil)
+	if len(u.responses) == 0 {
+		return nil, fmt.Errorf("no mocked response")
+REDACTED
+	resp := u.responses[0]
+	u.responses = u.responses[1:]
+	return resp, nil
+REDACTED
+
+func newJSONResponse(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
+REDACTED
+REDACTED
+
+// --- test functions ---
+
+func newTestContext() (*gin.Context, *httptest.ResponseRecorder) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/1/test", nil)
+	return c, rec
+REDACTED
 
 type openAIAccountTestRepo struct {
 	mockAccountRepoForGemini
@@ -34,7 +79,7 @@ REDACTED
 
 func TestAccountTestService_OpenAISuccessPersistsSnapshotFromHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, recorder := newSoraTestContext()
+	ctx, recorder := newTestContext()
 
 	resp := newJSONResponse(http.StatusOK, "")
 	resp.Body = io.NopCloser(strings.NewReader(`data: {"type":"response.completed"REDACTED
@@ -68,7 +113,7 @@ REDACTED
 
 func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	ctx, _ := newSoraTestContext()
+	ctx, _ := newTestContext()
 
 	resp := newJSONResponse(http.StatusTooManyRequests, `{"error":{"type":"usage_limit_reached","message":"limit reached"REDACTEDREDACTED`)
 	resp.Header.Set("x-codex-primary-used-percent", "100")

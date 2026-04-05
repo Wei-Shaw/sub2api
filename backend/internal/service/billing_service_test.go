@@ -363,28 +363,6 @@ func TestCalculateImageCost(t *testing.T) {
 	require.InDelta(t, 0.134*3, cost.ActualCost, 1e-10)
 REDACTED
 
-func TestCalculateSoraVideoCost(t *testing.T) {
-	svc := newTestBillingService()
-
-	price := 0.5
-	cfg := &SoraPriceConfig{VideoPricePerRequest: &priceREDACTED
-	cost := svc.CalculateSoraVideoCost("sora-video", cfg, 1.0)
-
-	require.InDelta(t, 0.5, cost.TotalCost, 1e-10)
-REDACTED
-
-func TestCalculateSoraVideoCost_HDModel(t *testing.T) {
-	svc := newTestBillingService()
-
-	hdPrice := 1.0
-	normalPrice := 0.5
-	cfg := &SoraPriceConfig{
-		VideoPricePerRequest:   &normalPrice,
-		VideoPricePerRequestHD: &hdPrice,
-REDACTED
-	cost := svc.CalculateSoraVideoCost("sora2pro-hd", cfg, 1.0)
-	require.InDelta(t, 1.0, cost.TotalCost, 1e-10)
-REDACTED
 
 func TestIsModelSupported(t *testing.T) {
 	svc := newTestBillingService()
@@ -462,33 +440,6 @@ func TestForceUpdatePricing_NilService(t *testing.T) {
 	err := svc.ForceUpdatePricing()
 REDACTED
 	require.Contains(t, err.Error(), "not initialized")
-REDACTED
-
-func TestCalculateSoraImageCost(t *testing.T) {
-	svc := newTestBillingService()
-
-	price360 := 0.05
-	price540 := 0.08
-	cfg := &SoraPriceConfig{ImagePrice360: &price360, ImagePrice540: &price540REDACTED
-
-	cost := svc.CalculateSoraImageCost("360", 2, cfg, 1.0)
-	require.InDelta(t, 0.10, cost.TotalCost, 1e-10)
-
-	cost540 := svc.CalculateSoraImageCost("540", 1, cfg, 2.0)
-	require.InDelta(t, 0.08, cost540.TotalCost, 1e-10)
-	require.InDelta(t, 0.16, cost540.ActualCost, 1e-10)
-REDACTED
-
-func TestCalculateSoraImageCost_ZeroCount(t *testing.T) {
-	svc := newTestBillingService()
-	cost := svc.CalculateSoraImageCost("360", 0, nil, 1.0)
-	require.Equal(t, 0.0, cost.TotalCost)
-REDACTED
-
-func TestCalculateSoraVideoCost_NilConfig(t *testing.T) {
-	svc := newTestBillingService()
-	cost := svc.CalculateSoraVideoCost("sora-video", nil, 1.0)
-	require.Equal(t, 0.0, cost.TotalCost)
 REDACTED
 
 func TestCalculateCostWithLongContext_PropagatesError(t *testing.T) {

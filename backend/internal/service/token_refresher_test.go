@@ -243,12 +243,6 @@ REDACTED{
 			want:     true,
 	REDACTED,
 		{
-			name:     "sora oauth - cannot refresh directly",
-			platform: PlatformSora,
-			accType:  AccountTypeOAuth,
-			want:     false,
-	REDACTED,
-		{
 			name:     "openai apikey - cannot refresh",
 			platform: PlatformOpenAI,
 			accType:  AccountTypeAPIKey,

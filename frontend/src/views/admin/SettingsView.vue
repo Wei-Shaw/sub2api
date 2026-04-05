@@ -1956,13 +1956,8 @@
           <BackupSettings />
         </div>
 
-        <!-- Tab: Data Management -->
-        <div v-show="activeTab === 'data'">
-          <DataManagementSettings />
-        </div>
-
         <!-- Save Button -->
-        <div v-show="activeTab !== 'backup' && activeTab !== 'data'" class="flex justify-end">
+        <div v-show="activeTab !== 'backup'" class="flex justify-end">
           <button type="submit" :disabled="saving || loadFailed" class="btn btn-primary">
             <svg v-if="saving" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle
@@ -2005,7 +2000,6 @@ import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import ImageUpload from '@/components/common/ImageUpload.vue'
 import BackupSettings from '@/views/admin/BackupView.vue'
-import DataManagementSettings from '@/views/admin/DataManagementView.vue'
 import { useClipboard REDACTED from '@/composables/useClipboard'
 import { useAppStore REDACTED from '@/stores'
 import { useAdminSettingsStore REDACTED from '@/stores/adminSettings'
@@ -2020,7 +2014,7 @@ const { t REDACTED = useI18n()
 const appStore = useAppStore()
 const adminSettingsStore = useAdminSettingsStore()
 
-type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'email' | 'backup' | 'data'
+type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'email' | 'backup'
 const activeTab = ref<SettingsTab>('general')
 const settingsTabs = [
   { key: 'general'  as SettingsTab, icon: 'home'   as const REDACTED,
@@ -2029,7 +2023,6 @@ const settingsTabs = [
   { key: 'gateway'  as SettingsTab, icon: 'server' as const REDACTED,
   { key: 'email'    as SettingsTab, icon: 'mail'   as const REDACTED,
   { key: 'backup'   as SettingsTab, icon: 'database' as const REDACTED,
-  { key: 'data'     as SettingsTab, icon: 'cube'     as const REDACTED,
 ]
 const { copyToClipboard REDACTED = useClipboard()
 

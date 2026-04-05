@@ -57,7 +57,6 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		&service.OpsCleanupService{REDACTED,
 		&service.OpsScheduledReportService{REDACTED,
 		opsSystemLogSinkSvc,
-		&service.SoraMediaCleanupService{REDACTED,
 		schedulerSnapshotSvc,
 		tokenRefreshSvc,
 		accountExpirySvc,

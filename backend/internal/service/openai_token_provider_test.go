@@ -375,7 +375,7 @@ REDACTED
 
 	token, err := provider.GetAccessToken(context.Background(), account)
 REDACTED
-	require.Contains(t, err.Error(), "not an openai/sora oauth account")
+	require.Contains(t, err.Error(), "not an openai oauth account")
 	require.Empty(t, token)
 REDACTED
 
@@ -389,7 +389,7 @@ REDACTED
 
 	token, err := provider.GetAccessToken(context.Background(), account)
 REDACTED
-	require.Contains(t, err.Error(), "not an openai/sora oauth account")
+	require.Contains(t, err.Error(), "not an openai oauth account")
 	require.Empty(t, token)
 REDACTED
 

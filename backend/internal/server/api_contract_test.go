@@ -204,11 +204,6 @@ REDACTED{
 						"image_price_1k": null,
 						"image_price_2k": null,
 						"image_price_4k": null,
-							"sora_image_price_360": null,
-							"sora_image_price_540": null,
-							"sora_storage_quota_bytes": 0,
-							"sora_video_price_per_request": null,
-							"sora_video_price_per_request_hd": null,
 							"claude_code_only": false,
 						"allow_messages_dispatch": false,
 						"fallback_group_id": null,
@@ -532,7 +527,6 @@ REDACTED{
 						"fallback_model_openai": "gpt-4o",
 						"enable_identity_patch": true,
 						"identity_patch_prompt": "",
-						"sora_client_enabled": false,
 						"invitation_code_enabled": false,
 						"home_content": "",
 					"hide_ccs_import_button": false,
@@ -653,11 +647,11 @@ REDACTED
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, nil, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
-	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil)
+	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil)
 	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {

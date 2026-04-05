@@ -76,7 +76,6 @@ REDACTED
 			sqlmock.AnyArg(), // ip_address
 			log.ImageCount,
 			sqlmock.AnyArg(), // image_size
-			sqlmock.AnyArg(), // media_type
 			sqlmock.AnyArg(), // service_tier
 			sqlmock.AnyArg(), // reasoning_effort
 			sqlmock.AnyArg(), // inbound_endpoint
@@ -154,7 +153,6 @@ REDACTED
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			log.ImageCount,
-			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			serviceTier,
 			sqlmock.AnyArg(),
@@ -471,7 +469,6 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{REDACTED,
 			0,
 			sql.NullString{REDACTED,
-			sql.NullString{REDACTED,
 			sql.NullString{Valid: true, String: "priority"REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
@@ -519,7 +516,6 @@ REDACTED)
 			sql.NullString{REDACTED,
 			0,
 			sql.NullString{REDACTED,
-			sql.NullString{REDACTED,
 			sql.NullString{Valid: true, String: "flex"REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
@@ -566,7 +562,6 @@ REDACTED)
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			0,
-			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			sql.NullString{Valid: true, String: "priority"REDACTED,
 			sql.NullString{REDACTED,

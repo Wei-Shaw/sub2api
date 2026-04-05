@@ -859,14 +859,6 @@ REDACTED
 		platform = forcedPlatform
 REDACTED
 
-	if platform == service.PlatformSora {
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   service.DefaultSoraModels(h.cfg),
-	REDACTED)
-		return
-REDACTED
-
 	// Get available models from account configurations (without platform filter)
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, "")
 

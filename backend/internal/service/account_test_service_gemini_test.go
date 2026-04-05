@@ -42,7 +42,7 @@ func TestProcessGeminiStream_EmitsImageEvent(t *testing.T) {
 	t.Parallel()
 	gin.SetMode(gin.TestMode)
 
-	ctx, recorder := newSoraTestContext()
+	ctx, recorder := newTestContext()
 	svc := &AccountTestService{REDACTED
 
 	stream := strings.NewReader("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"REDACTED,{\"inlineData\":{\"mimeType\":\"image/png\",\"data\":\"QUJD\"REDACTEDREDACTED]REDACTEDREDACTED]REDACTED\n\ndata: [DONE]\n\n")
