@@ -4342,14 +4342,6 @@ export default {
         helpImageUrl: 'Help Image URL',
         manageProviders: 'Manage Providers',
         balancePaymentDisabled: 'Balance payment is disabled',
-        customPurchaseLink: {
-          title: 'Custom Purchase Link (Legacy)',
-          description: 'Redirect users to an external purchase page instead of the built-in payment system',
-          enabled: 'Enable Custom Purchase Link',
-          enabledHint: 'When enabled, users will be redirected to the URL below for purchases',
-          url: 'Purchase Page URL',
-          urlHint: 'The external URL where users can purchase subscriptions or top up',
-        },
       },
       smtp: {
         title: 'SMTP Settings',

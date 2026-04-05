@@ -448,7 +448,10 @@ func pcParseInt(s string, defaultVal int) int {
 
 // MigrateLegacyPurchaseURL checks if the old purchase_subscription_url setting
 // exists and is enabled, and if so, migrates it to a custom_menu_item entry.
-// This is a one-time migration that runs at startup.
+// After migration, both purchase_subscription_enabled and purchase_subscription_url
+// are cleared since the functionality is fully replaced by custom menu items.
+// This is idempotent: it skips if a menu item with ID "migrated_purchase_subscription"
+// already exists.
 func (s *PaymentConfigService) MigrateLegacyPurchaseURL(ctx context.Context) error {
 	enabled, _ := s.settingRepo.GetValue(ctx, SettingKeyPurchaseSubscriptionEnabled)
 	if enabled != "true" {
@@ -475,9 +478,9 @@ func (s *PaymentConfigService) MigrateLegacyPurchaseURL(ctx context.Context) err
 		_ = json.Unmarshal([]byte(raw), &items)
 	}
 
-	// Check if already migrated (same URL exists)
+	// Check if already migrated (same ID exists)
 	for _, item := range items {
-		if item.URL == url {
+		if item.ID == "migrated_purchase_subscription" {
 			return nil
 		}
 	}
@@ -489,7 +492,7 @@ func (s *PaymentConfigService) MigrateLegacyPurchaseURL(ctx context.Context) err
 		IconSVG:    "",
 		URL:        url,
 		Visibility: "user",
-		SortOrder:  0,
+		SortOrder:  100,
 	})
 
 	data, err := json.Marshal(items)
@@ -497,10 +500,11 @@ func (s *PaymentConfigService) MigrateLegacyPurchaseURL(ctx context.Context) err
 		return fmt.Errorf("marshal custom_menu_items: %w", err)
 	}
 
-	// Save updated menu items and clear old settings
+	// Save updated menu items and clear legacy settings entirely
 	if err := s.settingRepo.SetMultiple(ctx, map[string]string{
 		SettingKeyCustomMenuItems:             string(data),
 		SettingKeyPurchaseSubscriptionEnabled: "false",
+		SettingKeyPurchaseSubscriptionURL:     "",
 	}); err != nil {
 		return fmt.Errorf("save migrated settings: %w", err)
 	}

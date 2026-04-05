@@ -1679,37 +1679,6 @@
           </div>
         </div>
 
-        <!-- Custom Purchase Link (Legacy) -->
-        <div class="card">
-          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.customPurchaseLink.title') }}</h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.customPurchaseLink.description') }}</p>
-          </div>
-          <div class="space-y-4 p-6">
-            <div class="flex items-center justify-between">
-              <div>
-                <label class="font-medium text-gray-900 dark:text-white">{{ t('admin.settings.payment.customPurchaseLink.enabled') }}</label>
-                <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.customPurchaseLink.enabledHint') }}</p>
-              </div>
-              <Toggle v-model="form.purchase_subscription_enabled" />
-            </div>
-            <div v-if="form.purchase_subscription_enabled">
-              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                {{ t('admin.settings.payment.customPurchaseLink.url') }}
-              </label>
-              <input
-                v-model="form.purchase_subscription_url"
-                type="url"
-                class="input"
-                placeholder="https://..."
-              />
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.settings.payment.customPurchaseLink.urlHint') }}
-              </p>
-            </div>
-          </div>
-        </div>
-
         </div>
         <div v-show="activeTab === 'email'" class="space-y-6">
         <!-- Email disabled hint - show when email_verify_enabled is off -->
@@ -2120,8 +2089,6 @@ const form = reactive<SettingsForm>({
   home_content: '',
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
-  purchase_subscription_enabled: false,
-  purchase_subscription_url: '',
   payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_enabled_types: '',  payment_help_image_url: '',  payment_help_text: '',
   sora_client_enabled: false,
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number}>,
@@ -2444,8 +2411,6 @@ async function saveSettings() {
       home_content: form.home_content,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,
-      purchase_subscription_enabled: form.purchase_subscription_enabled,
-      purchase_subscription_url: form.purchase_subscription_url,
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,

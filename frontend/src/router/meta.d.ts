@@ -50,12 +50,6 @@ declare module 'vue-router' {
     requiresPayment?: boolean
 
     /**
-     * Whether this route requires either internal payment or external purchase subscription
-     * @default false
-     */
-    requiresEitherPayment?: boolean
-
-    /**
      * i18n key for the page title
      */
     titleKey?: string

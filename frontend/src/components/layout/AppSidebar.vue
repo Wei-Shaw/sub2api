@@ -552,7 +552,7 @@ const userNavItems = computed((): NavItem[] => {
     ...(appStore.cachedPublicSettings?.sora_client_enabled
       ? [{ path: '/sora', label: t('nav.sora'), icon: SoraIcon }]
       : []),
-    ...(appStore.cachedPublicSettings?.payment_enabled || appStore.cachedPublicSettings?.purchase_subscription_enabled
+    ...(appStore.cachedPublicSettings?.payment_enabled
       ? [
           {
             path: '/purchase',
@@ -593,7 +593,7 @@ const personalNavItems = computed((): NavItem[] => {
     ...(appStore.cachedPublicSettings?.sora_client_enabled
       ? [{ path: '/sora', label: t('nav.sora'), icon: SoraIcon }]
       : []),
-    ...(appStore.cachedPublicSettings?.payment_enabled || appStore.cachedPublicSettings?.purchase_subscription_enabled
+    ...(appStore.cachedPublicSettings?.payment_enabled
       ? [
           {
             path: '/purchase',

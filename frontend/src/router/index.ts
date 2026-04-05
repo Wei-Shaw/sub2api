@@ -192,14 +192,14 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/purchase',
     name: 'PurchaseSubscription',
-    component: () => import('@/views/user/PurchaseRouter.vue'),
+    component: () => import('@/views/user/PaymentView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
       title: 'Purchase Subscription',
       titleKey: 'purchase.title',
       descriptionKey: 'purchase.description',
-      requiresEitherPayment: true
+      requiresPayment: true
     }
   },
   {
@@ -571,16 +571,6 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresPayment) {
     const paymentEnabled = appStore.cachedPublicSettings?.payment_enabled
     if (!paymentEnabled) {
-      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
-      return
-    }
-  }
-
-  // Check either payment requirement (internal payment OR external purchase subscription)
-  if (to.meta.requiresEitherPayment) {
-    const paymentEnabled = appStore.cachedPublicSettings?.payment_enabled
-    const purchaseSubscriptionEnabled = appStore.cachedPublicSettings?.purchase_subscription_enabled
-    if (!paymentEnabled && !purchaseSubscriptionEnabled) {
       next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       return
     }

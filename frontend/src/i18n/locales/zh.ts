@@ -4515,14 +4515,6 @@ export default {
         helpImageUrl: '帮助图片链接',
         manageProviders: '管理服务商',
         balancePaymentDisabled: '余额支付已禁用',
-        customPurchaseLink: {
-          title: '自定义充值链接（旧版）',
-          description: '将用户重定向到外部充值页面，而不是使用内置支付系统',
-          enabled: '启用自定义充值链接',
-          enabledHint: '启用后，用户将被重定向到下方的 URL 进行充值',
-          url: '充值页面 URL',
-          urlHint: '用户购买订阅或充值的外部链接地址',
-        },
       },
       smtp: {
         title: 'SMTP 设置',
