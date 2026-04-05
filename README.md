@@ -45,7 +45,9 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 - **Admin Dashboard** - Web interface for monitoring and management
 - **External System Integration** - Embed external systems (e.g. payment, ticketing) via iframe to extend the admin dashboard
 
-## Don't Want to Self-Host?
+## ❤️ Sponsors
+
+> [Want to appear here?](mailto:support@pincc.ai)
 
 <table>
 <tr>
