@@ -728,14 +728,44 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
     - `frontend/src/views/admin/SettingsView.vue` no longer exposes the Sora client toggle or the Sora-only data-management tab
     - `frontend/src/api/admin/settings.ts` no longer exposes Sora S3 management API methods/types
     - `frontend/src/views/admin/DataManagementView.vue` has been removed because it was entirely Sora S3 profile management UI with no remaining route or caller
-  - the remaining work is no longer compile survival; it is product-surface cleanup of still-exposed Sora settings/types/i18n/admin flows
+  - product-surface cleanup is also now absorbed:
+    - `backend/internal/service/setting_service.go` / `backend/internal/handler/admin/setting_handler.go` Sora S3 profile-management dead code removed
+    - `backend/internal/handler/dto/{types.go,mappers.go}` and `frontend/src/types/index.ts` cleaned of visible Sora pricing/storage/client-toggle fields
+    - `frontend/src/views/admin/GroupsView.vue` aligned to upstream no-Sora pricing UI
+    - `frontend/src/views/admin/SettingsView.vue` / `frontend/src/api/admin/settings.ts` removed Sora client toggle and Sora S3 API surface
+    - `frontend/src/views/admin/ChannelsView.vue`、`frontend/src/views/admin/SubscriptionsView.vue`、`frontend/src/views/admin/ProxiesView.vue`、`frontend/src/components/admin/channel/types.ts` aligned to upstream no-Sora branches
+    - account-facing helpers aligned to no-Sora flow:
+      - `frontend/src/api/admin/accounts.ts`
+      - `frontend/src/composables/useModelWhitelist.ts`
+      - `frontend/src/composables/useOpenAIOAuth.ts`
+      - `frontend/src/composables/__tests__/useOpenAIOAuth.spec.ts`
+      - `frontend/src/components/admin/account/AccountTableFilters.vue`
+  - backend internal OAuth/endpoint cleanup is also fully aligned now:
+    - `backend/internal/handler/admin/openai_oauth_handler.go`
+    - `backend/internal/handler/endpoint.go`
+    - `backend/internal/handler/endpoint_test.go`
+    - `backend/internal/service/openai_token_provider.go`
+    - `backend/internal/service/token_cache_invalidator.go`
+    - `backend/internal/service/openai_oauth_service.go`
+    - `backend/internal/service/openai_oauth_service_auth_url_test.go`
+    - `backend/internal/pkg/openai/oauth.go`
+    - `backend/internal/pkg/openai/oauth_test.go`
+    - `backend/internal/domain/constants.go`
+    - `backend/internal/service/domain_constants.go`
+    - plus deletion of `backend/internal/service/openai_oauth_service_sora_session_test.go` and `backend/internal/service/account_test_service_sora_test.go`
+  - deeper data-model cleanup has also moved forward:
+    - `backend/ent/schema/group.go` and `backend/ent/schema/user.go` are aligned to upstream no-Sora definitions
+    - `backend/internal/service/group.go`
+    - `backend/internal/service/user.go`
+    - `backend/internal/repository/group_repo.go`
+    - `backend/internal/repository/api_key_repo.go`
+    - `backend/internal/service/api_key_auth_cache.go`
+    - `backend/internal/service/api_key_auth_cache_impl.go`
+    - ent generated files were regenerated after schema cleanup and compile green is preserved
 - Remaining Sora cleanup still pending in this delta:
-  - `backend/internal/handler/admin/setting_handler.go` Sora S3 compatibility DTOs/methods
-  - `backend/internal/handler/dto/{types.go,mappers.go}` Sora storage/pricing fields
-  - `frontend/src/types/index.ts` Sora platform and pricing/storage fields
-  - `frontend/src/views/admin/SettingsView.vue` Sora client toggle
-  - `frontend/src/views/admin/GroupsView.vue` Sora pricing UI
-  - `frontend/src/api/admin/settings.ts` Sora S3/settings API types
-  - `frontend/src/i18n/locales/{en,zh}.ts` Sora-only labels after the above product surfaces are removed
+  - runtime/frontend source tree is now effectively free of active `Sora/sora_` references; latest cleanup also removed lingering locale text and contract-test fixture fields
+  - remaining cleanup is mostly historical residue in docs, migrations, comments, and any optional deeper semantic/media terminology cleanup
+  - optional deeper semantic cleanup of media fields in `gateway_service.go` / pricing paths if we want to remove every historical Sora-oriented concept rather than just unreachable behavior
+  - legacy migrations/docs/tests mentioning removed Sora concepts
 - Defer the admin/settings/group/account restructuring until a separate compatibility pass is planned.
 - Treat the hotspot overlap as part of the next Batch C / Batch D style transplant work, not as mechanical absorb.

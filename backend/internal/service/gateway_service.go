@@ -536,7 +536,7 @@ type ForwardResult struct {
 	ImageCount int    // 生成的图片数量
 	ImageSize  string // 图片尺寸 "1K", "2K", "4K"
 
-	// Sora 媒体字段
+	// 媒体结果字段
 	MediaType string // image / video / prompt
 	MediaURL  string // 生成后的媒体地址（可选）
 }
@@ -7502,22 +7502,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	}
 
 	// 根据请求类型选择计费方式
-	if result.MediaType == "image" || result.MediaType == "video" {
-		var soraConfig *SoraPriceConfig
-		if apiKey.Group != nil {
-			soraConfig = &SoraPriceConfig{
-				ImagePrice360:          apiKey.Group.SoraImagePrice360,
-				ImagePrice540:          apiKey.Group.SoraImagePrice540,
-				VideoPricePerRequest:   apiKey.Group.SoraVideoPricePerRequest,
-				VideoPricePerRequestHD: apiKey.Group.SoraVideoPricePerRequestHD,
-			}
-		}
-		if result.MediaType == "image" {
-			cost = s.billingService.CalculateSoraImageCost(result.ImageSize, result.ImageCount, soraConfig, multiplier)
-		} else {
-			cost = s.billingService.CalculateSoraVideoCost(billingModel, soraConfig, multiplier)
-		}
-	} else if result.MediaType == "prompt" {
+	if result.MediaType == "prompt" {
 		cost = &CostBreakdown{}
 	} else if result.ImageCount > 0 {
 		// 图片生成计费

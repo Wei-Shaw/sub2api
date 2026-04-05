@@ -31,7 +31,7 @@ const (
 // ──────────────────────────────────────────────────────────
 
 // NormalizeInboundEndpoint maps a raw request path (which may carry
-// prefixes like /antigravity, /openai, /sora) to its canonical form.
+// prefixes like /antigravity, /openai) to its canonical form.
 //
 //	"/antigravity/v1/messages"   → "/v1/messages"
 //	"/v1/chat/completions"       → "/v1/chat/completions"
@@ -61,7 +61,7 @@ func NormalizeInboundEndpoint(path string) string {
 //     such as /v1/responses/compact preserved from the raw URL).
 //   - Anthropic  → /v1/messages
 //   - Gemini     → /v1beta/models
-//   - Sora       → /v1/chat/completions
+//   - Antigravity → /v1/messages (Claude) or gemini (Gemini)
 //   - Antigravity routes may target either Claude or Gemini, so the
 //     inbound endpoint is used to distinguish.
 func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
@@ -81,9 +81,6 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 
 	case service.PlatformGemini:
 		return EndpointGeminiModels
-
-	case service.PlatformSora:
-		return EndpointChatCompletions
 
 	case service.PlatformAntigravity:
 		// Antigravity accounts serve both Claude and Gemini.

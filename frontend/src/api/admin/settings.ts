@@ -394,8 +394,6 @@ export async function updateBetaPolicySettings(
   return data
 }
 
-// ==================== Sora S3 Settings ====================
-
 export const settingsAPI = {
   getSettings,
   updateSettings,

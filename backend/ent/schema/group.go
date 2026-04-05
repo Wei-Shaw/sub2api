@@ -87,28 +87,6 @@ func (Group) Fields() []ent.Field {
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
 
-		// Sora 按次计费配置（阶段 1）
-		field.Float("sora_image_price_360").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
-		field.Float("sora_image_price_540").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
-		field.Float("sora_video_price_per_request").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
-		field.Float("sora_video_price_per_request_hd").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
-
-		// Sora 存储配额
-		field.Int64("sora_storage_quota_bytes").
-			Default(0),
-
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").
 			Default(false).

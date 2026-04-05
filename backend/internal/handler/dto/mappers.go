@@ -59,11 +59,9 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 		return nil
 	}
 	return &AdminUser{
-		User:                  *base,
-		Notes:                 u.Notes,
-		GroupRates:            u.GroupRates,
-		SoraStorageQuotaBytes: u.SoraStorageQuotaBytes,
-		SoraStorageUsedBytes:  u.SoraStorageUsedBytes,
+		User:       *base,
+		Notes:      u.Notes,
+		GroupRates: u.GroupRates,
 	}
 }
 
@@ -172,14 +170,9 @@ func groupFromServiceBase(g *service.Group) Group {
 		ImagePrice1K:                    g.ImagePrice1K,
 		ImagePrice2K:                    g.ImagePrice2K,
 		ImagePrice4K:                    g.ImagePrice4K,
-		SoraImagePrice360:               g.SoraImagePrice360,
-		SoraImagePrice540:               g.SoraImagePrice540,
-		SoraVideoPricePerRequest:        g.SoraVideoPricePerRequest,
-		SoraVideoPricePerRequestHD:      g.SoraVideoPricePerRequestHD,
 		ClaudeCodeOnly:                  g.ClaudeCodeOnly,
 		FallbackGroupID:                 g.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: g.FallbackGroupIDOnInvalidRequest,
-		SoraStorageQuotaBytes:           g.SoraStorageQuotaBytes,
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,
 		RequireOAuthOnly:                g.RequireOAuthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,

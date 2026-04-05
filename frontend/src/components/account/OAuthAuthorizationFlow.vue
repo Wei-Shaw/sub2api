@@ -168,217 +168,6 @@
           </div>
         </div>
 
-        <!-- Session Token Input (Sora) -->
-        <div v-if="inputMethod === 'session_token'" class="space-y-4">
-          <div
-            class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
-          >
-            <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
-              {{ t(getOAuthKey('sessionTokenDesc')) }}
-            </p>
-
-            <div class="mb-4">
-              <label
-                class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
-              >
-                <Icon name="key" size="sm" class="text-blue-500" />
-                {{ t(getOAuthKey('sessionTokenRawLabel')) }}
-                <span
-                  v-if="parsedSessionTokenCount > 1"
-                  class="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white"
-                >
-                  {{ t('admin.accounts.oauth.keysCount', { count: parsedSessionTokenCount }) }}
-                </span>
-              </label>
-              <textarea
-                v-model="sessionTokenInput"
-                rows="3"
-                class="input w-full resize-y font-mono text-sm"
-                :placeholder="t(getOAuthKey('sessionTokenRawPlaceholder'))"
-              ></textarea>
-              <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
-                {{ t(getOAuthKey('sessionTokenRawHint')) }}
-              </p>
-              <div class="mt-2 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  class="btn btn-secondary px-2 py-1 text-xs"
-                  @click="handleOpenSoraSessionUrl"
-                >
-                  {{ t(getOAuthKey('openSessionUrl')) }}
-                </button>
-                <button
-                  type="button"
-                  class="btn btn-secondary px-2 py-1 text-xs"
-                  @click="handleCopySoraSessionUrl"
-                >
-                  {{ t(getOAuthKey('copySessionUrl')) }}
-                </button>
-              </div>
-              <p class="mt-1 break-all text-xs text-blue-600 dark:text-blue-400">
-                {{ soraSessionUrl }}
-              </p>
-              <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                {{ t(getOAuthKey('sessionUrlHint')) }}
-              </p>
-              <p
-                v-if="parsedSessionTokenCount > 1"
-                class="mt-1 text-xs text-blue-600 dark:text-blue-400"
-              >
-                {{ t('admin.accounts.oauth.batchCreateAccounts', { count: parsedSessionTokenCount }) }}
-              </p>
-            </div>
-
-            <div v-if="sessionTokenInput.trim()" class="mb-4 space-y-3">
-              <div>
-                <label
-                  class="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300"
-                >
-                  {{ t(getOAuthKey('parsedSessionTokensLabel')) }}
-                  <span
-                    v-if="parsedSessionTokenCount > 0"
-                    class="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] text-white"
-                  >
-                    {{ parsedSessionTokenCount }}
-                  </span>
-                </label>
-                <textarea
-                  :value="parsedSessionTokensText"
-                  rows="2"
-                  readonly
-                  class="input w-full resize-y bg-gray-50 font-mono text-xs dark:bg-gray-700"
-                ></textarea>
-                <p
-                  v-if="parsedSessionTokenCount === 0"
-                  class="mt-1 text-xs text-amber-600 dark:text-amber-400"
-                >
-                  {{ t(getOAuthKey('parsedSessionTokensEmpty')) }}
-                </p>
-              </div>
-
-              <div>
-                <label
-                  class="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300"
-                >
-                  {{ t(getOAuthKey('parsedAccessTokensLabel')) }}
-                  <span
-                    v-if="parsedAccessTokenFromSessionInputCount > 0"
-                    class="rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] text-white"
-                  >
-                    {{ parsedAccessTokenFromSessionInputCount }}
-                  </span>
-                </label>
-                <textarea
-                  :value="parsedAccessTokensText"
-                  rows="2"
-                  readonly
-                  class="input w-full resize-y bg-gray-50 font-mono text-xs dark:bg-gray-700"
-                ></textarea>
-              </div>
-            </div>
-
-            <div
-              v-if="error"
-              class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30"
-            >
-              <p class="whitespace-pre-line text-sm text-red-600 dark:text-red-400">
-                {{ error }}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              class="btn btn-primary w-full"
-              :disabled="loading || parsedSessionTokenCount === 0"
-              @click="handleValidateSessionToken"
-            >
-              <svg
-                v-if="loading"
-                class="-ml-1 mr-2 h-4 w-4 animate-spin"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  class="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  stroke-width="4"
-                ></circle>
-                <path
-                  class="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              <Icon v-else name="sparkles" size="sm" class="mr-2" />
-              {{
-                loading
-                  ? t(getOAuthKey('validating'))
-                  : t(getOAuthKey('validateAndCreate'))
-              }}
-            </button>
-          </div>
-        </div>
-
-        <!-- Access Token Input (Sora) -->
-        <div v-if="inputMethod === 'access_token'" class="space-y-4">
-          <div
-            class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
-          >
-            <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
-              {{ t('admin.accounts.oauth.openai.accessTokenDesc', '直接粘贴 Access Token 创建账号，无需 OAuth 授权流程。支持批量导入（每行一个）。') }}
-            </p>
-
-            <div class="mb-4">
-              <label
-                class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
-              >
-                <Icon name="key" size="sm" class="text-blue-500" />
-                Access Token
-                <span
-                  v-if="parsedAccessTokenCount > 1"
-                  class="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white"
-                >
-                  {{ t('admin.accounts.oauth.keysCount', { count: parsedAccessTokenCount }) }}
-                </span>
-              </label>
-              <textarea
-                v-model="accessTokenInput"
-                rows="3"
-                class="input w-full resize-y font-mono text-sm"
-                :placeholder="t('admin.accounts.oauth.openai.accessTokenPlaceholder', '粘贴 Access Token，每行一个')"
-              ></textarea>
-              <p
-                v-if="parsedAccessTokenCount > 1"
-                class="mt-1 text-xs text-blue-600 dark:text-blue-400"
-              >
-                {{ t('admin.accounts.oauth.batchCreateAccounts', { count: parsedAccessTokenCount }) }}
-              </p>
-            </div>
-
-            <div
-              v-if="error"
-              class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30"
-            >
-              <p class="whitespace-pre-line text-sm text-red-600 dark:text-red-400">
-                {{ error }}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              class="btn btn-primary w-full"
-              :disabled="loading || !accessTokenInput.trim()"
-              @click="handleImportAccessToken"
-            >
-              <Icon name="sparkles" size="sm" class="mr-2" />
-              {{ t('admin.accounts.oauth.openai.importAccessToken', '导入 Access Token') }}
-            </button>
-          </div>
-        </div>
-
         <!-- Cookie Auto-Auth Form -->
         <div v-if="inputMethod === 'cookie'" class="space-y-4">
           <div
@@ -753,7 +542,6 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useClipboard } from '@/composables/useClipboard'
-import { parseSoraRawTokens } from '@/utils/soraTokenParser'
 import Icon from '@/components/icons/Icon.vue'
 import type { AddMethod, AuthInputMethod } from '@/composables/useAccountOAuth'
 import type { AccountPlatform } from '@/types'
@@ -771,8 +559,8 @@ interface Props {
   showCookieOption?: boolean // Whether to show cookie auto-auth option
   showRefreshTokenOption?: boolean // Whether to show refresh token input option (OpenAI only)
   showMobileRefreshTokenOption?: boolean // Whether to show mobile refresh token option (OpenAI only)
-  showSessionTokenOption?: boolean // Whether to show session token input option (Sora only)
-  showAccessTokenOption?: boolean // Whether to show access token input option (Sora only)
+  showSessionTokenOption?: boolean
+  showAccessTokenOption?: boolean
   platform?: AccountPlatform // Platform type for different UI/text
   showProjectId?: boolean // New prop to control project ID visibility
 }
@@ -808,11 +596,11 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-const isOpenAI = computed(() => props.platform === 'openai' || props.platform === 'sora')
+const isOpenAI = computed(() => props.platform === 'openai')
 
 // Get translation key based on platform
 const getOAuthKey = (key: string) => {
-  if (props.platform === 'openai' || props.platform === 'sora') return `admin.accounts.oauth.openai.${key}`
+  if (props.platform === 'openai') return `admin.accounts.oauth.openai.${key}`
   if (props.platform === 'gemini') return `admin.accounts.oauth.gemini.${key}`
   if (props.platform === 'antigravity') return `admin.accounts.oauth.antigravity.${key}`
   return `admin.accounts.oauth.${key}`
@@ -831,7 +619,7 @@ const oauthAuthCode = computed(() => t(getOAuthKey('authCode')))
 const oauthAuthCodePlaceholder = computed(() => t(getOAuthKey('authCodePlaceholder')))
 const oauthAuthCodeHint = computed(() => t(getOAuthKey('authCodeHint')))
 const oauthImportantNotice = computed(() => {
-  if (props.platform === 'openai' || props.platform === 'sora') return t('admin.accounts.oauth.openai.importantNotice')
+  if (props.platform === 'openai') return t('admin.accounts.oauth.openai.importantNotice')
   if (props.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.importantNotice')
   return ''
 })
@@ -842,7 +630,6 @@ const authCodeInput = ref('')
 const sessionKeyInput = ref('')
 const refreshTokenInput = ref('')
 const sessionTokenInput = ref('')
-const accessTokenInput = ref('')
 const showHelpDialog = ref(false)
 const oauthState = ref('')
 const projectId = ref('')
@@ -869,33 +656,6 @@ const parsedRefreshTokenCount = computed(() => {
     .filter((rt) => rt).length
 })
 
-const parsedSoraRawTokens = computed(() => parseSoraRawTokens(sessionTokenInput.value))
-
-const parsedSessionTokenCount = computed(() => {
-  return parsedSoraRawTokens.value.sessionTokens.length
-})
-
-const parsedSessionTokensText = computed(() => {
-  return parsedSoraRawTokens.value.sessionTokens.join('\n')
-})
-
-const parsedAccessTokenFromSessionInputCount = computed(() => {
-  return parsedSoraRawTokens.value.accessTokens.length
-})
-
-const parsedAccessTokensText = computed(() => {
-  return parsedSoraRawTokens.value.accessTokens.join('\n')
-})
-
-const soraSessionUrl = 'https://sora.chatgpt.com/api/auth/session'
-
-const parsedAccessTokenCount = computed(() => {
-  return accessTokenInput.value
-    .split('\n')
-    .map((at) => at.trim())
-    .filter((at) => at).length
-})
-
 // Watchers
 watch(inputMethod, (newVal) => {
   emit('update:inputMethod', newVal)
@@ -904,7 +664,7 @@ watch(inputMethod, (newVal) => {
 // Auto-extract code from callback URL (OpenAI/Gemini/Antigravity)
 // e.g., http://localhost:8085/callback?code=xxx...&state=...
 watch(authCodeInput, (newVal) => {
-  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'sora') return
+  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity') return
 
   const trimmed = newVal.trim()
   // Check if it looks like a URL with code parameter
@@ -914,7 +674,7 @@ watch(authCodeInput, (newVal) => {
       const url = new URL(trimmed)
       const code = url.searchParams.get('code')
       const stateParam = url.searchParams.get('state')
-      if ((props.platform === 'openai' || props.platform === 'sora' || props.platform === 'gemini' || props.platform === 'antigravity') && stateParam) {
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity') && stateParam) {
         oauthState.value = stateParam
       }
       if (code && code !== trimmed) {
@@ -925,7 +685,7 @@ watch(authCodeInput, (newVal) => {
       // If URL parsing fails, try regex extraction
       const match = trimmed.match(/[?&]code=([^&]+)/)
       const stateMatch = trimmed.match(/[?&]state=([^&]+)/)
-      if ((props.platform === 'openai' || props.platform === 'sora' || props.platform === 'gemini' || props.platform === 'antigravity') && stateMatch && stateMatch[1]) {
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity') && stateMatch && stateMatch[1]) {
         oauthState.value = stateMatch[1]
       }
       if (match && match[1] && match[1] !== trimmed) {
@@ -964,26 +724,6 @@ const handleValidateRefreshToken = () => {
     } else {
       emit('validate-refresh-token', refreshTokenInput.value.trim())
     }
-  }
-}
-
-const handleValidateSessionToken = () => {
-  if (parsedSessionTokenCount.value > 0) {
-    emit('validate-session-token', parsedSessionTokensText.value)
-  }
-}
-
-const handleOpenSoraSessionUrl = () => {
-  window.open(soraSessionUrl, '_blank', 'noopener,noreferrer')
-}
-
-const handleCopySoraSessionUrl = () => {
-  copyToClipboard(soraSessionUrl, 'URL copied to clipboard')
-}
-
-const handleImportAccessToken = () => {
-  if (accessTokenInput.value.trim()) {
-    emit('import-access-token', accessTokenInput.value.trim())
   }
 }
 

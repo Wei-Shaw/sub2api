@@ -60,23 +60,3 @@ func TestBuildAuthorizationURLForPlatform_OpenAI(t *testing.T) {
 		t.Fatalf("id_token_add_organizations mismatch: got=%q want=true", got)
 	}
 }
-
-// TestBuildAuthorizationURLForPlatform_Sora 验证 Sora 平台复用 Codex CLI 的 client_id，
-// 但不启用 codex_cli_simplified_flow。
-func TestBuildAuthorizationURLForPlatform_Sora(t *testing.T) {
-	authURL := BuildAuthorizationURLForPlatform("state-2", "challenge-2", DefaultRedirectURI, OAuthPlatformSora)
-	parsed, err := url.Parse(authURL)
-	if err != nil {
-		t.Fatalf("Parse URL failed: %v", err)
-	}
-	q := parsed.Query()
-	if got := q.Get("client_id"); got != ClientID {
-		t.Fatalf("client_id mismatch: got=%q want=%q (Sora should reuse Codex CLI client_id)", got, ClientID)
-	}
-	if got := q.Get("codex_cli_simplified_flow"); got != "" {
-		t.Fatalf("codex flow should be empty for sora, got=%q", got)
-	}
-	if got := q.Get("id_token_add_organizations"); got != "true" {
-		t.Fatalf("id_token_add_organizations mismatch: got=%q want=true", got)
-	}
-}

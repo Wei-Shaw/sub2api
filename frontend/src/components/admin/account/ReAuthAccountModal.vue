@@ -33,8 +33,6 @@
               {{
                 isOpenAI
                   ? t('admin.accounts.openaiAccount')
-                  : isSora
-                    ? t('admin.accounts.soraAccount')
                   : isGemini
                     ? t('admin.accounts.geminiAccount')
                     : isAntigravity
@@ -130,7 +128,7 @@
         :show-cookie-option="isAnthropic"
         :allow-multiple="false"
         :method-label="t('admin.accounts.inputMethod')"
-        :platform="isOpenAI ? 'openai' : isSora ? 'sora' : isGemini ? 'gemini' : isAntigravity ? 'antigravity' : 'anthropic'"
+        :platform="isOpenAI ? 'openai' : isGemini ? 'gemini' : isAntigravity ? 'antigravity' : 'anthropic'"
         :show-project-id="isGemini && geminiOAuthType === 'code_assist'"
         @generate-url="handleGenerateUrl"
         @cookie-auth="handleCookieAuth"
@@ -226,8 +224,7 @@ const { t } = useI18n()
 
 // OAuth composables
 const claudeOAuth = useAccountOAuth()
-const openaiOAuth = useOpenAIOAuth({ platform: 'openai' })
-const soraOAuth = useOpenAIOAuth({ platform: 'sora' })
+const openaiOAuth = useOpenAIOAuth()
 const geminiOAuth = useGeminiOAuth()
 const antigravityOAuth = useAntigravityOAuth()
 
@@ -240,34 +237,32 @@ const geminiOAuthType = ref<'code_assist' | 'google_one' | 'ai_studio'>('code_as
 
 // Computed - check platform
 const isOpenAI = computed(() => props.account?.platform === 'openai')
-const isSora = computed(() => props.account?.platform === 'sora')
-const isOpenAILike = computed(() => isOpenAI.value || isSora.value)
+const isOpenAILike = computed(() => isOpenAI.value)
 const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 const isAntigravity = computed(() => props.account?.platform === 'antigravity')
-const activeOpenAIOAuth = computed(() => (isSora.value ? soraOAuth : openaiOAuth))
 
 // Computed - current OAuth state based on platform
 const currentAuthUrl = computed(() => {
-  if (isOpenAILike.value) return activeOpenAIOAuth.value.authUrl.value
+  if (isOpenAILike.value) return openaiOAuth.authUrl.value
   if (isGemini.value) return geminiOAuth.authUrl.value
   if (isAntigravity.value) return antigravityOAuth.authUrl.value
   return claudeOAuth.authUrl.value
 })
 const currentSessionId = computed(() => {
-  if (isOpenAILike.value) return activeOpenAIOAuth.value.sessionId.value
+  if (isOpenAILike.value) return openaiOAuth.sessionId.value
   if (isGemini.value) return geminiOAuth.sessionId.value
   if (isAntigravity.value) return antigravityOAuth.sessionId.value
   return claudeOAuth.sessionId.value
 })
 const currentLoading = computed(() => {
-  if (isOpenAILike.value) return activeOpenAIOAuth.value.loading.value
+  if (isOpenAILike.value) return openaiOAuth.loading.value
   if (isGemini.value) return geminiOAuth.loading.value
   if (isAntigravity.value) return antigravityOAuth.loading.value
   return claudeOAuth.loading.value
 })
 const currentError = computed(() => {
-  if (isOpenAILike.value) return activeOpenAIOAuth.value.error.value
+  if (isOpenAILike.value) return openaiOAuth.error.value
   if (isGemini.value) return geminiOAuth.error.value
   if (isAntigravity.value) return antigravityOAuth.error.value
   return claudeOAuth.error.value
@@ -275,7 +270,7 @@ const currentError = computed(() => {
 
 // Computed
 const isManualInputMethod = computed(() => {
-  // OpenAI/Sora/Gemini/Antigravity always use manual input (no cookie auth option)
+  // OpenAI/Gemini/Antigravity always use manual input (no cookie auth option)
   return isOpenAILike.value || isGemini.value || isAntigravity.value || oauthFlowRef.value?.inputMethod === 'manual'
 })
 
@@ -319,7 +314,6 @@ const resetState = () => {
   geminiOAuthType.value = 'code_assist'
   claudeOAuth.resetState()
   openaiOAuth.resetState()
-  soraOAuth.resetState()
   geminiOAuth.resetState()
   antigravityOAuth.resetState()
   oauthFlowRef.value?.reset()
@@ -333,7 +327,7 @@ const handleGenerateUrl = async () => {
   if (!props.account) return
 
   if (isOpenAILike.value) {
-    await activeOpenAIOAuth.value.generateAuthUrl(props.account.proxy_id)
+    await openaiOAuth.generateAuthUrl(props.account.proxy_id)
   } else if (isGemini.value) {
     const creds = (props.account.credentials || {}) as Record<string, unknown>
     const tierId = typeof creds.tier_id === 'string' ? creds.tier_id : undefined
@@ -354,7 +348,7 @@ const handleExchangeCode = async () => {
 
   if (isOpenAILike.value) {
     // OpenAI OAuth flow
-    const oauthClient = activeOpenAIOAuth.value
+    const oauthClient = openaiOAuth
     const sessionId = oauthClient.sessionId.value
     if (!sessionId) return
     const stateToUse = (oauthFlowRef.value?.oauthState || oauthClient.oauthState.value || '').trim()
