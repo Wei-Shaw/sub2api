@@ -111,6 +111,7 @@ type PublicSettings struct {
 
 	LinuxDoOAuthEnabled bool
 	BackendModeEnabled  bool
+	PaymentEnabled      bool
 	Version             string
 }
 

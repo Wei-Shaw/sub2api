@@ -1637,7 +1637,80 @@
         </div><!-- /Tab: General -->
 
         <!-- Tab: Email -->
-<!-- Tab: Payment -->        <div v-show="activeTab === 'payment'" class="space-y-6">        <div class="card">          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.title') }}</h2>            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.description') }}</p>          </div>          <div class="space-y-6 p-6">            <div class="flex items-center justify-between">              <div>                <label class="font-medium text-gray-900 dark:text-white">{{ t('admin.settings.payment.enabled') }}</label>                <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.enabledHint') }}</p>              </div>              <Toggle v-model="form.payment_enabled" />            </div>            <template v-if="form.payment_enabled">              <div class="grid grid-cols-2 gap-4">                <div><label class="input-label">{{ t('admin.settings.payment.minAmount') }}</label><input v-model.number="form.payment_min_amount" type="number" step="0.01" min="0" class="input" /></div>                <div><label class="input-label">{{ t('admin.settings.payment.maxAmount') }}</label><input v-model.number="form.payment_max_amount" type="number" step="0.01" min="0" class="input" /></div>              </div>              <div class="grid grid-cols-2 gap-4">                <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') }}</label><input v-model.number="form.payment_daily_limit" type="number" step="0.01" min="0" class="input" /></div>                <div><label class="input-label">{{ t('admin.settings.payment.maxPendingOrders') }}</label><input v-model.number="form.payment_max_pending_orders" type="number" min="1" class="input" /></div>              </div>              <div class="grid grid-cols-2 gap-4">                <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') }}</label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" /></div>                <div class="flex items-center gap-2 pt-6"><input id="balance-disabled" v-model="form.payment_balance_disabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" /><label for="balance-disabled" class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.balancePaymentDisabled') }}</label></div>              </div>              <div><label class="input-label">{{ t('admin.settings.payment.enabledPaymentTypes') }}</label><input v-model="form.payment_enabled_types" type="text" class="input" placeholder="alipay,wxpay,stripe" /><p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.enabledPaymentTypesHint') }}</p></div>              <div class="grid grid-cols-2 gap-4">                <div><label class="input-label">{{ t('admin.settings.payment.helpImageUrl') }}</label><input v-model="form.payment_help_image_url" type="url" class="input" /></div>                <div><label class="input-label">{{ t('admin.settings.payment.helpText') }}</label><input v-model="form.payment_help_text" type="text" class="input" /></div>              </div>              <div>                <a href="/admin/orders/providers" class="text-sm text-blue-600 hover:underline dark:text-blue-400">{{ t('admin.settings.payment.manageProviders') }} &rarr;</a>              </div>            </template>          </div>        </div>        </div>
+<!-- Tab: Payment -->
+        <div v-show="activeTab === 'payment'" class="space-y-6">
+
+        <!-- Payment System Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.title') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.description') }}</p>
+          </div>
+          <div class="space-y-6 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{ t('admin.settings.payment.enabled') }}</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.enabledHint') }}</p>
+              </div>
+              <Toggle v-model="form.payment_enabled" />
+            </div>
+            <template v-if="form.payment_enabled">
+              <div class="grid grid-cols-2 gap-4">
+                <div><label class="input-label">{{ t('admin.settings.payment.minAmount') }}</label><input v-model.number="form.payment_min_amount" type="number" step="0.01" min="0" class="input" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.maxAmount') }}</label><input v-model.number="form.payment_max_amount" type="number" step="0.01" min="0" class="input" /></div>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') }}</label><input v-model.number="form.payment_daily_limit" type="number" step="0.01" min="0" class="input" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.maxPendingOrders') }}</label><input v-model.number="form.payment_max_pending_orders" type="number" min="1" class="input" /></div>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') }}</label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" /></div>
+                <div class="flex items-center gap-2 pt-6"><input id="balance-disabled" v-model="form.payment_balance_disabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" /><label for="balance-disabled" class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.balancePaymentDisabled') }}</label></div>
+              </div>
+              <div><label class="input-label">{{ t('admin.settings.payment.enabledPaymentTypes') }}</label><input v-model="form.payment_enabled_types" type="text" class="input" placeholder="alipay,wxpay,stripe" /><p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.enabledPaymentTypesHint') }}</p></div>
+              <div class="grid grid-cols-2 gap-4">
+                <div><label class="input-label">{{ t('admin.settings.payment.helpImageUrl') }}</label><input v-model="form.payment_help_image_url" type="url" class="input" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.helpText') }}</label><input v-model="form.payment_help_text" type="text" class="input" /></div>
+              </div>
+              <div>
+                <a href="/admin/orders/providers" class="text-sm text-blue-600 hover:underline dark:text-blue-400">{{ t('admin.settings.payment.manageProviders') }} &rarr;</a>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Custom Purchase Link (Legacy) -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.customPurchaseLink.title') }}</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.customPurchaseLink.description') }}</p>
+          </div>
+          <div class="space-y-4 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{ t('admin.settings.payment.customPurchaseLink.enabled') }}</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.customPurchaseLink.enabledHint') }}</p>
+              </div>
+              <Toggle v-model="form.purchase_subscription_enabled" />
+            </div>
+            <div v-if="form.purchase_subscription_enabled">
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.payment.customPurchaseLink.url') }}
+              </label>
+              <input
+                v-model="form.purchase_subscription_url"
+                type="url"
+                class="input"
+                placeholder="https://..."
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.payment.customPurchaseLink.urlHint') }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        </div>
         <div v-show="activeTab === 'email'" class="space-y-6">
         <!-- Email disabled hint - show when email_verify_enabled is off -->
         <div v-if="!form.email_verify_enabled" class="card">
@@ -2013,6 +2086,17 @@ type SettingsForm = SystemSettings & {
   smtp_password: string
   turnstile_secret_key: string
   linuxdo_connect_client_secret: string
+  // Payment config fields (loaded from/saved to separate payment config API)
+  payment_enabled: boolean
+  payment_min_amount: number
+  payment_max_amount: number
+  payment_daily_limit: number
+  payment_max_pending_orders: number
+  payment_order_timeout_minutes: number
+  payment_balance_disabled: boolean
+  payment_enabled_types: string
+  payment_help_image_url: string
+  payment_help_text: string
 }
 
 const form = reactive<SettingsForm>({
@@ -2227,7 +2311,10 @@ async function loadSettings() {
   loading.value = true
   loadFailed.value = false
   try {
-    const settings = await adminAPI.settings.getSettings()
+    const [settings, paymentConfigResp] = await Promise.all([
+      adminAPI.settings.getSettings(),
+      adminAPI.payment.getConfig()
+    ])
     Object.assign(form, settings)
     form.backend_mode_enabled = settings.backend_mode_enabled
     form.default_subscriptions = Array.isArray(settings.default_subscriptions)
@@ -2246,6 +2333,17 @@ async function loadSettings() {
     smtpPasswordManuallyEdited.value = false
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
+
+    // Populate payment config fields from the dedicated payment config API
+    const paymentConfig = paymentConfigResp.data
+    form.payment_enabled = paymentConfig.enabled
+    form.payment_min_amount = paymentConfig.min_amount
+    form.payment_max_amount = paymentConfig.max_amount
+    form.payment_daily_limit = paymentConfig.daily_limit
+    form.payment_max_pending_orders = paymentConfig.max_pending_orders
+    form.payment_order_timeout_minutes = paymentConfig.order_timeout_minutes
+    form.payment_balance_disabled = paymentConfig.balance_disabled
+    form.payment_enabled_types = (paymentConfig.enabled_payment_types || []).join(',')
   } catch (error: any) {
     loadFailed.value = true
     appStore.showError(
@@ -2348,17 +2446,6 @@ async function saveSettings() {
       hide_ccs_import_button: form.hide_ccs_import_button,
       purchase_subscription_enabled: form.purchase_subscription_enabled,
       purchase_subscription_url: form.purchase_subscription_url,
-      payment_enabled: form.payment_enabled,
-      payment_min_amount: form.payment_min_amount,
-      payment_max_amount: form.payment_max_amount,
-      payment_daily_limit: form.payment_daily_limit,
-      payment_max_pending_orders: form.payment_max_pending_orders,
-      payment_order_timeout_minutes: form.payment_order_timeout_minutes,
-      payment_balance_disabled: form.payment_balance_disabled,
-      payment_enabled_types: form.payment_enabled_types,
-      payment_help_image_url: form.payment_help_image_url,
-      payment_help_text: form.payment_help_text,
-      sora_client_enabled: form.sora_client_enabled,
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,
@@ -2389,7 +2476,26 @@ async function saveSettings() {
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough
     }
-    const updated = await adminAPI.settings.updateSettings(payload)
+
+    // Save payment config via dedicated payment config API
+    const enabledTypes = form.payment_enabled_types
+      ? form.payment_enabled_types.split(',').map((s: string) => s.trim()).filter(Boolean)
+      : []
+    const paymentPayload = {
+      enabled: form.payment_enabled,
+      min_amount: form.payment_min_amount,
+      max_amount: form.payment_max_amount,
+      daily_limit: form.payment_daily_limit,
+      max_pending_orders: form.payment_max_pending_orders,
+      order_timeout_minutes: form.payment_order_timeout_minutes,
+      balance_disabled: form.payment_balance_disabled,
+      enabled_payment_types: enabledTypes
+    }
+
+    const [updated] = await Promise.all([
+      adminAPI.settings.updateSettings(payload),
+      adminAPI.payment.updateConfig(paymentPayload)
+    ])
     Object.assign(form, updated)
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       updated.registration_email_suffix_whitelist

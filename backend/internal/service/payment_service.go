@@ -149,11 +149,12 @@ func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, load
 	return &PaymentService{entClient: entClient, registry: registry, loadBalancer: loadBalancer, redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo}
 }
 
-// Start performs one-time startup tasks such as legacy settings migration.
-func (s *PaymentService) Start(ctx context.Context) {
-	if err := s.configService.MigrateLegacyPurchaseURL(ctx); err != nil {
-		slog.Error("[payment] legacy purchase URL migration failed", "error", err)
-	}
+// Start performs one-time startup tasks.
+// NOTE: MigrateLegacyPurchaseURL is intentionally NOT called here to avoid
+// automatically disabling the legacy purchase_subscription system on upgrade.
+// Admins should trigger migration manually when ready to switch to the new
+// payment system.
+func (s *PaymentService) Start(_ context.Context) {
 }
 
 func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest) (*CreateOrderResponse, error) {

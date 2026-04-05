@@ -13,7 +13,49 @@ import type {
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
+/** Admin-facing payment config returned by GET /admin/payment/config */
+export interface AdminPaymentConfig {
+  enabled: boolean
+  min_amount: number
+  max_amount: number
+  daily_limit: number
+  order_timeout_minutes: number
+  max_pending_orders: number
+  enabled_payment_types: string[]
+  balance_disabled: boolean
+  load_balance_strategy: string
+  product_name_prefix: string
+  product_name_suffix: string
+}
+
+/** Fields accepted by PUT /admin/payment/config (all optional via pointer semantics) */
+export interface UpdatePaymentConfigRequest {
+  enabled?: boolean
+  min_amount?: number
+  max_amount?: number
+  daily_limit?: number
+  order_timeout_minutes?: number
+  max_pending_orders?: number
+  enabled_payment_types?: string[]
+  balance_disabled?: boolean
+  load_balance_strategy?: string
+  product_name_prefix?: string
+  product_name_suffix?: string
+}
+
 export const adminPaymentAPI = {
+  // ==================== Config ====================
+
+  /** Get payment configuration (admin view) */
+  getConfig() {
+    return apiClient.get<AdminPaymentConfig>('/admin/payment/config')
+  },
+
+  /** Update payment configuration */
+  updateConfig(data: UpdatePaymentConfigRequest) {
+    return apiClient.put('/admin/payment/config', data)
+  },
+
   // ==================== Dashboard ====================
 
   /** Get payment dashboard statistics */

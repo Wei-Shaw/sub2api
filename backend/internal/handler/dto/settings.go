@@ -128,6 +128,7 @@ type PublicSettings struct {
 	CustomEndpoints                  []CustomEndpoint `json:"custom_endpoints"`
 	LinuxDoOAuthEnabled              bool             `json:"linuxdo_oauth_enabled"`
 	BackendModeEnabled               bool             `json:"backend_mode_enabled"`
+	PaymentEnabled                   bool             `json:"payment_enabled"`
 	Version                          string           `json:"version"`
 }
 

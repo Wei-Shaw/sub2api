@@ -560,12 +560,16 @@ const userNavItems = computed((): NavItem[] => {
             icon: RechargeSubscriptionIcon,
             hideInSimpleMode: true
           },
+        ]
+      : []),
+    ...(appStore.cachedPublicSettings?.payment_enabled
+      ? [
           {
             path: '/orders',
             label: t('nav.myOrders'),
             icon: OrderListIcon,
             hideInSimpleMode: true
-          }
+          },
         ]
       : []),
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
@@ -597,12 +601,16 @@ const personalNavItems = computed((): NavItem[] => {
             icon: RechargeSubscriptionIcon,
             hideInSimpleMode: true
           },
+        ]
+      : []),
+    ...(appStore.cachedPublicSettings?.payment_enabled
+      ? [
           {
             path: '/orders',
             label: t('nav.myOrders'),
             icon: OrderListIcon,
             hideInSimpleMode: true
-          }
+          },
         ]
       : []),
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
