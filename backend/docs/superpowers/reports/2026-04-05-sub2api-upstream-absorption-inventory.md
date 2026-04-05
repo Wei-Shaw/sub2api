@@ -648,3 +648,94 @@ Local verification after Stage 3 is green:
 - Recheck whether `billing_tier` needs first-class persistence semantics or can remain reserved for later channel pricing source work.
 - Admin/user stats and subscription-facing endpoints still need one final end-to-end rerun after Stage 3 to confirm all new fields surface consistently beyond the local regression suites.
 - The inventory/report should be updated again after final verification to distinguish “structure absorbed” from “runtime verified on VPS”.
+
+## Post-v0.1.108 Delta
+
+After the original `f585a15e` baseline, upstream moved again to `339d906e` (tag line `v0.1.108`).
+
+### Already absorbed from this newer delta
+
+- `backend/cmd/server/VERSION`
+- `README.md`
+- `README_CN.md`
+- `README_JA.md`
+- `assets/partners/logos/ctok.png`
+- `assets/partners/logos/poixe.png`
+
+Reason: these are low-risk version/docs/assets updates and do not interfere with local routing, billing, or OpenCode semantics.
+
+### New delta currently deferred
+
+The remaining upstream changes since `f585a15e` are not low-risk mechanical absorbs. They are concentrated in three areas:
+
+1. **Sora removal / cleanup line**
+   - `backend/internal/handler/sora_client_handler.go`
+   - `backend/internal/handler/sora_client_handler_test.go`
+   - `backend/internal/handler/sora_gateway_handler.go`
+   - `backend/internal/handler/sora_gateway_handler_test.go`
+   - `backend/internal/server/routes/sora_client.go`
+   - `backend/internal/service/sora_*`
+   - `backend/migrations/090_drop_sora.sql`
+   - `frontend/src/api/sora.ts`
+   - `frontend/src/components/sora/*`
+   - `frontend/src/views/user/SoraView.vue`
+
+2. **Admin/settings/group/account restructuring**
+   - `frontend/src/api/admin/settings.ts`
+   - `frontend/src/views/admin/SettingsView.vue`
+   - `frontend/src/components/layout/AppSidebar.vue`
+   - `frontend/src/components/common/GroupBadge.vue`
+   - `frontend/src/components/common/GroupOptionItem.vue`
+   - `frontend/src/components/common/PlatformIcon.vue`
+   - `frontend/src/components/common/PlatformTypeBadge.vue`
+   - `backend/internal/handler/admin/account_data.go`
+   - `backend/internal/handler/admin/account_handler.go`
+   - `backend/internal/handler/admin/group_handler.go`
+   - `backend/internal/handler/admin/openai_oauth_handler.go`
+   - `backend/internal/handler/admin/setting_handler.go`
+   - `backend/internal/handler/admin/user_handler.go`
+   - `backend/internal/service/account_service.go`
+   - `backend/internal/service/admin_service.go`
+   - `backend/internal/service/api_key_auth_cache.go`
+   - `backend/internal/service/api_key_auth_cache_impl.go`
+   - `backend/internal/service/openai_oauth_service.go`
+   - `backend/internal/service/token_*`
+
+3. **Further overlap in current hotspots**
+   - `backend/internal/service/billing_service.go`
+   - `backend/internal/service/gateway_service.go`
+   - `backend/internal/repository/usage_log_repo.go`
+   - `backend/internal/handler/dto/{types.go,mappers.go}`
+   - `backend/ent/schema/{group.go,usage_log.go,user.go}` plus generated ent files
+
+### Recommendation for the post-v0.1.108 delta
+
+- Keep the docs/version/assets changes already absorbed.
+- Product decision is now explicit: local main should also remove Sora semantics.
+- Current Sora-removal wave status:
+  - core runtime Sora files are already removed from the worktree (`backend/internal/handler/sora_*`, `backend/internal/service/sora_*`, `backend/internal/server/routes/sora_client.go`, `frontend/src/api/sora.ts`, `frontend/src/components/sora/*`, `frontend/src/views/user/SoraView.vue`, `backend/internal/repository/sora_account_repo.go`, `backend/internal/repository/sora_generation_repo.go`)
+  - compile chain is green after second-ring cleanup:
+    - `go test ./internal/service -count=1`
+    - `go test ./internal/handler -count=1`
+    - `go test ./cmd/server -run TestNonExistent -count=1`
+    - `pnpm build`
+  - second-ring route/settings cleanup now also absorbed:
+    - `backend/internal/server/routes/gateway.go` no longer registers `/sora/v1` or `/sora/media*`
+    - `backend/internal/server/routes/gateway_test.go` no longer depends on `SoraGatewayHandler`
+    - `backend/internal/server/router.go` no longer calls `RegisterSoraClientRoutes(...)`
+    - `backend/internal/server/routes/admin.go` now matches upstream removal of Sora OAuth and Sora S3 admin settings routes
+    - `backend/cmd/server/wire.go`, `backend/cmd/server/wire_gen.go`, and `backend/cmd/server/wire_gen_test.go` no longer build or clean up Sora-specific dependencies
+    - `frontend/src/views/admin/SettingsView.vue` no longer exposes the Sora client toggle or the Sora-only data-management tab
+    - `frontend/src/api/admin/settings.ts` no longer exposes Sora S3 management API methods/types
+    - `frontend/src/views/admin/DataManagementView.vue` has been removed because it was entirely Sora S3 profile management UI with no remaining route or caller
+  - the remaining work is no longer compile survival; it is product-surface cleanup of still-exposed Sora settings/types/i18n/admin flows
+- Remaining Sora cleanup still pending in this delta:
+  - `backend/internal/handler/admin/setting_handler.go` Sora S3 compatibility DTOs/methods
+  - `backend/internal/handler/dto/{types.go,mappers.go}` Sora storage/pricing fields
+  - `frontend/src/types/index.ts` Sora platform and pricing/storage fields
+  - `frontend/src/views/admin/SettingsView.vue` Sora client toggle
+  - `frontend/src/views/admin/GroupsView.vue` Sora pricing UI
+  - `frontend/src/api/admin/settings.ts` Sora S3/settings API types
+  - `frontend/src/i18n/locales/{en,zh}.ts` Sora-only labels after the above product surfaces are removed
+- Defer the admin/settings/group/account restructuring until a separate compatibility pass is planned.
+- Treat the hotspot overlap as part of the next Batch C / Batch D style transplant work, not as mechanical absorb.
