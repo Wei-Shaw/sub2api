@@ -142,3 +142,28 @@ func TestOpenCodeMetadataServiceGetOpenAIModels_UsesCacheOnFailure(t *testing.T)
 	require.Contains(t, models, "gpt-5.4")
 	require.True(t, models["gpt-5.4"].Attachment)
 }
+
+func TestFilterOpenCodeOpenAIModelsForCodexOAuth(t *testing.T) {
+	models := map[string]OpenCodeOpenAIModel{
+		"gpt-4o":             {ID: "gpt-4o", Name: "GPT-4o"},
+		"gpt-5.4":            {ID: "gpt-5.4", Name: "GPT-5.4"},
+		"gpt-5.4-mini":       {ID: "gpt-5.4-mini", Name: "GPT-5.4 Mini"},
+		"gpt-5.2":            {ID: "gpt-5.2", Name: "GPT-5.2"},
+		"gpt-5.1-codex":      {ID: "gpt-5.1-codex", Name: "GPT-5.1 Codex"},
+		"gpt-5.3-codex":      {ID: "gpt-5.3-codex", Name: "GPT-5.3 Codex"},
+		"codex-mini-latest":  {ID: "codex-mini-latest", Name: "Codex Mini"},
+		"gpt-5.2-codex":      {ID: "gpt-5.2-codex", Name: "GPT-5.2 Codex"},
+		"gpt-5.1-codex-max":  {ID: "gpt-5.1-codex-max", Name: "GPT-5.1 Codex Max"},
+		"gpt-5.1-codex-mini": {ID: "gpt-5.1-codex-mini", Name: "GPT-5.1 Codex Mini"},
+	}
+
+	filtered := filterOpenCodeOpenAIModelsForCodexOAuth(models)
+
+	require.Contains(t, filtered, "gpt-5.4")
+	require.Contains(t, filtered, "gpt-5.4-mini")
+	require.Contains(t, filtered, "gpt-5.2")
+	require.Contains(t, filtered, "gpt-5.1-codex")
+	require.Contains(t, filtered, "gpt-5.3-codex")
+	require.Contains(t, filtered, "codex-mini-latest")
+	require.NotContains(t, filtered, "gpt-4o")
+}

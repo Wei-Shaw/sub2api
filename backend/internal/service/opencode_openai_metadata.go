@@ -163,7 +163,34 @@ func extractOpenCodeOpenAIModels(payload map[string]any) (map[string]OpenCodeOpe
 		models[id] = model
 	}
 
-	return models, nil
+	return filterOpenCodeOpenAIModelsForCodexOAuth(models), nil
+}
+
+func filterOpenCodeOpenAIModelsForCodexOAuth(src map[string]OpenCodeOpenAIModel) map[string]OpenCodeOpenAIModel {
+	if len(src) == 0 {
+		return nil
+	}
+	allowed := map[string]struct{}{
+		"gpt-5.1-codex-max":  {},
+		"gpt-5.1-codex-mini": {},
+		"gpt-5.2":            {},
+		"gpt-5.4":            {},
+		"gpt-5.4-mini":       {},
+		"gpt-5.2-codex":      {},
+		"gpt-5.3-codex":      {},
+		"gpt-5.1-codex":      {},
+	}
+	out := map[string]OpenCodeOpenAIModel{}
+	for id, model := range src {
+		if strings.Contains(id, "codex") {
+			out[id] = model
+			continue
+		}
+		if _, ok := allowed[id]; ok {
+			out[id] = model
+		}
+	}
+	return out
 }
 
 func shouldKeepOpenCodeOpenAIModel(id string, raw map[string]any) bool {
