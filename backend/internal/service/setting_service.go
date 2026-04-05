@@ -1568,4 +1568,3 @@ func (s *SettingService) SetStreamTimeoutSettings(ctx context.Context, settings 
 
 	return s.settingRepo.Set(ctx, SettingKeyStreamTimeoutSettings, string(data))
 }
-
