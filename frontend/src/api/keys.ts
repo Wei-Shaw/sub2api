@@ -6,6 +6,46 @@
 import { apiClient } from './client'
 import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse } from '@/types'
 
+export type OpenCodeOpenAIModel = {
+  id: string
+  name: string
+  family?: string
+  attachment?: boolean
+  reasoning?: boolean
+  tool_call?: boolean
+  structured_output?: boolean
+  temperature?: boolean
+  knowledge?: string
+  interleaved?: boolean | { field: 'reasoning_content' | 'reasoning_details' }
+  modalities?: {
+    input: string[]
+    output: string[]
+  }
+  cost?: {
+    input?: number
+    output?: number
+    cache_read?: number
+    cache_write?: number
+    context_over_200k?: {
+      input?: number
+      output?: number
+      cache_read?: number
+      cache_write?: number
+    }
+  }
+  limit?: {
+    context: number
+    input?: number
+    output: number
+  }
+  release_date?: string
+  options?: Record<string, unknown>
+}
+
+export type OpenCodeOpenAIModelsResponse = {
+  models: Record<string, OpenCodeOpenAIModel>
+}
+
 /**
  * List all API keys for current user
  * @param page - Page number (default: 1)
@@ -125,13 +165,19 @@ export async function toggleStatus(id: number, status: 'active' | 'inactive'): P
   return update(id, { status })
 }
 
+export async function getOpenCodeOpenAIModels(): Promise<OpenCodeOpenAIModelsResponse> {
+  const { data } = await apiClient.get<OpenCodeOpenAIModelsResponse>('/keys/opencode/openai-models')
+  return data
+}
+
 export const keysAPI = {
   list,
   getById,
   create,
   update,
   delete: deleteKey,
-  toggleStatus
+  toggleStatus,
+  getOpenCodeOpenAIModels
 }
 
 export default keysAPI

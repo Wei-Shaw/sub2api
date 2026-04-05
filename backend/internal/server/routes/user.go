@@ -41,6 +41,7 @@ func RegisterUserRoutes(
 		// API Key管理
 		keys := authenticated.Group("/keys")
 		{
+			keys.GET("/opencode/openai-models", h.APIKey.GetOpenCodeOpenAIModels)
 			keys.GET("", h.APIKey.List)
 			keys.GET("/:id", h.APIKey.GetByID)
 			keys.POST("", h.APIKey.Create)

@@ -18,13 +18,15 @@ import (
 
 // APIKeyHandler handles API key-related requests
 type APIKeyHandler struct {
-	apiKeyService *service.APIKeyService
+	apiKeyService           *service.APIKeyService
+	openCodeMetadataService *service.OpenCodeMetadataService
 }
 
 // NewAPIKeyHandler creates a new APIKeyHandler
-func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
+func NewAPIKeyHandler(apiKeyService *service.APIKeyService, openCodeMetadataService *service.OpenCodeMetadataService) *APIKeyHandler {
 	return &APIKeyHandler{
-		apiKeyService: apiKeyService,
+		apiKeyService:           apiKeyService,
+		openCodeMetadataService: openCodeMetadataService,
 	}
 }
 
@@ -303,4 +305,21 @@ func (h *APIKeyHandler) GetUserGroupRates(c *gin.Context) {
 	}
 
 	response.Success(c, rates)
+}
+
+// GetOpenCodeOpenAIModels returns OpenCode recommendation metadata for built-in openai models.
+// GET /api/v1/keys/opencode/openai-models
+func (h *APIKeyHandler) GetOpenCodeOpenAIModels(c *gin.Context) {
+	if h.openCodeMetadataService == nil {
+		response.InternalError(c, "OpenCode metadata service unavailable")
+		return
+	}
+
+	models, err := h.openCodeMetadataService.GetOpenAIModels(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"models": models})
 }

@@ -140,6 +140,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import type { GroupPlatform } from '@/types'
+import { keysAPI, type OpenCodeOpenAIModel } from '@/api/keys'
 
 interface Props {
   show: boolean
@@ -175,6 +176,9 @@ const { copyToClipboard: clipboardCopy } = useClipboard()
 const copiedIndex = ref<number | null>(null)
 const activeTab = ref<string>('unix')
 const activeClientTab = ref<string>('claude')
+const openCodeModels = ref<Record<string, OpenCodeOpenAIModel> | null>(null)
+const openCodeLoading = ref(false)
+const openCodeError = ref<string | null>(null)
 
 // Reset tabs when platform changes
 const defaultClientTab = computed(() => {
@@ -199,6 +203,35 @@ watch(() => props.platform, () => {
 watch(activeClientTab, () => {
   activeTab.value = 'unix'
 })
+
+const loadOpenCodeModels = async () => {
+  if (props.platform !== 'openai') return
+  if (openCodeLoading.value) return
+  if (openCodeModels.value) return
+
+  openCodeLoading.value = true
+  openCodeError.value = null
+  try {
+    const resp = await keysAPI.getOpenCodeOpenAIModels()
+    openCodeModels.value = resp.models
+  } catch (err) {
+    console.error('Failed to load OpenCode OpenAI metadata:', err)
+    openCodeError.value = 'Failed to load OpenCode OpenAI metadata'
+  } finally {
+    openCodeLoading.value = false
+  }
+}
+
+watch(
+  () => [props.show, props.platform, activeClientTab.value] as const,
+  ([show, platform, client]) => {
+    if (!show) return
+    if (platform !== 'openai') return
+    if (client !== 'opencode') return
+    void loadOpenCodeModels()
+  },
+  { immediate: true }
+)
 
 // Icon components
 const AppleIcon = {
@@ -289,10 +322,7 @@ const clientTabs = computed((): TabConfig[] => {
         { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
       ]
     default:
-      return [
-        { id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon },
-        { id: 'opencode', label: t('keys.useKeyModal.cliTabs.opencode'), icon: TerminalIcon }
-      ]
+      return [{ id: 'claude', label: t('keys.useKeyModal.cliTabs.claudeCode'), icon: TerminalIcon }]
   }
 })
 
@@ -399,7 +429,16 @@ const currentFiles = computed((): FileConfig[] => {
       case 'anthropic':
         return [generateOpenCodeConfig('anthropic', apiBase, apiKey)]
       case 'openai':
-        return [generateOpenCodeConfig('sub2api-openai', apiBase, apiKey)]
+        if (openCodeLoading.value) {
+          return [{ path: 'opencode.json', content: '{}', hint: 'Loading OpenCode OpenAI metadata...' }]
+        }
+        if (openCodeError.value) {
+          return [{ path: 'opencode.json', content: '{}', hint: openCodeError.value }]
+        }
+        if (!openCodeModels.value) {
+          return [{ path: 'opencode.json', content: '{}', hint: 'OpenCode OpenAI metadata unavailable' }]
+        }
+        return [generateOpenCodeConfig('sub2api-openai', apiBase, apiKey, undefined, openCodeModels.value)]
       case 'gemini':
         return [generateOpenCodeConfig('gemini', geminiBase, apiKey)]
       case 'antigravity':
@@ -408,7 +447,7 @@ const currentFiles = computed((): FileConfig[] => {
           generateOpenCodeConfig('antigravity-gemini', antigravityGeminiBase, apiKey, 'opencode.json (Gemini)')
         ]
       default:
-        return [generateOpenCodeConfig('sub2api-openai', apiBase, apiKey)]
+        return []
     }
   }
 
@@ -607,7 +646,7 @@ responses_websockets_v2 = true`
   ]
 }
 
-function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: string, pathLabel?: string): FileConfig {
+function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: string, pathLabel?: string, openaiSource?: Record<string, OpenCodeOpenAIModel>): FileConfig {
   const provider: Record<string, any> = {
     [platform]: {
       options: {
@@ -619,7 +658,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
   const buildReasoningVariants = (levels: string[], withFast = false) =>
     Object.fromEntries(
       levels.flatMap((level) => {
-        const variant = {
+        const variant: Record<string, unknown> = {
           reasoningEffort: level,
           reasoningSummary: 'auto',
           include: ['reasoning.encrypted_content']
@@ -629,16 +668,17 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
           return [[level, variant] as const]
         }
 
-        return [
-          [level, variant] as const,
-          [
+        const pairs = [[level, variant] as const]
+        if (['low', 'medium', 'high', 'xhigh'].includes(level)) {
+          pairs.push([
             `${level}-fast`,
             {
               ...variant,
               serviceTier: 'priority'
             }
-          ] as const
-        ]
+          ] as const)
+        }
+        return pairs
       })
     )
 
@@ -656,152 +696,50 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     return expanded
   }
 
-  const openCodeOpenAIBaseModels = {
-    'gpt-5-codex': {
-      name: 'GPT-5 Codex',
-      reasoning: true,
-      limit: {
-        context: 400000,
-        output: 128000
-      },
-      options: {
-        store: false
-      },
-      variants: buildReasoningVariants(['low', 'medium', 'high'])
-    },
-    'gpt-5.1-codex': {
-      name: 'GPT-5.1 Codex',
-      reasoning: true,
-      limit: {
-        context: 400000,
-        output: 128000
-      },
-      options: {
-        store: false
-      },
-      variants: buildReasoningVariants(['low', 'medium', 'high'])
-    },
-    'gpt-5.1-codex-max': {
-      name: 'GPT-5.1 Codex Max',
-      reasoning: true,
-      limit: {
-        context: 400000,
-        output: 128000
-      },
-      options: {
-        store: false
-      },
-      variants: buildReasoningVariants(['low', 'medium', 'high'])
-    },
-    'gpt-5.1-codex-mini': {
-      name: 'GPT-5.1 Codex Mini',
-      reasoning: true,
-      limit: {
-        context: 400000,
-        output: 128000
-      },
-      options: {
-        store: false
-      },
-      variants: buildReasoningVariants(['low', 'medium', 'high'])
-    },
-    'gpt-5.2': {
-      name: 'GPT-5.2',
-      reasoning: true,
-      limit: {
-        context: 400000,
-        output: 128000
-      },
-      options: {
-        store: false
-      },
-      variants: buildReasoningVariants(['none', 'low', 'medium', 'high', 'xhigh'])
-    },
-    'gpt-5.4': {
-      name: 'GPT-5.4',
-      reasoning: true,
-      limit: {
-        context: 1050000,
-        output: 128000
-      },
-      options: {
-        store: false
-      },
-      variants: buildReasoningVariants(['none', 'low', 'medium', 'high', 'xhigh'], true)
-    },
-    'gpt-5.4-mini': {
-      name: 'GPT-5.4 Mini',
-      reasoning: true,
-      limit: {
-        context: 400000,
-        output: 128000
-      },
-      options: {
-        store: false
-      },
-      variants: buildReasoningVariants(['none', 'low', 'medium', 'high', 'xhigh'])
-    },
-    'gpt-5.4-nano': {
-      name: 'GPT-5.4 Nano',
-      reasoning: true,
-      limit: {
-        context: 400000,
-        output: 128000
-      },
-      options: {
-        store: false
-      },
-      variants: buildReasoningVariants(['none', 'low', 'medium', 'high', 'xhigh'])
-    },
-    'gpt-5.3-codex-spark': {
-      name: 'GPT-5.3 Codex Spark',
-      reasoning: true,
-      limit: {
-        context: 128000,
-        output: 32000
-      },
-      options: {
-        store: false
-      },
-      variants: buildReasoningVariants(['low', 'medium', 'high', 'xhigh'])
-    },
-    'gpt-5.3-codex': {
-      name: 'GPT-5.3 Codex',
-      reasoning: true,
-      limit: {
-        context: 400000,
-        output: 128000
-      },
-      options: {
-        store: false
-      },
-      variants: buildReasoningVariants(['low', 'medium', 'high', 'xhigh'])
-    },
-    'gpt-5.2-codex': {
-      name: 'GPT-5.2 Codex',
-      reasoning: true,
-      limit: {
-        context: 400000,
-        output: 128000
-      },
-      options: {
-        store: false
-      },
-      variants: buildReasoningVariants(['low', 'medium', 'high', 'xhigh'])
-    },
-    'codex-mini-latest': {
-      name: 'Codex Mini',
-      reasoning: true,
-      limit: {
-        context: 200000,
-        output: 100000
-      },
-      options: {
-        store: false
-      },
-      variants: buildReasoningVariants(['low', 'medium', 'high'])
+  const reasoningLevels = (id: string, model: OpenCodeOpenAIModel) => {
+    if (!model.reasoning) {
+      return []
     }
+
+    const lower = id.toLowerCase()
+    if (lower === 'gpt-5-pro') {
+      return []
+    }
+
+    if (['gpt-5-codex', 'gpt-5.1-codex', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini', 'codex-mini-latest'].includes(lower)) {
+      return ['low', 'medium', 'high']
+    }
+
+    if (['gpt-5.3-codex-spark', 'gpt-5.3-codex', 'gpt-5.2-codex'].includes(lower)) {
+      return ['low', 'medium', 'high', 'xhigh']
+    }
+
+    const levels = ['low', 'medium', 'high']
+    if (lower.includes('gpt-5-') || lower === 'gpt-5') {
+      levels.unshift('minimal')
+    }
+    if ((model.release_date ?? '') >= '2025-11-13') {
+      levels.unshift('none')
+    }
+    if ((model.release_date ?? '') >= '2025-12-04') {
+      levels.push('xhigh')
+    }
+    return levels
   }
+
+  const openCodeOpenAIBaseModels = Object.fromEntries(
+    Object.entries(openaiSource ?? {}).map(([id, model]) => [
+      id,
+      {
+        ...model,
+        options: {
+          ...model.options,
+          store: false
+        },
+        variants: buildReasoningVariants(reasoningLevels(id, model), id === 'gpt-5.4')
+      }
+    ])
+  )
   const openaiModels = withSysVariants(openCodeOpenAIBaseModels)
   const geminiModels = {
     'gemini-2.0-flash': {
