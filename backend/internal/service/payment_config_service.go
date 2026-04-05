@@ -37,38 +37,38 @@ const (
 // PaymentConfig holds the payment system configuration.
 type PaymentConfig struct {
 	Enabled             bool     `json:"enabled"`
-	MinAmount           float64  `json:"minAmount"`
-	MaxAmount           float64  `json:"maxAmount"`
-	DailyLimit          float64  `json:"dailyLimit"`
-	OrderTimeoutMin     int      `json:"orderTimeoutMinutes"`
-	MaxPendingOrders    int      `json:"maxPendingOrders"`
-	EnabledTypes        []string `json:"enabledTypes"`
-	BalanceDisabled     bool     `json:"balanceDisabled"`
-	LoadBalanceStrategy string   `json:"loadBalanceStrategy"`
-	ProductNamePrefix   string   `json:"productNamePrefix"`
-	ProductNameSuffix   string   `json:"productNameSuffix"`
+	MinAmount           float64  `json:"min_amount"`
+	MaxAmount           float64  `json:"max_amount"`
+	DailyLimit          float64  `json:"daily_limit"`
+	OrderTimeoutMin     int      `json:"order_timeout_minutes"`
+	MaxPendingOrders    int      `json:"max_pending_orders"`
+	EnabledTypes        []string `json:"enabled_payment_types"`
+	BalanceDisabled     bool     `json:"balance_disabled"`
+	LoadBalanceStrategy string   `json:"load_balance_strategy"`
+	ProductNamePrefix   string   `json:"product_name_prefix"`
+	ProductNameSuffix   string   `json:"product_name_suffix"`
 }
 
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
 type UpdatePaymentConfigRequest struct {
 	Enabled             *bool    `json:"enabled"`
-	MinAmount           *float64 `json:"minAmount"`
-	MaxAmount           *float64 `json:"maxAmount"`
-	DailyLimit          *float64 `json:"dailyLimit"`
-	OrderTimeoutMin     *int     `json:"orderTimeoutMinutes"`
-	MaxPendingOrders    *int     `json:"maxPendingOrders"`
-	EnabledTypes        []string `json:"enabledTypes"`
-	BalanceDisabled     *bool    `json:"balanceDisabled"`
-	LoadBalanceStrategy *string  `json:"loadBalanceStrategy"`
-	ProductNamePrefix   *string  `json:"productNamePrefix"`
-	ProductNameSuffix   *string  `json:"productNameSuffix"`
+	MinAmount           *float64 `json:"min_amount"`
+	MaxAmount           *float64 `json:"max_amount"`
+	DailyLimit          *float64 `json:"daily_limit"`
+	OrderTimeoutMin     *int     `json:"order_timeout_minutes"`
+	MaxPendingOrders    *int     `json:"max_pending_orders"`
+	EnabledTypes        []string `json:"enabled_payment_types"`
+	BalanceDisabled     *bool    `json:"balance_disabled"`
+	LoadBalanceStrategy *string  `json:"load_balance_strategy"`
+	ProductNamePrefix   *string  `json:"product_name_prefix"`
+	ProductNameSuffix   *string  `json:"product_name_suffix"`
 }
 
 // MethodLimits holds per-payment-type limits.
 type MethodLimits struct {
 	PaymentType string  `json:"paymentType"`
 	FeeRate     float64 `json:"feeRate"`
-	DailyLimit  float64 `json:"dailyLimit"`
+	DailyLimit  float64 `json:"daily_limit"`
 	SingleMin   float64 `json:"singleMin"`
 	SingleMax   float64 `json:"singleMax"`
 }

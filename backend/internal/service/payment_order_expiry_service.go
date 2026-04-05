@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -62,10 +62,10 @@ func (s *PaymentOrderExpiryService) runOnce() {
 
 	expired, err := s.paymentSvc.ExpireTimedOutOrders(ctx)
 	if err != nil {
-		log.Printf("[PaymentOrderExpiry] failed to expire orders: %v", err)
+		slog.Error("[PaymentOrderExpiry] failed to expire orders", "error", err)
 		return
 	}
 	if expired > 0 {
-		log.Printf("[PaymentOrderExpiry] expired %d timed-out orders", expired)
+		slog.Info("[PaymentOrderExpiry] expired timed-out orders", "count", expired)
 	}
 }

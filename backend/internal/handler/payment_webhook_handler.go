@@ -2,7 +2,7 @@ package handler
 
 import (
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -53,14 +53,14 @@ func (h *PaymentWebhookHandler) StripeWebhook(c *gin.Context) {
 func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string) {
 	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<20)) // 1MB limit
 	if err != nil {
-		log.Printf("[Payment Webhook] failed to read body for %s: %v", providerKey, err)
+		slog.Error("[Payment Webhook] failed to read body", "provider", providerKey, "error", err)
 		c.String(http.StatusBadRequest, "failed to read body")
 		return
 	}
 
 	provider, err := h.registry.GetProviderByKey(providerKey)
 	if err != nil {
-		log.Printf("[Payment Webhook] provider %s not registered: %v", providerKey, err)
+		slog.Warn("[Payment Webhook] provider not registered", "provider", providerKey, "error", err)
 		c.String(http.StatusOK, successResponse(providerKey))
 		return
 	}
@@ -72,7 +72,7 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 
 	notification, err := provider.VerifyNotification(c.Request.Context(), string(body), headers)
 	if err != nil {
-		log.Printf("[Payment Webhook] %s verify failed: %v", providerKey, err)
+		slog.Error("[Payment Webhook] verify failed", "provider", providerKey, "error", err)
 		c.String(http.StatusBadRequest, "verify failed")
 		return
 	}
@@ -84,7 +84,7 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 	}
 
 	if err := h.paymentService.HandlePaymentNotification(c.Request.Context(), notification, providerKey); err != nil {
-		log.Printf("[Payment Webhook] %s handle notification failed: %v", providerKey, err)
+		slog.Error("[Payment Webhook] handle notification failed", "provider", providerKey, "error", err)
 		c.String(http.StatusInternalServerError, "handle failed")
 		return
 	}

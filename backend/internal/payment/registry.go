@@ -1,8 +1,9 @@
 package payment
 
 import (
-	"fmt"
 	"sync"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 // Registry is a thread-safe registry mapping PaymentType to Provider.
@@ -10,6 +11,10 @@ type Registry struct {
 	mu        sync.RWMutex
 	providers map[PaymentType]Provider
 }
+
+// ErrProviderNotFound is returned when a requested payment provider is not registered.
+var ErrProviderNotFound = infraerrors.NotFound("PROVIDER_NOT_FOUND", "payment provider not registered")
+
 
 // NewRegistry creates a new empty provider registry.
 func NewRegistry() *Registry {
@@ -34,7 +39,7 @@ func (r *Registry) GetProvider(t PaymentType) (Provider, error) {
 	defer r.mu.RUnlock()
 	p, ok := r.providers[t]
 	if !ok {
-		return nil, fmt.Errorf("no payment provider registered for type: %s", t)
+		return nil, ErrProviderNotFound
 	}
 	return p, nil
 }
@@ -51,7 +56,7 @@ func (r *Registry) GetProviderByKey(key string) (Provider, error) {
 		}
 		seen[k] = true
 	}
-	return nil, fmt.Errorf("no payment provider registered with key: %s", key)
+	return nil, ErrProviderNotFound
 }
 
 // GetProviderKey returns the provider key for the given payment type,
@@ -81,7 +86,7 @@ func (r *Registry) SupportedTypes() []PaymentType {
 func (r *Registry) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for k := range r.providers {
-		delete(r.providers, k)
-	}
+	r.providers = make(map[PaymentType]Provider)
 }
+
+// Clear removes all registered providers.
