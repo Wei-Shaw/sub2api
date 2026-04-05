@@ -2,13 +2,14 @@ package service
 
 import (
 	"context"
-	"sync"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -21,23 +22,29 @@ import (
 )
 
 const (
-	OrderStatusPending           = "PENDING"
-	OrderStatusPaid              = "PAID"
-	OrderStatusRecharging        = "RECHARGING"
-	OrderStatusCompleted         = "COMPLETED"
-	OrderStatusExpired           = "EXPIRED"
-	OrderStatusCancelled         = "CANCELLED"
-	OrderStatusFailed            = "FAILED"
-	OrderStatusRefundRequested   = "REFUND_REQUESTED"
-	OrderStatusRefunding         = "REFUNDING"
-	OrderStatusPartiallyRefunded = "PARTIALLY_REFUNDED"
-	OrderStatusRefunded          = "REFUNDED"
-	OrderStatusRefundFailed      = "REFUND_FAILED"
+	OrderStatusPending           = payment.OrderStatusPending
+	OrderStatusPaid              = payment.OrderStatusPaid
+	OrderStatusRecharging        = payment.OrderStatusRecharging
+	OrderStatusCompleted         = payment.OrderStatusCompleted
+	OrderStatusExpired           = payment.OrderStatusExpired
+	OrderStatusCancelled         = payment.OrderStatusCancelled
+	OrderStatusFailed            = payment.OrderStatusFailed
+	OrderStatusRefundRequested   = payment.OrderStatusRefundRequested
+	OrderStatusRefunding         = payment.OrderStatusRefunding
+	OrderStatusPartiallyRefunded = payment.OrderStatusPartiallyRefunded
+	OrderStatusRefunded          = payment.OrderStatusRefunded
+	OrderStatusRefundFailed      = payment.OrderStatusRefundFailed
 )
 
 const (
-	defaultMaxPendingOrders = 3
-	paymentGraceMinutes     = 5
+	// defaultMaxPendingOrders and defaultOrderTimeoutMin are defined in
+	// payment_config_service.go alongside other payment configuration defaults.
+	paymentGraceMinutes = 5
+
+	defaultPageSize    = 20
+	maxPageSize        = 100
+	topUsersLimit      = 10
+	amountToleranceCNY = 0.01
 )
 
 type CreateOrderRequest struct {
@@ -95,14 +102,14 @@ type RefundResult struct {
 }
 
 type DashboardStats struct {
-	TodayAmount    float64 `json:"today_amount"`
-	TotalAmount    float64 `json:"total_amount"`
-	TodayCount     int     `json:"today_count"`
-	TotalCount     int     `json:"total_count"`
-	AvgAmount      float64 `json:"avg_amount"`
-	PendingOrders  int     `json:"pending_orders"`
+	TodayAmount   float64 `json:"today_amount"`
+	TotalAmount   float64 `json:"total_amount"`
+	TodayCount    int     `json:"today_count"`
+	TotalCount    int     `json:"total_count"`
+	AvgAmount     float64 `json:"avg_amount"`
+	PendingOrders int     `json:"pending_orders"`
 
-	DailySeries    []DailyStats       `json:"daily_series"`
+	DailySeries    []DailyStats        `json:"daily_series"`
 	PaymentMethods []PaymentMethodStat `json:"payment_methods"`
 	TopUsers       []TopUserStat       `json:"top_users"`
 }
@@ -127,7 +134,7 @@ type TopUserStat struct {
 
 type PaymentService struct {
 	providerMu      sync.Mutex
-	providersLoaded bool
+	providerOnce    sync.Once
 	entClient       *dbent.Client
 	registry        *payment.Registry
 	loadBalancer    payment.LoadBalancer
@@ -235,10 +242,25 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	}
 	tm := cfg.OrderTimeoutMin
 	if tm <= 0 {
-		tm = 30
+		tm = defaultOrderTimeoutMin
 	}
 	exp := time.Now().Add(time.Duration(tm) * time.Minute)
-	b := tx.PaymentOrder.Create().SetUserID(req.UserID).SetUserEmail(user.Email).SetUserName(user.Username).SetNillableUserNotes(psNilIfEmpty(user.Notes)).SetAmount(amount).SetPayAmount(payAmount).SetFeeRate(feeRate).SetRechargeCode("").SetPaymentType(req.PaymentType).SetPaymentTradeNo("").SetOrderType(req.OrderType).SetStatus(OrderStatusPending).SetExpiresAt(exp).SetClientIP(req.ClientIP).SetSrcHost(req.SrcHost)
+	b := tx.PaymentOrder.Create().
+		SetUserID(req.UserID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetNillableUserNotes(psNilIfEmpty(user.Notes)).
+		SetAmount(amount).
+		SetPayAmount(payAmount).
+		SetFeeRate(feeRate).
+		SetRechargeCode("").
+		SetPaymentType(req.PaymentType).
+		SetPaymentTradeNo("").
+		SetOrderType(req.OrderType).
+		SetStatus(OrderStatusPending).
+		SetExpiresAt(exp).
+		SetClientIP(req.ClientIP).
+		SetSrcHost(req.SrcHost)
 	if req.SrcURL != "" {
 		b.SetSrcURL(req.SrcURL)
 	}
@@ -368,17 +390,7 @@ func (s *PaymentService) GetUserOrders(ctx context.Context, userID int64, p Orde
 	if err != nil {
 		return nil, 0, fmt.Errorf("count user orders: %w", err)
 	}
-	ps := p.PageSize
-	if ps <= 0 {
-		ps = 20
-	}
-	if ps > 100 {
-		ps = 100
-	}
-	pg := p.Page
-	if pg < 1 {
-		pg = 1
-	}
+	ps, pg := applyPagination(p.PageSize, p.Page)
 	orders, err := q.Order(dbent.Desc(paymentorder.FieldCreatedAt)).Limit(ps).Offset((pg - 1) * ps).All(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query user orders: %w", err)
@@ -465,7 +477,7 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 		slog.Error("order not found", "orderID", oid)
 		return nil
 	}
-	if math.Abs(paid-o.PayAmount) > 0.01 {
+	if math.Abs(paid-o.PayAmount) > amountToleranceCNY {
 		s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{"expected": o.PayAmount, "paid": paid, "tradeNo": tradeNo})
 		return fmt.Errorf("amount mismatch: expected %.2f, got %.2f", o.PayAmount, paid)
 	}
@@ -649,18 +661,9 @@ func (s *PaymentService) RetryFulfillment(ctx context.Context, oid int64) error 
 }
 
 func (s *PaymentService) RequestRefund(ctx context.Context, oid, uid int64, reason string) error {
-	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
+	o, err := s.validateRefundRequest(ctx, oid, uid)
 	if err != nil {
-		return infraerrors.NotFound("NOT_FOUND", "order not found")
-	}
-	if o.UserID != uid {
-		return infraerrors.Forbidden("FORBIDDEN", "no permission")
-	}
-	if o.OrderType != "balance" {
-		return infraerrors.BadRequest("INVALID_ORDER_TYPE", "only balance orders can request refund")
-	}
-	if o.Status != OrderStatusCompleted {
-		return infraerrors.BadRequest("INVALID_STATUS", "only completed orders can request refund")
+		return err
 	}
 	u, err := s.userRepo.GetByID(ctx, o.UserID)
 	if err != nil {
@@ -681,6 +684,23 @@ func (s *PaymentService) RequestRefund(ctx context.Context, oid, uid int64, reas
 	}
 	s.writeAuditLog(ctx, oid, "REFUND_REQUESTED", fmt.Sprintf("user:%d", uid), map[string]any{"amount": o.Amount, "reason": nr})
 	return nil
+}
+
+func (s *PaymentService) validateRefundRequest(ctx context.Context, oid, uid int64) (*dbent.PaymentOrder, error) {
+	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
+	if err != nil {
+		return nil, infraerrors.NotFound("NOT_FOUND", "order not found")
+	}
+	if o.UserID != uid {
+		return nil, infraerrors.Forbidden("FORBIDDEN", "no permission")
+	}
+	if o.OrderType != "balance" {
+		return nil, infraerrors.BadRequest("INVALID_ORDER_TYPE", "only balance orders can request refund")
+	}
+	if o.Status != OrderStatusCompleted {
+		return nil, infraerrors.BadRequest("INVALID_STATUS", "only completed orders can request refund")
+	}
+	return o, nil
 }
 
 func (s *PaymentService) PrepareRefund(ctx context.Context, oid int64, amt float64, reason string, force, deduct bool) (*RefundPlan, *RefundResult, error) {
@@ -844,7 +864,6 @@ func (s *PaymentService) GetDashboardStats(ctx context.Context, days int) (*Dash
 
 	paidStatuses := []string{OrderStatusCompleted, OrderStatusPaid, OrderStatusRecharging}
 
-	// Fetch all paid orders in the date range
 	orders, err := s.entClient.PaymentOrder.Query().
 		Where(
 			paymentorder.StatusIn(paidStatuses...),
@@ -856,10 +875,24 @@ func (s *PaymentService) GetDashboardStats(ctx context.Context, days int) (*Dash
 	}
 
 	st := &DashboardStats{}
+	computeBasicStats(st, orders, todayStart)
 
-	// Compute basic stats
-	var totalAmount float64
-	var todayAmount float64
+	st.PendingOrders, err = s.entClient.PaymentOrder.Query().
+		Where(paymentorder.StatusEQ(OrderStatusPending)).
+		Count(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	st.DailySeries = buildDailySeries(orders, since, days)
+	st.PaymentMethods = buildMethodDistribution(orders)
+	st.TopUsers = buildTopUsers(orders)
+
+	return st, nil
+}
+
+func computeBasicStats(st *DashboardStats, orders []*dbent.PaymentOrder, todayStart time.Time) {
+	var totalAmount, todayAmount float64
 	var todayCount int
 	for _, o := range orders {
 		totalAmount += o.PayAmount
@@ -875,16 +908,9 @@ func (s *PaymentService) GetDashboardStats(ctx context.Context, days int) (*Dash
 	if st.TotalCount > 0 {
 		st.AvgAmount = math.Round(totalAmount/float64(st.TotalCount)*100) / 100
 	}
+}
 
-	// Pending orders count
-	st.PendingOrders, err = s.entClient.PaymentOrder.Query().
-		Where(paymentorder.StatusEQ(OrderStatusPending)).
-		Count(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// Daily series: GROUP BY date(paid_at)
+func buildDailySeries(orders []*dbent.PaymentOrder, since time.Time, days int) []DailyStats {
 	dailyMap := make(map[string]*DailyStats)
 	for _, o := range orders {
 		if o.PaidAt == nil {
@@ -899,19 +925,20 @@ func (s *PaymentService) GetDashboardStats(ctx context.Context, days int) (*Dash
 		ds.Amount += o.PayAmount
 		ds.Count++
 	}
-	// Build sorted daily series for all days in range
-	st.DailySeries = make([]DailyStats, 0, days)
+	series := make([]DailyStats, 0, days)
 	for i := 0; i < days; i++ {
 		date := since.AddDate(0, 0, i+1).Format("2006-01-02")
 		if ds, ok := dailyMap[date]; ok {
 			ds.Amount = math.Round(ds.Amount*100) / 100
-			st.DailySeries = append(st.DailySeries, *ds)
+			series = append(series, *ds)
 		} else {
-			st.DailySeries = append(st.DailySeries, DailyStats{Date: date})
+			series = append(series, DailyStats{Date: date})
 		}
 	}
+	return series
+}
 
-	// Payment methods: GROUP BY payment_type
+func buildMethodDistribution(orders []*dbent.PaymentOrder) []PaymentMethodStat {
 	methodMap := make(map[string]*PaymentMethodStat)
 	for _, o := range orders {
 		ms, ok := methodMap[o.PaymentType]
@@ -922,13 +949,15 @@ func (s *PaymentService) GetDashboardStats(ctx context.Context, days int) (*Dash
 		ms.Amount += o.PayAmount
 		ms.Count++
 	}
-	st.PaymentMethods = make([]PaymentMethodStat, 0, len(methodMap))
+	methods := make([]PaymentMethodStat, 0, len(methodMap))
 	for _, ms := range methodMap {
 		ms.Amount = math.Round(ms.Amount*100) / 100
-		st.PaymentMethods = append(st.PaymentMethods, *ms)
+		methods = append(methods, *ms)
 	}
+	return methods
+}
 
-	// Top users: GROUP BY user_id, ORDER BY amount DESC, LIMIT 10
+func buildTopUsers(orders []*dbent.PaymentOrder) []TopUserStat {
 	userMap := make(map[int64]*TopUserStat)
 	for _, o := range orders {
 		us, ok := userMap[o.UserID]
@@ -938,33 +967,23 @@ func (s *PaymentService) GetDashboardStats(ctx context.Context, days int) (*Dash
 		}
 		us.Amount += o.PayAmount
 	}
-	type userEntry struct {
-		stat   *TopUserStat
-		amount float64
-	}
-	userList := make([]userEntry, 0, len(userMap))
+	userList := make([]*TopUserStat, 0, len(userMap))
 	for _, us := range userMap {
 		us.Amount = math.Round(us.Amount*100) / 100
-		userList = append(userList, userEntry{stat: us, amount: us.Amount})
+		userList = append(userList, us)
 	}
-	// Sort descending by amount
-	for i := 0; i < len(userList); i++ {
-		for j := i + 1; j < len(userList); j++ {
-			if userList[j].amount > userList[i].amount {
-				userList[i], userList[j] = userList[j], userList[i]
-			}
-		}
-	}
-	limit := 10
+	sort.Slice(userList, func(i, j int) bool {
+		return userList[i].Amount > userList[j].Amount
+	})
+	limit := topUsersLimit
 	if len(userList) < limit {
 		limit = len(userList)
 	}
-	st.TopUsers = make([]TopUserStat, 0, limit)
+	result := make([]TopUserStat, 0, limit)
 	for i := 0; i < limit; i++ {
-		st.TopUsers = append(st.TopUsers, *userList[i].stat)
+		result = append(result, *userList[i])
 	}
-
-	return st, nil
+	return result
 }
 
 func (s *PaymentService) sumAmt(ctx context.Context, statuses []string, since time.Time, usePaid bool) (float64, error) {
@@ -1050,6 +1069,21 @@ func psStartOfDayUTC(t time.Time) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
+func applyPagination(pageSize, page int) (size, pg int) {
+	size = pageSize
+	if size <= 0 {
+		size = defaultPageSize
+	}
+	if size > maxPageSize {
+		size = maxPageSize
+	}
+	pg = page
+	if pg < 1 {
+		pg = 1
+	}
+	return size, pg
+}
+
 // AdminListOrders returns a paginated list of orders. If userID > 0, filters by user.
 func (s *PaymentService) AdminListOrders(ctx context.Context, userID int64, p OrderListParams) ([]*dbent.PaymentOrder, int, error) {
 	q := s.entClient.PaymentOrder.Query()
@@ -1069,17 +1103,7 @@ func (s *PaymentService) AdminListOrders(ctx context.Context, userID int64, p Or
 	if err != nil {
 		return nil, 0, fmt.Errorf("count admin orders: %w", err)
 	}
-	ps := p.PageSize
-	if ps <= 0 {
-		ps = 20
-	}
-	if ps > 100 {
-		ps = 100
-	}
-	pg := p.Page
-	if pg < 1 {
-		pg = 1
-	}
+	ps, pg := applyPagination(p.PageSize, p.Page)
 	orders, err := q.Order(dbent.Desc(paymentorder.FieldCreatedAt)).Limit(ps).Offset((pg - 1) * ps).All(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query admin orders: %w", err)
@@ -1091,13 +1115,9 @@ func (s *PaymentService) AdminListOrders(ctx context.Context, userID int64, p Or
 // It queries all enabled PaymentProviderInstance records, decrypts their config,
 // creates providers via provider.CreateProvider, and registers them.
 func (s *PaymentService) EnsureProviders(ctx context.Context) {
-	s.providerMu.Lock()
-	defer s.providerMu.Unlock()
-	if s.providersLoaded {
-		return
-	}
-	s.loadProviders(ctx)
-	s.providersLoaded = true
+	s.providerOnce.Do(func() {
+		s.loadProviders(ctx)
+	})
 }
 
 // RefreshProviders clears and re-registers all providers from the database.
@@ -1107,7 +1127,8 @@ func (s *PaymentService) RefreshProviders(ctx context.Context) {
 	defer s.providerMu.Unlock()
 	s.registry.Clear()
 	s.loadProviders(ctx)
-	s.providersLoaded = true
+	s.providerOnce = sync.Once{} // reset so next EnsureProviders is a no-op until next Refresh
+	s.providerOnce.Do(func() {}) // mark as done since we just loaded
 }
 
 func (s *PaymentService) loadProviders(ctx context.Context) {

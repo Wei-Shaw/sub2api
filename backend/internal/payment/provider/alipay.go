@@ -13,6 +13,12 @@ import (
 	"github.com/smartwalle/alipay/v3"
 )
 
+// Alipay product codes.
+const (
+	alipayProductCodePagePay = "FAST_INSTANT_TRADE_PAY"
+	alipayProductCodeWapPay  = "QUICK_WAP_WAY"
+)
+
 // Alipay implements payment.Provider and payment.CancelableProvider using the smartwalle/alipay SDK.
 type Alipay struct {
 	instanceID string
@@ -59,7 +65,7 @@ func (a *Alipay) getClient() (*alipay.Client, error) {
 	return a.client, nil
 }
 
-func (a *Alipay) Name() string       { return "Alipay" }
+func (a *Alipay) Name() string        { return "Alipay" }
 func (a *Alipay) ProviderKey() string { return "alipay" }
 func (a *Alipay) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.TypeAlipayDirect}
@@ -82,17 +88,36 @@ func (a *Alipay) CreatePayment(_ context.Context, req payment.CreatePaymentReque
 	}
 
 	if req.IsMobile {
-		return a.createWapPayment(client, req, notifyURL, returnURL)
+		return a.createTrade(client, req, notifyURL, returnURL, true)
 	}
-	return a.createPagePayment(client, req, notifyURL, returnURL)
+	return a.createTrade(client, req, notifyURL, returnURL, false)
 }
 
-func (a *Alipay) createPagePayment(client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string) (*payment.CreatePaymentResponse, error) {
+func (a *Alipay) createTrade(client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string, isMobile bool) (*payment.CreatePaymentResponse, error) {
+	if isMobile {
+		param := alipay.TradeWapPay{}
+		param.OutTradeNo = req.OrderID
+		param.TotalAmount = req.Amount
+		param.Subject = req.Subject
+		param.ProductCode = alipayProductCodeWapPay
+		param.NotifyURL = notifyURL
+		param.ReturnURL = returnURL
+
+		payURL, err := client.TradeWapPay(param)
+		if err != nil {
+			return nil, fmt.Errorf("alipay TradeWapPay: %w", err)
+		}
+		return &payment.CreatePaymentResponse{
+			TradeNo: req.OrderID,
+			PayURL:  payURL.String(),
+		}, nil
+	}
+
 	param := alipay.TradePagePay{}
 	param.OutTradeNo = req.OrderID
 	param.TotalAmount = req.Amount
 	param.Subject = req.Subject
-	param.ProductCode = "FAST_INSTANT_TRADE_PAY"
+	param.ProductCode = alipayProductCodePagePay
 	param.NotifyURL = notifyURL
 	param.ReturnURL = returnURL
 
@@ -100,31 +125,10 @@ func (a *Alipay) createPagePayment(client *alipay.Client, req payment.CreatePaym
 	if err != nil {
 		return nil, fmt.Errorf("alipay TradePagePay: %w", err)
 	}
-
 	return &payment.CreatePaymentResponse{
 		TradeNo: req.OrderID,
 		PayURL:  payURL.String(),
 		QRCode:  payURL.String(),
-	}, nil
-}
-
-func (a *Alipay) createWapPayment(client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string) (*payment.CreatePaymentResponse, error) {
-	param := alipay.TradeWapPay{}
-	param.OutTradeNo = req.OrderID
-	param.TotalAmount = req.Amount
-	param.Subject = req.Subject
-	param.ProductCode = "QUICK_WAP_WAY"
-	param.NotifyURL = notifyURL
-	param.ReturnURL = returnURL
-
-	payURL, err := client.TradeWapPay(param)
-	if err != nil {
-		return nil, fmt.Errorf("alipay TradeWapPay: %w", err)
-	}
-
-	return &payment.CreatePaymentResponse{
-		TradeNo: req.OrderID,
-		PayURL:  payURL.String(),
 	}, nil
 }
 
@@ -154,7 +158,10 @@ func (a *Alipay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 		status = "failed"
 	}
 
-	amount, _ := strconv.ParseFloat(result.TotalAmount, 64)
+	amount, err := strconv.ParseFloat(result.TotalAmount, 64)
+	if err != nil {
+		return nil, fmt.Errorf("alipay parse amount %q: %w", result.TotalAmount, err)
+	}
 
 	return &payment.QueryOrderResponse{
 		TradeNo: result.TradeNo,
@@ -186,7 +193,10 @@ func (a *Alipay) VerifyNotification(ctx context.Context, rawBody string, _ map[s
 		status = "success"
 	}
 
-	amount, _ := strconv.ParseFloat(notification.TotalAmount, 64)
+	amount, err := strconv.ParseFloat(notification.TotalAmount, 64)
+	if err != nil {
+		return nil, fmt.Errorf("alipay parse notification amount %q: %w", notification.TotalAmount, err)
+	}
 
 	return &payment.PaymentNotification{
 		TradeNo: notification.TradeNo,

@@ -14,6 +14,14 @@ import (
 	"github.com/stripe/stripe-go/v82/webhook"
 )
 
+// Stripe constants.
+const (
+	stripeCurrency            = "cny"
+	stripeEventPaymentSuccess = "payment_intent.succeeded"
+	stripeEventPaymentFailed  = "payment_intent.payment_failed"
+	stripeCentsPerYuan        = 100
+)
+
 // Stripe implements the payment.CancelableProvider interface for Stripe payments.
 type Stripe struct {
 	instanceID string
@@ -50,10 +58,15 @@ func (s *Stripe) GetPublishableKey() string {
 	return s.config["publishableKey"]
 }
 
-func (s *Stripe) Name() string       { return "Stripe" }
+func (s *Stripe) Name() string        { return "Stripe" }
 func (s *Stripe) ProviderKey() string { return "stripe" }
 func (s *Stripe) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.TypeStripe}
+}
+
+// centsToYuan converts an amount in cents (int64) to yuan (float64).
+func centsToYuan(cents int64) float64 {
+	return float64(cents) / stripeCentsPerYuan
 }
 
 // yuanToCents converts a CNY yuan string to cents (int64).
@@ -76,7 +89,7 @@ func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 
 	params := &stripe.PaymentIntentParams{
 		Amount:   stripe.Int64(amountInCents),
-		Currency: stripe.String("cny"),
+		Currency: stripe.String(stripeCurrency),
 		AutomaticPaymentMethods: &stripe.PaymentIntentAutomaticPaymentMethodsParams{
 			Enabled: stripe.Bool(true),
 		},
@@ -120,7 +133,7 @@ func (s *Stripe) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 	return &payment.QueryOrderResponse{
 		TradeNo: pi.ID,
 		Status:  status,
-		Amount:  float64(pi.Amount) / 100,
+		Amount:  centsToYuan(pi.Amount),
 	}, nil
 }
 
@@ -144,9 +157,9 @@ func (s *Stripe) VerifyNotification(_ context.Context, rawBody string, headers m
 	}
 
 	switch event.Type {
-	case "payment_intent.succeeded":
+	case stripeEventPaymentSuccess:
 		return parseStripePaymentIntent(&event, "success", rawBody)
-	case "payment_intent.payment_failed":
+	case stripeEventPaymentFailed:
 		return parseStripePaymentIntent(&event, "failed", rawBody)
 	}
 
@@ -161,7 +174,7 @@ func parseStripePaymentIntent(event *stripe.Event, status string, rawBody string
 	return &payment.PaymentNotification{
 		TradeNo: pi.ID,
 		OrderID: pi.Metadata["orderId"],
-		Amount:  float64(pi.Amount) / 100,
+		Amount:  centsToYuan(pi.Amount),
 		Status:  status,
 		RawData: rawBody,
 	}, nil

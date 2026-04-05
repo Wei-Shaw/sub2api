@@ -62,7 +62,7 @@ func (lb *DefaultLoadBalancer) SelectInstance(ctx context.Context, providerKey s
 	// Filter by supported types
 	var candidates []*dbent.PaymentProviderInstance
 	for _, inst := range instances {
-		if inst.SupportedTypes == "" || containsType(inst.SupportedTypes, paymentType) {
+		if InstanceSupportsType(inst.SupportedTypes, paymentType) {
 			candidates = append(candidates, inst)
 		}
 	}
@@ -110,7 +110,7 @@ func (lb *DefaultLoadBalancer) GetInstanceDailyAmount(ctx context.Context, insta
 	err := lb.db.PaymentOrder.Query().
 		Where(
 			paymentorder.ProviderInstanceID(instanceID),
-			paymentorder.StatusIn("COMPLETED", "PAID", "RECHARGING"),
+			paymentorder.StatusIn(OrderStatusCompleted, OrderStatusPaid, OrderStatusRecharging),
 			paymentorder.PaidAtGTE(todayStart),
 		).
 		Aggregate(dbent.Sum(paymentorder.FieldPayAmount)).
@@ -124,8 +124,12 @@ func (lb *DefaultLoadBalancer) GetInstanceDailyAmount(ctx context.Context, insta
 	return 0, nil
 }
 
-// containsType checks if a comma-separated list contains the given type.
-func containsType(supportedTypes string, target PaymentType) bool {
+// InstanceSupportsType checks if the given supported types string includes the target type.
+// An empty supportedTypes string means all types are supported.
+func InstanceSupportsType(supportedTypes string, target PaymentType) bool {
+	if supportedTypes == "" {
+		return true
+	}
 	for _, t := range strings.Split(supportedTypes, ",") {
 		if strings.TrimSpace(t) == target {
 			return true

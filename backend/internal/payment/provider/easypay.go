@@ -18,6 +18,13 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
 
+// EasyPay constants.
+const (
+	easypayCodeSuccess = 1
+	easypayStatusPaid  = 1
+	easypayHTTPTimeout = 10 * time.Second
+)
+
 // EasyPay implements payment.Provider for the EasyPay aggregation platform.
 type EasyPay struct {
 	instanceID string
@@ -36,12 +43,12 @@ func NewEasyPay(instanceID string, config map[string]string) (*EasyPay, error) {
 	return &EasyPay{
 		instanceID: instanceID,
 		config:     config,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: &http.Client{Timeout: easypayHTTPTimeout},
 	}, nil
 }
 
 func (e *EasyPay) Name() string        { return "EasyPay" }
-func (e *EasyPay) ProviderKey() string  { return "easypay" }
+func (e *EasyPay) ProviderKey() string { return "easypay" }
 func (e *EasyPay) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.TypeAlipay, payment.TypeWxpay}
 }
@@ -76,7 +83,7 @@ func (e *EasyPay) CreatePayment(ctx context.Context, req payment.CreatePaymentRe
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("easypay parse: %w", err)
 	}
-	if resp.Code != 1 {
+	if resp.Code != easypayCodeSuccess {
 		return nil, fmt.Errorf("easypay error: %s", resp.Msg)
 	}
 	return &payment.CreatePaymentResponse{TradeNo: resp.TradeNo, PayURL: resp.PayURL, QRCode: resp.QRCode}, nil
@@ -100,7 +107,7 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 		return nil, fmt.Errorf("easypay parse query: %w", err)
 	}
 	status := "pending"
-	if resp.Status == 1 {
+	if resp.Status == easypayStatusPaid {
 		status = "paid"
 	}
 	return &payment.QueryOrderResponse{TradeNo: tradeNo, Status: status}, nil
@@ -148,7 +155,7 @@ func (e *EasyPay) Refund(ctx context.Context, req payment.RefundRequest) (*payme
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("easypay parse refund: %w", err)
 	}
-	if resp.Code != 1 {
+	if resp.Code != easypayCodeSuccess {
 		return nil, fmt.Errorf("easypay refund failed: %s", resp.Msg)
 	}
 	return &payment.RefundResponse{RefundID: req.TradeNo, Status: "success"}, nil

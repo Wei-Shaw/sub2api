@@ -3,6 +3,7 @@ package provider
 import (
 	"bytes"
 	"context"
+	"crypto/rsa"
 	"fmt"
 	"io"
 	"math"
@@ -22,6 +23,13 @@ import (
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/native"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/refunddomestic"
 	"github.com/wechatpay-apiv3/wechatpay-go/utils"
+)
+
+// WeChat Pay constants.
+const (
+	wxpayCurrency   = "CNY"
+	wxpayH5Type     = "Wap"
+	wxpayFenPerYuan = 100
 )
 
 type Wxpay struct {
@@ -45,7 +53,7 @@ func NewWxpay(instanceID string, config map[string]string) (*Wxpay, error) {
 	return &Wxpay{instanceID: instanceID, config: config}, nil
 }
 
-func (w *Wxpay) Name() string       { return "Wxpay" }
+func (w *Wxpay) Name() string        { return "Wxpay" }
 func (w *Wxpay) ProviderKey() string { return "wxpay" }
 func (w *Wxpay) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.TypeWxpayDirect}
@@ -65,13 +73,9 @@ func (w *Wxpay) ensureClient() (*core.Client, error) {
 	if w.coreClient != nil {
 		return w.coreClient, nil
 	}
-	privateKey, err := utils.LoadPrivateKey(formatPEM(w.config["privateKey"], "PRIVATE KEY"))
+	privateKey, publicKey, err := w.loadKeyPair()
 	if err != nil {
-		return nil, fmt.Errorf("wxpay load private key: %w", err)
-	}
-	publicKey, err := utils.LoadPublicKey(formatPEM(w.config["publicKey"], "PUBLIC KEY"))
-	if err != nil {
-		return nil, fmt.Errorf("wxpay load public key: %w", err)
+		return nil, err
 	}
 	certSerial := w.config["certSerial"]
 	if certSerial == "" {
@@ -91,6 +95,18 @@ func (w *Wxpay) ensureClient() (*core.Client, error) {
 	w.notifyHandler = handler
 	w.coreClient = client
 	return w.coreClient, nil
+}
+
+func (w *Wxpay) loadKeyPair() (*rsa.PrivateKey, *rsa.PublicKey, error) {
+	privateKey, err := utils.LoadPrivateKey(formatPEM(w.config["privateKey"], "PRIVATE KEY"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("wxpay load private key: %w", err)
+	}
+	publicKey, err := utils.LoadPublicKey(formatPEM(w.config["publicKey"], "PUBLIC KEY"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("wxpay load public key: %w", err)
+	}
+	return privateKey, publicKey, nil
 }
 
 func yuanToFen(s string) (int64, error) {
@@ -118,7 +134,7 @@ func (w *Wxpay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequ
 		return nil, fmt.Errorf("wxpay create payment: %w", err)
 	}
 	if req.IsMobile && req.ClientIP != "" {
-		resp, err := w.createH5Order(ctx, client, req, notifyURL, totalFen)
+		resp, err := w.createOrder(ctx, client, req, notifyURL, totalFen, true)
 		if err == nil {
 			return resp, nil
 		}
@@ -126,12 +142,19 @@ func (w *Wxpay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequ
 			return nil, err
 		}
 	}
-	return w.createNativeOrder(ctx, client, req, notifyURL, totalFen)
+	return w.createOrder(ctx, client, req, notifyURL, totalFen, false)
 }
 
-func (w *Wxpay) createNativeOrder(ctx context.Context, c *core.Client, req payment.CreatePaymentRequest, notifyURL string, totalFen int64) (*payment.CreatePaymentResponse, error) {
+func (w *Wxpay) createOrder(ctx context.Context, c *core.Client, req payment.CreatePaymentRequest, notifyURL string, totalFen int64, useH5 bool) (*payment.CreatePaymentResponse, error) {
+	if useH5 {
+		return w.prepayH5(ctx, c, req, notifyURL, totalFen)
+	}
+	return w.prepayNative(ctx, c, req, notifyURL, totalFen)
+}
+
+func (w *Wxpay) prepayNative(ctx context.Context, c *core.Client, req payment.CreatePaymentRequest, notifyURL string, totalFen int64) (*payment.CreatePaymentResponse, error) {
 	svc := native.NativeApiService{Client: c}
-	cur := "CNY"
+	cur := wxpayCurrency
 	resp, _, err := svc.Prepay(ctx, native.PrepayRequest{
 		Appid: core.String(w.config["appId"]), Mchid: core.String(w.config["mchId"]),
 		Description: core.String(req.Subject), OutTradeNo: core.String(req.OrderID),
@@ -148,10 +171,10 @@ func (w *Wxpay) createNativeOrder(ctx context.Context, c *core.Client, req payme
 	return &payment.CreatePaymentResponse{TradeNo: req.OrderID, QRCode: codeURL}, nil
 }
 
-func (w *Wxpay) createH5Order(ctx context.Context, c *core.Client, req payment.CreatePaymentRequest, notifyURL string, totalFen int64) (*payment.CreatePaymentResponse, error) {
+func (w *Wxpay) prepayH5(ctx context.Context, c *core.Client, req payment.CreatePaymentRequest, notifyURL string, totalFen int64) (*payment.CreatePaymentResponse, error) {
 	svc := h5.H5ApiService{Client: c}
-	cur := "CNY"
-	tp := "Wap"
+	cur := wxpayCurrency
+	tp := wxpayH5Type
 	resp, _, err := svc.Prepay(ctx, h5.PrepayRequest{
 		Appid: core.String(w.config["appId"]), Mchid: core.String(w.config["mchId"]),
 		Description: core.String(req.Subject), OutTradeNo: core.String(req.OrderID),
@@ -203,7 +226,7 @@ func (w *Wxpay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryO
 	}
 	var amt float64
 	if tx.Amount != nil && tx.Amount.Total != nil {
-		amt = float64(*tx.Amount.Total) / 100
+		amt = float64(*tx.Amount.Total) / wxpayFenPerYuan
 	}
 	id := tradeNo
 	if tx.TransactionId != nil {
@@ -237,7 +260,7 @@ func (w *Wxpay) VerifyNotification(ctx context.Context, rawBody string, headers 
 	}
 	var amt float64
 	if tx.Amount != nil && tx.Amount.Total != nil {
-		amt = float64(*tx.Amount.Total) / 100
+		amt = float64(*tx.Amount.Total) / wxpayFenPerYuan
 	}
 	st := "failed"
 	if wxSV(tx.TradeState) == "SUCCESS" {
@@ -258,19 +281,12 @@ func (w *Wxpay) Refund(ctx context.Context, req payment.RefundRequest) (*payment
 	if err != nil {
 		return nil, fmt.Errorf("wxpay refund amount: %w", err)
 	}
-	svc := native.NativeApiService{Client: c}
-	tx, _, err := svc.QueryOrderByOutTradeNo(ctx, native.QueryOrderByOutTradeNoRequest{
-		OutTradeNo: core.String(req.OrderID), Mchid: core.String(w.config["mchId"]),
-	})
+	tf, err := w.queryOrderTotalFen(ctx, c, req.OrderID)
 	if err != nil {
-		return nil, fmt.Errorf("wxpay refund query order: %w", err)
-	}
-	var tf int64
-	if tx.Amount != nil && tx.Amount.Total != nil {
-		tf = *tx.Amount.Total
+		return nil, err
 	}
 	rs := refunddomestic.RefundsApiService{Client: c}
-	cur := "CNY"
+	cur := wxpayCurrency
 	res, _, err := rs.Create(ctx, refunddomestic.CreateRequest{
 		OutTradeNo:  core.String(req.OrderID),
 		OutRefundNo: core.String(fmt.Sprintf("%s-refund-%d", req.OrderID, time.Now().UnixNano())),
@@ -289,6 +305,21 @@ func (w *Wxpay) Refund(ctx context.Context, req payment.RefundRequest) (*payment
 		st = "success"
 	}
 	return &payment.RefundResponse{RefundID: rid, Status: st}, nil
+}
+
+func (w *Wxpay) queryOrderTotalFen(ctx context.Context, c *core.Client, orderID string) (int64, error) {
+	svc := native.NativeApiService{Client: c}
+	tx, _, err := svc.QueryOrderByOutTradeNo(ctx, native.QueryOrderByOutTradeNoRequest{
+		OutTradeNo: core.String(orderID), Mchid: core.String(w.config["mchId"]),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("wxpay refund query order: %w", err)
+	}
+	var tf int64
+	if tx.Amount != nil && tx.Amount.Total != nil {
+		tf = *tx.Amount.Total
+	}
+	return tf, nil
 }
 
 func (w *Wxpay) CancelPayment(ctx context.Context, tradeNo string) error {

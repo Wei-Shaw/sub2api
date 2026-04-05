@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
-	"log/slog"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -32,6 +32,14 @@ const (
 	SettingCancelWindowSize    = "CANCEL_RATE_LIMIT_WINDOW"
 	SettingCancelWindowUnit    = "CANCEL_RATE_LIMIT_UNIT"
 	SettingCancelWindowMode    = "CANCEL_RATE_LIMIT_WINDOW_MODE"
+)
+
+// Default values for payment configuration settings.
+const (
+	defaultMinRechargeAmount = 1
+	defaultMaxRechargeAmount = 99999999.99
+	defaultOrderTimeoutMin   = 30
+	defaultMaxPendingOrders  = 3
 )
 
 // PaymentConfig holds the payment system configuration.
@@ -161,11 +169,11 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *PaymentConfig {
 	cfg := &PaymentConfig{
 		Enabled:             vals[SettingPaymentEnabled] == "true",
-		MinAmount:           pcParseFloat(vals[SettingMinRechargeAmount], 1),
-		MaxAmount:           pcParseFloat(vals[SettingMaxRechargeAmount], 99999999.99),
+		MinAmount:           pcParseFloat(vals[SettingMinRechargeAmount], defaultMinRechargeAmount),
+		MaxAmount:           pcParseFloat(vals[SettingMaxRechargeAmount], defaultMaxRechargeAmount),
 		DailyLimit:          pcParseFloat(vals[SettingDailyRechargeLimit], 0),
-		OrderTimeoutMin:     pcParseInt(vals[SettingOrderTimeoutMinutes], 30),
-		MaxPendingOrders:    pcParseInt(vals[SettingMaxPendingOrders], 3),
+		OrderTimeoutMin:     pcParseInt(vals[SettingOrderTimeoutMinutes], defaultOrderTimeoutMin),
+		MaxPendingOrders:    pcParseInt(vals[SettingMaxPendingOrders], defaultMaxPendingOrders),
 		BalanceDisabled:     vals[SettingBalancePayDisabled] == "true",
 		LoadBalanceStrategy: vals[SettingLoadBalanceStrategy],
 		ProductNamePrefix:   vals[SettingProductNamePrefix],
@@ -186,6 +194,9 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 }
 
 // UpdatePaymentConfig updates the payment configuration settings.
+// NOTE: This function exceeds 30 lines because each field requires an independent
+// nil-check before serialisation — this is inherent to patch-style update patterns
+// and cannot be meaningfully decomposed without introducing unnecessary abstraction.
 func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req UpdatePaymentConfigRequest) error {
 	m := make(map[string]string)
 	if req.Enabled != nil {
@@ -293,7 +304,6 @@ func (s *PaymentConfigService) encryptConfig(cfg map[string]string) (string, err
 
 // --- Channel CRUD ---
 
-
 // --- Plan CRUD ---
 
 func (s *PaymentConfigService) ListPlans(ctx context.Context) ([]*dbent.SubscriptionPlan, error) {
@@ -316,6 +326,9 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 	return b.Save(ctx)
 }
 
+// UpdatePlan updates a subscription plan by ID (patch semantics).
+// NOTE: This function exceeds 30 lines due to per-field nil-check patch update
+// boilerplate — same rationale as UpdatePaymentConfig.
 func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req UpdatePlanRequest) (*dbent.SubscriptionPlan, error) {
 	u := s.entClient.SubscriptionPlan.UpdateOneID(id)
 	if req.GroupID != nil {
@@ -378,7 +391,7 @@ func (s *PaymentConfigService) GetMethodLimits(ctx context.Context, types []stri
 	for _, pt := range types {
 		ml := MethodLimits{PaymentType: pt}
 		for _, inst := range instances {
-			if !pcInstanceSupportsType(inst, pt) {
+			if !payment.InstanceSupportsType(inst.SupportedTypes, pt) {
 				continue
 			}
 			pcApplyInstanceLimits(inst, pt, &ml)
@@ -386,18 +399,6 @@ func (s *PaymentConfigService) GetMethodLimits(ctx context.Context, types []stri
 		result = append(result, ml)
 	}
 	return result, nil
-}
-
-func pcInstanceSupportsType(inst *dbent.PaymentProviderInstance, pt string) bool {
-	if inst.SupportedTypes == "" {
-		return true
-	}
-	for _, t := range strings.Split(inst.SupportedTypes, ",") {
-		if strings.TrimSpace(t) == pt {
-			return true
-		}
-	}
-	return false
 }
 
 func pcApplyInstanceLimits(inst *dbent.PaymentProviderInstance, pt string, ml *MethodLimits) {
@@ -498,7 +499,7 @@ func (s *PaymentConfigService) MigrateLegacyPurchaseURL(ctx context.Context) err
 
 	// Save updated menu items and clear old settings
 	if err := s.settingRepo.SetMultiple(ctx, map[string]string{
-		SettingKeyCustomMenuItems:            string(data),
+		SettingKeyCustomMenuItems:             string(data),
 		SettingKeyPurchaseSubscriptionEnabled: "false",
 	}); err != nil {
 		return fmt.Errorf("save migrated settings: %w", err)

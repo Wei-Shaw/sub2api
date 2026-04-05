@@ -47,13 +47,10 @@ func (r *Registry) GetProvider(t PaymentType) (Provider, error) {
 func (r *Registry) GetProviderByKey(key string) (Provider, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	seen := make(map[string]bool)
 	for _, p := range r.providers {
-		k := p.ProviderKey()
-		if k == key && !seen[k] {
+		if p.ProviderKey() == key {
 			return p, nil
 		}
-		seen[k] = true
 	}
 	return nil, ErrProviderNotFound
 }

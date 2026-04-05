@@ -14,9 +14,9 @@ type mockProvider struct {
 	supportedTypes []PaymentType
 }
 
-func (m *mockProvider) Name() string                   { return m.name }
-func (m *mockProvider) ProviderKey() string             { return m.key }
-func (m *mockProvider) SupportedTypes() []PaymentType   { return m.supportedTypes }
+func (m *mockProvider) Name() string                  { return m.name }
+func (m *mockProvider) ProviderKey() string           { return m.key }
+func (m *mockProvider) SupportedTypes() []PaymentType { return m.supportedTypes }
 func (m *mockProvider) CreatePayment(_ context.Context, _ CreatePaymentRequest) (*CreatePaymentResponse, error) {
 	return nil, nil
 }

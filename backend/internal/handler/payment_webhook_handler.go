@@ -17,6 +17,9 @@ type PaymentWebhookHandler struct {
 	registry       *payment.Registry
 }
 
+// maxWebhookBodySize is the maximum allowed webhook request body size (1 MB).
+const maxWebhookBodySize = 1 << 20
+
 // NewPaymentWebhookHandler creates a new PaymentWebhookHandler.
 func NewPaymentWebhookHandler(paymentService *service.PaymentService, registry *payment.Registry) *PaymentWebhookHandler {
 	return &PaymentWebhookHandler{
@@ -51,7 +54,7 @@ func (h *PaymentWebhookHandler) StripeWebhook(c *gin.Context) {
 
 // handleNotify is the shared logic for all provider webhook handlers.
 func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string) {
-	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<20)) // 1MB limit
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxWebhookBodySize))
 	if err != nil {
 		slog.Error("[Payment Webhook] failed to read body", "provider", providerKey, "error", err)
 		c.String(http.StatusBadRequest, "failed to read body")

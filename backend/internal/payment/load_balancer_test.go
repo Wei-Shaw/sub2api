@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestContainsType(t *testing.T) {
+func TestInstanceSupportsType(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -68,19 +68,19 @@ func TestContainsType(t *testing.T) {
 			expected:       false,
 		},
 		{
-			name:           "empty supported types string matches nothing",
+			name:           "empty supported types means all supported",
 			supportedTypes: "",
 			target:         "alipay",
-			expected:       false,
+			expected:       true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := containsType(tt.supportedTypes, tt.target)
+			got := InstanceSupportsType(tt.supportedTypes, tt.target)
 			if got != tt.expected {
-				t.Fatalf("containsType(%q, %q) = %v, want %v", tt.supportedTypes, tt.target, got, tt.expected)
+				t.Fatalf("InstanceSupportsType(%q, %q) = %v, want %v", tt.supportedTypes, tt.target, got, tt.expected)
 			}
 		})
 	}

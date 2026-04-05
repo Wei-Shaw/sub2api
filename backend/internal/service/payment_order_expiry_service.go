@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+const expiryCheckTimeout = 30 * time.Second
+
 // PaymentOrderExpiryService periodically expires timed-out payment orders.
 type PaymentOrderExpiryService struct {
 	paymentSvc *PaymentService
@@ -57,7 +59,7 @@ func (s *PaymentOrderExpiryService) Stop() {
 }
 
 func (s *PaymentOrderExpiryService) runOnce() {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), expiryCheckTimeout)
 	defer cancel()
 
 	expired, err := s.paymentSvc.ExpireTimedOutOrders(ctx)

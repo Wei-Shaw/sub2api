@@ -71,9 +71,8 @@ func (h *PaymentHandler) ListOrders(c *gin.Context) {
 // GetOrderDetail returns detailed information about a single order.
 // GET /api/v1/admin/payment/orders/:id
 func (h *PaymentHandler) GetOrderDetail(c *gin.Context) {
-	orderID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid order ID")
+	orderID, ok := parseIDParam(c, "id")
+	if !ok {
 		return
 	}
 	order, err := h.paymentService.GetOrderByID(c.Request.Context(), orderID)
@@ -88,9 +87,8 @@ func (h *PaymentHandler) GetOrderDetail(c *gin.Context) {
 // CancelOrder cancels a pending order (admin).
 // POST /api/v1/admin/payment/orders/:id/cancel
 func (h *PaymentHandler) CancelOrder(c *gin.Context) {
-	orderID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid order ID")
+	orderID, ok := parseIDParam(c, "id")
+	if !ok {
 		return
 	}
 	msg, err := h.paymentService.AdminCancelOrder(c.Request.Context(), orderID)
@@ -104,9 +102,8 @@ func (h *PaymentHandler) CancelOrder(c *gin.Context) {
 // RetryFulfillment retries fulfillment for a paid order.
 // POST /api/v1/admin/payment/orders/:id/retry
 func (h *PaymentHandler) RetryFulfillment(c *gin.Context) {
-	orderID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid order ID")
+	orderID, ok := parseIDParam(c, "id")
+	if !ok {
 		return
 	}
 	if err := h.paymentService.RetryFulfillment(c.Request.Context(), orderID); err != nil {
@@ -127,9 +124,8 @@ type AdminProcessRefundRequest struct {
 // ProcessRefund processes a refund for an order (admin).
 // POST /api/v1/admin/payment/orders/:id/refund
 func (h *PaymentHandler) ProcessRefund(c *gin.Context) {
-	orderID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid order ID")
+	orderID, ok := parseIDParam(c, "id")
+	if !ok {
 		return
 	}
 
@@ -189,9 +185,8 @@ func (h *PaymentHandler) CreatePlan(c *gin.Context) {
 // UpdatePlan updates an existing subscription plan.
 // PUT /api/v1/admin/payment/plans/:id
 func (h *PaymentHandler) UpdatePlan(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid plan ID")
+	id, ok := parseIDParam(c, "id")
+	if !ok {
 		return
 	}
 	var req service.UpdatePlanRequest
@@ -210,9 +205,8 @@ func (h *PaymentHandler) UpdatePlan(c *gin.Context) {
 // DeletePlan deletes a subscription plan.
 // DELETE /api/v1/admin/payment/plans/:id
 func (h *PaymentHandler) DeletePlan(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid plan ID")
+	id, ok := parseIDParam(c, "id")
+	if !ok {
 		return
 	}
 	if err := h.configService.DeletePlan(c.Request.Context(), id); err != nil {
@@ -254,9 +248,8 @@ func (h *PaymentHandler) CreateProvider(c *gin.Context) {
 // UpdateProvider updates an existing payment provider instance.
 // PUT /api/v1/admin/payment/providers/:id
 func (h *PaymentHandler) UpdateProvider(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid provider ID")
+	id, ok := parseIDParam(c, "id")
+	if !ok {
 		return
 	}
 	var req service.UpdateProviderInstanceRequest
@@ -275,9 +268,8 @@ func (h *PaymentHandler) UpdateProvider(c *gin.Context) {
 // DeleteProvider deletes a payment provider instance.
 // DELETE /api/v1/admin/payment/providers/:id
 func (h *PaymentHandler) DeleteProvider(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid provider ID")
+	id, ok := parseIDParam(c, "id")
+	if !ok {
 		return
 	}
 	if err := h.configService.DeleteProviderInstance(c.Request.Context(), id); err != nil {
@@ -285,6 +277,17 @@ func (h *PaymentHandler) DeleteProvider(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"message": "deleted"})
+}
+
+// parseIDParam parses an int64 path parameter.
+// Returns the parsed ID and true on success; on failure it writes a BadRequest response and returns false.
+func parseIDParam(c *gin.Context, paramName string) (int64, bool) {
+	id, err := strconv.ParseInt(c.Param(paramName), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid "+paramName)
+		return 0, false
+	}
+	return id, true
 }
 
 // --- Config ---

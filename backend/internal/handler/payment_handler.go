@@ -4,9 +4,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -88,9 +88,8 @@ type CreateOrderRequest struct {
 // CreateOrder creates a new payment order.
 // POST /api/v1/payment/orders
 func (h *PaymentHandler) CreateOrder(c *gin.Context) {
-	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	subject, ok := requireAuth(c)
 	if !ok {
-		response.Unauthorized(c, "User not authenticated")
 		return
 	}
 
@@ -121,9 +120,8 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 // GetMyOrders returns the authenticated user's orders.
 // GET /api/v1/payment/orders/my
 func (h *PaymentHandler) GetMyOrders(c *gin.Context) {
-	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	subject, ok := requireAuth(c)
 	if !ok {
-		response.Unauthorized(c, "User not authenticated")
 		return
 	}
 
@@ -145,9 +143,8 @@ func (h *PaymentHandler) GetMyOrders(c *gin.Context) {
 // GetOrder returns a single order for the authenticated user.
 // GET /api/v1/payment/orders/:id
 func (h *PaymentHandler) GetOrder(c *gin.Context) {
-	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	subject, ok := requireAuth(c)
 	if !ok {
-		response.Unauthorized(c, "User not authenticated")
 		return
 	}
 
@@ -168,9 +165,8 @@ func (h *PaymentHandler) GetOrder(c *gin.Context) {
 // CancelOrder cancels a pending order for the authenticated user.
 // POST /api/v1/payment/orders/:id/cancel
 func (h *PaymentHandler) CancelOrder(c *gin.Context) {
-	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	subject, ok := requireAuth(c)
 	if !ok {
-		response.Unauthorized(c, "User not authenticated")
 		return
 	}
 
@@ -196,9 +192,8 @@ type RefundRequestBody struct {
 // RequestRefund submits a refund request for a completed order.
 // POST /api/v1/payment/orders/:id/refund-request
 func (h *PaymentHandler) RequestRefund(c *gin.Context) {
-	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	subject, ok := requireAuth(c)
 	if !ok {
-		response.Unauthorized(c, "User not authenticated")
 		return
 	}
 
@@ -219,6 +214,17 @@ func (h *PaymentHandler) RequestRefund(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"message": "refund requested"})
+}
+
+// requireAuth extracts the authenticated subject from the context.
+// Returns the subject and true on success; on failure it writes an Unauthorized response and returns false.
+func requireAuth(c *gin.Context) (middleware2.AuthSubject, bool) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return middleware2.AuthSubject{}, false
+	}
+	return subject, true
 }
 
 // isMobile detects mobile user agents.

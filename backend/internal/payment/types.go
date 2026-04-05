@@ -16,6 +16,22 @@ const (
 	TypeStripe       PaymentType = "stripe"
 )
 
+// Order status constants shared across payment and service layers.
+const (
+	OrderStatusPending           = "PENDING"
+	OrderStatusPaid              = "PAID"
+	OrderStatusRecharging        = "RECHARGING"
+	OrderStatusCompleted         = "COMPLETED"
+	OrderStatusExpired           = "EXPIRED"
+	OrderStatusCancelled         = "CANCELLED"
+	OrderStatusFailed            = "FAILED"
+	OrderStatusRefundRequested   = "REFUND_REQUESTED"
+	OrderStatusRefunding         = "REFUNDING"
+	OrderStatusPartiallyRefunded = "PARTIALLY_REFUNDED"
+	OrderStatusRefunded          = "REFUNDED"
+	OrderStatusRefundFailed      = "REFUND_FAILED"
+)
+
 // GetBasePaymentType extracts the base payment method from a composite key.
 // For example, "alipay_direct" -> "alipay".
 func GetBasePaymentType(t string) string {
