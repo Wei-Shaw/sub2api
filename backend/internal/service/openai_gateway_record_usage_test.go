@@ -137,6 +137,7 @@ func usageTokensFromOpenAIUsage(usage OpenAIUsage) UsageTokens {
 		OutputTokens:        usage.OutputTokens,
 		CacheCreationTokens: usage.CacheCreationInputTokens,
 		CacheReadTokens:     usage.CacheReadInputTokens,
+		ImageOutputTokens:   usage.ImageOutputTokens,
 	}
 }
 
@@ -1122,6 +1123,42 @@ func TestOpenAIGatewayServiceRecordUsage_StoresEffectiveUnitPricesAndPricingSour
 	require.Equal(t, 30e-6, *usageRepo.lastLog.EffectiveOutputUnitPrice)
 	require.Equal(t, 0.5e-6, *usageRepo.lastLog.EffectiveCacheReadUnitPrice)
 	require.Equal(t, "priority_pricing", *usageRepo.lastLog.PricingSource)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_PersistsChannelAndImageOutputFields(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10, ImageOutputTokens: 4}
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_channel_image_fields",
+			Usage:     usage,
+			Model:     "gpt-5.4",
+			Duration:  time.Second,
+		},
+		APIKey:  &APIKey{ID: 10},
+		User:    &User{ID: 20},
+		Account: &Account{ID: 30},
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          7,
+			OriginalModel:      "glm",
+			ChannelMappedModel: "gpt-5.4",
+			BillingModelSource: BillingModelSourceChannelMapped,
+			ModelMappingChain:  "glm→gpt-5.4",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 4, usageRepo.lastLog.ImageOutputTokens)
+	require.NotZero(t, usageRepo.lastLog.ImageOutputCost)
+	require.NotNil(t, usageRepo.lastLog.ChannelID)
+	require.Equal(t, int64(7), *usageRepo.lastLog.ChannelID)
+	require.NotNil(t, usageRepo.lastLog.ModelMappingChain)
+	require.Equal(t, "glm→gpt-5.4", *usageRepo.lastLog.ModelMappingChain)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
 }
 
 func TestNormalizeOpenAIServiceTier(t *testing.T) {

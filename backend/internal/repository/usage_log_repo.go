@@ -28,7 +28,7 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, priority_account_multiplier, effective_multiplier, effective_input_unit_price, effective_output_unit_price, effective_cache_read_unit_price, pricing_source, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, media_type, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, routing_target_group, routing_schedule_layer, routing_selected_account_id, routing_selected_account_name, routing_effective_model, routing_failover_count, routing_failover_final_reason, cache_ttl_overridden, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, channel_id, model_mapping_chain, billing_tier, billing_mode, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, priority_account_multiplier, effective_multiplier, effective_input_unit_price, effective_output_unit_price, effective_cache_read_unit_price, pricing_source, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, media_type, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, routing_target_group, routing_schedule_layer, routing_selected_account_id, routing_selected_account_name, routing_effective_model, routing_failover_count, routing_failover_final_reason, cache_ttl_overridden, created_at"
 
 // usageLogInsertArgTypes must stay in the same order as:
 //  1. prepareUsageLogInsert().args
@@ -45,6 +45,10 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // model
 	"text",        // requested_model
 	"text",        // upstream_model
+	"bigint",      // channel_id
+	"text",        // model_mapping_chain
+	"text",        // billing_tier
+	"text",        // billing_mode
 	"bigint",      // group_id
 	"bigint",      // subscription_id
 	"integer",     // input_tokens
@@ -53,6 +57,8 @@ var usageLogInsertArgTypes = [...]string{
 	"integer",     // cache_read_tokens
 	"integer",     // cache_creation_5m_tokens
 	"integer",     // cache_creation_1h_tokens
+	"integer",     // image_output_tokens
+	"numeric",     // image_output_cost
 	"numeric",     // input_cost
 	"numeric",     // output_cost
 	"numeric",     // cache_creation_cost
@@ -331,6 +337,10 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			model,
 			requested_model,
 			upstream_model,
+			channel_id,
+			model_mapping_chain,
+			billing_tier,
+			billing_mode,
 			group_id,
 			subscription_id,
 			input_tokens,
@@ -339,6 +349,8 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			cache_read_tokens,
 			cache_creation_5m_tokens,
 			cache_creation_1h_tokens,
+			image_output_tokens,
+			image_output_cost,
 			input_cost,
 			output_cost,
 			cache_creation_cost,
@@ -379,11 +391,11 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			created_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9,
-			$10, $11, $12, $13,
-			$14, $15,
-			$16, $17, $18, $19, $20, $21,
-			$22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53
+			$8, $9, $10, $11,
+			$12, $13,
+			$14, $15, $16, $17,
+			$18, $19, $20, $21, $22, $23, $24, $25,
+			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -776,6 +788,10 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			model,
 			requested_model,
 			upstream_model,
+			channel_id,
+			model_mapping_chain,
+			billing_tier,
+			billing_mode,
 			group_id,
 			subscription_id,
 			input_tokens,
@@ -784,6 +800,8 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			cache_read_tokens,
 			cache_creation_5m_tokens,
 			cache_creation_1h_tokens,
+			image_output_tokens,
+			image_output_cost,
 			input_cost,
 			output_cost,
 			cache_creation_cost,
@@ -824,7 +842,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(keys)*47)
+	args := make([]any, 0, len(keys)*60)
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -852,32 +870,44 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 	_, _ = query.WriteString(`
 		),
 		inserted AS (
-			INSERT INTO usage_logs (
-				user_id,
-				api_key_id,
-				account_id,
-				request_id,
-				model,
-				requested_model,
-				upstream_model,
-				group_id,
-				subscription_id,
-				input_tokens,
-				output_tokens,
-				cache_creation_tokens,
-				cache_read_tokens,
-				cache_creation_5m_tokens,
-				cache_creation_1h_tokens,
-				input_cost,
+		INSERT INTO usage_logs (
+			user_id,
+			api_key_id,
+			account_id,
+			request_id,
+			model,
+			requested_model,
+			upstream_model,
+			channel_id,
+			model_mapping_chain,
+			billing_tier,
+			billing_mode,
+			group_id,
+			subscription_id,
+			input_tokens,
+			output_tokens,
+			cache_creation_tokens,
+			cache_read_tokens,
+			cache_creation_5m_tokens,
+			cache_creation_1h_tokens,
+			image_output_tokens,
+			image_output_cost,
+			input_cost,
 				output_cost,
 				cache_creation_cost,
 				cache_read_cost,
 				total_cost,
-				actual_cost,
-				rate_multiplier,
-				account_rate_multiplier,
-				billing_type,
-				request_type,
+			actual_cost,
+			rate_multiplier,
+			account_rate_multiplier,
+			priority_account_multiplier,
+			effective_multiplier,
+			effective_input_unit_price,
+			effective_output_unit_price,
+			effective_cache_read_unit_price,
+			pricing_source,
+			billing_type,
+			request_type,
 				stream,
 				openai_ws_mode,
 				duration_ms,
@@ -905,27 +935,39 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				user_id,
 				api_key_id,
 				account_id,
-				request_id,
-				model,
-				requested_model,
-				upstream_model,
-				group_id,
-				subscription_id,
+			request_id,
+			model,
+			requested_model,
+			upstream_model,
+			channel_id,
+			model_mapping_chain,
+			billing_tier,
+			billing_mode,
+			group_id,
+			subscription_id,
 				input_tokens,
 				output_tokens,
 				cache_creation_tokens,
-				cache_read_tokens,
-				cache_creation_5m_tokens,
-				cache_creation_1h_tokens,
-				input_cost,
-				output_cost,
-				cache_creation_cost,
-				cache_read_cost,
-				total_cost,
-				actual_cost,
-				rate_multiplier,
-				account_rate_multiplier,
-				billing_type,
+			cache_read_tokens,
+			cache_creation_5m_tokens,
+			cache_creation_1h_tokens,
+			image_output_tokens,
+			image_output_cost,
+			input_cost,
+			output_cost,
+			cache_creation_cost,
+			cache_read_cost,
+			total_cost,
+			actual_cost,
+			rate_multiplier,
+			account_rate_multiplier,
+			priority_account_multiplier,
+			effective_multiplier,
+			effective_input_unit_price,
+			effective_output_unit_price,
+			effective_cache_read_unit_price,
+			pricing_source,
+			billing_type,
 				request_type,
 				stream,
 				openai_ws_mode,
@@ -998,6 +1040,10 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			model,
 			requested_model,
 			upstream_model,
+			channel_id,
+			model_mapping_chain,
+			billing_tier,
+			billing_mode,
 			group_id,
 			subscription_id,
 			input_tokens,
@@ -1006,6 +1052,8 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			cache_read_tokens,
 			cache_creation_5m_tokens,
 			cache_creation_1h_tokens,
+			image_output_tokens,
+			image_output_cost,
 			input_cost,
 			output_cost,
 			cache_creation_cost,
@@ -1046,7 +1094,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*53)
+	args := make([]any, 0, len(preparedList)*59)
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1079,6 +1127,10 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			model,
 			requested_model,
 			upstream_model,
+			channel_id,
+			model_mapping_chain,
+			billing_tier,
+			billing_mode,
 			group_id,
 			subscription_id,
 			input_tokens,
@@ -1087,6 +1139,8 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			cache_read_tokens,
 			cache_creation_5m_tokens,
 			cache_creation_1h_tokens,
+			image_output_tokens,
+			image_output_cost,
 			input_cost,
 			output_cost,
 			cache_creation_cost,
@@ -1134,6 +1188,10 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			model,
 			requested_model,
 			upstream_model,
+			channel_id,
+			model_mapping_chain,
+			billing_tier,
+			billing_mode,
 			group_id,
 			subscription_id,
 			input_tokens,
@@ -1142,6 +1200,8 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			cache_read_tokens,
 			cache_creation_5m_tokens,
 			cache_creation_1h_tokens,
+			image_output_tokens,
+			image_output_cost,
 			input_cost,
 			output_cost,
 			cache_creation_cost,
@@ -1197,6 +1257,10 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			model,
 			requested_model,
 			upstream_model,
+			channel_id,
+			model_mapping_chain,
+			billing_tier,
+			billing_mode,
 			group_id,
 			subscription_id,
 			input_tokens,
@@ -1205,6 +1269,8 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			cache_read_tokens,
 			cache_creation_5m_tokens,
 			cache_creation_1h_tokens,
+			image_output_tokens,
+			image_output_cost,
 			input_cost,
 			output_cost,
 			cache_creation_cost,
@@ -1245,11 +1311,11 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			created_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9,
-			$10, $11, $12, $13,
-			$14, $15,
-			$16, $17, $18, $19, $20, $21,
-			$22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53
+			$8, $9, $10, $11,
+			$12, $13,
+			$14, $15, $16, $17,
+			$18, $19, $20, $21, $22, $23, $24, $25,
+			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1271,6 +1337,10 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 
 	groupID := nullInt64(log.GroupID)
 	subscriptionID := nullInt64(log.SubscriptionID)
+	channelID := nullInt64(log.ChannelID)
+	modelMappingChain := nullString(log.ModelMappingChain)
+	billingTier := nullString(log.BillingTier)
+	billingMode := nullString(log.BillingMode)
 	duration := nullInt(log.DurationMs)
 	firstToken := nullInt(log.FirstTokenMs)
 	userAgent := nullString(log.UserAgent)
@@ -1318,6 +1388,10 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			log.Model,
 			nullString(&requestedModel),
 			upstreamModel,
+			channelID,
+			modelMappingChain,
+			billingTier,
+			billingMode,
 			groupID,
 			subscriptionID,
 			log.InputTokens,
@@ -1326,6 +1400,8 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			log.CacheReadTokens,
 			log.CacheCreation5mTokens,
 			log.CacheCreation1hTokens,
+			log.ImageOutputTokens,
+			log.ImageOutputCost,
 			log.InputCost,
 			log.OutputCost,
 			log.CacheCreationCost,
@@ -4066,6 +4142,10 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		model                       string
 		requestedModel              sql.NullString
 		upstreamModel               sql.NullString
+		channelID                   sql.NullInt64
+		modelMappingChain           sql.NullString
+		billingTier                 sql.NullString
+		billingMode                 sql.NullString
 		groupID                     sql.NullInt64
 		subscriptionID              sql.NullInt64
 		inputTokens                 int
@@ -4074,6 +4154,8 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		cacheReadTokens             int
 		cacheCreation5m             int
 		cacheCreation1h             int
+		imageOutputTokens           int
+		imageOutputCost             float64
 		inputCost                   float64
 		outputCost                  float64
 		cacheCreationCost           float64
@@ -4123,6 +4205,10 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&model,
 		&requestedModel,
 		&upstreamModel,
+		&channelID,
+		&modelMappingChain,
+		&billingTier,
+		&billingMode,
 		&groupID,
 		&subscriptionID,
 		&inputTokens,
@@ -4131,6 +4217,8 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&cacheReadTokens,
 		&cacheCreation5m,
 		&cacheCreation1h,
+		&imageOutputTokens,
+		&imageOutputCost,
 		&inputCost,
 		&outputCost,
 		&cacheCreationCost,
@@ -4180,6 +4268,8 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		AccountID:                   accountID,
 		Model:                       model,
 		RequestedModel:              coalesceTrimmedString(requestedModel, model),
+		ImageOutputTokens:           imageOutputTokens,
+		ImageOutputCost:             imageOutputCost,
 		InputTokens:                 inputTokens,
 		OutputTokens:                outputTokens,
 		CacheCreationTokens:         cacheCreationTokens,
@@ -4218,9 +4308,22 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		value := groupID.Int64
 		log.GroupID = &value
 	}
+	if channelID.Valid {
+		value := channelID.Int64
+		log.ChannelID = &value
+	}
 	if subscriptionID.Valid {
 		value := subscriptionID.Int64
 		log.SubscriptionID = &value
+	}
+	if modelMappingChain.Valid {
+		log.ModelMappingChain = &modelMappingChain.String
+	}
+	if billingTier.Valid {
+		log.BillingTier = &billingTier.String
+	}
+	if billingMode.Valid {
+		log.BillingMode = &billingMode.String
 	}
 	if durationMs.Valid {
 		value := int(durationMs.Int64)

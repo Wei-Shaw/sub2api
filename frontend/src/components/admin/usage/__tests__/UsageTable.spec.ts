@@ -22,6 +22,10 @@ const messages: Record<string, string> = {
   'usage.original': 'Original',
   'usage.userBilled': 'User billed',
   'usage.accountBilled': 'Account billed',
+  'admin.usage.billingMode': 'Billing Mode',
+  'admin.usage.billingModeToken': 'Token',
+  'admin.usage.billingModePerRequest': 'Per Request',
+  'admin.usage.billingModeImage': 'Image',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -40,6 +44,7 @@ const DataTableStub = {
     <div>
       <div v-for="row in data" :key="row.request_id">
         <slot name="cell-model" :row="row" :value="row.model" />
+        <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-cost" :row="row" />
       </div>
     </div>
@@ -146,5 +151,47 @@ describe('admin UsageTable tooltip', () => {
     const text = wrapper.text()
     expect(text).toContain('claude-sonnet-4')
     expect(text).toContain('claude-sonnet-4-20250514')
+  })
+
+  it('shows model mapping chain and billing mode for admin rows', () => {
+    const row = {
+      request_id: 'req-admin-channel-1',
+      model: 'alias-model',
+      model_mapping_chain: 'alias-model→claude-sonnet-4',
+      billing_mode: 'image',
+      image_count: 2,
+      image_size: '2K',
+      actual_cost: 1,
+      total_cost: 1,
+      account_rate_multiplier: 1,
+      rate_multiplier: 1,
+      input_cost: 0,
+      output_cost: 0,
+      cache_creation_cost: 0,
+      cache_read_cost: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('alias-model')
+    expect(text).toContain('claude-sonnet-4')
+    expect(text).toContain('Image')
   })
 })

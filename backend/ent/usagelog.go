@@ -36,6 +36,14 @@ type UsageLog struct {
 	RequestedModel *string `json:"requested_model,omitempty"`
 	// UpstreamModel holds the value of the "upstream_model" field.
 	UpstreamModel *string `json:"upstream_model,omitempty"`
+	// ChannelID holds the value of the "channel_id" field.
+	ChannelID *int64 `json:"channel_id,omitempty"`
+	// ModelMappingChain holds the value of the "model_mapping_chain" field.
+	ModelMappingChain *string `json:"model_mapping_chain,omitempty"`
+	// BillingTier holds the value of the "billing_tier" field.
+	BillingTier *string `json:"billing_tier,omitempty"`
+	// BillingMode holds the value of the "billing_mode" field.
+	BillingMode *string `json:"billing_mode,omitempty"`
 	// RoutingTargetGroup holds the value of the "routing_target_group" field.
 	RoutingTargetGroup *string `json:"routing_target_group,omitempty"`
 	// RoutingScheduleLayer holds the value of the "routing_schedule_layer" field.
@@ -66,6 +74,10 @@ type UsageLog struct {
 	CacheCreation5mTokens int `json:"cache_creation_5m_tokens,omitempty"`
 	// CacheCreation1hTokens holds the value of the "cache_creation_1h_tokens" field.
 	CacheCreation1hTokens int `json:"cache_creation_1h_tokens,omitempty"`
+	// ImageOutputTokens holds the value of the "image_output_tokens" field.
+	ImageOutputTokens int `json:"image_output_tokens,omitempty"`
+	// ImageOutputCost holds the value of the "image_output_cost" field.
+	ImageOutputCost float64 `json:"image_output_cost,omitempty"`
 	// InputCost holds the value of the "input_cost" field.
 	InputCost float64 `json:"input_cost,omitempty"`
 	// OutputCost holds the value of the "output_cost" field.
@@ -201,11 +213,11 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case usagelog.FieldStream, usagelog.FieldCacheTTLOverridden:
 			values[i] = new(sql.NullBool)
-		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier, usagelog.FieldPriorityAccountMultiplier, usagelog.FieldEffectiveMultiplier, usagelog.FieldEffectiveInputUnitPrice, usagelog.FieldEffectiveOutputUnitPrice, usagelog.FieldEffectiveCacheReadUnitPrice:
+		case usagelog.FieldImageOutputCost, usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier, usagelog.FieldPriorityAccountMultiplier, usagelog.FieldEffectiveMultiplier, usagelog.FieldEffectiveInputUnitPrice, usagelog.FieldEffectiveOutputUnitPrice, usagelog.FieldEffectiveCacheReadUnitPrice:
 			values[i] = new(sql.NullFloat64)
-		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldRoutingSelectedAccountID, usagelog.FieldRoutingFailoverCount, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount:
+		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldRoutingSelectedAccountID, usagelog.FieldRoutingFailoverCount, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldImageOutputTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldRoutingTargetGroup, usagelog.FieldRoutingScheduleLayer, usagelog.FieldRoutingSelectedAccountName, usagelog.FieldRoutingEffectiveModel, usagelog.FieldRoutingFailoverFinalReason, usagelog.FieldPricingSource, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldMediaType:
+		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldRoutingTargetGroup, usagelog.FieldRoutingScheduleLayer, usagelog.FieldRoutingSelectedAccountName, usagelog.FieldRoutingEffectiveModel, usagelog.FieldRoutingFailoverFinalReason, usagelog.FieldPricingSource, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldMediaType:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -273,6 +285,34 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.UpstreamModel = new(string)
 				*_m.UpstreamModel = value.String
+			}
+		case usagelog.FieldChannelID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field channel_id", values[i])
+			} else if value.Valid {
+				_m.ChannelID = new(int64)
+				*_m.ChannelID = value.Int64
+			}
+		case usagelog.FieldModelMappingChain:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field model_mapping_chain", values[i])
+			} else if value.Valid {
+				_m.ModelMappingChain = new(string)
+				*_m.ModelMappingChain = value.String
+			}
+		case usagelog.FieldBillingTier:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field billing_tier", values[i])
+			} else if value.Valid {
+				_m.BillingTier = new(string)
+				*_m.BillingTier = value.String
+			}
+		case usagelog.FieldBillingMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field billing_mode", values[i])
+			} else if value.Valid {
+				_m.BillingMode = new(string)
+				*_m.BillingMode = value.String
 			}
 		case usagelog.FieldRoutingTargetGroup:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -372,6 +412,18 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field cache_creation_1h_tokens", values[i])
 			} else if value.Valid {
 				_m.CacheCreation1hTokens = int(value.Int64)
+			}
+		case usagelog.FieldImageOutputTokens:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field image_output_tokens", values[i])
+			} else if value.Valid {
+				_m.ImageOutputTokens = int(value.Int64)
+			}
+		case usagelog.FieldImageOutputCost:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field image_output_cost", values[i])
+			} else if value.Valid {
+				_m.ImageOutputCost = value.Float64
 			}
 		case usagelog.FieldInputCost:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -622,6 +674,26 @@ func (_m *UsageLog) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
+	if v := _m.ChannelID; v != nil {
+		builder.WriteString("channel_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.ModelMappingChain; v != nil {
+		builder.WriteString("model_mapping_chain=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.BillingTier; v != nil {
+		builder.WriteString("billing_tier=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.BillingMode; v != nil {
+		builder.WriteString("billing_mode=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
 	if v := _m.RoutingTargetGroup; v != nil {
 		builder.WriteString("routing_target_group=")
 		builder.WriteString(*v)
@@ -684,6 +756,12 @@ func (_m *UsageLog) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("cache_creation_1h_tokens=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CacheCreation1hTokens))
+	builder.WriteString(", ")
+	builder.WriteString("image_output_tokens=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImageOutputTokens))
+	builder.WriteString(", ")
+	builder.WriteString("image_output_cost=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ImageOutputCost))
 	builder.WriteString(", ")
 	builder.WriteString("input_cost=")
 	builder.WriteString(fmt.Sprintf("%v", _m.InputCost))

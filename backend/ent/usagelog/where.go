@@ -90,6 +90,26 @@ func UpstreamModel(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldUpstreamModel, v))
 }
 
+// ChannelID applies equality check predicate on the "channel_id" field. It's identical to ChannelIDEQ.
+func ChannelID(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldChannelID, v))
+}
+
+// ModelMappingChain applies equality check predicate on the "model_mapping_chain" field. It's identical to ModelMappingChainEQ.
+func ModelMappingChain(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldModelMappingChain, v))
+}
+
+// BillingTier applies equality check predicate on the "billing_tier" field. It's identical to BillingTierEQ.
+func BillingTier(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingTier, v))
+}
+
+// BillingMode applies equality check predicate on the "billing_mode" field. It's identical to BillingModeEQ.
+func BillingMode(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingMode, v))
+}
+
 // RoutingTargetGroup applies equality check predicate on the "routing_target_group" field. It's identical to RoutingTargetGroupEQ.
 func RoutingTargetGroup(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldRoutingTargetGroup, v))
@@ -163,6 +183,16 @@ func CacheCreation5mTokens(v int) predicate.UsageLog {
 // CacheCreation1hTokens applies equality check predicate on the "cache_creation_1h_tokens" field. It's identical to CacheCreation1hTokensEQ.
 func CacheCreation1hTokens(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCacheCreation1hTokens, v))
+}
+
+// ImageOutputTokens applies equality check predicate on the "image_output_tokens" field. It's identical to ImageOutputTokensEQ.
+func ImageOutputTokens(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageOutputTokens, v))
+}
+
+// ImageOutputCost applies equality check predicate on the "image_output_cost" field. It's identical to ImageOutputCostEQ.
+func ImageOutputCost(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageOutputCost, v))
 }
 
 // InputCost applies equality check predicate on the "input_cost" field. It's identical to InputCostEQ.
@@ -628,6 +658,281 @@ func UpstreamModelEqualFold(v string) predicate.UsageLog {
 // UpstreamModelContainsFold applies the ContainsFold predicate on the "upstream_model" field.
 func UpstreamModelContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldUpstreamModel, v))
+}
+
+// ChannelIDEQ applies the EQ predicate on the "channel_id" field.
+func ChannelIDEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldChannelID, v))
+}
+
+// ChannelIDNEQ applies the NEQ predicate on the "channel_id" field.
+func ChannelIDNEQ(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldChannelID, v))
+}
+
+// ChannelIDIn applies the In predicate on the "channel_id" field.
+func ChannelIDIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldChannelID, vs...))
+}
+
+// ChannelIDNotIn applies the NotIn predicate on the "channel_id" field.
+func ChannelIDNotIn(vs ...int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldChannelID, vs...))
+}
+
+// ChannelIDGT applies the GT predicate on the "channel_id" field.
+func ChannelIDGT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldChannelID, v))
+}
+
+// ChannelIDGTE applies the GTE predicate on the "channel_id" field.
+func ChannelIDGTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldChannelID, v))
+}
+
+// ChannelIDLT applies the LT predicate on the "channel_id" field.
+func ChannelIDLT(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldChannelID, v))
+}
+
+// ChannelIDLTE applies the LTE predicate on the "channel_id" field.
+func ChannelIDLTE(v int64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldChannelID, v))
+}
+
+// ChannelIDIsNil applies the IsNil predicate on the "channel_id" field.
+func ChannelIDIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldChannelID))
+}
+
+// ChannelIDNotNil applies the NotNil predicate on the "channel_id" field.
+func ChannelIDNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldChannelID))
+}
+
+// ModelMappingChainEQ applies the EQ predicate on the "model_mapping_chain" field.
+func ModelMappingChainEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldModelMappingChain, v))
+}
+
+// ModelMappingChainNEQ applies the NEQ predicate on the "model_mapping_chain" field.
+func ModelMappingChainNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldModelMappingChain, v))
+}
+
+// ModelMappingChainIn applies the In predicate on the "model_mapping_chain" field.
+func ModelMappingChainIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldModelMappingChain, vs...))
+}
+
+// ModelMappingChainNotIn applies the NotIn predicate on the "model_mapping_chain" field.
+func ModelMappingChainNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldModelMappingChain, vs...))
+}
+
+// ModelMappingChainGT applies the GT predicate on the "model_mapping_chain" field.
+func ModelMappingChainGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldModelMappingChain, v))
+}
+
+// ModelMappingChainGTE applies the GTE predicate on the "model_mapping_chain" field.
+func ModelMappingChainGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldModelMappingChain, v))
+}
+
+// ModelMappingChainLT applies the LT predicate on the "model_mapping_chain" field.
+func ModelMappingChainLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldModelMappingChain, v))
+}
+
+// ModelMappingChainLTE applies the LTE predicate on the "model_mapping_chain" field.
+func ModelMappingChainLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldModelMappingChain, v))
+}
+
+// ModelMappingChainContains applies the Contains predicate on the "model_mapping_chain" field.
+func ModelMappingChainContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldModelMappingChain, v))
+}
+
+// ModelMappingChainHasPrefix applies the HasPrefix predicate on the "model_mapping_chain" field.
+func ModelMappingChainHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldModelMappingChain, v))
+}
+
+// ModelMappingChainHasSuffix applies the HasSuffix predicate on the "model_mapping_chain" field.
+func ModelMappingChainHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldModelMappingChain, v))
+}
+
+// ModelMappingChainIsNil applies the IsNil predicate on the "model_mapping_chain" field.
+func ModelMappingChainIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldModelMappingChain))
+}
+
+// ModelMappingChainNotNil applies the NotNil predicate on the "model_mapping_chain" field.
+func ModelMappingChainNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldModelMappingChain))
+}
+
+// ModelMappingChainEqualFold applies the EqualFold predicate on the "model_mapping_chain" field.
+func ModelMappingChainEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldModelMappingChain, v))
+}
+
+// ModelMappingChainContainsFold applies the ContainsFold predicate on the "model_mapping_chain" field.
+func ModelMappingChainContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldModelMappingChain, v))
+}
+
+// BillingTierEQ applies the EQ predicate on the "billing_tier" field.
+func BillingTierEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingTier, v))
+}
+
+// BillingTierNEQ applies the NEQ predicate on the "billing_tier" field.
+func BillingTierNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldBillingTier, v))
+}
+
+// BillingTierIn applies the In predicate on the "billing_tier" field.
+func BillingTierIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldBillingTier, vs...))
+}
+
+// BillingTierNotIn applies the NotIn predicate on the "billing_tier" field.
+func BillingTierNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldBillingTier, vs...))
+}
+
+// BillingTierGT applies the GT predicate on the "billing_tier" field.
+func BillingTierGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldBillingTier, v))
+}
+
+// BillingTierGTE applies the GTE predicate on the "billing_tier" field.
+func BillingTierGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldBillingTier, v))
+}
+
+// BillingTierLT applies the LT predicate on the "billing_tier" field.
+func BillingTierLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldBillingTier, v))
+}
+
+// BillingTierLTE applies the LTE predicate on the "billing_tier" field.
+func BillingTierLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldBillingTier, v))
+}
+
+// BillingTierContains applies the Contains predicate on the "billing_tier" field.
+func BillingTierContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldBillingTier, v))
+}
+
+// BillingTierHasPrefix applies the HasPrefix predicate on the "billing_tier" field.
+func BillingTierHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldBillingTier, v))
+}
+
+// BillingTierHasSuffix applies the HasSuffix predicate on the "billing_tier" field.
+func BillingTierHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldBillingTier, v))
+}
+
+// BillingTierIsNil applies the IsNil predicate on the "billing_tier" field.
+func BillingTierIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldBillingTier))
+}
+
+// BillingTierNotNil applies the NotNil predicate on the "billing_tier" field.
+func BillingTierNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldBillingTier))
+}
+
+// BillingTierEqualFold applies the EqualFold predicate on the "billing_tier" field.
+func BillingTierEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldBillingTier, v))
+}
+
+// BillingTierContainsFold applies the ContainsFold predicate on the "billing_tier" field.
+func BillingTierContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldBillingTier, v))
+}
+
+// BillingModeEQ applies the EQ predicate on the "billing_mode" field.
+func BillingModeEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldBillingMode, v))
+}
+
+// BillingModeNEQ applies the NEQ predicate on the "billing_mode" field.
+func BillingModeNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldBillingMode, v))
+}
+
+// BillingModeIn applies the In predicate on the "billing_mode" field.
+func BillingModeIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldBillingMode, vs...))
+}
+
+// BillingModeNotIn applies the NotIn predicate on the "billing_mode" field.
+func BillingModeNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldBillingMode, vs...))
+}
+
+// BillingModeGT applies the GT predicate on the "billing_mode" field.
+func BillingModeGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldBillingMode, v))
+}
+
+// BillingModeGTE applies the GTE predicate on the "billing_mode" field.
+func BillingModeGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldBillingMode, v))
+}
+
+// BillingModeLT applies the LT predicate on the "billing_mode" field.
+func BillingModeLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldBillingMode, v))
+}
+
+// BillingModeLTE applies the LTE predicate on the "billing_mode" field.
+func BillingModeLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldBillingMode, v))
+}
+
+// BillingModeContains applies the Contains predicate on the "billing_mode" field.
+func BillingModeContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldBillingMode, v))
+}
+
+// BillingModeHasPrefix applies the HasPrefix predicate on the "billing_mode" field.
+func BillingModeHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldBillingMode, v))
+}
+
+// BillingModeHasSuffix applies the HasSuffix predicate on the "billing_mode" field.
+func BillingModeHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldBillingMode, v))
+}
+
+// BillingModeIsNil applies the IsNil predicate on the "billing_mode" field.
+func BillingModeIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldBillingMode))
+}
+
+// BillingModeNotNil applies the NotNil predicate on the "billing_mode" field.
+func BillingModeNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldBillingMode))
+}
+
+// BillingModeEqualFold applies the EqualFold predicate on the "billing_mode" field.
+func BillingModeEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldBillingMode, v))
+}
+
+// BillingModeContainsFold applies the ContainsFold predicate on the "billing_mode" field.
+func BillingModeContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldBillingMode, v))
 }
 
 // RoutingTargetGroupEQ applies the EQ predicate on the "routing_target_group" field.
@@ -1403,6 +1708,86 @@ func CacheCreation1hTokensLT(v int) predicate.UsageLog {
 // CacheCreation1hTokensLTE applies the LTE predicate on the "cache_creation_1h_tokens" field.
 func CacheCreation1hTokensLTE(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldLTE(FieldCacheCreation1hTokens, v))
+}
+
+// ImageOutputTokensEQ applies the EQ predicate on the "image_output_tokens" field.
+func ImageOutputTokensEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageOutputTokens, v))
+}
+
+// ImageOutputTokensNEQ applies the NEQ predicate on the "image_output_tokens" field.
+func ImageOutputTokensNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldImageOutputTokens, v))
+}
+
+// ImageOutputTokensIn applies the In predicate on the "image_output_tokens" field.
+func ImageOutputTokensIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldImageOutputTokens, vs...))
+}
+
+// ImageOutputTokensNotIn applies the NotIn predicate on the "image_output_tokens" field.
+func ImageOutputTokensNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldImageOutputTokens, vs...))
+}
+
+// ImageOutputTokensGT applies the GT predicate on the "image_output_tokens" field.
+func ImageOutputTokensGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldImageOutputTokens, v))
+}
+
+// ImageOutputTokensGTE applies the GTE predicate on the "image_output_tokens" field.
+func ImageOutputTokensGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldImageOutputTokens, v))
+}
+
+// ImageOutputTokensLT applies the LT predicate on the "image_output_tokens" field.
+func ImageOutputTokensLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldImageOutputTokens, v))
+}
+
+// ImageOutputTokensLTE applies the LTE predicate on the "image_output_tokens" field.
+func ImageOutputTokensLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldImageOutputTokens, v))
+}
+
+// ImageOutputCostEQ applies the EQ predicate on the "image_output_cost" field.
+func ImageOutputCostEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldImageOutputCost, v))
+}
+
+// ImageOutputCostNEQ applies the NEQ predicate on the "image_output_cost" field.
+func ImageOutputCostNEQ(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldImageOutputCost, v))
+}
+
+// ImageOutputCostIn applies the In predicate on the "image_output_cost" field.
+func ImageOutputCostIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldImageOutputCost, vs...))
+}
+
+// ImageOutputCostNotIn applies the NotIn predicate on the "image_output_cost" field.
+func ImageOutputCostNotIn(vs ...float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldImageOutputCost, vs...))
+}
+
+// ImageOutputCostGT applies the GT predicate on the "image_output_cost" field.
+func ImageOutputCostGT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldImageOutputCost, v))
+}
+
+// ImageOutputCostGTE applies the GTE predicate on the "image_output_cost" field.
+func ImageOutputCostGTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldImageOutputCost, v))
+}
+
+// ImageOutputCostLT applies the LT predicate on the "image_output_cost" field.
+func ImageOutputCostLT(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldImageOutputCost, v))
+}
+
+// ImageOutputCostLTE applies the LTE predicate on the "image_output_cost" field.
+func ImageOutputCostLTE(v float64) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldImageOutputCost, v))
 }
 
 // InputCostEQ applies the EQ predicate on the "input_cost" field.

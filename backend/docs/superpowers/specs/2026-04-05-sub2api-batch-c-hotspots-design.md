@@ -138,6 +138,25 @@ Recommended strategy:
   - duplicate/overlapping fields to unify
 - only after that generate ent and migrations once
 
+#### Target usage_log field matrix
+
+| Field group | Local state | Upstream state | Unified rule |
+| --- | --- | --- | --- |
+| `model / requested_model / upstream_model` | already dual-written and user/admin semantics stable | same trio present | keep local semantics unchanged |
+| `routing_*` | present and used by routing observability / pricing explanation | absent | keep local-only |
+| `rate_multiplier / account_rate_multiplier` | present and already used in actual billing | present | unify on local meaning |
+| `priority_account_multiplier / effective_multiplier / effective_*_unit_price / pricing_source` | present and user-facing | absent | keep local-only |
+| `channel_id / model_mapping_chain / billing_tier / billing_mode` | absent | present | adopt upstream, but only after repository/DTO/UI contract is ready |
+| `image_output_tokens / image_output_cost` | absent | present | adopt upstream if it does not break local billing columns |
+| `service_tier / reasoning_effort / inbound_endpoint / upstream_endpoint` | present | present | keep local names/order |
+| `billing_type / request_type / stream / openai_ws_mode` | present and already normalized | present | keep local request-type normalization as source of truth |
+
+Implementation implication:
+
+1. Stage 1 should only make the schema/repository capable of holding both the local billing-breakdown fields and the upstream `channel/image-output` fields.
+2. Stage 2 should decide which new upstream fields actually participate in billing or UI semantics.
+3. No direct file checkout from upstream is allowed in this band until the field matrix is satisfied.
+
 ### 4. DTO and user/admin display semantics
 
 Files:

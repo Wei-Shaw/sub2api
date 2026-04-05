@@ -28,6 +28,14 @@ const (
 	FieldRequestedModel = "requested_model"
 	// FieldUpstreamModel holds the string denoting the upstream_model field in the database.
 	FieldUpstreamModel = "upstream_model"
+	// FieldChannelID holds the string denoting the channel_id field in the database.
+	FieldChannelID = "channel_id"
+	// FieldModelMappingChain holds the string denoting the model_mapping_chain field in the database.
+	FieldModelMappingChain = "model_mapping_chain"
+	// FieldBillingTier holds the string denoting the billing_tier field in the database.
+	FieldBillingTier = "billing_tier"
+	// FieldBillingMode holds the string denoting the billing_mode field in the database.
+	FieldBillingMode = "billing_mode"
 	// FieldRoutingTargetGroup holds the string denoting the routing_target_group field in the database.
 	FieldRoutingTargetGroup = "routing_target_group"
 	// FieldRoutingScheduleLayer holds the string denoting the routing_schedule_layer field in the database.
@@ -58,6 +66,10 @@ const (
 	FieldCacheCreation5mTokens = "cache_creation_5m_tokens"
 	// FieldCacheCreation1hTokens holds the string denoting the cache_creation_1h_tokens field in the database.
 	FieldCacheCreation1hTokens = "cache_creation_1h_tokens"
+	// FieldImageOutputTokens holds the string denoting the image_output_tokens field in the database.
+	FieldImageOutputTokens = "image_output_tokens"
+	// FieldImageOutputCost holds the string denoting the image_output_cost field in the database.
+	FieldImageOutputCost = "image_output_cost"
 	// FieldInputCost holds the string denoting the input_cost field in the database.
 	FieldInputCost = "input_cost"
 	// FieldOutputCost holds the string denoting the output_cost field in the database.
@@ -167,6 +179,10 @@ var Columns = []string{
 	FieldModel,
 	FieldRequestedModel,
 	FieldUpstreamModel,
+	FieldChannelID,
+	FieldModelMappingChain,
+	FieldBillingTier,
+	FieldBillingMode,
 	FieldRoutingTargetGroup,
 	FieldRoutingScheduleLayer,
 	FieldRoutingSelectedAccountID,
@@ -182,6 +198,8 @@ var Columns = []string{
 	FieldCacheReadTokens,
 	FieldCacheCreation5mTokens,
 	FieldCacheCreation1hTokens,
+	FieldImageOutputTokens,
+	FieldImageOutputCost,
 	FieldInputCost,
 	FieldOutputCost,
 	FieldCacheCreationCost,
@@ -228,6 +246,12 @@ var (
 	RequestedModelValidator func(string) error
 	// UpstreamModelValidator is a validator for the "upstream_model" field. It is called by the builders before save.
 	UpstreamModelValidator func(string) error
+	// ModelMappingChainValidator is a validator for the "model_mapping_chain" field. It is called by the builders before save.
+	ModelMappingChainValidator func(string) error
+	// BillingTierValidator is a validator for the "billing_tier" field. It is called by the builders before save.
+	BillingTierValidator func(string) error
+	// BillingModeValidator is a validator for the "billing_mode" field. It is called by the builders before save.
+	BillingModeValidator func(string) error
 	// RoutingTargetGroupValidator is a validator for the "routing_target_group" field. It is called by the builders before save.
 	RoutingTargetGroupValidator func(string) error
 	// RoutingScheduleLayerValidator is a validator for the "routing_schedule_layer" field. It is called by the builders before save.
@@ -250,6 +274,10 @@ var (
 	DefaultCacheCreation5mTokens int
 	// DefaultCacheCreation1hTokens holds the default value on creation for the "cache_creation_1h_tokens" field.
 	DefaultCacheCreation1hTokens int
+	// DefaultImageOutputTokens holds the default value on creation for the "image_output_tokens" field.
+	DefaultImageOutputTokens int
+	// DefaultImageOutputCost holds the default value on creation for the "image_output_cost" field.
+	DefaultImageOutputCost float64
 	// DefaultInputCost holds the default value on creation for the "input_cost" field.
 	DefaultInputCost float64
 	// DefaultOutputCost holds the default value on creation for the "output_cost" field.
@@ -329,6 +357,26 @@ func ByUpstreamModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpstreamModel, opts...).ToFunc()
 }
 
+// ByChannelID orders the results by the channel_id field.
+func ByChannelID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldChannelID, opts...).ToFunc()
+}
+
+// ByModelMappingChain orders the results by the model_mapping_chain field.
+func ByModelMappingChain(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldModelMappingChain, opts...).ToFunc()
+}
+
+// ByBillingTier orders the results by the billing_tier field.
+func ByBillingTier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBillingTier, opts...).ToFunc()
+}
+
+// ByBillingMode orders the results by the billing_mode field.
+func ByBillingMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBillingMode, opts...).ToFunc()
+}
+
 // ByRoutingTargetGroup orders the results by the routing_target_group field.
 func ByRoutingTargetGroup(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRoutingTargetGroup, opts...).ToFunc()
@@ -402,6 +450,16 @@ func ByCacheCreation5mTokens(opts ...sql.OrderTermOption) OrderOption {
 // ByCacheCreation1hTokens orders the results by the cache_creation_1h_tokens field.
 func ByCacheCreation1hTokens(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCacheCreation1hTokens, opts...).ToFunc()
+}
+
+// ByImageOutputTokens orders the results by the image_output_tokens field.
+func ByImageOutputTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageOutputTokens, opts...).ToFunc()
+}
+
+// ByImageOutputCost orders the results by the image_output_cost field.
+func ByImageOutputCost(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageOutputCost, opts...).ToFunc()
 }
 
 // ByInputCost orders the results by the input_cost field.

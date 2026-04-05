@@ -205,6 +205,7 @@ type OpenAIUsage struct {
 	OutputTokens             int `json:"output_tokens"`
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
 	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
 }
 
 // OpenAIForwardResult represents the result of forwarding
@@ -4306,11 +4307,12 @@ func (s *OpenAIGatewayService) replaceModelInResponseBody(body []byte, fromModel
 
 // OpenAIRecordUsageInput input for recording usage
 type OpenAIRecordUsageInput struct {
-	Result             *OpenAIForwardResult
-	APIKey             *APIKey
-	User               *User
-	Account            *Account
-	Subscription       *UserSubscription
+	Result       *OpenAIForwardResult
+	APIKey       *APIKey
+	User         *User
+	Account      *Account
+	Subscription *UserSubscription
+	ChannelUsageFields
 	RoutingSnapshot    *OpenAIRoutingSnapshot
 	InboundEndpoint    string
 	UpstreamEndpoint   string
@@ -4348,6 +4350,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		OutputTokens:        result.Usage.OutputTokens,
 		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
 		CacheReadTokens:     result.Usage.CacheReadInputTokens,
+		ImageOutputTokens:   result.Usage.ImageOutputTokens,
 	}
 
 	// Get rate multiplier
@@ -4361,6 +4364,15 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	if result.BillingModel != "" {
+		billingModel = strings.TrimSpace(result.BillingModel)
+	}
+	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" && input.ChannelMappedModel != input.OriginalModel {
+		billingModel = input.ChannelMappedModel
+	}
+	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
+		billingModel = input.OriginalModel
+	}
 	serviceTier := ""
 	if result.ServiceTier != nil {
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
@@ -4428,6 +4440,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
 	usageModel := strings.TrimSpace(result.Model)
 	requestedModel := usageModel
+	if input.OriginalModel != "" {
+		requestedModel = input.OriginalModel
+	}
 	effectiveModel := strings.TrimSpace(result.UpstreamModel)
 	if effectiveModel == "" {
 		effectiveModel = usageModel
@@ -4449,6 +4464,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		Model:                       usageModel,
 		RequestedModel:              requestedModel,
 		UpstreamModel:               optionalNonEqualStringPtr(effectiveModel, usageModel),
+		ChannelID:                   optionalInt64Ptr(input.ChannelID),
+		ModelMappingChain:           optionalTrimmedStringPtr(input.ModelMappingChain),
 		ServiceTier:                 result.ServiceTier,
 		ReasoningEffort:             result.ReasoningEffort,
 		InboundEndpoint:             optionalTrimmedStringPtr(input.InboundEndpoint),
@@ -4457,8 +4474,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		OutputTokens:                result.Usage.OutputTokens,
 		CacheCreationTokens:         result.Usage.CacheCreationInputTokens,
 		CacheReadTokens:             result.Usage.CacheReadInputTokens,
+		ImageOutputTokens:           result.Usage.ImageOutputTokens,
 		InputCost:                   cost.InputCost,
 		OutputCost:                  cost.OutputCost,
+		ImageOutputCost:             cost.ImageOutputCost,
 		CacheCreationCost:           cost.CacheCreationCost,
 		CacheReadCost:               cost.CacheReadCost,
 		TotalCost:                   cost.TotalCost,
@@ -4472,6 +4491,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		EffectiveCacheReadUnitPrice: effectiveCacheReadUnitPrice,
 		PricingSource:               optionalTrimmedStringPtr(pricingSource),
 		BillingType:                 billingType,
+		BillingMode:                 optionalTrimmedStringPtr(cost.BillingMode),
 		Stream:                      result.Stream,
 		OpenAIWSMode:                result.OpenAIWSMode,
 		DurationMs:                  &durationMs,
@@ -4486,6 +4506,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.RoutingEffectiveModel = optionalTrimmedStringPtr(snapshot.EffectiveModel)
 		usageLog.RoutingFailoverCount = intPtrValue(snapshot.FailoverCount)
 		usageLog.RoutingFailoverFinalReason = optionalTrimmedStringPtr(snapshot.FailoverFinalReason)
+	}
+	if usageLog.BillingMode == nil {
+		billingMode := string(BillingModeToken)
+		usageLog.BillingMode = &billingMode
 	}
 	// 添加 UserAgent
 	if input.UserAgent != "" {

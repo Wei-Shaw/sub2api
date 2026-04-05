@@ -405,7 +405,7 @@ const resetFilters = () => {
   const range = getLast24HoursRangeDates()
   startDate.value = range.start
   endDate.value = range.end
-  filters.value = { start_date: startDate.value, end_date: endDate.value, routing_target_group: undefined, routing_schedule_layer: undefined, request_type: undefined, billing_type: null }
+  filters.value = { start_date: startDate.value, end_date: endDate.value, routing_target_group: undefined, routing_schedule_layer: undefined, request_type: undefined, billing_type: null, billing_mode: undefined }
   granularity.value = getGranularityForRange(startDate.value, endDate.value)
   applyFilters()
 }
@@ -421,6 +421,12 @@ const getRequestTypeLabel = (log: AdminUsageLog): string => {
   return t('usage.unknown')
 }
 
+const getBillingModeLabel = (mode: string | null | undefined): string => {
+  if (mode === 'per_request') return t('admin.usage.billingModePerRequest')
+  if (mode === 'image') return t('admin.usage.billingModeImage')
+  return t('admin.usage.billingModeToken')
+}
+
 const exportToExcel = async () => {
   if (exporting.value) return; exporting.value = true; exportProgress.show = true
   const c = new AbortController(); exportAbortController = c
@@ -433,7 +439,7 @@ const exportToExcel = async () => {
       t('usage.inboundEndpoint'), t('usage.upstreamEndpoint'),
       t('admin.usage.routingTargetGroup'), t('admin.usage.routingScheduleLayer'), t('admin.usage.routedAccount'),
       t('admin.usage.effectiveModel'), t('admin.usage.routingFailover'), t('admin.usage.routingFailoverReason'),
-      t('usage.type'),
+      t('usage.type'), t('admin.usage.billingMode'),
       t('admin.usage.inputTokens'), t('admin.usage.outputTokens'),
       t('admin.usage.cacheReadTokens'), t('admin.usage.cacheCreationTokens'),
       t('admin.usage.inputCost'), t('admin.usage.outputCost'),
@@ -450,7 +456,7 @@ const exportToExcel = async () => {
         log.created_at, log.user?.email || '', log.api_key?.name || '', log.account?.name || '', log.model,
         log.upstream_model || '', formatReasoningEffort(log.reasoning_effort), log.group?.name || '',
         log.inbound_endpoint || '', log.upstream_endpoint || '', log.routing_target_group || '', log.routing_schedule_layer || '',
-        log.routing_selected_account_name || '', log.routing_effective_model || '', log.routing_failover_count ?? '', log.routing_failover_final_reason || '', getRequestTypeLabel(log),
+        log.routing_selected_account_name || '', log.routing_effective_model || '', log.routing_failover_count ?? '', log.routing_failover_final_reason || '', getRequestTypeLabel(log), getBillingModeLabel(log.billing_mode),
         log.input_tokens, log.output_tokens, log.cache_read_tokens, log.cache_creation_tokens,
         log.input_cost?.toFixed(6) || '0.000000', log.output_cost?.toFixed(6) || '0.000000',
         log.cache_read_cost?.toFixed(6) || '0.000000', log.cache_creation_cost?.toFixed(6) || '0.000000',
@@ -495,6 +501,7 @@ const allColumns = computed(() => [
   { key: 'endpoint', label: t('usage.endpoint'), sortable: false },
   { key: 'group', label: t('admin.usage.group'), sortable: false },
   { key: 'stream', label: t('usage.type'), sortable: false },
+  { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
   { key: 'tokens', label: t('usage.tokens'), sortable: false },
   { key: 'cost', label: t('usage.cost'), sortable: false },
   { key: 'first_token', label: t('usage.firstToken'), sortable: false },

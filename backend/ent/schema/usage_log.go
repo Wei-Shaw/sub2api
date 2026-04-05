@@ -53,6 +53,21 @@ func (UsageLog) Fields() []ent.Field {
 			MaxLen(100).
 			Optional().
 			Nillable(),
+		field.Int64("channel_id").
+			Optional().
+			Nillable(),
+		field.String("model_mapping_chain").
+			MaxLen(500).
+			Optional().
+			Nillable(),
+		field.String("billing_tier").
+			MaxLen(50).
+			Optional().
+			Nillable(),
+		field.String("billing_mode").
+			MaxLen(20).
+			Optional().
+			Nillable(),
 		field.String("routing_target_group").
 			MaxLen(32).
 			Optional().
@@ -99,6 +114,11 @@ func (UsageLog) Fields() []ent.Field {
 			Default(0),
 		field.Int("cache_creation_1h_tokens").
 			Default(0),
+		field.Int("image_output_tokens").
+			Default(0),
+		field.Float("image_output_cost").
+			Default(0).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 
 		// 成本字段
 		field.Float("input_cost").

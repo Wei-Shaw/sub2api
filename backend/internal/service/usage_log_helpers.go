@@ -24,6 +24,13 @@ func intPtrValue(value int) *int {
 	return &value
 }
 
+func optionalInt64Ptr(value int64) *int64 {
+	if value <= 0 {
+		return nil
+	}
+	return &value
+}
+
 func forwardResultBillingModel(requestedModel, upstreamModel string) string {
 	if trimmed := strings.TrimSpace(requestedModel); trimmed != "" {
 		return trimmed

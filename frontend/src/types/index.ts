@@ -1010,9 +1010,11 @@ export interface UsageLog {
   cache_read_tokens: number
   cache_creation_5m_tokens: number
   cache_creation_1h_tokens: number
+  image_output_tokens: number
 
   input_cost: number
   output_cost: number
+  image_output_cost: number
   cache_creation_cost: number
   cache_read_cost: number
   total_cost: number
@@ -1025,6 +1027,7 @@ export interface UsageLog {
   effective_output_unit_price?: number | null
   effective_cache_read_unit_price?: number | null
   pricing_source?: string | null
+  billing_mode?: string | null
   billing_type: number
 
   request_type?: UsageRequestType
@@ -1058,6 +1061,9 @@ export interface UsageLogAccountSummary {
 
 export interface AdminUsageLog extends UsageLog {
   upstream_model?: string | null
+  channel_id?: number | null
+  model_mapping_chain?: string | null
+  billing_tier?: string | null
   routing_target_group?: string | null
   routing_schedule_layer?: string | null
   routing_selected_account_id?: number | null
@@ -1381,6 +1387,7 @@ export interface UsageQueryParams {
   request_type?: UsageRequestType
   stream?: boolean
   billing_type?: number | null
+  billing_mode?: string
   start_date?: string
   end_date?: string
 }

@@ -579,6 +579,72 @@ Reason: they already assume newer local gateway/service signatures and therefore
 
 Reason: they still assume newer local `GatewayService` / `UserBreakdownDimension` interfaces and should be reconsidered in a later pass.
 
-### Batch C not yet absorbed
+### Batch C absorbed so far
 
-All Batch C hotspots remain under manual-review status only. No direct Batch C code transplant has been performed yet.
+Stage 1 completed: `usage_log` target structure is now aligned to hold both local billing-breakdown fields and upstream channel/image-output fields.
+
+Absorbed files in this stage:
+
+- `backend/internal/service/usage_log.go`
+- `backend/ent/schema/usage_log.go`
+- `backend/internal/repository/usage_log_repo.go`
+- `backend/internal/repository/usage_log_repo_request_type_test.go`
+- `backend/migrations/090_add_usage_log_channel_and_image_output.sql`
+
+Resulting schema/repository support now includes:
+
+- local billing-breakdown fields preserved:
+  - `priority_account_multiplier`
+  - `effective_multiplier`
+  - `effective_input_unit_price`
+  - `effective_output_unit_price`
+  - `effective_cache_read_unit_price`
+  - `pricing_source`
+- upstream channel/image-output fields added:
+  - `channel_id`
+  - `model_mapping_chain`
+  - `billing_tier`
+  - `billing_mode`
+  - `image_output_tokens`
+  - `image_output_cost`
+
+Stage 2 completed: billing/pricing execution chain now persists channel/image-output concepts without overriding local pricing semantics.
+
+Absorbed files in this stage:
+
+- `backend/internal/service/usage_log_helpers.go`
+- `backend/internal/service/billing_service.go`
+- `backend/internal/service/openai_gateway_service.go`
+- `backend/internal/service/gateway_service.go`
+- `backend/internal/service/openai_gateway_record_usage_test.go`
+- `backend/internal/service/gateway_record_usage_test.go`
+
+Stage 3 completed: DTO and admin/user Usage display layers are now aligned enough to expose the new fields.
+
+Absorbed files in this stage:
+
+- `backend/internal/handler/dto/mappers.go`
+- `backend/internal/handler/dto/mappers_usage_test.go`
+- `frontend/src/types/index.ts`
+- `frontend/src/views/user/UsageView.vue`
+- `frontend/src/views/user/__tests__/UsageView.spec.ts`
+- `frontend/src/components/admin/usage/UsageTable.vue`
+- `frontend/src/components/admin/usage/__tests__/UsageTable.spec.ts`
+- `frontend/src/views/admin/UsageView.vue`
+- `frontend/src/i18n/locales/en.ts`
+- `frontend/src/i18n/locales/zh.ts`
+
+Local verification after Stage 3 is green:
+
+- `go test ./internal/service -count=1`
+- `go test ./internal/repository -count=1`
+- `go test ./internal/handler/dto -count=1`
+- `pnpm test:run "src/views/user/__tests__/UsageView.spec.ts" "src/components/admin/usage/__tests__/UsageTable.spec.ts"`
+- `pnpm build`
+- `git diff --check`
+
+### Batch C still pending
+
+- Recheck whether `billing_tier` needs first-class persistence semantics or can remain reserved for later channel pricing source work.
+- Admin/user stats and subscription-facing endpoints still need one final end-to-end rerun after Stage 3 to confirm all new fields surface consistently beyond the local regression suites.
+- The inventory/report should be updated again after final verification to distinguish “structure absorbed” from “runtime verified on VPS”.

@@ -189,6 +189,45 @@ func TestGatewayServiceRecordUsage_PreservesRequestedAndUpstreamModels(t *testin
 	require.Equal(t, mappedModel, *usageRepo.lastLog.UpstreamModel)
 }
 
+func TestGatewayServiceRecordUsage_PersistsChannelAndImageOutputFields(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_channel_image_fields",
+			Usage: ClaudeUsage{
+				InputTokens:       10,
+				OutputTokens:      6,
+				ImageOutputTokens: 2,
+			},
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+		},
+		APIKey:  &APIKey{ID: 511, Quota: 100},
+		User:    &User{ID: 611},
+		Account: &Account{ID: 711},
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          9,
+			OriginalModel:      "alias-model",
+			ChannelMappedModel: "claude-sonnet-4",
+			BillingModelSource: BillingModelSourceChannelMapped,
+			ModelMappingChain:  "alias-model→claude-sonnet-4",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 2, usageRepo.lastLog.ImageOutputTokens)
+	require.NotZero(t, usageRepo.lastLog.ImageOutputCost)
+	require.NotNil(t, usageRepo.lastLog.ChannelID)
+	require.Equal(t, int64(9), *usageRepo.lastLog.ChannelID)
+	require.NotNil(t, usageRepo.lastLog.ModelMappingChain)
+	require.Equal(t, "alias-model→claude-sonnet-4", *usageRepo.lastLog.ModelMappingChain)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
+}
+
 func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: MarkUsageLogCreateNotPersisted(context.Canceled)}
 	userRepo := &openAIRecordUsageUserRepoStub{}

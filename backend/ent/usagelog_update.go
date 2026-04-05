@@ -142,6 +142,93 @@ func (_u *UsageLogUpdate) ClearUpstreamModel() *UsageLogUpdate {
 	return _u
 }
 
+// SetChannelID sets the "channel_id" field.
+func (_u *UsageLogUpdate) SetChannelID(v int64) *UsageLogUpdate {
+	_u.mutation.ResetChannelID()
+	_u.mutation.SetChannelID(v)
+	return _u
+}
+
+// SetNillableChannelID sets the "channel_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableChannelID(v *int64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetChannelID(*v)
+	}
+	return _u
+}
+
+// AddChannelID adds value to the "channel_id" field.
+func (_u *UsageLogUpdate) AddChannelID(v int64) *UsageLogUpdate {
+	_u.mutation.AddChannelID(v)
+	return _u
+}
+
+// ClearChannelID clears the value of the "channel_id" field.
+func (_u *UsageLogUpdate) ClearChannelID() *UsageLogUpdate {
+	_u.mutation.ClearChannelID()
+	return _u
+}
+
+// SetModelMappingChain sets the "model_mapping_chain" field.
+func (_u *UsageLogUpdate) SetModelMappingChain(v string) *UsageLogUpdate {
+	_u.mutation.SetModelMappingChain(v)
+	return _u
+}
+
+// SetNillableModelMappingChain sets the "model_mapping_chain" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableModelMappingChain(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetModelMappingChain(*v)
+	}
+	return _u
+}
+
+// ClearModelMappingChain clears the value of the "model_mapping_chain" field.
+func (_u *UsageLogUpdate) ClearModelMappingChain() *UsageLogUpdate {
+	_u.mutation.ClearModelMappingChain()
+	return _u
+}
+
+// SetBillingTier sets the "billing_tier" field.
+func (_u *UsageLogUpdate) SetBillingTier(v string) *UsageLogUpdate {
+	_u.mutation.SetBillingTier(v)
+	return _u
+}
+
+// SetNillableBillingTier sets the "billing_tier" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableBillingTier(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetBillingTier(*v)
+	}
+	return _u
+}
+
+// ClearBillingTier clears the value of the "billing_tier" field.
+func (_u *UsageLogUpdate) ClearBillingTier() *UsageLogUpdate {
+	_u.mutation.ClearBillingTier()
+	return _u
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (_u *UsageLogUpdate) SetBillingMode(v string) *UsageLogUpdate {
+	_u.mutation.SetBillingMode(v)
+	return _u
+}
+
+// SetNillableBillingMode sets the "billing_mode" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableBillingMode(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetBillingMode(*v)
+	}
+	return _u
+}
+
+// ClearBillingMode clears the value of the "billing_mode" field.
+func (_u *UsageLogUpdate) ClearBillingMode() *UsageLogUpdate {
+	_u.mutation.ClearBillingMode()
+	return _u
+}
+
 // SetRoutingTargetGroup sets the "routing_target_group" field.
 func (_u *UsageLogUpdate) SetRoutingTargetGroup(v string) *UsageLogUpdate {
 	_u.mutation.SetRoutingTargetGroup(v)
@@ -459,6 +546,48 @@ func (_u *UsageLogUpdate) SetNillableCacheCreation1hTokens(v *int) *UsageLogUpda
 // AddCacheCreation1hTokens adds value to the "cache_creation_1h_tokens" field.
 func (_u *UsageLogUpdate) AddCacheCreation1hTokens(v int) *UsageLogUpdate {
 	_u.mutation.AddCacheCreation1hTokens(v)
+	return _u
+}
+
+// SetImageOutputTokens sets the "image_output_tokens" field.
+func (_u *UsageLogUpdate) SetImageOutputTokens(v int) *UsageLogUpdate {
+	_u.mutation.ResetImageOutputTokens()
+	_u.mutation.SetImageOutputTokens(v)
+	return _u
+}
+
+// SetNillableImageOutputTokens sets the "image_output_tokens" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableImageOutputTokens(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetImageOutputTokens(*v)
+	}
+	return _u
+}
+
+// AddImageOutputTokens adds value to the "image_output_tokens" field.
+func (_u *UsageLogUpdate) AddImageOutputTokens(v int) *UsageLogUpdate {
+	_u.mutation.AddImageOutputTokens(v)
+	return _u
+}
+
+// SetImageOutputCost sets the "image_output_cost" field.
+func (_u *UsageLogUpdate) SetImageOutputCost(v float64) *UsageLogUpdate {
+	_u.mutation.ResetImageOutputCost()
+	_u.mutation.SetImageOutputCost(v)
+	return _u
+}
+
+// SetNillableImageOutputCost sets the "image_output_cost" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableImageOutputCost(v *float64) *UsageLogUpdate {
+	if v != nil {
+		_u.SetImageOutputCost(*v)
+	}
+	return _u
+}
+
+// AddImageOutputCost adds value to the "image_output_cost" field.
+func (_u *UsageLogUpdate) AddImageOutputCost(v float64) *UsageLogUpdate {
+	_u.mutation.AddImageOutputCost(v)
 	return _u
 }
 
@@ -1104,6 +1233,21 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ModelMappingChain(); ok {
+		if err := usagelog.ModelMappingChainValidator(v); err != nil {
+			return &ValidationError{Name: "model_mapping_chain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model_mapping_chain": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.BillingTier(); ok {
+		if err := usagelog.BillingTierValidator(v); err != nil {
+			return &ValidationError{Name: "billing_tier", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_tier": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.BillingMode(); ok {
+		if err := usagelog.BillingModeValidator(v); err != nil {
+			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RoutingTargetGroup(); ok {
 		if err := usagelog.RoutingTargetGroupValidator(v); err != nil {
 			return &ValidationError{Name: "routing_target_group", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_target_group": %w`, err)}
@@ -1196,6 +1340,33 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.UpstreamModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamModel, field.TypeString)
 	}
+	if value, ok := _u.mutation.ChannelID(); ok {
+		_spec.SetField(usagelog.FieldChannelID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedChannelID(); ok {
+		_spec.AddField(usagelog.FieldChannelID, field.TypeInt64, value)
+	}
+	if _u.mutation.ChannelIDCleared() {
+		_spec.ClearField(usagelog.FieldChannelID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ModelMappingChain(); ok {
+		_spec.SetField(usagelog.FieldModelMappingChain, field.TypeString, value)
+	}
+	if _u.mutation.ModelMappingChainCleared() {
+		_spec.ClearField(usagelog.FieldModelMappingChain, field.TypeString)
+	}
+	if value, ok := _u.mutation.BillingTier(); ok {
+		_spec.SetField(usagelog.FieldBillingTier, field.TypeString, value)
+	}
+	if _u.mutation.BillingTierCleared() {
+		_spec.ClearField(usagelog.FieldBillingTier, field.TypeString)
+	}
+	if value, ok := _u.mutation.BillingMode(); ok {
+		_spec.SetField(usagelog.FieldBillingMode, field.TypeString, value)
+	}
+	if _u.mutation.BillingModeCleared() {
+		_spec.ClearField(usagelog.FieldBillingMode, field.TypeString)
+	}
 	if value, ok := _u.mutation.RoutingTargetGroup(); ok {
 		_spec.SetField(usagelog.FieldRoutingTargetGroup, field.TypeString, value)
 	}
@@ -1279,6 +1450,18 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedCacheCreation1hTokens(); ok {
 		_spec.AddField(usagelog.FieldCacheCreation1hTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ImageOutputTokens(); ok {
+		_spec.SetField(usagelog.FieldImageOutputTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedImageOutputTokens(); ok {
+		_spec.AddField(usagelog.FieldImageOutputTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ImageOutputCost(); ok {
+		_spec.SetField(usagelog.FieldImageOutputCost, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedImageOutputCost(); ok {
+		_spec.AddField(usagelog.FieldImageOutputCost, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.InputCost(); ok {
 		_spec.SetField(usagelog.FieldInputCost, field.TypeFloat64, value)
@@ -1717,6 +1900,93 @@ func (_u *UsageLogUpdateOne) ClearUpstreamModel() *UsageLogUpdateOne {
 	return _u
 }
 
+// SetChannelID sets the "channel_id" field.
+func (_u *UsageLogUpdateOne) SetChannelID(v int64) *UsageLogUpdateOne {
+	_u.mutation.ResetChannelID()
+	_u.mutation.SetChannelID(v)
+	return _u
+}
+
+// SetNillableChannelID sets the "channel_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableChannelID(v *int64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetChannelID(*v)
+	}
+	return _u
+}
+
+// AddChannelID adds value to the "channel_id" field.
+func (_u *UsageLogUpdateOne) AddChannelID(v int64) *UsageLogUpdateOne {
+	_u.mutation.AddChannelID(v)
+	return _u
+}
+
+// ClearChannelID clears the value of the "channel_id" field.
+func (_u *UsageLogUpdateOne) ClearChannelID() *UsageLogUpdateOne {
+	_u.mutation.ClearChannelID()
+	return _u
+}
+
+// SetModelMappingChain sets the "model_mapping_chain" field.
+func (_u *UsageLogUpdateOne) SetModelMappingChain(v string) *UsageLogUpdateOne {
+	_u.mutation.SetModelMappingChain(v)
+	return _u
+}
+
+// SetNillableModelMappingChain sets the "model_mapping_chain" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableModelMappingChain(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetModelMappingChain(*v)
+	}
+	return _u
+}
+
+// ClearModelMappingChain clears the value of the "model_mapping_chain" field.
+func (_u *UsageLogUpdateOne) ClearModelMappingChain() *UsageLogUpdateOne {
+	_u.mutation.ClearModelMappingChain()
+	return _u
+}
+
+// SetBillingTier sets the "billing_tier" field.
+func (_u *UsageLogUpdateOne) SetBillingTier(v string) *UsageLogUpdateOne {
+	_u.mutation.SetBillingTier(v)
+	return _u
+}
+
+// SetNillableBillingTier sets the "billing_tier" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableBillingTier(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetBillingTier(*v)
+	}
+	return _u
+}
+
+// ClearBillingTier clears the value of the "billing_tier" field.
+func (_u *UsageLogUpdateOne) ClearBillingTier() *UsageLogUpdateOne {
+	_u.mutation.ClearBillingTier()
+	return _u
+}
+
+// SetBillingMode sets the "billing_mode" field.
+func (_u *UsageLogUpdateOne) SetBillingMode(v string) *UsageLogUpdateOne {
+	_u.mutation.SetBillingMode(v)
+	return _u
+}
+
+// SetNillableBillingMode sets the "billing_mode" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableBillingMode(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetBillingMode(*v)
+	}
+	return _u
+}
+
+// ClearBillingMode clears the value of the "billing_mode" field.
+func (_u *UsageLogUpdateOne) ClearBillingMode() *UsageLogUpdateOne {
+	_u.mutation.ClearBillingMode()
+	return _u
+}
+
 // SetRoutingTargetGroup sets the "routing_target_group" field.
 func (_u *UsageLogUpdateOne) SetRoutingTargetGroup(v string) *UsageLogUpdateOne {
 	_u.mutation.SetRoutingTargetGroup(v)
@@ -2034,6 +2304,48 @@ func (_u *UsageLogUpdateOne) SetNillableCacheCreation1hTokens(v *int) *UsageLogU
 // AddCacheCreation1hTokens adds value to the "cache_creation_1h_tokens" field.
 func (_u *UsageLogUpdateOne) AddCacheCreation1hTokens(v int) *UsageLogUpdateOne {
 	_u.mutation.AddCacheCreation1hTokens(v)
+	return _u
+}
+
+// SetImageOutputTokens sets the "image_output_tokens" field.
+func (_u *UsageLogUpdateOne) SetImageOutputTokens(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetImageOutputTokens()
+	_u.mutation.SetImageOutputTokens(v)
+	return _u
+}
+
+// SetNillableImageOutputTokens sets the "image_output_tokens" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableImageOutputTokens(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetImageOutputTokens(*v)
+	}
+	return _u
+}
+
+// AddImageOutputTokens adds value to the "image_output_tokens" field.
+func (_u *UsageLogUpdateOne) AddImageOutputTokens(v int) *UsageLogUpdateOne {
+	_u.mutation.AddImageOutputTokens(v)
+	return _u
+}
+
+// SetImageOutputCost sets the "image_output_cost" field.
+func (_u *UsageLogUpdateOne) SetImageOutputCost(v float64) *UsageLogUpdateOne {
+	_u.mutation.ResetImageOutputCost()
+	_u.mutation.SetImageOutputCost(v)
+	return _u
+}
+
+// SetNillableImageOutputCost sets the "image_output_cost" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableImageOutputCost(v *float64) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetImageOutputCost(*v)
+	}
+	return _u
+}
+
+// AddImageOutputCost adds value to the "image_output_cost" field.
+func (_u *UsageLogUpdateOne) AddImageOutputCost(v float64) *UsageLogUpdateOne {
+	_u.mutation.AddImageOutputCost(v)
 	return _u
 }
 
@@ -2692,6 +3004,21 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ModelMappingChain(); ok {
+		if err := usagelog.ModelMappingChainValidator(v); err != nil {
+			return &ValidationError{Name: "model_mapping_chain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model_mapping_chain": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.BillingTier(); ok {
+		if err := usagelog.BillingTierValidator(v); err != nil {
+			return &ValidationError{Name: "billing_tier", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_tier": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.BillingMode(); ok {
+		if err := usagelog.BillingModeValidator(v); err != nil {
+			return &ValidationError{Name: "billing_mode", err: fmt.Errorf(`ent: validator failed for field "UsageLog.billing_mode": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RoutingTargetGroup(); ok {
 		if err := usagelog.RoutingTargetGroupValidator(v); err != nil {
 			return &ValidationError{Name: "routing_target_group", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_target_group": %w`, err)}
@@ -2801,6 +3128,33 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	if _u.mutation.UpstreamModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamModel, field.TypeString)
 	}
+	if value, ok := _u.mutation.ChannelID(); ok {
+		_spec.SetField(usagelog.FieldChannelID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedChannelID(); ok {
+		_spec.AddField(usagelog.FieldChannelID, field.TypeInt64, value)
+	}
+	if _u.mutation.ChannelIDCleared() {
+		_spec.ClearField(usagelog.FieldChannelID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.ModelMappingChain(); ok {
+		_spec.SetField(usagelog.FieldModelMappingChain, field.TypeString, value)
+	}
+	if _u.mutation.ModelMappingChainCleared() {
+		_spec.ClearField(usagelog.FieldModelMappingChain, field.TypeString)
+	}
+	if value, ok := _u.mutation.BillingTier(); ok {
+		_spec.SetField(usagelog.FieldBillingTier, field.TypeString, value)
+	}
+	if _u.mutation.BillingTierCleared() {
+		_spec.ClearField(usagelog.FieldBillingTier, field.TypeString)
+	}
+	if value, ok := _u.mutation.BillingMode(); ok {
+		_spec.SetField(usagelog.FieldBillingMode, field.TypeString, value)
+	}
+	if _u.mutation.BillingModeCleared() {
+		_spec.ClearField(usagelog.FieldBillingMode, field.TypeString)
+	}
 	if value, ok := _u.mutation.RoutingTargetGroup(); ok {
 		_spec.SetField(usagelog.FieldRoutingTargetGroup, field.TypeString, value)
 	}
@@ -2884,6 +3238,18 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.AddedCacheCreation1hTokens(); ok {
 		_spec.AddField(usagelog.FieldCacheCreation1hTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ImageOutputTokens(); ok {
+		_spec.SetField(usagelog.FieldImageOutputTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedImageOutputTokens(); ok {
+		_spec.AddField(usagelog.FieldImageOutputTokens, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ImageOutputCost(); ok {
+		_spec.SetField(usagelog.FieldImageOutputCost, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedImageOutputCost(); ok {
+		_spec.AddField(usagelog.FieldImageOutputCost, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.InputCost(); ok {
 		_spec.SetField(usagelog.FieldInputCost, field.TypeFloat64, value)

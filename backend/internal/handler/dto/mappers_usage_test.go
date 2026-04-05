@@ -203,6 +203,8 @@ func TestUsageLogFromService_IncludesBillingBreakdownFields(t *testing.T) {
 	log := &service.UsageLog{
 		RequestID:                   "req-billing-breakdown",
 		Model:                       "gpt-5.4",
+		ImageOutputTokens:           4,
+		ImageOutputCost:             0.42,
 		AccountRateMultiplier:       &accountRateMultiplier,
 		PriorityAccountMultiplier:   &priorityAccountMultiplier,
 		EffectiveMultiplier:         &effectiveMultiplier,
@@ -210,6 +212,7 @@ func TestUsageLogFromService_IncludesBillingBreakdownFields(t *testing.T) {
 		EffectiveOutputUnitPrice:    &effectiveOutputUnitPrice,
 		EffectiveCacheReadUnitPrice: &effectiveCacheReadUnitPrice,
 		PricingSource:               &pricingSource,
+		BillingMode:                 strPtr("image"),
 	}
 
 	userDTO := UsageLogFromService(log)
@@ -228,8 +231,45 @@ func TestUsageLogFromService_IncludesBillingBreakdownFields(t *testing.T) {
 	require.InDelta(t, effectiveCacheReadUnitPrice, *userDTO.EffectiveCacheReadUnitPrice, 1e-12)
 	require.NotNil(t, userDTO.PricingSource)
 	require.Equal(t, pricingSource, *userDTO.PricingSource)
+	require.Equal(t, 4, userDTO.ImageOutputTokens)
+	require.Equal(t, 0.42, userDTO.ImageOutputCost)
+	require.NotNil(t, userDTO.BillingMode)
+	require.Equal(t, "image", *userDTO.BillingMode)
+}
+
+func TestUsageLogFromServiceAdmin_IncludesChannelAndBillingFields(t *testing.T) {
+	t.Parallel()
+
+	channelID := int64(7)
+	modelMappingChain := "alias->gpt-5.4"
+	billingTier := "channel_mapped"
+	billingMode := "token"
+
+	log := &service.UsageLog{
+		RequestID:         "req-admin-channel",
+		Model:             "gpt-5.4",
+		ChannelID:         &channelID,
+		ModelMappingChain: &modelMappingChain,
+		BillingTier:       &billingTier,
+		BillingMode:       &billingMode,
+	}
+
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	require.NotNil(t, adminDTO.ChannelID)
+	require.Equal(t, channelID, *adminDTO.ChannelID)
+	require.NotNil(t, adminDTO.ModelMappingChain)
+	require.Equal(t, modelMappingChain, *adminDTO.ModelMappingChain)
+	require.NotNil(t, adminDTO.BillingTier)
+	require.Equal(t, billingTier, *adminDTO.BillingTier)
+	require.NotNil(t, adminDTO.BillingMode)
+	require.Equal(t, billingMode, *adminDTO.BillingMode)
 }
 
 func f64Ptr(value float64) *float64 {
+	return &value
+}
+
+func strPtr(value string) *string {
 	return &value
 }

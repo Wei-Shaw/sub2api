@@ -515,6 +515,7 @@ type ClaudeUsage struct {
 	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 	CacheCreation5mTokens    int // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
 	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
+	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
 }
 
 // ForwardResult 转发结果
@@ -7433,11 +7434,12 @@ func (s *GatewayService) getUserGroupRateMultiplier(ctx context.Context, userID,
 
 // RecordUsageInput 记录使用量的输入参数
 type RecordUsageInput struct {
-	Result             *ForwardResult
-	APIKey             *APIKey
-	User               *User
-	Account            *Account
-	Subscription       *UserSubscription  // 可选：订阅信息
+	Result       *ForwardResult
+	APIKey       *APIKey
+	User         *User
+	Account      *Account
+	Subscription *UserSubscription // 可选：订阅信息
+	ChannelUsageFields
 	InboundEndpoint    string             // 入站端点（客户端请求路径）
 	UpstreamEndpoint   string             // 上游端点（标准化后的上游路径）
 	UserAgent          string             // 请求的 User-Agent
@@ -7765,6 +7767,16 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 
 	var cost *CostBreakdown
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
+		billingModel = input.ChannelMappedModel
+	}
+	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
+		billingModel = input.OriginalModel
+	}
+	requestedModel := result.Model
+	if input.OriginalModel != "" {
+		requestedModel = input.OriginalModel
+	}
 
 	// 根据请求类型选择计费方式
 	if result.MediaType == "image" || result.MediaType == "video" {
@@ -7804,6 +7816,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 			CacheReadTokens:       result.Usage.CacheReadInputTokens,
 			CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
 			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
+			ImageOutputTokens:     result.Usage.ImageOutputTokens,
 		}
 		var err error
 		cost, err = s.billingService.CalculateCost(billingModel, tokens, multiplier)
@@ -7838,8 +7851,10 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		AccountID:             account.ID,
 		RequestID:             requestID,
 		Model:                 result.Model,
-		RequestedModel:        result.Model,
+		RequestedModel:        requestedModel,
 		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
+		ChannelID:             optionalInt64Ptr(input.ChannelID),
+		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
@@ -7849,8 +7864,10 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		CacheReadTokens:       result.Usage.CacheReadInputTokens,
 		CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
 		CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
+		ImageOutputTokens:     result.Usage.ImageOutputTokens,
 		InputCost:             cost.InputCost,
 		OutputCost:            cost.OutputCost,
+		ImageOutputCost:       cost.ImageOutputCost,
 		CacheCreationCost:     cost.CacheCreationCost,
 		CacheReadCost:         cost.CacheReadCost,
 		TotalCost:             cost.TotalCost,
@@ -7858,6 +7875,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		RateMultiplier:        multiplier,
 		AccountRateMultiplier: &accountRateMultiplier,
 		BillingType:           billingType,
+		BillingMode:           optionalTrimmedStringPtr(cost.BillingMode),
 		Stream:                result.Stream,
 		DurationMs:            &durationMs,
 		FirstTokenMs:          result.FirstTokenMs,
@@ -7884,6 +7902,10 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	}
 	if subscription != nil {
 		usageLog.SubscriptionID = &subscription.ID
+	}
+	if usageLog.BillingMode == nil {
+		billingMode := string(BillingModeToken)
+		usageLog.BillingMode = &billingMode
 	}
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
@@ -7918,11 +7940,12 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 
 // RecordUsageLongContextInput 记录使用量的输入参数（支持长上下文双倍计费）
 type RecordUsageLongContextInput struct {
-	Result                *ForwardResult
-	APIKey                *APIKey
-	User                  *User
-	Account               *Account
-	Subscription          *UserSubscription  // 可选：订阅信息
+	Result       *ForwardResult
+	APIKey       *APIKey
+	User         *User
+	Account      *Account
+	Subscription *UserSubscription // 可选：订阅信息
+	ChannelUsageFields
 	InboundEndpoint       string             // 入站端点（客户端请求路径）
 	UpstreamEndpoint      string             // 上游端点（标准化后的上游路径）
 	UserAgent             string             // 请求的 User-Agent
@@ -7970,6 +7993,16 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 
 	var cost *CostBreakdown
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
+		billingModel = input.ChannelMappedModel
+	}
+	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
+		billingModel = input.OriginalModel
+	}
+	requestedModel := result.Model
+	if input.OriginalModel != "" {
+		requestedModel = input.OriginalModel
+	}
 
 	// 根据请求类型选择计费方式
 	if result.ImageCount > 0 {
@@ -7992,6 +8025,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 			CacheReadTokens:       result.Usage.CacheReadInputTokens,
 			CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
 			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
+			ImageOutputTokens:     result.Usage.ImageOutputTokens,
 		}
 		var err error
 		cost, err = s.billingService.CalculateCostWithLongContext(billingModel, tokens, multiplier, input.LongContextThreshold, input.LongContextMultiplier)
@@ -8022,8 +8056,10 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		AccountID:             account.ID,
 		RequestID:             requestID,
 		Model:                 result.Model,
-		RequestedModel:        result.Model,
+		RequestedModel:        requestedModel,
 		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
+		ChannelID:             optionalInt64Ptr(input.ChannelID),
+		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
@@ -8033,8 +8069,10 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		CacheReadTokens:       result.Usage.CacheReadInputTokens,
 		CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
 		CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
+		ImageOutputTokens:     result.Usage.ImageOutputTokens,
 		InputCost:             cost.InputCost,
 		OutputCost:            cost.OutputCost,
+		ImageOutputCost:       cost.ImageOutputCost,
 		CacheCreationCost:     cost.CacheCreationCost,
 		CacheReadCost:         cost.CacheReadCost,
 		TotalCost:             cost.TotalCost,
@@ -8042,6 +8080,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		RateMultiplier:        multiplier,
 		AccountRateMultiplier: &accountRateMultiplier,
 		BillingType:           billingType,
+		BillingMode:           optionalTrimmedStringPtr(cost.BillingMode),
 		Stream:                result.Stream,
 		DurationMs:            &durationMs,
 		FirstTokenMs:          result.FirstTokenMs,
@@ -8067,6 +8106,10 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 	}
 	if subscription != nil {
 		usageLog.SubscriptionID = &subscription.ID
+	}
+	if usageLog.BillingMode == nil {
+		billingMode := string(BillingModeToken)
+		usageLog.BillingMode = &billingMode
 	}
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {

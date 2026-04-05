@@ -363,9 +363,11 @@ type UsageLog struct {
 
 	CacheCreation5mTokens int `json:"cache_creation_5m_tokens"`
 	CacheCreation1hTokens int `json:"cache_creation_1h_tokens"`
+	ImageOutputTokens     int `json:"image_output_tokens"`
 
 	InputCost                   float64  `json:"input_cost"`
 	OutputCost                  float64  `json:"output_cost"`
+	ImageOutputCost             float64  `json:"image_output_cost"`
 	CacheCreationCost           float64  `json:"cache_creation_cost"`
 	CacheReadCost               float64  `json:"cache_read_cost"`
 	TotalCost                   float64  `json:"total_cost"`
@@ -378,6 +380,7 @@ type UsageLog struct {
 	EffectiveOutputUnitPrice    *float64 `json:"effective_output_unit_price,omitempty"`
 	EffectiveCacheReadUnitPrice *float64 `json:"effective_cache_read_unit_price,omitempty"`
 	PricingSource               *string  `json:"pricing_source,omitempty"`
+	BillingMode                 *string  `json:"billing_mode,omitempty"`
 
 	BillingType  int8   `json:"billing_type"`
 	RequestType  string `json:"request_type"`
@@ -412,6 +415,9 @@ type AdminUsageLog struct {
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).
 	UpstreamModel *string `json:"upstream_model,omitempty"`
+	ChannelID     *int64  `json:"channel_id,omitempty"`
+	ModelMappingChain *string `json:"model_mapping_chain,omitempty"`
+	BillingTier   *string `json:"billing_tier,omitempty"`
 	// OpenAI routing observability fields. Omitted when snapshot is unavailable.
 	RoutingTargetGroup         *string `json:"routing_target_group,omitempty"`
 	RoutingScheduleLayer       *string `json:"routing_schedule_layer,omitempty"`

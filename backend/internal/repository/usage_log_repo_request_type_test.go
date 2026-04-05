@@ -38,63 +38,10 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 		OpenAIWSMode:   false,
 		CreatedAt:      createdAt,
 	}
+	prepared := prepareUsageLogInsert(log)
 
 	mock.ExpectQuery("INSERT INTO usage_logs").
-		WithArgs(
-			log.UserID,
-			log.APIKeyID,
-			log.AccountID,
-			log.RequestID,
-			log.Model,
-			log.RequestedModel,
-			sqlmock.AnyArg(), // upstream_model
-			sqlmock.AnyArg(), // group_id
-			sqlmock.AnyArg(), // subscription_id
-			log.InputTokens,
-			log.OutputTokens,
-			log.CacheCreationTokens,
-			log.CacheReadTokens,
-			log.CacheCreation5mTokens,
-			log.CacheCreation1hTokens,
-			log.InputCost,
-			log.OutputCost,
-			log.CacheCreationCost,
-			log.CacheReadCost,
-			log.TotalCost,
-			log.ActualCost,
-			log.RateMultiplier,
-			log.AccountRateMultiplier,
-			sqlmock.AnyArg(), // priority_account_multiplier
-			sqlmock.AnyArg(), // effective_multiplier
-			sqlmock.AnyArg(), // effective_input_unit_price
-			sqlmock.AnyArg(), // effective_output_unit_price
-			sqlmock.AnyArg(), // effective_cache_read_unit_price
-			sqlmock.AnyArg(), // pricing_source
-			log.BillingType,
-			int16(service.RequestTypeWSV2),
-			true,
-			true,
-			sqlmock.AnyArg(), // duration_ms
-			sqlmock.AnyArg(), // first_token_ms
-			sqlmock.AnyArg(), // user_agent
-			sqlmock.AnyArg(), // ip_address
-			log.ImageCount,
-			sqlmock.AnyArg(), // image_size
-			sqlmock.AnyArg(), // media_type
-			sqlmock.AnyArg(), // service_tier
-			sqlmock.AnyArg(), // reasoning_effort
-			sqlmock.AnyArg(), // inbound_endpoint
-			sqlmock.AnyArg(), // upstream_endpoint
-			sqlmock.AnyArg(), // routing_target_group
-			sqlmock.AnyArg(), // routing_schedule_layer
-			sqlmock.AnyArg(), // routing_selected_account_id
-			sqlmock.AnyArg(), // routing_selected_account_name
-			sqlmock.AnyArg(), // routing_effective_model
-			sqlmock.AnyArg(), // routing_failover_count
-			sqlmock.AnyArg(), // routing_failover_final_reason
-			log.CacheTTLOverridden,
-			createdAt,
-		).
+		WithArgs(anySliceToDriverValues(prepared.args)...).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
 
 	inserted, err := repo.Create(context.Background(), log)
@@ -124,63 +71,10 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 		ServiceTier:    &serviceTier,
 		CreatedAt:      createdAt,
 	}
+	prepared := prepareUsageLogInsert(log)
 
 	mock.ExpectQuery("INSERT INTO usage_logs").
-		WithArgs(
-			log.UserID,
-			log.APIKeyID,
-			log.AccountID,
-			log.RequestID,
-			log.Model,
-			log.RequestedModel,
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			log.InputTokens,
-			log.OutputTokens,
-			log.CacheCreationTokens,
-			log.CacheReadTokens,
-			log.CacheCreation5mTokens,
-			log.CacheCreation1hTokens,
-			log.InputCost,
-			log.OutputCost,
-			log.CacheCreationCost,
-			log.CacheReadCost,
-			log.TotalCost,
-			log.ActualCost,
-			log.RateMultiplier,
-			log.AccountRateMultiplier,
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			log.BillingType,
-			int16(service.RequestTypeSync),
-			false,
-			false,
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			log.ImageCount,
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			serviceTier,
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			sqlmock.AnyArg(),
-			log.CacheTTLOverridden,
-			createdAt,
-		).
+		WithArgs(anySliceToDriverValues(prepared.args)...).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
 
 	inserted, err := repo.Create(context.Background(), log)
@@ -203,12 +97,12 @@ func TestBuildUsageLogBestEffortInsertQuery_IncludesRequestedModelColumn(t *test
 	query, args := buildUsageLogBestEffortInsertQuery([]usageLogInsertPrepared{prepared})
 
 	require.Contains(t, query, "INSERT INTO usage_logs (")
-	require.Contains(t, query, "WITH input (\n\t\t\tuser_id,\n\t\t\tapi_key_id,\n\t\t\taccount_id,\n\t\t\trequest_id,\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,\n\t\t\tgroup_id,\n\t\t\tsubscription_id,\n\t\t\tinput_tokens,\n\t\t\toutput_tokens,\n\t\t\tcache_creation_tokens,\n\t\t\tcache_read_tokens,\n\t\t\tcache_creation_5m_tokens,\n\t\t\tcache_creation_1h_tokens,\n\t\t\tinput_cost,\n\t\t\toutput_cost,\n\t\t\tcache_creation_cost,\n\t\t\tcache_read_cost,\n\t\t\ttotal_cost,\n\t\t\tactual_cost,\n\t\t\trate_multiplier,\n\t\t\taccount_rate_multiplier,\n\t\t\tpriority_account_multiplier,\n\t\t\teffective_multiplier,\n\t\t\teffective_input_unit_price,\n\t\t\teffective_output_unit_price,\n\t\t\teffective_cache_read_unit_price,\n\t\t\tpricing_source,\n\t\t\tbilling_type,")
+	require.Contains(t, query, "WITH input (\n\t\t\tuser_id,\n\t\t\tapi_key_id,\n\t\t\taccount_id,\n\t\t\trequest_id,\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,\n\t\t\tchannel_id,\n\t\t\tmodel_mapping_chain,\n\t\t\tbilling_tier,\n\t\t\tbilling_mode,")
+	require.Contains(t, query, "\n\t\t\tcache_creation_5m_tokens,\n\t\t\tcache_creation_1h_tokens,\n\t\t\timage_output_tokens,\n\t\t\timage_output_cost,")
 	require.Contains(t, query, "\n\t\t\tactual_cost,\n\t\t\trate_multiplier,\n\t\t\taccount_rate_multiplier,\n\t\t\tpriority_account_multiplier,\n\t\t\teffective_multiplier,\n\t\t\teffective_input_unit_price,\n\t\t\teffective_output_unit_price,\n\t\t\teffective_cache_read_unit_price,\n\t\t\tpricing_source,\n\t\t\tbilling_type,")
 	require.Contains(t, query, "\n\t\t\taccount_rate_multiplier,\n\t\t\tpriority_account_multiplier,\n\t\t\teffective_multiplier,")
 	require.Contains(t, query, "\n\t\t\teffective_input_unit_price,\n\t\t\teffective_output_unit_price,\n\t\t\teffective_cache_read_unit_price,\n\t\t\tpricing_source,")
-	require.Contains(t, query, "\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,")
-	require.Contains(t, query, "\n\t\t\trequest_id,\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,")
+	require.Contains(t, query, "\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,\n\t\t\tchannel_id,")
 	require.Len(t, args, len(prepared.args))
 	require.Equal(t, prepared.args[5], args[5])
 }
@@ -309,13 +203,13 @@ func TestPrepareUsageLogInsert_IncludesOpenAIRoutingFields(t *testing.T) {
 	})
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
-	require.Equal(t, sql.NullString{String: routingTargetGroup, Valid: true}, prepared.args[44])
-	require.Equal(t, sql.NullString{String: routingScheduleLayer, Valid: true}, prepared.args[45])
-	require.Equal(t, sql.NullInt64{Int64: routingAccountID, Valid: true}, prepared.args[46])
-	require.Equal(t, sql.NullString{String: routingAccountName, Valid: true}, prepared.args[47])
-	require.Equal(t, sql.NullString{String: routingEffectiveModel, Valid: true}, prepared.args[48])
-	require.Equal(t, sql.NullInt64{Int64: int64(routingFailoverCount), Valid: true}, prepared.args[49])
-	require.Equal(t, sql.NullString{String: routingFailoverFinalReason, Valid: true}, prepared.args[50])
+	require.Equal(t, sql.NullString{String: routingTargetGroup, Valid: true}, prepared.args[50])
+	require.Equal(t, sql.NullString{String: routingScheduleLayer, Valid: true}, prepared.args[51])
+	require.Equal(t, sql.NullInt64{Int64: routingAccountID, Valid: true}, prepared.args[52])
+	require.Equal(t, sql.NullString{String: routingAccountName, Valid: true}, prepared.args[53])
+	require.Equal(t, sql.NullString{String: routingEffectiveModel, Valid: true}, prepared.args[54])
+	require.Equal(t, sql.NullInt64{Int64: int64(routingFailoverCount), Valid: true}, prepared.args[55])
+	require.Equal(t, sql.NullString{String: routingFailoverFinalReason, Valid: true}, prepared.args[56])
 }
 
 func TestPrepareUsageLogInsert_IncludesBillingBreakdownFields(t *testing.T) {
@@ -343,12 +237,43 @@ func TestPrepareUsageLogInsert_IncludesBillingBreakdownFields(t *testing.T) {
 	})
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
-	require.Equal(t, sql.NullFloat64{Float64: priorityAccountMultiplier, Valid: true}, prepared.args[23])
-	require.Equal(t, sql.NullFloat64{Float64: effectiveMultiplier, Valid: true}, prepared.args[24])
-	require.Equal(t, sql.NullFloat64{Float64: effectiveInputUnitPrice, Valid: true}, prepared.args[25])
-	require.Equal(t, sql.NullFloat64{Float64: effectiveOutputUnitPrice, Valid: true}, prepared.args[26])
-	require.Equal(t, sql.NullFloat64{Float64: effectiveCacheReadUnitPrice, Valid: true}, prepared.args[27])
-	require.Equal(t, sql.NullString{String: pricingSource, Valid: true}, prepared.args[28])
+	require.Equal(t, sql.NullFloat64{Float64: priorityAccountMultiplier, Valid: true}, prepared.args[29])
+	require.Equal(t, sql.NullFloat64{Float64: effectiveMultiplier, Valid: true}, prepared.args[30])
+	require.Equal(t, sql.NullFloat64{Float64: effectiveInputUnitPrice, Valid: true}, prepared.args[31])
+	require.Equal(t, sql.NullFloat64{Float64: effectiveOutputUnitPrice, Valid: true}, prepared.args[32])
+	require.Equal(t, sql.NullFloat64{Float64: effectiveCacheReadUnitPrice, Valid: true}, prepared.args[33])
+	require.Equal(t, sql.NullString{String: pricingSource, Valid: true}, prepared.args[34])
+}
+
+func TestPrepareUsageLogInsert_IncludesChannelAndImageOutputFields(t *testing.T) {
+	channelID := int64(55)
+	modelMappingChain := "alias->mapped"
+	billingTier := "channel_mapped"
+	billingMode := "image"
+
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:            1,
+		APIKeyID:          2,
+		AccountID:         3,
+		RequestID:         "req-channel-image",
+		Model:             "gpt-image-1",
+		RequestedModel:    "gpt-image-1",
+		ImageOutputTokens: 42,
+		ImageOutputCost:   0.42,
+		ChannelID:         &channelID,
+		ModelMappingChain: &modelMappingChain,
+		BillingTier:       &billingTier,
+		BillingMode:       &billingMode,
+		CreatedAt:         time.Date(2025, 1, 6, 14, 0, 0, 0, time.UTC),
+	})
+
+	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+	require.Equal(t, sql.NullInt64{Valid: true, Int64: channelID}, prepared.args[7])
+	require.Equal(t, sql.NullString{Valid: true, String: modelMappingChain}, prepared.args[8])
+	require.Equal(t, sql.NullString{Valid: true, String: billingTier}, prepared.args[9])
+	require.Equal(t, sql.NullString{Valid: true, String: billingMode}, prepared.args[10])
+	require.Equal(t, 42, prepared.args[19])
+	require.Equal(t, 0.42, prepared.args[20])
 }
 
 func TestCoalesceTrimmedString(t *testing.T) {
@@ -478,6 +403,15 @@ func TestUsageLogRepositoryGetStatsWithFiltersRequestTypePriority(t *testing.T) 
 			"total_account_cost",
 			"avg_duration_ms",
 		}).AddRow(int64(1), int64(2), int64(3), int64(4), 1.2, 1.0, 1.2, 20.0))
+	mock.ExpectQuery("SELECT COALESCE\\(NULLIF\\(TRIM\\(inbound_endpoint").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), requestType).
+		WillReturnRows(sqlmock.NewRows([]string{"endpoint", "requests", "total_tokens", "cost", "actual_cost"}))
+	mock.ExpectQuery("SELECT COALESCE\\(NULLIF\\(TRIM\\(upstream_endpoint").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), requestType).
+		WillReturnRows(sqlmock.NewRows([]string{"endpoint", "requests", "total_tokens", "cost", "actual_cost"}))
+	mock.ExpectQuery("SELECT CONCAT\\(").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), requestType).
+		WillReturnRows(sqlmock.NewRows([]string{"endpoint", "requests", "total_tokens", "cost", "actual_cost"}))
 
 	stats, err := repo.GetStatsWithFilters(context.Background(), filters)
 	require.NoError(t, err)
@@ -589,6 +523,10 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			"gpt-5", // model
 			sql.NullString{Valid: true, String: "gpt-5"}, // requested_model
 			sql.NullString{},  // upstream_model
+			sql.NullInt64{},   // channel_id
+			sql.NullString{},  // model_mapping_chain
+			sql.NullString{},  // billing_tier
+			sql.NullString{},  // billing_mode
 			sql.NullInt64{},   // group_id
 			sql.NullInt64{},   // subscription_id
 			1,                 // input_tokens
@@ -597,6 +535,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			4,                 // cache_read_tokens
 			5,                 // cache_creation_5m_tokens
 			6,                 // cache_creation_1h_tokens
+			0,                 // image_output_tokens
+			0.0,               // image_output_cost
 			0.1,               // input_cost
 			0.2,               // output_cost
 			0.3,               // cache_creation_cost
@@ -656,8 +596,13 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{Valid: true, String: "gpt-5"},
 			sql.NullString{},
 			sql.NullInt64{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullInt64{},
 			sql.NullInt64{},
 			1, 2, 3, 4, 5, 6,
+			0, 0.0,
 			0.1, 0.2, 0.3, 0.4, 1.0, 0.9,
 			1.0,
 			sql.NullFloat64{},
@@ -712,8 +657,13 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{Valid: true, String: "gpt-5.4"},
 			sql.NullString{},
 			sql.NullInt64{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullInt64{},
 			sql.NullInt64{},
 			1, 2, 3, 4, 5, 6,
+			0, 0.0,
 			0.1, 0.2, 0.3, 0.4, 1.0, 0.9,
 			1.0,
 			sql.NullFloat64{},
@@ -767,8 +717,13 @@ func TestScanUsageLog_PreservesBillingBreakdownFields(t *testing.T) {
 		sql.NullString{Valid: true, String: "gpt-5.4"},
 		sql.NullString{},
 		sql.NullInt64{},
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullInt64{},
 		sql.NullInt64{},
 		1, 2, 3, 4, 5, 6,
+		0, 0.0,
 		0.1, 0.2, 0.3, 0.4, 1.0, 90.0,
 		1.5,
 		sql.NullFloat64{Valid: true, Float64: 2.0},
@@ -816,4 +771,71 @@ func TestScanUsageLog_PreservesBillingBreakdownFields(t *testing.T) {
 	require.Equal(t, 0.5e-6, *log.EffectiveCacheReadUnitPrice)
 	require.NotNil(t, log.PricingSource)
 	require.Equal(t, "priority_pricing,priority_account_multiplier", *log.PricingSource)
+}
+
+func TestScanUsageLog_PreservesChannelAndImageOutputFields(t *testing.T) {
+	now := time.Now().UTC()
+	log, err := scanUsageLog(usageLogScannerStub{values: []any{
+		int64(4),  // id
+		int64(13), // user_id
+		int64(23), // api_key_id
+		int64(33), // account_id
+		sql.NullString{Valid: true, String: "req-channel-image"},
+		"gpt-image-1", // model
+		sql.NullString{Valid: true, String: "gpt-image-1"},
+		sql.NullString{},                      // upstream_model
+		sql.NullInt64{Valid: true, Int64: 55}, // channel_id
+		sql.NullString{Valid: true, String: "alias->mapped"},
+		sql.NullString{Valid: true, String: "channel_mapped"},
+		sql.NullString{Valid: true, String: "image"},
+		sql.NullInt64{},  // group_id
+		sql.NullInt64{},  // subscription_id
+		1, 2, 3, 4, 5, 6, // token counters
+		42,                           // image_output_tokens
+		0.42,                         // image_output_cost
+		0.1, 0.2, 0.3, 0.4, 1.0, 1.0, // cost fields
+		1.5,                               // rate_multiplier
+		sql.NullFloat64{},                 // account_rate_multiplier
+		sql.NullFloat64{},                 // priority_account_multiplier
+		sql.NullFloat64{},                 // effective_multiplier
+		sql.NullFloat64{},                 // effective_input_unit_price
+		sql.NullFloat64{},                 // effective_output_unit_price
+		sql.NullFloat64{},                 // effective_cache_read_unit_price
+		sql.NullString{},                  // pricing_source
+		int16(service.BillingTypeBalance), // billing_type
+		int16(service.RequestTypeSync),    // request_type
+		false,                             // stream
+		false,                             // openai_ws_mode
+		sql.NullInt64{},                   // duration_ms
+		sql.NullInt64{},                   // first_token_ms
+		sql.NullString{},                  // user_agent
+		sql.NullString{},                  // ip_address
+		0,                                 // image_count
+		sql.NullString{},                  // image_size
+		sql.NullString{},                  // media_type
+		sql.NullString{},                  // service_tier
+		sql.NullString{},                  // reasoning_effort
+		sql.NullString{},                  // inbound_endpoint
+		sql.NullString{},                  // upstream_endpoint
+		sql.NullString{},                  // routing_target_group
+		sql.NullString{},                  // routing_schedule_layer
+		sql.NullInt64{},                   // routing_selected_account_id
+		sql.NullString{},                  // routing_selected_account_name
+		sql.NullString{},                  // routing_effective_model
+		sql.NullInt64{},                   // routing_failover_count
+		sql.NullString{},                  // routing_failover_final_reason
+		false,                             // cache_ttl_overridden
+		now,                               // created_at
+	}})
+	require.NoError(t, err)
+	require.Equal(t, 42, log.ImageOutputTokens)
+	require.Equal(t, 0.42, log.ImageOutputCost)
+	require.NotNil(t, log.ChannelID)
+	require.Equal(t, int64(55), *log.ChannelID)
+	require.NotNil(t, log.ModelMappingChain)
+	require.Equal(t, "alias->mapped", *log.ModelMappingChain)
+	require.NotNil(t, log.BillingTier)
+	require.Equal(t, "channel_mapped", *log.BillingTier)
+	require.NotNil(t, log.BillingMode)
+	require.Equal(t, "image", *log.BillingMode)
 }

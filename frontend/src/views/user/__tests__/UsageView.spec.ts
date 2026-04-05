@@ -52,6 +52,11 @@ const messages: Record<string, string> = {
   'usage.duration': 'Duration',
   'usage.time': 'Time',
   'usage.userAgent': 'User Agent',
+  'usage.imageUnit': 'img',
+  'admin.usage.billingMode': 'Billing Mode',
+  'admin.usage.billingModeToken': 'Token',
+  'admin.usage.billingModePerRequest': 'Per Request',
+  'admin.usage.billingModeImage': 'Image',
 }
 
 vi.mock('@/api', () => ({
@@ -81,6 +86,17 @@ vi.mock('vue-i18n', async () => {
 const AppLayoutStub = { template: '<div><slot /></div>' }
 const TablePageLayoutStub = {
   template: '<div><slot name="actions" /><slot name="filters" /><slot /></div>',
+}
+const UserDataTableStub = {
+  props: ['data'],
+  template: `
+    <div>
+      <div v-for="row in data" :key="row.request_id">
+        <slot name="cell-billing_mode" :row="row" />
+        <slot name="cell-tokens" :row="row" />
+      </div>
+    </div>
+  `,
 }
 
 describe('user UsageView tooltip', () => {
@@ -160,6 +176,7 @@ describe('user UsageView tooltip', () => {
         stubs: {
           AppLayout: AppLayoutStub,
           TablePageLayout: TablePageLayoutStub,
+          DataTable: UserDataTableStub,
           Pagination: true,
           EmptyState: true,
           Select: true,
@@ -270,6 +287,7 @@ describe('user UsageView tooltip', () => {
         stubs: {
           AppLayout: AppLayoutStub,
           TablePageLayout: TablePageLayoutStub,
+          DataTable: UserDataTableStub,
           Pagination: true,
           EmptyState: true,
           Select: true,
@@ -292,5 +310,73 @@ describe('user UsageView tooltip', () => {
     window.URL.createObjectURL = originalCreateObjectURL
     window.URL.revokeObjectURL = originalRevokeObjectURL
     clickSpy.mockRestore()
+  })
+
+  it('renders billing mode and image-request rows', async () => {
+    query.mockResolvedValue({
+      items: [
+        {
+          request_id: 'req-user-image-1',
+          actual_cost: 1.25,
+          total_cost: 1.25,
+          rate_multiplier: 1,
+          billing_mode: 'image',
+          image_count: 2,
+          image_size: '2K',
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_creation_tokens: 0,
+          cache_read_tokens: 0,
+          cache_creation_5m_tokens: 0,
+          cache_creation_1h_tokens: 0,
+          image_output_tokens: 0,
+          image_output_cost: 0,
+          input_cost: 0,
+          output_cost: 0,
+          cache_creation_cost: 0,
+          cache_read_cost: 0,
+          duration_ms: 1,
+          created_at: '2026-03-08T00:00:00Z',
+          model: 'gpt-image-1',
+          reasoning_effort: null,
+          api_key: { name: 'demo-key' },
+        },
+      ],
+      total: 1,
+      pages: 1,
+    })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 1,
+      total_tokens: 0,
+      total_cost: 1.25,
+      avg_duration_ms: 1,
+    })
+    list.mockResolvedValue({ items: [] })
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    await nextTick()
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    const billingModeColumn = setupState.columns.find((column: any) => column.key === 'billing_mode')
+
+    expect(billingModeColumn?.label).toBe('Billing Mode')
+    expect(setupState.usageLogs[0].billing_mode).toBe('image')
+    expect(setupState.usageLogs[0].image_count).toBe(2)
+    expect(setupState.usageLogs[0].image_size).toBe('2K')
   })
 })
