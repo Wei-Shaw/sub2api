@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"log"
 	"sync"
 	"encoding/json"
 	"fmt"
@@ -127,7 +126,8 @@ type TopUserStat struct {
 }
 
 type PaymentService struct {
-	providerOnce sync.Once
+	providerMu      sync.Mutex
+	providersLoaded bool
 	entClient       *dbent.Client
 	registry        *payment.Registry
 	loadBalancer    payment.LoadBalancer
@@ -1091,17 +1091,23 @@ func (s *PaymentService) AdminListOrders(ctx context.Context, userID int64, p Or
 // It queries all enabled PaymentProviderInstance records, decrypts their config,
 // creates providers via provider.CreateProvider, and registers them.
 func (s *PaymentService) EnsureProviders(ctx context.Context) {
-	s.providerOnce.Do(func() {
-		s.loadProviders(ctx)
-	})
+	s.providerMu.Lock()
+	defer s.providerMu.Unlock()
+	if s.providersLoaded {
+		return
+	}
+	s.loadProviders(ctx)
+	s.providersLoaded = true
 }
 
 // RefreshProviders clears and re-registers all providers from the database.
 // Call this when provider instances are created, updated, or deleted.
 func (s *PaymentService) RefreshProviders(ctx context.Context) {
+	s.providerMu.Lock()
+	defer s.providerMu.Unlock()
 	s.registry.Clear()
-	s.providerOnce = sync.Once{}
-	s.EnsureProviders(ctx)
+	s.loadProviders(ctx)
+	s.providersLoaded = true
 }
 
 func (s *PaymentService) loadProviders(ctx context.Context) {
@@ -1109,22 +1115,22 @@ func (s *PaymentService) loadProviders(ctx context.Context) {
 		Where(paymentproviderinstance.EnabledEQ(true)).
 		All(ctx)
 	if err != nil {
-		log.Printf("[PaymentService] failed to query provider instances: %v", err)
+		slog.Error("[PaymentService] failed to query provider instances", "error", err)
 		return
 	}
 	for _, inst := range instances {
 		cfg, err := s.loadBalancer.GetInstanceConfig(ctx, int64(inst.ID))
 		if err != nil {
-			log.Printf("[PaymentService] failed to decrypt config for instance %d: %v", inst.ID, err)
+			slog.Warn("[PaymentService] failed to decrypt config for instance", "instanceID", inst.ID, "error", err)
 			continue
 		}
 		instID := fmt.Sprintf("%d", inst.ID)
 		p, err := provider.CreateProvider(inst.ProviderKey, instID, cfg)
 		if err != nil {
-			log.Printf("[PaymentService] failed to create provider for instance %d (key=%s): %v", inst.ID, inst.ProviderKey, err)
+			slog.Warn("[PaymentService] failed to create provider for instance", "instanceID", inst.ID, "key", inst.ProviderKey, "error", err)
 			continue
 		}
 		s.registry.Register(p)
 	}
-	log.Printf("[PaymentService] registered %d payment types from %d instances", len(s.registry.SupportedTypes()), len(instances))
+	slog.Info("[PaymentService] registered payment types", "types", len(s.registry.SupportedTypes()), "instances", len(instances))
 }
