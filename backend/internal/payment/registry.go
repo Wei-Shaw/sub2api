@@ -15,7 +15,6 @@ type Registry struct {
 // ErrProviderNotFound is returned when a requested payment provider is not registered.
 var ErrProviderNotFound = infraerrors.NotFound("PROVIDER_NOT_FOUND", "payment provider not registered")
 
-
 // NewRegistry creates a new empty provider registry.
 func NewRegistry() *Registry {
 	return &Registry{
@@ -59,8 +58,7 @@ func (r *Registry) GetProviderByKey(key string) (Provider, error) {
 	return nil, ErrProviderNotFound
 }
 
-// GetProviderKey returns the provider key for the given payment type,
-// or empty string if not found.
+// GetProviderKey returns the provider key for the given payment type, or empty string if not found.
 func (r *Registry) GetProviderKey(t PaymentType) string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -88,5 +86,3 @@ func (r *Registry) Clear() {
 	defer r.mu.Unlock()
 	r.providers = make(map[PaymentType]Provider)
 }
-
-// Clear removes all registered providers.
