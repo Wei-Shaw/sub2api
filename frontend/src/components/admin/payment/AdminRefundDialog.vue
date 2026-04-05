@@ -14,11 +14,11 @@
         </div>
         <div class="mt-1 flex justify-between text-sm">
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
-          <span class="font-medium text-gray-900 dark:text-white">${{ order?.pay_amount?.toFixed(2) }}</span>
+          <span class="font-medium text-gray-900 dark:text-white">¥{{ order?.pay_amount?.toFixed(2) }}</span>
         </div>
         <div v-if="order?.refund_amount" class="mt-1 flex justify-between text-sm">
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.admin.alreadyRefunded') }}</span>
-          <span class="font-medium text-red-600 dark:text-red-400">${{ order.refund_amount.toFixed(2) }}</span>
+          <span class="font-medium text-red-600 dark:text-red-400">¥{{ order.refund_amount.toFixed(2) }}</span>
         </div>
       </div>
 
@@ -26,7 +26,7 @@
       <div>
         <label class="input-label">{{ t('payment.admin.refundAmount') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span>
           <input
             v-model.number="form.amount"
             type="number"
@@ -38,7 +38,7 @@
           />
         </div>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          {{ t('payment.admin.maxRefundable') }}: ${{ maxRefundable.toFixed(2) }}
+          {{ t('payment.admin.maxRefundable') }}: ¥{{ maxRefundable.toFixed(2) }}
         </p>
       </div>
 

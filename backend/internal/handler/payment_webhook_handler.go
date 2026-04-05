@@ -51,7 +51,7 @@ func (h *PaymentWebhookHandler) StripeWebhook(c *gin.Context) {
 
 // handleNotify is the shared logic for all provider webhook handlers.
 func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string) {
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 1<<20)) // 1MB limit
 	if err != nil {
 		log.Printf("[Payment Webhook] failed to read body for %s: %v", providerKey, err)
 		c.String(http.StatusBadRequest, "failed to read body")

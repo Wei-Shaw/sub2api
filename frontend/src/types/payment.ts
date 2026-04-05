@@ -79,6 +79,7 @@ export interface SubscriptionPlan {
   original_price?: number
   validity_days: number
   validity_unit: string
+  /** Stored as JSON string in backend; API layer should parse before use */
   features: string[]
   for_sale: boolean
   sort_order: number

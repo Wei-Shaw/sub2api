@@ -214,12 +214,15 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       order_type: orderType,
       plan_id: planId,
     })
-    if (selectedMethod.value === 'stripe' && result.client_secret) {
+    if (result.client_secret) {
       router.push({ path: '/payment/stripe', query: { order_id: String(result.order_id), client_secret: result.client_secret } })
-    } else if (result.qr_code || result.pay_url) {
-      router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id) } })
+    } else if (result.qr_code) {
+      router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), qr: result.qr_code || '', pay_url: result.pay_url || '' } })
     } else if (result.pay_url) {
       window.location.href = result.pay_url
+    } else {
+      errorMessage.value = t('payment.result.failed')
+      appStore.showError(errorMessage.value)
     }
   } catch (err: any) {
     errorMessage.value = err.response?.data?.detail || err.message || t('payment.result.failed')

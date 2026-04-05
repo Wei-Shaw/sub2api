@@ -43,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { usePaymentStore } from '@/stores/payment'
@@ -66,6 +66,7 @@ const stripeReady = ref(false)
 const order = ref<PaymentOrder | null>(null)
 
 let stripeInstance: any = null
+let redirectTimer: ReturnType<typeof setTimeout> | null = null
 let elementsInstance: any = null
 
 onMounted(async () => {
@@ -107,6 +108,10 @@ onMounted(async () => {
   }
 })
 
+onUnmounted(() => {
+  if (redirectTimer) clearTimeout(redirectTimer)
+})
+
 async function handlePay() {
   if (!stripeInstance || !elementsInstance || stripeSubmitting.value) return
   stripeSubmitting.value = true
@@ -123,7 +128,7 @@ async function handlePay() {
       stripeError.value = error.message || t('payment.result.failed')
     } else {
       stripeSuccess.value = true
-      setTimeout(() => {
+      redirectTimer = setTimeout(() => {
         router.push({ path: '/payment/result', query: { order_id: route.query.order_id as string, status: 'success' } })
       }, 2000)
     }
