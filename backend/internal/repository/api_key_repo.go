@@ -604,20 +604,20 @@ func userEntityToService(u *dbent.User) *service.User {
 		return nil
 REDACTED
 	return &service.User{
-		ID:                  u.ID,
-		Email:               u.Email,
-		Username:            u.Username,
-		Notes:               u.Notes,
-		PasswordHash:        u.PasswordHash,
-		Role:                u.Role,
-		Balance:             u.Balance,
-		Concurrency:         u.Concurrency,
-		Status:              u.Status,
-		TotpSecretEncrypted: u.TotpSecretEncrypted,
-		TotpEnabled:         u.TotpEnabled,
-		TotpEnabledAt:       u.TotpEnabledAt,
-		CreatedAt:           u.CreatedAt,
-		UpdatedAt:           u.UpdatedAt,
+		ID:                    u.ID,
+		Email:                 u.Email,
+		Username:              u.Username,
+		Notes:                 u.Notes,
+		PasswordHash:          u.PasswordHash,
+		Role:                  u.Role,
+		Balance:               u.Balance,
+		Concurrency:           u.Concurrency,
+		Status:                u.Status,
+		TotpSecretEncrypted:   u.TotpSecretEncrypted,
+		TotpEnabled:           u.TotpEnabled,
+		TotpEnabledAt:         u.TotpEnabledAt,
+		CreatedAt:             u.CreatedAt,
+		UpdatedAt:             u.UpdatedAt,
 REDACTED
 REDACTED
 
@@ -651,6 +651,8 @@ REDACTED
 		SupportedModelScopes:            g.SupportedModelScopes,
 		SortOrder:                       g.SortOrder,
 		AllowMessagesDispatch:           g.AllowMessagesDispatch,
+		RequireOAuthOnly:                g.RequireOauthOnly,
+		RequirePrivacySet:               g.RequirePrivacySet,
 		DefaultMappedModel:              g.DefaultMappedModel,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
