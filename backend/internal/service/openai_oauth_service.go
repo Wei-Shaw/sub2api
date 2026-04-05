@@ -374,20 +374,6 @@ func (s *OpenAIOAuthService) Stop() {
 	s.sessionStore.Stop()
 REDACTED
 
-func (s *OpenAIOAuthService) resolveProxyURL(ctx context.Context, proxyID *int64) (string, error) {
-	if proxyID == nil {
-		return "", nil
-REDACTED
-	proxy, err := s.proxyRepo.GetByID(ctx, *proxyID)
-	if err != nil {
-		return "", infraerrors.Newf(http.StatusBadRequest, "OPENAI_OAUTH_PROXY_NOT_FOUND", "proxy not found: %v", err)
-REDACTED
-	if proxy == nil {
-		return "", nil
-REDACTED
-	return proxy.URL(), nil
-REDACTED
-
 func normalizeOpenAIOAuthPlatform(platform string) string {
 	return openai.OAuthPlatformOpenAI
 REDACTED
