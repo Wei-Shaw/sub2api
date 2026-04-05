@@ -584,6 +584,7 @@ REDACTED
 		GroupIDs:           input.GroupIDs,
 		ModelPricing:       input.ModelPricing,
 		ModelMapping:       input.ModelMapping,
+		Features:           input.Features,
 REDACTED
 	if channel.BillingModelSource == "" {
 		channel.BillingModelSource = BillingModelSourceChannelMapped
@@ -640,6 +641,9 @@ REDACTED
 
 	if input.RestrictModels != nil {
 		channel.RestrictModels = *input.RestrictModels
+REDACTED
+	if input.Features != nil {
+		channel.Features = *input.Features
 REDACTED
 
 	// 检查分组冲突
@@ -842,6 +846,7 @@ type CreateChannelInput struct {
 	ModelMapping       map[string]map[string]string // platform → {src→dstREDACTED
 	BillingModelSource string
 	RestrictModels     bool
+	Features           string
 REDACTED
 
 // UpdateChannelInput 更新渠道输入
@@ -854,4 +859,5 @@ type UpdateChannelInput struct {
 	ModelMapping       map[string]map[string]string // platform → {src→dstREDACTED
 	BillingModelSource string
 	RestrictModels     *bool
+	Features           *string
 REDACTED

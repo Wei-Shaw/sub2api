@@ -26,7 +26,6 @@ func RegisterPaymentRoutes(
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))
 	{
 		authenticated.GET("/config", paymentHandler.GetPaymentConfig)
-		authenticated.GET("/checkout-info", paymentHandler.GetCheckoutInfo)
 		authenticated.GET("/plans", paymentHandler.GetPlans)
 		authenticated.GET("/channels", paymentHandler.GetChannels)
 		authenticated.GET("/limits", paymentHandler.GetLimits)
@@ -34,7 +33,6 @@ func RegisterPaymentRoutes(
 		orders := authenticated.Group("/orders")
 		{
 			orders.POST("", paymentHandler.CreateOrder)
-			orders.POST("/verify", paymentHandler.VerifyOrder)
 			orders.GET("/my", paymentHandler.GetMyOrders)
 			orders.GET("/:id", paymentHandler.GetOrder)
 			orders.POST("/:id/cancel", paymentHandler.CancelOrder)
@@ -42,19 +40,9 @@ func RegisterPaymentRoutes(
 	REDACTED
 REDACTED
 
-	// --- Public payment endpoints (no auth) ---
-	// Payment result page needs to verify order status without login
-	// (user session may have expired during provider redirect).
-	public := v1.Group("/payment/public")
-	{
-		public.POST("/orders/verify", paymentHandler.VerifyOrderPublic)
-REDACTED
-
 	// --- Webhook endpoints (no auth) ---
 	webhook := v1.Group("/payment/webhook")
 	{
-		// EasyPay sends GET callbacks with query params
-		webhook.GET("/easypay", webhookHandler.EasyPayNotify)
 		webhook.POST("/easypay", webhookHandler.EasyPayNotify)
 		webhook.POST("/alipay", webhookHandler.AlipayNotify)
 		webhook.POST("/wxpay", webhookHandler.WxpayNotify)
@@ -81,6 +69,7 @@ REDACTED
 			adminOrders.POST("/:id/retry", adminPaymentHandler.RetryFulfillment)
 			adminOrders.POST("/:id/refund", adminPaymentHandler.ProcessRefund)
 	REDACTED
+
 
 		// Subscription Plans
 		plans := adminGroup.Group("/plans")

@@ -42,9 +42,9 @@ func (r *channelRepository) Create(ctx context.Context, channel *service.Channel
 			return err
 	REDACTED
 		err = tx.QueryRowContext(ctx,
-			`INSERT INTO channels (name, description, status, model_mapping, billing_model_source, restrict_models) VALUES ($1, $2, $3, $4, $5, $6)
+			`INSERT INTO channels (name, description, status, model_mapping, billing_model_source, restrict_models, features) VALUES ($1, $2, $3, $4, $5, $6, $7)
 			 RETURNING id, created_at, updated_at`,
-			channel.Name, channel.Description, channel.Status, modelMappingJSON, channel.BillingModelSource, channel.RestrictModels,
+			channel.Name, channel.Description, channel.Status, modelMappingJSON, channel.BillingModelSource, channel.RestrictModels, channel.Features,
 		).Scan(&channel.ID, &channel.CreatedAt, &channel.UpdatedAt)
 		if err != nil {
 			if isUniqueViolation(err) {
@@ -75,9 +75,9 @@ func (r *channelRepository) GetByID(ctx context.Context, id int64) (*service.Cha
 	ch := &service.Channel{REDACTED
 	var modelMappingJSON []byte
 	err := r.db.QueryRowContext(ctx,
-		`SELECT id, name, description, status, model_mapping, billing_model_source, restrict_models, created_at, updated_at
+		`SELECT id, name, description, status, model_mapping, billing_model_source, restrict_models, features, created_at, updated_at
 		 FROM channels WHERE id = $1`, id,
-	).Scan(&ch.ID, &ch.Name, &ch.Description, &ch.Status, &modelMappingJSON, &ch.BillingModelSource, &ch.RestrictModels, &ch.CreatedAt, &ch.UpdatedAt)
+	).Scan(&ch.ID, &ch.Name, &ch.Description, &ch.Status, &modelMappingJSON, &ch.BillingModelSource, &ch.RestrictModels, &ch.Features, &ch.CreatedAt, &ch.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, service.ErrChannelNotFound
 REDACTED
@@ -108,9 +108,9 @@ func (r *channelRepository) Update(ctx context.Context, channel *service.Channel
 			return err
 	REDACTED
 		result, err := tx.ExecContext(ctx,
-			`UPDATE channels SET name = $1, description = $2, status = $3, model_mapping = $4, billing_model_source = $5, restrict_models = $6, updated_at = NOW()
-			 WHERE id = $7`,
-			channel.Name, channel.Description, channel.Status, modelMappingJSON, channel.BillingModelSource, channel.RestrictModels, channel.ID,
+			`UPDATE channels SET name = $1, description = $2, status = $3, model_mapping = $4, billing_model_source = $5, restrict_models = $6, features = $7, updated_at = NOW()
+			 WHERE id = $8`,
+			channel.Name, channel.Description, channel.Status, modelMappingJSON, channel.BillingModelSource, channel.RestrictModels, channel.Features, channel.ID,
 		)
 		if err != nil {
 			if isUniqueViolation(err) {
@@ -204,7 +204,7 @@ REDACTED
 	for rows.Next() {
 		var ch service.Channel
 		var modelMappingJSON []byte
-		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &ch.Status, &modelMappingJSON, &ch.BillingModelSource, &ch.RestrictModels, &ch.CreatedAt, &ch.UpdatedAt); err != nil {
+		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &ch.Status, &modelMappingJSON, &ch.BillingModelSource, &ch.RestrictModels, &ch.Features, &ch.CreatedAt, &ch.UpdatedAt); err != nil {
 			return nil, nil, fmt.Errorf("scan channel: %w", err)
 	REDACTED
 		ch.ModelMapping = unmarshalModelMapping(modelMappingJSON)
@@ -273,7 +273,7 @@ REDACTED
 
 func (r *channelRepository) ListAll(ctx context.Context) ([]service.Channel, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, name, description, status, model_mapping, billing_model_source, restrict_models, created_at, updated_at FROM channels ORDER BY id`,
+		`SELECT id, name, description, status, model_mapping, billing_model_source, restrict_models, features, created_at, updated_at FROM channels ORDER BY id`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query all channels: %w", err)
@@ -285,7 +285,7 @@ REDACTED
 	for rows.Next() {
 		var ch service.Channel
 		var modelMappingJSON []byte
-		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &ch.Status, &modelMappingJSON, &ch.BillingModelSource, &ch.RestrictModels, &ch.CreatedAt, &ch.UpdatedAt); err != nil {
+		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &ch.Status, &modelMappingJSON, &ch.BillingModelSource, &ch.RestrictModels, &ch.Features, &ch.CreatedAt, &ch.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan channel: %w", err)
 	REDACTED
 		ch.ModelMapping = unmarshalModelMapping(modelMappingJSON)
