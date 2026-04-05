@@ -149,11 +149,6 @@ func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, load
 	return &PaymentService{entClient: entClient, registry: registry, loadBalancer: loadBalancer, redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo}
 }
 
-// Start performs one-time startup tasks.
-// Legacy purchase_subscription_url migration is handled by SQL migration 096.
-func (s *PaymentService) Start(_ context.Context) {
-}
-
 func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest) (*CreateOrderResponse, error) {
 	if req.OrderType == "" {
 		req.OrderType = "balance"

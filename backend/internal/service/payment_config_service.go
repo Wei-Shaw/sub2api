@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"strconv"
 	"strings"
 
@@ -444,71 +443,4 @@ func pcParseInt(s string, defaultVal int) int {
 		return defaultVal
 	}
 	return v
-}
-
-// MigrateLegacyPurchaseURL checks if the old purchase_subscription_url setting
-// exists and is enabled, and if so, migrates it to a custom_menu_item entry.
-// After migration, both purchase_subscription_enabled and purchase_subscription_url
-// are cleared since the functionality is fully replaced by custom menu items.
-// This is idempotent: it skips if a menu item with ID "migrated_purchase_subscription"
-// already exists.
-func (s *PaymentConfigService) MigrateLegacyPurchaseURL(ctx context.Context) error {
-	enabled, _ := s.settingRepo.GetValue(ctx, SettingKeyPurchaseSubscriptionEnabled)
-	if enabled != "true" {
-		return nil
-	}
-	url, _ := s.settingRepo.GetValue(ctx, SettingKeyPurchaseSubscriptionURL)
-	url = strings.TrimSpace(url)
-	if url == "" {
-		return nil
-	}
-
-	// Read current custom_menu_items
-	raw, _ := s.settingRepo.GetValue(ctx, SettingKeyCustomMenuItems)
-	type menuItem struct {
-		ID         string `json:"id"`
-		Label      string `json:"label"`
-		IconSVG    string `json:"icon_svg"`
-		URL        string `json:"url"`
-		Visibility string `json:"visibility"`
-		SortOrder  int    `json:"sort_order"`
-	}
-	var items []menuItem
-	if raw != "" {
-		_ = json.Unmarshal([]byte(raw), &items)
-	}
-
-	// Check if already migrated (same ID exists)
-	for _, item := range items {
-		if item.ID == "migrated_purchase_subscription" {
-			return nil
-		}
-	}
-
-	// Append migrated item
-	items = append(items, menuItem{
-		ID:         "migrated_purchase_subscription",
-		Label:      "Purchase Subscription",
-		IconSVG:    "",
-		URL:        url,
-		Visibility: "user",
-		SortOrder:  100,
-	})
-
-	data, err := json.Marshal(items)
-	if err != nil {
-		return fmt.Errorf("marshal custom_menu_items: %w", err)
-	}
-
-	// Save updated menu items and clear legacy settings entirely
-	if err := s.settingRepo.SetMultiple(ctx, map[string]string{
-		SettingKeyCustomMenuItems:             string(data),
-		SettingKeyPurchaseSubscriptionEnabled: "false",
-		SettingKeyPurchaseSubscriptionURL:     "",
-	}); err != nil {
-		return fmt.Errorf("save migrated settings: %w", err)
-	}
-
-	slog.Info("[payment] Migrated legacy purchase_subscription_url to custom menu item", "url", url)
-	return nil
 }
