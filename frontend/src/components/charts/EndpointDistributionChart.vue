@@ -161,6 +161,7 @@ const props = withDefaults(
     showSourceToggle?: boolean
     startDate?: string
     endDate?: string
+    filters?: Record<string, any>
   }>(),
   {
     upstreamEndpointStats: () => [],
@@ -193,6 +194,7 @@ const toggleBreakdown = async (endpoint: string) => {
   breakdownItems.value = []
   try {
     const res = await getUserBreakdown({
+      ...props.filters,
       start_date: props.startDate,
       end_date: props.endDate,
       endpoint,
