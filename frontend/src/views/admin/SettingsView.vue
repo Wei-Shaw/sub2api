@@ -1512,70 +1512,6 @@
           </div>
         </div>
 
-        <!-- Purchase Subscription Page -->
-        <div class="card">
-          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('admin.settings.purchase.title') }}
-            </h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {{ t('admin.settings.purchase.description') }}
-            </p>
-          </div>
-          <div class="space-y-6 p-6">
-            <!-- Enable Toggle -->
-            <div class="flex items-center justify-between">
-              <div>
-                <label class="font-medium text-gray-900 dark:text-white">{{
-                  t('admin.settings.purchase.enabled')
-                }}</label>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.purchase.enabledHint') }}
-                </p>
-              </div>
-              <Toggle v-model="form.purchase_subscription_enabled" />
-            </div>
-
-            <!-- URL -->
-            <div>
-              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                {{ t('admin.settings.purchase.url') }}
-              </label>
-              <input
-                v-model="form.purchase_subscription_url"
-                type="url"
-                class="input font-mono text-sm"
-                :placeholder="t('admin.settings.purchase.urlPlaceholder')"
-              />
-              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.settings.purchase.urlHint') }}
-              </p>
-              <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                {{ t('admin.settings.purchase.iframeWarning') }}
-              </p>
-            </div>
-
-            <!-- Integration Docs -->
-            <div class="flex items-center gap-2 text-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <a
-                href="https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/docs/ADMIN_PAYMENT_INTEGRATION_API.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-blue-600 hover:underline dark:text-blue-400"
-                download="ADMIN_PAYMENT_INTEGRATION_API.md"
-              >
-                {{ t('admin.settings.purchase.integrationDoc') }}
-              </a>
-              <span class="text-gray-400 dark:text-gray-500">—</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.settings.purchase.integrationDocHint') }}
-              </span>
-            </div>
-          </div>
-        </div>
 
         <!-- Sora Client Toggle -->
         <div class="card">
@@ -1726,6 +1662,7 @@
         </div><!-- /Tab: General -->
 
         <!-- Tab: Email -->
+<!-- Tab: Payment -->        <div v-show="activeTab === 'payment'" class="space-y-6">        <div class="card">          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.title') }}</h2>            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.description') }}</p>          </div>          <div class="space-y-6 p-6">            <div class="flex items-center justify-between">              <div>                <label class="font-medium text-gray-900 dark:text-white">{{ t('admin.settings.payment.enabled') }}</label>                <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.enabledHint') }}</p>              </div>              <Toggle v-model="form.payment_enabled" />            </div>            <template v-if="form.payment_enabled">              <div class="grid grid-cols-2 gap-4">                <div><label class="input-label">{{ t('admin.settings.payment.minAmount') }}</label><input v-model.number="form.payment_min_amount" type="number" step="0.01" min="0" class="input" /></div>                <div><label class="input-label">{{ t('admin.settings.payment.maxAmount') }}</label><input v-model.number="form.payment_max_amount" type="number" step="0.01" min="0" class="input" /></div>              </div>              <div class="grid grid-cols-2 gap-4">                <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') }}</label><input v-model.number="form.payment_daily_limit" type="number" step="0.01" min="0" class="input" /></div>                <div><label class="input-label">{{ t('admin.settings.payment.maxPendingOrders') }}</label><input v-model.number="form.payment_max_pending_orders" type="number" min="1" class="input" /></div>              </div>              <div class="grid grid-cols-2 gap-4">                <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') }}</label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" /></div>                <div class="flex items-center gap-2 pt-6"><input id="balance-disabled" v-model="form.payment_balance_disabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" /><label for="balance-disabled" class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.balancePaymentDisabled') }}</label></div>              </div>              <div><label class="input-label">{{ t('admin.settings.payment.enabledPaymentTypes') }}</label><input v-model="form.payment_enabled_types" type="text" class="input" placeholder="alipay,wxpay,stripe" /><p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.enabledPaymentTypesHint') }}</p></div>              <div class="grid grid-cols-2 gap-4">                <div><label class="input-label">{{ t('admin.settings.payment.helpImageUrl') }}</label><input v-model="form.payment_help_image_url" type="url" class="input" /></div>                <div><label class="input-label">{{ t('admin.settings.payment.helpText') }}</label><input v-model="form.payment_help_text" type="text" class="input" /></div>              </div>              <div>                <a href="/admin/orders/providers" class="text-sm text-blue-600 hover:underline dark:text-blue-400">{{ t('admin.settings.payment.manageProviders') }} &rarr;</a>              </div>            </template>          </div>        </div>        </div>
         <div v-show="activeTab === 'email'" class="space-y-6">
         <!-- Email disabled hint - show when email_verify_enabled is off -->
         <div v-if="!form.email_verify_enabled" class="card">
@@ -2020,13 +1957,14 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const adminSettingsStore = useAdminSettingsStore()
 
-type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'email' | 'backup' | 'data'
+type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'payment' | 'email' | 'backup' | 'data'
 const activeTab = ref<SettingsTab>('general')
 const settingsTabs = [
   { key: 'general'  as SettingsTab, icon: 'home'   as const },
   { key: 'security' as SettingsTab, icon: 'shield' as const },
   { key: 'users'    as SettingsTab, icon: 'user'   as const },
   { key: 'gateway'  as SettingsTab, icon: 'server' as const },
+  { key: 'payment'  as SettingsTab, icon: 'creditCard' as const },
   { key: 'email'    as SettingsTab, icon: 'mail'   as const },
   { key: 'backup'   as SettingsTab, icon: 'database' as const },
   { key: 'data'     as SettingsTab, icon: 'cube'     as const },
@@ -2132,6 +2070,7 @@ const form = reactive<SettingsForm>({
   hide_ccs_import_button: false,
   purchase_subscription_enabled: false,
   purchase_subscription_url: '',
+  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_enabled_types: '',  payment_help_image_url: '',  payment_help_text: '',
   sora_client_enabled: false,
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number}>,
   custom_endpoints: [] as Array<{name: string; endpoint: string; description: string}>,
@@ -2456,6 +2395,16 @@ async function saveSettings() {
       hide_ccs_import_button: form.hide_ccs_import_button,
       purchase_subscription_enabled: form.purchase_subscription_enabled,
       purchase_subscription_url: form.purchase_subscription_url,
+      payment_enabled: form.payment_enabled,
+      payment_min_amount: form.payment_min_amount,
+      payment_max_amount: form.payment_max_amount,
+      payment_daily_limit: form.payment_daily_limit,
+      payment_max_pending_orders: form.payment_max_pending_orders,
+      payment_order_timeout_minutes: form.payment_order_timeout_minutes,
+      payment_balance_disabled: form.payment_balance_disabled,
+      payment_enabled_types: form.payment_enabled_types,
+      payment_help_image_url: form.payment_help_image_url,
+      payment_help_text: form.payment_help_text,
       sora_client_enabled: form.sora_client_enabled,
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,

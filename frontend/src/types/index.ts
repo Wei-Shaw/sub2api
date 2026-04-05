@@ -108,6 +108,7 @@ export interface PublicSettings {
   home_content: string
   hide_ccs_import_button: boolean
   purchase_subscription_enabled: boolean
+  payment_enabled: boolean
   purchase_subscription_url: string
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]

@@ -9,6 +9,7 @@ export { useAdminSettingsStore } from './adminSettings'
 export { useSubscriptionStore } from './subscriptions'
 export { useOnboardingStore } from './onboarding'
 export { useAnnouncementStore } from './announcements'
+export { usePaymentStore } from './payment'
 
 // Re-export types for convenience
 export type { User, LoginRequest, RegisterRequest, AuthResponse } from '@/types'

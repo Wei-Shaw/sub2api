@@ -192,13 +192,62 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/purchase',
     name: 'PurchaseSubscription',
-    component: () => import('@/views/user/PurchaseSubscriptionView.vue'),
+    component: () => import('@/views/user/PaymentView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
       title: 'Purchase Subscription',
       titleKey: 'purchase.title',
-      descriptionKey: 'purchase.description'
+      descriptionKey: 'purchase.description',
+      requiresPayment: true
+    }
+  },
+  {
+    path: '/orders',
+    name: 'OrderList',
+    component: () => import('@/views/user/UserOrdersView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'My Orders',
+      titleKey: 'nav.myOrders',
+      requiresPayment: true
+    }
+  },
+  {
+    path: '/payment/qrcode',
+    name: 'PaymentQRCode',
+    component: () => import('@/views/user/PaymentQRCodeView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Payment',
+      titleKey: 'payment.qr.scanToPay',
+      requiresPayment: true
+    }
+  },
+  {
+    path: '/payment/result',
+    name: 'PaymentResult',
+    component: () => import('@/views/user/PaymentResultView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Payment Result',
+      titleKey: 'payment.result.success',
+      requiresPayment: true
+    }
+  },
+  {
+    path: '/payment/stripe',
+    name: 'StripePayment',
+    component: () => import('@/views/user/StripePaymentView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Stripe Payment',
+      titleKey: 'payment.stripePay',
+      requiresPayment: true
     }
   },
   {
@@ -387,6 +436,32 @@ const routes: RouteRecordRaw[] = [
     }
   },
 
+
+  // ==================== Payment Admin Routes ====================
+  {
+    path: '/admin/orders',
+    name: 'AdminOrders',
+    component: () => import('@/views/admin/orders/AdminOrdersView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Order Management',
+      titleKey: 'nav.orderManagement',
+      requiresPayment: true
+    }
+  },
+  {
+    path: '/admin/orders/providers',
+    name: 'AdminProviders',
+    component: () => import('@/views/admin/orders/AdminProvidersView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Provider Management',
+      requiresPayment: true
+    }
+  },
+
   // ==================== 404 Not Found ====================
   {
     path: '/:pathMatch(.*)*',
@@ -501,6 +576,16 @@ router.beforeEach((to, _from, next) => {
     // User is authenticated but not admin, redirect to user dashboard
     next('/dashboard')
     return
+  }
+
+
+  // Check payment requirement
+  if (to.meta.requiresPayment) {
+    const paymentEnabled = appStore.cachedPublicSettings?.payment_enabled
+    if (!paymentEnabled) {
+      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      return
+    }
   }
 
   // 简易模式下限制访问某些页面

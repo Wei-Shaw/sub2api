@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/server"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/google/wire"
@@ -35,6 +36,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		// Business layer ProviderSets
 		repository.ProviderSet,
 		service.ProviderSet,
+		payment.ProviderSet,
 		middleware.ProviderSet,
 		handler.ProviderSet,
 

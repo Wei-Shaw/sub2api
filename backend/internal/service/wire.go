@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
@@ -492,4 +494,15 @@ var ProviderSet = wire.NewSet(
 	NewGroupCapacityService,
 	NewChannelService,
 	NewModelPricingResolver,
+	ProvidePaymentConfigService,
+	NewPaymentService,
+	NewSoraS3Storage,
+	NewSoraGenerationService,
+	NewSoraQuotaService,
 )
+
+// ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named
+// payment.EncryptionKey type instead of raw []byte, avoiding Wire ambiguity.
+func ProvidePaymentConfigService(entClient *dbent.Client, settingRepo SettingRepository, key payment.EncryptionKey) *PaymentConfigService {
+	return NewPaymentConfigService(entClient, settingRepo, []byte(key))
+}
