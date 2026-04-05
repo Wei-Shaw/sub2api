@@ -10,7 +10,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	stripe "github.com/stripe/stripe-go/v82"
-	"github.com/stripe/stripe-go/v82/client"
 	"github.com/stripe/stripe-go/v82/webhook"
 )
 
@@ -29,7 +28,7 @@ type Stripe struct {
 
 	mu          sync.Mutex
 	initialized bool
-	api         *client.API
+	sc          *stripe.Client
 }
 
 // NewStripe creates a new Stripe provider instance.
@@ -47,8 +46,7 @@ func (s *Stripe) ensureInit() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.initialized {
-		s.api = &client.API{}
-		s.api.Init(s.config["secretKey"], nil)
+		s.sc = stripe.NewClient(s.config["secretKey"])
 		s.initialized = true
 	}
 }
@@ -87,10 +85,10 @@ func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 		return nil, fmt.Errorf("stripe create payment: %w", err)
 	}
 
-	params := &stripe.PaymentIntentParams{
+	params := &stripe.PaymentIntentCreateParams{
 		Amount:   stripe.Int64(amountInCents),
 		Currency: stripe.String(stripeCurrency),
-		AutomaticPaymentMethods: &stripe.PaymentIntentAutomaticPaymentMethodsParams{
+		AutomaticPaymentMethods: &stripe.PaymentIntentCreateAutomaticPaymentMethodsParams{
 			Enabled: stripe.Bool(true),
 		},
 		Description: stripe.String(req.Subject),
@@ -99,7 +97,7 @@ func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 	params.SetIdempotencyKey(fmt.Sprintf("pi-%s", req.OrderID))
 	params.Context = ctx
 
-	pi, err := s.api.PaymentIntents.New(params)
+	pi, err := s.sc.V1PaymentIntents.Create(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("stripe create payment: %w", err)
 	}
@@ -114,10 +112,7 @@ func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 func (s *Stripe) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
 	s.ensureInit()
 
-	params := &stripe.PaymentIntentParams{}
-	params.Context = ctx
-
-	pi, err := s.api.PaymentIntents.Get(tradeNo, params)
+	pi, err := s.sc.V1PaymentIntents.Retrieve(ctx, tradeNo, nil)
 	if err != nil {
 		return nil, fmt.Errorf("stripe query order: %w", err)
 	}
@@ -189,14 +184,14 @@ func (s *Stripe) Refund(ctx context.Context, req payment.RefundRequest) (*paymen
 		return nil, fmt.Errorf("stripe refund: %w", err)
 	}
 
-	params := &stripe.RefundParams{
+	params := &stripe.RefundCreateParams{
 		PaymentIntent: stripe.String(req.TradeNo),
 		Amount:        stripe.Int64(amountInCents),
 		Reason:        stripe.String(string(stripe.RefundReasonRequestedByCustomer)),
 	}
 	params.Context = ctx
 
-	r, err := s.api.Refunds.New(params)
+	r, err := s.sc.V1Refunds.Create(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("stripe refund: %w", err)
 	}
@@ -216,10 +211,7 @@ func (s *Stripe) Refund(ctx context.Context, req payment.RefundRequest) (*paymen
 func (s *Stripe) CancelPayment(ctx context.Context, tradeNo string) error {
 	s.ensureInit()
 
-	params := &stripe.PaymentIntentCancelParams{}
-	params.Context = ctx
-
-	_, err := s.api.PaymentIntents.Cancel(tradeNo, params)
+	_, err := s.sc.V1PaymentIntents.Cancel(ctx, tradeNo, nil)
 	if err != nil {
 		return fmt.Errorf("stripe cancel payment: %w", err)
 	}

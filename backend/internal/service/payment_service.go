@@ -986,28 +986,6 @@ func buildTopUsers(orders []*dbent.PaymentOrder) []TopUserStat {
 	return result
 }
 
-func (s *PaymentService) sumAmt(ctx context.Context, statuses []string, since time.Time, usePaid bool) (float64, error) {
-	q := s.entClient.PaymentOrder.Query().Where(paymentorder.StatusIn(statuses...))
-	if usePaid {
-		q = q.Where(paymentorder.PaidAtGTE(since))
-	} else {
-		q = q.Where(paymentorder.CreatedAtGTE(since))
-	}
-	os, err := q.All(ctx)
-	if err != nil {
-		return 0, err
-	}
-	var t float64
-	for _, o := range os {
-		if usePaid {
-			t += o.Amount
-		} else {
-			t += o.RefundAmount
-		}
-	}
-	return t, nil
-}
-
 func (s *PaymentService) writeAuditLog(ctx context.Context, oid int64, action, op string, detail map[string]any) {
 	dj, _ := json.Marshal(detail)
 	_, err := s.entClient.PaymentAuditLog.Create().SetOrderID(strconv.FormatInt(oid, 10)).SetAction(action).SetDetail(string(dj)).SetOperator(op).Save(ctx)

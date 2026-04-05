@@ -188,7 +188,7 @@ func (e *EasyPay) post(ctx context.Context, endpoint string, params map[string]s
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return io.ReadAll(resp.Body)
 }
 
@@ -204,11 +204,11 @@ func easyPaySign(params map[string]string, pkey string) string {
 	var buf strings.Builder
 	for i, k := range keys {
 		if i > 0 {
-			buf.WriteByte('&')
+			_ = buf.WriteByte('&')
 		}
-		buf.WriteString(k + "=" + params[k])
+		_, _ = buf.WriteString(k + "=" + params[k])
 	}
-	buf.WriteString(pkey)
+	_, _ = buf.WriteString(pkey)
 	hash := md5.Sum([]byte(buf.String()))
 	return hex.EncodeToString(hash[:])
 }
