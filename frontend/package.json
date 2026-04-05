@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@lobehub/icons": "^4.0.2",
+    "@stripe/stripe-js": "^9.0.1",
     "@tanstack/vue-virtual": "^3.13.23",
     "@vueuse/core": "^10.7.0",
     "axios": "^1.13.5",

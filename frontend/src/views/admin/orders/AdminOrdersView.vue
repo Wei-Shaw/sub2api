@@ -288,7 +288,7 @@ async function loadOrders() {
       keyword: orderSearch.value || undefined, status: orderFilters.status || undefined,
       payment_type: orderFilters.payment_type || undefined, order_type: orderFilters.order_type || undefined,
     })
-    orders.value = res.data.data || []
+    orders.value = res.data.items || []
     orderPagination.total = res.data.total || 0
   } catch (err: unknown) {
     appStore.showError(err instanceof Error ? err.message : String(err))

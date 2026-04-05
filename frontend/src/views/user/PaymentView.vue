@@ -37,11 +37,11 @@
               @select="selectedMethod = $event"
             />
           </div>
-          <div v-if="feeRate > 0 && amount > 0" class="card p-6">
+          <div v-if="feeRate > 0 && validAmount > 0" class="card p-6">
             <div class="space-y-2 text-sm">
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
-                <span class="text-gray-900 dark:text-white">\u00A5{{ amount.toFixed(2) }}</span>
+                <span class="text-gray-900 dark:text-white">\u00A5{{ validAmount.toFixed(2) }}</span>
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
@@ -58,7 +58,7 @@
               <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
               {{ t('common.processing') }}
             </span>
-            <span v-else>{{ t('payment.createOrder') }} \u00A5{{ (feeRate > 0 && amount > 0 ? totalAmount : amount).toFixed(2) }}</span>
+            <span v-else>{{ t('payment.createOrder') }} \u00A5{{ (feeRate > 0 && validAmount > 0 ? totalAmount : validAmount).toFixed(2) }}</span>
           </button>
           <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
             <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage }}</p>
