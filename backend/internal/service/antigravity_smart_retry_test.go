@@ -5,12 +5,12 @@ package service
 import (
 	"bytes"
 	"context"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
-	"github.com/stretchr/testify/require"
 )
 
 // stubSmartRetryCache 用于 handleSmartRetry 测试的 GatewayCache mock
@@ -29,6 +29,7 @@ func (c *stubSmartRetryCache) DeleteSessionAccountID(_ context.Context, groupID 
 	c.deleteCalls = append(c.deleteCalls, deleteSessionCall{groupID: groupID, sessionHash: sessionHash})
 	return nil
 }
+
 // mockSmartRetryUpstream 用于 handleSmartRetry 测试的 mock upstream
 type mockSmartRetryUpstream struct {
 	responses      []*http.Response
