@@ -21,7 +21,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
-	"github.com/Wei-Shaw/sub2api/ent/paymentchannel"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
@@ -108,7 +107,6 @@ func checkColumn(t, c string) error {
 			group.Table:                   group.ValidColumn,
 			idempotencyrecord.Table:       idempotencyrecord.ValidColumn,
 			paymentauditlog.Table:         paymentauditlog.ValidColumn,
-			paymentchannel.Table:          paymentchannel.ValidColumn,
 			paymentorder.Table:            paymentorder.ValidColumn,
 			paymentproviderinstance.Table: paymentproviderinstance.ValidColumn,
 			promocode.Table:               promocode.ValidColumn,

@@ -39,6 +39,7 @@ type Channel struct {
 	Status             string
 	BillingModelSource string // "requested", "upstream", or "channel_mapped"
 	RestrictModels     bool   // 是否限制模型（仅允许定价列表中的模型）
+	Features           string // 渠道特性描述（JSON 数组），用于支付页面展示
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 

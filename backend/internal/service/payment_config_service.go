@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/paymentchannel"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -93,31 +92,6 @@ type UpdateProviderInstanceRequest struct {
 	Limits         *string           `json:"limits"`
 	RefundEnabled  *bool             `json:"refundEnabled"`
 }
-
-type CreateChannelRequest struct {
-	GroupID        *int64  `json:"groupId"`
-	Name           string  `json:"name"`
-	Platform       string  `json:"platform"`
-	RateMultiplier float64 `json:"rateMultiplier"`
-	Description    string  `json:"description"`
-	Models         string  `json:"models"`
-	Features       string  `json:"features"`
-	SortOrder      int     `json:"sortOrder"`
-	Enabled        bool    `json:"enabled"`
-}
-
-type UpdateChannelRequest struct {
-	GroupID        *int64   `json:"groupId"`
-	Name           *string  `json:"name"`
-	Platform       *string  `json:"platform"`
-	RateMultiplier *float64 `json:"rateMultiplier"`
-	Description    *string  `json:"description"`
-	Models         *string  `json:"models"`
-	Features       *string  `json:"features"`
-	SortOrder      *int     `json:"sortOrder"`
-	Enabled        *bool    `json:"enabled"`
-}
-
 type CreatePlanRequest struct {
 	GroupID       int64    `json:"groupId"`
 	Name          string   `json:"name"`
@@ -318,56 +292,6 @@ func (s *PaymentConfigService) encryptConfig(cfg map[string]string) (string, err
 
 // --- Channel CRUD ---
 
-func (s *PaymentConfigService) ListChannels(ctx context.Context) ([]*dbent.PaymentChannel, error) {
-	return s.entClient.PaymentChannel.Query().Order(paymentchannel.BySortOrder()).All(ctx)
-}
-
-func (s *PaymentConfigService) CreateChannel(ctx context.Context, req CreateChannelRequest) (*dbent.PaymentChannel, error) {
-	b := s.entClient.PaymentChannel.Create().
-		SetName(req.Name).SetPlatform(req.Platform).SetRateMultiplier(req.RateMultiplier).
-		SetDescription(req.Description).SetModels(req.Models).SetFeatures(req.Features).
-		SetSortOrder(req.SortOrder).SetEnabled(req.Enabled)
-	if req.GroupID != nil {
-		b.SetGroupID(*req.GroupID)
-	}
-	return b.Save(ctx)
-}
-
-func (s *PaymentConfigService) UpdateChannel(ctx context.Context, id int64, req UpdateChannelRequest) (*dbent.PaymentChannel, error) {
-	u := s.entClient.PaymentChannel.UpdateOneID(id)
-	if req.GroupID != nil {
-		u.SetGroupID(*req.GroupID)
-	}
-	if req.Name != nil {
-		u.SetName(*req.Name)
-	}
-	if req.Platform != nil {
-		u.SetPlatform(*req.Platform)
-	}
-	if req.RateMultiplier != nil {
-		u.SetRateMultiplier(*req.RateMultiplier)
-	}
-	if req.Description != nil {
-		u.SetDescription(*req.Description)
-	}
-	if req.Models != nil {
-		u.SetModels(*req.Models)
-	}
-	if req.Features != nil {
-		u.SetFeatures(*req.Features)
-	}
-	if req.SortOrder != nil {
-		u.SetSortOrder(*req.SortOrder)
-	}
-	if req.Enabled != nil {
-		u.SetEnabled(*req.Enabled)
-	}
-	return u.Save(ctx)
-}
-
-func (s *PaymentConfigService) DeleteChannel(ctx context.Context, id int64) error {
-	return s.entClient.PaymentChannel.DeleteOneID(id).Exec(ctx)
-}
 
 // --- Plan CRUD ---
 

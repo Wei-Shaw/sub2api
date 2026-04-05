@@ -70,14 +70,6 @@ func RegisterPaymentRoutes(
 			adminOrders.POST("/:id/refund", adminPaymentHandler.ProcessRefund)
 		}
 
-		// Payment Channels
-		channels := adminGroup.Group("/channels")
-		{
-			channels.GET("", adminPaymentHandler.ListChannels)
-			channels.POST("", adminPaymentHandler.CreateChannel)
-			channels.PUT("/:id", adminPaymentHandler.UpdateChannel)
-			channels.DELETE("/:id", adminPaymentHandler.DeleteChannel)
-		}
 
 		// Subscription Plans
 		plans := adminGroup.Group("/plans")

@@ -511,39 +511,6 @@ var (
 			},
 		},
 	}
-	// PaymentChannelsColumns holds the columns for the "payment_channels" table.
-	PaymentChannelsColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeInt64, Increment: true},
-		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
-		{Name: "name", Type: field.TypeString, Size: 100},
-		{Name: "platform", Type: field.TypeString, Size: 50, Default: "claude"},
-		{Name: "rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"}},
-		{Name: "description", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "models", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "features", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
-		{Name: "sort_order", Type: field.TypeInt, Default: 0},
-		{Name: "enabled", Type: field.TypeBool, Default: true},
-		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
-		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
-	}
-	// PaymentChannelsTable holds the schema information for the "payment_channels" table.
-	PaymentChannelsTable = &schema.Table{
-		Name:       "payment_channels",
-		Columns:    PaymentChannelsColumns,
-		PrimaryKey: []*schema.Column{PaymentChannelsColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "paymentchannel_group_id",
-				Unique:  false,
-				Columns: []*schema.Column{PaymentChannelsColumns[1]},
-			},
-			{
-				Name:    "paymentchannel_enabled",
-				Unique:  false,
-				Columns: []*schema.Column{PaymentChannelsColumns[9]},
-			},
-		},
-	}
 	// PaymentOrdersColumns holds the columns for the "payment_orders" table.
 	PaymentOrdersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1349,7 +1316,6 @@ var (
 		GroupsTable,
 		IdempotencyRecordsTable,
 		PaymentAuditLogsTable,
-		PaymentChannelsTable,
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,
 		PromoCodesTable,
@@ -1404,9 +1370,6 @@ func init() {
 	}
 	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "payment_audit_logs",
-	}
-	PaymentChannelsTable.Annotation = &entsql.Annotation{
-		Table: "payment_channels",
 	}
 	PaymentOrdersTable.ForeignKeys[0].RefTable = UsersTable
 	PaymentOrdersTable.Annotation = &entsql.Annotation{

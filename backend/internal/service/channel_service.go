@@ -584,6 +584,7 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 		GroupIDs:           input.GroupIDs,
 		ModelPricing:       input.ModelPricing,
 		ModelMapping:       input.ModelMapping,
+		Features:           input.Features,
 	}
 	if channel.BillingModelSource == "" {
 		channel.BillingModelSource = BillingModelSourceChannelMapped
@@ -640,6 +641,9 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 
 	if input.RestrictModels != nil {
 		channel.RestrictModels = *input.RestrictModels
+	}
+	if input.Features != nil {
+		channel.Features = *input.Features
 	}
 
 	// 检查分组冲突
@@ -842,6 +846,7 @@ type CreateChannelInput struct {
 	ModelMapping       map[string]map[string]string // platform → {src→dst}
 	BillingModelSource string
 	RestrictModels     bool
+	Features           string
 }
 
 // UpdateChannelInput 更新渠道输入
@@ -854,4 +859,5 @@ type UpdateChannelInput struct {
 	ModelMapping       map[string]map[string]string // platform → {src→dst}
 	BillingModelSource string
 	RestrictModels     *bool
+	Features           *string
 }

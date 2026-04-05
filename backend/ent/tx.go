@@ -32,8 +32,6 @@ type Tx struct {
 	IdempotencyRecord *IdempotencyRecordClient
 	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
 	PaymentAuditLog *PaymentAuditLogClient
-	// PaymentChannel is the client for interacting with the PaymentChannel builders.
-	PaymentChannel *PaymentChannelClient
 	// PaymentOrder is the client for interacting with the PaymentOrder builders.
 	PaymentOrder *PaymentOrderClient
 	// PaymentProviderInstance is the client for interacting with the PaymentProviderInstance builders.
@@ -208,7 +206,6 @@ func (tx *Tx) init() {
 	tx.Group = NewGroupClient(tx.config)
 	tx.IdempotencyRecord = NewIdempotencyRecordClient(tx.config)
 	tx.PaymentAuditLog = NewPaymentAuditLogClient(tx.config)
-	tx.PaymentChannel = NewPaymentChannelClient(tx.config)
 	tx.PaymentOrder = NewPaymentOrderClient(tx.config)
 	tx.PaymentProviderInstance = NewPaymentProviderInstanceClient(tx.config)
 	tx.PromoCode = NewPromoCodeClient(tx.config)

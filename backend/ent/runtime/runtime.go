@@ -14,7 +14,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
-	"github.com/Wei-Shaw/sub2api/ent/paymentchannel"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
@@ -536,66 +535,6 @@ func init() {
 	paymentauditlogDescCreatedAt := paymentauditlogFields[4].Descriptor()
 	// paymentauditlog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	paymentauditlog.DefaultCreatedAt = paymentauditlogDescCreatedAt.Default.(func() time.Time)
-	paymentchannelFields := schema.PaymentChannel{}.Fields()
-	_ = paymentchannelFields
-	// paymentchannelDescName is the schema descriptor for name field.
-	paymentchannelDescName := paymentchannelFields[1].Descriptor()
-	// paymentchannel.NameValidator is a validator for the "name" field. It is called by the builders before save.
-	paymentchannel.NameValidator = func() func(string) error {
-		validators := paymentchannelDescName.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(name string) error {
-			for _, fn := range fns {
-				if err := fn(name); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
-	// paymentchannelDescPlatform is the schema descriptor for platform field.
-	paymentchannelDescPlatform := paymentchannelFields[2].Descriptor()
-	// paymentchannel.DefaultPlatform holds the default value on creation for the platform field.
-	paymentchannel.DefaultPlatform = paymentchannelDescPlatform.Default.(string)
-	// paymentchannel.PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
-	paymentchannel.PlatformValidator = paymentchannelDescPlatform.Validators[0].(func(string) error)
-	// paymentchannelDescRateMultiplier is the schema descriptor for rate_multiplier field.
-	paymentchannelDescRateMultiplier := paymentchannelFields[3].Descriptor()
-	// paymentchannel.DefaultRateMultiplier holds the default value on creation for the rate_multiplier field.
-	paymentchannel.DefaultRateMultiplier = paymentchannelDescRateMultiplier.Default.(float64)
-	// paymentchannelDescDescription is the schema descriptor for description field.
-	paymentchannelDescDescription := paymentchannelFields[4].Descriptor()
-	// paymentchannel.DefaultDescription holds the default value on creation for the description field.
-	paymentchannel.DefaultDescription = paymentchannelDescDescription.Default.(string)
-	// paymentchannelDescModels is the schema descriptor for models field.
-	paymentchannelDescModels := paymentchannelFields[5].Descriptor()
-	// paymentchannel.DefaultModels holds the default value on creation for the models field.
-	paymentchannel.DefaultModels = paymentchannelDescModels.Default.(string)
-	// paymentchannelDescFeatures is the schema descriptor for features field.
-	paymentchannelDescFeatures := paymentchannelFields[6].Descriptor()
-	// paymentchannel.DefaultFeatures holds the default value on creation for the features field.
-	paymentchannel.DefaultFeatures = paymentchannelDescFeatures.Default.(string)
-	// paymentchannelDescSortOrder is the schema descriptor for sort_order field.
-	paymentchannelDescSortOrder := paymentchannelFields[7].Descriptor()
-	// paymentchannel.DefaultSortOrder holds the default value on creation for the sort_order field.
-	paymentchannel.DefaultSortOrder = paymentchannelDescSortOrder.Default.(int)
-	// paymentchannelDescEnabled is the schema descriptor for enabled field.
-	paymentchannelDescEnabled := paymentchannelFields[8].Descriptor()
-	// paymentchannel.DefaultEnabled holds the default value on creation for the enabled field.
-	paymentchannel.DefaultEnabled = paymentchannelDescEnabled.Default.(bool)
-	// paymentchannelDescCreatedAt is the schema descriptor for created_at field.
-	paymentchannelDescCreatedAt := paymentchannelFields[9].Descriptor()
-	// paymentchannel.DefaultCreatedAt holds the default value on creation for the created_at field.
-	paymentchannel.DefaultCreatedAt = paymentchannelDescCreatedAt.Default.(func() time.Time)
-	// paymentchannelDescUpdatedAt is the schema descriptor for updated_at field.
-	paymentchannelDescUpdatedAt := paymentchannelFields[10].Descriptor()
-	// paymentchannel.DefaultUpdatedAt holds the default value on creation for the updated_at field.
-	paymentchannel.DefaultUpdatedAt = paymentchannelDescUpdatedAt.Default.(func() time.Time)
-	// paymentchannel.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
-	paymentchannel.UpdateDefaultUpdatedAt = paymentchannelDescUpdatedAt.UpdateDefault.(func() time.Time)
 	paymentorderFields := schema.PaymentOrder{}.Fields()
 	_ = paymentorderFields
 	// paymentorderDescUserEmail is the schema descriptor for user_email field.

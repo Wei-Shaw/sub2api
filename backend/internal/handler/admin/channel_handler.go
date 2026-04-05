@@ -35,6 +35,7 @@ type createChannelRequest struct {
 	ModelMapping       map[string]map[string]string `json:"model_mapping"`
 	BillingModelSource string                       `json:"billing_model_source" binding:"omitempty,oneof=requested upstream channel_mapped"`
 	RestrictModels     bool                         `json:"restrict_models"`
+	Features           string                       `json:"features"`
 }
 
 type updateChannelRequest struct {
@@ -46,6 +47,7 @@ type updateChannelRequest struct {
 	ModelMapping       map[string]map[string]string  `json:"model_mapping"`
 	BillingModelSource string                        `json:"billing_model_source" binding:"omitempty,oneof=requested upstream channel_mapped"`
 	RestrictModels     *bool                         `json:"restrict_models"`
+	Features           *string                       `json:"features"`
 }
 
 type channelModelPricingRequest struct {
@@ -80,6 +82,7 @@ type channelResponse struct {
 	Status             string                        `json:"status"`
 	BillingModelSource string                        `json:"billing_model_source"`
 	RestrictModels     bool                          `json:"restrict_models"`
+	Features           string                        `json:"features"`
 	GroupIDs           []int64                       `json:"group_ids"`
 	ModelPricing       []channelModelPricingResponse `json:"model_pricing"`
 	ModelMapping       map[string]map[string]string  `json:"model_mapping"`
@@ -124,6 +127,7 @@ func channelToResponse(ch *service.Channel) *channelResponse {
 		Description:    ch.Description,
 		Status:         ch.Status,
 		RestrictModels: ch.RestrictModels,
+		Features:       ch.Features,
 		GroupIDs:       ch.GroupIDs,
 		ModelMapping:   ch.ModelMapping,
 		CreatedAt:      ch.CreatedAt.Format("2006-01-02T15:04:05Z"),
@@ -356,6 +360,7 @@ func (h *ChannelHandler) Create(c *gin.Context) {
 		ModelMapping:       req.ModelMapping,
 		BillingModelSource: req.BillingModelSource,
 		RestrictModels:     req.RestrictModels,
+		Features:           req.Features,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -388,6 +393,7 @@ func (h *ChannelHandler) Update(c *gin.Context) {
 		ModelMapping:       req.ModelMapping,
 		BillingModelSource: req.BillingModelSource,
 		RestrictModels:     req.RestrictModels,
+		Features:           req.Features,
 	}
 	if req.ModelPricing != nil {
 		pricing := pricingRequestToService(*req.ModelPricing)

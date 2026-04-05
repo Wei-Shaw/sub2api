@@ -24,7 +24,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
-	"github.com/Wei-Shaw/sub2api/ent/paymentchannel"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
@@ -69,8 +68,6 @@ type Client struct {
 	IdempotencyRecord *IdempotencyRecordClient
 	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
 	PaymentAuditLog *PaymentAuditLogClient
-	// PaymentChannel is the client for interacting with the PaymentChannel builders.
-	PaymentChannel *PaymentChannelClient
 	// PaymentOrder is the client for interacting with the PaymentOrder builders.
 	PaymentOrder *PaymentOrderClient
 	// PaymentProviderInstance is the client for interacting with the PaymentProviderInstance builders.
@@ -125,7 +122,6 @@ func (c *Client) init() {
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
 	c.PaymentAuditLog = NewPaymentAuditLogClient(c.config)
-	c.PaymentChannel = NewPaymentChannelClient(c.config)
 	c.PaymentOrder = NewPaymentOrderClient(c.config)
 	c.PaymentProviderInstance = NewPaymentProviderInstanceClient(c.config)
 	c.PromoCode = NewPromoCodeClient(c.config)
@@ -244,7 +240,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Group:                   NewGroupClient(cfg),
 		IdempotencyRecord:       NewIdempotencyRecordClient(cfg),
 		PaymentAuditLog:         NewPaymentAuditLogClient(cfg),
-		PaymentChannel:          NewPaymentChannelClient(cfg),
 		PaymentOrder:            NewPaymentOrderClient(cfg),
 		PaymentProviderInstance: NewPaymentProviderInstanceClient(cfg),
 		PromoCode:               NewPromoCodeClient(cfg),
@@ -290,7 +285,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Group:                   NewGroupClient(cfg),
 		IdempotencyRecord:       NewIdempotencyRecordClient(cfg),
 		PaymentAuditLog:         NewPaymentAuditLogClient(cfg),
-		PaymentChannel:          NewPaymentChannelClient(cfg),
 		PaymentOrder:            NewPaymentOrderClient(cfg),
 		PaymentProviderInstance: NewPaymentProviderInstanceClient(cfg),
 		PromoCode:               NewPromoCodeClient(cfg),
@@ -339,7 +333,7 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentChannel, c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
 		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
@@ -355,7 +349,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentChannel, c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode,
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
 		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
@@ -386,8 +380,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.IdempotencyRecord.mutate(ctx, m)
 	case *PaymentAuditLogMutation:
 		return c.PaymentAuditLog.mutate(ctx, m)
-	case *PaymentChannelMutation:
-		return c.PaymentChannel.mutate(ctx, m)
 	case *PaymentOrderMutation:
 		return c.PaymentOrder.mutate(ctx, m)
 	case *PaymentProviderInstanceMutation:
@@ -1898,139 +1890,6 @@ func (c *PaymentAuditLogClient) mutate(ctx context.Context, m *PaymentAuditLogMu
 		return (&PaymentAuditLogDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown PaymentAuditLog mutation op: %q", m.Op())
-	}
-}
-
-// PaymentChannelClient is a client for the PaymentChannel schema.
-type PaymentChannelClient struct {
-	config
-}
-
-// NewPaymentChannelClient returns a client for the PaymentChannel from the given config.
-func NewPaymentChannelClient(c config) *PaymentChannelClient {
-	return &PaymentChannelClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `paymentchannel.Hooks(f(g(h())))`.
-func (c *PaymentChannelClient) Use(hooks ...Hook) {
-	c.hooks.PaymentChannel = append(c.hooks.PaymentChannel, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `paymentchannel.Intercept(f(g(h())))`.
-func (c *PaymentChannelClient) Intercept(interceptors ...Interceptor) {
-	c.inters.PaymentChannel = append(c.inters.PaymentChannel, interceptors...)
-}
-
-// Create returns a builder for creating a PaymentChannel entity.
-func (c *PaymentChannelClient) Create() *PaymentChannelCreate {
-	mutation := newPaymentChannelMutation(c.config, OpCreate)
-	return &PaymentChannelCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of PaymentChannel entities.
-func (c *PaymentChannelClient) CreateBulk(builders ...*PaymentChannelCreate) *PaymentChannelCreateBulk {
-	return &PaymentChannelCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *PaymentChannelClient) MapCreateBulk(slice any, setFunc func(*PaymentChannelCreate, int)) *PaymentChannelCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &PaymentChannelCreateBulk{err: fmt.Errorf("calling to PaymentChannelClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*PaymentChannelCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &PaymentChannelCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for PaymentChannel.
-func (c *PaymentChannelClient) Update() *PaymentChannelUpdate {
-	mutation := newPaymentChannelMutation(c.config, OpUpdate)
-	return &PaymentChannelUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *PaymentChannelClient) UpdateOne(_m *PaymentChannel) *PaymentChannelUpdateOne {
-	mutation := newPaymentChannelMutation(c.config, OpUpdateOne, withPaymentChannel(_m))
-	return &PaymentChannelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *PaymentChannelClient) UpdateOneID(id int64) *PaymentChannelUpdateOne {
-	mutation := newPaymentChannelMutation(c.config, OpUpdateOne, withPaymentChannelID(id))
-	return &PaymentChannelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for PaymentChannel.
-func (c *PaymentChannelClient) Delete() *PaymentChannelDelete {
-	mutation := newPaymentChannelMutation(c.config, OpDelete)
-	return &PaymentChannelDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *PaymentChannelClient) DeleteOne(_m *PaymentChannel) *PaymentChannelDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *PaymentChannelClient) DeleteOneID(id int64) *PaymentChannelDeleteOne {
-	builder := c.Delete().Where(paymentchannel.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &PaymentChannelDeleteOne{builder}
-}
-
-// Query returns a query builder for PaymentChannel.
-func (c *PaymentChannelClient) Query() *PaymentChannelQuery {
-	return &PaymentChannelQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypePaymentChannel},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a PaymentChannel entity by its id.
-func (c *PaymentChannelClient) Get(ctx context.Context, id int64) (*PaymentChannel, error) {
-	return c.Query().Where(paymentchannel.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *PaymentChannelClient) GetX(ctx context.Context, id int64) *PaymentChannel {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// Hooks returns the client hooks.
-func (c *PaymentChannelClient) Hooks() []Hook {
-	return c.hooks.PaymentChannel
-}
-
-// Interceptors returns the client interceptors.
-func (c *PaymentChannelClient) Interceptors() []Interceptor {
-	return c.inters.PaymentChannel
-}
-
-func (c *PaymentChannelClient) mutate(ctx context.Context, m *PaymentChannelMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&PaymentChannelCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&PaymentChannelUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&PaymentChannelUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&PaymentChannelDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown PaymentChannel mutation op: %q", m.Op())
 	}
 }
 
@@ -4771,7 +4630,7 @@ type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
 		ErrorPassthroughRule, Group, IdempotencyRecord, PaymentAuditLog,
-		PaymentChannel, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PaymentOrder, PaymentProviderInstance, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
 		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
@@ -4779,7 +4638,7 @@ type (
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
 		ErrorPassthroughRule, Group, IdempotencyRecord, PaymentAuditLog,
-		PaymentChannel, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PaymentOrder, PaymentProviderInstance, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
 		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
