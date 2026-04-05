@@ -47,8 +47,6 @@ pnpm-debug.log*
 # ===================
 # 环境配置
 # ===================
-.env
-.env.local
 .env.*.local
 *.env
 !.env.example
@@ -58,7 +56,6 @@ docker-compose.override.yml
 # IDE / 编辑器
 # ===================
 .idea/
-.vscode/
 *.swp
 *.swo
 *~
@@ -133,3 +130,4 @@ frontend/coverage/
 aicodex
 output/
 
+config.bat
