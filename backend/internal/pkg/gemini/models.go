@@ -2,6 +2,8 @@
 // It is used when upstream model listing is unavailable (e.g. OAuth token missing AI Studio scopes).
 package gemini
 
+import "strings"
+
 type Model struct {
 	Name                       string   `json:"name"`
 	DisplayName                string   `json:"displayName,omitempty"`
@@ -23,8 +25,25 @@ func DefaultModels() []Model {
 		{Name: "models/gemini-3-flash-preview", SupportedGenerationMethods: methods},
 		{Name: "models/gemini-3-pro-preview", SupportedGenerationMethods: methods},
 		{Name: "models/gemini-3.1-pro-preview", SupportedGenerationMethods: methods},
+		{Name: "models/gemini-3.1-pro-preview-customtools", SupportedGenerationMethods: methods},
 		{Name: "models/gemini-3.1-flash-image", SupportedGenerationMethods: methods},
 	}
+}
+
+func HasFallbackModel(model string) bool {
+	trimmed := strings.TrimSpace(model)
+	if trimmed == "" {
+		return false
+	}
+	if !strings.HasPrefix(trimmed, "models/") {
+		trimmed = "models/" + trimmed
+	}
+	for _, model := range DefaultModels() {
+		if model.Name == trimmed {
+			return true
+		}
+	}
+	return false
 }
 
 func FallbackModelsList() ModelsListResponse {

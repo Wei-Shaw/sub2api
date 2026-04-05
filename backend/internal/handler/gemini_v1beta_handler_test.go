@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -140,4 +141,29 @@ func TestGeminiV1BetaHandler_GetModelAntigravityFallback(t *testing.T) {
 			require.Equal(t, tt.expectedBehavior, behavior)
 		})
 	}
+}
+
+func TestShouldFallbackGeminiModel_KnownFallbackOn404(t *testing.T) {
+	t.Parallel()
+
+	res := &service.UpstreamHTTPResult{StatusCode: http.StatusNotFound}
+	require.True(t, shouldFallbackGeminiModel("gemini-3.1-pro-preview-customtools", res))
+}
+
+func TestShouldFallbackGeminiModel_UnknownModelOn404(t *testing.T) {
+	t.Parallel()
+
+	res := &service.UpstreamHTTPResult{StatusCode: http.StatusNotFound}
+	require.False(t, shouldFallbackGeminiModel("gemini-future-model", res))
+}
+
+func TestShouldFallbackGeminiModel_DelegatesScopeFallback(t *testing.T) {
+	t.Parallel()
+
+	res := &service.UpstreamHTTPResult{
+		StatusCode: http.StatusForbidden,
+		Headers:    http.Header{"Www-Authenticate": []string{"Bearer error=\"insufficient_scope\""}},
+		Body:       []byte("insufficient authentication scopes"),
+	}
+	require.True(t, shouldFallbackGeminiModel("gemini-future-model", res))
 }

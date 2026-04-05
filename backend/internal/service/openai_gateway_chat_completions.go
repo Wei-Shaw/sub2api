@@ -45,12 +45,13 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 
 	// 2. Resolve model mapping early so compat prompt_cache_key injection can
 	// derive a stable seed from the final upstream model family.
-	mappedModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
+	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
+	upstreamModel := normalizeCodexModel(billingModel)
 
 	promptCacheKey = strings.TrimSpace(promptCacheKey)
 	compatPromptCacheInjected := false
-	if promptCacheKey == "" && account.Type == AccountTypeOAuth && shouldAutoInjectPromptCacheKeyForCompat(mappedModel) {
-		promptCacheKey = deriveCompatPromptCacheKey(&chatReq, mappedModel)
+	if promptCacheKey == "" && account.Type == AccountTypeOAuth && shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
+		promptCacheKey = deriveCompatPromptCacheKey(&chatReq, upstreamModel)
 		compatPromptCacheInjected = promptCacheKey != ""
 	}
 
@@ -60,12 +61,13 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	if err != nil {
 		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 	}
-	responsesReq.Model = mappedModel
+	responsesReq.Model = upstreamModel
 
 	logFields := []zap.Field{
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
-		zap.String("mapped_model", mappedModel),
+		zap.String("billing_model", billingModel),
+		zap.String("upstream_model", upstreamModel),
 		zap.Bool("stream", clientStream),
 	}
 	if compatPromptCacheInjected {
@@ -91,6 +93,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		if account.Type == AccountTypeOAuth {
 			codexResult := applyCodexOAuthTransform(reqBody, false, false)
 			modified = codexResult.Modified
+			if codexResult.NormalizedModel != "" {
+				upstreamModel = codexResult.NormalizedModel
+			}
 			if codexResult.PromptCacheKey != "" {
 				promptCacheKey = codexResult.PromptCacheKey
 			} else if promptCacheKey != "" {
@@ -195,9 +200,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	var result *OpenAIForwardResult
 	var handleErr error
 	if clientStream {
-		result, handleErr = s.handleChatStreamingResponse(resp, c, originalModel, mappedModel, includeUsage, startTime)
+		result, handleErr = s.handleChatStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, includeUsage, startTime)
 	} else {
-		result, handleErr = s.handleChatBufferedStreamingResponse(resp, c, originalModel, mappedModel, startTime)
+		result, handleErr = s.handleChatBufferedStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime)
 	}
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
@@ -239,7 +244,8 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
 	originalModel string,
-	mappedModel string,
+	billingModel string,
+	upstreamModel string,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
@@ -310,8 +316,8 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		RequestID:     requestID,
 		Usage:         usage,
 		Model:         originalModel,
-		BillingModel:  mappedModel,
-		UpstreamModel: mappedModel,
+		BillingModel:  billingModel,
+		UpstreamModel: upstreamModel,
 		Stream:        false,
 		Duration:      time.Since(startTime),
 	}, nil
@@ -323,7 +329,8 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
 	originalModel string,
-	mappedModel string,
+	billingModel string,
+	upstreamModel string,
 	includeUsage bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
@@ -358,8 +365,8 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			RequestID:     requestID,
 			Usage:         usage,
 			Model:         originalModel,
-			BillingModel:  mappedModel,
-			UpstreamModel: mappedModel,
+			BillingModel:  billingModel,
+			UpstreamModel: upstreamModel,
 			Stream:        true,
 			Duration:      time.Since(startTime),
 			FirstTokenMs:  firstTokenMs,

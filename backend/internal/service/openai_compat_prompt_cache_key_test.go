@@ -17,6 +17,7 @@ func TestShouldAutoInjectPromptCacheKeyForCompat(t *testing.T) {
 	require.True(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-5.4"))
 	require.True(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-5.3"))
 	require.True(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-5.3-codex"))
+	require.True(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-5.3-codex-spark"))
 	require.False(t, shouldAutoInjectPromptCacheKeyForCompat("gpt-4o"))
 }
 
@@ -61,4 +62,18 @@ func TestDeriveCompatPromptCacheKey_DiffersAcrossSessions(t *testing.T) {
 	k1 := deriveCompatPromptCacheKey(req1, "gpt-5.4")
 	k2 := deriveCompatPromptCacheKey(req2, "gpt-5.4")
 	require.NotEqual(t, k1, k2, "different first user messages should yield different keys")
+}
+
+func TestDeriveCompatPromptCacheKey_UsesResolvedSparkFamily(t *testing.T) {
+	req := &apicompat.ChatCompletionsRequest{
+		Model: "gpt-5.3-codex-spark",
+		Messages: []apicompat.ChatMessage{
+			{Role: "user", Content: mustRawJSON(t, `"Question A"`)},
+		},
+	}
+
+	k1 := deriveCompatPromptCacheKey(req, "gpt-5.3-codex-spark")
+	k2 := deriveCompatPromptCacheKey(req, " openai/gpt-5.3-codex-spark ")
+	require.NotEmpty(t, k1)
+	require.Equal(t, k1, k2, "resolved spark family should derive a stable compat cache key")
 }

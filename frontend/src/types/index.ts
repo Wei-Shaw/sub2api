@@ -388,6 +388,8 @@ export interface Group {
   fallback_group_id_on_invalid_request: number | null
   // OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
   allow_messages_dispatch?: boolean
+  require_oauth_only: boolean
+  require_privacy_set: boolean
   created_at: string
   updated_at: string
 }
@@ -491,6 +493,8 @@ export interface CreateGroupRequest {
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
+  require_oauth_only?: boolean
+  require_privacy_set?: boolean
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -514,6 +518,8 @@ export interface UpdateGroupRequest {
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
+  require_oauth_only?: boolean
+  require_privacy_set?: boolean
   copy_accounts_from_group_ids?: number[]
 }
 

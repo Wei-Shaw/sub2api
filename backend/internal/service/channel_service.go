@@ -281,6 +281,7 @@ func (s *ChannelService) fetchChannelData(ctx context.Context) ([]Channel, map[i
 		return nil, nil, fmt.Errorf("list all channels: %w", err)
 	}
 
+	// 收集所有 groupID，批量查询 platform
 	var allGroupIDs []int64
 	for i := range channels {
 		allGroupIDs = append(allGroupIDs, channels[i].GroupIDs...)
@@ -308,6 +309,7 @@ func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *
 	for i := range channels {
 		ch := &channels[i]
 		cache.byID[ch.ID] = ch
+
 		for _, gid := range ch.GroupIDs {
 			cache.channelByGroupID[gid] = ch
 			platform := groupPlatforms[gid]
@@ -315,6 +317,9 @@ func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *
 			expandMappingToCache(cache, ch, gid, platform)
 		}
 	}
+
+	// 通配符条目保持配置顺序（最先匹配到优先）
+
 	return cache
 }
 
@@ -479,10 +484,7 @@ func (s *ChannelService) ResolveChannelMapping(ctx context.Context, groupID int6
 // 返回 true 表示模型被限制（不在允许列表中）。
 // 如果渠道未启用模型限制或分组无渠道关联，返回 false。
 func (s *ChannelService) IsModelRestricted(ctx context.Context, groupID int64, model string) bool {
-	lk, err := s.lookupGroupChannel(ctx, groupID)
-	if err != nil {
-		slog.Warn("failed to load channel cache for model restriction check", "group_id", groupID, "error", err)
-	}
+	lk, _ := s.lookupGroupChannel(ctx, groupID)
 	if lk == nil {
 		return false
 	}
@@ -798,6 +800,7 @@ func (s *ChannelService) invalidateAuthCacheForGroups(ctx context.Context, group
 
 // Delete 删除渠道
 func (s *ChannelService) Delete(ctx context.Context, id int64) error {
+	// 先获取关联分组用于失效缓存
 	groupIDs, err := s.repo.GetGroupIDs(ctx, id)
 	if err != nil {
 		slog.Warn("failed to get group IDs before delete", "channel_id", id, "error", err)

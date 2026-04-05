@@ -292,6 +292,7 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 			}
 			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
 			s.ensureOpenAIPrivacy(ctx, account)
+			s.ensureAntigravityPrivacy(ctx, account)
 			return err
 		}
 
@@ -321,6 +322,7 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 
 	// 刷新失败但 access_token 可能仍有效，尝试设置隐私
 	s.ensureOpenAIPrivacy(ctx, account)
+	s.ensureAntigravityPrivacy(ctx, account)
 
 	// 设置临时不可调度 10 分钟（不标记 error，保持 status=active 让下个刷新周期能继续尝试）
 	until := time.Now().Add(tokenRefreshTempUnschedDuration)
@@ -474,15 +476,14 @@ func (s *TokenRefreshService) ensureOpenAIPrivacy(ctx context.Context, account *
 }
 
 // ensureAntigravityPrivacy 后台刷新中检查 Antigravity OAuth 账号隐私状态。
-// 仅做 Extra["privacy_mode"] 存在性检查，不发起 HTTP 请求，避免每轮循环产生额外网络开销。
-// 用户可通过前端 SetPrivacy 按钮强制重新设置。
+// 仅当 privacy_mode 已成功设置（"privacy_set"）时跳过；
+// 未设置或之前失败（"privacy_set_failed"）均会重试。
 func (s *TokenRefreshService) ensureAntigravityPrivacy(ctx context.Context, account *Account) {
 	if account.Platform != PlatformAntigravity || account.Type != AccountTypeOAuth {
 		return
 	}
-	// 已设置过（无论成功或失败）则跳过，不发 HTTP
 	if account.Extra != nil {
-		if _, ok := account.Extra["privacy_mode"]; ok {
+		if mode, ok := account.Extra["privacy_mode"].(string); ok && mode == AntigravityPrivacySet {
 			return
 		}
 	}

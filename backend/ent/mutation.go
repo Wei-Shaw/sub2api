@@ -8243,6 +8243,8 @@ type GroupMutation struct {
 	sort_order                              *int
 	addsort_order                           *int
 	allow_messages_dispatch                 *bool
+	require_oauth_only                      *bool
+	require_privacy_set                     *bool
 	default_mapped_model                    *string
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
@@ -9688,6 +9690,78 @@ func (m *GroupMutation) ResetAllowMessagesDispatch() {
 	m.allow_messages_dispatch = nil
 }
 
+// SetRequireOauthOnly sets the "require_oauth_only" field.
+func (m *GroupMutation) SetRequireOauthOnly(b bool) {
+	m.require_oauth_only = &b
+}
+
+// RequireOauthOnly returns the value of the "require_oauth_only" field in the mutation.
+func (m *GroupMutation) RequireOauthOnly() (r bool, exists bool) {
+	v := m.require_oauth_only
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequireOauthOnly returns the old "require_oauth_only" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldRequireOauthOnly(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequireOauthOnly is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequireOauthOnly requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequireOauthOnly: %w", err)
+	}
+	return oldValue.RequireOauthOnly, nil
+}
+
+// ResetRequireOauthOnly resets all changes to the "require_oauth_only" field.
+func (m *GroupMutation) ResetRequireOauthOnly() {
+	m.require_oauth_only = nil
+}
+
+// SetRequirePrivacySet sets the "require_privacy_set" field.
+func (m *GroupMutation) SetRequirePrivacySet(b bool) {
+	m.require_privacy_set = &b
+}
+
+// RequirePrivacySet returns the value of the "require_privacy_set" field in the mutation.
+func (m *GroupMutation) RequirePrivacySet() (r bool, exists bool) {
+	v := m.require_privacy_set
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequirePrivacySet returns the old "require_privacy_set" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldRequirePrivacySet(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequirePrivacySet is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequirePrivacySet requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequirePrivacySet: %w", err)
+	}
+	return oldValue.RequirePrivacySet, nil
+}
+
+// ResetRequirePrivacySet resets all changes to the "require_privacy_set" field.
+func (m *GroupMutation) ResetRequirePrivacySet() {
+	m.require_privacy_set = nil
+}
+
 // SetDefaultMappedModel sets the "default_mapped_model" field.
 func (m *GroupMutation) SetDefaultMappedModel(s string) {
 	m.default_mapped_model = &s
@@ -10082,7 +10156,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 27)
+	fields := make([]string, 0, 29)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -10161,6 +10235,12 @@ func (m *GroupMutation) Fields() []string {
 	if m.allow_messages_dispatch != nil {
 		fields = append(fields, group.FieldAllowMessagesDispatch)
 	}
+	if m.require_oauth_only != nil {
+		fields = append(fields, group.FieldRequireOauthOnly)
+	}
+	if m.require_privacy_set != nil {
+		fields = append(fields, group.FieldRequirePrivacySet)
+	}
 	if m.default_mapped_model != nil {
 		fields = append(fields, group.FieldDefaultMappedModel)
 	}
@@ -10224,6 +10304,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.SortOrder()
 	case group.FieldAllowMessagesDispatch:
 		return m.AllowMessagesDispatch()
+	case group.FieldRequireOauthOnly:
+		return m.RequireOauthOnly()
+	case group.FieldRequirePrivacySet:
+		return m.RequirePrivacySet()
 	case group.FieldDefaultMappedModel:
 		return m.DefaultMappedModel()
 	}
@@ -10287,6 +10371,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldSortOrder(ctx)
 	case group.FieldAllowMessagesDispatch:
 		return m.OldAllowMessagesDispatch(ctx)
+	case group.FieldRequireOauthOnly:
+		return m.OldRequireOauthOnly(ctx)
+	case group.FieldRequirePrivacySet:
+		return m.OldRequirePrivacySet(ctx)
 	case group.FieldDefaultMappedModel:
 		return m.OldDefaultMappedModel(ctx)
 	}
@@ -10479,6 +10567,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAllowMessagesDispatch(v)
+		return nil
+	case group.FieldRequireOauthOnly:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequireOauthOnly(v)
+		return nil
+	case group.FieldRequirePrivacySet:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequirePrivacySet(v)
 		return nil
 	case group.FieldDefaultMappedModel:
 		v, ok := value.(string)
@@ -10817,6 +10919,12 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldAllowMessagesDispatch:
 		m.ResetAllowMessagesDispatch()
+		return nil
+	case group.FieldRequireOauthOnly:
+		m.ResetRequireOauthOnly()
+		return nil
+	case group.FieldRequirePrivacySet:
+		m.ResetRequirePrivacySet()
 		return nil
 	case group.FieldDefaultMappedModel:
 		m.ResetDefaultMappedModel()
