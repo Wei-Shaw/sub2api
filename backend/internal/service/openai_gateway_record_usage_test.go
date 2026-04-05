@@ -933,6 +933,89 @@ REDACTED
 	require.Equal(t, expectedCost.ActualCost, userRepo.lastAmount)
 REDACTED
 
+func TestOpenAIGatewayServiceRecordUsage_ChannelMappedDoesNotOverrideBillingModelWhenUnmapped(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10REDACTED
+
+	// When channel did NOT map the model (ChannelMappedModel == OriginalModel),
+	// billing should use result.BillingModel (the actual model used after group
+	// DefaultMappedModel resolution), not the unmapped original model.
+	expectedCost, err := svc.billingService.CalculateCost("gpt-5.1", UsageTokens{
+		InputTokens:  20,
+		OutputTokens: 10,
+REDACTED, 1.1)
+REDACTED
+
+	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_channel_unmapped_billing",
+			Model:         "glm",
+			BillingModel:  "gpt-5.1",
+			UpstreamModel: "gpt-5.1",
+			Usage:         usage,
+			Duration:      time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 10REDACTED,
+		User:    &User{ID: 20REDACTED,
+		Account: &Account{ID: 30REDACTED,
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          1,
+			OriginalModel:      "glm",
+			ChannelMappedModel: "glm", // channel did NOT map
+			BillingModelSource: BillingModelSourceChannelMapped,
+	REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost)
+	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_ChannelMappedOverridesBillingModelWhenMapped(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10REDACTED
+
+	// When channel DID map the model (ChannelMappedModel != OriginalModel),
+	// billing should use the channel-mapped model, honoring admin intent.
+	expectedCost, err := svc.billingService.CalculateCost("gpt-5.1", UsageTokens{
+		InputTokens:  20,
+		OutputTokens: 10,
+REDACTED, 1.1)
+REDACTED
+
+	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_channel_mapped_billing",
+			Model:         "glm",
+			BillingModel:  "gpt-5.1-codex",
+			UpstreamModel: "gpt-5.1-codex",
+			Usage:         usage,
+			Duration:      time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 10REDACTED,
+		User:    &User{ID: 20REDACTED,
+		Account: &Account{ID: 30REDACTED,
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          1,
+			OriginalModel:      "glm",
+			ChannelMappedModel: "gpt-5.1", // channel mapped glm → gpt-5.1
+			BillingModelSource: BillingModelSourceChannelMapped,
+	REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost)
+	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
+REDACTED
+
 func TestOpenAIGatewayServiceRecordUsage_SubscriptionBillingSetsSubscriptionFields(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
 	userRepo := &openAIRecordUsageUserRepoStub{REDACTED

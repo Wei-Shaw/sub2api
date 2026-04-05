@@ -4277,7 +4277,7 @@ REDACTED
 	if result.BillingModel != "" {
 		billingModel = strings.TrimSpace(result.BillingModel)
 REDACTED
-	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
+	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" && input.ChannelMappedModel != input.OriginalModel {
 		billingModel = input.ChannelMappedModel
 REDACTED
 	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
