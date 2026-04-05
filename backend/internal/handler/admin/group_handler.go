@@ -99,9 +99,9 @@ type CreateGroupRequest struct {
 	FallbackGroupID                 *int64   `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
 	// 模型路由配置（仅 anthropic 平台使用）
-	ModelRouting             map[string][]int64 `json:"model_routing"`
-	ModelRoutingEnabled      bool               `json:"model_routing_enabled"`
-	MCPXMLInject *bool `json:"mcp_xml_inject"`
+	ModelRouting        map[string][]int64 `json:"model_routing"`
+	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
+	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes []string `json:"supported_model_scopes"`
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
@@ -131,9 +131,9 @@ type UpdateGroupRequest struct {
 	FallbackGroupID                 *int64   `json:"fallback_group_id"`
 	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
 	// 模型路由配置（仅 anthropic 平台使用）
-	ModelRouting             map[string][]int64 `json:"model_routing"`
-	ModelRoutingEnabled      *bool              `json:"model_routing_enabled"`
-	MCPXMLInject *bool `json:"mcp_xml_inject"`
+	ModelRouting        map[string][]int64 `json:"model_routing"`
+	ModelRoutingEnabled *bool              `json:"model_routing_enabled"`
+	MCPXMLInject        *bool              `json:"mcp_xml_inject"`
 	// 支持的模型系列（仅 antigravity 平台使用）
 	SupportedModelScopes *[]string `json:"supported_model_scopes"`
 	// OpenAI Messages 调度配置（仅 openai 平台使用）

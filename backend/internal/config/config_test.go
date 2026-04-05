@@ -1554,7 +1554,6 @@ func TestValidateConfig_LogRequiredAndRotationBounds(t *testing.T) {
 	}
 }
 
-
 func TestLoad_DefaultGatewayUsageRecordConfig(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	cfg, err := Load()

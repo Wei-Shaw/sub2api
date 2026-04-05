@@ -1641,25 +1641,6 @@ func (h *AccountHandler) ResetQuota(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
-// mergeGroupIDs 合并两个 groupID 切片并去重。
-func mergeGroupIDs(a, b []int64) []int64 {
-	seen := make(map[int64]struct{}, len(a)+len(b))
-	result := make([]int64, 0, len(a)+len(b))
-	for _, id := range a {
-		if _, ok := seen[id]; !ok {
-			seen[id] = struct{}{}
-			result = append(result, id)
-		}
-	}
-	for _, id := range b {
-		if _, ok := seen[id]; !ok {
-			seen[id] = struct{}{}
-			result = append(result, id)
-		}
-	}
-	return result
-}
-
 // GetTempUnschedulable handles getting temporary unschedulable status
 // GET /api/v1/admin/accounts/:id/temp-unschedulable
 func (h *AccountHandler) GetTempUnschedulable(c *gin.Context) {
