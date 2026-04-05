@@ -20,7 +20,7 @@ import { useOpenAIOAuth REDACTED from '@/composables/useOpenAIOAuth'
 
 describe('useOpenAIOAuth.buildCredentials', () => {
   it('should keep client_id when token response contains it', () => {
-    const oauth = useOpenAIOAuth({ platform: 'openai' REDACTED)
+    const oauth = useOpenAIOAuth()
     const creds = oauth.buildCredentials({
       access_token: 'at',
       refresh_token: 'rt',
@@ -34,7 +34,7 @@ describe('useOpenAIOAuth.buildCredentials', () => {
   REDACTED)
 
   it('should keep legacy behavior when client_id is missing', () => {
-    const oauth = useOpenAIOAuth({ platform: 'openai' REDACTED)
+    const oauth = useOpenAIOAuth()
     const creds = oauth.buildCredentials({
       access_token: 'at',
       refresh_token: 'rt',

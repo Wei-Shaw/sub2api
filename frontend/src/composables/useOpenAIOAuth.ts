@@ -24,11 +24,7 @@ REDACTED
 
 export type OpenAIOAuthPlatform = 'openai'
 
-interface UseOpenAIOAuthOptions {
-  platform?: OpenAIOAuthPlatform
-REDACTED
-
-export function useOpenAIOAuth(_options?: UseOpenAIOAuthOptions) {
+export function useOpenAIOAuth() {
   const appStore = useAppStore()
   const endpointPrefix = '/admin/openai'
 

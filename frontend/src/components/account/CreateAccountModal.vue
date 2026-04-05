@@ -2898,7 +2898,7 @@ const appStore = useAppStore()
 
 // OAuth composables
 const oauth = useAccountOAuth() // For Anthropic OAuth
-const openaiOAuth = useOpenAIOAuth({ platform: 'openai' REDACTED) // For OpenAI OAuth
+const openaiOAuth = useOpenAIOAuth() // For OpenAI OAuth
 const geminiOAuth = useGeminiOAuth() // For Gemini OAuth
 const antigravityOAuth = useAntigravityOAuth() // For Antigravity OAuth
 
