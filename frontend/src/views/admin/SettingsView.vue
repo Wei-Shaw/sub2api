@@ -1731,20 +1731,21 @@
           <div class="p-4">
             <div v-if="providersLoading && !providers.length" class="flex items-center justify-center py-6"><div class="h-5 w-5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div></div>
             <div v-else-if="providers.length" class="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              <div v-for="provider in providers" :key="provider.id" class="rounded-lg border border-gray-200 dark:border-dark-600">
+              <div v-for="provider in providers" :key="provider.id" :class="['rounded-lg border', isProviderEnabled(provider.provider_key) ? 'border-gray-200 dark:border-dark-600' : 'border-gray-200 bg-gray-50 opacity-60 dark:border-dark-700 dark:bg-dark-800/50']">
                 <div class="flex items-center justify-between px-3 py-2">
                   <div class="flex items-center gap-2">
-                    <div :class="['rounded-md p-1.5', provider.enabled ? 'bg-green-100 dark:bg-green-900/30' : 'bg-gray-100 dark:bg-dark-700']">
-                      <Icon name="server" size="sm" :class="provider.enabled ? 'text-green-600 dark:text-green-400' : 'text-gray-400'" />
+                    <div :class="['rounded-md p-1.5', provider.enabled && isProviderEnabled(provider.provider_key) ? 'bg-green-100 dark:bg-green-900/30' : 'bg-gray-100 dark:bg-dark-700']">
+                      <Icon name="server" size="sm" :class="provider.enabled && isProviderEnabled(provider.provider_key) ? 'text-green-600 dark:text-green-400' : 'text-gray-400'" />
                     </div>
                     <div>
                       <span class="text-sm font-medium text-gray-900 dark:text-white">{{ provider.name }}</span>
                       <span class="ml-1.5 text-xs text-gray-400">{{ providerKeyLabel(provider.provider_key) }}</span>
+                      <span v-if="!isProviderEnabled(provider.provider_key)" class="ml-1.5 text-xs text-amber-500">({{ t('admin.settings.payment.typeDisabled') }})</span>
                     </div>
                   </div>
                   <div class="flex items-center gap-2">
                     <span :class="['text-xs', provider.enabled ? 'text-green-600' : 'text-gray-400']">{{ provider.enabled ? t('common.enabled') : t('common.disabled') }}</span>
-                    <button @click="openEditProvider(provider)" class="btn-icon text-blue-500 hover:text-blue-700" :title="t('common.edit')"><Icon name="edit" size="sm" /></button>
+                    <button @click="openEditProvider(provider)" :disabled="!isProviderEnabled(provider.provider_key)" :class="['btn-icon', isProviderEnabled(provider.provider_key) ? 'text-blue-500 hover:text-blue-700' : 'text-gray-300 cursor-not-allowed']" :title="t('common.edit')"><Icon name="edit" size="sm" /></button>
                     <button @click="confirmDeleteProvider(provider)" class="btn-icon text-red-500 hover:text-red-700" :title="t('common.delete')"><Icon name="trash" size="sm" /></button>
                   </div>
                 </div>
@@ -1768,7 +1769,7 @@
           <form id="provider-form" @submit.prevent="handleSaveProvider" class="space-y-4">
             <div class="grid grid-cols-2 gap-4">
               <div><label class="input-label">{{ t('admin.settings.payment.providerName') }}</label><input v-model="providerForm.name" type="text" class="input" required /></div>
-              <div><label class="input-label">{{ t('admin.settings.payment.providerKey') }}</label><Select v-model="providerForm.provider_key" :options="providerKeyOptions" :disabled="!!editingProvider" @change="onProviderKeyChange" /></div>
+              <div><label class="input-label">{{ t('admin.settings.payment.providerKey') }}</label><Select v-model="providerForm.provider_key" :options="editingProvider ? providerKeyOptions : enabledProviderKeyOptions" :disabled="!!editingProvider" @change="onProviderKeyChange" /></div>
             </div>
             <!-- Supported types as toggle badges -->
             <div>
@@ -2967,6 +2968,23 @@ const providerKeyOptions = computed(() => [
   { value: 'wxpay', label: t('admin.settings.payment.providerWxpay') },
   { value: 'stripe', label: t('admin.settings.payment.providerStripe') },
 ])
+
+// Only show provider types whose payment types are enabled above
+const enabledProviderKeyOptions = computed(() => {
+  const enabled = form.payment_enabled_types.split(',').map(s => s.trim()).filter(Boolean)
+  return providerKeyOptions.value.filter(opt => {
+    // easypay is available if easypay OR alipay OR wxpay is enabled
+    if (opt.value === 'easypay') return enabled.includes('easypay') || enabled.includes('alipay') || enabled.includes('wxpay')
+    return enabled.includes(opt.value)
+  })
+})
+
+// Check if a provider instance's type is still enabled
+function isProviderEnabled(providerKey: string): boolean {
+  const enabled = form.payment_enabled_types.split(',').map(s => s.trim()).filter(Boolean)
+  if (providerKey === 'easypay') return enabled.includes('easypay') || enabled.includes('alipay') || enabled.includes('wxpay')
+  return enabled.includes(providerKey)
+}
 const loadBalanceOptions = computed(() => [
   { value: 'round-robin', label: t('admin.settings.payment.strategyRoundRobin') },
   { value: 'least-amount', label: t('admin.settings.payment.strategyLeastAmount') },
@@ -3008,8 +3026,9 @@ async function loadProviders() {
   finally { providersLoading.value = false }
 }
 function resetProviderForm() {
-  providerForm.name = ''; providerForm.provider_key = 'easypay'
-  providerForm.supported_types = (PROVIDER_SUPPORTED_TYPES['easypay'] || []).join(',')
+  const defaultKey = enabledProviderKeyOptions.value[0]?.value || 'easypay'
+  providerForm.name = ''; providerForm.provider_key = defaultKey
+  providerForm.supported_types = (PROVIDER_SUPPORTED_TYPES[defaultKey] || []).join(',')
   providerForm.enabled = true; providerForm.refund_enabled = false
   Object.keys(providerConfig).forEach(k => { (providerConfig as any)[k] = '' })
 }
