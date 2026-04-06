@@ -83,12 +83,6 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
 
 // --- Helpers ---
 
-/** Parse comma-separated types string into array. */
-export function parseTypes(raw: string): string[] {
-  if (!raw) return []
-  return raw.split(',').map(s => s.trim()).filter(Boolean)
-}
-
 /** Resolve type label: for easypay provider, show "跳转" for the easypay type. */
 export function resolveTypeLabel(
   typeVal: string,

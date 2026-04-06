@@ -2483,24 +2483,22 @@ async function saveSettings() {
       max_claude_code_version: form.max_claude_code_version,
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
       enable_fingerprint_unification: form.enable_fingerprint_unification,
-      enable_metadata_passthrough: form.enable_metadata_passthrough
+      enable_metadata_passthrough: form.enable_metadata_passthrough,
+      // Payment configuration
+      payment_enabled: form.payment_enabled,
+      payment_min_amount: Number(form.payment_min_amount) || 0,
+      payment_max_amount: Number(form.payment_max_amount) || 0,
+      payment_daily_limit: Number(form.payment_daily_limit) || 0,
+      payment_max_pending_orders: Number(form.payment_max_pending_orders) || 0,
+      payment_order_timeout_minutes: Number(form.payment_order_timeout_minutes) || 0,
+      payment_balance_disabled: form.payment_balance_disabled,
+      payment_enabled_types: form.payment_enabled_types,
+      payment_load_balance_strategy: form.payment_load_balance_strategy,
+      payment_product_name_prefix: form.payment_product_name_prefix,
+      payment_product_name_suffix: form.payment_product_name_suffix,
+      payment_help_image_url: form.payment_help_image_url,
+      payment_help_text: form.payment_help_text,
     }
-
-    // Payment config fields (integrated into settings payload)
-    ;(payload as any).payment_enabled_types = form.payment_enabled_types
-    ;(payload as any).payment_enabled = form.payment_enabled
-    ;(payload as any).payment_min_amount = Number(form.payment_min_amount) || 0
-    ;(payload as any).payment_max_amount = Number(form.payment_max_amount) || 0
-    ;(payload as any).payment_daily_limit = Number(form.payment_daily_limit) || 0
-    ;(payload as any).payment_max_pending_orders = Number(form.payment_max_pending_orders) || 0
-    ;(payload as any).payment_order_timeout_minutes = Number(form.payment_order_timeout_minutes) || 0
-    ;(payload as any).payment_balance_disabled = form.payment_balance_disabled
-    ;(payload as any).payment_enabled_types = form.payment_enabled_types
-    ;(payload as any).payment_load_balance_strategy = form.payment_load_balance_strategy
-    ;(payload as any).payment_product_name_prefix = form.payment_product_name_prefix
-    ;(payload as any).payment_product_name_suffix = form.payment_product_name_suffix
-    ;(payload as any).payment_help_image_url = form.payment_help_image_url
-    ;(payload as any).payment_help_text = form.payment_help_text
 
     const updated = await adminAPI.settings.updateSettings(payload)
     Object.assign(form, updated)

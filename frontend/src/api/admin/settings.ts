@@ -158,6 +158,20 @@ export interface UpdateSettingsRequest {
   allow_ungrouped_key_scheduling?: boolean
   enable_fingerprint_unification?: boolean
   enable_metadata_passthrough?: boolean
+  // Payment configuration
+  payment_enabled?: boolean
+  payment_min_amount?: number
+  payment_max_amount?: number
+  payment_daily_limit?: number
+  payment_order_timeout_minutes?: number
+  payment_max_pending_orders?: number
+  payment_enabled_types?: string[]
+  payment_balance_disabled?: boolean
+  payment_load_balance_strategy?: string
+  payment_product_name_prefix?: string
+  payment_product_name_suffix?: string
+  payment_help_image_url?: string
+  payment_help_text?: string
 }
 
 /**
