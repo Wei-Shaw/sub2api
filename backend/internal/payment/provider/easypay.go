@@ -23,11 +23,6 @@ const (
 	easypayCodeSuccess = 1
 	easypayStatusPaid  = 1
 	easypayHTTPTimeout = 10 * time.Second
-
-	// EasyPayModeRedirect uses submit.php — browser redirects to EasyPay hosted page.
-	EasyPayModeRedirect = "redirect"
-	// EasyPayModeAPI uses mapi.php — server calls API, returns payurl/qrcode.
-	EasyPayModeAPI = "api"
 )
 
 // EasyPay implements payment.Provider for the EasyPay aggregation platform.
@@ -55,14 +50,12 @@ func NewEasyPay(instanceID string, config map[string]string) (*EasyPay, error) {
 func (e *EasyPay) Name() string       { return "EasyPay" }
 func (e *EasyPay) ProviderKey() string { return "easypay" }
 func (e *EasyPay) SupportedTypes() []payment.PaymentType {
-	if e.config["paymentMode"] == EasyPayModeRedirect {
-		return []payment.PaymentType{payment.TypeEasyPay}
-	}
-	return []payment.PaymentType{payment.TypeAlipay, payment.TypeWxpay}
+	return []payment.PaymentType{payment.TypeEasyPay, payment.TypeAlipay, payment.TypeWxpay}
 }
 
 func (e *EasyPay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
-	if e.config["paymentMode"] == EasyPayModeRedirect {
+	// "easypay" type → redirect to hosted page; "alipay"/"wxpay" → API call
+	if req.PaymentType == payment.TypeEasyPay {
 		return e.createRedirectPayment(req)
 	}
 	return e.createAPIPayment(ctx, req)

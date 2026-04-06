@@ -283,7 +283,15 @@ func (s *PaymentConfigService) countPendingOrdersByPlan(ctx context.Context, pla
 		).Count(ctx)
 }
 
+// validProviderKeys enumerates all recognized provider keys.
+var validProviderKeys = map[string]bool{
+	"easypay": true, "alipay": true, "wxpay": true, "stripe": true,
+}
+
 func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req CreateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
+	if err := validateProviderRequest(req.ProviderKey, req.Name, req.SupportedTypes); err != nil {
+		return nil, err
+	}
 	enc, err := s.encryptConfig(req.Config)
 	if err != nil {
 		return nil, err
@@ -293,6 +301,19 @@ func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req C
 		SetSupportedTypes(req.SupportedTypes).SetEnabled(req.Enabled).
 		SetSortOrder(req.SortOrder).SetLimits(req.Limits).SetRefundEnabled(req.RefundEnabled).
 		Save(ctx)
+}
+
+func validateProviderRequest(providerKey, name, supportedTypes string) error {
+	if strings.TrimSpace(name) == "" {
+		return infraerrors.BadRequest("VALIDATION_ERROR", "provider name is required")
+	}
+	if !validProviderKeys[providerKey] {
+		return infraerrors.BadRequest("VALIDATION_ERROR", fmt.Sprintf("invalid provider key: %s", providerKey))
+	}
+	if strings.TrimSpace(supportedTypes) == "" {
+		return infraerrors.BadRequest("VALIDATION_ERROR", "supported payment types are required")
+	}
+	return nil
 }
 
 func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id int64, req UpdateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {

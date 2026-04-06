@@ -1786,12 +1786,12 @@
         <BaseDialog :show="showProviderDialog" :title="editingProvider ? t('admin.settings.payment.editProvider') : t('admin.settings.payment.createProvider')" width="wide" @close="showProviderDialog = false">
           <form id="provider-form" @submit.prevent="handleSaveProvider" class="space-y-4">
             <div class="grid grid-cols-2 gap-4">
-              <div><label class="input-label">{{ t('admin.settings.payment.providerName') }}</label><input v-model="providerForm.name" type="text" class="input" required /></div>
-              <div><label class="input-label">{{ t('admin.settings.payment.providerKey') }}</label><Select v-model="providerForm.provider_key" :options="editingProvider ? providerKeyOptions : enabledProviderKeyOptions" :disabled="!!editingProvider" @change="onProviderKeyChange" /></div>
+              <div><label class="input-label">{{ t('admin.settings.payment.providerName') }} <span class="text-red-500">*</span></label><input v-model="providerForm.name" type="text" class="input" required /></div>
+              <div><label class="input-label">{{ t('admin.settings.payment.providerKey') }} <span class="text-red-500">*</span></label><Select v-model="providerForm.provider_key" :options="editingProvider ? providerKeyOptions : enabledProviderKeyOptions" :disabled="!!editingProvider" @change="onProviderKeyChange" /></div>
             </div>
             <!-- Supported types as toggle badges -->
             <div>
-              <label class="input-label">{{ t('admin.settings.payment.supportedTypes') }}</label>
+              <label class="input-label">{{ t('admin.settings.payment.supportedTypes') }} <span class="text-red-500">*</span></label>
               <div class="mt-2 flex flex-wrap gap-2">
                 <button
                   v-for="pt in providerAvailableTypes"
@@ -1817,8 +1817,7 @@
               <div class="space-y-3">
                 <div v-for="field in currentProviderFields" :key="field.key">
                   <label class="input-label">{{ field.label }} <span v-if="field.optional" class="text-xs text-gray-400">({{ t('common.optional') }})</span><span v-else class="text-red-500"> *</span></label>
-                  <Select v-if="field.type === 'select'" v-model="providerConfig[field.key]" :options="field.options || []" @change="onProviderConfigChange(field.key)" />
-                  <textarea v-else-if="field.sensitive && field.key.toLowerCase().includes('key') && field.key !== 'pkey'" v-model="providerConfig[field.key]" rows="3" class="input font-mono text-xs" :required="!field.optional && !editingProvider" />
+                  <textarea v-if="field.sensitive && field.key.toLowerCase().includes('key') && field.key !== 'pkey'" v-model="providerConfig[field.key]" rows="3" class="input font-mono text-xs" :required="!field.optional && !editingProvider" />
                   <input v-else :type="field.sensitive ? 'password' : 'text'" v-model="providerConfig[field.key]" class="input" :required="!field.optional && !editingProvider" />
                 </div>
               </div>
@@ -2968,16 +2967,10 @@ interface ConfigFieldDef {
   label: string
   sensitive: boolean
   optional?: boolean
-  type?: 'text' | 'select'
-  options?: { value: string; label: string }[]
 }
 
 const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
   easypay: [
-    { key: 'paymentMode', label: '', sensitive: false, type: 'select', options: [
-      { value: 'redirect', label: '' },
-      { value: 'api', label: '' },
-    ]},
     { key: 'pid', label: 'PID', sensitive: false },
     { key: 'pkey', label: 'PKey', sensitive: true },
     { key: 'apiBase', label: '', sensitive: false },
@@ -3013,10 +3006,6 @@ const currentProviderFields = computed(() => {
   return fields.map(f => ({
     ...f,
     label: f.label || t(`admin.settings.payment.field_${f.key}`),
-    options: f.options?.map(o => ({
-      ...o,
-      label: o.label || t(`admin.settings.payment.field_${f.key}_${o.value}`),
-    })),
   }))
 })
 const providerKeyOptions = computed(() => [
@@ -3054,9 +3043,13 @@ const loadBalanceOptions = computed(() => [
 
 const providerAvailableTypes = computed(() => {
   const types = PROVIDER_SUPPORTED_TYPES[providerForm.provider_key] || []
-  return types.map(t => {
-    const found = allPaymentTypes.value.find(pt => pt.value === t)
-    return found || { value: t, label: t }
+  return types.map(typeVal => {
+    // In EasyPay provider context, show "跳转" instead of "易支付" for the easypay type
+    if (typeVal === 'easypay' && providerForm.provider_key === 'easypay') {
+      return { value: typeVal, label: t('admin.settings.payment.easypayRedirect') }
+    }
+    const found = allPaymentTypes.value.find(pt => pt.value === typeVal)
+    return found || { value: typeVal, label: typeVal }
   })
 })
 
@@ -3076,22 +3069,6 @@ function toggleProviderSupportedType(type: string) {
 function onProviderKeyChange() {
   // Auto-select all supported types for the new provider key
   providerForm.supported_types = (PROVIDER_SUPPORTED_TYPES[providerForm.provider_key] || []).join(',')
-  // For easypay, set default payment mode and update supported types accordingly
-  if (providerForm.provider_key === 'easypay' && !providerConfig['paymentMode']) {
-    providerConfig['paymentMode'] = 'redirect'
-    providerForm.supported_types = 'easypay'
-  }
-}
-
-function onProviderConfigChange(key: string) {
-  // When easypay paymentMode changes, auto-update supported types
-  if (key === 'paymentMode' && providerForm.provider_key === 'easypay') {
-    if (providerConfig['paymentMode'] === 'redirect') {
-      providerForm.supported_types = 'easypay'
-    } else {
-      providerForm.supported_types = 'alipay,wxpay'
-    }
-  }
 }
 
 function providerKeyLabel(key: string): string {
@@ -3114,16 +3091,9 @@ async function loadProviders() {
 function resetProviderForm() {
   const defaultKey = enabledProviderKeyOptions.value[0]?.value || 'easypay'
   providerForm.name = ''; providerForm.provider_key = defaultKey
+  providerForm.supported_types = (PROVIDER_SUPPORTED_TYPES[defaultKey] || []).join(',')
   providerForm.enabled = true; providerForm.refund_enabled = false
-  // Clear all config keys
   Object.keys(providerConfig).forEach(k => delete providerConfig[k])
-  // Set defaults based on provider key
-  if (defaultKey === 'easypay') {
-    providerConfig['paymentMode'] = 'redirect'
-    providerForm.supported_types = 'easypay'
-  } else {
-    providerForm.supported_types = (PROVIDER_SUPPORTED_TYPES[defaultKey] || []).join(',')
-  }
 }
 function openCreateProvider() { editingProvider.value = null; resetProviderForm(); showProviderDialog.value = true }
 function openEditProvider(provider: ProviderInstance) {
@@ -3136,6 +3106,26 @@ function openEditProvider(provider: ProviderInstance) {
   showProviderDialog.value = true
 }
 async function handleSaveProvider() {
+  // Strict validation for required fields
+  if (!providerForm.name.trim()) {
+    appStore.showError(t('admin.settings.payment.validationNameRequired'))
+    return
+  }
+  if (!providerForm.supported_types.trim()) {
+    appStore.showError(t('admin.settings.payment.validationTypesRequired'))
+    return
+  }
+  // Validate required config fields (only for new providers — editing may leave sensitive fields empty)
+  if (!editingProvider.value) {
+    const fields = PROVIDER_CONFIG_FIELDS[providerForm.provider_key] || []
+    for (const f of fields) {
+      if (!f.optional && !(providerConfig[f.key] || '').trim()) {
+        const label = f.label || t(`admin.settings.payment.field_${f.key}`)
+        appStore.showError(t('admin.settings.payment.validationFieldRequired', { field: label }))
+        return
+      }
+    }
+  }
   providerSaving.value = true
   try {
     // Filter out empty config values to avoid overwriting existing credentials
