@@ -6,7 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { paymentAPI } from '@/api/payment'
-import type { PaymentConfig, PaymentOrder, SubscriptionPlan } from '@/types/payment'
+import type { PaymentConfig, PaymentOrder, SubscriptionPlan, CreateOrderRequest } from '@/types/payment'
 
 export const usePaymentStore = defineStore('payment', () => {
   // ==================== State ====================
@@ -55,12 +55,7 @@ export const usePaymentStore = defineStore('payment', () => {
   }
 
   /** Create a new order and set it as current */
-  async function createOrder(params: {
-    amount: number
-    payment_type: string
-    order_type: string
-    plan_id?: number
-  }) {
+  async function createOrder(params: CreateOrderRequest) {
     const response = await paymentAPI.createOrder(params)
     return response.data
   }
