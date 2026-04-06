@@ -5257,6 +5257,7 @@ export default {
       wxpay: '微信支付',
       stripe: 'Stripe',
       card: '银行卡',
+      link: 'Link',
       alipay_direct: '支付宝（直连）',
       wxpay_direct: '微信支付（直连）',
     },

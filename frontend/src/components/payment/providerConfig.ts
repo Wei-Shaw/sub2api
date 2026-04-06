@@ -30,7 +30,7 @@ export const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
   easypay: ['easypay', 'alipay', 'wxpay'],
   alipay: ['alipay'],
   wxpay: ['wxpay'],
-  stripe: ['card', 'alipay', 'wxpay'],
+  stripe: ['card', 'alipay', 'wxpay', 'link'],
 }
 
 /** Webhook paths for each provider (relative to origin). */

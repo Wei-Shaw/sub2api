@@ -63,7 +63,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 function isStripe(type: string) {
-  return type === 'stripe' || type === 'card'
+  return type === 'stripe' || type === 'card' || type === 'link'
 }
 
 function iconBgClass(type: string): string {
@@ -71,6 +71,7 @@ function iconBgClass(type: string): string {
   if (type.includes('alipay')) return 'bg-[#00AEEF]'
   if (type.includes('wxpay')) return 'bg-[#07C160]'
   if (type === 'stripe' || type === 'card') return 'bg-[#635bff]'
+  if (type === 'link') return 'bg-[#00D66F]'
   return 'bg-gray-500'
 }
 
@@ -86,6 +87,7 @@ function methodSelectedClass(type: string): string {
   if (type.includes('alipay')) return 'border-[#00AEEF] bg-blue-50 text-gray-900 shadow-sm dark:bg-blue-950 dark:text-gray-100'
   if (type.includes('wxpay')) return 'border-[#07C160] bg-green-50 text-gray-900 shadow-sm dark:bg-green-950 dark:text-gray-100'
   if (type === 'stripe' || type === 'card') return 'border-[#635bff] bg-indigo-50 text-gray-900 shadow-sm dark:bg-indigo-950 dark:text-gray-100'
+  if (type === 'link') return 'border-[#00D66F] bg-green-50 text-gray-900 shadow-sm dark:bg-green-950 dark:text-gray-100'
   return 'border-primary-500 bg-primary-50 text-gray-900 shadow-sm dark:bg-primary-950 dark:text-gray-100'
 }
 </script>

@@ -59,7 +59,7 @@ func (s *Stripe) GetPublishableKey() string {
 func (s *Stripe) Name() string        { return "Stripe" }
 func (s *Stripe) ProviderKey() string { return "stripe" }
 func (s *Stripe) SupportedTypes() []payment.PaymentType {
-	return []payment.PaymentType{payment.TypeCard, payment.TypeAlipay, payment.TypeWxpay}
+	return []payment.PaymentType{payment.TypeCard, payment.TypeAlipay, payment.TypeWxpay, payment.TypeLink}
 }
 
 // centsToYuan converts an amount in cents (int64) to yuan (float64).
@@ -81,6 +81,7 @@ var stripePaymentMethodTypes = map[string][]string{
 	payment.TypeCard:   {"card"},
 	payment.TypeAlipay: {"alipay"},
 	payment.TypeWxpay:  {"wechat_pay"},
+	payment.TypeLink:   {"link"},
 }
 
 // CreatePayment creates a Stripe PaymentIntent.

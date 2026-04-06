@@ -5060,6 +5060,7 @@ export default {
       wxpay: 'WeChat Pay',
       stripe: 'Stripe',
       card: 'Card',
+      link: 'Link',
       alipay_direct: 'Alipay (Direct)',
       wxpay_direct: 'WeChat Pay (Direct)',
     },
