@@ -106,6 +106,7 @@ export interface ProviderInstance {
   supported_types: string
   enabled: boolean
   refund_enabled: boolean
+  limits: string
 }
 
 // ==================== Request / Response ====================
