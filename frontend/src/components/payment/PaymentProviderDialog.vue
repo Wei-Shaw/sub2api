@@ -298,20 +298,23 @@ function handleSave() {
     emitValidationError(t('admin.settings.payment.validationTypesRequired'))
     return
   }
-  // Validate required config on create
-  if (!props.editing) {
-    for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
-      if (!f.optional && !(config[f.key] || '').trim()) {
-        const label = f.label || t(`admin.settings.payment.field_${f.key}`)
-        emitValidationError(t('admin.settings.payment.validationFieldRequired', { field: label }))
-        return
-      }
+  // Validate required config fields — all non-optional fields must be filled
+  for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
+    if (f.optional) continue
+    const val = (config[f.key] || '').trim()
+    if (!val) {
+      const label = f.label || t(`admin.settings.payment.field_${f.key}`)
+      emitValidationError(t('admin.settings.payment.validationFieldRequired', { field: label }))
+      return
     }
   }
 
   const filteredConfig: Record<string, string> = {}
   for (const [k, v] of Object.entries(config)) {
-    if (v && v.trim()) filteredConfig[k] = v
+    if (!v || !v.trim()) continue
+    // Skip masked values — backend keeps existing credentials
+    if (v === '••••••••') continue
+    filteredConfig[k] = v
   }
 
   emit('save', {
@@ -349,15 +352,14 @@ function loadProvider(provider: ProviderInstance) {
   form.enabled = provider.enabled
   form.refund_enabled = provider.refund_enabled
   clearConfig()
-  // Pre-fill config from API response (non-sensitive in cleartext, sensitive masked)
+  // Pre-fill config from API response (non-sensitive in cleartext, sensitive masked as ••••••••)
   if (provider.config) {
     for (const [k, v] of Object.entries(provider.config)) {
-      // Skip masked sensitive values — leave field empty so user can re-enter
-      if (v !== '••••••••') {
-        config[k] = v
-      }
+      config[k] = v
     }
   }
+  // Apply defaults for any empty fields with defaultValue
+  applyDefaults()
   // Parse existing limits
   if (provider.limits) {
     try {
