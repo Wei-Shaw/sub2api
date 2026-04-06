@@ -207,50 +207,54 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 // nil-check before serialisation — this is inherent to patch-style update patterns
 // and cannot be meaningfully decomposed without introducing unnecessary abstraction.
 func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req UpdatePaymentConfigRequest) error {
-	m := make(map[string]string)
-	if req.Enabled != nil {
-		m[SettingPaymentEnabled] = strconv.FormatBool(*req.Enabled)
-	}
-	if req.MinAmount != nil {
-		m[SettingMinRechargeAmount] = strconv.FormatFloat(*req.MinAmount, 'f', 2, 64)
-	}
-	if req.MaxAmount != nil {
-		m[SettingMaxRechargeAmount] = strconv.FormatFloat(*req.MaxAmount, 'f', 2, 64)
-	}
-	if req.DailyLimit != nil {
-		m[SettingDailyRechargeLimit] = strconv.FormatFloat(*req.DailyLimit, 'f', 2, 64)
-	}
-	if req.OrderTimeoutMin != nil {
-		m[SettingOrderTimeoutMinutes] = strconv.Itoa(*req.OrderTimeoutMin)
-	}
-	if req.MaxPendingOrders != nil {
-		m[SettingMaxPendingOrders] = strconv.Itoa(*req.MaxPendingOrders)
+	m := map[string]string{
+		SettingPaymentEnabled:      formatBoolOrEmpty(req.Enabled),
+		SettingMinRechargeAmount:   formatPositiveFloat(req.MinAmount),
+		SettingMaxRechargeAmount:   formatPositiveFloat(req.MaxAmount),
+		SettingDailyRechargeLimit:  formatPositiveFloat(req.DailyLimit),
+		SettingOrderTimeoutMinutes: formatPositiveInt(req.OrderTimeoutMin),
+		SettingMaxPendingOrders:    formatPositiveInt(req.MaxPendingOrders),
+		SettingBalancePayDisabled:  formatBoolOrEmpty(req.BalanceDisabled),
+		SettingLoadBalanceStrategy: derefStr(req.LoadBalanceStrategy),
+		SettingProductNamePrefix:   derefStr(req.ProductNamePrefix),
+		SettingProductNameSuffix:   derefStr(req.ProductNameSuffix),
+		SettingHelpImageURL:        derefStr(req.HelpImageURL),
+		SettingHelpText:            derefStr(req.HelpText),
 	}
 	if req.EnabledTypes != nil {
 		m[SettingEnabledPaymentTypes] = strings.Join(req.EnabledTypes, ",")
-	}
-	if req.BalanceDisabled != nil {
-		m[SettingBalancePayDisabled] = strconv.FormatBool(*req.BalanceDisabled)
-	}
-	if req.LoadBalanceStrategy != nil {
-		m[SettingLoadBalanceStrategy] = *req.LoadBalanceStrategy
-	}
-	if req.ProductNamePrefix != nil {
-		m[SettingProductNamePrefix] = *req.ProductNamePrefix
-	}
-	if req.ProductNameSuffix != nil {
-		m[SettingProductNameSuffix] = *req.ProductNameSuffix
-	}
-	if req.HelpImageURL != nil {
-		m[SettingHelpImageURL] = *req.HelpImageURL
-	}
-	if req.HelpText != nil {
-		m[SettingHelpText] = *req.HelpText
-	}
-	if len(m) == 0 {
-		return nil
+	} else {
+		m[SettingEnabledPaymentTypes] = ""
 	}
 	return s.settingRepo.SetMultiple(ctx, m)
+}
+
+func formatBoolOrEmpty(v *bool) string {
+	if v == nil {
+		return ""
+	}
+	return strconv.FormatBool(*v)
+}
+
+func formatPositiveFloat(v *float64) string {
+	if v == nil || *v <= 0 {
+		return "" // empty → parsePaymentConfig uses default
+	}
+	return strconv.FormatFloat(*v, 'f', 2, 64)
+}
+
+func formatPositiveInt(v *int) string {
+	if v == nil || *v <= 0 {
+		return ""
+	}
+	return strconv.Itoa(*v)
+}
+
+func derefStr(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }
 
 // --- Provider Instance CRUD ---

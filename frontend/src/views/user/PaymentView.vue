@@ -25,7 +25,7 @@
             <AmountInput
               v-model="amount"
               :amounts="[10, 50, 100, 200, 500, 1000]"
-              :min="config?.min_amount ?? 1"
+              :min="minAmount"
               :max="maxAmount"
             />
             <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
@@ -151,9 +151,15 @@ const tabs = computed(() => {
 })
 
 const enabledMethods = computed(() => config.value?.enabled_payment_types ?? [])
+const minAmount = computed(() => {
+  const limit = methodLimits.value[selectedMethod.value]
+  if (limit?.single_min && limit.single_min > 0) return limit.single_min
+  return config.value?.min_amount && config.value.min_amount > 0 ? config.value.min_amount : 1
+})
 const maxAmount = computed(() => {
   const limit = methodLimits.value[selectedMethod.value]
-  return limit?.single_max && limit.single_max > 0 ? limit.single_max : (config.value?.max_amount ?? 10000)
+  if (limit?.single_max && limit.single_max > 0) return limit.single_max
+  return config.value?.max_amount && config.value.max_amount > 0 ? config.value.max_amount : 99999999
 })
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
@@ -178,16 +184,14 @@ const totalAmount = computed(() =>
 
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
-  const min = config.value?.min_amount ?? 1
-  if (validAmount.value < min) return t('payment.amountTooLow', { min })
+  if (validAmount.value < minAmount.value) return t('payment.amountTooLow', { min: minAmount.value })
   if (validAmount.value > maxAmount.value) return t('payment.amountTooHigh', { max: maxAmount.value })
   return ''
 })
 
 const canSubmit = computed(() => {
-  const min = config.value?.min_amount ?? 1
   const limitInfo = methodLimits.value[selectedMethod.value]
-  return validAmount.value >= min && validAmount.value <= maxAmount.value && limitInfo?.available !== false
+  return validAmount.value >= minAmount.value && validAmount.value <= maxAmount.value && limitInfo?.available !== false
 })
 
 function openSubscribeDialog(plan: SubscriptionPlan) {
