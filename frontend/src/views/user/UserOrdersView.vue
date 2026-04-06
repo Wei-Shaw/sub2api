@@ -1,68 +1,70 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-5xl space-y-6">
+    <div class="space-y-4">
+      <!-- Header -->
       <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('payment.orders.title') }}</h1>
-        <div class="flex gap-2">
-          <button class="btn btn-secondary btn-sm" @click="fetchOrders()">
-            <Icon name="refresh" size="sm" class="mr-1" />{{ t('common.refresh') }}
+        <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('payment.orders.title') }}</h1>
+        <div class="flex items-center gap-2">
+          <button @click="fetchOrders" :disabled="loading" class="btn btn-secondary" :title="t('common.refresh')">
+            <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
           </button>
-          <button class="btn btn-primary btn-sm" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
+          <button class="btn btn-primary" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
         </div>
       </div>
-      <div class="flex flex-wrap gap-2">
-        <button v-for="filter in statusFilters" :key="filter.value"
-          class="rounded-full px-4 py-1.5 text-sm font-medium transition-all"
-          :class="currentFilter === filter.value ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-300 dark:hover:bg-dark-600'"
-          @click="setFilter(filter.value)">{{ filter.label }}</button>
-      </div>
-      <div v-if="loading" class="flex items-center justify-center py-20">
-        <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
-      </div>
-      <div v-else-if="filteredOrders.length === 0" class="py-16 text-center text-gray-500 dark:text-gray-400">
-        {{ t('payment.orders.empty') }}
-      </div>
-      <div v-else class="card overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-sm">
-            <thead class="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-dark-800 dark:text-dark-400">
-              <tr>
-                <th class="px-4 py-3">{{ t('payment.orders.orderId') }}</th>
-                <th class="px-4 py-3">{{ t('payment.orders.amount') }}</th>
-                <th class="px-4 py-3">{{ t('payment.orders.payAmount') }}</th>
-                <th class="px-4 py-3">{{ t('payment.orders.paymentMethod') }}</th>
-                <th class="px-4 py-3">{{ t('payment.orders.status') }}</th>
-                <th class="px-4 py-3">{{ t('payment.orders.createdAt') }}</th>
-                <th class="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-              <tr v-for="order in filteredOrders" :key="order.id" class="hover:bg-gray-50 dark:hover:bg-dark-800/50">
-                <td class="px-4 py-3 font-mono text-xs text-gray-900 dark:text-white">#{{ order.id }}</td>
-                <td class="px-4 py-3 text-gray-900 dark:text-white">&#165;{{ order.amount.toFixed(2) }}</td>
-                <td class="px-4 py-3 text-gray-900 dark:text-white">&#165;{{ order.pay_amount.toFixed(2) }}</td>
-                <td class="px-4 py-3 text-gray-600 dark:text-dark-300">{{ t('payment.methods.' + order.payment_type, order.payment_type) }}</td>
-                <td class="px-4 py-3"><OrderStatusBadge :status="order.status" /></td>
-                <td class="px-4 py-3 text-xs text-gray-500 dark:text-dark-400">{{ formatDate(order.created_at) }}</td>
-                <td class="px-4 py-3">
-                  <div class="flex gap-2">
-                    <button v-if="order.status === 'PENDING'" class="text-xs text-red-600 hover:text-red-800 dark:text-red-400" @click="handleCancel(order.id)">{{ t('payment.orders.cancel') }}</button>
-                    <button v-if="order.status === 'COMPLETED'" class="text-xs text-purple-600 hover:text-purple-800 dark:text-purple-400" @click="openRefundDialog(order)">{{ t('payment.orders.requestRefund') }}</button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+
+      <!-- Filters -->
+      <div class="card p-4">
+        <div class="flex flex-wrap items-center gap-3">
+          <Select v-model="currentFilter" :options="statusFilters" class="w-36" @change="fetchOrders" />
         </div>
       </div>
-      <div v-if="totalPages > 1" class="flex items-center justify-center gap-2">
-        <button class="btn btn-secondary btn-sm" :disabled="page <= 1" @click="goToPage(page - 1)"><Icon name="chevronLeft" size="sm" /></button>
-        <span class="text-sm text-gray-500 dark:text-dark-400">{{ page }} / {{ totalPages }}</span>
-        <button class="btn btn-secondary btn-sm" :disabled="page >= totalPages" @click="goToPage(page + 1)"><Icon name="chevronRight" size="sm" /></button>
-      </div>
+
+      <!-- Table -->
+      <DataTable :columns="columns" :data="orders" :loading="loading">
+        <template #cell-id="{ value }">
+          <span class="font-mono text-sm">#{{ value }}</span>
+        </template>
+        <template #cell-amount="{ value, row }">
+          <div class="text-sm">
+            <span class="font-medium text-gray-900 dark:text-white">¥{{ value.toFixed(2) }}</span>
+            <span v-if="row.pay_amount !== value" class="ml-1 text-xs text-gray-500">(¥{{ row.pay_amount.toFixed(2) }})</span>
+          </div>
+        </template>
+        <template #cell-payment_type="{ value }">
+          <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.methods.' + value, value) }}</span>
+        </template>
+        <template #cell-status="{ value }">
+          <OrderStatusBadge :status="value" />
+        </template>
+        <template #cell-created_at="{ value }">
+          <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatDate(value) }}</span>
+        </template>
+        <template #cell-actions="{ row }">
+          <div class="flex items-center gap-1">
+            <button v-if="row.status === 'PENDING'" @click="handleCancel(row.id)" class="btn-icon text-yellow-500 hover:text-yellow-700" :title="t('payment.orders.cancel')">
+              <Icon name="x" size="sm" />
+            </button>
+            <button v-if="row.status === 'COMPLETED'" @click="openRefundDialog(row)" class="btn-icon text-purple-500 hover:text-purple-700" :title="t('payment.orders.requestRefund')">
+              <Icon name="dollar" size="sm" />
+            </button>
+          </div>
+        </template>
+      </DataTable>
+
+      <!-- Pagination -->
+      <Pagination
+        v-if="pagination.total > 0"
+        :page="pagination.page"
+        :total="pagination.total"
+        :page-size="pagination.page_size"
+        @update:page="handlePageChange"
+        @update:pageSize="handlePageSizeChange"
+      />
     </div>
+
+    <!-- Cancel Confirm Dialog -->
     <BaseDialog :show="!!cancelTargetId" :title="t('payment.orders.cancel')" width="narrow" @close="cancelTargetId = null">
-      <p class="text-sm text-gray-600 dark:text-dark-300">{{ t('payment.confirmCancel') }}</p>
+      <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('payment.confirmCancel') }}</p>
       <template #footer>
         <div class="flex justify-end gap-3">
           <button class="btn btn-secondary" @click="cancelTargetId = null">{{ t('common.cancel') }}</button>
@@ -70,16 +72,18 @@
         </div>
       </template>
     </BaseDialog>
+
+    <!-- Refund Dialog -->
     <BaseDialog :show="!!refundTarget" :title="t('payment.orders.requestRefund')" @close="refundTarget = null">
       <div v-if="refundTarget" class="space-y-4">
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
           <div class="flex justify-between text-sm">
-            <span class="text-gray-500 dark:text-dark-400">{{ t('payment.orders.orderId') }}</span>
+            <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</span>
             <span class="font-mono text-gray-900 dark:text-white">#{{ refundTarget.id }}</span>
           </div>
           <div class="mt-2 flex justify-between text-sm">
-            <span class="text-gray-500 dark:text-dark-400">{{ t('payment.orders.amount') }}</span>
-            <span class="text-gray-900 dark:text-white">&#165;{{ refundTarget.amount.toFixed(2) }}</span>
+            <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
+            <span class="text-gray-900 dark:text-white">¥{{ refundTarget.amount.toFixed(2) }}</span>
           </div>
         </div>
         <div>
@@ -98,15 +102,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { PaymentOrder } from '@/types/payment'
+import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import DataTable from '@/components/common/DataTable.vue'
+import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
 
@@ -117,42 +125,50 @@ const appStore = useAppStore()
 const loading = ref(false)
 const actionLoading = ref(false)
 const orders = ref<PaymentOrder[]>([])
-const page = ref(1)
-const totalPages = ref(1)
-const pageSize = 20
-const currentFilter = ref('ALL')
+const currentFilter = ref('')
 const cancelTargetId = ref<number | null>(null)
 const refundTarget = ref<PaymentOrder | null>(null)
 const refundReason = ref('')
+const pagination = reactive({ page: 1, page_size: 20, total: 0 })
 
 const statusFilters = computed(() => [
-  { value: 'ALL', label: t('common.all') },
+  { value: '', label: t('common.all') },
   { value: 'PENDING', label: t('payment.status.pending') },
   { value: 'COMPLETED', label: t('payment.status.completed') },
   { value: 'FAILED', label: t('payment.status.failed') },
-  { value: 'REFUND', label: t('payment.status.refunded') },
+  { value: 'REFUNDED', label: t('payment.status.refunded') },
 ])
 
-const filteredOrders = computed(() => {
-  if (currentFilter.value === 'ALL') return orders.value
-  if (currentFilter.value === 'FAILED') return orders.value.filter(o => ['FAILED', 'EXPIRED', 'CANCELLED'].includes(o.status))
-  if (currentFilter.value === 'REFUND') return orders.value.filter(o => o.status.startsWith('REFUND') || o.status === 'PARTIALLY_REFUNDED')
-  return orders.value.filter(o => o.status === currentFilter.value)
-})
+const columns = computed((): Column[] => [
+  { key: 'id', label: t('payment.orders.orderId') },
+  { key: 'amount', label: t('payment.orders.amount') },
+  { key: 'payment_type', label: t('payment.orders.paymentMethod') },
+  { key: 'status', label: t('payment.orders.status') },
+  { key: 'created_at', label: t('payment.orders.createdAt') },
+  { key: 'actions', label: t('common.actions') },
+])
 
 function formatDate(dateStr: string) { return new Date(dateStr).toLocaleString() }
-function setFilter(value: string) { currentFilter.value = value }
-function goToPage(p: number) { if (p >= 1 && p <= totalPages.value) { page.value = p; fetchOrders() } }
 
 async function fetchOrders() {
   loading.value = true
   try {
-    const res = await paymentAPI.getMyOrders({ page: page.value, page_size: pageSize })
-    orders.value = res.data.items
-    totalPages.value = res.data.pages
-  } catch (err) { console.error('Failed to load orders:', err) }
-  finally { loading.value = false }
+    const res = await paymentAPI.getMyOrders({
+      page: pagination.page,
+      page_size: pagination.page_size,
+      status: currentFilter.value || undefined,
+    })
+    orders.value = res.data.items || []
+    pagination.total = res.data.total || 0
+  } catch (err) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    loading.value = false
+  }
 }
+
+function handlePageChange(page: number) { pagination.page = page; fetchOrders() }
+function handlePageSizeChange(size: number) { pagination.page_size = size; pagination.page = 1; fetchOrders() }
 
 function handleCancel(orderId: number) { cancelTargetId.value = orderId }
 
@@ -164,8 +180,11 @@ async function confirmCancel() {
     appStore.showSuccess(t('common.success'))
     cancelTargetId.value = null
     await fetchOrders()
-  } catch (err: any) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
-  finally { actionLoading.value = false }
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    actionLoading.value = false
+  }
 }
 
 function openRefundDialog(order: PaymentOrder) { refundTarget.value = order; refundReason.value = '' }
@@ -179,8 +198,11 @@ async function confirmRefund() {
     refundTarget.value = null
     refundReason.value = ''
     await fetchOrders()
-  } catch (err: any) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
-  finally { actionLoading.value = false }
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    actionLoading.value = false
+  }
 }
 
 onMounted(() => fetchOrders())
