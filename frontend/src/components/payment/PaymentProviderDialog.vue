@@ -158,7 +158,7 @@
                   type="number"
                   :value="getLimitVal(lt.value, 'singleMin')"
                   @input="setLimitVal(lt.value, 'singleMin', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="1" step="0.01" placeholder=""
+                  class="input mt-0.5" min="1" step="0.01" :placeholder="t('admin.settings.payment.limitsHint')"
                 />
               </div>
               <div>
@@ -167,7 +167,7 @@
                   type="number"
                   :value="getLimitVal(lt.value, 'singleMax')"
                   @input="setLimitVal(lt.value, 'singleMax', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="1" step="0.01" placeholder=""
+                  class="input mt-0.5" min="1" step="0.01" :placeholder="t('admin.settings.payment.limitsHint')"
                 />
               </div>
               <div>
@@ -176,7 +176,7 @@
                   type="number"
                   :value="getLimitVal(lt.value, 'dailyLimit')"
                   @input="setLimitVal(lt.value, 'dailyLimit', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="1" step="0.01" placeholder=""
+                  class="input mt-0.5" min="1" step="0.01" :placeholder="t('admin.settings.payment.limitsHint')"
                 />
               </div>
             </div>
