@@ -228,7 +228,7 @@ const emit = defineEmits<{
   save: [payload: {
     providerKey: string
     name: string
-    supportedTypes: string
+    supportedTypes: string[]
     enabled: boolean
     refundEnabled: boolean
     config: Record<string, string>
