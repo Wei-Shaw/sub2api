@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -243,6 +244,45 @@ func (s *PaymentConfigService) ListProviderInstances(ctx context.Context) ([]*db
 	return s.entClient.PaymentProviderInstance.Query().Order(paymentproviderinstance.BySortOrder()).All(ctx)
 }
 
+// pendingOrderStatuses are order statuses considered "in progress" —
+// modifying provider credentials or deleting a provider/plan is blocked
+// while orders in these states exist.
+var pendingOrderStatuses = []string{
+	payment.OrderStatusPending,
+	payment.OrderStatusPaid,
+	payment.OrderStatusRecharging,
+}
+
+// sensitiveConfigPatterns are substrings that identify credential fields.
+// Changes to these fields are blocked when the provider has pending orders.
+var sensitiveConfigPatterns = []string{"key", "pkey", "secret", "private", "password"}
+
+func isSensitiveConfigField(fieldName string) bool {
+	lower := strings.ToLower(fieldName)
+	for _, p := range sensitiveConfigPatterns {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *PaymentConfigService) countPendingOrders(ctx context.Context, providerInstanceID int64) (int, error) {
+	return s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.ProviderInstanceIDEQ(strconv.FormatInt(providerInstanceID, 10)),
+			paymentorder.StatusIn(pendingOrderStatuses...),
+		).Count(ctx)
+}
+
+func (s *PaymentConfigService) countPendingOrdersByPlan(ctx context.Context, planID int64) (int, error) {
+	return s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.PlanIDEQ(planID),
+			paymentorder.StatusIn(pendingOrderStatuses...),
+		).Count(ctx)
+}
+
 func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req CreateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
 	enc, err := s.encryptConfig(req.Config)
 	if err != nil {
@@ -256,6 +296,27 @@ func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req C
 }
 
 func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id int64, req UpdateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
+	// Check credential change safety when config is being modified
+	if req.Config != nil {
+		hasSensitive := false
+		for k := range req.Config {
+			if isSensitiveConfigField(k) && req.Config[k] != "" {
+				hasSensitive = true
+				break
+			}
+		}
+		if hasSensitive {
+			count, err := s.countPendingOrders(ctx, id)
+			if err != nil {
+				return nil, fmt.Errorf("check pending orders: %w", err)
+			}
+			if count > 0 {
+				return nil, infraerrors.Conflict("PENDING_ORDERS",
+					fmt.Sprintf("this instance has %d in-progress orders; changing credentials may break payment callbacks — wait for orders to complete or disable the instance first", count))
+			}
+		}
+	}
+
 	u := s.entClient.PaymentProviderInstance.UpdateOneID(id)
 	if req.Name != nil {
 		u.SetName(*req.Name)
@@ -286,6 +347,14 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 }
 
 func (s *PaymentConfigService) DeleteProviderInstance(ctx context.Context, id int64) error {
+	count, err := s.countPendingOrders(ctx, id)
+	if err != nil {
+		return fmt.Errorf("check pending orders: %w", err)
+	}
+	if count > 0 {
+		return infraerrors.Conflict("PENDING_ORDERS",
+			fmt.Sprintf("this instance has %d in-progress orders and cannot be deleted — wait for orders to complete or disable the instance first", count))
+	}
 	return s.entClient.PaymentProviderInstance.DeleteOneID(id).Exec(ctx)
 }
 
@@ -367,6 +436,14 @@ func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req Upd
 }
 
 func (s *PaymentConfigService) DeletePlan(ctx context.Context, id int64) error {
+	count, err := s.countPendingOrdersByPlan(ctx, id)
+	if err != nil {
+		return fmt.Errorf("check pending orders: %w", err)
+	}
+	if count > 0 {
+		return infraerrors.Conflict("PENDING_ORDERS",
+			fmt.Sprintf("this plan has %d in-progress orders and cannot be deleted — wait for orders to complete first", count))
+	}
 	return s.entClient.SubscriptionPlan.DeleteOneID(id).Exec(ctx)
 }
 

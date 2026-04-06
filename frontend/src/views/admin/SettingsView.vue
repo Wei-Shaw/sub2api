@@ -3070,6 +3070,11 @@ function openEditProvider(provider: ProviderInstance) {
 async function handleSaveProvider() {
   providerSaving.value = true
   try {
+    // Filter out empty config values to avoid overwriting existing credentials
+    const filteredConfig: Record<string, string> = {}
+    for (const [k, v] of Object.entries(providerConfig)) {
+      if (v && v.trim()) filteredConfig[k] = v
+    }
     // Build camelCase payload matching backend struct
     const payload: any = {
       providerKey: providerForm.provider_key,
@@ -3077,7 +3082,7 @@ async function handleSaveProvider() {
       supportedTypes: providerForm.supported_types,
       enabled: providerForm.enabled,
       refundEnabled: providerForm.refund_enabled,
-      config: { ...providerConfig },
+      config: filteredConfig,
     }
     if (editingProvider.value) { await adminAPI.payment.updateProvider(editingProvider.value.id, payload) }
     else { await adminAPI.payment.createProvider(payload) }
