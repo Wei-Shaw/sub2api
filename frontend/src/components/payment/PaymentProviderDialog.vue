@@ -2,7 +2,6 @@
   <BaseDialog
     :show="show"
     :title="editing ? t('admin.settings.payment.editProvider') : t('admin.settings.payment.createProvider')"
-    width="wide"
     @close="emit('close')"
   >
     <form id="provider-form" @submit.prevent="handleSave" class="space-y-4">
