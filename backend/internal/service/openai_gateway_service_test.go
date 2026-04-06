@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
@@ -34,35 +33,6 @@ type stubOpenAIAccountRepo struct {
 type snapshotUpdateAccountRepo struct {
 	stubOpenAIAccountRepo
 	updateExtraCalls chan map[string]any
-}
-
-type splitPoolSettingRepoStub struct {
-	value string
-}
-
-func (s *splitPoolSettingRepoStub) Get(context.Context, string) (*Setting, error) {
-	panic("unexpected Get call")
-}
-func (s *splitPoolSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
-	if key == SettingKeyOpenAIGlobalPoolForUngroupedKeys {
-		return s.value, nil
-	}
-	return "", nil
-}
-func (s *splitPoolSettingRepoStub) Set(context.Context, string, string) error {
-	panic("unexpected Set call")
-}
-func (s *splitPoolSettingRepoStub) GetMultiple(context.Context, []string) (map[string]string, error) {
-	panic("unexpected GetMultiple call")
-}
-func (s *splitPoolSettingRepoStub) SetMultiple(context.Context, map[string]string) error {
-	panic("unexpected SetMultiple call")
-}
-func (s *splitPoolSettingRepoStub) GetAll(context.Context) (map[string]string, error) {
-	panic("unexpected GetAll call")
-}
-func (s *splitPoolSettingRepoStub) Delete(context.Context, string) error {
-	panic("unexpected Delete call")
 }
 
 type splitPoolOpenAIAccountRepo struct {
@@ -193,8 +163,8 @@ func filterSchedulableAccounts(accounts []Account) []Account {
 	return filtered
 }
 
-func TestListSchedulableAccounts_UngroupedOpenAIGlobalPoolUsesAllOpenAIAccounts(t *testing.T) {
-	ctx := context.WithValue(context.Background(), ctxkey.EffectivePlatform, PlatformOpenAI)
+func TestListSchedulableAccounts_UngroupedKeepsUngroupedPool(t *testing.T) {
+	ctx := context.Background()
 	repo := splitPoolOpenAIAccountRepo{
 		ungrouped: []Account{{ID: 64, Platform: PlatformOpenAI, Status: StatusActive}},
 		broad: []Account{
@@ -204,29 +174,7 @@ func TestListSchedulableAccounts_UngroupedOpenAIGlobalPoolUsesAllOpenAIAccounts(
 		},
 	}
 	svc := &OpenAIGatewayService{
-		accountRepo:    repo,
-		settingService: NewSettingService(&splitPoolSettingRepoStub{value: "true"}, &config.Config{}),
-	}
-
-	accounts, err := svc.listSchedulableAccounts(ctx, nil, TargetGroupAny)
-	require.NoError(t, err)
-	require.Len(t, accounts, 3)
-	require.ElementsMatch(t, []int64{64, 65, 66}, []int64{accounts[0].ID, accounts[1].ID, accounts[2].ID})
-}
-
-func TestListSchedulableAccounts_UngroupedDefaultKeepsUngroupedPool(t *testing.T) {
-	ctx := context.WithValue(context.Background(), ctxkey.EffectivePlatform, PlatformOpenAI)
-	repo := splitPoolOpenAIAccountRepo{
-		ungrouped: []Account{{ID: 64, Platform: PlatformOpenAI, Status: StatusActive}},
-		broad: []Account{
-			{ID: 64, Platform: PlatformOpenAI, Status: StatusActive},
-			{ID: 65, Platform: PlatformOpenAI, Status: StatusActive},
-			{ID: 66, Platform: PlatformOpenAI, Status: StatusActive},
-		},
-	}
-	svc := &OpenAIGatewayService{
-		accountRepo:    repo,
-		settingService: NewSettingService(&splitPoolSettingRepoStub{value: "false"}, &config.Config{}),
+		accountRepo: repo,
 	}
 
 	accounts, err := svc.listSchedulableAccounts(ctx, nil, TargetGroupAny)

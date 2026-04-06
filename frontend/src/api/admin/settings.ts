@@ -83,12 +83,11 @@ export interface SystemSettings {
   min_claude_code_version: string
   max_claude_code_version: string
 
-  // 分组隔离
-  allow_ungrouped_key_scheduling: boolean
-  openai_global_pool_for_ungrouped_keys: boolean
+	// 分组隔离
+	allow_ungrouped_key_scheduling: boolean
 
-  // Gateway forwarding behavior
-  enable_fingerprint_unification: boolean
+	// Gateway forwarding behavior
+	enable_fingerprint_unification: boolean
   enable_metadata_passthrough: boolean
 }
 
@@ -141,13 +140,12 @@ export interface UpdateSettingsRequest {
   ops_monitoring_enabled?: boolean
   ops_realtime_monitoring_enabled?: boolean
   ops_query_mode_default?: 'auto' | 'raw' | 'preagg' | string
-  ops_metrics_interval_seconds?: number
-  min_claude_code_version?: string
-  max_claude_code_version?: string
-  allow_ungrouped_key_scheduling?: boolean
-  openai_global_pool_for_ungrouped_keys?: boolean
-  enable_fingerprint_unification?: boolean
-  enable_metadata_passthrough?: boolean
+	ops_metrics_interval_seconds?: number
+	min_claude_code_version?: string
+	max_claude_code_version?: string
+	allow_ungrouped_key_scheduling?: boolean
+	enable_fingerprint_unification?: boolean
+	enable_metadata_passthrough?: boolean
 }
 
 /**

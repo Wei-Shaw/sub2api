@@ -4184,14 +4184,12 @@ export default {
         maxVersionHint:
           'Reject Claude Code clients above this version (semver format). Leave empty to allow any version.'
       },
-      scheduling: {
-        title: 'Gateway Scheduling Settings',
-        description: 'Control API Key scheduling behavior',
-        allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
-        allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.',
-        openaiGlobalPoolForUngroupedKeys: 'Use OpenAI Global Pool For Ungrouped Keys',
-        openaiGlobalPoolForUngroupedKeysHint: 'Only applies to ungrouped API Keys. When enabled, those keys are treated as OpenAI traffic and can select from all OpenAI accounts.'
-      },
+	      scheduling: {
+	        title: 'Gateway Scheduling Settings',
+	        description: 'Control API Key scheduling behavior',
+	        allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
+	        allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
+	      },
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',

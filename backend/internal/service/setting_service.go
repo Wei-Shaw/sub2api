@@ -507,7 +507,6 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 
 	// 分组隔离
 	updates[SettingKeyAllowUngroupedKeyScheduling] = strconv.FormatBool(settings.AllowUngroupedKeyScheduling)
-	updates[SettingKeyOpenAIGlobalPoolForUngroupedKeys] = strconv.FormatBool(settings.OpenAIGlobalPoolForUngroupedKeys)
 
 	// Backend Mode
 	updates[SettingKeyBackendModeEnabled] = strconv.FormatBool(settings.BackendModeEnabled)
@@ -846,8 +845,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyMaxClaudeCodeVersion: "",
 
 		// 分组隔离（默认不允许未分组 Key 调度）
-		SettingKeyAllowUngroupedKeyScheduling:      "false",
-		SettingKeyOpenAIGlobalPoolForUngroupedKeys: "false",
+		SettingKeyAllowUngroupedKeyScheduling: "false",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -984,7 +982,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// 分组隔离
 	result.AllowUngroupedKeyScheduling = settings[SettingKeyAllowUngroupedKeyScheduling] == "true"
-	result.OpenAIGlobalPoolForUngroupedKeys = settings[SettingKeyOpenAIGlobalPoolForUngroupedKeys] == "true"
 
 	// Gateway forwarding behavior (defaults: fingerprint=true, metadata_passthrough=false)
 	if v, ok := settings[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -1372,15 +1369,6 @@ func (s *SettingService) IsUngroupedKeySchedulingAllowed(ctx context.Context) bo
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyAllowUngroupedKeyScheduling)
 	if err != nil {
 		return false // fail-closed: 查询失败时默认不允许
-	}
-	return value == "true"
-}
-
-// IsOpenAIGlobalPoolForUngroupedKeys 查询是否启用未分组 Key 的 OpenAI 全局池语义。
-func (s *SettingService) IsOpenAIGlobalPoolForUngroupedKeys(ctx context.Context) bool {
-	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAIGlobalPoolForUngroupedKeys)
-	if err != nil {
-		return false
 	}
 	return value == "true"
 }

@@ -1232,18 +1232,6 @@
               </div>
               <Toggle v-model="form.allow_ungrouped_key_scheduling" />
             </div>
-
-            <div class="mt-5 flex items-center justify-between border-t border-gray-100 pt-5 dark:border-dark-700">
-              <div>
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.scheduling.openaiGlobalPoolForUngroupedKeys') }}
-                </label>
-                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.scheduling.openaiGlobalPoolForUngroupedKeysHint') }}
-                </p>
-              </div>
-              <Toggle v-model="form.openai_global_pool_for_ungrouped_keys" />
-            </div>
           </div>
         </div>
 
@@ -2146,13 +2134,12 @@ const form = reactive<SettingsForm>({
   ops_metrics_interval_seconds: 60,
   // Claude Code version check
   min_claude_code_version: '',
-  max_claude_code_version: '',
-  // 分组隔离
-  allow_ungrouped_key_scheduling: false,
-  openai_global_pool_for_ungrouped_keys: false,
-  // Gateway forwarding behavior
-  enable_fingerprint_unification: true,
-  enable_metadata_passthrough: false
+	max_claude_code_version: '',
+	// 分组隔离
+	allow_ungrouped_key_scheduling: false,
+	// Gateway forwarding behavior
+	enable_fingerprint_unification: true,
+	enable_metadata_passthrough: false
 })
 
 const defaultSubscriptionGroupOptions = computed<DefaultSubscriptionGroupOption[]>(() =>
@@ -2455,14 +2442,13 @@ async function saveSettings() {
       fallback_model_gemini: form.fallback_model_gemini,
       fallback_model_antigravity: form.fallback_model_antigravity,
       enable_identity_patch: form.enable_identity_patch,
-      identity_patch_prompt: form.identity_patch_prompt,
-      min_claude_code_version: form.min_claude_code_version,
-      max_claude_code_version: form.max_claude_code_version,
-      allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
-      openai_global_pool_for_ungrouped_keys: form.openai_global_pool_for_ungrouped_keys,
-      enable_fingerprint_unification: form.enable_fingerprint_unification,
-      enable_metadata_passthrough: form.enable_metadata_passthrough
-    }
+		identity_patch_prompt: form.identity_patch_prompt,
+		min_claude_code_version: form.min_claude_code_version,
+		max_claude_code_version: form.max_claude_code_version,
+		allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
+		enable_fingerprint_unification: form.enable_fingerprint_unification,
+		enable_metadata_passthrough: form.enable_metadata_passthrough
+	}
     const updated = await adminAPI.settings.updateSettings(payload)
     Object.assign(form, updated)
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(

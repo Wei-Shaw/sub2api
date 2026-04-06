@@ -883,6 +883,10 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
   - `GatewayHandler.Responses` now matches that same Anthropic-side channel-mapping parity:
     - it resolves channel mapping before account selection, rewrites the request body when a mapping applies, and restores `ChannelUsageFields` on the usage-recording path
     - this closes the last obvious gap among the Anthropic compatibility entry handlers where mapped-model selection and channel writeback could drift from the rest of the merged billing chain
+  - the local `OpenAIGlobalPoolForUngroupedKeys` divergence has now been removed instead of preserved:
+    - backend settings constants / DTOs / handlers / `SettingService` parsing and defaults no longer expose `openai_global_pool_for_ungrouped_keys`
+    - `OpenAIGatewayService` no longer widens ungrouped OpenAI scheduling to the full platform pool, and `ResolveEffectivePlatform` no longer injects OpenAI effective platform for ungrouped keys on that basis
+    - frontend admin settings API / SettingsView / dedicated spec / locale strings for that toggle have all been removed together, so the product now aligns back to `allow_ungrouped_key_scheduling` as the only remaining ungrouped-key control
 - Defer the admin/settings/group/account restructuring until a separate compatibility pass is planned.
 - Treat the hotspot overlap as part of the next Batch C / Batch D style transplant work, not as mechanical absorb.
 

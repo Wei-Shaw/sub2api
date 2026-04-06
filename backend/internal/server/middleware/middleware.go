@@ -78,9 +78,6 @@ func ResolveEffectivePlatform(settingService *service.SettingService) gin.Handle
 		if apiKey.Group != nil {
 			platform = apiKey.Group.Platform
 		}
-		if platform == "" && apiKey.GroupID == nil && settingService != nil && settingService.IsOpenAIGlobalPoolForUngroupedKeys(c.Request.Context()) {
-			platform = service.PlatformOpenAI
-		}
 		if platform != "" {
 			ctx := context.WithValue(c.Request.Context(), ctxkey.EffectivePlatform, platform)
 			c.Request = c.Request.WithContext(ctx)

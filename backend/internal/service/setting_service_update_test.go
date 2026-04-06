@@ -194,25 +194,6 @@ func TestSettingService_UpdateSettings_RegistrationEmailSuffixWhitelist_Invalid(
 	require.Equal(t, "INVALID_REGISTRATION_EMAIL_SUFFIX_WHITELIST", infraerrors.Reason(err))
 }
 
-func TestSettingService_UpdateSettings_OpenAIGlobalPoolForUngroupedKeys(t *testing.T) {
-	repo := &settingUpdateRepoStub{}
-	svc := NewSettingService(repo, &config.Config{})
-
-	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		OpenAIGlobalPoolForUngroupedKeys: true,
-	})
-	require.NoError(t, err)
-	require.Equal(t, "true", repo.updates[SettingKeyOpenAIGlobalPoolForUngroupedKeys])
-}
-
-func TestSettingService_ParseSettings_OpenAIGlobalPoolForUngroupedKeys(t *testing.T) {
-	svc := NewSettingService(&settingUpdateRepoStub{}, &config.Config{})
-	settings := svc.parseSettings(map[string]string{
-		SettingKeyOpenAIGlobalPoolForUngroupedKeys: "true",
-	})
-	require.True(t, settings.OpenAIGlobalPoolForUngroupedKeys)
-}
-
 func TestParseDefaultSubscriptions_NormalizesValues(t *testing.T) {
 	got := parseDefaultSubscriptions(`[{"group_id":11,"validity_days":30},{"group_id":11,"validity_days":60},{"group_id":0,"validity_days":10},{"group_id":12,"validity_days":99999}]`)
 	require.Equal(t, []DefaultSubscriptionSetting{

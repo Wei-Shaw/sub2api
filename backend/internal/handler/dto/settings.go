@@ -89,8 +89,7 @@ type SystemSettings struct {
 	MaxClaudeCodeVersion string `json:"max_claude_code_version"`
 
 	// 分组隔离
-	AllowUngroupedKeyScheduling      bool `json:"allow_ungrouped_key_scheduling"`
-	OpenAIGlobalPoolForUngroupedKeys bool `json:"openai_global_pool_for_ungrouped_keys"`
+	AllowUngroupedKeyScheduling bool `json:"allow_ungrouped_key_scheduling"`
 
 	// Backend Mode
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
