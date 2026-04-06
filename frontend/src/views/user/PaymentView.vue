@@ -230,12 +230,12 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       orderType: orderType,
       planId: planId,
     })
-    if (result.client_secret) {
-      router.push({ path: '/payment/stripe', query: { order_id: String(result.order_id), client_secret: result.client_secret } })
-    } else if (result.qr_code) {
-      router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), qr: result.qr_code || '', pay_url: result.pay_url || '' } })
-    } else if (result.pay_url) {
-      window.location.href = result.pay_url
+    if (result.clientSecret) {
+      router.push({ path: '/payment/stripe', query: { order_id: String(result.orderId), client_secret: result.clientSecret } })
+    } else if (result.qrCode) {
+      router.push({ path: '/payment/qrcode', query: { order_id: String(result.orderId), qr: result.qrCode || '', pay_url: result.payUrl || '' } })
+    } else if (result.payUrl) {
+      window.location.href = result.payUrl
     } else {
       errorMessage.value = t('payment.result.failed')
       appStore.showError(errorMessage.value)

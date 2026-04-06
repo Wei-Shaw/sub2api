@@ -120,12 +120,12 @@ export interface CreateOrderRequest {
 }
 
 export interface CreateOrderResult {
-  order_id: number
-  pay_url?: string
-  qr_code?: string
-  client_secret?: string
-  pay_amount: number
-  expires_at: string
+  orderId: number
+  payUrl?: string
+  qrCode?: string
+  clientSecret?: string
+  payAmount: number
+  expiresAt: string
 }
 
 export interface DashboardStats {

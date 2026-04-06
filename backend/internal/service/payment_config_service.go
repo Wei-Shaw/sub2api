@@ -78,11 +78,11 @@ type UpdatePaymentConfigRequest struct {
 
 // MethodLimits holds per-payment-type limits.
 type MethodLimits struct {
-	PaymentType string  `json:"paymentType"`
-	FeeRate     float64 `json:"feeRate"`
+	PaymentType string  `json:"payment_type"`
+	FeeRate     float64 `json:"fee_rate"`
 	DailyLimit  float64 `json:"daily_limit"`
-	SingleMin   float64 `json:"singleMin"`
-	SingleMax   float64 `json:"singleMax"`
+	SingleMin   float64 `json:"single_min"`
+	SingleMax   float64 `json:"single_max"`
 }
 
 type CreateProviderInstanceRequest struct {

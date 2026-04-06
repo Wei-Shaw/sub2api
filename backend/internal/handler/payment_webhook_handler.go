@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -70,7 +71,7 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 
 	headers := make(map[string]string)
 	for k := range c.Request.Header {
-		headers[k] = c.GetHeader(k)
+		headers[strings.ToLower(k)] = c.GetHeader(k)
 	}
 
 	notification, err := provider.VerifyNotification(c.Request.Context(), string(body), headers)

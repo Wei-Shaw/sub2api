@@ -210,8 +210,9 @@ func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrder
 	if req.OrderType == "subscription" {
 		return s.validateSubOrder(ctx, req)
 	}
-	if req.Amount < cfg.MinAmount || req.Amount > cfg.MaxAmount {
-		return nil, infraerrors.BadRequest("INVALID_AMOUNT", fmt.Sprintf("amount must be between %.2f and %.2f", cfg.MinAmount, cfg.MaxAmount))
+	if (cfg.MinAmount > 0 && req.Amount < cfg.MinAmount) || (cfg.MaxAmount > 0 && req.Amount > cfg.MaxAmount) {
+		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount out of range").
+			WithMetadata(map[string]string{"min": fmt.Sprintf("%.2f", cfg.MinAmount), "max": fmt.Sprintf("%.2f", cfg.MaxAmount)})
 	}
 	return nil, nil
 }
