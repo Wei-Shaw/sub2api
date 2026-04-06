@@ -1216,6 +1216,12 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 			"model", requestedModel)
 		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
 	}
+	noAvailableErr := func() error {
+		if requestedModel != "" {
+			return fmt.Errorf("%w supporting model: %s", ErrNoAvailableAccounts, requestedModel)
+		}
+		return ErrNoAvailableAccounts
+	}
 
 	// 1. 尝试粘性会话命中
 	// Try sticky session hit
@@ -1229,16 +1235,16 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
+	if len(accounts) == 0 {
+		return nil, noAvailableErr()
+	}
 
 	// 3. 按优先级 + LRU 选择最佳账号
 	// Select by priority + LRU
 	selected := s.selectBestAccount(ctx, groupID, accounts, requestedModel, excludedIDs)
 
 	if selected == nil {
-		if requestedModel != "" {
-			return nil, fmt.Errorf("no available OpenAI accounts supporting model: %s", requestedModel)
-		}
-		return nil, errors.New("no available OpenAI accounts")
+		return nil, noAvailableErr()
 	}
 
 	// 4. 设置粘性会话绑定
@@ -1285,21 +1291,15 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		return nil
 	}
 
-	// 验证账号是否可用于当前请求
-	// Verify account is usable for current request
-	if !account.IsSchedulable() || !account.IsOpenAI() {
-		return nil
-	}
-	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
-		return nil
-	}
-	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, TargetGroupAny)
+	account = s.prepareSelectedOpenAIAccount(
+		ctx,
+		groupID,
+		account,
+		requestedModel,
+		TargetGroupAny,
+		s.needsUpstreamChannelRestrictionCheck(ctx, groupID),
+	)
 	if account == nil {
-		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-		return nil
-	}
-	if groupID != nil && s.needsUpstreamChannelRestrictionCheck(ctx, groupID) &&
-		s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
@@ -1450,6 +1450,20 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	if len(accounts) == 0 {
 		return nil, ErrNoAvailableAccounts
 	}
+	prepareSelectedAccount := func(account *Account) *Account {
+		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, account, requestedModel, TargetGroupAny)
+		if fresh == nil {
+			return nil
+		}
+		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, TargetGroupAny)
+		if fresh == nil {
+			return nil
+		}
+		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, derefGroupID(groupID), fresh, requestedModel) {
+			return nil
+		}
+		return fresh
+	}
 
 	isExcluded := func(accountID int64) bool {
 		if excludedIDs == nil {
@@ -1469,12 +1483,9 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 				if clearSticky {
 					_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 				}
-				if !clearSticky && account.IsSchedulable() && account.IsOpenAI() &&
-					(requestedModel == "" || account.IsModelSupported(requestedModel)) {
-					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, TargetGroupAny)
+				if !clearSticky {
+					account = prepareSelectedAccount(account)
 					if account == nil {
-						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else {
 						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
@@ -1544,11 +1555,8 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 		ordered := append([]*Account(nil), candidates...)
 		sortAccountsByPriorityAndLastUsed(ordered, false)
 		for _, acc := range ordered {
-			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, TargetGroupAny)
+			fresh := prepareSelectedAccount(acc)
 			if fresh == nil {
-				continue
-			}
-			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, derefGroupID(groupID), fresh, requestedModel) {
 				continue
 			}
 			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
@@ -1601,11 +1609,8 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 			shuffleWithinSortGroups(available)
 
 			for _, item := range available {
-				fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, item.account, requestedModel, TargetGroupAny)
+				fresh := prepareSelectedAccount(item.account)
 				if fresh == nil {
-					continue
-				}
-				if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, derefGroupID(groupID), fresh, requestedModel) {
 					continue
 				}
 				result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
@@ -1626,11 +1631,8 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	// ============ Layer 3: Fallback wait ============
 	sortAccountsByPriorityAndLastUsed(candidates, false)
 	for _, acc := range candidates {
-		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, TargetGroupAny)
+		fresh := prepareSelectedAccount(acc)
 		if fresh == nil {
-			continue
-		}
-		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, derefGroupID(groupID), fresh, requestedModel) {
 			continue
 		}
 		return &AccountSelectionResult{
@@ -1831,6 +1833,21 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.
 		return nil
 	}
 	if requestedModel != "" && !fresh.IsModelSupported(requestedModel) {
+		return nil
+	}
+	return fresh
+}
+
+func (s *OpenAIGatewayService) prepareSelectedOpenAIAccount(ctx context.Context, groupID *int64, account *Account, requestedModel string, targetGroup AccountTargetGroup, needsUpstreamCheck bool) *Account {
+	fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, account, requestedModel, targetGroup)
+	if fresh == nil {
+		return nil
+	}
+	fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, targetGroup)
+	if fresh == nil {
+		return nil
+	}
+	if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, derefGroupID(groupID), fresh, requestedModel) {
 		return nil
 	}
 	return fresh

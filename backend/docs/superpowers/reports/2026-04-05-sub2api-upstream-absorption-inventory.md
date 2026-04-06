@@ -887,6 +887,17 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
     - backend settings constants / DTOs / handlers / `SettingService` parsing and defaults no longer expose `openai_global_pool_for_ungrouped_keys`
     - `OpenAIGatewayService` no longer widens ungrouped OpenAI scheduling to the full platform pool, and `ResolveEffectivePlatform` no longer injects OpenAI effective platform for ungrouped keys on that basis
     - frontend admin settings API / SettingsView / dedicated spec / locale strings for that toggle have all been removed together, so the product now aligns back to `allow_ungrouped_key_scheduling` as the only remaining ungrouped-key control
+  - the next hot-path merged pass has also started from the lowest-risk OpenAI helper boundary rather than the largest scheduler function:
+    - `OpenAIGatewayService.SelectAccountWithLoadAwareness` now centralizes its Layer 1/2/3 `fresh + recheck + upstream channel restriction` gate through one local `prepareSelectedAccount` path
+    - this does not roll back the local `TargetGroupAny/Active/Exhausted` design; it just makes the retained OpenAI freshness/recheck semantics explicit before touching larger selection branches
+  - that same retained gate is now also shared by `selectBestAccount`, so the non-load-batch OpenAI main selection path no longer carries a parallel copy of the `fresh + recheck + upstream restriction` chain
+  - `tryStickySessionHit` has now been folded into that same gate as well, while keeping sticky-specific cleanup / TTL refresh semantics outside the helper
+  - `selectAccountForModelWithExclusions` no longer emits a separate bare-string “no available OpenAI accounts” branch; its miss path now rejoins `ErrNoAvailableAccounts`, so the OpenAI ordinary-selection入口和 load-aware 退化路径的失败语义更一致
+  - `GatewayService.SelectAccountWithLoadAwareness` has also started the same style of request-level gate unification:
+    - routed sticky, normal sticky, and Layer 2 candidate filtering now share one local account-selection reject path covering platform/mixed scheduling, model support, model limit, quota, window cost, RPM, and upstream restriction
+    - wait-plan / slot-acquire / sticky binding outer shells are still intentionally left in place, so this remains a low-risk convergence step rather than a full scheduler rewrite
+  - `selectAccountWithMixedScheduling` now follows that same convergence pattern on the legacy mixed path, while still keeping group membership checks on the sticky-cache lookup shell instead of incorrectly pushing them into the generic reject helper
+  - `selectAccountForModelWithPlatform` now mirrors the same convergence on the single-platform legacy path, so routed sticky, normal sticky, and main candidate scanning no longer each carry their own copy of the same request-level reject chain
 - Defer the admin/settings/group/account restructuring until a separate compatibility pass is planned.
 - Treat the hotspot overlap as part of the next Batch C / Batch D style transplant work, not as mechanical absorb.
 

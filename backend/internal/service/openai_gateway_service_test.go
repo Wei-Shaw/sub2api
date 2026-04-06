@@ -979,6 +979,9 @@ func TestOpenAISelectAccountForModelWithExclusions_NoAccounts(t *testing.T) {
 	if acc != nil {
 		t.Fatalf("expected nil account")
 	}
+	if !errors.Is(err, ErrNoAvailableAccounts) {
+		t.Fatalf("expected ErrNoAvailableAccounts, got: %v", err)
+	}
 	if !strings.Contains(err.Error(), "no available OpenAI accounts") {
 		t.Fatalf("unexpected error: %v", err)
 	}
