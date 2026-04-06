@@ -66,7 +66,6 @@ import Icon from '@/components/icons/Icon.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 import type { ProviderInstance } from '@/types/payment'
 import type { TypeOption } from './providerConfig'
-import { parseTypes } from './providerConfig'
 
 const PROVIDER_KEY_LABELS: Record<string, string> = {
   easypay: 'admin.settings.payment.providerEasypay',
@@ -93,6 +92,6 @@ const { t } = useI18n()
 const keyLabel = computed(() => t(PROVIDER_KEY_LABELS[props.provider.provider_key] || props.provider.provider_key))
 
 function isSelected(type: string): boolean {
-  return parseTypes(props.provider.supported_types).includes(type)
+  return props.provider.supported_types.includes(type)
 }
 </script>

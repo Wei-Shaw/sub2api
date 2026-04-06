@@ -91,7 +91,7 @@ type CreateProviderInstanceRequest struct {
 	ProviderKey    string            `json:"providerKey"`
 	Name           string            `json:"name"`
 	Config         map[string]string `json:"config"`
-	SupportedTypes string            `json:"supportedTypes"`
+	SupportedTypes []string          `json:"supportedTypes"`
 	Enabled        bool              `json:"enabled"`
 	SortOrder      int               `json:"sortOrder"`
 	Limits         string            `json:"limits"`
@@ -101,7 +101,7 @@ type CreateProviderInstanceRequest struct {
 type UpdateProviderInstanceRequest struct {
 	Name           *string           `json:"name"`
 	Config         map[string]string `json:"config"`
-	SupportedTypes *string           `json:"supportedTypes"`
+	SupportedTypes []string          `json:"supportedTypes"`
 	Enabled        *bool             `json:"enabled"`
 	SortOrder      *int              `json:"sortOrder"`
 	Limits         *string           `json:"limits"`
@@ -257,6 +257,25 @@ func derefStr(v *string) string {
 	return *v
 }
 
+func splitTypes(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+func joinTypes(types []string) string {
+	return strings.Join(types, ",")
+}
+
 // --- Provider Instance CRUD ---
 
 func (s *PaymentConfigService) ListProviderInstances(ctx context.Context) ([]*dbent.PaymentProviderInstance, error) {
@@ -270,7 +289,7 @@ type ProviderInstanceResponse struct {
 	ProviderKey    string            `json:"provider_key"`
 	Name           string            `json:"name"`
 	Config         map[string]string `json:"config"`
-	SupportedTypes string            `json:"supported_types"`
+	SupportedTypes []string          `json:"supported_types"`
 	Limits         string            `json:"limits"`
 	Enabled        bool              `json:"enabled"`
 	RefundEnabled  bool              `json:"refund_enabled"`
@@ -289,7 +308,7 @@ func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Conte
 	for _, inst := range instances {
 		resp := ProviderInstanceResponse{
 			ID: int64(inst.ID), ProviderKey: inst.ProviderKey, Name: inst.Name,
-			SupportedTypes: inst.SupportedTypes, Limits: inst.Limits,
+			SupportedTypes: splitTypes(inst.SupportedTypes), Limits: inst.Limits,
 			Enabled: inst.Enabled, RefundEnabled: inst.RefundEnabled, SortOrder: inst.SortOrder,
 		}
 		resp.Config = s.decryptAndMaskConfig(inst.Config)
@@ -349,7 +368,8 @@ var validProviderKeys = map[string]bool{
 }
 
 func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req CreateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
-	if err := validateProviderRequest(req.ProviderKey, req.Name, req.SupportedTypes); err != nil {
+	typesStr := joinTypes(req.SupportedTypes)
+	if err := validateProviderRequest(req.ProviderKey, req.Name, typesStr); err != nil {
 		return nil, err
 	}
 	enc, err := s.encryptConfig(req.Config)
@@ -358,7 +378,7 @@ func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req C
 	}
 	return s.entClient.PaymentProviderInstance.Create().
 		SetProviderKey(req.ProviderKey).SetName(req.Name).SetConfig(enc).
-		SetSupportedTypes(req.SupportedTypes).SetEnabled(req.Enabled).
+		SetSupportedTypes(typesStr).SetEnabled(req.Enabled).
 		SetSortOrder(req.SortOrder).SetLimits(req.Limits).SetRefundEnabled(req.RefundEnabled).
 		Save(ctx)
 }
@@ -427,7 +447,7 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 		u.SetConfig(enc)
 	}
 	if req.SupportedTypes != nil {
-		u.SetSupportedTypes(*req.SupportedTypes)
+		u.SetSupportedTypes(joinTypes(req.SupportedTypes))
 	}
 	if req.Enabled != nil {
 		u.SetEnabled(*req.Enabled)

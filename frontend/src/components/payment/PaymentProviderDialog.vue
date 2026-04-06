@@ -209,7 +209,6 @@ import {
   PROVIDER_SUPPORTED_TYPES,
   PROVIDER_CALLBACK_PATHS,
   WEBHOOK_PATHS,
-  parseTypes,
   getAvailableTypes,
   extractBaseUrl,
 } from './providerConfig'
@@ -243,7 +242,7 @@ const { t } = useI18n()
 const form = reactive({
   name: '',
   provider_key: 'easypay',
-  supported_types: '',
+  supported_types: [] as string[],
   enabled: true,
   refund_enabled: false,
 })
@@ -282,7 +281,7 @@ const resolvedFields = computed(() => {
 })
 
 const limitableTypes = computed(() => {
-  const selected = parseTypes(form.supported_types).filter(t => t !== 'easypay')
+  const selected = form.supported_types.filter(t => t !== 'easypay')
   return selected.map(v => {
     const found = props.allPaymentTypes.find(pt => pt.value === v)
     return found || { value: v, label: v }
@@ -291,18 +290,19 @@ const limitableTypes = computed(() => {
 
 // --- Methods ---
 function isTypeSelected(type: string): boolean {
-  return parseTypes(form.supported_types).includes(type)
+  return form.supported_types.includes(type)
 }
 
 function toggleType(type: string) {
-  const current = parseTypes(form.supported_types)
-  form.supported_types = current.includes(type)
-    ? current.filter(t => t !== type).join(',')
-    : [...current, type].join(',')
+  if (form.supported_types.includes(type)) {
+    form.supported_types = form.supported_types.filter(t => t !== type)
+  } else {
+    form.supported_types = [...form.supported_types, type]
+  }
 }
 
 function onKeyChange() {
-  form.supported_types = (PROVIDER_SUPPORTED_TYPES[form.provider_key] || []).join(',')
+  form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[form.provider_key] || [])]
   clearConfig()
   applyDefaults()
 }
@@ -357,7 +357,7 @@ function handleSave() {
     emitValidationError(t('admin.settings.payment.validationNameRequired'))
     return
   }
-  if (!form.supported_types.trim()) {
+  if (form.supported_types.length === 0) {
     emitValidationError(t('admin.settings.payment.validationTypesRequired'))
     return
   }
@@ -408,7 +408,7 @@ function emitValidationError(msg: string) {
 function reset(defaultKey: string) {
   form.name = ''
   form.provider_key = defaultKey
-  form.supported_types = (PROVIDER_SUPPORTED_TYPES[defaultKey] || []).join(',')
+  form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[defaultKey] || [])]
   form.enabled = true
   form.refund_enabled = false
   clearConfig()

@@ -2800,8 +2800,6 @@ async function saveBetaPolicySettings() {
 
 // ==================== Provider Management ====================
 
-import { parseTypes } from '@/components/payment/providerConfig'
-
 const allPaymentTypes = computed(() => [
   { value: 'easypay', label: t('payment.methods.easypay') },
   { value: 'alipay', label: t('payment.methods.alipay') },
@@ -2901,18 +2899,16 @@ async function handleToggleField(provider: ProviderInstance, field: 'enabled' | 
 }
 
 async function handleToggleType(provider: ProviderInstance, type: string) {
-  const current = parseTypes(provider.supported_types)
-  const updated = current.includes(type)
-    ? current.filter(t => t !== type)
-    : [...current, type]
+  const updated = provider.supported_types.includes(type)
+    ? provider.supported_types.filter(t => t !== type)
+    : [...provider.supported_types, type]
   if (updated.length === 0) {
     appStore.showError(t('admin.settings.payment.validationTypesRequired'))
     return
   }
-  const newVal = updated.join(',')
   try {
-    await adminAPI.payment.updateProvider(provider.id, { supportedTypes: newVal } as any)
-    provider.supported_types = newVal
+    await adminAPI.payment.updateProvider(provider.id, { supportedTypes: updated } as any)
+    provider.supported_types = updated
   } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
 }
 

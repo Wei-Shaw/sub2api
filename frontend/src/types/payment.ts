@@ -104,7 +104,7 @@ export interface ProviderInstance {
   provider_key: string
   name: string
   config: Record<string, string>
-  supported_types: string
+  supported_types: string[]
   enabled: boolean
   refund_enabled: boolean
   limits: string
