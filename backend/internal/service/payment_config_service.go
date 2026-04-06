@@ -392,9 +392,21 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 				return nil, fmt.Errorf("check pending orders: %w", err)
 			}
 			if count > 0 {
-				return nil, infraerrors.Conflict("PENDING_ORDERS",
-					fmt.Sprintf("this instance has %d in-progress orders; changing credentials may break payment callbacks — wait for orders to complete or disable the instance first", count))
+				return nil, infraerrors.Conflict("PENDING_ORDERS", "instance has pending orders").
+					WithMetadata(map[string]string{"count": strconv.Itoa(count)})
 			}
+		}
+	}
+
+	// Block disabling a provider that has pending orders
+	if req.Enabled != nil && !*req.Enabled {
+		count, err := s.countPendingOrders(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("check pending orders: %w", err)
+		}
+		if count > 0 {
+			return nil, infraerrors.Conflict("PENDING_ORDERS", "instance has pending orders").
+				WithMetadata(map[string]string{"count": strconv.Itoa(count)})
 		}
 	}
 

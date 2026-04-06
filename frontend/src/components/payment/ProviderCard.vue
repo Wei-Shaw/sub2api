@@ -1,11 +1,14 @@
 <template>
-  <div :class="[
-    'rounded-lg border transition-all',
-    enabled ? 'border-gray-200 dark:border-dark-600' : 'border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800/50',
-  ]">
+  <div
+    :class="[
+      'group relative rounded-lg border transition-all',
+      enabled ? 'border-gray-200 dark:border-dark-600' : 'border-gray-200 bg-gray-50 opacity-50 dark:border-dark-700 dark:bg-dark-800/50',
+    ]"
+    :title="!enabled ? t('admin.settings.payment.typeDisabled') + ' — ' + t('admin.settings.payment.enableTypesFirst') : undefined"
+  >
     <div :class="[
       'flex items-center justify-between px-4 py-2.5',
-      !enabled && 'opacity-50 pointer-events-none',
+      !enabled && 'pointer-events-none',
     ]">
       <!-- Left: icon + name + key badge + type badges -->
       <div class="flex items-center gap-3">
@@ -52,13 +55,6 @@
           </button>
         </div>
       </div>
-    </div>
-
-    <!-- Disabled hint -->
-    <div v-if="!enabled" class="border-t border-gray-100 px-4 py-2 dark:border-dark-700">
-      <span class="text-xs text-amber-500">
-        {{ t('admin.settings.payment.typeDisabled') }} — {{ t('admin.settings.payment.enableTypesFirst') }}
-      </span>
     </div>
   </div>
 </template>
