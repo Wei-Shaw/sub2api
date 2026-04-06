@@ -1640,13 +1640,14 @@
 <!-- Tab: Payment -->
         <div v-show="activeTab === 'payment'" class="space-y-6">
 
-        <!-- Payment System Settings - redirect to dedicated page -->
+        <!-- Payment System Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.title') }}</h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.description') }}</p>
           </div>
           <div class="space-y-6 p-6">
+            <!-- Enable toggle -->
             <div class="flex items-center justify-between">
               <div>
                 <label class="font-medium text-gray-900 dark:text-white">{{ t('admin.settings.payment.enabled') }}</label>
@@ -1655,31 +1656,146 @@
               <Toggle v-model="form.payment_enabled" />
             </div>
             <template v-if="form.payment_enabled">
+              <!-- Product name prefix / suffix + preview -->
+              <div class="grid grid-cols-3 gap-4">
+                <div><label class="input-label">{{ t('admin.settings.payment.productNamePrefix') }}</label><input v-model="form.payment_product_name_prefix" type="text" class="input" placeholder="Sub2API" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.productNameSuffix') }}</label><input v-model="form.payment_product_name_suffix" type="text" class="input" placeholder="CNY" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.preview') }}</label><div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300">{{ (form.payment_product_name_prefix || 'Sub2API') + ' 100 ' + (form.payment_product_name_suffix || 'CNY') }}</div></div>
+              </div>
+              <!-- Toggles row -->
+              <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
+                <div class="flex items-center gap-2">
+                  <input id="balance-disabled" v-model="form.payment_balance_disabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                  <label for="balance-disabled" class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.balancePaymentDisabled') }}</label>
+                </div>
+              </div>
+              <!-- Amount / timeout / pending -->
               <div class="grid grid-cols-2 gap-4">
                 <div><label class="input-label">{{ t('admin.settings.payment.minAmount') }}</label><input v-model.number="form.payment_min_amount" type="number" step="0.01" min="0" class="input" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.maxAmount') }}</label><input v-model.number="form.payment_max_amount" type="number" step="0.01" min="0" class="input" /></div>
               </div>
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-3 gap-4">
                 <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') }}</label><input v-model.number="form.payment_daily_limit" type="number" step="0.01" min="0" class="input" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.maxPendingOrders') }}</label><input v-model.number="form.payment_max_pending_orders" type="number" min="1" class="input" /></div>
-              </div>
-              <div class="grid grid-cols-2 gap-4">
                 <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') }}</label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" /></div>
-                <div class="flex items-center gap-2 pt-6"><input id="balance-disabled" v-model="form.payment_balance_disabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" /><label for="balance-disabled" class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.balancePaymentDisabled') }}</label></div>
               </div>
+              <!-- Enabled payment types -->
               <div><label class="input-label">{{ t('admin.settings.payment.enabledPaymentTypes') }}</label><input v-model="form.payment_enabled_types" type="text" class="input" placeholder="alipay,wxpay,stripe" /><p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.enabledPaymentTypesHint') }}</p></div>
+              <!-- Load balance strategy -->
+              <div>
+                <label class="input-label">{{ t('admin.settings.payment.loadBalanceStrategy') }}</label>
+                <Select v-model="form.payment_load_balance_strategy" :options="loadBalanceOptions" class="w-60" />
+              </div>
+              <!-- Help -->
               <div class="grid grid-cols-2 gap-4">
                 <div><label class="input-label">{{ t('admin.settings.payment.helpImageUrl') }}</label><input v-model="form.payment_help_image_url" type="url" class="input" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.helpText') }}</label><input v-model="form.payment_help_text" type="text" class="input" /></div>
-              </div>
-              <div>
-                <a href="/admin/orders/config" class="text-sm text-blue-600 hover:underline dark:text-blue-400">{{ t('admin.settings.payment.manageProviders') }} &rarr;</a>
               </div>
             </template>
           </div>
         </div>
 
+        <!-- Provider Management (inline) -->
+        <div v-if="form.payment_enabled" class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.providerManagement') }}</h2>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.providerManagementDesc') }}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button @click="loadProviders" :disabled="providersLoading" class="btn btn-secondary" :title="t('common.refresh')"><Icon name="refresh" size="md" :class="providersLoading ? 'animate-spin' : ''" /></button>
+                <button @click="openCreateProvider" class="btn btn-primary">{{ t('admin.settings.payment.createProvider') }}</button>
+              </div>
+            </div>
+          </div>
+          <div class="p-6">
+            <div v-if="providersLoading && !providers.length" class="flex items-center justify-center py-8"><div class="h-6 w-6 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div></div>
+            <div v-else-if="providers.length" class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div v-for="provider in providers" :key="provider.id" class="rounded-lg border border-gray-200 dark:border-dark-600">
+                <div class="flex items-start justify-between p-4">
+                  <div class="flex items-center gap-3">
+                    <div :class="['rounded-lg p-2', provider.enabled ? 'bg-green-100 dark:bg-green-900/30' : 'bg-gray-100 dark:bg-dark-700']">
+                      <Icon name="server" size="md" :class="provider.enabled ? 'text-green-600 dark:text-green-400' : 'text-gray-400'" />
+                    </div>
+                    <div>
+                      <h3 class="font-medium text-gray-900 dark:text-white">{{ provider.name }}</h3>
+                      <p class="text-sm text-gray-500 dark:text-gray-400">{{ providerKeyLabel(provider.provider_key) }}</p>
+                    </div>
+                  </div>
+                  <span :class="['badge', provider.enabled ? 'badge-success' : 'badge-secondary']">{{ provider.enabled ? t('common.enabled') : t('common.disabled') }}</span>
+                </div>
+                <div class="border-t border-gray-100 px-4 py-3 dark:border-dark-700">
+                  <div class="flex flex-wrap gap-2 text-xs">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.supportedTypes') }}:</span>
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ provider.supported_types || '-' }}</span>
+                  </div>
+                  <div class="mt-1 flex items-center gap-2 text-xs">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.refundEnabled') }}:</span>
+                    <span :class="provider.refund_enabled ? 'text-green-600' : 'text-gray-400'">{{ provider.refund_enabled ? 'Yes' : 'No' }}</span>
+                  </div>
+                </div>
+                <div class="flex items-center justify-end gap-2 border-t border-gray-100 px-4 py-3 dark:border-dark-700">
+                  <button @click="openEditProvider(provider)" class="btn btn-secondary btn-sm">{{ t('common.edit') }}</button>
+                  <button @click="confirmDeleteProvider(provider)" class="btn btn-sm rounded-md bg-red-50 px-3 py-1.5 text-sm text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30">{{ t('common.delete') }}</button>
+                </div>
+              </div>
+            </div>
+            <div v-else class="py-8 text-center">
+              <Icon name="server" size="xl" class="mx-auto mb-3 text-gray-300 dark:text-dark-600" />
+              <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.noProviders') }}</p>
+              <button @click="openCreateProvider" class="btn btn-primary mt-3">{{ t('admin.settings.payment.createProvider') }}</button>
+            </div>
+          </div>
         </div>
+
+        </div>
+
+        <!-- Provider Create/Edit Dialog -->
+        <BaseDialog :show="showProviderDialog" :title="editingProvider ? t('admin.settings.payment.editProvider') : t('admin.settings.payment.createProvider')" width="wide" @close="showProviderDialog = false">
+          <form id="provider-form" @submit.prevent="handleSaveProvider" class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+              <div><label class="input-label">{{ t('admin.settings.payment.providerName') }}</label><input v-model="providerForm.name" type="text" class="input" required /></div>
+              <div><label class="input-label">{{ t('admin.settings.payment.providerKey') }}</label><Select v-model="providerForm.provider_key" :options="providerKeyOptions" :disabled="!!editingProvider" /></div>
+            </div>
+            <div><label class="input-label">{{ t('admin.settings.payment.supportedTypes') }}</label><input v-model="providerForm.supported_types" type="text" class="input" placeholder="alipay,wxpay" /><p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.supportedTypesHint') }}</p></div>
+            <div class="flex items-center gap-4">
+              <div class="flex items-center gap-2"><input id="prov-enabled" v-model="providerForm.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" /><label for="prov-enabled" class="text-sm text-gray-700 dark:text-gray-300">{{ t('common.enabled') }}</label></div>
+              <div class="flex items-center gap-2"><input id="prov-refund" v-model="providerForm.refund_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" /><label for="prov-refund" class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.refundEnabled') }}</label></div>
+            </div>
+            <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
+              <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.providerConfig') }}</h4>
+              <template v-if="providerForm.provider_key === 'easypay'">
+                <div class="grid grid-cols-2 gap-4"><div><label class="input-label">PID</label><input v-model="providerConfig.pid" type="text" class="input" /></div><div><label class="input-label">PKey</label><input v-model="providerConfig.pkey" type="password" class="input" /></div></div>
+                <div class="mt-3"><label class="input-label">API Base URL</label><input v-model="providerConfig.apiBase" type="url" class="input" /></div>
+                <div class="mt-3 grid grid-cols-2 gap-4"><div><label class="input-label">Notify URL</label><input v-model="providerConfig.notifyUrl" type="url" class="input" /></div><div><label class="input-label">Return URL</label><input v-model="providerConfig.returnUrl" type="url" class="input" /></div></div>
+                <div class="mt-3 grid grid-cols-3 gap-4"><div><label class="input-label">CID</label><input v-model="providerConfig.cid" type="text" class="input" /></div><div><label class="input-label">CID Alipay</label><input v-model="providerConfig.cidAlipay" type="text" class="input" /></div><div><label class="input-label">CID Wxpay</label><input v-model="providerConfig.cidWxpay" type="text" class="input" /></div></div>
+              </template>
+              <template v-else-if="providerForm.provider_key === 'alipay'">
+                <div><label class="input-label">App ID</label><input v-model="providerConfig.appId" type="text" class="input" /></div>
+                <div class="mt-3"><label class="input-label">Private Key</label><textarea v-model="providerConfig.privateKey" rows="3" class="input font-mono text-xs"></textarea></div>
+                <div class="mt-3"><label class="input-label">Public Key</label><textarea v-model="providerConfig.publicKey" rows="3" class="input font-mono text-xs"></textarea></div>
+                <div class="mt-3 grid grid-cols-2 gap-4"><div><label class="input-label">Notify URL</label><input v-model="providerConfig.notifyUrl" type="url" class="input" /></div><div><label class="input-label">Return URL</label><input v-model="providerConfig.returnUrl" type="url" class="input" /></div></div>
+              </template>
+              <template v-else-if="providerForm.provider_key === 'wxpay'">
+                <div class="grid grid-cols-2 gap-4"><div><label class="input-label">App ID</label><input v-model="providerConfig.appId" type="text" class="input" /></div><div><label class="input-label">Merchant ID</label><input v-model="providerConfig.mchId" type="text" class="input" /></div></div>
+                <div class="mt-3"><label class="input-label">Private Key</label><textarea v-model="providerConfig.privateKey" rows="3" class="input font-mono text-xs"></textarea></div>
+                <div class="mt-3"><label class="input-label">API V3 Key</label><input v-model="providerConfig.apiV3Key" type="password" class="input" /></div>
+                <div class="mt-3"><label class="input-label">Public Key</label><textarea v-model="providerConfig.publicKey" rows="2" class="input font-mono text-xs"></textarea></div>
+                <div class="mt-3 grid grid-cols-2 gap-4"><div><label class="input-label">Public Key ID</label><input v-model="providerConfig.publicKeyId" type="text" class="input" /></div><div><label class="input-label">Cert Serial</label><input v-model="providerConfig.certSerial" type="text" class="input" /></div></div>
+                <div class="mt-3"><label class="input-label">Notify URL</label><input v-model="providerConfig.notifyUrl" type="url" class="input" /></div>
+              </template>
+              <template v-else-if="providerForm.provider_key === 'stripe'">
+                <div><label class="input-label">Secret Key</label><input v-model="providerConfig.secretKey" type="password" class="input" /></div>
+                <div class="mt-3"><label class="input-label">Publishable Key</label><input v-model="providerConfig.publishableKey" type="text" class="input" /></div>
+                <div class="mt-3"><label class="input-label">Webhook Secret</label><input v-model="providerConfig.webhookSecret" type="password" class="input" /></div>
+              </template>
+              <div v-else class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.selectProviderKey') }}</div>
+            </div>
+          </form>
+          <template #footer><div class="flex justify-end gap-3"><button type="button" @click="showProviderDialog = false" class="btn btn-secondary">{{ t('common.cancel') }}</button><button type="submit" form="provider-form" :disabled="providerSaving" class="btn btn-primary">{{ providerSaving ? t('common.saving') : t('common.save') }}</button></div></template>
+        </BaseDialog>
+        <ConfirmDialog :show="showDeleteProviderDialog" :title="t('admin.settings.payment.deleteProvider')" :message="t('admin.settings.payment.deleteProviderConfirm')" :confirm-text="t('common.delete')" danger @confirm="handleDeleteProvider" @cancel="showDeleteProviderDialog = false" />
         <div v-show="activeTab === 'email'" class="space-y-6">
         <!-- Email disabled hint - show when email_verify_enabled is off -->
         <div v-if="!form.email_verify_enabled" class="card">
@@ -1946,9 +2062,12 @@ import type {
   DefaultSubscriptionSetting
 } from '@/api/admin/settings'
 import type { AdminGroup } from '@/types'
+import type { ProviderInstance } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -2066,6 +2185,9 @@ type SettingsForm = SystemSettings & {
   payment_enabled_types: string
   payment_help_image_url: string
   payment_help_text: string
+  payment_product_name_prefix: string
+  payment_product_name_suffix: string
+  payment_load_balance_strategy: string
 }
 
 const form = reactive<SettingsForm>({
@@ -2089,7 +2211,7 @@ const form = reactive<SettingsForm>({
   home_content: '',
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
-  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_enabled_types: '',  payment_help_image_url: '',  payment_help_text: '',
+  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_enabled_types: '',  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',
   sora_client_enabled: false,
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number}>,
   custom_endpoints: [] as Array<{name: string; endpoint: string; description: string}>,
@@ -2311,6 +2433,9 @@ async function loadSettings() {
     form.payment_order_timeout_minutes = paymentConfig.order_timeout_minutes
     form.payment_balance_disabled = paymentConfig.balance_disabled
     form.payment_enabled_types = (paymentConfig.enabled_payment_types || []).join(',')
+    form.payment_product_name_prefix = paymentConfig.product_name_prefix || ''
+    form.payment_product_name_suffix = paymentConfig.product_name_suffix || ''
+    form.payment_load_balance_strategy = paymentConfig.load_balance_strategy || 'round-robin'
   } catch (error: any) {
     loadFailed.value = true
     appStore.showError(
@@ -2454,7 +2579,10 @@ async function saveSettings() {
       max_pending_orders: form.payment_max_pending_orders,
       order_timeout_minutes: form.payment_order_timeout_minutes,
       balance_disabled: form.payment_balance_disabled,
-      enabled_payment_types: enabledTypes
+      enabled_payment_types: enabledTypes,
+      product_name_prefix: form.payment_product_name_prefix,
+      product_name_suffix: form.payment_product_name_suffix,
+      load_balance_strategy: form.payment_load_balance_strategy,
     }
 
     const [updated] = await Promise.all([
@@ -2756,6 +2884,76 @@ async function saveBetaPolicySettings() {
   }
 }
 
+// ==================== Provider Management ====================
+
+const providersLoading = ref(false)
+const providerSaving = ref(false)
+const providers = ref<ProviderInstance[]>([])
+const showProviderDialog = ref(false)
+const showDeleteProviderDialog = ref(false)
+const editingProvider = ref<ProviderInstance | null>(null)
+const deletingProviderId = ref<number | null>(null)
+
+const providerForm = reactive({
+  name: '', provider_key: 'easypay', supported_types: '', enabled: true, refund_enabled: false,
+})
+const providerConfig = reactive({
+  pid: '', pkey: '', apiBase: '', notifyUrl: '', returnUrl: '',
+  cid: '', cidAlipay: '', cidWxpay: '',
+  appId: '', privateKey: '', publicKey: '',
+  mchId: '', apiV3Key: '', publicKeyId: '', certSerial: '',
+  secretKey: '', publishableKey: '', webhookSecret: '',
+})
+const providerKeyOptions = [
+  { value: 'easypay', label: 'EasyPay' },
+  { value: 'alipay', label: 'Alipay (Direct)' },
+  { value: 'wxpay', label: 'WeChat Pay (Direct)' },
+  { value: 'stripe', label: 'Stripe' },
+]
+const loadBalanceOptions = computed(() => [
+  { value: 'round-robin', label: t('admin.settings.payment.strategyRoundRobin') },
+  { value: 'least-amount', label: t('admin.settings.payment.strategyLeastAmount') },
+])
+function providerKeyLabel(key: string): string {
+  return providerKeyOptions.find(o => o.value === key)?.label || key
+}
+async function loadProviders() {
+  providersLoading.value = true
+  try { const res = await adminAPI.payment.getProviders(); providers.value = res.data || [] }
+  catch (err: unknown) { appStore.showError(err instanceof Error ? err.message : String(err)) }
+  finally { providersLoading.value = false }
+}
+function resetProviderForm() {
+  providerForm.name = ''; providerForm.provider_key = 'easypay'; providerForm.supported_types = ''
+  providerForm.enabled = true; providerForm.refund_enabled = false
+  Object.keys(providerConfig).forEach(k => { (providerConfig as any)[k] = '' })
+}
+function openCreateProvider() { editingProvider.value = null; resetProviderForm(); showProviderDialog.value = true }
+function openEditProvider(provider: ProviderInstance) {
+  editingProvider.value = provider
+  providerForm.name = provider.name; providerForm.provider_key = provider.provider_key
+  providerForm.supported_types = provider.supported_types; providerForm.enabled = provider.enabled
+  providerForm.refund_enabled = provider.refund_enabled
+  Object.keys(providerConfig).forEach(k => { (providerConfig as any)[k] = '' })
+  showProviderDialog.value = true
+}
+async function handleSaveProvider() {
+  providerSaving.value = true
+  try {
+    const data = { ...providerForm, config: { ...providerConfig } } as any
+    if (editingProvider.value) { await adminAPI.payment.updateProvider(editingProvider.value.id, data) }
+    else { await adminAPI.payment.createProvider(data) }
+    appStore.showSuccess(t('common.saved')); showProviderDialog.value = false; loadProviders()
+  } catch (err: unknown) { appStore.showError(err instanceof Error ? err.message : String(err)) }
+  finally { providerSaving.value = false }
+}
+function confirmDeleteProvider(provider: ProviderInstance) { deletingProviderId.value = provider.id; showDeleteProviderDialog.value = true }
+async function handleDeleteProvider() {
+  if (!deletingProviderId.value) return
+  try { await adminAPI.payment.deleteProvider(deletingProviderId.value); appStore.showSuccess(t('common.deleted')); showDeleteProviderDialog.value = false; loadProviders() }
+  catch (err: unknown) { appStore.showError(err instanceof Error ? err.message : String(err)) }
+}
+
 onMounted(() => {
   loadSettings()
   loadSubscriptionGroups()
@@ -2764,6 +2962,7 @@ onMounted(() => {
   loadStreamTimeoutSettings()
   loadRectifierSettings()
   loadBetaPolicySettings()
+  loadProviders()
 })
 </script>
 
