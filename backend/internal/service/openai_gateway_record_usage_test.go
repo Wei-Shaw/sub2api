@@ -9,8 +9,79 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
+
+func openAIRecordUsagePtrFloat64(v float64) *float64 { return &v }
+
+func newOpenAITestBillingServiceForResolver() *BillingService {
+	bs := &BillingService{fallbackPrices: make(map[string]*ModelPricing)}
+	bs.fallbackPrices["gpt-5.4"] = &ModelPricing{
+		InputPricePerToken:         3e-6,
+		OutputPricePerToken:        15e-6,
+		CacheCreationPricePerToken: 3.75e-6,
+		CacheReadPricePerToken:     0.3e-6,
+		SupportsCacheBreakdown:     false,
+	}
+	return bs
+}
+
+type openAIChannelRepositoryStub struct {
+	listAllFn           func(ctx context.Context) ([]Channel, error)
+	getGroupPlatformsFn func(ctx context.Context, groupIDs []int64) (map[int64]string, error)
+}
+
+func (s *openAIChannelRepositoryStub) Create(context.Context, *Channel) error { return nil }
+func (s *openAIChannelRepositoryStub) GetByID(context.Context, int64) (*Channel, error) {
+	return nil, nil
+}
+func (s *openAIChannelRepositoryStub) Update(context.Context, *Channel) error { return nil }
+func (s *openAIChannelRepositoryStub) Delete(context.Context, int64) error    { return nil }
+func (s *openAIChannelRepositoryStub) List(context.Context, pagination.PaginationParams, string, string) ([]Channel, *pagination.PaginationResult, error) {
+	return nil, nil, nil
+}
+func (s *openAIChannelRepositoryStub) ListAll(ctx context.Context) ([]Channel, error) {
+	if s.listAllFn != nil {
+		return s.listAllFn(ctx)
+	}
+	return nil, nil
+}
+func (s *openAIChannelRepositoryStub) ExistsByName(context.Context, string) (bool, error) {
+	return false, nil
+}
+func (s *openAIChannelRepositoryStub) ExistsByNameExcluding(context.Context, string, int64) (bool, error) {
+	return false, nil
+}
+func (s *openAIChannelRepositoryStub) GetGroupIDs(context.Context, int64) ([]int64, error) {
+	return nil, nil
+}
+func (s *openAIChannelRepositoryStub) SetGroupIDs(context.Context, int64, []int64) error { return nil }
+func (s *openAIChannelRepositoryStub) GetChannelIDByGroupID(context.Context, int64) (int64, error) {
+	return 0, nil
+}
+func (s *openAIChannelRepositoryStub) GetGroupsInOtherChannels(context.Context, int64, []int64) ([]int64, error) {
+	return nil, nil
+}
+func (s *openAIChannelRepositoryStub) GetGroupPlatforms(ctx context.Context, groupIDs []int64) (map[int64]string, error) {
+	if s.getGroupPlatformsFn != nil {
+		return s.getGroupPlatformsFn(ctx, groupIDs)
+	}
+	return nil, nil
+}
+func (s *openAIChannelRepositoryStub) ListModelPricing(context.Context, int64) ([]ChannelModelPricing, error) {
+	return nil, nil
+}
+func (s *openAIChannelRepositoryStub) CreateModelPricing(context.Context, *ChannelModelPricing) error {
+	return nil
+}
+func (s *openAIChannelRepositoryStub) UpdateModelPricing(context.Context, *ChannelModelPricing) error {
+	return nil
+}
+func (s *openAIChannelRepositoryStub) DeleteModelPricing(context.Context, int64) error { return nil }
+func (s *openAIChannelRepositoryStub) ReplaceModelPricing(context.Context, int64, []ChannelModelPricing) error {
+	return nil
+}
 
 type openAIRecordUsageLogRepoStub struct {
 	UsageLogRepository
@@ -162,6 +233,8 @@ func newOpenAIRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo U
 		&DeferredService{},
 		nil,
 		nil,
+		nil,
+		nil,
 	)
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		rateRepo,
@@ -177,6 +250,28 @@ func newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo UsageLogReposit
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, rateRepo)
 	svc.usageBillingRepo = billingRepo
 	return svc
+}
+
+func newOpenAIChannelResolverForTest(t *testing.T, pricing []ChannelModelPricing) *ModelPricingResolver {
+	t.Helper()
+	const groupID = 11
+	repo := &openAIChannelRepositoryStub{
+		listAllFn: func(_ context.Context) ([]Channel, error) {
+			return []Channel{{
+				ID:           1,
+				Name:         "openai-test-channel",
+				Status:       StatusActive,
+				GroupIDs:     []int64{groupID},
+				ModelPricing: pricing,
+			}}, nil
+		},
+		getGroupPlatformsFn: func(_ context.Context, _ []int64) (map[int64]string, error) {
+			return map[int64]string{groupID: "openai"}, nil
+		},
+	}
+	cs := NewChannelService(repo, nil)
+	bs := newOpenAITestBillingServiceForResolver()
+	return NewModelPricingResolver(cs, bs)
 }
 
 func expectedOpenAICost(t *testing.T, svc *OpenAIGatewayService, model string, usage OpenAIUsage, multiplier float64) *CostBreakdown {
@@ -1128,6 +1223,13 @@ func TestOpenAIGatewayServiceRecordUsage_StoresEffectiveUnitPricesAndPricingSour
 func TestOpenAIGatewayServiceRecordUsage_PersistsChannelAndImageOutputFields(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.resolver = newOpenAIChannelResolverForTest(t, []ChannelModelPricing{{
+		Platform:    "openai",
+		Models:      []string{"gpt-5.4"},
+		BillingMode: BillingModeToken,
+		InputPrice:  openAIRecordUsagePtrFloat64(10e-6),
+		OutputPrice: openAIRecordUsagePtrFloat64(50e-6),
+	}})
 	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10, ImageOutputTokens: 4}
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
@@ -1137,7 +1239,7 @@ func TestOpenAIGatewayServiceRecordUsage_PersistsChannelAndImageOutputFields(t *
 			Model:     "gpt-5.4",
 			Duration:  time.Second,
 		},
-		APIKey:  &APIKey{ID: 10},
+		APIKey:  &APIKey{ID: 10, GroupID: i64p(11), Group: &Group{ID: 11, RateMultiplier: 1.0}},
 		User:    &User{ID: 20},
 		Account: &Account{ID: 30},
 		ChannelUsageFields: ChannelUsageFields{
@@ -1157,6 +1259,8 @@ func TestOpenAIGatewayServiceRecordUsage_PersistsChannelAndImageOutputFields(t *
 	require.Equal(t, int64(7), *usageRepo.lastLog.ChannelID)
 	require.NotNil(t, usageRepo.lastLog.ModelMappingChain)
 	require.Equal(t, "glm→gpt-5.4", *usageRepo.lastLog.ModelMappingChain)
+	require.NotNil(t, usageRepo.lastLog.BillingTier)
+	require.Equal(t, PricingSourceChannel, *usageRepo.lastLog.BillingTier)
 	require.NotNil(t, usageRepo.lastLog.BillingMode)
 	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
 }
@@ -1274,6 +1378,87 @@ func TestOpenAIGatewayServiceRecordUsage_BillsMappedRequestsUsingRequestedModel(
 	require.Equal(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost)
 	require.Equal(t, expectedCost.TotalCost, usageRepo.lastLog.TotalCost)
 	require.Equal(t, expectedCost.ActualCost, userRepo.lastAmount)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_ChannelMappedBillingFallsBackToResultBillingModelWhenNotMapped(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
+
+	// When channel did NOT map the model (ChannelMappedModel == OriginalModel),
+	// billing should use result.BillingModel (the actual model used after group
+	// DefaultMappedModel resolution), not the unmapped original model.
+	expectedCost, err := svc.billingService.CalculateCost("gpt-5.1", UsageTokens{
+		InputTokens:  20,
+		OutputTokens: 10,
+	}, 1.0)
+	require.NoError(t, err)
+
+	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:    "resp_channel_mapped_billing_fallback",
+			BillingModel: "gpt-5.1",
+			Model:        "glm",
+			Usage:        usage,
+			Duration:     time.Second,
+		},
+		APIKey:  &APIKey{ID: 10, GroupID: i64p(11), Group: &Group{ID: 11, RateMultiplier: 1.0}},
+		User:    &User{ID: 20},
+		Account: &Account{ID: 30},
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          1,
+			OriginalModel:      "glm",
+			ChannelMappedModel: "glm",
+			BillingModelSource: BillingModelSourceChannelMapped,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, expectedCost.TotalCost, usageRepo.lastLog.TotalCost)
+	require.Equal(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_ChannelMappedBillingUsesMappedModelWhenMapped(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
+
+	// When channel DID map the model (ChannelMappedModel != OriginalModel),
+	// billing should use the channel-mapped model.
+	expectedCost, err := svc.billingService.CalculateCost("gpt-5.1", UsageTokens{
+		InputTokens:  20,
+		OutputTokens: 10,
+	}, 1.0)
+	require.NoError(t, err)
+
+	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:    "resp_channel_mapped_billing_override",
+			BillingModel: "glm",
+			Model:        "glm",
+			Usage:        usage,
+			Duration:     time.Second,
+		},
+		APIKey:  &APIKey{ID: 10, GroupID: i64p(11), Group: &Group{ID: 11, RateMultiplier: 1.0}},
+		User:    &User{ID: 20},
+		Account: &Account{ID: 30},
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          1,
+			OriginalModel:      "glm",
+			ChannelMappedModel: "gpt-5.1",
+			BillingModelSource: BillingModelSourceChannelMapped,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, expectedCost.TotalCost, usageRepo.lastLog.TotalCost)
+	require.Equal(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_SubscriptionBillingSetsSubscriptionFields(t *testing.T) {

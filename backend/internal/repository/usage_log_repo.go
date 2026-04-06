@@ -3306,6 +3306,18 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		query += fmt.Sprintf(" AND ul.group_id = $%d", len(args)+1)
 		args = append(args, dim.GroupID)
 	}
+	if dim.UserID > 0 {
+		query += fmt.Sprintf(" AND ul.user_id = $%d", len(args)+1)
+		args = append(args, dim.UserID)
+	}
+	if dim.APIKeyID > 0 {
+		query += fmt.Sprintf(" AND ul.api_key_id = $%d", len(args)+1)
+		args = append(args, dim.APIKeyID)
+	}
+	if dim.AccountID > 0 {
+		query += fmt.Sprintf(" AND ul.account_id = $%d", len(args)+1)
+		args = append(args, dim.AccountID)
+	}
 	if dim.Model != "" {
 		query += fmt.Sprintf(" AND %s = $%d", resolveModelDimensionExpression(dim.ModelType), len(args)+1)
 		args = append(args, dim.Model)
@@ -3314,6 +3326,11 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		col := resolveEndpointColumn(dim.EndpointType)
 		query += fmt.Sprintf(" AND %s = $%d", col, len(args)+1)
 		args = append(args, dim.Endpoint)
+	}
+	query, args = appendRequestTypeOrStreamQueryFilter(query, args, dim.RequestType, dim.Stream)
+	if dim.BillingType != nil {
+		query += fmt.Sprintf(" AND ul.billing_type = $%d", len(args)+1)
+		args = append(args, int16(*dim.BillingType))
 	}
 
 	query += " GROUP BY ul.user_id, u.email ORDER BY actual_cost DESC"

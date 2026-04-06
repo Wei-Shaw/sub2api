@@ -41,7 +41,31 @@ func newGatewayRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo 
 		nil,
 		nil,
 		nil,
+		nil,
+		nil,
 	)
+}
+
+func newGatewayChannelResolverForTest(t *testing.T, pricing []ChannelModelPricing) *ModelPricingResolver {
+	t.Helper()
+	const groupID = 100
+	repo := &mockChannelRepository{
+		listAllFn: func(_ context.Context) ([]Channel, error) {
+			return []Channel{{
+				ID:           1,
+				Name:         "test-channel",
+				Status:       StatusActive,
+				GroupIDs:     []int64{groupID},
+				ModelPricing: pricing,
+			}}, nil
+		},
+		getGroupPlatformsFn: func(_ context.Context, _ []int64) (map[int64]string, error) {
+			return map[int64]string{groupID: "anthropic"}, nil
+		},
+	}
+	cs := NewChannelService(repo, nil)
+	bs := newTestBillingServiceForResolver()
+	return NewModelPricingResolver(cs, bs)
 }
 
 func newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo UsageLogRepository, billingRepo UsageBillingRepository, userRepo UserRepository, subRepo UserSubscriptionRepository) *GatewayService {
@@ -224,8 +248,54 @@ func TestGatewayServiceRecordUsage_PersistsChannelAndImageOutputFields(t *testin
 	require.Equal(t, int64(9), *usageRepo.lastLog.ChannelID)
 	require.NotNil(t, usageRepo.lastLog.ModelMappingChain)
 	require.Equal(t, "alias-model→claude-sonnet-4", *usageRepo.lastLog.ModelMappingChain)
+	require.NotNil(t, usageRepo.lastLog.BillingTier)
+	require.Equal(t, PricingSourceChannel, *usageRepo.lastLog.BillingTier)
 	require.NotNil(t, usageRepo.lastLog.BillingMode)
 	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
+}
+
+func TestGatewayServiceRecordUsage_ChannelTokenPricingOverridesImageBilling(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+	svc.resolver = newGatewayChannelResolverForTest(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"claude-sonnet-4"},
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(10e-6),
+		OutputPrice: testPtrFloat64(50e-6),
+	}})
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:  "gateway_channel_token_pricing_overrides_image",
+			Usage:      ClaudeUsage{InputTokens: 10, OutputTokens: 6, ImageOutputTokens: 2},
+			Model:      "claude-sonnet-4",
+			ImageCount: 1,
+			ImageSize:  "2K",
+			Duration:   time.Second,
+		},
+		APIKey:  &APIKey{ID: 511, Quota: 100, GroupID: groupIDPtr(), Group: &Group{ID: 100}},
+		User:    &User{ID: 611},
+		Account: &Account{ID: 711},
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          9,
+			OriginalModel:      "alias-model",
+			ChannelMappedModel: "claude-sonnet-4",
+			BillingModelSource: BillingModelSourceChannelMapped,
+			ModelMappingChain:  "alias-model→claude-sonnet-4",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
+	require.NotNil(t, usageRepo.lastLog.BillingTier)
+	require.Equal(t, PricingSourceChannel, *usageRepo.lastLog.BillingTier)
+	require.InDelta(t, 0.0001, usageRepo.lastLog.InputCost, 1e-12)
+	require.InDelta(t, 0.0002, usageRepo.lastLog.OutputCost, 1e-12)
+	require.InDelta(t, 0.0001, usageRepo.lastLog.ImageOutputCost, 1e-12)
+	require.InDelta(t, 0.0004, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
 func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {

@@ -601,6 +601,8 @@ type GatewayService struct {
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
 	debugModelRouting     atomic.Bool
 	debugClaudeMimic      atomic.Bool
+	channelService        *ChannelService
+	resolver              *ModelPricingResolver
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 }
@@ -630,6 +632,8 @@ func NewGatewayService(
 	digestStore *DigestSessionStore,
 	settingService *SettingService,
 	tlsFPProfileService *TLSFingerprintProfileService,
+	channelService *ChannelService,
+	resolver *ModelPricingResolver,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -661,6 +665,8 @@ func NewGatewayService(
 		modelsListCache:      gocache.New(modelsListTTL, time.Minute),
 		modelsListCacheTTL:   modelsListTTL,
 		responseHeaderFilter: compileResponseHeaderFilter(cfg),
+		channelService:       channelService,
+		resolver:             resolver,
 		tlsFPProfileService:  tlsFPProfileService,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
@@ -1219,6 +1225,15 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 		platform = PlatformAnthropic
 	}
 
+	// Claude Code 限制可能已将 groupID 解析为 fallback group，
+	// 渠道限制预检查必须使用解析后的分组。
+	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+		slog.Warn("channel pricing restriction blocked request",
+			"group_id", derefGroupID(groupID),
+			"model", requestedModel)
+		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
+	}
+
 	// anthropic/gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
 	// 注意：强制平台模式不走混合调度
 	if (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform {
@@ -1231,8 +1246,9 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 }
 
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
-// metadataUserID: 已废弃参数，会话限制现在统一使用 sessionHash
-func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string) (*AccountSelectionResult, error) {
+// metadataUserID: 已废弃参数，会话限制现在统一使用 sessionHash。
+// sub2apiUserID: 预留给上游签名兼容，当前本地主线未使用。
+func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID ...int64) (*AccountSelectionResult, error) {
 	// 调试日志：记录调度入口参数
 	excludedIDsList := make([]int64, 0, len(excludedIDs))
 	for id := range excludedIDs {
@@ -1252,6 +1268,15 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		return nil, err
 	}
 	ctx = s.withGroupContext(ctx, group)
+
+	// Claude Code 限制可能已将 groupID 解析为 fallback group，
+	// 渠道限制预检查必须使用解析后的分组。
+	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+		slog.Warn("channel pricing restriction blocked request",
+			"group_id", derefGroupID(groupID),
+			"model", requestedModel)
+		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
+	}
 
 	var stickyAccountID int64
 	if prefetch := prefetchedStickyAccountIDFromContext(ctx, groupID); prefetch > 0 {
@@ -2112,6 +2137,85 @@ func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Conte
 		return false
 	}
 	return account.IsSchedulableForModelWithContext(ctx, requestedModel)
+}
+
+// ResolveChannelMappingAndRestrict 解析渠道映射。
+// 模型限制检查已移至调度阶段（checkChannelPricingRestriction），restricted 始终返回 false。
+func (s *GatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, model string) (ChannelMappingResult, bool) {
+	if s.channelService == nil {
+		return ChannelMappingResult{MappedModel: model}, false
+	}
+	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
+}
+
+// checkChannelPricingRestriction 根据渠道计费基准检查模型是否受定价列表限制。
+// 供调度阶段预检查（requested / channel_mapped）。
+// upstream 需逐账号检查，此处返回 false。
+func (s *GatewayService) checkChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
+	if groupID == nil || s.channelService == nil || requestedModel == "" {
+		return false
+	}
+	mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
+	billingModel := billingModelForRestriction(mapping.BillingModelSource, requestedModel, mapping.MappedModel)
+	if billingModel == "" {
+		return false
+	}
+	return s.channelService.IsModelRestricted(ctx, *groupID, billingModel)
+}
+
+// billingModelForRestriction 根据计费基准确定限制检查使用的模型。
+// upstream 返回空（需逐账号检查）。
+func billingModelForRestriction(source, requestedModel, channelMappedModel string) string {
+	switch source {
+	case BillingModelSourceRequested:
+		return requestedModel
+	case BillingModelSourceUpstream:
+		return ""
+	case BillingModelSourceChannelMapped:
+		return channelMappedModel
+	default:
+		return channelMappedModel
+	}
+}
+
+// isUpstreamModelRestrictedByChannel 检查账号映射后的上游模型是否受渠道定价限制。
+// 仅在 BillingModelSource="upstream" 且 RestrictModels=true 时由调度循环调用。
+func (s *GatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context, groupID int64, account *Account, requestedModel string) bool {
+	if s.channelService == nil {
+		return false
+	}
+	upstreamModel := resolveAccountUpstreamModel(account, requestedModel)
+	if upstreamModel == "" {
+		return false
+	}
+	return s.channelService.IsModelRestricted(ctx, groupID, upstreamModel)
+}
+
+// resolveAccountUpstreamModel 确定账号将请求模型映射为什么上游模型。
+func resolveAccountUpstreamModel(account *Account, requestedModel string) string {
+	if account == nil {
+		return ""
+	}
+	if account.Platform == PlatformAntigravity {
+		return mapAntigravityModel(account, requestedModel)
+	}
+	return account.GetMappedModel(requestedModel)
+}
+
+// needsUpstreamChannelRestrictionCheck 判断是否需要在调度循环中逐账号检查上游模型的渠道限制。
+func (s *GatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Context, groupID *int64) bool {
+	if groupID == nil || s.channelService == nil {
+		return false
+	}
+	ch, err := s.channelService.GetChannelForGroup(ctx, *groupID)
+	if err != nil {
+		slog.Warn("failed to check channel upstream restriction", "group_id", *groupID, "error", err)
+		return false
+	}
+	if ch == nil || !ch.RestrictModels {
+		return false
+	}
+	return ch.BillingModelSource == BillingModelSourceUpstream
 }
 
 // isAccountInGroup checks if the account belongs to the specified group.
@@ -7500,10 +7604,38 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	if input.OriginalModel != "" {
 		requestedModel = input.OriginalModel
 	}
+	var resolvedPricing *ResolvedPricing
 
 	// 根据请求类型选择计费方式
 	if result.MediaType == "prompt" {
 		cost = &CostBreakdown{}
+	} else if s.resolver != nil && apiKey.GroupID != nil {
+		resolvedPricing = s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: apiKey.GroupID})
+		tokens := UsageTokens{
+			InputTokens:           result.Usage.InputTokens,
+			OutputTokens:          result.Usage.OutputTokens,
+			CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
+			CacheReadTokens:       result.Usage.CacheReadInputTokens,
+			CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
+			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
+			ImageOutputTokens:     result.Usage.ImageOutputTokens,
+		}
+		var err error
+		cost, err = s.billingService.CalculateCostUnified(CostInput{
+			Ctx:            ctx,
+			Model:          billingModel,
+			GroupID:        apiKey.GroupID,
+			Tokens:         tokens,
+			RequestCount:   result.ImageCount,
+			SizeTier:       result.ImageSize,
+			RateMultiplier: multiplier,
+			Resolver:       s.resolver,
+			Resolved:       resolvedPricing,
+		})
+		if err != nil {
+			logger.LegacyPrintf("service.gateway", "Calculate unified cost failed: %v", err)
+			cost = &CostBreakdown{ActualCost: 0}
+		}
 	} else if result.ImageCount > 0 {
 		// 图片生成计费
 		var groupConfig *ImagePriceConfig
@@ -7554,15 +7686,22 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 	accountRateMultiplier := account.BillingRateMultiplier()
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
 	usageLog := &UsageLog{
-		UserID:                user.ID,
-		APIKeyID:              apiKey.ID,
-		AccountID:             account.ID,
-		RequestID:             requestID,
-		Model:                 result.Model,
-		RequestedModel:        requestedModel,
-		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
-		ChannelID:             optionalInt64Ptr(input.ChannelID),
-		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
+		UserID:            user.ID,
+		APIKeyID:          apiKey.ID,
+		AccountID:         account.ID,
+		RequestID:         requestID,
+		Model:             result.Model,
+		RequestedModel:    requestedModel,
+		UpstreamModel:     optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
+		ChannelID:         optionalInt64Ptr(input.ChannelID),
+		ModelMappingChain: optionalTrimmedStringPtr(input.ModelMappingChain),
+		BillingTier: func() *string {
+			if resolvedPricing == nil || strings.TrimSpace(resolvedPricing.Source) == "" {
+				return nil
+			}
+			v := strings.TrimSpace(resolvedPricing.Source)
+			return &v
+		}(),
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
@@ -7711,9 +7850,37 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 	if input.OriginalModel != "" {
 		requestedModel = input.OriginalModel
 	}
+	var resolvedPricing *ResolvedPricing
 
 	// 根据请求类型选择计费方式
-	if result.ImageCount > 0 {
+	if s.resolver != nil && apiKey.GroupID != nil {
+		resolvedPricing = s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: apiKey.GroupID})
+		tokens := UsageTokens{
+			InputTokens:           result.Usage.InputTokens,
+			OutputTokens:          result.Usage.OutputTokens,
+			CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
+			CacheReadTokens:       result.Usage.CacheReadInputTokens,
+			CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
+			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
+			ImageOutputTokens:     result.Usage.ImageOutputTokens,
+		}
+		var err error
+		cost, err = s.billingService.CalculateCostUnified(CostInput{
+			Ctx:            ctx,
+			Model:          billingModel,
+			GroupID:        apiKey.GroupID,
+			Tokens:         tokens,
+			RequestCount:   result.ImageCount,
+			SizeTier:       result.ImageSize,
+			RateMultiplier: multiplier,
+			Resolver:       s.resolver,
+			Resolved:       resolvedPricing,
+		})
+		if err != nil {
+			logger.LegacyPrintf("service.gateway", "Calculate unified cost failed: %v", err)
+			cost = &CostBreakdown{ActualCost: 0}
+		}
+	} else if result.ImageCount > 0 {
 		// 图片生成计费
 		var groupConfig *ImagePriceConfig
 		if apiKey.Group != nil {
@@ -7759,15 +7926,22 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 	accountRateMultiplier := account.BillingRateMultiplier()
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
 	usageLog := &UsageLog{
-		UserID:                user.ID,
-		APIKeyID:              apiKey.ID,
-		AccountID:             account.ID,
-		RequestID:             requestID,
-		Model:                 result.Model,
-		RequestedModel:        requestedModel,
-		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
-		ChannelID:             optionalInt64Ptr(input.ChannelID),
-		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
+		UserID:            user.ID,
+		APIKeyID:          apiKey.ID,
+		AccountID:         account.ID,
+		RequestID:         requestID,
+		Model:             result.Model,
+		RequestedModel:    requestedModel,
+		UpstreamModel:     optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
+		ChannelID:         optionalInt64Ptr(input.ChannelID),
+		ModelMappingChain: optionalTrimmedStringPtr(input.ModelMappingChain),
+		BillingTier: func() *string {
+			if resolvedPricing == nil || strings.TrimSpace(resolvedPricing.Source) == "" {
+				return nil
+			}
+			v := strings.TrimSpace(resolvedPricing.Source)
+			return &v
+		}(),
 		ReasoningEffort:       result.ReasoningEffort,
 		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),

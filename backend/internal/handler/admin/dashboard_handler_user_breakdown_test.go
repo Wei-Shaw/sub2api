@@ -227,3 +227,24 @@ func TestGetUserBreakdown_NoFilters(t *testing.T) {
 	require.Empty(t, repo.capturedDim.Model)
 	require.Empty(t, repo.capturedDim.Endpoint)
 }
+
+func TestGetUserBreakdown_AdditionalFilters(t *testing.T) {
+	repo := &userBreakdownRepoCapture{}
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&user_id=7&api_key_id=8&account_id=9&request_type=1&stream=true&billing_type=1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, int64(7), repo.capturedDim.UserID)
+	require.Equal(t, int64(8), repo.capturedDim.APIKeyID)
+	require.Equal(t, int64(9), repo.capturedDim.AccountID)
+	require.NotNil(t, repo.capturedDim.RequestType)
+	require.Equal(t, int16(1), *repo.capturedDim.RequestType)
+	require.NotNil(t, repo.capturedDim.Stream)
+	require.True(t, *repo.capturedDim.Stream)
+	require.NotNil(t, repo.capturedDim.BillingType)
+	require.Equal(t, int8(1), *repo.capturedDim.BillingType)
+}

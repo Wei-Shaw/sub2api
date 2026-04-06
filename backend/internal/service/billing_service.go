@@ -110,6 +110,20 @@ type CostBreakdown struct {
 	BillingMode       string  // 计费模式（token/per_request/image）
 }
 
+// CostInput 统一计费输入。
+type CostInput struct {
+	Ctx            context.Context
+	Model          string
+	GroupID        *int64
+	Tokens         UsageTokens
+	RequestCount   int
+	SizeTier       string
+	RateMultiplier float64
+	ServiceTier    string
+	Resolver       *ModelPricingResolver
+	Resolved       *ResolvedPricing
+}
+
 // BillingService 计费服务
 type BillingService struct {
 	cfg            *config.Config
@@ -129,6 +143,146 @@ func NewBillingService(cfg *config.Config, pricingService *PricingService) *Bill
 	s.initFallbackPricing()
 
 	return s
+}
+
+// CalculateCostUnified 统一计费入口，支持 token / per_request / image 三种模式。
+func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, error) {
+	if input.Resolver == nil {
+		return s.CalculateCostWithServiceTier(input.Model, input.Tokens, input.RateMultiplier, input.ServiceTier)
+	}
+
+	resolved := input.Resolved
+	if resolved == nil {
+		resolved = input.Resolver.Resolve(input.Ctx, PricingInput{Model: input.Model, GroupID: input.GroupID})
+	}
+	if input.RateMultiplier <= 0 {
+		input.RateMultiplier = 1.0
+	}
+
+	var (
+		breakdown *CostBreakdown
+		err       error
+	)
+	switch resolved.Mode {
+	case BillingModePerRequest, BillingModeImage:
+		breakdown, err = s.calculatePerRequestCost(resolved, input)
+	default:
+		breakdown, err = s.calculateTokenCost(resolved, input)
+	}
+	if err == nil && breakdown != nil {
+		breakdown.BillingMode = string(resolved.Mode)
+		if breakdown.BillingMode == "" {
+			breakdown.BillingMode = string(BillingModeToken)
+		}
+	}
+	return breakdown, err
+}
+
+func (s *BillingService) computeTokenBreakdown(
+	pricing *ModelPricing,
+	tokens UsageTokens,
+	rateMultiplier float64,
+	serviceTier string,
+	applyLongCtx bool,
+) *CostBreakdown {
+	if rateMultiplier <= 0 {
+		rateMultiplier = 1.0
+	}
+	inputPricePerToken := pricing.InputPricePerToken
+	outputPricePerToken := pricing.OutputPricePerToken
+	cacheReadPricePerToken := pricing.CacheReadPricePerToken
+	tierMultiplier := 1.0
+	if usePriorityServiceTierPricing(serviceTier, pricing) {
+		if pricing.InputPricePerTokenPriority > 0 {
+			inputPricePerToken = pricing.InputPricePerTokenPriority
+		}
+		if pricing.OutputPricePerTokenPriority > 0 {
+			outputPricePerToken = pricing.OutputPricePerTokenPriority
+		}
+		if pricing.CacheReadPricePerTokenPriority > 0 {
+			cacheReadPricePerToken = pricing.CacheReadPricePerTokenPriority
+		}
+	} else {
+		tierMultiplier = serviceTierCostMultiplier(serviceTier)
+	}
+	if applyLongCtx && s.shouldApplySessionLongContextPricing(tokens, pricing) {
+		inputPricePerToken *= pricing.LongContextInputMultiplier
+		outputPricePerToken *= pricing.LongContextOutputMultiplier
+	}
+
+	breakdown := &CostBreakdown{}
+	breakdown.InputCost = float64(tokens.InputTokens) * inputPricePerToken
+	textOutputTokens := tokens.OutputTokens - tokens.ImageOutputTokens
+	if textOutputTokens < 0 {
+		textOutputTokens = 0
+	}
+	breakdown.OutputCost = float64(textOutputTokens) * outputPricePerToken
+	if tokens.ImageOutputTokens > 0 {
+		imageOutputPrice := pricing.ImageOutputPricePerToken
+		if imageOutputPrice <= 0 {
+			imageOutputPrice = outputPricePerToken
+		}
+		breakdown.ImageOutputCost = float64(tokens.ImageOutputTokens) * imageOutputPrice
+	}
+	if pricing.SupportsCacheBreakdown && (pricing.CacheCreation5mPrice > 0 || pricing.CacheCreation1hPrice > 0) {
+		if tokens.CacheCreation5mTokens == 0 && tokens.CacheCreation1hTokens == 0 && tokens.CacheCreationTokens > 0 {
+			breakdown.CacheCreationCost = float64(tokens.CacheCreationTokens) * pricing.CacheCreation5mPrice
+		} else {
+			breakdown.CacheCreationCost = float64(tokens.CacheCreation5mTokens)*pricing.CacheCreation5mPrice +
+				float64(tokens.CacheCreation1hTokens)*pricing.CacheCreation1hPrice
+		}
+	} else {
+		breakdown.CacheCreationCost = float64(tokens.CacheCreationTokens) * pricing.CacheCreationPricePerToken
+	}
+	breakdown.CacheReadCost = float64(tokens.CacheReadTokens) * cacheReadPricePerToken
+	if tierMultiplier != 1.0 {
+		breakdown.InputCost *= tierMultiplier
+		breakdown.OutputCost *= tierMultiplier
+		breakdown.ImageOutputCost *= tierMultiplier
+		breakdown.CacheCreationCost *= tierMultiplier
+		breakdown.CacheReadCost *= tierMultiplier
+	}
+	breakdown.TotalCost = breakdown.InputCost + breakdown.OutputCost + breakdown.ImageOutputCost + breakdown.CacheCreationCost + breakdown.CacheReadCost
+	breakdown.ActualCost = breakdown.TotalCost * rateMultiplier
+	breakdown.BillingMode = string(BillingModeToken)
+	return breakdown
+}
+
+func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input CostInput) (*CostBreakdown, error) {
+	totalContext := input.Tokens.InputTokens + input.Tokens.CacheReadTokens
+	pricing := input.Resolver.GetIntervalPricing(resolved, totalContext)
+	if pricing == nil {
+		return nil, fmt.Errorf("no pricing available for model: %s", input.Model)
+	}
+	pricing = s.applyModelSpecificPricingPolicy(input.Model, pricing)
+	applyLongCtx := len(resolved.Intervals) == 0
+	return s.computeTokenBreakdown(pricing, input.Tokens, input.RateMultiplier, input.ServiceTier, applyLongCtx), nil
+}
+
+func (s *BillingService) calculatePerRequestCost(resolved *ResolvedPricing, input CostInput) (*CostBreakdown, error) {
+	count := input.RequestCount
+	if count <= 0 {
+		count = 1
+	}
+
+	unitPrice := 0.0
+	if input.SizeTier != "" {
+		unitPrice = input.Resolver.GetRequestTierPrice(resolved, input.SizeTier)
+	}
+	if unitPrice == 0 {
+		totalContext := input.Tokens.InputTokens + input.Tokens.CacheReadTokens
+		unitPrice = input.Resolver.GetRequestTierPriceByContext(resolved, totalContext)
+	}
+	if unitPrice == 0 {
+		unitPrice = resolved.DefaultPerRequestPrice
+	}
+
+	totalCost := unitPrice * float64(count)
+	actualCost := totalCost * input.RateMultiplier
+	return &CostBreakdown{
+		TotalCost:  totalCost,
+		ActualCost: actualCost,
+	}, nil
 }
 
 // initFallbackPricing 初始化硬编码回退价格（当动态价格不可用时使用）

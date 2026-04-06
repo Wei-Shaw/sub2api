@@ -780,5 +780,62 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
     - `frontend/src/i18n/locales/en.ts`
     - `frontend/src/i18n/locales/zh.ts`
   - this keeps local `routing_target_group / routing_schedule_layer` filters intact instead of adopting upstream’s narrower replacement.
+  - admin dashboard user-breakdown parsing is also now aligned with upstream’s extra filter dimensions while preserving the current dashboard semantics:
+    - `backend/internal/pkg/usagestats/usage_log_types.go`
+    - `backend/internal/handler/admin/dashboard_handler.go`
+    - `backend/internal/handler/admin/dashboard_handler_user_breakdown_test.go`
+    - `backend/internal/repository/usage_log_repo.go`
+  - newly supported breakdown filters:
+    - `user_id`
+    - `api_key_id`
+    - `account_id`
+    - `request_type`
+    - `stream`
+    - `billing_type`
+  - the deeper `channel restriction / pricing resolver` chain has now started to align as well:
+    - `backend/internal/service/gateway_service.go`
+    - `backend/internal/service/openai_gateway_service.go`
+    - `backend/internal/service/gateway_channel_restriction_test.go`
+    - `backend/internal/service/gateway_channel_restriction_fallback_test.go`
+    - `backend/internal/service/openai_channel_restriction_test.go`
+    - `backend/internal/service/gateway_record_usage_test.go`
+    - `backend/internal/service/openai_gateway_record_usage_test.go`
+    - `backend/internal/service/openai_ws_protocol_forward_test.go`
+    - `backend/internal/handler/gateway_handler_warmup_intercept_unit_test.go`
+    - `backend/cmd/server/wire_gen.go`
+  - currently absorbed semantics in this deep chain:
+    - `GatewayService` and `OpenAIGatewayService` both carry `channelService` / `resolver`
+    - gateway and openai account selection now perform channel pricing pre-checks before selection
+    - sticky session and best-account selection now skip accounts whose upstream-mapped model is restricted when `BillingModelSource=upstream`
+    - existing unit tests for `billingModelForRestriction` / `resolveAccountUpstreamModel` / fallback-group channel restriction and OpenAI channel restriction are green again
+  - remaining risk in this hotspot is no longer basic compile survival, but the broader concept-by-concept absorb of upstream pricing-resolver use in the billing path and any later handler/admin exposure that depends on it
+  - first deep `channel restriction / pricing resolver` semantics are now reintroduced locally:
+    - `GatewayService` regains `channelService` / `resolver` fields and constructor wiring
+    - `OpenAIGatewayService` regains `channelService` / `resolver` fields and constructor wiring
+    - `GatewayService` now includes:
+      - `ResolveChannelMappingAndRestrict`
+      - `checkChannelPricingRestriction`
+      - `billingModelForRestriction`
+      - `resolveAccountUpstreamModel`
+      - `isUpstreamModelRestrictedByChannel`
+      - `needsUpstreamChannelRestrictionCheck`
+    - `OpenAIGatewayService` now includes the matching pre-check / upstream-check helpers for channel restriction
+    - fallback-group and OpenAI channel-restriction unit tests are green again, and `cmd/server` wiring has been updated so these new constructor dependencies compile in the main binary
+  - the next remaining gap in this deep hotspot is no longer selection gating, but the heavier upstream pricing-resolver use in the billing path itself (for example the `CalculateCostUnified` / channel billing-mode override line), which should be absorbed concept-by-concept rather than by wholesale checkout
+  - first billing-path concept from that resolver chain is now also landing:
+    - `backend/internal/service/billing_service.go` has a local `CostInput` / `CalculateCostUnified` entry compatible with the current branch’s billing model
+    - `GatewayService.RecordUsage` and `OpenAIGatewayService.RecordUsage` now route channel-priced requests through the unified billing entry when `resolver` and `groupID` are present
+    - unit coverage now locks that channel token pricing can override the image billing branch without regressing the existing `ImageOutputTokens / BillingMode` persistence path
+  - this still does **not** mean the entire upstream billing resolver chain is fully absorbed yet; it only establishes the first safe bridge from selection-side channel semantics into the billing path while keeping the local billing model intact
+  - resolver source is now also persisted into `usage_log.BillingTier` on both Gateway/OpenAI usage write paths, so the first layer of pricing-source writeback is already connected
+  - focused billing-model-source tests are now green as well:
+    - `TestOpenAIGatewayServiceRecordUsage_BillsMappedRequestsUsingRequestedModel`
+    - `TestOpenAIGatewayServiceRecordUsage_ChannelMappedBillingFallsBackToResultBillingModelWhenNotMapped`
+    - `TestOpenAIGatewayServiceRecordUsage_ChannelMappedBillingUsesMappedModelWhenMapped`
+    - together with the existing generic gateway test `TestGatewayServiceRecordUsage_ChannelTokenPricingOverridesImageBilling`
+  - OpenAI-side channel restriction semantics are now also aligned at the same first-layer depth:
+    - `OpenAIGatewayService` now performs channel pricing pre-checks before selection
+    - sticky-session reuse and best-account selection now skip accounts whose upstream-mapped model is restricted when `BillingModelSource=upstream`
+    - upstream unit tests for `ChannelMapped` early rejection, `Upstream` per-account restriction, and sticky-session fallback are green again
 - Defer the admin/settings/group/account restructuring until a separate compatibility pass is planned.
 - Treat the hotspot overlap as part of the next Batch C / Batch D style transplant work, not as mechanical absorb.
