@@ -4513,6 +4513,7 @@ export default {
         maxAmount: '最高金额',
         dailyLimit: '每日限额',
         orderTimeout: '订单超时时间',
+        orderTimeoutHint: '单位：分钟，至少 1 分钟',
         maxPendingOrders: '最大待支付订单数',
         helpText: '帮助文本',
         helpImageUrl: '帮助图片链接',

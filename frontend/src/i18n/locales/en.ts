@@ -4340,6 +4340,7 @@ export default {
         maxAmount: 'Maximum Amount',
         dailyLimit: 'Daily Limit',
         orderTimeout: 'Order Timeout',
+        orderTimeoutHint: 'In minutes, minimum 1',
         maxPendingOrders: 'Max Pending Orders',
         helpText: 'Help Text',
         helpImageUrl: 'Help Image URL',
