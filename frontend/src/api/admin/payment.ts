@@ -26,6 +26,8 @@ export interface AdminPaymentConfig {
   load_balance_strategy: string
   product_name_prefix: string
   product_name_suffix: string
+  help_image_url: string
+  help_text: string
 }
 
 /** Fields accepted by PUT /admin/payment/config (all optional via pointer semantics) */
@@ -41,6 +43,8 @@ export interface UpdatePaymentConfigRequest {
   load_balance_strategy?: string
   product_name_prefix?: string
   product_name_suffix?: string
+  help_image_url?: string
+  help_text?: string
 }
 
 export const adminPaymentAPI = {
