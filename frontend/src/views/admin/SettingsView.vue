@@ -1640,7 +1640,7 @@
 <!-- Tab: Payment -->
         <div v-show="activeTab === 'payment'" class="space-y-6">
 
-        <!-- Payment System Settings -->
+        <!-- Payment System Settings - redirect to dedicated page -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.title') }}</h2>
@@ -1673,7 +1673,7 @@
                 <div><label class="input-label">{{ t('admin.settings.payment.helpText') }}</label><input v-model="form.payment_help_text" type="text" class="input" /></div>
               </div>
               <div>
-                <a href="/admin/orders/providers" class="text-sm text-blue-600 hover:underline dark:text-blue-400">{{ t('admin.settings.payment.manageProviders') }} &rarr;</a>
+                <a href="/admin/orders/config" class="text-sm text-blue-600 hover:underline dark:text-blue-400">{{ t('admin.settings.payment.manageProviders') }} &rarr;</a>
               </div>
             </template>
           </div>

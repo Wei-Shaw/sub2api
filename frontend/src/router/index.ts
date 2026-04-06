@@ -427,6 +427,18 @@ const routes: RouteRecordRaw[] = [
 
   // ==================== Payment Admin Routes ====================
   {
+    path: '/admin/orders/dashboard',
+    name: 'AdminPaymentDashboard',
+    component: () => import('@/views/admin/orders/AdminPaymentDashboardView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Payment Dashboard',
+      titleKey: 'nav.paymentDashboard',
+      requiresPayment: true
+    }
+  },
+  {
     path: '/admin/orders',
     name: 'AdminOrders',
     component: () => import('@/views/admin/orders/AdminOrdersView.vue'),
@@ -439,13 +451,26 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/orders/providers',
-    name: 'AdminProviders',
-    component: () => import('@/views/admin/orders/AdminProvidersView.vue'),
+    path: '/admin/orders/config',
+    name: 'AdminPaymentConfig',
+    component: () => import('@/views/admin/orders/AdminPaymentConfigView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
-      title: 'Provider Management',
+      title: 'Payment Config',
+      titleKey: 'nav.paymentConfig',
+      requiresPayment: true
+    }
+  },
+  {
+    path: '/admin/orders/plans',
+    name: 'AdminPaymentPlans',
+    component: () => import('@/views/admin/orders/AdminPaymentPlansView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Subscription Plans',
+      titleKey: 'nav.paymentPlans',
       requiresPayment: true
     }
   },
