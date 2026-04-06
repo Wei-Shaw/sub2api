@@ -2119,12 +2119,10 @@ interface DefaultSubscriptionGroupOption {
   [key: string]: unknown
 }
 
-type SettingsForm = Omit<SystemSettings, 'payment_enabled_types'> & {
+type SettingsForm = SystemSettings & {
   smtp_password: string
   turnstile_secret_key: string
   linuxdo_connect_client_secret: string
-  // Payment config — payment_enabled_types stored as comma-separated string in form
-  payment_enabled_types: string
 }
 
 const form = reactive<SettingsForm>({
@@ -2148,7 +2146,7 @@ const form = reactive<SettingsForm>({
   home_content: '',
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
-  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_enabled_types: '',  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',
+  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_enabled_types: [],  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',
   sora_client_enabled: false,
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number}>,
   custom_endpoints: [] as Array<{name: string; endpoint: string; description: string}>,
@@ -2338,8 +2336,6 @@ async function loadSettings() {
   loadFailed.value = false
   try {
     const settings = await adminAPI.settings.getSettings()
-    // Convert array fields before Object.assign to avoid reactive .split() crash
-    ;(settings as any).payment_enabled_types = (settings.payment_enabled_types || []).join(',')
     ;(settings as any).payment_load_balance_strategy = settings.payment_load_balance_strategy || 'round-robin'
     Object.assign(form, settings)
     form.backend_mode_enabled = settings.backend_mode_enabled
@@ -2491,9 +2487,7 @@ async function saveSettings() {
     }
 
     // Payment config fields (integrated into settings payload)
-    const enabledTypes = form.payment_enabled_types
-      ? form.payment_enabled_types.split(',').map((s: string) => s.trim()).filter(Boolean)
-      : []
+    ;(payload as any).payment_enabled_types = form.payment_enabled_types
     ;(payload as any).payment_enabled = form.payment_enabled
     ;(payload as any).payment_min_amount = Number(form.payment_min_amount) || 0
     ;(payload as any).payment_max_amount = Number(form.payment_max_amount) || 0
@@ -2501,7 +2495,7 @@ async function saveSettings() {
     ;(payload as any).payment_max_pending_orders = Number(form.payment_max_pending_orders) || 0
     ;(payload as any).payment_order_timeout_minutes = Number(form.payment_order_timeout_minutes) || 0
     ;(payload as any).payment_balance_disabled = form.payment_balance_disabled
-    ;(payload as any).payment_enabled_types = enabledTypes
+    ;(payload as any).payment_enabled_types = form.payment_enabled_types
     ;(payload as any).payment_load_balance_strategy = form.payment_load_balance_strategy
     ;(payload as any).payment_product_name_prefix = form.payment_product_name_prefix
     ;(payload as any).payment_product_name_suffix = form.payment_product_name_suffix
@@ -2816,16 +2810,17 @@ const allPaymentTypes = computed(() => [
 ])
 
 function isPaymentTypeEnabled(type: string): boolean {
-  return parseTypes(form.payment_enabled_types).includes(type)
+  return form.payment_enabled_types.includes(type)
 }
 
-const hasAnyPaymentTypeEnabled = computed(() => parseTypes(form.payment_enabled_types).length > 0)
+const hasAnyPaymentTypeEnabled = computed(() => form.payment_enabled_types.length > 0)
 
 function togglePaymentType(type: string) {
-  const current = parseTypes(form.payment_enabled_types)
-  form.payment_enabled_types = current.includes(type)
-    ? current.filter(t => t !== type).join(',')
-    : [...current, type].join(',')
+  if (form.payment_enabled_types.includes(type)) {
+    form.payment_enabled_types = form.payment_enabled_types.filter(t => t !== type)
+  } else {
+    form.payment_enabled_types = [...form.payment_enabled_types, type]
+  }
 }
 
 const providersLoading = ref(false)

@@ -86,7 +86,7 @@ const props = defineProps<{
   providers: ProviderInstance[]
   loading: boolean
   canCreate: boolean
-  enabledPaymentTypes: string
+  enabledPaymentTypes: string[]
   allPaymentTypes: TypeOption[]
   redirectLabel: string
 }>()
@@ -103,7 +103,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 function isEnabled(providerKey: string): boolean {
-  const enabled = parseTypes(props.enabledPaymentTypes)
+  const enabled = props.enabledPaymentTypes
   if (providerKey === 'easypay') {
     return enabled.includes('easypay') || enabled.includes('alipay') || enabled.includes('wxpay')
   }

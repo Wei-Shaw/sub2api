@@ -84,8 +84,7 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
 // --- Helpers ---
 
 /** Parse comma-separated types string into array. */
-export function parseTypes(raw: string | string[]): string[] {
-  if (Array.isArray(raw)) return raw.map(s => s.trim()).filter(Boolean)
+export function parseTypes(raw: string): string[] {
   if (!raw) return []
   return raw.split(',').map(s => s.trim()).filter(Boolean)
 }
