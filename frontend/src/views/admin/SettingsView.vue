@@ -1726,28 +1726,50 @@
           </div>
           <div class="p-4">
             <div v-if="providersLoading && !providers.length" class="flex items-center justify-center py-6"><div class="h-5 w-5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div></div>
-            <div v-else-if="providers.length" class="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              <div v-for="provider in providers" :key="provider.id" :class="['rounded-lg border', isProviderEnabled(provider.provider_key) ? 'border-gray-200 dark:border-dark-600' : 'border-gray-200 bg-gray-50 opacity-60 dark:border-dark-700 dark:bg-dark-800/50']">
-                <div class="flex items-center justify-between px-3 py-2">
-                  <div class="flex items-center gap-2">
+            <div v-else-if="providers.length" class="space-y-3">
+              <div v-for="provider in providers" :key="provider.id" :class="['rounded-lg border transition-all', isProviderEnabled(provider.provider_key) ? 'border-gray-200 dark:border-dark-600' : 'border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800/50']">
+                <div :class="['flex items-center justify-between px-4 py-3', !isProviderEnabled(provider.provider_key) && 'opacity-50 pointer-events-none']">
+                  <!-- Left: icon + name + provider key badge -->
+                  <div class="flex items-center gap-3">
                     <div :class="['rounded-md p-1.5', provider.enabled && isProviderEnabled(provider.provider_key) ? 'bg-green-100 dark:bg-green-900/30' : 'bg-gray-100 dark:bg-dark-700']">
                       <Icon name="server" size="sm" :class="provider.enabled && isProviderEnabled(provider.provider_key) ? 'text-green-600 dark:text-green-400' : 'text-gray-400'" />
                     </div>
                     <div>
                       <span class="text-sm font-medium text-gray-900 dark:text-white">{{ provider.name }}</span>
-                      <span class="ml-1.5 text-xs text-gray-400">{{ providerKeyLabel(provider.provider_key) }}</span>
-                      <span v-if="!isProviderEnabled(provider.provider_key)" class="ml-1.5 text-xs text-amber-500">({{ t('admin.settings.payment.typeDisabled') }})</span>
+                      <span class="ml-1.5 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500 dark:bg-dark-700 dark:text-gray-400">{{ providerKeyLabel(provider.provider_key) }}</span>
                     </div>
                   </div>
-                  <div class="flex items-center gap-2">
-                    <span :class="['text-xs', provider.enabled ? 'text-green-600' : 'text-gray-400']">{{ provider.enabled ? t('common.enabled') : t('common.disabled') }}</span>
-                    <button @click="openEditProvider(provider)" :disabled="!isProviderEnabled(provider.provider_key)" :class="['btn-icon', isProviderEnabled(provider.provider_key) ? 'text-blue-500 hover:text-blue-700' : 'text-gray-300 cursor-not-allowed']" :title="t('common.edit')"><Icon name="edit" size="sm" /></button>
-                    <button @click="confirmDeleteProvider(provider)" class="btn-icon text-red-500 hover:text-red-700" :title="t('common.delete')"><Icon name="trash" size="sm" /></button>
+                  <!-- Right: toggles + actions -->
+                  <div class="flex items-center gap-4">
+                    <!-- Enabled toggle -->
+                    <label class="flex items-center gap-1.5 cursor-pointer">
+                      <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('common.enabled') }}</span>
+                      <button type="button" role="switch" :aria-checked="provider.enabled" @click="toggleProviderField(provider, 'enabled')"
+                        :class="['relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200', provider.enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600']">
+                        <span :class="['pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200', provider.enabled ? 'translate-x-4' : 'translate-x-0']" />
+                      </button>
+                    </label>
+                    <!-- Refund toggle -->
+                    <label class="flex items-center gap-1.5 cursor-pointer">
+                      <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.refundEnabled') }}</span>
+                      <button type="button" role="switch" :aria-checked="provider.refund_enabled" @click="toggleProviderField(provider, 'refundEnabled')"
+                        :class="['relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200', provider.refund_enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600']">
+                        <span :class="['pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200', provider.refund_enabled ? 'translate-x-4' : 'translate-x-0']" />
+                      </button>
+                    </label>
+                    <div class="flex items-center gap-1 border-l border-gray-200 pl-3 dark:border-dark-600">
+                      <button @click="openEditProvider(provider)" class="btn-icon text-blue-500 hover:text-blue-700" :title="t('common.edit')"><Icon name="edit" size="sm" /></button>
+                      <button @click="confirmDeleteProvider(provider)" class="btn-icon text-red-500 hover:text-red-700" :title="t('common.delete')"><Icon name="trash" size="sm" /></button>
+                    </div>
                   </div>
                 </div>
-                <div class="border-t border-gray-100 px-3 py-1.5 dark:border-dark-700 text-xs text-gray-500 dark:text-gray-400">
+                <!-- Disabled overlay hint -->
+                <div v-if="!isProviderEnabled(provider.provider_key)" class="border-t border-gray-100 px-4 py-2 dark:border-dark-700">
+                  <span class="text-xs text-amber-500">{{ t('admin.settings.payment.typeDisabled') }} — {{ t('admin.settings.payment.enableTypesFirst') }}</span>
+                </div>
+                <!-- Supported types row -->
+                <div v-else class="border-t border-gray-100 px-4 py-1.5 dark:border-dark-700 text-xs text-gray-500 dark:text-gray-400">
                   {{ t('admin.settings.payment.supportedTypes') }}: <span class="font-medium text-gray-700 dark:text-gray-300">{{ provider.supported_types || '-' }}</span>
-                  <span class="ml-3">{{ t('admin.settings.payment.refundEnabled') }}: <span :class="provider.refund_enabled ? 'text-green-600' : ''">{{ provider.refund_enabled ? 'Yes' : 'No' }}</span></span>
                 </div>
               </div>
             </div>
@@ -3074,6 +3096,14 @@ function onProviderConfigChange(key: string) {
 
 function providerKeyLabel(key: string): string {
   return providerKeyOptions.value.find(o => o.value === key)?.label || key
+}
+async function toggleProviderField(provider: ProviderInstance, field: 'enabled' | 'refundEnabled') {
+  const newValue = field === 'enabled' ? !provider.enabled : !provider.refund_enabled
+  try {
+    await adminAPI.payment.updateProvider(provider.id, { [field]: newValue })
+    if (field === 'enabled') provider.enabled = newValue
+    else provider.refund_enabled = newValue
+  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
 }
 async function loadProviders() {
   providersLoading.value = true
