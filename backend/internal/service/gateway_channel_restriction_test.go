@@ -9,6 +9,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func newGatewayServiceForUpstreamRestrictionSelectionTest(t *testing.T, accounts []Account) *GatewayService {
+	t.Helper()
+
+	accountRepo := &mockAccountRepoForPlatform{
+		accounts:     accounts,
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range accountRepo.accounts {
+		accountRepo.accountsByID[accountRepo.accounts[i].ID] = &accountRepo.accounts[i]
+	}
+
+	channelSvc := newTestChannelService(makeStandardRepo(Channel{
+		ID:                 1,
+		Status:             StatusActive,
+		GroupIDs:           []int64{10},
+		RestrictModels:     true,
+		BillingModelSource: BillingModelSourceUpstream,
+		ModelPricing: []ChannelModelPricing{{
+			Platform: PlatformAnthropic,
+			Models:   []string{"claude-opus-4-6"},
+		}},
+	}, map[int64]string{10: PlatformAnthropic}))
+
+	return &GatewayService{
+		accountRepo:    accountRepo,
+		groupRepo:      &mockGroupRepoForGateway{groups: map[int64]*Group{10: {ID: 10, Platform: PlatformAnthropic, Status: StatusActive, Hydrated: true}}},
+		channelService: channelSvc,
+		cfg:            testConfig(),
+	}
+}
+
 // --- billingModelForRestriction ---
 
 func TestBillingModelForRestriction_Requested(t *testing.T) {
@@ -290,4 +321,58 @@ func TestIsUpstreamModelRestrictedByChannel_UnsupportedModel(t *testing.T) {
 	// totally-unknown-model 不在 DefaultAntigravityModelMapping 中 → 映射结果为空
 	require.False(t, svc.isUpstreamModelRestrictedByChannel(context.Background(), 10, account, "totally-unknown-model"),
 		"unmappable model → upstream model empty → not restricted (account filter handles this)")
+}
+
+func TestSelectAccountForModelWithPlatform_SkipsUpstreamRestrictedAccounts(t *testing.T) {
+	t.Parallel()
+
+	requestedModel := "claude-sonnet-4-6"
+	groupID := int64(10)
+	svc := newGatewayServiceForUpstreamRestrictionSelectionTest(t, []Account{
+		{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true},
+		{
+			ID:          2,
+			Platform:    PlatformAnthropic,
+			Priority:    2,
+			Status:      StatusActive,
+			Schedulable: true,
+			Credentials: map[string]any{"model_mapping": map[string]any{requestedModel: "claude-opus-4-6"}},
+		},
+	})
+
+	account, err := svc.selectAccountForModelWithPlatform(context.Background(), &groupID, "", requestedModel, nil, PlatformAnthropic)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(2), account.ID)
+}
+
+func TestSelectAccountWithMixedScheduling_SkipsUpstreamRestrictedAccounts(t *testing.T) {
+	t.Parallel()
+
+	requestedModel := "claude-sonnet-4-6"
+	groupID := int64(10)
+	svc := newGatewayServiceForUpstreamRestrictionSelectionTest(t, []Account{
+		{
+			ID:          1,
+			Platform:    PlatformAntigravity,
+			Priority:    1,
+			Status:      StatusActive,
+			Schedulable: true,
+			Extra:       map[string]any{"mixed_scheduling": true},
+		},
+		{
+			ID:          2,
+			Platform:    PlatformAntigravity,
+			Priority:    2,
+			Status:      StatusActive,
+			Schedulable: true,
+			Extra:       map[string]any{"mixed_scheduling": true},
+			Credentials: map[string]any{"model_mapping": map[string]any{requestedModel: "claude-opus-4-6"}},
+		},
+	})
+
+	account, err := svc.selectAccountWithMixedScheduling(context.Background(), &groupID, "", requestedModel, nil, PlatformAnthropic)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(2), account.ID)
 }

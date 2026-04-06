@@ -713,6 +713,7 @@ func (s *BillingService) CalculateCostWithLongContext(model string, tokens Usage
 		CacheReadTokens:       inRangeCacheTokens,
 		CacheCreation5mTokens: tokens.CacheCreation5mTokens,
 		CacheCreation1hTokens: tokens.CacheCreation1hTokens,
+		ImageOutputTokens:     tokens.ImageOutputTokens,
 	}
 	inRangeCost, err := s.CalculateCost(model, inRangeTokens, rateMultiplier)
 	if err != nil {

@@ -322,6 +322,37 @@ func TestCalculateCostWithLongContext_AboveThreshold_CacheBelowThreshold(t *test
 	require.True(t, cost.ActualCost > normalCost.ActualCost, "长上下文费用应高于正常费用")
 }
 
+func TestCalculateCostWithLongContext_PreservesImageOutputCost(t *testing.T) {
+	svc := newTestBillingService()
+
+	tokens := UsageTokens{
+		InputTokens:       150000,
+		OutputTokens:      1000,
+		CacheReadTokens:   100000,
+		ImageOutputTokens: 100,
+	}
+	cost, err := svc.CalculateCostWithLongContext("claude-sonnet-4", tokens, 1.0, 200000, 2.0)
+	require.NoError(t, err)
+
+	inRange, err := svc.CalculateCost("claude-sonnet-4", UsageTokens{
+		InputTokens:       100000,
+		OutputTokens:      1000,
+		CacheReadTokens:   100000,
+		ImageOutputTokens: 100,
+	}, 1.0)
+	require.NoError(t, err)
+
+	outRange, err := svc.CalculateCost("claude-sonnet-4", UsageTokens{
+		InputTokens: 50000,
+	}, 2.0)
+	require.NoError(t, err)
+
+	require.InDelta(t, inRange.ImageOutputCost, cost.ImageOutputCost, 1e-10)
+	require.InDelta(t, inRange.TotalCost+outRange.TotalCost, cost.TotalCost, 1e-10)
+	require.InDelta(t, inRange.ActualCost+outRange.ActualCost, cost.ActualCost, 1e-10)
+	require.Equal(t, string(BillingModeToken), cost.BillingMode)
+}
+
 func TestCalculateCostWithLongContext_DisabledThreshold(t *testing.T) {
 	svc := newTestBillingService()
 

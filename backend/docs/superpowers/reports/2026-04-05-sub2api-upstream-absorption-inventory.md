@@ -836,6 +836,16 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
     - 这说明 `CostInput / CalculateCostUnified` 本身已经能稳定承接 request-tier 价格选择，而不只是依赖外围 `RecordUsage` 路径间接验证
   - this still does **not** mean the entire upstream billing resolver chain is fully absorbed yet; it only establishes the first safe bridge from selection-side channel semantics into the billing path while keeping the local billing model intact
   - resolver source is now also persisted into `usage_log.BillingTier` on both Gateway/OpenAI usage write paths, so the first layer of pricing-source writeback is already connected
+  - resolver-side token override absorption has also advanced one more small step:
+    - `ModelPricingResolver.applyTokenOverrides` now copies `ChannelModelPricing.ImageOutputPrice` into `BasePricing.ImageOutputPricePerToken`
+    - `TestResolve_WithChannelOverride_TokenImageOutputPrice` is green and proves this upstream token-mode image-output pricing branch is no longer missing locally
+  - long-context billing absorption also moved one step closer to upstream:
+    - `BillingService.CalculateCostWithLongContext` now keeps `ImageOutputTokens` on the in-range split, so image-output cost is not dropped when long-context pricing is applied
+    - `TestCalculateCostWithLongContext_PreservesImageOutputCost` is green and locks that path
+  - from a future "mark upstream as merged" perspective, the remaining `billing_service.go` diff is now better understood as three buckets rather than one monolith:
+    - already-equivalent local rewrites: `CostInput` / `CalculateCostUnified` / `computeTokenBreakdown` / `calculatePerRequestCost` are carrying upstream intent in a local shape
+    - local-shape-preserving divergences that should likely stay: current `PricingService` exposes `OutputCostPerImage` (not `OutputCostPerImageToken`), and local long-context results intentionally retain `BillingMode`
+    - legacy upstream paths that probably should **not** be reintroduced mechanically: `GetModelPricingWithChannel` / `calculateCostInternal`, because local channel billing now flows through `resolver + CalculateCostUnified`
   - focused billing-model-source tests are now green as well:
     - `TestOpenAIGatewayServiceRecordUsage_BillsMappedRequestsUsingRequestedModel`
     - `TestOpenAIGatewayServiceRecordUsage_ChannelMappedBillingFallsBackToResultBillingModelWhenNotMapped`
@@ -845,5 +855,27 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
     - `OpenAIGatewayService` now performs channel pricing pre-checks before selection
     - sticky-session reuse and best-account selection now skip accounts whose upstream-mapped model is restricted when `BillingModelSource=upstream`
     - upstream unit tests for `ChannelMapped` early rejection, `Upstream` per-account restriction, and sticky-session fallback are green again
+  - phase-two gateway scheduling absorption has now started as well:
+    - `GatewayService.selectAccountForModelWithPlatform` and `GatewayService.selectAccountWithMixedScheduling` now both reapply `needsUpstreamChannelRestrictionCheck + isUpstreamModelRestrictedByChannel` in their main candidate loops
+    - this restores the upstream-model channel restriction filter at the exact place where the final account is chosen, instead of leaving the helper chain disconnected
+    - direct unit coverage is now green for both paths:
+      - `TestSelectAccountForModelWithPlatform_SkipsUpstreamRestrictedAccounts`
+      - `TestSelectAccountWithMixedScheduling_SkipsUpstreamRestrictedAccounts`
+  - `OpenAIGatewayService.RecordUsage` has also recovered the low-conflict upstream nil-safety on default rate multiplier lookup:
+    - when `s.cfg == nil`, it now falls back to `1.0` instead of dereferencing a nil config pointer
+    - `TestOpenAIGatewayServiceRecordUsage_NilConfigDefaultsRateMultiplierToOne` is green and locks that behavior
 - Defer the admin/settings/group/account restructuring until a separate compatibility pass is planned.
 - Treat the hotspot overlap as part of the next Batch C / Batch D style transplant work, not as mechanical absorb.
+
+## Merged 导向阶段划分
+
+- 阶段一：billing / resolver merged-ready 收口
+  - 目标：把 `billing_service.go`、`model_pricing_resolver.go`、`gateway/openai record usage` 这一条深计费链收敛到“已等价吸收 / 必须保留的本地差异 / 不应机械恢复的上游旧路径”三个桶里。
+  - 当前状态：进行中且已完成第一轮实质收口；`model_pricing_resolver.go` 的可直接吸收差异已经收平，`billing_service.go` 的剩余大 diff 已经完成第一版 merged 视角分类。
+- 阶段二：gateway / openai gateway service merged pass
+  - 目标：对 `gateway_service.go`、`openai_gateway_service.go` 做同样的 merged 视角拆解，优先吸收还能直接落地的 upstream 语义，并明确哪些差异是本地调度/路由设计必须保留。
+  - 进入条件：阶段一不再存在明显遗漏的上游计费语义，只剩结构性或本地设计型差异。
+- 阶段三：usage/admin observability 与统计链 merged pass
+  - 目标：梳理 `usage_log`、ops request details、admin/user usage 统计链，形成“哪些 upstream 语义已等价存在、哪些字段/视图是本地扩展、哪些地方还不能标记 merged”的最终清单。
+  - 当前判断：`usage_log.go`、`usage_log_helpers.go`、`ops_request_details.go`、`ops_openai_routing_stats.go`、`openai_routing_observability.go` 这一层目前没有比已完成项更好的 upstream 直接吸收候选；更合理的 merged 结论是“本地主线已用更完整的 observability/统计链路超集覆盖”。
+  - 完成标准：可以按阶段给出一份明确的 upstream merged 判定依据，而不是继续无边界地逐个小补丁推进。
