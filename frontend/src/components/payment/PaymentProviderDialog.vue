@@ -81,9 +81,25 @@
               rows="3"
               class="input font-mono text-xs"
             />
+            <div v-else-if="field.sensitive" class="relative">
+              <input
+                :type="visibleFields[field.key] ? 'text' : 'password'"
+                v-model="config[field.key]"
+                class="input pr-10"
+                :placeholder="field.defaultValue || ''"
+              />
+              <button
+                type="button"
+                @click="visibleFields[field.key] = !visibleFields[field.key]"
+                class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <svg v-if="visibleFields[field.key]" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" /></svg>
+                <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+              </button>
+            </div>
             <input
               v-else
-              :type="field.sensitive ? 'password' : 'text'"
+              type="text"
               v-model="config[field.key]"
               class="input"
               :placeholder="field.defaultValue || ''"
@@ -91,19 +107,21 @@
           </div>
         </div>
 
-        <!-- Callback URL config (base URL + fixed paths) -->
+        <!-- Callback URLs (each = editable URL + fixed path) -->
         <div v-if="callbackPaths" class="mt-4 space-y-3">
-          <div>
-            <label class="input-label">{{ t('admin.settings.payment.callbackBaseUrl') }} <span class="text-red-500">*</span></label>
-            <input v-model="callbackBaseUrl" type="text" class="input" :placeholder="defaultBaseUrl" />
+          <div v-if="callbackPaths.notifyUrl">
+            <label class="input-label">{{ t('admin.settings.payment.field_notifyUrl') }} <span class="text-red-500">*</span></label>
+            <div class="flex">
+              <input v-model="notifyBaseUrl" type="text" class="input min-w-0 flex-1 !rounded-r-none !border-r-0" :placeholder="defaultBaseUrl" />
+              <span class="inline-flex items-center whitespace-nowrap rounded-r-lg border border-gray-300 bg-gray-50 px-3 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400">{{ callbackPaths.notifyUrl }}</span>
+            </div>
           </div>
-          <div v-if="callbackPaths.notifyUrl" class="flex items-center gap-2">
-            <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.field_notifyUrl') }}:</span>
-            <code class="min-w-0 flex-1 truncate rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-300">{{ callbackBaseUrl || defaultBaseUrl }}{{ callbackPaths.notifyUrl }}</code>
-          </div>
-          <div v-if="callbackPaths.returnUrl" class="flex items-center gap-2">
-            <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.field_returnUrl') }}:</span>
-            <code class="min-w-0 flex-1 truncate rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-300">{{ callbackBaseUrl || defaultBaseUrl }}{{ callbackPaths.returnUrl }}</code>
+          <div v-if="callbackPaths.returnUrl">
+            <label class="input-label">{{ t('admin.settings.payment.field_returnUrl') }} <span class="text-red-500">*</span></label>
+            <div class="flex">
+              <input v-model="returnBaseUrl" type="text" class="input min-w-0 flex-1 !rounded-r-none !border-r-0" :placeholder="defaultBaseUrl" />
+              <span class="inline-flex items-center whitespace-nowrap rounded-r-lg border border-gray-300 bg-gray-50 px-3 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400">{{ callbackPaths.returnUrl }}</span>
+            </div>
           </div>
         </div>
 
@@ -231,14 +249,16 @@ const form = reactive({
 })
 const config = reactive<Record<string, string>>({})
 const limits = reactive<Record<string, Record<string, number>>>({})
-const callbackBaseUrl = ref('')
+const notifyBaseUrl = ref('')
+const returnBaseUrl = ref('')
 const limitsExpanded = ref(false)
+const visibleFields = reactive<Record<string, boolean>>({})
 
 // --- Computed ---
 const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
 const stripeWebhookUrl = computed(() =>
-  form.provider_key === 'stripe' ? (callbackBaseUrl.value || defaultBaseUrl) + WEBHOOK_PATHS.stripe : '',
+  form.provider_key === 'stripe' ? defaultBaseUrl + WEBHOOK_PATHS.stripe : '',
 )
 
 const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] || null)
@@ -284,7 +304,9 @@ function onKeyChange() {
 function clearConfig() {
   Object.keys(config).forEach(k => delete config[k])
   Object.keys(limits).forEach(k => delete limits[k])
-  callbackBaseUrl.value = ''
+  Object.keys(visibleFields).forEach(k => delete visibleFields[k])
+  notifyBaseUrl.value = ''
+  returnBaseUrl.value = ''
   limitsExpanded.value = false
 }
 
@@ -352,12 +374,11 @@ function handleSave() {
     filteredConfig[k] = v
   }
 
-  // Inject computed callback URLs from base URL + fixed paths
+  // Inject computed callback URLs (each URL = independent base + fixed path)
   const paths = PROVIDER_CALLBACK_PATHS[form.provider_key]
   if (paths) {
-    const base = callbackBaseUrl.value || defaultBaseUrl
-    if (paths.notifyUrl) filteredConfig['notifyUrl'] = base + paths.notifyUrl
-    if (paths.returnUrl) filteredConfig['returnUrl'] = base + paths.returnUrl
+    if (paths.notifyUrl) filteredConfig['notifyUrl'] = (notifyBaseUrl.value || defaultBaseUrl) + paths.notifyUrl
+    if (paths.returnUrl) filteredConfig['returnUrl'] = (returnBaseUrl.value || defaultBaseUrl) + paths.returnUrl
   }
 
   emit('save', {
@@ -402,10 +423,13 @@ function loadProvider(provider: ProviderInstance) {
       if (k === 'notifyUrl' || k === 'returnUrl') continue
       config[k] = v
     }
-    // Extract base URL from existing notifyUrl
+    // Extract base URLs from existing callback URLs
     const paths = PROVIDER_CALLBACK_PATHS[provider.provider_key]
     if (paths?.notifyUrl && provider.config['notifyUrl']) {
-      callbackBaseUrl.value = extractBaseUrl(provider.config['notifyUrl'], paths.notifyUrl)
+      notifyBaseUrl.value = extractBaseUrl(provider.config['notifyUrl'], paths.notifyUrl)
+    }
+    if (paths?.returnUrl && provider.config['returnUrl']) {
+      returnBaseUrl.value = extractBaseUrl(provider.config['returnUrl'], paths.returnUrl)
     }
   }
   applyDefaults()
