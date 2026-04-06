@@ -3400,6 +3400,7 @@ export default {
       billingModePerRequest: '按次',
       billingModeImage: '按次(图片)',
       allBillingTypes: '全部计费类型',
+      allBillingModes: '全部计费模式',
       billingTypeBalance: '钱包余额',
       billingTypeSubscription: '订阅套餐',
       routingTargetGroup: '目标组',

@@ -3241,6 +3241,7 @@ export default {
       billingModePerRequest: 'Per Request',
       billingModeImage: 'Image',
       allBillingTypes: 'All Billing Types',
+      allBillingModes: 'All Billing Modes',
       billingTypeBalance: 'Balance',
       billingTypeSubscription: 'Subscription',
       routingTargetGroup: 'Target Group',

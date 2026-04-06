@@ -763,9 +763,22 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
     - `backend/internal/service/api_key_auth_cache_impl.go`
     - ent generated files were regenerated after schema cleanup and compile green is preserved
 - Remaining Sora cleanup still pending in this delta:
-  - runtime/frontend source tree is now effectively free of active `Sora/sora_` references; latest cleanup also removed lingering locale text and contract-test fixture fields
+  - runtime/frontend source tree is now effectively free of active `Sora/sora_` references; latest cleanup also removed lingering locale text, API contract fixture fields, and README-facing Sora product说明
   - remaining cleanup is mostly historical residue in docs, migrations, comments, and any optional deeper semantic/media terminology cleanup
   - optional deeper semantic cleanup of media fields in `gateway_service.go` / pricing paths if we want to remove every historical Sora-oriented concept rather than just unreachable behavior
   - legacy migrations/docs/tests mentioning removed Sora concepts
+- Additional non-Sora upstream-follow progress after the Sora wave:
+  - admin usage outer-ring filtering now also absorbs `billing_mode` from upstream while preserving local routing filters:
+    - `backend/internal/pkg/usagestats/usage_log_types.go`
+    - `backend/internal/handler/admin/usage_handler.go`
+    - `backend/internal/repository/usage_log_repo.go`
+    - `backend/internal/repository/usage_log_repo_request_type_test.go`
+    - `frontend/src/api/admin/usage.ts`
+    - `frontend/src/components/admin/usage/UsageFilters.vue`
+    - `frontend/src/views/admin/UsageView.vue`
+    - `frontend/src/views/admin/usage_routing_observability.spec.ts`
+    - `frontend/src/i18n/locales/en.ts`
+    - `frontend/src/i18n/locales/zh.ts`
+  - this keeps local `routing_target_group / routing_schedule_layer` filters intact instead of adopting upstream’s narrower replacement.
 - Defer the admin/settings/group/account restructuring until a separate compatibility pass is planned.
 - Treat the hotspot overlap as part of the next Batch C / Batch D style transplant work, not as mechanical absorb.

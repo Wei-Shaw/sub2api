@@ -112,6 +112,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 	model := c.Query("model")
 	routingTargetGroup := strings.TrimSpace(c.Query("routing_target_group"))
 	routingScheduleLayer := strings.TrimSpace(c.Query("routing_schedule_layer"))
+	billingMode := strings.TrimSpace(c.Query("billing_mode"))
 
 	var requestType *int16
 	var stream *bool
@@ -175,6 +176,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 		Model:                model,
 		RoutingTargetGroup:   routingTargetGroup,
 		RoutingScheduleLayer: routingScheduleLayer,
+		BillingMode:          billingMode,
 		RequestType:          requestType,
 		Stream:               stream,
 		BillingType:          billingType,
@@ -238,6 +240,7 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 	}
 
 	model := c.Query("model")
+	billingMode := strings.TrimSpace(c.Query("billing_mode"))
 
 	var requestType *int16
 	var stream *bool
@@ -313,6 +316,7 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 		AccountID:   accountID,
 		GroupID:     groupID,
 		Model:       model,
+		BillingMode: billingMode,
 		RequestType: requestType,
 		Stream:      stream,
 		BillingType: billingType,

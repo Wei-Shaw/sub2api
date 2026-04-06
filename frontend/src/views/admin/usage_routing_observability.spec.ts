@@ -22,6 +22,7 @@ describe('admin usage routing observability wiring', () => {
 	it('wires routing filters, columns, and export fields into admin usage view', () => {
 		const usageViewSource = readFileSync(resolve(__dirname, './UsageView.vue'), 'utf8')
 		const usageFiltersSource = readFileSync(resolve(__dirname, '../../components/admin/usage/UsageFilters.vue'), 'utf8')
+		const usageApiSource = readFileSync(resolve(__dirname, '../../api/admin/usage.ts'), 'utf8')
 		const usageTableSource = readFileSync(resolve(__dirname, '../../components/admin/usage/UsageTable.vue'), 'utf8')
 
 		expect(usageViewSource).toContain("routing_target_group")
@@ -31,6 +32,8 @@ describe('admin usage routing observability wiring', () => {
 		expect(usageViewSource).toContain("routing_failover_count")
 		expect(usageFiltersSource).toContain('filters.routing_target_group')
 		expect(usageFiltersSource).toContain('filters.routing_schedule_layer')
+		expect(usageFiltersSource).toContain('filters.billing_mode')
+		expect(usageApiSource).toContain('billing_mode?: string')
 		expect(usageTableSource).toContain('cell-routing_target_group')
 		expect(usageTableSource).toContain('cell-routing_schedule_layer')
 		expect(usageTableSource).toContain('cell-routing_selected_account_name')

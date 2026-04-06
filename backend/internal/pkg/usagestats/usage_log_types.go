@@ -222,18 +222,19 @@ type UserDashboardStats struct {
 
 // UsageLogFilters represents filters for usage log queries
 type UsageLogFilters struct {
-	UserID      int64
-	APIKeyID    int64
-	AccountID   int64
-	GroupID     int64
-	Model       string
+	UserID               int64
+	APIKeyID             int64
+	AccountID            int64
+	GroupID              int64
+	Model                string
 	RoutingTargetGroup   string
 	RoutingScheduleLayer string
-	RequestType *int16
-	Stream      *bool
-	BillingType *int8
-	StartTime   *time.Time
-	EndTime     *time.Time
+	BillingMode          string
+	RequestType          *int16
+	Stream               *bool
+	BillingType          *int8
+	StartTime            *time.Time
+	EndTime              *time.Time
 	// ExactTotal requests exact COUNT(*) for pagination. Default false for fast large-table paging.
 	ExactTotal bool
 }

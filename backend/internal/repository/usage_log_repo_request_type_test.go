@@ -342,6 +342,30 @@ func TestUsageLogRepositoryListWithFilters_RoutingFilters(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryListWithFilters_BillingMode(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	filters := usagestats.UsageLogFilters{
+		BillingMode: "image",
+		ExactTotal:  true,
+	}
+
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM usage_logs WHERE billing_mode = \$1`).
+		WithArgs("image").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
+	mock.ExpectQuery(`SELECT .* FROM usage_logs WHERE billing_mode = \$1 ORDER BY id DESC LIMIT \$2 OFFSET \$3`).
+		WithArgs("image", 20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	logs, page, err := repo.ListWithFilters(context.Background(), pagination.PaginationParams{Page: 1, PageSize: 20}, filters)
+	require.NoError(t, err)
+	require.Empty(t, logs)
+	require.NotNil(t, page)
+	require.Equal(t, int64(0), page.Total)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUsageLogRepositoryGetUsageTrendWithFiltersRequestTypePriority(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}
