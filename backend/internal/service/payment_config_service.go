@@ -57,6 +57,7 @@ type PaymentConfig struct {
 	ProductNameSuffix   string   `json:"product_name_suffix"`
 	HelpImageURL        string   `json:"help_image_url"`
 	HelpText            string   `json:"help_text"`
+	StripePublishableKey string  `json:"stripe_publishable_key,omitempty"`
 }
 
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
@@ -168,7 +169,10 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 	if err != nil {
 		return nil, fmt.Errorf("get payment config settings: %w", err)
 	}
-	return s.parsePaymentConfig(vals), nil
+	cfg := s.parsePaymentConfig(vals)
+	// Load Stripe publishable key from the first enabled Stripe provider instance
+	cfg.StripePublishableKey = s.getStripePublishableKey(ctx)
+	return cfg, nil
 }
 
 func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *PaymentConfig {
@@ -198,6 +202,23 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		}
 	}
 	return cfg
+}
+
+// getStripePublishableKey finds the publishable key from the first enabled Stripe provider instance.
+func (s *PaymentConfigService) getStripePublishableKey(ctx context.Context) string {
+	instances, err := s.entClient.PaymentProviderInstance.Query().
+		Where(
+			paymentproviderinstance.EnabledEQ(true),
+			paymentproviderinstance.ProviderKeyEQ("stripe"),
+		).Limit(1).All(ctx)
+	if err != nil || len(instances) == 0 {
+		return ""
+	}
+	cfg := s.decryptConfig(instances[0].Config)
+	if cfg == nil {
+		return ""
+	}
+	return cfg["publishableKey"]
 }
 
 // UpdatePaymentConfig updates the payment configuration settings.
