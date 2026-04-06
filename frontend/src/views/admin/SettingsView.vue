@@ -2119,24 +2119,12 @@ interface DefaultSubscriptionGroupOption {
   [key: string]: unknown
 }
 
-type SettingsForm = SystemSettings & {
+type SettingsForm = Omit<SystemSettings, 'payment_enabled_types'> & {
   smtp_password: string
   turnstile_secret_key: string
   linuxdo_connect_client_secret: string
-  // Payment config fields (loaded from/saved to separate payment config API)
-  payment_enabled: boolean
-  payment_min_amount: number
-  payment_max_amount: number
-  payment_daily_limit: number
-  payment_max_pending_orders: number
-  payment_order_timeout_minutes: number
-  payment_balance_disabled: boolean
+  // Payment config — payment_enabled_types stored as comma-separated string in form
   payment_enabled_types: string
-  payment_help_image_url: string
-  payment_help_text: string
-  payment_product_name_prefix: string
-  payment_product_name_suffix: string
-  payment_load_balance_strategy: string
 }
 
 const form = reactive<SettingsForm>({
