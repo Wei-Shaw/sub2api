@@ -103,6 +103,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import type { PaymentOrder } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -163,7 +164,7 @@ async function confirmCancel() {
     appStore.showSuccess(t('common.success'))
     cancelTargetId.value = null
     await fetchOrders()
-  } catch (err: any) { appStore.showError(err.response?.data?.detail || t('common.error')) }
+  } catch (err: any) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { actionLoading.value = false }
 }
 
@@ -178,7 +179,7 @@ async function confirmRefund() {
     refundTarget.value = null
     refundReason.value = ''
     await fetchOrders()
-  } catch (err: any) { appStore.showError(err.response?.data?.detail || t('common.error')) }
+  } catch (err: any) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { actionLoading.value = false }
 }
 

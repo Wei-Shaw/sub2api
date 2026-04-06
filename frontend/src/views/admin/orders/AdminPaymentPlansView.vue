@@ -104,6 +104,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminPaymentAPI } from '@/api/admin/payment'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import adminAPI from '@/api/admin'
 import type { SubscriptionPlan } from '@/types/payment'
 import type { AdminGroup } from '@/types'
@@ -178,7 +179,7 @@ const planColumns = computed((): Column[] => [
 async function loadPlans() {
   plansLoading.value = true
   try { const res = await adminPaymentAPI.getPlans(); plans.value = res.data || [] }
-  catch (err: unknown) { appStore.showError(err instanceof Error ? err.message : String(err)) }
+  catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { plansLoading.value = false }
 }
 
@@ -202,7 +203,7 @@ async function handleSavePlan() {
     if (editingPlan.value) { await adminPaymentAPI.updatePlan(editingPlan.value.id, data) }
     else { await adminPaymentAPI.createPlan(data) }
     appStore.showSuccess(t('common.saved')); showPlanDialog.value = false; loadPlans()
-  } catch (err: unknown) { appStore.showError(err instanceof Error ? err.message : String(err)) }
+  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { planSaving.value = false }
 }
 
@@ -210,7 +211,7 @@ function confirmDeletePlan(plan: SubscriptionPlan) { deletingPlanId.value = plan
 async function handleDeletePlan() {
   if (!deletingPlanId.value) return
   try { await adminPaymentAPI.deletePlan(deletingPlanId.value); appStore.showSuccess(t('common.deleted')); showDeletePlanDialog.value = false; loadPlans() }
-  catch (err: unknown) { appStore.showError(err instanceof Error ? err.message : String(err)) }
+  catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
 }
 
 // ==================== Lifecycle ====================

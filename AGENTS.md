@@ -1188,6 +1188,44 @@ antigravityRateLimitThreshold
 <div v-else>Token 明细</div>
 ```
 
+### 13. 前端 API 错误处理规范
+
+#### 统一错误提取
+
+所有前端 catch 块**必须**使用 `extractApiErrorMessage()` 提取后端返回的错误消息，禁止直接使用 `err.message`、`String(err)` 或 `err.response?.data?.detail`。
+
+```typescript
+import { extractApiErrorMessage } from '@/utils/apiError'
+
+// ✅ 推荐
+try { ... } catch (err: unknown) {
+  appStore.showError(extractApiErrorMessage(err, t('common.error')))
+}
+
+// ❌ 不推荐
+try { ... } catch (err: unknown) {
+  appStore.showError(err instanceof Error ? err.message : String(err))
+}
+```
+
+#### 原因
+
+API 客户端拦截器（`api/client.ts`）将后端错误统一转换为 `{ status, code, message }` 普通对象（非 Error 实例），直接使用 `err instanceof Error` 会得到 `false`，`String(err)` 则返回 `[object Object]`。
+
+#### 后端 API 错误响应格式
+
+```json
+{ "code": 40001, "message": "order not found", "details": { "order_id": 123 } }
+```
+
+- `message`：英文错误描述，供开发者调试
+- `code`：错误码（前端可根据 code 映射 i18n key，当前阶段直接展示 message）
+- `details`：上下文参数
+
+#### 国际化方向（后续）
+
+长期目标是前端根据 `code` 映射 i18n key（如 `errors.ORDER_NOT_FOUND`），用 `details` 填充模板变量。��前阶段后端 `message` 已足够可读，直接展示即可。
+
 ---
 
 ## CI 检查与发布门禁

@@ -114,6 +114,7 @@ import { useAuthStore } from '@/stores/auth'
 import { usePaymentStore } from '@/stores/payment'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import type { SubscriptionPlan, MethodLimit } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -225,7 +226,7 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       appStore.showError(errorMessage.value)
     }
   } catch (err: any) {
-    errorMessage.value = err.response?.data?.detail || err.message || t('payment.result.failed')
+    errorMessage.value = extractApiErrorMessage(err, t('payment.result.failed'))
     appStore.showError(errorMessage.value)
   } finally {
     submitting.value = false

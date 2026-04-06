@@ -221,6 +221,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminPaymentAPI } from '@/api/admin/payment'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import type { ProviderInstance } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -260,7 +261,7 @@ async function loadConfig() {
     configForm.balance_disabled = cfg.balance_disabled
     configForm.enabled_types = (cfg.enabled_payment_types || []).join(',')
   } catch (err: unknown) {
-    appStore.showError(err instanceof Error ? err.message : String(err))
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
   }
 }
 
@@ -282,7 +283,7 @@ async function saveConfig() {
     })
     appStore.showSuccess(t('common.saved'))
   } catch (err: unknown) {
-    appStore.showError(err instanceof Error ? err.message : String(err))
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally {
     configSaving.value = false
   }
@@ -332,7 +333,7 @@ async function loadProviders() {
     const res = await adminPaymentAPI.getProviders()
     providers.value = res.data || []
   } catch (err: unknown) {
-    appStore.showError(err instanceof Error ? err.message : String(err))
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally { providersLoading.value = false }
 }
 
@@ -372,7 +373,7 @@ async function handleSaveProvider() {
     showProviderDialog.value = false
     loadProviders()
   } catch (err: unknown) {
-    appStore.showError(err instanceof Error ? err.message : String(err))
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally { providerSaving.value = false }
 }
 
@@ -389,7 +390,7 @@ async function handleDeleteProvider() {
     showDeleteDialog.value = false
     loadProviders()
   } catch (err: unknown) {
-    appStore.showError(err instanceof Error ? err.message : String(err))
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
   }
 }
 

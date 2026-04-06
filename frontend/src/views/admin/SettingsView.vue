@@ -2074,6 +2074,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import ImageUpload from '@/components/common/ImageUpload.vue'
 import BackupSettings from '@/views/admin/BackupView.vue'
 import { useClipboard } from '@/composables/useClipboard'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import {
@@ -2920,7 +2921,7 @@ function providerKeyLabel(key: string): string {
 async function loadProviders() {
   providersLoading.value = true
   try { const res = await adminAPI.payment.getProviders(); providers.value = res.data || [] }
-  catch (err: unknown) { appStore.showError(err instanceof Error ? err.message : String(err)) }
+  catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { providersLoading.value = false }
 }
 function resetProviderForm() {
@@ -2944,14 +2945,14 @@ async function handleSaveProvider() {
     if (editingProvider.value) { await adminAPI.payment.updateProvider(editingProvider.value.id, data) }
     else { await adminAPI.payment.createProvider(data) }
     appStore.showSuccess(t('common.saved')); showProviderDialog.value = false; loadProviders()
-  } catch (err: unknown) { appStore.showError(err instanceof Error ? err.message : String(err)) }
+  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { providerSaving.value = false }
 }
 function confirmDeleteProvider(provider: ProviderInstance) { deletingProviderId.value = provider.id; showDeleteProviderDialog.value = true }
 async function handleDeleteProvider() {
   if (!deletingProviderId.value) return
   try { await adminAPI.payment.deleteProvider(deletingProviderId.value); appStore.showSuccess(t('common.deleted')); showDeleteProviderDialog.value = false; loadProviders() }
-  catch (err: unknown) { appStore.showError(err instanceof Error ? err.message : String(err)) }
+  catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
 }
 
 onMounted(() => {

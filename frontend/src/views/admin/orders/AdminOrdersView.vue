@@ -84,6 +84,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminPaymentAPI } from '@/api/admin/payment'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import type { PaymentOrder } from '@/types/payment'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -124,7 +125,7 @@ async function loadOrders() {
     orders.value = res.data.items || []
     orderPagination.total = res.data.total || 0
   } catch (err: unknown) {
-    appStore.showError(err instanceof Error ? err.message : String(err))
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally { ordersLoading.value = false }
 }
 
@@ -176,12 +177,12 @@ function showOrderDetail(order: PaymentOrder) { selectedOrder.value = order; sho
 
 async function handleCancelOrder(order: PaymentOrder) {
   try { await adminPaymentAPI.cancelOrder(order.id); appStore.showSuccess(t('payment.admin.orderCancelled')); loadOrders() }
-  catch (err: unknown) { appStore.showError(err instanceof Error ? err.message : String(err)) }
+  catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
 }
 
 async function handleRetryOrder(order: PaymentOrder) {
   try { await adminPaymentAPI.retryRecharge(order.id); appStore.showSuccess(t('payment.admin.retrySuccess')); loadOrders() }
-  catch (err: unknown) { appStore.showError(err instanceof Error ? err.message : String(err)) }
+  catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
 }
 
 function openRefundDialog(order: PaymentOrder) { selectedOrder.value = order; showRefundDialog.value = true }
@@ -192,7 +193,7 @@ async function handleRefund(data: { amount: number; reason: string; deduct_balan
   try {
     await adminPaymentAPI.refundOrder(selectedOrder.value.id, { amount: data.amount, reason: data.reason, deduct_balance: data.deduct_balance })
     appStore.showSuccess(t('payment.admin.refundSuccess')); showRefundDialog.value = false; loadOrders()
-  } catch (err: unknown) { appStore.showError(err instanceof Error ? err.message : String(err)) }
+  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { refundSubmitting.value = false }
 }
 

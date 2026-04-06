@@ -48,6 +48,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import type { PaymentOrder } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -102,7 +103,7 @@ onMounted(async () => {
     paymentElement.mount('#stripe-payment-element')
     paymentElement.on('ready', () => { stripeReady.value = true })
   } catch (err: any) {
-    initError.value = err.message || t('payment.stripeLoadFailed')
+    initError.value = extractApiErrorMessage(err, t('payment.stripeLoadFailed'))
   } finally {
     loading.value = false
   }
@@ -133,7 +134,7 @@ async function handlePay() {
       }, 2000)
     }
   } catch (err: any) {
-    stripeError.value = err.message || t('payment.result.failed')
+    stripeError.value = extractApiErrorMessage(err, t('payment.result.failed'))
   } finally {
     stripeSubmitting.value = false
   }
