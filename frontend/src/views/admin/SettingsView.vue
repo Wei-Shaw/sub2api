@@ -1767,9 +1767,21 @@
                 <div v-if="!isProviderEnabled(provider.provider_key)" class="border-t border-gray-100 px-4 py-2 dark:border-dark-700">
                   <span class="text-xs text-amber-500">{{ t('admin.settings.payment.typeDisabled') }} — {{ t('admin.settings.payment.enableTypesFirst') }}</span>
                 </div>
-                <!-- Supported types row -->
-                <div v-else class="border-t border-gray-100 px-4 py-1.5 dark:border-dark-700 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.payment.supportedTypes') }}: <span class="font-medium text-gray-700 dark:text-gray-300">{{ provider.supported_types || '-' }}</span>
+                <!-- Supported types badge row -->
+                <div v-else class="flex items-center gap-2 border-t border-gray-100 px-4 py-2 dark:border-dark-700">
+                  <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.supportedTypes') }}:</span>
+                  <button
+                    v-for="pt in getProviderAvailableTypes(provider.provider_key)"
+                    :key="pt.value"
+                    type="button"
+                    @click="toggleCardSupportedType(provider, pt.value)"
+                    :class="[
+                      'rounded px-2 py-0.5 text-xs font-medium transition-all',
+                      isCardTypeSelected(provider, pt.value)
+                        ? 'bg-primary-500 text-white'
+                        : 'bg-gray-100 text-gray-400 dark:bg-dark-700 dark:text-gray-500',
+                    ]"
+                  >{{ pt.label }}</button>
                 </div>
               </div>
             </div>
@@ -3082,6 +3094,37 @@ async function toggleProviderField(provider: ProviderInstance, field: 'enabled' 
     else provider.refund_enabled = newValue
   } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
 }
+function getProviderAvailableTypes(providerKey: string) {
+  const types = PROVIDER_SUPPORTED_TYPES[providerKey] || []
+  return types.map(typeVal => {
+    if (typeVal === 'easypay' && providerKey === 'easypay') {
+      return { value: typeVal, label: t('admin.settings.payment.easypayRedirect') }
+    }
+    const found = allPaymentTypes.value.find(pt => pt.value === typeVal)
+    return found || { value: typeVal, label: typeVal }
+  })
+}
+function isCardTypeSelected(provider: ProviderInstance, type: string): boolean {
+  return (provider.supported_types || '').split(',').map(s => s.trim()).filter(Boolean).includes(type)
+}
+async function toggleCardSupportedType(provider: ProviderInstance, type: string) {
+  const current = (provider.supported_types || '').split(',').map(s => s.trim()).filter(Boolean)
+  let updated: string[]
+  if (current.includes(type)) {
+    updated = current.filter(t => t !== type)
+  } else {
+    updated = [...current, type]
+  }
+  if (updated.length === 0) {
+    appStore.showError(t('admin.settings.payment.validationTypesRequired'))
+    return
+  }
+  const newVal = updated.join(',')
+  try {
+    await adminAPI.payment.updateProvider(provider.id, { supportedTypes: newVal } as any)
+    provider.supported_types = newVal
+  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
+}
 async function loadProviders() {
   providersLoading.value = true
   try { const res = await adminAPI.payment.getProviders(); providers.value = res.data || [] }
@@ -3115,15 +3158,18 @@ async function handleSaveProvider() {
     appStore.showError(t('admin.settings.payment.validationTypesRequired'))
     return
   }
-  // Validate required config fields (only for new providers — editing may leave sensitive fields empty)
-  if (!editingProvider.value) {
-    const fields = PROVIDER_CONFIG_FIELDS[providerForm.provider_key] || []
-    for (const f of fields) {
-      if (!f.optional && !(providerConfig[f.key] || '').trim()) {
-        const label = f.label || t(`admin.settings.payment.field_${f.key}`)
-        appStore.showError(t('admin.settings.payment.validationFieldRequired', { field: label }))
-        return
-      }
+  // Validate required config fields
+  const fields = PROVIDER_CONFIG_FIELDS[providerForm.provider_key] || []
+  for (const f of fields) {
+    if (f.optional) continue
+    const val = (providerConfig[f.key] || '').trim()
+    // On create: all required fields must be filled
+    // On edit: sensitive fields can be left empty (backend keeps existing values)
+    //          non-sensitive required fields must be filled if user entered any config
+    if (!editingProvider.value && !val) {
+      const label = f.label || t(`admin.settings.payment.field_${f.key}`)
+      appStore.showError(t('admin.settings.payment.validationFieldRequired', { field: label }))
+      return
     }
   }
   providerSaving.value = true
