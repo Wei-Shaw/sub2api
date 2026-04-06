@@ -151,15 +151,16 @@ const tabs = computed(() => {
 })
 
 const enabledMethods = computed(() => config.value?.enabled_payment_types ?? [])
+// 0 = no limit; provider-level overrides global
 const minAmount = computed(() => {
   const limit = methodLimits.value[selectedMethod.value]
   if (limit?.single_min && limit.single_min > 0) return limit.single_min
-  return config.value?.min_amount && config.value.min_amount > 0 ? config.value.min_amount : 1
+  return config.value?.min_amount && config.value.min_amount > 0 ? config.value.min_amount : 0
 })
 const maxAmount = computed(() => {
   const limit = methodLimits.value[selectedMethod.value]
   if (limit?.single_max && limit.single_max > 0) return limit.single_max
-  return config.value?.max_amount && config.value.max_amount > 0 ? config.value.max_amount : 99999999
+  return config.value?.max_amount && config.value.max_amount > 0 ? config.value.max_amount : 0
 })
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
@@ -184,14 +185,17 @@ const totalAmount = computed(() =>
 
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
-  if (validAmount.value < minAmount.value) return t('payment.amountTooLow', { min: minAmount.value })
-  if (validAmount.value > maxAmount.value) return t('payment.amountTooHigh', { max: maxAmount.value })
+  if (minAmount.value > 0 && validAmount.value < minAmount.value) return t('payment.amountTooLow', { min: minAmount.value })
+  if (maxAmount.value > 0 && validAmount.value > maxAmount.value) return t('payment.amountTooHigh', { max: maxAmount.value })
   return ''
 })
 
 const canSubmit = computed(() => {
   const limitInfo = methodLimits.value[selectedMethod.value]
-  return validAmount.value >= minAmount.value && validAmount.value <= maxAmount.value && limitInfo?.available !== false
+  if (validAmount.value <= 0) return false
+  if (minAmount.value > 0 && validAmount.value < minAmount.value) return false
+  if (maxAmount.value > 0 && validAmount.value > maxAmount.value) return false
+  return limitInfo?.available !== false
 })
 
 function openSubscribeDialog(plan: SubscriptionPlan) {

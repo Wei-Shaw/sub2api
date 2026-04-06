@@ -5050,6 +5050,7 @@ export default {
     amountLabel: 'Amount',
     quickAmounts: 'Quick Amounts',
     customAmount: 'Custom Amount',
+    enterAmount: 'Enter amount',
     paymentMethod: 'Payment Method',
     fee: 'Fee',
     actualPay: 'Actual Payment',

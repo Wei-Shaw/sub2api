@@ -5247,6 +5247,7 @@ export default {
     amountLabel: '充值金额',
     quickAmounts: '快捷金额',
     customAmount: '自定义金额',
+    enterAmount: '输入金额',
     paymentMethod: '支付方式',
     fee: '手续费',
     actualPay: '实付金额',

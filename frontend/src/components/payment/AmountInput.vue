@@ -36,7 +36,7 @@
           type="text"
           inputmode="decimal"
           :value="customText"
-          :placeholder="`${min} - ${max}`"
+          :placeholder="placeholderText"
           class="input w-full py-3 pl-8 pr-4"
           @input="handleInput"
         />
@@ -56,8 +56,8 @@ const props = withDefaults(defineProps<{
   max?: number
 }>(), {
   amounts: () => [10, 50, 100, 200, 500, 1000],
-  min: 1,
-  max: 10000,
+  min: 0,
+  max: 0,
 })
 
 const emit = defineEmits<{
@@ -68,9 +68,17 @@ const { t } = useI18n()
 
 const customText = ref('')
 
+// 0 = no limit
 const filteredAmounts = computed(() =>
-  props.amounts.filter((a) => a >= props.min && a <= props.max)
+  props.amounts.filter((a) => (props.min <= 0 || a >= props.min) && (props.max <= 0 || a <= props.max))
 )
+
+const placeholderText = computed(() => {
+  if (props.min > 0 && props.max > 0) return `${props.min} - ${props.max}`
+  if (props.min > 0) return `≥ ${props.min}`
+  if (props.max > 0) return `≤ ${props.max}`
+  return t('payment.enterAmount', '输入金额')
+})
 
 const AMOUNT_PATTERN = /^\d*(\.\d{0,2})?$/
 
