@@ -349,6 +349,15 @@ function loadProvider(provider: ProviderInstance) {
   form.enabled = provider.enabled
   form.refund_enabled = provider.refund_enabled
   clearConfig()
+  // Pre-fill config from API response (non-sensitive in cleartext, sensitive masked)
+  if (provider.config) {
+    for (const [k, v] of Object.entries(provider.config)) {
+      // Skip masked sensitive values — leave field empty so user can re-enter
+      if (v !== '••••••••') {
+        config[k] = v
+      }
+    }
+  }
   // Parse existing limits
   if (provider.limits) {
     try {

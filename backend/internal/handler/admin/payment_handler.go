@@ -221,7 +221,7 @@ func (h *PaymentHandler) DeletePlan(c *gin.Context) {
 // ListProviders returns all payment provider instances.
 // GET /api/v1/admin/payment/providers
 func (h *PaymentHandler) ListProviders(c *gin.Context) {
-	providers, err := h.configService.ListProviderInstances(c.Request.Context())
+	providers, err := h.configService.ListProviderInstancesWithConfig(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

@@ -244,6 +244,64 @@ func (s *PaymentConfigService) ListProviderInstances(ctx context.Context) ([]*db
 	return s.entClient.PaymentProviderInstance.Query().Order(paymentproviderinstance.BySortOrder()).All(ctx)
 }
 
+// ProviderInstanceResponse is the API response for a provider instance.
+// Config contains non-sensitive fields in cleartext; sensitive fields are masked.
+type ProviderInstanceResponse struct {
+	ID             int64             `json:"id"`
+	ProviderKey    string            `json:"provider_key"`
+	Name           string            `json:"name"`
+	Config         map[string]string `json:"config"`
+	SupportedTypes string            `json:"supported_types"`
+	Limits         string            `json:"limits"`
+	Enabled        bool              `json:"enabled"`
+	RefundEnabled  bool              `json:"refund_enabled"`
+	SortOrder      int               `json:"sort_order"`
+}
+
+// ListProviderInstancesWithConfig returns provider instances with decrypted
+// non-sensitive config fields and masked sensitive fields.
+func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Context) ([]ProviderInstanceResponse, error) {
+	instances, err := s.entClient.PaymentProviderInstance.Query().
+		Order(paymentproviderinstance.BySortOrder()).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]ProviderInstanceResponse, 0, len(instances))
+	for _, inst := range instances {
+		resp := ProviderInstanceResponse{
+			ID: int64(inst.ID), ProviderKey: inst.ProviderKey, Name: inst.Name,
+			SupportedTypes: inst.SupportedTypes, Limits: inst.Limits,
+			Enabled: inst.Enabled, RefundEnabled: inst.RefundEnabled, SortOrder: inst.SortOrder,
+		}
+		resp.Config = s.decryptAndMaskConfig(inst.Config)
+		result = append(result, resp)
+	}
+	return result, nil
+}
+
+func (s *PaymentConfigService) decryptAndMaskConfig(encrypted string) map[string]string {
+	if encrypted == "" {
+		return nil
+	}
+	decrypted, err := payment.Decrypt(encrypted, s.encryptionKey)
+	if err != nil {
+		return nil
+	}
+	var raw map[string]string
+	if err := json.Unmarshal([]byte(decrypted), &raw); err != nil {
+		return nil
+	}
+	masked := make(map[string]string, len(raw))
+	for k, v := range raw {
+		if isSensitiveConfigField(k) && v != "" {
+			masked[k] = "••••••••"
+		} else {
+			masked[k] = v
+		}
+	}
+	return masked
+}
+
 // pendingOrderStatuses are order statuses considered "in progress" —
 // modifying provider credentials or deleting a provider/plan is blocked
 // while orders in these states exist.

@@ -103,6 +103,7 @@ export interface ProviderInstance {
   id: number
   provider_key: string
   name: string
+  config: Record<string, string>
   supported_types: string
   enabled: boolean
   refund_enabled: boolean
