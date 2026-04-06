@@ -12,6 +12,8 @@ DECLARE
     v_items jsonb;
     v_idx   int;
     v_icon  text;
+    v_elem  jsonb;
+    v_i     int := 0;
 BEGIN
     SELECT value INTO v_raw
       FROM settings WHERE key = 'custom_menu_items';
@@ -22,11 +24,15 @@ BEGIN
 
     v_items := v_raw::jsonb;
 
-    -- Find the index of the migrated item
-    SELECT ordinality - 1 INTO v_idx
-      FROM jsonb_array_elements(v_items) WITH ORDINALITY AS elem
-     WHERE elem ->> 'id' = 'migrated_purchase_subscription'
-     LIMIT 1;
+    -- Find the index of the migrated item by iterating the array
+    v_idx := NULL;
+    FOR v_elem IN SELECT jsonb_array_elements(v_items) LOOP
+        IF v_elem ->> 'id' = 'migrated_purchase_subscription' THEN
+            v_idx := v_i;
+            EXIT;
+        END IF;
+        v_i := v_i + 1;
+    END LOOP;
 
     IF v_idx IS NULL THEN
         RETURN;  -- item not found, nothing to fix
