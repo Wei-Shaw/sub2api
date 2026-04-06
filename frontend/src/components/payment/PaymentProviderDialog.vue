@@ -2,6 +2,7 @@
   <BaseDialog
     :show="show"
     :title="editing ? t('admin.settings.payment.editProvider') : t('admin.settings.payment.createProvider')"
+    width="wide"
     @close="emit('close')"
   >
     <form id="provider-form" @submit.prevent="handleSave" class="space-y-4">
@@ -90,6 +91,22 @@
           </div>
         </div>
 
+        <!-- Callback URL config (base URL + fixed paths) -->
+        <div v-if="callbackPaths" class="mt-4 space-y-3">
+          <div>
+            <label class="input-label">{{ t('admin.settings.payment.callbackBaseUrl') }} <span class="text-red-500">*</span></label>
+            <input v-model="callbackBaseUrl" type="text" class="input" :placeholder="defaultBaseUrl" />
+          </div>
+          <div v-if="callbackPaths.notifyUrl" class="flex items-center gap-2">
+            <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.field_notifyUrl') }}:</span>
+            <code class="min-w-0 flex-1 truncate rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-300">{{ callbackBaseUrl || defaultBaseUrl }}{{ callbackPaths.notifyUrl }}</code>
+          </div>
+          <div v-if="callbackPaths.returnUrl" class="flex items-center gap-2">
+            <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.field_returnUrl') }}:</span>
+            <code class="min-w-0 flex-1 truncate rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-300">{{ callbackBaseUrl || defaultBaseUrl }}{{ callbackPaths.returnUrl }}</code>
+          </div>
+        </div>
+
         <!-- Stripe webhook hint -->
         <div v-if="stripeWebhookUrl" class="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800/50 dark:bg-blue-900/20">
           <p class="text-xs text-blue-700 dark:text-blue-300">
@@ -160,7 +177,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed } from 'vue'
+import { reactive, computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -169,9 +186,11 @@ import type { TypeOption } from './providerConfig'
 import {
   PROVIDER_CONFIG_FIELDS,
   PROVIDER_SUPPORTED_TYPES,
+  PROVIDER_CALLBACK_PATHS,
   WEBHOOK_PATHS,
   parseTypes,
   getAvailableTypes,
+  extractBaseUrl,
 } from './providerConfig'
 
 const props = defineProps<{
@@ -209,13 +228,16 @@ const form = reactive({
 })
 const config = reactive<Record<string, string>>({})
 const limits = reactive<Record<string, Record<string, number>>>({})
+const callbackBaseUrl = ref('')
 
 // --- Computed ---
-const baseURL = typeof window !== 'undefined' ? window.location.origin : ''
+const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
 const stripeWebhookUrl = computed(() =>
-  form.provider_key === 'stripe' ? baseURL + WEBHOOK_PATHS.stripe : '',
+  form.provider_key === 'stripe' ? (callbackBaseUrl.value || defaultBaseUrl) + WEBHOOK_PATHS.stripe : '',
 )
+
+const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] || null)
 
 const availableTypes = computed(() =>
   getAvailableTypes(form.provider_key, props.allPaymentTypes, props.redirectLabel),
@@ -258,6 +280,7 @@ function onKeyChange() {
 function clearConfig() {
   Object.keys(config).forEach(k => delete config[k])
   Object.keys(limits).forEach(k => delete limits[k])
+  callbackBaseUrl.value = ''
 }
 
 function applyDefaults() {
@@ -317,6 +340,14 @@ function handleSave() {
     filteredConfig[k] = v
   }
 
+  // Inject computed callback URLs from base URL + fixed paths
+  const paths = PROVIDER_CALLBACK_PATHS[form.provider_key]
+  if (paths) {
+    const base = callbackBaseUrl.value || defaultBaseUrl
+    if (paths.notifyUrl) filteredConfig['notifyUrl'] = base + paths.notifyUrl
+    if (paths.returnUrl) filteredConfig['returnUrl'] = base + paths.returnUrl
+  }
+
   emit('save', {
     providerKey: form.provider_key,
     name: form.name,
@@ -355,10 +386,16 @@ function loadProvider(provider: ProviderInstance) {
   // Pre-fill config from API response (non-sensitive in cleartext, sensitive masked as ••••••••)
   if (provider.config) {
     for (const [k, v] of Object.entries(provider.config)) {
+      // Skip notifyUrl/returnUrl — they are derived from callbackBaseUrl
+      if (k === 'notifyUrl' || k === 'returnUrl') continue
       config[k] = v
     }
+    // Extract base URL from existing notifyUrl
+    const paths = PROVIDER_CALLBACK_PATHS[provider.provider_key]
+    if (paths?.notifyUrl && provider.config['notifyUrl']) {
+      callbackBaseUrl.value = extractBaseUrl(provider.config['notifyUrl'], paths.notifyUrl)
+    }
   }
-  // Apply defaults for any empty fields with defaultValue
   applyDefaults()
   // Parse existing limits
   if (provider.limits) {

@@ -17,6 +17,12 @@ export interface TypeOption {
   label: string
 }
 
+/** Callback URL paths for a provider. */
+export interface CallbackPaths {
+  notifyUrl?: string
+  returnUrl?: string
+}
+
 // --- Constants ---
 
 /** Maps provider key → available payment types. */
@@ -37,16 +43,20 @@ export const WEBHOOK_PATHS: Record<string, string> = {
 
 export const RETURN_PATH = '/payment/result'
 
-const baseURL = typeof window !== 'undefined' ? window.location.origin : ''
+/** Fixed callback paths per provider — displayed as read-only after base URL. */
+export const PROVIDER_CALLBACK_PATHS: Record<string, CallbackPaths> = {
+  easypay: { notifyUrl: WEBHOOK_PATHS.easypay, returnUrl: RETURN_PATH },
+  alipay: { notifyUrl: WEBHOOK_PATHS.alipay, returnUrl: RETURN_PATH },
+  wxpay: { notifyUrl: WEBHOOK_PATHS.wxpay },
+  // stripe: no callback URL config needed (webhook is separate)
+}
 
-/** Per-provider config fields with defaults. */
+/** Per-provider config fields (excludes notifyUrl/returnUrl which are handled separately). */
 export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
   easypay: [
     { key: 'pid', label: 'PID', sensitive: false },
     { key: 'pkey', label: 'PKey', sensitive: true },
     { key: 'apiBase', label: '', sensitive: false },
-    { key: 'notifyUrl', label: '', sensitive: false, defaultValue: baseURL + WEBHOOK_PATHS.easypay },
-    { key: 'returnUrl', label: '', sensitive: false, defaultValue: baseURL + RETURN_PATH },
     { key: 'cidAlipay', label: '', sensitive: false, optional: true },
     { key: 'cidWxpay', label: '', sensitive: false, optional: true },
   ],
@@ -54,8 +64,6 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'appId', label: 'App ID', sensitive: false },
     { key: 'privateKey', label: '', sensitive: true },
     { key: 'publicKey', label: '', sensitive: true },
-    { key: 'notifyUrl', label: '', sensitive: false, defaultValue: baseURL + WEBHOOK_PATHS.alipay },
-    { key: 'returnUrl', label: '', sensitive: false, defaultValue: baseURL + RETURN_PATH },
   ],
   wxpay: [
     { key: 'appId', label: 'App ID', sensitive: false },
@@ -65,7 +73,6 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'publicKey', label: '', sensitive: true },
     { key: 'publicKeyId', label: '', sensitive: false, optional: true },
     { key: 'certSerial', label: '', sensitive: false, optional: true },
-    { key: 'notifyUrl', label: '', sensitive: false, defaultValue: baseURL + WEBHOOK_PATHS.wxpay },
   ],
   stripe: [
     { key: 'secretKey', label: '', sensitive: true },
@@ -102,4 +109,12 @@ export function getAvailableTypes(
 ): TypeOption[] {
   const types = PROVIDER_SUPPORTED_TYPES[providerKey] || []
   return types.map(t => resolveTypeLabel(t, providerKey, allTypes, redirectLabel))
+}
+
+/** Extract base URL from a full callback URL by removing the known path suffix. */
+export function extractBaseUrl(fullUrl: string, path: string): string {
+  if (!fullUrl) return ''
+  if (fullUrl.endsWith(path)) return fullUrl.slice(0, -path.length)
+  // Fallback: try to extract origin
+  try { return new URL(fullUrl).origin } catch { return fullUrl }
 }

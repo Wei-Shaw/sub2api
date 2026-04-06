@@ -4536,6 +4536,7 @@ export default {
         field_apiBase: 'API 基础地址',
         field_notifyUrl: '异步通知地址',
         field_returnUrl: '同步跳转地址',
+        callbackBaseUrl: '回调基础地址',
         field_privateKey: '私钥',
         field_publicKey: '公钥',
         field_mchId: '商户号',

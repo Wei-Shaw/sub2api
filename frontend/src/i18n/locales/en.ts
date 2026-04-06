@@ -4363,6 +4363,7 @@ export default {
         field_apiBase: 'API Base URL',
         field_notifyUrl: 'Notify URL',
         field_returnUrl: 'Return URL',
+        callbackBaseUrl: 'Callback Base URL',
         field_privateKey: 'Private Key',
         field_publicKey: 'Public Key',
         field_mchId: 'Merchant ID',
