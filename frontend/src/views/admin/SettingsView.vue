@@ -1794,7 +1794,7 @@
               <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.providerConfig') }}</h4>
               <div class="space-y-3">
                 <div v-for="field in currentProviderFields" :key="field.key">
-                  <label class="input-label">{{ field.label }} <span v-if="field.optional" class="text-xs text-gray-400">({{ t('common.optional') }})</span></label>
+                  <label class="input-label">{{ field.label }} <span v-if="field.optional" class="text-xs text-gray-400">({{ t('common.optional') }})</span><span v-else class="text-red-500"> *</span></label>
                   <textarea v-if="field.sensitive && field.key.toLowerCase().includes('key') && field.key !== 'pkey'" v-model="providerConfig[field.key]" rows="3" class="input font-mono text-xs" />
                   <input v-else :type="field.sensitive ? 'password' : 'text'" v-model="providerConfig[field.key]" class="input" />
                 </div>
@@ -2951,16 +2951,16 @@ const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
   easypay: [
     { key: 'pid', label: 'PID', sensitive: false },
     { key: 'pkey', label: 'PKey', sensitive: true },
-    { key: 'apiBase', label: '', sensitive: false, optional: true },
-    { key: 'notifyUrl', label: '', sensitive: false, optional: true },
-    { key: 'returnUrl', label: '', sensitive: false, optional: true },
+    { key: 'apiBase', label: '', sensitive: false },
+    { key: 'notifyUrl', label: '', sensitive: false },
+    { key: 'returnUrl', label: '', sensitive: false },
   ],
   alipay: [
     { key: 'appId', label: 'App ID', sensitive: false },
     { key: 'privateKey', label: '', sensitive: true },
     { key: 'publicKey', label: '', sensitive: true },
-    { key: 'notifyUrl', label: '', sensitive: false, optional: true },
-    { key: 'returnUrl', label: '', sensitive: false, optional: true },
+    { key: 'notifyUrl', label: '', sensitive: false },
+    { key: 'returnUrl', label: '', sensitive: false },
   ],
   wxpay: [
     { key: 'appId', label: 'App ID', sensitive: false },
@@ -2968,9 +2968,9 @@ const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'privateKey', label: '', sensitive: true },
     { key: 'apiV3Key', label: '', sensitive: true },
     { key: 'publicKey', label: '', sensitive: true },
-    { key: 'publicKeyId', label: '', sensitive: false },
-    { key: 'certSerial', label: '', sensitive: false },
-    { key: 'notifyUrl', label: '', sensitive: false, optional: true },
+    { key: 'publicKeyId', label: '', sensitive: false, optional: true },
+    { key: 'certSerial', label: '', sensitive: false, optional: true },
+    { key: 'notifyUrl', label: '', sensitive: false },
   ],
   stripe: [
     { key: 'secretKey', label: '', sensitive: true },
