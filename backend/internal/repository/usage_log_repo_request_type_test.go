@@ -203,13 +203,13 @@ func TestPrepareUsageLogInsert_IncludesOpenAIRoutingFields(t *testing.T) {
 	})
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
-	require.Equal(t, sql.NullString{String: routingTargetGroup, Valid: true}, prepared.args[50])
-	require.Equal(t, sql.NullString{String: routingScheduleLayer, Valid: true}, prepared.args[51])
-	require.Equal(t, sql.NullInt64{Int64: routingAccountID, Valid: true}, prepared.args[52])
-	require.Equal(t, sql.NullString{String: routingAccountName, Valid: true}, prepared.args[53])
-	require.Equal(t, sql.NullString{String: routingEffectiveModel, Valid: true}, prepared.args[54])
-	require.Equal(t, sql.NullInt64{Int64: int64(routingFailoverCount), Valid: true}, prepared.args[55])
-	require.Equal(t, sql.NullString{String: routingFailoverFinalReason, Valid: true}, prepared.args[56])
+	require.Equal(t, sql.NullString{String: routingTargetGroup, Valid: true}, prepared.args[49])
+	require.Equal(t, sql.NullString{String: routingScheduleLayer, Valid: true}, prepared.args[50])
+	require.Equal(t, sql.NullInt64{Int64: routingAccountID, Valid: true}, prepared.args[51])
+	require.Equal(t, sql.NullString{String: routingAccountName, Valid: true}, prepared.args[52])
+	require.Equal(t, sql.NullString{String: routingEffectiveModel, Valid: true}, prepared.args[53])
+	require.Equal(t, sql.NullInt64{Int64: int64(routingFailoverCount), Valid: true}, prepared.args[54])
+	require.Equal(t, sql.NullString{String: routingFailoverFinalReason, Valid: true}, prepared.args[55])
 }
 
 func TestPrepareUsageLogInsert_IncludesBillingBreakdownFields(t *testing.T) {
@@ -585,7 +585,6 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			0,
 			sql.NullString{},
-			sql.NullString{},
 			sql.NullString{Valid: true, String: "priority"},
 			sql.NullString{},
 			sql.NullString{},
@@ -645,7 +644,6 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			0,
-			sql.NullString{},
 			sql.NullString{},
 			sql.NullString{Valid: true, String: "flex"},
 			sql.NullString{},
@@ -707,7 +705,6 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			0,
 			sql.NullString{},
-			sql.NullString{},
 			sql.NullString{Valid: true, String: "priority"},
 			sql.NullString{},
 			sql.NullString{},
@@ -763,12 +760,11 @@ func TestScanUsageLog_PreservesBillingBreakdownFields(t *testing.T) {
 		false,
 		sql.NullInt64{},
 		sql.NullInt64{},
-		sql.NullString{},
-		sql.NullString{},
-		0,
-		sql.NullString{},
-		sql.NullString{},
-		sql.NullString{Valid: true, String: "priority"},
+			sql.NullString{},
+			sql.NullString{},
+			0,
+			sql.NullString{},
+			sql.NullString{Valid: true, String: "priority"},
 		sql.NullString{},
 		sql.NullString{},
 		sql.NullString{},
@@ -836,7 +832,6 @@ func TestScanUsageLog_PreservesChannelAndImageOutputFields(t *testing.T) {
 		sql.NullString{},                  // ip_address
 		0,                                 // image_count
 		sql.NullString{},                  // image_size
-		sql.NullString{},                  // media_type
 		sql.NullString{},                  // service_tier
 		sql.NullString{},                  // reasoning_effort
 		sql.NullString{},                  // inbound_endpoint

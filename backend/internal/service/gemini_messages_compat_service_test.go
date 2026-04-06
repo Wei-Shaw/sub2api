@@ -418,6 +418,17 @@ func TestExtractGeminiUsage(t *testing.T) {
 			},
 		},
 		{
+			name:    "包含 IMAGE 模态输出 token",
+			input:   `{"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":20,"candidatesTokensDetails":[{"modality":"TEXT","tokenCount":12},{"modality":"IMAGE","tokenCount":8}]}}`,
+			wantNil: false,
+			wantUsage: &ClaudeUsage{
+				InputTokens:          100,
+				OutputTokens:         20,
+				CacheReadInputTokens: 0,
+				ImageOutputTokens:    8,
+			},
+		},
+		{
 			name:    "缺失 cachedContentTokenCount",
 			input:   `{"usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":50}}`,
 			wantNil: false,
@@ -476,6 +487,9 @@ func TestExtractGeminiUsage(t *testing.T) {
 			}
 			if got.CacheReadInputTokens != tt.wantUsage.CacheReadInputTokens {
 				t.Errorf("CacheReadInputTokens: 期望 %d，实际 %d", tt.wantUsage.CacheReadInputTokens, got.CacheReadInputTokens)
+			}
+			if got.ImageOutputTokens != tt.wantUsage.ImageOutputTokens {
+				t.Errorf("ImageOutputTokens: 期望 %d，实际 %d", tt.wantUsage.ImageOutputTokens, got.ImageOutputTokens)
 			}
 		})
 	}

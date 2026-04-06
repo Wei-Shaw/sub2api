@@ -240,6 +240,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 		return
 	}
+	channelRequestModel := reqModel
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, channelRequestModel)
+	if channelMapping.Mapped {
+		reqModel = channelMapping.MappedModel
+		body = h.gatewayService.ReplaceModelInBody(body, reqModel)
+	}
 
 	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
 	if h.errorPassthroughService != nil {
@@ -443,6 +449,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
+				ChannelUsageFields: channelMapping.ToUsageFields(channelRequestModel, result.UpstreamModel),
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.responses"),

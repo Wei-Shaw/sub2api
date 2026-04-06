@@ -864,6 +864,25 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
   - `OpenAIGatewayService.RecordUsage` has also recovered the low-conflict upstream nil-safety on default rate multiplier lookup:
     - when `s.cfg == nil`, it now falls back to `1.0` instead of dereferencing a nil config pointer
     - `TestOpenAIGatewayServiceRecordUsage_NilConfigDefaultsRateMultiplierToOne` is green and locks that behavior
+  - the smaller Gemini tail has also been pulled back into line:
+    - `GeminiV1BetaModels` again threads `ChannelUsageFields` into `RecordUsageWithLongContext`, so the channel mapping / billing-source chain is no longer disconnected on the Gemini native path
+    - `extractGeminiUsage` once again captures `IMAGE` modality token counts from `candidatesTokensDetails`
+    - handler / repository / service test suites are all green after this tail cleanup
+  - `GatewayHandler.ChatCompletions` has now also caught back up on the account-slot glue used by the mature Anthropic entry path:
+    - when `selection.Acquired == false`, it now restores account wait counting, queue-full rejection, and sticky-session binding after successful slot acquisition
+    - this closes one of the clearest remaining handler-layer upstream glue gaps without changing the local product semantics above it
+  - `openai_chat_completions.go` has also reconnected one missing handler-layer channel-mapping chain:
+    - it now resolves channel mapping at the entry point, rewrites the forwarded body when a mapping applies, and threads `ChannelUsageFields` back into `RecordUsage`
+    - this restores the end-to-end `channel_id / model_mapping_chain / billing_model_source` writeback path for the OpenAI chat-completions compatibility entry
+  - `OpenAIGatewayHandler.Responses` now mirrors that same local channel-mapping glue on the main `/v1/responses` path:
+    - after `prepareResponsesRequestForScheduling`, it now resolves channel mapping, uses the mapped model/body for scheduling and forward, and carries `ChannelUsageFields` into `RecordUsage`
+    - this brings the local routing snapshot / usage writeback chain closer to a single consistent entry-path model instead of leaving `responses` as a partially disconnected special case
+  - `GatewayHandler.Messages` has now regained the same channel-mapping parity on the native Anthropic entry path:
+    - it resolves channel mapping before selection, rewrites the parsed/body model when a mapping applies, and threads `ChannelUsageFields` into both usage-recording call sites
+    - this removes another remaining handler-level gap where `/v1/messages` could previously miss mapped-model selection and lose `channel_id / model_mapping_chain / billing_model_source` writeback
+  - `GatewayHandler.Responses` now matches that same Anthropic-side channel-mapping parity:
+    - it resolves channel mapping before account selection, rewrites the request body when a mapping applies, and restores `ChannelUsageFields` on the usage-recording path
+    - this closes the last obvious gap among the Anthropic compatibility entry handlers where mapped-model selection and channel writeback could drift from the rest of the merged billing chain
 - Defer the admin/settings/group/account restructuring until a separate compatibility pass is planned.
 - Treat the hotspot overlap as part of the next Batch C / Batch D style transplant work, not as mechanical absorb.
 
@@ -878,4 +897,5 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
 - 阶段三：usage/admin observability 与统计链 merged pass
   - 目标：梳理 `usage_log`、ops request details、admin/user usage 统计链，形成“哪些 upstream 语义已等价存在、哪些字段/视图是本地扩展、哪些地方还不能标记 merged”的最终清单。
   - 当前判断：`usage_log.go`、`usage_log_helpers.go`、`ops_request_details.go`、`ops_openai_routing_stats.go`、`openai_routing_observability.go` 这一层目前没有比已完成项更好的 upstream 直接吸收候选；更合理的 merged 结论是“本地主线已用更完整的 observability/统计链路超集覆盖”。
+  - 这一层后来又确认出一个低冲突直接候选并已吸收：`usage_log_repo.go` 不再持久化 `media_type`，从 `usageLogSelectColumns`、insert arg/order、`prepareUsageLogInsert`、`scanUsageLog` 到对应 repository tests 已全部同步清理。
   - 完成标准：可以按阶段给出一份明确的 upstream merged 判定依据，而不是继续无边界地逐个小补丁推进。
