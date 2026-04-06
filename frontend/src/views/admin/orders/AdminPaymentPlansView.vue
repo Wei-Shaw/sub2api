@@ -200,7 +200,7 @@ function openPlanEdit(plan: SubscriptionPlan | null) {
 async function handleSavePlan() {
   planSaving.value = true
   try {
-    const features = planFeaturesText.value.split('\n').map(f => f.trim()).filter(Boolean)
+    const features = planFeaturesText.value.split('\n').map(f => f.trim()).filter(Boolean).join('\n')
     const data = { ...planForm, features }
     if (editingPlan.value) { await adminPaymentAPI.updatePlan(editingPlan.value.id, data) }
     else { await adminPaymentAPI.createPlan(data) }
