@@ -38,10 +38,8 @@ const (
 
 // Default values for payment configuration settings.
 const (
-	defaultMinRechargeAmount = 1
-	defaultMaxRechargeAmount = 99999999.99
-	defaultOrderTimeoutMin   = 30
-	defaultMaxPendingOrders  = 3
+	defaultOrderTimeoutMin  = 30
+	defaultMaxPendingOrders = 3
 )
 
 // PaymentConfig holds the payment system configuration.
@@ -464,8 +462,9 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 	return u.Save(ctx)
 }
 
-// mergeConfig merges new config with existing config, preserving sensitive
-// fields that were not re-submitted (frontend skips masked ••••••••).
+// mergeConfig merges new config with existing config. All keys from newConfig
+// overwrite existing values (including empty strings to clear a field).
+// Keys not present in newConfig are preserved from existing config.
 func (s *PaymentConfigService) mergeConfig(ctx context.Context, id int64, newConfig map[string]string) (map[string]string, error) {
 	inst, err := s.entClient.PaymentProviderInstance.Get(ctx, id)
 	if err != nil {

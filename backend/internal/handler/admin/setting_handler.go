@@ -660,8 +660,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 
-	// Update payment configuration (integrated into system settings)
-	if h.paymentConfigService != nil {
+	// Update payment configuration (integrated into system settings).
+	// Skip if no payment fields were provided (prevents accidental wipe).
+	if h.paymentConfigService != nil && hasPaymentFields(req) {
 		paymentReq := service.UpdatePaymentConfigRequest{
 			Enabled:             req.PaymentEnabled,
 			MinAmount:           req.PaymentMinAmount,
@@ -778,6 +779,17 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentHelpImageURL:                  updatedPaymentCfg.HelpImageURL,
 		PaymentHelpText:                      updatedPaymentCfg.HelpText,
 	})
+}
+
+// hasPaymentFields returns true if any payment-related field was explicitly provided.
+func hasPaymentFields(req UpdateSettingsRequest) bool {
+	return req.PaymentEnabled != nil || req.PaymentMinAmount != nil ||
+		req.PaymentMaxAmount != nil || req.PaymentDailyLimit != nil ||
+		req.PaymentOrderTimeoutMin != nil || req.PaymentMaxPendingOrders != nil ||
+		req.PaymentEnabledTypes != nil || req.PaymentBalanceDisabled != nil ||
+		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
+		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
+		req.PaymentHelpText != nil
 }
 
 func (h *SettingHandler) auditSettingsUpdate(c *gin.Context, before *service.SystemSettings, after *service.SystemSettings, req UpdateSettingsRequest) {
