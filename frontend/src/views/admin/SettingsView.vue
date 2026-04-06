@@ -1664,9 +1664,9 @@
               </div>
               <!-- Row 2: Balance toggle + amounts -->
               <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div><label class="input-label">{{ t('admin.settings.payment.minAmount') }}</label><input v-model.number="form.payment_min_amount" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
-                <div><label class="input-label">{{ t('admin.settings.payment.maxAmount') }}</label><input v-model.number="form.payment_max_amount" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
-                <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') }}</label><input v-model.number="form.payment_daily_limit" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.minAmount') }}</label><input :value="form.payment_min_amount || ''" @input="form.payment_min_amount = parseFloat(($event.target as HTMLInputElement).value) || 0" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.maxAmount') }}</label><input :value="form.payment_max_amount || ''" @input="form.payment_max_amount = parseFloat(($event.target as HTMLInputElement).value) || 0" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') }}</label><input :value="form.payment_daily_limit || ''" @input="form.payment_daily_limit = parseFloat(($event.target as HTMLInputElement).value) || 0" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') }} <span class="text-red-500">*</span></label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" required /><p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.payment.orderTimeoutHint') }}</p></div>
               </div>
               <!-- Row 3: Pending orders + load balance -->

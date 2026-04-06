@@ -176,8 +176,8 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *PaymentConfig {
 	cfg := &PaymentConfig{
 		Enabled:             vals[SettingPaymentEnabled] == "true",
-		MinAmount:           pcParseFloat(vals[SettingMinRechargeAmount], defaultMinRechargeAmount),
-		MaxAmount:           pcParseFloat(vals[SettingMaxRechargeAmount], defaultMaxRechargeAmount),
+		MinAmount:           pcParseFloat(vals[SettingMinRechargeAmount], 0),
+		MaxAmount:           pcParseFloat(vals[SettingMaxRechargeAmount], 0),
 		DailyLimit:          pcParseFloat(vals[SettingDailyRechargeLimit], 0),
 		OrderTimeoutMin:     pcParseInt(vals[SettingOrderTimeoutMinutes], defaultOrderTimeoutMin),
 		MaxPendingOrders:    pcParseInt(vals[SettingMaxPendingOrders], defaultMaxPendingOrders),
