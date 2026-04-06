@@ -1646,7 +1646,7 @@
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.title') }}</h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.description') }}</p>
           </div>
-          <div class="space-y-6 p-6">
+          <div class="space-y-4 p-6">
             <!-- Enable toggle -->
             <div class="flex items-center justify-between">
               <div>
@@ -1657,53 +1657,53 @@
             </div>
             <template v-if="form.payment_enabled">
               <!-- Product name prefix / suffix + preview -->
-              <div class="grid grid-cols-3 gap-4">
+              <div class="grid grid-cols-3 gap-3">
                 <div><label class="input-label">{{ t('admin.settings.payment.productNamePrefix') }}</label><input v-model="form.payment_product_name_prefix" type="text" class="input" placeholder="Sub2API" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.productNameSuffix') }}</label><input v-model="form.payment_product_name_suffix" type="text" class="input" placeholder="CNY" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.preview') }}</label><div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300">{{ (form.payment_product_name_prefix || 'Sub2API') + ' 100 ' + (form.payment_product_name_suffix || 'CNY') }}</div></div>
               </div>
-              <!-- Toggles row -->
-              <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
-                <div class="flex items-center gap-2">
-                  <input id="balance-disabled" v-model="form.payment_balance_disabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                  <label for="balance-disabled" class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.balancePaymentDisabled') }}</label>
+              <!-- Balance disabled + amounts row -->
+              <div class="grid grid-cols-5 gap-3">
+                <div class="flex items-end pb-2">
+                  <div class="flex items-center gap-2">
+                    <input id="balance-disabled" v-model="form.payment_balance_disabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                    <label for="balance-disabled" class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.balancePaymentDisabled') }}</label>
+                  </div>
                 </div>
-              </div>
-              <!-- Amount / timeout / pending -->
-              <div class="grid grid-cols-2 gap-4">
                 <div><label class="input-label">{{ t('admin.settings.payment.minAmount') }}</label><input v-model.number="form.payment_min_amount" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.maxAmount') }}</label><input v-model.number="form.payment_max_amount" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
-              </div>
-              <div class="grid grid-cols-3 gap-4">
                 <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') }}</label><input v-model.number="form.payment_daily_limit" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
-                <div><label class="input-label">{{ t('admin.settings.payment.maxPendingOrders') }}</label><input v-model.number="form.payment_max_pending_orders" type="number" min="1" class="input" /></div>
-                <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') }}</label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" /></div>
-              </div>
-              <!-- Enabled payment types as toggle badges -->
-              <div>
-                <label class="input-label">{{ t('admin.settings.payment.enabledPaymentTypes') }}</label>
-                <div class="mt-2 flex flex-wrap gap-2">
-                  <button
-                    v-for="pt in allPaymentTypes"
-                    :key="pt.value"
-                    type="button"
-                    @click="togglePaymentType(pt.value)"
-                    :class="[
-                      'rounded-lg border px-4 py-2 text-sm font-medium transition-all',
-                      isPaymentTypeEnabled(pt.value)
-                        ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
-                        : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
-                    ]"
-                  >{{ pt.label }}</button>
+                <div class="grid grid-cols-2 gap-3">
+                  <div><label class="input-label">{{ t('admin.settings.payment.maxPendingOrders') }}</label><input v-model.number="form.payment_max_pending_orders" type="number" min="1" class="input" /></div>
+                  <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') }}</label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" /></div>
                 </div>
               </div>
-              <!-- Load balance strategy -->
-              <div>
-                <label class="input-label">{{ t('admin.settings.payment.loadBalanceStrategy') }}</label>
-                <Select v-model="form.payment_load_balance_strategy" :options="loadBalanceOptions" class="w-60" />
+              <!-- Enabled payment types + load balance in one row -->
+              <div class="flex flex-wrap items-end gap-6">
+                <div>
+                  <label class="input-label">{{ t('admin.settings.payment.enabledPaymentTypes') }}</label>
+                  <div class="mt-1.5 flex flex-wrap gap-2">
+                    <button
+                      v-for="pt in allPaymentTypes"
+                      :key="pt.value"
+                      type="button"
+                      @click="togglePaymentType(pt.value)"
+                      :class="[
+                        'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
+                        isPaymentTypeEnabled(pt.value)
+                          ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
+                          : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
+                      ]"
+                    >{{ pt.label }}</button>
+                  </div>
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.settings.payment.loadBalanceStrategy') }}</label>
+                  <Select v-model="form.payment_load_balance_strategy" :options="loadBalanceOptions" class="mt-1.5 w-44" />
+                </div>
               </div>
               <!-- Help -->
-              <div class="grid grid-cols-2 gap-4">
+              <div class="grid grid-cols-2 gap-3">
                 <div><label class="input-label">{{ t('admin.settings.payment.helpImageUrl') }}</label><input v-model="form.payment_help_image_url" type="url" class="input" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.helpText') }}</label><input v-model="form.payment_help_text" type="text" class="input" /></div>
               </div>
@@ -1713,54 +1713,47 @@
 
         <!-- Provider Management (inline) -->
         <div v-if="form.payment_enabled" class="card">
-          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+          <div class="border-b border-gray-100 px-4 py-3 dark:border-dark-700">
             <div class="flex items-center justify-between">
               <div>
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.providerManagement') }}</h2>
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.providerManagementDesc') }}</p>
+                <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.providerManagement') }}</h2>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.providerManagementDesc') }}</p>
               </div>
               <div class="flex items-center gap-2">
-                <button @click="loadProviders" :disabled="providersLoading" class="btn btn-secondary" :title="t('common.refresh')"><Icon name="refresh" size="md" :class="providersLoading ? 'animate-spin' : ''" /></button>
-                <button @click="openCreateProvider" class="btn btn-primary">{{ t('admin.settings.payment.createProvider') }}</button>
+                <button @click="loadProviders" :disabled="providersLoading" class="btn btn-secondary btn-sm" :title="t('common.refresh')"><Icon name="refresh" size="sm" :class="providersLoading ? 'animate-spin' : ''" /></button>
+                <button @click="openCreateProvider" class="btn btn-primary btn-sm">{{ t('admin.settings.payment.createProvider') }}</button>
               </div>
             </div>
           </div>
-          <div class="p-6">
-            <div v-if="providersLoading && !providers.length" class="flex items-center justify-center py-8"><div class="h-6 w-6 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div></div>
-            <div v-else-if="providers.length" class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div class="p-4">
+            <div v-if="providersLoading && !providers.length" class="flex items-center justify-center py-6"><div class="h-5 w-5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"></div></div>
+            <div v-else-if="providers.length" class="grid grid-cols-1 gap-3 lg:grid-cols-2">
               <div v-for="provider in providers" :key="provider.id" class="rounded-lg border border-gray-200 dark:border-dark-600">
-                <div class="flex items-start justify-between p-4">
-                  <div class="flex items-center gap-3">
-                    <div :class="['rounded-lg p-2', provider.enabled ? 'bg-green-100 dark:bg-green-900/30' : 'bg-gray-100 dark:bg-dark-700']">
-                      <Icon name="server" size="md" :class="provider.enabled ? 'text-green-600 dark:text-green-400' : 'text-gray-400'" />
+                <div class="flex items-center justify-between px-3 py-2">
+                  <div class="flex items-center gap-2">
+                    <div :class="['rounded-md p-1.5', provider.enabled ? 'bg-green-100 dark:bg-green-900/30' : 'bg-gray-100 dark:bg-dark-700']">
+                      <Icon name="server" size="sm" :class="provider.enabled ? 'text-green-600 dark:text-green-400' : 'text-gray-400'" />
                     </div>
                     <div>
-                      <h3 class="font-medium text-gray-900 dark:text-white">{{ provider.name }}</h3>
-                      <p class="text-sm text-gray-500 dark:text-gray-400">{{ providerKeyLabel(provider.provider_key) }}</p>
+                      <span class="text-sm font-medium text-gray-900 dark:text-white">{{ provider.name }}</span>
+                      <span class="ml-1.5 text-xs text-gray-400">{{ providerKeyLabel(provider.provider_key) }}</span>
                     </div>
                   </div>
-                  <span :class="['badge', provider.enabled ? 'badge-success' : 'badge-secondary']">{{ provider.enabled ? t('common.enabled') : t('common.disabled') }}</span>
-                </div>
-                <div class="border-t border-gray-100 px-4 py-3 dark:border-dark-700">
-                  <div class="flex flex-wrap gap-2 text-xs">
-                    <span class="text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.supportedTypes') }}:</span>
-                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ provider.supported_types || '-' }}</span>
-                  </div>
-                  <div class="mt-1 flex items-center gap-2 text-xs">
-                    <span class="text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.refundEnabled') }}:</span>
-                    <span :class="provider.refund_enabled ? 'text-green-600' : 'text-gray-400'">{{ provider.refund_enabled ? 'Yes' : 'No' }}</span>
+                  <div class="flex items-center gap-2">
+                    <span :class="['text-xs', provider.enabled ? 'text-green-600' : 'text-gray-400']">{{ provider.enabled ? t('common.enabled') : t('common.disabled') }}</span>
+                    <button @click="openEditProvider(provider)" class="btn-icon text-blue-500 hover:text-blue-700" :title="t('common.edit')"><Icon name="edit" size="sm" /></button>
+                    <button @click="confirmDeleteProvider(provider)" class="btn-icon text-red-500 hover:text-red-700" :title="t('common.delete')"><Icon name="trash" size="sm" /></button>
                   </div>
                 </div>
-                <div class="flex items-center justify-end gap-2 border-t border-gray-100 px-4 py-3 dark:border-dark-700">
-                  <button @click="openEditProvider(provider)" class="btn btn-secondary btn-sm">{{ t('common.edit') }}</button>
-                  <button @click="confirmDeleteProvider(provider)" class="btn btn-sm rounded-md bg-red-50 px-3 py-1.5 text-sm text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30">{{ t('common.delete') }}</button>
+                <div class="border-t border-gray-100 px-3 py-1.5 dark:border-dark-700 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.payment.supportedTypes') }}: <span class="font-medium text-gray-700 dark:text-gray-300">{{ provider.supported_types || '-' }}</span>
+                  <span class="ml-3">{{ t('admin.settings.payment.refundEnabled') }}: <span :class="provider.refund_enabled ? 'text-green-600' : ''">{{ provider.refund_enabled ? 'Yes' : 'No' }}</span></span>
                 </div>
               </div>
             </div>
-            <div v-else class="py-8 text-center">
-              <Icon name="server" size="xl" class="mx-auto mb-3 text-gray-300 dark:text-dark-600" />
+            <div v-else class="py-6 text-center">
               <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.noProviders') }}</p>
-              <button @click="openCreateProvider" class="btn btn-primary mt-3">{{ t('admin.settings.payment.createProvider') }}</button>
+              <button @click="openCreateProvider" class="btn btn-primary btn-sm mt-2">{{ t('admin.settings.payment.createProvider') }}</button>
             </div>
           </div>
         </div>
