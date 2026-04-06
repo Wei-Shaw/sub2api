@@ -263,9 +263,15 @@ const stripeWebhookUrl = computed(() =>
 
 const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] || null)
 
-const availableTypes = computed(() =>
-  getAvailableTypes(form.provider_key, props.allPaymentTypes, props.redirectLabel),
-)
+const availableTypes = computed(() => {
+  const base = getAvailableTypes(form.provider_key, props.allPaymentTypes, props.redirectLabel)
+  // Resolve i18n labels for types not in allPaymentTypes (e.g. card, link inside stripe)
+  return base.map(opt =>
+    opt.label === opt.value
+      ? { ...opt, label: t(`payment.methods.${opt.value}`, opt.value) }
+      : opt,
+  )
+})
 
 const resolvedFields = computed(() => {
   const fields = PROVIDER_CONFIG_FIELDS[form.provider_key] || []
