@@ -4554,7 +4554,7 @@ export default {
         limitSingleMin: '单笔最低',
         limitSingleMax: '单笔最高',
         limitDaily: '每日限额',
-        limitsHint: '留空或填 0 表示不限制',
+        limitsHint: '留空表示使用全局配置',
         productNamePrefix: '商品名前缀',
         productNameSuffix: '商品名后缀',
         preview: '预览',

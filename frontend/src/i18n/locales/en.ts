@@ -4381,7 +4381,7 @@ export default {
         limitSingleMin: 'Min per order',
         limitSingleMax: 'Max per order',
         limitDaily: 'Daily limit',
-        limitsHint: 'Leave empty or 0 for no limit',
+        limitsHint: 'Leave empty to use global settings',
         productNamePrefix: 'Product Name Prefix',
         productNameSuffix: 'Product Name Suffix',
         preview: 'Preview',

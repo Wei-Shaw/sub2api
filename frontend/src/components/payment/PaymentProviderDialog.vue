@@ -118,12 +118,15 @@
         </div>
       </div>
 
-      <!-- Per-type limits -->
+      <!-- Per-type limits (collapsible) -->
       <div v-if="limitableTypes.length" class="border-t border-gray-200 pt-4 dark:border-dark-700">
-        <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
-          {{ t('admin.settings.payment.limitsTitle') }}
-        </h4>
-        <div class="space-y-3">
+        <button type="button" @click="limitsExpanded = !limitsExpanded" class="flex w-full items-center justify-between">
+          <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+            {{ t('admin.settings.payment.limitsTitle') }}
+          </h4>
+          <svg :class="['h-4 w-4 text-gray-400 transition-transform', limitsExpanded && 'rotate-180']" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+        </button>
+        <div v-show="limitsExpanded" class="mt-3 space-y-3">
           <div
             v-for="lt in limitableTypes"
             :key="lt.value"
@@ -137,7 +140,7 @@
                   type="number"
                   :value="getLimitVal(lt.value, 'singleMin')"
                   @input="setLimitVal(lt.value, 'singleMin', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="0" step="0.01" placeholder="0"
+                  class="input mt-0.5" min="1" step="0.01" placeholder=""
                 />
               </div>
               <div>
@@ -146,7 +149,7 @@
                   type="number"
                   :value="getLimitVal(lt.value, 'singleMax')"
                   @input="setLimitVal(lt.value, 'singleMax', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="0" step="0.01" placeholder="0"
+                  class="input mt-0.5" min="1" step="0.01" placeholder=""
                 />
               </div>
               <div>
@@ -155,13 +158,13 @@
                   type="number"
                   :value="getLimitVal(lt.value, 'dailyLimit')"
                   @input="setLimitVal(lt.value, 'dailyLimit', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="0" step="0.01" placeholder="0"
+                  class="input mt-0.5" min="1" step="0.01" placeholder=""
                 />
               </div>
             </div>
           </div>
+          <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('admin.settings.payment.limitsHint') }}</p>
         </div>
-        <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">{{ t('admin.settings.payment.limitsHint') }}</p>
       </div>
     </form>
 
@@ -229,6 +232,7 @@ const form = reactive({
 const config = reactive<Record<string, string>>({})
 const limits = reactive<Record<string, Record<string, number>>>({})
 const callbackBaseUrl = ref('')
+const limitsExpanded = ref(false)
 
 // --- Computed ---
 const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : ''
@@ -281,6 +285,7 @@ function clearConfig() {
   Object.keys(config).forEach(k => delete config[k])
   Object.keys(limits).forEach(k => delete limits[k])
   callbackBaseUrl.value = ''
+  limitsExpanded.value = false
 }
 
 function applyDefaults() {
@@ -296,7 +301,14 @@ function getLimitVal(paymentType: string, field: string): string {
 
 function setLimitVal(paymentType: string, field: string, val: string) {
   if (!limits[paymentType]) limits[paymentType] = {}
-  limits[paymentType][field] = Number(val) || 0
+  const num = Number(val)
+  // Empty → clear the field (use global); reject ≤0
+  if (val === '' || isNaN(num)) {
+    delete limits[paymentType][field]
+    return
+  }
+  if (num <= 0) return
+  limits[paymentType][field] = num
 }
 
 function serializeLimits(): string {
@@ -404,6 +416,7 @@ function loadProvider(provider: ProviderInstance) {
       for (const [pt, fields] of Object.entries(parsed as Record<string, Record<string, number>>)) {
         limits[pt] = { ...fields }
       }
+      limitsExpanded.value = Object.keys(limits).length > 0
     } catch { /* ignore */ }
   }
 }
