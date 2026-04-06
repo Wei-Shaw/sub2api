@@ -1830,8 +1830,15 @@
                 <div v-for="field in currentProviderFields" :key="field.key">
                   <label class="input-label">{{ field.label }} <span v-if="field.optional" class="text-xs text-gray-400">({{ t('common.optional') }})</span><span v-else class="text-red-500"> *</span></label>
                   <textarea v-if="field.sensitive && field.key.toLowerCase().includes('key') && field.key !== 'pkey'" v-model="providerConfig[field.key]" rows="3" class="input font-mono text-xs" :required="!field.optional && !editingProvider" />
-                  <input v-else :type="field.sensitive ? 'password' : 'text'" v-model="providerConfig[field.key]" class="input" :required="!field.optional && !editingProvider" />
+                  <input v-else :type="field.sensitive ? 'password' : 'text'" v-model="providerConfig[field.key]" class="input" :required="!field.optional && !editingProvider" :placeholder="field.defaultValue || ''" />
                 </div>
+              </div>
+              <!-- Stripe webhook URL hint -->
+              <div v-if="stripeWebhookHint" class="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800/50 dark:bg-blue-900/20">
+                <p class="text-xs text-blue-700 dark:text-blue-300">
+                  {{ t('admin.settings.payment.stripeWebhookHint') }}
+                </p>
+                <code class="mt-1 block break-all rounded bg-blue-100 px-2 py-1 text-xs text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">{{ stripeWebhookHint }}</code>
               </div>
               <div v-if="!currentProviderFields.length" class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.selectProviderKey') }}</div>
             </div>
@@ -2979,22 +2986,36 @@ interface ConfigFieldDef {
   label: string
   sensitive: boolean
   optional?: boolean
+  defaultValue?: string // auto-fill value for new providers
+  hint?: string         // hint text shown below the field
 }
+
+const baseURL = window.location.origin
+const WEBHOOK_PATHS: Record<string, string> = {
+  easypay: '/api/v1/payment/webhook/easypay',
+  alipay: '/api/v1/payment/webhook/alipay',
+  wxpay: '/api/v1/payment/webhook/wxpay',
+  stripe: '/api/v1/payment/webhook/stripe',
+}
+const RETURN_PATH = '/payment/result'
 
 const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
   easypay: [
     { key: 'pid', label: 'PID', sensitive: false },
     { key: 'pkey', label: 'PKey', sensitive: true },
     { key: 'apiBase', label: '', sensitive: false },
-    { key: 'notifyUrl', label: '', sensitive: false },
-    { key: 'returnUrl', label: '', sensitive: false },
+    { key: 'notifyUrl', label: '', sensitive: false, defaultValue: baseURL + WEBHOOK_PATHS.easypay },
+    { key: 'returnUrl', label: '', sensitive: false, defaultValue: baseURL + RETURN_PATH },
+    { key: 'cid', label: '', sensitive: false, optional: true },
+    { key: 'cidAlipay', label: '', sensitive: false, optional: true },
+    { key: 'cidWxpay', label: '', sensitive: false, optional: true },
   ],
   alipay: [
     { key: 'appId', label: 'App ID', sensitive: false },
     { key: 'privateKey', label: '', sensitive: true },
     { key: 'publicKey', label: '', sensitive: true },
-    { key: 'notifyUrl', label: '', sensitive: false },
-    { key: 'returnUrl', label: '', sensitive: false },
+    { key: 'notifyUrl', label: '', sensitive: false, defaultValue: baseURL + WEBHOOK_PATHS.alipay },
+    { key: 'returnUrl', label: '', sensitive: false, defaultValue: baseURL + RETURN_PATH },
   ],
   wxpay: [
     { key: 'appId', label: 'App ID', sensitive: false },
@@ -3004,7 +3025,7 @@ const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'publicKey', label: '', sensitive: true },
     { key: 'publicKeyId', label: '', sensitive: false, optional: true },
     { key: 'certSerial', label: '', sensitive: false, optional: true },
-    { key: 'notifyUrl', label: '', sensitive: false },
+    { key: 'notifyUrl', label: '', sensitive: false, defaultValue: baseURL + WEBHOOK_PATHS.wxpay },
   ],
   stripe: [
     { key: 'secretKey', label: '', sensitive: true },
@@ -3012,6 +3033,13 @@ const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'webhookSecret', label: '', sensitive: true },
   ],
 }
+
+// Stripe webhook URL hint (shown below the config section)
+const stripeWebhookHint = computed(() =>
+  providerForm.provider_key === 'stripe'
+    ? baseURL + WEBHOOK_PATHS.stripe
+    : ''
+)
 
 const currentProviderFields = computed(() => {
   const fields = PROVIDER_CONFIG_FIELDS[providerForm.provider_key] || []
@@ -3081,6 +3109,9 @@ function toggleProviderSupportedType(type: string) {
 function onProviderKeyChange() {
   // Auto-select all supported types for the new provider key
   providerForm.supported_types = (PROVIDER_SUPPORTED_TYPES[providerForm.provider_key] || []).join(',')
+  // Clear config and re-apply defaults
+  Object.keys(providerConfig).forEach(k => delete providerConfig[k])
+  applyConfigDefaults(providerForm.provider_key)
 }
 
 function providerKeyLabel(key: string): string {
@@ -3137,6 +3168,17 @@ function resetProviderForm() {
   providerForm.supported_types = (PROVIDER_SUPPORTED_TYPES[defaultKey] || []).join(',')
   providerForm.enabled = true; providerForm.refund_enabled = false
   Object.keys(providerConfig).forEach(k => delete providerConfig[k])
+  // Auto-fill default values for new providers
+  applyConfigDefaults(defaultKey)
+}
+
+function applyConfigDefaults(providerKey: string) {
+  const fields = PROVIDER_CONFIG_FIELDS[providerKey] || []
+  for (const f of fields) {
+    if (f.defaultValue && !providerConfig[f.key]) {
+      providerConfig[f.key] = f.defaultValue
+    }
+  }
 }
 function openCreateProvider() { editingProvider.value = null; resetProviderForm(); showProviderDialog.value = true }
 function openEditProvider(provider: ProviderInstance) {
