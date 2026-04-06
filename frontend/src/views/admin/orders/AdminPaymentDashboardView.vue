@@ -2,11 +2,7 @@
   <AppLayout>
     <div class="space-y-6">
       <!-- Header with Day Switcher -->
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('payment.admin.dashboardTitle') }}</h1>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('payment.admin.dashboardDesc') }}</p>
-        </div>
+      <div class="flex items-center justify-end">
         <div class="flex items-center gap-2">
           <div class="flex rounded-lg border border-gray-200 dark:border-dark-600">
             <button

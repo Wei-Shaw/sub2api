@@ -4345,6 +4345,7 @@ export default {
         helpImageUrl: 'Help Image URL',
         manageProviders: 'Manage Providers',
         balancePaymentDisabled: 'Disable Balance Recharge',
+        noLimit: 'Empty = no limit',
         productNamePrefix: 'Product Name Prefix',
         productNameSuffix: 'Product Name Suffix',
         preview: 'Preview',

@@ -1,13 +1,6 @@
 <template>
   <AppLayout>
     <div class="space-y-4">
-      <!-- Header -->
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('payment.admin.orders') }}</h1>
-        </div>
-      </div>
-
       <!-- Filters -->
       <div class="card p-4">
         <div class="flex flex-wrap items-center gap-3">

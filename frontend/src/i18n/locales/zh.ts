@@ -4518,6 +4518,7 @@ export default {
         helpImageUrl: '帮助图片链接',
         manageProviders: '管理服务商',
         balancePaymentDisabled: '禁用余额充值',
+        noLimit: '留空表示不限制',
         productNamePrefix: '商品名前缀',
         productNameSuffix: '商品名后缀',
         preview: '预览',

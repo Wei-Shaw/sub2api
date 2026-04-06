@@ -1671,16 +1671,32 @@
               </div>
               <!-- Amount / timeout / pending -->
               <div class="grid grid-cols-2 gap-4">
-                <div><label class="input-label">{{ t('admin.settings.payment.minAmount') }}</label><input v-model.number="form.payment_min_amount" type="number" step="0.01" min="0" class="input" /></div>
-                <div><label class="input-label">{{ t('admin.settings.payment.maxAmount') }}</label><input v-model.number="form.payment_max_amount" type="number" step="0.01" min="0" class="input" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.minAmount') }}</label><input v-model.number="form.payment_min_amount" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.maxAmount') }}</label><input v-model.number="form.payment_max_amount" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
               </div>
               <div class="grid grid-cols-3 gap-4">
-                <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') }}</label><input v-model.number="form.payment_daily_limit" type="number" step="0.01" min="0" class="input" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') }}</label><input v-model.number="form.payment_daily_limit" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.maxPendingOrders') }}</label><input v-model.number="form.payment_max_pending_orders" type="number" min="1" class="input" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') }}</label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" /></div>
               </div>
-              <!-- Enabled payment types -->
-              <div><label class="input-label">{{ t('admin.settings.payment.enabledPaymentTypes') }}</label><input v-model="form.payment_enabled_types" type="text" class="input" placeholder="alipay,wxpay,stripe" /><p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.enabledPaymentTypesHint') }}</p></div>
+              <!-- Enabled payment types as toggle badges -->
+              <div>
+                <label class="input-label">{{ t('admin.settings.payment.enabledPaymentTypes') }}</label>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button
+                    v-for="pt in allPaymentTypes"
+                    :key="pt.value"
+                    type="button"
+                    @click="togglePaymentType(pt.value)"
+                    :class="[
+                      'rounded-lg border px-4 py-2 text-sm font-medium transition-all',
+                      isPaymentTypeEnabled(pt.value)
+                        ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
+                        : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
+                    ]"
+                  >{{ pt.label }}</button>
+                </div>
+              </div>
               <!-- Load balance strategy -->
               <div>
                 <label class="input-label">{{ t('admin.settings.payment.loadBalanceStrategy') }}</label>
@@ -1756,9 +1772,26 @@
           <form id="provider-form" @submit.prevent="handleSaveProvider" class="space-y-4">
             <div class="grid grid-cols-2 gap-4">
               <div><label class="input-label">{{ t('admin.settings.payment.providerName') }}</label><input v-model="providerForm.name" type="text" class="input" required /></div>
-              <div><label class="input-label">{{ t('admin.settings.payment.providerKey') }}</label><Select v-model="providerForm.provider_key" :options="providerKeyOptions" :disabled="!!editingProvider" /></div>
+              <div><label class="input-label">{{ t('admin.settings.payment.providerKey') }}</label><Select v-model="providerForm.provider_key" :options="providerKeyOptions" :disabled="!!editingProvider" @change="onProviderKeyChange" /></div>
             </div>
-            <div><label class="input-label">{{ t('admin.settings.payment.supportedTypes') }}</label><input v-model="providerForm.supported_types" type="text" class="input" placeholder="alipay,wxpay" /><p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.supportedTypesHint') }}</p></div>
+            <!-- Supported types as toggle badges -->
+            <div>
+              <label class="input-label">{{ t('admin.settings.payment.supportedTypes') }}</label>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button
+                  v-for="pt in providerAvailableTypes"
+                  :key="pt.value"
+                  type="button"
+                  @click="toggleProviderSupportedType(pt.value)"
+                  :class="[
+                    'rounded-lg border px-4 py-2 text-sm font-medium transition-all',
+                    isProviderTypeSelected(pt.value)
+                      ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
+                      : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
+                  ]"
+                >{{ pt.label }}</button>
+              </div>
+            </div>
             <div class="flex items-center gap-4">
               <div class="flex items-center gap-2"><input id="prov-enabled" v-model="providerForm.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" /><label for="prov-enabled" class="text-sm text-gray-700 dark:text-gray-300">{{ t('common.enabled') }}</label></div>
               <div class="flex items-center gap-2"><input id="prov-refund" v-model="providerForm.refund_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" /><label for="prov-refund" class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.refundEnabled') }}</label></div>
@@ -2574,11 +2607,11 @@ async function saveSettings() {
       : []
     const paymentPayload = {
       enabled: form.payment_enabled,
-      min_amount: form.payment_min_amount,
-      max_amount: form.payment_max_amount,
-      daily_limit: form.payment_daily_limit,
-      max_pending_orders: form.payment_max_pending_orders,
-      order_timeout_minutes: form.payment_order_timeout_minutes,
+      min_amount: Number(form.payment_min_amount) || 0,
+      max_amount: Number(form.payment_max_amount) || 0,
+      daily_limit: Number(form.payment_daily_limit) || 0,
+      max_pending_orders: Number(form.payment_max_pending_orders) || 0,
+      order_timeout_minutes: Number(form.payment_order_timeout_minutes) || 0,
       balance_disabled: form.payment_balance_disabled,
       enabled_payment_types: enabledTypes,
       product_name_prefix: form.payment_product_name_prefix,
@@ -2887,6 +2920,32 @@ async function saveBetaPolicySettings() {
 
 // ==================== Provider Management ====================
 
+const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
+  easypay: ['alipay', 'wxpay'],
+  alipay: ['alipay'],
+  wxpay: ['wxpay'],
+  stripe: ['stripe'],
+}
+
+const allPaymentTypes = computed(() => [
+  { value: 'alipay', label: t('payment.methods.alipay') },
+  { value: 'wxpay', label: t('payment.methods.wxpay') },
+  { value: 'stripe', label: t('payment.methods.stripe') },
+])
+
+function isPaymentTypeEnabled(type: string): boolean {
+  return form.payment_enabled_types.split(',').map(s => s.trim()).filter(Boolean).includes(type)
+}
+
+function togglePaymentType(type: string) {
+  const current = form.payment_enabled_types.split(',').map(s => s.trim()).filter(Boolean)
+  if (current.includes(type)) {
+    form.payment_enabled_types = current.filter(t => t !== type).join(',')
+  } else {
+    form.payment_enabled_types = [...current, type].join(',')
+  }
+}
+
 const providersLoading = ref(false)
 const providerSaving = ref(false)
 const providers = ref<ProviderInstance[]>([])
@@ -2915,6 +2974,33 @@ const loadBalanceOptions = computed(() => [
   { value: 'round-robin', label: t('admin.settings.payment.strategyRoundRobin') },
   { value: 'least-amount', label: t('admin.settings.payment.strategyLeastAmount') },
 ])
+
+const providerAvailableTypes = computed(() => {
+  const types = PROVIDER_SUPPORTED_TYPES[providerForm.provider_key] || []
+  return types.map(t => {
+    const found = allPaymentTypes.value.find(pt => pt.value === t)
+    return found || { value: t, label: t }
+  })
+})
+
+function isProviderTypeSelected(type: string): boolean {
+  return providerForm.supported_types.split(',').map(s => s.trim()).filter(Boolean).includes(type)
+}
+
+function toggleProviderSupportedType(type: string) {
+  const current = providerForm.supported_types.split(',').map(s => s.trim()).filter(Boolean)
+  if (current.includes(type)) {
+    providerForm.supported_types = current.filter(t => t !== type).join(',')
+  } else {
+    providerForm.supported_types = [...current, type].join(',')
+  }
+}
+
+function onProviderKeyChange() {
+  // Auto-select all supported types for the new provider key
+  providerForm.supported_types = (PROVIDER_SUPPORTED_TYPES[providerForm.provider_key] || []).join(',')
+}
+
 function providerKeyLabel(key: string): string {
   return providerKeyOptions.find(o => o.value === key)?.label || key
 }
@@ -2925,7 +3011,8 @@ async function loadProviders() {
   finally { providersLoading.value = false }
 }
 function resetProviderForm() {
-  providerForm.name = ''; providerForm.provider_key = 'easypay'; providerForm.supported_types = ''
+  providerForm.name = ''; providerForm.provider_key = 'easypay'
+  providerForm.supported_types = (PROVIDER_SUPPORTED_TYPES['easypay'] || []).join(',')
   providerForm.enabled = true; providerForm.refund_enabled = false
   Object.keys(providerConfig).forEach(k => { (providerConfig as any)[k] = '' })
 }

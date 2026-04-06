@@ -30,7 +30,7 @@
             />
             <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
           </div>
-          <div v-if="enabledMethods.length > 1" class="card p-6">
+          <div v-if="enabledMethods.length >= 1" class="card p-6">
             <PaymentMethodSelector
               :methods="methodOptions"
               :selected="selectedMethod"
@@ -41,15 +41,15 @@
             <div class="space-y-2 text-sm">
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
-                <span class="text-gray-900 dark:text-white">\u00A5{{ validAmount.toFixed(2) }}</span>
+                <span class="text-gray-900 dark:text-white">¥{{ validAmount.toFixed(2) }}</span>
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
-                <span class="text-gray-900 dark:text-white">\u00A5{{ feeAmount.toFixed(2) }}</span>
+                <span class="text-gray-900 dark:text-white">¥{{ feeAmount.toFixed(2) }}</span>
               </div>
               <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
                 <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
-                <span class="text-lg font-bold text-primary-600 dark:text-primary-400">\u00A5{{ totalAmount.toFixed(2) }}</span>
+                <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ totalAmount.toFixed(2) }}</span>
               </div>
             </div>
           </div>
@@ -58,7 +58,7 @@
               <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
               {{ t('common.processing') }}
             </span>
-            <span v-else>{{ t('payment.createOrder') }} \u00A5{{ (feeRate > 0 && validAmount > 0 ? totalAmount : validAmount).toFixed(2) }}</span>
+            <span v-else>{{ t('payment.createOrder') }} ¥{{ (feeRate > 0 && validAmount > 0 ? totalAmount : validAmount).toFixed(2) }}</span>
           </button>
           <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
             <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage }}</p>
@@ -84,7 +84,7 @@
       <div v-if="selectedPlan" class="space-y-4">
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
           <p class="text-sm font-medium text-gray-900 dark:text-white">{{ selectedPlan.name }}</p>
-          <p class="mt-1 text-2xl font-bold text-primary-600 dark:text-primary-400">\u00A5{{ selectedPlan.price }}</p>
+          <p class="mt-1 text-2xl font-bold text-primary-600 dark:text-primary-400">¥{{ selectedPlan.price }}</p>
           <p v-if="selectedPlan.description" class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ selectedPlan.description }}</p>
         </div>
         <PaymentMethodSelector

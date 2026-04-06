@@ -1,18 +1,12 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
-      <!-- Header -->
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('payment.admin.plansPageTitle') }}</h1>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('payment.admin.plansPageDesc') }}</p>
-        </div>
-        <div class="flex items-center gap-2">
-          <button @click="loadPlans" :disabled="plansLoading" class="btn btn-secondary" :title="t('common.refresh')">
-            <Icon name="refresh" size="md" :class="plansLoading ? 'animate-spin' : ''" />
-          </button>
-          <button @click="openPlanEdit(null)" class="btn btn-primary">{{ t('payment.admin.createPlan') }}</button>
-        </div>
+    <div class="space-y-4">
+      <!-- Actions -->
+      <div class="flex items-center justify-end gap-2">
+        <button @click="loadPlans" :disabled="plansLoading" class="btn btn-secondary" :title="t('common.refresh')">
+          <Icon name="refresh" size="md" :class="plansLoading ? 'animate-spin' : ''" />
+        </button>
+        <button @click="openPlanEdit(null)" class="btn btn-primary">{{ t('payment.admin.createPlan') }}</button>
       </div>
 
       <!-- Plans Table -->
