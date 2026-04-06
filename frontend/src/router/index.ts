@@ -451,18 +451,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/orders/config',
-    name: 'AdminPaymentConfig',
-    component: () => import('@/views/admin/orders/AdminPaymentConfigView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Payment Config',
-      titleKey: 'nav.paymentConfig',
-      requiresPayment: true
-    }
-  },
-  {
     path: '/admin/orders/plans',
     name: 'AdminPaymentPlans',
     component: () => import('@/views/admin/orders/AdminPaymentPlansView.vue'),

@@ -5184,6 +5184,7 @@ export default {
       tabPlanConfig: 'Plan Configuration',
       tabUserSubs: 'User Subscriptions',
       selectGroup: 'Select a group',
+      groupMissing: 'Missing',
       groupInfo: 'Group Info',
       platform: 'Platform',
       rateMultiplierLabel: 'Rate',

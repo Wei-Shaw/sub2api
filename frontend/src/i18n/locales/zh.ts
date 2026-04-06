@@ -5381,6 +5381,7 @@ export default {
       tabPlanConfig: '套餐配置',
       tabUserSubs: '用户订阅',
       selectGroup: '请选择分组',
+      groupMissing: '缺失',
       groupInfo: '分组信息',
       platform: '平台',
       rateMultiplierLabel: '倍率',

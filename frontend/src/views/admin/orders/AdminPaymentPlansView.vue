@@ -12,7 +12,11 @@
       <!-- Plans Table -->
       <DataTable :columns="planColumns" :data="plans" :loading="plansLoading">
         <template #cell-group_id="{ value }">
-          <span class="text-sm text-gray-700 dark:text-gray-300">{{ groupName(value) }}</span>
+          <span v-if="isGroupMissing(value)" class="text-sm">
+            <span class="text-gray-400">#{{ value }}</span>
+            <span class="ml-1 badge badge-danger">{{ t('payment.admin.groupMissing') }}</span>
+          </span>
+          <span v-else class="text-sm text-gray-700 dark:text-gray-300">{{ groupName(value) }}</span>
         </template>
         <template #cell-price="{ value, row }">
           <div class="text-sm">
@@ -125,7 +129,11 @@ async function loadGroups() {
 
 function groupName(id: number): string {
   const g = groups.value.find(g => g.id === id)
-  return g ? `${g.name} (${g.platform})` : `#${id}`
+  return g ? `${g.name} (${g.platform})` : ''
+}
+
+function isGroupMissing(id: number): boolean {
+  return id > 0 && !groups.value.find(g => g.id === id)
 }
 
 const groupOptions = computed(() => [
