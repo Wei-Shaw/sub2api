@@ -67,6 +67,7 @@ function isStripe(type: string) {
 }
 
 function iconBgClass(type: string): string {
+  if (type === 'easypay') return 'bg-[#FF6B35]'
   if (type.includes('alipay')) return 'bg-[#00AEEF]'
   if (type.includes('wxpay')) return 'bg-[#07C160]'
   if (type === 'stripe') return 'bg-[#635bff]'
@@ -74,12 +75,14 @@ function iconBgClass(type: string): string {
 }
 
 function iconLabel(type: string): string {
+  if (type === 'easypay') return '易'
   if (type.includes('alipay')) return '\u652f'
   if (type.includes('wxpay')) return '\u5fae'
   return type[0]?.toUpperCase() || '?'
 }
 
 function methodSelectedClass(type: string): string {
+  if (type === 'easypay') return 'border-[#FF6B35] bg-orange-50 text-gray-900 shadow-sm dark:bg-orange-950 dark:text-gray-100'
   if (type.includes('alipay')) return 'border-[#00AEEF] bg-blue-50 text-gray-900 shadow-sm dark:bg-blue-950 dark:text-gray-100'
   if (type.includes('wxpay')) return 'border-[#07C160] bg-green-50 text-gray-900 shadow-sm dark:bg-green-950 dark:text-gray-100'
   if (type === 'stripe') return 'border-[#635bff] bg-indigo-50 text-gray-900 shadow-sm dark:bg-indigo-950 dark:text-gray-100'

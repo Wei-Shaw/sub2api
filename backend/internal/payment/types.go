@@ -14,6 +14,7 @@ const (
 	TypeAlipayDirect PaymentType = "alipay_direct"
 	TypeWxpayDirect  PaymentType = "wxpay_direct"
 	TypeStripe       PaymentType = "stripe"
+	TypeEasyPay      PaymentType = "easypay"
 )
 
 // Order status constants shared across payment and service layers.
@@ -36,6 +37,8 @@ const (
 // For example, "alipay_direct" -> "alipay".
 func GetBasePaymentType(t string) string {
 	switch {
+	case t == "easypay":
+		return "easypay"
 	case len(t) >= 6 && t[:6] == "alipay":
 		return "alipay"
 	case len(t) >= 5 && t[:5] == "wxpay":

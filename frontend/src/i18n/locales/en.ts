@@ -4356,6 +4356,9 @@ export default {
         providerStripe: 'Stripe',
         typeDisabled: 'type disabled',
         enableTypesFirst: 'Enable at least one payment type above first',
+        field_paymentMode: 'Payment Mode',
+        field_paymentMode_redirect: 'Redirect (Hosted Page)',
+        field_paymentMode_api: 'API Mode (QR Code)',
         field_apiBase: 'API Base URL',
         field_notifyUrl: 'Notify URL',
         field_returnUrl: 'Return URL',
@@ -5041,6 +5044,7 @@ export default {
     actualPay: 'Actual Payment',
     createOrder: 'Confirm Payment',
     methods: {
+      easypay: 'EasyPay',
       alipay: 'Alipay',
       wxpay: 'WeChat Pay',
       stripe: 'Stripe',

@@ -23,6 +23,11 @@ const (
 	easypayCodeSuccess = 1
 	easypayStatusPaid  = 1
 	easypayHTTPTimeout = 10 * time.Second
+
+	// EasyPayModeRedirect uses submit.php — browser redirects to EasyPay hosted page.
+	EasyPayModeRedirect = "redirect"
+	// EasyPayModeAPI uses mapi.php — server calls API, returns payurl/qrcode.
+	EasyPayModeAPI = "api"
 )
 
 // EasyPay implements payment.Provider for the EasyPay aggregation platform.
@@ -47,17 +52,58 @@ func NewEasyPay(instanceID string, config map[string]string) (*EasyPay, error) {
 	}, nil
 }
 
-func (e *EasyPay) Name() string        { return "EasyPay" }
+func (e *EasyPay) Name() string       { return "EasyPay" }
 func (e *EasyPay) ProviderKey() string { return "easypay" }
 func (e *EasyPay) SupportedTypes() []payment.PaymentType {
+	if e.config["paymentMode"] == EasyPayModeRedirect {
+		return []payment.PaymentType{payment.TypeEasyPay}
+	}
 	return []payment.PaymentType{payment.TypeAlipay, payment.TypeWxpay}
 }
 
 func (e *EasyPay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
+	if e.config["paymentMode"] == EasyPayModeRedirect {
+		return e.createRedirectPayment(req)
+	}
+	return e.createAPIPayment(ctx, req)
+}
+
+// createRedirectPayment builds a submit.php URL for browser redirect.
+// No server-side API call — the user is redirected to EasyPay's hosted page.
+// TradeNo is empty; it arrives via the notify callback after payment.
+func (e *EasyPay) createRedirectPayment(req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
+	notifyURL, returnURL := e.resolveURLs(req)
+	payType := req.PaymentType
+	if payType == "easypay" {
+		payType = "alipay" // default for hosted page; user can switch on EasyPay's UI
+	}
+	params := map[string]string{
+		"pid": e.config["pid"], "type": payType,
+		"out_trade_no": req.OrderID, "notify_url": notifyURL,
+		"return_url": returnURL, "name": req.Subject,
+		"money": req.Amount,
+	}
+	if cid := e.resolveCID(payType); cid != "" {
+		params["cid"] = cid
+	}
+	params["sign"] = easyPaySign(params, e.config["pkey"])
+	params["sign_type"] = "MD5"
+
+	q := url.Values{}
+	for k, v := range params {
+		q.Set(k, v)
+	}
+	payURL := e.config["apiBase"] + "/submit.php?" + q.Encode()
+	return &payment.CreatePaymentResponse{PayURL: payURL}, nil
+}
+
+// createAPIPayment calls mapi.php to get payurl/qrcode (existing behavior).
+func (e *EasyPay) createAPIPayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
+	notifyURL, returnURL := e.resolveURLs(req)
 	params := map[string]string{
 		"pid": e.config["pid"], "type": req.PaymentType,
-		"out_trade_no": req.OrderID, "notify_url": req.NotifyURL,
-		"return_url": req.ReturnURL, "name": req.Subject,
+		"out_trade_no": req.OrderID, "notify_url": notifyURL,
+		"return_url": returnURL, "name": req.Subject,
 		"money": req.Amount, "clientip": req.ClientIP,
 	}
 	if cid := e.resolveCID(req.PaymentType); cid != "" {
@@ -87,6 +133,20 @@ func (e *EasyPay) CreatePayment(ctx context.Context, req payment.CreatePaymentRe
 		return nil, fmt.Errorf("easypay error: %s", resp.Msg)
 	}
 	return &payment.CreatePaymentResponse{TradeNo: resp.TradeNo, PayURL: resp.PayURL, QRCode: resp.QRCode}, nil
+}
+
+// resolveURLs returns (notifyURL, returnURL) preferring request values,
+// falling back to instance config.
+func (e *EasyPay) resolveURLs(req payment.CreatePaymentRequest) (string, string) {
+	notifyURL := req.NotifyURL
+	if notifyURL == "" {
+		notifyURL = e.config["notifyUrl"]
+	}
+	returnURL := req.ReturnURL
+	if returnURL == "" {
+		returnURL = e.config["returnUrl"]
+	}
+	return notifyURL, returnURL
 }
 
 func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
