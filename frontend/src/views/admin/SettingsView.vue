@@ -1669,13 +1669,9 @@
                 <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') }}</label><input v-model.number="form.payment_daily_limit" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') }} <span class="text-red-500">*</span></label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" required /><p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.payment.orderTimeoutHint') }}</p></div>
               </div>
-              <!-- Row 3: Pending orders + balance disabled + load balance -->
+              <!-- Row 3: Pending orders + load balance -->
               <div class="flex flex-wrap items-end gap-4">
                 <div class="w-28"><label class="input-label">{{ t('admin.settings.payment.maxPendingOrders') }}</label><input v-model.number="form.payment_max_pending_orders" type="number" min="1" class="input" /></div>
-                <div class="flex items-center gap-2 pb-2">
-                  <input id="balance-disabled" v-model="form.payment_balance_disabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                  <label for="balance-disabled" class="whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.balancePaymentDisabled') }}</label>
-                </div>
                 <div>
                   <label class="input-label">{{ t('admin.settings.payment.loadBalanceStrategy') }}</label>
                   <Select v-model="form.payment_load_balance_strategy" :options="loadBalanceOptions" class="w-40" />
@@ -1724,7 +1720,7 @@
               </div>
               <div class="flex items-center gap-2">
                 <button @click="loadProviders" :disabled="providersLoading" class="btn btn-secondary btn-sm" :title="t('common.refresh')"><Icon name="refresh" size="sm" :class="providersLoading ? 'animate-spin' : ''" /></button>
-                <button @click="openCreateProvider" class="btn btn-primary btn-sm">{{ t('admin.settings.payment.createProvider') }}</button>
+                <button @click="openCreateProvider" :disabled="!hasAnyPaymentTypeEnabled" :class="hasAnyPaymentTypeEnabled ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm cursor-not-allowed opacity-50'">{{ t('admin.settings.payment.createProvider') }}</button>
               </div>
             </div>
           </div>
@@ -1756,8 +1752,8 @@
               </div>
             </div>
             <div v-else class="py-6 text-center">
-              <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.noProviders') }}</p>
-              <button @click="openCreateProvider" class="btn btn-primary btn-sm mt-2">{{ t('admin.settings.payment.createProvider') }}</button>
+              <p class="text-sm text-gray-500 dark:text-gray-400">{{ hasAnyPaymentTypeEnabled ? t('admin.settings.payment.noProviders') : t('admin.settings.payment.enableTypesFirst') }}</p>
+              <button v-if="hasAnyPaymentTypeEnabled" @click="openCreateProvider" class="btn btn-primary btn-sm mt-2">{{ t('admin.settings.payment.createProvider') }}</button>
             </div>
           </div>
         </div>
@@ -2934,6 +2930,10 @@ const allPaymentTypes = computed(() => [
 function isPaymentTypeEnabled(type: string): boolean {
   return form.payment_enabled_types.split(',').map(s => s.trim()).filter(Boolean).includes(type)
 }
+
+const hasAnyPaymentTypeEnabled = computed(() => {
+  return form.payment_enabled_types.split(',').map(s => s.trim()).filter(Boolean).length > 0
+})
 
 function togglePaymentType(type: string) {
   const current = form.payment_enabled_types.split(',').map(s => s.trim()).filter(Boolean)

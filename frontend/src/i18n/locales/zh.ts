@@ -4528,6 +4528,7 @@ export default {
         providerWxpay: '微信官方',
         providerStripe: 'Stripe',
         typeDisabled: '类型已禁用',
+        enableTypesFirst: '请先在上方启用至少一种支付方式',
         productNamePrefix: '商品名前缀',
         productNameSuffix: '商品名后缀',
         preview: '预览',

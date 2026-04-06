@@ -4355,6 +4355,7 @@ export default {
         providerWxpay: 'WeChat Pay (Direct)',
         providerStripe: 'Stripe',
         typeDisabled: 'type disabled',
+        enableTypesFirst: 'Enable at least one payment type above first',
         productNamePrefix: 'Product Name Prefix',
         productNameSuffix: 'Product Name Suffix',
         preview: 'Preview',
