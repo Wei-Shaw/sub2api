@@ -2338,6 +2338,9 @@ async function loadSettings() {
   loadFailed.value = false
   try {
     const settings = await adminAPI.settings.getSettings()
+    // Convert array fields before Object.assign to avoid reactive .split() crash
+    ;(settings as any).payment_enabled_types = (settings.payment_enabled_types || []).join(',')
+    ;(settings as any).payment_load_balance_strategy = settings.payment_load_balance_strategy || 'round-robin'
     Object.assign(form, settings)
     form.backend_mode_enabled = settings.backend_mode_enabled
     form.default_subscriptions = Array.isArray(settings.default_subscriptions)
@@ -2356,10 +2359,6 @@ async function loadSettings() {
     smtpPasswordManuallyEdited.value = false
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
-
-    // Payment config is now part of settings response — just fix array→string
-    form.payment_enabled_types = (settings.payment_enabled_types || []).join(',')
-    form.payment_load_balance_strategy = settings.payment_load_balance_strategy || 'round-robin'
   } catch (error: any) {
     loadFailed.value = true
     appStore.showError(
