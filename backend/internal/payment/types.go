@@ -14,6 +14,7 @@ const (
 	TypeAlipayDirect PaymentType = "alipay_direct"
 	TypeWxpayDirect  PaymentType = "wxpay_direct"
 	TypeStripe       PaymentType = "stripe"
+	TypeCard         PaymentType = "card"
 	TypeEasyPay      PaymentType = "easypay"
 )
 
@@ -39,6 +40,8 @@ func GetBasePaymentType(t string) string {
 	switch {
 	case t == "easypay":
 		return "easypay"
+	case t == "card":
+		return "card"
 	case len(t) >= 6 && t[:6] == "alipay":
 		return "alipay"
 	case len(t) >= 5 && t[:5] == "wxpay":

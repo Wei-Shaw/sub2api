@@ -2841,6 +2841,7 @@ const allPaymentTypes = computed(() => [
   { value: 'easypay', label: t('payment.methods.easypay') },
   { value: 'alipay', label: t('payment.methods.alipay') },
   { value: 'wxpay', label: t('payment.methods.wxpay') },
+  { value: 'card', label: t('payment.methods.card') },
   { value: 'stripe', label: t('payment.methods.stripe') },
 ])
 

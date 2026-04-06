@@ -29,8 +29,8 @@
         </div>
       </div>
 
-      <!-- Supported types -->
-      <div>
+      <!-- Supported types (hide for single-type providers) -->
+      <div v-if="availableTypes.length > 1">
         <label class="input-label">
           {{ t('admin.settings.payment.supportedTypes') }}
           <span class="text-red-500">*</span>

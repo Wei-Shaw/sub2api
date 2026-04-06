@@ -59,7 +59,7 @@ func (s *Stripe) GetPublishableKey() string {
 func (s *Stripe) Name() string        { return "Stripe" }
 func (s *Stripe) ProviderKey() string { return "stripe" }
 func (s *Stripe) SupportedTypes() []payment.PaymentType {
-	return []payment.PaymentType{payment.TypeStripe}
+	return []payment.PaymentType{payment.TypeCard, payment.TypeAlipay, payment.TypeWxpay}
 }
 
 // centsToYuan converts an amount in cents (int64) to yuan (float64).
@@ -76,6 +76,13 @@ func yuanToCents(amountStr string) (int64, error) {
 	return int64(math.Round(amount * 100)), nil
 }
 
+// stripePaymentMethodTypes maps our PaymentType to Stripe payment_method_types.
+var stripePaymentMethodTypes = map[string][]string{
+	payment.TypeCard:   {"card"},
+	payment.TypeAlipay: {"alipay"},
+	payment.TypeWxpay:  {"wechat_pay"},
+}
+
 // CreatePayment creates a Stripe PaymentIntent.
 func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	s.ensureInit()
@@ -85,15 +92,33 @@ func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 		return nil, fmt.Errorf("stripe create payment: %w", err)
 	}
 
-	params := &stripe.PaymentIntentCreateParams{
-		Amount:   stripe.Int64(amountInCents),
-		Currency: stripe.String(stripeCurrency),
-		AutomaticPaymentMethods: &stripe.PaymentIntentCreateAutomaticPaymentMethodsParams{
-			Enabled: stripe.Bool(true),
-		},
-		Description: stripe.String(req.Subject),
-		Metadata:    map[string]string{"orderId": req.OrderID},
+	methods, ok := stripePaymentMethodTypes[req.PaymentType]
+	if !ok {
+		methods = []string{"card"}
 	}
+
+	pmTypes := make([]*string, len(methods))
+	for i, m := range methods {
+		pmTypes[i] = stripe.String(m)
+	}
+
+	params := &stripe.PaymentIntentCreateParams{
+		Amount:             stripe.Int64(amountInCents),
+		Currency:           stripe.String(stripeCurrency),
+		PaymentMethodTypes: pmTypes,
+		Description:        stripe.String(req.Subject),
+		Metadata:           map[string]string{"orderId": req.OrderID},
+	}
+
+	// WeChat Pay requires payment_method_options with client type
+	if req.PaymentType == payment.TypeWxpay {
+		params.PaymentMethodOptions = &stripe.PaymentIntentCreatePaymentMethodOptionsParams{
+			WeChatPay: &stripe.PaymentIntentCreatePaymentMethodOptionsWeChatPayParams{
+				Client: stripe.String("web"),
+			},
+		}
+	}
+
 	params.SetIdempotencyKey(fmt.Sprintf("pi-%s", req.OrderID))
 	params.Context = ctx
 
