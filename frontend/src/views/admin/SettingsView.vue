@@ -2385,6 +2385,8 @@ async function loadSettings() {
     form.payment_product_name_prefix = paymentConfig.product_name_prefix || ''
     form.payment_product_name_suffix = paymentConfig.product_name_suffix || ''
     form.payment_load_balance_strategy = paymentConfig.load_balance_strategy || 'round-robin'
+    form.payment_help_image_url = paymentConfig.help_image_url || ''
+    form.payment_help_text = paymentConfig.help_text || ''
   } catch (error: any) {
     loadFailed.value = true
     appStore.showError(
@@ -2532,6 +2534,8 @@ async function saveSettings() {
       product_name_prefix: form.payment_product_name_prefix,
       product_name_suffix: form.payment_product_name_suffix,
       load_balance_strategy: form.payment_load_balance_strategy,
+      help_image_url: form.payment_help_image_url,
+      help_text: form.payment_help_text,
     }
 
     const [updated] = await Promise.all([

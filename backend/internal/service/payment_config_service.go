@@ -27,6 +27,8 @@ const (
 	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
 	SettingProductNamePrefix   = "PRODUCT_NAME_PREFIX"
 	SettingProductNameSuffix   = "PRODUCT_NAME_SUFFIX"
+	SettingHelpImageURL       = "PAYMENT_HELP_IMAGE_URL"
+	SettingHelpText           = "PAYMENT_HELP_TEXT"
 	SettingCancelRateLimitOn   = "CANCEL_RATE_LIMIT_ENABLED"
 	SettingCancelRateLimitMax  = "CANCEL_RATE_LIMIT_MAX"
 	SettingCancelWindowSize    = "CANCEL_RATE_LIMIT_WINDOW"
@@ -55,6 +57,8 @@ type PaymentConfig struct {
 	LoadBalanceStrategy string   `json:"load_balance_strategy"`
 	ProductNamePrefix   string   `json:"product_name_prefix"`
 	ProductNameSuffix   string   `json:"product_name_suffix"`
+	HelpImageURL        string   `json:"help_image_url"`
+	HelpText            string   `json:"help_text"`
 }
 
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
@@ -70,6 +74,8 @@ type UpdatePaymentConfigRequest struct {
 	LoadBalanceStrategy *string  `json:"load_balance_strategy"`
 	ProductNamePrefix   *string  `json:"product_name_prefix"`
 	ProductNameSuffix   *string  `json:"product_name_suffix"`
+	HelpImageURL        *string  `json:"help_image_url"`
+	HelpText            *string  `json:"help_text"`
 }
 
 // MethodLimits holds per-payment-type limits.
@@ -158,6 +164,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
 		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingLoadBalanceStrategy,
 		SettingProductNamePrefix, SettingProductNameSuffix,
+		SettingHelpImageURL, SettingHelpText,
 	}
 	vals, err := s.settingRepo.GetMultiple(ctx, keys)
 	if err != nil {
@@ -178,6 +185,8 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		LoadBalanceStrategy: vals[SettingLoadBalanceStrategy],
 		ProductNamePrefix:   vals[SettingProductNamePrefix],
 		ProductNameSuffix:   vals[SettingProductNameSuffix],
+		HelpImageURL:        vals[SettingHelpImageURL],
+		HelpText:            vals[SettingHelpText],
 	}
 	if cfg.LoadBalanceStrategy == "" {
 		cfg.LoadBalanceStrategy = "round-robin"
@@ -232,6 +241,12 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	if req.ProductNameSuffix != nil {
 		m[SettingProductNameSuffix] = *req.ProductNameSuffix
 	}
+	if req.HelpImageURL != nil {
+		m[SettingHelpImageURL] = *req.HelpImageURL
+	}
+	if req.HelpText != nil {
+		m[SettingHelpText] = *req.HelpText
+	}
 	if len(m) == 0 {
 		return nil
 	}
@@ -280,15 +295,8 @@ func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Conte
 }
 
 func (s *PaymentConfigService) decryptAndMaskConfig(encrypted string) map[string]string {
-	if encrypted == "" {
-		return nil
-	}
-	decrypted, err := payment.Decrypt(encrypted, s.encryptionKey)
-	if err != nil {
-		return nil
-	}
-	var raw map[string]string
-	if err := json.Unmarshal([]byte(decrypted), &raw); err != nil {
+	raw := s.decryptConfig(encrypted)
+	if raw == nil {
 		return nil
 	}
 	masked := make(map[string]string, len(raw))
@@ -401,7 +409,12 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 		u.SetName(*req.Name)
 	}
 	if req.Config != nil {
-		enc, err := s.encryptConfig(req.Config)
+		// Merge with existing config: preserve sensitive fields that were not re-submitted
+		merged, err := s.mergeConfig(ctx, id, req.Config)
+		if err != nil {
+			return nil, err
+		}
+		enc, err := s.encryptConfig(merged)
 		if err != nil {
 			return nil, err
 		}
@@ -423,6 +436,39 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 		u.SetRefundEnabled(*req.RefundEnabled)
 	}
 	return u.Save(ctx)
+}
+
+// mergeConfig merges new config with existing config, preserving sensitive
+// fields that were not re-submitted (frontend skips masked ••••••••).
+func (s *PaymentConfigService) mergeConfig(ctx context.Context, id int64, newConfig map[string]string) (map[string]string, error) {
+	inst, err := s.entClient.PaymentProviderInstance.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("load existing provider: %w", err)
+	}
+	existing := s.decryptConfig(inst.Config)
+	if existing == nil {
+		return newConfig, nil
+	}
+	// Start from existing, overwrite with new non-empty values
+	for k, v := range newConfig {
+		existing[k] = v
+	}
+	return existing, nil
+}
+
+func (s *PaymentConfigService) decryptConfig(encrypted string) map[string]string {
+	if encrypted == "" {
+		return nil
+	}
+	decrypted, err := payment.Decrypt(encrypted, s.encryptionKey)
+	if err != nil {
+		return nil
+	}
+	var raw map[string]string
+	if err := json.Unmarshal([]byte(decrypted), &raw); err != nil {
+		return nil
+	}
+	return raw
 }
 
 func (s *PaymentConfigService) DeleteProviderInstance(ctx context.Context, id int64) error {
