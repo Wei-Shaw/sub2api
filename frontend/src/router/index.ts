@@ -197,7 +197,7 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
       requiresAdmin: false,
       title: 'Purchase Subscription',
-      titleKey: 'purchase.title',
+      titleKey: 'nav.buySubscription',
       descriptionKey: 'purchase.description',
       requiresPayment: true
     }
