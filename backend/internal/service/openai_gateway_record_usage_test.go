@@ -15,6 +15,8 @@ import (
 
 func openAIRecordUsagePtrFloat64(v float64) *float64 { return &v }
 
+func openAIRecordUsagePtrInt(v int) *int { return &v }
+
 func newOpenAITestBillingServiceForResolver() *BillingService {
 	bs := &BillingService{fallbackPrices: make(map[string]*ModelPricing)}
 	bs.fallbackPrices["gpt-5.4"] = &ModelPricing{
@@ -1459,6 +1461,51 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMappedBillingUsesMappedModelWhen
 	require.NotNil(t, usageRepo.lastLog)
 	require.Equal(t, expectedCost.TotalCost, usageRepo.lastLog.TotalCost)
 	require.Equal(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_ChannelPerRequestPricingUsesContextTier(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	svc.resolver = newOpenAIChannelResolverForTest(t, []ChannelModelPricing{{
+		Platform:        "openai",
+		Models:          []string{"gpt-5.4"},
+		BillingMode:     BillingModePerRequest,
+		PerRequestPrice: openAIRecordUsagePtrFloat64(0.05),
+		Intervals: []PricingInterval{
+			{MinTokens: 0, MaxTokens: openAIRecordUsagePtrInt(128000), PerRequestPrice: openAIRecordUsagePtrFloat64(0.03)},
+			{MinTokens: 128000, MaxTokens: nil, PerRequestPrice: openAIRecordUsagePtrFloat64(0.10)},
+		},
+	}})
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_channel_per_request_pricing_uses_context_tier",
+			Usage:     usage,
+			Model:     "gpt-5.4",
+			Duration:  time.Second,
+		},
+		APIKey:  &APIKey{ID: 10, GroupID: i64p(11), Group: &Group{ID: 11, RateMultiplier: 1.0}},
+		User:    &User{ID: 20},
+		Account: &Account{ID: 30},
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          1,
+			OriginalModel:      "gpt-5.4",
+			ChannelMappedModel: "gpt-5.4",
+			BillingModelSource: BillingModelSourceChannelMapped,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModePerRequest), *usageRepo.lastLog.BillingMode)
+	require.NotNil(t, usageRepo.lastLog.BillingTier)
+	require.Equal(t, PricingSourceChannel, *usageRepo.lastLog.BillingTier)
+	require.InDelta(t, 0.03, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.03, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_SubscriptionBillingSetsSubscriptionFields(t *testing.T) {

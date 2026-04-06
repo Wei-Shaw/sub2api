@@ -216,6 +216,13 @@ func TestGatewayServiceRecordUsage_PreservesRequestedAndUpstreamModels(t *testin
 func TestGatewayServiceRecordUsage_PersistsChannelAndImageOutputFields(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+	svc.resolver = newGatewayChannelResolverForTest(t, []ChannelModelPricing{{
+		Platform:    "anthropic",
+		Models:      []string{"claude-sonnet-4"},
+		BillingMode: BillingModeToken,
+		InputPrice:  testPtrFloat64(10e-6),
+		OutputPrice: testPtrFloat64(50e-6),
+	}})
 
 	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 		Result: &ForwardResult{
@@ -228,7 +235,7 @@ func TestGatewayServiceRecordUsage_PersistsChannelAndImageOutputFields(t *testin
 			Model:    "claude-sonnet-4",
 			Duration: time.Second,
 		},
-		APIKey:  &APIKey{ID: 511, Quota: 100},
+		APIKey:  &APIKey{ID: 511, Quota: 100, GroupID: groupIDPtr(), Group: &Group{ID: 100}},
 		User:    &User{ID: 611},
 		Account: &Account{ID: 711},
 		ChannelUsageFields: ChannelUsageFields{
@@ -296,6 +303,52 @@ func TestGatewayServiceRecordUsage_ChannelTokenPricingOverridesImageBilling(t *t
 	require.InDelta(t, 0.0002, usageRepo.lastLog.OutputCost, 1e-12)
 	require.InDelta(t, 0.0001, usageRepo.lastLog.ImageOutputCost, 1e-12)
 	require.InDelta(t, 0.0004, usageRepo.lastLog.ActualCost, 1e-12)
+}
+
+func TestGatewayServiceRecordUsage_ChannelImagePricingUsesRequestTier(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+	svc.resolver = newGatewayChannelResolverForTest(t, []ChannelModelPricing{{
+		Platform:        "anthropic",
+		Models:          []string{"claude-sonnet-4"},
+		BillingMode:     BillingModeImage,
+		PerRequestPrice: testPtrFloat64(0.08),
+		Intervals: []PricingInterval{
+			{TierLabel: "1K", PerRequestPrice: testPtrFloat64(0.04)},
+			{TierLabel: "2K", PerRequestPrice: testPtrFloat64(0.08)},
+			{TierLabel: "4K", PerRequestPrice: testPtrFloat64(0.16)},
+		},
+	}})
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID:  "gateway_channel_image_pricing_uses_request_tier",
+			Usage:      ClaudeUsage{InputTokens: 10, OutputTokens: 6},
+			Model:      "claude-sonnet-4",
+			ImageCount: 2,
+			ImageSize:  "2K",
+			MediaType:  "image",
+			Duration:   time.Second,
+		},
+		APIKey:  &APIKey{ID: 512, Quota: 100, GroupID: groupIDPtr(), Group: &Group{ID: 100}},
+		User:    &User{ID: 612},
+		Account: &Account{ID: 712},
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          10,
+			OriginalModel:      "claude-sonnet-4",
+			ChannelMappedModel: "claude-sonnet-4",
+			BillingModelSource: BillingModelSourceChannelMapped,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
+	require.NotNil(t, usageRepo.lastLog.BillingTier)
+	require.Equal(t, PricingSourceChannel, *usageRepo.lastLog.BillingTier)
+	require.InDelta(t, 0.16, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.16, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
 func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {

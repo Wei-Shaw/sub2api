@@ -363,6 +363,54 @@ func TestCalculateImageCost(t *testing.T) {
 	require.InDelta(t, 0.134*3, cost.ActualCost, 1e-10)
 }
 
+func TestCalculateCostUnified_PerRequestUsesRequestTierAndRateMultiplier(t *testing.T) {
+	svc := newTestBillingService()
+	resolved := &ResolvedPricing{
+		Mode: BillingModePerRequest,
+		RequestTiers: []PricingInterval{
+			{TierLabel: "1K", PerRequestPrice: ptrFloat64(0.04)},
+			{TierLabel: "2K", PerRequestPrice: ptrFloat64(0.08)},
+		},
+		DefaultPerRequestPrice: 0.12,
+	}
+
+	cost, err := svc.CalculateCostUnified(CostInput{
+		Resolver:       &ModelPricingResolver{},
+		Resolved:       resolved,
+		RequestCount:   2,
+		SizeTier:       "2K",
+		RateMultiplier: 1.5,
+	})
+	require.NoError(t, err)
+	require.Equal(t, string(BillingModePerRequest), cost.BillingMode)
+	require.InDelta(t, 0.16, cost.TotalCost, 1e-12)
+	require.InDelta(t, 0.24, cost.ActualCost, 1e-12)
+}
+
+func TestCalculateCostUnified_ImageFallsBackToDefaultPerRequestPrice(t *testing.T) {
+	svc := newTestBillingService()
+	resolved := &ResolvedPricing{
+		Mode: BillingModeImage,
+		RequestTiers: []PricingInterval{
+			{TierLabel: "1K", PerRequestPrice: ptrFloat64(0.04)},
+			{TierLabel: "2K", PerRequestPrice: ptrFloat64(0.08)},
+		},
+		DefaultPerRequestPrice: 0.12,
+	}
+
+	cost, err := svc.CalculateCostUnified(CostInput{
+		Resolver:       &ModelPricingResolver{},
+		Resolved:       resolved,
+		RequestCount:   1,
+		SizeTier:       "8K",
+		RateMultiplier: 1.1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, string(BillingModeImage), cost.BillingMode)
+	require.InDelta(t, 0.12, cost.TotalCost, 1e-12)
+	require.InDelta(t, 0.132, cost.ActualCost, 1e-12)
+}
+
 func TestIsModelSupported(t *testing.T) {
 	svc := newTestBillingService()
 

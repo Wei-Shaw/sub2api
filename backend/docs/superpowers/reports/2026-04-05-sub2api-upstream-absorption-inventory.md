@@ -826,6 +826,14 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
     - `backend/internal/service/billing_service.go` has a local `CostInput` / `CalculateCostUnified` entry compatible with the current branch’s billing model
     - `GatewayService.RecordUsage` and `OpenAIGatewayService.RecordUsage` now route channel-priced requests through the unified billing entry when `resolver` and `groupID` are present
     - unit coverage now locks that channel token pricing can override the image billing branch without regressing the existing `ImageOutputTokens / BillingMode` persistence path
+  - the next deeper `per_request / image tier` layer is now also starting to align:
+    - `TestGatewayServiceRecordUsage_ChannelImagePricingUsesRequestTier` is green and proves image-mode channel pricing can use tier labels like `1K/2K/4K` through `CalculateCostUnified`
+    - `TestOpenAIGatewayServiceRecordUsage_ChannelPerRequestPricingUsesContextTier` is green and proves OpenAI-side per-request channel pricing can select request tiers by context when `ImageCount/ImageSize` are not part of the request path
+    - this means the unified billing entry is no longer only covering token-mode override, but has started to absorb the upstream `per_request / image` branch semantics too
+    - direct billing-service unit coverage now also confirms these two branches at the core helper层 are green:
+      - `TestCalculateCostUnified_PerRequestUsesRequestTierAndRateMultiplier`
+      - `TestCalculateCostUnified_ImageFallsBackToDefaultPerRequestPrice`
+    - 这说明 `CostInput / CalculateCostUnified` 本身已经能稳定承接 request-tier 价格选择，而不只是依赖外围 `RecordUsage` 路径间接验证
   - this still does **not** mean the entire upstream billing resolver chain is fully absorbed yet; it only establishes the first safe bridge from selection-side channel semantics into the billing path while keeping the local billing model intact
   - resolver source is now also persisted into `usage_log.BillingTier` on both Gateway/OpenAI usage write paths, so the first layer of pricing-source writeback is already connected
   - focused billing-model-source tests are now green as well:
