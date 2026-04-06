@@ -1789,34 +1789,17 @@
               <div class="flex items-center gap-2"><input id="prov-enabled" v-model="providerForm.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" /><label for="prov-enabled" class="text-sm text-gray-700 dark:text-gray-300">{{ t('common.enabled') }}</label></div>
               <div class="flex items-center gap-2"><input id="prov-refund" v-model="providerForm.refund_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" /><label for="prov-refund" class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.refundEnabled') }}</label></div>
             </div>
+            <!-- Dynamic config fields driven by PROVIDER_CONFIG_FIELDS -->
             <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
               <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.providerConfig') }}</h4>
-              <template v-if="providerForm.provider_key === 'easypay'">
-                <div class="grid grid-cols-2 gap-4"><div><label class="input-label">PID</label><input v-model="providerConfig.pid" type="text" class="input" /></div><div><label class="input-label">PKey</label><input v-model="providerConfig.pkey" type="password" class="input" /></div></div>
-                <div class="mt-3"><label class="input-label">API Base URL</label><input v-model="providerConfig.apiBase" type="url" class="input" /></div>
-                <div class="mt-3 grid grid-cols-2 gap-4"><div><label class="input-label">Notify URL</label><input v-model="providerConfig.notifyUrl" type="url" class="input" /></div><div><label class="input-label">Return URL</label><input v-model="providerConfig.returnUrl" type="url" class="input" /></div></div>
-                <div class="mt-3 grid grid-cols-3 gap-4"><div><label class="input-label">CID</label><input v-model="providerConfig.cid" type="text" class="input" /></div><div><label class="input-label">CID Alipay</label><input v-model="providerConfig.cidAlipay" type="text" class="input" /></div><div><label class="input-label">CID Wxpay</label><input v-model="providerConfig.cidWxpay" type="text" class="input" /></div></div>
-              </template>
-              <template v-else-if="providerForm.provider_key === 'alipay'">
-                <div><label class="input-label">App ID</label><input v-model="providerConfig.appId" type="text" class="input" /></div>
-                <div class="mt-3"><label class="input-label">Private Key</label><textarea v-model="providerConfig.privateKey" rows="3" class="input font-mono text-xs"></textarea></div>
-                <div class="mt-3"><label class="input-label">Public Key</label><textarea v-model="providerConfig.publicKey" rows="3" class="input font-mono text-xs"></textarea></div>
-                <div class="mt-3 grid grid-cols-2 gap-4"><div><label class="input-label">Notify URL</label><input v-model="providerConfig.notifyUrl" type="url" class="input" /></div><div><label class="input-label">Return URL</label><input v-model="providerConfig.returnUrl" type="url" class="input" /></div></div>
-              </template>
-              <template v-else-if="providerForm.provider_key === 'wxpay'">
-                <div class="grid grid-cols-2 gap-4"><div><label class="input-label">App ID</label><input v-model="providerConfig.appId" type="text" class="input" /></div><div><label class="input-label">Merchant ID</label><input v-model="providerConfig.mchId" type="text" class="input" /></div></div>
-                <div class="mt-3"><label class="input-label">Private Key</label><textarea v-model="providerConfig.privateKey" rows="3" class="input font-mono text-xs"></textarea></div>
-                <div class="mt-3"><label class="input-label">API V3 Key</label><input v-model="providerConfig.apiV3Key" type="password" class="input" /></div>
-                <div class="mt-3"><label class="input-label">Public Key</label><textarea v-model="providerConfig.publicKey" rows="2" class="input font-mono text-xs"></textarea></div>
-                <div class="mt-3 grid grid-cols-2 gap-4"><div><label class="input-label">Public Key ID</label><input v-model="providerConfig.publicKeyId" type="text" class="input" /></div><div><label class="input-label">Cert Serial</label><input v-model="providerConfig.certSerial" type="text" class="input" /></div></div>
-                <div class="mt-3"><label class="input-label">Notify URL</label><input v-model="providerConfig.notifyUrl" type="url" class="input" /></div>
-              </template>
-              <template v-else-if="providerForm.provider_key === 'stripe'">
-                <div><label class="input-label">Secret Key</label><input v-model="providerConfig.secretKey" type="password" class="input" /></div>
-                <div class="mt-3"><label class="input-label">Publishable Key</label><input v-model="providerConfig.publishableKey" type="text" class="input" /></div>
-                <div class="mt-3"><label class="input-label">Webhook Secret</label><input v-model="providerConfig.webhookSecret" type="password" class="input" /></div>
-              </template>
-              <div v-else class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.selectProviderKey') }}</div>
+              <div class="space-y-3">
+                <div v-for="field in currentProviderFields" :key="field.key">
+                  <label class="input-label">{{ field.label }} <span v-if="field.optional" class="text-xs text-gray-400">({{ t('common.optional') }})</span></label>
+                  <textarea v-if="field.sensitive && field.key.toLowerCase().includes('key') && field.key !== 'pkey'" v-model="providerConfig[field.key]" rows="3" class="input font-mono text-xs" />
+                  <input v-else :type="field.sensitive ? 'password' : 'text'" v-model="providerConfig[field.key]" class="input" />
+                </div>
+              </div>
+              <div v-if="!currentProviderFields.length" class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.selectProviderKey') }}</div>
             </div>
           </form>
           <template #footer><div class="flex justify-end gap-3"><button type="button" @click="showProviderDialog = false" class="btn btn-secondary">{{ t('common.cancel') }}</button><button type="submit" form="provider-form" :disabled="providerSaving" class="btn btn-primary">{{ providerSaving ? t('common.saving') : t('common.save') }}</button></div></template>
@@ -2955,12 +2938,53 @@ const deletingProviderId = ref<number | null>(null)
 const providerForm = reactive({
   name: '', provider_key: 'easypay', supported_types: '', enabled: true, refund_enabled: false,
 })
-const providerConfig = reactive({
-  pid: '', pkey: '', apiBase: '', notifyUrl: '', returnUrl: '',
-  cid: '', cidAlipay: '', cidWxpay: '',
-  appId: '', privateKey: '', publicKey: '',
-  mchId: '', apiV3Key: '', publicKeyId: '', certSerial: '',
-  secretKey: '', publishableKey: '', webhookSecret: '',
+const providerConfig = reactive<Record<string, string>>({})
+
+interface ConfigFieldDef {
+  key: string
+  label: string
+  sensitive: boolean
+  optional?: boolean
+}
+
+const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
+  easypay: [
+    { key: 'pid', label: 'PID', sensitive: false },
+    { key: 'pkey', label: 'PKey', sensitive: true },
+    { key: 'apiBase', label: '', sensitive: false, optional: true },
+    { key: 'notifyUrl', label: '', sensitive: false, optional: true },
+    { key: 'returnUrl', label: '', sensitive: false, optional: true },
+  ],
+  alipay: [
+    { key: 'appId', label: 'App ID', sensitive: false },
+    { key: 'privateKey', label: '', sensitive: true },
+    { key: 'publicKey', label: '', sensitive: true },
+    { key: 'notifyUrl', label: '', sensitive: false, optional: true },
+    { key: 'returnUrl', label: '', sensitive: false, optional: true },
+  ],
+  wxpay: [
+    { key: 'appId', label: 'App ID', sensitive: false },
+    { key: 'mchId', label: '', sensitive: false },
+    { key: 'privateKey', label: '', sensitive: true },
+    { key: 'apiV3Key', label: '', sensitive: true },
+    { key: 'publicKey', label: '', sensitive: true },
+    { key: 'publicKeyId', label: '', sensitive: false },
+    { key: 'certSerial', label: '', sensitive: false },
+    { key: 'notifyUrl', label: '', sensitive: false, optional: true },
+  ],
+  stripe: [
+    { key: 'secretKey', label: '', sensitive: true },
+    { key: 'publishableKey', label: '', sensitive: false },
+    { key: 'webhookSecret', label: '', sensitive: true },
+  ],
+}
+
+const currentProviderFields = computed(() => {
+  const fields = PROVIDER_CONFIG_FIELDS[providerForm.provider_key] || []
+  return fields.map(f => ({
+    ...f,
+    label: f.label || t(`admin.settings.payment.field_${f.key}`),
+  }))
 })
 const providerKeyOptions = computed(() => [
   { value: 'easypay', label: t('admin.settings.payment.providerEasypay') },
@@ -3030,7 +3054,8 @@ function resetProviderForm() {
   providerForm.name = ''; providerForm.provider_key = defaultKey
   providerForm.supported_types = (PROVIDER_SUPPORTED_TYPES[defaultKey] || []).join(',')
   providerForm.enabled = true; providerForm.refund_enabled = false
-  Object.keys(providerConfig).forEach(k => { (providerConfig as any)[k] = '' })
+  // Clear all config keys
+  Object.keys(providerConfig).forEach(k => delete providerConfig[k])
 }
 function openCreateProvider() { editingProvider.value = null; resetProviderForm(); showProviderDialog.value = true }
 function openEditProvider(provider: ProviderInstance) {
@@ -3038,15 +3063,24 @@ function openEditProvider(provider: ProviderInstance) {
   providerForm.name = provider.name; providerForm.provider_key = provider.provider_key
   providerForm.supported_types = provider.supported_types; providerForm.enabled = provider.enabled
   providerForm.refund_enabled = provider.refund_enabled
-  Object.keys(providerConfig).forEach(k => { (providerConfig as any)[k] = '' })
+  // Clear and don't pre-fill config (sensitive fields, same as sub2apipay)
+  Object.keys(providerConfig).forEach(k => delete providerConfig[k])
   showProviderDialog.value = true
 }
 async function handleSaveProvider() {
   providerSaving.value = true
   try {
-    const data = { ...providerForm, config: { ...providerConfig } } as any
-    if (editingProvider.value) { await adminAPI.payment.updateProvider(editingProvider.value.id, data) }
-    else { await adminAPI.payment.createProvider(data) }
+    // Build camelCase payload matching backend struct
+    const payload: any = {
+      providerKey: providerForm.provider_key,
+      name: providerForm.name,
+      supportedTypes: providerForm.supported_types,
+      enabled: providerForm.enabled,
+      refundEnabled: providerForm.refund_enabled,
+      config: { ...providerConfig },
+    }
+    if (editingProvider.value) { await adminAPI.payment.updateProvider(editingProvider.value.id, payload) }
+    else { await adminAPI.payment.createProvider(payload) }
     appStore.showSuccess(t('common.saved')); showProviderDialog.value = false; loadProviders()
   } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { providerSaving.value = false }
