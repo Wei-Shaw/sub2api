@@ -295,19 +295,9 @@ func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Conte
 }
 
 func (s *PaymentConfigService) decryptAndMaskConfig(encrypted string) map[string]string {
-	raw := s.decryptConfig(encrypted)
-	if raw == nil {
-		return nil
-	}
-	masked := make(map[string]string, len(raw))
-	for k, v := range raw {
-		if isSensitiveConfigField(k) && v != "" {
-			masked[k] = "••••••••"
-		} else {
-			masked[k] = v
-		}
-	}
-	return masked
+	// Return actual decrypted values — admin API is authenticated,
+	// frontend handles visual masking via password inputs + eye toggle.
+	return s.decryptConfig(encrypted)
 }
 
 // pendingOrderStatuses are order statuses considered "in progress" —
