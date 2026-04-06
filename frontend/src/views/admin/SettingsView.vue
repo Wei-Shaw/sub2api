@@ -1656,56 +1656,59 @@
               <Toggle v-model="form.payment_enabled" />
             </div>
             <template v-if="form.payment_enabled">
-              <!-- Product name prefix / suffix + preview -->
+              <!-- Row 1: Product name -->
               <div class="grid grid-cols-3 gap-3">
                 <div><label class="input-label">{{ t('admin.settings.payment.productNamePrefix') }}</label><input v-model="form.payment_product_name_prefix" type="text" class="input" placeholder="Sub2API" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.productNameSuffix') }}</label><input v-model="form.payment_product_name_suffix" type="text" class="input" placeholder="CNY" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.preview') }}</label><div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300">{{ (form.payment_product_name_prefix || 'Sub2API') + ' 100 ' + (form.payment_product_name_suffix || 'CNY') }}</div></div>
               </div>
-              <!-- Balance disabled + amounts row -->
-              <div class="grid grid-cols-5 gap-3">
-                <div class="flex items-end pb-2">
-                  <div class="flex items-center gap-2">
-                    <input id="balance-disabled" v-model="form.payment_balance_disabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                    <label for="balance-disabled" class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.balancePaymentDisabled') }}</label>
-                  </div>
-                </div>
+              <!-- Row 2: Balance toggle + amounts -->
+              <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div><label class="input-label">{{ t('admin.settings.payment.minAmount') }}</label><input v-model.number="form.payment_min_amount" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.maxAmount') }}</label><input v-model.number="form.payment_max_amount" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') }}</label><input v-model.number="form.payment_daily_limit" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
-                <div class="grid grid-cols-2 gap-3">
-                  <div><label class="input-label">{{ t('admin.settings.payment.maxPendingOrders') }}</label><input v-model.number="form.payment_max_pending_orders" type="number" min="1" class="input" /></div>
-                  <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') }}</label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" /></div>
-                </div>
+                <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') }}</label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" /></div>
               </div>
-              <!-- Enabled payment types + load balance in one row -->
-              <div class="flex flex-wrap items-end gap-6">
-                <div>
-                  <label class="input-label">{{ t('admin.settings.payment.enabledPaymentTypes') }}</label>
-                  <div class="mt-1.5 flex flex-wrap gap-2">
-                    <button
-                      v-for="pt in allPaymentTypes"
-                      :key="pt.value"
-                      type="button"
-                      @click="togglePaymentType(pt.value)"
-                      :class="[
-                        'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
-                        isPaymentTypeEnabled(pt.value)
-                          ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
-                          : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
-                      ]"
-                    >{{ pt.label }}</button>
-                  </div>
+              <!-- Row 3: Pending orders + balance disabled + load balance -->
+              <div class="flex flex-wrap items-end gap-4">
+                <div class="w-28"><label class="input-label">{{ t('admin.settings.payment.maxPendingOrders') }}</label><input v-model.number="form.payment_max_pending_orders" type="number" min="1" class="input" /></div>
+                <div class="flex items-center gap-2 pb-2">
+                  <input id="balance-disabled" v-model="form.payment_balance_disabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+                  <label for="balance-disabled" class="whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.balancePaymentDisabled') }}</label>
                 </div>
                 <div>
                   <label class="input-label">{{ t('admin.settings.payment.loadBalanceStrategy') }}</label>
-                  <Select v-model="form.payment_load_balance_strategy" :options="loadBalanceOptions" class="mt-1.5 w-44" />
+                  <Select v-model="form.payment_load_balance_strategy" :options="loadBalanceOptions" class="w-40" />
                 </div>
               </div>
-              <!-- Help -->
+              <!-- Row 4: Enabled payment types (provider badges like sub2apipay) -->
+              <div>
+                <label class="input-label">{{ t('admin.settings.payment.enabledPaymentTypes') }}</label>
+                <div class="mt-1.5 flex flex-wrap gap-2">
+                  <button
+                    v-for="pt in allPaymentTypes"
+                    :key="pt.value"
+                    type="button"
+                    @click="togglePaymentType(pt.value)"
+                    :class="[
+                      'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
+                      isPaymentTypeEnabled(pt.value)
+                        ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
+                        : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
+                    ]"
+                  >{{ pt.label }}</button>
+                </div>
+              </div>
+              <!-- Row 5: Help image + text -->
               <div class="grid grid-cols-2 gap-3">
-                <div><label class="input-label">{{ t('admin.settings.payment.helpImageUrl') }}</label><input v-model="form.payment_help_image_url" type="url" class="input" /></div>
-                <div><label class="input-label">{{ t('admin.settings.payment.helpText') }}</label><input v-model="form.payment_help_text" type="text" class="input" /></div>
+                <div>
+                  <label class="input-label">{{ t('admin.settings.payment.helpImage') }}</label>
+                  <ImageUpload v-model="form.payment_help_image_url" :placeholder="t('admin.settings.payment.helpImagePlaceholder')" />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.settings.payment.helpText') }}</label>
+                  <textarea v-model="form.payment_help_text" rows="3" class="input" :placeholder="t('admin.settings.payment.helpTextPlaceholder')"></textarea>
+                </div>
               </div>
             </template>
           </div>
@@ -2921,6 +2924,7 @@ const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
 }
 
 const allPaymentTypes = computed(() => [
+  { value: 'easypay', label: t('admin.settings.payment.providerEasypay') },
   { value: 'alipay', label: t('payment.methods.alipay') },
   { value: 'wxpay', label: t('payment.methods.wxpay') },
   { value: 'stripe', label: t('payment.methods.stripe') },
@@ -2957,12 +2961,12 @@ const providerConfig = reactive({
   mchId: '', apiV3Key: '', publicKeyId: '', certSerial: '',
   secretKey: '', publishableKey: '', webhookSecret: '',
 })
-const providerKeyOptions = [
-  { value: 'easypay', label: 'EasyPay' },
-  { value: 'alipay', label: 'Alipay (Direct)' },
-  { value: 'wxpay', label: 'WeChat Pay (Direct)' },
-  { value: 'stripe', label: 'Stripe' },
-]
+const providerKeyOptions = computed(() => [
+  { value: 'easypay', label: t('admin.settings.payment.providerEasypay') },
+  { value: 'alipay', label: t('admin.settings.payment.providerAlipay') },
+  { value: 'wxpay', label: t('admin.settings.payment.providerWxpay') },
+  { value: 'stripe', label: t('admin.settings.payment.providerStripe') },
+])
 const loadBalanceOptions = computed(() => [
   { value: 'round-robin', label: t('admin.settings.payment.strategyRoundRobin') },
   { value: 'least-amount', label: t('admin.settings.payment.strategyLeastAmount') },
@@ -2995,7 +2999,7 @@ function onProviderKeyChange() {
 }
 
 function providerKeyLabel(key: string): string {
-  return providerKeyOptions.find(o => o.value === key)?.label || key
+  return providerKeyOptions.value.find(o => o.value === key)?.label || key
 }
 async function loadProviders() {
   providersLoading.value = true
