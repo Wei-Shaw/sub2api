@@ -136,12 +136,12 @@ export const adminPaymentAPI = {
   },
 
   /** Create a subscription plan */
-  createPlan(data: Partial<SubscriptionPlan>) {
+  createPlan(data: Partial<SubscriptionPlan> & { features?: string }) {
     return apiClient.post<SubscriptionPlan>('/admin/payment/plans', data)
   },
 
   /** Update a subscription plan */
-  updatePlan(id: number, data: Partial<SubscriptionPlan>) {
+  updatePlan(id: number, data: Partial<SubscriptionPlan> & { features?: string }) {
     return apiClient.put<SubscriptionPlan>(`/admin/payment/plans/${id}`, data)
   },
 
