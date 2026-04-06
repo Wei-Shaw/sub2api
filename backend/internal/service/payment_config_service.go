@@ -606,6 +606,36 @@ func (s *PaymentConfigService) GetPlan(ctx context.Context, id int64) (*dbent.Su
 	return plan, nil
 }
 
+// GetAvailableMethodLimits collects all payment types from enabled provider
+// instances and returns limits for each. This is used by the user-facing payment
+// page to discover which payment methods are actually available.
+func (s *PaymentConfigService) GetAvailableMethodLimits(ctx context.Context) ([]MethodLimits, error) {
+	instances, err := s.entClient.PaymentProviderInstance.Query().
+		Where(paymentproviderinstance.EnabledEQ(true)).All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query provider instances: %w", err)
+	}
+	// Collect unique payment types from all enabled providers
+	typeSet := make(map[string]bool)
+	for _, inst := range instances {
+		for _, t := range splitTypes(inst.SupportedTypes) {
+			typeSet[t] = true
+		}
+	}
+	result := make([]MethodLimits, 0, len(typeSet))
+	for pt := range typeSet {
+		ml := MethodLimits{PaymentType: pt}
+		for _, inst := range instances {
+			if !payment.InstanceSupportsType(inst.SupportedTypes, pt) {
+				continue
+			}
+			pcApplyInstanceLimits(inst, pt, &ml)
+		}
+		result = append(result, ml)
+	}
+	return result, nil
+}
+
 // GetMethodLimits returns per-payment-type limits from enabled provider instances.
 func (s *PaymentConfigService) GetMethodLimits(ctx context.Context, types []string) ([]MethodLimits, error) {
 	instances, err := s.entClient.PaymentProviderInstance.Query().

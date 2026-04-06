@@ -156,7 +156,8 @@ const tabs = computed(() => {
   return result
 })
 
-const enabledMethods = computed(() => config.value?.enabled_payment_types ?? [])
+// Available methods derived from limits API (actual provider types)
+const enabledMethods = computed(() => Object.keys(methodLimits.value))
 // 0 = no limit; provider-level overrides global
 const minAmount = computed(() => {
   const limit = methodLimits.value[selectedMethod.value]
@@ -225,9 +226,9 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
   try {
     const result = await paymentStore.createOrder({
       amount: orderAmount,
-      payment_type: selectedMethod.value,
-      order_type: orderType,
-      plan_id: planId,
+      paymentType: selectedMethod.value,
+      orderType: orderType,
+      planId: planId,
     })
     if (result.client_secret) {
       router.push({ path: '/payment/stripe', query: { order_id: String(result.order_id), client_secret: result.client_secret } })
@@ -260,11 +261,11 @@ watch(() => activeTab.value, (tab) => {
 onMounted(async () => {
   try {
     await paymentStore.fetchConfig(true)
-    if (enabledMethods.value.length) selectedMethod.value = enabledMethods.value[0]
     try {
       const limitsRes = await paymentAPI.getLimits()
       methodLimits.value = limitsRes.data
     } catch (e) { /* limits endpoint may not exist */ }
+    if (enabledMethods.value.length) selectedMethod.value = enabledMethods.value[0]
     if (config.value?.balance_disabled) {
       activeTab.value = 'subscription'
       await loadPlans()

@@ -114,9 +114,9 @@ export interface ProviderInstance {
 
 export interface CreateOrderRequest {
   amount: number
-  payment_type: string
-  order_type: string
-  plan_id?: number
+  paymentType: string
+  orderType: string
+  planId?: number
 }
 
 export interface CreateOrderResult {
