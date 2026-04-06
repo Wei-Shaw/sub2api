@@ -37,19 +37,21 @@ func generateMenuItemID() (string, error) {
 
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
-	settingService   *service.SettingService
-	emailService     *service.EmailService
-	turnstileService *service.TurnstileService
-	opsService       *service.OpsService
+	settingService       *service.SettingService
+	emailService         *service.EmailService
+	turnstileService     *service.TurnstileService
+	opsService           *service.OpsService
+	paymentConfigService *service.PaymentConfigService
 }
 
 // NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService) *SettingHandler {
+func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService) *SettingHandler {
 	return &SettingHandler{
-		settingService:   settingService,
-		emailService:     emailService,
-		turnstileService: turnstileService,
-		opsService:       opsService,
+		settingService:       settingService,
+		emailService:         emailService,
+		turnstileService:     turnstileService,
+		opsService:           opsService,
+		paymentConfigService: paymentConfigService,
 	}
 }
 
@@ -70,6 +72,15 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 			GroupID:      sub.GroupID,
 			ValidityDays: sub.ValidityDays,
 		})
+	}
+
+	// Load payment config
+	var paymentCfg *service.PaymentConfig
+	if h.paymentConfigService != nil {
+		paymentCfg, _ = h.paymentConfigService.GetPaymentConfig(c.Request.Context())
+	}
+	if paymentCfg == nil {
+		paymentCfg = &service.PaymentConfig{}
 	}
 
 	response.Success(c, dto.SystemSettings{
@@ -128,6 +139,19 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		BackendModeEnabled:                   settings.BackendModeEnabled,
 		EnableFingerprintUnification:         settings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            settings.EnableMetadataPassthrough,
+		PaymentEnabled:                       paymentCfg.Enabled,
+		PaymentMinAmount:                     paymentCfg.MinAmount,
+		PaymentMaxAmount:                     paymentCfg.MaxAmount,
+		PaymentDailyLimit:                    paymentCfg.DailyLimit,
+		PaymentOrderTimeoutMin:               paymentCfg.OrderTimeoutMin,
+		PaymentMaxPendingOrders:              paymentCfg.MaxPendingOrders,
+		PaymentEnabledTypes:                  paymentCfg.EnabledTypes,
+		PaymentBalanceDisabled:               paymentCfg.BalanceDisabled,
+		PaymentLoadBalanceStrat:              paymentCfg.LoadBalanceStrategy,
+		PaymentProductNamePrefix:             paymentCfg.ProductNamePrefix,
+		PaymentProductNameSuffix:             paymentCfg.ProductNameSuffix,
+		PaymentHelpImageURL:                  paymentCfg.HelpImageURL,
+		PaymentHelpText:                      paymentCfg.HelpText,
 	})
 }
 
@@ -211,6 +235,21 @@ type UpdateSettingsRequest struct {
 	// Gateway forwarding behavior
 	EnableFingerprintUnification *bool `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough    *bool `json:"enable_metadata_passthrough"`
+
+	// Payment configuration (integrated into settings, full replace)
+	PaymentEnabled           *bool    `json:"payment_enabled"`
+	PaymentMinAmount         *float64 `json:"payment_min_amount"`
+	PaymentMaxAmount         *float64 `json:"payment_max_amount"`
+	PaymentDailyLimit        *float64 `json:"payment_daily_limit"`
+	PaymentOrderTimeoutMin   *int     `json:"payment_order_timeout_minutes"`
+	PaymentMaxPendingOrders  *int     `json:"payment_max_pending_orders"`
+	PaymentEnabledTypes      []string `json:"payment_enabled_types"`
+	PaymentBalanceDisabled   *bool    `json:"payment_balance_disabled"`
+	PaymentLoadBalanceStrat  *string  `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix *string  `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix *string  `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL      *string  `json:"payment_help_image_url"`
+	PaymentHelpText          *string  `json:"payment_help_text"`
 }
 
 // UpdateSettings 更新系统设置
@@ -621,6 +660,29 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 
+	// Update payment configuration (integrated into system settings)
+	if h.paymentConfigService != nil {
+		paymentReq := service.UpdatePaymentConfigRequest{
+			Enabled:             req.PaymentEnabled,
+			MinAmount:           req.PaymentMinAmount,
+			MaxAmount:           req.PaymentMaxAmount,
+			DailyLimit:          req.PaymentDailyLimit,
+			OrderTimeoutMin:     req.PaymentOrderTimeoutMin,
+			MaxPendingOrders:    req.PaymentMaxPendingOrders,
+			EnabledTypes:        req.PaymentEnabledTypes,
+			BalanceDisabled:     req.PaymentBalanceDisabled,
+			LoadBalanceStrategy: req.PaymentLoadBalanceStrat,
+			ProductNamePrefix:   req.PaymentProductNamePrefix,
+			ProductNameSuffix:   req.PaymentProductNameSuffix,
+			HelpImageURL:        req.PaymentHelpImageURL,
+			HelpText:            req.PaymentHelpText,
+		}
+		if err := h.paymentConfigService.UpdatePaymentConfig(c.Request.Context(), paymentReq); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
+
 	h.auditSettingsUpdate(c, previousSettings, settings, req)
 
 	// 重新获取设置返回
@@ -635,6 +697,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			GroupID:      sub.GroupID,
 			ValidityDays: sub.ValidityDays,
 		})
+	}
+
+	// Reload payment config for response
+	var updatedPaymentCfg *service.PaymentConfig
+	if h.paymentConfigService != nil {
+		updatedPaymentCfg, _ = h.paymentConfigService.GetPaymentConfig(c.Request.Context())
+	}
+	if updatedPaymentCfg == nil {
+		updatedPaymentCfg = &service.PaymentConfig{}
 	}
 
 	response.Success(c, dto.SystemSettings{
@@ -693,6 +764,19 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		BackendModeEnabled:                   updatedSettings.BackendModeEnabled,
 		EnableFingerprintUnification:         updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            updatedSettings.EnableMetadataPassthrough,
+		PaymentEnabled:                       updatedPaymentCfg.Enabled,
+		PaymentMinAmount:                     updatedPaymentCfg.MinAmount,
+		PaymentMaxAmount:                     updatedPaymentCfg.MaxAmount,
+		PaymentDailyLimit:                    updatedPaymentCfg.DailyLimit,
+		PaymentOrderTimeoutMin:               updatedPaymentCfg.OrderTimeoutMin,
+		PaymentMaxPendingOrders:              updatedPaymentCfg.MaxPendingOrders,
+		PaymentEnabledTypes:                  updatedPaymentCfg.EnabledTypes,
+		PaymentBalanceDisabled:               updatedPaymentCfg.BalanceDisabled,
+		PaymentLoadBalanceStrat:              updatedPaymentCfg.LoadBalanceStrategy,
+		PaymentProductNamePrefix:             updatedPaymentCfg.ProductNamePrefix,
+		PaymentProductNameSuffix:             updatedPaymentCfg.ProductNameSuffix,
+		PaymentHelpImageURL:                  updatedPaymentCfg.HelpImageURL,
+		PaymentHelpText:                      updatedPaymentCfg.HelpText,
 	})
 }
 

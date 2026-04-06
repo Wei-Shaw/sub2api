@@ -97,6 +97,21 @@ type SystemSettings struct {
 	// Gateway forwarding behavior
 	EnableFingerprintUnification bool `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough    bool `json:"enable_metadata_passthrough"`
+
+	// Payment configuration
+	PaymentEnabled           bool     `json:"payment_enabled"`
+	PaymentMinAmount         float64  `json:"payment_min_amount"`
+	PaymentMaxAmount         float64  `json:"payment_max_amount"`
+	PaymentDailyLimit        float64  `json:"payment_daily_limit"`
+	PaymentOrderTimeoutMin   int      `json:"payment_order_timeout_minutes"`
+	PaymentMaxPendingOrders  int      `json:"payment_max_pending_orders"`
+	PaymentEnabledTypes      []string `json:"payment_enabled_types"`
+	PaymentBalanceDisabled   bool     `json:"payment_balance_disabled"`
+	PaymentLoadBalanceStrat  string   `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix string   `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix string   `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL      string   `json:"payment_help_image_url"`
+	PaymentHelpText          string   `json:"payment_help_text"`
 }
 
 type DefaultSubscriptionSetting struct {

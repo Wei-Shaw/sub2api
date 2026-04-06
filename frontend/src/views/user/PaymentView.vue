@@ -21,6 +21,11 @@
         </div>
         <!-- Top-up Tab -->
         <template v-if="activeTab === 'recharge'">
+          <!-- No payment methods available -->
+          <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
+            <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
+          </div>
+          <template v-else>
           <div class="card p-6">
             <AmountInput
               v-model="amount"
@@ -63,6 +68,7 @@
           <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
             <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage }}</p>
           </div>
+          </template>
         </template>
         <!-- Subscribe Tab -->
         <template v-else-if="activeTab === 'subscription'">

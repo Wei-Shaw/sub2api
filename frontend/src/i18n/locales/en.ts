@@ -5108,6 +5108,7 @@ export default {
     tabTopUp: 'Top Up',
     tabSubscribe: 'Subscribe',
     noPlans: 'No subscription plans available',
+    notAvailable: 'Top-up is currently unavailable',
     confirmSubscription: 'Confirm Subscription',
     confirmCancel: 'Are you sure you want to cancel this order?',
     amountTooLow: 'Minimum amount is {min}',

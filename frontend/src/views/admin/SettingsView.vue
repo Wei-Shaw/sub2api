@@ -2349,10 +2349,7 @@ async function loadSettings() {
   loading.value = true
   loadFailed.value = false
   try {
-    const [settings, paymentConfigResp] = await Promise.all([
-      adminAPI.settings.getSettings(),
-      adminAPI.payment.getConfig()
-    ])
+    const settings = await adminAPI.settings.getSettings()
     Object.assign(form, settings)
     form.backend_mode_enabled = settings.backend_mode_enabled
     form.default_subscriptions = Array.isArray(settings.default_subscriptions)
@@ -2372,21 +2369,9 @@ async function loadSettings() {
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
 
-    // Populate payment config fields from the dedicated payment config API
-    const paymentConfig = paymentConfigResp.data
-    form.payment_enabled = paymentConfig.enabled
-    form.payment_min_amount = paymentConfig.min_amount
-    form.payment_max_amount = paymentConfig.max_amount
-    form.payment_daily_limit = paymentConfig.daily_limit
-    form.payment_max_pending_orders = paymentConfig.max_pending_orders
-    form.payment_order_timeout_minutes = paymentConfig.order_timeout_minutes
-    form.payment_balance_disabled = paymentConfig.balance_disabled
-    form.payment_enabled_types = (paymentConfig.enabled_payment_types || []).join(',')
-    form.payment_product_name_prefix = paymentConfig.product_name_prefix || ''
-    form.payment_product_name_suffix = paymentConfig.product_name_suffix || ''
-    form.payment_load_balance_strategy = paymentConfig.load_balance_strategy || 'round-robin'
-    form.payment_help_image_url = paymentConfig.help_image_url || ''
-    form.payment_help_text = paymentConfig.help_text || ''
+    // Payment config is now part of settings response — just fix array→string
+    form.payment_enabled_types = (settings.payment_enabled_types || []).join(',')
+    form.payment_load_balance_strategy = settings.payment_load_balance_strategy || 'round-robin'
   } catch (error: any) {
     loadFailed.value = true
     appStore.showError(
@@ -2518,30 +2503,25 @@ async function saveSettings() {
       enable_metadata_passthrough: form.enable_metadata_passthrough
     }
 
-    // Save payment config via dedicated payment config API
+    // Payment config fields (integrated into settings payload)
     const enabledTypes = form.payment_enabled_types
       ? form.payment_enabled_types.split(',').map((s: string) => s.trim()).filter(Boolean)
       : []
-    const paymentPayload = {
-      enabled: form.payment_enabled,
-      min_amount: Number(form.payment_min_amount) || 0,
-      max_amount: Number(form.payment_max_amount) || 0,
-      daily_limit: Number(form.payment_daily_limit) || 0,
-      max_pending_orders: Number(form.payment_max_pending_orders) || 0,
-      order_timeout_minutes: Number(form.payment_order_timeout_minutes) || 0,
-      balance_disabled: form.payment_balance_disabled,
-      enabled_payment_types: enabledTypes,
-      product_name_prefix: form.payment_product_name_prefix,
-      product_name_suffix: form.payment_product_name_suffix,
-      load_balance_strategy: form.payment_load_balance_strategy,
-      help_image_url: form.payment_help_image_url,
-      help_text: form.payment_help_text,
-    }
+    ;(payload as any).payment_enabled = form.payment_enabled
+    ;(payload as any).payment_min_amount = Number(form.payment_min_amount) || 0
+    ;(payload as any).payment_max_amount = Number(form.payment_max_amount) || 0
+    ;(payload as any).payment_daily_limit = Number(form.payment_daily_limit) || 0
+    ;(payload as any).payment_max_pending_orders = Number(form.payment_max_pending_orders) || 0
+    ;(payload as any).payment_order_timeout_minutes = Number(form.payment_order_timeout_minutes) || 0
+    ;(payload as any).payment_balance_disabled = form.payment_balance_disabled
+    ;(payload as any).payment_enabled_types = enabledTypes
+    ;(payload as any).payment_load_balance_strategy = form.payment_load_balance_strategy
+    ;(payload as any).payment_product_name_prefix = form.payment_product_name_prefix
+    ;(payload as any).payment_product_name_suffix = form.payment_product_name_suffix
+    ;(payload as any).payment_help_image_url = form.payment_help_image_url
+    ;(payload as any).payment_help_text = form.payment_help_text
 
-    const [updated] = await Promise.all([
-      adminAPI.settings.updateSettings(payload),
-      adminAPI.payment.updateConfig(paymentPayload)
-    ])
+    const updated = await adminAPI.settings.updateSettings(payload)
     Object.assign(form, updated)
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       updated.registration_email_suffix_whitelist
