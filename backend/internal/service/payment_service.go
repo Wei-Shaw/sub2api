@@ -45,7 +45,20 @@ const (
 	maxPageSize        = 100
 	topUsersLimit      = 10
 	amountToleranceCNY = 0.01
+
+	orderIDPrefix = "sub2_"
 )
+
+// formatOrderID converts an internal DB order ID to the external order ID sent to payment providers.
+func formatOrderID(id int64) string {
+	return orderIDPrefix + strconv.FormatInt(id, 10)
+}
+
+// parseOrderID extracts the internal DB order ID from an external order ID returned by payment providers.
+func parseOrderID(externalID string) (int64, error) {
+	trimmed := strings.TrimPrefix(externalID, orderIDPrefix)
+	return strconv.ParseInt(trimmed, 10, 64)
+}
 
 type CreateOrderRequest struct {
 	UserID      int64
@@ -322,7 +335,7 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 		return nil, infraerrors.TooManyRequests("NO_AVAILABLE_INSTANCE", "no available payment instance")
 	}
 	subject := s.buildPaymentSubject(plan, payAmountStr, cfg)
-	pr, err := provider.CreatePayment(ctx, payment.CreatePaymentRequest{OrderID: strconv.FormatInt(order.ID, 10), Amount: payAmountStr, PaymentType: req.PaymentType, Subject: subject, ClientIP: req.ClientIP, IsMobile: req.IsMobile})
+	pr, err := provider.CreatePayment(ctx, payment.CreatePaymentRequest{OrderID: formatOrderID(order.ID), Amount: payAmountStr, PaymentType: req.PaymentType, Subject: subject, ClientIP: req.ClientIP, IsMobile: req.IsMobile})
 	if err != nil {
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", "payment method is temporarily unavailable")
 	}
@@ -444,7 +457,7 @@ func (s *PaymentService) checkPaid(ctx context.Context, o *dbent.PaymentOrder) s
 		return ""
 	}
 	if resp.Status == "paid" {
-		_ = s.HandlePaymentNotification(ctx, &payment.PaymentNotification{TradeNo: o.PaymentTradeNo, OrderID: strconv.FormatInt(o.ID, 10), Amount: resp.Amount, Status: "success"}, prov.ProviderKey())
+		_ = s.HandlePaymentNotification(ctx, &payment.PaymentNotification{TradeNo: o.PaymentTradeNo, OrderID: formatOrderID(o.ID), Amount: resp.Amount, Status: "success"}, prov.ProviderKey())
 		return "already_paid"
 	}
 	if cp, ok := prov.(payment.CancelableProvider); ok {
@@ -457,7 +470,7 @@ func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payme
 	if n.Status != "success" {
 		return nil
 	}
-	oid, err := strconv.ParseInt(n.OrderID, 10, 64)
+	oid, err := parseOrderID(n.OrderID)
 	if err != nil {
 		return fmt.Errorf("invalid order ID: %s", n.OrderID)
 	}
@@ -778,7 +791,7 @@ func (s *PaymentService) gwRefund(ctx context.Context, p *RefundPlan) error {
 	if err != nil {
 		return fmt.Errorf("get provider: %w", err)
 	}
-	_, err = prov.Refund(ctx, payment.RefundRequest{TradeNo: p.Order.PaymentTradeNo, OrderID: strconv.FormatInt(p.Order.ID, 10), Amount: strconv.FormatFloat(p.GatewayAmount, 'f', 2, 64), Reason: p.Reason})
+	_, err = prov.Refund(ctx, payment.RefundRequest{TradeNo: p.Order.PaymentTradeNo, OrderID: formatOrderID(p.Order.ID), Amount: strconv.FormatFloat(p.GatewayAmount, 'f', 2, 64), Reason: p.Reason})
 	return err
 }
 
