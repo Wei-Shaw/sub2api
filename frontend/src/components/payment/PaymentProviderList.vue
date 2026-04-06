@@ -80,7 +80,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProviderCard from './ProviderCard.vue'
 import type { ProviderInstance } from '@/types/payment'
 import type { TypeOption } from './providerConfig'
-import { getAvailableTypes, parseTypes } from './providerConfig'
+import { getAvailableTypes } from './providerConfig'
 
 const props = defineProps<{
   providers: ProviderInstance[]

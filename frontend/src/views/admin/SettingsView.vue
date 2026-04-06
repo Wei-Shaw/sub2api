@@ -2840,7 +2840,7 @@ const providerKeyOptions = computed(() => [
 ])
 
 const enabledProviderKeyOptions = computed(() => {
-  const enabled = parseTypes(form.payment_enabled_types)
+  const enabled = form.payment_enabled_types
   return providerKeyOptions.value.filter(opt => {
     if (opt.value === 'easypay') return enabled.includes('easypay') || enabled.includes('alipay') || enabled.includes('wxpay')
     if (opt.value === 'alipay') return enabled.includes('alipay')
