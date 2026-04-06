@@ -247,6 +247,8 @@ export default {
     loading: 'Loading...',
     justNow: 'just now',
     save: 'Save',
+    saved: 'Saved successfully',
+    deleted: 'Deleted successfully',
     cancel: 'Cancel',
     delete: 'Delete',
     edit: 'Edit',

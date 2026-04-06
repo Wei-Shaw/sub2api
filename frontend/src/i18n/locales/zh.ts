@@ -247,6 +247,8 @@ export default {
     loading: '加载中...',
     justNow: '刚刚',
     save: '保存',
+    saved: '保存成功',
+    deleted: '删除成功',
     cancel: '取消',
     delete: '删除',
     edit: '编辑',
