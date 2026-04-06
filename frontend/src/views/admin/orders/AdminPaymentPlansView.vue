@@ -7,120 +7,38 @@
           <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('payment.admin.plansPageTitle') }}</h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('payment.admin.plansPageDesc') }}</p>
         </div>
+        <div class="flex items-center gap-2">
+          <button @click="loadPlans" :disabled="plansLoading" class="btn btn-secondary" :title="t('common.refresh')">
+            <Icon name="refresh" size="md" :class="plansLoading ? 'animate-spin' : ''" />
+          </button>
+          <button @click="openPlanEdit(null)" class="btn btn-primary">{{ t('payment.admin.createPlan') }}</button>
+        </div>
       </div>
 
-      <!-- Sub-tab Switcher -->
-      <div class="flex space-x-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-800">
-        <button
-          v-for="tab in subTabs"
-          :key="tab.key"
-          class="flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all"
-          :class="activeSubTab === tab.key
-            ? 'bg-white text-gray-900 shadow dark:bg-dark-700 dark:text-white'
-            : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'"
-          @click="activeSubTab = tab.key"
-        >{{ tab.label }}</button>
-      </div>
-
-      <!-- Sub-tab: Plan Configuration -->
-      <template v-if="activeSubTab === 'plans'">
-        <div class="space-y-4">
-          <div class="flex items-center justify-end gap-2">
-            <button @click="loadPlans" :disabled="plansLoading" class="btn btn-secondary" :title="t('common.refresh')">
-              <Icon name="refresh" size="md" :class="plansLoading ? 'animate-spin' : ''" />
-            </button>
-            <button @click="openPlanEdit(null)" class="btn btn-primary">{{ t('payment.admin.createPlan') }}</button>
+      <!-- Plans Table -->
+      <DataTable :columns="planColumns" :data="plans" :loading="plansLoading">
+        <template #cell-group_id="{ value }">
+          <span class="text-sm text-gray-700 dark:text-gray-300">{{ groupName(value) }}</span>
+        </template>
+        <template #cell-price="{ value, row }">
+          <div class="text-sm">
+            <span class="font-medium text-gray-900 dark:text-white">${{ value.toFixed(2) }}</span>
+            <span v-if="row.original_price" class="ml-1 text-xs text-gray-400 line-through">${{ row.original_price.toFixed(2) }}</span>
           </div>
-          <DataTable :columns="planColumns" :data="plans" :loading="plansLoading">
-            <template #cell-group_id="{ value }">
-              <span class="text-sm text-gray-700 dark:text-gray-300">{{ groupName(value) }}</span>
-            </template>
-            <template #cell-price="{ value, row }">
-              <div class="text-sm">
-                <span class="font-medium text-gray-900 dark:text-white">${{ value.toFixed(2) }}</span>
-                <span v-if="row.original_price" class="ml-1 text-xs text-gray-400 line-through">${{ row.original_price.toFixed(2) }}</span>
-              </div>
-            </template>
-            <template #cell-validity_days="{ value, row }">
-              <span class="text-sm">{{ value }} {{ row.validity_unit || 'days' }}</span>
-            </template>
-            <template #cell-for_sale="{ value }">
-              <span :class="['badge', value ? 'badge-success' : 'badge-secondary']">{{ value ? t('payment.admin.onSale') : t('payment.admin.offSale') }}</span>
-            </template>
-            <template #cell-actions="{ row }">
-              <div class="flex items-center gap-1">
-                <button @click="openPlanEdit(row)" class="btn-icon text-blue-500 hover:text-blue-700" :title="t('common.edit')"><Icon name="edit" size="sm" /></button>
-                <button @click="confirmDeletePlan(row)" class="btn-icon text-red-500 hover:text-red-700" :title="t('common.delete')"><Icon name="trash" size="sm" /></button>
-              </div>
-            </template>
-          </DataTable>
-        </div>
-      </template>
-
-      <!-- Sub-tab: User Subscriptions -->
-      <template v-else-if="activeSubTab === 'userSubs'">
-        <div class="space-y-4">
-          <!-- Search Bar -->
-          <div class="card p-4">
-            <div class="flex items-center gap-3">
-              <div class="flex-1 sm:max-w-80">
-                <input
-                  v-model="subsKeyword"
-                  type="text"
-                  :placeholder="t('payment.admin.searchUserSubs')"
-                  class="input"
-                  @input="debounceLoadSubs"
-                />
-              </div>
-              <Select v-model="subsStatusFilter" :options="subsStatusOptions" class="w-36" @change="loadUserSubs" />
-              <button @click="loadUserSubs" :disabled="subsLoading" class="btn btn-secondary" :title="t('common.refresh')">
-                <Icon name="refresh" size="md" :class="subsLoading ? 'animate-spin' : ''" />
-              </button>
-            </div>
+        </template>
+        <template #cell-validity_days="{ value, row }">
+          <span class="text-sm">{{ value }} {{ t('payment.admin.' + (row.validity_unit || 'days')) }}</span>
+        </template>
+        <template #cell-for_sale="{ value }">
+          <span :class="['badge', value ? 'badge-success' : 'badge-secondary']">{{ value ? t('payment.admin.onSale') : t('payment.admin.offSale') }}</span>
+        </template>
+        <template #cell-actions="{ row }">
+          <div class="flex items-center gap-1">
+            <button @click="openPlanEdit(row)" class="btn-icon text-blue-500 hover:text-blue-700" :title="t('common.edit')"><Icon name="edit" size="sm" /></button>
+            <button @click="confirmDeletePlan(row)" class="btn-icon text-red-500 hover:text-red-700" :title="t('common.delete')"><Icon name="trash" size="sm" /></button>
           </div>
-
-          <!-- Subscriptions Table -->
-          <DataTable :columns="subsColumns" :data="userSubs" :loading="subsLoading">
-            <template #cell-user_id="{ value, row }">
-              <div class="text-sm">
-                <span class="font-medium text-gray-900 dark:text-white">#{{ value }}</span>
-                <span v-if="row.user_email" class="ml-1 text-xs text-gray-500">{{ row.user_email }}</span>
-              </div>
-            </template>
-            <template #cell-group_id="{ value, row }">
-              <div class="text-sm">
-                <span class="text-gray-700 dark:text-gray-300">{{ row.group_name || groupName(value) }}</span>
-              </div>
-            </template>
-            <template #cell-status="{ value }">
-              <span :class="['badge', subsStatusClass(value)]">{{ t('payment.admin.subsStatus.' + value, value) }}</span>
-            </template>
-            <template #cell-expires_at="{ value }">
-              <div class="text-sm">
-                <span class="text-gray-700 dark:text-gray-300">{{ formatDate(value) }}</span>
-                <span v-if="daysRemaining(value) !== null" :class="['ml-1 text-xs', (daysRemaining(value) ?? 0) <= 3 ? 'text-red-500' : 'text-gray-400']">
-                  ({{ daysRemaining(value) }}d)
-                </span>
-              </div>
-            </template>
-            <template #cell-usage="{ row }">
-              <div class="space-y-1 text-xs">
-                <UsageBar :label="t('payment.admin.daily')" :usage="row.daily_usage_usd" :limit="row.daily_limit_usd" />
-                <UsageBar :label="t('payment.admin.weekly')" :usage="row.weekly_usage_usd" :limit="row.weekly_limit_usd" />
-                <UsageBar :label="t('payment.admin.monthly')" :usage="row.monthly_usage_usd" :limit="row.monthly_limit_usd" />
-              </div>
-            </template>
-          </DataTable>
-          <Pagination
-            v-if="subsPagination.total > 0"
-            :page="subsPagination.page"
-            :total="subsPagination.total"
-            :page-size="subsPagination.page_size"
-            @update:page="handleSubsPageChange"
-            @update:pageSize="handleSubsPageSizeChange"
-          />
-        </div>
-      </template>
+        </template>
+      </DataTable>
     </div>
 
     <!-- Plan Edit Dialog -->
@@ -133,11 +51,7 @@
           </div>
           <div>
             <label class="input-label">{{ t('payment.admin.groupId') }}</label>
-            <Select
-              v-model="planForm.group_id"
-              :options="groupOptions"
-              class="w-full"
-            />
+            <Select v-model="planForm.group_id" :options="groupOptions" class="w-full" />
           </div>
         </div>
 
@@ -186,17 +100,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminPaymentAPI } from '@/api/admin/payment'
 import adminAPI from '@/api/admin'
 import type { SubscriptionPlan } from '@/types/payment'
-import type { AdminGroup, UserSubscription, PaginatedResponse } from '@/types'
+import type { AdminGroup } from '@/types'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
-import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -204,13 +117,6 @@ import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
-
-type SubTab = 'plans' | 'userSubs'
-const activeSubTab = ref<SubTab>('plans')
-const subTabs = computed(() => [
-  { key: 'plans' as SubTab, label: t('payment.admin.tabPlanConfig') },
-  { key: 'userSubs' as SubTab, label: t('payment.admin.tabUserSubs') },
-])
 
 // ==================== Groups ====================
 
@@ -258,11 +164,16 @@ const validityUnitOptions = computed(() => [
   { value: 'months', label: t('payment.admin.months') },
 ])
 
-const planColumns: Column[] = [
-  { key: 'id', label: 'ID' }, { key: 'name', label: 'Name' }, { key: 'group_id', label: 'Group' },
-  { key: 'price', label: 'Price' }, { key: 'validity_days', label: 'Validity' },
-  { key: 'for_sale', label: 'For Sale' }, { key: 'sort_order', label: 'Sort' }, { key: 'actions', label: 'Actions' },
-]
+const planColumns = computed((): Column[] => [
+  { key: 'id', label: 'ID' },
+  { key: 'name', label: t('payment.admin.planName') },
+  { key: 'group_id', label: t('payment.admin.groupId') },
+  { key: 'price', label: t('payment.admin.price') },
+  { key: 'validity_days', label: t('payment.admin.validityDays') },
+  { key: 'for_sale', label: t('payment.admin.forSale') },
+  { key: 'sort_order', label: t('payment.admin.sortOrder') },
+  { key: 'actions', label: t('common.actions') },
+])
 
 async function loadPlans() {
   plansLoading.value = true
@@ -302,99 +213,7 @@ async function handleDeletePlan() {
   catch (err: unknown) { appStore.showError(err instanceof Error ? err.message : String(err)) }
 }
 
-// ==================== User Subscriptions ====================
-
-const subsLoading = ref(false)
-const userSubs = ref<UserSubscription[]>([])
-const subsKeyword = ref('')
-const subsStatusFilter = ref('')
-const subsPagination = reactive({ page: 1, page_size: 20, total: 0 })
-
-const subsStatusOptions = computed(() => [
-  { value: '', label: t('payment.admin.allStatuses') },
-  { value: 'active', label: t('payment.admin.subsStatus.active') },
-  { value: 'expired', label: t('payment.admin.subsStatus.expired') },
-  { value: 'revoked', label: t('payment.admin.subsStatus.revoked') },
-])
-
-const subsColumns: Column[] = [
-  { key: 'id', label: 'ID' }, { key: 'user_id', label: 'User' }, { key: 'group_id', label: 'Group' },
-  { key: 'status', label: 'Status' }, { key: 'expires_at', label: 'Expires' }, { key: 'usage', label: 'Usage' },
-]
-
-let subsDebounceTimer: ReturnType<typeof setTimeout> | null = null
-function debounceLoadSubs() {
-  if (subsDebounceTimer) clearTimeout(subsDebounceTimer)
-  subsDebounceTimer = setTimeout(() => loadUserSubs(), 300)
-}
-
-async function loadUserSubs() {
-  subsLoading.value = true
-  try {
-    const filters: Record<string, any> = {}
-    if (subsStatusFilter.value) filters.status = subsStatusFilter.value
-    const res: PaginatedResponse<UserSubscription> = await adminAPI.subscriptions.list(
-      subsPagination.page,
-      subsPagination.page_size,
-      filters,
-    )
-    userSubs.value = res.items || []
-    subsPagination.total = res.total || 0
-  } catch (err: unknown) {
-    appStore.showError(err instanceof Error ? err.message : String(err))
-  } finally { subsLoading.value = false }
-}
-
-function handleSubsPageChange(page: number) { subsPagination.page = page; loadUserSubs() }
-function handleSubsPageSizeChange(size: number) { subsPagination.page_size = size; subsPagination.page = 1; loadUserSubs() }
-
-function subsStatusClass(status: string): string {
-  const m: Record<string, string> = { active: 'badge-success', expired: 'badge-secondary', revoked: 'badge-danger' }
-  return m[status] || 'badge-secondary'
-}
-
-function formatDate(dateStr: string): string {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleDateString()
-}
-
-function daysRemaining(dateStr: string): number | null {
-  if (!dateStr) return null
-  const diff = new Date(dateStr).getTime() - Date.now()
-  return Math.ceil(diff / (1000 * 60 * 60 * 24))
-}
-
-// ==================== Usage Bar component ====================
-
-const UsageBar = {
-  props: {
-    label: String,
-    usage: { type: Number, default: 0 },
-    limit: { type: Number, default: null },
-  },
-  setup(props: { label: string; usage: number; limit: number | null }) {
-    const pct = computed(() => props.limit && props.limit > 0 ? Math.min((props.usage / props.limit) * 100, 100) : 0)
-    const barColor = computed(() => pct.value > 80 ? 'bg-red-500' : pct.value > 50 ? 'bg-yellow-500' : 'bg-green-500')
-    return { pct, barColor }
-  },
-  template: `
-    <div class="flex items-center gap-2">
-      <span class="w-8 text-gray-500 dark:text-gray-400">{{ label }}</span>
-      <div class="flex-1">
-        <div v-if="limit != null && limit > 0" class="h-1.5 w-full rounded-full bg-gray-200 dark:bg-dark-600">
-          <div :class="['h-full rounded-full transition-all', barColor]" :style="{ width: pct + '%' }"></div>
-        </div>
-      </div>
-      <span class="text-gray-600 dark:text-gray-300">\${{ usage.toFixed(2) }}<span v-if="limit != null"> / \${{ limit.toFixed(2) }}</span></span>
-    </div>
-  `,
-}
-
 // ==================== Lifecycle ====================
-
-watch(activeSubTab, (tab) => {
-  if (tab === 'userSubs' && userSubs.value.length === 0) loadUserSubs()
-})
 
 onMounted(() => {
   loadGroups()

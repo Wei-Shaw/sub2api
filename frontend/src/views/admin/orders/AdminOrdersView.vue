@@ -155,11 +155,11 @@ const orderTypeFilterOptions = computed(() => [
   { value: 'subscription', label: t('payment.admin.subscriptionOrder') },
 ])
 
-const orderColumns: Column[] = [
-  { key: 'id', label: 'ID' }, { key: 'user_id', label: 'User' }, { key: 'amount', label: 'Amount' },
-  { key: 'payment_type', label: 'Method' }, { key: 'status', label: 'Status' },
-  { key: 'created_at', label: 'Created' }, { key: 'actions', label: 'Actions' },
-]
+const orderColumns = computed((): Column[] => [
+  { key: 'id', label: 'ID' }, { key: 'user_id', label: t('payment.admin.colUser') }, { key: 'amount', label: t('payment.orders.amount') },
+  { key: 'payment_type', label: t('payment.orders.paymentMethod') }, { key: 'status', label: t('payment.orders.status') },
+  { key: 'created_at', label: t('payment.orders.createdAt') }, { key: 'actions', label: t('common.actions') },
+])
 
 function statusBadgeClass(status: string): string {
   const m: Record<string, string> = {
