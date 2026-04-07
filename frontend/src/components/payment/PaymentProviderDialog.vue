@@ -29,61 +29,62 @@
         </div>
       </div>
 
-      <!-- Payment mode (EasyPay only) -->
-      <div v-if="form.provider_key === 'easypay'">
-        <label class="input-label">
-          {{ t('admin.settings.payment.paymentMode') }}
-          <span class="text-red-500">*</span>
-        </label>
-        <div class="mt-2 flex gap-2">
-          <button
-            v-for="mode in paymentModeOptions"
-            :key="mode.value"
-            type="button"
-            @click="form.payment_mode = mode.value"
-            :class="[
-              'rounded-lg border px-4 py-2 text-sm font-medium transition-all',
-              form.payment_mode === mode.value
-                ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
-                : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
-            ]"
-          >{{ mode.label }}</button>
-        </div>
-      </div>
-
-      <!-- Supported types (hide for single-type providers) -->
-      <div v-if="availableTypes.length > 1">
-        <label class="input-label">
-          {{ t('admin.settings.payment.supportedTypes') }}
-          <span class="text-red-500">*</span>
-        </label>
-        <div class="mt-2 flex flex-wrap gap-2">
-          <button
-            v-for="pt in availableTypes"
-            :key="pt.value"
-            type="button"
-            @click="toggleType(pt.value)"
-            :class="[
-              'rounded-lg border px-4 py-2 text-sm font-medium transition-all',
-              isTypeSelected(pt.value)
-                ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
-                : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
-            ]"
-          >{{ pt.label }}</button>
-        </div>
-      </div>
-
-      <!-- Enabled + Refund checkboxes -->
-      <div class="flex items-center gap-4">
-        <label class="flex items-center gap-2">
+      <!-- Enabled + Refund toggles -->
+      <div class="flex items-center gap-6">
+        <label class="flex cursor-pointer items-center gap-2">
           <input v-model="form.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('common.enabled') }}</span>
         </label>
-        <label class="flex items-center gap-2">
+        <label class="flex cursor-pointer items-center gap-2">
           <input v-model="form.refund_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.refundEnabled') }}</span>
         </label>
       </div>
+
+      <!-- Payment mode + Supported types (same row) -->
+      <div class="flex flex-wrap items-end gap-4">
+        <div v-if="form.provider_key === 'easypay'">
+          <label class="input-label">
+            {{ t('admin.settings.payment.paymentMode') }}
+            <span class="text-red-500">*</span>
+          </label>
+          <div class="mt-1 flex gap-2">
+            <button
+              v-for="mode in paymentModeOptions"
+              :key="mode.value"
+              type="button"
+              @click="form.payment_mode = mode.value"
+              :class="[
+                'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
+                form.payment_mode === mode.value
+                  ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
+                  : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
+              ]"
+            >{{ mode.label }}</button>
+          </div>
+        </div>
+        <div v-if="availableTypes.length > 1">
+          <label class="input-label">
+            {{ t('admin.settings.payment.supportedTypes') }}
+            <span class="text-red-500">*</span>
+          </label>
+          <div class="mt-1 flex flex-wrap gap-2">
+            <button
+              v-for="pt in availableTypes"
+              :key="pt.value"
+              type="button"
+              @click="toggleType(pt.value)"
+              :class="[
+                'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
+                isTypeSelected(pt.value)
+                  ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
+                  : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
+              ]"
+            >{{ pt.label }}</button>
+          </div>
+        </div>
+      </div>
+
 
       <!-- Config fields -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
