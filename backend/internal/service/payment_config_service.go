@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
@@ -571,6 +572,30 @@ func (s *PaymentConfigService) encryptConfig(cfg map[string]string) (string, err
 // --- Channel CRUD ---
 
 // --- Plan CRUD ---
+
+// GetGroupPlatformMap returns a map of group_id → platform for the given plans.
+func (s *PaymentConfigService) GetGroupPlatformMap(ctx context.Context, plans []*dbent.SubscriptionPlan) map[int64]string {
+	ids := make([]int64, 0, len(plans))
+	seen := make(map[int64]bool)
+	for _, p := range plans {
+		if !seen[p.GroupID] {
+			seen[p.GroupID] = true
+			ids = append(ids, p.GroupID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	groups, err := s.entClient.Group.Query().Where(group.IDIn(ids...)).Select(group.FieldID, group.FieldPlatform).All(ctx)
+	if err != nil {
+		return nil
+	}
+	m := make(map[int64]string, len(groups))
+	for _, g := range groups {
+		m[int64(g.ID)] = g.Platform
+	}
+	return m
+}
 
 func (s *PaymentConfigService) ListPlans(ctx context.Context) ([]*dbent.SubscriptionPlan, error) {
 	return s.entClient.SubscriptionPlan.Query().Order(subscriptionplan.BySortOrder()).All(ctx)

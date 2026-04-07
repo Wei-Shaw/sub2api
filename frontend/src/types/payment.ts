@@ -73,6 +73,7 @@ export interface PaymentOrder {
 export interface SubscriptionPlan {
   id: number
   group_id: number
+  group_platform?: string
   name: string
   description: string
   price: number
