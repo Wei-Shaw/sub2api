@@ -43,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { usePaymentStore } from '@/stores/payment'
@@ -93,6 +93,8 @@ onMounted(async () => {
     if (!stripe) { initError.value = t('payment.stripeLoadFailed'); return }
 
     stripeInstance = stripe
+    loading.value = false
+    await nextTick()
     const isDark = document.documentElement.classList.contains('dark')
     const elements = stripe.elements({
       clientSecret,
