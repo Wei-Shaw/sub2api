@@ -72,8 +72,8 @@ func TestParsePaymentConfig(t *testing.T) {
 		if cfg.Enabled {
 			t.Fatal("expected Enabled=false by default")
 		}
-		if cfg.MinAmount != 0 {
-			t.Fatalf("expected MinAmount=0 (no limit), got %v", cfg.MinAmount)
+		if cfg.MinAmount != 1 {
+			t.Fatalf("expected MinAmount=1, got %v", cfg.MinAmount)
 		}
 		if cfg.MaxAmount != 0 {
 			t.Fatalf("expected MaxAmount=0 (no limit), got %v", cfg.MaxAmount)
