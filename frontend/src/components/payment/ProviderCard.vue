@@ -23,9 +23,8 @@
           />
         </div>
         <span class="text-sm font-medium text-gray-900 dark:text-white">{{ provider.name }}</span>
-        <span class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500 dark:bg-dark-700 dark:text-gray-400">
-          {{ keyLabel }}
-        </span>
+        <span class="text-xs text-gray-400 dark:text-gray-500">{{ keyLabel }}</span>
+        <span v-if="enabled && availableTypes.length" class="text-xs text-gray-300 dark:text-gray-600">|</span>
         <div v-if="enabled" class="flex items-center gap-1">
           <button
             v-for="pt in availableTypes"
