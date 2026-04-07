@@ -1685,16 +1685,15 @@
                     {{ t('admin.settings.payment.cancelRateLimit') }}
                   </label>
                 </div>
-                <div v-if="form.payment_cancel_rate_limit_enabled" class="mt-3 flex flex-wrap items-end gap-3">
-                  <div class="w-20"><label class="input-label">{{ t('admin.settings.payment.cancelRateLimitWindow') }}</label><input v-model.number="form.payment_cancel_rate_limit_window" type="number" min="1" class="input" /></div>
-                  <div class="w-24">
-                    <label class="input-label">{{ t('admin.settings.payment.cancelRateLimitUnit') }}</label>
-                    <Select v-model="form.payment_cancel_rate_limit_unit" :options="cancelRateLimitUnitOptions" class="w-full" />
-                  </div>
-                  <div class="w-20"><label class="input-label">{{ t('admin.settings.payment.cancelRateLimitMax') }}</label><input v-model.number="form.payment_cancel_rate_limit_max" type="number" min="1" class="input" /></div>
-                  <div class="w-24">
-                    <label class="input-label">{{ t('admin.settings.payment.cancelRateLimitWindowMode') }}</label>
-                    <Select v-model="form.payment_cancel_rate_limit_window_mode" :options="cancelRateLimitModeOptions" class="w-full" />
+                <div v-if="form.payment_cancel_rate_limit_enabled" class="mt-3">
+                  <div class="flex flex-wrap items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <span>{{ t('admin.settings.payment.cancelRateLimitEvery') }}</span>
+                    <input v-model.number="form.payment_cancel_rate_limit_window" type="number" min="1" class="input w-16 text-center" />
+                    <Select v-model="form.payment_cancel_rate_limit_unit" :options="cancelRateLimitUnitOptions" class="w-20" />
+                    <span>{{ t('admin.settings.payment.cancelRateLimitAllowMax') }}</span>
+                    <input v-model.number="form.payment_cancel_rate_limit_max" type="number" min="1" class="input w-16 text-center" />
+                    <span>{{ t('admin.settings.payment.cancelRateLimitTimes') }}</span>
+                    <Select v-model="form.payment_cancel_rate_limit_window_mode" :options="cancelRateLimitModeOptions" class="w-20" />
                   </div>
                 </div>
                 <p class="mt-1.5 text-xs text-gray-400">{{ t('admin.settings.payment.cancelRateLimitHint') }}</p>
