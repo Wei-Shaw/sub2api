@@ -87,6 +87,74 @@ func (h *PaymentHandler) GetChannels(c *gin.Context) {
 	response.Success(c, channels)
 }
 
+// GetCheckoutInfo returns all data the payment page needs in a single call:
+// payment methods with limits, subscription plans, and configuration.
+// GET /api/v1/payment/checkout-info
+func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	// Fetch limits (methods + global range)
+	limitsResp, err := h.configService.GetAvailableMethodLimits(ctx)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	// Fetch payment config
+	cfg, err := h.configService.GetPaymentConfig(ctx)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	// Fetch plans with platform info
+	plans, _ := h.configService.ListPlansForSale(ctx)
+	platformMap := h.configService.GetGroupPlatformMap(ctx, plans)
+	planList := make([]checkoutPlan, 0, len(plans))
+	for _, p := range plans {
+		planList = append(planList, checkoutPlan{
+			ID: int64(p.ID), GroupID: p.GroupID, GroupPlatform: platformMap[p.GroupID],
+			Name: p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
+			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: p.Features,
+			ProductName: p.ProductName,
+		})
+	}
+
+	response.Success(c, checkoutInfoResponse{
+		Methods:              limitsResp.Methods,
+		GlobalMin:            limitsResp.GlobalMin,
+		GlobalMax:            limitsResp.GlobalMax,
+		Plans:                planList,
+		BalanceDisabled:      cfg.BalanceDisabled,
+		HelpText:             cfg.HelpText,
+		StripePublishableKey: cfg.StripePublishableKey,
+	})
+}
+
+type checkoutInfoResponse struct {
+	Methods              map[string]service.MethodLimits `json:"methods"`
+	GlobalMin            float64                        `json:"global_min"`
+	GlobalMax            float64                        `json:"global_max"`
+	Plans                []checkoutPlan                 `json:"plans"`
+	BalanceDisabled      bool                           `json:"balance_disabled"`
+	HelpText             string                         `json:"help_text"`
+	StripePublishableKey string                         `json:"stripe_publishable_key"`
+}
+
+type checkoutPlan struct {
+	ID            int64    `json:"id"`
+	GroupID       int64    `json:"group_id"`
+	GroupPlatform string   `json:"group_platform"`
+	Name          string   `json:"name"`
+	Description   string   `json:"description"`
+	Price         float64  `json:"price"`
+	OriginalPrice *float64 `json:"original_price,omitempty"`
+	ValidityDays  int      `json:"validity_days"`
+	ValidityUnit  string   `json:"validity_unit"`
+	Features      string   `json:"features"`
+	ProductName   string   `json:"product_name"`
+}
+
 // GetLimits returns per-payment-type limits derived from enabled provider instances.
 // GET /api/v1/payment/limits
 func (h *PaymentHandler) GetLimits(c *gin.Context) {

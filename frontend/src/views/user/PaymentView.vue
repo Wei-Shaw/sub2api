@@ -72,16 +72,13 @@
         </template>
         <!-- Subscribe Tab -->
         <template v-else-if="activeTab === 'subscription'">
-          <div v-if="plansLoading" class="flex items-center justify-center py-20">
-            <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
-          </div>
-          <div v-else-if="plans.length === 0" class="py-16 text-center text-gray-500 dark:text-gray-400">{{ t('payment.noPlans') }}</div>
+          <div v-if="checkout.plans.length === 0" class="py-16 text-center text-gray-500 dark:text-gray-400">{{ t('payment.noPlans') }}</div>
           <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <SubscriptionPlanCard v-for="plan in plans" :key="plan.id" :plan="plan" @select="openSubscribeDialog" />
+            <SubscriptionPlanCard v-for="plan in checkout.plans" :key="plan.id" :plan="plan" @select="openSubscribeDialog" />
           </div>
         </template>
-        <div v-if="config?.help_text" class="card p-4">
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ config.help_text }}</p>
+        <div v-if="checkout.help_text" class="card p-4">
+          <p class="text-sm text-gray-500 dark:text-gray-400">{{ checkout.help_text }}</p>
         </div>
       </template>
     </div>
@@ -121,7 +118,7 @@ import { usePaymentStore } from '@/stores/payment'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import type { SubscriptionPlan, MethodLimitsResponse } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
@@ -137,34 +134,35 @@ const paymentStore = usePaymentStore()
 const appStore = useAppStore()
 
 const user = computed(() => authStore.user)
-const config = computed(() => paymentStore.config)
-const plans = computed(() => paymentStore.plans)
 
 const loading = ref(true)
-const plansLoading = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
 const activeTab = ref<'recharge' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
-// Limits response from backend (per-method limits + precomputed global range)
-const limitsData = ref<MethodLimitsResponse>({ methods: {}, global_min: 0, global_max: 0 })
+
+// All checkout data from single API call
+const checkout = ref<CheckoutInfoResponse>({
+  methods: {}, global_min: 0, global_max: 0,
+  plans: [], balance_disabled: false, help_text: '', stripe_publishable_key: '',
+})
 
 const tabs = computed(() => {
   const result: { key: 'recharge' | 'subscription'; label: string }[] = []
-  if (!config.value?.balance_disabled) result.push({ key: 'recharge', label: t('payment.tabTopUp') })
+  if (!checkout.value.balance_disabled) result.push({ key: 'recharge', label: t('payment.tabTopUp') })
   result.push({ key: 'subscription', label: t('payment.tabSubscribe') })
   return result
 })
 
-const enabledMethods = computed(() => Object.keys(limitsData.value.methods))
+const enabledMethods = computed(() => Object.keys(checkout.value.methods))
 const validAmount = computed(() => amount.value ?? 0)
 
 // Check if an amount fits a method's [min, max]. 0 = no limit.
 function amountFitsMethod(amt: number, methodType: string): boolean {
   if (amt <= 0) return true
-  const ml = limitsData.value.methods[methodType]
+  const ml = checkout.value.methods[methodType]
   if (!ml) return false
   if (ml.single_min > 0 && amt < ml.single_min) return false
   if (ml.single_max > 0 && amt > ml.single_max) return false
@@ -172,15 +170,15 @@ function amountFitsMethod(amt: number, methodType: string): boolean {
 }
 
 // Global range for AmountInput quick buttons (precomputed by backend)
-const globalMinAmount = computed(() => limitsData.value.global_min)
-const globalMaxAmount = computed(() => limitsData.value.global_max)
+const globalMinAmount = computed(() => checkout.value.global_min)
+const globalMaxAmount = computed(() => checkout.value.global_max)
 
 // Selected method's limits (for validation and error messages)
-const selectedLimit = computed(() => limitsData.value.methods[selectedMethod.value])
+const selectedLimit = computed(() => checkout.value.methods[selectedMethod.value])
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
   enabledMethods.value.map((type) => {
-    const ml = limitsData.value.methods[type]
+    const ml = checkout.value.methods[type]
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
@@ -281,23 +279,10 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
   }
 }
 
-async function loadPlans() {
-  plansLoading.value = true
-  try { await paymentStore.fetchPlans() } catch (err: unknown) { console.error('Failed to load plans:', err) }
-  finally { plansLoading.value = false }
-}
-
-watch(() => activeTab.value, (tab) => {
-  if (tab === 'subscription' && plans.value.length === 0) loadPlans()
-})
-
 onMounted(async () => {
   try {
-    await paymentStore.fetchConfig(true)
-    try {
-      const limitsRes = await paymentAPI.getLimits()
-      limitsData.value = limitsRes.data
-    } catch (e: unknown) { /* limits endpoint may not exist */ }
+    const res = await paymentAPI.getCheckoutInfo()
+    checkout.value = res.data
     if (enabledMethods.value.length) {
       const order: readonly string[] = METHOD_ORDER
       const sorted = [...enabledMethods.value].sort((a, b) => {
@@ -307,11 +292,10 @@ onMounted(async () => {
       })
       selectedMethod.value = sorted[0]
     }
-    if (config.value?.balance_disabled) {
+    if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'
-      await loadPlans()
     }
-  } catch (err: unknown) { console.error('Failed to load config:', err) }
+  } catch (err: unknown) { console.error('Failed to load checkout info:', err) }
   finally { loading.value = false }
 })
 </script>

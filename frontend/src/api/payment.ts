@@ -9,6 +9,7 @@ import type {
   SubscriptionPlan,
   PaymentChannel,
   MethodLimitsResponse,
+  CheckoutInfoResponse,
   CreateOrderRequest,
   CreateOrderResult,
   PaymentOrder
@@ -29,6 +30,11 @@ export const paymentAPI = {
   /** Get available payment channels */
   getChannels() {
     return apiClient.get<PaymentChannel[]>('/payment/channels')
+  },
+
+  /** Get all checkout page data in a single call */
+  getCheckoutInfo() {
+    return apiClient.get<CheckoutInfoResponse>('/payment/checkout-info')
   },
 
   /** Get payment method limits and fee rates */

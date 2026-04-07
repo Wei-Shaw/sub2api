@@ -55,6 +55,17 @@ export interface MethodLimitsResponse {
   global_max: number  // widest max across all methods; 0 = no maximum
 }
 
+/** Response from /payment/checkout-info API — single call for the payment page */
+export interface CheckoutInfoResponse {
+  methods: Record<string, MethodLimit>
+  global_min: number
+  global_max: number
+  plans: SubscriptionPlan[]
+  balance_disabled: boolean
+  help_text: string
+  stripe_publishable_key: string
+}
+
 // ==================== Orders ====================
 
 export interface PaymentOrder {
