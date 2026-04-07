@@ -275,6 +275,13 @@ REDACTED
 	return "gpt-5.1"
 REDACTED
 
+func normalizeOpenAIModelForUpstream(account *Account, model string) string {
+	if account == nil || account.Type == AccountTypeOAuth {
+		return normalizeCodexModel(model)
+REDACTED
+	return strings.TrimSpace(model)
+REDACTED
+
 func SupportsVerbosity(model string) bool {
 	if !strings.HasPrefix(model, "gpt-") {
 		return true

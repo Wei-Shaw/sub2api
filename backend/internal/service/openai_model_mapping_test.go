@@ -99,3 +99,39 @@ REDACTED
 	REDACTED
 REDACTED
 REDACTED
+
+func TestNormalizeOpenAIModelForUpstream(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		model   string
+		want    string
+REDACTED{
+		{
+			name:    "oauth keeps codex normalization behavior",
+			account: &Account{Type: AccountTypeOAuthREDACTED,
+			model:   "gemini-3-flash-preview",
+			want:    "gpt-5.1",
+	REDACTED,
+		{
+			name:    "apikey preserves custom compatible model",
+			account: &Account{Type: AccountTypeAPIKeyREDACTED,
+			model:   "gemini-3-flash-preview",
+			want:    "gemini-3-flash-preview",
+	REDACTED,
+		{
+			name:    "apikey preserves official non codex model",
+			account: &Account{Type: AccountTypeAPIKeyREDACTED,
+			model:   "gpt-4.1",
+			want:    "gpt-4.1",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeOpenAIModelForUpstream(tt.account, tt.model); got != tt.want {
+				t.Fatalf("normalizeOpenAIModelForUpstream(...) = %q, want %q", got, tt.want)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
