@@ -42,6 +42,8 @@ import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores'
 import QRCode from 'qrcode'
+import alipayIcon from '@/assets/icons/alipay.svg'
+import wxpayIcon from '@/assets/icons/wxpay.svg'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -82,15 +84,9 @@ const scanHint = computed(() => {
   return ''
 })
 
-// Alipay logo SVG as data URI (blue brand mark)
-const ALIPAY_LOGO = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#1677FF"/><text x="32" y="44" font-family="Arial,sans-serif" font-size="32" font-weight="bold" fill="white" text-anchor="middle">支</text></svg>')}`
-
-// WeChat Pay logo SVG as data URI (green brand mark)
-const WXPAY_LOGO = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#07C160"/><path d="M20 22c-8 0-14.5 5.4-14.5 12.1 0 3.8 2 7.2 5.1 9.5l-1.3 3.8 4.4-2.3c1.8.6 3.8 1 5.9 1 .5 0 1 0 1.5-.1-.6-1.9-1-3.9-1-6C20.1 33 27 27 35.5 27c.5 0 1 0 1.5.1C35.4 23.4 28.2 22 20 22zm-5 8a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm10 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" fill="white"/><path d="M50.5 40c0-5.8-5.5-10.5-12.2-10.5S26 34.2 26 40s5.5 10.5 12.3 10.5c1.5 0 2.8-.2 4.1-.6l3.6 2-1-3.2c2.6-2 4.1-4.8 4.1-7.9zm-16.2-1.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm8 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" fill="white"/></svg>')}`
-
 function getLogoForType(): string | null {
-  if (isAlipay.value) return ALIPAY_LOGO
-  if (isWxpay.value) return WXPAY_LOGO
+  if (isAlipay.value) return alipayIcon
+  if (isWxpay.value) return wxpayIcon
   return null
 }
 
