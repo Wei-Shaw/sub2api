@@ -21,11 +21,11 @@
         <p class="mt-2 text-sm text-gray-400 dark:text-gray-500">{{ t('payment.qr.waitingPayment') }}</p>
       </div>
       <a v-if="payUrl && !qrUrl && !expired" :href="payUrl" target="_blank" rel="noopener noreferrer"
-        class="btn btn-secondary inline-flex w-full items-center justify-center gap-2 py-3">
+        class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 py-3 text-sm font-medium text-white transition-colors hover:bg-primary-600 dark:bg-primary-600 dark:hover:bg-primary-500">
         {{ t('payment.qr.openPayWindow') }}
       </a>
       <!-- Cancel button -->
-      <button v-if="!expired && orderId" class="btn btn-secondary w-full" :disabled="cancelling" @click="handleCancel">
+      <button v-if="!expired && orderId" class="w-full rounded-lg border border-gray-300 bg-white py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:bg-dark-700" :disabled="cancelling" @click="handleCancel">
         {{ cancelling ? t('common.processing') : t('payment.qr.cancelOrder') }}
       </button>
     </div>
