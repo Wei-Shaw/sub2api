@@ -3946,7 +3946,7 @@ REDACTED
 	// Beta policy: evaluate once; block check + cache filter set for buildUpstreamRequest.
 	// Always overwrite the cache to prevent stale values from a previous retry with a different account.
 	if account.Platform == PlatformAnthropic && c != nil {
-		policy := s.evaluateBetaPolicy(ctx, c.GetHeader("anthropic-beta"), account)
+		policy := s.evaluateBetaPolicy(ctx, c.GetHeader("anthropic-beta"), account, parsed.Model)
 		if policy.blockErr != nil {
 			return nil, policy.blockErr
 	REDACTED
@@ -5603,7 +5603,7 @@ REDACTED
 REDACTED
 
 	// Build effective drop set: merge static defaults with dynamic beta policy filter rules
-	policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account)
+	policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account, modelID)
 	effectiveDropSet := mergeDropSets(policyFilterSet)
 	effectiveDropWithClaudeCodeSet := mergeDropSets(policyFilterSet, claude.BetaClaudeCode)
 
@@ -5843,7 +5843,7 @@ type betaPolicyResult struct {
 REDACTED
 
 // evaluateBetaPolicy loads settings once and evaluates all rules against the given request.
-func (s *GatewayService) evaluateBetaPolicy(ctx context.Context, betaHeader string, account *Account) betaPolicyResult {
+func (s *GatewayService) evaluateBetaPolicy(ctx context.Context, betaHeader string, account *Account, model string) betaPolicyResult {
 	if s.settingService == nil {
 		return betaPolicyResult{REDACTED
 REDACTED
@@ -5858,10 +5858,11 @@ REDACTED
 		if !betaPolicyScopeMatches(rule.Scope, isOAuth, isBedrock) {
 			continue
 	REDACTED
-		switch rule.Action {
+		effectiveAction, effectiveErrMsg := resolveRuleAction(rule, model)
+		switch effectiveAction {
 		case BetaPolicyActionBlock:
 			if result.blockErr == nil && betaHeader != "" && containsBetaToken(betaHeader, rule.BetaToken) {
-				msg := rule.ErrorMessage
+				msg := effectiveErrMsg
 				if msg == "" {
 					msg = "beta feature " + rule.BetaToken + " is not allowed"
 			REDACTED
@@ -5903,7 +5904,7 @@ const betaPolicyFilterSetKey = "betaPolicyFilterSet"
 // In the /v1/messages path, Forward() evaluates the policy first and caches the result;
 // buildUpstreamRequest reuses it (zero extra DB calls). In the count_tokens path, this
 // evaluates on demand (one DB call).
-func (s *GatewayService) getBetaPolicyFilterSet(ctx context.Context, c *gin.Context, account *Account) map[string]struct{REDACTED {
+func (s *GatewayService) getBetaPolicyFilterSet(ctx context.Context, c *gin.Context, account *Account, model string) map[string]struct{REDACTED {
 	if c != nil {
 		if v, ok := c.Get(betaPolicyFilterSetKey); ok {
 			if fs, ok := v.(map[string]struct{REDACTED); ok {
@@ -5911,7 +5912,7 @@ func (s *GatewayService) getBetaPolicyFilterSet(ctx context.Context, c *gin.Cont
 		REDACTED
 	REDACTED
 REDACTED
-	return s.evaluateBetaPolicy(ctx, "", account).filterSet
+	return s.evaluateBetaPolicy(ctx, "", account, model).filterSet
 REDACTED
 
 // betaPolicyScopeMatches checks whether a rule's scope matches the current account type.
@@ -5928,6 +5929,33 @@ func betaPolicyScopeMatches(scope string, isOAuth bool, isBedrock bool) bool {
 	default:
 		return true // unknown scope → match all (fail-open)
 REDACTED
+REDACTED
+
+// matchModelWhitelist checks if a model matches any pattern in the whitelist.
+// Reuses matchModelPattern from group.go which supports exact and wildcard prefix matching.
+func matchModelWhitelist(model string, whitelist []string) bool {
+	for _, pattern := range whitelist {
+		if matchModelPattern(pattern, model) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+// resolveRuleAction determines the effective action and error message for a rule given the request model.
+// When ModelWhitelist is empty, the rule's primary Action/ErrorMessage applies unconditionally.
+// When non-empty, Action applies to matching models; FallbackAction/FallbackErrorMessage applies to others.
+func resolveRuleAction(rule BetaPolicyRule, model string) (action, errorMessage string) {
+	if len(rule.ModelWhitelist) == 0 {
+		return rule.Action, rule.ErrorMessage
+REDACTED
+	if matchModelWhitelist(model, rule.ModelWhitelist) {
+		return rule.Action, rule.ErrorMessage
+REDACTED
+	if rule.FallbackAction != "" {
+		return rule.FallbackAction, rule.FallbackErrorMessage
+REDACTED
+	return BetaPolicyActionPass, "" // default fallback: pass (fail-open)
 REDACTED
 
 // droppedBetaSet returns claude.DroppedBetas as a set, with optional extra tokens.
@@ -5976,7 +6004,7 @@ func (s *GatewayService) resolveBedrockBetaTokensForRequest(
 	modelID string,
 ) ([]string, error) {
 	// 1. 对原始 header 中的 beta token 做 block 检查（快速失败）
-	policy := s.evaluateBetaPolicy(ctx, betaHeader, account)
+	policy := s.evaluateBetaPolicy(ctx, betaHeader, account, modelID)
 	if policy.blockErr != nil {
 		return nil, policy.blockErr
 REDACTED
@@ -5988,7 +6016,7 @@ REDACTED
 	//    例如：管理员 block 了 interleaved-thinking，客户端不在 header 中带该 token，
 	//    但请求体中包含 thinking 字段 → autoInjectBedrockBetaTokens 会自动补齐 →
 	//    如果不做此检查，block 规则会被绕过。
-	if blockErr := s.checkBetaPolicyBlockForTokens(ctx, betaTokens, account); blockErr != nil {
+	if blockErr := s.checkBetaPolicyBlockForTokens(ctx, betaTokens, account, modelID); blockErr != nil {
 		return nil, blockErr
 REDACTED
 
@@ -5997,7 +6025,7 @@ REDACTED
 
 // checkBetaPolicyBlockForTokens 检查 token 列表中是否有被管理员 block 规则命中的 token。
 // 用于补充 evaluateBetaPolicy 对 header 的检查，覆盖 body 自动注入的 token。
-func (s *GatewayService) checkBetaPolicyBlockForTokens(ctx context.Context, tokens []string, account *Account) *BetaBlockedError {
+func (s *GatewayService) checkBetaPolicyBlockForTokens(ctx context.Context, tokens []string, account *Account, model string) *BetaBlockedError {
 	if s.settingService == nil || len(tokens) == 0 {
 		return nil
 REDACTED
@@ -6009,14 +6037,15 @@ REDACTED
 	isBedrock := account.IsBedrock()
 	tokenSet := buildBetaTokenSet(tokens)
 	for _, rule := range settings.Rules {
-		if rule.Action != BetaPolicyActionBlock {
+		effectiveAction, effectiveErrMsg := resolveRuleAction(rule, model)
+		if effectiveAction != BetaPolicyActionBlock {
 			continue
 	REDACTED
 		if !betaPolicyScopeMatches(rule.Scope, isOAuth, isBedrock) {
 			continue
 	REDACTED
 		if _, present := tokenSet[rule.BetaToken]; present {
-			msg := rule.ErrorMessage
+			msg := effectiveErrMsg
 			if msg == "" {
 				msg = "beta feature " + rule.BetaToken + " is not allowed"
 		REDACTED
@@ -8474,7 +8503,7 @@ REDACTED
 REDACTED
 
 	// Build effective drop set for count_tokens: merge static defaults with dynamic beta policy filter rules
-	ctEffectiveDropSet := mergeDropSets(s.getBetaPolicyFilterSet(ctx, c, account))
+	ctEffectiveDropSet := mergeDropSets(s.getBetaPolicyFilterSet(ctx, c, account, modelID))
 
 	// OAuth 账号：处理 anthropic-beta header
 	if tokenType == "oauth" {

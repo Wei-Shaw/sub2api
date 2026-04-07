@@ -630,6 +630,108 @@
                     {{ t('admin.settings.betaPolicy.errorMessageHint') REDACTEDREDACTED
                   </p>
                 </div>
+
+                <!-- Quick Presets (only for tokens with presets) -->
+                <div v-if="betaPresets[rule.beta_token]?.length" class="mt-3">
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.betaPolicy.quickPresets') REDACTEDREDACTED
+                  </label>
+                  <div class="flex flex-wrap gap-2">
+                    <button
+                      v-for="preset in betaPresets[rule.beta_token]"
+                      :key="preset.label"
+                      type="button"
+                      class="inline-flex items-center gap-1 rounded-md border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100 dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/50"
+                      @click="applyBetaPreset(rule, preset)"
+                      :title="preset.description"
+                    >
+                      {{ preset.label REDACTEDREDACTED
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Model Whitelist -->
+                <div class="mt-3">
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.betaPolicy.modelWhitelist') REDACTEDREDACTED
+                  </label>
+                  <p class="mb-2 text-xs text-gray-400 dark:text-gray-500">
+                    {{ t('admin.settings.betaPolicy.modelWhitelistHint') REDACTEDREDACTED
+                  </p>
+                  <!-- Existing patterns -->
+                  <div
+                    v-for="(_, index) in (rule.model_whitelist || [])"
+                    :key="index"
+                    class="mb-1.5 flex items-center gap-2"
+                  >
+                    <input
+                      v-model="rule.model_whitelist![index]"
+                      type="text"
+                      class="input input-sm flex-1"
+                      :placeholder="t('admin.settings.betaPolicy.modelPatternPlaceholder')"
+                    />
+                    <button
+                      type="button"
+                      @click="rule.model_whitelist!.splice(index, 1)"
+                      class="shrink-0 rounded p-1 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    >
+                      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <!-- Add pattern button -->
+                  <button
+                    type="button"
+                    @click="if (!rule.model_whitelist) rule.model_whitelist = []; rule.model_whitelist.push('')"
+                    class="mb-2 inline-flex items-center gap-1 text-xs text-primary-600 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                  >
+                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    {{ t('admin.settings.betaPolicy.addModelPattern') REDACTEDREDACTED
+                  </button>
+                  <!-- Common pattern chips -->
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('admin.settings.betaPolicy.commonPatterns') REDACTEDREDACTED:</span>
+                    <button
+                      v-for="pattern in commonModelPatterns"
+                      :key="pattern"
+                      type="button"
+                      class="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-700 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
+                      @click="addQuickPattern(rule, pattern)"
+                    >
+                      {{ pattern REDACTEDREDACTED
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Fallback Action (only when model_whitelist is non-empty) -->
+                <div v-if="rule.model_whitelist && rule.model_whitelist.length > 0" class="mt-3">
+                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {{ t('admin.settings.betaPolicy.fallbackAction') REDACTEDREDACTED
+                  </label>
+                  <Select
+                    :modelValue="rule.fallback_action || 'pass'"
+                    @update:modelValue="rule.fallback_action = $event as any"
+                    :options="betaPolicyActionOptions"
+                  />
+                  <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    {{ t('admin.settings.betaPolicy.fallbackActionHint') REDACTEDREDACTED
+                  </p>
+                  <!-- Fallback Error Message (only when fallback_action=block) -->
+                  <div v-if="rule.fallback_action === 'block'" class="mt-2">
+                    <input
+                      v-model="rule.fallback_error_message"
+                      type="text"
+                      class="input"
+                      :placeholder="t('admin.settings.betaPolicy.fallbackErrorMessagePlaceholder')"
+                    />
+                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                      {{ t('admin.settings.betaPolicy.errorMessageHint') REDACTEDREDACTED
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <!-- Save Button -->
@@ -2058,6 +2160,9 @@ const betaPolicyForm = reactive({
     action: 'pass' | 'filter' | 'block'
     scope: 'all' | 'oauth' | 'apikey' | 'bedrock'
     error_message?: string
+    model_whitelist?: string[]
+    fallback_action?: 'pass' | 'filter' | 'block'
+    fallback_error_message?: string
   REDACTED>
 REDACTED)
 
@@ -2716,8 +2821,46 @@ const betaDisplayNames: Record<string, string> = {
   'context-1m-2025-08-07': 'Context 1M'
 REDACTED
 
+// 快捷预设：按 beta_token 定义预设方案
+const betaPresets: Record<string, Array<{
+  label: string
+  description: string
+  action: 'pass' | 'filter' | 'block'
+  model_whitelist: string[]
+  fallback_action: 'pass' | 'filter' | 'block'
+REDACTED>> = {
+  'context-1m-2025-08-07': [
+    {
+      label: t('admin.settings.betaPolicy.presetOpusOnly'),
+      description: t('admin.settings.betaPolicy.presetOpusOnlyDesc'),
+      action: 'pass',
+      model_whitelist: ['claude-opus-4-6'],
+      fallback_action: 'filter',
+    REDACTED,
+  ],
+REDACTED
+
+// 常用模型模式（具体 ID + 通配符示例）
+const commonModelPatterns = ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-opus-*', 'claude-sonnet-*']
+
 function getBetaDisplayName(token: string): string {
   return betaDisplayNames[token] || token
+REDACTED
+
+function applyBetaPreset(
+  rule: (typeof betaPolicyForm.rules)[number],
+  preset: { action: 'pass' | 'filter' | 'block'; model_whitelist: string[]; fallback_action: 'pass' | 'filter' | 'block' REDACTED
+) {
+  rule.action = preset.action
+  rule.model_whitelist = [...preset.model_whitelist]
+  rule.fallback_action = preset.fallback_action
+REDACTED
+
+function addQuickPattern(rule: (typeof betaPolicyForm.rules)[number], pattern: string) {
+  if (!rule.model_whitelist) rule.model_whitelist = []
+  if (!rule.model_whitelist.includes(pattern)) {
+    rule.model_whitelist.push(pattern)
+  REDACTED
 REDACTED
 
 async function loadBetaPolicySettings() {
@@ -2735,8 +2878,22 @@ REDACTED
 async function saveBetaPolicySettings() {
   betaPolicySaving.value = true
   try {
+    // Clean up empty patterns before saving
+    const cleanedRules = betaPolicyForm.rules.map(rule => {
+      const whitelist = rule.model_whitelist?.filter(p => p.trim() !== '')
+      const hasWhitelist = whitelist && whitelist.length > 0
+      return {
+        beta_token: rule.beta_token,
+        action: rule.action,
+        scope: rule.scope,
+        error_message: rule.error_message,
+        model_whitelist: hasWhitelist ? whitelist : undefined,
+        fallback_action: hasWhitelist ? (rule.fallback_action || 'pass') : undefined,
+        fallback_error_message: hasWhitelist && rule.fallback_action === 'block' ? rule.fallback_error_message : undefined,
+      REDACTED
+    REDACTED)
     const updated = await adminAPI.settings.updateBetaPolicySettings({
-      rules: betaPolicyForm.rules
+      rules: cleanedRules
     REDACTED)
     betaPolicyForm.rules = updated.rules
     appStore.showSuccess(t('admin.settings.betaPolicy.saved'))
