@@ -16,7 +16,7 @@
       </div>
       <!-- Cancel button -->
       <button v-if="!expired && orderId" class="btn btn-secondary w-full" :disabled="cancelling" @click="handleCancel">
-        {{ cancelling ? t('common.processing') : t('common.cancel') }}
+        {{ cancelling ? t('common.processing') : t('payment.qr.cancelOrder') }}
       </button>
     </div>
   </AppLayout>

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -186,9 +187,10 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 	if params["trade_status"] == "TRADE_SUCCESS" {
 		status = "success"
 	}
+	amount, _ := strconv.ParseFloat(params["money"], 64)
 	return &payment.PaymentNotification{
 		TradeNo: params["trade_no"], OrderID: params["out_trade_no"],
-		Status: status, RawData: rawBody,
+		Amount: amount, Status: status, RawData: rawBody,
 	}, nil
 }
 

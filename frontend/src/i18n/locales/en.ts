@@ -5086,6 +5086,7 @@ export default {
       expiresIn: 'Expires in',
       expired: 'Order Expired',
       waitingPayment: 'Waiting for payment...',
+      cancelOrder: 'Cancel Order',
     },
     orders: {
       title: 'My Orders',

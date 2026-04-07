@@ -5283,6 +5283,7 @@ export default {
       expiresIn: '剩余支付时间',
       expired: '订单已过期',
       waitingPayment: '等待支付...',
+      cancelOrder: '取消订单',
     },
     orders: {
       title: '我的订单',
