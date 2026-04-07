@@ -38,11 +38,23 @@
           <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateTime(value) }}</span>
         </template>
         <template #cell-actions="{ row }">
-          <div class="flex items-center gap-1">
-            <button @click="showOrderDetail(row)" class="btn-icon text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" :title="t('common.view')"><Icon name="eye" size="sm" /></button>
-            <button v-if="row.status === 'PENDING'" @click="handleCancelOrder(row)" class="btn-icon text-yellow-500 hover:text-yellow-700" :title="t('payment.orders.cancel')"><Icon name="x" size="sm" /></button>
-            <button v-if="row.status === 'FAILED'" @click="handleRetryOrder(row)" class="btn-icon text-blue-500 hover:text-blue-700" :title="t('payment.admin.retry')"><Icon name="refresh" size="sm" /></button>
-            <button v-if="canRefund(row)" @click="openRefundDialog(row)" class="btn-icon text-red-500 hover:text-red-700" :title="t('payment.admin.refund')"><Icon name="dollar" size="sm" /></button>
+          <div class="flex items-center gap-2">
+            <button @click="showOrderDetail(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:hover:bg-gray-800/50 dark:hover:text-gray-300">
+              <Icon name="eye" size="sm" />
+              <span class="text-xs">{{ t('common.view') }}</span>
+            </button>
+            <button v-if="row.status === 'PENDING'" @click="handleCancelOrder(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-yellow-50 hover:text-yellow-600 dark:hover:bg-yellow-900/20 dark:hover:text-yellow-400">
+              <Icon name="x" size="sm" />
+              <span class="text-xs">{{ t('payment.orders.cancel') }}</span>
+            </button>
+            <button v-if="row.status === 'FAILED'" @click="handleRetryOrder(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400">
+              <Icon name="refresh" size="sm" />
+              <span class="text-xs">{{ t('payment.admin.retry') }}</span>
+            </button>
+            <button v-if="canRefund(row)" @click="openRefundDialog(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400">
+              <Icon name="dollar" size="sm" />
+              <span class="text-xs">{{ t('payment.admin.refund') }}</span>
+            </button>
           </div>
         </template>
       </DataTable>

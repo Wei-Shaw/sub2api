@@ -49,9 +49,15 @@
           </button>
         </template>
         <template #cell-actions="{ row }">
-          <div class="flex items-center gap-1">
-            <button @click="openPlanEdit(row)" class="btn-icon text-blue-500 hover:text-blue-700" :title="t('common.edit')"><Icon name="edit" size="sm" /></button>
-            <button @click="confirmDeletePlan(row)" class="btn-icon text-red-500 hover:text-red-700" :title="t('common.delete')"><Icon name="trash" size="sm" /></button>
+          <div class="flex items-center gap-2">
+            <button @click="openPlanEdit(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400">
+              <Icon name="edit" size="sm" />
+              <span class="text-xs">{{ t('common.edit') }}</span>
+            </button>
+            <button @click="confirmDeletePlan(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400">
+              <Icon name="trash" size="sm" />
+              <span class="text-xs">{{ t('common.delete') }}</span>
+            </button>
           </div>
         </template>
       </DataTable>
@@ -66,17 +72,17 @@
             <input v-model="planForm.name" type="text" class="input" required />
           </div>
           <div>
-            <label class="input-label">{{ t('payment.admin.groupId') }}</label>
+            <label class="input-label">{{ t('payment.admin.group') }}</label>
             <Select v-model="planForm.group_id" :options="groupOptions" class="w-full" />
           </div>
         </div>
 
         <!-- Group Info Preview -->
         <div v-if="selectedGroupInfo" class="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-600 dark:bg-dark-800">
-          <p class="mb-2 text-xs font-semibold text-gray-500 dark:text-gray-400">{{ t('payment.admin.groupInfo') }}</p>
+          <div class="mb-2 flex items-center gap-2">
+            <GroupBadge :name="selectedGroupInfo.name" :platform="selectedGroupInfo.platform" :rate-multiplier="selectedGroupInfo.rate_multiplier" />
+          </div>
           <div class="grid grid-cols-2 gap-2 text-xs">
-            <div><span class="text-gray-500">{{ t('payment.admin.platform') }}:</span> <span class="ml-1 font-medium text-gray-700 dark:text-gray-300">{{ selectedGroupInfo.platform }}</span></div>
-            <div><span class="text-gray-500">{{ t('payment.admin.rateMultiplierLabel') }}:</span> <span class="ml-1 font-medium text-gray-700 dark:text-gray-300">{{ selectedGroupInfo.rate_multiplier }}x</span></div>
             <div><span class="text-gray-500">{{ t('payment.admin.dailyLimit') }}:</span> <span class="ml-1 font-medium text-gray-700 dark:text-gray-300">{{ selectedGroupInfo.daily_limit_usd != null ? '$' + selectedGroupInfo.daily_limit_usd : t('payment.admin.unlimited') }}</span></div>
             <div><span class="text-gray-500">{{ t('payment.admin.weeklyLimit') }}:</span> <span class="ml-1 font-medium text-gray-700 dark:text-gray-300">{{ selectedGroupInfo.weekly_limit_usd != null ? '$' + selectedGroupInfo.weekly_limit_usd : t('payment.admin.unlimited') }}</span></div>
             <div><span class="text-gray-500">{{ t('payment.admin.monthlyLimit') }}:</span> <span class="ml-1 font-medium text-gray-700 dark:text-gray-300">{{ selectedGroupInfo.monthly_limit_usd != null ? '$' + selectedGroupInfo.monthly_limit_usd : t('payment.admin.unlimited') }}</span></div>
@@ -200,7 +206,7 @@ const validityUnitOptions = computed(() => [
 const planColumns = computed((): Column[] => [
   { key: 'id', label: 'ID' },
   { key: 'name', label: t('payment.admin.planName') },
-  { key: 'group_id', label: t('payment.admin.groupId') },
+  { key: 'group_id', label: t('payment.admin.group') },
   { key: 'price', label: t('payment.admin.price') },
   { key: 'validity_days', label: t('payment.admin.validityDays') },
   { key: 'for_sale', label: t('payment.admin.forSale') },
