@@ -10,8 +10,8 @@ import (
 	"sync"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
-	stripe "github.com/stripe/stripe-go/v82"
-	"github.com/stripe/stripe-go/v82/webhook"
+	stripe "github.com/stripe/stripe-go/v85"
+	"github.com/stripe/stripe-go/v85/webhook"
 )
 
 // Stripe constants.
