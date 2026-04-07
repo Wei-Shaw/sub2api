@@ -7,22 +7,19 @@
       <div v-if="qrUrl" class="rounded-2xl bg-white p-6 shadow-lg dark:bg-dark-800">
         <canvas ref="qrCanvas" class="mx-auto"></canvas>
       </div>
-      <div v-else-if="payUrl && !expired" class="w-full space-y-3 text-center">
-        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.payInNewWindowHint') }}</p>
-        <a :href="payUrl" target="_blank" rel="noopener noreferrer"
-          class="btn btn-primary inline-flex w-full items-center justify-center gap-2 py-3">
-          {{ t('payment.qr.openPayWindow') }}
-        </a>
-      </div>
       <div v-if="expired" class="text-center">
         <p class="text-lg font-medium text-red-500">{{ t('payment.qr.expired') }}</p>
         <button class="btn btn-primary mt-4" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
       </div>
       <div v-else class="text-center">
-        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.expiresIn') }}</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400">{{ qrUrl ? t('payment.qr.expiresIn') : t('payment.qr.payInNewWindowHint') }}</p>
         <p class="mt-1 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">{{ countdownDisplay }}</p>
         <p class="mt-2 text-sm text-gray-400 dark:text-gray-500">{{ t('payment.qr.waitingPayment') }}</p>
       </div>
+      <a v-if="payUrl && !qrUrl && !expired" :href="payUrl" target="_blank" rel="noopener noreferrer"
+        class="btn btn-secondary inline-flex w-full items-center justify-center gap-2 py-3">
+        {{ t('payment.qr.openPayWindow') }}
+      </a>
       <!-- Cancel button -->
       <button v-if="!expired && orderId" class="btn btn-secondary w-full" :disabled="cancelling" @click="handleCancel">
         {{ cancelling ? t('common.processing') : t('payment.qr.cancelOrder') }}
