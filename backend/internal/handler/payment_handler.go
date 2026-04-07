@@ -90,17 +90,12 @@ func (h *PaymentHandler) GetChannels(c *gin.Context) {
 // GetLimits returns per-payment-type limits derived from enabled provider instances.
 // GET /api/v1/payment/limits
 func (h *PaymentHandler) GetLimits(c *gin.Context) {
-	limits, err := h.configService.GetAvailableMethodLimits(c.Request.Context())
+	resp, err := h.configService.GetAvailableMethodLimits(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	// Return as map keyed by payment type (frontend expects Record<string, MethodLimit>)
-	result := make(map[string]service.MethodLimits, len(limits))
-	for _, ml := range limits {
-		result[ml.PaymentType] = ml
-	}
-	response.Success(c, result)
+	response.Success(c, resp)
 }
 
 // CreateOrderRequest is the request body for creating a payment order.

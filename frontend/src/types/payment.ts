@@ -48,6 +48,13 @@ export interface MethodLimit {
   available: boolean
 }
 
+/** Response from /payment/limits API */
+export interface MethodLimitsResponse {
+  methods: Record<string, MethodLimit>
+  global_min: number  // widest min across all methods; 0 = no minimum
+  global_max: number  // widest max across all methods; 0 = no maximum
+}
+
 // ==================== Orders ====================
 
 export interface PaymentOrder {

@@ -101,6 +101,14 @@ type MethodLimits struct {
 	SingleMax   float64 `json:"single_max"`
 }
 
+// MethodLimitsResponse is the full response for the user-facing /limits API.
+// It includes per-method limits and the global widest range (union of all methods).
+type MethodLimitsResponse struct {
+	Methods   map[string]MethodLimits `json:"methods"`
+	GlobalMin float64                 `json:"global_min"` // 0 = no minimum
+	GlobalMax float64                 `json:"global_max"` // 0 = no maximum
+}
+
 type CreateProviderInstanceRequest struct {
 	ProviderKey    string            `json:"provider_key"`
 	Name           string            `json:"name"`
@@ -234,7 +242,7 @@ func (s *PaymentConfigService) getStripePublishableKey(ctx context.Context) stri
 	instances, err := s.entClient.PaymentProviderInstance.Query().
 		Where(
 			paymentproviderinstance.EnabledEQ(true),
-			paymentproviderinstance.ProviderKeyEQ("stripe"),
+			paymentproviderinstance.ProviderKeyEQ(payment.TypeStripe),
 		).Limit(1).All(ctx)
 	if err != nil || len(instances) == 0 {
 		return ""
@@ -415,7 +423,7 @@ func (s *PaymentConfigService) countPendingOrdersByPlan(ctx context.Context, pla
 
 // validProviderKeys enumerates all recognized provider keys.
 var validProviderKeys = map[string]bool{
-	"easypay": true, "alipay": true, "wxpay": true, "stripe": true,
+	payment.TypeEasyPay: true, payment.TypeAlipay: true, payment.TypeWxpay: true, payment.TypeStripe: true,
 }
 
 func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req CreateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
@@ -684,93 +692,6 @@ func (s *PaymentConfigService) GetPlan(ctx context.Context, id int64) (*dbent.Su
 		return nil, infraerrors.NotFound("PLAN_NOT_FOUND", "subscription plan not found")
 	}
 	return plan, nil
-}
-
-// stripeSubTypes are types that should be aggregated under "stripe" for user-facing display.
-var stripeSubTypes = map[string]bool{"card": true, "link": true}
-
-// GetAvailableMethodLimits collects all payment types from enabled provider
-// instances and returns limits for each. This is used by the user-facing payment
-// page to discover which payment methods are actually available.
-// Stripe sub-types (card, link) are aggregated under "stripe".
-func (s *PaymentConfigService) GetAvailableMethodLimits(ctx context.Context) ([]MethodLimits, error) {
-	instances, err := s.entClient.PaymentProviderInstance.Query().
-		Where(paymentproviderinstance.EnabledEQ(true)).All(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("query provider instances: %w", err)
-	}
-	// Collect unique payment types from all enabled providers
-	typeSet := make(map[string]bool)
-	for _, inst := range instances {
-		for _, t := range splitTypes(inst.SupportedTypes) {
-			// Stripe sub-types (card, link) are represented as "stripe" to users
-			if stripeSubTypes[t] || t == "stripe" {
-				typeSet["stripe"] = true
-			} else {
-				typeSet[t] = true
-			}
-		}
-	}
-	result := make([]MethodLimits, 0, len(typeSet))
-	for pt := range typeSet {
-		ml := MethodLimits{PaymentType: pt}
-		for _, inst := range instances {
-			if !payment.InstanceSupportsType(inst.SupportedTypes, pt) {
-				// For "stripe", check if instance supports any stripe sub-type
-				if pt == "stripe" && inst.ProviderKey == "stripe" {
-					pcApplyInstanceLimits(inst, pt, &ml)
-				}
-				continue
-			}
-			pcApplyInstanceLimits(inst, pt, &ml)
-		}
-		result = append(result, ml)
-	}
-	return result, nil
-}
-
-// GetMethodLimits returns per-payment-type limits from enabled provider instances.
-func (s *PaymentConfigService) GetMethodLimits(ctx context.Context, types []string) ([]MethodLimits, error) {
-	instances, err := s.entClient.PaymentProviderInstance.Query().
-		Where(paymentproviderinstance.EnabledEQ(true)).All(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("query provider instances: %w", err)
-	}
-	result := make([]MethodLimits, 0, len(types))
-	for _, pt := range types {
-		ml := MethodLimits{PaymentType: pt}
-		for _, inst := range instances {
-			if !payment.InstanceSupportsType(inst.SupportedTypes, pt) {
-				continue
-			}
-			pcApplyInstanceLimits(inst, pt, &ml)
-		}
-		result = append(result, ml)
-	}
-	return result, nil
-}
-
-func pcApplyInstanceLimits(inst *dbent.PaymentProviderInstance, pt string, ml *MethodLimits) {
-	if inst.Limits == "" {
-		return
-	}
-	var limits payment.InstanceLimits
-	if err := json.Unmarshal([]byte(inst.Limits), &limits); err != nil {
-		return
-	}
-	cl, ok := limits[pt]
-	if !ok {
-		return
-	}
-	if cl.DailyLimit > 0 && (ml.DailyLimit == 0 || cl.DailyLimit < ml.DailyLimit) {
-		ml.DailyLimit = cl.DailyLimit
-	}
-	if cl.SingleMin > 0 && (ml.SingleMin == 0 || cl.SingleMin > ml.SingleMin) {
-		ml.SingleMin = cl.SingleMin
-	}
-	if cl.SingleMax > 0 && (ml.SingleMax == 0 || cl.SingleMax < ml.SingleMax) {
-		ml.SingleMax = cl.SingleMax
-	}
 }
 
 func pcParseFloat(s string, defaultVal float64) float64 {

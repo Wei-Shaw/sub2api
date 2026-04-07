@@ -21,12 +21,15 @@ const (
 	StrategyLeastAmount Strategy = "least_amount"
 )
 
-// InstanceLimits holds per-channel limits for a provider instance (JSON).
-type InstanceLimits map[string]struct {
+// ChannelLimits holds limits for a single payment channel within a provider instance.
+type ChannelLimits struct {
 	DailyLimit float64 `json:"dailyLimit,omitempty"`
 	SingleMin  float64 `json:"singleMin,omitempty"`
 	SingleMax  float64 `json:"singleMax,omitempty"`
 }
+
+// InstanceLimits holds per-channel limits for a provider instance (JSON).
+type InstanceLimits map[string]ChannelLimits
 
 // LoadBalancer selects a provider instance for a given payment type.
 type LoadBalancer interface {

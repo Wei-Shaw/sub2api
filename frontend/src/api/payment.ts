@@ -8,7 +8,7 @@ import type {
   PaymentConfig,
   SubscriptionPlan,
   PaymentChannel,
-  MethodLimit,
+  MethodLimitsResponse,
   CreateOrderRequest,
   CreateOrderResult,
   PaymentOrder
@@ -33,7 +33,7 @@ export const paymentAPI = {
 
   /** Get payment method limits and fee rates */
   getLimits() {
-    return apiClient.get<Record<string, MethodLimit>>('/payment/limits')
+    return apiClient.get<MethodLimitsResponse>('/payment/limits')
   },
 
   /** Create a new payment order */

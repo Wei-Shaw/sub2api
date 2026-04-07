@@ -30,8 +30,8 @@
             <AmountInput
               v-model="amount"
               :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
-              :min="minAmount"
-              :max="maxAmount"
+              :min="globalMinAmount"
+              :max="globalMaxAmount"
             />
             <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
           </div>
@@ -121,7 +121,7 @@ import { usePaymentStore } from '@/stores/payment'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import type { SubscriptionPlan, MethodLimit } from '@/types/payment'
+import type { SubscriptionPlan, MethodLimitsResponse } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
@@ -148,7 +148,8 @@ const activeTab = ref<'recharge' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
-const methodLimits = ref<Record<string, MethodLimit>>({})
+// Limits response from backend (per-method limits + precomputed global range)
+const limitsData = ref<MethodLimitsResponse>({ methods: {}, global_min: 0, global_max: 0 })
 
 const tabs = computed(() => {
   const result: { key: 'recharge' | 'subscription'; label: string }[] = []
@@ -157,29 +158,38 @@ const tabs = computed(() => {
   return result
 })
 
-// Available methods derived from limits API (actual provider types)
-const enabledMethods = computed(() => Object.keys(methodLimits.value))
-// 0 = no limit; provider-level overrides global
-const minAmount = computed(() => {
-  const limit = methodLimits.value[selectedMethod.value]
-  if (limit?.single_min && limit.single_min > 0) return limit.single_min
-  return config.value?.min_amount && config.value.min_amount > 0 ? config.value.min_amount : 0
-})
-const maxAmount = computed(() => {
-  const limit = methodLimits.value[selectedMethod.value]
-  if (limit?.single_max && limit.single_max > 0) return limit.single_max
-  return config.value?.max_amount && config.value.max_amount > 0 ? config.value.max_amount : 0
-})
+const enabledMethods = computed(() => Object.keys(limitsData.value.methods))
+const validAmount = computed(() => amount.value ?? 0)
+
+// Check if an amount fits a method's [min, max]. 0 = no limit.
+function amountFitsMethod(amt: number, methodType: string): boolean {
+  if (amt <= 0) return true
+  const ml = limitsData.value.methods[methodType]
+  if (!ml) return false
+  if (ml.single_min > 0 && amt < ml.single_min) return false
+  if (ml.single_max > 0 && amt > ml.single_max) return false
+  return true
+}
+
+// Global range for AmountInput quick buttons (precomputed by backend)
+const globalMinAmount = computed(() => limitsData.value.global_min)
+const globalMaxAmount = computed(() => limitsData.value.global_max)
+
+// Selected method's limits (for validation and error messages)
+const selectedLimit = computed(() => limitsData.value.methods[selectedMethod.value])
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
   enabledMethods.value.map((type) => {
-    const limit = methodLimits.value[type]
-    return { type, fee_rate: limit?.fee_rate ?? 0, available: limit?.available !== false }
+    const ml = limitsData.value.methods[type]
+    return {
+      type,
+      fee_rate: ml?.fee_rate ?? 0,
+      available: ml?.available !== false && amountFitsMethod(validAmount.value, type),
+    }
   })
 )
 
-const validAmount = computed(() => amount.value ?? 0)
-const feeRate = computed(() => methodLimits.value[selectedMethod.value]?.fee_rate ?? 0)
+const feeRate = computed(() => selectedLimit.value?.fee_rate ?? 0)
 const feeAmount = computed(() =>
   feeRate.value > 0 && validAmount.value > 0
     ? Math.ceil(((validAmount.value * feeRate.value) / 100) * 100) / 100
@@ -193,17 +203,30 @@ const totalAmount = computed(() =>
 
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
-  if (minAmount.value > 0 && validAmount.value < minAmount.value) return t('payment.amountTooLow', { min: minAmount.value })
-  if (maxAmount.value > 0 && validAmount.value > maxAmount.value) return t('payment.amountTooHigh', { max: maxAmount.value })
+  // No method can handle this amount
+  if (!enabledMethods.value.some((m) => amountFitsMethod(validAmount.value, m))) {
+    return t('payment.amountNoMethod')
+  }
+  // Selected method can't handle this amount (but others can)
+  const ml = selectedLimit.value
+  if (ml) {
+    if (ml.single_min > 0 && validAmount.value < ml.single_min) return t('payment.amountTooLow', { min: ml.single_min })
+    if (ml.single_max > 0 && validAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: ml.single_max })
+  }
   return ''
 })
 
-const canSubmit = computed(() => {
-  const limitInfo = methodLimits.value[selectedMethod.value]
-  if (validAmount.value <= 0) return false
-  if (minAmount.value > 0 && validAmount.value < minAmount.value) return false
-  if (maxAmount.value > 0 && validAmount.value > maxAmount.value) return false
-  return limitInfo?.available !== false
+const canSubmit = computed(() =>
+  validAmount.value > 0
+    && amountFitsMethod(validAmount.value, selectedMethod.value)
+    && selectedLimit.value?.available !== false
+)
+
+// Auto-switch to first available method when current selection can't handle the amount
+watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
+  if (amt <= 0 || amountFitsMethod(amt, method)) return
+  const available = enabledMethods.value.find((m) => amountFitsMethod(amt, m))
+  if (available) selectedMethod.value = available
 })
 
 function openSubscribeDialog(plan: SubscriptionPlan) {
@@ -273,7 +296,7 @@ onMounted(async () => {
     await paymentStore.fetchConfig(true)
     try {
       const limitsRes = await paymentAPI.getLimits()
-      methodLimits.value = limitsRes.data
+      limitsData.value = limitsRes.data
     } catch (e) { /* limits endpoint may not exist */ }
     if (enabledMethods.value.length) {
       const order: readonly string[] = METHOD_ORDER
@@ -292,8 +315,3 @@ onMounted(async () => {
   finally { loading.value = false }
 })
 </script>
-
-<style scoped>
-.fade-enter-active, .fade-leave-active { transition: all 0.3s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(-8px); }
-</style>
