@@ -26,7 +26,7 @@
             <Icon name="checkCircle" size="md" />
             <span class="text-sm font-medium">{{ t('payment.stripeSuccessProcessing') }}</span>
           </div>
-          <button v-if="!stripeSuccess" class="btn btn-primary mt-6 w-full py-3" :disabled="stripeSubmitting || !stripeReady" @click="handlePay">
+          <button v-if="!stripeSuccess" class="mt-6 w-full rounded-lg bg-[#635bff] py-3 text-base font-semibold text-white transition-colors hover:bg-[#5851ea] disabled:opacity-50 dark:bg-[#7a73ff] dark:hover:bg-[#635bff]" :disabled="stripeSubmitting || !stripeReady" @click="handlePay">
             <span v-if="stripeSubmitting" class="flex items-center justify-center gap-2">
               <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
               {{ t('common.processing') }}
