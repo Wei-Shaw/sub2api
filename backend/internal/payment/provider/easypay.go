@@ -171,7 +171,7 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 	}
 	params := make(map[string]string)
 	for k := range values {
-		params[k] = values.Get(k)
+		params[k] = fullyDecodeURL(values.Get(k))
 	}
 	sign := params["sign"]
 	if sign == "" {
@@ -267,4 +267,16 @@ func easyPaySign(params map[string]string, pkey string) string {
 
 func easyPayVerifySign(params map[string]string, pkey string, sign string) bool {
 	return hmac.Equal([]byte(easyPaySign(params, pkey)), []byte(sign))
+}
+
+// fullyDecodeURL repeatedly URL-decodes a string until stable.
+// Handles double (or multi) encoding caused by upstream proxies.
+func fullyDecodeURL(s string) string {
+	for {
+		decoded, err := url.QueryUnescape(s)
+		if err != nil || decoded == s {
+			return s
+		}
+		s = decoded
+	}
 }
