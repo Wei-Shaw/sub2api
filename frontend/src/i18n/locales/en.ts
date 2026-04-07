@@ -5095,6 +5095,10 @@ export default {
     },
     qr: {
       scanToPay: 'Scan to Pay',
+      scanAlipay: 'Alipay QR Payment',
+      scanWxpay: 'WeChat QR Payment',
+      scanAlipayHint: 'Open Alipay on your phone and scan the QR code to pay',
+      scanWxpayHint: 'Open WeChat on your phone and scan the QR code to pay',
       payInNewWindow: 'Complete Payment in New Window',
       payInNewWindowHint: 'The payment page has opened in a new window. Please complete the payment there and return to this page.',
       openPayWindow: 'Reopen Payment Page',

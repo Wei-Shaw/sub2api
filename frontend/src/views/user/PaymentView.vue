@@ -233,10 +233,10 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
     if (result.client_secret) {
       router.push({ path: '/payment/stripe', query: { order_id: String(result.order_id), client_secret: result.client_secret } })
     } else if (result.qr_code) {
-      router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), qr: result.qr_code || '', pay_url: result.pay_url || '', expires_at: result.expires_at || '' } })
+      router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), qr: result.qr_code || '', pay_url: result.pay_url || '', expires_at: result.expires_at || '', payment_type: selectedMethod.value } })
     } else if (result.pay_url) {
       window.open(result.pay_url, '_blank')
-      router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), pay_url: result.pay_url, expires_at: result.expires_at || '' } })
+      router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), pay_url: result.pay_url, expires_at: result.expires_at || '', payment_type: selectedMethod.value } })
     } else {
       errorMessage.value = t('payment.result.failed')
       appStore.showError(errorMessage.value)
@@ -272,7 +272,15 @@ onMounted(async () => {
       const limitsRes = await paymentAPI.getLimits()
       methodLimits.value = limitsRes.data
     } catch (e) { /* limits endpoint may not exist */ }
-    if (enabledMethods.value.length) selectedMethod.value = enabledMethods.value[0]
+    if (enabledMethods.value.length) {
+      const METHOD_ORDER = ['easypay', 'alipay', 'wxpay', 'stripe']
+      const sorted = [...enabledMethods.value].sort((a, b) => {
+        const ai = METHOD_ORDER.indexOf(a)
+        const bi = METHOD_ORDER.indexOf(b)
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+      })
+      selectedMethod.value = sorted[0]
+    }
     if (config.value?.balance_disabled) {
       activeTab.value = 'subscription'
       await loadPlans()
