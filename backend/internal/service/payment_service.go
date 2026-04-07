@@ -324,20 +324,28 @@ func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, user
 
 func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.PaymentOrder, req CreateOrderRequest, cfg *PaymentConfig, payAmountStr string, payAmount float64, plan *dbent.SubscriptionPlan) (*CreateOrderResponse, error) {
 	s.EnsureProviders(ctx)
-	provider, err := s.registry.GetProvider(req.PaymentType)
-	if err != nil {
+	// Look up the provider key from registry (validates the payment type is supported)
+	providerKey := s.registry.GetProviderKey(req.PaymentType)
+	if providerKey == "" {
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", fmt.Sprintf("payment method (%s) is not configured", req.PaymentType))
 	}
-	sel, err := s.loadBalancer.SelectInstance(ctx, provider.ProviderKey(), req.PaymentType)
+	sel, err := s.loadBalancer.SelectInstance(ctx, providerKey, req.PaymentType)
 	if err != nil {
 		return nil, fmt.Errorf("select provider instance: %w", err)
 	}
 	if sel == nil {
 		return nil, infraerrors.TooManyRequests("NO_AVAILABLE_INSTANCE", "no available payment instance")
 	}
-	subject := s.buildPaymentSubject(plan, payAmountStr, cfg)
-	pr, err := provider.CreatePayment(ctx, payment.CreatePaymentRequest{OrderID: formatOrderID(order.ID), Amount: payAmountStr, PaymentType: req.PaymentType, Subject: subject, ClientIP: req.ClientIP, IsMobile: req.IsMobile, InstanceSubMethods: sel.SupportedTypes})
+	// Create a fresh provider from the selected instance's config,
+	// so each payment uses the correct instance credentials.
+	prov, err := provider.CreateProvider(providerKey, sel.InstanceID, sel.Config)
 	if err != nil {
+		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", "payment method is temporarily unavailable")
+	}
+	subject := s.buildPaymentSubject(plan, payAmountStr, cfg)
+	pr, err := prov.CreatePayment(ctx, payment.CreatePaymentRequest{OrderID: formatOrderID(order.ID), Amount: payAmountStr, PaymentType: req.PaymentType, Subject: subject, ClientIP: req.ClientIP, IsMobile: req.IsMobile, InstanceSubMethods: sel.SupportedTypes})
+	if err != nil {
+		slog.Error("[PaymentService] CreatePayment failed", "provider", providerKey, "instance", sel.InstanceID, "error", err)
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", "payment method is temporarily unavailable")
 	}
 	_, err = s.entClient.PaymentOrder.UpdateOneID(order.ID).SetNillablePaymentTradeNo(psNilIfEmpty(pr.TradeNo)).SetNillablePayURL(psNilIfEmpty(pr.PayURL)).SetNillableQrCode(psNilIfEmpty(pr.QRCode)).SetNillableProviderInstanceID(psNilIfEmpty(sel.InstanceID)).Save(ctx)

@@ -59,10 +59,12 @@ func (lb *DefaultLoadBalancer) SelectInstance(ctx context.Context, providerKey s
 		return nil, fmt.Errorf("query provider instances: %w", err)
 	}
 
-	// Filter by supported types
+	// Filter by supported types.
+	// When paymentType equals providerKey (e.g. "stripe"), all instances of that
+	// provider are candidates — the sub-type filtering is handled internally.
 	var candidates []*dbent.PaymentProviderInstance
 	for _, inst := range instances {
-		if InstanceSupportsType(inst.SupportedTypes, paymentType) {
+		if paymentType == providerKey || InstanceSupportsType(inst.SupportedTypes, paymentType) {
 			candidates = append(candidates, inst)
 		}
 	}
