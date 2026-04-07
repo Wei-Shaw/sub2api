@@ -5,7 +5,7 @@
       <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
         {{ t('payment.quickAmounts') }}
       </label>
-      <div class="grid grid-cols-4 gap-2">
+      <div class="grid grid-cols-3 gap-2">
         <button
           v-for="amt in filteredAmounts"
           :key="amt"
@@ -55,7 +55,7 @@ const props = withDefaults(defineProps<{
   min?: number
   max?: number
 }>(), {
-  amounts: () => [10, 50, 100, 200, 500, 1000],
+  amounts: () => [10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
   min: 0,
   max: 0,
 })
@@ -77,7 +77,7 @@ const placeholderText = computed(() => {
   if (props.min > 0 && props.max > 0) return `${props.min} - ${props.max}`
   if (props.min > 0) return `≥ ${props.min}`
   if (props.max > 0) return `≤ ${props.max}`
-  return t('payment.enterAmount', '输入金额')
+  return t('payment.enterAmount')
 })
 
 const AMOUNT_PATTERN = /^\d*(\.\d{0,2})?$/

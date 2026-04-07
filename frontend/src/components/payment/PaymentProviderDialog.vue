@@ -31,14 +31,8 @@
 
       <!-- Enabled + Refund toggles -->
       <div class="flex items-center gap-6">
-        <label class="flex cursor-pointer items-center gap-2">
-          <input v-model="form.enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-          <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('common.enabled') }}</span>
-        </label>
-        <label class="flex cursor-pointer items-center gap-2">
-          <input v-model="form.refund_enabled" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-          <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.settings.payment.refundEnabled') }}</span>
-        </label>
+        <ToggleSwitch :label="t('common.enabled')" :checked="form.enabled" @toggle="form.enabled = !form.enabled" />
+        <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="form.refund_enabled" @toggle="form.refund_enabled = !form.refund_enabled" />
       </div>
 
       <!-- Payment mode + Supported types (same row) -->
@@ -225,6 +219,7 @@ import { reactive, computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
+import ToggleSwitch from './ToggleSwitch.vue'
 import type { ProviderInstance } from '@/types/payment'
 import type { TypeOption } from './providerConfig'
 import {
