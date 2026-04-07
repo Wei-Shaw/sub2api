@@ -761,7 +761,14 @@ REDACTED
 
 			system := gjson.GetBytes(upstream.lastBody, "system")
 			require.True(t, system.Exists())
-			require.Contains(t, system.Raw, "x-anthropic-billing-header keep")
+			require.Equal(t, claudeCodeSystemPrompt, system.String())
+
+			// 原始 system prompt 应迁移至 messages 中
+			messages := gjson.GetBytes(upstream.lastBody, "messages")
+			require.True(t, messages.IsArray())
+			firstMsg := messages.Array()[0]
+			require.Equal(t, "user", firstMsg.Get("role").String())
+			require.Contains(t, firstMsg.Get("content.0.text").String(), "x-anthropic-billing-header keep")
 	REDACTED)
 REDACTED
 REDACTED
