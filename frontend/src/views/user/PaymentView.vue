@@ -273,7 +273,7 @@ onMounted(async () => {
       methodLimits.value = limitsRes.data
     } catch (e) { /* limits endpoint may not exist */ }
     if (enabledMethods.value.length) {
-      const METHOD_ORDER = ['easypay', 'alipay', 'wxpay', 'stripe']
+      const METHOD_ORDER = ['alipay', 'wxpay', 'stripe']
       const sorted = [...enabledMethods.value].sort((a, b) => {
         const ai = METHOD_ORDER.indexOf(a)
         const bi = METHOD_ORDER.indexOf(b)

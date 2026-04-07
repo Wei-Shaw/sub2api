@@ -76,6 +76,20 @@ func (_c *PaymentProviderInstanceCreate) SetNillableEnabled(v *bool) *PaymentPro
 	return _c
 }
 
+// SetPaymentMode sets the "payment_mode" field.
+func (_c *PaymentProviderInstanceCreate) SetPaymentMode(v string) *PaymentProviderInstanceCreate {
+	_c.mutation.SetPaymentMode(v)
+	return _c
+}
+
+// SetNillablePaymentMode sets the "payment_mode" field if the given value is not nil.
+func (_c *PaymentProviderInstanceCreate) SetNillablePaymentMode(v *string) *PaymentProviderInstanceCreate {
+	if v != nil {
+		_c.SetPaymentMode(*v)
+	}
+	return _c
+}
+
 // SetSortOrder sets the "sort_order" field.
 func (_c *PaymentProviderInstanceCreate) SetSortOrder(v int) *PaymentProviderInstanceCreate {
 	_c.mutation.SetSortOrder(v)
@@ -193,6 +207,10 @@ func (_c *PaymentProviderInstanceCreate) defaults() {
 		v := paymentproviderinstance.DefaultEnabled
 		_c.mutation.SetEnabled(v)
 	}
+	if _, ok := _c.mutation.PaymentMode(); !ok {
+		v := paymentproviderinstance.DefaultPaymentMode
+		_c.mutation.SetPaymentMode(v)
+	}
 	if _, ok := _c.mutation.SortOrder(); !ok {
 		v := paymentproviderinstance.DefaultSortOrder
 		_c.mutation.SetSortOrder(v)
@@ -246,6 +264,14 @@ func (_c *PaymentProviderInstanceCreate) check() error {
 	}
 	if _, ok := _c.mutation.Enabled(); !ok {
 		return &ValidationError{Name: "enabled", err: errors.New(`ent: missing required field "PaymentProviderInstance.enabled"`)}
+	}
+	if _, ok := _c.mutation.PaymentMode(); !ok {
+		return &ValidationError{Name: "payment_mode", err: errors.New(`ent: missing required field "PaymentProviderInstance.payment_mode"`)}
+	}
+	if v, ok := _c.mutation.PaymentMode(); ok {
+		if err := paymentproviderinstance.PaymentModeValidator(v); err != nil {
+			return &ValidationError{Name: "payment_mode", err: fmt.Errorf(`ent: validator failed for field "PaymentProviderInstance.payment_mode": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.SortOrder(); !ok {
 		return &ValidationError{Name: "sort_order", err: errors.New(`ent: missing required field "PaymentProviderInstance.sort_order"`)}
@@ -308,6 +334,10 @@ func (_c *PaymentProviderInstanceCreate) createSpec() (*PaymentProviderInstance,
 	if value, ok := _c.mutation.Enabled(); ok {
 		_spec.SetField(paymentproviderinstance.FieldEnabled, field.TypeBool, value)
 		_node.Enabled = value
+	}
+	if value, ok := _c.mutation.PaymentMode(); ok {
+		_spec.SetField(paymentproviderinstance.FieldPaymentMode, field.TypeString, value)
+		_node.PaymentMode = value
 	}
 	if value, ok := _c.mutation.SortOrder(); ok {
 		_spec.SetField(paymentproviderinstance.FieldSortOrder, field.TypeInt, value)
@@ -438,6 +468,18 @@ func (u *PaymentProviderInstanceUpsert) SetEnabled(v bool) *PaymentProviderInsta
 // UpdateEnabled sets the "enabled" field to the value that was provided on create.
 func (u *PaymentProviderInstanceUpsert) UpdateEnabled() *PaymentProviderInstanceUpsert {
 	u.SetExcluded(paymentproviderinstance.FieldEnabled)
+	return u
+}
+
+// SetPaymentMode sets the "payment_mode" field.
+func (u *PaymentProviderInstanceUpsert) SetPaymentMode(v string) *PaymentProviderInstanceUpsert {
+	u.Set(paymentproviderinstance.FieldPaymentMode, v)
+	return u
+}
+
+// UpdatePaymentMode sets the "payment_mode" field to the value that was provided on create.
+func (u *PaymentProviderInstanceUpsert) UpdatePaymentMode() *PaymentProviderInstanceUpsert {
+	u.SetExcluded(paymentproviderinstance.FieldPaymentMode)
 	return u
 }
 
@@ -607,6 +649,20 @@ func (u *PaymentProviderInstanceUpsertOne) SetEnabled(v bool) *PaymentProviderIn
 func (u *PaymentProviderInstanceUpsertOne) UpdateEnabled() *PaymentProviderInstanceUpsertOne {
 	return u.Update(func(s *PaymentProviderInstanceUpsert) {
 		s.UpdateEnabled()
+	})
+}
+
+// SetPaymentMode sets the "payment_mode" field.
+func (u *PaymentProviderInstanceUpsertOne) SetPaymentMode(v string) *PaymentProviderInstanceUpsertOne {
+	return u.Update(func(s *PaymentProviderInstanceUpsert) {
+		s.SetPaymentMode(v)
+	})
+}
+
+// UpdatePaymentMode sets the "payment_mode" field to the value that was provided on create.
+func (u *PaymentProviderInstanceUpsertOne) UpdatePaymentMode() *PaymentProviderInstanceUpsertOne {
+	return u.Update(func(s *PaymentProviderInstanceUpsert) {
+		s.UpdatePaymentMode()
 	})
 }
 
@@ -951,6 +1007,20 @@ func (u *PaymentProviderInstanceUpsertBulk) SetEnabled(v bool) *PaymentProviderI
 func (u *PaymentProviderInstanceUpsertBulk) UpdateEnabled() *PaymentProviderInstanceUpsertBulk {
 	return u.Update(func(s *PaymentProviderInstanceUpsert) {
 		s.UpdateEnabled()
+	})
+}
+
+// SetPaymentMode sets the "payment_mode" field.
+func (u *PaymentProviderInstanceUpsertBulk) SetPaymentMode(v string) *PaymentProviderInstanceUpsertBulk {
+	return u.Update(func(s *PaymentProviderInstanceUpsert) {
+		s.SetPaymentMode(v)
+	})
+}
+
+// UpdatePaymentMode sets the "payment_mode" field to the value that was provided on create.
+func (u *PaymentProviderInstanceUpsertBulk) UpdatePaymentMode() *PaymentProviderInstanceUpsertBulk {
+	return u.Update(func(s *PaymentProviderInstanceUpsert) {
+		s.UpdatePaymentMode()
 	})
 }
 

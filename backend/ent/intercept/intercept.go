@@ -336,7 +336,6 @@ func (f TraversePaymentAuditLog) Traverse(ctx context.Context, q ent.Query) erro
 	return fmt.Errorf("unexpected query type %T. expect *ent.PaymentAuditLogQuery", q)
 }
 
-
 // The PaymentOrderFunc type is an adapter to allow the use of ordinary function as a Querier.
 type PaymentOrderFunc func(context.Context, *ent.PaymentOrderQuery) (ent.Value, error)
 

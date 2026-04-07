@@ -2826,7 +2826,6 @@ async function saveBetaPolicySettings() {
 // ==================== Provider Management ====================
 
 const allPaymentTypes = computed(() => [
-  { value: 'easypay', label: t('payment.methods.easypay') },
   { value: 'alipay', label: t('payment.methods.alipay') },
   { value: 'wxpay', label: t('payment.methods.wxpay') },
   { value: 'stripe', label: t('payment.methods.stripe') },
@@ -2865,7 +2864,7 @@ const providerKeyOptions = computed(() => [
 const enabledProviderKeyOptions = computed(() => {
   const enabled = form.payment_enabled_types
   return providerKeyOptions.value.filter(opt => {
-    if (opt.value === 'easypay') return enabled.includes('easypay') || enabled.includes('alipay') || enabled.includes('wxpay')
+    if (opt.value === 'easypay') return enabled.includes('alipay') || enabled.includes('wxpay')
     if (opt.value === 'alipay') return enabled.includes('alipay')
     if (opt.value === 'wxpay') return enabled.includes('wxpay')
     return enabled.includes(opt.value)

@@ -1204,6 +1204,10 @@ func (s *PaymentService) loadProviders(ctx context.Context) {
 			slog.Warn("[PaymentService] failed to decrypt config for instance", "instanceID", inst.ID, "error", err)
 			continue
 		}
+		// Inject payment_mode from DB field into provider config
+		if inst.PaymentMode != "" {
+			cfg["paymentMode"] = inst.PaymentMode
+		}
 		instID := fmt.Sprintf("%d", inst.ID)
 		p, err := provider.CreateProvider(inst.ProviderKey, instID, cfg)
 		if err != nil {

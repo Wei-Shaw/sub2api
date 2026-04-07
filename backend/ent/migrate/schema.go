@@ -605,6 +605,7 @@ var (
 		{Name: "config", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "supported_types", Type: field.TypeString, Size: 200, Default: ""},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "payment_mode", Type: field.TypeString, Size: 20, Default: ""},
 		{Name: "sort_order", Type: field.TypeInt, Default: 0},
 		{Name: "limits", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "refund_enabled", Type: field.TypeBool, Default: false},

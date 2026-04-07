@@ -98,6 +98,20 @@ func (_u *PaymentProviderInstanceUpdate) SetNillableEnabled(v *bool) *PaymentPro
 	return _u
 }
 
+// SetPaymentMode sets the "payment_mode" field.
+func (_u *PaymentProviderInstanceUpdate) SetPaymentMode(v string) *PaymentProviderInstanceUpdate {
+	_u.mutation.SetPaymentMode(v)
+	return _u
+}
+
+// SetNillablePaymentMode sets the "payment_mode" field if the given value is not nil.
+func (_u *PaymentProviderInstanceUpdate) SetNillablePaymentMode(v *string) *PaymentProviderInstanceUpdate {
+	if v != nil {
+		_u.SetPaymentMode(*v)
+	}
+	return _u
+}
+
 // SetSortOrder sets the "sort_order" field.
 func (_u *PaymentProviderInstanceUpdate) SetSortOrder(v int) *PaymentProviderInstanceUpdate {
 	_u.mutation.ResetSortOrder()
@@ -211,6 +225,11 @@ func (_u *PaymentProviderInstanceUpdate) check() error {
 			return &ValidationError{Name: "supported_types", err: fmt.Errorf(`ent: validator failed for field "PaymentProviderInstance.supported_types": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PaymentMode(); ok {
+		if err := paymentproviderinstance.PaymentModeValidator(v); err != nil {
+			return &ValidationError{Name: "payment_mode", err: fmt.Errorf(`ent: validator failed for field "PaymentProviderInstance.payment_mode": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -240,6 +259,9 @@ func (_u *PaymentProviderInstanceUpdate) sqlSave(ctx context.Context) (_node int
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(paymentproviderinstance.FieldEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PaymentMode(); ok {
+		_spec.SetField(paymentproviderinstance.FieldPaymentMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.SortOrder(); ok {
 		_spec.SetField(paymentproviderinstance.FieldSortOrder, field.TypeInt, value)
@@ -342,6 +364,20 @@ func (_u *PaymentProviderInstanceUpdateOne) SetEnabled(v bool) *PaymentProviderI
 func (_u *PaymentProviderInstanceUpdateOne) SetNillableEnabled(v *bool) *PaymentProviderInstanceUpdateOne {
 	if v != nil {
 		_u.SetEnabled(*v)
+	}
+	return _u
+}
+
+// SetPaymentMode sets the "payment_mode" field.
+func (_u *PaymentProviderInstanceUpdateOne) SetPaymentMode(v string) *PaymentProviderInstanceUpdateOne {
+	_u.mutation.SetPaymentMode(v)
+	return _u
+}
+
+// SetNillablePaymentMode sets the "payment_mode" field if the given value is not nil.
+func (_u *PaymentProviderInstanceUpdateOne) SetNillablePaymentMode(v *string) *PaymentProviderInstanceUpdateOne {
+	if v != nil {
+		_u.SetPaymentMode(*v)
 	}
 	return _u
 }
@@ -472,6 +508,11 @@ func (_u *PaymentProviderInstanceUpdateOne) check() error {
 			return &ValidationError{Name: "supported_types", err: fmt.Errorf(`ent: validator failed for field "PaymentProviderInstance.supported_types": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PaymentMode(); ok {
+		if err := paymentproviderinstance.PaymentModeValidator(v); err != nil {
+			return &ValidationError{Name: "payment_mode", err: fmt.Errorf(`ent: validator failed for field "PaymentProviderInstance.payment_mode": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -518,6 +559,9 @@ func (_u *PaymentProviderInstanceUpdateOne) sqlSave(ctx context.Context) (_node 
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
 		_spec.SetField(paymentproviderinstance.FieldEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PaymentMode(); ok {
+		_spec.SetField(paymentproviderinstance.FieldPaymentMode, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.SortOrder(); ok {
 		_spec.SetField(paymentproviderinstance.FieldSortOrder, field.TypeInt, value)

@@ -27,11 +27,14 @@ export interface CallbackPaths {
 
 /** Maps provider key → available payment types. */
 export const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
-  easypay: ['easypay', 'alipay', 'wxpay'],
+  easypay: ['alipay', 'wxpay'],
   alipay: ['alipay'],
   wxpay: ['wxpay'],
   stripe: ['card', 'alipay', 'wxpay', 'link'],
 }
+
+/** Available payment modes for EasyPay providers. */
+export const EASYPAY_PAYMENT_MODES = ['redirect', 'api'] as const
 
 /** Webhook paths for each provider (relative to origin). */
 export const WEBHOOK_PATHS: Record<string, string> = {
@@ -83,16 +86,13 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
 
 // --- Helpers ---
 
-/** Resolve type label: for easypay provider, show "跳转" for the easypay type. */
+/** Resolve type label for display. */
 export function resolveTypeLabel(
   typeVal: string,
-  providerKey: string,
+  _providerKey: string,
   allTypes: TypeOption[],
-  redirectLabel: string,
+  _redirectLabel: string,
 ): TypeOption {
-  if (typeVal === 'easypay' && providerKey === 'easypay') {
-    return { value: typeVal, label: redirectLabel }
-  }
   return allTypes.find(pt => pt.value === typeVal) || { value: typeVal, label: typeVal }
 }
 

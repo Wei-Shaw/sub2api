@@ -15542,6 +15542,7 @@ type PaymentProviderInstanceMutation struct {
 	_config         *string
 	supported_types *string
 	enabled         *bool
+	payment_mode    *string
 	sort_order      *int
 	addsort_order   *int
 	limits          *string
@@ -15832,6 +15833,42 @@ func (m *PaymentProviderInstanceMutation) ResetEnabled() {
 	m.enabled = nil
 }
 
+// SetPaymentMode sets the "payment_mode" field.
+func (m *PaymentProviderInstanceMutation) SetPaymentMode(s string) {
+	m.payment_mode = &s
+}
+
+// PaymentMode returns the value of the "payment_mode" field in the mutation.
+func (m *PaymentProviderInstanceMutation) PaymentMode() (r string, exists bool) {
+	v := m.payment_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPaymentMode returns the old "payment_mode" field's value of the PaymentProviderInstance entity.
+// If the PaymentProviderInstance object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentProviderInstanceMutation) OldPaymentMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPaymentMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPaymentMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPaymentMode: %w", err)
+	}
+	return oldValue.PaymentMode, nil
+}
+
+// ResetPaymentMode resets all changes to the "payment_mode" field.
+func (m *PaymentProviderInstanceMutation) ResetPaymentMode() {
+	m.payment_mode = nil
+}
+
 // SetSortOrder sets the "sort_order" field.
 func (m *PaymentProviderInstanceMutation) SetSortOrder(i int) {
 	m.sort_order = &i
@@ -16066,7 +16103,7 @@ func (m *PaymentProviderInstanceMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PaymentProviderInstanceMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.provider_key != nil {
 		fields = append(fields, paymentproviderinstance.FieldProviderKey)
 	}
@@ -16081,6 +16118,9 @@ func (m *PaymentProviderInstanceMutation) Fields() []string {
 	}
 	if m.enabled != nil {
 		fields = append(fields, paymentproviderinstance.FieldEnabled)
+	}
+	if m.payment_mode != nil {
+		fields = append(fields, paymentproviderinstance.FieldPaymentMode)
 	}
 	if m.sort_order != nil {
 		fields = append(fields, paymentproviderinstance.FieldSortOrder)
@@ -16115,6 +16155,8 @@ func (m *PaymentProviderInstanceMutation) Field(name string) (ent.Value, bool) {
 		return m.SupportedTypes()
 	case paymentproviderinstance.FieldEnabled:
 		return m.Enabled()
+	case paymentproviderinstance.FieldPaymentMode:
+		return m.PaymentMode()
 	case paymentproviderinstance.FieldSortOrder:
 		return m.SortOrder()
 	case paymentproviderinstance.FieldLimits:
@@ -16144,6 +16186,8 @@ func (m *PaymentProviderInstanceMutation) OldField(ctx context.Context, name str
 		return m.OldSupportedTypes(ctx)
 	case paymentproviderinstance.FieldEnabled:
 		return m.OldEnabled(ctx)
+	case paymentproviderinstance.FieldPaymentMode:
+		return m.OldPaymentMode(ctx)
 	case paymentproviderinstance.FieldSortOrder:
 		return m.OldSortOrder(ctx)
 	case paymentproviderinstance.FieldLimits:
@@ -16197,6 +16241,13 @@ func (m *PaymentProviderInstanceMutation) SetField(name string, value ent.Value)
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetEnabled(v)
+		return nil
+	case paymentproviderinstance.FieldPaymentMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPaymentMode(v)
 		return nil
 	case paymentproviderinstance.FieldSortOrder:
 		v, ok := value.(int)
@@ -16311,6 +16362,9 @@ func (m *PaymentProviderInstanceMutation) ResetField(name string) error {
 		return nil
 	case paymentproviderinstance.FieldEnabled:
 		m.ResetEnabled()
+		return nil
+	case paymentproviderinstance.FieldPaymentMode:
+		m.ResetPaymentMode()
 		return nil
 	case paymentproviderinstance.FieldSortOrder:
 		m.ResetSortOrder()

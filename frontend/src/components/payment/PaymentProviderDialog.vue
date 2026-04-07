@@ -29,6 +29,28 @@
         </div>
       </div>
 
+      <!-- Payment mode (EasyPay only) -->
+      <div v-if="form.provider_key === 'easypay'">
+        <label class="input-label">
+          {{ t('admin.settings.payment.paymentMode') }}
+          <span class="text-red-500">*</span>
+        </label>
+        <div class="mt-2 flex gap-2">
+          <button
+            v-for="mode in paymentModeOptions"
+            :key="mode.value"
+            type="button"
+            @click="form.payment_mode = mode.value"
+            :class="[
+              'rounded-lg border px-4 py-2 text-sm font-medium transition-all',
+              form.payment_mode === mode.value
+                ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
+                : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
+            ]"
+          >{{ mode.label }}</button>
+        </div>
+      </div>
+
       <!-- Supported types (hide for single-type providers) -->
       <div v-if="availableTypes.length > 1">
         <label class="input-label">
@@ -230,6 +252,7 @@ const emit = defineEmits<{
     name: string
     supported_types: string[]
     enabled: boolean
+    payment_mode: string
     refund_enabled: boolean
     config: Record<string, string>
     limits: string
@@ -244,6 +267,7 @@ const form = reactive({
   provider_key: 'easypay',
   supported_types: [] as string[],
   enabled: true,
+  payment_mode: 'api',
   refund_enabled: false,
 })
 const config = reactive<Record<string, string>>({})
@@ -261,6 +285,11 @@ const stripeWebhookUrl = computed(() =>
 )
 
 const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] || null)
+
+const paymentModeOptions = computed(() => [
+  { value: 'redirect', label: t('admin.settings.payment.modeRedirect') },
+  { value: 'api', label: t('admin.settings.payment.modeQRCode') },
+])
 
 const availableTypes = computed(() => {
   const base = getAvailableTypes(form.provider_key, props.allPaymentTypes, props.redirectLabel)
@@ -406,6 +435,7 @@ function handleSave() {
     name: form.name,
     supported_types: form.supported_types,
     enabled: form.enabled,
+    payment_mode: form.provider_key === 'easypay' ? form.payment_mode : '',
     refund_enabled: form.refund_enabled,
     config: filteredConfig,
     limits: serializeLimits(),
@@ -424,6 +454,7 @@ function reset(defaultKey: string) {
   form.provider_key = defaultKey
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[defaultKey] || [])]
   form.enabled = true
+  form.payment_mode = defaultKey === 'easypay' ? 'api' : ''
   form.refund_enabled = false
   clearConfig()
   applyDefaults()
@@ -434,6 +465,7 @@ function loadProvider(provider: ProviderInstance) {
   form.provider_key = provider.provider_key
   form.supported_types = provider.supported_types
   form.enabled = provider.enabled
+  form.payment_mode = provider.payment_mode || 'api'
   form.refund_enabled = provider.refund_enabled
   clearConfig()
   // Pre-fill config from API response (non-sensitive in cleartext, sensitive masked as ••••••••)

@@ -43,6 +43,9 @@ func (PaymentProviderInstance) Fields() []ent.Field {
 			Default(""),
 		field.Bool("enabled").
 			Default(true),
+		field.String("payment_mode").
+			MaxLen(20).
+			Default(""),
 		field.Int("sort_order").
 			Default(0),
 		field.String("limits").

@@ -27,6 +27,8 @@ type PaymentProviderInstance struct {
 	SupportedTypes string `json:"supported_types,omitempty"`
 	// Enabled holds the value of the "enabled" field.
 	Enabled bool `json:"enabled,omitempty"`
+	// PaymentMode holds the value of the "payment_mode" field.
+	PaymentMode string `json:"payment_mode,omitempty"`
 	// SortOrder holds the value of the "sort_order" field.
 	SortOrder int `json:"sort_order,omitempty"`
 	// Limits holds the value of the "limits" field.
@@ -49,7 +51,7 @@ func (*PaymentProviderInstance) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case paymentproviderinstance.FieldID, paymentproviderinstance.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
-		case paymentproviderinstance.FieldProviderKey, paymentproviderinstance.FieldName, paymentproviderinstance.FieldConfig, paymentproviderinstance.FieldSupportedTypes, paymentproviderinstance.FieldLimits:
+		case paymentproviderinstance.FieldProviderKey, paymentproviderinstance.FieldName, paymentproviderinstance.FieldConfig, paymentproviderinstance.FieldSupportedTypes, paymentproviderinstance.FieldPaymentMode, paymentproviderinstance.FieldLimits:
 			values[i] = new(sql.NullString)
 		case paymentproviderinstance.FieldCreatedAt, paymentproviderinstance.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -103,6 +105,12 @@ func (_m *PaymentProviderInstance) assignValues(columns []string, values []any) 
 				return fmt.Errorf("unexpected type %T for field enabled", values[i])
 			} else if value.Valid {
 				_m.Enabled = value.Bool
+			}
+		case paymentproviderinstance.FieldPaymentMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field payment_mode", values[i])
+			} else if value.Valid {
+				_m.PaymentMode = value.String
 			}
 		case paymentproviderinstance.FieldSortOrder:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -184,6 +192,9 @@ func (_m *PaymentProviderInstance) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Enabled))
+	builder.WriteString(", ")
+	builder.WriteString("payment_mode=")
+	builder.WriteString(_m.PaymentMode)
 	builder.WriteString(", ")
 	builder.WriteString("sort_order=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SortOrder))

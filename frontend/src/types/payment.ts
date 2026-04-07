@@ -107,6 +107,7 @@ export interface ProviderInstance {
   config: Record<string, string>
   supported_types: string[]
   enabled: boolean
+  payment_mode: string
   refund_enabled: boolean
   limits: string
 }

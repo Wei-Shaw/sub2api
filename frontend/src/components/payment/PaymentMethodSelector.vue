@@ -41,7 +41,6 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
-import easypayIcon from '@/assets/icons/easypay.svg'
 import stripeIcon from '@/assets/icons/stripe.svg'
 
 export interface PaymentMethodOption {
@@ -62,12 +61,11 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 /** Fixed display order for payment methods */
-const METHOD_ORDER = ['easypay', 'alipay', 'wxpay', 'stripe']
+const METHOD_ORDER = ['alipay', 'wxpay', 'stripe']
 
 const METHOD_ICONS: Record<string, string> = {
   alipay: alipayIcon,
   wxpay: wxpayIcon,
-  easypay: easypayIcon,
   stripe: stripeIcon,
 }
 
@@ -86,7 +84,6 @@ function methodIcon(type: string): string {
 }
 
 function methodSelectedClass(type: string): string {
-  if (type === 'easypay') return 'border-[#48D8FF] bg-cyan-50 text-gray-900 shadow-sm dark:bg-cyan-950 dark:text-gray-100'
   if (type.includes('alipay')) return 'border-[#02A9F1] bg-blue-50 text-gray-900 shadow-sm dark:bg-blue-950 dark:text-gray-100'
   if (type.includes('wxpay')) return 'border-[#09BB07] bg-green-50 text-gray-900 shadow-sm dark:bg-green-950 dark:text-gray-100'
   if (type === 'stripe') return 'border-[#676BE5] bg-indigo-50 text-gray-900 shadow-sm dark:bg-indigo-950 dark:text-gray-100'

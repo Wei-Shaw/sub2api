@@ -51,12 +51,13 @@ func NewEasyPay(instanceID string, config map[string]string) (*EasyPay, error) {
 func (e *EasyPay) Name() string        { return "EasyPay" }
 func (e *EasyPay) ProviderKey() string { return "easypay" }
 func (e *EasyPay) SupportedTypes() []payment.PaymentType {
-	return []payment.PaymentType{payment.TypeEasyPay, payment.TypeAlipay, payment.TypeWxpay}
+	return []payment.PaymentType{payment.TypeAlipay, payment.TypeWxpay}
 }
 
 func (e *EasyPay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
-	// "easypay" type → redirect to hosted page; "alipay"/"wxpay" → API call
-	if req.PaymentType == payment.TypeEasyPay {
+	// Payment mode determined by instance config, not payment type.
+	// "redirect" → hosted page (submit.php); default → API call (mapi.php).
+	if e.config["paymentMode"] == "redirect" {
 		return e.createRedirectPayment(req)
 	}
 	return e.createAPIPayment(ctx, req)
@@ -68,9 +69,6 @@ func (e *EasyPay) CreatePayment(ctx context.Context, req payment.CreatePaymentRe
 func (e *EasyPay) createRedirectPayment(req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	notifyURL, returnURL := e.resolveURLs(req)
 	payType := req.PaymentType
-	if payType == "easypay" {
-		payType = "alipay" // default for hosted page; user can switch on EasyPay's UI
-	}
 	params := map[string]string{
 		"pid": e.config["pid"], "type": payType,
 		"out_trade_no": req.OrderID, "notify_url": notifyURL,

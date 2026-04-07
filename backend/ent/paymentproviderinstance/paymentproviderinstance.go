@@ -23,6 +23,8 @@ const (
 	FieldSupportedTypes = "supported_types"
 	// FieldEnabled holds the string denoting the enabled field in the database.
 	FieldEnabled = "enabled"
+	// FieldPaymentMode holds the string denoting the payment_mode field in the database.
+	FieldPaymentMode = "payment_mode"
 	// FieldSortOrder holds the string denoting the sort_order field in the database.
 	FieldSortOrder = "sort_order"
 	// FieldLimits holds the string denoting the limits field in the database.
@@ -45,6 +47,7 @@ var Columns = []string{
 	FieldConfig,
 	FieldSupportedTypes,
 	FieldEnabled,
+	FieldPaymentMode,
 	FieldSortOrder,
 	FieldLimits,
 	FieldRefundEnabled,
@@ -75,6 +78,10 @@ var (
 	SupportedTypesValidator func(string) error
 	// DefaultEnabled holds the default value on creation for the "enabled" field.
 	DefaultEnabled bool
+	// DefaultPaymentMode holds the default value on creation for the "payment_mode" field.
+	DefaultPaymentMode string
+	// PaymentModeValidator is a validator for the "payment_mode" field. It is called by the builders before save.
+	PaymentModeValidator func(string) error
 	// DefaultSortOrder holds the default value on creation for the "sort_order" field.
 	DefaultSortOrder int
 	// DefaultLimits holds the default value on creation for the "limits" field.
@@ -120,6 +127,11 @@ func BySupportedTypes(opts ...sql.OrderTermOption) OrderOption {
 // ByEnabled orders the results by the enabled field.
 func ByEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldEnabled, opts...).ToFunc()
+}
+
+// ByPaymentMode orders the results by the payment_mode field.
+func ByPaymentMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPaymentMode, opts...).ToFunc()
 }
 
 // BySortOrder orders the results by the sort_order field.

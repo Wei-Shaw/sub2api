@@ -107,6 +107,7 @@ type CreateProviderInstanceRequest struct {
 	Config         map[string]string `json:"config"`
 	SupportedTypes []string          `json:"supported_types"`
 	Enabled        bool              `json:"enabled"`
+	PaymentMode    string            `json:"payment_mode"`
 	SortOrder      int               `json:"sort_order"`
 	Limits         string            `json:"limits"`
 	RefundEnabled  bool              `json:"refund_enabled"`
@@ -117,6 +118,7 @@ type UpdateProviderInstanceRequest struct {
 	Config         map[string]string `json:"config"`
 	SupportedTypes []string          `json:"supported_types"`
 	Enabled        *bool             `json:"enabled"`
+	PaymentMode    *string           `json:"payment_mode"`
 	SortOrder      *int              `json:"sort_order"`
 	Limits         *string           `json:"limits"`
 	RefundEnabled  *bool             `json:"refund_enabled"`
@@ -425,7 +427,7 @@ func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req C
 	}
 	return s.entClient.PaymentProviderInstance.Create().
 		SetProviderKey(req.ProviderKey).SetName(req.Name).SetConfig(enc).
-		SetSupportedTypes(typesStr).SetEnabled(req.Enabled).
+		SetSupportedTypes(typesStr).SetEnabled(req.Enabled).SetPaymentMode(req.PaymentMode).
 		SetSortOrder(req.SortOrder).SetLimits(req.Limits).SetRefundEnabled(req.RefundEnabled).
 		Save(ctx)
 }
@@ -507,6 +509,9 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 	}
 	if req.RefundEnabled != nil {
 		u.SetRefundEnabled(*req.RefundEnabled)
+	}
+	if req.PaymentMode != nil {
+		u.SetPaymentMode(*req.PaymentMode)
 	}
 	return u.Save(ctx)
 }
