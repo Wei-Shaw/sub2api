@@ -897,6 +897,7 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
   - `tryStickySessionHit` has now been folded into that same gate as well, while keeping sticky-specific cleanup / TTL refresh semantics outside the helper
   - `selectAccountForModelWithExclusions` no longer emits a separate bare-string “no available OpenAI accounts” branch; its miss path now rejoins `ErrNoAvailableAccounts`, so the OpenAI ordinary-selection入口和 load-aware 退化路径的失败语义更一致
   - the remaining non-guardrail divergence in OpenAI load-aware selection has also narrowed: Layer 2/3 candidate handling now goes back to upstream-style `resolveFreshSchedulableOpenAIAccount(..., TargetGroupAny)` plus in-place upstream restriction checks, instead of forcing every candidate through the extra `prepareSelectedOpenAIAccount` recheck path
+  - merged-prep also exposed and fixed a trailing infrastructure mismatch: `cmd/server/wire_gen.go` now matches the current `NewOpenAIGatewayService` signature again, so `go build ./cmd/server` is no longer blocked by the old `settingService` argument
   - the next merged batch has started to pull the billing writeback chain back toward upstream structure as well:
     - `GatewayService.RecordUsage` and `RecordUsageWithLongContext` are again thin wrappers over a shared `recordUsageCore`
     - the restored core still keeps local writeback semantics instead of reverting them, including unified resolver billing, `BillingTier` / `BillingMode`, `ChannelUsageFields`, and the prompt / long-context handling branches
