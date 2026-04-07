@@ -1445,20 +1445,6 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	if len(accounts) == 0 {
 		return nil, ErrNoAvailableAccounts
 	}
-	prepareSelectedAccount := func(account *Account) *Account {
-		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, account, requestedModel, TargetGroupAny)
-		if fresh == nil {
-			return nil
-		}
-		fresh = s.recheckSelectedOpenAIAccountFromDB(ctx, fresh, requestedModel, TargetGroupAny)
-		if fresh == nil {
-			return nil
-		}
-		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, derefGroupID(groupID), fresh, requestedModel) {
-			return nil
-		}
-		return fresh
-	}
 
 	isExcluded := func(accountID int64) bool {
 		if excludedIDs == nil {
@@ -1552,8 +1538,11 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 		ordered := append([]*Account(nil), candidates...)
 		sortAccountsByPriorityAndLastUsed(ordered, false)
 		for _, acc := range ordered {
-			fresh := prepareSelectedAccount(acc)
+			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, TargetGroupAny)
 			if fresh == nil {
+				continue
+			}
+			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, derefGroupID(groupID), fresh, requestedModel) {
 				continue
 			}
 			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
@@ -1606,8 +1595,11 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 			shuffleWithinSortGroups(available)
 
 			for _, item := range available {
-				fresh := prepareSelectedAccount(item.account)
+				fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, item.account, requestedModel, TargetGroupAny)
 				if fresh == nil {
+					continue
+				}
+				if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, derefGroupID(groupID), fresh, requestedModel) {
 					continue
 				}
 				result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
@@ -1628,8 +1620,11 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	// ============ Layer 3: Fallback wait ============
 	sortAccountsByPriorityAndLastUsed(candidates, false)
 	for _, acc := range candidates {
-		fresh := prepareSelectedAccount(acc)
+		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, requestedModel, TargetGroupAny)
 		if fresh == nil {
+			continue
+		}
+		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, derefGroupID(groupID), fresh, requestedModel) {
 			continue
 		}
 		return &AccountSelectionResult{
@@ -4608,7 +4603,20 @@ func (s *OpenAIGatewayService) prepareOpenAIRecordUsageState(ctx context.Context
 
 	pricingSourceParts := make([]string, 0, 3)
 	state.AccountRateMultiplier = state.Account.BillingRateMultiplier()
-	if pricing, priceErr := s.billingService.GetModelPricing(billingModel); priceErr == nil && pricing != nil {
+	var pricing *ModelPricing
+	applySessionLongContext := true
+	if state.ResolvedPricing != nil {
+		if state.ResolvedPricing.Mode == BillingModeToken && s.resolver != nil {
+			pricing = s.resolver.GetIntervalPricing(state.ResolvedPricing, tokens.InputTokens+tokens.CacheReadTokens)
+			applySessionLongContext = len(state.ResolvedPricing.Intervals) == 0
+			if source := strings.TrimSpace(state.ResolvedPricing.Source); source != "" {
+				pricingSourceParts = append(pricingSourceParts, source)
+			}
+		}
+	} else if resolvedPricing, priceErr := s.billingService.GetModelPricing(billingModel); priceErr == nil && resolvedPricing != nil {
+		pricing = resolvedPricing
+	}
+	if pricing != nil {
 		pricing = s.billingService.applyModelSpecificPricingPolicy(billingModel, pricing)
 		inputUnitPrice := pricing.InputPricePerToken
 		outputUnitPrice := pricing.OutputPricePerToken
@@ -4632,7 +4640,7 @@ func (s *OpenAIGatewayService) prepareOpenAIRecordUsageState(ctx context.Context
 				cacheReadUnitPrice *= tierMultiplier
 			}
 		}
-		if s.billingService.shouldApplySessionLongContextPricing(tokens, pricing) {
+		if applySessionLongContext && s.billingService.shouldApplySessionLongContextPricing(tokens, pricing) {
 			inputUnitPrice *= pricing.LongContextInputMultiplier
 			outputUnitPrice *= pricing.LongContextOutputMultiplier
 			pricingSourceParts = append(pricingSourceParts, "long_context_pricing")

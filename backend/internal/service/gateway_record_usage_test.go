@@ -351,6 +351,91 @@ func TestGatewayServiceRecordUsage_ChannelImagePricingUsesRequestTier(t *testing
 	require.InDelta(t, 0.16, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
+func TestGatewayServiceRecordUsage_StoresEffectivePricingBreakdownFields(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+	svc.resolver = newGatewayChannelResolverForTest(t, []ChannelModelPricing{{
+		Platform:       "anthropic",
+		Models:         []string{"claude-sonnet-4"},
+		BillingMode:    BillingModeToken,
+		InputPrice:     testPtrFloat64(10e-6),
+		OutputPrice:    testPtrFloat64(50e-6),
+		CacheReadPrice: testPtrFloat64(2e-6),
+	}})
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_effective_pricing_breakdown",
+			Usage: ClaudeUsage{
+				InputTokens:          10,
+				OutputTokens:         6,
+				CacheReadInputTokens: 2,
+			},
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+		},
+		APIKey:  &APIKey{ID: 513, Quota: 100, GroupID: groupIDPtr(), Group: &Group{ID: 100, RateMultiplier: 1.25}},
+		User:    &User{ID: 613},
+		Account: &Account{ID: 713, RateMultiplier: testPtrFloat64(1.6)},
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          11,
+			OriginalModel:      "alias-model",
+			ChannelMappedModel: "claude-sonnet-4",
+			BillingModelSource: BillingModelSourceChannelMapped,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.AccountRateMultiplier)
+	require.InDelta(t, 1.6, *usageRepo.lastLog.AccountRateMultiplier, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.EffectiveMultiplier)
+	require.InDelta(t, 1.25, *usageRepo.lastLog.EffectiveMultiplier, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.EffectiveInputUnitPrice)
+	require.NotNil(t, usageRepo.lastLog.EffectiveOutputUnitPrice)
+	require.NotNil(t, usageRepo.lastLog.EffectiveCacheReadUnitPrice)
+	require.InDelta(t, 10e-6, *usageRepo.lastLog.EffectiveInputUnitPrice, 1e-12)
+	require.InDelta(t, 50e-6, *usageRepo.lastLog.EffectiveOutputUnitPrice, 1e-12)
+	require.InDelta(t, 2e-6, *usageRepo.lastLog.EffectiveCacheReadUnitPrice, 1e-12)
+	require.Nil(t, usageRepo.lastLog.PricingSource)
+	require.InDelta(t, usageRepo.lastLog.TotalCost*1.25, usageRepo.lastLog.ActualCost, 1e-12)
+}
+
+func TestGatewayServiceRecordUsageWithLongContext_PersistsMediaTypeAndPricingSource(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+
+	err := svc.RecordUsageWithLongContext(context.Background(), &RecordUsageLongContextInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_long_context_metadata",
+			Usage: ClaudeUsage{
+				InputTokens:  250000,
+				OutputTokens: 16,
+			},
+			Model:     "claude-sonnet-4",
+			Duration:  time.Second,
+			MediaType: "video",
+		},
+		APIKey:                &APIKey{ID: 514, Quota: 100},
+		User:                  &User{ID: 614},
+		Account:               &Account{ID: 714},
+		LongContextThreshold:  200000,
+		LongContextMultiplier: 2,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.MediaType)
+	require.Equal(t, "video", *usageRepo.lastLog.MediaType)
+	require.NotNil(t, usageRepo.lastLog.PricingSource)
+	require.Equal(t, "long_context_pricing", *usageRepo.lastLog.PricingSource)
+	require.NotNil(t, usageRepo.lastLog.EffectiveMultiplier)
+	require.InDelta(t, 1.1, *usageRepo.lastLog.EffectiveMultiplier, 1e-12)
+	require.Nil(t, usageRepo.lastLog.EffectiveInputUnitPrice)
+	require.Nil(t, usageRepo.lastLog.EffectiveOutputUnitPrice)
+	require.Nil(t, usageRepo.lastLog.EffectiveCacheReadUnitPrice)
+}
+
 func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: MarkUsageLogCreateNotPersisted(context.Canceled)}
 	userRepo := &openAIRecordUsageUserRepoStub{}

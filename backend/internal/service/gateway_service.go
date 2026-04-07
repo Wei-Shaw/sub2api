@@ -736,7 +736,7 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 						}
 					}
 				}
-			}
+		}
 		}
 	}
 	if combined.Len() > 0 {
@@ -3232,7 +3232,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 					return account, nil
 				}
 			}
-		}
+			}
 		}
 	}
 
@@ -7600,6 +7600,7 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 	}, &recordUsageOpts{
 		LongContextThreshold:  input.LongContextThreshold,
 		LongContextMultiplier: input.LongContextMultiplier,
+		IncludeMediaType:      true,
 	})
 }
 
@@ -7648,13 +7649,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		multiplier = s.getUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
 	}
 
-	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
-	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
-		billingModel = input.ChannelMappedModel
-	}
-	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
-		billingModel = input.OriginalModel
-	}
+	billingModel := resolveGatewayRecordUsageBillingModel(result, input)
 
 	requestedModel := result.Model
 	if input.OriginalModel != "" {
@@ -7761,6 +7756,7 @@ func (s *GatewayService) calculateRecordUsageCost(ctx context.Context, result *F
 func (s *GatewayService) buildRecordUsageLog(ctx context.Context, input *recordUsageCoreInput, result *ForwardResult, apiKey *APIKey, account *Account, subscription *UserSubscription, requestedModel string, multiplier, accountRateMultiplier float64, billingType int8, cacheTTLOverridden bool, cost *CostBreakdown, resolvedPricing *ResolvedPricing, opts *recordUsageOpts) *UsageLog {
 	durationMs := int(result.Duration.Milliseconds())
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
+	pricingMetadata := s.buildRecordUsagePricingMetadata(result, input, multiplier, cost, resolvedPricing, opts)
 	usageLog := &UsageLog{
 		UserID:            input.User.ID,
 		APIKeyID:          apiKey.ID,
@@ -7778,9 +7774,82 @@ func (s *GatewayService) buildRecordUsageLog(ctx context.Context, input *recordU
 			v := strings.TrimSpace(resolvedPricing.Source)
 			return &v
 		}(),
-		ReasoningEffort:       result.ReasoningEffort,
-		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
-		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
+		ReasoningEffort:             result.ReasoningEffort,
+		InboundEndpoint:             optionalTrimmedStringPtr(input.InboundEndpoint),
+		UpstreamEndpoint:            optionalTrimmedStringPtr(input.UpstreamEndpoint),
+		InputTokens:                 result.Usage.InputTokens,
+		OutputTokens:                result.Usage.OutputTokens,
+		CacheCreationTokens:         result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:             result.Usage.CacheReadInputTokens,
+		CacheCreation5mTokens:       result.Usage.CacheCreation5mTokens,
+		CacheCreation1hTokens:       result.Usage.CacheCreation1hTokens,
+		ImageOutputTokens:           result.Usage.ImageOutputTokens,
+		InputCost:                   cost.InputCost,
+		OutputCost:                  cost.OutputCost,
+		ImageOutputCost:             cost.ImageOutputCost,
+		CacheCreationCost:           cost.CacheCreationCost,
+		CacheReadCost:               cost.CacheReadCost,
+		TotalCost:                   cost.TotalCost,
+		ActualCost:                  cost.ActualCost,
+		RateMultiplier:              multiplier,
+		AccountRateMultiplier:       &accountRateMultiplier,
+		EffectiveMultiplier:         pricingMetadata.effectiveMultiplier,
+		EffectiveInputUnitPrice:     pricingMetadata.effectiveInputUnitPrice,
+		EffectiveOutputUnitPrice:    pricingMetadata.effectiveOutputUnitPrice,
+		EffectiveCacheReadUnitPrice: pricingMetadata.effectiveCacheReadUnitPrice,
+		PricingSource:               pricingMetadata.pricingSource,
+		BillingType:                 billingType,
+		BillingMode:                 resolveBillingMode(result, cost),
+		Stream:                      result.Stream,
+		DurationMs:                  &durationMs,
+		FirstTokenMs:                result.FirstTokenMs,
+		ImageCount:                  result.ImageCount,
+		ImageSize:                   optionalTrimmedStringPtr(result.ImageSize),
+		CacheTTLOverridden:          cacheTTLOverridden,
+		UserAgent:                   optionalTrimmedStringPtr(input.UserAgent),
+		IPAddress:                   optionalTrimmedStringPtr(input.IPAddress),
+		GroupID:                     apiKey.GroupID,
+		SubscriptionID:              optionalSubscriptionID(subscription),
+		CreatedAt:                   time.Now(),
+	}
+	if opts.IncludeMediaType && strings.TrimSpace(result.MediaType) != "" {
+		usageLog.MediaType = optionalTrimmedStringPtr(result.MediaType)
+	}
+	return usageLog
+}
+
+type gatewayRecordUsagePricingMetadata struct {
+	effectiveMultiplier         *float64
+	effectiveInputUnitPrice     *float64
+	effectiveOutputUnitPrice    *float64
+	effectiveCacheReadUnitPrice *float64
+	pricingSource               *string
+}
+
+func resolveGatewayRecordUsageBillingModel(result *ForwardResult, input *recordUsageCoreInput) string {
+	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	if input == nil {
+		return billingModel
+	}
+	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
+		return input.ChannelMappedModel
+	}
+	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
+		return input.OriginalModel
+	}
+	return billingModel
+}
+
+func (s *GatewayService) buildRecordUsagePricingMetadata(result *ForwardResult, input *recordUsageCoreInput, multiplier float64, cost *CostBreakdown, resolvedPricing *ResolvedPricing, opts *recordUsageOpts) gatewayRecordUsagePricingMetadata {
+	metadata := gatewayRecordUsagePricingMetadata{}
+	if cost != nil && cost.TotalCost > 0 && multiplier > 0 {
+		metadata.effectiveMultiplier = float64Ptr(multiplier)
+	}
+	if s == nil || s.billingService == nil || result == nil || strings.EqualFold(strings.TrimSpace(result.MediaType), "prompt") {
+		return metadata
+	}
+
+	tokens := UsageTokens{
 		InputTokens:           result.Usage.InputTokens,
 		OutputTokens:          result.Usage.OutputTokens,
 		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
@@ -7788,33 +7857,51 @@ func (s *GatewayService) buildRecordUsageLog(ctx context.Context, input *recordU
 		CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
 		CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
 		ImageOutputTokens:     result.Usage.ImageOutputTokens,
-		InputCost:             cost.InputCost,
-		OutputCost:            cost.OutputCost,
-		ImageOutputCost:       cost.ImageOutputCost,
-		CacheCreationCost:     cost.CacheCreationCost,
-		CacheReadCost:         cost.CacheReadCost,
-		TotalCost:             cost.TotalCost,
-		ActualCost:            cost.ActualCost,
-		RateMultiplier:        multiplier,
-		AccountRateMultiplier: &accountRateMultiplier,
-		BillingType:           billingType,
-		BillingMode:           resolveBillingMode(result, cost),
-		Stream:                result.Stream,
-		DurationMs:            &durationMs,
-		FirstTokenMs:          result.FirstTokenMs,
-		ImageCount:            result.ImageCount,
-		ImageSize:             optionalTrimmedStringPtr(result.ImageSize),
-		CacheTTLOverridden:    cacheTTLOverridden,
-		UserAgent:             optionalTrimmedStringPtr(input.UserAgent),
-		IPAddress:             optionalTrimmedStringPtr(input.IPAddress),
-		GroupID:               apiKey.GroupID,
-		SubscriptionID:        optionalSubscriptionID(subscription),
-		CreatedAt:             time.Now(),
 	}
-	if opts.IncludeMediaType && strings.TrimSpace(result.MediaType) != "" {
-		usageLog.MediaType = optionalTrimmedStringPtr(result.MediaType)
+	totalContextTokens := tokens.InputTokens + tokens.CacheReadTokens
+	var pricing *ModelPricing
+	applySessionLongContext := true
+	if resolvedPricing != nil {
+		if resolvedPricing.Mode != BillingModeToken || s.resolver == nil {
+			return metadata
+		}
+		pricing = s.resolver.GetIntervalPricing(resolvedPricing, totalContextTokens)
+		applySessionLongContext = len(resolvedPricing.Intervals) == 0
+	} else {
+		if result.ImageCount > 0 {
+			return metadata
+		}
+		if opts != nil && opts.LongContextThreshold > 0 && opts.LongContextMultiplier > 1 && totalContextTokens > opts.LongContextThreshold {
+			metadata.pricingSource = optionalTrimmedStringPtr("long_context_pricing")
+			return metadata
+		}
+		basePricing, err := s.billingService.GetModelPricing(resolveGatewayRecordUsageBillingModel(result, input))
+		if err != nil {
+			return metadata
+		}
+		pricing = basePricing
 	}
-	return usageLog
+	if pricing == nil {
+		return metadata
+	}
+
+	billingModel := resolveGatewayRecordUsageBillingModel(result, input)
+	pricing = s.billingService.applyModelSpecificPricingPolicy(billingModel, pricing)
+	inputUnitPrice := pricing.InputPricePerToken
+	outputUnitPrice := pricing.OutputPricePerToken
+	cacheReadUnitPrice := pricing.CacheReadPricePerToken
+	pricingSourceParts := make([]string, 0, 1)
+	if applySessionLongContext && s.billingService.shouldApplySessionLongContextPricing(tokens, pricing) {
+		inputUnitPrice *= pricing.LongContextInputMultiplier
+		outputUnitPrice *= pricing.LongContextOutputMultiplier
+		pricingSourceParts = append(pricingSourceParts, "long_context_pricing")
+	}
+	metadata.effectiveInputUnitPrice = float64Ptr(inputUnitPrice)
+	metadata.effectiveOutputUnitPrice = float64Ptr(outputUnitPrice)
+	metadata.effectiveCacheReadUnitPrice = float64Ptr(cacheReadUnitPrice)
+	metadata.pricingSource = optionalTrimmedStringPtr(strings.Join(pricingSourceParts, ","))
+
+	return metadata
 }
 
 func resolveBillingMode(result *ForwardResult, cost *CostBreakdown) *string {

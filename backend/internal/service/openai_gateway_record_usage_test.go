@@ -1294,6 +1294,12 @@ func TestOpenAIGatewayServiceRecordUsage_PersistsChannelAndImageOutputFields(t *
 	require.Equal(t, PricingSourceChannel, *usageRepo.lastLog.BillingTier)
 	require.NotNil(t, usageRepo.lastLog.BillingMode)
 	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
+	require.NotNil(t, usageRepo.lastLog.EffectiveInputUnitPrice)
+	require.NotNil(t, usageRepo.lastLog.EffectiveOutputUnitPrice)
+	require.InDelta(t, 10e-6, *usageRepo.lastLog.EffectiveInputUnitPrice, 1e-12)
+	require.InDelta(t, 50e-6, *usageRepo.lastLog.EffectiveOutputUnitPrice, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.PricingSource)
+	require.Equal(t, PricingSourceChannel, *usageRepo.lastLog.PricingSource)
 }
 
 func TestNormalizeOpenAIServiceTier(t *testing.T) {
