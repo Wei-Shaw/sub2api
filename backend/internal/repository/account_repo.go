@@ -468,6 +468,14 @@ REDACTED
 REDACTED
 	if status != "" {
 		switch status {
+		case service.StatusActive:
+			q = q.Where(
+				dbaccount.StatusEQ(status),
+				dbaccount.Or(
+					dbaccount.RateLimitResetAtIsNil(),
+					dbaccount.RateLimitResetAtLTE(time.Now()),
+				),
+			)
 		case "rate_limited":
 			q = q.Where(dbaccount.RateLimitResetAtGT(time.Now()))
 		case "temp_unschedulable":
