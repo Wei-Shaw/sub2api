@@ -914,6 +914,7 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
     - OpenAI sticky handling now only clears the binding for `recheck` / upstream-restricted hard invalidation, instead of deleting sticky on every ordinary gate miss
 - Defer the admin/settings/group/account restructuring until a separate compatibility pass is planned.
 - Treat the hotspot overlap as part of the next Batch C / Batch D style transplant work, not as mechanical absorb.
+- channel_service 的 antigravity 跨 anthropic/gemini 联查语义不再当成本地保留差异处理，现已按 upstream 收回严格平台隔离：pricing / mapping / restriction lookup 重新只在自身平台内匹配。
 
 ## Merged 导向阶段划分
 
