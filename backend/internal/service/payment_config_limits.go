@@ -10,9 +10,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
 
-// stripeSubTypes are types that should be aggregated under TypeStripe for user-facing display.
-var stripeSubTypes = map[string]bool{string(payment.TypeCard): true, string(payment.TypeLink): true}
-
 // GetAvailableMethodLimits collects all payment types from enabled provider
 // instances and returns limits for each, plus the global widest range.
 // Stripe sub-types (card, link) are aggregated under "stripe".
@@ -55,7 +52,8 @@ func (s *PaymentConfigService) GetMethodLimits(ctx context.Context, types []stri
 }
 
 // pcGroupByPaymentType groups instances by user-facing payment type.
-// Stripe sub-types (card, link) are merged under "stripe".
+// For Stripe providers, ALL sub-types (card, link, alipay, wxpay) map to "stripe"
+// because the user sees a single "Stripe" button, not individual sub-methods.
 // Uses a seen set to avoid counting one instance twice.
 func pcGroupByPaymentType(instances []*dbent.PaymentProviderInstance) map[string][]*dbent.PaymentProviderInstance {
 	typeInstances := make(map[string][]*dbent.PaymentProviderInstance)
@@ -70,15 +68,13 @@ func pcGroupByPaymentType(instances []*dbent.PaymentProviderInstance) map[string
 		}
 	}
 	for _, inst := range instances {
-		for _, t := range splitTypes(inst.SupportedTypes) {
-			if stripeSubTypes[t] || t == payment.TypeStripe {
-				add(payment.TypeStripe, inst)
-			} else {
-				add(t, inst)
-			}
-		}
+		// Stripe provider: all sub-types → single "stripe" group
 		if inst.ProviderKey == payment.TypeStripe {
 			add(payment.TypeStripe, inst)
+			continue
+		}
+		for _, t := range splitTypes(inst.SupportedTypes) {
+			add(t, inst)
 		}
 	}
 	return typeInstances
@@ -86,6 +82,7 @@ func pcGroupByPaymentType(instances []*dbent.PaymentProviderInstance) map[string
 
 // pcInstanceTypeLimits extracts per-type limits from a provider instance.
 // Returns (limits, true) if configured; (zero, false) if unlimited.
+// For Stripe instances, limits are stored under "stripe" key regardless of sub-types.
 func pcInstanceTypeLimits(inst *dbent.PaymentProviderInstance, pt string) (payment.ChannelLimits, bool) {
 	if inst.Limits == "" {
 		return payment.ChannelLimits{}, false

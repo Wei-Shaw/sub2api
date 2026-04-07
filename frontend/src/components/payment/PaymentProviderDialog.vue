@@ -22,7 +22,7 @@
           </label>
           <Select
             v-model="form.provider_key"
-            :options="(!!editing ? allKeyOptions : enabledKeyOptions) as any"
+            :options="(!!editing ? allKeyOptions : enabledKeyOptions) as SelectOption[]"
             :disabled="!!editing"
             @change="onKeyChange"
           />
@@ -219,6 +219,7 @@ import { reactive, computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
+import type { SelectOption } from '@/components/common/Select.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 import type { ProviderInstance } from '@/types/payment'
 import type { TypeOption } from './providerConfig'
@@ -308,6 +309,10 @@ const resolvedFields = computed(() => {
 })
 
 const limitableTypes = computed(() => {
+  // Stripe: single "stripe" entry (one set of shared limits)
+  if (form.provider_key === 'stripe') {
+    return [{ value: 'stripe', label: 'Stripe' }]
+  }
   const selected = form.supported_types.filter(t => t !== 'easypay')
   return selected.map(v => {
     const found = props.allPaymentTypes.find(pt => pt.value === v)
