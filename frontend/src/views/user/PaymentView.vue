@@ -231,7 +231,9 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       plan_id: planId,
     })
     if (result.client_secret) {
-      router.push({ path: '/payment/stripe', query: { order_id: String(result.order_id), client_secret: result.client_secret } })
+      const stripeUrl = router.resolve({ path: '/payment/stripe', query: { order_id: String(result.order_id), client_secret: result.client_secret } }).href
+      window.open(stripeUrl, '_blank')
+      router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), expires_at: result.expires_at || '', payment_type: 'stripe' } })
     } else if (result.qr_code) {
       router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), qr: result.qr_code || '', pay_url: result.pay_url || '', expires_at: result.expires_at || '', payment_type: selectedMethod.value } })
     } else if (result.pay_url) {

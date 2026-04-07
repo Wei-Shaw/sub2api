@@ -158,7 +158,7 @@
                   type="number"
                   :value="getLimitVal(lt.value, 'singleMin')"
                   @input="setLimitVal(lt.value, 'singleMin', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="1" step="0.01" :placeholder="t('admin.settings.payment.limitsHint')"
+                  class="input mt-0.5" min="1" step="0.01" :placeholder="limitPlaceholder(lt.value)"
                 />
               </div>
               <div>
@@ -167,7 +167,7 @@
                   type="number"
                   :value="getLimitVal(lt.value, 'singleMax')"
                   @input="setLimitVal(lt.value, 'singleMax', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="1" step="0.01" :placeholder="t('admin.settings.payment.limitsHint')"
+                  class="input mt-0.5" min="1" step="0.01" :placeholder="limitPlaceholder(lt.value)"
                 />
               </div>
               <div>
@@ -176,7 +176,7 @@
                   type="number"
                   :value="getLimitVal(lt.value, 'dailyLimit')"
                   @input="setLimitVal(lt.value, 'dailyLimit', ($event.target as HTMLInputElement).value)"
-                  class="input mt-0.5" min="1" step="0.01" :placeholder="t('admin.settings.payment.limitsHint')"
+                  class="input mt-0.5" min="1" step="0.01" :placeholder="limitPlaceholder(lt.value)"
                 />
               </div>
             </div>
@@ -325,6 +325,20 @@ function applyDefaults() {
 function getLimitVal(paymentType: string, field: string): string {
   const val = limits[paymentType]?.[field]
   return val && val > 0 ? String(val) : ''
+}
+
+/** Returns true if any limit field for this payment type has a value */
+function hasAnyLimit(paymentType: string): boolean {
+  const l = limits[paymentType]
+  if (!l) return false
+  return (l.singleMin > 0) || (l.singleMax > 0) || (l.dailyLimit > 0)
+}
+
+/** Dynamic placeholder: "不限制" if sibling has value, "使用全局配置" if all empty */
+function limitPlaceholder(paymentType: string): string {
+  return hasAnyLimit(paymentType)
+    ? t('admin.settings.payment.limitsNoLimit')
+    : t('admin.settings.payment.limitsUseGlobal')
 }
 
 function setLimitVal(paymentType: string, field: string, val: string) {
