@@ -1,9 +1,18 @@
 <template>
   <AppLayout>
     <div class="mx-auto flex max-w-md flex-col items-center space-y-6 py-8">
-      <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('payment.qr.scanToPay') }}</h2>
+      <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+        {{ qrUrl ? t('payment.qr.scanToPay') : t('payment.qr.payInNewWindow') }}
+      </h2>
       <div v-if="qrUrl" class="rounded-2xl bg-white p-6 shadow-lg dark:bg-dark-800">
         <canvas ref="qrCanvas" class="mx-auto"></canvas>
+      </div>
+      <div v-else-if="payUrl && !expired" class="w-full space-y-3 text-center">
+        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.payInNewWindowHint') }}</p>
+        <a :href="payUrl" target="_blank" rel="noopener noreferrer"
+          class="btn btn-primary inline-flex w-full items-center justify-center gap-2 py-3">
+          {{ t('payment.qr.openPayWindow') }}
+        </a>
       </div>
       <div v-if="expired" class="text-center">
         <p class="text-lg font-medium text-red-500">{{ t('payment.qr.expired') }}</p>
@@ -41,6 +50,7 @@ const appStore = useAppStore()
 
 const qrCanvas = ref<HTMLCanvasElement | null>(null)
 const qrUrl = ref('')
+const payUrl = ref('')
 const orderId = ref(0)
 const remainingSeconds = ref(0)
 const expired = ref(false)
@@ -114,6 +124,7 @@ watch(qrUrl, () => renderQR())
 onMounted(() => {
   orderId.value = Number(route.query.order_id) || 0
   qrUrl.value = (route.query.qr as string) || ''
+  payUrl.value = (route.query.pay_url as string) || ''
 
   // Calculate countdown from expiresAt
   const expiresAtStr = route.query.expires_at as string

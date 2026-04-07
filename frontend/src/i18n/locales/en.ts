@@ -5095,6 +5095,9 @@ export default {
     },
     qr: {
       scanToPay: 'Scan to Pay',
+      payInNewWindow: 'Complete Payment in New Window',
+      payInNewWindowHint: 'The payment page has opened in a new window. Please complete the payment there and return to this page.',
+      openPayWindow: 'Reopen Payment Page',
       expiresIn: 'Expires in',
       expired: 'Order Expired',
       waitingPayment: 'Waiting for payment...',

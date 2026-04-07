@@ -236,6 +236,7 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), qr: result.qr_code || '', pay_url: result.pay_url || '', expires_at: result.expires_at || '' } })
     } else if (result.pay_url) {
       window.open(result.pay_url, '_blank')
+      router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), pay_url: result.pay_url, expires_at: result.expires_at || '' } })
     } else {
       errorMessage.value = t('payment.result.failed')
       appStore.showError(errorMessage.value)
