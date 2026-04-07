@@ -887,6 +887,9 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
     - backend settings constants / DTOs / handlers / `SettingService` parsing and defaults no longer expose `openai_global_pool_for_ungrouped_keys`
     - `OpenAIGatewayService` no longer widens ungrouped OpenAI scheduling to the full platform pool, and `ResolveEffectivePlatform` no longer injects OpenAI effective platform for ungrouped keys on that basis
     - frontend admin settings API / SettingsView / dedicated spec / locale strings for that toggle have all been removed together, so the product now aligns back to `allow_ungrouped_key_scheduling` as the only remaining ungrouped-key control
+  - separate from that removal, the local `active / exhausted / any` target-group semantics remain an explicit high-risk merge guardrail:
+    - 审查前提必须设成：上游默认规则**会挡掉**我们需求里的 exhausted-group 账号，而不是默认假设它们天然安全
+    - 所以后续任何 upstream absorption 只要碰到 quota checks、target-group helpers、sticky hit、candidate filtering、selection boundaries，都要先按“可能把 exhausted 账号挡掉”的风险来审，除非有明确证据证明不会破坏 `TargetGroupExhausted` 语义
   - the next hot-path merged pass has also started from the lowest-risk OpenAI helper boundary rather than the largest scheduler function:
     - `OpenAIGatewayService.SelectAccountWithLoadAwareness` now centralizes its Layer 1/2/3 `fresh + recheck + upstream channel restriction` gate through one local `prepareSelectedAccount` path
     - this does not roll back the local `TargetGroupAny/Active/Exhausted` design; it just makes the retained OpenAI freshness/recheck semantics explicit before touching larger selection branches
@@ -898,6 +901,10 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
     - wait-plan / slot-acquire / sticky binding outer shells are still intentionally left in place, so this remains a low-risk convergence step rather than a full scheduler rewrite
   - `selectAccountWithMixedScheduling` now follows that same convergence pattern on the legacy mixed path, while still keeping group membership checks on the sticky-cache lookup shell instead of incorrectly pushing them into the generic reject helper
   - `selectAccountForModelWithPlatform` now mirrors the same convergence on the single-platform legacy path, so routed sticky, normal sticky, and main candidate scanning no longer each carry their own copy of the same request-level reject chain
+  - after targeted review, the first wave of concrete regressions has also been fixed in-place:
+    - routed candidate filtering in `GatewayService.SelectAccountWithLoadAwareness` now checks upstream restriction just like routed sticky, eliminating that branch mismatch
+    - legacy mixed routed sticky again requires group membership, and `RequirePrivacySet` side effects are no longer evaluated before the basic `isAccountSchedulableForSelection` precheck in single-platform / mixed candidate loops
+    - OpenAI sticky handling now only clears the binding for `recheck` / upstream-restricted hard invalidation, instead of deleting sticky on every ordinary gate miss
 - Defer the admin/settings/group/account restructuring until a separate compatibility pass is planned.
 - Treat the hotspot overlap as part of the next Batch C / Batch D style transplant work, not as mechanical absorb.
 

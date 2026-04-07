@@ -1485,6 +1485,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			if !s.isAccountSchedulableForRPM(ctx, account, false) {
 				continue
 			}
+			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, derefGroupID(groupID), account, requestedModel) {
+				continue
+			}
 			routingCandidates = append(routingCandidates, account)
 		}
 
@@ -3122,7 +3125,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
-						if !clearSticky && accountSelectionRejectReason(account, true) == "" {
+						if !clearSticky && s.isAccountInGroup(account, groupID) && accountSelectionRejectReason(account, true) == "" {
 							if s.debugModelRoutingEnabled() {
 								logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), accountID)
 							}
@@ -3159,6 +3162,11 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 				continue
 			}
 			if _, excluded := excludedIDs[acc.ID]; excluded {
+				continue
+			}
+			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
+			// avoid selecting accounts that were recently rate-limited/overloaded.
+			if !s.isAccountSchedulableForSelection(acc) {
 				continue
 			}
 			// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
@@ -3246,6 +3254,11 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	for i := range accounts {
 		acc := &accounts[i]
 		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+		}
+		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
+		// avoid selecting accounts that were recently rate-limited/overloaded.
+		if !s.isAccountSchedulableForSelection(acc) {
 			continue
 		}
 		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
