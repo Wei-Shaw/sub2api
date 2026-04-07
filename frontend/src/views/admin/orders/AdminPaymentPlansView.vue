@@ -16,19 +16,37 @@
             <span class="text-gray-400">#{{ value }}</span>
             <span class="ml-1 badge badge-danger">{{ t('payment.admin.groupMissing') }}</span>
           </span>
-          <span v-else class="text-sm text-gray-700 dark:text-gray-300">{{ groupName(value) }}</span>
+          <GroupBadge
+            v-else-if="getGroup(value)"
+            :name="getGroup(value)!.name"
+            :platform="getGroup(value)!.platform"
+            :rate-multiplier="getGroup(value)!.rate_multiplier"
+          />
+          <span v-else class="text-sm text-gray-400">-</span>
         </template>
         <template #cell-price="{ value, row }">
           <div class="text-sm">
-            <span class="font-medium text-gray-900 dark:text-white">${{ value.toFixed(2) }}</span>
-            <span v-if="row.original_price" class="ml-1 text-xs text-gray-400 line-through">${{ row.original_price.toFixed(2) }}</span>
+            <span class="font-medium text-gray-900 dark:text-white">&yen;{{ value.toFixed(2) }}</span>
+            <span v-if="row.original_price" class="ml-1 text-xs text-gray-400 line-through">&yen;{{ row.original_price.toFixed(2) }}</span>
           </div>
         </template>
         <template #cell-validity_days="{ value, row }">
           <span class="text-sm">{{ value }} {{ t('payment.admin.' + (row.validity_unit || 'days')) }}</span>
         </template>
-        <template #cell-for_sale="{ value }">
-          <span :class="['badge', value ? 'badge-success' : 'badge-secondary']">{{ value ? t('payment.admin.onSale') : t('payment.admin.offSale') }}</span>
+        <template #cell-for_sale="{ value, row }">
+          <button
+            type="button"
+            :class="[
+              'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              value ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+            ]"
+            @click="toggleForSale(row)"
+          >
+            <span :class="[
+              'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+              value ? 'translate-x-4' : 'translate-x-0'
+            ]" />
+          </button>
         </template>
         <template #cell-actions="{ row }">
           <div class="flex items-center gap-1">
@@ -80,9 +98,21 @@
           <textarea v-model="planFeaturesText" rows="3" class="input" :placeholder="t('payment.admin.featuresPlaceholder')"></textarea>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.featuresHint') }}</p>
         </div>
-        <div class="flex items-center gap-2">
-          <input id="plan-for-sale" v-model="planForm.for_sale" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-          <label for="plan-for-sale" class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.admin.forSale') }}</label>
+        <div class="flex items-center gap-3">
+          <label class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.admin.forSale') }}</label>
+          <button
+            type="button"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              planForm.for_sale ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+            ]"
+            @click="planForm.for_sale = !planForm.for_sale"
+          >
+            <span :class="[
+              'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+              planForm.for_sale ? 'translate-x-5' : 'translate-x-0'
+            ]" />
+          </button>
         </div>
       </form>
       <template #footer>
@@ -113,6 +143,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import GroupBadge from '@/components/common/GroupBadge.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -127,9 +158,8 @@ async function loadGroups() {
   } catch { /* ignore */ }
 }
 
-function groupName(id: number): string {
-  const g = groups.value.find(g => g.id === id)
-  return g ? `${g.name} (${g.platform})` : ''
+function getGroup(id: number): AdminGroup | undefined {
+  return groups.value.find(g => g.id === id)
 }
 
 function isGroupMissing(id: number): boolean {
@@ -180,7 +210,16 @@ const planColumns = computed((): Column[] => [
 
 async function loadPlans() {
   plansLoading.value = true
-  try { const res = await adminPaymentAPI.getPlans(); plans.value = res.data || [] }
+  try {
+    const res = await adminPaymentAPI.getPlans()
+    // Backend returns features as newline-separated string; parse to array
+    plans.value = (res.data || []).map((p: any) => ({
+      ...p,
+      features: typeof p.features === 'string'
+        ? p.features.split('\n').map((f: string) => f.trim()).filter(Boolean)
+        : (p.features || []),
+    }))
+  }
   catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { plansLoading.value = false }
 }
@@ -197,16 +236,42 @@ function openPlanEdit(plan: SubscriptionPlan | null) {
   showPlanDialog.value = true
 }
 
+/** Build request payload with camelCase keys matching backend JSON tags */
+function buildPlanPayload() {
+  const features = planFeaturesText.value.split('\n').map(f => f.trim()).filter(Boolean).join('\n')
+  return {
+    name: planForm.name,
+    groupId: planForm.group_id,
+    description: planForm.description,
+    price: planForm.price,
+    originalPrice: planForm.original_price || 0,
+    validityDays: planForm.validity_days,
+    validityUnit: planForm.validity_unit,
+    forSale: planForm.for_sale,
+    sortOrder: planForm.sort_order,
+    features,
+  }
+}
+
 async function handleSavePlan() {
   planSaving.value = true
   try {
-    const features = planFeaturesText.value.split('\n').map(f => f.trim()).filter(Boolean).join('\n')
-    const data = { ...planForm, features }
+    const data = buildPlanPayload()
     if (editingPlan.value) { await adminPaymentAPI.updatePlan(editingPlan.value.id, data) }
     else { await adminPaymentAPI.createPlan(data) }
     appStore.showSuccess(t('common.saved')); showPlanDialog.value = false; loadPlans()
   } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { planSaving.value = false }
+}
+
+/** Quick toggle for_sale from the list */
+async function toggleForSale(plan: SubscriptionPlan) {
+  try {
+    await adminPaymentAPI.updatePlan(plan.id, { forSale: !plan.for_sale })
+    plan.for_sale = !plan.for_sale
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  }
 }
 
 function confirmDeletePlan(plan: SubscriptionPlan) { deletingPlanId.value = plan.id; showDeletePlanDialog.value = true }

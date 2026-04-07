@@ -46,7 +46,13 @@ export const usePaymentStore = defineStore('payment', () => {
   async function fetchPlans(): Promise<SubscriptionPlan[]> {
     try {
       const response = await paymentAPI.getPlans()
-      plans.value = response.data
+      // Backend returns features as newline-separated string; parse to array
+      plans.value = (response.data || []).map((p: any) => ({
+        ...p,
+        features: typeof p.features === 'string'
+          ? p.features.split('\n').map((f: string) => f.trim()).filter(Boolean)
+          : (p.features || []),
+      }))
       return plans.value
     } catch (error) {
       console.error('[payment] Failed to fetch plans:', error)
