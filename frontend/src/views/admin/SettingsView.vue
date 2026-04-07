@@ -2888,6 +2888,10 @@ const cancelRateLimitModeOptions = computed(() => [
   { value: 'fixed', label: t('admin.settings.payment.cancelRateLimitWindowModeFixed') },
 ])
 
+const paymentErrorMap = computed(() => ({
+  PENDING_ORDERS: t('payment.errors.PENDING_ORDERS'),
+}))
+
 async function loadProviders() {
   providersLoading.value = true
   try { const res = await adminAPI.payment.getProviders(); providers.value = res.data || [] }
@@ -2920,7 +2924,7 @@ async function handleSaveProvider(payload: any) {
     // Also save the overall settings so payment config changes are persisted together
     await saveSettings()
   } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value))
   } finally {
     providerSaving.value = false
   }
@@ -2932,7 +2936,7 @@ async function handleToggleField(provider: ProviderInstance, field: 'enabled' | 
     await adminAPI.payment.updateProvider(provider.id, { [field]: newValue })
     if (field === 'enabled') provider.enabled = newValue
     else provider.refund_enabled = newValue
-  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
+  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value)) }
 }
 
 async function handleToggleType(provider: ProviderInstance, type: string) {
@@ -2946,7 +2950,7 @@ async function handleToggleType(provider: ProviderInstance, type: string) {
   try {
     await adminAPI.payment.updateProvider(provider.id, { supported_types: updated } as any)
     provider.supported_types = updated
-  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
+  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value)) }
 }
 
 function confirmDeleteProvider(provider: ProviderInstance) {
@@ -2961,7 +2965,7 @@ async function handleDeleteProvider() {
     appStore.showSuccess(t('common.deleted'))
     showDeleteProviderDialog.value = false
     loadProviders()
-  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
+  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value)) }
 }
 
 onMounted(() => {

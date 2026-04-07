@@ -10,6 +10,8 @@ interface ApiErrorLike {
   code?: number | string
   message?: string
   error?: string
+  reason?: string
+  metadata?: Record<string, unknown>
   response?: {
     data?: {
       detail?: string
@@ -20,19 +22,34 @@ interface ApiErrorLike {
 }
 
 /**
+ * Extract the error code from an API error object.
+ */
+export function extractApiErrorCode(err: unknown): string | undefined {
+  if (!err || typeof err !== 'object') return undefined
+  const e = err as ApiErrorLike
+  const code = e.code ?? e.reason ?? e.response?.data?.code
+  return code != null ? String(code) : undefined
+}
+
+/**
  * Extract a displayable error message from an API error.
- *
- * Handles:
- * - Plain objects from API client interceptor: { status, code, message }
- * - Axios errors with response.data
- * - Standard Error instances
- * - Unknown types (stringified)
  *
  * @param err - The caught error (unknown type)
  * @param fallback - Fallback message if none can be extracted (use t('common.error') or similar)
+ * @param i18nMap - Optional map of error codes to i18n translated strings
  */
-export function extractApiErrorMessage(err: unknown, fallback = 'Unknown error'): string {
+export function extractApiErrorMessage(
+  err: unknown,
+  fallback = 'Unknown error',
+  i18nMap?: Record<string, string>,
+): string {
   if (!err) return fallback
+
+  // Try i18n mapping by error code first
+  if (i18nMap) {
+    const code = extractApiErrorCode(err)
+    if (code && i18nMap[code]) return i18nMap[code]
+  }
 
   // Plain object from API client interceptor (most common case)
   if (typeof err === 'object' && err !== null) {

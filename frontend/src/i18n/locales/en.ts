@@ -5144,6 +5144,7 @@ export default {
     errors: {
       tooManyPending: 'Too many pending orders (max {max}). Please complete or cancel existing orders first.',
       cancelRateLimited: 'Too many cancellations. Please try again later.',
+      PENDING_ORDERS: 'This provider has pending orders. Please wait for them to complete before making changes.',
     },
     stripePay: 'Pay Now',
     stripeSuccessProcessing: 'Payment successful, processing your order...',
