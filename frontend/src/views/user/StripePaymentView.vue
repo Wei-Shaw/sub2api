@@ -101,7 +101,10 @@ onMounted(async () => {
       appearance: { theme: isDark ? 'night' : 'stripe', variables: { borderRadius: '8px' } },
     })
     elementsInstance = elements
-    const paymentElement = elements.create('payment')
+    const paymentElement = elements.create('payment', {
+      layout: 'tabs',
+      paymentMethodOrder: ['alipay', 'wechat_pay', 'card', 'link'],
+    } as Record<string, unknown>)
     paymentElement.mount('#stripe-payment-element')
     paymentElement.on('ready', () => { stripeReady.value = true })
   } catch (err: any) {
