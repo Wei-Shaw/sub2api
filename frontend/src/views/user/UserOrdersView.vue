@@ -36,10 +36,10 @@
         </template>
         <template #cell-actions="{ row }">
           <div class="flex items-center gap-1">
-            <button v-if="row.status === 'PENDING'" @click="handleCancel(row.id)" class="btn-icon text-yellow-500 hover:text-yellow-700" :title="t('payment.orders.cancel')">
+            <button v-if="row.status === 'PENDING'" @click="handleCancel(row.id)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-yellow-600 hover:bg-yellow-50 dark:text-yellow-400 dark:hover:bg-yellow-900/20" :title="t('payment.orders.cancel')">
               <Icon name="x" size="sm" />
             </button>
-            <button v-if="row.status === 'COMPLETED'" @click="openRefundDialog(row)" class="btn-icon text-purple-500 hover:text-purple-700" :title="t('payment.orders.requestRefund')">
+            <button v-if="row.status === 'COMPLETED'" @click="openRefundDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20" :title="t('payment.orders.requestRefund')">
               <Icon name="dollar" size="sm" />
             </button>
           </div>

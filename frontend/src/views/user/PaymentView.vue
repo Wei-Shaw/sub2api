@@ -235,13 +235,19 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
     } else if (result.qr_code) {
       router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), qr: result.qr_code || '', pay_url: result.pay_url || '', expires_at: result.expires_at || '' } })
     } else if (result.pay_url) {
-      window.location.href = result.pay_url
+      window.open(result.pay_url, '_blank')
     } else {
       errorMessage.value = t('payment.result.failed')
       appStore.showError(errorMessage.value)
     }
   } catch (err: any) {
-    errorMessage.value = extractApiErrorMessage(err, t('payment.result.failed'))
+    if (err.reason === 'TOO_MANY_PENDING') {
+      errorMessage.value = t('payment.errors.tooManyPending', { max: err.metadata?.max || '' })
+    } else if (err.reason === 'CANCEL_RATE_LIMITED') {
+      errorMessage.value = t('payment.errors.cancelRateLimited')
+    } else {
+      errorMessage.value = extractApiErrorMessage(err, t('payment.result.failed'))
+    }
     appStore.showError(errorMessage.value)
   } finally {
     submitting.value = false

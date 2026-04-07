@@ -177,6 +177,9 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err != nil {
 		return nil, err
 	}
+	if err := s.checkCancelRateLimit(ctx, req.UserID, cfg); err != nil {
+		return nil, err
+	}
 	user, err := s.userRepo.GetByID(ctx, req.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
@@ -298,9 +301,72 @@ func (s *PaymentService) checkPendingLimit(ctx context.Context, tx *dbent.Tx, us
 		return fmt.Errorf("count pending orders: %w", err)
 	}
 	if c >= max {
-		return infraerrors.TooManyRequests("TOO_MANY_PENDING", fmt.Sprintf("too many pending orders (max %d)", max))
+		return infraerrors.TooManyRequests("TOO_MANY_PENDING", fmt.Sprintf("too many pending orders (max %d)", max)).
+			WithMetadata(map[string]string{"max": strconv.Itoa(max)})
 	}
 	return nil
+}
+
+func (s *PaymentService) checkCancelRateLimit(ctx context.Context, userID int64, cfg *PaymentConfig) error {
+	if !cfg.CancelRateLimitEnabled || cfg.CancelRateLimitMax <= 0 {
+		return nil
+	}
+	windowStart := cancelRateLimitWindowStart(cfg)
+	operator := fmt.Sprintf("user:%d", userID)
+	count, err := s.entClient.PaymentAuditLog.Query().
+		Where(
+			paymentauditlog.ActionEQ("ORDER_CANCELLED"),
+			paymentauditlog.OperatorEQ(operator),
+			paymentauditlog.CreatedAtGTE(windowStart),
+		).Count(ctx)
+	if err != nil {
+		slog.Error("check cancel rate limit failed", "userID", userID, "error", err)
+		return nil // fail open
+	}
+	if count >= cfg.CancelRateLimitMax {
+		return infraerrors.TooManyRequests("CANCEL_RATE_LIMITED", "cancel rate limited").
+			WithMetadata(map[string]string{
+				"max":    strconv.Itoa(cfg.CancelRateLimitMax),
+				"window": strconv.Itoa(cfg.CancelRateLimitWindow),
+				"unit":   cfg.CancelRateLimitUnit,
+			})
+	}
+	return nil
+}
+
+func cancelRateLimitWindowStart(cfg *PaymentConfig) time.Time {
+	now := time.Now()
+	w := cfg.CancelRateLimitWindow
+	if w <= 0 {
+		w = 1
+	}
+	unit := cfg.CancelRateLimitUnit
+	if unit == "" {
+		unit = "day"
+	}
+	if cfg.CancelRateLimitMode == "fixed" {
+		switch unit {
+		case "minute":
+			t := now.Truncate(time.Minute)
+			return t.Add(-time.Duration(w-1) * time.Minute)
+		case "day":
+			y, m, d := now.Date()
+			t := time.Date(y, m, d, 0, 0, 0, 0, now.Location())
+			return t.AddDate(0, 0, -(w - 1))
+		default: // hour
+			t := now.Truncate(time.Hour)
+			return t.Add(-time.Duration(w-1) * time.Hour)
+		}
+	}
+	// rolling window
+	switch unit {
+	case "minute":
+		return now.Add(-time.Duration(w) * time.Minute)
+	case "day":
+		return now.AddDate(0, 0, -w)
+	default: // hour
+		return now.Add(-time.Duration(w) * time.Hour)
+	}
 }
 
 func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, userID int64, amount, limit float64) error {

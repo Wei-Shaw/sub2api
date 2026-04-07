@@ -27,8 +27,8 @@ const (
 	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
 	SettingProductNamePrefix   = "PRODUCT_NAME_PREFIX"
 	SettingProductNameSuffix   = "PRODUCT_NAME_SUFFIX"
-	SettingHelpImageURL       = "PAYMENT_HELP_IMAGE_URL"
-	SettingHelpText           = "PAYMENT_HELP_TEXT"
+	SettingHelpImageURL        = "PAYMENT_HELP_IMAGE_URL"
+	SettingHelpText            = "PAYMENT_HELP_TEXT"
 	SettingCancelRateLimitOn   = "CANCEL_RATE_LIMIT_ENABLED"
 	SettingCancelRateLimitMax  = "CANCEL_RATE_LIMIT_MAX"
 	SettingCancelWindowSize    = "CANCEL_RATE_LIMIT_WINDOW"
@@ -44,20 +44,27 @@ const (
 
 // PaymentConfig holds the payment system configuration.
 type PaymentConfig struct {
-	Enabled             bool     `json:"enabled"`
-	MinAmount           float64  `json:"min_amount"`
-	MaxAmount           float64  `json:"max_amount"`
-	DailyLimit          float64  `json:"daily_limit"`
-	OrderTimeoutMin     int      `json:"order_timeout_minutes"`
-	MaxPendingOrders    int      `json:"max_pending_orders"`
-	EnabledTypes        []string `json:"enabled_payment_types"`
-	BalanceDisabled     bool     `json:"balance_disabled"`
-	LoadBalanceStrategy string   `json:"load_balance_strategy"`
-	ProductNamePrefix   string   `json:"product_name_prefix"`
-	ProductNameSuffix   string   `json:"product_name_suffix"`
-	HelpImageURL        string   `json:"help_image_url"`
-	HelpText            string   `json:"help_text"`
-	StripePublishableKey string  `json:"stripe_publishable_key,omitempty"`
+	Enabled              bool     `json:"enabled"`
+	MinAmount            float64  `json:"min_amount"`
+	MaxAmount            float64  `json:"max_amount"`
+	DailyLimit           float64  `json:"daily_limit"`
+	OrderTimeoutMin      int      `json:"order_timeout_minutes"`
+	MaxPendingOrders     int      `json:"max_pending_orders"`
+	EnabledTypes         []string `json:"enabled_payment_types"`
+	BalanceDisabled      bool     `json:"balance_disabled"`
+	LoadBalanceStrategy  string   `json:"load_balance_strategy"`
+	ProductNamePrefix    string   `json:"product_name_prefix"`
+	ProductNameSuffix    string   `json:"product_name_suffix"`
+	HelpImageURL         string   `json:"help_image_url"`
+	HelpText             string   `json:"help_text"`
+	StripePublishableKey string   `json:"stripe_publishable_key,omitempty"`
+
+	// Cancel rate limit settings
+	CancelRateLimitEnabled bool   `json:"cancel_rate_limit_enabled"`
+	CancelRateLimitMax     int    `json:"cancel_rate_limit_max"`
+	CancelRateLimitWindow  int    `json:"cancel_rate_limit_window"`
+	CancelRateLimitUnit    string `json:"cancel_rate_limit_unit"`
+	CancelRateLimitMode    string `json:"cancel_rate_limit_window_mode"`
 }
 
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
@@ -75,6 +82,13 @@ type UpdatePaymentConfigRequest struct {
 	ProductNameSuffix   *string  `json:"product_name_suffix"`
 	HelpImageURL        *string  `json:"help_image_url"`
 	HelpText            *string  `json:"help_text"`
+
+	// Cancel rate limit settings
+	CancelRateLimitEnabled *bool   `json:"cancel_rate_limit_enabled"`
+	CancelRateLimitMax     *int    `json:"cancel_rate_limit_max"`
+	CancelRateLimitWindow  *int    `json:"cancel_rate_limit_window"`
+	CancelRateLimitUnit    *string `json:"cancel_rate_limit_unit"`
+	CancelRateLimitMode    *string `json:"cancel_rate_limit_window_mode"`
 }
 
 // MethodLimits holds per-payment-type limits.
@@ -164,6 +178,8 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingLoadBalanceStrategy,
 		SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
+		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
+		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
 	}
 	vals, err := s.settingRepo.GetMultiple(ctx, keys)
 	if err != nil {
@@ -189,6 +205,12 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		ProductNameSuffix:   vals[SettingProductNameSuffix],
 		HelpImageURL:        vals[SettingHelpImageURL],
 		HelpText:            vals[SettingHelpText],
+
+		CancelRateLimitEnabled: vals[SettingCancelRateLimitOn] == "true",
+		CancelRateLimitMax:     pcParseInt(vals[SettingCancelRateLimitMax], 10),
+		CancelRateLimitWindow:  pcParseInt(vals[SettingCancelWindowSize], 1),
+		CancelRateLimitUnit:    vals[SettingCancelWindowUnit],
+		CancelRateLimitMode:    vals[SettingCancelWindowMode],
 	}
 	if cfg.LoadBalanceStrategy == "" {
 		cfg.LoadBalanceStrategy = "round-robin"
@@ -239,6 +261,11 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingProductNameSuffix:   derefStr(req.ProductNameSuffix),
 		SettingHelpImageURL:        derefStr(req.HelpImageURL),
 		SettingHelpText:            derefStr(req.HelpText),
+		SettingCancelRateLimitOn:   formatBoolOrEmpty(req.CancelRateLimitEnabled),
+		SettingCancelRateLimitMax:  formatPositiveInt(req.CancelRateLimitMax),
+		SettingCancelWindowSize:    formatPositiveInt(req.CancelRateLimitWindow),
+		SettingCancelWindowUnit:    derefStr(req.CancelRateLimitUnit),
+		SettingCancelWindowMode:    derefStr(req.CancelRateLimitMode),
 	}
 	if req.EnabledTypes != nil {
 		m[SettingEnabledPaymentTypes] = strings.Join(req.EnabledTypes, ",")

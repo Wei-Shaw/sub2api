@@ -1677,6 +1677,28 @@
                   <Select v-model="form.payment_load_balance_strategy" :options="loadBalanceOptions" class="w-40" />
                 </div>
               </div>
+              <!-- Row 3.5: Cancel rate limit -->
+              <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+                <div class="flex items-center gap-3">
+                  <label class="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" v-model="form.payment_cancel_rate_limit_enabled" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
+                    {{ t('admin.settings.payment.cancelRateLimit') }}
+                  </label>
+                </div>
+                <div v-if="form.payment_cancel_rate_limit_enabled" class="mt-3 flex flex-wrap items-end gap-3">
+                  <div class="w-20"><label class="input-label">{{ t('admin.settings.payment.cancelRateLimitWindow') }}</label><input v-model.number="form.payment_cancel_rate_limit_window" type="number" min="1" class="input" /></div>
+                  <div class="w-24">
+                    <label class="input-label">{{ t('admin.settings.payment.cancelRateLimitUnit') }}</label>
+                    <Select v-model="form.payment_cancel_rate_limit_unit" :options="cancelRateLimitUnitOptions" class="w-full" />
+                  </div>
+                  <div class="w-20"><label class="input-label">{{ t('admin.settings.payment.cancelRateLimitMax') }}</label><input v-model.number="form.payment_cancel_rate_limit_max" type="number" min="1" class="input" /></div>
+                  <div class="w-24">
+                    <label class="input-label">{{ t('admin.settings.payment.cancelRateLimitWindowMode') }}</label>
+                    <Select v-model="form.payment_cancel_rate_limit_window_mode" :options="cancelRateLimitModeOptions" class="w-full" />
+                  </div>
+                </div>
+                <p class="mt-1.5 text-xs text-gray-400">{{ t('admin.settings.payment.cancelRateLimitHint') }}</p>
+              </div>
               <!-- Row 4: Enabled payment types (provider badges like sub2apipay) -->
               <div>
                 <label class="input-label">{{ t('admin.settings.payment.enabledPaymentTypes') }}</label>
@@ -1729,20 +1751,6 @@
 
         </div>
 
-        <!-- Provider Create/Edit Dialog -->
-        <PaymentProviderDialog
-          ref="providerDialogRef"
-          :show="showProviderDialog"
-          :saving="providerSaving"
-          :editing="editingProvider"
-          :all-key-options="providerKeyOptions"
-          :enabled-key-options="enabledProviderKeyOptions"
-          :all-payment-types="allPaymentTypes"
-          :redirect-label="t('admin.settings.payment.easypayRedirect')"
-          @close="showProviderDialog = false"
-          @save="handleSaveProvider"
-        />
-        <ConfirmDialog :show="showDeleteProviderDialog" :title="t('admin.settings.payment.deleteProvider')" :message="t('admin.settings.payment.deleteProviderConfirm')" :confirm-text="t('common.delete')" danger @confirm="handleDeleteProvider" @cancel="showDeleteProviderDialog = false" />
         <div v-show="activeTab === 'email'" class="space-y-6">
         <!-- Email disabled hint - show when email_verify_enabled is off -->
         <div v-if="!form.email_verify_enabled" class="card">
@@ -1995,6 +2003,21 @@
           </button>
         </div>
       </form>
+
+      <!-- Provider dialogs placed outside the settings form to prevent form submission bubbling -->
+      <PaymentProviderDialog
+        ref="providerDialogRef"
+        :show="showProviderDialog"
+        :saving="providerSaving"
+        :editing="editingProvider"
+        :all-key-options="providerKeyOptions"
+        :enabled-key-options="enabledProviderKeyOptions"
+        :all-payment-types="allPaymentTypes"
+        :redirect-label="t('admin.settings.payment.easypayRedirect')"
+        @close="showProviderDialog = false"
+        @save="handleSaveProvider"
+      />
+      <ConfirmDialog :show="showDeleteProviderDialog" :title="t('admin.settings.payment.deleteProvider')" :message="t('admin.settings.payment.deleteProviderConfirm')" :confirm-text="t('common.delete')" danger @confirm="handleDeleteProvider" @cancel="showDeleteProviderDialog = false" />
     </div>
   </AppLayout>
 </template>
@@ -2146,7 +2169,7 @@ const form = reactive<SettingsForm>({
   home_content: '',
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
-  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_enabled_types: [],  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',
+  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_enabled_types: [],  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',  payment_cancel_rate_limit_enabled: false,  payment_cancel_rate_limit_max: 10,  payment_cancel_rate_limit_window: 1,  payment_cancel_rate_limit_unit: 'day',  payment_cancel_rate_limit_window_mode: 'rolling',
   sora_client_enabled: false,
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number}>,
   custom_endpoints: [] as Array<{name: string; endpoint: string; description: string}>,
@@ -2498,6 +2521,11 @@ async function saveSettings() {
       payment_product_name_suffix: form.payment_product_name_suffix,
       payment_help_image_url: form.payment_help_image_url,
       payment_help_text: form.payment_help_text,
+      payment_cancel_rate_limit_enabled: form.payment_cancel_rate_limit_enabled,
+      payment_cancel_rate_limit_max: Number(form.payment_cancel_rate_limit_max) || 10,
+      payment_cancel_rate_limit_window: Number(form.payment_cancel_rate_limit_window) || 1,
+      payment_cancel_rate_limit_unit: form.payment_cancel_rate_limit_unit,
+      payment_cancel_rate_limit_window_mode: form.payment_cancel_rate_limit_window_mode,
     }
 
     const updated = await adminAPI.settings.updateSettings(payload)
@@ -2850,6 +2878,17 @@ const loadBalanceOptions = computed(() => [
   { value: 'least-amount', label: t('admin.settings.payment.strategyLeastAmount') },
 ])
 
+const cancelRateLimitUnitOptions = computed(() => [
+  { value: 'minute', label: t('admin.settings.payment.cancelRateLimitUnitMinute') },
+  { value: 'hour', label: t('admin.settings.payment.cancelRateLimitUnitHour') },
+  { value: 'day', label: t('admin.settings.payment.cancelRateLimitUnitDay') },
+])
+
+const cancelRateLimitModeOptions = computed(() => [
+  { value: 'rolling', label: t('admin.settings.payment.cancelRateLimitWindowModeRolling') },
+  { value: 'fixed', label: t('admin.settings.payment.cancelRateLimitWindowModeFixed') },
+])
+
 async function loadProviders() {
   providersLoading.value = true
   try { const res = await adminAPI.payment.getProviders(); providers.value = res.data || [] }
@@ -2877,9 +2916,10 @@ async function handleSaveProvider(payload: any) {
     } else {
       await adminAPI.payment.createProvider(payload)
     }
-    appStore.showSuccess(t('common.saved'))
     showProviderDialog.value = false
     loadProviders()
+    // Also save the overall settings so payment config changes are persisted together
+    await saveSettings()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally {

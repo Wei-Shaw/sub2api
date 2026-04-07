@@ -112,6 +112,13 @@ type SystemSettings struct {
 	PaymentProductNameSuffix string   `json:"payment_product_name_suffix"`
 	PaymentHelpImageURL      string   `json:"payment_help_image_url"`
 	PaymentHelpText          string   `json:"payment_help_text"`
+
+	// Cancel rate limit
+	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`
+	PaymentCancelRateLimitMax     int    `json:"payment_cancel_rate_limit_max"`
+	PaymentCancelRateLimitWindow  int    `json:"payment_cancel_rate_limit_window"`
+	PaymentCancelRateLimitUnit    string `json:"payment_cancel_rate_limit_unit"`
+	PaymentCancelRateLimitMode    string `json:"payment_cancel_rate_limit_window_mode"`
 }
 
 type DefaultSubscriptionSetting struct {

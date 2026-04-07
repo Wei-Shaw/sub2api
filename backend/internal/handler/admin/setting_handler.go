@@ -152,6 +152,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentProductNameSuffix:             paymentCfg.ProductNameSuffix,
 		PaymentHelpImageURL:                  paymentCfg.HelpImageURL,
 		PaymentHelpText:                      paymentCfg.HelpText,
+		PaymentCancelRateLimitEnabled:        paymentCfg.CancelRateLimitEnabled,
+		PaymentCancelRateLimitMax:            paymentCfg.CancelRateLimitMax,
+		PaymentCancelRateLimitWindow:         paymentCfg.CancelRateLimitWindow,
+		PaymentCancelRateLimitUnit:           paymentCfg.CancelRateLimitUnit,
+		PaymentCancelRateLimitMode:           paymentCfg.CancelRateLimitMode,
 	})
 }
 
@@ -250,6 +255,13 @@ type UpdateSettingsRequest struct {
 	PaymentProductNameSuffix *string  `json:"payment_product_name_suffix"`
 	PaymentHelpImageURL      *string  `json:"payment_help_image_url"`
 	PaymentHelpText          *string  `json:"payment_help_text"`
+
+	// Cancel rate limit
+	PaymentCancelRateLimitEnabled *bool   `json:"payment_cancel_rate_limit_enabled"`
+	PaymentCancelRateLimitMax     *int    `json:"payment_cancel_rate_limit_max"`
+	PaymentCancelRateLimitWindow  *int    `json:"payment_cancel_rate_limit_window"`
+	PaymentCancelRateLimitUnit    *string `json:"payment_cancel_rate_limit_unit"`
+	PaymentCancelRateLimitMode    *string `json:"payment_cancel_rate_limit_window_mode"`
 }
 
 // UpdateSettings 更新系统设置
@@ -664,19 +676,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	// Skip if no payment fields were provided (prevents accidental wipe).
 	if h.paymentConfigService != nil && hasPaymentFields(req) {
 		paymentReq := service.UpdatePaymentConfigRequest{
-			Enabled:             req.PaymentEnabled,
-			MinAmount:           req.PaymentMinAmount,
-			MaxAmount:           req.PaymentMaxAmount,
-			DailyLimit:          req.PaymentDailyLimit,
-			OrderTimeoutMin:     req.PaymentOrderTimeoutMin,
-			MaxPendingOrders:    req.PaymentMaxPendingOrders,
-			EnabledTypes:        req.PaymentEnabledTypes,
-			BalanceDisabled:     req.PaymentBalanceDisabled,
-			LoadBalanceStrategy: req.PaymentLoadBalanceStrat,
-			ProductNamePrefix:   req.PaymentProductNamePrefix,
-			ProductNameSuffix:   req.PaymentProductNameSuffix,
-			HelpImageURL:        req.PaymentHelpImageURL,
-			HelpText:            req.PaymentHelpText,
+			Enabled:                req.PaymentEnabled,
+			MinAmount:              req.PaymentMinAmount,
+			MaxAmount:              req.PaymentMaxAmount,
+			DailyLimit:             req.PaymentDailyLimit,
+			OrderTimeoutMin:        req.PaymentOrderTimeoutMin,
+			MaxPendingOrders:       req.PaymentMaxPendingOrders,
+			EnabledTypes:           req.PaymentEnabledTypes,
+			BalanceDisabled:        req.PaymentBalanceDisabled,
+			LoadBalanceStrategy:    req.PaymentLoadBalanceStrat,
+			ProductNamePrefix:      req.PaymentProductNamePrefix,
+			ProductNameSuffix:      req.PaymentProductNameSuffix,
+			HelpImageURL:           req.PaymentHelpImageURL,
+			HelpText:               req.PaymentHelpText,
+			CancelRateLimitEnabled: req.PaymentCancelRateLimitEnabled,
+			CancelRateLimitMax:     req.PaymentCancelRateLimitMax,
+			CancelRateLimitWindow:  req.PaymentCancelRateLimitWindow,
+			CancelRateLimitUnit:    req.PaymentCancelRateLimitUnit,
+			CancelRateLimitMode:    req.PaymentCancelRateLimitMode,
 		}
 		if err := h.paymentConfigService.UpdatePaymentConfig(c.Request.Context(), paymentReq); err != nil {
 			response.ErrorFrom(c, err)
@@ -778,6 +795,11 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentProductNameSuffix:             updatedPaymentCfg.ProductNameSuffix,
 		PaymentHelpImageURL:                  updatedPaymentCfg.HelpImageURL,
 		PaymentHelpText:                      updatedPaymentCfg.HelpText,
+		PaymentCancelRateLimitEnabled:        updatedPaymentCfg.CancelRateLimitEnabled,
+		PaymentCancelRateLimitMax:            updatedPaymentCfg.CancelRateLimitMax,
+		PaymentCancelRateLimitWindow:         updatedPaymentCfg.CancelRateLimitWindow,
+		PaymentCancelRateLimitUnit:           updatedPaymentCfg.CancelRateLimitUnit,
+		PaymentCancelRateLimitMode:           updatedPaymentCfg.CancelRateLimitMode,
 	})
 }
 
@@ -789,7 +811,9 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentEnabledTypes != nil || req.PaymentBalanceDisabled != nil ||
 		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
-		req.PaymentHelpText != nil
+		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||
+		req.PaymentCancelRateLimitMax != nil || req.PaymentCancelRateLimitWindow != nil ||
+		req.PaymentCancelRateLimitUnit != nil || req.PaymentCancelRateLimitMode != nil
 }
 
 func (h *SettingHandler) auditSettingsUpdate(c *gin.Context, before *service.SystemSettings, after *service.SystemSettings, req UpdateSettingsRequest) {

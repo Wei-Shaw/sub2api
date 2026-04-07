@@ -48,7 +48,7 @@ func NewEasyPay(instanceID string, config map[string]string) (*EasyPay, error) {
 	}, nil
 }
 
-func (e *EasyPay) Name() string       { return "EasyPay" }
+func (e *EasyPay) Name() string        { return "EasyPay" }
 func (e *EasyPay) ProviderKey() string { return "easypay" }
 func (e *EasyPay) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.TypeEasyPay, payment.TypeAlipay, payment.TypeWxpay}
@@ -77,7 +77,7 @@ func (e *EasyPay) createRedirectPayment(req payment.CreatePaymentRequest) (*paym
 		"return_url": returnURL, "name": req.Subject,
 		"money": req.Amount,
 	}
-	if cid := e.resolveCID(payType); cid != "" {
+	if cid := e.resolveAllCIDs(); cid != "" {
 		params["cid"] = cid
 	}
 	params["sign"] = easyPaySign(params, e.config["pkey"])
@@ -227,6 +227,32 @@ func (e *EasyPay) resolveCID(paymentType string) string {
 		return v
 	}
 	return e.config["cid"]
+}
+
+// resolveAllCIDs collects all configured CIDs (general, alipay, wxpay) and
+// returns them as a comma-separated string for the redirect payment page,
+// allowing the user to choose among all available channels.
+func (e *EasyPay) resolveAllCIDs() string {
+	seen := make(map[string]struct{})
+	var cids []string
+	for _, key := range []string{"cidAlipay", "cidWxpay"} {
+		v := e.config[key]
+		if v == "" {
+			continue
+		}
+		for _, c := range strings.Split(v, ",") {
+			c = strings.TrimSpace(c)
+			if c == "" {
+				continue
+			}
+			if _, ok := seen[c]; ok {
+				continue
+			}
+			seen[c] = struct{}{}
+			cids = append(cids, c)
+		}
+	}
+	return strings.Join(cids, ",")
 }
 
 func (e *EasyPay) post(ctx context.Context, endpoint string, params map[string]string) ([]byte, error) {
