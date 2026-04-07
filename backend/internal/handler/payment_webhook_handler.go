@@ -57,8 +57,9 @@ func (h *PaymentWebhookHandler) StripeWebhook(c *gin.Context) {
 func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string) {
 	var rawBody string
 	if c.Request.Method == http.MethodGet {
-		// GET callbacks (e.g. EasyPay) pass params as URL query string
-		rawBody = c.Request.URL.RawQuery
+		// GET callbacks (e.g. EasyPay): RawQuery may be double-encoded by
+		// upstream proxies, so rebuild from the already-decoded Query().
+		rawBody = c.Request.URL.Query().Encode()
 	} else {
 		body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxWebhookBodySize))
 		if err != nil {
