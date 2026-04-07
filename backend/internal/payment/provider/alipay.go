@@ -66,7 +66,7 @@ func (a *Alipay) getClient() (*alipay.Client, error) {
 }
 
 func (a *Alipay) Name() string        { return "Alipay" }
-func (a *Alipay) ProviderKey() string { return "alipay" }
+func (a *Alipay) ProviderKey() string { return payment.TypeAlipay }
 func (a *Alipay) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.TypeAlipayDirect}
 }
@@ -144,18 +144,18 @@ func (a *Alipay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 		if isTradeNotExist(err) {
 			return &payment.QueryOrderResponse{
 				TradeNo: tradeNo,
-				Status:  "pending",
+				Status:  payment.ProviderStatusPending,
 			}, nil
 		}
 		return nil, fmt.Errorf("alipay TradeQuery: %w", err)
 	}
 
-	status := "pending"
+	status := payment.ProviderStatusPending
 	switch result.TradeStatus {
 	case alipay.TradeStatusSuccess, alipay.TradeStatusFinished:
-		status = "paid"
+		status = payment.ProviderStatusPaid
 	case alipay.TradeStatusClosed:
-		status = "failed"
+		status = payment.ProviderStatusFailed
 	}
 
 	amount, err := strconv.ParseFloat(result.TotalAmount, 64)
@@ -188,9 +188,9 @@ func (a *Alipay) VerifyNotification(ctx context.Context, rawBody string, _ map[s
 		return nil, fmt.Errorf("alipay verify notification: %w", err)
 	}
 
-	status := "failed"
+	status := payment.ProviderStatusFailed
 	if notification.TradeStatus == alipay.TradeStatusSuccess || notification.TradeStatus == alipay.TradeStatusFinished {
-		status = "success"
+		status = payment.ProviderStatusSuccess
 	}
 
 	amount, err := strconv.ParseFloat(notification.TotalAmount, 64)
@@ -224,9 +224,9 @@ func (a *Alipay) Refund(ctx context.Context, req payment.RefundRequest) (*paymen
 		return nil, fmt.Errorf("alipay TradeRefund: %w", err)
 	}
 
-	refundStatus := "pending"
+	refundStatus := payment.ProviderStatusPending
 	if result.FundChange == "Y" {
-		refundStatus = "success"
+		refundStatus = payment.ProviderStatusSuccess
 	}
 
 	refundID := result.TradeNo

@@ -224,7 +224,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		CancelRateLimitMode:    vals[SettingCancelWindowMode],
 	}
 	if cfg.LoadBalanceStrategy == "" {
-		cfg.LoadBalanceStrategy = "round-robin"
+		cfg.LoadBalanceStrategy = payment.DefaultLoadBalanceStrategy
 	}
 	if raw := vals[SettingEnabledPaymentTypes]; raw != "" {
 		for _, t := range strings.Split(raw, ",") {
@@ -251,7 +251,7 @@ func (s *PaymentConfigService) getStripePublishableKey(ctx context.Context) stri
 	if cfg == nil {
 		return ""
 	}
-	return cfg["publishableKey"]
+	return cfg[payment.ConfigKeyPublishableKey]
 }
 
 // UpdatePaymentConfig updates the payment configuration settings.

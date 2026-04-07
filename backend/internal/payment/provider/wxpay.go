@@ -54,7 +54,7 @@ func NewWxpay(instanceID string, config map[string]string) (*Wxpay, error) {
 }
 
 func (w *Wxpay) Name() string        { return "Wxpay" }
-func (w *Wxpay) ProviderKey() string { return "wxpay" }
+func (w *Wxpay) ProviderKey() string { return payment.TypeWxpay }
 func (w *Wxpay) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.TypeWxpayDirect}
 }
@@ -202,13 +202,13 @@ func wxSV(s *string) string {
 func mapWxState(s string) string {
 	switch s {
 	case "SUCCESS":
-		return "paid"
+		return payment.ProviderStatusPaid
 	case "REFUND":
-		return "refunded"
+		return payment.ProviderStatusRefunded
 	case "CLOSED", "PAYERROR":
-		return "failed"
+		return payment.ProviderStatusFailed
 	default:
-		return "pending"
+		return payment.ProviderStatusPending
 	}
 }
 
@@ -262,9 +262,9 @@ func (w *Wxpay) VerifyNotification(ctx context.Context, rawBody string, headers 
 	if tx.Amount != nil && tx.Amount.Total != nil {
 		amt = float64(*tx.Amount.Total) / wxpayFenPerYuan
 	}
-	st := "failed"
+	st := payment.ProviderStatusFailed
 	if wxSV(tx.TradeState) == "SUCCESS" {
-		st = "success"
+		st = payment.ProviderStatusSuccess
 	}
 	return &payment.PaymentNotification{
 		TradeNo: wxSV(tx.TransactionId), OrderID: wxSV(tx.OutTradeNo),
@@ -300,9 +300,9 @@ func (w *Wxpay) Refund(ctx context.Context, req payment.RefundRequest) (*payment
 	if rid == "" {
 		rid = fmt.Sprintf("%s-refund", req.OrderID)
 	}
-	st := "pending"
+	st := payment.ProviderStatusPending
 	if res.Status != nil && *res.Status == refunddomestic.STATUS_SUCCESS {
-		st = "success"
+		st = payment.ProviderStatusSuccess
 	}
 	return &payment.RefundResponse{RefundID: rid, Status: st}, nil
 }

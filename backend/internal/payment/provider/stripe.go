@@ -58,7 +58,7 @@ func (s *Stripe) GetPublishableKey() string {
 }
 
 func (s *Stripe) Name() string        { return "Stripe" }
-func (s *Stripe) ProviderKey() string { return "stripe" }
+func (s *Stripe) ProviderKey() string { return payment.TypeStripe }
 func (s *Stripe) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.TypeStripe}
 }
@@ -142,12 +142,12 @@ func (s *Stripe) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 		return nil, fmt.Errorf("stripe query order: %w", err)
 	}
 
-	status := "pending"
+	status := payment.ProviderStatusPending
 	switch pi.Status {
 	case stripe.PaymentIntentStatusSucceeded:
-		status = "paid"
+		status = payment.ProviderStatusPaid
 	case stripe.PaymentIntentStatusCanceled:
-		status = "failed"
+		status = payment.ProviderStatusFailed
 	}
 
 	return &payment.QueryOrderResponse{
@@ -178,9 +178,9 @@ func (s *Stripe) VerifyNotification(_ context.Context, rawBody string, headers m
 
 	switch event.Type {
 	case stripeEventPaymentSuccess:
-		return parseStripePaymentIntent(&event, "success", rawBody)
+		return parseStripePaymentIntent(&event, payment.ProviderStatusSuccess, rawBody)
 	case stripeEventPaymentFailed:
-		return parseStripePaymentIntent(&event, "failed", rawBody)
+		return parseStripePaymentIntent(&event, payment.ProviderStatusFailed, rawBody)
 	}
 
 	return nil, nil
@@ -221,9 +221,9 @@ func (s *Stripe) Refund(ctx context.Context, req payment.RefundRequest) (*paymen
 		return nil, fmt.Errorf("stripe refund: %w", err)
 	}
 
-	refundStatus := "pending"
+	refundStatus := payment.ProviderStatusPending
 	if r.Status == stripe.RefundStatusSucceeded {
-		refundStatus = "success"
+		refundStatus = payment.ProviderStatusSuccess
 	}
 
 	return &payment.RefundResponse{

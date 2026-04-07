@@ -35,18 +35,35 @@ const (
 	OrderStatusRefundFailed      = "REFUND_FAILED"
 )
 
+// Provider-level status constants returned by provider implementations
+// to the service layer (lowercase, distinct from OrderStatus uppercase constants).
+const (
+	ProviderStatusPending  = "pending"
+	ProviderStatusPaid     = "paid"
+	ProviderStatusSuccess  = "success"
+	ProviderStatusFailed   = "failed"
+	ProviderStatusRefunded = "refunded"
+)
+
+// DefaultLoadBalanceStrategy is the default load-balancing strategy
+// used when no strategy is configured.
+const DefaultLoadBalanceStrategy = "round-robin"
+
+// ConfigKeyPublishableKey is the config map key for Stripe's publishable key.
+const ConfigKeyPublishableKey = "publishableKey"
+
 // GetBasePaymentType extracts the base payment method from a composite key.
 // For example, "alipay_direct" -> "alipay".
 func GetBasePaymentType(t string) string {
 	switch {
-	case t == "easypay":
-		return "easypay"
-	case t == "stripe" || t == "card" || t == "link":
-		return "stripe"
-	case len(t) >= 6 && t[:6] == "alipay":
-		return "alipay"
-	case len(t) >= 5 && t[:5] == "wxpay":
-		return "wxpay"
+	case t == TypeEasyPay:
+		return TypeEasyPay
+	case t == TypeStripe || t == TypeCard || t == TypeLink:
+		return TypeStripe
+	case len(t) >= len(TypeAlipay) && t[:len(TypeAlipay)] == TypeAlipay:
+		return TypeAlipay
+	case len(t) >= len(TypeWxpay) && t[:len(TypeWxpay)] == TypeWxpay:
+		return TypeWxpay
 	default:
 		return t
 	}

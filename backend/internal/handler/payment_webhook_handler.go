@@ -21,6 +21,9 @@ type PaymentWebhookHandler struct {
 // maxWebhookBodySize is the maximum allowed webhook request body size (1 MB).
 const maxWebhookBodySize = 1 << 20
 
+// webhookLogTruncateLen is the maximum length of raw body logged on verify failure.
+const webhookLogTruncateLen = 200
+
 // NewPaymentWebhookHandler creates a new PaymentWebhookHandler.
 func NewPaymentWebhookHandler(paymentService *service.PaymentService, registry *payment.Registry) *PaymentWebhookHandler {
 	return &PaymentWebhookHandler{
@@ -32,25 +35,25 @@ func NewPaymentWebhookHandler(paymentService *service.PaymentService, registry *
 // EasyPayNotify handles EasyPay payment notifications.
 // POST /api/v1/payment/webhook/easypay
 func (h *PaymentWebhookHandler) EasyPayNotify(c *gin.Context) {
-	h.handleNotify(c, "easypay")
+	h.handleNotify(c, payment.TypeEasyPay)
 }
 
 // AlipayNotify handles Alipay payment notifications.
 // POST /api/v1/payment/webhook/alipay
 func (h *PaymentWebhookHandler) AlipayNotify(c *gin.Context) {
-	h.handleNotify(c, "alipay")
+	h.handleNotify(c, payment.TypeAlipay)
 }
 
 // WxpayNotify handles WeChat Pay payment notifications.
 // POST /api/v1/payment/webhook/wxpay
 func (h *PaymentWebhookHandler) WxpayNotify(c *gin.Context) {
-	h.handleNotify(c, "wxpay")
+	h.handleNotify(c, payment.TypeWxpay)
 }
 
 // StripeWebhook handles Stripe webhook events.
 // POST /api/v1/payment/webhook/stripe
 func (h *PaymentWebhookHandler) StripeWebhook(c *gin.Context) {
-	h.handleNotify(c, "stripe")
+	h.handleNotify(c, payment.TypeStripe)
 }
 
 // handleNotify is the shared logic for all provider webhook handlers.
@@ -84,8 +87,8 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 	notification, err := provider.VerifyNotification(c.Request.Context(), rawBody, headers)
 	if err != nil {
 		truncatedBody := rawBody
-		if len(truncatedBody) > 200 {
-			truncatedBody = truncatedBody[:200] + "...(truncated)"
+		if len(truncatedBody) > webhookLogTruncateLen {
+			truncatedBody = truncatedBody[:webhookLogTruncateLen] + "...(truncated)"
 		}
 		slog.Error("[Payment Webhook] verify failed", "provider", providerKey, "error", err, "method", c.Request.Method, "bodyLen", len(rawBody))
 		slog.Debug("[Payment Webhook] verify failed body", "provider", providerKey, "rawBody", truncatedBody)
@@ -111,7 +114,7 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 // successResponse returns the provider-specific success response string.
 func successResponse(providerKey string) string {
 	switch providerKey {
-	case "stripe":
+	case payment.TypeStripe:
 		return ""
 	default:
 		return "success"

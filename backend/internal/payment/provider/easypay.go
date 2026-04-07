@@ -50,7 +50,7 @@ func NewEasyPay(instanceID string, config map[string]string) (*EasyPay, error) {
 }
 
 func (e *EasyPay) Name() string        { return "EasyPay" }
-func (e *EasyPay) ProviderKey() string { return "easypay" }
+func (e *EasyPay) ProviderKey() string { return payment.TypeEasyPay }
 func (e *EasyPay) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.TypeAlipay, payment.TypeWxpay}
 }
@@ -156,9 +156,9 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("easypay parse query: %w", err)
 	}
-	status := "pending"
+	status := payment.ProviderStatusPending
 	if resp.Status == easypayStatusPaid {
-		status = "paid"
+		status = payment.ProviderStatusPaid
 	}
 	return &payment.QueryOrderResponse{TradeNo: tradeNo, Status: status}, nil
 }
@@ -179,9 +179,9 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 	if !easyPayVerifySign(params, e.config["pkey"], sign) {
 		return nil, fmt.Errorf("invalid signature")
 	}
-	status := "failed"
+	status := payment.ProviderStatusFailed
 	if params["trade_status"] == "TRADE_SUCCESS" {
-		status = "success"
+		status = payment.ProviderStatusSuccess
 	}
 	amount, _ := strconv.ParseFloat(params["money"], 64)
 	return &payment.PaymentNotification{
@@ -209,7 +209,7 @@ func (e *EasyPay) Refund(ctx context.Context, req payment.RefundRequest) (*payme
 	if resp.Code != easypayCodeSuccess {
 		return nil, fmt.Errorf("easypay refund failed: %s", resp.Msg)
 	}
-	return &payment.RefundResponse{RefundID: req.TradeNo, Status: "success"}, nil
+	return &payment.RefundResponse{RefundID: req.TradeNo, Status: payment.ProviderStatusSuccess}, nil
 }
 
 func (e *EasyPay) resolveCID(paymentType string) string {

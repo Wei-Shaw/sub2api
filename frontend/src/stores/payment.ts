@@ -34,7 +34,7 @@ export const usePaymentStore = defineStore('payment', () => {
       config.value = response.data
       configLoaded.value = true
       return config.value
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[payment] Failed to fetch config:', error)
       return null
     } finally {
@@ -47,14 +47,14 @@ export const usePaymentStore = defineStore('payment', () => {
     try {
       const response = await paymentAPI.getPlans()
       // Backend returns features as newline-separated string; parse to array
-      plans.value = (response.data || []).map((p: any) => ({
+      plans.value = (response.data || []).map((p: Omit<SubscriptionPlan, 'features'> & { features: string | string[] }) => ({
         ...p,
         features: typeof p.features === 'string'
           ? p.features.split('\n').map((f: string) => f.trim()).filter(Boolean)
           : (p.features || []),
       }))
       return plans.value
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[payment] Failed to fetch plans:', error)
       return []
     }
@@ -75,7 +75,7 @@ export const usePaymentStore = defineStore('payment', () => {
         currentOrder.value = order
       }
       return order
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[payment] Failed to poll order status:', error)
       return null
     }

@@ -283,7 +283,7 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
 
 async function loadPlans() {
   plansLoading.value = true
-  try { await paymentStore.fetchPlans() } catch (err) { console.error('Failed to load plans:', err) }
+  try { await paymentStore.fetchPlans() } catch (err: unknown) { console.error('Failed to load plans:', err) }
   finally { plansLoading.value = false }
 }
 
@@ -297,7 +297,7 @@ onMounted(async () => {
     try {
       const limitsRes = await paymentAPI.getLimits()
       limitsData.value = limitsRes.data
-    } catch (e) { /* limits endpoint may not exist */ }
+    } catch (e: unknown) { /* limits endpoint may not exist */ }
     if (enabledMethods.value.length) {
       const order: readonly string[] = METHOD_ORDER
       const sorted = [...enabledMethods.value].sort((a, b) => {
@@ -311,7 +311,7 @@ onMounted(async () => {
       activeTab.value = 'subscription'
       await loadPlans()
     }
-  } catch (err) { console.error('Failed to load config:', err) }
+  } catch (err: unknown) { console.error('Failed to load config:', err) }
   finally { loading.value = false }
 })
 </script>

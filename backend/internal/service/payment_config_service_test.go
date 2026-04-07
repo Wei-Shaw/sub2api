@@ -2,6 +2,8 @@ package service
 
 import (
 	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
 
 func TestPcParseFloat(t *testing.T) {
@@ -84,8 +86,8 @@ func TestParsePaymentConfig(t *testing.T) {
 		if cfg.MaxPendingOrders != 3 {
 			t.Fatalf("expected MaxPendingOrders=3, got %v", cfg.MaxPendingOrders)
 		}
-		if cfg.LoadBalanceStrategy != "round-robin" {
-			t.Fatalf("expected LoadBalanceStrategy=round-robin, got %q", cfg.LoadBalanceStrategy)
+		if cfg.LoadBalanceStrategy != payment.DefaultLoadBalanceStrategy {
+			t.Fatalf("expected LoadBalanceStrategy=%s, got %q", payment.DefaultLoadBalanceStrategy, cfg.LoadBalanceStrategy)
 		}
 		if len(cfg.EnabledTypes) != 0 {
 			t.Fatalf("expected empty EnabledTypes, got %v", cfg.EnabledTypes)
