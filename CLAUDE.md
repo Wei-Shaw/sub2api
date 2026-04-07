@@ -1016,16 +1016,20 @@ func (s *Service) getLogConfig() (logBody bool, maxBytes int) {
 
 ### 3. 常量管理
 
-#### 避免魔法数字
-所有硬编码的数值都应定义为常量：
+#### 避免魔法值（数字和字符串）
+所有硬编码的数值和业务字符串都应定义为常量，**包括状态值、模式标识、类型标识等字符串**：
 
 ```go
-// ❌ 不推荐
+// ❌ 不推荐：魔法数字
 if retryDelay >= 10*time.Second {
     resetAt := time.Now().Add(30 * time.Second)
 }
 
-// ✅ 推荐
+// ❌ 不推荐：魔法字符串
+if e.config["paymentMode"] == "redirect" { ... }
+if order.Status == "PENDING" { ... }
+
+// ✅ 推荐：使用常量
 const (
     rateLimitThreshold       = 10 * time.Second
     defaultRateLimitDuration = 30 * time.Second
@@ -1034,6 +1038,29 @@ const (
 if retryDelay >= rateLimitThreshold {
     resetAt := time.Now().Add(defaultRateLimitDuration)
 }
+
+// ✅ 推荐：字符串常量
+const (
+    PaymentModeRedirect = "redirect"
+    PaymentModeAPI      = "api"
+)
+
+if e.config["paymentMode"] == PaymentModeRedirect { ... }
+```
+
+```typescript
+// ❌ 不推荐：前端魔法字符串
+if (provider.payment_mode === 'redirect') return '跳转'
+if (provider.payment_mode === 'api') return '二维码'
+
+// ✅ 推荐：使用常量
+export const PAYMENT_MODE_REDIRECT = 'redirect'
+export const PAYMENT_MODE_API = 'api'
+
+if (provider.payment_mode === PAYMENT_MODE_REDIRECT) return t('...')
+```
+
+**规则**：任何在多处使用的字符串值（状态码、模式标识、配置键名等）必须定义为常量。前后端共享的值应在各自的常量文件中保持同步。
 ```
 
 #### 注释引用常量名
