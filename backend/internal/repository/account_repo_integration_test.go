@@ -256,16 +256,19 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 			},
 		},
 		{
-			name: "filter_by_active_excludes_rate_limited",
+			name: "filter_by_status_active_excludes_rate_limited",
 			setup: func(client *dbent.Client) {
-				mustCreateAccount(s.T(), client, &service.Account{Name: "active-ok", Status: service.StatusActive})
-				resetAt := time.Now().Add(30 * time.Minute)
-				mustCreateAccount(s.T(), client, &service.Account{Name: "active-rate-limited", Status: service.StatusActive, RateLimitResetAt: &resetAt})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "active-normal", Status: service.StatusActive})
+				rateLimited := mustCreateAccount(s.T(), client, &service.Account{Name: "active-rate-limited", Status: service.StatusActive})
+				err := client.Account.UpdateOneID(rateLimited.ID).
+					SetRateLimitResetAt(time.Now().Add(10 * time.Minute)).
+					Exec(context.Background())
+				s.Require().NoError(err)
 			},
 			status:    service.StatusActive,
 			wantCount: 1,
 			validate: func(accounts []service.Account) {
-				s.Require().Equal("active-ok", accounts[0].Name)
+				s.Require().Equal("active-normal", accounts[0].Name)
 			},
 		},
 		{

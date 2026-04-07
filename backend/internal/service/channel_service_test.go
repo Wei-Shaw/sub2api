@@ -2159,11 +2159,13 @@ func TestGetChannelModelPricing_AntigravityOwnPricingWorks(t *testing.T) {
 	repo := makeStandardRepo(ch, map[int64]string{10: PlatformAntigravity})
 	svc := newTestChannelService(repo)
 
+	// Claude 模型匹配 antigravity 定价
 	result := svc.GetChannelModelPricing(context.Background(), 10, "claude-sonnet-4")
 	require.NotNil(t, result)
 	require.Equal(t, int64(600), result.ID)
 	require.InDelta(t, 15e-6, *result.InputPrice, 1e-12)
 
+	// Gemini 模型匹配 antigravity 定价
 	result = svc.GetChannelModelPricing(context.Background(), 10, "gemini-2.5-flash")
 	require.NotNil(t, result)
 	require.Equal(t, int64(601), result.ID)

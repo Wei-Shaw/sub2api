@@ -408,12 +408,14 @@ func (r *refreshAPIAccountRepoWithRace) GetByID(_ context.Context, _ int64) (*Ac
 // ========== Race recovery tests ==========
 
 func TestRefreshIfNeeded_InvalidGrantRaceRecovered(t *testing.T) {
+	// Account with old refresh token
 	account := &Account{
 		ID:          10,
 		Platform:    PlatformAnthropic,
 		Type:        AccountTypeOAuth,
 		Credentials: map[string]any{"refresh_token": "old-rt", "access_token": "old-at"},
 	}
+	// After race, DB has new refresh token from another worker
 	racedAccount := &Account{
 		ID:          10,
 		Platform:    PlatformAnthropic,
@@ -442,6 +444,7 @@ func TestRefreshIfNeeded_InvalidGrantRaceRecovered(t *testing.T) {
 }
 
 func TestRefreshIfNeeded_InvalidGrantGenuine(t *testing.T) {
+	// Account with revoked refresh token - DB still has the same token
 	account := &Account{
 		ID:          11,
 		Platform:    PlatformAnthropic,
@@ -450,7 +453,7 @@ func TestRefreshIfNeeded_InvalidGrantGenuine(t *testing.T) {
 	}
 	repo := &refreshAPIAccountRepoWithRace{
 		refreshAPIAccountRepo: refreshAPIAccountRepo{account: account},
-		raceAccount:           account,
+		raceAccount:           account, // same refresh_token on re-read
 	}
 	cache := &refreshAPICacheStub{lockResult: true}
 	executor := &refreshAPIExecutorStub{
@@ -475,7 +478,7 @@ func TestRefreshIfNeeded_InvalidGrantDBRereadFailsOnRecovery(t *testing.T) {
 	}
 	repo := &refreshAPIAccountRepoWithRace{
 		refreshAPIAccountRepo: refreshAPIAccountRepo{account: account},
-		raceAccount:           nil,
+		raceAccount:           nil, // GetByID returns nil on recovery attempt
 	}
 	cache := &refreshAPICacheStub{lockResult: true}
 	executor := &refreshAPIExecutorStub{
@@ -491,6 +494,15 @@ func TestRefreshIfNeeded_InvalidGrantDBRereadFailsOnRecovery(t *testing.T) {
 }
 
 func TestRefreshIfNeeded_LocalMutexSerializesConcurrent(t *testing.T) {
+	// Test that two goroutines for the same account are serialized by the local mutex.
+	// The first goroutine refreshes successfully; the second sees NeedsRefresh=false.
+	refreshed := &Account{
+		ID:          20,
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"refresh_token": "new-rt", "access_token": "new-at"},
+	}
+	callCount := 0
 	repo := &refreshAPIAccountRepo{account: &Account{
 		ID:          20,
 		Platform:    PlatformAnthropic,
@@ -498,7 +510,8 @@ func TestRefreshIfNeeded_LocalMutexSerializesConcurrent(t *testing.T) {
 		Credentials: map[string]any{"refresh_token": "old-rt"},
 	}}
 
-	callCount := 0
+	// After first refresh, NeedsRefresh should return false
+	// We simulate this by using an executor that decrements needsRefresh after first call
 	var mu sync.Mutex
 	dynamicExecutor := &dynamicRefreshExecutor{
 		canRefresh: true,
@@ -517,7 +530,9 @@ func TestRefreshIfNeeded_LocalMutexSerializesConcurrent(t *testing.T) {
 		},
 	}
 
-	api := NewOAuthRefreshAPI(repo, nil)
+	_ = refreshed
+
+	api := NewOAuthRefreshAPI(repo, nil) // no distributed lock, only local mutex
 
 	var wg sync.WaitGroup
 	results := make([]*OAuthRefreshResult, 2)
@@ -534,11 +549,14 @@ func TestRefreshIfNeeded_LocalMutexSerializesConcurrent(t *testing.T) {
 
 	require.NoError(t, errs[0])
 	require.NoError(t, errs[1])
+
+	// Only one goroutine should have actually called Refresh
 	mu.Lock()
 	require.Equal(t, 1, callCount, "only one refresh call should have been made")
 	mu.Unlock()
 }
 
+// dynamicRefreshExecutor is a test helper with function-based NeedsRefresh and Refresh.
 type dynamicRefreshExecutor struct {
 	canRefresh       bool
 	cacheKey         string

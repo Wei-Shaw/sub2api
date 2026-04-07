@@ -267,7 +267,6 @@ const routingScheduleLayerOptions = ref<SelectOption[]>([
   { value: 'session_hash', label: t('admin.usage.routingScheduleLayerSessionHash') },
   { value: 'load_balance', label: t('admin.usage.routingScheduleLayerLoadBalance') }
 ])
-
 const emitChange = () => emit('change')
 
 const debounceUserSearch = () => {

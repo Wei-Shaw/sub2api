@@ -2693,6 +2693,7 @@ func extractGeminiUsage(data []byte) *ClaudeUsage {
 	cached := int(usage.Get("cachedContentTokenCount").Int())
 	thoughts := int(usage.Get("thoughtsTokenCount").Int())
 
+	// 从 candidatesTokensDetails 提取 IMAGE 模态 token 数
 	imageTokens := 0
 	candidateDetails := usage.Get("candidatesTokensDetails")
 	if candidateDetails.Exists() {

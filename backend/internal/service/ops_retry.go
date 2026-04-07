@@ -519,7 +519,7 @@ func (s *OpsService) selectAccountForRetry(ctx context.Context, reqType opsRetry
 		if s.gatewayService == nil {
 			return nil, fmt.Errorf("gateway service not available")
 		}
-		return s.gatewayService.SelectAccountWithLoadAwareness(ctx, groupID, "", model, excludedIDs, "") // 重试不使用会话限制
+		return s.gatewayService.SelectAccountWithLoadAwareness(ctx, groupID, "", model, excludedIDs, "", int64(0)) // 重试不使用会话限制
 	default:
 		return nil, fmt.Errorf("unsupported retry type: %s", reqType)
 	}

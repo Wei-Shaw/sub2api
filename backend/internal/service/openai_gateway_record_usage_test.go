@@ -1417,7 +1417,7 @@ func TestOpenAIGatewayServiceRecordUsage_BillsMappedRequestsUsingRequestedModel(
 	require.Equal(t, expectedCost.ActualCost, userRepo.lastAmount)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_ChannelMappedBillingFallsBackToResultBillingModelWhenNotMapped(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_ChannelMappedDoesNotOverrideBillingModelWhenUnmapped(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
@@ -1435,11 +1435,12 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMappedBillingFallsBackToResultBi
 
 	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
-			RequestID:    "resp_channel_mapped_billing_fallback",
-			BillingModel: "gpt-5.1",
-			Model:        "glm",
-			Usage:        usage,
-			Duration:     time.Second,
+			RequestID:     "resp_channel_unmapped_billing",
+			Model:         "glm",
+			BillingModel:  "gpt-5.1",
+			UpstreamModel: "gpt-5.1",
+			Usage:         usage,
+			Duration:      time.Second,
 		},
 		APIKey:  &APIKey{ID: 10, GroupID: i64p(11), Group: &Group{ID: 11, RateMultiplier: 1.0}},
 		User:    &User{ID: 20},
@@ -1458,7 +1459,7 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMappedBillingFallsBackToResultBi
 	require.Equal(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_ChannelMappedBillingUsesMappedModelWhenMapped(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_ChannelMappedOverridesBillingModelWhenMapped(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
@@ -1466,7 +1467,6 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMappedBillingUsesMappedModelWhen
 	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
 
 	// When channel DID map the model (ChannelMappedModel != OriginalModel),
-	// billing should use the channel-mapped model.
 	expectedCost, err := svc.billingService.CalculateCost("gpt-5.1", UsageTokens{
 		InputTokens:  20,
 		OutputTokens: 10,
@@ -1475,11 +1475,12 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMappedBillingUsesMappedModelWhen
 
 	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
-			RequestID:    "resp_channel_mapped_billing_override",
-			BillingModel: "glm",
-			Model:        "glm",
-			Usage:        usage,
-			Duration:     time.Second,
+			RequestID:     "resp_channel_mapped_billing",
+			Model:         "glm",
+			BillingModel:  "gpt-5.1-codex",
+			UpstreamModel: "gpt-5.1-codex",
+			Usage:         usage,
+			Duration:      time.Second,
 		},
 		APIKey:  &APIKey{ID: 10, GroupID: i64p(11), Group: &Group{ID: 11, RateMultiplier: 1.0}},
 		User:    &User{ID: 20},

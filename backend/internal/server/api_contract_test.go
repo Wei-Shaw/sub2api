@@ -200,12 +200,11 @@ func TestAPIContracts(t *testing.T) {
 						"subscription_type": "standard",
 						"daily_limit_usd": null,
 						"weekly_limit_usd": null,
-					"monthly_limit_usd": null,
-					"image_price_1k": null,
-					"image_price_2k": null,
-					"image_price_4k": null,
-					"claude_code_only": false,
-					"allow_messages_dispatch": false,
+						"monthly_limit_usd": null,
+						"image_price_1k": null,
+						"image_price_2k": null,
+						"image_price_4k": null,
+						"claude_code_only": false,
 						"fallback_group_id": null,
 						"fallback_group_id_on_invalid_request": null,
 						"allow_messages_dispatch": false,
@@ -402,26 +401,29 @@ func TestAPIContracts(t *testing.T) {
 							"user_id": 1,
 							"api_key_id": 100,
 							"account_id": 200,
-								"request_id": "req_123",
-								"model": "claude-3",
-								"request_type": "stream",
-								"openai_ws_mode": false,
-								"group_id": null,
-								"subscription_id": null,
+							"request_id": "req_123",
+							"model": "claude-3",
+							"request_type": "stream",
+							"openai_ws_mode": false,
+							"group_id": null,
+							"subscription_id": null,
 							"input_tokens": 10,
 							"output_tokens": 20,
 							"cache_creation_tokens": 1,
 							"cache_read_tokens": 2,
 							"cache_creation_5m_tokens": 0,
 							"cache_creation_1h_tokens": 0,
+							"image_output_tokens": 0,
 							"input_cost": 0,
 							"output_cost": 0,
+							"image_output_cost": 0,
 							"cache_creation_cost": 0,
 							"cache_read_cost": 0,
-						"total_cost": 0.5,
-						"actual_cost": 0.5,
-						"rate_multiplier": 1,
-						"billing_type": 0,
+							"total_cost": 0.5,
+							"actual_cost": 0.5,
+							"rate_multiplier": 1,
+							"account_rate_multiplier": 0.5,
+							"billing_type": 0,
 							"stream": true,
 							"duration_ms": 100,
 							"first_token_ms": 50,
@@ -648,11 +650,11 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingService := service.NewSettingService(settingRepo, cfg)
 	openCodeMetadataService := service.NewOpenCodeMetadataService()
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, nil, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, openCodeMetadataService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
-	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil)
+	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil)
 	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {

@@ -55,19 +55,23 @@ func (UsageLog) Fields() []ent.Field {
 			Nillable(),
 		field.Int64("channel_id").
 			Optional().
-			Nillable(),
+			Nillable().
+			Comment("渠道 ID"),
 		field.String("model_mapping_chain").
 			MaxLen(500).
 			Optional().
-			Nillable(),
+			Nillable().
+			Comment("模型映射链"),
 		field.String("billing_tier").
 			MaxLen(50).
 			Optional().
-			Nillable(),
+			Nillable().
+			Comment("计费层级标签"),
 		field.String("billing_mode").
 			MaxLen(20).
 			Optional().
-			Nillable(),
+			Nillable().
+			Comment("计费模式：token/per_request/image"),
 		field.String("routing_target_group").
 			MaxLen(32).
 			Optional().
@@ -205,7 +209,6 @@ func (UsageLog) Fields() []ent.Field {
 			MaxLen(16).
 			Optional().
 			Nillable(),
-
 		// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 		field.Bool("cache_ttl_overridden").
 			Default(false),

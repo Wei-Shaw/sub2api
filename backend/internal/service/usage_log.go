@@ -104,13 +104,13 @@ type UsageLog struct {
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Nil means no mapping was applied (requested model was used as-is).
 	UpstreamModel *string
-	// ChannelID 渠道 ID。
+	// ChannelID 渠道 ID
 	ChannelID *int64
-	// ModelMappingChain 模型映射链，如 a->b->c。
+	// ModelMappingChain 模型映射链，如 "a→b→c"
 	ModelMappingChain *string
-	// BillingTier 计费层级标签。
+	// BillingTier 计费层级标签（per_request/image 模式）
 	BillingTier *string
-	// BillingMode 计费模式：token / image 等。
+	// BillingMode 计费模式：token/image
 	BillingMode *string
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string

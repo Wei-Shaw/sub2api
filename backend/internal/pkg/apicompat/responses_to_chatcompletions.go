@@ -374,14 +374,18 @@ func generateChatCmplID() string {
 	return "chatcmpl-" + hex.EncodeToString(b)
 }
 
+// ---------------------------------------------------------------------------
+// BufferedResponseAccumulator: accumulates SSE delta events for non-streaming
+// paths where the terminal event may have empty output.
+// ---------------------------------------------------------------------------
 type bufferedFuncCall struct {
 	CallID string
 	Name   string
 	Args   strings.Builder
 }
 
-// BufferedResponseAccumulator accumulates enough information from a Responses
-// SSE stream to reconstruct a non-empty response.output when the terminal event
+// BufferedResponseAccumulator collects content from Responses SSE delta events
+// so that non-streaming handlers can reconstruct output when the terminal event
 // (response.completed / response.done) carries an empty output array.
 type BufferedResponseAccumulator struct {
 	text                 strings.Builder
@@ -435,7 +439,7 @@ func (a *BufferedResponseAccumulator) HasContent() bool {
 
 // BuildOutput constructs a []ResponsesOutput from the accumulated delta
 // content. The order matches what ResponsesToChatCompletions expects:
-// reasoning -> message -> function_calls.
+// reasoning → message → function_calls.
 func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 	var out []ResponsesOutput
 
@@ -474,7 +478,7 @@ func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 
 // SupplementResponseOutput fills resp.Output from accumulated delta content
 // when the terminal event delivered an empty output array. If resp.Output is
-// already populated, this is a no-op.
+// already populated, this is a no-op (preserves backward compatibility).
 func (a *BufferedResponseAccumulator) SupplementResponseOutput(resp *ResponsesResponse) {
 	if resp == nil || len(resp.Output) > 0 {
 		return

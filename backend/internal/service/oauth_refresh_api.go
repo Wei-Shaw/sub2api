@@ -38,8 +38,9 @@ type OAuthRefreshAPI struct {
 	localLocks  sync.Map // key: cacheKey string -> value: *sync.Mutex
 }
 
+// 可选传入 lockTTL 覆盖默认的 60s 分布式锁 TTL
 // NewOAuthRefreshAPI 创建统一刷新 API
-	// 可选传入 lockTTL 覆盖默认的 60s 分布式锁 TTL
+// 可选传入 lockTTL 覆盖默认的 60s 分布式锁 TTL
 func NewOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCache, lockTTL ...time.Duration) *OAuthRefreshAPI {
 	ttl := defaultRefreshLockTTL
 	if len(lockTTL) > 0 && lockTTL[0] > 0 {

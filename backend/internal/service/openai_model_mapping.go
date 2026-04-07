@@ -2,9 +2,9 @@ package service
 
 import "strings"
 
-// resolveOpenAIForwardModel resolves the account/group mapping result for
-// OpenAI-compatible forwarding. Group-level default mapping only applies when
-// the account itself did not match any explicit model_mapping rule.
+// resolveOpenAIForwardModel determines the upstream model for OpenAI-compatible
+// forwarding. Group-level default mapping only applies when the account itself
+// did not match any explicit model_mapping rule.
 func resolveOpenAIForwardModel(account *Account, requestedModel, defaultMappedModel string) string {
 	if account == nil {
 		if defaultMappedModel != "" {
@@ -19,7 +19,6 @@ func resolveOpenAIForwardModel(account *Account, requestedModel, defaultMappedMo
 	}
 	return mappedModel
 }
-
 func resolveOpenAIUpstreamModel(model string) string {
 	if isBareGPT53CodexSparkModel(model) {
 		return "gpt-5.3-codex-spark"

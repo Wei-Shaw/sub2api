@@ -468,17 +468,16 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 	}
 	if status != "" {
 		switch status {
-		case "rate_limited":
-			q = q.Where(dbaccount.RateLimitResetAtGT(time.Now()))
 		case service.StatusActive:
-			now := time.Now()
 			q = q.Where(
-				dbaccount.StatusEQ(service.StatusActive),
+				dbaccount.StatusEQ(status),
 				dbaccount.Or(
 					dbaccount.RateLimitResetAtIsNil(),
-					dbaccount.RateLimitResetAtLTE(now),
+					dbaccount.RateLimitResetAtLTE(time.Now()),
 				),
 			)
+		case "rate_limited":
+			q = q.Where(dbaccount.RateLimitResetAtGT(time.Now()))
 		case "temp_unschedulable":
 			q = q.Where(dbpredicate.Account(func(s *entsql.Selector) {
 				col := s.C("temp_unschedulable_until")
