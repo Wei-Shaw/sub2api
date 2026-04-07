@@ -41,16 +41,12 @@ func GetBasePaymentType(t string) string {
 	switch {
 	case t == "easypay":
 		return "easypay"
-	case t == "card":
-		return "card"
-	case t == "link":
-		return "link"
+	case t == "stripe" || t == "card" || t == "link":
+		return "stripe"
 	case len(t) >= 6 && t[:6] == "alipay":
 		return "alipay"
 	case len(t) >= 5 && t[:5] == "wxpay":
 		return "wxpay"
-	case len(t) >= 6 && t[:6] == "stripe":
-		return "stripe"
 	default:
 		return t
 	}
@@ -58,14 +54,15 @@ func GetBasePaymentType(t string) string {
 
 // CreatePaymentRequest holds the parameters for creating a new payment.
 type CreatePaymentRequest struct {
-	OrderID     string // Internal order ID
-	Amount      string // Pay amount in CNY (formatted to 2 decimal places)
-	PaymentType string // e.g. "alipay", "wxpay"
-	Subject     string // Product description
-	NotifyURL   string // Webhook callback URL
-	ReturnURL   string // Browser redirect URL after payment
-	ClientIP    string // Payer's IP address
-	IsMobile    bool   // Whether the request comes from a mobile device
+	OrderID            string // Internal order ID
+	Amount             string // Pay amount in CNY (formatted to 2 decimal places)
+	PaymentType        string // e.g. "alipay", "wxpay", "stripe"
+	Subject            string // Product description
+	NotifyURL          string // Webhook callback URL
+	ReturnURL          string // Browser redirect URL after payment
+	ClientIP           string // Payer's IP address
+	IsMobile           bool   // Whether the request comes from a mobile device
+	InstanceSubMethods string // Comma-separated sub-methods from instance supported_types (for Stripe)
 }
 
 // CreatePaymentResponse is returned after successfully initiating a payment.
@@ -109,8 +106,9 @@ type RefundResponse struct {
 
 // InstanceSelection holds the selected provider instance and its decrypted config.
 type InstanceSelection struct {
-	InstanceID string
-	Config     map[string]string
+	InstanceID     string
+	Config         map[string]string
+	SupportedTypes string // Comma-separated list of supported payment types from the instance
 }
 
 // Provider defines the interface that all payment providers must implement.

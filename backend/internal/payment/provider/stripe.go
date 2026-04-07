@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -59,7 +60,7 @@ func (s *Stripe) GetPublishableKey() string {
 func (s *Stripe) Name() string        { return "Stripe" }
 func (s *Stripe) ProviderKey() string { return "stripe" }
 func (s *Stripe) SupportedTypes() []payment.PaymentType {
-	return []payment.PaymentType{payment.TypeCard, payment.TypeAlipay, payment.TypeWxpay, payment.TypeLink}
+	return []payment.PaymentType{payment.TypeStripe}
 }
 
 // centsToYuan converts an amount in cents (int64) to yuan (float64).
@@ -93,10 +94,8 @@ func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 		return nil, fmt.Errorf("stripe create payment: %w", err)
 	}
 
-	methods, ok := stripePaymentMethodTypes[req.PaymentType]
-	if !ok {
-		methods = []string{"card"}
-	}
+	// Collect all Stripe payment_method_types from the instance's configured sub-methods
+	methods := resolveStripeMethodTypes(req.InstanceSubMethods)
 
 	pmTypes := make([]*string, len(methods))
 	for i, m := range methods {
@@ -112,7 +111,7 @@ func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 	}
 
 	// WeChat Pay requires payment_method_options with client type
-	if req.PaymentType == payment.TypeWxpay {
+	if hasStripeMethod(methods, "wechat_pay") {
 		params.PaymentMethodOptions = &stripe.PaymentIntentCreatePaymentMethodOptionsParams{
 			WeChatPay: &stripe.PaymentIntentCreatePaymentMethodOptionsWeChatPayParams{
 				Client: stripe.String("web"),
@@ -231,6 +230,35 @@ func (s *Stripe) Refund(ctx context.Context, req payment.RefundRequest) (*paymen
 		RefundID: r.ID,
 		Status:   refundStatus,
 	}, nil
+}
+
+// resolveStripeMethodTypes converts instance supported_types (comma-separated)
+// into Stripe API payment_method_types. Falls back to ["card"] if empty.
+func resolveStripeMethodTypes(instanceSubMethods string) []string {
+	if instanceSubMethods == "" {
+		return []string{"card"}
+	}
+	var methods []string
+	for _, t := range strings.Split(instanceSubMethods, ",") {
+		t = strings.TrimSpace(t)
+		if mapped, ok := stripePaymentMethodTypes[t]; ok {
+			methods = append(methods, mapped...)
+		}
+	}
+	if len(methods) == 0 {
+		return []string{"card"}
+	}
+	return methods
+}
+
+// hasStripeMethod checks if the given Stripe method list contains the target method.
+func hasStripeMethod(methods []string, target string) bool {
+	for _, m := range methods {
+		if m == target {
+			return true
+		}
+	}
+	return false
 }
 
 // CancelPayment cancels a pending PaymentIntent.

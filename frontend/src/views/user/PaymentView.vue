@@ -233,7 +233,7 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
     if (result.clientSecret) {
       router.push({ path: '/payment/stripe', query: { order_id: String(result.orderId), client_secret: result.clientSecret } })
     } else if (result.qrCode) {
-      router.push({ path: '/payment/qrcode', query: { order_id: String(result.orderId), qr: result.qrCode || '', pay_url: result.payUrl || '' } })
+      router.push({ path: '/payment/qrcode', query: { order_id: String(result.orderId), qr: result.qrCode || '', pay_url: result.payUrl || '', expires_at: result.expiresAt || '' } })
     } else if (result.payUrl) {
       window.location.href = result.payUrl
     } else {

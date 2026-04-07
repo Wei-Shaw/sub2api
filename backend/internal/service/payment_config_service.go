@@ -627,9 +627,13 @@ func (s *PaymentConfigService) GetPlan(ctx context.Context, id int64) (*dbent.Su
 	return plan, nil
 }
 
+// stripeSubTypes are types that should be aggregated under "stripe" for user-facing display.
+var stripeSubTypes = map[string]bool{"card": true, "link": true}
+
 // GetAvailableMethodLimits collects all payment types from enabled provider
 // instances and returns limits for each. This is used by the user-facing payment
 // page to discover which payment methods are actually available.
+// Stripe sub-types (card, link) are aggregated under "stripe".
 func (s *PaymentConfigService) GetAvailableMethodLimits(ctx context.Context) ([]MethodLimits, error) {
 	instances, err := s.entClient.PaymentProviderInstance.Query().
 		Where(paymentproviderinstance.EnabledEQ(true)).All(ctx)
@@ -640,7 +644,12 @@ func (s *PaymentConfigService) GetAvailableMethodLimits(ctx context.Context) ([]
 	typeSet := make(map[string]bool)
 	for _, inst := range instances {
 		for _, t := range splitTypes(inst.SupportedTypes) {
-			typeSet[t] = true
+			// Stripe sub-types (card, link) are represented as "stripe" to users
+			if stripeSubTypes[t] || t == "stripe" {
+				typeSet["stripe"] = true
+			} else {
+				typeSet[t] = true
+			}
 		}
 	}
 	result := make([]MethodLimits, 0, len(typeSet))
@@ -648,6 +657,10 @@ func (s *PaymentConfigService) GetAvailableMethodLimits(ctx context.Context) ([]
 		ml := MethodLimits{PaymentType: pt}
 		for _, inst := range instances {
 			if !payment.InstanceSupportsType(inst.SupportedTypes, pt) {
+				// For "stripe", check if instance supports any stripe sub-type
+				if pt == "stripe" && inst.ProviderKey == "stripe" {
+					pcApplyInstanceLimits(inst, pt, &ml)
+				}
 				continue
 			}
 			pcApplyInstanceLimits(inst, pt, &ml)

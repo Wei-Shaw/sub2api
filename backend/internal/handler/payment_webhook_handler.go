@@ -55,11 +55,18 @@ func (h *PaymentWebhookHandler) StripeWebhook(c *gin.Context) {
 
 // handleNotify is the shared logic for all provider webhook handlers.
 func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string) {
-	body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxWebhookBodySize))
-	if err != nil {
-		slog.Error("[Payment Webhook] failed to read body", "provider", providerKey, "error", err)
-		c.String(http.StatusBadRequest, "failed to read body")
-		return
+	var rawBody string
+	if c.Request.Method == http.MethodGet {
+		// GET callbacks (e.g. EasyPay) pass params as URL query string
+		rawBody = c.Request.URL.RawQuery
+	} else {
+		body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxWebhookBodySize))
+		if err != nil {
+			slog.Error("[Payment Webhook] failed to read body", "provider", providerKey, "error", err)
+			c.String(http.StatusBadRequest, "failed to read body")
+			return
+		}
+		rawBody = string(body)
 	}
 
 	provider, err := h.registry.GetProviderByKey(providerKey)
@@ -74,7 +81,7 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 		headers[strings.ToLower(k)] = c.GetHeader(k)
 	}
 
-	notification, err := provider.VerifyNotification(c.Request.Context(), string(body), headers)
+	notification, err := provider.VerifyNotification(c.Request.Context(), rawBody, headers)
 	if err != nil {
 		slog.Error("[Payment Webhook] verify failed", "provider", providerKey, "error", err)
 		c.String(http.StatusBadRequest, "verify failed")

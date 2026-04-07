@@ -82,8 +82,9 @@ func (lb *DefaultLoadBalancer) SelectInstance(ctx context.Context, providerKey s
 	}
 
 	return &InstanceSelection{
-		InstanceID: fmt.Sprintf("%d", selected.ID),
-		Config:     config,
+		InstanceID:     fmt.Sprintf("%d", selected.ID),
+		Config:         config,
+		SupportedTypes: selected.SupportedTypes,
 	}, nil
 }
 

@@ -336,7 +336,7 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 		return nil, infraerrors.TooManyRequests("NO_AVAILABLE_INSTANCE", "no available payment instance")
 	}
 	subject := s.buildPaymentSubject(plan, payAmountStr, cfg)
-	pr, err := provider.CreatePayment(ctx, payment.CreatePaymentRequest{OrderID: formatOrderID(order.ID), Amount: payAmountStr, PaymentType: req.PaymentType, Subject: subject, ClientIP: req.ClientIP, IsMobile: req.IsMobile})
+	pr, err := provider.CreatePayment(ctx, payment.CreatePaymentRequest{OrderID: formatOrderID(order.ID), Amount: payAmountStr, PaymentType: req.PaymentType, Subject: subject, ClientIP: req.ClientIP, IsMobile: req.IsMobile, InstanceSubMethods: sel.SupportedTypes})
 	if err != nil {
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", "payment method is temporarily unavailable")
 	}
