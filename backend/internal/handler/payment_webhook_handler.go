@@ -83,7 +83,12 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 
 	notification, err := provider.VerifyNotification(c.Request.Context(), rawBody, headers)
 	if err != nil {
-		slog.Error("[Payment Webhook] verify failed", "provider", providerKey, "error", err, "method", c.Request.Method, "rawBody", rawBody)
+		truncatedBody := rawBody
+		if len(truncatedBody) > 200 {
+			truncatedBody = truncatedBody[:200] + "...(truncated)"
+		}
+		slog.Error("[Payment Webhook] verify failed", "provider", providerKey, "error", err, "method", c.Request.Method, "bodyLen", len(rawBody))
+		slog.Debug("[Payment Webhook] verify failed body", "provider", providerKey, "rawBody", truncatedBody)
 		c.String(http.StatusBadRequest, "verify failed")
 		return
 	}

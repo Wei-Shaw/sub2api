@@ -120,14 +120,14 @@ onMounted(async () => {
 
   // Fallback: EasyPay return URL with out_trade_no
   if (!orderId && route.query.out_trade_no) {
-    const outTradeNo = route.query.out_trade_no as string
+    const outTradeNo = String(route.query.out_trade_no || '')
     orderId = parseOutTradeNo(outTradeNo)
     // Store return info for display when order lookup fails
     returnInfo.value = {
       outTradeNo,
-      money: (route.query.money as string) || '',
-      type: (route.query.type as string) || '',
-      tradeStatus: (route.query.trade_status as string) || '',
+      money: String(route.query.money || ''),
+      type: String(route.query.type || ''),
+      tradeStatus: String(route.query.trade_status || ''),
     }
   }
 

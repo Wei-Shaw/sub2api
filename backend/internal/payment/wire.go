@@ -2,6 +2,7 @@ package payment
 
 import (
 	"encoding/hex"
+	"log/slog"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -14,7 +15,18 @@ type EncryptionKey []byte
 
 // ProvideEncryptionKey derives the payment encryption key from the TOTP encryption key in config.
 func ProvideEncryptionKey(cfg *config.Config) EncryptionKey {
-	key, _ := hex.DecodeString(cfg.Totp.EncryptionKey)
+	if cfg.Totp.EncryptionKey == "" {
+		return nil
+	}
+	key, err := hex.DecodeString(cfg.Totp.EncryptionKey)
+	if err != nil {
+		slog.Error("invalid payment encryption key", "error", err)
+		return nil
+	}
+	if len(key) != 32 {
+		slog.Error("payment encryption key must be 32 bytes", "got", len(key))
+		return nil
+	}
 	return EncryptionKey(key)
 }
 

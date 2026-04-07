@@ -147,7 +147,7 @@ type TopUserStat struct {
 
 type PaymentService struct {
 	providerMu      sync.Mutex
-	providerOnce    sync.Once
+	providersLoaded bool
 	entClient       *dbent.Client
 	registry        *payment.Registry
 	loadBalancer    payment.LoadBalancer
@@ -200,7 +200,9 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	}
 	resp, err := s.invokeProvider(ctx, order, req, cfg, payAmountStr, payAmount, plan)
 	if err != nil {
-		_ = s.entClient.PaymentOrder.DeleteOneID(order.ID).Exec(ctx)
+		_, _ = s.entClient.PaymentOrder.UpdateOneID(order.ID).
+			SetStatus(OrderStatusFailed).
+			Save(ctx)
 		return nil, err
 	}
 	return resp, nil
@@ -566,14 +568,39 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 }
 
 func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, tradeNo string, paid float64, pk string) error {
+	previousStatus := o.Status
 	now := time.Now()
 	grace := now.Add(-paymentGraceMinutes * time.Minute)
-	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(o.ID), paymentorder.Or(paymentorder.StatusEQ(OrderStatusPending), paymentorder.And(paymentorder.StatusEQ(OrderStatusExpired), paymentorder.UpdatedAtGTE(grace)))).SetStatus(OrderStatusPaid).SetPayAmount(paid).SetPaymentTradeNo(tradeNo).SetPaidAt(now).ClearFailedAt().ClearFailedReason().Save(ctx)
+	c, err := s.entClient.PaymentOrder.Update().Where(
+		paymentorder.IDEQ(o.ID),
+		paymentorder.Or(
+			paymentorder.StatusEQ(OrderStatusPending),
+			paymentorder.StatusEQ(OrderStatusCancelled),
+			paymentorder.And(
+				paymentorder.StatusEQ(OrderStatusExpired),
+				paymentorder.UpdatedAtGTE(grace),
+			),
+		),
+	).SetStatus(OrderStatusPaid).SetPayAmount(paid).SetPaymentTradeNo(tradeNo).SetPaidAt(now).ClearFailedAt().ClearFailedReason().Save(ctx)
 	if err != nil {
 		return fmt.Errorf("update to PAID: %w", err)
 	}
 	if c == 0 {
 		return s.alreadyProcessed(ctx, o)
+	}
+	if previousStatus == OrderStatusCancelled || previousStatus == OrderStatusExpired {
+		slog.Info("order recovered from webhook payment success",
+			"orderID", o.ID,
+			"previousStatus", previousStatus,
+			"tradeNo", tradeNo,
+			"provider", pk,
+		)
+		s.writeAuditLog(ctx, o.ID, "ORDER_RECOVERED", pk, map[string]any{
+			"previous_status": previousStatus,
+			"tradeNo":         tradeNo,
+			"paidAmount":      paid,
+			"reason":          "webhook payment success received after order " + previousStatus,
+		})
 	}
 	s.writeAuditLog(ctx, o.ID, "ORDER_PAID", pk, map[string]any{"tradeNo": tradeNo, "paidAmount": paid})
 	return s.executeFulfillment(ctx, o.ID)
@@ -591,6 +618,18 @@ func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentO
 		return s.executeFulfillment(ctx, o.ID)
 	case OrderStatusPaid, OrderStatusRecharging:
 		return fmt.Errorf("order %d is being processed", o.ID)
+	case OrderStatusExpired:
+		slog.Warn("webhook payment success for expired order beyond grace period",
+			"orderID", o.ID,
+			"status", cur.Status,
+			"updatedAt", cur.UpdatedAt,
+		)
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_AFTER_EXPIRY", "system", map[string]any{
+			"status":    cur.Status,
+			"updatedAt": cur.UpdatedAt,
+			"reason":    "payment arrived after expiry grace period",
+		})
+		return nil
 	default:
 		return nil
 	}
@@ -1174,9 +1213,12 @@ func (s *PaymentService) AdminListOrders(ctx context.Context, userID int64, p Or
 // It queries all enabled PaymentProviderInstance records, decrypts their config,
 // creates providers via provider.CreateProvider, and registers them.
 func (s *PaymentService) EnsureProviders(ctx context.Context) {
-	s.providerOnce.Do(func() {
+	s.providerMu.Lock()
+	defer s.providerMu.Unlock()
+	if !s.providersLoaded {
 		s.loadProviders(ctx)
-	})
+		s.providersLoaded = true
+	}
 }
 
 // RefreshProviders clears and re-registers all providers from the database.
@@ -1186,8 +1228,7 @@ func (s *PaymentService) RefreshProviders(ctx context.Context) {
 	defer s.providerMu.Unlock()
 	s.registry.Clear()
 	s.loadProviders(ctx)
-	s.providerOnce = sync.Once{} // reset so next EnsureProviders is a no-op until next Refresh
-	s.providerOnce.Do(func() {}) // mark as done since we just loaded
+	s.providersLoaded = true
 }
 
 func (s *PaymentService) loadProviders(ctx context.Context) {

@@ -21,9 +21,10 @@ import (
 
 // EasyPay constants.
 const (
-	easypayCodeSuccess = 1
-	easypayStatusPaid  = 1
-	easypayHTTPTimeout = 10 * time.Second
+	easypayCodeSuccess     = 1
+	easypayStatusPaid      = 1
+	easypayHTTPTimeout     = 10 * time.Second
+	maxEasypayResponseSize = 1 << 20 // 1MB
 )
 
 // EasyPay implements payment.Provider for the EasyPay aggregation platform.
@@ -169,7 +170,7 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 	}
 	params := make(map[string]string)
 	for k := range values {
-		params[k] = fullyDecodeURL(values.Get(k))
+		params[k] = decodeURLValue(values.Get(k))
 	}
 	sign := params["sign"]
 	if sign == "" {
@@ -239,7 +240,7 @@ func (e *EasyPay) post(ctx context.Context, endpoint string, params map[string]s
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	return io.ReadAll(resp.Body)
+	return io.ReadAll(io.LimitReader(resp.Body, maxEasypayResponseSize))
 }
 
 func easyPaySign(params map[string]string, pkey string) string {
@@ -267,14 +268,11 @@ func easyPayVerifySign(params map[string]string, pkey string, sign string) bool 
 	return hmac.Equal([]byte(easyPaySign(params, pkey)), []byte(sign))
 }
 
-// fullyDecodeURL repeatedly URL-decodes a string until stable.
-// Handles double (or multi) encoding caused by upstream proxies.
-func fullyDecodeURL(s string) string {
-	for {
-		decoded, err := url.QueryUnescape(s)
-		if err != nil || decoded == s {
-			return s
-		}
-		s = decoded
+// decodeURLValue URL-decodes a string once.
+func decodeURLValue(s string) string {
+	decoded, err := url.QueryUnescape(s)
+	if err != nil {
+		return s
 	}
+	return decoded
 }

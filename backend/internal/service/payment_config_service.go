@@ -343,6 +343,7 @@ type ProviderInstanceResponse struct {
 	Enabled        bool              `json:"enabled"`
 	RefundEnabled  bool              `json:"refund_enabled"`
 	SortOrder      int               `json:"sort_order"`
+	PaymentMode    string            `json:"payment_mode"`
 }
 
 // ListProviderInstancesWithConfig returns provider instances with decrypted
@@ -359,6 +360,7 @@ func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Conte
 			ID: int64(inst.ID), ProviderKey: inst.ProviderKey, Name: inst.Name,
 			SupportedTypes: splitTypes(inst.SupportedTypes), Limits: inst.Limits,
 			Enabled: inst.Enabled, RefundEnabled: inst.RefundEnabled, SortOrder: inst.SortOrder,
+			PaymentMode: inst.PaymentMode,
 		}
 		resp.Config = s.decryptAndMaskConfig(inst.Config)
 		result = append(result, resp)

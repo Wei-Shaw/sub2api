@@ -50,6 +50,7 @@ import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { PaymentOrder } from '@/types/payment'
+import type { Stripe, StripeElements } from '@stripe/stripe-js'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -66,17 +67,17 @@ const stripeSuccess = ref(false)
 const stripeReady = ref(false)
 const order = ref<PaymentOrder | null>(null)
 
-let stripeInstance: any = null
+let stripeInstance: Stripe | null = null
 let redirectTimer: ReturnType<typeof setTimeout> | null = null
-let elementsInstance: any = null
+let elementsInstance: StripeElements | null = null
 
 onMounted(async () => {
   const orderId = Number(route.query.order_id)
-  const clientSecret = route.query.client_secret as string
+  const clientSecret = String(route.query.client_secret || '')
 
   if (!orderId || !clientSecret) {
     loading.value = false
-    initError.value = 'Missing order ID or client secret'
+    initError.value = t('payment.stripeMissingParams')
     return
   }
 
@@ -86,7 +87,7 @@ onMounted(async () => {
 
     await paymentStore.fetchConfig()
     const publishableKey = paymentStore.config?.stripe_publishable_key
-    if (!publishableKey) { initError.value = 'Stripe is not configured'; return }
+    if (!publishableKey) { initError.value = t('payment.stripeNotConfigured'); return }
 
     const { loadStripe } = await import('@stripe/stripe-js')
     const stripe = await loadStripe(publishableKey)
@@ -107,7 +108,7 @@ onMounted(async () => {
     } as Record<string, unknown>)
     paymentElement.mount('#stripe-payment-element')
     paymentElement.on('ready', () => { stripeReady.value = true })
-  } catch (err: any) {
+  } catch (err: unknown) {
     initError.value = extractApiErrorMessage(err, t('payment.stripeLoadFailed'))
   } finally {
     loading.value = false
@@ -135,10 +136,10 @@ async function handlePay() {
     } else {
       stripeSuccess.value = true
       redirectTimer = setTimeout(() => {
-        router.push({ path: '/payment/result', query: { order_id: route.query.order_id as string, status: 'success' } })
+        router.push({ path: '/payment/result', query: { order_id: String(route.query.order_id || ''), status: 'success' } })
       }, 2000)
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     stripeError.value = extractApiErrorMessage(err, t('payment.result.failed'))
   } finally {
     stripeSubmitting.value = false

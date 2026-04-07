@@ -231,6 +231,8 @@ import {
   PROVIDER_SUPPORTED_TYPES,
   PROVIDER_CALLBACK_PATHS,
   WEBHOOK_PATHS,
+  PAYMENT_MODE_REDIRECT,
+  PAYMENT_MODE_API,
   getAvailableTypes,
   extractBaseUrl,
 } from './providerConfig'
@@ -267,7 +269,7 @@ const form = reactive({
   provider_key: 'easypay',
   supported_types: [] as string[],
   enabled: true,
-  payment_mode: 'api',
+  payment_mode: PAYMENT_MODE_API,
   refund_enabled: false,
 })
 const config = reactive<Record<string, string>>({})
@@ -287,8 +289,8 @@ const stripeWebhookUrl = computed(() =>
 const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] || null)
 
 const paymentModeOptions = computed(() => [
-  { value: 'redirect', label: t('admin.settings.payment.modeRedirect') },
-  { value: 'api', label: t('admin.settings.payment.modeQRCode') },
+  { value: PAYMENT_MODE_REDIRECT, label: t('admin.settings.payment.modeRedirect') },
+  { value: PAYMENT_MODE_API, label: t('admin.settings.payment.modeQRCode') },
 ])
 
 const availableTypes = computed(() => {
@@ -454,7 +456,7 @@ function reset(defaultKey: string) {
   form.provider_key = defaultKey
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[defaultKey] || [])]
   form.enabled = true
-  form.payment_mode = defaultKey === 'easypay' ? 'api' : ''
+  form.payment_mode = defaultKey === 'easypay' ? PAYMENT_MODE_API : ''
   form.refund_enabled = false
   clearConfig()
   applyDefaults()
@@ -465,7 +467,7 @@ function loadProvider(provider: ProviderInstance) {
   form.provider_key = provider.provider_key
   form.supported_types = provider.supported_types
   form.enabled = provider.enabled
-  form.payment_mode = provider.payment_mode || 'api'
+  form.payment_mode = provider.payment_mode || PAYMENT_MODE_API
   form.refund_enabled = provider.refund_enabled
   clearConfig()
   // Pre-fill config from API response (non-sensitive in cleartext, sensitive masked as ••••••••)

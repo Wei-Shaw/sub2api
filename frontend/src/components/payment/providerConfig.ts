@@ -36,6 +36,13 @@ export const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
 /** Available payment modes for EasyPay providers. */
 export const EASYPAY_PAYMENT_MODES = ['redirect', 'api'] as const
 
+/** Fixed display order for user-facing payment methods */
+export const METHOD_ORDER = ['alipay', 'wxpay', 'stripe'] as const
+
+/** Payment mode constants */
+export const PAYMENT_MODE_REDIRECT = 'redirect'
+export const PAYMENT_MODE_API = 'api'
+
 /** Webhook paths for each provider (relative to origin). */
 export const WEBHOOK_PATHS: Record<string, string> = {
   easypay: '/api/v1/payment/webhook/easypay',

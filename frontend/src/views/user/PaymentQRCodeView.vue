@@ -182,12 +182,12 @@ watch(qrUrl, () => renderQR())
 
 onMounted(() => {
   orderId.value = Number(route.query.order_id) || 0
-  qrUrl.value = (route.query.qr as string) || ''
-  payUrl.value = (route.query.pay_url as string) || ''
-  paymentType.value = (route.query.payment_type as string) || ''
+  qrUrl.value = String(route.query.qr || '')
+  payUrl.value = String(route.query.pay_url || '')
+  paymentType.value = String(route.query.payment_type || '')
 
   // Calculate countdown from expiresAt
-  const expiresAtStr = route.query.expires_at as string
+  const expiresAtStr = String(route.query.expires_at || '')
   let seconds = 30 * 60 // fallback: 30 minutes
   if (expiresAtStr) {
     const expiresAt = new Date(expiresAtStr)

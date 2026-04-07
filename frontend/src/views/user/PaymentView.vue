@@ -126,6 +126,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
+import { METHOD_ORDER } from '@/components/payment/providerConfig'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 
@@ -241,10 +242,12 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       errorMessage.value = t('payment.result.failed')
       appStore.showError(errorMessage.value)
     }
-  } catch (err: any) {
-    if (err.reason === 'TOO_MANY_PENDING') {
-      errorMessage.value = t('payment.errors.tooManyPending', { max: err.metadata?.max || '' })
-    } else if (err.reason === 'CANCEL_RATE_LIMITED') {
+  } catch (err: unknown) {
+    const apiErr = err as Record<string, unknown>
+    if (apiErr.reason === 'TOO_MANY_PENDING') {
+      const metadata = apiErr.metadata as Record<string, unknown> | undefined
+      errorMessage.value = t('payment.errors.tooManyPending', { max: metadata?.max || '' })
+    } else if (apiErr.reason === 'CANCEL_RATE_LIMITED') {
       errorMessage.value = t('payment.errors.cancelRateLimited')
     } else {
       errorMessage.value = extractApiErrorMessage(err, t('payment.result.failed'))
@@ -273,10 +276,10 @@ onMounted(async () => {
       methodLimits.value = limitsRes.data
     } catch (e) { /* limits endpoint may not exist */ }
     if (enabledMethods.value.length) {
-      const METHOD_ORDER = ['alipay', 'wxpay', 'stripe']
+      const order: readonly string[] = METHOD_ORDER
       const sorted = [...enabledMethods.value].sort((a, b) => {
-        const ai = METHOD_ORDER.indexOf(a)
-        const bi = METHOD_ORDER.indexOf(b)
+        const ai = order.indexOf(a)
+        const bi = order.indexOf(b)
         return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
       })
       selectedMethod.value = sorted[0]

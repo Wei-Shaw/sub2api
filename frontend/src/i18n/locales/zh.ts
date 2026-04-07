@@ -5343,6 +5343,8 @@ export default {
     refundReason: '退款原因',
     refundReasonPlaceholder: '请描述您的退款原因',
     stripeLoadFailed: '支付组件加载失败，请刷新页面重试',
+    stripeMissingParams: '缺少订单ID或支付密钥',
+    stripeNotConfigured: 'Stripe 未配置',
     errors: {
       tooManyPending: '待支付订单过多（最多 {max} 个），请先完成或取消现有订单',
       cancelRateLimited: '取消订单过于频繁，请稍后再试',

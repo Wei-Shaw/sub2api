@@ -39,6 +39,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { METHOD_ORDER } from './providerConfig'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
 import stripeIcon from '@/assets/icons/stripe.svg'
@@ -60,9 +61,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-/** Fixed display order for payment methods */
-const METHOD_ORDER = ['alipay', 'wxpay', 'stripe']
-
 const METHOD_ICONS: Record<string, string> = {
   alipay: alipayIcon,
   wxpay: wxpayIcon,
@@ -70,9 +68,10 @@ const METHOD_ICONS: Record<string, string> = {
 }
 
 const sortedMethods = computed(() => {
+  const order: readonly string[] = METHOD_ORDER
   return [...props.methods].sort((a, b) => {
-    const ai = METHOD_ORDER.indexOf(a.type)
-    const bi = METHOD_ORDER.indexOf(b.type)
+    const ai = order.indexOf(a.type)
+    const bi = order.indexOf(b.type)
     return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
   })
 })
@@ -80,7 +79,7 @@ const sortedMethods = computed(() => {
 function methodIcon(type: string): string {
   if (type.includes('alipay')) return METHOD_ICONS.alipay
   if (type.includes('wxpay')) return METHOD_ICONS.wxpay
-  return METHOD_ICONS[type] || METHOD_ICONS.easypay
+  return METHOD_ICONS[type] || alipayIcon
 }
 
 function methodSelectedClass(type: string): string {

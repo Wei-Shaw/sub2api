@@ -5146,6 +5146,8 @@ export default {
     refundReason: 'Refund Reason',
     refundReasonPlaceholder: 'Please describe your refund reason',
     stripeLoadFailed: 'Failed to load payment component. Please refresh and try again.',
+    stripeMissingParams: 'Missing order ID or client secret',
+    stripeNotConfigured: 'Stripe is not configured',
     errors: {
       tooManyPending: 'Too many pending orders (max {max}). Please complete or cancel existing orders first.',
       cancelRateLimited: 'Too many cancellations. Please try again later.',

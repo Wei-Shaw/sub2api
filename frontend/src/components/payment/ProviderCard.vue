@@ -68,6 +68,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 import type { ProviderInstance } from '@/types/payment'
 import type { TypeOption } from './providerConfig'
+import { PAYMENT_MODE_REDIRECT, PAYMENT_MODE_API } from './providerConfig'
 
 const PROVIDER_KEY_LABELS: Record<string, string> = {
   easypay: 'admin.settings.payment.providerEasypay',
@@ -94,8 +95,8 @@ const { t } = useI18n()
 const keyLabel = computed(() => t(PROVIDER_KEY_LABELS[props.provider.provider_key] || props.provider.provider_key))
 
 const modeLabel = computed(() => {
-  if (props.provider.payment_mode === 'redirect') return t('admin.settings.payment.modeRedirect')
-  if (props.provider.payment_mode === 'api') return t('admin.settings.payment.modeQRCode')
+  if (props.provider.payment_mode === PAYMENT_MODE_REDIRECT) return t('admin.settings.payment.modeRedirect')
+  if (props.provider.payment_mode === PAYMENT_MODE_API) return t('admin.settings.payment.modeQRCode')
   return ''
 })
 
