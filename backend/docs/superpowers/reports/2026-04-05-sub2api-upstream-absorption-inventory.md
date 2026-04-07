@@ -896,6 +896,13 @@ The remaining upstream changes since `f585a15e` are not low-risk mechanical abso
   - that same retained gate is now also shared by `selectBestAccount`, so the non-load-batch OpenAI main selection path no longer carries a parallel copy of the `fresh + recheck + upstream restriction` chain
   - `tryStickySessionHit` has now been folded into that same gate as well, while keeping sticky-specific cleanup / TTL refresh semantics outside the helper
   - `selectAccountForModelWithExclusions` no longer emits a separate bare-string “no available OpenAI accounts” branch; its miss path now rejoins `ErrNoAvailableAccounts`, so the OpenAI ordinary-selection入口和 load-aware 退化路径的失败语义更一致
+  - the next merged batch has started to pull the billing writeback chain back toward upstream structure as well:
+    - `GatewayService.RecordUsage` and `RecordUsageWithLongContext` are again thin wrappers over a shared `recordUsageCore`
+    - the restored core still keeps local writeback semantics instead of reverting them, including unified resolver billing, `BillingTier` / `BillingMode`, `ChannelUsageFields`, and the prompt / long-context handling branches
+    - `OpenAIGatewayService.RecordUsage` has now been pulled to the same shape as well: the entry is a thin wrapper over an OpenAI-specific shared writeback core, while preserving local routing snapshot, multiplier, effective unit price, `PricingSource`, `OpenAIWSMode`, and other OpenAI-only writeback fields
+    - `BillingService` has also started converging under that same batch: `CalculateCostUnified` 的无 resolver 回退与 `CalculateCostWithServiceTier` 现在不再各自维护一份 token 计费逻辑，而是共享同一个 `calculateCostWithPricing -> computeTokenBreakdown` core
+    - along the same line, `CalculateCost` / `CalculateCostWithServiceTier` now also fold through a shared `calculateCostInternal`, and cache-creation cost has been split out of `computeTokenBreakdown` into `computeCacheCreationCost`
+    - the first deeper semantic mismatch in `BillingService` has also been corrected: token-mode `ImageOutputPricePerToken` no longer reuses LiteLLM's per-image `output_cost_per_image`, so `ImageOutputTokens` fall back to ordinary output-token pricing unless a true image-token unit price source exists
   - `GatewayService.SelectAccountWithLoadAwareness` has also started the same style of request-level gate unification:
     - routed sticky, normal sticky, and Layer 2 candidate filtering now share one local account-selection reject path covering platform/mixed scheduling, model support, model limit, quota, window cost, RPM, and upstream restriction
     - wait-plan / slot-acquire / sticky binding outer shells are still intentionally left in place, so this remains a low-risk convergence step rather than a full scheduler rewrite

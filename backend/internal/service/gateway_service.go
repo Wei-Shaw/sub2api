@@ -7537,231 +7537,29 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 	}
 }
 
+type recordUsageOpts struct {
+	LongContextThreshold  int
+	LongContextMultiplier float64
+	IncludeMediaType      bool
+}
+
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
 func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) error {
-	result := input.Result
-	apiKey := input.APIKey
-	user := input.User
-	account := input.Account
-	subscription := input.Subscription
-
-	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
-	// 用于粘性会话切换时的特殊计费处理
-	if input.ForceCacheBilling && result.Usage.InputTokens > 0 {
-		logger.LegacyPrintf("service.gateway", "force_cache_billing: %d input_tokens → cache_read_input_tokens (account=%d)",
-			result.Usage.InputTokens, account.ID)
-		result.Usage.CacheReadInputTokens += result.Usage.InputTokens
-		result.Usage.InputTokens = 0
-	}
-
-	// Cache TTL Override: 确保计费时 token 分类与账号设置一致
-	cacheTTLOverridden := false
-	if account.IsCacheTTLOverrideEnabled() {
-		applyCacheTTLOverride(&result.Usage, account.GetCacheTTLOverrideTarget())
-		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
-	}
-
-	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
-	multiplier := 1.0
-	if s.cfg != nil {
-		multiplier = s.cfg.Default.RateMultiplier
-	}
-	if apiKey.GroupID != nil && apiKey.Group != nil {
-		groupDefault := apiKey.Group.RateMultiplier
-		multiplier = s.getUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
-	}
-
-	var cost *CostBreakdown
-	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
-	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
-		billingModel = input.ChannelMappedModel
-	}
-	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
-		billingModel = input.OriginalModel
-	}
-	requestedModel := result.Model
-	if input.OriginalModel != "" {
-		requestedModel = input.OriginalModel
-	}
-	var resolvedPricing *ResolvedPricing
-
-	// 根据请求类型选择计费方式
-	if result.MediaType == "prompt" {
-		cost = &CostBreakdown{}
-	} else if s.resolver != nil && apiKey.GroupID != nil {
-		resolvedPricing = s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: apiKey.GroupID})
-		tokens := UsageTokens{
-			InputTokens:           result.Usage.InputTokens,
-			OutputTokens:          result.Usage.OutputTokens,
-			CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
-			CacheReadTokens:       result.Usage.CacheReadInputTokens,
-			CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
-			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
-			ImageOutputTokens:     result.Usage.ImageOutputTokens,
-		}
-		var err error
-		cost, err = s.billingService.CalculateCostUnified(CostInput{
-			Ctx:            ctx,
-			Model:          billingModel,
-			GroupID:        apiKey.GroupID,
-			Tokens:         tokens,
-			RequestCount:   result.ImageCount,
-			SizeTier:       result.ImageSize,
-			RateMultiplier: multiplier,
-			Resolver:       s.resolver,
-			Resolved:       resolvedPricing,
-		})
-		if err != nil {
-			logger.LegacyPrintf("service.gateway", "Calculate unified cost failed: %v", err)
-			cost = &CostBreakdown{ActualCost: 0}
-		}
-	} else if result.ImageCount > 0 {
-		// 图片生成计费
-		var groupConfig *ImagePriceConfig
-		if apiKey.Group != nil {
-			groupConfig = &ImagePriceConfig{
-				Price1K: apiKey.Group.ImagePrice1K,
-				Price2K: apiKey.Group.ImagePrice2K,
-				Price4K: apiKey.Group.ImagePrice4K,
-			}
-		}
-		cost = s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)
-	} else {
-		// Token 计费
-		tokens := UsageTokens{
-			InputTokens:           result.Usage.InputTokens,
-			OutputTokens:          result.Usage.OutputTokens,
-			CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
-			CacheReadTokens:       result.Usage.CacheReadInputTokens,
-			CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
-			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
-			ImageOutputTokens:     result.Usage.ImageOutputTokens,
-		}
-		var err error
-		cost, err = s.billingService.CalculateCost(billingModel, tokens, multiplier)
-		if err != nil {
-			logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
-			cost = &CostBreakdown{ActualCost: 0}
-		}
-	}
-
-	// 判断计费方式：订阅模式 vs 余额模式
-	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
-	billingType := BillingTypeBalance
-	if isSubscriptionBilling {
-		billingType = BillingTypeSubscription
-	}
-
-	// 创建使用日志
-	durationMs := int(result.Duration.Milliseconds())
-	var imageSize *string
-	if result.ImageSize != "" {
-		imageSize = &result.ImageSize
-	}
-	var mediaType *string
-	if strings.TrimSpace(result.MediaType) != "" {
-		mediaType = &result.MediaType
-	}
-	accountRateMultiplier := account.BillingRateMultiplier()
-	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
-	usageLog := &UsageLog{
-		UserID:            user.ID,
-		APIKeyID:          apiKey.ID,
-		AccountID:         account.ID,
-		RequestID:         requestID,
-		Model:             result.Model,
-		RequestedModel:    requestedModel,
-		UpstreamModel:     optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
-		ChannelID:         optionalInt64Ptr(input.ChannelID),
-		ModelMappingChain: optionalTrimmedStringPtr(input.ModelMappingChain),
-		BillingTier: func() *string {
-			if resolvedPricing == nil || strings.TrimSpace(resolvedPricing.Source) == "" {
-				return nil
-			}
-			v := strings.TrimSpace(resolvedPricing.Source)
-			return &v
-		}(),
-		ReasoningEffort:       result.ReasoningEffort,
-		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
-		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
-		InputTokens:           result.Usage.InputTokens,
-		OutputTokens:          result.Usage.OutputTokens,
-		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:       result.Usage.CacheReadInputTokens,
-		CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
-		CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
-		ImageOutputTokens:     result.Usage.ImageOutputTokens,
-		InputCost:             cost.InputCost,
-		OutputCost:            cost.OutputCost,
-		ImageOutputCost:       cost.ImageOutputCost,
-		CacheCreationCost:     cost.CacheCreationCost,
-		CacheReadCost:         cost.CacheReadCost,
-		TotalCost:             cost.TotalCost,
-		ActualCost:            cost.ActualCost,
-		RateMultiplier:        multiplier,
-		AccountRateMultiplier: &accountRateMultiplier,
-		BillingType:           billingType,
-		BillingMode:           optionalTrimmedStringPtr(cost.BillingMode),
-		Stream:                result.Stream,
-		DurationMs:            &durationMs,
-		FirstTokenMs:          result.FirstTokenMs,
-		ImageCount:            result.ImageCount,
-		ImageSize:             imageSize,
-		MediaType:             mediaType,
-		CacheTTLOverridden:    cacheTTLOverridden,
-		CreatedAt:             time.Now(),
-	}
-
-	// 添加 UserAgent
-	if input.UserAgent != "" {
-		usageLog.UserAgent = &input.UserAgent
-	}
-
-	// 添加 IPAddress
-	if input.IPAddress != "" {
-		usageLog.IPAddress = &input.IPAddress
-	}
-
-	// 添加分组和订阅关联
-	if apiKey.GroupID != nil {
-		usageLog.GroupID = apiKey.GroupID
-	}
-	if subscription != nil {
-		usageLog.SubscriptionID = &subscription.ID
-	}
-	if usageLog.BillingMode == nil {
-		billingMode := string(BillingModeToken)
-		usageLog.BillingMode = &billingMode
-	}
-
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
-		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
-		s.deferredService.ScheduleLastUsedUpdate(account.ID)
-		return nil
-	}
-
-	billingErr := func() error {
-		_, err := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
-			Cost:                  cost,
-			User:                  user,
-			APIKey:                apiKey,
-			Account:               account,
-			Subscription:          subscription,
-			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
-			IsSubscriptionBill:    isSubscriptionBilling,
-			AccountRateMultiplier: accountRateMultiplier,
-			APIKeyService:         input.APIKeyService,
-		}, s.billingDeps(), s.usageBillingRepo)
-		return err
-	}()
-
-	if billingErr != nil {
-		return billingErr
-	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
-
-	return nil
+	return s.recordUsageCore(ctx, &recordUsageCoreInput{
+		Result:             input.Result,
+		APIKey:             input.APIKey,
+		User:               input.User,
+		Account:            input.Account,
+		Subscription:       input.Subscription,
+		InboundEndpoint:    input.InboundEndpoint,
+		UpstreamEndpoint:   input.UpstreamEndpoint,
+		UserAgent:          input.UserAgent,
+		IPAddress:          input.IPAddress,
+		RequestPayloadHash: input.RequestPayloadHash,
+		ForceCacheBilling:  input.ForceCacheBilling,
+		APIKeyService:      input.APIKeyService,
+		ChannelUsageFields: input.ChannelUsageFields,
+	}, &recordUsageOpts{IncludeMediaType: true})
 }
 
 // RecordUsageLongContextInput 记录使用量的输入参数（支持长上下文双倍计费）
@@ -7785,14 +7583,49 @@ type RecordUsageLongContextInput struct {
 
 // RecordUsageWithLongContext 记录使用量并扣费，支持长上下文双倍计费（用于 Gemini）
 func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *RecordUsageLongContextInput) error {
+	return s.recordUsageCore(ctx, &recordUsageCoreInput{
+		Result:             input.Result,
+		APIKey:             input.APIKey,
+		User:               input.User,
+		Account:            input.Account,
+		Subscription:       input.Subscription,
+		InboundEndpoint:    input.InboundEndpoint,
+		UpstreamEndpoint:   input.UpstreamEndpoint,
+		UserAgent:          input.UserAgent,
+		IPAddress:          input.IPAddress,
+		RequestPayloadHash: input.RequestPayloadHash,
+		ForceCacheBilling:  input.ForceCacheBilling,
+		APIKeyService:      input.APIKeyService,
+		ChannelUsageFields: input.ChannelUsageFields,
+	}, &recordUsageOpts{
+		LongContextThreshold:  input.LongContextThreshold,
+		LongContextMultiplier: input.LongContextMultiplier,
+	})
+}
+
+type recordUsageCoreInput struct {
+	Result             *ForwardResult
+	APIKey             *APIKey
+	User               *User
+	Account            *Account
+	Subscription       *UserSubscription
+	InboundEndpoint    string
+	UpstreamEndpoint   string
+	UserAgent          string
+	IPAddress          string
+	RequestPayloadHash string
+	ForceCacheBilling  bool
+	APIKeyService      APIKeyQuotaUpdater
+	ChannelUsageFields
+}
+
+func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput, opts *recordUsageOpts) error {
 	result := input.Result
 	apiKey := input.APIKey
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
 
-	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
-	// 用于粘性会话切换时的特殊计费处理
 	if input.ForceCacheBilling && result.Usage.InputTokens > 0 {
 		logger.LegacyPrintf("service.gateway", "force_cache_billing: %d input_tokens → cache_read_input_tokens (account=%d)",
 			result.Usage.InputTokens, account.ID)
@@ -7800,14 +7633,12 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		result.Usage.InputTokens = 0
 	}
 
-	// Cache TTL Override: 确保计费时 token 分类与账号设置一致
 	cacheTTLOverridden := false
 	if account.IsCacheTTLOverrideEnabled() {
 		applyCacheTTLOverride(&result.Usage, account.GetCacheTTLOverrideTarget())
 		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
 	}
 
-	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
 	multiplier := 1.0
 	if s.cfg != nil {
 		multiplier = s.cfg.Default.RateMultiplier
@@ -7817,7 +7648,6 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		multiplier = s.getUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
 	}
 
-	var cost *CostBreakdown
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
 	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
 		billingModel = input.ChannelMappedModel
@@ -7825,26 +7655,68 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
 		billingModel = input.OriginalModel
 	}
+
 	requestedModel := result.Model
 	if input.OriginalModel != "" {
 		requestedModel = input.OriginalModel
 	}
-	var resolvedPricing *ResolvedPricing
 
-	// 根据请求类型选择计费方式
+	cost, resolvedPricing := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, opts)
+
+	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
+	billingType := BillingTypeBalance
+	if isSubscriptionBilling {
+		billingType = BillingTypeSubscription
+	}
+
+	accountRateMultiplier := account.BillingRateMultiplier()
+	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, account, subscription, requestedModel, multiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, resolvedPricing, opts)
+
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		s.deferredService.ScheduleLastUsedUpdate(account.ID)
+		return nil
+	}
+
+	requestID := usageLog.RequestID
+	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
+		Cost:                  cost,
+		User:                  user,
+		APIKey:                apiKey,
+		Account:               account,
+		Subscription:          subscription,
+		RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
+		IsSubscriptionBill:    isSubscriptionBilling,
+		AccountRateMultiplier: accountRateMultiplier,
+		APIKeyService:         input.APIKeyService,
+	}, s.billingDeps(), s.usageBillingRepo)
+	if billingErr != nil {
+		return billingErr
+	}
+	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+
+	return nil
+}
+
+func (s *GatewayService) calculateRecordUsageCost(ctx context.Context, result *ForwardResult, apiKey *APIKey, billingModel string, multiplier float64, opts *recordUsageOpts) (*CostBreakdown, *ResolvedPricing) {
+	if result.MediaType == "prompt" {
+		return &CostBreakdown{}, nil
+	}
+
+	tokens := UsageTokens{
+		InputTokens:           result.Usage.InputTokens,
+		OutputTokens:          result.Usage.OutputTokens,
+		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:       result.Usage.CacheReadInputTokens,
+		CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
+		CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
+		ImageOutputTokens:     result.Usage.ImageOutputTokens,
+	}
+
 	if s.resolver != nil && apiKey.GroupID != nil {
-		resolvedPricing = s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: apiKey.GroupID})
-		tokens := UsageTokens{
-			InputTokens:           result.Usage.InputTokens,
-			OutputTokens:          result.Usage.OutputTokens,
-			CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
-			CacheReadTokens:       result.Usage.CacheReadInputTokens,
-			CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
-			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
-			ImageOutputTokens:     result.Usage.ImageOutputTokens,
-		}
-		var err error
-		cost, err = s.billingService.CalculateCostUnified(CostInput{
+		resolvedPricing := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: apiKey.GroupID})
+		cost, err := s.billingService.CalculateCostUnified(CostInput{
 			Ctx:            ctx,
 			Model:          billingModel,
 			GroupID:        apiKey.GroupID,
@@ -7857,55 +7729,40 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		})
 		if err != nil {
 			logger.LegacyPrintf("service.gateway", "Calculate unified cost failed: %v", err)
-			cost = &CostBreakdown{ActualCost: 0}
+			return &CostBreakdown{ActualCost: 0}, resolvedPricing
 		}
-	} else if result.ImageCount > 0 {
-		// 图片生成计费
+		return cost, resolvedPricing
+	}
+
+	if result.ImageCount > 0 {
 		var groupConfig *ImagePriceConfig
 		if apiKey.Group != nil {
-			groupConfig = &ImagePriceConfig{
-				Price1K: apiKey.Group.ImagePrice1K,
-				Price2K: apiKey.Group.ImagePrice2K,
-				Price4K: apiKey.Group.ImagePrice4K,
-			}
+			groupConfig = &ImagePriceConfig{Price1K: apiKey.Group.ImagePrice1K, Price2K: apiKey.Group.ImagePrice2K, Price4K: apiKey.Group.ImagePrice4K}
 		}
-		cost = s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)
+		return s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier), nil
+	}
+
+	var (
+		cost *CostBreakdown
+		err  error
+	)
+	if opts.LongContextThreshold > 0 {
+		cost, err = s.billingService.CalculateCostWithLongContext(billingModel, tokens, multiplier, opts.LongContextThreshold, opts.LongContextMultiplier)
 	} else {
-		// Token 计费（使用长上下文计费方法）
-		tokens := UsageTokens{
-			InputTokens:           result.Usage.InputTokens,
-			OutputTokens:          result.Usage.OutputTokens,
-			CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
-			CacheReadTokens:       result.Usage.CacheReadInputTokens,
-			CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
-			CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
-			ImageOutputTokens:     result.Usage.ImageOutputTokens,
-		}
-		var err error
-		cost, err = s.billingService.CalculateCostWithLongContext(billingModel, tokens, multiplier, input.LongContextThreshold, input.LongContextMultiplier)
-		if err != nil {
-			logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
-			cost = &CostBreakdown{ActualCost: 0}
-		}
+		cost, err = s.billingService.CalculateCost(billingModel, tokens, multiplier)
 	}
-
-	// 判断计费方式：订阅模式 vs 余额模式
-	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
-	billingType := BillingTypeBalance
-	if isSubscriptionBilling {
-		billingType = BillingTypeSubscription
+	if err != nil {
+		logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
+		return &CostBreakdown{ActualCost: 0}, nil
 	}
+	return cost, nil
+}
 
-	// 创建使用日志
+func (s *GatewayService) buildRecordUsageLog(ctx context.Context, input *recordUsageCoreInput, result *ForwardResult, apiKey *APIKey, account *Account, subscription *UserSubscription, requestedModel string, multiplier, accountRateMultiplier float64, billingType int8, cacheTTLOverridden bool, cost *CostBreakdown, resolvedPricing *ResolvedPricing, opts *recordUsageOpts) *UsageLog {
 	durationMs := int(result.Duration.Milliseconds())
-	var imageSize *string
-	if result.ImageSize != "" {
-		imageSize = &result.ImageSize
-	}
-	accountRateMultiplier := account.BillingRateMultiplier()
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
 	usageLog := &UsageLog{
-		UserID:            user.ID,
+		UserID:            input.User.ID,
 		APIKeyID:          apiKey.ID,
 		AccountID:         account.ID,
 		RequestID:         requestID,
@@ -7941,65 +7798,42 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 		RateMultiplier:        multiplier,
 		AccountRateMultiplier: &accountRateMultiplier,
 		BillingType:           billingType,
-		BillingMode:           optionalTrimmedStringPtr(cost.BillingMode),
+		BillingMode:           resolveBillingMode(result, cost),
 		Stream:                result.Stream,
 		DurationMs:            &durationMs,
 		FirstTokenMs:          result.FirstTokenMs,
 		ImageCount:            result.ImageCount,
-		ImageSize:             imageSize,
+		ImageSize:             optionalTrimmedStringPtr(result.ImageSize),
 		CacheTTLOverridden:    cacheTTLOverridden,
+		UserAgent:             optionalTrimmedStringPtr(input.UserAgent),
+		IPAddress:             optionalTrimmedStringPtr(input.IPAddress),
+		GroupID:               apiKey.GroupID,
+		SubscriptionID:        optionalSubscriptionID(subscription),
 		CreatedAt:             time.Now(),
 	}
-
-	// 添加 UserAgent
-	if input.UserAgent != "" {
-		usageLog.UserAgent = &input.UserAgent
+	if opts.IncludeMediaType && strings.TrimSpace(result.MediaType) != "" {
+		usageLog.MediaType = optionalTrimmedStringPtr(result.MediaType)
 	}
+	return usageLog
+}
 
-	// 添加 IPAddress
-	if input.IPAddress != "" {
-		usageLog.IPAddress = &input.IPAddress
+func resolveBillingMode(result *ForwardResult, cost *CostBreakdown) *string {
+	var mode string
+	switch {
+	case cost != nil && cost.BillingMode != "":
+		mode = cost.BillingMode
+	case result != nil && result.ImageCount > 0:
+		mode = string(BillingModeImage)
+	default:
+		mode = string(BillingModeToken)
 	}
+	return &mode
+}
 
-	// 添加分组和订阅关联
-	if apiKey.GroupID != nil {
-		usageLog.GroupID = apiKey.GroupID
-	}
+func optionalSubscriptionID(subscription *UserSubscription) *int64 {
 	if subscription != nil {
-		usageLog.SubscriptionID = &subscription.ID
+		return &subscription.ID
 	}
-	if usageLog.BillingMode == nil {
-		billingMode := string(BillingModeToken)
-		usageLog.BillingMode = &billingMode
-	}
-
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
-		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
-		s.deferredService.ScheduleLastUsedUpdate(account.ID)
-		return nil
-	}
-
-	billingErr := func() error {
-		_, err := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
-			Cost:                  cost,
-			User:                  user,
-			APIKey:                apiKey,
-			Account:               account,
-			Subscription:          subscription,
-			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
-			IsSubscriptionBill:    isSubscriptionBilling,
-			AccountRateMultiplier: accountRateMultiplier,
-			APIKeyService:         input.APIKeyService,
-		}, s.billingDeps(), s.usageBillingRepo)
-		return err
-	}()
-
-	if billingErr != nil {
-		return billingErr
-	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
-
 	return nil
 }
 

@@ -224,16 +224,7 @@ func (s *BillingService) computeTokenBreakdown(
 		}
 		breakdown.ImageOutputCost = float64(tokens.ImageOutputTokens) * imageOutputPrice
 	}
-	if pricing.SupportsCacheBreakdown && (pricing.CacheCreation5mPrice > 0 || pricing.CacheCreation1hPrice > 0) {
-		if tokens.CacheCreation5mTokens == 0 && tokens.CacheCreation1hTokens == 0 && tokens.CacheCreationTokens > 0 {
-			breakdown.CacheCreationCost = float64(tokens.CacheCreationTokens) * pricing.CacheCreation5mPrice
-		} else {
-			breakdown.CacheCreationCost = float64(tokens.CacheCreation5mTokens)*pricing.CacheCreation5mPrice +
-				float64(tokens.CacheCreation1hTokens)*pricing.CacheCreation1hPrice
-		}
-	} else {
-		breakdown.CacheCreationCost = float64(tokens.CacheCreationTokens) * pricing.CacheCreationPricePerToken
-	}
+	breakdown.CacheCreationCost = s.computeCacheCreationCost(pricing, tokens)
 	breakdown.CacheReadCost = float64(tokens.CacheReadTokens) * cacheReadPricePerToken
 	if tierMultiplier != 1.0 {
 		breakdown.InputCost *= tierMultiplier
@@ -254,9 +245,23 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 	if pricing == nil {
 		return nil, fmt.Errorf("no pricing available for model: %s", input.Model)
 	}
-	pricing = s.applyModelSpecificPricingPolicy(input.Model, pricing)
 	applyLongCtx := len(resolved.Intervals) == 0
-	return s.computeTokenBreakdown(pricing, input.Tokens, input.RateMultiplier, input.ServiceTier, applyLongCtx), nil
+	return s.calculateCostWithPricing(input.Model, pricing, input.Tokens, input.RateMultiplier, input.ServiceTier, applyLongCtx), nil
+}
+
+func (s *BillingService) calculateCostWithPricing(model string, pricing *ModelPricing, tokens UsageTokens, rateMultiplier float64, serviceTier string, applyLongCtx bool) *CostBreakdown {
+	return s.computeTokenBreakdown(s.applyModelSpecificPricingPolicy(model, pricing), tokens, rateMultiplier, serviceTier, applyLongCtx)
+}
+
+func (s *BillingService) computeCacheCreationCost(pricing *ModelPricing, tokens UsageTokens) float64 {
+	if pricing.SupportsCacheBreakdown && (pricing.CacheCreation5mPrice > 0 || pricing.CacheCreation1hPrice > 0) {
+		if tokens.CacheCreation5mTokens == 0 && tokens.CacheCreation1hTokens == 0 && tokens.CacheCreationTokens > 0 {
+			return float64(tokens.CacheCreationTokens) * pricing.CacheCreation5mPrice
+		}
+		return float64(tokens.CacheCreation5mTokens)*pricing.CacheCreation5mPrice +
+			float64(tokens.CacheCreation1hTokens)*pricing.CacheCreation1hPrice
+	}
+	return float64(tokens.CacheCreationTokens) * pricing.CacheCreationPricePerToken
 }
 
 func (s *BillingService) calculatePerRequestCost(resolved *ResolvedPricing, input CostInput) (*CostBreakdown, error) {
@@ -515,7 +520,10 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 				LongContextInputThreshold:      litellmPricing.LongContextInputTokenThreshold,
 				LongContextInputMultiplier:     litellmPricing.LongContextInputCostMultiplier,
 				LongContextOutputMultiplier:    litellmPricing.LongContextOutputCostMultiplier,
-				ImageOutputPricePerToken:       litellmPricing.OutputCostPerImage,
+				// output_cost_per_image is a per-image price, not an image-token unit price.
+				// Token-mode image output should keep falling back to OutputPricePerToken
+				// unless a true image-token price source is introduced.
+				ImageOutputPricePerToken: 0,
 			}), nil
 		}
 	}
@@ -532,92 +540,19 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 
 // CalculateCost 计算使用费用
 func (s *BillingService) CalculateCost(model string, tokens UsageTokens, rateMultiplier float64) (*CostBreakdown, error) {
-	return s.CalculateCostWithServiceTier(model, tokens, rateMultiplier, "")
+	return s.calculateCostInternal(model, tokens, rateMultiplier, "")
 }
 
 func (s *BillingService) CalculateCostWithServiceTier(model string, tokens UsageTokens, rateMultiplier float64, serviceTier string) (*CostBreakdown, error) {
+	return s.calculateCostInternal(model, tokens, rateMultiplier, serviceTier)
+}
+
+func (s *BillingService) calculateCostInternal(model string, tokens UsageTokens, rateMultiplier float64, serviceTier string) (*CostBreakdown, error) {
 	pricing, err := s.GetModelPricing(model)
 	if err != nil {
 		return nil, err
 	}
-
-	breakdown := &CostBreakdown{}
-	inputPricePerToken := pricing.InputPricePerToken
-	outputPricePerToken := pricing.OutputPricePerToken
-	cacheReadPricePerToken := pricing.CacheReadPricePerToken
-	tierMultiplier := 1.0
-	if usePriorityServiceTierPricing(serviceTier, pricing) {
-		if pricing.InputPricePerTokenPriority > 0 {
-			inputPricePerToken = pricing.InputPricePerTokenPriority
-		}
-		if pricing.OutputPricePerTokenPriority > 0 {
-			outputPricePerToken = pricing.OutputPricePerTokenPriority
-		}
-		if pricing.CacheReadPricePerTokenPriority > 0 {
-			cacheReadPricePerToken = pricing.CacheReadPricePerTokenPriority
-		}
-	} else {
-		tierMultiplier = serviceTierCostMultiplier(serviceTier)
-	}
-	if s.shouldApplySessionLongContextPricing(tokens, pricing) {
-		inputPricePerToken *= pricing.LongContextInputMultiplier
-		outputPricePerToken *= pricing.LongContextOutputMultiplier
-	}
-
-	// 计算输入token费用（使用per-token价格）
-	breakdown.InputCost = float64(tokens.InputTokens) * inputPricePerToken
-
-	// 计算输出 token 费用，图片输出 token 单独计费
-	textOutputTokens := tokens.OutputTokens - tokens.ImageOutputTokens
-	if textOutputTokens < 0 {
-		textOutputTokens = 0
-	}
-	breakdown.OutputCost = float64(textOutputTokens) * outputPricePerToken
-	if tokens.ImageOutputTokens > 0 {
-		imageOutputPrice := pricing.ImageOutputPricePerToken
-		if imageOutputPrice <= 0 {
-			imageOutputPrice = outputPricePerToken
-		}
-		breakdown.ImageOutputCost = float64(tokens.ImageOutputTokens) * imageOutputPrice
-	}
-
-	// 计算缓存费用
-	if pricing.SupportsCacheBreakdown && (pricing.CacheCreation5mPrice > 0 || pricing.CacheCreation1hPrice > 0) {
-		// 支持详细缓存分类的模型（5分钟/1小时缓存，价格为 per-token）
-		if tokens.CacheCreation5mTokens == 0 && tokens.CacheCreation1hTokens == 0 && tokens.CacheCreationTokens > 0 {
-			// API 未返回 ephemeral 明细，回退到全部按 5m 单价计费
-			breakdown.CacheCreationCost = float64(tokens.CacheCreationTokens) * pricing.CacheCreation5mPrice
-		} else {
-			breakdown.CacheCreationCost = float64(tokens.CacheCreation5mTokens)*pricing.CacheCreation5mPrice +
-				float64(tokens.CacheCreation1hTokens)*pricing.CacheCreation1hPrice
-		}
-	} else {
-		// 标准缓存创建价格（per-token）
-		breakdown.CacheCreationCost = float64(tokens.CacheCreationTokens) * pricing.CacheCreationPricePerToken
-	}
-
-	breakdown.CacheReadCost = float64(tokens.CacheReadTokens) * cacheReadPricePerToken
-
-	if tierMultiplier != 1.0 {
-		breakdown.InputCost *= tierMultiplier
-		breakdown.OutputCost *= tierMultiplier
-		breakdown.ImageOutputCost *= tierMultiplier
-		breakdown.CacheCreationCost *= tierMultiplier
-		breakdown.CacheReadCost *= tierMultiplier
-	}
-
-	// 计算总费用
-	breakdown.TotalCost = breakdown.InputCost + breakdown.OutputCost + breakdown.ImageOutputCost +
-		breakdown.CacheCreationCost + breakdown.CacheReadCost
-
-	// 应用倍率计算实际费用
-	if rateMultiplier <= 0 {
-		rateMultiplier = 1.0
-	}
-	breakdown.ActualCost = breakdown.TotalCost * rateMultiplier
-
-	breakdown.BillingMode = string(BillingModeToken)
-	return breakdown, nil
+	return s.calculateCostWithPricing(model, pricing, tokens, rateMultiplier, serviceTier, true), nil
 }
 
 func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *ModelPricing) *ModelPricing {

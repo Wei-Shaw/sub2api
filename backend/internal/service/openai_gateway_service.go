@@ -4427,48 +4427,138 @@ type OpenAIRecordUsageInput struct {
 	APIKeyService      APIKeyQuotaUpdater
 }
 
+type openAIRecordUsageCoreInput struct {
+	Result       *OpenAIForwardResult
+	APIKey       *APIKey
+	User         *User
+	Account      *Account
+	Subscription *UserSubscription
+	ChannelUsageFields
+	RoutingSnapshot    *OpenAIRoutingSnapshot
+	InboundEndpoint    string
+	UpstreamEndpoint   string
+	UserAgent          string
+	IPAddress          string
+	RequestPayloadHash string
+	APIKeyService      APIKeyQuotaUpdater
+}
+
+type openAIRecordUsageState struct {
+	Result                      *OpenAIForwardResult
+	APIKey                      *APIKey
+	User                        *User
+	Account                     *Account
+	Subscription                *UserSubscription
+	RequestID                   string
+	UsageModel                  string
+	RequestedModel              string
+	EffectiveModel              string
+	ActualInputTokens           int
+	Multiplier                  float64
+	ServiceTier                 string
+	Cost                        *CostBreakdown
+	ResolvedPricing             *ResolvedPricing
+	AccountRateMultiplier       float64
+	PriorityAccountMultiplier   float64
+	EffectiveMultiplier         float64
+	EffectiveInputUnitPrice     *float64
+	EffectiveOutputUnitPrice    *float64
+	EffectiveCacheReadUnitPrice *float64
+	PricingSource               string
+	IsSubscriptionBilling       bool
+	BillingType                 int8
+}
+
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
-	result := input.Result
+	return s.recordUsageCore(ctx, &openAIRecordUsageCoreInput{
+		Result:             input.Result,
+		APIKey:             input.APIKey,
+		User:               input.User,
+		Account:            input.Account,
+		Subscription:       input.Subscription,
+		ChannelUsageFields: input.ChannelUsageFields,
+		RoutingSnapshot:    input.RoutingSnapshot,
+		InboundEndpoint:    input.InboundEndpoint,
+		UpstreamEndpoint:   input.UpstreamEndpoint,
+		UserAgent:          input.UserAgent,
+		IPAddress:          input.IPAddress,
+		RequestPayloadHash: input.RequestPayloadHash,
+		APIKeyService:      input.APIKeyService,
+	})
+}
 
-	// 跳过所有 token 均为零的用量记录——上游未返回 usage 时不应写入数据库
+func (s *OpenAIGatewayService) getUserGroupRateMultiplier(ctx context.Context, userID, groupID int64, groupDefaultMultiplier float64) float64 {
+	if s == nil {
+		return groupDefaultMultiplier
+	}
+	resolver := s.userGroupRateResolver
+	if resolver == nil {
+		resolver = newUserGroupRateResolver(nil, nil, resolveUserGroupRateCacheTTL(s.cfg), nil, "service.openai_gateway")
+	}
+	return resolver.Resolve(ctx, userID, groupID, groupDefaultMultiplier)
+}
+
+func (s *OpenAIGatewayService) recordUsageCore(ctx context.Context, input *openAIRecordUsageCoreInput) error {
+	state := s.prepareOpenAIRecordUsageState(ctx, input)
+	if state == nil {
+		return nil
+	}
+
+	usageLog := s.buildOpenAIRecordUsageLog(input, state)
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
+		s.deferredService.ScheduleLastUsedUpdate(state.Account.ID)
+		return nil
+	}
+
+	_, billingErr := applyUsageBilling(ctx, state.RequestID, usageLog, &postUsageBillingParams{
+		Cost:                  state.Cost,
+		User:                  state.User,
+		APIKey:                state.APIKey,
+		Account:               state.Account,
+		Subscription:          state.Subscription,
+		RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
+		IsSubscriptionBill:    state.IsSubscriptionBilling,
+		AccountRateMultiplier: state.AccountRateMultiplier,
+		APIKeyService:         input.APIKeyService,
+	}, s.billingDeps(), s.usageBillingRepo)
+	if billingErr != nil {
+		return billingErr
+	}
+	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
+
+	return nil
+}
+
+func (s *OpenAIGatewayService) prepareOpenAIRecordUsageState(ctx context.Context, input *openAIRecordUsageCoreInput) *openAIRecordUsageState {
+	result := input.Result
 	if result.Usage.InputTokens == 0 && result.Usage.OutputTokens == 0 &&
 		result.Usage.CacheCreationInputTokens == 0 && result.Usage.CacheReadInputTokens == 0 {
 		return nil
 	}
 
-	apiKey := input.APIKey
-	user := input.User
-	account := input.Account
-	subscription := input.Subscription
-
-	// 计算实际的新输入token（减去缓存读取的token）
-	// 因为 input_tokens 包含了 cache_read_tokens，而缓存读取的token不应按输入价格计费
-	actualInputTokens := result.Usage.InputTokens - result.Usage.CacheReadInputTokens
-	if actualInputTokens < 0 {
-		actualInputTokens = 0
+	state := &openAIRecordUsageState{
+		Result:       result,
+		APIKey:       input.APIKey,
+		User:         input.User,
+		Account:      input.Account,
+		Subscription: input.Subscription,
+		RequestID:    resolveUsageBillingRequestID(ctx, result.RequestID),
 	}
 
-	// Calculate cost
-	tokens := UsageTokens{
-		InputTokens:         actualInputTokens,
-		OutputTokens:        result.Usage.OutputTokens,
-		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:     result.Usage.CacheReadInputTokens,
-		ImageOutputTokens:   result.Usage.ImageOutputTokens,
+	state.ActualInputTokens = result.Usage.InputTokens - result.Usage.CacheReadInputTokens
+	if state.ActualInputTokens < 0 {
+		state.ActualInputTokens = 0
 	}
 
-	// Get rate multiplier
-	multiplier := 1.0
+	state.Multiplier = 1.0
 	if s.cfg != nil {
-		multiplier = s.cfg.Default.RateMultiplier
+		state.Multiplier = s.cfg.Default.RateMultiplier
 	}
-	if apiKey.GroupID != nil && apiKey.Group != nil {
-		resolver := s.userGroupRateResolver
-		if resolver == nil {
-			resolver = newUserGroupRateResolver(nil, nil, resolveUserGroupRateCacheTTL(s.cfg), nil, "service.openai_gateway")
-		}
-		multiplier = resolver.Resolve(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
+	if state.APIKey.GroupID != nil && state.APIKey.Group != nil {
+		state.Multiplier = s.getUserGroupRateMultiplier(ctx, state.User.ID, *state.APIKey.GroupID, state.APIKey.Group.RateMultiplier)
 	}
 
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
@@ -4481,46 +4571,49 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
 		billingModel = input.OriginalModel
 	}
-	serviceTier := ""
+
 	if result.ServiceTier != nil {
-		serviceTier = strings.TrimSpace(*result.ServiceTier)
+		state.ServiceTier = strings.TrimSpace(*result.ServiceTier)
 	}
-	var resolvedPricing *ResolvedPricing
-	var (
-		cost *CostBreakdown
-		err  error
-	)
-	if s.resolver != nil && apiKey.GroupID != nil {
-		resolvedPricing = s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: apiKey.GroupID})
-		cost, err = s.billingService.CalculateCostUnified(CostInput{
+
+	tokens := UsageTokens{
+		InputTokens:         state.ActualInputTokens,
+		OutputTokens:        result.Usage.OutputTokens,
+		CacheCreationTokens: result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:     result.Usage.CacheReadInputTokens,
+		ImageOutputTokens:   result.Usage.ImageOutputTokens,
+	}
+
+	var err error
+	if s.resolver != nil && state.APIKey.GroupID != nil {
+		state.ResolvedPricing = s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: state.APIKey.GroupID})
+		state.Cost, err = s.billingService.CalculateCostUnified(CostInput{
 			Ctx:            ctx,
 			Model:          billingModel,
-			GroupID:        apiKey.GroupID,
+			GroupID:        state.APIKey.GroupID,
 			Tokens:         tokens,
 			RequestCount:   1,
 			SizeTier:       "",
-			RateMultiplier: multiplier,
-			ServiceTier:    serviceTier,
+			RateMultiplier: state.Multiplier,
+			ServiceTier:    state.ServiceTier,
 			Resolver:       s.resolver,
-			Resolved:       resolvedPricing,
+			Resolved:       state.ResolvedPricing,
 		})
 	} else {
-		cost, err = s.billingService.CalculateCostWithServiceTier(billingModel, tokens, multiplier, serviceTier)
+		state.Cost, err = s.billingService.CalculateCostWithServiceTier(billingModel, tokens, state.Multiplier, state.ServiceTier)
 	}
 	if err != nil {
-		cost = &CostBreakdown{ActualCost: 0}
+		state.Cost = &CostBreakdown{ActualCost: 0}
 	}
-	accountRateMultiplier := account.BillingRateMultiplier()
-	effectiveInputUnitPrice := (*float64)(nil)
-	effectiveOutputUnitPrice := (*float64)(nil)
-	effectiveCacheReadUnitPrice := (*float64)(nil)
-	pricingSourceParts := make([]string, 0, 2)
+
+	pricingSourceParts := make([]string, 0, 3)
+	state.AccountRateMultiplier = state.Account.BillingRateMultiplier()
 	if pricing, priceErr := s.billingService.GetModelPricing(billingModel); priceErr == nil && pricing != nil {
 		pricing = s.billingService.applyModelSpecificPricingPolicy(billingModel, pricing)
 		inputUnitPrice := pricing.InputPricePerToken
 		outputUnitPrice := pricing.OutputPricePerToken
 		cacheReadUnitPrice := pricing.CacheReadPricePerToken
-		if usePriorityServiceTierPricing(serviceTier, pricing) {
+		if usePriorityServiceTierPricing(state.ServiceTier, pricing) {
 			if pricing.InputPricePerTokenPriority > 0 {
 				inputUnitPrice = pricing.InputPricePerTokenPriority
 			}
@@ -4532,7 +4625,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			}
 			pricingSourceParts = append(pricingSourceParts, "priority_pricing")
 		} else {
-			tierMultiplier := serviceTierCostMultiplier(serviceTier)
+			tierMultiplier := serviceTierCostMultiplier(state.ServiceTier)
 			if tierMultiplier != 1.0 {
 				inputUnitPrice *= tierMultiplier
 				outputUnitPrice *= tierMultiplier
@@ -4544,94 +4637,97 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			outputUnitPrice *= pricing.LongContextOutputMultiplier
 			pricingSourceParts = append(pricingSourceParts, "long_context_pricing")
 		}
-		effectiveInputUnitPrice = &inputUnitPrice
-		effectiveOutputUnitPrice = &outputUnitPrice
-		effectiveCacheReadUnitPrice = &cacheReadUnitPrice
+		state.EffectiveInputUnitPrice = &inputUnitPrice
+		state.EffectiveOutputUnitPrice = &outputUnitPrice
+		state.EffectiveCacheReadUnitPrice = &cacheReadUnitPrice
 	}
-	priorityAccountMultiplier := 1.0
+
+	state.PriorityAccountMultiplier = 1.0
 	if snapshot := input.RoutingSnapshot; snapshot != nil && normalizeTargetGroup(AccountTargetGroup(snapshot.TargetGroup)) == TargetGroupActive {
-		priorityAccountMultiplier = 100.0
+		state.PriorityAccountMultiplier = 100.0
 		pricingSourceParts = append(pricingSourceParts, "priority_account_multiplier")
 	}
-	effectiveMultiplier := multiplier * accountRateMultiplier * priorityAccountMultiplier
-	cost.ActualCost = cost.TotalCost * effectiveMultiplier
-	pricingSource := strings.Join(pricingSourceParts, ",")
+	state.EffectiveMultiplier = state.Multiplier * state.AccountRateMultiplier * state.PriorityAccountMultiplier
+	state.Cost.ActualCost = state.Cost.TotalCost * state.EffectiveMultiplier
+	state.PricingSource = strings.Join(pricingSourceParts, ",")
 
-	// Determine billing type
-	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
-	billingType := BillingTypeBalance
-	if isSubscriptionBilling {
-		billingType = BillingTypeSubscription
-	}
-
-	// Create usage log
-	durationMs := int(result.Duration.Milliseconds())
-	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
-	usageModel := strings.TrimSpace(result.Model)
-	requestedModel := usageModel
+	state.UsageModel = strings.TrimSpace(result.Model)
+	state.RequestedModel = state.UsageModel
 	if input.OriginalModel != "" {
-		requestedModel = input.OriginalModel
+		state.RequestedModel = input.OriginalModel
 	}
-	effectiveModel := strings.TrimSpace(result.UpstreamModel)
-	if effectiveModel == "" {
-		effectiveModel = usageModel
+	state.EffectiveModel = strings.TrimSpace(result.UpstreamModel)
+	if state.EffectiveModel == "" {
+		state.EffectiveModel = state.UsageModel
 	}
 	if snapshot := input.RoutingSnapshot; snapshot != nil {
 		if value := strings.TrimSpace(snapshot.RequestedModel); value != "" {
-			usageModel = value
-			requestedModel = value
+			state.UsageModel = value
+			state.RequestedModel = value
 		}
 		if value := strings.TrimSpace(snapshot.EffectiveModel); value != "" {
-			effectiveModel = value
+			state.EffectiveModel = value
 		}
 	}
+
+	state.IsSubscriptionBilling = state.Subscription != nil && state.APIKey.Group != nil && state.APIKey.Group.IsSubscriptionType()
+	state.BillingType = BillingTypeBalance
+	if state.IsSubscriptionBilling {
+		state.BillingType = BillingTypeSubscription
+	}
+
+	return state
+}
+
+func (s *OpenAIGatewayService) buildOpenAIRecordUsageLog(input *openAIRecordUsageCoreInput, state *openAIRecordUsageState) *UsageLog {
+	durationMs := int(state.Result.Duration.Milliseconds())
 	usageLog := &UsageLog{
-		UserID:            user.ID,
-		APIKeyID:          apiKey.ID,
-		AccountID:         account.ID,
-		RequestID:         requestID,
-		Model:             usageModel,
-		RequestedModel:    requestedModel,
-		UpstreamModel:     optionalNonEqualStringPtr(effectiveModel, usageModel),
+		UserID:            state.User.ID,
+		APIKeyID:          state.APIKey.ID,
+		AccountID:         state.Account.ID,
+		RequestID:         state.RequestID,
+		Model:             state.UsageModel,
+		RequestedModel:    state.RequestedModel,
+		UpstreamModel:     optionalNonEqualStringPtr(state.EffectiveModel, state.UsageModel),
 		ChannelID:         optionalInt64Ptr(input.ChannelID),
 		ModelMappingChain: optionalTrimmedStringPtr(input.ModelMappingChain),
 		BillingTier: func() *string {
-			if resolvedPricing == nil || strings.TrimSpace(resolvedPricing.Source) == "" {
+			if state.ResolvedPricing == nil || strings.TrimSpace(state.ResolvedPricing.Source) == "" {
 				return nil
 			}
-			v := strings.TrimSpace(resolvedPricing.Source)
+			v := strings.TrimSpace(state.ResolvedPricing.Source)
 			return &v
 		}(),
-		ServiceTier:                 result.ServiceTier,
-		ReasoningEffort:             result.ReasoningEffort,
+		ServiceTier:                 state.Result.ServiceTier,
+		ReasoningEffort:             state.Result.ReasoningEffort,
 		InboundEndpoint:             optionalTrimmedStringPtr(input.InboundEndpoint),
 		UpstreamEndpoint:            optionalTrimmedStringPtr(input.UpstreamEndpoint),
-		InputTokens:                 actualInputTokens,
-		OutputTokens:                result.Usage.OutputTokens,
-		CacheCreationTokens:         result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:             result.Usage.CacheReadInputTokens,
-		ImageOutputTokens:           result.Usage.ImageOutputTokens,
-		InputCost:                   cost.InputCost,
-		OutputCost:                  cost.OutputCost,
-		ImageOutputCost:             cost.ImageOutputCost,
-		CacheCreationCost:           cost.CacheCreationCost,
-		CacheReadCost:               cost.CacheReadCost,
-		TotalCost:                   cost.TotalCost,
-		ActualCost:                  cost.ActualCost,
-		RateMultiplier:              multiplier,
-		AccountRateMultiplier:       &accountRateMultiplier,
-		PriorityAccountMultiplier:   &priorityAccountMultiplier,
-		EffectiveMultiplier:         &effectiveMultiplier,
-		EffectiveInputUnitPrice:     effectiveInputUnitPrice,
-		EffectiveOutputUnitPrice:    effectiveOutputUnitPrice,
-		EffectiveCacheReadUnitPrice: effectiveCacheReadUnitPrice,
-		PricingSource:               optionalTrimmedStringPtr(pricingSource),
-		BillingType:                 billingType,
-		BillingMode:                 optionalTrimmedStringPtr(cost.BillingMode),
-		Stream:                      result.Stream,
-		OpenAIWSMode:                result.OpenAIWSMode,
+		InputTokens:                 state.ActualInputTokens,
+		OutputTokens:                state.Result.Usage.OutputTokens,
+		CacheCreationTokens:         state.Result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:             state.Result.Usage.CacheReadInputTokens,
+		ImageOutputTokens:           state.Result.Usage.ImageOutputTokens,
+		InputCost:                   state.Cost.InputCost,
+		OutputCost:                  state.Cost.OutputCost,
+		ImageOutputCost:             state.Cost.ImageOutputCost,
+		CacheCreationCost:           state.Cost.CacheCreationCost,
+		CacheReadCost:               state.Cost.CacheReadCost,
+		TotalCost:                   state.Cost.TotalCost,
+		ActualCost:                  state.Cost.ActualCost,
+		RateMultiplier:              state.Multiplier,
+		AccountRateMultiplier:       &state.AccountRateMultiplier,
+		PriorityAccountMultiplier:   &state.PriorityAccountMultiplier,
+		EffectiveMultiplier:         &state.EffectiveMultiplier,
+		EffectiveInputUnitPrice:     state.EffectiveInputUnitPrice,
+		EffectiveOutputUnitPrice:    state.EffectiveOutputUnitPrice,
+		EffectiveCacheReadUnitPrice: state.EffectiveCacheReadUnitPrice,
+		PricingSource:               optionalTrimmedStringPtr(state.PricingSource),
+		BillingType:                 state.BillingType,
+		BillingMode:                 optionalTrimmedStringPtr(state.Cost.BillingMode),
+		Stream:                      state.Result.Stream,
+		OpenAIWSMode:                state.Result.OpenAIWSMode,
 		DurationMs:                  &durationMs,
-		FirstTokenMs:                result.FirstTokenMs,
+		FirstTokenMs:                state.Result.FirstTokenMs,
 		CreatedAt:                   time.Now(),
 	}
 	if snapshot := input.RoutingSnapshot; snapshot != nil {
@@ -4647,51 +4743,16 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		billingMode := string(BillingModeToken)
 		usageLog.BillingMode = &billingMode
 	}
-	// 添加 UserAgent
-	if input.UserAgent != "" {
-		usageLog.UserAgent = &input.UserAgent
+	usageLog.UserAgent = optionalTrimmedStringPtr(input.UserAgent)
+	usageLog.IPAddress = optionalTrimmedStringPtr(input.IPAddress)
+	if state.APIKey.GroupID != nil {
+		usageLog.GroupID = state.APIKey.GroupID
+	}
+	if state.Subscription != nil {
+		usageLog.SubscriptionID = &state.Subscription.ID
 	}
 
-	// 添加 IPAddress
-	if input.IPAddress != "" {
-		usageLog.IPAddress = &input.IPAddress
-	}
-
-	if apiKey.GroupID != nil {
-		usageLog.GroupID = apiKey.GroupID
-	}
-	if subscription != nil {
-		usageLog.SubscriptionID = &subscription.ID
-	}
-
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
-		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
-		s.deferredService.ScheduleLastUsedUpdate(account.ID)
-		return nil
-	}
-
-	billingErr := func() error {
-		_, err := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
-			Cost:                  cost,
-			User:                  user,
-			APIKey:                apiKey,
-			Account:               account,
-			Subscription:          subscription,
-			RequestPayloadHash:    resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
-			IsSubscriptionBill:    isSubscriptionBilling,
-			AccountRateMultiplier: accountRateMultiplier,
-			APIKeyService:         input.APIKeyService,
-		}, s.billingDeps(), s.usageBillingRepo)
-		return err
-	}()
-
-	if billingErr != nil {
-		return billingErr
-	}
-	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
-
-	return nil
+	return usageLog
 }
 
 // ParseCodexRateLimitHeaders extracts Codex usage limits from response headers.
