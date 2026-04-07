@@ -178,8 +178,29 @@ func TestParsePaymentConfig(t *testing.T) {
 func TestGetBasePaymentType(t *testing.T) {
 	t.Parallel()
 
-	// Import from the payment package is not needed since GetBasePaymentType
-	// is in a different package. This test covers parsePaymentConfig which
-	// is the core pure function in this service.
-	// Integration tests for DB-dependent methods would go in a separate file.
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{payment.TypeEasyPay, payment.TypeEasyPay},
+		{payment.TypeStripe, payment.TypeStripe},
+		{payment.TypeCard, payment.TypeStripe},
+		{payment.TypeLink, payment.TypeStripe},
+		{payment.TypeAlipay, payment.TypeAlipay},
+		{payment.TypeAlipayDirect, payment.TypeAlipay},
+		{payment.TypeWxpay, payment.TypeWxpay},
+		{payment.TypeWxpayDirect, payment.TypeWxpay},
+		{"unknown", "unknown"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			got := payment.GetBasePaymentType(tt.input)
+			if got != tt.expected {
+				t.Fatalf("GetBasePaymentType(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
 }
