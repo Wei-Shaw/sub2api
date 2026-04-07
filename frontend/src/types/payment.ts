@@ -114,18 +114,18 @@ export interface ProviderInstance {
 
 export interface CreateOrderRequest {
   amount: number
-  paymentType: string
-  orderType: string
-  planId?: number
+  payment_type: string
+  order_type: string
+  plan_id?: number
 }
 
 export interface CreateOrderResult {
-  orderId: number
-  payUrl?: string
-  qrCode?: string
-  clientSecret?: string
-  payAmount: number
-  expiresAt: string
+  order_id: number
+  pay_url?: string
+  qr_code?: string
+  client_secret?: string
+  pay_amount: number
+  expires_at: string
 }
 
 export interface DashboardStats {

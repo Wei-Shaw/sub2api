@@ -87,51 +87,51 @@ type MethodLimits struct {
 }
 
 type CreateProviderInstanceRequest struct {
-	ProviderKey    string            `json:"providerKey"`
+	ProviderKey    string            `json:"provider_key"`
 	Name           string            `json:"name"`
 	Config         map[string]string `json:"config"`
-	SupportedTypes []string          `json:"supportedTypes"`
+	SupportedTypes []string          `json:"supported_types"`
 	Enabled        bool              `json:"enabled"`
-	SortOrder      int               `json:"sortOrder"`
+	SortOrder      int               `json:"sort_order"`
 	Limits         string            `json:"limits"`
-	RefundEnabled  bool              `json:"refundEnabled"`
+	RefundEnabled  bool              `json:"refund_enabled"`
 }
 
 type UpdateProviderInstanceRequest struct {
 	Name           *string           `json:"name"`
 	Config         map[string]string `json:"config"`
-	SupportedTypes []string          `json:"supportedTypes"`
+	SupportedTypes []string          `json:"supported_types"`
 	Enabled        *bool             `json:"enabled"`
-	SortOrder      *int              `json:"sortOrder"`
+	SortOrder      *int              `json:"sort_order"`
 	Limits         *string           `json:"limits"`
-	RefundEnabled  *bool             `json:"refundEnabled"`
+	RefundEnabled  *bool             `json:"refund_enabled"`
 }
 type CreatePlanRequest struct {
-	GroupID       int64    `json:"groupId"`
+	GroupID       int64    `json:"group_id"`
 	Name          string   `json:"name"`
 	Description   string   `json:"description"`
 	Price         float64  `json:"price"`
-	OriginalPrice *float64 `json:"originalPrice"`
-	ValidityDays  int      `json:"validityDays"`
-	ValidityUnit  string   `json:"validityUnit"`
+	OriginalPrice *float64 `json:"original_price"`
+	ValidityDays  int      `json:"validity_days"`
+	ValidityUnit  string   `json:"validity_unit"`
 	Features      string   `json:"features"`
-	ProductName   string   `json:"productName"`
-	ForSale       bool     `json:"forSale"`
-	SortOrder     int      `json:"sortOrder"`
+	ProductName   string   `json:"product_name"`
+	ForSale       bool     `json:"for_sale"`
+	SortOrder     int      `json:"sort_order"`
 }
 
 type UpdatePlanRequest struct {
-	GroupID       *int64   `json:"groupId"`
+	GroupID       *int64   `json:"group_id"`
 	Name          *string  `json:"name"`
 	Description   *string  `json:"description"`
 	Price         *float64 `json:"price"`
-	OriginalPrice *float64 `json:"originalPrice"`
-	ValidityDays  *int     `json:"validityDays"`
-	ValidityUnit  *string  `json:"validityUnit"`
+	OriginalPrice *float64 `json:"original_price"`
+	ValidityDays  *int     `json:"validity_days"`
+	ValidityUnit  *string  `json:"validity_unit"`
 	Features      *string  `json:"features"`
-	ProductName   *string  `json:"productName"`
-	ForSale       *bool    `json:"forSale"`
-	SortOrder     *int     `json:"sortOrder"`
+	ProductName   *string  `json:"product_name"`
+	ForSale       *bool    `json:"for_sale"`
+	SortOrder     *int     `json:"sort_order"`
 }
 
 // PaymentConfigService manages payment configuration and CRUD for

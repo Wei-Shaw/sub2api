@@ -226,16 +226,16 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
   try {
     const result = await paymentStore.createOrder({
       amount: orderAmount,
-      paymentType: selectedMethod.value,
-      orderType: orderType,
-      planId: planId,
+      payment_type: selectedMethod.value,
+      order_type: orderType,
+      plan_id: planId,
     })
-    if (result.clientSecret) {
-      router.push({ path: '/payment/stripe', query: { order_id: String(result.orderId), client_secret: result.clientSecret } })
-    } else if (result.qrCode) {
-      router.push({ path: '/payment/qrcode', query: { order_id: String(result.orderId), qr: result.qrCode || '', pay_url: result.payUrl || '', expires_at: result.expiresAt || '' } })
-    } else if (result.payUrl) {
-      window.location.href = result.payUrl
+    if (result.client_secret) {
+      router.push({ path: '/payment/stripe', query: { order_id: String(result.order_id), client_secret: result.client_secret } })
+    } else if (result.qr_code) {
+      router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), qr: result.qr_code || '', pay_url: result.pay_url || '', expires_at: result.expires_at || '' } })
+    } else if (result.pay_url) {
+      window.location.href = result.pay_url
     } else {
       errorMessage.value = t('payment.result.failed')
       appStore.showError(errorMessage.value)

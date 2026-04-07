@@ -73,16 +73,16 @@ type CreateOrderRequest struct {
 }
 
 type CreateOrderResponse struct {
-	OrderID      int64     `json:"orderId"`
+	OrderID      int64     `json:"order_id"`
 	Amount       float64   `json:"amount"`
-	PayAmount    float64   `json:"payAmount"`
-	FeeRate      float64   `json:"feeRate"`
+	PayAmount    float64   `json:"pay_amount"`
+	FeeRate      float64   `json:"fee_rate"`
 	Status       string    `json:"status"`
-	PaymentType  string    `json:"paymentType"`
-	PayURL       string    `json:"payUrl,omitempty"`
-	QRCode       string    `json:"qrCode,omitempty"`
-	ClientSecret string    `json:"clientSecret,omitempty"`
-	ExpiresAt    time.Time `json:"expiresAt"`
+	PaymentType  string    `json:"payment_type"`
+	PayURL       string    `json:"pay_url,omitempty"`
+	QRCode       string    `json:"qr_code,omitempty"`
+	ClientSecret string    `json:"client_secret,omitempty"`
+	ExpiresAt    time.Time `json:"expires_at"`
 }
 
 type OrderListParams struct {
@@ -109,9 +109,9 @@ type RefundPlan struct {
 type RefundResult struct {
 	Success         bool    `json:"success"`
 	Warning         string  `json:"warning,omitempty"`
-	RequireForce    bool    `json:"requireForce,omitempty"`
-	BalanceDeducted float64 `json:"balanceDeducted,omitempty"`
-	SubDaysDeducted int     `json:"subscriptionDaysDeducted,omitempty"`
+	RequireForce    bool    `json:"require_force,omitempty"`
+	BalanceDeducted float64 `json:"balance_deducted,omitempty"`
+	SubDaysDeducted int     `json:"subscription_days_deducted,omitempty"`
 }
 
 type DashboardStats struct {

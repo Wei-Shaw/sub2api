@@ -45,7 +45,7 @@
       <!-- Right: toggles + actions -->
       <div class="flex items-center gap-4">
         <ToggleSwitch :label="t('common.enabled')" :checked="provider.enabled" @toggle="emit('toggleField', 'enabled')" />
-        <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="provider.refund_enabled" @toggle="emit('toggleField', 'refundEnabled')" />
+        <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="provider.refund_enabled" @toggle="emit('toggleField', 'refund_enabled')" />
         <div class="flex items-center gap-1 border-l border-gray-200 pl-3 dark:border-dark-600">
           <button @click="emit('edit')" class="btn-icon text-blue-500 hover:text-blue-700" :title="t('common.edit')">
             <Icon name="edit" size="sm" />
@@ -81,7 +81,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  toggleField: [field: 'enabled' | 'refundEnabled']
+  toggleField: [field: 'enabled' | 'refund_enabled']
   toggleType: [type: string]
   edit: []
   delete: []

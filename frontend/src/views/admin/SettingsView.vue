@@ -2887,7 +2887,7 @@ async function handleSaveProvider(payload: any) {
   }
 }
 
-async function handleToggleField(provider: ProviderInstance, field: 'enabled' | 'refundEnabled') {
+async function handleToggleField(provider: ProviderInstance, field: 'enabled' | 'refund_enabled') {
   const newValue = field === 'enabled' ? !provider.enabled : !provider.refund_enabled
   try {
     await adminAPI.payment.updateProvider(provider.id, { [field]: newValue })
@@ -2905,7 +2905,7 @@ async function handleToggleType(provider: ProviderInstance, type: string) {
     return
   }
   try {
-    await adminAPI.payment.updateProvider(provider.id, { supportedTypes: updated } as any)
+    await adminAPI.payment.updateProvider(provider.id, { supported_types: updated } as any)
     provider.supported_types = updated
   } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
 }

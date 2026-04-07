@@ -118,7 +118,7 @@ type AdminProcessRefundRequest struct {
 	Amount        float64 `json:"amount"`
 	Reason        string  `json:"reason"`
 	Force         bool    `json:"force"`
-	DeductBalance bool    `json:"deductBalance"`
+	DeductBalance bool    `json:"deduct_balance"`
 }
 
 // ProcessRefund processes a refund for an order (admin).

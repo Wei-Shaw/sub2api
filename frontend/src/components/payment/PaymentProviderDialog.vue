@@ -226,11 +226,11 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   save: [payload: {
-    providerKey: string
+    provider_key: string
     name: string
-    supportedTypes: string[]
+    supported_types: string[]
     enabled: boolean
-    refundEnabled: boolean
+    refund_enabled: boolean
     config: Record<string, string>
     limits: string
   }]
@@ -388,11 +388,11 @@ function handleSave() {
   }
 
   emit('save', {
-    providerKey: form.provider_key,
+    provider_key: form.provider_key,
     name: form.name,
-    supportedTypes: form.supported_types,
+    supported_types: form.supported_types,
     enabled: form.enabled,
-    refundEnabled: form.refund_enabled,
+    refund_enabled: form.refund_enabled,
     config: filteredConfig,
     limits: serializeLimits(),
   })

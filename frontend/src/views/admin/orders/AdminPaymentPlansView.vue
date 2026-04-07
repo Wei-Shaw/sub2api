@@ -236,19 +236,19 @@ function openPlanEdit(plan: SubscriptionPlan | null) {
   showPlanDialog.value = true
 }
 
-/** Build request payload with camelCase keys matching backend JSON tags */
+/** Build request payload with snake_case keys matching backend JSON tags */
 function buildPlanPayload() {
   const features = planFeaturesText.value.split('\n').map(f => f.trim()).filter(Boolean).join('\n')
   return {
     name: planForm.name,
-    groupId: planForm.group_id,
+    group_id: planForm.group_id,
     description: planForm.description,
     price: planForm.price,
-    originalPrice: planForm.original_price || 0,
-    validityDays: planForm.validity_days,
-    validityUnit: planForm.validity_unit,
-    forSale: planForm.for_sale,
-    sortOrder: planForm.sort_order,
+    original_price: planForm.original_price || 0,
+    validity_days: planForm.validity_days,
+    validity_unit: planForm.validity_unit,
+    for_sale: planForm.for_sale,
+    sort_order: planForm.sort_order,
     features,
   }
 }
@@ -267,7 +267,7 @@ async function handleSavePlan() {
 /** Quick toggle for_sale from the list */
 async function toggleForSale(plan: SubscriptionPlan) {
   try {
-    await adminPaymentAPI.updatePlan(plan.id, { forSale: !plan.for_sale })
+    await adminPaymentAPI.updatePlan(plan.id, { for_sale: !plan.for_sale })
     plan.for_sale = !plan.for_sale
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))

@@ -80,9 +80,9 @@ func (h *PaymentHandler) GetLimits(c *gin.Context) {
 // CreateOrderRequest is the request body for creating a payment order.
 type CreateOrderRequest struct {
 	Amount      float64 `json:"amount"`
-	PaymentType string  `json:"paymentType" binding:"required"`
-	OrderType   string  `json:"orderType"`
-	PlanID      int64   `json:"planId"`
+	PaymentType string  `json:"payment_type" binding:"required"`
+	OrderType   string  `json:"order_type"`
+	PlanID      int64   `json:"plan_id"`
 }
 
 // CreateOrder creates a new payment order.
