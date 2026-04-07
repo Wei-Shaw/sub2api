@@ -98,14 +98,13 @@ interface ReturnInfo {
 const returnInfo = ref<ReturnInfo | null>(null)
 
 const isSuccess = computed(() => {
-  // Internal flow: explicit status=success
-  if (route.query.status === 'success') return true
-  // EasyPay return flow: trade_status=TRADE_SUCCESS
-  if (route.query.trade_status === 'TRADE_SUCCESS') return true
-  // Order-based check
+  // Always prioritize actual order status from backend
   if (order.value) {
     return order.value.status === 'COMPLETED' || order.value.status === 'PAID'
   }
+  // Fallback only when order not loaded
+  if (route.query.status === 'success') return true
+  if (route.query.trade_status === 'TRADE_SUCCESS') return true
   return false
 })
 
