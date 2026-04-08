@@ -240,8 +240,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 		return
 	}
-	channelRequestModel := reqModel
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, channelRequestModel)
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 	if channelMapping.Mapped {
 		reqModel = channelMapping.MappedModel
 		body = h.gatewayService.ReplaceModelInBody(body, reqModel)
@@ -454,7 +453,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
-				ChannelUsageFields: channelMapping.ToUsageFields(channelRequestModel, result.UpstreamModel),
+				ChannelUsageFields: channelMapping.ToUsageFields(requestedModel, result.UpstreamModel),
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.responses"),
