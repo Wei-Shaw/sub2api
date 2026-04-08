@@ -50,8 +50,8 @@ import { POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
 import type { Stripe, StripeElements } from '@stripe/stripe-js'
 import Icon from '@/components/icons/Icon.vue'
 
-// Stripe payment methods that require full-page redirect (cannot complete inline)
-const REDIRECT_METHODS = new Set(['alipay'])
+// Stripe payment methods that need a popup (redirect or QR code)
+const POPUP_METHODS = new Set(['alipay', 'wechat_pay'])
 
 const props = defineProps<{
   orderId: number
@@ -120,12 +120,15 @@ onUnmounted(() => {
 async function handlePay() {
   if (!stripeInstance || !elementsInstance || submitting.value) return
 
-  // For redirect-based methods (Alipay): open StripePaymentView in new window,
-  // let the redirect happen there instead of navigating the main page away
-  if (REDIRECT_METHODS.has(selectedType.value)) {
+  // For popup-based methods (Alipay redirect / WeChat QR): open popup with direct confirm
+  if (POPUP_METHODS.has(selectedType.value)) {
     const stripeUrl = router.resolve({
       path: '/payment/stripe',
-      query: { order_id: String(props.orderId), client_secret: props.clientSecret },
+      query: {
+        order_id: String(props.orderId),
+        client_secret: props.clientSecret,
+        method: selectedType.value,
+      },
     }).href
     window.open(stripeUrl, 'paymentPopup', POPUP_WINDOW_FEATURES)
     emit('redirect', props.orderId, stripeUrl)

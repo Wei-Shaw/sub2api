@@ -13,29 +13,75 @@
         <button class="btn btn-primary mt-6" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
       </div>
       <template v-else>
+        <!-- Amount header -->
         <div v-if="order" class="card overflow-hidden">
           <div class="bg-gradient-to-br from-[#635bff] to-[#4f46e5] px-6 py-6 text-center">
             <p class="text-sm font-medium text-indigo-200">{{ t('payment.actualPay') }}</p>
             <p class="mt-1 text-3xl font-bold text-white">&#165;{{ order.pay_amount.toFixed(2) }}</p>
           </div>
         </div>
-        <div class="card p-6">
-          <div id="stripe-payment-element" class="min-h-[200px]"></div>
-          <p v-if="stripeError" class="mt-4 text-sm text-red-600 dark:text-red-400">{{ stripeError }}</p>
-          <div v-if="stripeSuccess" class="mt-4 flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-            <Icon name="checkCircle" size="md" />
-            <span class="text-sm font-medium">{{ t('payment.stripeSuccessProcessing') }}</span>
+
+        <!-- WeChat QR Code display -->
+        <template v-if="wechatQrUrl">
+          <div class="card p-6">
+            <div class="flex flex-col items-center space-y-4">
+              <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.qr.scanWxpay') }}</p>
+              <div class="rounded-2xl bg-white p-4 shadow-sm">
+                <img :src="wechatQrUrl" alt="WeChat Pay QR" class="h-56 w-56" />
+              </div>
+              <p class="text-center text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.scanWxpayHint') }}</p>
+            </div>
           </div>
-          <button v-if="!stripeSuccess" class="btn btn-stripe mt-6 w-full py-3 text-base" :disabled="stripeSubmitting || !stripeReady" @click="handlePay">
-            <span v-if="stripeSubmitting" class="flex items-center justify-center gap-2">
-              <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-              {{ t('common.processing') }}
-            </span>
-            <span v-else>{{ t('payment.stripePay') }}</span>
-          </button>
-        </div>
-        <div class="text-center">
-          <button class="btn btn-secondary" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
+          <div class="card p-4 text-center">
+            <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.waitingPayment') }}</p>
+          </div>
+        </template>
+
+        <!-- Alipay redirecting state -->
+        <template v-else-if="redirecting">
+          <div class="card p-6">
+            <div class="flex flex-col items-center space-y-4 py-4">
+              <div class="h-10 w-10 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
+              <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.payInNewWindowHint') }}</p>
+            </div>
+          </div>
+        </template>
+
+        <!-- Success state -->
+        <template v-else-if="stripeSuccess">
+          <div class="card p-6 text-center">
+            <div class="flex flex-col items-center gap-3 py-4">
+              <div class="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                <Icon name="check" size="lg" class="text-green-500" />
+              </div>
+              <p class="text-lg font-bold text-gray-900 dark:text-white">{{ t('payment.result.success') }}</p>
+              <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.stripeSuccessProcessing') }}</p>
+            </div>
+          </div>
+        </template>
+
+        <!-- Fallback: full Payment Element (no method param or unknown method) -->
+        <template v-else-if="showPaymentElement">
+          <div class="card p-6">
+            <div id="stripe-payment-element" class="min-h-[200px]"></div>
+            <p v-if="stripeError" class="mt-4 text-sm text-red-600 dark:text-red-400">{{ stripeError }}</p>
+            <button class="btn btn-stripe mt-6 w-full py-3 text-base" :disabled="stripeSubmitting || !stripeReady" @click="handleGenericPay">
+              <span v-if="stripeSubmitting" class="flex items-center justify-center gap-2">
+                <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                {{ t('common.processing') }}
+              </span>
+              <span v-else>{{ t('payment.stripePay') }}</span>
+            </button>
+          </div>
+          <div class="text-center">
+            <button class="btn btn-secondary" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
+          </div>
+        </template>
+
+        <!-- Error -->
+        <div v-if="stripeError && !showPaymentElement" class="card p-4">
+          <p class="text-sm text-red-600 dark:text-red-400">{{ stripeError }}</p>
+          <button class="btn btn-secondary mt-3 w-full" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
         </div>
       </template>
     </div>
@@ -66,14 +112,18 @@ const stripeSubmitting = ref(false)
 const stripeSuccess = ref(false)
 const stripeReady = ref(false)
 const order = ref<PaymentOrder | null>(null)
+const wechatQrUrl = ref('')
+const redirecting = ref(false)
+const showPaymentElement = ref(false)
 
 let stripeInstance: Stripe | null = null
-let redirectTimer: ReturnType<typeof setTimeout> | null = null
 let elementsInstance: StripeElements | null = null
+let redirectTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
   const orderId = Number(route.query.order_id)
   const clientSecret = String(route.query.client_secret || '')
+  const method = String(route.query.method || '')
 
   if (!orderId || !clientSecret) {
     loading.value = false
@@ -95,19 +145,18 @@ onMounted(async () => {
 
     stripeInstance = stripe
     loading.value = false
-    await nextTick()
-    const isDark = document.documentElement.classList.contains('dark')
-    const elements = stripe.elements({
-      clientSecret,
-      appearance: { theme: isDark ? 'night' : 'stripe', variables: { borderRadius: '8px' } },
-    })
-    elementsInstance = elements
-    const paymentElement = elements.create('payment', {
-      layout: 'tabs',
-      paymentMethodOrder: ['alipay', 'wechat_pay', 'card', 'link'],
-    } as Record<string, unknown>)
-    paymentElement.mount('#stripe-payment-element')
-    paymentElement.on('ready', () => { stripeReady.value = true })
+
+    // Direct confirm for specific methods (no Payment Element needed)
+    if (method === 'alipay') {
+      await confirmAlipay(stripe, clientSecret, orderId)
+    } else if (method === 'wechat_pay') {
+      await confirmWechatPay(stripe, clientSecret)
+    } else {
+      // Fallback: render full Payment Element
+      showPaymentElement.value = true
+      await nextTick()
+      mountPaymentElement(stripe, clientSecret)
+    }
   } catch (err: unknown) {
     initError.value = extractApiErrorMessage(err, t('payment.stripeLoadFailed'))
   } finally {
@@ -119,7 +168,59 @@ onUnmounted(() => {
   if (redirectTimer) clearTimeout(redirectTimer)
 })
 
-async function handlePay() {
+async function confirmAlipay(stripe: Stripe, clientSecret: string, orderId: number) {
+  redirecting.value = true
+  const returnUrl = window.location.origin + '/payment/result?order_id=' + orderId + '&status=success'
+  const { error } = await stripe.confirmAlipayPayment(clientSecret, { return_url: returnUrl })
+  if (error) {
+    redirecting.value = false
+    stripeError.value = error.message || t('payment.result.failed')
+  }
+  // If no error, Stripe redirects automatically — nothing else to do
+}
+
+async function confirmWechatPay(stripe: Stripe, clientSecret: string) {
+  const { paymentIntent, error } = await (stripe as Stripe & {
+    confirmWechatPayPayment: (cs: string, opts: Record<string, unknown>) => Promise<{ paymentIntent?: { status: string; next_action?: { wechat_pay_display_qr_code?: { image_data_url?: string } } }; error?: { message?: string } }>
+  }).confirmWechatPayPayment(clientSecret, {
+    payment_method_options: { wechat_pay: { client: 'web' } },
+  })
+
+  if (error) {
+    stripeError.value = error.message || t('payment.result.failed')
+    return
+  }
+
+  // Extract QR code image from next_action
+  const qrData = paymentIntent?.next_action?.wechat_pay_display_qr_code?.image_data_url
+  if (qrData) {
+    wechatQrUrl.value = qrData
+    // Poll for completion
+    startPolling()
+  } else if (paymentIntent?.status === 'succeeded') {
+    stripeSuccess.value = true
+    scheduleClose()
+  } else {
+    stripeError.value = t('payment.result.failed')
+  }
+}
+
+function mountPaymentElement(stripe: Stripe, clientSecret: string) {
+  const isDark = document.documentElement.classList.contains('dark')
+  const elements = stripe.elements({
+    clientSecret,
+    appearance: { theme: isDark ? 'night' : 'stripe', variables: { borderRadius: '8px' } },
+  })
+  elementsInstance = elements
+  const paymentElement = elements.create('payment', {
+    layout: 'tabs',
+    paymentMethodOrder: ['alipay', 'wechat_pay', 'card', 'link'],
+  } as Record<string, unknown>)
+  paymentElement.mount('#stripe-payment-element')
+  paymentElement.on('ready', () => { stripeReady.value = true })
+}
+
+async function handleGenericPay() {
   if (!stripeInstance || !elementsInstance || stripeSubmitting.value) return
   stripeSubmitting.value = true
   stripeError.value = ''
@@ -135,14 +236,7 @@ async function handlePay() {
       stripeError.value = error.message || t('payment.result.failed')
     } else {
       stripeSuccess.value = true
-      // If opened as popup, close the window after a short delay
-      if (window.opener) {
-        redirectTimer = setTimeout(() => { window.close() }, 2000)
-      } else {
-        redirectTimer = setTimeout(() => {
-          router.push({ path: '/payment/result', query: { order_id: String(route.query.order_id || ''), status: 'success' } })
-        }, 2000)
-      }
+      scheduleClose()
     }
   } catch (err: unknown) {
     stripeError.value = extractApiErrorMessage(err, t('payment.result.failed'))
@@ -150,4 +244,36 @@ async function handlePay() {
     stripeSubmitting.value = false
   }
 }
+
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+function startPolling() {
+  const orderId = Number(route.query.order_id)
+  if (!orderId) return
+  pollTimer = setInterval(async () => {
+    const o = await paymentStore.pollOrderStatus(orderId)
+    if (!o) return
+    if (o.status === 'COMPLETED' || o.status === 'PAID') {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+      stripeSuccess.value = true
+      wechatQrUrl.value = ''
+      scheduleClose()
+    }
+  }, 3000)
+}
+
+function scheduleClose() {
+  if (window.opener) {
+    redirectTimer = setTimeout(() => { window.close() }, 2000)
+  } else {
+    redirectTimer = setTimeout(() => {
+      router.push({ path: '/payment/result', query: { order_id: String(route.query.order_id || ''), status: 'success' } })
+    }, 2000)
+  }
+}
+
+onUnmounted(() => {
+  if (redirectTimer) clearTimeout(redirectTimer)
+  if (pollTimer) clearInterval(pollTimer)
+})
 </script>
