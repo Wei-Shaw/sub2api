@@ -81,6 +81,7 @@ type CreateOrderResponse struct {
 	QRCode       string    `json:"qr_code,omitempty"`
 	ClientSecret string    `json:"client_secret,omitempty"`
 	ExpiresAt    time.Time `json:"expires_at"`
+	PaymentMode  string    `json:"payment_mode,omitempty"`
 }
 
 type OrderListParams struct {

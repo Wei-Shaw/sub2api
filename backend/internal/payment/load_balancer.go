@@ -90,6 +90,7 @@ func (lb *DefaultLoadBalancer) SelectInstance(ctx context.Context, providerKey s
 		InstanceID:     fmt.Sprintf("%d", selected.ID),
 		Config:         config,
 		SupportedTypes: selected.SupportedTypes,
+		PaymentMode:    selected.PaymentMode,
 	}, nil
 }
 

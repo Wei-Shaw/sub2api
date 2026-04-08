@@ -147,6 +147,7 @@ export interface CreateOrderResult {
   client_secret?: string
   pay_amount: number
   expires_at: string
+  payment_mode?: string
 }
 
 export interface DashboardStats {

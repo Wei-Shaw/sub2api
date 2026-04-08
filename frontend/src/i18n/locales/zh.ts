@@ -4550,6 +4550,7 @@ export default {
         paymentMode: '支付模式',
         modeRedirect: '跳转',
         modeQRCode: '二维码',
+        modePopup: '弹窗',
         validationNameRequired: '服务商名称不能为空',
         validationTypesRequired: '请至少选择一种支持的支付方式',
         validationFieldRequired: '{field} 不能为空',

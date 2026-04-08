@@ -310,13 +310,21 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       order_type: orderType,
       plan_id: planId,
     })
+    const mode = result.payment_mode || 'popup'
+    const openWindow = (url: string) => {
+      if (mode === 'redirect') {
+        window.open(url, '_blank')
+      } else {
+        window.open(url, 'paymentPopup', POPUP_WINDOW_FEATURES)
+      }
+    }
     if (result.client_secret) {
-      // Stripe: open in popup window, show waiting state inline
+      // Stripe: open payment page, show waiting state inline
       const stripeUrl = router.resolve({
         path: '/payment/stripe',
         query: { order_id: String(result.order_id), client_secret: result.client_secret },
       }).href
-      window.open(stripeUrl, 'paymentPopup', POPUP_WINDOW_FEATURES)
+      openWindow(stripeUrl)
       paymentState.value = {
         orderId: result.order_id, qrCode: '', expiresAt: '',
         paymentType: selectedMethod.value, payUrl: stripeUrl,
@@ -330,8 +338,8 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       }
       paymentPhase.value = 'paying'
     } else if (result.pay_url) {
-      // Redirect mode: open in popup, show waiting state inline
-      window.open(result.pay_url, 'paymentPopup', POPUP_WINDOW_FEATURES)
+      // Redirect/popup mode: open payment URL, show waiting state inline
+      openWindow(result.pay_url)
       paymentState.value = {
         orderId: result.order_id, qrCode: '', expiresAt: result.expires_at || '',
         paymentType: selectedMethod.value, payUrl: result.pay_url,

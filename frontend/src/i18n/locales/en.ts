@@ -4377,6 +4377,7 @@ export default {
         paymentMode: 'Payment Mode',
         modeRedirect: 'Redirect',
         modeQRCode: 'QR Code',
+        modePopup: 'Popup',
         validationNameRequired: 'Provider name is required',
         validationTypesRequired: 'Please select at least one supported payment type',
         validationFieldRequired: '{field} is required',
