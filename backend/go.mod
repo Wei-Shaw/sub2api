@@ -1,12 +1,12 @@
 module github.com/Wei-Shaw/sub2api
 
-go 1.26.1
+go 1.26.2
 
 require (
 	entgo.io/ent v0.14.5
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/DouDOU-start/go-sora2api v1.1.0
 	github.com/alitto/pond/v2 v2.6.2
+	github.com/andybalholm/brotli v1.2.0
 	github.com/aws/aws-sdk-go-v2 v1.41.3
 	github.com/aws/aws-sdk-go-v2/config v1.32.10
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.10
@@ -50,7 +50,6 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
-	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.5 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.18 // indirect
@@ -67,14 +66,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.15 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.7 // indirect
 	github.com/aws/smithy-go v1.24.2 // indirect
-	github.com/bdandy/go-errors v1.2.2 // indirect
-	github.com/bdandy/go-socks4 v1.2.3 // indirect
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
-	github.com/bogdanfinn/fhttp v0.6.8 // indirect
-	github.com/bogdanfinn/quic-go-utls v1.0.9-utls // indirect
-	github.com/bogdanfinn/tls-client v1.14.0 // indirect
-	github.com/bogdanfinn/utls v1.7.7-barnius // indirect
-	github.com/bogdanfinn/websocket v1.5.5-barnius // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/bytedance/sonic v1.9.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
@@ -151,7 +143,6 @@ require (
 	github.com/spf13/cast v1.6.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/tam7t/hpkp v0.0.0-20160821193359-2b70b4024ed5 // indirect
 	github.com/testcontainers/testcontainers-go v0.40.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
