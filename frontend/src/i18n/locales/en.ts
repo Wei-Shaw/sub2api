@@ -5164,6 +5164,12 @@ export default {
     },
     stripePay: 'Pay Now',
     stripeSuccessProcessing: 'Payment successful, processing your order...',
+    stripePopup: {
+      redirecting: 'Redirecting to payment page...',
+      loadingQr: 'Loading WeChat Pay QR code...',
+      timeout: 'Timed out waiting for payment credentials, please retry',
+      qrFailed: 'Failed to get WeChat Pay QR code',
+    },
     subscribeNow: 'Subscribe Now',
     planFeatures: 'Features',
     planCard: {

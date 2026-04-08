@@ -120,18 +120,31 @@ onUnmounted(() => {
 async function handlePay() {
   if (!stripeInstance || !elementsInstance || submitting.value) return
 
-  // For popup-based methods (Alipay redirect / WeChat QR): open popup with direct confirm
+  // For popup-based methods (Alipay redirect / WeChat QR): open lightweight popup
   if (POPUP_METHODS.has(selectedType.value)) {
-    const stripeUrl = router.resolve({
-      path: '/payment/stripe',
+    const popupUrl = router.resolve({
+      path: '/payment/stripe-popup',
       query: {
         order_id: String(props.orderId),
-        client_secret: props.clientSecret,
         method: selectedType.value,
+        amount: String(props.payAmount),
       },
     }).href
-    window.open(stripeUrl, 'paymentPopup', STRIPE_POPUP_WINDOW_FEATURES)
-    emit('redirect', props.orderId, stripeUrl)
+    const popup = window.open(popupUrl, 'paymentPopup', STRIPE_POPUP_WINDOW_FEATURES)
+
+    // Wait for popup ready, then send credentials via postMessage
+    const onReady = (event: MessageEvent) => {
+      if (event.source !== popup || event.data?.type !== 'STRIPE_POPUP_READY') return
+      window.removeEventListener('message', onReady)
+      popup?.postMessage({
+        type: 'STRIPE_POPUP_INIT',
+        clientSecret: props.clientSecret,
+        publishableKey: props.publishableKey,
+      }, window.location.origin)
+    }
+    window.addEventListener('message', onReady)
+
+    emit('redirect', props.orderId, popupUrl)
     return
   }
 

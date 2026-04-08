@@ -5361,6 +5361,12 @@ export default {
     },
     stripePay: '立即支付',
     stripeSuccessProcessing: '支付成功，正在处理订单...',
+    stripePopup: {
+      redirecting: '正在跳转到支付页面...',
+      loadingQr: '正在获取微信支付二维码...',
+      timeout: '等待支付凭证超时，请重试',
+      qrFailed: '未能获取微信支付二维码',
+    },
     subscribeNow: '立即开通',
     planFeatures: '功能特性',
     planCard: {
