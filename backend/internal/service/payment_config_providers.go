@@ -124,9 +124,7 @@ func validateProviderRequest(providerKey, name, supportedTypes string) error {
 	if !validProviderKeys[providerKey] {
 		return infraerrors.BadRequest("VALIDATION_ERROR", fmt.Sprintf("invalid provider key: %s", providerKey))
 	}
-	if strings.TrimSpace(supportedTypes) == "" {
-		return infraerrors.BadRequest("VALIDATION_ERROR", "supported payment types are required")
-	}
+	// supported_types can be empty (provider accepts no payment types until configured)
 	return nil
 }
 
@@ -179,6 +177,37 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 		u.SetConfig(enc)
 	}
 	if req.SupportedTypes != nil {
+		// Check pending orders before removing payment types
+		count, err := s.countPendingOrders(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("check pending orders: %w", err)
+		}
+		if count > 0 {
+			// Load current instance to compare types
+			inst, err := s.entClient.PaymentProviderInstance.Get(ctx, id)
+			if err != nil {
+				return nil, fmt.Errorf("load provider instance: %w", err)
+			}
+			oldTypes := strings.Split(inst.SupportedTypes, ",")
+			newTypes := req.SupportedTypes
+			for _, ot := range oldTypes {
+				ot = strings.TrimSpace(ot)
+				if ot == "" {
+					continue
+				}
+				found := false
+				for _, nt := range newTypes {
+					if strings.TrimSpace(nt) == ot {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return nil, infraerrors.Conflict("PENDING_ORDERS", "cannot remove payment types while instance has pending orders").
+						WithMetadata(map[string]string{"count": strconv.Itoa(count)})
+				}
+			}
+		}
 		u.SetSupportedTypes(joinTypes(req.SupportedTypes))
 	}
 	if req.Enabled != nil {
