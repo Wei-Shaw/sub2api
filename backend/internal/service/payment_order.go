@@ -436,6 +436,8 @@ func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) 
 	}
 	n := 0
 	for _, o := range orders {
+		// Cancel upstream payment (e.g. Stripe PaymentIntent) before marking expired
+		s.cancelUpstreamPayment(ctx, o)
 		c, e := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(o.ID), paymentorder.StatusEQ(OrderStatusPending)).SetStatus(OrderStatusExpired).Save(ctx)
 		if e != nil {
 			slog.Warn("expire failed", "orderID", o.ID, "error", e)
@@ -447,4 +449,21 @@ func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) 
 		}
 	}
 	return n, nil
+}
+
+// cancelUpstreamPayment attempts to cancel the upstream provider payment (e.g. Stripe PaymentIntent).
+func (s *PaymentService) cancelUpstreamPayment(ctx context.Context, o *dbent.PaymentOrder) {
+	if o.PaymentTradeNo == "" || o.PaymentType == "" {
+		return
+	}
+	s.EnsureProviders(ctx)
+	prov, err := s.registry.GetProvider(o.PaymentType)
+	if err != nil {
+		return
+	}
+	if cp, ok := prov.(payment.CancelableProvider); ok {
+		if err := cp.CancelPayment(ctx, o.PaymentTradeNo); err != nil {
+			slog.Warn("cancel upstream payment failed", "orderID", o.ID, "tradeNo", o.PaymentTradeNo, "error", err)
+		}
+	}
 }

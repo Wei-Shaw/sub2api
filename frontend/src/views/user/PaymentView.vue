@@ -96,42 +96,6 @@
           </template>
           <!-- Subscribe Tab -->
           <template v-else-if="activeTab === 'subscription'">
-            <!-- Active Subscription Card -->
-            <div v-if="activeSubscriptions.length > 0" class="space-y-3">
-              <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.activeSubscription') }}</p>
-              <div v-for="sub in activeSubscriptions" :key="sub.id"
-                class="card overflow-hidden">
-                <div :class="['h-1', platformAccentBarClass(sub.group?.platform || '')]" />
-                <div class="p-4">
-                  <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
-                        {{ sub.group?.name || `Group #${sub.group_id}` }}
-                      </h4>
-                      <span :class="['rounded-full px-2 py-0.5 text-[10px] font-medium', platformBadgeLightClass(sub.group?.platform || '')]">
-                        {{ platformLabel(sub.group?.platform || '') }}
-                      </span>
-                    </div>
-                    <span class="badge badge-success text-xs">{{ t('userSubscriptions.status.active') }}</span>
-                  </div>
-                  <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-                    <span>{{ t('payment.planCard.rate') }}: ×{{ sub.group?.rate_multiplier ?? 1 }}</span>
-                    <span v-if="sub.group?.daily_limit_usd != null">{{ t('payment.planCard.dailyLimit') }}: ${{ sub.group.daily_limit_usd }}</span>
-                    <span v-if="sub.group?.weekly_limit_usd != null">{{ t('payment.planCard.weeklyLimit') }}: ${{ sub.group.weekly_limit_usd }}</span>
-                    <span v-if="sub.group?.monthly_limit_usd != null">{{ t('payment.planCard.monthlyLimit') }}: ${{ sub.group.monthly_limit_usd }}</span>
-                    <span v-if="!sub.group?.daily_limit_usd && !sub.group?.weekly_limit_usd && !sub.group?.monthly_limit_usd">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
-                  </div>
-                  <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    <span v-if="sub.expires_at">{{ t('userSubscriptions.daysRemaining', { days: getDaysRemaining(sub.expires_at) }) }}</span>
-                    <span v-else>{{ t('userSubscriptions.noExpiration') }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div v-else class="card p-5">
-              <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.activeSubscription') }}</p>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('payment.noActiveSubscription') }}</p>
-            </div>
             <!-- Subscription confirm (inline, replaces plan list) -->
             <template v-if="selectedPlan">
               <div class="card overflow-hidden">
@@ -187,6 +151,29 @@
               </div>
               <div v-else :class="planGridClass">
                 <SubscriptionPlanCard v-for="plan in checkout.plans" :key="plan.id" :plan="plan" @select="selectPlan" />
+              </div>
+              <!-- Active subscriptions (compact, below plan list) -->
+              <div v-if="activeSubscriptions.length > 0">
+                <p class="mb-2 text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.activeSubscription') }}</p>
+                <div class="space-y-2">
+                  <div v-for="sub in activeSubscriptions" :key="sub.id"
+                    class="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 py-2 dark:border-dark-700 dark:bg-dark-800">
+                    <div :class="['h-6 w-1 shrink-0 rounded-full', platformAccentBarClass(sub.group?.platform || '')]" />
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-1.5">
+                        <span class="truncate text-xs font-semibold text-gray-900 dark:text-white">{{ sub.group?.name || `Group #${sub.group_id}` }}</span>
+                        <span :class="['shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium', platformBadgeLightClass(sub.group?.platform || '')]">{{ platformLabel(sub.group?.platform || '') }}</span>
+                      </div>
+                      <div class="flex flex-wrap gap-x-3 text-[11px] text-gray-400 dark:text-gray-500">
+                        <span>{{ t('payment.planCard.rate') }}: ×{{ sub.group?.rate_multiplier ?? 1 }}</span>
+                        <span v-if="sub.group?.daily_limit_usd == null && sub.group?.weekly_limit_usd == null && sub.group?.monthly_limit_usd == null">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
+                        <span v-if="sub.expires_at">{{ t('userSubscriptions.daysRemaining', { days: getDaysRemaining(sub.expires_at) }) }}</span>
+                        <span v-else>{{ t('userSubscriptions.noExpiration') }}</span>
+                      </div>
+                    </div>
+                    <span class="badge badge-success shrink-0 text-[10px]">{{ t('userSubscriptions.status.active') }}</span>
+                  </div>
+                </div>
               </div>
             </template>
           </template>
