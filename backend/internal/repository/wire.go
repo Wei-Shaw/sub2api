@@ -47,6 +47,21 @@ REDACTED
 	return NewSessionLimitCache(rdb, defaultIdleTimeoutMinutes)
 REDACTED
 
+// ProvideSchedulerCache 创建调度快照缓存，并注入快照分块参数。
+func ProvideSchedulerCache(rdb *redis.Client, cfg *config.Config) service.SchedulerCache {
+	mgetChunkSize := defaultSchedulerSnapshotMGetChunkSize
+	writeChunkSize := defaultSchedulerSnapshotWriteChunkSize
+	if cfg != nil {
+		if cfg.Gateway.Scheduling.SnapshotMGetChunkSize > 0 {
+			mgetChunkSize = cfg.Gateway.Scheduling.SnapshotMGetChunkSize
+	REDACTED
+		if cfg.Gateway.Scheduling.SnapshotWriteChunkSize > 0 {
+			writeChunkSize = cfg.Gateway.Scheduling.SnapshotWriteChunkSize
+	REDACTED
+REDACTED
+	return newSchedulerCacheWithChunkSizes(rdb, mgetChunkSize, writeChunkSize)
+REDACTED
+
 // ProviderSet is the Wire provider set for all repositories
 var ProviderSet = wire.NewSet(
 	NewUserRepository,
@@ -92,7 +107,7 @@ var ProviderSet = wire.NewSet(
 	NewRedeemCache,
 	NewUpdateCache,
 	NewGeminiTokenCache,
-	NewSchedulerCache,
+	ProvideSchedulerCache,
 	NewSchedulerOutboxRepository,
 	NewProxyLatencyCache,
 	NewTotpCache,
