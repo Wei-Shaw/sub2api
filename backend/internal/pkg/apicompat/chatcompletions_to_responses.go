@@ -68,10 +68,14 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 		out.Tools = convertChatToolsToResponses(req.Tools, req.Functions)
 	}
 
-	// tool_choice: already compatible format — pass through directly.
-	// Legacy function_call needs mapping.
+	// tool_choice: convert standard Chat Completions object shape to the flatter
+	// Responses API shape. Legacy function_call needs mapping.
 	if len(req.ToolChoice) > 0 {
-		out.ToolChoice = req.ToolChoice
+		tc, err := convertChatToolChoiceToResponses(req.ToolChoice)
+		if err != nil {
+			return nil, fmt.Errorf("convert tool_choice: %w", err)
+		}
+		out.ToolChoice = tc
 	} else if len(req.FunctionCall) > 0 {
 		tc, err := convertChatFunctionCallToToolChoice(req.FunctionCall)
 		if err != nil {
@@ -403,7 +407,7 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 //
 //	"auto" → "auto"
 //	"none" → "none"
-//	{"name":"X"} → {"type":"function","function":{"name":"X"}}
+//	{"name":"X"} → {"type":"function","name":"X"}
 func convertChatFunctionCallToToolChoice(raw json.RawMessage) (json.RawMessage, error) {
 	// Try string first ("auto", "none", etc.) — pass through as-is.
 	var s string
@@ -419,7 +423,35 @@ func convertChatFunctionCallToToolChoice(raw json.RawMessage) (json.RawMessage, 
 		return nil, err
 	}
 	return json.Marshal(map[string]any{
-		"type":     "function",
-		"function": map[string]string{"name": obj.Name},
+		"type": "function",
+		"name": obj.Name,
 	})
+}
+
+func convertChatToolChoiceToResponses(raw json.RawMessage) (json.RawMessage, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" {
+		return nil, nil
+	}
+	if strings.HasPrefix(trimmed, `"`) {
+		return raw, nil
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, err
+	}
+	typ, _ := obj["type"].(string)
+	if strings.TrimSpace(typ) != "function" {
+		return raw, nil
+	}
+	if fn, ok := obj["function"].(map[string]any); ok {
+		if name, _ := fn["name"].(string); strings.TrimSpace(name) != "" {
+			return json.Marshal(map[string]any{
+				"type": "function",
+				"name": name,
+			})
+		}
+	}
+	return raw, nil
 }

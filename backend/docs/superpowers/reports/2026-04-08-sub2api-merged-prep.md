@@ -47,3 +47,54 @@
 
 1. 先把当前 2 个未提交文件收成一个极小检查点。
 2. 然后基于本说明整理真正的 `merged` 提交消息与保留差异说明。
+
+## 2026-04-09 新 upstream 23 提交分桶
+
+### 已等价折叠，不需单独吸收
+
+- `5088e915` `Merge pull request #1417`
+- `276f499c` `Merge pull request #1418`
+- `5c203ce6` `Merge pull request #1428`
+- `47cd1c52` `Merge pull request #1467`
+- `06e2756e` `Merge pull request #1501`
+
+说明：这些只是对应功能链的 merge wrapper，不应单独作为同步批次处理。
+
+### 明确不该继续吸收
+
+- `77ba9e72` `Merge branch 'Wei-Shaw:main' into fix/openai-gateway-content-session-hash-fallback`
+
+说明：这是 topic branch 回灌旧 `main` 的中间 merge，不是功能本体；继续吸它只会把热点文件旧快照重新卷进来。
+
+### 真正还需下一轮同步的远端尾巴
+
+- Google Search / grounding
+  - `c8cfad7c`
+  - `0ebe0ce5`
+  - `dd5978f2`
+  - `d978ac97`
+- 空 base64 图片清理
+  - `936fce68`
+  - `f00351c1`
+- content-based session hash fallback
+  - `c5aac125`
+  - `4fb16030`
+  - `cf9efefd`
+- channel cleanup
+  - `9151d34d`
+- 非流式 SSE 检测扩展
+  - `9e515ea7`
+- Anthropic OAuth 伪装修复
+  - `1c9a2128`
+- billing header / CCH signing
+  - `e51c9e50`
+  - `b982076e`
+- 低风险尾巴
+  - `7060596a`
+  - `f54e9d0b`
+  - `0d69c0cd`
+
+### 下一批建议
+
+- 首推 **Google Search / grounding** 这一批。
+- 原因：当前本地代码中缺口明确、影响面集中、且不落在已确认保留的本地主差异链上。

@@ -237,6 +237,31 @@ func TestChatCompletionsToResponses_LegacyFunctions(t *testing.T) {
 	var tc map[string]any
 	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
 	assert.Equal(t, "function", tc["type"])
+	assert.Equal(t, "get_weather", tc["name"])
+	_, hasNestedFunction := tc["function"]
+	assert.False(t, hasNestedFunction)
+}
+
+func TestChatCompletionsToResponses_ToolChoiceFunctionObject(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:    "gpt-4o",
+		Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		ToolChoice: json.RawMessage(`{
+			"type":"function",
+			"function":{"name":"search_web_search"}
+		}`),
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.ToolChoice)
+
+	var tc map[string]any
+	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
+	assert.Equal(t, "function", tc["type"])
+	assert.Equal(t, "search_web_search", tc["name"])
+	_, hasNestedFunction := tc["function"]
+	assert.False(t, hasNestedFunction)
 }
 
 func TestChatCompletionsToResponses_ServiceTier(t *testing.T) {
