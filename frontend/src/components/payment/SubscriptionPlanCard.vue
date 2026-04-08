@@ -180,7 +180,7 @@ const modelScopeLabels = computed(() => {
 // Color schemes per platform
 const accentBarClass = computed(() => {
   switch (platform.value) {
-    case 'anthropic': return 'bg-gradient-to-r from-amber-400 to-amber-500'
+    case 'anthropic': return 'bg-gradient-to-r from-orange-400 to-orange-500'
     case 'openai': return 'bg-gradient-to-r from-emerald-400 to-emerald-500'
     case 'antigravity': return 'bg-gradient-to-r from-purple-400 to-purple-500'
     case 'gemini': return 'bg-gradient-to-r from-blue-400 to-blue-500'
@@ -190,7 +190,7 @@ const accentBarClass = computed(() => {
 
 const cardBorderClass = computed(() => {
   switch (platform.value) {
-    case 'anthropic': return 'border-amber-100 dark:border-amber-900/30'
+    case 'anthropic': return 'border-orange-100 dark:border-orange-900/30'
     case 'openai': return 'border-emerald-100 dark:border-emerald-900/30'
     case 'antigravity': return 'border-purple-100 dark:border-purple-900/30'
     case 'gemini': return 'border-blue-100 dark:border-blue-900/30'
@@ -200,7 +200,7 @@ const cardBorderClass = computed(() => {
 
 const platformBadgeClass = computed(() => {
   switch (platform.value) {
-    case 'anthropic': return 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300'
+    case 'anthropic': return 'bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-300'
     case 'openai': return 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300'
     case 'antigravity': return 'bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-300'
     case 'gemini': return 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300'
@@ -210,7 +210,7 @@ const platformBadgeClass = computed(() => {
 
 const badgeClass = computed(() => {
   switch (platform.value) {
-    case 'anthropic': return 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300'
+    case 'anthropic': return 'bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-300'
     case 'openai': return 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300'
     case 'antigravity': return 'bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-300'
     case 'gemini': return 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300'
@@ -220,7 +220,7 @@ const badgeClass = computed(() => {
 
 const priceClass = computed(() => {
   switch (platform.value) {
-    case 'anthropic': return 'text-amber-600 dark:text-amber-400'
+    case 'anthropic': return 'text-orange-600 dark:text-orange-400'
     case 'openai': return 'text-emerald-600 dark:text-emerald-400'
     case 'antigravity': return 'text-purple-600 dark:text-purple-400'
     case 'gemini': return 'text-blue-600 dark:text-blue-400'
@@ -230,7 +230,7 @@ const priceClass = computed(() => {
 
 const discountBadgeClass = computed(() => {
   switch (platform.value) {
-    case 'anthropic': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+    case 'anthropic': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300'
     case 'openai': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
     case 'antigravity': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
     case 'gemini': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
@@ -240,7 +240,7 @@ const discountBadgeClass = computed(() => {
 
 const checkIconClass = computed(() => {
   switch (platform.value) {
-    case 'anthropic': return 'text-amber-500 dark:text-amber-400'
+    case 'anthropic': return 'text-orange-500 dark:text-orange-400'
     case 'openai': return 'text-emerald-500 dark:text-emerald-400'
     case 'antigravity': return 'text-purple-500 dark:text-purple-400'
     case 'gemini': return 'text-blue-500 dark:text-blue-400'
@@ -250,7 +250,7 @@ const checkIconClass = computed(() => {
 
 const buttonClass = computed(() => {
   switch (platform.value) {
-    case 'anthropic': return 'bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500'
+    case 'anthropic': return 'bg-orange-500 text-white hover:bg-orange-600 dark:bg-orange-600 dark:hover:bg-orange-500'
     case 'openai': return 'bg-emerald-500 text-white hover:bg-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-500'
     case 'antigravity': return 'bg-purple-500 text-white hover:bg-purple-600 dark:bg-purple-600 dark:hover:bg-purple-500'
     case 'gemini': return 'bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-500'
