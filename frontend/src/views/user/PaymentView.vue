@@ -43,8 +43,8 @@
             <AmountInput
               v-model="amount"
               :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
-              :min="activeMinAmount"
-              :max="activeMaxAmount"
+              :min="globalMinAmount"
+              :max="globalMaxAmount"
             />
             <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
           </div>
@@ -221,15 +221,9 @@ function amountFitsMethod(amt: number, methodType: string): boolean {
   return true
 }
 
-// Amount range: use selected method's limits when available, fallback to global
-const activeMinAmount = computed(() => {
-  const ml = selectedLimit.value
-  return ml?.single_min && ml.single_min > 0 ? ml.single_min : checkout.value.global_min
-})
-const activeMaxAmount = computed(() => {
-  const ml = selectedLimit.value
-  return ml?.single_max && ml.single_max > 0 ? ml.single_max : checkout.value.global_max
-})
+// Global range for AmountInput (union of all methods, precomputed by backend)
+const globalMinAmount = computed(() => checkout.value.global_min)
+const globalMaxAmount = computed(() => checkout.value.global_max)
 
 // Selected method's limits (for validation and error messages)
 const selectedLimit = computed(() => checkout.value.methods[selectedMethod.value])
