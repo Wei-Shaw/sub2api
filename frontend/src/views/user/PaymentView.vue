@@ -72,8 +72,11 @@
         </template>
         <!-- Subscribe Tab -->
         <template v-else-if="activeTab === 'subscription'">
-          <div v-if="checkout.plans.length === 0" class="py-16 text-center text-gray-500 dark:text-gray-400">{{ t('payment.noPlans') }}</div>
-          <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div v-if="checkout.plans.length === 0" class="card py-16 text-center">
+            <Icon name="gift" size="xl" class="mx-auto mb-3 text-gray-300 dark:text-dark-600" />
+            <p class="text-gray-500 dark:text-gray-400">{{ t('payment.noPlans') }}</p>
+          </div>
+          <div v-else :class="planGridClass">
             <SubscriptionPlanCard v-for="plan in checkout.plans" :key="plan.id" :plan="plan" @select="openSubscribeDialog" />
           </div>
         </template>
@@ -85,10 +88,13 @@
     <!-- Subscription Confirm Dialog -->
     <BaseDialog :show="!!selectedPlan" :title="t('payment.confirmSubscription')" @close="selectedPlan = null">
       <div v-if="selectedPlan" class="space-y-4">
-        <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ selectedPlan.name }}</p>
-          <p class="mt-1 text-2xl font-bold text-primary-600 dark:text-primary-400">¥{{ selectedPlan.price }}</p>
-          <p v-if="selectedPlan.description" class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ selectedPlan.description }}</p>
+        <div class="rounded-xl border border-gray-100 bg-gray-50 p-5 dark:border-dark-700 dark:bg-dark-800">
+          <p class="font-semibold text-gray-900 dark:text-white">{{ selectedPlan.name }}</p>
+          <div class="mt-2 flex items-baseline gap-1.5">
+            <span class="text-3xl font-extrabold text-primary-600 dark:text-primary-400">&yen;{{ selectedPlan.price }}</span>
+            <span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through">&yen;{{ selectedPlan.original_price }}</span>
+          </div>
+          <p v-if="selectedPlan.description" class="mt-2 text-sm text-gray-500 dark:text-dark-400">{{ selectedPlan.description }}</p>
         </div>
         <PaymentMethodSelector
           v-if="enabledMethods.length > 1"
@@ -125,6 +131,7 @@ import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER } from '@/components/payment/providerConfig'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
+import Icon from '@/components/icons/Icon.vue'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 
 const { t } = useI18n()
@@ -158,6 +165,14 @@ const tabs = computed(() => {
 
 const enabledMethods = computed(() => Object.keys(checkout.value.methods))
 const validAmount = computed(() => amount.value ?? 0)
+
+// Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
+const planGridClass = computed(() => {
+  const n = checkout.value.plans.length
+  if (n === 1) return 'mx-auto grid max-w-sm grid-cols-1 gap-5'
+  if (n === 2) return 'mx-auto grid max-w-2xl grid-cols-1 gap-5 sm:grid-cols-2'
+  return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3'
+})
 
 // Check if an amount fits a method's [min, max]. 0 = no limit.
 function amountFitsMethod(amt: number, methodType: string): boolean {

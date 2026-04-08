@@ -115,7 +115,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		planList = append(planList, checkoutPlan{
 			ID: int64(p.ID), GroupID: p.GroupID, GroupPlatform: platformMap[p.GroupID],
 			Name: p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
-			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: p.Features,
+			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
 			ProductName: p.ProductName,
 		})
 	}
@@ -151,8 +151,25 @@ type checkoutPlan struct {
 	OriginalPrice *float64 `json:"original_price,omitempty"`
 	ValidityDays  int      `json:"validity_days"`
 	ValidityUnit  string   `json:"validity_unit"`
-	Features      string   `json:"features"`
+	Features      []string `json:"features"`
 	ProductName   string   `json:"product_name"`
+}
+
+// parseFeatures splits a newline-separated features string into a string slice.
+func parseFeatures(raw string) []string {
+	if raw == "" {
+		return []string{}
+	}
+	var out []string
+	for _, line := range strings.Split(raw, "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			out = append(out, s)
+		}
+	}
+	if out == nil {
+		return []string{}
+	}
+	return out
 }
 
 // GetLimits returns per-payment-type limits derived from enabled provider instances.
