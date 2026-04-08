@@ -2827,6 +2827,7 @@ async function saveBetaPolicySettings() {
 // ==================== Provider Management ====================
 
 const allPaymentTypes = computed(() => [
+  { value: 'easypay', label: t('payment.methods.easypay') },
   { value: 'alipay', label: t('payment.methods.alipay') },
   { value: 'wxpay', label: t('payment.methods.wxpay') },
   { value: 'stripe', label: t('payment.methods.stripe') },
@@ -2841,10 +2842,26 @@ const hasAnyPaymentTypeEnabled = computed(() => form.payment_enabled_types.lengt
 function togglePaymentType(type: string) {
   if (form.payment_enabled_types.includes(type)) {
     form.payment_enabled_types = form.payment_enabled_types.filter(t => t !== type)
+    // Disable all provider instances matching this type
+    disableProvidersByType(type)
   } else {
     form.payment_enabled_types = [...form.payment_enabled_types, type]
   }
 }
+
+async function disableProvidersByType(type: string) {
+  const matching = providers.value.filter(p => p.provider_key === type && p.enabled)
+  for (const p of matching) {
+    try {
+      await adminAPI.payment.updateProvider(p.id, { enabled: false })
+      p.enabled = false
+    } catch (err: unknown) {
+      slog('disable provider failed', p.id, err)
+    }
+  }
+}
+
+function slog(...args: unknown[]) { console.warn('[payment]', ...args) }
 
 const providersLoading = ref(false)
 const providerSaving = ref(false)
@@ -2864,12 +2881,7 @@ const providerKeyOptions = computed(() => [
 
 const enabledProviderKeyOptions = computed(() => {
   const enabled = form.payment_enabled_types
-  return providerKeyOptions.value.filter(opt => {
-    if (opt.value === 'easypay') return enabled.includes('alipay') || enabled.includes('wxpay')
-    if (opt.value === 'alipay') return enabled.includes('alipay')
-    if (opt.value === 'wxpay') return enabled.includes('wxpay')
-    return enabled.includes(opt.value)
-  })
+  return providerKeyOptions.value.filter(opt => enabled.includes(opt.value))
 })
 
 const loadBalanceOptions = computed(() => [

@@ -134,13 +134,7 @@ function onDragEnd() {
 }
 
 function isEnabled(providerKey: string): boolean {
-  const enabled = props.enabledPaymentTypes
-  if (providerKey === 'easypay') {
-    return enabled.includes('easypay') || enabled.includes('alipay') || enabled.includes('wxpay')
-  }
-  if (providerKey === 'alipay') return enabled.includes('alipay')
-  if (providerKey === 'wxpay') return enabled.includes('wxpay')
-  return enabled.includes(providerKey)
+  return props.enabledPaymentTypes.includes(providerKey)
 }
 
 function getTypes(providerKey: string): TypeOption[] {
