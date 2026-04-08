@@ -70,12 +70,14 @@ func (e *EasyPay) CreatePayment(ctx context.Context, req payment.CreatePaymentRe
 // TradeNo is empty; it arrives via the notify callback after payment.
 func (e *EasyPay) createRedirectPayment(req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	notifyURL, returnURL := e.resolveURLs(req)
-	payType := req.PaymentType
 	params := map[string]string{
-		"pid": e.config["pid"], "type": payType,
+		"pid": e.config["pid"], "type": req.PaymentType,
 		"out_trade_no": req.OrderID, "notify_url": notifyURL,
 		"return_url": returnURL, "name": req.Subject,
 		"money": req.Amount,
+	}
+	if cid := e.resolveCID(req.PaymentType); cid != "" {
+		params["cid"] = cid
 	}
 	params["sign"] = easyPaySign(params, e.config["pkey"])
 	params["sign_type"] = "MD5"
@@ -84,7 +86,8 @@ func (e *EasyPay) createRedirectPayment(req payment.CreatePaymentRequest) (*paym
 	for k, v := range params {
 		q.Set(k, v)
 	}
-	payURL := e.config["apiBase"] + "/submit.php?" + q.Encode()
+	base := strings.TrimRight(e.config["apiBase"], "/")
+	payURL := base + "/submit.php?" + q.Encode()
 	return &payment.CreatePaymentResponse{PayURL: payURL}, nil
 }
 
@@ -106,7 +109,7 @@ func (e *EasyPay) createAPIPayment(ctx context.Context, req payment.CreatePaymen
 	params["sign"] = easyPaySign(params, e.config["pkey"])
 	params["sign_type"] = "MD5"
 
-	body, err := e.post(ctx, e.config["apiBase"]+"/mapi.php", params)
+	body, err := e.post(ctx, strings.TrimRight(e.config["apiBase"], "/")+"/mapi.php", params)
 	if err != nil {
 		return nil, fmt.Errorf("easypay create: %w", err)
 	}
