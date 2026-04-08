@@ -146,20 +146,46 @@ REDACTED
 	return nil
 REDACTED
 
+// redeemAction represents the idempotency decision for balance fulfillment.
+type redeemAction int
+
+const (
+	// redeemActionCreate: code does not exist — create it, then redeem.
+	redeemActionCreate redeemAction = iota
+	// redeemActionRedeem: code exists but is unused — skip creation, redeem only.
+	redeemActionRedeem
+	// redeemActionSkipCompleted: code exists and is already used — skip to mark completed.
+	redeemActionSkipCompleted
+)
+
+// resolveRedeemAction decides the idempotency action based on an existing redeem code lookup.
+// existing is the result of GetByCode; lookupErr is the error from that call.
+func resolveRedeemAction(existing *RedeemCode, lookupErr error) redeemAction {
+	if existing == nil || lookupErr != nil {
+		return redeemActionCreate
+REDACTED
+	if existing.IsUsed() {
+		return redeemActionSkipCompleted
+REDACTED
+	return redeemActionRedeem
+REDACTED
+
 func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) error {
 	// Idempotency: check if redeem code already exists (from a previous partial run)
-	existing, _ := s.redeemService.GetByCode(ctx, o.RechargeCode)
-	if existing != nil {
-		if existing.IsUsed() {
-			// Code already created and redeemed — just mark completed
-			return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
-	REDACTED
-		// Code exists but unused — skip creation, proceed to redeem
-REDACTED else {
+	existing, lookupErr := s.redeemService.GetByCode(ctx, o.RechargeCode)
+	action := resolveRedeemAction(existing, lookupErr)
+
+	switch action {
+	case redeemActionSkipCompleted:
+		// Code already created and redeemed — just mark completed
+		return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+	case redeemActionCreate:
 		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnusedREDACTED
 		if err := s.redeemService.CreateCode(ctx, rc); err != nil {
 			return fmt.Errorf("create redeem code: %w", err)
 	REDACTED
+	case redeemActionRedeem:
+		// Code exists but unused — skip creation, proceed to redeem
 REDACTED
 	if _, err := s.redeemService.Redeem(ctx, o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
