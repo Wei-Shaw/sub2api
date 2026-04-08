@@ -134,13 +134,13 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 
 type checkoutInfoResponse struct {
 	Methods              map[string]service.MethodLimits `json:"methods"`
-	GlobalMin            float64                        `json:"global_min"`
-	GlobalMax            float64                        `json:"global_max"`
-	Plans                []checkoutPlan                 `json:"plans"`
-	BalanceDisabled      bool                           `json:"balance_disabled"`
-	HelpText             string                         `json:"help_text"`
-	HelpImageURL         string                         `json:"help_image_url"`
-	StripePublishableKey string                         `json:"stripe_publishable_key"`
+	GlobalMin            float64                         `json:"global_min"`
+	GlobalMax            float64                         `json:"global_max"`
+	Plans                []checkoutPlan                  `json:"plans"`
+	BalanceDisabled      bool                            `json:"balance_disabled"`
+	HelpText             string                          `json:"help_text"`
+	HelpImageURL         string                          `json:"help_image_url"`
+	StripePublishableKey string                          `json:"stripe_publishable_key"`
 }
 
 type checkoutPlan struct {
