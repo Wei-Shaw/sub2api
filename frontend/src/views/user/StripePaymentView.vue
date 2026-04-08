@@ -135,9 +135,14 @@ async function handlePay() {
       stripeError.value = error.message || t('payment.result.failed')
     } else {
       stripeSuccess.value = true
-      redirectTimer = setTimeout(() => {
-        router.push({ path: '/payment/result', query: { order_id: String(route.query.order_id || ''), status: 'success' } })
-      }, 2000)
+      // If opened as popup, close the window after a short delay
+      if (window.opener) {
+        redirectTimer = setTimeout(() => { window.close() }, 2000)
+      } else {
+        redirectTimer = setTimeout(() => {
+          router.push({ path: '/payment/result', query: { order_id: String(route.query.order_id || ''), status: 'success' } })
+        }, 2000)
+      }
     }
   } catch (err: unknown) {
     stripeError.value = extractApiErrorMessage(err, t('payment.result.failed'))

@@ -124,6 +124,7 @@
       :qr-code="qrDialog.qrCode"
       :expires-at="qrDialog.expiresAt"
       :payment-type="qrDialog.paymentType"
+      :pay-url="qrDialog.payUrl"
       @close="qrDialog.show = false"
       @success="authStore.refreshUser()"
     />
@@ -152,7 +153,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
-import { METHOD_ORDER } from '@/components/payment/providerConfig'
+import { METHOD_ORDER, POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentQRDialog from '@/components/payment/PaymentQRDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -176,7 +177,7 @@ const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
 
 // Inline QR payment dialog state
-const qrDialog = ref({ show: false, orderId: 0, qrCode: '', expiresAt: '', paymentType: '' })
+const qrDialog = ref({ show: false, orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '' })
 
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
@@ -296,7 +297,20 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       plan_id: planId,
     })
     if (result.client_secret) {
-      router.push({ path: '/payment/stripe', query: { order_id: String(result.order_id), client_secret: result.client_secret } })
+      // Stripe: open in popup window, show waiting dialog on main page
+      const stripeUrl = router.resolve({
+        path: '/payment/stripe',
+        query: { order_id: String(result.order_id), client_secret: result.client_secret },
+      }).href
+      window.open(stripeUrl, 'paymentPopup', POPUP_WINDOW_FEATURES)
+      qrDialog.value = {
+        show: true,
+        orderId: result.order_id,
+        qrCode: '',
+        expiresAt: '',
+        paymentType: selectedMethod.value,
+        payUrl: stripeUrl,
+      }
     } else if (result.qr_code) {
       // QR mode: show inline dialog, no page navigation
       qrDialog.value = {
@@ -305,11 +319,19 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
         qrCode: result.qr_code,
         expiresAt: result.expires_at || '',
         paymentType: selectedMethod.value,
+        payUrl: '',
       }
     } else if (result.pay_url) {
-      // Redirect mode: open new window + navigate to polling page
-      window.open(result.pay_url, '_blank')
-      router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), pay_url: result.pay_url, expires_at: result.expires_at || '', payment_type: selectedMethod.value } })
+      // Redirect mode: open in popup window, show waiting dialog on main page
+      window.open(result.pay_url, 'paymentPopup', POPUP_WINDOW_FEATURES)
+      qrDialog.value = {
+        show: true,
+        orderId: result.order_id,
+        qrCode: '',
+        expiresAt: result.expires_at || '',
+        paymentType: selectedMethod.value,
+        payUrl: result.pay_url,
+      }
     } else {
       errorMessage.value = t('payment.result.failed')
       appStore.showError(errorMessage.value)

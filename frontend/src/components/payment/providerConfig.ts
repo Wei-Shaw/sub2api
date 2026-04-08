@@ -43,6 +43,9 @@ export const METHOD_ORDER = ['alipay', 'wxpay', 'stripe'] as const
 export const PAYMENT_MODE_REDIRECT = 'redirect'
 export const PAYMENT_MODE_API = 'api'
 
+/** Window features for payment popup windows */
+export const POPUP_WINDOW_FEATURES = 'width=520,height=700,left=200,top=100,scrollbars=yes,resizable=yes'
+
 /** Webhook paths for each provider (relative to origin). */
 export const WEBHOOK_PATHS: Record<string, string> = {
   easypay: '/api/v1/payment/webhook/easypay',

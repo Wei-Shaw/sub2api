@@ -2,19 +2,31 @@
   <BaseDialog :show="show" :title="dialogTitle" width="narrow" @close="handleClose">
     <!-- QR Code + Polling State -->
     <div v-if="!success" class="flex flex-col items-center space-y-4">
-      <!-- QR Code -->
-      <div v-if="qrUrl" class="rounded-2xl bg-white p-4 shadow-sm dark:bg-dark-800">
-        <canvas ref="qrCanvas" class="mx-auto"></canvas>
-      </div>
-      <p v-if="qrUrl && scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">
-        {{ scanHint }}
-      </p>
+      <!-- QR Code mode -->
+      <template v-if="qrUrl">
+        <div class="rounded-2xl bg-white p-4 shadow-sm dark:bg-dark-800">
+          <canvas ref="qrCanvas" class="mx-auto"></canvas>
+        </div>
+        <p v-if="scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">
+          {{ scanHint }}
+        </p>
+      </template>
+      <!-- Popup window waiting mode (no QR code) -->
+      <template v-else>
+        <div class="flex flex-col items-center py-4">
+          <div class="h-10 w-10 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
+          <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.payInNewWindowHint') }}</p>
+          <button v-if="payUrl" class="btn btn-secondary mt-3 text-sm" @click="reopenPopup">
+            {{ t('payment.qr.openPayWindow') }}
+          </button>
+        </div>
+      </template>
       <!-- Countdown -->
       <div v-if="expired" class="text-center">
         <p class="text-lg font-medium text-red-500">{{ t('payment.qr.expired') }}</p>
       </div>
       <div v-else class="text-center">
-        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.expiresIn') }}</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400">{{ qrUrl ? t('payment.qr.expiresIn') : '' }}</p>
         <p class="mt-1 text-2xl font-bold tabular-nums text-gray-900 dark:text-white">{{ countdownDisplay }}</p>
         <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ t('payment.qr.waitingPayment') }}</p>
       </div>
@@ -63,6 +75,7 @@ import { usePaymentStore } from '@/stores/payment'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
 import type { PaymentOrder } from '@/types/payment'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
@@ -74,6 +87,8 @@ const props = defineProps<{
   qrCode: string
   expiresAt: string
   paymentType: string
+  /** URL for reopening the payment popup window */
+  payUrl?: string
 }>()
 
 const emit = defineEmits<{
@@ -101,6 +116,7 @@ const isWxpay = computed(() => props.paymentType.includes('wxpay'))
 
 const dialogTitle = computed(() => {
   if (success.value) return t('payment.result.success')
+  if (!qrUrl.value) return t('payment.qr.payInNewWindow')
   if (isAlipay.value) return t('payment.qr.scanAlipay')
   if (isWxpay.value) return t('payment.qr.scanWxpay')
   return t('payment.qr.scanToPay')
@@ -122,6 +138,13 @@ function getLogoForType(): string | null {
   if (isAlipay.value) return alipayIcon
   if (isWxpay.value) return wxpayIcon
   return null
+}
+
+
+function reopenPopup() {
+  if (props.payUrl) {
+    window.open(props.payUrl, 'paymentPopup', POPUP_WINDOW_FEATURES)
+  }
 }
 
 async function renderQR() {
