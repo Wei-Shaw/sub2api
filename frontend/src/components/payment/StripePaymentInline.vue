@@ -31,10 +31,10 @@
           <span v-else>{{ t('payment.stripePay') }}</span>
         </button>
       </div>
-      <!-- Back -->
-      <div class="text-center">
-        <button class="btn btn-secondary" @click="$emit('back')">{{ t('payment.result.backToRecharge') }}</button>
-      </div>
+      <!-- Cancel order -->
+      <button v-if="!success" class="btn btn-secondary w-full" :disabled="cancelling" @click="handleCancel">
+        {{ cancelling ? t('common.processing') : t('payment.qr.cancelOrder') }}
+      </button>
     </template>
   </div>
 </template>
@@ -43,6 +43,8 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { paymentAPI } from '@/api/payment'
+import { useAppStore } from '@/stores'
 import type { Stripe, StripeElements } from '@stripe/stripe-js'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -56,12 +58,14 @@ const props = defineProps<{
 const emit = defineEmits<{ success: []; back: [] }>()
 
 const { t } = useI18n()
+const appStore = useAppStore()
 
 const stripeMount = ref<HTMLElement | null>(null)
 const loading = ref(true)
 const initError = ref('')
 const error = ref('')
 const submitting = ref(false)
+const cancelling = ref(false)
 const success = ref(false)
 const ready = ref(false)
 
@@ -126,6 +130,19 @@ async function handlePay() {
     error.value = extractApiErrorMessage(err, t('payment.result.failed'))
   } finally {
     submitting.value = false
+  }
+}
+
+async function handleCancel() {
+  if (!props.orderId || cancelling.value) return
+  cancelling.value = true
+  try {
+    await paymentAPI.cancelOrder(props.orderId)
+    emit('back')
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    cancelling.value = false
   }
 }
 </script>
