@@ -46,6 +46,7 @@
               :pay-amount="paymentState.payAmount"
               @success="onStripeSuccess"
               @back="resetPayment"
+              @redirect="onStripeRedirect"
             />
           </template>
           <!-- Amount & method selection -->
@@ -200,6 +201,17 @@ function resetPayment() {
 function onStripeSuccess() {
   authStore.refreshUser()
   resetPayment()
+}
+
+function onStripeRedirect(orderId: number, payUrl: string) {
+  // Stripe redirect method (e.g. Alipay) opened in new window — switch to waiting mode
+  paymentState.value = {
+    ...paymentState.value,
+    orderId,
+    payUrl,
+    qrCode: '',
+  }
+  paymentPhase.value = 'paying'
 }
 
 // All checkout data from single API call

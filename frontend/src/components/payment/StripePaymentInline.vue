@@ -42,11 +42,16 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { paymentAPI } from '@/api/payment'
 import { useAppStore } from '@/stores'
+import { POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
 import type { Stripe, StripeElements } from '@stripe/stripe-js'
 import Icon from '@/components/icons/Icon.vue'
+
+// Stripe payment methods that require full-page redirect (cannot complete inline)
+const REDIRECT_METHODS = new Set(['alipay'])
 
 const props = defineProps<{
   orderId: number
@@ -55,9 +60,10 @@ const props = defineProps<{
   payAmount: number
 }>()
 
-const emit = defineEmits<{ success: []; back: [] }>()
+const emit = defineEmits<{ success: []; back: []; redirect: [orderId: number, payUrl: string] }>()
 
 const { t } = useI18n()
+const router = useRouter()
 const appStore = useAppStore()
 
 const stripeMount = ref<HTMLElement | null>(null)
@@ -68,6 +74,7 @@ const submitting = ref(false)
 const cancelling = ref(false)
 const success = ref(false)
 const ready = ref(false)
+const selectedType = ref('')
 
 let stripeInstance: Stripe | null = null
 let elementsInstance: StripeElements | null = null
@@ -96,6 +103,9 @@ onMounted(async () => {
     } as Record<string, unknown>)
     paymentElement.mount(stripeMount.value)
     paymentElement.on('ready', () => { ready.value = true })
+    paymentElement.on('change', (event: { value: { type: string } }) => {
+      selectedType.value = event.value.type
+    })
   } catch (err: unknown) {
     initError.value = extractApiErrorMessage(err, t('payment.stripeLoadFailed'))
   } finally {
@@ -109,6 +119,20 @@ onUnmounted(() => {
 
 async function handlePay() {
   if (!stripeInstance || !elementsInstance || submitting.value) return
+
+  // For redirect-based methods (Alipay): open StripePaymentView in new window,
+  // let the redirect happen there instead of navigating the main page away
+  if (REDIRECT_METHODS.has(selectedType.value)) {
+    const stripeUrl = router.resolve({
+      path: '/payment/stripe',
+      query: { order_id: String(props.orderId), client_secret: props.clientSecret },
+    }).href
+    window.open(stripeUrl, 'paymentPopup', POPUP_WINDOW_FEATURES)
+    emit('redirect', props.orderId, stripeUrl)
+    return
+  }
+
+  // For inline methods (card, WeChat popup): confirm directly
   submitting.value = true
   error.value = ''
   try {
@@ -122,7 +146,6 @@ async function handlePay() {
     if (stripeError) {
       error.value = stripeError.message || t('payment.result.failed')
     } else {
-      // Payment completed without redirect (card, WeChat popup)
       success.value = true
       successTimer = setTimeout(() => emit('success'), 1500)
     }
