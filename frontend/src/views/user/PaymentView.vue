@@ -262,8 +262,7 @@ const validAmount = computed(() => amount.value ?? 0)
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
   const n = checkout.value.plans.length
-  if (n === 1) return 'mx-auto grid max-w-sm grid-cols-1 gap-5'
-  if (n === 2) return 'mx-auto grid max-w-2xl grid-cols-1 gap-5 sm:grid-cols-2'
+  if (n <= 2) return 'grid grid-cols-1 gap-5 sm:grid-cols-2'
   return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3'
 })
 
