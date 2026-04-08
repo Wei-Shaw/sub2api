@@ -25,6 +25,19 @@
           <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
             <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
           </div>
+          <!-- Payment status (replaces selection UI after order creation) -->
+          <template v-else-if="paymentPhase !== 'select'">
+            <PaymentStatusPanel
+              :order-id="paymentState.orderId"
+              :qr-code="paymentState.qrCode"
+              :expires-at="paymentState.expiresAt"
+              :payment-type="paymentState.paymentType"
+              :pay-url="paymentState.payUrl"
+              @done="resetPayment"
+              @success="authStore.refreshUser()"
+            />
+          </template>
+          <!-- Amount & method selection -->
           <template v-else>
           <div class="card p-6">
             <AmountInput
@@ -117,17 +130,6 @@
         </div>
       </template>
     </BaseDialog>
-    <!-- Inline QR Payment Dialog -->
-    <PaymentQRDialog
-      :show="qrDialog.show"
-      :order-id="qrDialog.orderId"
-      :qr-code="qrDialog.qrCode"
-      :expires-at="qrDialog.expiresAt"
-      :payment-type="qrDialog.paymentType"
-      :pay-url="qrDialog.payUrl"
-      @close="qrDialog.show = false"
-      @success="authStore.refreshUser()"
-    />
     <!-- Image Preview Overlay -->
     <Teleport to="body">
       <Transition name="modal">
@@ -155,7 +157,7 @@ import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
-import PaymentQRDialog from '@/components/payment/PaymentQRDialog.vue'
+import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 
@@ -176,8 +178,14 @@ const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
 
-// Inline QR payment dialog state
-const qrDialog = ref({ show: false, orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '' })
+// Payment phase: 'select' → 'paying' (after order created)
+const paymentPhase = ref<'select' | 'paying'>('select')
+const paymentState = ref({ orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '' })
+
+function resetPayment() {
+  paymentPhase.value = 'select'
+  paymentState.value = { orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '' }
+}
 
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
@@ -303,41 +311,32 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       plan_id: planId,
     })
     if (result.client_secret) {
-      // Stripe: open in popup window, show waiting dialog on main page
+      // Stripe: open in popup window, show waiting state inline
       const stripeUrl = router.resolve({
         path: '/payment/stripe',
         query: { order_id: String(result.order_id), client_secret: result.client_secret },
       }).href
       window.open(stripeUrl, 'paymentPopup', POPUP_WINDOW_FEATURES)
-      qrDialog.value = {
-        show: true,
-        orderId: result.order_id,
-        qrCode: '',
-        expiresAt: '',
-        paymentType: selectedMethod.value,
-        payUrl: stripeUrl,
+      paymentState.value = {
+        orderId: result.order_id, qrCode: '', expiresAt: '',
+        paymentType: selectedMethod.value, payUrl: stripeUrl,
       }
+      paymentPhase.value = 'paying'
     } else if (result.qr_code) {
-      // QR mode: show inline dialog, no page navigation
-      qrDialog.value = {
-        show: true,
-        orderId: result.order_id,
-        qrCode: result.qr_code,
-        expiresAt: result.expires_at || '',
-        paymentType: selectedMethod.value,
-        payUrl: '',
+      // QR mode: show QR code inline
+      paymentState.value = {
+        orderId: result.order_id, qrCode: result.qr_code,
+        expiresAt: result.expires_at || '', paymentType: selectedMethod.value, payUrl: '',
       }
+      paymentPhase.value = 'paying'
     } else if (result.pay_url) {
-      // Redirect mode: open in popup window, show waiting dialog on main page
+      // Redirect mode: open in popup, show waiting state inline
       window.open(result.pay_url, 'paymentPopup', POPUP_WINDOW_FEATURES)
-      qrDialog.value = {
-        show: true,
-        orderId: result.order_id,
-        qrCode: '',
-        expiresAt: result.expires_at || '',
-        paymentType: selectedMethod.value,
-        payUrl: result.pay_url,
+      paymentState.value = {
+        orderId: result.order_id, qrCode: '', expiresAt: result.expires_at || '',
+        paymentType: selectedMethod.value, payUrl: result.pay_url,
       }
+      paymentPhase.value = 'paying'
     } else {
       errorMessage.value = t('payment.result.failed')
       appStore.showError(errorMessage.value)
