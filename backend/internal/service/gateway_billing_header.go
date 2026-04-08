@@ -68,6 +68,6 @@ REDACTED
 // xxHash64Seeded computes xxHash64 of data with a custom seed.
 func xxHash64Seeded(data []byte, seed uint64) uint64 {
 	d := xxhash.NewWithSeed(seed)
-	d.Write(data)
+	_, _ = d.Write(data)
 	return d.Sum64()
 REDACTED
