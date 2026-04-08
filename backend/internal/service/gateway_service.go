@@ -4002,7 +4002,7 @@ REDACTED
 			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 			if err == nil && fp != nil {
 				// metadata 透传开启时跳过 metadata 注入
-				_, mimicMPT := s.settingService.GetGatewayForwardingSettings(ctx)
+				_, mimicMPT, _ := s.settingService.GetGatewayForwardingSettings(ctx)
 				if !mimicMPT {
 					if metadataUserID := s.buildOAuthMetadataUserID(parsed, account, fp); metadataUserID != "" {
 						normalizeOpts.injectMetadata = true
@@ -5548,9 +5548,9 @@ REDACTED
 
 	// OAuth账号：应用统一指纹和metadata重写（受设置开关控制）
 	var fingerprint *Fingerprint
-	enableFP, enableMPT := true, false
+	enableFP, enableMPT, enableCCH := true, false, false
 	if s.settingService != nil {
-		enableFP, enableMPT = s.settingService.GetGatewayForwardingSettings(ctx)
+		enableFP, enableMPT, enableCCH = s.settingService.GetGatewayForwardingSettings(ctx)
 REDACTED
 	if account.IsOAuth() && s.identityService != nil {
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
@@ -5575,6 +5575,15 @@ REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
+REDACTED
+
+	// 同步 billing header cc_version 与实际发送的 User-Agent 版本
+	if fingerprint != nil {
+		body = syncBillingHeaderVersion(body, fingerprint.UserAgent)
+REDACTED
+	// CCH 签名：将 cch=00000 占位符替换为 xxHash64 签名（需在所有 body 修改之后）
+	if enableCCH {
+		body = signBillingHeaderCCH(body)
 REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
@@ -8461,9 +8470,9 @@ REDACTED
 
 	// OAuth 账号：应用统一指纹和重写 userID（受设置开关控制）
 	// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
-	ctEnableFP, ctEnableMPT := true, false
+	ctEnableFP, ctEnableMPT, ctEnableCCH := true, false, false
 	if s.settingService != nil {
-		ctEnableFP, ctEnableMPT = s.settingService.GetGatewayForwardingSettings(ctx)
+		ctEnableFP, ctEnableMPT, ctEnableCCH = s.settingService.GetGatewayForwardingSettings(ctx)
 REDACTED
 	var ctFingerprint *Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
@@ -8479,6 +8488,14 @@ REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
+REDACTED
+
+	// 同步 billing header cc_version 与实际发送的 User-Agent 版本
+	if ctFingerprint != nil && ctEnableFP {
+		body = syncBillingHeaderVersion(body, ctFingerprint.UserAgent)
+REDACTED
+	if ctEnableCCH {
+		body = signBillingHeaderCCH(body)
 REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))

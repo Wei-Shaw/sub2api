@@ -128,6 +128,7 @@ REDACTED
 		BackendModeEnabled:                   settings.BackendModeEnabled,
 		EnableFingerprintUnification:         settings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            settings.EnableMetadataPassthrough,
+		EnableCCHSigning:                     settings.EnableCCHSigning,
 REDACTED)
 REDACTED
 
@@ -211,6 +212,7 @@ type UpdateSettingsRequest struct {
 	// Gateway forwarding behavior
 	EnableFingerprintUnification *bool `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough    *bool `json:"enable_metadata_passthrough"`
+	EnableCCHSigning             *bool `json:"enable_cch_signing"`
 REDACTED
 
 // UpdateSettings 更新系统设置
@@ -614,6 +616,12 @@ REDACTED
 		REDACTED
 			return previousSettings.EnableMetadataPassthrough
 	REDACTED(),
+		EnableCCHSigning: func() bool {
+			if req.EnableCCHSigning != nil {
+				return *req.EnableCCHSigning
+		REDACTED
+			return previousSettings.EnableCCHSigning
+	REDACTED(),
 REDACTED
 
 	if err := h.settingService.UpdateSettings(c.Request.Context(), settings); err != nil {
@@ -693,6 +701,7 @@ REDACTED
 		BackendModeEnabled:                   updatedSettings.BackendModeEnabled,
 		EnableFingerprintUnification:         updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            updatedSettings.EnableMetadataPassthrough,
+		EnableCCHSigning:                     updatedSettings.EnableCCHSigning,
 REDACTED)
 REDACTED
 
@@ -870,6 +879,9 @@ REDACTED
 REDACTED
 	if before.EnableMetadataPassthrough != after.EnableMetadataPassthrough {
 		changed = append(changed, "enable_metadata_passthrough")
+REDACTED
+	if before.EnableCCHSigning != after.EnableCCHSigning {
+		changed = append(changed, "enable_cch_signing")
 REDACTED
 	return changed
 REDACTED
