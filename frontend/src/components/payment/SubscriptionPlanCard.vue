@@ -11,14 +11,17 @@
     <div :class="['h-1.5', accentBarClass]" />
 
     <div class="flex flex-1 flex-col p-5">
-      <!-- Header: name + validity badge -->
+      <!-- Header: name + platform badge -->
       <div class="mb-4">
         <div class="flex items-center gap-2">
           <h3 class="text-base font-bold text-gray-900 dark:text-white">{{ plan.name }}</h3>
-          <span :class="['rounded-full px-2 py-0.5 text-[11px] font-medium', badgeClass]">
-            {{ validityLabel }}
+          <span :class="['rounded-full px-2 py-0.5 text-[11px] font-medium', platformBadgeClass]">
+            {{ platformLabel }}
           </span>
         </div>
+        <p v-if="plan.group_name" class="mt-1 text-xs text-gray-400 dark:text-dark-500">
+          {{ plan.group_name }}
+        </p>
         <p v-if="plan.description" class="mt-1.5 text-sm leading-relaxed text-gray-500 dark:text-dark-400">
           {{ plan.description }}
         </p>
@@ -41,6 +44,45 @@
         </div>
       </div>
 
+      <!-- Group quota info -->
+      <div class="mb-4 space-y-1.5 rounded-lg bg-gray-50 px-3 py-2.5 dark:bg-dark-700/50">
+        <!-- Rate multiplier -->
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.rate') }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">{{ rateDisplay }}</span>
+        </div>
+        <!-- Daily limit -->
+        <div v-if="plan.daily_limit_usd != null" class="flex items-center justify-between text-xs">
+          <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.dailyLimit') }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.daily_limit_usd }}</span>
+        </div>
+        <!-- Weekly limit -->
+        <div v-if="plan.weekly_limit_usd != null" class="flex items-center justify-between text-xs">
+          <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.weeklyLimit') }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.weekly_limit_usd }}</span>
+        </div>
+        <!-- Monthly limit -->
+        <div v-if="plan.monthly_limit_usd != null" class="flex items-center justify-between text-xs">
+          <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.monthlyLimit') }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.monthly_limit_usd }}</span>
+        </div>
+        <!-- No limits indicator -->
+        <div v-if="plan.daily_limit_usd == null && plan.weekly_limit_usd == null && plan.monthly_limit_usd == null" class="flex items-center justify-between text-xs">
+          <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.quota') }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.planCard.unlimited') }}</span>
+        </div>
+        <!-- Model scopes -->
+        <div v-if="modelScopeLabels.length > 0" class="flex items-center justify-between text-xs">
+          <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.models') }}</span>
+          <div class="flex flex-wrap justify-end gap-1">
+            <span v-for="scope in modelScopeLabels" :key="scope"
+              class="rounded bg-gray-200/80 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-dark-600 dark:text-gray-300">
+              {{ scope }}
+            </span>
+          </div>
+        </div>
+      </div>
+
       <!-- Features list with checkmarks -->
       <div v-if="plan.features.length > 0" class="mb-4 space-y-2">
         <div
@@ -58,11 +100,18 @@
       <!-- Spacer pushes button to bottom -->
       <div class="flex-1" />
 
+      <!-- Validity badge -->
+      <div class="mb-3 text-center">
+        <span :class="['rounded-full px-3 py-1 text-xs font-medium', badgeClass]">
+          {{ validityLabel }}
+        </span>
+      </div>
+
       <!-- Subscribe Button -->
       <button
         type="button"
         :class="[
-          'mt-3 w-full rounded-xl py-2.5 text-sm font-semibold transition-all',
+          'w-full rounded-xl py-2.5 text-sm font-semibold transition-all',
           'active:scale-[0.98]',
           buttonClass,
         ]"
@@ -98,6 +147,36 @@ const discountText = computed(() => {
   return pct > 0 ? `-${pct}%` : ''
 })
 
+// Rate multiplier display
+const rateDisplay = computed(() => {
+  const rate = props.plan.rate_multiplier ?? 1
+  return `×${Number(rate.toPrecision(10))}`
+})
+
+// Platform display label
+const platformLabel = computed(() => {
+  switch (platform.value) {
+    case 'anthropic': return 'Anthropic'
+    case 'openai': return 'OpenAI'
+    case 'antigravity': return 'Antigravity'
+    case 'gemini': return 'Gemini'
+    default: return platform.value || 'API'
+  }
+})
+
+// Model scope labels
+const MODEL_SCOPE_LABELS: Record<string, string> = {
+  claude: 'Claude',
+  gemini_text: 'Gemini',
+  gemini_image: 'Imagen',
+}
+
+const modelScopeLabels = computed(() => {
+  const scopes = props.plan.supported_model_scopes
+  if (!scopes || scopes.length === 0) return []
+  return scopes.map(s => MODEL_SCOPE_LABELS[s] || s)
+})
+
 // Color schemes per platform
 const accentBarClass = computed(() => {
   switch (platform.value) {
@@ -116,6 +195,16 @@ const cardBorderClass = computed(() => {
     case 'antigravity': return 'border-purple-100 dark:border-purple-900/30'
     case 'gemini': return 'border-blue-100 dark:border-blue-900/30'
     default: return 'border-gray-200 dark:border-dark-700'
+  }
+})
+
+const platformBadgeClass = computed(() => {
+  switch (platform.value) {
+    case 'anthropic': return 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300'
+    case 'openai': return 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300'
+    case 'antigravity': return 'bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-300'
+    case 'gemini': return 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300'
+    default: return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'
   }
 })
 

@@ -5,13 +5,6 @@
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
       </div>
       <template v-else>
-        <!-- Balance Card -->
-        <div class="card overflow-hidden">
-          <div class="bg-gradient-to-br from-primary-500 to-primary-600 px-6 py-6 text-center">
-            <p class="text-sm font-medium text-primary-100">{{ t('payment.currentBalance') }}</p>
-            <p class="mt-1 text-3xl font-bold text-white">${{ user?.balance?.toFixed(2) || '0.00' }}</p>
-          </div>
-        </div>
         <!-- Tab Switcher (hide during payment and subscription confirm) -->
         <div v-if="tabs.length > 1 && paymentPhase === 'select' && !selectedPlan" class="flex space-x-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-800">
           <button v-for="tab in tabs" :key="tab.key"
@@ -46,6 +39,12 @@
         <template v-else>
           <!-- Top-up Tab -->
           <template v-if="activeTab === 'recharge'">
+            <!-- Recharge Account Card -->
+            <div class="card p-5">
+              <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.rechargeAccount') }}</p>
+              <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
+              <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
+            </div>
             <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
@@ -96,6 +95,24 @@
           </template>
           <!-- Subscribe Tab -->
           <template v-else-if="activeTab === 'subscription'">
+            <!-- Active Subscription Card -->
+            <div v-if="activeSubscriptions.length > 0" class="card p-5">
+              <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.activeSubscription') }}</p>
+              <div v-for="sub in activeSubscriptions" :key="sub.id" class="mt-2 flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ sub.group?.name || `Group #${sub.group_id}` }}</p>
+                  <p v-if="sub.expires_at" class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('userSubscriptions.daysRemaining', { days: getDaysRemaining(sub.expires_at) }) }}
+                  </p>
+                  <p v-else class="text-xs text-gray-500 dark:text-gray-400">{{ t('userSubscriptions.noExpiration') }}</p>
+                </div>
+                <span class="badge badge-success text-xs">{{ t('userSubscriptions.status.active') }}</span>
+              </div>
+            </div>
+            <div v-else class="card p-5">
+              <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.activeSubscription') }}</p>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('payment.noActiveSubscription') }}</p>
+            </div>
             <!-- Subscription confirm (inline, replaces plan list) -->
             <template v-if="selectedPlan">
               <div class="card overflow-hidden">
@@ -181,6 +198,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { usePaymentStore } from '@/stores/payment'
+import { useSubscriptionStore } from '@/stores/subscriptions'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -198,9 +216,16 @@ import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSele
 const { t } = useI18n()
 const authStore = useAuthStore()
 const paymentStore = usePaymentStore()
+const subscriptionStore = useSubscriptionStore()
 const appStore = useAppStore()
 
 const user = computed(() => authStore.user)
+const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions)
+
+function getDaysRemaining(expiresAt: string): number {
+  const diff = new Date(expiresAt).getTime() - Date.now()
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+}
 
 const loading = ref(true)
 const submitting = ref(false)
@@ -456,5 +481,7 @@ onMounted(async () => {
     }
   } catch (err: unknown) { console.error('Failed to load checkout info:', err) }
   finally { loading.value = false }
+  // Fetch active subscriptions (uses cache, non-blocking)
+  subscriptionStore.fetchActiveSubscriptions().catch(() => {})
 })
 </script>
