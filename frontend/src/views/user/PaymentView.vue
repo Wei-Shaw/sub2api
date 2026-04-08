@@ -26,7 +26,7 @@
             <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
           </div>
           <!-- Payment status (replaces selection UI after order creation) -->
-          <template v-else-if="paymentPhase !== 'select'">
+          <template v-else-if="paymentPhase === 'paying'">
             <PaymentStatusPanel
               :order-id="paymentState.orderId"
               :qr-code="paymentState.qrCode"
@@ -35,6 +35,17 @@
               :pay-url="paymentState.payUrl"
               @done="resetPayment"
               @success="authStore.refreshUser()"
+            />
+          </template>
+          <!-- Stripe inline payment (select method → confirm → redirect/complete) -->
+          <template v-else-if="paymentPhase === 'stripe'">
+            <StripePaymentInline
+              :order-id="paymentState.orderId"
+              :client-secret="paymentState.clientSecret"
+              :publishable-key="checkout.stripe_publishable_key"
+              :pay-amount="paymentState.payAmount"
+              @success="onStripeSuccess"
+              @back="resetPayment"
             />
           </template>
           <!-- Amount & method selection -->
@@ -144,7 +155,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePaymentStore } from '@/stores/payment'
 import { useAppStore } from '@/stores'
@@ -158,11 +168,11 @@ import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vu
 import { METHOD_ORDER, POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
+import StripePaymentInline from '@/components/payment/StripePaymentInline.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 
 const { t } = useI18n()
-const router = useRouter()
 const authStore = useAuthStore()
 const paymentStore = usePaymentStore()
 const appStore = useAppStore()
@@ -178,13 +188,18 @@ const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
 
-// Payment phase: 'select' → 'paying' (after order created)
-const paymentPhase = ref<'select' | 'paying'>('select')
-const paymentState = ref({ orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '' })
+// Payment phase: 'select' → 'paying' (QR/redirect) or 'stripe' (inline Stripe)
+const paymentPhase = ref<'select' | 'paying' | 'stripe'>('select')
+const paymentState = ref({ orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0 })
 
 function resetPayment() {
   paymentPhase.value = 'select'
-  paymentState.value = { orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '' }
+  paymentState.value = { orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0 }
+}
+
+function onStripeSuccess() {
+  authStore.refreshUser()
+  resetPayment()
 }
 
 // All checkout data from single API call
@@ -313,22 +328,19 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       }
     }
     if (result.client_secret) {
-      // Stripe: open payment page, show waiting state inline
-      const stripeUrl = router.resolve({
-        path: '/payment/stripe',
-        query: { order_id: String(result.order_id), client_secret: result.client_secret },
-      }).href
-      openWindow(stripeUrl)
+      // Stripe: show Payment Element inline (user picks method → confirms → redirect if needed)
       paymentState.value = {
         orderId: result.order_id, qrCode: '', expiresAt: '',
-        paymentType: selectedMethod.value, payUrl: stripeUrl,
+        paymentType: selectedMethod.value, payUrl: '',
+        clientSecret: result.client_secret, payAmount: result.pay_amount,
       }
-      paymentPhase.value = 'paying'
+      paymentPhase.value = 'stripe'
     } else if (result.qr_code) {
       // QR mode: show QR code inline
       paymentState.value = {
         orderId: result.order_id, qrCode: result.qr_code,
         expiresAt: result.expires_at || '', paymentType: selectedMethod.value, payUrl: '',
+        clientSecret: '', payAmount: 0,
       }
       paymentPhase.value = 'paying'
     } else if (result.pay_url) {
@@ -337,6 +349,7 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       paymentState.value = {
         orderId: result.order_id, qrCode: '', expiresAt: result.expires_at || '',
         paymentType: selectedMethod.value, payUrl: result.pay_url,
+        clientSecret: '', payAmount: 0,
       }
       paymentPhase.value = 'paying'
     } else {
