@@ -2360,7 +2360,12 @@ async function loadSettings() {
   try {
     const settings = await adminAPI.settings.getSettings()
     ;(settings as any).payment_load_balance_strategy = settings.payment_load_balance_strategy || 'round-robin'
-    Object.assign(form, settings)
+    // Only assign non-null values from backend (null means unconfigured, keep defaults)
+    for (const [key, value] of Object.entries(settings)) {
+      if (value !== null && value !== undefined) {
+        (form as Record<string, unknown>)[key] = value
+      }
+    }
     form.backend_mode_enabled = settings.backend_mode_enabled
     form.default_subscriptions = Array.isArray(settings.default_subscriptions)
       ? settings.default_subscriptions
@@ -2529,7 +2534,11 @@ async function saveSettings() {
     }
 
     const updated = await adminAPI.settings.updateSettings(payload)
-    Object.assign(form, updated)
+    for (const [key, value] of Object.entries(updated)) {
+      if (value !== null && value !== undefined) {
+        (form as Record<string, unknown>)[key] = value
+      }
+    }
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       updated.registration_email_suffix_whitelist
     )
