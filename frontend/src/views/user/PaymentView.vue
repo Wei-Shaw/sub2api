@@ -80,8 +80,11 @@
             <SubscriptionPlanCard v-for="plan in checkout.plans" :key="plan.id" :plan="plan" @select="openSubscribeDialog" />
           </div>
         </template>
-        <div v-if="checkout.help_text" class="card p-4">
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ checkout.help_text }}</p>
+        <div v-if="checkout.help_text || checkout.help_image_url" class="card p-4">
+          <div :class="checkout.help_image_url && checkout.help_text ? 'flex items-start gap-4' : ''">
+            <img v-if="checkout.help_image_url" :src="checkout.help_image_url" alt="" class="h-24 w-24 rounded-lg object-contain" />
+            <p v-if="checkout.help_text" class="text-sm text-gray-500 dark:text-gray-400">{{ checkout.help_text }}</p>
+          </div>
         </div>
       </template>
     </div>
@@ -153,7 +156,7 @@ const selectedPlan = ref<SubscriptionPlan | null>(null)
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, help_text: '', stripe_publishable_key: '',
+  plans: [], balance_disabled: false, help_text: '', help_image_url: '', stripe_publishable_key: '',
 })
 
 const tabs = computed(() => {

@@ -63,6 +63,7 @@ export interface CheckoutInfoResponse {
   plans: SubscriptionPlan[]
   balance_disabled: boolean
   help_text: string
+  help_image_url: string
   stripe_publishable_key: string
 }
 
