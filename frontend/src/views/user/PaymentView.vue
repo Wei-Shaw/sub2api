@@ -82,7 +82,9 @@
         </template>
         <div v-if="checkout.help_text || checkout.help_image_url" class="card p-4">
           <div :class="checkout.help_image_url && checkout.help_text ? 'flex items-start gap-4' : ''">
-            <img v-if="checkout.help_image_url" :src="checkout.help_image_url" alt="" class="h-24 w-24 rounded-lg object-contain" />
+            <img v-if="checkout.help_image_url" :src="checkout.help_image_url" alt=""
+              class="h-24 w-24 flex-shrink-0 cursor-pointer rounded-lg object-contain transition-opacity hover:opacity-80"
+              @click="previewImage = checkout.help_image_url" />
             <p v-if="checkout.help_text" class="text-sm text-gray-500 dark:text-gray-400">{{ checkout.help_text }}</p>
           </div>
         </div>
@@ -125,6 +127,14 @@
       @close="qrDialog.show = false"
       @success="authStore.refreshUser()"
     />
+    <!-- Image Preview Overlay -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="previewImage" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm" @click="previewImage = ''">
+          <img :src="previewImage" alt="" class="max-h-[85vh] max-w-[90vw] rounded-xl object-contain shadow-2xl" />
+        </div>
+      </Transition>
+    </Teleport>
   </AppLayout>
 </template>
 
@@ -163,6 +173,7 @@ const activeTab = ref<'recharge' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
+const previewImage = ref('')
 
 // Inline QR payment dialog state
 const qrDialog = ref({ show: false, orderId: 0, qrCode: '', expiresAt: '', paymentType: '' })
