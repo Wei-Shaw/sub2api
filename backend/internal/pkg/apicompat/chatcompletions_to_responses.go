@@ -339,7 +339,7 @@ func convertChatContentPartsToResponses(parts []ChatContentPart) []ResponsesCont
 			REDACTED)
 		REDACTED
 		case "image_url":
-			if p.ImageURL != nil && p.ImageURL.URL != "" {
+			if p.ImageURL != nil && p.ImageURL.URL != "" && !isEmptyBase64DataURI(p.ImageURL.URL) {
 				responseParts = append(responseParts, ResponsesContentPart{
 					Type:     "input_image",
 					ImageURL: p.ImageURL.URL,
@@ -348,6 +348,22 @@ func convertChatContentPartsToResponses(parts []ChatContentPart) []ResponsesCont
 	REDACTED
 REDACTED
 	return responseParts
+REDACTED
+
+func isEmptyBase64DataURI(raw string) bool {
+	if !strings.HasPrefix(raw, "data:") {
+		return false
+REDACTED
+	rest := strings.TrimPrefix(raw, "data:")
+	semicolonIdx := strings.Index(rest, ";")
+	if semicolonIdx < 0 {
+		return false
+REDACTED
+	rest = rest[semicolonIdx+1:]
+	if !strings.HasPrefix(rest, "base64,") {
+		return false
+REDACTED
+	return strings.TrimSpace(strings.TrimPrefix(rest, "base64,")) == ""
 REDACTED
 
 func flattenChatContentParts(parts []ChatContentPart) string {
