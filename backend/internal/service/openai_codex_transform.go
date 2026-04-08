@@ -429,18 +429,6 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 		}
 		typ, _ := m["type"].(string)
 
-		// 仅修正真正的 tool/function call 标识，避免误改普通 message/reasoning id；
-		// 若 item_reference 指向 legacy call_* 标识，则仅修正该引用本身。
-		fixCallIDPrefix := func(id string) string {
-			if id == "" || strings.HasPrefix(id, "fc") {
-				return id
-			}
-			if strings.HasPrefix(id, "call_") {
-				return "fc" + strings.TrimPrefix(id, "call_")
-			}
-			return "fc_" + id
-		}
-
 		if typ == "item_reference" {
 			if !preserveReferences {
 				continue
@@ -448,9 +436,6 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 			newItem := make(map[string]any, len(m))
 			for key, value := range m {
 				newItem[key] = value
-			}
-			if id, ok := newItem["id"].(string); ok && strings.HasPrefix(id, "call_") {
-				newItem["id"] = fixCallIDPrefix(id)
 			}
 			filtered = append(filtered, newItem)
 			continue
@@ -477,14 +462,6 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 					callID = id
 					ensureCopy()
 					newItem["call_id"] = callID
-				}
-			}
-
-			if callID != "" {
-				fixedCallID := fixCallIDPrefix(callID)
-				if fixedCallID != callID {
-					ensureCopy()
-					newItem["call_id"] = fixedCallID
 				}
 			}
 		}

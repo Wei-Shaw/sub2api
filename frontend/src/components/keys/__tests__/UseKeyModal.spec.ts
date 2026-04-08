@@ -205,10 +205,15 @@ describe('UseKeyModal', () => {
     const gpt52Variants = parsed.provider['sub2api-openai'].models['gpt-5.2'].variants
     const gpt54 = parsed.provider['sub2api-openai'].models['gpt-5.4']
     const gpt54Sys = parsed.provider['sub2api-openai'].models['gpt-5.4-Sys']
+    const gpt54Mini = parsed.provider['sub2api-openai'].models['gpt-5.4-mini']
 
     expect(gpt54.attachment).toBe(true)
     expect(gpt54.modalities.input).toEqual(expect.arrayContaining(['text', 'image', 'pdf']))
     expect(gpt54.modalities.output).toEqual(['text'])
+    expect(gpt54.id).toBeUndefined()
+    expect(gpt54Sys.id).toBeUndefined()
+    expect(gpt54.cost.context_over_200k).toBeUndefined()
+    expect(gpt54Mini.cost.context_over_200k).toBeUndefined()
     expect(gpt54Sys.attachment).toBe(true)
     expect(gpt54Sys.modalities.input).toEqual(expect.arrayContaining(['text', 'image', 'pdf']))
     expect(gpt54Sys.modalities.output).toEqual(['text'])

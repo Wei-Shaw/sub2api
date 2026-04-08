@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
 )
 
 func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
@@ -417,7 +418,8 @@ func TestPrepareResponsesRequestForScheduling_SysModelAppendsContinuation(t *tes
 	require.Equal(t, "gpt-5.4", gjson.GetBytes(patchedBody, "model").String())
 	require.Equal(t, service.TargetGroupExhausted, targetGroup)
 	require.Contains(t, string(patchedBody), `"type":"function_call"`)
-	require.Contains(t, string(patchedBody), `"output":"ready"`)
+	require.Contains(t, string(patchedBody), `"name":"sub2api_sys_bootstrap"`)
+	require.Contains(t, string(patchedBody), `Synthetic bootstrap continuation inserted by sub2api for -Sys routing.`)
 }
 
 func TestPrepareResponsesRequestForScheduling_SysModelAppendsContinuationForRoleBasedUserItem(t *testing.T) {
@@ -432,6 +434,23 @@ func TestPrepareResponsesRequestForScheduling_SysModelAppendsContinuationForRole
 	require.Equal(t, "gpt-5.4", patchedModel)
 	require.Equal(t, service.TargetGroupExhausted, targetGroup)
 	require.Contains(t, string(patchedBody), `"type":"function_call"`)
+	require.Contains(t, string(patchedBody), `"type":"function_call_output"`)
+}
+
+func TestPrepareResponsesRequestForScheduling_SysModelStringInputAppendsContinuation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	body := []byte(`{"model":"gpt-5.4-Sys","tools":[{"type":"function","name":"lookup_number"}],"input":"hello"}`)
+
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4-Sys")
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.4", patchedModel)
+	require.Equal(t, service.TargetGroupExhausted, targetGroup)
+	require.Equal(t, "message", gjson.GetBytes(patchedBody, "input.0.type").String())
+	require.Equal(t, "user", gjson.GetBytes(patchedBody, "input.0.role").String())
+	require.Equal(t, "hello", gjson.GetBytes(patchedBody, "input.0.content.0.text").String())
 	require.Contains(t, string(patchedBody), `"type":"function_call_output"`)
 }
 
@@ -526,6 +545,21 @@ func TestResponsesSelectionFailure_NilSelectionUsesTargetGroupWhenNotFailover(t 
 		nil,
 	)
 	require.Equal(t, responsesSelectionFailureActionTargetGroupAware, action)
+}
+
+func TestValidateFunctionCallOutputRequest_PreviousResponseIDUnsupported(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	h := &OpenAIGatewayHandler{}
+	body := []byte(`{"model":"gpt-5.4","previous_response_id":"resp_prev_123","input":[{"type":"function_call_output","call_id":"call_1","output":"ok"}]}`)
+
+	ok := h.validateFunctionCallOutputRequest(c, body, zap.NewNop())
+	require.False(t, ok)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.Contains(t, w.Body.String(), "previous_response_id + function_call_output is not supported")
 }
 
 func TestOpenAIResponses_MissingDependencies_ReturnsServiceUnavailable(t *testing.T) {

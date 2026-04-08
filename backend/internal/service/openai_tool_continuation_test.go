@@ -159,15 +159,15 @@ func TestAppendMinimalSysToolContinuation(t *testing.T) {
 	toolCall, ok := input[1].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "function_call", toolCall["type"])
-	require.Equal(t, "sys_dummy", toolCall["call_id"])
-	require.Equal(t, "sys_status", toolCall["name"])
+	require.Equal(t, sysDummyToolCallID, toolCall["call_id"])
+	require.Equal(t, sysDummyToolName, toolCall["name"])
 	require.Equal(t, "{}", toolCall["arguments"])
 
 	functionCallOutput, ok := input[2].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "function_call_output", functionCallOutput["type"])
-	require.Equal(t, "sys_dummy", functionCallOutput["call_id"])
-	require.Equal(t, "ready", functionCallOutput["output"])
+	require.Equal(t, sysDummyToolCallID, functionCallOutput["call_id"])
+	require.Equal(t, sysDummyToolOutput, functionCallOutput["output"])
 }
 
 func TestAppendMinimalSysToolContinuation_RoleBasedUserItemWithoutType(t *testing.T) {

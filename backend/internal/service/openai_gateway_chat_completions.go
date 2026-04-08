@@ -84,17 +84,28 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return nil, fmt.Errorf("marshal responses request: %w", err)
 	}
 
-	if account.Type == AccountTypeOAuth {
+	needsReqBodyPatch := account.Type == AccountTypeOAuth
+	if c != nil {
+		needsReqBodyPatch = needsReqBodyPatch || c.GetBool(OpenAISysToolContinuationKey)
+	}
+	if needsReqBodyPatch {
 		var reqBody map[string]any
 		if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
 		}
-		codexResult := applyCodexOAuthTransform(reqBody, false, false)
-		if codexResult.NormalizedModel != "" {
-			upstreamModel = codexResult.NormalizedModel
+		if c != nil && c.GetBool(OpenAISysToolContinuationKey) && NeedsSysToolContinuation(reqBody) {
+			AppendMinimalSysToolContinuation(reqBody)
 		}
-		if codexResult.PromptCacheKey != "" {
-			promptCacheKey = codexResult.PromptCacheKey
+		if account.Type == AccountTypeOAuth {
+			codexResult := applyCodexOAuthTransform(reqBody, false, false)
+			if codexResult.NormalizedModel != "" {
+				upstreamModel = codexResult.NormalizedModel
+			}
+			if codexResult.PromptCacheKey != "" {
+				promptCacheKey = codexResult.PromptCacheKey
+			} else if promptCacheKey != "" {
+				reqBody["prompt_cache_key"] = promptCacheKey
+			}
 		} else if promptCacheKey != "" {
 			reqBody["prompt_cache_key"] = promptCacheKey
 		}

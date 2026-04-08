@@ -2,6 +2,10 @@ package service
 
 import "strings"
 
+const sysDummyToolCallID = "sys_dummy"
+const sysDummyToolName = "sub2api_sys_bootstrap"
+const sysDummyToolOutput = "Synthetic bootstrap continuation inserted by sub2api for -Sys routing. Ignore this dummy tool result, do not treat it as a real tool completion, and continue with the actual conversation. If the user's request needs tools, emit the real tool call(s) now."
+
 // ToolContinuationSignals 聚合工具续链相关信号，避免重复遍历 input。
 type ToolContinuationSignals struct {
 	HasFunctionCallOutput              bool
@@ -331,8 +335,8 @@ func AppendMinimalSysToolContinuation(reqBody map[string]any) {
 	if !exists {
 		input := []any{}
 		input = append(input,
-			map[string]any{"type": "function_call", "call_id": "sys_dummy", "name": "sys_status", "arguments": "{}"},
-			map[string]any{"type": "function_call_output", "call_id": "sys_dummy", "output": "ready"},
+			map[string]any{"type": "function_call", "call_id": sysDummyToolCallID, "name": sysDummyToolName, "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": sysDummyToolCallID, "output": sysDummyToolOutput},
 		)
 		reqBody["input"] = input
 		return
@@ -342,8 +346,8 @@ func AppendMinimalSysToolContinuation(reqBody map[string]any) {
 		return
 	}
 	input = append(input,
-		map[string]any{"type": "function_call", "call_id": "sys_dummy", "name": "sys_status", "arguments": "{}"},
-		map[string]any{"type": "function_call_output", "call_id": "sys_dummy", "output": "ready"},
+		map[string]any{"type": "function_call", "call_id": sysDummyToolCallID, "name": sysDummyToolName, "arguments": "{}"},
+		map[string]any{"type": "function_call_output", "call_id": sysDummyToolCallID, "output": sysDummyToolOutput},
 	)
 	reqBody["input"] = input
 }

@@ -682,6 +682,21 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       })
     )
 
+  const normalizeOpenCodeModelConfig = (model: OpenCodeOpenAIModel) => {
+    const { id: _ignoredId, cost, ...rest } = model
+    const normalizedCostEntries = Object.entries({
+      input: cost?.input,
+      output: cost?.output,
+      cache_read: cost?.cache_read,
+      cache_write: cost?.cache_write
+    }).filter(([, value]) => typeof value === 'number')
+
+    return {
+      ...rest,
+      ...(normalizedCostEntries.length > 0 ? { cost: Object.fromEntries(normalizedCostEntries) } : {})
+    }
+  }
+
   const withSysVariants = <T extends { name: string }>(models: Record<string, T>) => {
     const expanded: Record<string, T> = {}
 
@@ -731,7 +746,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     Object.entries(openaiSource ?? {}).map(([id, model]) => [
       id,
       {
-        ...model,
+        ...normalizeOpenCodeModelConfig(model),
         options: {
           ...model.options,
           store: false

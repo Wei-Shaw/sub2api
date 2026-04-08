@@ -46,6 +46,8 @@ const (
 
 	// OpenAIParsedRequestBodyKey 缓存 handler 侧已解析的请求体，避免重复解析。
 	OpenAIParsedRequestBodyKey = "openai_parsed_request_body"
+	// OpenAISysToolContinuationKey 标记当前请求需要为 -Sys 路由补最小 tool continuation。
+	OpenAISysToolContinuationKey = "openai_sys_tool_continuation"
 	// OpenAI WS Mode 失败后的重连次数上限（不含首次尝试）。
 	// 与 Codex 客户端保持一致：失败后最多重连 5 次。
 	openAIWSReconnectRetryLimit = 5

@@ -78,9 +78,22 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	targetGroup := service.TargetGroupAny
+	if service.IsSysModel(reqModel) {
+		strippedModel := service.StripSysSuffix(reqModel)
+		if strippedModel == "" {
+			h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", "model is required", streamStarted)
+			return
+		}
+		reqModel = strippedModel
+		body = service.ReplaceModelInBody(body, reqModel)
+		targetGroup = service.TargetGroupExhausted
+		c.Set(service.OpenAISysToolContinuationKey, true)
+	}
 
 	// 解析渠道级模型映射
-	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	channelRequestModel := reqModel
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, channelRequestModel)
 
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
@@ -124,7 +137,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			"",
 			sessionHash,
 			reqModel,
-			service.TargetGroupAny,
+			targetGroup,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
 		)
@@ -148,7 +161,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						"",
 						sessionHash,
 						defaultModel,
-						service.TargetGroupAny,
+						targetGroup,
 						failedAccountIDs,
 						service.OpenAIUpstreamTransportAny,
 					)
@@ -276,7 +289,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				APIKeyService:      h.apiKeyService,
-				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+				ChannelUsageFields: channelMapping.ToUsageFields(channelRequestModel, result.UpstreamModel),
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.chat_completions"),

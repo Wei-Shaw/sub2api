@@ -930,7 +930,14 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 	}
 
 	previousResponseID, _ := reqBody["previous_response_id"].(string)
-	if strings.TrimSpace(previousResponseID) != "" || validation.HasToolCallContext {
+	if strings.TrimSpace(previousResponseID) != "" {
+		reqLog.Warn("openai.request_validation_failed",
+			zap.String("reason", "function_call_output_previous_response_id_unsupported"),
+		)
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id + function_call_output is not supported on /v1/responses; replay the full conversation instead")
+		return false
+	}
+	if validation.HasToolCallContext {
 		return true
 	}
 
@@ -996,6 +1003,22 @@ func prepareResponsesRequestForScheduling(c *gin.Context, body []byte, reqModel 
 
 	rewriteBody := false
 	if isSysModel {
+		if inputStr, ok := reqBody["input"].(string); ok {
+			trimmed := strings.TrimSpace(inputStr)
+			if trimmed == "" {
+				reqBody["input"] = []any{}
+			} else {
+				reqBody["input"] = []any{map[string]any{
+					"type": "message",
+					"role": "user",
+					"content": []any{map[string]any{
+						"type": "input_text",
+						"text": inputStr,
+					}},
+				}}
+			}
+			rewriteBody = true
+		}
 		reqModel = service.StripSysSuffix(reqModel)
 		if strings.TrimSpace(reqModel) == "" {
 			return nil, "", targetGroup, fmt.Errorf("%w", errPrepareResponsesRequestInvalidModel)
