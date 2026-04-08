@@ -761,7 +761,9 @@ REDACTED
 
 			system := gjson.GetBytes(upstream.lastBody, "system")
 			require.True(t, system.Exists())
-			require.Equal(t, claudeCodeSystemPrompt, system.String())
+			require.True(t, system.IsArray(), "system should be an array")
+			require.Equal(t, claudeCodeSystemPrompt, system.Array()[0].Get("text").String())
+			require.Equal(t, "ephemeral", system.Array()[0].Get("cache_control.type").String())
 
 			// 原始 system prompt 应迁移至 messages 中
 			messages := gjson.GetBytes(upstream.lastBody, "messages")

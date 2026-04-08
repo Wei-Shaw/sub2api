@@ -284,7 +284,7 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 		name             string
 		body             string
 		system           any
-		wantSystemStr    string // system 应为纯字符串
+		wantSystemText   string // system array 第一个 block 的 text
 		wantMessagesLen  int    // messages 数组长度
 		wantFirstMsgRole string // 第一条消息的 role
 		wantFirstMsgText string // 第一条消息的 content[0].text
@@ -294,21 +294,21 @@ REDACTED{
 			name:            "nil system - no messages injected",
 			body:            `{"model":"claude-3","messages":[{"role":"user","content":"hello"REDACTED]REDACTED`,
 			system:          nil,
-			wantSystemStr:   claudeCodeSystemPrompt,
+			wantSystemText:  claudeCodeSystemPrompt,
 			wantMessagesLen: 1, // 原始 1 条消息，不注入
 	REDACTED,
 		{
 			name:            "empty string system - no messages injected",
 			body:            `{"model":"claude-3","messages":[{"role":"user","content":"hello"REDACTED]REDACTED`,
 			system:          "",
-			wantSystemStr:   claudeCodeSystemPrompt,
+			wantSystemText:  claudeCodeSystemPrompt,
 			wantMessagesLen: 1,
 	REDACTED,
 		{
 			name:             "custom string system - migrated to messages",
 			body:             `{"model":"claude-3","messages":[{"role":"user","content":"hello"REDACTED]REDACTED`,
 			system:           "You are a personal assistant running inside OpenClaw.",
-			wantSystemStr:    claudeCodeSystemPrompt,
+			wantSystemText:   claudeCodeSystemPrompt,
 			wantMessagesLen:  3, // instruction + ack + original
 			wantFirstMsgRole: "user",
 			wantFirstMsgText: "[System Instructions]\nYou are a personal assistant running inside OpenClaw.",
@@ -318,7 +318,7 @@ REDACTED{
 			name:            "system equals Claude Code prompt - no messages injected",
 			body:            `{"model":"claude-3","messages":[{"role":"user","content":"hello"REDACTED]REDACTED`,
 			system:          claudeCodeSystemPrompt,
-			wantSystemStr:   claudeCodeSystemPrompt,
+			wantSystemText:  claudeCodeSystemPrompt,
 			wantMessagesLen: 1,
 	REDACTED,
 		{
@@ -328,7 +328,7 @@ REDACTED{
 				map[string]any{"type": "text", "text": "First instruction"REDACTED,
 				map[string]any{"type": "text", "text": "Second instruction"REDACTED,
 		REDACTED,
-			wantSystemStr:    claudeCodeSystemPrompt,
+			wantSystemText:   claudeCodeSystemPrompt,
 			wantMessagesLen:  3,
 			wantFirstMsgRole: "user",
 			wantFirstMsgText: "[System Instructions]\nFirst instruction\n\nSecond instruction",
@@ -338,14 +338,14 @@ REDACTED{
 			name:            "empty array system - no messages injected",
 			body:            `{"model":"claude-3","messages":[{"role":"user","content":"hello"REDACTED]REDACTED`,
 			system:          []any{REDACTED,
-			wantSystemStr:   claudeCodeSystemPrompt,
+			wantSystemText:  claudeCodeSystemPrompt,
 			wantMessagesLen: 1,
 	REDACTED,
 		{
 			name:             "json.RawMessage string system",
 			body:             `{"model":"claude-3","system":"Custom prompt","messages":[{"role":"user","content":"hello"REDACTED]REDACTED`,
 			system:           json.RawMessage(`"Custom prompt"`),
-			wantSystemStr:    claudeCodeSystemPrompt,
+			wantSystemText:   claudeCodeSystemPrompt,
 			wantMessagesLen:  3,
 			wantFirstMsgRole: "user",
 			wantFirstMsgText: "[System Instructions]\nCustom prompt",
@@ -355,14 +355,14 @@ REDACTED{
 			name:            "json.RawMessage nil system",
 			body:            `{"model":"claude-3","messages":[{"role":"user","content":"hello"REDACTED]REDACTED`,
 			system:          json.RawMessage(nil),
-			wantSystemStr:   claudeCodeSystemPrompt,
+			wantSystemText:  claudeCodeSystemPrompt,
 			wantMessagesLen: 1,
 	REDACTED,
 		{
 			name:             "multiple original messages preserved",
 			body:             `{"model":"claude-3","messages":[{"role":"user","content":"msg1"REDACTED,{"role":"assistant","content":"resp1"REDACTED,{"role":"user","content":"msg2"REDACTED]REDACTED`,
 			system:           "Be helpful",
-			wantSystemStr:    claudeCodeSystemPrompt,
+			wantSystemText:   claudeCodeSystemPrompt,
 			wantMessagesLen:  5, // 2 injected + 3 original
 			wantFirstMsgRole: "user",
 			wantFirstMsgText: "[System Instructions]\nBe helpful",
@@ -378,10 +378,17 @@ REDACTED
 			err := json.Unmarshal(result, &parsed)
 		REDACTED
 
-			// system 应为纯字符串
-			systemVal, ok := parsed["system"].(string)
-			require.True(t, ok, "system should be a string, got %T", parsed["system"])
-			require.Equal(t, tt.wantSystemStr, systemVal)
+			// system 应为 array 格式: [{type: "text", text: "...", cache_control: {type: "ephemeral"REDACTEDREDACTED]
+			systemArr, ok := parsed["system"].([]any)
+			require.True(t, ok, "system should be an array, got %T", parsed["system"])
+			require.Len(t, systemArr, 1, "system array should have exactly 1 block")
+			systemBlock, ok := systemArr[0].(map[string]any)
+			require.True(t, ok)
+			require.Equal(t, "text", systemBlock["type"])
+			require.Equal(t, tt.wantSystemText, systemBlock["text"])
+			cc, ok := systemBlock["cache_control"].(map[string]any)
+			require.True(t, ok, "system block should have cache_control")
+			require.Equal(t, "ephemeral", cc["type"])
 
 			// 检查 messages
 			messages, ok := parsed["messages"].([]any)

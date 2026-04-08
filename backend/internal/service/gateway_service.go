@@ -3739,8 +3739,17 @@ func rewriteSystemForNonClaudeCode(body []byte, system any) []byte {
 		originalSystemText = strings.Join(parts, "\n\n")
 REDACTED
 
-	// 2. 将 system 替换为 Claude Code 标准提示词（纯字符串，通过 Anthropic 检测）
-	out, ok := setJSONValueBytes(body, "system", claudeCodeSystemPrompt)
+	// 2. 将 system 替换为 Claude Code 标准提示词（array 格式，与真实 Claude Code 一致）
+	//    真实 Claude Code 始终以 [{type: "text", text: "...", cache_control: {type: "ephemeral"REDACTEDREDACTED] 发送 system。
+	//    使用 string 格式会被 Anthropic 检测为第三方应用。
+	claudeCodeSystemBlock := []map[string]any{
+		{
+			"type":          "text",
+			"text":          claudeCodeSystemPrompt,
+			"cache_control": map[string]string{"type": "ephemeral"REDACTED,
+	REDACTED,
+REDACTED
+	out, ok := setJSONValueBytes(body, "system", claudeCodeSystemBlock)
 	if !ok {
 		logger.LegacyPrintf("service.gateway", "Warning: failed to set Claude Code system prompt")
 		return body
@@ -3978,12 +3987,17 @@ REDACTED
 	if shouldMimicClaudeCode {
 		// 非 Claude Code 客户端：将 system 替换为 Claude Code 标识，原始 system 迁移至 messages
 		// 条件：1) OAuth/SetupToken 账号  2) 不是 Claude Code 客户端  3) 不是 Haiku 模型  4) system 中还没有 Claude Code 提示词
+		systemRewritten := false
 		if !strings.Contains(strings.ToLower(reqModel), "haiku") &&
 			!systemIncludesClaudeCodePrompt(parsed.System) {
 			body = rewriteSystemForNonClaudeCode(body, parsed.System)
+			systemRewritten = true
 	REDACTED
 
-		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: trueREDACTED
+		// system 被重写时保留 CC prompt 的 cache_control: ephemeral（匹配真实 Claude Code 行为）；
+		// 未重写时（haiku / 已含 CC 前缀）剥离客户端 cache_control，与原有行为一致。
+		// 两种情况下 enforceCacheControlLimit 都会兜底处理上限。
+		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewrittenREDACTED
 		if s.identityService != nil {
 			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 			if err == nil && fp != nil {
@@ -5605,7 +5619,6 @@ REDACTED
 	// Build effective drop set: merge static defaults with dynamic beta policy filter rules
 	policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account, modelID)
 	effectiveDropSet := mergeDropSets(policyFilterSet)
-	effectiveDropWithClaudeCodeSet := mergeDropSets(policyFilterSet, claude.BetaClaudeCode)
 
 	// 处理 anthropic-beta header（OAuth 账号需要包含 oauth beta）
 	if tokenType == "oauth" {
@@ -5616,11 +5629,16 @@ REDACTED
 			applyClaudeCodeMimicHeaders(req, reqStream)
 
 			incomingBeta := getHeaderRaw(req.Header, "anthropic-beta")
-			// Match real Claude CLI traffic (per mitmproxy reports):
-			// messages requests typically use only oauth + interleaved-thinking.
-			// Also drop claude-code beta if a downstream client added it.
+			// Claude Code OAuth credentials are scoped to Claude Code.
+			// Non-haiku models MUST include claude-code beta for Anthropic to recognize
+			// this as a legitimate Claude Code request; without it, the request is
+			// rejected as third-party ("out of extra usage").
+			// Haiku models are exempt from third-party detection and don't need it.
 			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinkingREDACTED
-			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropWithClaudeCodeSet))
+			if !strings.Contains(strings.ToLower(modelID), "haiku") {
+				requiredBetas = []string{claude.BetaClaudeCode, claude.BetaOAuth, claude.BetaInterleavedThinkingREDACTED
+		REDACTED
+			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropSet))
 	REDACTED else {
 			// Claude Code 客户端：尽量透传原始 header，仅补齐 oauth beta
 			clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
