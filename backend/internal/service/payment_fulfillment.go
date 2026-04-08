@@ -5,12 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"strconv"
-	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -19,20 +16,14 @@ import (
 // --- Payment Notification & Fulfillment ---
 
 func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payment.PaymentNotification, pk string) error {
-	if n.Status != payment.NotificationStatusSuccess {
+	if n.Status != "success" {
 		return nil
 REDACTED
-	// Look up order by out_trade_no (the external order ID we sent to the provider)
-	order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(n.OrderID)).Only(ctx)
+	oid, err := parseOrderID(n.OrderID)
 	if err != nil {
-		// Fallback: try legacy format (sub2_N where N is DB ID)
-		trimmed := strings.TrimPrefix(n.OrderID, orderIDPrefix)
-		if oid, parseErr := strconv.ParseInt(trimmed, 10, 64); parseErr == nil {
-			return s.confirmPayment(ctx, oid, n.TradeNo, n.Amount, pk)
-	REDACTED
-		return fmt.Errorf("order not found for out_trade_no: %s", n.OrderID)
+		return fmt.Errorf("invalid order ID: %s", n.OrderID)
 REDACTED
-	return s.confirmPayment(ctx, order.ID, n.TradeNo, n.Amount, pk)
+	return s.confirmPayment(ctx, oid, n.TradeNo, n.Amount, pk)
 REDACTED
 
 func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo string, paid float64, pk string) error {
@@ -41,17 +32,9 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 		slog.Error("order not found", "orderID", oid)
 		return nil
 REDACTED
-	// Skip amount check when paid=0 (e.g. QueryOrder doesn't return amount).
-	// Also skip if paid is NaN/Inf (malformed provider data).
-	if paid > 0 && !math.IsNaN(paid) && !math.IsInf(paid, 0) {
-		if math.Abs(paid-o.PayAmount) > amountToleranceCNY {
-			s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{"expected": o.PayAmount, "paid": paid, "tradeNo": tradeNoREDACTED)
-			return fmt.Errorf("amount mismatch: expected %.2f, got %.2f", o.PayAmount, paid)
-	REDACTED
-REDACTED
-	// Use order's expected amount when provider didn't report one
-	if paid <= 0 || math.IsNaN(paid) || math.IsInf(paid, 0) {
-		paid = o.PayAmount
+	if math.Abs(paid-o.PayAmount) > amountToleranceCNY {
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{"expected": o.PayAmount, "paid": paid, "tradeNo": tradeNoREDACTED)
+		return fmt.Errorf("amount mismatch: expected %.2f, got %.2f", o.PayAmount, paid)
 REDACTED
 	return s.toPaid(ctx, o, tradeNo, paid, pk)
 REDACTED
@@ -129,7 +112,7 @@ func (s *PaymentService) executeFulfillment(ctx context.Context, oid int64) erro
 	if err != nil {
 		return fmt.Errorf("get order: %w", err)
 REDACTED
-	if o.OrderType == payment.OrderTypeSubscription {
+	if o.OrderType == "subscription" {
 		return s.ExecuteSubscriptionFulfillment(ctx, oid)
 REDACTED
 	return s.ExecuteBalanceFulfillment(ctx, oid)
@@ -163,46 +146,20 @@ REDACTED
 	return nil
 REDACTED
 
-// redeemAction represents the idempotency decision for balance fulfillment.
-type redeemAction int
-
-const (
-	// redeemActionCreate: code does not exist — create it, then redeem.
-	redeemActionCreate redeemAction = iota
-	// redeemActionRedeem: code exists but is unused — skip creation, redeem only.
-	redeemActionRedeem
-	// redeemActionSkipCompleted: code exists and is already used — skip to mark completed.
-	redeemActionSkipCompleted
-)
-
-// resolveRedeemAction decides the idempotency action based on an existing redeem code lookup.
-// existing is the result of GetByCode; lookupErr is the error from that call.
-func resolveRedeemAction(existing *RedeemCode, lookupErr error) redeemAction {
-	if existing == nil || lookupErr != nil {
-		return redeemActionCreate
-REDACTED
-	if existing.IsUsed() {
-		return redeemActionSkipCompleted
-REDACTED
-	return redeemActionRedeem
-REDACTED
-
 func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) error {
 	// Idempotency: check if redeem code already exists (from a previous partial run)
-	existing, lookupErr := s.redeemService.GetByCode(ctx, o.RechargeCode)
-	action := resolveRedeemAction(existing, lookupErr)
-
-	switch action {
-	case redeemActionSkipCompleted:
-		// Code already created and redeemed — just mark completed
-		return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
-	case redeemActionCreate:
+	existing, _ := s.redeemService.GetByCode(ctx, o.RechargeCode)
+	if existing != nil {
+		if existing.IsUsed() {
+			// Code already created and redeemed — just mark completed
+			return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+	REDACTED
+		// Code exists but unused — skip creation, proceed to redeem
+REDACTED else {
 		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnusedREDACTED
 		if err := s.redeemService.CreateCode(ctx, rc); err != nil {
 			return fmt.Errorf("create redeem code: %w", err)
 	REDACTED
-	case redeemActionRedeem:
-		// Code exists but unused — skip creation, proceed to redeem
 REDACTED
 	if _, err := s.redeemService.Redeem(ctx, o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
@@ -255,45 +212,30 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 	gid := *o.SubscriptionGroupID
 	days := *o.SubscriptionDays
 	g, err := s.groupRepo.GetByID(ctx, gid)
-	if err != nil || g.Status != payment.EntityStatusActive {
+	if err != nil || g.Status != "active" {
 		return fmt.Errorf("group %d no longer exists or inactive", gid)
 REDACTED
-	// Idempotency: check audit log to see if subscription was already assigned.
-	// Prevents double-extension on retry after markCompleted fails.
-	if s.hasAuditLog(ctx, o.ID, "SUBSCRIPTION_SUCCESS") {
-		slog.Info("subscription already assigned for order, skipping", "orderID", o.ID, "groupID", gid)
-		return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
-REDACTED
-	orderNote := fmt.Sprintf("payment order %d", o.ID)
-	_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, AssignedBy: 0, Notes: orderNoteREDACTED)
+	_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, AssignedBy: 0, Notes: fmt.Sprintf("payment order %d", o.ID)REDACTED)
 	if err != nil {
 		return fmt.Errorf("assign subscription: %w", err)
 REDACTED
-	return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
+	now := time.Now()
+	_, err = s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(o.ID), paymentorder.StatusEQ(OrderStatusRecharging)).SetStatus(OrderStatusCompleted).SetCompletedAt(now).Save(ctx)
+	if err != nil {
+		return fmt.Errorf("mark completed: %w", err)
 REDACTED
-
-func (s *PaymentService) hasAuditLog(ctx context.Context, orderID int64, action string) bool {
-	oid := strconv.FormatInt(orderID, 10)
-	c, _ := s.entClient.PaymentAuditLog.Query().
-		Where(paymentauditlog.OrderIDEQ(oid), paymentauditlog.ActionEQ(action)).
-		Limit(1).Count(ctx)
-	return c > 0
+	s.writeAuditLog(ctx, o.ID, "SUBSCRIPTION_SUCCESS", "system", map[string]any{"groupId": gid, "days": days, "amount": o.AmountREDACTED)
+	return nil
 REDACTED
 
 func (s *PaymentService) markFailed(ctx context.Context, oid int64, cause error) {
 	now := time.Now()
 	r := psErrMsg(cause)
-	// Only mark FAILED if still in RECHARGING state — prevents overwriting
-	// a COMPLETED order when markCompleted failed but fulfillment succeeded.
-	c, e := s.entClient.PaymentOrder.Update().
-		Where(paymentorder.IDEQ(oid), paymentorder.StatusEQ(OrderStatusRecharging)).
-		SetStatus(OrderStatusFailed).SetFailedAt(now).SetFailedReason(r).Save(ctx)
+	_, e := s.entClient.PaymentOrder.UpdateOneID(oid).SetStatus(OrderStatusFailed).SetFailedAt(now).SetFailedReason(r).Save(ctx)
 	if e != nil {
 		slog.Error("mark FAILED", "orderID", oid, "error", e)
 REDACTED
-	if c > 0 {
-		s.writeAuditLog(ctx, oid, "FULFILLMENT_FAILED", "system", map[string]any{"reason": rREDACTED)
-REDACTED
+	s.writeAuditLog(ctx, oid, "FULFILLMENT_FAILED", "system", map[string]any{"reason": rREDACTED)
 REDACTED
 
 func (s *PaymentService) RetryFulfillment(ctx context.Context, oid int64) error {
