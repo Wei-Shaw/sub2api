@@ -49,13 +49,16 @@ func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Conte
 			Enabled: inst.Enabled, RefundEnabled: inst.RefundEnabled, SortOrder: inst.SortOrder,
 			PaymentMode: inst.PaymentMode,
 		}
-		resp.Config = s.decryptAndMaskConfig(inst.Config)
+		resp.Config, err = s.decryptAndMaskConfig(inst.Config)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt config for instance %d: %w", inst.ID, err)
+		}
 		result = append(result, resp)
 	}
 	return result, nil
 }
 
-func (s *PaymentConfigService) decryptAndMaskConfig(encrypted string) map[string]string {
+func (s *PaymentConfigService) decryptAndMaskConfig(encrypted string) (map[string]string, error) {
 	return s.decryptConfig(encrypted)
 }
 
@@ -201,7 +204,10 @@ func (s *PaymentConfigService) mergeConfig(ctx context.Context, id int64, newCon
 	if err != nil {
 		return nil, fmt.Errorf("load existing provider: %w", err)
 	}
-	existing := s.decryptConfig(inst.Config)
+	existing, err := s.decryptConfig(inst.Config)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt existing config for instance %d: %w", id, err)
+	}
 	if existing == nil {
 		return newConfig, nil
 	}
@@ -211,19 +217,19 @@ func (s *PaymentConfigService) mergeConfig(ctx context.Context, id int64, newCon
 	return existing, nil
 }
 
-func (s *PaymentConfigService) decryptConfig(encrypted string) map[string]string {
+func (s *PaymentConfigService) decryptConfig(encrypted string) (map[string]string, error) {
 	if encrypted == "" {
-		return nil
+		return nil, nil
 	}
 	decrypted, err := payment.Decrypt(encrypted, s.encryptionKey)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("decrypt config: %w", err)
 	}
 	var raw map[string]string
 	if err := json.Unmarshal([]byte(decrypted), &raw); err != nil {
-		return nil
+		return nil, fmt.Errorf("unmarshal decrypted config: %w", err)
 	}
-	return raw
+	return raw, nil
 }
 
 func (s *PaymentConfigService) DeleteProviderInstance(ctx context.Context, id int64) error {

@@ -147,19 +147,33 @@ func (s *PaymentService) ExecuteBalanceFulfillment(ctx context.Context, oid int6
 }
 
 func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) error {
-	rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnused}
-	if err := s.redeemService.CreateCode(ctx, rc); err != nil {
-		return fmt.Errorf("create redeem code: %w", err)
+	// Idempotency: check if redeem code already exists (from a previous partial run)
+	existing, _ := s.redeemService.GetByCode(ctx, o.RechargeCode)
+	if existing != nil {
+		if existing.IsUsed() {
+			// Code already created and redeemed — just mark completed
+			return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+		}
+		// Code exists but unused — skip creation, proceed to redeem
+	} else {
+		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnused}
+		if err := s.redeemService.CreateCode(ctx, rc); err != nil {
+			return fmt.Errorf("create redeem code: %w", err)
+		}
 	}
 	if _, err := s.redeemService.Redeem(ctx, o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
 	}
+	return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+}
+
+func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrder, auditAction string) error {
 	now := time.Now()
 	_, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(o.ID), paymentorder.StatusEQ(OrderStatusRecharging)).SetStatus(OrderStatusCompleted).SetCompletedAt(now).Save(ctx)
 	if err != nil {
 		return fmt.Errorf("mark completed: %w", err)
 	}
-	s.writeAuditLog(ctx, o.ID, "RECHARGE_SUCCESS", "system", map[string]any{"rechargeCode": o.RechargeCode, "amount": o.Amount})
+	s.writeAuditLog(ctx, o.ID, auditAction, "system", map[string]any{"rechargeCode": o.RechargeCode, "amount": o.Amount})
 	return nil
 }
 

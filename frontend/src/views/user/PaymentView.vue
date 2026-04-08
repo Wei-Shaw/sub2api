@@ -30,8 +30,8 @@
             <AmountInput
               v-model="amount"
               :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
-              :min="globalMinAmount"
-              :max="globalMaxAmount"
+              :min="activeMinAmount"
+              :max="activeMaxAmount"
             />
             <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
           </div>
@@ -81,11 +81,11 @@
           </div>
         </template>
         <div v-if="checkout.help_text || checkout.help_image_url" class="card p-4">
-          <div :class="checkout.help_image_url && checkout.help_text ? 'flex items-start gap-4' : ''">
+          <div class="flex flex-col items-center gap-3">
             <img v-if="checkout.help_image_url" :src="checkout.help_image_url" alt=""
-              class="h-24 w-24 flex-shrink-0 cursor-pointer rounded-lg object-contain transition-opacity hover:opacity-80"
+              class="h-40 max-w-full cursor-pointer rounded-lg object-contain transition-opacity hover:opacity-80"
               @click="previewImage = checkout.help_image_url" />
-            <p v-if="checkout.help_text" class="text-sm text-gray-500 dark:text-gray-400">{{ checkout.help_text }}</p>
+            <p v-if="checkout.help_text" class="text-center text-sm text-gray-500 dark:text-gray-400">{{ checkout.help_text }}</p>
           </div>
         </div>
       </template>
@@ -213,9 +213,15 @@ function amountFitsMethod(amt: number, methodType: string): boolean {
   return true
 }
 
-// Global range for AmountInput quick buttons (precomputed by backend)
-const globalMinAmount = computed(() => checkout.value.global_min)
-const globalMaxAmount = computed(() => checkout.value.global_max)
+// Amount range: use selected method's limits when available, fallback to global
+const activeMinAmount = computed(() => {
+  const ml = selectedLimit.value
+  return ml?.single_min && ml.single_min > 0 ? ml.single_min : checkout.value.global_min
+})
+const activeMaxAmount = computed(() => {
+  const ml = selectedLimit.value
+  return ml?.single_max && ml.single_max > 0 ? ml.single_max : checkout.value.global_max
+})
 
 // Selected method's limits (for validation and error messages)
 const selectedLimit = computed(() => checkout.value.methods[selectedMethod.value])

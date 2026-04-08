@@ -6,9 +6,8 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"io"
-	"math"
+	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,9 +26,26 @@ import (
 
 // WeChat Pay constants.
 const (
-	wxpayCurrency   = "CNY"
-	wxpayH5Type     = "Wap"
-	wxpayFenPerYuan = 100
+	wxpayCurrency = "CNY"
+	wxpayH5Type   = "Wap"
+)
+
+// WeChat Pay trade states.
+const (
+	wxpayTradeStateSuccess  = "SUCCESS"
+	wxpayTradeStateRefund   = "REFUND"
+	wxpayTradeStateClosed   = "CLOSED"
+	wxpayTradeStatePayError = "PAYERROR"
+)
+
+// WeChat Pay notification event types.
+const (
+	wxpayEventTransactionSuccess = "TRANSACTION.SUCCESS"
+)
+
+// WeChat Pay error codes.
+const (
+	wxpayErrNoAuth = "NO_AUTH"
 )
 
 type Wxpay struct {
@@ -78,9 +94,6 @@ func (w *Wxpay) ensureClient() (*core.Client, error) {
 		return nil, err
 	}
 	certSerial := w.config["certSerial"]
-	if certSerial == "" {
-		certSerial = w.config["publicKeyId"]
-	}
 	verifier := verifiers.NewSHA256WithRSAPubkeyVerifier(w.config["publicKeyId"], *publicKey)
 	client, err := core.NewClient(context.Background(),
 		option.WithMerchantCredential(w.config["mchId"], certSerial, privateKey),
@@ -109,14 +122,6 @@ func (w *Wxpay) loadKeyPair() (*rsa.PrivateKey, *rsa.PublicKey, error) {
 	return privateKey, publicKey, nil
 }
 
-func yuanToFen(s string) (int64, error) {
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid amount: %s", s)
-	}
-	return int64(math.Round(f * 100)), nil
-}
-
 func (w *Wxpay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	client, err := w.ensureClient()
 	if err != nil {
@@ -129,7 +134,7 @@ func (w *Wxpay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequ
 	if notifyURL == "" {
 		return nil, fmt.Errorf("wxpay notifyUrl is required")
 	}
-	totalFen, err := yuanToFen(req.Amount)
+	totalFen, err := payment.YuanToFen(req.Amount)
 	if err != nil {
 		return nil, fmt.Errorf("wxpay create payment: %w", err)
 	}
@@ -138,9 +143,10 @@ func (w *Wxpay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequ
 		if err == nil {
 			return resp, nil
 		}
-		if !strings.Contains(err.Error(), "NO_AUTH") {
+		if !strings.Contains(err.Error(), wxpayErrNoAuth) {
 			return nil, err
 		}
+		slog.Warn("wxpay H5 payment not authorized, falling back to native", "order", req.OrderID)
 	}
 	return w.createOrder(ctx, client, req, notifyURL, totalFen, false)
 }
@@ -201,11 +207,11 @@ func wxSV(s *string) string {
 
 func mapWxState(s string) string {
 	switch s {
-	case "SUCCESS":
+	case wxpayTradeStateSuccess:
 		return payment.ProviderStatusPaid
-	case "REFUND":
+	case wxpayTradeStateRefund:
 		return payment.ProviderStatusRefunded
-	case "CLOSED", "PAYERROR":
+	case wxpayTradeStateClosed, wxpayTradeStatePayError:
 		return payment.ProviderStatusFailed
 	default:
 		return payment.ProviderStatusPending
@@ -226,7 +232,7 @@ func (w *Wxpay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryO
 	}
 	var amt float64
 	if tx.Amount != nil && tx.Amount.Total != nil {
-		amt = float64(*tx.Amount.Total) / wxpayFenPerYuan
+		amt = payment.FenToYuan(*tx.Amount.Total)
 	}
 	id := tradeNo
 	if tx.TransactionId != nil {
@@ -255,15 +261,15 @@ func (w *Wxpay) VerifyNotification(ctx context.Context, rawBody string, headers 
 	if err != nil {
 		return nil, fmt.Errorf("wxpay verify notification: %w", err)
 	}
-	if nr.EventType != "TRANSACTION.SUCCESS" {
+	if nr.EventType != wxpayEventTransactionSuccess {
 		return nil, nil
 	}
 	var amt float64
 	if tx.Amount != nil && tx.Amount.Total != nil {
-		amt = float64(*tx.Amount.Total) / wxpayFenPerYuan
+		amt = payment.FenToYuan(*tx.Amount.Total)
 	}
 	st := payment.ProviderStatusFailed
-	if wxSV(tx.TradeState) == "SUCCESS" {
+	if wxSV(tx.TradeState) == wxpayTradeStateSuccess {
 		st = payment.ProviderStatusSuccess
 	}
 	return &payment.PaymentNotification{
@@ -277,7 +283,7 @@ func (w *Wxpay) Refund(ctx context.Context, req payment.RefundRequest) (*payment
 	if err != nil {
 		return nil, err
 	}
-	rf, err := yuanToFen(req.Amount)
+	rf, err := payment.YuanToFen(req.Amount)
 	if err != nil {
 		return nil, fmt.Errorf("wxpay refund amount: %w", err)
 	}

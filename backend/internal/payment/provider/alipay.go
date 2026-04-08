@@ -19,6 +19,13 @@ const (
 	alipayProductCodeWapPay  = "QUICK_WAP_WAY"
 )
 
+// Alipay response constants.
+const (
+	alipayFundChangeYes    = "Y"
+	alipayErrTradeNotExist = "ACQ.TRADE_NOT_EXIST"
+	alipayRefundSuffix     = "-refund"
+)
+
 // Alipay implements payment.Provider and payment.CancelableProvider using the smartwalle/alipay SDK.
 type Alipay struct {
 	instanceID string
@@ -56,10 +63,11 @@ func (a *Alipay) getClient() (*alipay.Client, error) {
 	if pubKey == "" {
 		pubKey = a.config["alipayPublicKey"]
 	}
-	if pubKey != "" {
-		if err := client.LoadAliPayPublicKey(pubKey); err != nil {
-			return nil, fmt.Errorf("alipay load public key: %w", err)
-		}
+	if pubKey == "" {
+		return nil, fmt.Errorf("alipay config missing required key: publicKey (or alipayPublicKey)")
+	}
+	if err := client.LoadAliPayPublicKey(pubKey); err != nil {
+		return nil, fmt.Errorf("alipay load public key: %w", err)
 	}
 	a.client = client
 	return a.client, nil
@@ -225,13 +233,13 @@ func (a *Alipay) Refund(ctx context.Context, req payment.RefundRequest) (*paymen
 	}
 
 	refundStatus := payment.ProviderStatusPending
-	if result.FundChange == "Y" {
+	if result.FundChange == alipayFundChangeYes {
 		refundStatus = payment.ProviderStatusSuccess
 	}
 
 	refundID := result.TradeNo
 	if refundID == "" {
-		refundID = req.OrderID + "-refund"
+		refundID = req.OrderID + alipayRefundSuffix
 	}
 
 	return &payment.RefundResponse{
@@ -261,7 +269,7 @@ func isTradeNotExist(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "ACQ.TRADE_NOT_EXIST")
+	return strings.Contains(err.Error(), alipayErrTradeNotExist)
 }
 
 // Ensure interface compliance.

@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -19,7 +17,6 @@ const (
 	stripeCurrency            = "cny"
 	stripeEventPaymentSuccess = "payment_intent.succeeded"
 	stripeEventPaymentFailed  = "payment_intent.payment_failed"
-	stripeCentsPerYuan        = 100
 )
 
 // Stripe implements the payment.CancelableProvider interface for Stripe payments.
@@ -63,20 +60,6 @@ func (s *Stripe) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.TypeStripe}
 }
 
-// centsToYuan converts an amount in cents (int64) to yuan (float64).
-func centsToYuan(cents int64) float64 {
-	return float64(cents) / stripeCentsPerYuan
-}
-
-// yuanToCents converts a CNY yuan string to cents (int64).
-func yuanToCents(amountStr string) (int64, error) {
-	amount, err := strconv.ParseFloat(amountStr, 64)
-	if err != nil {
-		return 0, fmt.Errorf("invalid amount: %s", amountStr)
-	}
-	return int64(math.Round(amount * 100)), nil
-}
-
 // stripePaymentMethodTypes maps our PaymentType to Stripe payment_method_types.
 var stripePaymentMethodTypes = map[string][]string{
 	payment.TypeCard:   {"card"},
@@ -89,7 +72,7 @@ var stripePaymentMethodTypes = map[string][]string{
 func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	s.ensureInit()
 
-	amountInCents, err := yuanToCents(req.Amount)
+	amountInCents, err := payment.YuanToFen(req.Amount)
 	if err != nil {
 		return nil, fmt.Errorf("stripe create payment: %w", err)
 	}
@@ -153,7 +136,7 @@ func (s *Stripe) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 	return &payment.QueryOrderResponse{
 		TradeNo: pi.ID,
 		Status:  status,
-		Amount:  centsToYuan(pi.Amount),
+		Amount:  payment.FenToYuan(pi.Amount),
 	}, nil
 }
 
@@ -194,7 +177,7 @@ func parseStripePaymentIntent(event *stripe.Event, status string, rawBody string
 	return &payment.PaymentNotification{
 		TradeNo: pi.ID,
 		OrderID: pi.Metadata["orderId"],
-		Amount:  centsToYuan(pi.Amount),
+		Amount:  payment.FenToYuan(pi.Amount),
 		Status:  status,
 		RawData: rawBody,
 	}, nil
@@ -204,7 +187,7 @@ func parseStripePaymentIntent(event *stripe.Event, status string, rawBody string
 func (s *Stripe) Refund(ctx context.Context, req payment.RefundRequest) (*payment.RefundResponse, error) {
 	s.ensureInit()
 
-	amountInCents, err := yuanToCents(req.Amount)
+	amountInCents, err := payment.YuanToFen(req.Amount)
 	if err != nil {
 		return nil, fmt.Errorf("stripe refund: %w", err)
 	}

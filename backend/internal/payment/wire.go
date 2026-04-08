@@ -2,6 +2,7 @@ package payment
 
 import (
 	"encoding/hex"
+	"fmt"
 	"log/slog"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -14,20 +15,22 @@ import (
 type EncryptionKey []byte
 
 // ProvideEncryptionKey derives the payment encryption key from the TOTP encryption key in config.
-func ProvideEncryptionKey(cfg *config.Config) EncryptionKey {
+// When the key is empty, nil is returned (payment features that need encryption will be disabled).
+// When the key is non-empty but invalid (bad hex or wrong length), an error is returned
+// to prevent startup with a misconfigured encryption key.
+func ProvideEncryptionKey(cfg *config.Config) (EncryptionKey, error) {
 	if cfg.Totp.EncryptionKey == "" {
-		return nil
+		slog.Warn("payment encryption key not configured — encrypted payment config will be unavailable")
+		return nil, nil
 	}
 	key, err := hex.DecodeString(cfg.Totp.EncryptionKey)
 	if err != nil {
-		slog.Error("invalid payment encryption key", "error", err)
-		return nil
+		return nil, fmt.Errorf("invalid payment encryption key (hex decode): %w", err)
 	}
 	if len(key) != 32 {
-		slog.Error("payment encryption key must be 32 bytes", "got", len(key))
-		return nil
+		return nil, fmt.Errorf("payment encryption key must be 32 bytes, got %d", len(key))
 	}
-	return EncryptionKey(key)
+	return EncryptionKey(key), nil
 }
 
 // ProvideRegistry creates an empty payment provider registry.

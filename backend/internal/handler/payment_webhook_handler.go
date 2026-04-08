@@ -75,7 +75,7 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 	provider, err := h.registry.GetProviderByKey(providerKey)
 	if err != nil {
 		slog.Warn("[Payment Webhook] provider not registered", "provider", providerKey, "error", err)
-		c.String(http.StatusOK, successResponse(providerKey))
+		writeSuccessResponse(c, providerKey)
 		return
 	}
 
@@ -98,7 +98,7 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 
 	// nil notification means irrelevant event (e.g. Stripe non-payment event); return success.
 	if notification == nil {
-		c.String(http.StatusOK, successResponse(providerKey))
+		writeSuccessResponse(c, providerKey)
 		return
 	}
 
@@ -108,15 +108,25 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 		return
 	}
 
-	c.String(http.StatusOK, successResponse(providerKey))
+	writeSuccessResponse(c, providerKey)
 }
 
-// successResponse returns the provider-specific success response string.
-func successResponse(providerKey string) string {
+// wxpaySuccessResponse is the JSON response expected by WeChat Pay webhook.
+type wxpaySuccessResponse struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// writeSuccessResponse sends the provider-specific success response.
+// WeChat Pay requires JSON {"code":"SUCCESS","message":"成功"};
+// Stripe expects an empty 200; others accept plain text "success".
+func writeSuccessResponse(c *gin.Context, providerKey string) {
 	switch providerKey {
+	case payment.TypeWxpay:
+		c.JSON(http.StatusOK, wxpaySuccessResponse{Code: "SUCCESS", Message: "成功"})
 	case payment.TypeStripe:
-		return ""
+		c.String(http.StatusOK, "")
 	default:
-		return "success"
+		c.String(http.StatusOK, "success")
 	}
 }
