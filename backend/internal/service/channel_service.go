@@ -248,40 +248,58 @@ func expandMappingToCache(cache *channelCache, ch *Channel, gid int64, platform 
 REDACTED
 REDACTED
 
+// storeErrorCache 存入短 TTL 空缓存，防止 DB 错误后紧密重试。
+// 通过回退 loadedAt 使剩余 TTL = channelErrorTTL。
+func (s *ChannelService) storeErrorCache() {
+	errorCache := newEmptyChannelCache()
+	errorCache.loadedAt = time.Now().Add(-(channelCacheTTL - channelErrorTTL))
+	s.cache.Store(errorCache)
+REDACTED
+
 // buildCache 从数据库构建渠道缓存。
 // 使用独立 context 避免请求取消导致空值被长期缓存。
 func (s *ChannelService) buildCache(ctx context.Context) (*channelCache, error) {
-	// 断开请求取消链，避免客户端断连导致空值被长期缓存
 	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), channelCacheDBTimeout)
 	defer cancel()
 
-	channels, err := s.repo.ListAll(dbCtx)
+	channels, groupPlatforms, err := s.fetchChannelData(dbCtx)
 	if err != nil {
-		// error-TTL：失败时存入短 TTL 空缓存，防止紧密重试
-		slog.Warn("failed to build channel cache", "error", err)
-		errorCache := newEmptyChannelCache()
-		errorCache.loadedAt = time.Now().Add(-(channelCacheTTL - channelErrorTTL)) // 使剩余 TTL = errorTTL
-		s.cache.Store(errorCache)
-		return nil, fmt.Errorf("list all channels: %w", err)
+		return nil, err
 REDACTED
 
-	// 收集所有 groupID，批量查询 platform
+	cache := populateChannelCache(channels, groupPlatforms)
+	s.cache.Store(cache)
+	return cache, nil
+REDACTED
+
+// fetchChannelData 从数据库加载渠道列表和分组平台映射。
+func (s *ChannelService) fetchChannelData(ctx context.Context) ([]Channel, map[int64]string, error) {
+	channels, err := s.repo.ListAll(ctx)
+	if err != nil {
+		slog.Warn("failed to build channel cache", "error", err)
+		s.storeErrorCache()
+		return nil, nil, fmt.Errorf("list all channels: %w", err)
+REDACTED
+
 	var allGroupIDs []int64
 	for i := range channels {
 		allGroupIDs = append(allGroupIDs, channels[i].GroupIDs...)
 REDACTED
+
 	groupPlatforms := make(map[int64]string)
 	if len(allGroupIDs) > 0 {
-		groupPlatforms, err = s.repo.GetGroupPlatforms(dbCtx, allGroupIDs)
+		groupPlatforms, err = s.repo.GetGroupPlatforms(ctx, allGroupIDs)
 		if err != nil {
 			slog.Warn("failed to load group platforms for channel cache", "error", err)
-			errorCache := newEmptyChannelCache()
-			errorCache.loadedAt = time.Now().Add(-(channelCacheTTL - channelErrorTTL))
-			s.cache.Store(errorCache)
-			return nil, fmt.Errorf("get group platforms: %w", err)
+			s.storeErrorCache()
+			return nil, nil, fmt.Errorf("get group platforms: %w", err)
 	REDACTED
 REDACTED
+	return channels, groupPlatforms, nil
+REDACTED
 
+// populateChannelCache 将渠道列表和分组平台映射填充到缓存快照中。
+func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *channelCache {
 	cache := newEmptyChannelCache()
 	cache.groupPlatform = groupPlatforms
 	cache.byID = make(map[int64]*Channel, len(channels))
@@ -290,7 +308,6 @@ REDACTED
 	for i := range channels {
 		ch := &channels[i]
 		cache.byID[ch.ID] = ch
-
 		for _, gid := range ch.GroupIDs {
 			cache.channelByGroupID[gid] = ch
 			platform := groupPlatforms[gid]
@@ -298,11 +315,7 @@ REDACTED
 			expandMappingToCache(cache, ch, gid, platform)
 	REDACTED
 REDACTED
-
-	// 通配符条目保持配置顺序（最先匹配到优先）
-
-	s.cache.Store(cache)
-	return cache, nil
+	return cache
 REDACTED
 
 // invalidateCache 使缓存失效，让下次读取时自然重建
@@ -466,7 +479,10 @@ REDACTED
 // 返回 true 表示模型被限制（不在允许列表中）。
 // 如果渠道未启用模型限制或分组无渠道关联，返回 false。
 func (s *ChannelService) IsModelRestricted(ctx context.Context, groupID int64, model string) bool {
-	lk, _ := s.lookupGroupChannel(ctx, groupID)
+	lk, err := s.lookupGroupChannel(ctx, groupID)
+	if err != nil {
+		slog.Warn("failed to load channel cache for model restriction check", "group_id", groupID, "error", err)
+REDACTED
 	if lk == nil {
 		return false
 REDACTED
@@ -537,6 +553,91 @@ REDACTED
 	return newBody
 REDACTED
 
+// validateChannelConfig 校验渠道的定价和映射配置（冲突检测 + 区间校验 + 计费模式校验）。
+// Create 和 Update 共用此函数，避免重复。
+func validateChannelConfig(pricing []ChannelModelPricing, mapping map[string]map[string]string) error {
+	if err := validateNoConflictingModels(pricing); err != nil {
+		return err
+REDACTED
+	if err := validatePricingIntervals(pricing); err != nil {
+		return err
+REDACTED
+	if err := validateNoConflictingMappings(mapping); err != nil {
+		return err
+REDACTED
+	return validatePricingBillingMode(pricing)
+REDACTED
+
+// validatePricingBillingMode 校验计费模式配置：按次/图片模式必须配价格或区间，所有价格字段不能为负，区间至少有一个价格字段。
+func validatePricingBillingMode(pricing []ChannelModelPricing) error {
+	for _, p := range pricing {
+		if err := checkBillingModeRequirements(p); err != nil {
+			return err
+	REDACTED
+		if err := checkPricesNotNegative(p); err != nil {
+			return err
+	REDACTED
+		if err := checkIntervalsHavePrices(p); err != nil {
+			return err
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+func checkBillingModeRequirements(p ChannelModelPricing) error {
+	if p.BillingMode == BillingModePerRequest || p.BillingMode == BillingModeImage {
+		if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
+			return infraerrors.BadRequest(
+				"BILLING_MODE_MISSING_PRICE",
+				"per-request price or intervals required for per_request/image billing mode",
+			)
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+func checkPricesNotNegative(p ChannelModelPricing) error {
+	checks := []struct {
+		field string
+		val   *float64
+REDACTED{
+		{"input_price", p.InputPriceREDACTED,
+		{"output_price", p.OutputPriceREDACTED,
+		{"cache_write_price", p.CacheWritePriceREDACTED,
+		{"cache_read_price", p.CacheReadPriceREDACTED,
+		{"image_output_price", p.ImageOutputPriceREDACTED,
+		{"per_request_price", p.PerRequestPriceREDACTED,
+REDACTED
+	for _, c := range checks {
+		if c.val != nil && *c.val < 0 {
+			return infraerrors.BadRequest("NEGATIVE_PRICE", fmt.Sprintf("%s must be >= 0", c.field))
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+func checkIntervalsHavePrices(p ChannelModelPricing) error {
+	for _, iv := range p.Intervals {
+		if iv.InputPrice == nil && iv.OutputPrice == nil &&
+			iv.CacheWritePrice == nil && iv.CacheReadPrice == nil &&
+			iv.PerRequestPrice == nil {
+			return infraerrors.BadRequest(
+				"INTERVAL_MISSING_PRICE",
+				fmt.Sprintf("interval [%d, %s] has no price fields set for model %v",
+					iv.MinTokens, formatMaxTokens(iv.MaxTokens), p.Models),
+			)
+	REDACTED
+REDACTED
+	return nil
+REDACTED
+
+func formatMaxTokens(max *int) string {
+	if max == nil {
+		return "∞"
+REDACTED
+	return fmt.Sprintf("%d", *max)
+REDACTED
+
 // --- CRUD ---
 
 // Create 创建渠道
@@ -549,15 +650,8 @@ REDACTED
 		return nil, ErrChannelExists
 REDACTED
 
-	// 检查分组冲突
-	if len(input.GroupIDs) > 0 {
-		conflicting, err := s.repo.GetGroupsInOtherChannels(ctx, 0, input.GroupIDs)
-		if err != nil {
-			return nil, fmt.Errorf("check group conflicts: %w", err)
-	REDACTED
-		if len(conflicting) > 0 {
-			return nil, ErrGroupAlreadyInChannel
-	REDACTED
+	if err := s.checkGroupConflicts(ctx, 0, input.GroupIDs); err != nil {
+		return nil, err
 REDACTED
 
 	channel := &Channel{
@@ -574,13 +668,7 @@ REDACTED
 		channel.BillingModelSource = BillingModelSourceChannelMapped
 REDACTED
 
-	if err := validateNoConflictingModels(channel.ModelPricing); err != nil {
-		return nil, err
-REDACTED
-	if err := validatePricingIntervals(channel.ModelPricing); err != nil {
-		return nil, err
-REDACTED
-	if err := validateNoConflictingMappings(channel.ModelMapping); err != nil {
+	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
 REDACTED
 
@@ -604,102 +692,112 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 		return nil, fmt.Errorf("get channel: %w", err)
 REDACTED
 
-	if input.Name != "" && input.Name != channel.Name {
-		exists, err := s.repo.ExistsByNameExcluding(ctx, input.Name, id)
-		if err != nil {
-			return nil, fmt.Errorf("check channel exists: %w", err)
-	REDACTED
-		if exists {
-			return nil, ErrChannelExists
-	REDACTED
-		channel.Name = input.Name
-REDACTED
-
-	if input.Description != nil {
-		channel.Description = *input.Description
-REDACTED
-
-	if input.Status != "" {
-		channel.Status = input.Status
-REDACTED
-
-	if input.RestrictModels != nil {
-		channel.RestrictModels = *input.RestrictModels
-REDACTED
-
-	// 检查分组冲突
-	if input.GroupIDs != nil {
-		conflicting, err := s.repo.GetGroupsInOtherChannels(ctx, id, *input.GroupIDs)
-		if err != nil {
-			return nil, fmt.Errorf("check group conflicts: %w", err)
-	REDACTED
-		if len(conflicting) > 0 {
-			return nil, ErrGroupAlreadyInChannel
-	REDACTED
-		channel.GroupIDs = *input.GroupIDs
-REDACTED
-
-	if input.ModelPricing != nil {
-		channel.ModelPricing = *input.ModelPricing
-REDACTED
-
-	if input.ModelMapping != nil {
-		channel.ModelMapping = input.ModelMapping
-REDACTED
-
-	if input.BillingModelSource != "" {
-		channel.BillingModelSource = input.BillingModelSource
-REDACTED
-
-	if err := validateNoConflictingModels(channel.ModelPricing); err != nil {
-		return nil, err
-REDACTED
-	if err := validatePricingIntervals(channel.ModelPricing); err != nil {
-		return nil, err
-REDACTED
-	if err := validateNoConflictingMappings(channel.ModelMapping); err != nil {
+	if err := s.applyUpdateInput(ctx, channel, input); err != nil {
 		return nil, err
 REDACTED
 
-	// 先获取旧分组，Update 后旧分组关联已删除，无法再查到
-	var oldGroupIDs []int64
-	if s.authCacheInvalidator != nil {
-		var err2 error
-		oldGroupIDs, err2 = s.repo.GetGroupIDs(ctx, id)
-		if err2 != nil {
-			slog.Warn("failed to get old group IDs for cache invalidation", "channel_id", id, "error", err2)
-	REDACTED
+	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
+		return nil, err
 REDACTED
+
+	oldGroupIDs := s.getOldGroupIDs(ctx, id)
 
 	if err := s.repo.Update(ctx, channel); err != nil {
 		return nil, fmt.Errorf("update channel: %w", err)
 REDACTED
 
 	s.invalidateCache()
-
-	// 失效新旧分组的 auth 缓存
-	if s.authCacheInvalidator != nil {
-		seen := make(map[int64]struct{REDACTED, len(oldGroupIDs)+len(channel.GroupIDs))
-		for _, gid := range oldGroupIDs {
-			if _, ok := seen[gid]; !ok {
-				seen[gid] = struct{REDACTED{REDACTED
-				s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, gid)
-		REDACTED
-	REDACTED
-		for _, gid := range channel.GroupIDs {
-			if _, ok := seen[gid]; !ok {
-				seen[gid] = struct{REDACTED{REDACTED
-				s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, gid)
-		REDACTED
-	REDACTED
-REDACTED
+	s.invalidateAuthCacheForGroups(ctx, oldGroupIDs, channel.GroupIDs)
 
 	return s.repo.GetByID(ctx, id)
 REDACTED
 
+// applyUpdateInput 将更新请求的字段应用到渠道实体上。
+func (s *ChannelService) applyUpdateInput(ctx context.Context, channel *Channel, input *UpdateChannelInput) error {
+	if input.Name != "" && input.Name != channel.Name {
+		exists, err := s.repo.ExistsByNameExcluding(ctx, input.Name, channel.ID)
+		if err != nil {
+			return fmt.Errorf("check channel exists: %w", err)
+	REDACTED
+		if exists {
+			return ErrChannelExists
+	REDACTED
+		channel.Name = input.Name
+REDACTED
+	if input.Description != nil {
+		channel.Description = *input.Description
+REDACTED
+	if input.Status != "" {
+		channel.Status = input.Status
+REDACTED
+	if input.RestrictModels != nil {
+		channel.RestrictModels = *input.RestrictModels
+REDACTED
+	if input.GroupIDs != nil {
+		if err := s.checkGroupConflicts(ctx, channel.ID, *input.GroupIDs); err != nil {
+			return err
+	REDACTED
+		channel.GroupIDs = *input.GroupIDs
+REDACTED
+	if input.ModelPricing != nil {
+		channel.ModelPricing = *input.ModelPricing
+REDACTED
+	if input.ModelMapping != nil {
+		channel.ModelMapping = input.ModelMapping
+REDACTED
+	if input.BillingModelSource != "" {
+		channel.BillingModelSource = input.BillingModelSource
+REDACTED
+	return nil
+REDACTED
+
+// checkGroupConflicts 检查待关联的分组是否已属于其他渠道。
+// channelID 为当前渠道 ID（Create 时传 0）。
+func (s *ChannelService) checkGroupConflicts(ctx context.Context, channelID int64, groupIDs []int64) error {
+	if len(groupIDs) == 0 {
+		return nil
+REDACTED
+	conflicting, err := s.repo.GetGroupsInOtherChannels(ctx, channelID, groupIDs)
+	if err != nil {
+		return fmt.Errorf("check group conflicts: %w", err)
+REDACTED
+	if len(conflicting) > 0 {
+		return ErrGroupAlreadyInChannel
+REDACTED
+	return nil
+REDACTED
+
+// getOldGroupIDs 获取渠道更新前的关联分组 ID（用于失效 auth 缓存）。
+func (s *ChannelService) getOldGroupIDs(ctx context.Context, channelID int64) []int64 {
+	if s.authCacheInvalidator == nil {
+		return nil
+REDACTED
+	oldGroupIDs, err := s.repo.GetGroupIDs(ctx, channelID)
+	if err != nil {
+		slog.Warn("failed to get old group IDs for cache invalidation", "channel_id", channelID, "error", err)
+REDACTED
+	return oldGroupIDs
+REDACTED
+
+// invalidateAuthCacheForGroups 对新旧分组去重后逐个失效 auth 缓存。
+func (s *ChannelService) invalidateAuthCacheForGroups(ctx context.Context, groupIDSets ...[]int64) {
+	if s.authCacheInvalidator == nil {
+		return
+REDACTED
+	seen := make(map[int64]struct{REDACTED)
+	for _, ids := range groupIDSets {
+		for _, gid := range ids {
+			if _, ok := seen[gid]; ok {
+				continue
+		REDACTED
+			seen[gid] = struct{REDACTED{REDACTED
+			s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, gid)
+	REDACTED
+REDACTED
+REDACTED
+
 // Delete 删除渠道
 func (s *ChannelService) Delete(ctx context.Context, id int64) error {
-	// 先获取关联分组用于失效缓存
 	groupIDs, err := s.repo.GetGroupIDs(ctx, id)
 	if err != nil {
 		slog.Warn("failed to get group IDs before delete", "channel_id", id, "error", err)
@@ -710,12 +808,7 @@ REDACTED
 REDACTED
 
 	s.invalidateCache()
-
-	if s.authCacheInvalidator != nil {
-		for _, gid := range groupIDs {
-			s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, gid)
-	REDACTED
-REDACTED
+	s.invalidateAuthCacheForGroups(ctx, groupIDs)
 
 	return nil
 REDACTED
