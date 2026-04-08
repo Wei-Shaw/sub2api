@@ -46,7 +46,7 @@ import { useRouter } from 'vue-router'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { paymentAPI } from '@/api/payment'
 import { useAppStore } from '@/stores'
-import { POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
+import { STRIPE_POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
 import type { Stripe, StripeElements } from '@stripe/stripe-js'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -130,7 +130,7 @@ async function handlePay() {
         method: selectedType.value,
       },
     }).href
-    window.open(stripeUrl, 'paymentPopup', POPUP_WINDOW_FEATURES)
+    window.open(stripeUrl, 'paymentPopup', STRIPE_POPUP_WINDOW_FEATURES)
     emit('redirect', props.orderId, stripeUrl)
     return
   }

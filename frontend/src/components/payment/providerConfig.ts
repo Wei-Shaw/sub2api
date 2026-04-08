@@ -46,6 +46,9 @@ export const PAYMENT_MODE_POPUP = 'popup'
 /** Window features for payment popup windows */
 export const POPUP_WINDOW_FEATURES = 'width=680,height=750,left=150,top=80,scrollbars=yes,resizable=yes'
 
+/** Wider popup for Stripe redirect methods (Alipay checkout page needs ~1200px) */
+export const STRIPE_POPUP_WINDOW_FEATURES = 'width=1250,height=780,left=80,top=60,scrollbars=yes,resizable=yes'
+
 /** Webhook paths for each provider (relative to origin). */
 export const WEBHOOK_PATHS: Record<string, string> = {
   easypay: '/api/v1/payment/webhook/easypay',
