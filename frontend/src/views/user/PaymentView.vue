@@ -115,6 +115,16 @@
         </div>
       </template>
     </BaseDialog>
+    <!-- Inline QR Payment Dialog -->
+    <PaymentQRDialog
+      :show="qrDialog.show"
+      :order-id="qrDialog.orderId"
+      :qr-code="qrDialog.qrCode"
+      :expires-at="qrDialog.expiresAt"
+      :payment-type="qrDialog.paymentType"
+      @close="qrDialog.show = false"
+      @success="authStore.refreshUser()"
+    />
   </AppLayout>
 </template>
 
@@ -134,6 +144,7 @@ import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER } from '@/components/payment/providerConfig'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
+import PaymentQRDialog from '@/components/payment/PaymentQRDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 
@@ -152,6 +163,9 @@ const activeTab = ref<'recharge' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
+
+// Inline QR payment dialog state
+const qrDialog = ref({ show: false, orderId: 0, qrCode: '', expiresAt: '', paymentType: '' })
 
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
@@ -273,8 +287,16 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
     if (result.client_secret) {
       router.push({ path: '/payment/stripe', query: { order_id: String(result.order_id), client_secret: result.client_secret } })
     } else if (result.qr_code) {
-      router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), qr: result.qr_code || '', pay_url: result.pay_url || '', expires_at: result.expires_at || '', payment_type: selectedMethod.value } })
+      // QR mode: show inline dialog, no page navigation
+      qrDialog.value = {
+        show: true,
+        orderId: result.order_id,
+        qrCode: result.qr_code,
+        expiresAt: result.expires_at || '',
+        paymentType: selectedMethod.value,
+      }
     } else if (result.pay_url) {
+      // Redirect mode: open new window + navigate to polling page
       window.open(result.pay_url, '_blank')
       router.push({ path: '/payment/qrcode', query: { order_id: String(result.order_id), pay_url: result.pay_url, expires_at: result.expires_at || '', payment_type: selectedMethod.value } })
     } else {
