@@ -162,6 +162,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
+			if isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody) {
+				logOpenAITransientProcessingFailover(ctx, c, account, resp.StatusCode, resp.Header.Get("x-request-id"), upstreamMsg)
+			}
 			upstreamDetail := ""
 			if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 				maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
@@ -544,10 +547,16 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 // writeChatCompletionsError writes an error response in OpenAI Chat Completions format.
 func writeChatCompletionsError(c *gin.Context, statusCode int, errType, message string) {
-	c.JSON(statusCode, gin.H{
+	payload := gin.H{
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if c != nil && c.Writer != nil {
+		if requestID := strings.TrimSpace(c.Writer.Header().Get("X-Request-Id")); requestID != "" {
+			payload["error"].(gin.H)["request_id"] = requestID
+		}
+	}
+	c.JSON(statusCode, payload)
 }

@@ -1730,8 +1730,11 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 		// Stream already started, send error as SSE event then close
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
-			// SSE 错误事件固定 schema，使用 Quote 直拼可避免额外 Marshal 分配。
-			errorEvent := "event: error\ndata: " + `{"error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message) + `}}` + "\n\n"
+			payload, err := json.Marshal(openAIErrorBody(c, errType, message))
+			if err != nil {
+				payload = []byte(`{"error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message) + `}}`)
+			}
+			errorEvent := "event: error\ndata: " + string(payload) + "\n\n"
 			if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
 				_ = c.Error(err)
 			}
@@ -1765,12 +1768,20 @@ func shouldLogOpenAIForwardFailureAsWarn(c *gin.Context, wroteFallback bool) boo
 
 // errorResponse returns OpenAI API format error response
 func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
-		"error": gin.H{
-			"type":    errType,
-			"message": message,
-		},
-	})
+	c.JSON(status, openAIErrorBody(c, errType, message))
+}
+
+func openAIErrorBody(c *gin.Context, errType, message string) gin.H {
+	errorObj := gin.H{
+		"type":    errType,
+		"message": message,
+	}
+	if c != nil && c.Writer != nil {
+		if requestID := strings.TrimSpace(c.Writer.Header().Get("X-Request-Id")); requestID != "" {
+			errorObj["request_id"] = requestID
+		}
+	}
+	return gin.H{"error": errorObj}
 }
 
 func setOpenAIClientTransportHTTP(c *gin.Context) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -298,12 +299,18 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 // chatCompletionsErrorResponse writes an error in OpenAI Chat Completions format.
 func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
+	payload := gin.H{
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if c != nil && c.Writer != nil {
+		if requestID := strings.TrimSpace(c.Writer.Header().Get("X-Request-Id")); requestID != "" {
+			payload["error"].(gin.H)["request_id"] = requestID
+		}
+	}
+	c.JSON(status, payload)
 }
 
 // handleCCFailoverExhausted writes a failover-exhausted error in CC format.
@@ -314,6 +321,13 @@ func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *serv
 	statusCode := http.StatusBadGateway
 	if lastErr != nil && lastErr.StatusCode > 0 {
 		statusCode = lastErr.StatusCode
+	}
+	if lastErr != nil {
+		requestLogger(c, "handler.gateway.chat_completions").Warn(
+			"gateway.cc.failover_exhausted",
+			zap.Int("upstream_status_code", statusCode),
+			zap.String("upstream_message", service.ExtractUpstreamErrorMessage(lastErr.ResponseBody)),
+		)
 	}
 	h.chatCompletionsErrorResponse(c, statusCode, "server_error", "All available accounts exhausted")
 }

@@ -1047,6 +1047,28 @@ func isOpenAITransientProcessingError(upstreamStatusCode int, upstreamMsg string
 	return match(string(upstreamBody))
 }
 
+func logOpenAITransientProcessingFailover(ctx context.Context, c *gin.Context, account *Account, statusCode int, upstreamRequestID, upstreamMsg string) {
+	fields := []zap.Field{
+		zap.Int("status_code", statusCode),
+		zap.String("upstream_request_id", strings.TrimSpace(upstreamRequestID)),
+		zap.String("upstream_message", strings.TrimSpace(upstreamMsg)),
+	}
+	if account != nil {
+		fields = append(fields,
+			zap.Int64("account_id", account.ID),
+			zap.String("account_name", account.Name),
+			zap.String("account_platform", string(account.Platform)),
+		)
+	}
+	if c != nil {
+		fields = append(fields,
+			zap.String("request_id", strings.TrimSpace(c.Writer.Header().Get("X-Request-Id"))),
+			zap.String("path", c.FullPath()),
+		)
+	}
+	logger.FromContext(ctx).Warn("openai transient processing error entered failover path", fields...)
+}
+
 type openAIUpstreamErrorEnvelope struct {
 	Error openAIUpstreamErrorEnvelopeError `json:"error"`
 }
@@ -2535,6 +2557,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Skip non-WSv2 invalid_encrypted_content retry because encrypted reasoning items are missing (account: %s)", account.Name)
 			}
 			if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
+				if isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody) {
+					logOpenAITransientProcessingFailover(ctx, c, account, resp.StatusCode, resp.Header.Get("x-request-id"), upstreamMsg)
+				}
 				upstreamDetail := ""
 				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 					maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
