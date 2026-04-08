@@ -40,23 +40,37 @@
         <div class="h-5 w-5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent" />
       </div>
 
-      <!-- Provider cards -->
-      <div v-else-if="providers.length" class="space-y-3">
-        <ProviderCard
-          v-for="p in providers"
-          :key="p.id"
-          :provider="p"
-          :enabled="isEnabled(p.provider_key)"
-          :available-types="getTypes(p.provider_key)"
-          @toggle-field="(field) => emit('toggleField', p, field)"
-          @toggle-type="(type) => emit('toggleType', p, type)"
-          @edit="emit('edit', p)"
-          @delete="emit('delete', p)"
-        />
-      </div>
+      <!-- Provider cards (draggable) -->
+      <VueDraggable
+        v-if="providers.length"
+        v-model="localProviders"
+        :animation="200"
+        handle=".drag-handle"
+        class="space-y-3"
+        @end="onDragEnd"
+      >
+        <div v-for="p in localProviders" :key="p.id" class="flex items-start gap-2">
+          <div class="drag-handle mt-3 flex cursor-grab items-center text-gray-300 hover:text-gray-500 active:cursor-grabbing dark:text-dark-600 dark:hover:text-dark-400">
+            <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M7 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>
+            </svg>
+          </div>
+          <div class="min-w-0 flex-1">
+            <ProviderCard
+              :provider="p"
+              :enabled="isEnabled(p.provider_key)"
+              :available-types="getTypes(p.provider_key)"
+              @toggle-field="(field) => emit('toggleField', p, field)"
+              @toggle-type="(type) => emit('toggleType', p, type)"
+              @edit="emit('edit', p)"
+              @delete="emit('delete', p)"
+            />
+          </div>
+        </div>
+      </VueDraggable>
 
       <!-- Empty -->
-      <div v-else class="py-6 text-center">
+      <div v-else-if="!loading" class="py-6 text-center">
         <p class="text-sm text-gray-500 dark:text-gray-400">
           {{ canCreate
             ? t('admin.settings.payment.noProviders')
@@ -75,7 +89,9 @@
 </template>
 
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { VueDraggable } from 'vue-draggable-plus'
 import Icon from '@/components/icons/Icon.vue'
 import ProviderCard from './ProviderCard.vue'
 import type { ProviderInstance } from '@/types/payment'
@@ -98,9 +114,24 @@ const emit = defineEmits<{
   delete: [provider: ProviderInstance]
   toggleField: [provider: ProviderInstance, field: 'enabled' | 'refund_enabled']
   toggleType: [provider: ProviderInstance, type: string]
+  reorder: [providers: { id: number; sort_order: number }[]]
 }>()
 
 const { t } = useI18n()
+
+const localProviders = ref<ProviderInstance[]>([])
+
+watch(() => props.providers, (val) => {
+  localProviders.value = [...val]
+}, { immediate: true })
+
+function onDragEnd() {
+  const updates = localProviders.value.map((p, idx) => ({
+    id: p.id,
+    sort_order: idx,
+  }))
+  emit('reorder', updates)
+}
 
 function isEnabled(providerKey: string): boolean {
   const enabled = props.enabledPaymentTypes

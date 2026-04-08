@@ -1746,6 +1746,7 @@
           @delete="confirmDeleteProvider"
           @toggle-field="handleToggleField"
           @toggle-type="handleToggleType"
+          @reorder="handleReorderProviders"
         />
 
         </div>
@@ -2955,6 +2956,22 @@ async function handleToggleType(provider: ProviderInstance, type: string) {
 function confirmDeleteProvider(provider: ProviderInstance) {
   deletingProviderId.value = provider.id
   showDeleteProviderDialog.value = true
+}
+
+async function handleReorderProviders(updates: { id: number; sort_order: number }[]) {
+  try {
+    await Promise.all(
+      updates.map(u => adminAPI.payment.updateProvider(u.id, { sort_order: u.sort_order } as Partial<ProviderInstance>))
+    )
+    // Update local state to match new order
+    for (const u of updates) {
+      const p = providers.value.find(p => p.id === u.id)
+      if (p) p.sort_order = u.sort_order
+    }
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    loadProviders()
+  }
 }
 
 async function handleDeleteProvider() {

@@ -135,6 +135,7 @@ export interface ProviderInstance {
   payment_mode: string
   refund_enabled: boolean
   limits: string
+  sort_order: number
 }
 
 // ==================== Request / Response ====================

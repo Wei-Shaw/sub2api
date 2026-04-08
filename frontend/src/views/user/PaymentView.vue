@@ -20,7 +20,8 @@
             :expires-at="paymentState.expiresAt"
             :payment-type="paymentState.paymentType"
             :pay-url="paymentState.payUrl"
-            @done="resetPayment"
+            :order-type="paymentState.orderType"
+            @done="onPaymentDone"
             @success="onPaymentSuccess"
           />
         </template>
@@ -96,17 +97,35 @@
           <!-- Subscribe Tab -->
           <template v-else-if="activeTab === 'subscription'">
             <!-- Active Subscription Card -->
-            <div v-if="activeSubscriptions.length > 0" class="card p-5">
+            <div v-if="activeSubscriptions.length > 0" class="space-y-3">
               <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.activeSubscription') }}</p>
-              <div v-for="sub in activeSubscriptions" :key="sub.id" class="mt-2 flex items-center justify-between">
-                <div>
-                  <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ sub.group?.name || `Group #${sub.group_id}` }}</p>
-                  <p v-if="sub.expires_at" class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('userSubscriptions.daysRemaining', { days: getDaysRemaining(sub.expires_at) }) }}
-                  </p>
-                  <p v-else class="text-xs text-gray-500 dark:text-gray-400">{{ t('userSubscriptions.noExpiration') }}</p>
+              <div v-for="sub in activeSubscriptions" :key="sub.id"
+                class="card overflow-hidden">
+                <div :class="['h-1', platformAccentBarClass(sub.group?.platform || '')]" />
+                <div class="p-4">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                      <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+                        {{ sub.group?.name || `Group #${sub.group_id}` }}
+                      </h4>
+                      <span :class="['rounded-full px-2 py-0.5 text-[10px] font-medium', platformBadgeLightClass(sub.group?.platform || '')]">
+                        {{ platformLabel(sub.group?.platform || '') }}
+                      </span>
+                    </div>
+                    <span class="badge badge-success text-xs">{{ t('userSubscriptions.status.active') }}</span>
+                  </div>
+                  <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                    <span>{{ t('payment.planCard.rate') }}: ×{{ sub.group?.rate_multiplier ?? 1 }}</span>
+                    <span v-if="sub.group?.daily_limit_usd != null">{{ t('payment.planCard.dailyLimit') }}: ${{ sub.group.daily_limit_usd }}</span>
+                    <span v-if="sub.group?.weekly_limit_usd != null">{{ t('payment.planCard.weeklyLimit') }}: ${{ sub.group.weekly_limit_usd }}</span>
+                    <span v-if="sub.group?.monthly_limit_usd != null">{{ t('payment.planCard.monthlyLimit') }}: ${{ sub.group.monthly_limit_usd }}</span>
+                    <span v-if="!sub.group?.daily_limit_usd && !sub.group?.weekly_limit_usd && !sub.group?.monthly_limit_usd">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
+                  </div>
+                  <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    <span v-if="sub.expires_at">{{ t('userSubscriptions.daysRemaining', { days: getDaysRemaining(sub.expires_at) }) }}</span>
+                    <span v-else>{{ t('userSubscriptions.noExpiration') }}</span>
+                  </div>
                 </div>
-                <span class="badge badge-success text-xs">{{ t('userSubscriptions.status.active') }}</span>
               </div>
             </div>
             <div v-else class="card p-5">
@@ -207,6 +226,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
+import { platformAccentBarClass, platformBadgeLightClass, platformLabel } from '@/utils/platformColors'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import StripePaymentInline from '@/components/payment/StripePaymentInline.vue'
@@ -238,21 +258,34 @@ const previewImage = ref('')
 
 // Payment phase: 'select' → 'paying' (QR/redirect) or 'stripe' (inline Stripe)
 const paymentPhase = ref<'select' | 'paying' | 'stripe'>('select')
-const paymentState = ref({ orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0 })
+const paymentState = ref({ orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0, orderType: '' })
 
 function resetPayment() {
   paymentPhase.value = 'select'
-  paymentState.value = { orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0 }
+  paymentState.value = { orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0, orderType: '' }
+}
+
+function onPaymentDone() {
+  const wasSubscription = paymentState.value.orderType === 'subscription'
+  resetPayment()
+  selectedPlan.value = null
+  if (wasSubscription) {
+    subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
+  }
 }
 
 function onPaymentSuccess() {
   authStore.refreshUser()
-  resetPayment()
-  selectedPlan.value = null
+  if (paymentState.value.orderType === 'subscription') {
+    subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
+  }
 }
 
 function onStripeSuccess() {
   authStore.refreshUser()
+  if (paymentState.value.orderType === 'subscription') {
+    subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
+  }
   resetPayment()
   selectedPlan.value = null
 }
@@ -424,6 +457,7 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
         orderId: result.order_id, qrCode: '', expiresAt: '',
         paymentType: selectedMethod.value, payUrl: '',
         clientSecret: result.client_secret, payAmount: result.pay_amount,
+        orderType,
       }
       paymentPhase.value = 'stripe'
     } else if (result.qr_code) {
@@ -432,6 +466,7 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
         orderId: result.order_id, qrCode: result.qr_code,
         expiresAt: result.expires_at || '', paymentType: selectedMethod.value, payUrl: '',
         clientSecret: '', payAmount: 0,
+        orderType,
       }
       paymentPhase.value = 'paying'
     } else if (result.pay_url) {
@@ -441,6 +476,7 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
         orderId: result.order_id, qrCode: '', expiresAt: result.expires_at || '',
         paymentType: selectedMethod.value, payUrl: result.pay_url,
         clientSecret: '', payAmount: 0,
+        orderType,
       }
       paymentPhase.value = 'paying'
     } else {

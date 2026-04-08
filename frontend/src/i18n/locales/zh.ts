@@ -5328,6 +5328,7 @@ export default {
     },
     result: {
       success: '支付成功',
+      subscriptionSuccess: '订阅成功',
       failed: '支付失败',
       backToRecharge: '返回充值',
       viewOrders: '查看订单',

@@ -86,6 +86,11 @@ func (lb *DefaultLoadBalancer) SelectInstance(ctx context.Context, providerKey s
 		return nil, fmt.Errorf("decrypt instance %d config: %w", selected.ID, err)
 	}
 
+	// Inject payment_mode into config so providers can read it uniformly
+	if selected.PaymentMode != "" {
+		config["paymentMode"] = selected.PaymentMode
+	}
+
 	return &InstanceSelection{
 		InstanceID:     fmt.Sprintf("%d", selected.ID),
 		Config:         config,

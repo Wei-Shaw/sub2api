@@ -5131,6 +5131,7 @@ export default {
     },
     result: {
       success: 'Payment Successful',
+      subscriptionSuccess: 'Subscription Successful',
       failed: 'Payment Failed',
       backToRecharge: 'Back to Recharge',
       viewOrders: 'View Orders',
