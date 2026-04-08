@@ -37,7 +37,7 @@
 
       <!-- Payment mode + Supported types (same row) -->
       <div class="flex flex-wrap items-end gap-4">
-        <div v-if="form.provider_key === 'easypay' || form.provider_key === 'stripe'">
+        <div v-if="form.provider_key === 'easypay'">
           <label class="input-label">
             {{ t('admin.settings.payment.paymentMode') }}
             <span class="text-red-500">*</span>
@@ -228,10 +228,8 @@ import {
   PROVIDER_SUPPORTED_TYPES,
   PROVIDER_CALLBACK_PATHS,
   WEBHOOK_PATHS,
-  PAYMENT_MODE_REDIRECT,
   PAYMENT_MODE_QRCODE,
   PAYMENT_MODE_POPUP,
-  STRIPE_PAYMENT_MODES,
   getAvailableTypes,
   extractBaseUrl,
 } from './providerConfig'
@@ -288,15 +286,8 @@ const stripeWebhookUrl = computed(() =>
 const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] || null)
 
 const paymentModeOptions = computed(() => {
-  if (form.provider_key === 'stripe') {
-    return STRIPE_PAYMENT_MODES.map((m) => ({
-      value: m,
-      label: m === PAYMENT_MODE_POPUP ? t('admin.settings.payment.modePopup') : t('admin.settings.payment.modeRedirect'),
-    }))
-  }
   return [
     { value: PAYMENT_MODE_QRCODE, label: t('admin.settings.payment.modeQRCode') },
-    { value: PAYMENT_MODE_REDIRECT, label: t('admin.settings.payment.modeRedirect') },
     { value: PAYMENT_MODE_POPUP, label: t('admin.settings.payment.modePopup') },
   ]
 })
@@ -449,7 +440,7 @@ function handleSave() {
     name: form.name,
     supported_types: form.supported_types,
     enabled: form.enabled,
-    payment_mode: (form.provider_key === 'easypay' || form.provider_key === 'stripe') ? form.payment_mode : '',
+    payment_mode: form.provider_key === 'easypay' ? form.payment_mode : '',
     refund_enabled: form.refund_enabled,
     config: filteredConfig,
     limits: serializeLimits(),
@@ -468,7 +459,7 @@ function reset(defaultKey: string) {
   form.provider_key = defaultKey
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[defaultKey] || [])]
   form.enabled = true
-  form.payment_mode = defaultKey === 'easypay' ? PAYMENT_MODE_QRCODE : defaultKey === 'stripe' ? PAYMENT_MODE_POPUP : ''
+  form.payment_mode = defaultKey === 'easypay' ? PAYMENT_MODE_QRCODE : ''
   form.refund_enabled = false
   clearConfig()
   applyDefaults()
@@ -479,7 +470,7 @@ function loadProvider(provider: ProviderInstance) {
   form.provider_key = provider.provider_key
   form.supported_types = provider.supported_types
   form.enabled = provider.enabled
-  form.payment_mode = provider.payment_mode || (provider.provider_key === 'stripe' ? PAYMENT_MODE_POPUP : PAYMENT_MODE_QRCODE)
+  form.payment_mode = provider.payment_mode || (provider.provider_key === 'easypay' ? PAYMENT_MODE_QRCODE : '')
   form.refund_enabled = provider.refund_enabled
   clearConfig()
   // Pre-fill config from API response (non-sensitive in cleartext, sensitive masked as ••••••••)

@@ -57,9 +57,9 @@ func (e *EasyPay) SupportedTypes() []payment.PaymentType {
 
 func (e *EasyPay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	// Payment mode determined by instance config, not payment type.
-	// "redirect"/"popup" → hosted page (submit.php); "qrcode"/default → API call (mapi.php).
+	// "popup" → hosted page (submit.php); "qrcode"/default → API call (mapi.php).
 	mode := e.config["paymentMode"]
-	if mode == "redirect" || mode == "popup" {
+	if mode == "popup" {
 		return e.createRedirectPayment(req)
 	}
 	return e.createAPIPayment(ctx, req)

@@ -34,17 +34,13 @@ export const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
 }
 
 /** Available payment modes for EasyPay providers. */
-export const EASYPAY_PAYMENT_MODES = ['qrcode', 'redirect', 'popup'] as const
-
-/** Available payment modes for Stripe providers. */
-export const STRIPE_PAYMENT_MODES = ['popup', 'redirect'] as const
+export const EASYPAY_PAYMENT_MODES = ['qrcode', 'popup'] as const
 
 /** Fixed display order for user-facing payment methods */
 export const METHOD_ORDER = ['alipay', 'wxpay', 'stripe'] as const
 
 /** Payment mode constants */
 export const PAYMENT_MODE_QRCODE = 'qrcode'
-export const PAYMENT_MODE_REDIRECT = 'redirect'
 export const PAYMENT_MODE_POPUP = 'popup'
 
 /** Window features for payment popup windows */

@@ -12,100 +12,150 @@
             <p class="mt-1 text-3xl font-bold text-white">${{ user?.balance?.toFixed(2) || '0.00' }}</p>
           </div>
         </div>
-        <!-- Tab Switcher -->
-        <div v-if="tabs.length > 1" class="flex space-x-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-800">
+        <!-- Tab Switcher (hide during payment and subscription confirm) -->
+        <div v-if="tabs.length > 1 && paymentPhase === 'select' && !selectedPlan" class="flex space-x-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-800">
           <button v-for="tab in tabs" :key="tab.key"
             class="flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all"
             :class="activeTab === tab.key ? 'bg-white text-gray-900 shadow dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'"
             @click="activeTab = tab.key">{{ tab.label }}</button>
         </div>
-        <!-- Top-up Tab -->
-        <template v-if="activeTab === 'recharge'">
-          <!-- No payment methods available -->
-          <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
-            <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
-          </div>
-          <!-- Payment status (replaces selection UI after order creation) -->
-          <template v-else-if="paymentPhase === 'paying'">
-            <PaymentStatusPanel
-              :order-id="paymentState.orderId"
-              :qr-code="paymentState.qrCode"
-              :expires-at="paymentState.expiresAt"
-              :payment-type="paymentState.paymentType"
-              :pay-url="paymentState.payUrl"
-              @done="resetPayment"
-              @success="authStore.refreshUser()"
-            />
-          </template>
-          <!-- Stripe inline payment (select method → confirm → redirect/complete) -->
-          <template v-else-if="paymentPhase === 'stripe'">
-            <StripePaymentInline
-              :order-id="paymentState.orderId"
-              :client-secret="paymentState.clientSecret"
-              :publishable-key="checkout.stripe_publishable_key"
-              :pay-amount="paymentState.payAmount"
-              @success="onStripeSuccess"
-              @back="resetPayment"
-              @redirect="onStripeRedirect"
-            />
-          </template>
-          <!-- Amount & method selection -->
-          <template v-else>
-          <div class="card p-6">
-            <AmountInput
-              v-model="amount"
-              :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
-              :min="globalMinAmount"
-              :max="globalMaxAmount"
-            />
-            <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
-          </div>
-          <div v-if="enabledMethods.length >= 1" class="card p-6">
-            <PaymentMethodSelector
-              :methods="methodOptions"
-              :selected="selectedMethod"
-              @select="selectedMethod = $event"
-            />
-          </div>
-          <div v-if="feeRate > 0 && validAmount > 0" class="card p-6">
-            <div class="space-y-2 text-sm">
-              <div class="flex justify-between">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
-                <span class="text-gray-900 dark:text-white">¥{{ validAmount.toFixed(2) }}</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
-                <span class="text-gray-900 dark:text-white">¥{{ feeAmount.toFixed(2) }}</span>
-              </div>
-              <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
-                <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
-                <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ totalAmount.toFixed(2) }}</span>
+        <!-- Payment in progress (shared by recharge and subscription) -->
+        <template v-if="paymentPhase === 'paying'">
+          <PaymentStatusPanel
+            :order-id="paymentState.orderId"
+            :qr-code="paymentState.qrCode"
+            :expires-at="paymentState.expiresAt"
+            :payment-type="paymentState.paymentType"
+            :pay-url="paymentState.payUrl"
+            @done="resetPayment"
+            @success="onPaymentSuccess"
+          />
+        </template>
+        <template v-else-if="paymentPhase === 'stripe'">
+          <StripePaymentInline
+            :order-id="paymentState.orderId"
+            :client-secret="paymentState.clientSecret"
+            :publishable-key="checkout.stripe_publishable_key"
+            :pay-amount="paymentState.payAmount"
+            @success="onStripeSuccess"
+            @back="resetPayment"
+            @redirect="onStripeRedirect"
+          />
+        </template>
+        <!-- Tab content (select phase) -->
+        <template v-else>
+          <!-- Top-up Tab -->
+          <template v-if="activeTab === 'recharge'">
+            <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
+              <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
+            </div>
+            <template v-else>
+            <div class="card p-6">
+              <AmountInput
+                v-model="amount"
+                :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
+                :min="globalMinAmount"
+                :max="globalMaxAmount"
+              />
+              <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
+            </div>
+            <div v-if="enabledMethods.length >= 1" class="card p-6">
+              <PaymentMethodSelector
+                :methods="methodOptions"
+                :selected="selectedMethod"
+                @select="selectedMethod = $event"
+              />
+            </div>
+            <div v-if="feeRate > 0 && validAmount > 0" class="card p-6">
+              <div class="space-y-2 text-sm">
+                <div class="flex justify-between">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
+                  <span class="text-gray-900 dark:text-white">¥{{ validAmount.toFixed(2) }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
+                  <span class="text-gray-900 dark:text-white">¥{{ feeAmount.toFixed(2) }}</span>
+                </div>
+                <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                  <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
+                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ totalAmount.toFixed(2) }}</span>
+                </div>
               </div>
             </div>
-          </div>
-          <button class="btn btn-primary w-full py-3 text-base font-medium" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
-            <span v-if="submitting" class="flex items-center justify-center gap-2">
-              <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-              {{ t('common.processing') }}
-            </span>
-            <span v-else>{{ t('payment.createOrder') }} ¥{{ (feeRate > 0 && validAmount > 0 ? totalAmount : validAmount).toFixed(2) }}</span>
-          </button>
-          <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
-            <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage }}</p>
-          </div>
+            <button class="btn btn-primary w-full py-3 text-base font-medium" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
+              <span v-if="submitting" class="flex items-center justify-center gap-2">
+                <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                {{ t('common.processing') }}
+              </span>
+              <span v-else>{{ t('payment.createOrder') }} ¥{{ (feeRate > 0 && validAmount > 0 ? totalAmount : validAmount).toFixed(2) }}</span>
+            </button>
+            <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
+              <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage }}</p>
+            </div>
+            </template>
+          </template>
+          <!-- Subscribe Tab -->
+          <template v-else-if="activeTab === 'subscription'">
+            <!-- Subscription confirm (inline, replaces plan list) -->
+            <template v-if="selectedPlan">
+              <div class="card overflow-hidden">
+                <div class="bg-gradient-to-br from-primary-500 to-primary-600 px-6 py-5 text-center">
+                  <p class="text-sm font-medium text-primary-100">{{ selectedPlan.name }}</p>
+                  <div class="mt-1 flex items-baseline justify-center gap-1.5">
+                    <span class="text-3xl font-bold text-white">&yen;{{ selectedPlan.price }}</span>
+                    <span v-if="selectedPlan.original_price" class="text-sm text-primary-200 line-through">&yen;{{ selectedPlan.original_price }}</span>
+                  </div>
+                  <p v-if="selectedPlan.description" class="mt-2 text-sm text-primary-100">{{ selectedPlan.description }}</p>
+                </div>
+              </div>
+              <div v-if="enabledMethods.length >= 1" class="card p-6">
+                <PaymentMethodSelector
+                  :methods="subMethodOptions"
+                  :selected="selectedMethod"
+                  @select="selectedMethod = $event"
+                />
+              </div>
+              <div v-if="feeRate > 0 && selectedPlan.price > 0" class="card p-6">
+                <div class="space-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
+                    <span class="text-gray-900 dark:text-white">¥{{ selectedPlan.price.toFixed(2) }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
+                    <span class="text-gray-900 dark:text-white">¥{{ subFeeAmount.toFixed(2) }}</span>
+                  </div>
+                  <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
+                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ subTotalAmount.toFixed(2) }}</span>
+                  </div>
+                </div>
+              </div>
+              <button class="btn btn-primary w-full py-3 text-base font-medium" :disabled="!canSubmitSubscription || submitting" @click="confirmSubscribe">
+                <span v-if="submitting" class="flex items-center justify-center gap-2">
+                  <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                  {{ t('common.processing') }}
+                </span>
+                <span v-else>{{ t('payment.createOrder') }} ¥{{ (feeRate > 0 ? subTotalAmount : selectedPlan.price).toFixed(2) }}</span>
+              </button>
+              <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
+              <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
+                <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage }}</p>
+              </div>
+            </template>
+            <!-- Plan list -->
+            <template v-else>
+              <div v-if="checkout.plans.length === 0" class="card py-16 text-center">
+                <Icon name="gift" size="xl" class="mx-auto mb-3 text-gray-300 dark:text-dark-600" />
+                <p class="text-gray-500 dark:text-gray-400">{{ t('payment.noPlans') }}</p>
+              </div>
+              <div v-else :class="planGridClass">
+                <SubscriptionPlanCard v-for="plan in checkout.plans" :key="plan.id" :plan="plan" @select="selectPlan" />
+              </div>
+            </template>
           </template>
         </template>
-        <!-- Subscribe Tab -->
-        <template v-else-if="activeTab === 'subscription'">
-          <div v-if="checkout.plans.length === 0" class="card py-16 text-center">
-            <Icon name="gift" size="xl" class="mx-auto mb-3 text-gray-300 dark:text-dark-600" />
-            <p class="text-gray-500 dark:text-gray-400">{{ t('payment.noPlans') }}</p>
-          </div>
-          <div v-else :class="planGridClass">
-            <SubscriptionPlanCard v-for="plan in checkout.plans" :key="plan.id" :plan="plan" @select="openSubscribeDialog" />
-          </div>
-        </template>
-        <div v-if="checkout.help_text || checkout.help_image_url" class="card p-4">
+        <div v-if="(checkout.help_text || checkout.help_image_url) && paymentPhase === 'select' && !selectedPlan" class="card p-4">
           <div class="flex flex-col items-center gap-3">
             <img v-if="checkout.help_image_url" :src="checkout.help_image_url" alt=""
               class="h-40 max-w-full cursor-pointer rounded-lg object-contain transition-opacity hover:opacity-80"
@@ -115,33 +165,6 @@
         </div>
       </template>
     </div>
-    <!-- Subscription Confirm Dialog -->
-    <BaseDialog :show="!!selectedPlan" :title="t('payment.confirmSubscription')" @close="selectedPlan = null">
-      <div v-if="selectedPlan" class="space-y-4">
-        <div class="rounded-xl border border-gray-100 bg-gray-50 p-5 dark:border-dark-700 dark:bg-dark-800">
-          <p class="font-semibold text-gray-900 dark:text-white">{{ selectedPlan.name }}</p>
-          <div class="mt-2 flex items-baseline gap-1.5">
-            <span class="text-3xl font-extrabold text-primary-600 dark:text-primary-400">&yen;{{ selectedPlan.price }}</span>
-            <span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through">&yen;{{ selectedPlan.original_price }}</span>
-          </div>
-          <p v-if="selectedPlan.description" class="mt-2 text-sm text-gray-500 dark:text-dark-400">{{ selectedPlan.description }}</p>
-        </div>
-        <PaymentMethodSelector
-          v-if="enabledMethods.length > 1"
-          :methods="methodOptions"
-          :selected="selectedMethod"
-          @select="selectedMethod = $event"
-        />
-      </div>
-      <template #footer>
-        <div class="flex justify-end gap-3">
-          <button class="btn btn-secondary" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
-          <button class="btn btn-primary" :disabled="submitting" @click="confirmSubscribe">
-            {{ submitting ? t('common.processing') : t('payment.createOrder') }}
-          </button>
-        </div>
-      </template>
-    </BaseDialog>
     <!-- Image Preview Overlay -->
     <Teleport to="body">
       <Transition name="modal">
@@ -163,7 +186,6 @@ import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { SubscriptionPlan, CheckoutInfoResponse } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import BaseDialog from '@/components/common/BaseDialog.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
@@ -198,9 +220,16 @@ function resetPayment() {
   paymentState.value = { orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0 }
 }
 
+function onPaymentSuccess() {
+  authStore.refreshUser()
+  resetPayment()
+  selectedPlan.value = null
+}
+
 function onStripeSuccess() {
   authStore.refreshUser()
   resetPayment()
+  selectedPlan.value = null
 }
 
 function onStripeRedirect(orderId: number, payUrl: string) {
@@ -299,6 +328,37 @@ const canSubmit = computed(() =>
     && selectedLimit.value?.available !== false
 )
 
+// Subscription-specific: method options based on plan price
+const subMethodOptions = computed<PaymentMethodOption[]>(() => {
+  const planPrice = selectedPlan.value?.price ?? 0
+  return enabledMethods.value.map((type) => {
+    const ml = checkout.value.methods[type]
+    return {
+      type,
+      fee_rate: ml?.fee_rate ?? 0,
+      available: ml?.available !== false && amountFitsMethod(planPrice, type),
+    }
+  })
+})
+
+const subFeeAmount = computed(() => {
+  const price = selectedPlan.value?.price ?? 0
+  if (feeRate.value <= 0 || price <= 0) return 0
+  return Math.ceil(((price * feeRate.value) / 100) * 100) / 100
+})
+
+const subTotalAmount = computed(() => {
+  const price = selectedPlan.value?.price ?? 0
+  if (feeRate.value <= 0 || price <= 0) return price
+  return Math.round((price + subFeeAmount.value) * 100) / 100
+})
+
+const canSubmitSubscription = computed(() =>
+  selectedPlan.value !== null
+    && amountFitsMethod(selectedPlan.value.price, selectedMethod.value)
+    && selectedLimit.value?.available !== false
+)
+
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
   if (amt <= 0 || amountFitsMethod(amt, method)) return
@@ -306,8 +366,9 @@ watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) 
   if (available) selectedMethod.value = available
 })
 
-function openSubscribeDialog(plan: SubscriptionPlan) {
+function selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
+  errorMessage.value = ''
 }
 
 async function handleSubmitRecharge() {
@@ -318,7 +379,6 @@ async function handleSubmitRecharge() {
 async function confirmSubscribe() {
   if (!selectedPlan.value || submitting.value) return
   await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
-  selectedPlan.value = null
 }
 
 async function createOrder(orderAmount: number, orderType: string, planId?: number) {
@@ -331,13 +391,8 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       order_type: orderType,
       plan_id: planId,
     })
-    const mode = result.payment_mode || 'popup'
     const openWindow = (url: string) => {
-      if (mode === 'redirect') {
-        window.open(url, '_blank')
-      } else {
-        window.open(url, 'paymentPopup', POPUP_WINDOW_FEATURES)
-      }
+      window.open(url, 'paymentPopup', POPUP_WINDOW_FEATURES)
     }
     if (result.client_secret) {
       // Stripe: show Payment Element inline (user picks method → confirms → redirect if needed)
