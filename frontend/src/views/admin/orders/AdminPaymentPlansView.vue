@@ -174,10 +174,12 @@ function isGroupMissing(id: number): boolean {
 
 const groupOptions = computed(() => [
   { value: 0, label: t('payment.admin.selectGroup') },
-  ...groups.value.map(g => ({
-    value: g.id,
-    label: `${g.name} — ${g.platform} (${g.rate_multiplier}x)`,
-  })),
+  ...groups.value
+    .filter(g => g.subscription_type === 'subscription')
+    .map(g => ({
+      value: g.id,
+      label: `${g.name} — ${g.platform} (${g.rate_multiplier}x)`,
+    })),
 ])
 
 const selectedGroupInfo = computed(() => {
