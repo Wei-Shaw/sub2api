@@ -2932,6 +2932,8 @@ async function handleSaveProvider(payload: Partial<ProviderInstance>) {
       loadProviders()
     }
     showProviderDialog.value = false
+    // Auto-save settings so provider changes take effect immediately
+    await saveSettings()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value))
   } finally {

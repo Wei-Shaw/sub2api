@@ -243,6 +243,7 @@ func (h *PaymentHandler) CreateProvider(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.paymentService.RefreshProviders(c.Request.Context())
 	response.Created(c, inst)
 }
 
@@ -263,6 +264,7 @@ func (h *PaymentHandler) UpdateProvider(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.paymentService.RefreshProviders(c.Request.Context())
 	response.Success(c, inst)
 }
 
@@ -277,6 +279,7 @@ func (h *PaymentHandler) DeleteProvider(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.paymentService.RefreshProviders(c.Request.Context())
 	response.Success(c, gin.H{"message": "deleted"})
 }
 

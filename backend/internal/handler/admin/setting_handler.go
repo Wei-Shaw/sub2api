@@ -42,16 +42,18 @@ type SettingHandler struct {
 	turnstileService     *service.TurnstileService
 	opsService           *service.OpsService
 	paymentConfigService *service.PaymentConfigService
+	paymentService       *service.PaymentService
 }
 
 // NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService) *SettingHandler {
+func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService) *SettingHandler {
 	return &SettingHandler{
 		settingService:       settingService,
 		emailService:         emailService,
 		turnstileService:     turnstileService,
 		opsService:           opsService,
 		paymentConfigService: paymentConfigService,
+		paymentService:       paymentService,
 	}
 }
 
@@ -698,6 +700,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		if err := h.paymentConfigService.UpdatePaymentConfig(c.Request.Context(), paymentReq); err != nil {
 			response.ErrorFrom(c, err)
 			return
+		}
+		// Refresh in-memory provider registry so config changes take effect immediately
+		if h.paymentService != nil {
+			h.paymentService.RefreshProviders(c.Request.Context())
 		}
 	}
 
