@@ -16,11 +16,11 @@
 
       <!-- Table -->
       <DataTable :columns="columns" :data="orders" :loading="loading">
-        <template #cell-id="{ value, row }">
-          <div>
-            <span class="font-mono text-sm">#{{ value }}</span>
-            <p v-if="row.out_trade_no" class="font-mono text-xs text-gray-400 dark:text-gray-500">{{ row.out_trade_no }}</p>
-          </div>
+        <template #cell-id="{ value }">
+          <span class="font-mono text-sm">#{{ value }}</span>
+        </template>
+        <template #cell-out_trade_no="{ value }">
+          <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ value }}</span>
         </template>
         <template #cell-amount="{ value, row }">
           <div class="text-sm">
@@ -141,6 +141,7 @@ const statusFilters = computed(() => [
 
 const columns = computed((): Column[] => [
   { key: 'id', label: t('payment.orders.orderId') },
+  { key: 'out_trade_no', label: t('payment.orders.orderNo') },
   { key: 'amount', label: t('payment.orders.amount') },
   { key: 'payment_type', label: t('payment.orders.paymentMethod') },
   { key: 'status', label: t('payment.orders.status') },
