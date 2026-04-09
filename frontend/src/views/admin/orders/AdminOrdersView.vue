@@ -21,6 +21,9 @@
       <!-- Table -->
       <DataTable :columns="orderColumns" :data="orders" :loading="ordersLoading">
         <template #cell-id="{ value }"><span class="font-mono text-sm">#{{ value }}</span></template>
+        <template #cell-out_trade_no="{ value }">
+          <span class="text-sm text-gray-900 dark:text-white">{{ value }}</span>
+        </template>
         <template #cell-user_id="{ value }"><span class="text-sm text-gray-600 dark:text-gray-400">#{{ value }}</span></template>
         <template #cell-amount="{ value, row }">
           <div class="text-sm">
@@ -66,6 +69,7 @@
       <div v-if="selectedOrder" class="space-y-4">
         <div class="grid grid-cols-2 gap-4">
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</p><p class="font-mono text-sm font-medium text-gray-900 dark:text-white">#{{ selectedOrder.id }}</p></div>
+          <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderNo') }}</p><p class="text-sm font-medium text-gray-900 dark:text-white">{{ selectedOrder.out_trade_no }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.status') }}</p><span :class="['badge', statusBadgeClass(selectedOrder.status)]">{{ t('payment.status.' + selectedOrder.status.toLowerCase(), selectedOrder.status) }}</span></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</p><p class="text-sm font-medium text-gray-900 dark:text-white">${{ selectedOrder.amount.toFixed(2) }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</p><p class="text-sm font-medium text-gray-900 dark:text-white">${{ selectedOrder.pay_amount.toFixed(2) }}</p></div>
@@ -162,7 +166,7 @@ const orderTypeFilterOptions = computed(() => [
 ])
 
 const orderColumns = computed((): Column[] => [
-  { key: 'id', label: 'ID' }, { key: 'user_id', label: t('payment.admin.colUser') }, { key: 'amount', label: t('payment.orders.amount') },
+  { key: 'id', label: 'ID' }, { key: 'out_trade_no', label: t('payment.orders.orderNo') }, { key: 'user_id', label: t('payment.admin.colUser') }, { key: 'amount', label: t('payment.orders.amount') },
   { key: 'payment_type', label: t('payment.orders.paymentMethod') }, { key: 'status', label: t('payment.orders.status') },
   { key: 'created_at', label: t('payment.orders.createdAt') }, { key: 'actions', label: t('common.actions') },
 ])

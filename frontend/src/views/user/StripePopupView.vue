@@ -4,7 +4,7 @@
       <div class="card overflow-hidden text-center">
         <!-- Amount -->
         <div v-if="amount" class="bg-gradient-to-br from-[#635bff] to-[#4f46e5] px-6 py-5">
-          <p class="text-3xl font-bold text-white">&yen;{{ amount }}</p>
+          <p class="text-3xl font-bold text-white">${{ amount }}</p>
           <p v-if="orderId" class="mt-1 text-xs text-indigo-200">{{ t('payment.orders.orderId') }}: {{ orderId }}</p>
         </div>
         <!-- Status -->
