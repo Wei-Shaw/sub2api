@@ -407,6 +407,7 @@ REDACTED
 		{Name: "require_oauth_only", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "require_privacy_set", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "default_mapped_model", Type: field.TypeString, Size: 100, Default: ""REDACTED,
+		{Name: "messages_dispatch_model_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
 REDACTED
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{
