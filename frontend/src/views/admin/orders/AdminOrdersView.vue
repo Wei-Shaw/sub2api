@@ -54,7 +54,23 @@
               <Icon name="refresh" size="sm" />
               <span class="text-xs">{{ t('payment.admin.retry') }}</span>
             </button>
-            <button v-if="canRefund(row)" @click="openRefundDialog(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400">
+            <!-- REFUND_REQUESTED: show requested amount badge + approve button -->
+            <template v-if="row.status === 'REFUND_REQUESTED'">
+              <span v-if="row.refund_amount" class="inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                ${{ row.refund_amount.toFixed(2) }}
+              </span>
+              <button @click="openRefundDialog(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20 dark:hover:text-purple-400">
+                <Icon name="check" size="sm" />
+                <span class="text-xs">{{ t('payment.admin.approveRefund') }}</span>
+              </button>
+            </template>
+            <!-- REFUND_FAILED: show retry refund button -->
+            <button v-else-if="row.status === 'REFUND_FAILED'" @click="openRefundDialog(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20 dark:hover:text-purple-400">
+              <Icon name="refresh" size="sm" />
+              <span class="text-xs">{{ t('payment.admin.retryRefund') }}</span>
+            </button>
+            <!-- COMPLETED / PARTIALLY_REFUNDED: show refund button -->
+            <button v-else-if="row.status === 'COMPLETED' || row.status === 'PARTIALLY_REFUNDED'" @click="openRefundDialog(row)" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400">
               <Icon name="dollar" size="sm" />
               <span class="text-xs">{{ t('payment.admin.refund') }}</span>
             </button>
@@ -80,6 +96,38 @@
           <div v-if="selectedOrder.paid_at"><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.paidAt') }}</p><p class="text-sm text-gray-700 dark:text-gray-300">{{ formatDateTime(selectedOrder.paid_at) }}</p></div>
           <div v-if="selectedOrder.refund_amount"><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.refundAmount') }}</p><p class="text-sm font-medium text-red-600 dark:text-red-400">${{ selectedOrder.refund_amount.toFixed(2) }}</p></div>
           <div v-if="selectedOrder.refund_reason" class="col-span-2"><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.refundReason') }}</p><p class="text-sm text-gray-700 dark:text-gray-300">{{ selectedOrder.refund_reason }}</p></div>
+          <!-- Refund request info -->
+          <div v-if="selectedOrder.refund_requested_at" class="col-span-2 border-t border-gray-200 pt-3 dark:border-dark-600">
+            <p class="mb-2 text-xs font-medium text-purple-600 dark:text-purple-400">{{ t('payment.admin.refundRequestInfo') }}</p>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.refundRequestedAt') }}</p>
+                <p class="text-sm text-gray-700 dark:text-gray-300">{{ formatDateTime(selectedOrder.refund_requested_at) }}</p>
+              </div>
+              <div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.refundRequestedBy') }}</p>
+                <p class="text-sm text-gray-700 dark:text-gray-300">#{{ selectedOrder.refund_requested_by }}</p>
+              </div>
+              <div class="col-span-2">
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.refundRequestReason') }}</p>
+                <p class="text-sm text-gray-700 dark:text-gray-300">{{ selectedOrder.refund_request_reason }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Audit Logs -->
+        <div v-if="orderAuditLogs.length > 0" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <p class="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('payment.admin.auditLogs') }}</p>
+          <div class="max-h-48 space-y-2 overflow-y-auto">
+            <div v-for="log in orderAuditLogs" :key="log.id" class="rounded-lg border border-gray-100 bg-gray-50 p-2.5 dark:border-dark-600 dark:bg-dark-800">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ log.action }}</span>
+                <span class="text-xs text-gray-400">{{ formatDateTime(log.created_at) }}</span>
+              </div>
+              <div v-if="log.detail" class="mt-1 break-all text-xs text-gray-500 dark:text-gray-400">{{ log.detail }}</div>
+              <div v-if="log.operator" class="mt-1 text-xs text-gray-400">{{ t('payment.admin.operator') }}: {{ log.operator }}</div>
+            </div>
+          </div>
         </div>
       </div>
     </BaseDialog>
@@ -104,6 +152,14 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AdminRefundDialog from '@/components/admin/payment/AdminRefundDialog.vue'
 
+interface AuditLog {
+  id: number
+  action: string
+  detail: string | null
+  operator: string | null
+  created_at: string
+}
+
 const { t } = useI18n()
 const appStore = useAppStore()
 
@@ -116,6 +172,7 @@ const selectedOrder = ref<PaymentOrder | null>(null)
 const showDetailDialog = ref(false)
 const showRefundDialog = ref(false)
 const refundSubmitting = ref(false)
+const orderAuditLogs = ref<AuditLog[]>([])
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 function debounceLoadOrders() {
@@ -150,6 +207,8 @@ const statusFilterOptions = computed(() => [
   { value: 'CANCELLED', label: t('payment.status.cancelled') },
   { value: 'FAILED', label: t('payment.status.failed') },
   { value: 'REFUNDED', label: t('payment.status.refunded') },
+  { value: 'REFUND_REQUESTED', label: t('payment.status.refund_requested') },
+  { value: 'REFUND_FAILED', label: t('payment.status.refund_failed') },
 ])
 
 const paymentTypeFilterOptions = computed(() => [
@@ -181,8 +240,21 @@ function statusBadgeClass(status: string): string {
   return m[status] || 'badge-secondary'
 }
 
-function canRefund(order: PaymentOrder): boolean { return ['COMPLETED', 'PARTIALLY_REFUNDED'].includes(order.status) }
-function showOrderDetail(order: PaymentOrder) { selectedOrder.value = order; showDetailDialog.value = true }
+function canRefund(order: PaymentOrder): boolean {
+  return ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUND_REQUESTED', 'REFUND_FAILED'].includes(order.status)
+}
+
+async function showOrderDetail(order: PaymentOrder) {
+  selectedOrder.value = order
+  orderAuditLogs.value = []
+  showDetailDialog.value = true
+  try {
+    const res = await adminPaymentAPI.getOrder(order.id)
+    const data = res.data as Record<string, unknown>
+    if (data.order) selectedOrder.value = data.order as PaymentOrder
+    orderAuditLogs.value = (data.auditLogs || data.audit_logs || []) as AuditLog[]
+  } catch (_err: unknown) { /* keep cached order data */ }
+}
 
 async function handleCancelOrder(order: PaymentOrder) {
   try { await adminPaymentAPI.cancelOrder(order.id); appStore.showSuccess(t('payment.admin.orderCancelled')); loadOrders() }
@@ -196,11 +268,11 @@ async function handleRetryOrder(order: PaymentOrder) {
 
 function openRefundDialog(order: PaymentOrder) { selectedOrder.value = order; showRefundDialog.value = true }
 
-async function handleRefund(data: { amount: number; reason: string; deduct_balance: boolean }) {
+async function handleRefund(data: { amount: number; reason: string; deduct_balance: boolean; force: boolean }) {
   if (!selectedOrder.value) return
   refundSubmitting.value = true
   try {
-    await adminPaymentAPI.refundOrder(selectedOrder.value.id, { amount: data.amount, reason: data.reason, deduct_balance: data.deduct_balance })
+    await adminPaymentAPI.refundOrder(selectedOrder.value.id, { amount: data.amount, reason: data.reason, deduct_balance: data.deduct_balance, force: data.force })
     appStore.showSuccess(t('payment.admin.refundSuccess')); showRefundDialog.value = false; loadOrders()
   } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
   finally { refundSubmitting.value = false }

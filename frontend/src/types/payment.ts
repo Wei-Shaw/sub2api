@@ -85,6 +85,9 @@ export interface PaymentOrder {
   completed_at?: string
   refund_amount: number
   refund_reason?: string
+  refund_requested_at?: string
+  refund_requested_by?: number
+  refund_request_reason?: string
   plan_id?: number
 }
 

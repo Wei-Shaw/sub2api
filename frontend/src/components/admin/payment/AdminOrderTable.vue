@@ -199,6 +199,8 @@ const statusFilterOptions = computed(() => [
   { value: 'CANCELLED', label: t('payment.status.cancelled') },
   { value: 'FAILED', label: t('payment.status.failed') },
   { value: 'REFUNDED', label: t('payment.status.refunded') },
+  { value: 'REFUND_REQUESTED', label: t('payment.status.refund_requested') },
+  { value: 'REFUND_FAILED', label: t('payment.status.refund_failed') },
 ])
 
 const paymentTypeFilterOptions = computed(() => [
@@ -225,7 +227,7 @@ function statusBadgeClass(status: string): string {
 }
 
 function canRefund(order: PaymentOrder): boolean {
-  return ['COMPLETED', 'PARTIALLY_REFUNDED'].includes(order.status)
+  return ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUND_REQUESTED', 'REFUND_FAILED'].includes(order.status)
 }
 
 function formatDateTime(dateStr: string): string {

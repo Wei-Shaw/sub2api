@@ -139,7 +139,7 @@ function statusBadgeClass(status: string): string {
 }
 
 function canRefund(order: PaymentOrder): boolean {
-  return ['COMPLETED', 'PARTIALLY_REFUNDED'].includes(order.status)
+  return ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUND_REQUESTED', 'REFUND_FAILED'].includes(order.status)
 }
 
 function formatDateTime(dateStr: string): string {
