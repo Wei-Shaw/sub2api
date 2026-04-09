@@ -335,6 +335,34 @@ func (h *PaymentHandler) RequestRefund(c *gin.Context) {
 	response.Success(c, gin.H{"message": "refund requested"})
 }
 
+// VerifyOrderRequest is the request body for verifying a payment order.
+type VerifyOrderRequest struct {
+	OutTradeNo string `json:"out_trade_no" binding:"required"`
+}
+
+// VerifyOrder actively queries the upstream payment provider to check
+// if payment was made, and processes it if so.
+// POST /api/v1/payment/orders/verify
+func (h *PaymentHandler) VerifyOrder(c *gin.Context) {
+	subject, ok := requireAuth(c)
+	if !ok {
+		return
+	}
+
+	var req VerifyOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	order, err := h.paymentService.VerifyOrderByOutTradeNo(c.Request.Context(), req.OutTradeNo, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, order)
+}
+
 // requireAuth extracts the authenticated subject from the context.
 // Returns the subject and true on success; on failure it writes an Unauthorized response and returns false.
 func requireAuth(c *gin.Context) (middleware2.AuthSubject, bool) {

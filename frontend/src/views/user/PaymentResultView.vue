@@ -79,6 +79,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
 import { usePaymentStore } from '@/stores/payment'
+import { paymentAPI } from '@/api/payment'
 import type { PaymentOrder } from '@/types/payment'
 
 const { t } = useI18n()
@@ -117,10 +118,10 @@ function parseOutTradeNo(outTradeNo: string): number {
 onMounted(async () => {
   // Try order_id first (internal navigation from QRCode/Stripe pages)
   let orderId = Number(route.query.order_id) || 0
+  const outTradeNo = String(route.query.out_trade_no || '')
 
   // Fallback: EasyPay return URL with out_trade_no
-  if (!orderId && route.query.out_trade_no) {
-    const outTradeNo = String(route.query.out_trade_no || '')
+  if (!orderId && outTradeNo) {
     orderId = parseOutTradeNo(outTradeNo)
     // Store return info for display when order lookup fails
     returnInfo.value = {
@@ -131,7 +132,19 @@ onMounted(async () => {
     }
   }
 
-  if (orderId) {
+  // If we have an out_trade_no from a provider return URL, actively verify
+  // the payment with the upstream provider (handles missed notify callbacks)
+  if (outTradeNo) {
+    try {
+      const result = await paymentAPI.verifyOrder(outTradeNo)
+      order.value = result.data
+    } catch {
+      // Verification failed, fall through to normal order lookup
+    }
+  }
+
+  // Normal order lookup by ID (if verify didn't load the order)
+  if (!order.value && orderId) {
     try {
       order.value = await paymentStore.pollOrderStatus(orderId)
     } catch {

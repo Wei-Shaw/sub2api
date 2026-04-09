@@ -62,6 +62,11 @@ export const paymentAPI = {
     return apiClient.post(`/payment/orders/${id}/cancel`)
   },
 
+  /** Verify order payment status with upstream provider */
+  verifyOrder(outTradeNo: string) {
+    return apiClient.post<PaymentOrder>('/payment/orders/verify', { out_trade_no: outTradeNo })
+  },
+
   /** Request a refund for a completed order */
   requestRefund(id: number, data: { reason: string }) {
     return apiClient.post(`/payment/orders/${id}/refund-request`, data)

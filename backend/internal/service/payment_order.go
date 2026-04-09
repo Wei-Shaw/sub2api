@@ -415,7 +415,13 @@ func (s *PaymentService) checkPaid(ctx context.Context, o *dbent.PaymentOrder) s
 	if err != nil {
 		return ""
 	}
-	resp, err := prov.QueryOrder(ctx, o.PaymentTradeNo)
+	// Use OutTradeNo as fallback when PaymentTradeNo is empty
+	// (e.g. EasyPay popup mode where trade_no arrives only via notify callback)
+	tradeNo := o.PaymentTradeNo
+	if tradeNo == "" {
+		tradeNo = o.OutTradeNo
+	}
+	resp, err := prov.QueryOrder(ctx, tradeNo)
 	if err != nil {
 		slog.Warn("query upstream failed", "orderID", o.ID, "error", err)
 		return ""
@@ -428,6 +434,33 @@ func (s *PaymentService) checkPaid(ctx context.Context, o *dbent.PaymentOrder) s
 		_ = cp.CancelPayment(ctx, o.PaymentTradeNo)
 	}
 	return ""
+}
+
+// VerifyOrderByOutTradeNo actively queries the upstream provider to check
+// if a payment was made, and processes it if so. This handles the case where
+// the provider's notify callback was missed (e.g. EasyPay popup mode).
+func (s *PaymentService) VerifyOrderByOutTradeNo(ctx context.Context, outTradeNo string, userID int64) (*dbent.PaymentOrder, error) {
+	o, err := s.entClient.PaymentOrder.Query().
+		Where(paymentorder.OutTradeNo(outTradeNo)).
+		Only(ctx)
+	if err != nil {
+		return nil, infraerrors.NotFound("NOT_FOUND", "order not found")
+	}
+	if o.UserID != userID {
+		return nil, infraerrors.Forbidden("FORBIDDEN", "no permission for this order")
+	}
+	// Only verify orders that are still pending or recently expired
+	if o.Status == OrderStatusPending || o.Status == OrderStatusExpired {
+		result := s.checkPaid(ctx, o)
+		if result == "already_paid" {
+			// Reload order to get updated status
+			o, err = s.entClient.PaymentOrder.Get(ctx, o.ID)
+			if err != nil {
+				return nil, fmt.Errorf("reload order: %w", err)
+			}
+		}
+	}
+	return o, nil
 }
 
 func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) {
