@@ -161,7 +161,7 @@ async function fetchOrders() {
     })
     orders.value = res.data.items || []
     pagination.total = res.data.total || 0
-  } catch (err) {
+  } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally {
     loading.value = false

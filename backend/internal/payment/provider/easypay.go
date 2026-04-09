@@ -25,6 +25,8 @@ const (
 	easypayStatusPaid      = 1
 	easypayHTTPTimeout     = 10 * time.Second
 	maxEasypayResponseSize = 1 << 20 // 1MB
+	tradeStatusSuccess     = "TRADE_SUCCESS"
+	signTypeMD5            = "MD5"
 )
 
 // EasyPay implements payment.Provider for the EasyPay aggregation platform.
@@ -80,7 +82,7 @@ func (e *EasyPay) createRedirectPayment(req payment.CreatePaymentRequest) (*paym
 		params["cid"] = cid
 	}
 	params["sign"] = easyPaySign(params, e.config["pkey"])
-	params["sign_type"] = "MD5"
+	params["sign_type"] = signTypeMD5
 
 	q := url.Values{}
 	for k, v := range params {
@@ -107,7 +109,7 @@ func (e *EasyPay) createAPIPayment(ctx context.Context, req payment.CreatePaymen
 		params["device"] = "mobile"
 	}
 	params["sign"] = easyPaySign(params, e.config["pkey"])
-	params["sign_type"] = "MD5"
+	params["sign_type"] = signTypeMD5
 
 	body, err := e.post(ctx, strings.TrimRight(e.config["apiBase"], "/")+"/mapi.php", params)
 	if err != nil {
@@ -184,7 +186,7 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 		return nil, fmt.Errorf("invalid signature")
 	}
 	status := payment.ProviderStatusFailed
-	if params["trade_status"] == "TRADE_SUCCESS" {
+	if params["trade_status"] == tradeStatusSuccess {
 		status = payment.ProviderStatusSuccess
 	}
 	amount, _ := strconv.ParseFloat(params["money"], 64)

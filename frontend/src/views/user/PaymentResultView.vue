@@ -142,7 +142,7 @@ onMounted(async () => {
     try {
       const result = await paymentAPI.verifyOrder(outTradeNo)
       order.value = result.data
-    } catch {
+    } catch (_err: unknown) {
       // Verification failed, fall through to normal order lookup
     }
   }
@@ -151,7 +151,7 @@ onMounted(async () => {
   if (!order.value && orderId) {
     try {
       order.value = await paymentStore.pollOrderStatus(orderId)
-    } catch {
+    } catch (_err: unknown) {
       // Order lookup failed, will show returnInfo fallback
     }
   }

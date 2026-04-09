@@ -35,6 +35,30 @@ const (
 	OrderStatusRefundFailed      = "REFUND_FAILED"
 )
 
+// Order types distinguish balance recharges from subscription purchases.
+const (
+	OrderTypeBalance      = "balance"
+	OrderTypeSubscription = "subscription"
+)
+
+// Entity statuses shared across users, groups, etc.
+const (
+	EntityStatusActive = "active"
+)
+
+// Deduction types for refund flow.
+const (
+	DeductionTypeBalance      = "balance"
+	DeductionTypeSubscription = "subscription"
+	DeductionTypeNone         = "none"
+)
+
+// Payment notification status values.
+const (
+	NotificationStatusSuccess = "success"
+	NotificationStatusPaid    = "paid"
+)
+
 // Provider-level status constants returned by provider implementations
 // to the service layer (lowercase, distinct from OrderStatus uppercase constants).
 const (

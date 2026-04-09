@@ -2359,7 +2359,7 @@ async function loadSettings() {
   loadFailed.value = false
   try {
     const settings = await adminAPI.settings.getSettings()
-    ;(settings as any).payment_load_balance_strategy = settings.payment_load_balance_strategy || 'round-robin'
+    settings.payment_load_balance_strategy = settings.payment_load_balance_strategy || 'round-robin'
     // Only assign non-null values from backend (null means unconfigured, keep defaults)
     for (const [key, value] of Object.entries(settings)) {
       if (value !== null && value !== undefined) {
@@ -2383,11 +2383,9 @@ async function loadSettings() {
     smtpPasswordManuallyEdited.value = false
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
-  } catch (error: any) {
+  } catch (error: unknown) {
     loadFailed.value = true
-    appStore.showError(
-      t('admin.settings.failedToLoad') + ': ' + (error.message || t('common.unknownError'))
-    )
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.failedToLoad')))
   } finally {
     loading.value = false
   }
@@ -2399,8 +2397,7 @@ async function loadSubscriptionGroups() {
     subscriptionGroups.value = groups.filter(
       (group) => group.subscription_type === 'subscription' && group.status === 'active'
     )
-  } catch (error) {
-    console.error('Failed to load subscription groups:', error)
+  } catch (_error: unknown) {
     subscriptionGroups.value = []
   }
 }
@@ -2551,10 +2548,8 @@ async function saveSettings() {
     await appStore.fetchPublicSettings(true)
     await adminSettingsStore.fetch(true)
     appStore.showSuccess(t('admin.settings.settingsSaved'))
-  } catch (error: any) {
-    appStore.showError(
-      t('admin.settings.failedToSave') + ': ' + (error.message || t('common.unknownError'))
-    )
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.failedToSave')))
   } finally {
     saving.value = false
   }
@@ -2573,10 +2568,8 @@ async function testSmtpConnection() {
     })
     // API returns { message: "..." } on success, errors are thrown as exceptions
     appStore.showSuccess(result.message || t('admin.settings.smtpConnectionSuccess'))
-  } catch (error: any) {
-    appStore.showError(
-      t('admin.settings.failedToTestSmtp') + ': ' + (error.message || t('common.unknownError'))
-    )
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.failedToTestSmtp')))
   } finally {
     testingSmtp.value = false
   }
@@ -2603,10 +2596,8 @@ async function sendTestEmail() {
     })
     // API returns { message: "..." } on success, errors are thrown as exceptions
     appStore.showSuccess(result.message || t('admin.settings.testEmailSent'))
-  } catch (error: any) {
-    appStore.showError(
-      t('admin.settings.failedToSendTestEmail') + ': ' + (error.message || t('common.unknownError'))
-    )
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.failedToSendTestEmail')))
   } finally {
     sendingTestEmail.value = false
   }
@@ -2619,8 +2610,8 @@ async function loadAdminApiKey() {
     const status = await adminAPI.settings.getAdminApiKey()
     adminApiKeyExists.value = status.exists
     adminApiKeyMasked.value = status.masked_key
-  } catch (error: any) {
-    console.error('Failed to load admin API key status:', error)
+  } catch (_error: unknown) {
+    // Silent fail - admin API key status is non-critical
   } finally {
     adminApiKeyLoading.value = false
   }
@@ -2634,8 +2625,8 @@ async function createAdminApiKey() {
     adminApiKeyExists.value = true
     adminApiKeyMasked.value = result.key.substring(0, 10) + '...' + result.key.slice(-4)
     appStore.showSuccess(t('admin.settings.adminApiKey.keyGenerated'))
-  } catch (error: any) {
-    appStore.showError(error.message || t('common.error'))
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
   } finally {
     adminApiKeyOperating.value = false
   }
@@ -2655,8 +2646,8 @@ async function deleteAdminApiKey() {
     adminApiKeyMasked.value = ''
     newAdminApiKey.value = ''
     appStore.showSuccess(t('admin.settings.adminApiKey.keyDeleted'))
-  } catch (error: any) {
-    appStore.showError(error.message || t('common.error'))
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
   } finally {
     adminApiKeyOperating.value = false
   }
@@ -2679,8 +2670,8 @@ async function loadOverloadCooldownSettings() {
   try {
     const settings = await adminAPI.settings.getOverloadCooldownSettings()
     Object.assign(overloadCooldownForm, settings)
-  } catch (error: any) {
-    console.error('Failed to load overload cooldown settings:', error)
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
   } finally {
     overloadCooldownLoading.value = false
   }
@@ -2695,10 +2686,8 @@ async function saveOverloadCooldownSettings() {
     })
     Object.assign(overloadCooldownForm, updated)
     appStore.showSuccess(t('admin.settings.overloadCooldown.saved'))
-  } catch (error: any) {
-    appStore.showError(
-      t('admin.settings.overloadCooldown.saveFailed') + ': ' + (error.message || t('common.unknownError'))
-    )
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.overloadCooldown.saveFailed')))
   } finally {
     overloadCooldownSaving.value = false
   }
@@ -2710,8 +2699,8 @@ async function loadStreamTimeoutSettings() {
   try {
     const settings = await adminAPI.settings.getStreamTimeoutSettings()
     Object.assign(streamTimeoutForm, settings)
-  } catch (error: any) {
-    console.error('Failed to load stream timeout settings:', error)
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
   } finally {
     streamTimeoutLoading.value = false
   }
@@ -2729,10 +2718,8 @@ async function saveStreamTimeoutSettings() {
     })
     Object.assign(streamTimeoutForm, updated)
     appStore.showSuccess(t('admin.settings.streamTimeout.saved'))
-  } catch (error: any) {
-    appStore.showError(
-      t('admin.settings.streamTimeout.saveFailed') + ': ' + (error.message || t('common.unknownError'))
-    )
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.streamTimeout.saveFailed')))
   } finally {
     streamTimeoutSaving.value = false
   }
@@ -2748,8 +2735,8 @@ async function loadRectifierSettings() {
     if (!Array.isArray(rectifierForm.apikey_signature_patterns)) {
       rectifierForm.apikey_signature_patterns = []
     }
-  } catch (error: any) {
-    console.error('Failed to load rectifier settings:', error)
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
   } finally {
     rectifierLoading.value = false
   }
@@ -2772,10 +2759,8 @@ async function saveRectifierSettings() {
       rectifierForm.apikey_signature_patterns = []
     }
     appStore.showSuccess(t('admin.settings.rectifier.saved'))
-  } catch (error: any) {
-    appStore.showError(
-      t('admin.settings.rectifier.saveFailed') + ': ' + (error.message || t('common.unknownError'))
-    )
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.rectifier.saveFailed')))
   } finally {
     rectifierSaving.value = false
   }
@@ -2809,8 +2794,8 @@ async function loadBetaPolicySettings() {
   try {
     const settings = await adminAPI.settings.getBetaPolicySettings()
     betaPolicyForm.rules = settings.rules
-  } catch (error: any) {
-    console.error('Failed to load beta policy settings:', error)
+  } catch (_error: unknown) {
+    // Silent fail - settings will use defaults
   } finally {
     betaPolicyLoading.value = false
   }
@@ -2824,10 +2809,8 @@ async function saveBetaPolicySettings() {
     })
     betaPolicyForm.rules = updated.rules
     appStore.showSuccess(t('admin.settings.betaPolicy.saved'))
-  } catch (error: any) {
-    appStore.showError(
-      t('admin.settings.betaPolicy.saveFailed') + ': ' + (error.message || t('common.unknownError'))
-    )
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.betaPolicy.saveFailed')))
   } finally {
     betaPolicySaving.value = false
   }
@@ -2932,7 +2915,7 @@ function openEditProvider(provider: ProviderInstance) {
   showProviderDialog.value = true
 }
 
-async function handleSaveProvider(payload: any) {
+async function handleSaveProvider(payload: Partial<ProviderInstance>) {
   providerSaving.value = true
   try {
     if (editingProvider.value) {
