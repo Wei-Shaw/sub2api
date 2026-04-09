@@ -37,9 +37,9 @@
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
           <span class="font-medium text-gray-900 dark:text-white">${{ order?.pay_amount?.toFixed(2) }}</span>
         </div>
-        <div v-if="order?.refund_amount" class="mt-1 flex justify-between text-sm">
+        <div v-if="actuallyRefunded > 0" class="mt-1 flex justify-between text-sm">
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.admin.alreadyRefunded') }}</span>
-          <span class="font-medium text-red-600 dark:text-red-400">${{ order.refund_amount.toFixed(2) }}</span>
+          <span class="font-medium text-red-600 dark:text-red-400">${{ actuallyRefunded.toFixed(2) }}</span>
         </div>
       </div>
 
@@ -188,9 +188,18 @@ const form = reactive({
   force: false,
 })
 
+// In REFUND_REQUESTED status, refund_amount is the REQUESTED amount, not actually refunded.
+// Only PARTIALLY_REFUNDED / REFUNDED have real refund amounts.
+const actuallyRefunded = computed(() => {
+  if (!props.order) return 0
+  const s = props.order.status
+  if (s === 'PARTIALLY_REFUNDED' || s === 'REFUNDED') return props.order.refund_amount || 0
+  return 0
+})
+
 const maxRefundable = computed(() => {
   if (!props.order) return 0
-  return props.order.pay_amount - (props.order.refund_amount || 0)
+  return props.order.pay_amount - actuallyRefunded.value
 })
 
 const balanceInsufficient = computed(() => {
@@ -200,7 +209,12 @@ const balanceInsufficient = computed(() => {
 
 watch(() => props.show, (val) => {
   if (val && props.order) {
-    form.amount = maxRefundable.value
+    // For REFUND_REQUESTED, pre-fill with the requested amount
+    if (props.order.status === 'REFUND_REQUESTED' && props.order.refund_amount) {
+      form.amount = props.order.refund_amount
+    } else {
+      form.amount = maxRefundable.value
+    }
     form.reason = props.order.refund_request_reason || ''
     form.deduct_balance = true
     form.force = false
