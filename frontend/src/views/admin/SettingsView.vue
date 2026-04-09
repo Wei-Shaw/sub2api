@@ -1669,7 +1669,7 @@
                 <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') }}</label><input :value="form.payment_daily_limit || ''" @input="form.payment_daily_limit = parseFloat(($event.target as HTMLInputElement).value) || 0" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') }} <span class="text-red-500">*</span></label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" required /><p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.payment.orderTimeoutHint') }}</p></div>
               </div>
-              <!-- Row 3: Pending orders + load balance + cancel rate limit toggle -->
+              <!-- Row 3: Pending orders + load balance + cancel rate limit (all in one row) -->
               <div class="flex flex-wrap items-end gap-4">
                 <div class="w-28"><label class="input-label">{{ t('admin.settings.payment.maxPendingOrders') }}</label><input v-model.number="form.payment_max_pending_orders" type="number" min="1" class="input" /></div>
                 <div>
@@ -1678,30 +1678,29 @@
                 </div>
                 <div>
                   <label class="input-label">{{ t('admin.settings.payment.cancelRateLimit') }}</label>
-                  <button
-                    type="button"
-                    :class="[
-                      'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                      form.payment_cancel_rate_limit_enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
-                    ]"
-                    @click="form.payment_cancel_rate_limit_enabled = !form.payment_cancel_rate_limit_enabled"
-                  >
-                    <span :class="[
-                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                      form.payment_cancel_rate_limit_enabled ? 'translate-x-5' : 'translate-x-0'
-                    ]" />
-                  </button>
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      :class="[
+                        'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                        form.payment_cancel_rate_limit_enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+                      ]"
+                      @click="form.payment_cancel_rate_limit_enabled = !form.payment_cancel_rate_limit_enabled"
+                    >
+                      <span :class="[
+                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                        form.payment_cancel_rate_limit_enabled ? 'translate-x-5' : 'translate-x-0'
+                      ]" />
+                    </button>
+                    <Select v-model="form.payment_cancel_rate_limit_window_mode" :options="cancelRateLimitModeOptions" class="w-24" :disabled="!form.payment_cancel_rate_limit_enabled" />
+                    <span :class="['text-sm whitespace-nowrap', form.payment_cancel_rate_limit_enabled ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-600']">{{ t('admin.settings.payment.cancelRateLimitEvery') }}</span>
+                    <input v-model.number="form.payment_cancel_rate_limit_window" type="number" min="1" required class="input w-14 text-center" :disabled="!form.payment_cancel_rate_limit_enabled" />
+                    <Select v-model="form.payment_cancel_rate_limit_unit" :options="cancelRateLimitUnitOptions" class="w-20" :disabled="!form.payment_cancel_rate_limit_enabled" />
+                    <span :class="['text-sm whitespace-nowrap', form.payment_cancel_rate_limit_enabled ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-600']">{{ t('admin.settings.payment.cancelRateLimitAllowMax') }}</span>
+                    <input v-model.number="form.payment_cancel_rate_limit_max" type="number" min="1" required class="input w-14 text-center" :disabled="!form.payment_cancel_rate_limit_enabled" />
+                    <span :class="['text-sm whitespace-nowrap', form.payment_cancel_rate_limit_enabled ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-600']">{{ t('admin.settings.payment.cancelRateLimitTimes') }}</span>
+                  </div>
                 </div>
-              </div>
-              <!-- Cancel rate limit detail (expandable, single row) -->
-              <div v-if="form.payment_cancel_rate_limit_enabled" class="flex flex-wrap items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                <span>{{ t('admin.settings.payment.cancelRateLimitEvery') }}</span>
-                <input v-model.number="form.payment_cancel_rate_limit_window" type="number" min="1" required class="input w-16 text-center" />
-                <Select v-model="form.payment_cancel_rate_limit_unit" :options="cancelRateLimitUnitOptions" class="w-24" />
-                <span>{{ t('admin.settings.payment.cancelRateLimitAllowMax') }}</span>
-                <input v-model.number="form.payment_cancel_rate_limit_max" type="number" min="1" required class="input w-16 text-center" />
-                <span>{{ t('admin.settings.payment.cancelRateLimitTimes') }}</span>
-                <Select v-model="form.payment_cancel_rate_limit_window_mode" :options="cancelRateLimitModeOptions" class="w-32" />
               </div>
               <!-- Row 4: Enabled payment types (provider badges like sub2apipay) -->
               <div>
