@@ -16,11 +16,6 @@
             </div>
             <button class="text-sm text-gray-500 underline dark:text-gray-400" @click="closeWindow">{{ t('common.close') }}</button>
           </div>
-          <!-- WeChat QR -->
-          <div v-else-if="wechatQrUrl" class="space-y-3">
-            <img :src="wechatQrUrl" alt="WeChat QR" class="mx-auto h-56 w-56 rounded-lg" />
-            <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.qr.scanWxpayHint') }}</p>
-          </div>
           <!-- Success -->
           <div v-else-if="success" class="space-y-2 py-2">
             <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
@@ -53,7 +48,6 @@ const amount = String(route.query.amount || '')
 
 const error = ref('')
 const success = ref(false)
-const wechatQrUrl = ref('')
 const hint = ref(t('payment.stripePopup.redirecting'))
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -74,7 +68,7 @@ onMounted(() => {
   }
 
   setTimeout(() => {
-    if (!error.value && !wechatQrUrl.value && !success.value) {
+    if (!error.value && !success.value) {
       error.value = t('payment.stripePopup.timeout')
     }
   }, 15000)
@@ -101,28 +95,19 @@ async function initStripe(clientSecret: string, publishableKey: string) {
       const { error: err } = await stripe.confirmAlipayPayment(clientSecret, { return_url: returnUrl })
       if (err) error.value = err.message || t('payment.result.failed')
     } else if (method === 'wechat_pay') {
-      // WeChat: confirm with handleActions=false to prevent Stripe's built-in QR dialog,
-      // then render the QR code directly in this popup
+      // WeChat: Stripe shows its built-in QR dialog, user scans, promise resolves
       hint.value = t('payment.stripePopup.loadingQr')
       const result = await (stripe as any).confirmWechatPayPayment(clientSecret, {
         payment_method_options: { wechat_pay: { client: 'web' } },
-      }, { handleActions: false })
+      })
       if (result.error) {
         error.value = result.error.message || t('payment.result.failed')
-        return
-      }
-      const pi = result.paymentIntent
-      if (pi?.status === 'succeeded') {
+      } else if (result.paymentIntent?.status === 'succeeded') {
         success.value = true
         setTimeout(closeWindow, 2000)
-        return
-      }
-      const qrUrl = pi?.next_action?.wechat_pay_display_qr_code?.image_data_url
-      if (qrUrl) {
-        wechatQrUrl.value = qrUrl
-        startPolling()
       } else {
-        error.value = t('payment.stripePopup.qrFailed')
+        // Payment not completed (user closed QR dialog)
+        startPolling()
       }
     }
   } catch (err: unknown) {
@@ -145,7 +130,6 @@ function startPolling() {
       if (status === 'COMPLETED' || status === 'PAID') {
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
         success.value = true
-        wechatQrUrl.value = ''
         setTimeout(closeWindow, 2000)
       }
     } catch { /* ignore */ }
