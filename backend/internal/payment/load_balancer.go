@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -17,8 +18,8 @@ import (
 type Strategy string
 
 const (
-	StrategyRoundRobin  Strategy = "round_robin"
-	StrategyLeastAmount Strategy = "least_amount"
+	StrategyRoundRobin  Strategy = "round-robin"
+	StrategyLeastAmount Strategy = "least-amount"
 )
 
 // ChannelLimits holds limits for a single payment channel within a provider instance.
@@ -34,7 +35,7 @@ type InstanceLimits map[string]ChannelLimits
 // LoadBalancer selects a provider instance for a given payment type.
 type LoadBalancer interface {
 	GetInstanceConfig(ctx context.Context, instanceID int64) (map[string]string, error)
-	SelectInstance(ctx context.Context, providerKey string, paymentType PaymentType) (*InstanceSelection, error)
+	SelectInstance(ctx context.Context, providerKey string, paymentType PaymentType, strategy Strategy) (*InstanceSelection, error)
 }
 
 // DefaultLoadBalancer implements LoadBalancer using database queries.
@@ -50,7 +51,21 @@ func NewDefaultLoadBalancer(db *dbent.Client, encryptionKey []byte) *DefaultLoad
 }
 
 // SelectInstance picks an enabled instance for the given provider key and payment type.
-func (lb *DefaultLoadBalancer) SelectInstance(ctx context.Context, providerKey string, paymentType PaymentType) (*InstanceSelection, error) {
+func (lb *DefaultLoadBalancer) SelectInstance(ctx context.Context, providerKey string, paymentType PaymentType, strategy Strategy) (*InstanceSelection, error) {
+	candidates, err := lb.getCandidates(ctx, providerKey, paymentType)
+	if err != nil {
+		return nil, err
+	}
+
+	selected, err := lb.pickByStrategy(ctx, candidates, strategy)
+	if err != nil {
+		return nil, err
+	}
+
+	return lb.buildSelection(selected)
+}
+
+func (lb *DefaultLoadBalancer) getCandidates(ctx context.Context, providerKey string, paymentType PaymentType) ([]*dbent.PaymentProviderInstance, error) {
 	instances, err := lb.db.PaymentProviderInstance.Query().
 		Where(
 			paymentproviderinstance.ProviderKey(providerKey),
@@ -71,16 +86,39 @@ func (lb *DefaultLoadBalancer) SelectInstance(ctx context.Context, providerKey s
 			candidates = append(candidates, inst)
 		}
 	}
-
 	if len(candidates) == 0 {
 		return nil, fmt.Errorf("no enabled instance for provider %s type %s", providerKey, paymentType)
 	}
+	return candidates, nil
+}
 
-	// Round-robin selection (default strategy)
+func (lb *DefaultLoadBalancer) pickByStrategy(ctx context.Context, candidates []*dbent.PaymentProviderInstance, strategy Strategy) (*dbent.PaymentProviderInstance, error) {
+	if strategy == StrategyLeastAmount && len(candidates) > 1 {
+		return lb.pickLeastAmount(ctx, candidates)
+	}
+	// Default: round-robin
 	idx := lb.counter.Add(1) % uint64(len(candidates))
-	selected := candidates[idx]
+	return candidates[idx], nil
+}
 
-	// Decrypt config
+func (lb *DefaultLoadBalancer) pickLeastAmount(ctx context.Context, candidates []*dbent.PaymentProviderInstance) (*dbent.PaymentProviderInstance, error) {
+	var selected *dbent.PaymentProviderInstance
+	minAmount := -1.0
+	for _, c := range candidates {
+		amount, err := lb.GetInstanceDailyAmount(ctx, fmt.Sprintf("%d", c.ID))
+		if err != nil {
+			slog.Warn("failed to get instance daily amount, falling back", "instance_id", c.ID, "error", err)
+			amount = 0
+		}
+		if minAmount < 0 || amount < minAmount {
+			minAmount = amount
+			selected = c
+		}
+	}
+	return selected, nil
+}
+
+func (lb *DefaultLoadBalancer) buildSelection(selected *dbent.PaymentProviderInstance) (*InstanceSelection, error) {
 	config, err := lb.decryptConfig(selected.Config)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt instance %d config: %w", selected.ID, err)
