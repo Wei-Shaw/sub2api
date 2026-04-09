@@ -76,7 +76,16 @@
           </div>
           <div>
             <label class="input-label">{{ t('payment.admin.group') }}</label>
-            <Select v-model="planForm.group_id" :options="groupOptions" class="w-full" />
+            <Select v-model="planForm.group_id" :options="groupOptions" class="w-full">
+              <template #selected="{ option }">
+                <span v-if="option?.platform" :class="platformTextClass(option.platform)">{{ option.label }}</span>
+                <span v-else>{{ option?.label || t('payment.admin.selectGroup') }}</span>
+              </template>
+              <template #option="{ option, selected }">
+                <span class="flex-1 truncate text-left" :class="option.platform ? platformTextClass(option.platform) : ''">{{ option.label }}</span>
+                <Icon v-if="selected" name="check" size="sm" class="text-primary-500" :stroke-width="2" />
+              </template>
+            </Select>
           </div>
         </div>
 
@@ -182,12 +191,13 @@ function getPlanNameClass(groupId: number): string {
 }
 
 const groupOptions = computed(() => [
-  { value: 0, label: t('payment.admin.selectGroup') },
+  { value: 0, label: t('payment.admin.selectGroup'), platform: '' },
   ...groups.value
     .filter(g => g.subscription_type === 'subscription')
     .map(g => ({
       value: g.id,
       label: `${g.name} — ${g.platform} (${g.rate_multiplier}x)`,
+      platform: g.platform,
     })),
 ])
 
