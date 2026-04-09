@@ -61,7 +61,6 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 function closeWindow() { window.close() }
 
 onMounted(() => {
-  // Listen for credentials from parent
   const handler = (event: MessageEvent) => {
     if (event.origin !== window.location.origin) return
     if (event.data?.type !== 'STRIPE_POPUP_INIT') return
@@ -70,12 +69,10 @@ onMounted(() => {
   }
   window.addEventListener('message', handler)
 
-  // Signal parent that popup is ready
   if (window.opener) {
     window.opener.postMessage({ type: 'STRIPE_POPUP_READY' }, window.location.origin)
   }
 
-  // Timeout
   setTimeout(() => {
     if (!error.value && !wechatQrUrl.value && !success.value) {
       error.value = t('payment.stripePopup.timeout')
@@ -100,13 +97,16 @@ async function initStripe(clientSecret: string, publishableKey: string) {
     const returnUrl = window.location.origin + '/payment/result?order_id=' + orderId + '&status=success'
 
     if (method === 'alipay') {
+      // Alipay: redirect this popup to Alipay payment page
       const { error: err } = await stripe.confirmAlipayPayment(clientSecret, { return_url: returnUrl })
       if (err) error.value = err.message || t('payment.result.failed')
     } else if (method === 'wechat_pay') {
+      // WeChat: confirm with handleActions=false to prevent Stripe's built-in QR dialog,
+      // then render the QR code directly in this popup
       hint.value = t('payment.stripePopup.loadingQr')
       const result = await (stripe as any).confirmWechatPayPayment(clientSecret, {
         payment_method_options: { wechat_pay: { client: 'web' } },
-      })
+      }, { handleActions: false })
       if (result.error) {
         error.value = result.error.message || t('payment.result.failed')
         return

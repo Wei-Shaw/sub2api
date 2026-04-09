@@ -34,6 +34,7 @@
             @success="onPaymentSuccess"
             @done="onStripeDone"
             @back="resetPayment"
+            @redirect="onStripeRedirect"
           />
         </template>
         <!-- Tab content (select phase) -->
@@ -275,6 +276,11 @@ function onStripeDone() {
   if (wasSubscription) {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
+}
+
+function onStripeRedirect(orderId: number, payUrl: string) {
+  paymentState.value = { ...paymentState.value, orderId, payUrl, qrCode: '' }
+  paymentPhase.value = 'paying'
 }
 
 // All checkout data from single API call
