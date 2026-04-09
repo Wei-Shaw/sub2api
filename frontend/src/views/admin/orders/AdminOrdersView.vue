@@ -240,19 +240,15 @@ function statusBadgeClass(status: string): string {
   return m[status] || 'badge-secondary'
 }
 
-function canRefund(order: PaymentOrder): boolean {
-  return ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUND_REQUESTED', 'REFUND_FAILED'].includes(order.status)
-}
-
 async function showOrderDetail(order: PaymentOrder) {
   selectedOrder.value = order
   orderAuditLogs.value = []
   showDetailDialog.value = true
   try {
     const res = await adminPaymentAPI.getOrder(order.id)
-    const data = res.data as Record<string, unknown>
+    const data = res.data as unknown as Record<string, unknown>
     if (data.order) selectedOrder.value = data.order as PaymentOrder
-    orderAuditLogs.value = (data.auditLogs || data.audit_logs || []) as AuditLog[]
+    orderAuditLogs.value = ((data.auditLogs || data.audit_logs || []) as unknown) as AuditLog[]
   } catch (_err: unknown) { /* keep cached order data */ }
 }
 
