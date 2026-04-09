@@ -102,12 +102,10 @@ interface ReturnInfo {
 REDACTED
 const returnInfo = ref<ReturnInfo | null>(null)
 
-const SUCCESS_STATUSES = new Set(['COMPLETED', 'PAID', 'RECHARGING'])
-
 const isSuccess = computed(() => {
   // Always prioritize actual order status from backend
   if (order.value) {
-    return SUCCESS_STATUSES.has(order.value.status)
+    return order.value.status === 'COMPLETED' || order.value.status === 'PAID'
   REDACTED
   // Fallback only when order not loaded
   if (route.query.status === 'success') return true
@@ -138,17 +136,14 @@ onMounted(async () => {
     REDACTED
   REDACTED
 
-  // Verify payment via public endpoint (works without login)
+  // If we have an out_trade_no from a provider return URL, actively verify
+  // the payment with the upstream provider (handles missed notify callbacks)
   if (outTradeNo) {
     try {
-      const result = await paymentAPI.verifyOrderPublic(outTradeNo)
+      const result = await paymentAPI.verifyOrder(outTradeNo)
       order.value = result.data
     REDACTED catch (_err: unknown) {
-      // Public verify failed, try authenticated endpoint if logged in
-      try {
-        const result = await paymentAPI.verifyOrder(outTradeNo)
-        order.value = result.data
-      REDACTED catch (_e: unknown) { /* fall through */ REDACTED
+      // Verification failed, fall through to normal order lookup
     REDACTED
   REDACTED
 

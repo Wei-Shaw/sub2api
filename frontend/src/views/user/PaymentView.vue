@@ -374,7 +374,7 @@ onMounted(async () => {
     if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'
     REDACTED
-  REDACTED catch (err: unknown) { console.error('Failed to load checkout info:', err) REDACTED
+  REDACTED catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) REDACTED
   finally { loading.value = false REDACTED
 REDACTED)
 </script>

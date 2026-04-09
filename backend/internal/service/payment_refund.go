@@ -69,18 +69,14 @@ REDACTED
 	if !psSliceContains(ok, o.Status) {
 		return nil, nil, infraerrors.BadRequest("INVALID_STATUS", "order status does not allow refund")
 REDACTED
-	if math.IsNaN(amt) || math.IsInf(amt, 0) {
-		return nil, nil, infraerrors.BadRequest("INVALID_AMOUNT", "invalid refund amount")
-REDACTED
 	if amt <= 0 {
 		amt = o.Amount
 REDACTED
-	if amt-o.Amount > amountToleranceCNY {
+	if amt > o.Amount {
 		return nil, nil, infraerrors.BadRequest("REFUND_AMOUNT_EXCEEDED", "refund amount exceeds recharge")
 REDACTED
-	// Full refund: use actual pay_amount for gateway (includes fees)
 	ga := amt
-	if math.Abs(amt-o.Amount) <= amountToleranceCNY {
+	if amt == o.Amount {
 		ga = o.PayAmount
 REDACTED
 	rr := strings.TrimSpace(reason)
@@ -102,15 +98,6 @@ REDACTED
 func (s *PaymentService) prepDeduct(ctx context.Context, o *dbent.PaymentOrder, p *RefundPlan, force bool) *RefundResult {
 	if o.OrderType == payment.OrderTypeSubscription {
 		p.DeductionType = payment.DeductionTypeSubscription
-		if o.SubscriptionGroupID != nil && o.SubscriptionDays != nil {
-			p.SubDaysToDeduct = *o.SubscriptionDays
-			sub, err := s.subscriptionSvc.GetActiveSubscription(ctx, o.UserID, *o.SubscriptionGroupID)
-			if err == nil && sub != nil {
-				p.SubscriptionID = sub.ID
-		REDACTED else if !force {
-				return &RefundResult{Success: false, Warning: "cannot find active subscription for deduction, use force", RequireForce: trueREDACTED
-		REDACTED
-	REDACTED
 		return nil
 REDACTED
 	u, err := s.userRepo.GetByID(ctx, o.UserID)
@@ -134,32 +121,9 @@ REDACTED
 		return nil, infraerrors.Conflict("CONFLICT", "order status changed")
 REDACTED
 	if p.DeductionType == payment.DeductionTypeBalance && p.BalanceToDeduct > 0 {
-		// Skip balance deduction on retry if previous attempt already deducted
-		// but failed to roll back (REFUND_ROLLBACK_FAILED in audit log).
-		if !s.hasAuditLog(ctx, p.OrderID, "REFUND_ROLLBACK_FAILED") {
-			if err := s.userRepo.DeductBalance(ctx, p.Order.UserID, p.BalanceToDeduct); err != nil {
-				s.restoreStatus(ctx, p)
-				return nil, fmt.Errorf("deduction: %w", err)
-		REDACTED
-	REDACTED else {
-			slog.Warn("skipping balance deduction on retry (previous rollback failed)", "orderID", p.OrderID)
-			p.BalanceToDeduct = 0
-	REDACTED
-REDACTED
-	if p.DeductionType == payment.DeductionTypeSubscription && p.SubDaysToDeduct > 0 && p.SubscriptionID > 0 {
-		if !s.hasAuditLog(ctx, p.OrderID, "REFUND_ROLLBACK_FAILED") {
-			_, err := s.subscriptionSvc.ExtendSubscription(ctx, p.SubscriptionID, -p.SubDaysToDeduct)
-			if err != nil {
-				// If deducting would expire the subscription, revoke it entirely
-				slog.Info("subscription deduction would expire, revoking", "orderID", p.OrderID, "subID", p.SubscriptionID, "days", p.SubDaysToDeduct)
-				if revokeErr := s.subscriptionSvc.RevokeSubscription(ctx, p.SubscriptionID); revokeErr != nil {
-					s.restoreStatus(ctx, p)
-					return nil, fmt.Errorf("revoke subscription: %w", revokeErr)
-			REDACTED
-		REDACTED
-	REDACTED else {
-			slog.Warn("skipping subscription deduction on retry (previous rollback failed)", "orderID", p.OrderID)
-			p.SubDaysToDeduct = 0
+		if err := s.userRepo.DeductBalance(ctx, p.Order.UserID, p.BalanceToDeduct); err != nil {
+			s.restoreStatus(ctx, p)
+			return nil, fmt.Errorf("deduction: %w", err)
 	REDACTED
 REDACTED
 	if err := s.gwRefund(ctx, p); err != nil {
@@ -173,26 +137,13 @@ func (s *PaymentService) gwRefund(ctx context.Context, p *RefundPlan) error {
 		s.writeAuditLog(ctx, p.Order.ID, "REFUND_NO_TRADE_NO", "admin", map[string]any{"detail": "skipped"REDACTED)
 		return nil
 REDACTED
-
-	// Use the exact provider instance that created this order, not a random one
-	// from the registry. Each instance has its own merchant credentials.
-	prov, err := s.getRefundProvider(ctx, p.Order)
+	s.EnsureProviders(ctx)
+	prov, err := s.registry.GetProvider(p.Order.PaymentType)
 	if err != nil {
-		return fmt.Errorf("get refund provider: %w", err)
+		return fmt.Errorf("get provider: %w", err)
 REDACTED
-	_, err = prov.Refund(ctx, payment.RefundRequest{
-		TradeNo: p.Order.PaymentTradeNo,
-		OrderID: p.Order.OutTradeNo,
-		Amount:  strconv.FormatFloat(p.GatewayAmount, 'f', 2, 64),
-		Reason:  p.Reason,
-REDACTED)
+	_, err = prov.Refund(ctx, payment.RefundRequest{TradeNo: p.Order.PaymentTradeNo, OrderID: p.Order.OutTradeNo, Amount: strconv.FormatFloat(p.GatewayAmount, 'f', 2, 64), Reason: p.ReasonREDACTED)
 	return err
-REDACTED
-
-// getRefundProvider creates a provider using the order's original instance config.
-// Delegates to getOrderProvider which handles instance lookup and fallback.
-func (s *PaymentService) getRefundProvider(ctx context.Context, o *dbent.PaymentOrder) (payment.Provider, error) {
-	return s.getOrderProvider(ctx, o)
 REDACTED
 
 func (s *PaymentService) handleGwFail(ctx context.Context, p *RefundPlan, gErr error) (*RefundResult, error) {
@@ -226,13 +177,6 @@ func (s *PaymentService) RollbackRefund(ctx context.Context, p *RefundPlan, gErr
 		if err := s.userRepo.UpdateBalance(ctx, p.Order.UserID, p.BalanceToDeduct); err != nil {
 			slog.Error("[CRITICAL] rollback failed", "orderID", p.OrderID, "amount", p.BalanceToDeduct, "error", err)
 			s.writeAuditLog(ctx, p.OrderID, "REFUND_ROLLBACK_FAILED", "admin", map[string]any{"gatewayError": psErrMsg(gErr), "rollbackError": psErrMsg(err), "balanceDeducted": p.BalanceToDeductREDACTED)
-			return false
-	REDACTED
-REDACTED
-	if p.DeductionType == payment.DeductionTypeSubscription && p.SubDaysToDeduct > 0 && p.SubscriptionID > 0 {
-		if _, err := s.subscriptionSvc.ExtendSubscription(ctx, p.SubscriptionID, p.SubDaysToDeduct); err != nil {
-			slog.Error("[CRITICAL] subscription rollback failed", "orderID", p.OrderID, "subID", p.SubscriptionID, "days", p.SubDaysToDeduct, "error", err)
-			s.writeAuditLog(ctx, p.OrderID, "REFUND_ROLLBACK_FAILED", "admin", map[string]any{"gatewayError": psErrMsg(gErr), "rollbackError": psErrMsg(err), "subDaysDeducted": p.SubDaysToDeductREDACTED)
 			return false
 	REDACTED
 REDACTED

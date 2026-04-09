@@ -630,108 +630,6 @@
                     {{ t('admin.settings.betaPolicy.errorMessageHint') REDACTEDREDACTED
                   </p>
                 </div>
-
-                <!-- Quick Presets (only for tokens with presets) -->
-                <div v-if="betaPresets[rule.beta_token]?.length" class="mt-3">
-                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                    {{ t('admin.settings.betaPolicy.quickPresets') REDACTEDREDACTED
-                  </label>
-                  <div class="flex flex-wrap gap-2">
-                    <button
-                      v-for="preset in betaPresets[rule.beta_token]"
-                      :key="preset.label"
-                      type="button"
-                      class="inline-flex items-center gap-1 rounded-md border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100 dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/50"
-                      @click="applyBetaPreset(rule, preset)"
-                      :title="preset.description"
-                    >
-                      {{ preset.label REDACTEDREDACTED
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Model Whitelist -->
-                <div class="mt-3">
-                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                    {{ t('admin.settings.betaPolicy.modelWhitelist') REDACTEDREDACTED
-                  </label>
-                  <p class="mb-2 text-xs text-gray-400 dark:text-gray-500">
-                    {{ t('admin.settings.betaPolicy.modelWhitelistHint') REDACTEDREDACTED
-                  </p>
-                  <!-- Existing patterns -->
-                  <div
-                    v-for="(_, index) in (rule.model_whitelist || [])"
-                    :key="index"
-                    class="mb-1.5 flex items-center gap-2"
-                  >
-                    <input
-                      v-model="rule.model_whitelist![index]"
-                      type="text"
-                      class="input input-sm flex-1"
-                      :placeholder="t('admin.settings.betaPolicy.modelPatternPlaceholder')"
-                    />
-                    <button
-                      type="button"
-                      @click="rule.model_whitelist!.splice(index, 1)"
-                      class="shrink-0 rounded p-1 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                    >
-                      <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                  <!-- Add pattern button -->
-                  <button
-                    type="button"
-                    @click="if (!rule.model_whitelist) rule.model_whitelist = []; rule.model_whitelist.push('')"
-                    class="mb-2 inline-flex items-center gap-1 text-xs text-primary-600 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-                  >
-                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-                    </svg>
-                    {{ t('admin.settings.betaPolicy.addModelPattern') REDACTEDREDACTED
-                  </button>
-                  <!-- Common pattern chips -->
-                  <div class="flex flex-wrap items-center gap-1.5">
-                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('admin.settings.betaPolicy.commonPatterns') REDACTEDREDACTED:</span>
-                    <button
-                      v-for="pattern in commonModelPatterns"
-                      :key="pattern"
-                      type="button"
-                      class="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-600 transition-colors hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-700 dark:hover:bg-primary-900/30 dark:hover:text-primary-300"
-                      @click="addQuickPattern(rule, pattern)"
-                    >
-                      {{ pattern REDACTEDREDACTED
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Fallback Action (only when model_whitelist is non-empty) -->
-                <div v-if="rule.model_whitelist && rule.model_whitelist.length > 0" class="mt-3">
-                  <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                    {{ t('admin.settings.betaPolicy.fallbackAction') REDACTEDREDACTED
-                  </label>
-                  <Select
-                    :modelValue="rule.fallback_action || 'pass'"
-                    @update:modelValue="rule.fallback_action = $event as any"
-                    :options="betaPolicyActionOptions"
-                  />
-                  <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                    {{ t('admin.settings.betaPolicy.fallbackActionHint') REDACTEDREDACTED
-                  </p>
-                  <!-- Fallback Error Message (only when fallback_action=block) -->
-                  <div v-if="rule.fallback_action === 'block'" class="mt-2">
-                    <input
-                      v-model="rule.fallback_error_message"
-                      type="text"
-                      class="input"
-                      :placeholder="t('admin.settings.betaPolicy.fallbackErrorMessagePlaceholder')"
-                    />
-                    <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                      {{ t('admin.settings.betaPolicy.errorMessageHint') REDACTEDREDACTED
-                    </p>
-                  </div>
-                </div>
               </div>
 
               <!-- Save Button -->
@@ -1124,327 +1022,7 @@
             </div>
           </div>
         </div>
-
-        <!-- Generic OIDC OAuth 登录 -->
-        <div class="card">
-          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('admin.settings.oidc.title') REDACTEDREDACTED
-            </h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {{ t('admin.settings.oidc.description') REDACTEDREDACTED
-            </p>
-          </div>
-          <div class="space-y-5 p-6">
-            <div class="flex items-center justify-between">
-              <div>
-                <label class="font-medium text-gray-900 dark:text-white">{{
-                  t('admin.settings.oidc.enable')
-                REDACTEDREDACTED</label>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.oidc.enableHint') REDACTEDREDACTED
-                </p>
-              </div>
-              <Toggle v-model="form.oidc_connect_enabled" />
-            </div>
-
-            <div
-              v-if="form.oidc_connect_enabled"
-              class="space-y-6 border-t border-gray-100 pt-4 dark:border-dark-700"
-            >
-              <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.providerName') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_provider_name"
-                    type="text"
-                    class="input"
-                    :placeholder="t('admin.settings.oidc.providerNamePlaceholder')"
-                  />
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.clientId') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_client_id"
-                    type="text"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.clientIdPlaceholder')"
-                  />
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.clientSecret') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_client_secret"
-                    type="password"
-                    class="input font-mono text-sm"
-                    :placeholder="
-                      form.oidc_connect_client_secret_configured
-                        ? t('admin.settings.oidc.clientSecretConfiguredPlaceholder')
-                        : t('admin.settings.oidc.clientSecretPlaceholder')
-                    "
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{
-                      form.oidc_connect_client_secret_configured
-                        ? t('admin.settings.oidc.clientSecretConfiguredHint')
-                        : t('admin.settings.oidc.clientSecretHint')
-                    REDACTEDREDACTED
-                  </p>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.issuerUrl') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_issuer_url"
-                    type="url"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.issuerUrlPlaceholder')"
-                  />
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.discoveryUrl') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_discovery_url"
-                    type="url"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.discoveryUrlPlaceholder')"
-                  />
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.authorizeUrl') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_authorize_url"
-                    type="url"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.authorizeUrlPlaceholder')"
-                  />
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.tokenUrl') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_token_url"
-                    type="url"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.tokenUrlPlaceholder')"
-                  />
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.userinfoUrl') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_userinfo_url"
-                    type="url"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.userinfoUrlPlaceholder')"
-                  />
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.jwksUrl') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_jwks_url"
-                    type="url"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.jwksUrlPlaceholder')"
-                  />
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.scopes') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_scopes"
-                    type="text"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.scopesPlaceholder')"
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.settings.oidc.scopesHint') REDACTEDREDACTED
-                  </p>
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.redirectUrl') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_redirect_url"
-                    type="url"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.redirectUrlPlaceholder')"
-                  />
-                  <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                    <button
-                      type="button"
-                      class="btn btn-secondary btn-sm w-fit"
-                      @click="setAndCopyOIDCRedirectUrl"
-                    >
-                      {{ t('admin.settings.oidc.quickSetCopy') REDACTEDREDACTED
-                    </button>
-                    <code
-                      v-if="oidcRedirectUrlSuggestion"
-                      class="select-all break-all rounded bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300"
-                    >
-                      {{ oidcRedirectUrlSuggestion REDACTEDREDACTED
-                    </code>
-                  </div>
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.settings.oidc.redirectUrlHint') REDACTEDREDACTED
-                  </p>
-                </div>
-
-                <div class="lg:col-span-2">
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.frontendRedirectUrl') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_frontend_redirect_url"
-                    type="text"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.frontendRedirectUrlPlaceholder')"
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.settings.oidc.frontendRedirectUrlHint') REDACTEDREDACTED
-                  </p>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.tokenAuthMethod') REDACTEDREDACTED
-                  </label>
-                  <select v-model="form.oidc_connect_token_auth_method" class="input font-mono text-sm">
-                    <option value="client_secret_post">client_secret_post</option>
-                    <option value="client_secret_basic">client_secret_basic</option>
-                    <option value="none">none</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.clockSkewSeconds') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model.number="form.oidc_connect_clock_skew_seconds"
-                    type="number"
-                    min="0"
-                    max="600"
-                    class="input"
-                  />
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.allowedSigningAlgs') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_allowed_signing_algs"
-                    type="text"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.allowedSigningAlgsPlaceholder')"
-                  />
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
-                  <div>
-                    <label class="font-medium text-gray-900 dark:text-white">
-                      {{ t('admin.settings.oidc.usePkce') REDACTEDREDACTED
-                    </label>
-                  </div>
-                  <Toggle v-model="form.oidc_connect_use_pkce" />
-                </div>
-
-                <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
-                  <div>
-                    <label class="font-medium text-gray-900 dark:text-white">
-                      {{ t('admin.settings.oidc.validateIdToken') REDACTEDREDACTED
-                    </label>
-                  </div>
-                  <Toggle v-model="form.oidc_connect_validate_id_token" />
-                </div>
-
-                <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
-                  <div>
-                    <label class="font-medium text-gray-900 dark:text-white">
-                      {{ t('admin.settings.oidc.requireEmailVerified') REDACTEDREDACTED
-                    </label>
-                  </div>
-                  <Toggle v-model="form.oidc_connect_require_email_verified" />
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.userinfoEmailPath') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_userinfo_email_path"
-                    type="text"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.userinfoEmailPathPlaceholder')"
-                  />
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.userinfoIdPath') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_userinfo_id_path"
-                    type="text"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.userinfoIdPathPlaceholder')"
-                  />
-                </div>
-
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.oidc.userinfoUsernamePath') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="form.oidc_connect_userinfo_username_path"
-                    type="text"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.oidc.userinfoUsernamePathPlaceholder')"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        </div><!-- /Tab: Security — Registration, Turnstile, LinuxDo, OIDC -->
+        </div><!-- /Tab: Security — Registration, Turnstile, LinuxDo -->
 
         <!-- Tab: Users -->
         <div v-show="activeTab === 'users'" class="space-y-6">
@@ -1696,19 +1274,6 @@
               </div>
               <Toggle v-model="form.enable_metadata_passthrough" />
             </div>
-
-            <!-- CCH Signing -->
-            <div class="flex items-center justify-between">
-              <div>
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.gatewayForwarding.cchSigning') REDACTEDREDACTED
-                </label>
-                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.gatewayForwarding.cchSigningHint') REDACTEDREDACTED
-                </p>
-              </div>
-              <Toggle v-model="form.enable_cch_signing" />
-            </div>
           </div>
         </div>
         </div><!-- /Tab: Gateway — Claude Code, Scheduling -->
@@ -1786,48 +1351,6 @@
               <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.settings.site.apiBaseUrlHint') REDACTEDREDACTED
               </p>
-            </div>
-
-            <!-- Global Table Preferences -->
-            <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
-              <h3 class="text-sm font-medium text-gray-900 dark:text-white">
-                {{ t('admin.settings.site.tablePreferencesTitle') REDACTEDREDACTED
-              </h3>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.settings.site.tablePreferencesDescription') REDACTEDREDACTED
-              </p>
-              <div class="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.site.tableDefaultPageSize') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model.number="form.table_default_page_size"
-                    type="number"
-                    min="5"
-                    max="1000"
-                    step="1"
-                    class="input w-40"
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.settings.site.tableDefaultPageSizeHint') REDACTEDREDACTED
-                  </p>
-                </div>
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.settings.site.tablePageSizeOptions') REDACTEDREDACTED
-                  </label>
-                  <input
-                    v-model="tablePageSizeOptionsInput"
-                    type="text"
-                    class="input font-mono text-sm"
-                    :placeholder="t('admin.settings.site.tablePageSizeOptionsPlaceholder')"
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.settings.site.tablePageSizeOptionsHint') REDACTEDREDACTED
-                  </p>
-                </div>
-              </div>
             </div>
 
             <!-- Custom Endpoints -->
@@ -2121,13 +1644,7 @@
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.title') REDACTEDREDACTED</h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {{ t('admin.settings.payment.description') REDACTEDREDACTED
-              <a :href="locale === 'zh' ? 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md' : 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md'" target="_blank" rel="noopener noreferrer" class="ml-2 inline-flex items-center text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300">
-                <svg class="mr-0.5 h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                {{ t('admin.settings.payment.configGuide') REDACTEDREDACTED
-              </a>
-            </p>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.description') REDACTEDREDACTED</p>
           </div>
           <div class="space-y-4 p-6">
             <!-- Enable toggle -->
@@ -2152,38 +1669,34 @@
                 <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') REDACTEDREDACTED</label><input :value="form.payment_daily_limit || ''" @input="form.payment_daily_limit = parseFloat(($event.target as HTMLInputElement).value) || 0" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') REDACTEDREDACTED <span class="text-red-500">*</span></label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" required /><p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.payment.orderTimeoutHint') REDACTEDREDACTED</p></div>
               </div>
-              <!-- Row 3: Pending orders + load balance + cancel rate limit (all in one row) -->
+              <!-- Row 3: Pending orders + load balance -->
               <div class="flex flex-wrap items-end gap-4">
                 <div class="w-28"><label class="input-label">{{ t('admin.settings.payment.maxPendingOrders') REDACTEDREDACTED</label><input v-model.number="form.payment_max_pending_orders" type="number" min="1" class="input" /></div>
                 <div>
                   <label class="input-label">{{ t('admin.settings.payment.loadBalanceStrategy') REDACTEDREDACTED</label>
                   <Select v-model="form.payment_load_balance_strategy" :options="loadBalanceOptions" class="w-40" />
                 </div>
-                <div>
-                  <label class="input-label">{{ t('admin.settings.payment.cancelRateLimit') REDACTEDREDACTED</label>
-                  <div class="flex items-center gap-2">
-                    <button
-                      type="button"
-                      :class="[
-                        'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                        form.payment_cancel_rate_limit_enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
-                      ]"
-                      @click="form.payment_cancel_rate_limit_enabled = !form.payment_cancel_rate_limit_enabled"
-                    >
-                      <span :class="[
-                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                        form.payment_cancel_rate_limit_enabled ? 'translate-x-5' : 'translate-x-0'
-                      ]" />
-                    </button>
-                    <Select v-model="form.payment_cancel_rate_limit_window_mode" :options="cancelRateLimitModeOptions" class="w-24" :disabled="!form.payment_cancel_rate_limit_enabled" />
-                    <span :class="['text-sm whitespace-nowrap', form.payment_cancel_rate_limit_enabled ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-600']">{{ t('admin.settings.payment.cancelRateLimitEvery') REDACTEDREDACTED</span>
-                    <input v-model.number="form.payment_cancel_rate_limit_window" type="number" min="1" required class="input w-14 text-center" :disabled="!form.payment_cancel_rate_limit_enabled" />
-                    <Select v-model="form.payment_cancel_rate_limit_unit" :options="cancelRateLimitUnitOptions" class="w-28" :disabled="!form.payment_cancel_rate_limit_enabled" />
-                    <span :class="['text-sm whitespace-nowrap', form.payment_cancel_rate_limit_enabled ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-600']">{{ t('admin.settings.payment.cancelRateLimitAllowMax') REDACTEDREDACTED</span>
-                    <input v-model.number="form.payment_cancel_rate_limit_max" type="number" min="1" required class="input w-14 text-center" :disabled="!form.payment_cancel_rate_limit_enabled" />
-                    <span :class="['text-sm whitespace-nowrap', form.payment_cancel_rate_limit_enabled ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-600']">{{ t('admin.settings.payment.cancelRateLimitTimes') REDACTEDREDACTED</span>
+              </div>
+              <!-- Row 3.5: Cancel rate limit -->
+              <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+                <div class="flex items-center gap-3">
+                  <label class="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <input type="checkbox" v-model="form.payment_cancel_rate_limit_enabled" class="h-4 w-4 rounded border-gray-300 text-primary-600" />
+                    {{ t('admin.settings.payment.cancelRateLimit') REDACTEDREDACTED
+                  </label>
+                </div>
+                <div v-if="form.payment_cancel_rate_limit_enabled" class="mt-3">
+                  <div class="flex flex-wrap items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    <span>{{ t('admin.settings.payment.cancelRateLimitEvery') REDACTEDREDACTED</span>
+                    <input v-model.number="form.payment_cancel_rate_limit_window" type="number" min="1" required class="input w-16 text-center" />
+                    <Select v-model="form.payment_cancel_rate_limit_unit" :options="cancelRateLimitUnitOptions" class="w-24" />
+                    <span>{{ t('admin.settings.payment.cancelRateLimitAllowMax') REDACTEDREDACTED</span>
+                    <input v-model.number="form.payment_cancel_rate_limit_max" type="number" min="1" required class="input w-16 text-center" />
+                    <span>{{ t('admin.settings.payment.cancelRateLimitTimes') REDACTEDREDACTED</span>
+                    <Select v-model="form.payment_cancel_rate_limit_window_mode" :options="cancelRateLimitModeOptions" class="w-32" />
                   </div>
                 </div>
+                <p class="mt-1.5 text-xs text-gray-400">{{ t('admin.settings.payment.cancelRateLimitHint') REDACTEDREDACTED</p>
               </div>
               <!-- Row 4: Enabled payment types (provider badges like sub2apipay) -->
               <div>
@@ -2202,13 +1715,6 @@
                     ]"
                   >{{ pt.label REDACTEDREDACTED</button>
                 </div>
-                <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
-                  {{ t('admin.settings.payment.enabledPaymentTypesHint') REDACTEDREDACTED
-                  <a :href="locale === 'zh' ? 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md#%E6%94%AF%E6%8C%81%E7%9A%84%E6%94%AF%E4%BB%98%E6%96%B9%E5%BC%8F' : 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md#supported-payment-methods'" target="_blank" rel="noopener noreferrer" class="ml-1 text-primary-500 hover:text-primary-600 dark:text-primary-400 dark:hover:text-primary-300">
-                    {{ t('admin.settings.payment.findProvider') REDACTEDREDACTED
-                    <svg class="mb-0.5 ml-0.5 inline h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                  </a>
-                </p>
               </div>
               <!-- Row 5: Help image + text -->
               <div class="grid grid-cols-2 gap-3">
@@ -2549,11 +2055,11 @@ import {
   parseRegistrationEmailSuffixWhitelistInput
 REDACTED from '@/utils/registrationEmailPolicy'
 
-const { t, locale REDACTED = useI18n()
+const { t REDACTED = useI18n()
 const appStore = useAppStore()
 const adminSettingsStore = useAdminSettingsStore()
 
-type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'payment' | 'email' | 'backup'
+type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'payment' | 'email' | 'backup' | 'data'
 const activeTab = ref<SettingsTab>('general')
 const settingsTabs = [
   { key: 'general'  as SettingsTab, icon: 'home'   as const REDACTED,
@@ -2575,7 +2081,6 @@ const smtpPasswordManuallyEdited = ref(false)
 const testEmailAddress = ref('')
 const registrationEmailSuffixWhitelistTags = ref<string[]>([])
 const registrationEmailSuffixWhitelistDraft = ref('')
-const tablePageSizeOptionsInput = ref('10, 20, 50, 100')
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true)
@@ -2624,15 +2129,8 @@ const betaPolicyForm = reactive({
     action: 'pass' | 'filter' | 'block'
     scope: 'all' | 'oauth' | 'apikey' | 'bedrock'
     error_message?: string
-    model_whitelist?: string[]
-    fallback_action?: 'pass' | 'filter' | 'block'
-    fallback_error_message?: string
   REDACTED>
 REDACTED)
-
-const tablePageSizeMin = 5
-const tablePageSizeMax = 1000
-const tablePageSizeDefault = 20
 
 interface DefaultSubscriptionGroupOption {
   value: number
@@ -2648,7 +2146,6 @@ type SettingsForm = SystemSettings & {
   smtp_password: string
   turnstile_secret_key: string
   linuxdo_connect_client_secret: string
-  oidc_connect_client_secret: string
 REDACTED
 
 const form = reactive<SettingsForm>({
@@ -2673,8 +2170,7 @@ const form = reactive<SettingsForm>({
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
   payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_enabled_types: [],  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',  payment_cancel_rate_limit_enabled: false,  payment_cancel_rate_limit_max: 10,  payment_cancel_rate_limit_window: 1,  payment_cancel_rate_limit_unit: 'day',  payment_cancel_rate_limit_window_mode: 'rolling',
-  table_default_page_size: tablePageSizeDefault,
-  table_page_size_options: [10, 20, 50, 100],
+  sora_client_enabled: false,
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: numberREDACTED>,
   custom_endpoints: [] as Array<{name: string; endpoint: string; description: stringREDACTED>,
   frontend_url: '',
@@ -2697,30 +2193,6 @@ const form = reactive<SettingsForm>({
   linuxdo_connect_client_secret: '',
   linuxdo_connect_client_secret_configured: false,
   linuxdo_connect_redirect_url: '',
-  // Generic OIDC OAuth 登录
-  oidc_connect_enabled: false,
-  oidc_connect_provider_name: 'OIDC',
-  oidc_connect_client_id: '',
-  oidc_connect_client_secret: '',
-  oidc_connect_client_secret_configured: false,
-  oidc_connect_issuer_url: '',
-  oidc_connect_discovery_url: '',
-  oidc_connect_authorize_url: '',
-  oidc_connect_token_url: '',
-  oidc_connect_userinfo_url: '',
-  oidc_connect_jwks_url: '',
-  oidc_connect_scopes: 'openid email profile',
-  oidc_connect_redirect_url: '',
-  oidc_connect_frontend_redirect_url: '/auth/oidc/callback',
-  oidc_connect_token_auth_method: 'client_secret_post',
-  oidc_connect_use_pkce: false,
-  oidc_connect_validate_id_token: true,
-  oidc_connect_allowed_signing_algs: 'RS256,ES256,PS256',
-  oidc_connect_clock_skew_seconds: 120,
-  oidc_connect_require_email_verified: false,
-  oidc_connect_userinfo_email_path: '',
-  oidc_connect_userinfo_id_path: '',
-  oidc_connect_userinfo_username_path: '',
   // Model fallback
   enable_model_fallback: false,
   fallback_model_anthropic: 'claude-3-5-sonnet-20241022',
@@ -2742,8 +2214,7 @@ const form = reactive<SettingsForm>({
   allow_ungrouped_key_scheduling: false,
   // Gateway forwarding behavior
   enable_fingerprint_unification: true,
-  enable_metadata_passthrough: false,
-  enable_cch_signing: false
+  enable_metadata_passthrough: false
 REDACTED)
 
 const defaultSubscriptionGroupOptions = computed<DefaultSubscriptionGroupOption[]>(() =>
@@ -2841,21 +2312,6 @@ async function setAndCopyLinuxdoRedirectUrl() {
   await copyToClipboard(url, t('admin.settings.linuxdo.redirectUrlSetAndCopied'))
 REDACTED
 
-const oidcRedirectUrlSuggestion = computed(() => {
-  if (typeof window === 'undefined') return ''
-  const origin =
-    window.location.origin || `${window.location.protocolREDACTED//${window.location.hostREDACTED`
-  return `${originREDACTED/api/v1/auth/oauth/oidc/callback`
-REDACTED)
-
-async function setAndCopyOIDCRedirectUrl() {
-  const url = oidcRedirectUrlSuggestion.value
-  if (!url) return
-
-  form.oidc_connect_redirect_url = url
-  await copyToClipboard(url, t('admin.settings.oidc.redirectUrlSetAndCopied'))
-REDACTED
-
 // Custom menu item management
 function addMenuItem() {
   form.custom_menu_items.push({
@@ -2898,35 +2354,6 @@ function removeEndpoint(index: number) {
   form.custom_endpoints.splice(index, 1)
 REDACTED
 
-function formatTablePageSizeOptions(options: number[]): string {
-  return options.join(', ')
-REDACTED
-
-function parseTablePageSizeOptionsInput(raw: string): number[] | null {
-  const tokens = raw
-    .split(',')
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0)
-
-  if (tokens.length === 0) {
-    return null
-  REDACTED
-
-  const parsed = tokens.map((token) => Number(token))
-  if (parsed.some((value) => !Number.isInteger(value))) {
-    return null
-  REDACTED
-
-  const deduped = Array.from(new Set(parsed)).sort((a, b) => a - b)
-  if (
-    deduped.some((value) => value < tablePageSizeMin || value > tablePageSizeMax)
-  ) {
-    return null
-  REDACTED
-
-  return deduped
-REDACTED
-
 async function loadSettings() {
   loading.value = true
   loadFailed.value = false
@@ -2951,15 +2378,11 @@ async function loadSettings() {
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       settings.registration_email_suffix_whitelist
     )
-    tablePageSizeOptionsInput.value = formatTablePageSizeOptions(
-      Array.isArray(settings.table_page_size_options) ? settings.table_page_size_options : [10, 20, 50, 100]
-    )
     registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''
     smtpPasswordManuallyEdited.value = false
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
-    form.oidc_connect_client_secret = ''
   REDACTED catch (error: unknown) {
     loadFailed.value = true
     appStore.showError(extractApiErrorMessage(error, t('admin.settings.failedToLoad')))
@@ -2997,37 +2420,6 @@ REDACTED
 async function saveSettings() {
   saving.value = true
   try {
-    const normalizedTableDefaultPageSize = Math.floor(Number(form.table_default_page_size))
-    if (
-      !Number.isInteger(normalizedTableDefaultPageSize) ||
-      normalizedTableDefaultPageSize < tablePageSizeMin ||
-      normalizedTableDefaultPageSize > tablePageSizeMax
-    ) {
-      appStore.showError(
-        t('admin.settings.site.tableDefaultPageSizeRangeError', {
-          min: tablePageSizeMin,
-          max: tablePageSizeMax
-        REDACTED)
-      )
-      return
-    REDACTED
-
-    const normalizedTablePageSizeOptions = parseTablePageSizeOptionsInput(
-      tablePageSizeOptionsInput.value
-    )
-    if (!normalizedTablePageSizeOptions) {
-      appStore.showError(
-        t('admin.settings.site.tablePageSizeOptionsFormatError', {
-          min: tablePageSizeMin,
-          max: tablePageSizeMax
-        REDACTED)
-      )
-      return
-    REDACTED
-
-    form.table_default_page_size = normalizedTableDefaultPageSize
-    form.table_page_size_options = normalizedTablePageSizeOptions
-
     const normalizedDefaultSubscriptions = form.default_subscriptions
       .filter((item) => item.group_id > 0 && item.validity_days > 0)
       .map((item: DefaultSubscriptionSetting) => ({
@@ -3088,8 +2480,6 @@ async function saveSettings() {
       home_content: form.home_content,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,
-      table_default_page_size: form.table_default_page_size,
-      table_page_size_options: form.table_page_size_options,
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,
@@ -3107,28 +2497,6 @@ async function saveSettings() {
       linuxdo_connect_client_id: form.linuxdo_connect_client_id,
       linuxdo_connect_client_secret: form.linuxdo_connect_client_secret || undefined,
       linuxdo_connect_redirect_url: form.linuxdo_connect_redirect_url,
-      oidc_connect_enabled: form.oidc_connect_enabled,
-      oidc_connect_provider_name: form.oidc_connect_provider_name,
-      oidc_connect_client_id: form.oidc_connect_client_id,
-      oidc_connect_client_secret: form.oidc_connect_client_secret || undefined,
-      oidc_connect_issuer_url: form.oidc_connect_issuer_url,
-      oidc_connect_discovery_url: form.oidc_connect_discovery_url,
-      oidc_connect_authorize_url: form.oidc_connect_authorize_url,
-      oidc_connect_token_url: form.oidc_connect_token_url,
-      oidc_connect_userinfo_url: form.oidc_connect_userinfo_url,
-      oidc_connect_jwks_url: form.oidc_connect_jwks_url,
-      oidc_connect_scopes: form.oidc_connect_scopes,
-      oidc_connect_redirect_url: form.oidc_connect_redirect_url,
-      oidc_connect_frontend_redirect_url: form.oidc_connect_frontend_redirect_url,
-      oidc_connect_token_auth_method: form.oidc_connect_token_auth_method,
-      oidc_connect_use_pkce: form.oidc_connect_use_pkce,
-      oidc_connect_validate_id_token: form.oidc_connect_validate_id_token,
-      oidc_connect_allowed_signing_algs: form.oidc_connect_allowed_signing_algs,
-      oidc_connect_clock_skew_seconds: form.oidc_connect_clock_skew_seconds,
-      oidc_connect_require_email_verified: form.oidc_connect_require_email_verified,
-      oidc_connect_userinfo_email_path: form.oidc_connect_userinfo_email_path,
-      oidc_connect_userinfo_id_path: form.oidc_connect_userinfo_id_path,
-      oidc_connect_userinfo_username_path: form.oidc_connect_userinfo_username_path,
       enable_model_fallback: form.enable_model_fallback,
       fallback_model_anthropic: form.fallback_model_anthropic,
       fallback_model_openai: form.fallback_model_openai,
@@ -3141,7 +2509,6 @@ async function saveSettings() {
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
-      enable_cch_signing: form.enable_cch_signing,
       // Payment configuration
       payment_enabled: form.payment_enabled,
       payment_min_amount: Number(form.payment_min_amount) || 0,
@@ -3172,15 +2539,11 @@ async function saveSettings() {
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       updated.registration_email_suffix_whitelist
     )
-    tablePageSizeOptionsInput.value = formatTablePageSizeOptions(
-      Array.isArray(updated.table_page_size_options) ? updated.table_page_size_options : [10, 20, 50, 100]
-    )
     registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''
     smtpPasswordManuallyEdited.value = false
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
-    form.oidc_connect_client_secret = ''
     // Refresh cached settings so sidebar/header update immediately
     await appStore.fetchPublicSettings(true)
     await adminSettingsStore.fetch(true)
@@ -3422,46 +2785,8 @@ const betaDisplayNames: Record<string, string> = {
   'context-1m-2025-08-07': 'Context 1M'
 REDACTED
 
-// 快捷预设：按 beta_token 定义预设方案
-const betaPresets: Record<string, Array<{
-  label: string
-  description: string
-  action: 'pass' | 'filter' | 'block'
-  model_whitelist: string[]
-  fallback_action: 'pass' | 'filter' | 'block'
-REDACTED>> = {
-  'context-1m-2025-08-07': [
-    {
-      label: t('admin.settings.betaPolicy.presetOpusOnly'),
-      description: t('admin.settings.betaPolicy.presetOpusOnlyDesc'),
-      action: 'pass',
-      model_whitelist: ['claude-opus-4-6'],
-      fallback_action: 'filter',
-    REDACTED,
-  ],
-REDACTED
-
-// 常用模型模式（具体 ID + 通配符示例）
-const commonModelPatterns = ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-opus-*', 'claude-sonnet-*']
-
 function getBetaDisplayName(token: string): string {
   return betaDisplayNames[token] || token
-REDACTED
-
-function applyBetaPreset(
-  rule: (typeof betaPolicyForm.rules)[number],
-  preset: { action: 'pass' | 'filter' | 'block'; model_whitelist: string[]; fallback_action: 'pass' | 'filter' | 'block' REDACTED
-) {
-  rule.action = preset.action
-  rule.model_whitelist = [...preset.model_whitelist]
-  rule.fallback_action = preset.fallback_action
-REDACTED
-
-function addQuickPattern(rule: (typeof betaPolicyForm.rules)[number], pattern: string) {
-  if (!rule.model_whitelist) rule.model_whitelist = []
-  if (!rule.model_whitelist.includes(pattern)) {
-    rule.model_whitelist.push(pattern)
-  REDACTED
 REDACTED
 
 async function loadBetaPolicySettings() {
@@ -3479,22 +2804,8 @@ REDACTED
 async function saveBetaPolicySettings() {
   betaPolicySaving.value = true
   try {
-    // Clean up empty patterns before saving
-    const cleanedRules = betaPolicyForm.rules.map(rule => {
-      const whitelist = rule.model_whitelist?.filter(p => p.trim() !== '')
-      const hasWhitelist = whitelist && whitelist.length > 0
-      return {
-        beta_token: rule.beta_token,
-        action: rule.action,
-        scope: rule.scope,
-        error_message: rule.error_message,
-        model_whitelist: hasWhitelist ? whitelist : undefined,
-        fallback_action: hasWhitelist ? (rule.fallback_action || 'pass') : undefined,
-        fallback_error_message: hasWhitelist && rule.fallback_action === 'block' ? rule.fallback_error_message : undefined,
-      REDACTED
-    REDACTED)
     const updated = await adminAPI.settings.updateBetaPolicySettings({
-      rules: cleanedRules
+      rules: betaPolicyForm.rules
     REDACTED)
     betaPolicyForm.rules = updated.rules
     appStore.showSuccess(t('admin.settings.betaPolicy.saved'))
@@ -3608,15 +2919,15 @@ async function handleSaveProvider(payload: Partial<ProviderInstance>) {
   providerSaving.value = true
   try {
     if (editingProvider.value) {
-      await adminAPI.payment.updateProvider(editingProvider.value.id, payload)
+      const updated = await adminAPI.payment.updateProvider(editingProvider.value.id, payload)
+      // Update in place to preserve list order
+      const idx = providers.value.findIndex(p => p.id === editingProvider.value!.id)
+      if (idx >= 0 && updated.data) providers.value[idx] = updated.data
     REDACTED else {
       await adminAPI.payment.createProvider(payload)
+      loadProviders()
     REDACTED
     showProviderDialog.value = false
-    // Reload full list (API returns decrypted/formatted data with correct sort order)
-    await loadProviders()
-    // Auto-save settings so provider changes take effect immediately
-    await saveSettings()
   REDACTED catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value))
   REDACTED finally {
