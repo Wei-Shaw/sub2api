@@ -10,6 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func ptrString[T ~string](v T) *string {
+	s := string(v)
+	return &s
+REDACTED
+
 // groupRepoStubForAdmin 用于测试 AdminService 的 GroupRepository Stub
 type groupRepoStubForAdmin struct {
 	created *Group // 记录 Create 调用的参数
