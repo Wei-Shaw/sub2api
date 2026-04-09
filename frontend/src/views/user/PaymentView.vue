@@ -31,7 +31,8 @@
             :client-secret="paymentState.clientSecret"
             :publishable-key="checkout.stripe_publishable_key"
             :pay-amount="paymentState.payAmount"
-            @success="onStripeSuccess"
+            @success="onPaymentSuccess"
+            @done="onStripeDone"
             @back="resetPayment"
             @redirect="onStripeRedirect"
           />
@@ -268,13 +269,13 @@ function onPaymentSuccess() {
   }
 }
 
-function onStripeSuccess() {
-  authStore.refreshUser()
-  if (paymentState.value.orderType === 'subscription') {
-    subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
-  }
+function onStripeDone() {
+  const wasSubscription = paymentState.value.orderType === 'subscription'
   resetPayment()
   selectedPlan.value = null
+  if (wasSubscription) {
+    subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
+  }
 }
 
 function onStripeRedirect(orderId: number, payUrl: string) {

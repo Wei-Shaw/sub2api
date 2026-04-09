@@ -7,6 +7,30 @@
       <p class="text-sm text-red-600 dark:text-red-400">{{ initError }}</p>
       <button class="btn btn-secondary mt-4" @click="$emit('back')">{{ t('payment.result.backToRecharge') }}</button>
     </div>
+    <!-- Success -->
+    <template v-else-if="success">
+      <div class="card p-6">
+        <div class="flex flex-col items-center space-y-4 py-4">
+          <div class="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+            <Icon name="check" size="lg" class="text-green-500" />
+          </div>
+          <p class="text-lg font-bold text-gray-900 dark:text-white">{{ t('payment.result.success') }}</p>
+          <div class="w-full rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
+            <div class="space-y-2 text-sm">
+              <div class="flex justify-between">
+                <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</span>
+                <span class="font-medium text-gray-900 dark:text-white">#{{ orderId }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
+                <span class="font-medium text-gray-900 dark:text-white">&yen;{{ payAmount.toFixed(2) }}</span>
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-primary" @click="$emit('done')">{{ t('common.confirm') }}</button>
+        </div>
+      </div>
+    </template>
     <template v-else>
       <!-- Amount -->
       <div class="card overflow-hidden">
@@ -19,11 +43,7 @@
       <div class="card p-6">
         <div ref="stripeMount" class="min-h-[200px]"></div>
         <p v-if="error" class="mt-4 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
-        <div v-if="success" class="mt-4 flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-          <Icon name="checkCircle" size="md" />
-          <span class="text-sm font-medium">{{ t('payment.stripeSuccessProcessing') }}</span>
-        </div>
-        <button v-if="!success" class="btn btn-stripe mt-6 w-full py-3 text-base" :disabled="submitting || !ready" @click="handlePay">
+        <button class="btn btn-stripe mt-6 w-full py-3 text-base" :disabled="submitting || !ready" @click="handlePay">
           <span v-if="submitting" class="flex items-center justify-center gap-2">
             <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
             {{ t('common.processing') }}
@@ -32,7 +52,7 @@
         </button>
       </div>
       <!-- Cancel order -->
-      <button v-if="!success" class="btn btn-secondary w-full" :disabled="cancelling" @click="handleCancel">
+      <button class="btn btn-secondary w-full" :disabled="cancelling" @click="handleCancel">
         {{ cancelling ? t('common.processing') : t('payment.qr.cancelOrder') }}
       </button>
     </template>
@@ -40,7 +60,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -60,7 +80,7 @@ const props = defineProps<{
   payAmount: number
 }>()
 
-const emit = defineEmits<{ success: []; back: []; redirect: [orderId: number, payUrl: string] }>()
+const emit = defineEmits<{ success: []; done: []; back: []; redirect: [orderId: number, payUrl: string] }>()
 
 const { t } = useI18n()
 const router = useRouter()
@@ -78,7 +98,6 @@ const selectedType = ref('')
 
 let stripeInstance: Stripe | null = null
 let elementsInstance: StripeElements | null = null
-let successTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
   try {
@@ -113,9 +132,6 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => {
-  if (successTimer) clearTimeout(successTimer)
-})
 
 async function handlePay() {
   if (!stripeInstance || !elementsInstance || submitting.value) return
@@ -163,7 +179,7 @@ async function handlePay() {
       error.value = stripeError.message || t('payment.result.failed')
     } else {
       success.value = true
-      successTimer = setTimeout(() => emit('success'), 1500)
+      emit('success')
     }
   } catch (err: unknown) {
     error.value = extractApiErrorMessage(err, t('payment.result.failed'))
