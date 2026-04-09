@@ -62,16 +62,11 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { paymentAPI } from '@/api/payment'
 import { useAppStore } from '@/stores'
-import { STRIPE_POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
 import type { Stripe, StripeElements } from '@stripe/stripe-js'
 import Icon from '@/components/icons/Icon.vue'
-
-// Stripe payment methods that need a popup (redirect or QR code)
-const POPUP_METHODS = new Set(['alipay', 'wechat_pay'])
 
 const props = defineProps<{
   orderId: number
@@ -80,10 +75,9 @@ const props = defineProps<{
   payAmount: number
 }>()
 
-const emit = defineEmits<{ success: []; done: []; back: []; redirect: [orderId: number, payUrl: string] }>()
+const emit = defineEmits<{ success: []; done: []; back: [] }>()
 
 const { t } = useI18n()
-const router = useRouter()
 const appStore = useAppStore()
 
 const stripeMount = ref<HTMLElement | null>(null)
@@ -94,7 +88,6 @@ const submitting = ref(false)
 const cancelling = ref(false)
 const success = ref(false)
 const ready = ref(false)
-const selectedType = ref('')
 
 let stripeInstance: Stripe | null = null
 let elementsInstance: StripeElements | null = null
@@ -122,9 +115,6 @@ onMounted(async () => {
     } as Record<string, unknown>)
     paymentElement.mount(stripeMount.value)
     paymentElement.on('ready', () => { ready.value = true })
-    paymentElement.on('change', (event: { value: { type: string } }) => {
-      selectedType.value = event.value.type
-    })
   } catch (err: unknown) {
     initError.value = extractApiErrorMessage(err, t('payment.stripeLoadFailed'))
   } finally {
@@ -132,39 +122,13 @@ onMounted(async () => {
   }
 })
 
-
+// All payment methods use the same confirmPayment flow:
+// - Card: confirms directly, no redirect
+// - WeChat: Stripe shows QR modal overlay on this page, resolves after scan
+// - Alipay: Stripe redirects to Alipay page, then back to return_url
 async function handlePay() {
   if (!stripeInstance || !elementsInstance || submitting.value) return
 
-  // For popup-based methods (Alipay redirect / WeChat QR): open lightweight popup
-  if (POPUP_METHODS.has(selectedType.value)) {
-    const popupUrl = router.resolve({
-      path: '/payment/stripe-popup',
-      query: {
-        order_id: String(props.orderId),
-        method: selectedType.value,
-        amount: String(props.payAmount),
-      },
-    }).href
-    const popup = window.open(popupUrl, 'paymentPopup', STRIPE_POPUP_WINDOW_FEATURES)
-
-    // Wait for popup ready, then send credentials via postMessage
-    const onReady = (event: MessageEvent) => {
-      if (event.source !== popup || event.data?.type !== 'STRIPE_POPUP_READY') return
-      window.removeEventListener('message', onReady)
-      popup?.postMessage({
-        type: 'STRIPE_POPUP_INIT',
-        clientSecret: props.clientSecret,
-        publishableKey: props.publishableKey,
-      }, window.location.origin)
-    }
-    window.addEventListener('message', onReady)
-
-    emit('redirect', props.orderId, popupUrl)
-    return
-  }
-
-  // For inline methods (card, WeChat popup): confirm directly
   submitting.value = true
   error.value = ''
   try {
