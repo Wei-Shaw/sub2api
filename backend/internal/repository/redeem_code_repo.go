@@ -146,7 +146,7 @@ func redeemCodeListOrder(params pagination.PaginationParams) []func(*entsql.Sele
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
 
-	field := redeemcode.FieldID
+	var field string
 	switch sortBy {
 	case "type":
 		field = redeemcode.FieldType
@@ -160,8 +160,6 @@ func redeemCodeListOrder(params pagination.PaginationParams) []func(*entsql.Sele
 		field = redeemcode.FieldCreatedAt
 	case "code":
 		field = redeemcode.FieldCode
-	case "id", "":
-		field = redeemcode.FieldID
 	default:
 		field = redeemcode.FieldID
 REDACTED

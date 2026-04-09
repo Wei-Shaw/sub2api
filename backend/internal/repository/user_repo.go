@@ -290,14 +290,12 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
 
-	field := dbuser.FieldID
+	var field string
 	defaultField := true
 	switch sortBy {
 	case "email":
 		field = dbuser.FieldEmail
 		defaultField = false
-	case "id", "":
-		field = dbuser.FieldID
 	case "username":
 		field = dbuser.FieldUsername
 		defaultField = false

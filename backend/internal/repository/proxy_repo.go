@@ -248,7 +248,7 @@ func proxyListOrder(params pagination.PaginationParams) []func(*entsql.Selector)
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
 
-	field := proxy.FieldID
+	var field string
 	switch sortBy {
 	case "name":
 		field = proxy.FieldName
@@ -258,8 +258,6 @@ func proxyListOrder(params pagination.PaginationParams) []func(*entsql.Selector)
 		field = proxy.FieldStatus
 	case "created_at":
 		field = proxy.FieldCreatedAt
-	case "id", "":
-		field = proxy.FieldID
 	default:
 		field = proxy.FieldID
 REDACTED
