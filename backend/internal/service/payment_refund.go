@@ -12,6 +12,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -137,13 +138,49 @@ func (s *PaymentService) gwRefund(ctx context.Context, p *RefundPlan) error {
 		s.writeAuditLog(ctx, p.Order.ID, "REFUND_NO_TRADE_NO", "admin", map[string]any{"detail": "skipped"})
 		return nil
 	}
-	s.EnsureProviders(ctx)
-	prov, err := s.registry.GetProvider(p.Order.PaymentType)
+
+	// Use the exact provider instance that created this order, not a random one
+	// from the registry. Each instance has its own merchant credentials.
+	prov, err := s.getRefundProvider(ctx, p.Order)
 	if err != nil {
-		return fmt.Errorf("get provider: %w", err)
+		return fmt.Errorf("get refund provider: %w", err)
 	}
-	_, err = prov.Refund(ctx, payment.RefundRequest{TradeNo: p.Order.PaymentTradeNo, OrderID: p.Order.OutTradeNo, Amount: strconv.FormatFloat(p.GatewayAmount, 'f', 2, 64), Reason: p.Reason})
+	_, err = prov.Refund(ctx, payment.RefundRequest{
+		TradeNo: p.Order.PaymentTradeNo,
+		OrderID: p.Order.OutTradeNo,
+		Amount:  strconv.FormatFloat(p.GatewayAmount, 'f', 2, 64),
+		Reason:  p.Reason,
+	})
 	return err
+}
+
+// getRefundProvider creates a provider using the order's original instance config.
+// Falls back to registry lookup if instance ID is missing (legacy orders).
+func (s *PaymentService) getRefundProvider(ctx context.Context, o *dbent.PaymentOrder) (payment.Provider, error) {
+	if o.ProviderInstanceID != nil && *o.ProviderInstanceID != "" {
+		instID, err := strconv.ParseInt(*o.ProviderInstanceID, 10, 64)
+		if err == nil {
+			cfg, err := s.loadBalancer.GetInstanceConfig(ctx, instID)
+			if err == nil {
+				providerKey := s.registry.GetProviderKey(o.PaymentType)
+				if providerKey == "" {
+					providerKey = o.PaymentType
+				}
+				p, err := provider.CreateProvider(providerKey, *o.ProviderInstanceID, cfg)
+				if err == nil {
+					return p, nil
+				}
+				slog.Warn("failed to create provider from instance, falling back to registry",
+					"instance_id", instID, "error", err)
+			} else {
+				slog.Warn("failed to get instance config for refund, falling back to registry",
+					"instance_id", instID, "error", err)
+			}
+		}
+	}
+	// Fallback: use registry (may pick wrong instance for multi-instance setups)
+	s.EnsureProviders(ctx)
+	return s.registry.GetProvider(o.PaymentType)
 }
 
 func (s *PaymentService) handleGwFail(ctx context.Context, p *RefundPlan, gErr error) (*RefundResult, error) {
