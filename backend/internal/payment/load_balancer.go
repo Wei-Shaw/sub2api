@@ -35,7 +35,7 @@ type InstanceLimits map[string]ChannelLimits
 // LoadBalancer selects a provider instance for a given payment type.
 type LoadBalancer interface {
 	GetInstanceConfig(ctx context.Context, instanceID int64) (map[string]string, error)
-	SelectInstance(ctx context.Context, providerKey string, paymentType PaymentType, strategy Strategy) (*InstanceSelection, error)
+	SelectInstance(ctx context.Context, providerKey string, paymentType PaymentType, strategy Strategy, orderAmount float64) (*InstanceSelection, error)
 }
 
 // DefaultLoadBalancer implements LoadBalancer using database queries.
@@ -51,8 +51,8 @@ func NewDefaultLoadBalancer(db *dbent.Client, encryptionKey []byte) *DefaultLoad
 }
 
 // SelectInstance picks an enabled instance for the given provider key and payment type.
-func (lb *DefaultLoadBalancer) SelectInstance(ctx context.Context, providerKey string, paymentType PaymentType, strategy Strategy) (*InstanceSelection, error) {
-	candidates, err := lb.getCandidates(ctx, providerKey, paymentType)
+func (lb *DefaultLoadBalancer) SelectInstance(ctx context.Context, providerKey string, paymentType PaymentType, strategy Strategy, orderAmount float64) (*InstanceSelection, error) {
+	candidates, err := lb.getCandidates(ctx, providerKey, paymentType, orderAmount)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (lb *DefaultLoadBalancer) SelectInstance(ctx context.Context, providerKey s
 	return lb.buildSelection(selected)
 }
 
-func (lb *DefaultLoadBalancer) getCandidates(ctx context.Context, providerKey string, paymentType PaymentType) ([]*dbent.PaymentProviderInstance, error) {
+func (lb *DefaultLoadBalancer) getCandidates(ctx context.Context, providerKey string, paymentType PaymentType, orderAmount float64) ([]*dbent.PaymentProviderInstance, error) {
 	instances, err := lb.db.PaymentProviderInstance.Query().
 		Where(
 			paymentproviderinstance.ProviderKey(providerKey),
@@ -89,7 +89,80 @@ func (lb *DefaultLoadBalancer) getCandidates(ctx context.Context, providerKey st
 	if len(candidates) == 0 {
 		return nil, fmt.Errorf("no enabled instance for provider %s type %s", providerKey, paymentType)
 	}
+
+	// Exclude instances that cannot accommodate this order (daily limit or single amount range).
+	filtered := lb.filterByLimits(ctx, candidates, paymentType, orderAmount)
+	if len(filtered) > 0 {
+		return filtered, nil
+	}
+	// All instances exhausted — fall back to full candidate list so the order
+	// can still be attempted (the provider itself may reject it).
+	slog.Warn("all instances exceeded limits, using full candidate list",
+		"provider", providerKey, "payment_type", paymentType,
+		"order_amount", orderAmount, "count", len(candidates))
 	return candidates, nil
+}
+
+// filterByLimits removes instances that cannot accommodate the order:
+//   - daily remaining capacity < orderAmount
+//   - orderAmount outside single-transaction min/max range
+func (lb *DefaultLoadBalancer) filterByLimits(ctx context.Context, candidates []*dbent.PaymentProviderInstance, paymentType PaymentType, orderAmount float64) []*dbent.PaymentProviderInstance {
+	var filtered []*dbent.PaymentProviderInstance
+	for _, inst := range candidates {
+		cl := getInstanceChannelLimits(inst, paymentType)
+
+		// Check single-transaction range.
+		if cl.SingleMin > 0 && orderAmount < cl.SingleMin {
+			slog.Info("order below instance single min, skipping",
+				"instance_id", inst.ID, "order", orderAmount, "min", cl.SingleMin)
+			continue
+		}
+		if cl.SingleMax > 0 && orderAmount > cl.SingleMax {
+			slog.Info("order above instance single max, skipping",
+				"instance_id", inst.ID, "order", orderAmount, "max", cl.SingleMax)
+			continue
+		}
+
+		// Check daily remaining capacity.
+		if cl.DailyLimit > 0 {
+			used, err := lb.GetInstanceDailyAmount(ctx, fmt.Sprintf("%d", inst.ID))
+			if err != nil {
+				slog.Warn("failed to query daily amount, keeping instance",
+					"instance_id", inst.ID, "error", err)
+				filtered = append(filtered, inst)
+				continue
+			}
+			if used+orderAmount > cl.DailyLimit {
+				slog.Info("instance daily remaining insufficient, skipping",
+					"instance_id", inst.ID, "used", used,
+					"order", orderAmount, "limit", cl.DailyLimit)
+				continue
+			}
+		}
+
+		filtered = append(filtered, inst)
+	}
+	return filtered
+}
+
+// getInstanceChannelLimits returns the channel limits for a specific payment type.
+func getInstanceChannelLimits(inst *dbent.PaymentProviderInstance, paymentType PaymentType) ChannelLimits {
+	if inst.Limits == "" {
+		return ChannelLimits{}
+	}
+	var limits InstanceLimits
+	if err := json.Unmarshal([]byte(inst.Limits), &limits); err != nil {
+		return ChannelLimits{}
+	}
+	// For Stripe, limits are stored under the provider key "stripe".
+	lookupKey := paymentType
+	if inst.ProviderKey == "stripe" {
+		lookupKey = "stripe"
+	}
+	if cl, ok := limits[lookupKey]; ok {
+		return cl
+	}
+	return ChannelLimits{}
 }
 
 func (lb *DefaultLoadBalancer) pickByStrategy(ctx context.Context, candidates []*dbent.PaymentProviderInstance, strategy Strategy) (*dbent.PaymentProviderInstance, error) {
