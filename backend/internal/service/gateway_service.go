@@ -1192,12 +1192,20 @@ REDACTED
 	// anthropic/gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
 	// 注意：强制平台模式不走混合调度
 	if (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform {
-		return s.selectAccountWithMixedScheduling(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+		account, err := s.selectAccountWithMixedScheduling(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+		if err != nil {
+			return nil, err
+	REDACTED
+		return s.hydrateSelectedAccount(ctx, account)
 REDACTED
 
 	// antigravity 分组、强制平台模式或无分组使用单平台选择
 	// 注意：强制平台模式也必须遵守分组限制，不再回退到全平台查询
-	return s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+	account, err := s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+	if err != nil {
+		return nil, err
+REDACTED
+	return s.hydrateSelectedAccount(ctx, account)
 REDACTED
 
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
@@ -1273,11 +1281,7 @@ REDACTED
 					localExcluded[account.ID] = struct{REDACTED{REDACTED // 排除此账号
 					continue                               // 重新选择
 			REDACTED
-				return &AccountSelectionResult{
-					Account:     account,
-					Acquired:    true,
-					ReleaseFunc: result.ReleaseFunc,
-			REDACTED, nil
+				return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 		REDACTED
 
 			// 对于等待计划的情况，也需要先检查会话限制
@@ -1289,26 +1293,20 @@ REDACTED
 			if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
 				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
 				if waitingCount < cfg.StickySessionMaxWaiting {
-					return &AccountSelectionResult{
-						Account: account,
-						WaitPlan: &AccountWaitPlan{
-							AccountID:      account.ID,
-							MaxConcurrency: account.Concurrency,
-							Timeout:        cfg.StickySessionWaitTimeout,
-							MaxWaiting:     cfg.StickySessionMaxWaiting,
-					REDACTED,
-				REDACTED, nil
+					return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+						AccountID:      account.ID,
+						MaxConcurrency: account.Concurrency,
+						Timeout:        cfg.StickySessionWaitTimeout,
+						MaxWaiting:     cfg.StickySessionMaxWaiting,
+				REDACTED)
 			REDACTED
 		REDACTED
-			return &AccountSelectionResult{
-				Account: account,
-				WaitPlan: &AccountWaitPlan{
-					AccountID:      account.ID,
-					MaxConcurrency: account.Concurrency,
-					Timeout:        cfg.FallbackWaitTimeout,
-					MaxWaiting:     cfg.FallbackMaxWaiting,
-			REDACTED,
-		REDACTED, nil
+			return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+				AccountID:      account.ID,
+				MaxConcurrency: account.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+		REDACTED)
 	REDACTED
 REDACTED
 
@@ -1455,11 +1453,7 @@ REDACTED
 									if s.debugModelRoutingEnabled() {
 										logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), stickyAccountID)
 								REDACTED
-									return &AccountSelectionResult{
-										Account:     stickyAccount,
-										Acquired:    true,
-										ReleaseFunc: result.ReleaseFunc,
-								REDACTED, nil
+									return s.newSelectionResult(ctx, stickyAccount, true, result.ReleaseFunc, nil)
 							REDACTED
 						REDACTED
 
@@ -1570,11 +1564,7 @@ REDACTED
 						if s.debugModelRoutingEnabled() {
 							logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
 					REDACTED
-						return &AccountSelectionResult{
-							Account:     item.account,
-							Acquired:    true,
-							ReleaseFunc: result.ReleaseFunc,
-					REDACTED, nil
+						return s.newSelectionResult(ctx, item.account, true, result.ReleaseFunc, nil)
 				REDACTED
 			REDACTED
 
@@ -1587,15 +1577,12 @@ REDACTED
 					if s.debugModelRoutingEnabled() {
 						logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed wait: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
 				REDACTED
-					return &AccountSelectionResult{
-						Account: item.account,
-						WaitPlan: &AccountWaitPlan{
-							AccountID:      item.account.ID,
-							MaxConcurrency: item.account.Concurrency,
-							Timeout:        cfg.StickySessionWaitTimeout,
-							MaxWaiting:     cfg.StickySessionMaxWaiting,
-					REDACTED,
-				REDACTED, nil
+					return s.newSelectionResult(ctx, item.account, false, nil, &AccountWaitPlan{
+						AccountID:      item.account.ID,
+						MaxConcurrency: item.account.Concurrency,
+						Timeout:        cfg.StickySessionWaitTimeout,
+						MaxWaiting:     cfg.StickySessionMaxWaiting,
+				REDACTED)
 			REDACTED
 				// 所有路由账号会话限制都已满，继续到 Layer 2 回退
 		REDACTED
@@ -1631,11 +1618,10 @@ REDACTED
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 							result.ReleaseFunc() // 释放槽位，继续到 Layer 2
 					REDACTED else {
-							return &AccountSelectionResult{
-								Account:     account,
-								Acquired:    true,
-								ReleaseFunc: result.ReleaseFunc,
-						REDACTED, nil
+							if s.cache != nil {
+								_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
+						REDACTED
+							return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 					REDACTED
 				REDACTED
 
@@ -1647,15 +1633,12 @@ REDACTED
 							// 会话限制已满，继续到 Layer 2
 							// Session limit full, continue to Layer 2
 					REDACTED else {
-							return &AccountSelectionResult{
-								Account: account,
-								WaitPlan: &AccountWaitPlan{
-									AccountID:      accountID,
-									MaxConcurrency: account.Concurrency,
-									Timeout:        cfg.StickySessionWaitTimeout,
-									MaxWaiting:     cfg.StickySessionMaxWaiting,
-							REDACTED,
-						REDACTED, nil
+							return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+								AccountID:      accountID,
+								MaxConcurrency: account.Concurrency,
+								Timeout:        cfg.StickySessionWaitTimeout,
+								MaxWaiting:     cfg.StickySessionMaxWaiting,
+						REDACTED)
 					REDACTED
 				REDACTED
 			REDACTED
@@ -1714,7 +1697,9 @@ REDACTED
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
-		if result, ok := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); ok {
+		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); legacyErr != nil {
+			return nil, legacyErr
+	REDACTED else if ok {
 			return result, nil
 	REDACTED
 REDACTED else {
@@ -1753,11 +1738,7 @@ REDACTED else {
 					if sessionHash != "" && s.cache != nil {
 						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
 				REDACTED
-					return &AccountSelectionResult{
-						Account:     selected.account,
-						Acquired:    true,
-						ReleaseFunc: result.ReleaseFunc,
-				REDACTED, nil
+					return s.newSelectionResult(ctx, selected.account, true, result.ReleaseFunc, nil)
 			REDACTED
 		REDACTED
 
@@ -1780,20 +1761,17 @@ REDACTED
 		if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
 			continue // 会话限制已满，尝试下一个账号
 	REDACTED
-		return &AccountSelectionResult{
-			Account: acc,
-			WaitPlan: &AccountWaitPlan{
-				AccountID:      acc.ID,
-				MaxConcurrency: acc.Concurrency,
-				Timeout:        cfg.FallbackWaitTimeout,
-				MaxWaiting:     cfg.FallbackMaxWaiting,
-		REDACTED,
-	REDACTED, nil
+		return s.newSelectionResult(ctx, acc, false, nil, &AccountWaitPlan{
+			AccountID:      acc.ID,
+			MaxConcurrency: acc.Concurrency,
+			Timeout:        cfg.FallbackWaitTimeout,
+			MaxWaiting:     cfg.FallbackMaxWaiting,
+	REDACTED)
 REDACTED
 	return nil, ErrNoAvailableAccounts
 REDACTED
 
-func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool) {
+func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
 	ordered := append([]*Account(nil), candidates...)
 	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
 
@@ -1808,15 +1786,15 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 			if sessionHash != "" && s.cache != nil {
 				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, stickySessionTTL)
 		REDACTED
-			return &AccountSelectionResult{
-				Account:     acc,
-				Acquired:    true,
-				ReleaseFunc: result.ReleaseFunc,
-		REDACTED, true
+			selection, err := s.newSelectionResult(ctx, acc, true, result.ReleaseFunc, nil)
+			if err != nil {
+				return nil, false, err
+		REDACTED
+			return selection, true, nil
 	REDACTED
 REDACTED
 
-	return nil, false
+	return nil, false, nil
 REDACTED
 
 func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
@@ -2429,6 +2407,33 @@ func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID in
 		return s.schedulerSnapshot.GetAccount(ctx, accountID)
 REDACTED
 	return s.accountRepo.GetByID(ctx, accountID)
+REDACTED
+
+func (s *GatewayService) hydrateSelectedAccount(ctx context.Context, account *Account) (*Account, error) {
+	if account == nil || s.schedulerSnapshot == nil {
+		return account, nil
+REDACTED
+	hydrated, err := s.schedulerSnapshot.GetAccount(ctx, account.ID)
+	if err != nil {
+		return nil, err
+REDACTED
+	if hydrated == nil {
+		return nil, fmt.Errorf("selected gateway account %d not found during hydration", account.ID)
+REDACTED
+	return hydrated, nil
+REDACTED
+
+func (s *GatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
+	hydrated, err := s.hydrateSelectedAccount(ctx, account)
+	if err != nil {
+		return nil, err
+REDACTED
+	return &AccountSelectionResult{
+		Account:     hydrated,
+		Acquired:    acquired,
+		ReleaseFunc: release,
+		WaitPlan:    waitPlan,
+REDACTED, nil
 REDACTED
 
 // filterByMinPriority 过滤出优先级最小的账号集合

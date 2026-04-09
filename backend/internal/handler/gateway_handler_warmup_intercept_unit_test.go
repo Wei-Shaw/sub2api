@@ -34,7 +34,12 @@ REDACTED
 func (f *fakeSchedulerCache) SetSnapshot(_ context.Context, _ service.SchedulerBucket, _ []service.Account) error {
 	return nil
 REDACTED
-func (f *fakeSchedulerCache) GetAccount(_ context.Context, _ int64) (*service.Account, error) {
+func (f *fakeSchedulerCache) GetAccount(_ context.Context, id int64) (*service.Account, error) {
+	for _, account := range f.accounts {
+		if account != nil && account.ID == id {
+			return account, nil
+	REDACTED
+REDACTED
 	return nil, nil
 REDACTED
 func (f *fakeSchedulerCache) SetAccount(_ context.Context, _ *service.Account) error { return nil REDACTED

@@ -332,6 +332,10 @@ REDACTED
 		"hgetall", "hget", "hset", "hdel", "hincrbyfloat", "exists",
 		"zadd", "zcard", "zrange", "zrangebyscore", "zrem", "zremrangebyscore", "zrevrange", "zrevrangebyscore", "zscore":
 		prefixOne(1)
+	case "mget":
+		for i := 1; i < len(args); i++ {
+			prefixOne(i)
+	REDACTED
 	case "del", "unlink":
 		for i := 1; i < len(args); i++ {
 			prefixOne(i)
