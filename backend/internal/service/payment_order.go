@@ -72,6 +72,9 @@ REDACTED
 	if req.OrderType == payment.OrderTypeSubscription {
 		return s.validateSubOrder(ctx, req)
 REDACTED
+	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount must be a positive number")
+REDACTED
 	if (cfg.MinAmount > 0 && req.Amount < cfg.MinAmount) || (cfg.MaxAmount > 0 && req.Amount > cfg.MaxAmount) {
 		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount out of range").
 			WithMetadata(map[string]string{"min": fmt.Sprintf("%.2f", cfg.MinAmount), "max": fmt.Sprintf("%.2f", cfg.MaxAmount)REDACTED)
@@ -394,7 +397,7 @@ REDACTED
 REDACTED
 
 func (s *PaymentService) cancelCore(ctx context.Context, o *dbent.PaymentOrder, fs, op, ad string) (string, error) {
-	if o.PaymentTradeNo != "" && o.PaymentType != "" {
+	if o.PaymentTradeNo != "" || o.PaymentType != "" {
 		if s.checkPaid(ctx, o) == "already_paid" {
 			return "already_paid", nil
 	REDACTED
@@ -404,14 +407,17 @@ REDACTED
 		return "", fmt.Errorf("update order status: %w", err)
 REDACTED
 	if c > 0 {
-		s.writeAuditLog(ctx, o.ID, "ORDER_CANCELLED", op, map[string]any{"detail": adREDACTED)
+		auditAction := "ORDER_CANCELLED"
+		if fs == OrderStatusExpired {
+			auditAction = "ORDER_EXPIRED"
+	REDACTED
+		s.writeAuditLog(ctx, o.ID, auditAction, op, map[string]any{"detail": adREDACTED)
 REDACTED
 	return "cancelled", nil
 REDACTED
 
 func (s *PaymentService) checkPaid(ctx context.Context, o *dbent.PaymentOrder) string {
-	s.EnsureProviders(ctx)
-	prov, err := s.registry.GetProvider(o.PaymentType)
+	prov, err := s.getOrderProvider(ctx, o)
 	if err != nil {
 		return ""
 REDACTED
@@ -427,11 +433,14 @@ REDACTED
 		return ""
 REDACTED
 	if resp.Status == payment.ProviderStatusPaid {
-		_ = s.HandlePaymentNotification(ctx, &payment.PaymentNotification{TradeNo: o.PaymentTradeNo, OrderID: o.OutTradeNo, Amount: resp.Amount, Status: payment.ProviderStatusSuccessREDACTED, prov.ProviderKey())
+		if err := s.HandlePaymentNotification(ctx, &payment.PaymentNotification{TradeNo: o.PaymentTradeNo, OrderID: o.OutTradeNo, Amount: resp.Amount, Status: payment.ProviderStatusSuccessREDACTED, prov.ProviderKey()); err != nil {
+			slog.Error("fulfillment failed during checkPaid", "orderID", o.ID, "error", err)
+			// Still return already_paid — order was paid, fulfillment can be retried
+	REDACTED
 		return "already_paid"
 REDACTED
 	if cp, ok := prov.(payment.CancelableProvider); ok {
-		_ = cp.CancelPayment(ctx, o.PaymentTradeNo)
+		_ = cp.CancelPayment(ctx, tradeNo)
 REDACTED
 	return ""
 REDACTED
@@ -463,6 +472,27 @@ REDACTED
 	return o, nil
 REDACTED
 
+// VerifyOrderPublic verifies payment status without user authentication.
+// Used by the payment result page when the user's session has expired.
+func (s *PaymentService) VerifyOrderPublic(ctx context.Context, outTradeNo string) (*dbent.PaymentOrder, error) {
+	o, err := s.entClient.PaymentOrder.Query().
+		Where(paymentorder.OutTradeNo(outTradeNo)).
+		Only(ctx)
+	if err != nil {
+		return nil, infraerrors.NotFound("NOT_FOUND", "order not found")
+REDACTED
+	if o.Status == OrderStatusPending || o.Status == OrderStatusExpired {
+		result := s.checkPaid(ctx, o)
+		if result == "already_paid" {
+			o, err = s.entClient.PaymentOrder.Get(ctx, o.ID)
+			if err != nil {
+				return nil, fmt.Errorf("reload order: %w", err)
+		REDACTED
+	REDACTED
+REDACTED
+	return o, nil
+REDACTED
+
 func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) {
 	now := time.Now()
 	orders, err := s.entClient.PaymentOrder.Query().Where(paymentorder.StatusEQ(OrderStatusPending), paymentorder.ExpiresAtLTE(now)).All(ctx)
@@ -471,34 +501,39 @@ func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) 
 REDACTED
 	n := 0
 	for _, o := range orders {
-		// Cancel upstream payment (e.g. Stripe PaymentIntent) before marking expired
-		s.cancelUpstreamPayment(ctx, o)
-		c, e := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(o.ID), paymentorder.StatusEQ(OrderStatusPending)).SetStatus(OrderStatusExpired).Save(ctx)
-		if e != nil {
-			slog.Warn("expire failed", "orderID", o.ID, "error", e)
+		// Check upstream payment status before expiring — the user may have
+		// paid just before timeout and the webhook hasn't arrived yet.
+		outcome, _ := s.cancelCore(ctx, o, OrderStatusExpired, "system", "order expired")
+		if outcome == "already_paid" {
+			slog.Info("order was paid during expiry", "orderID", o.ID)
 			continue
 	REDACTED
-		if c > 0 {
-			s.writeAuditLog(ctx, o.ID, "ORDER_EXPIRED", "system", map[string]any{"expiresAt": o.ExpiresAt.Format(time.RFC3339)REDACTED)
+		if outcome != "" {
 			n++
 	REDACTED
 REDACTED
 	return n, nil
 REDACTED
 
-// cancelUpstreamPayment attempts to cancel the upstream provider payment (e.g. Stripe PaymentIntent).
-func (s *PaymentService) cancelUpstreamPayment(ctx context.Context, o *dbent.PaymentOrder) {
-	if o.PaymentTradeNo == "" || o.PaymentType == "" {
-		return
-REDACTED
-	s.EnsureProviders(ctx)
-	prov, err := s.registry.GetProvider(o.PaymentType)
-	if err != nil {
-		return
-REDACTED
-	if cp, ok := prov.(payment.CancelableProvider); ok {
-		if err := cp.CancelPayment(ctx, o.PaymentTradeNo); err != nil {
-			slog.Warn("cancel upstream payment failed", "orderID", o.ID, "tradeNo", o.PaymentTradeNo, "error", err)
+// getOrderProvider creates a provider using the order's original instance config.
+// Falls back to registry lookup if instance ID is missing (legacy orders).
+func (s *PaymentService) getOrderProvider(ctx context.Context, o *dbent.PaymentOrder) (payment.Provider, error) {
+	if o.ProviderInstanceID != nil && *o.ProviderInstanceID != "" {
+		instID, err := strconv.ParseInt(*o.ProviderInstanceID, 10, 64)
+		if err == nil {
+			cfg, err := s.loadBalancer.GetInstanceConfig(ctx, instID)
+			if err == nil {
+				providerKey := s.registry.GetProviderKey(o.PaymentType)
+				if providerKey == "" {
+					providerKey = o.PaymentType
+			REDACTED
+				p, err := provider.CreateProvider(providerKey, *o.ProviderInstanceID, cfg)
+				if err == nil {
+					return p, nil
+			REDACTED
+		REDACTED
 	REDACTED
 REDACTED
+	s.EnsureProviders(ctx)
+	return s.registry.GetProvider(o.PaymentType)
 REDACTED

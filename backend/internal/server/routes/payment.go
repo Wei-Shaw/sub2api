@@ -40,6 +40,14 @@ func RegisterPaymentRoutes(
 	REDACTED
 REDACTED
 
+	// --- Public payment endpoints (no auth) ---
+	// Payment result page needs to verify order status without login
+	// (user session may have expired during provider redirect).
+	public := v1.Group("/payment/public")
+	{
+		public.POST("/orders/verify", paymentHandler.VerifyOrderPublic)
+REDACTED
+
 	// --- Webhook endpoints (no auth) ---
 	webhook := v1.Group("/payment/webhook")
 	{
