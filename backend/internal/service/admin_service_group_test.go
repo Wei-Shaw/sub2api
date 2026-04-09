@@ -349,7 +349,7 @@ REDACTED
 	svc := &adminServiceImpl{groupRepo: repoREDACTED
 
 	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
-		Platform: ptrString(PlatformAnthropic),
+		Platform: PlatformAnthropic,
 REDACTED)
 REDACTED
 	require.NotNil(t, group)
