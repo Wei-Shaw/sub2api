@@ -2923,15 +2923,13 @@ async function handleSaveProvider(payload: Partial<ProviderInstance>) {
   providerSaving.value = true
   try {
     if (editingProvider.value) {
-      const updated = await adminAPI.payment.updateProvider(editingProvider.value.id, payload)
-      // Update in place to preserve list order
-      const idx = providers.value.findIndex(p => p.id === editingProvider.value!.id)
-      if (idx >= 0 && updated.data) providers.value[idx] = updated.data
+      await adminAPI.payment.updateProvider(editingProvider.value.id, payload)
     } else {
       await adminAPI.payment.createProvider(payload)
-      loadProviders()
     }
     showProviderDialog.value = false
+    // Reload full list (API returns decrypted/formatted data with correct sort order)
+    await loadProviders()
     // Auto-save settings so provider changes take effect immediately
     await saveSettings()
   } catch (err: unknown) {
