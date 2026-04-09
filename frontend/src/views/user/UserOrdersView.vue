@@ -20,7 +20,7 @@
           <span class="font-mono text-sm">#{{ value }}</span>
         </template>
         <template #cell-out_trade_no="{ value }">
-          <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ value }}</span>
+          <span class="text-sm text-gray-900 dark:text-white">{{ value }}</span>
         </template>
         <template #cell-amount="{ value, row }">
           <div class="text-sm">
