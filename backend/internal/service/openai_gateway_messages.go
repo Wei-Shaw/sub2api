@@ -86,6 +86,24 @@ REDACTED
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
 	REDACTED
 		codexResult := applyCodexOAuthTransform(reqBody, false, false)
+		forcedTemplateText := ""
+		if s.cfg != nil {
+			forcedTemplateText = s.cfg.Gateway.ForcedCodexInstructionsTemplate
+	REDACTED
+		templateUpstreamModel := upstreamModel
+		if codexResult.NormalizedModel != "" {
+			templateUpstreamModel = codexResult.NormalizedModel
+	REDACTED
+		existingInstructions, _ := reqBody["instructions"].(string)
+		if _, err := applyForcedCodexInstructionsTemplate(reqBody, forcedTemplateText, forcedCodexInstructionsTemplateData{
+			ExistingInstructions: strings.TrimSpace(existingInstructions),
+			OriginalModel:        originalModel,
+			NormalizedModel:      normalizedModel,
+			BillingModel:         billingModel,
+			UpstreamModel:        templateUpstreamModel,
+	REDACTED); err != nil {
+			return nil, err
+	REDACTED
 		if codexResult.NormalizedModel != "" {
 			upstreamModel = codexResult.NormalizedModel
 	REDACTED

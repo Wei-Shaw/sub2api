@@ -17,6 +17,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/imroc/req/v3"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -167,6 +168,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyCustomEndpoints,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyBackendModeEnabled,
+		SettingKeyOIDCConnectEnabled,
+		SettingKeyOIDCConnectProviderName,
 REDACTED
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -179,6 +182,19 @@ REDACTED
 		linuxDoEnabled = raw == "true"
 REDACTED else {
 		linuxDoEnabled = s.cfg != nil && s.cfg.LinuxDo.Enabled
+REDACTED
+	oidcEnabled := false
+	if raw, ok := settings[SettingKeyOIDCConnectEnabled]; ok {
+		oidcEnabled = raw == "true"
+REDACTED else {
+		oidcEnabled = s.cfg != nil && s.cfg.OIDC.Enabled
+REDACTED
+	oidcProviderName := strings.TrimSpace(settings[SettingKeyOIDCConnectProviderName])
+	if oidcProviderName == "" && s.cfg != nil {
+		oidcProviderName = strings.TrimSpace(s.cfg.OIDC.ProviderName)
+REDACTED
+	if oidcProviderName == "" {
+		oidcProviderName = "OIDC"
 REDACTED
 
 	// Password reset requires email verification to be enabled
@@ -218,6 +234,8 @@ REDACTED
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
 		LinuxDoOAuthEnabled:              linuxDoEnabled,
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
+		OIDCOAuthEnabled:                 oidcEnabled,
+		OIDCOAuthProviderName:            oidcProviderName,
 REDACTED, nil
 REDACTED
 
@@ -267,6 +285,8 @@ REDACTED
 		CustomEndpoints                  json.RawMessage `json:"custom_endpoints"`
 		LinuxDoOAuthEnabled              bool            `json:"linuxdo_oauth_enabled"`
 		BackendModeEnabled               bool            `json:"backend_mode_enabled"`
+		OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
+		OIDCOAuthProviderName            string          `json:"oidc_oauth_provider_name"`
 		Version                          string          `json:"version,omitempty"`
 REDACTED{
 		RegistrationEnabled:              settings.RegistrationEnabled,
@@ -294,6 +314,8 @@ REDACTED{
 		CustomEndpoints:                  safeRawJSONArray(settings.CustomEndpoints),
 		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
 		BackendModeEnabled:               settings.BackendModeEnabled,
+		OIDCOAuthEnabled:                 settings.OIDCOAuthEnabled,
+		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
 		Version:                          s.version,
 REDACTED, nil
 REDACTED
@@ -346,8 +368,8 @@ REDACTED
 	return json.RawMessage("[]")
 REDACTED
 
-// GetFrameSrcOrigins returns deduplicated http(s) origins from purchase_subscription_url
-// and all custom_menu_items URLs. Used by the router layer for CSP frame-src injection.
+// GetFrameSrcOrigins returns deduplicated http(s) origins from home_content URL,
+// purchase_subscription_url, and all custom_menu_items URLs. Used by the router layer for CSP frame-src injection.
 func (s *SettingService) GetFrameSrcOrigins(ctx context.Context) ([]string, error) {
 	settings, err := s.GetPublicSettings(ctx)
 	if err != nil {
@@ -365,6 +387,9 @@ REDACTED
 		REDACTED
 	REDACTED
 REDACTED
+
+	// home content URL (when home_content is set to a URL for iframe embedding)
+	addOrigin(settings.HomeContent)
 
 	// purchase subscription URL
 	if settings.PurchaseSubscriptionEnabled {
@@ -471,6 +496,32 @@ REDACTED
 	updates[SettingKeyLinuxDoConnectRedirectURL] = settings.LinuxDoConnectRedirectURL
 	if settings.LinuxDoConnectClientSecret != "" {
 		updates[SettingKeyLinuxDoConnectClientSecret] = settings.LinuxDoConnectClientSecret
+REDACTED
+
+	// Generic OIDC OAuth 登录
+	updates[SettingKeyOIDCConnectEnabled] = strconv.FormatBool(settings.OIDCConnectEnabled)
+	updates[SettingKeyOIDCConnectProviderName] = settings.OIDCConnectProviderName
+	updates[SettingKeyOIDCConnectClientID] = settings.OIDCConnectClientID
+	updates[SettingKeyOIDCConnectIssuerURL] = settings.OIDCConnectIssuerURL
+	updates[SettingKeyOIDCConnectDiscoveryURL] = settings.OIDCConnectDiscoveryURL
+	updates[SettingKeyOIDCConnectAuthorizeURL] = settings.OIDCConnectAuthorizeURL
+	updates[SettingKeyOIDCConnectTokenURL] = settings.OIDCConnectTokenURL
+	updates[SettingKeyOIDCConnectUserInfoURL] = settings.OIDCConnectUserInfoURL
+	updates[SettingKeyOIDCConnectJWKSURL] = settings.OIDCConnectJWKSURL
+	updates[SettingKeyOIDCConnectScopes] = settings.OIDCConnectScopes
+	updates[SettingKeyOIDCConnectRedirectURL] = settings.OIDCConnectRedirectURL
+	updates[SettingKeyOIDCConnectFrontendRedirectURL] = settings.OIDCConnectFrontendRedirectURL
+	updates[SettingKeyOIDCConnectTokenAuthMethod] = settings.OIDCConnectTokenAuthMethod
+	updates[SettingKeyOIDCConnectUsePKCE] = strconv.FormatBool(settings.OIDCConnectUsePKCE)
+	updates[SettingKeyOIDCConnectValidateIDToken] = strconv.FormatBool(settings.OIDCConnectValidateIDToken)
+	updates[SettingKeyOIDCConnectAllowedSigningAlgs] = settings.OIDCConnectAllowedSigningAlgs
+	updates[SettingKeyOIDCConnectClockSkewSeconds] = strconv.Itoa(settings.OIDCConnectClockSkewSeconds)
+	updates[SettingKeyOIDCConnectRequireEmailVerified] = strconv.FormatBool(settings.OIDCConnectRequireEmailVerified)
+	updates[SettingKeyOIDCConnectUserInfoEmailPath] = settings.OIDCConnectUserInfoEmailPath
+	updates[SettingKeyOIDCConnectUserInfoIDPath] = settings.OIDCConnectUserInfoIDPath
+	updates[SettingKeyOIDCConnectUserInfoUsernamePath] = settings.OIDCConnectUserInfoUsernamePath
+	if settings.OIDCConnectClientSecret != "" {
+		updates[SettingKeyOIDCConnectClientSecret] = settings.OIDCConnectClientSecret
 REDACTED
 
 	// OEM设置
@@ -851,6 +902,8 @@ REDACTED
 		SettingKeyTablePageSizeOptions:             "[10,20,50,100]",
 		SettingKeyCustomMenuItems:                  "[]",
 		SettingKeyCustomEndpoints:                  "[]",
+		SettingKeyOIDCConnectEnabled:               "false",
+		SettingKeyOIDCConnectProviderName:          "OIDC",
 		SettingKeyDefaultConcurrency:               strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                   strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyDefaultSubscriptions:             "[]",
@@ -979,6 +1032,138 @@ REDACTED
 		result.LinuxDoConnectClientSecret = strings.TrimSpace(linuxDoBase.ClientSecret)
 REDACTED
 	result.LinuxDoConnectClientSecretConfigured = result.LinuxDoConnectClientSecret != ""
+
+	// Generic OIDC 设置：
+	// - 兼容 config.yaml/env
+	// - 支持后台系统设置覆盖并持久化（存储于 DB）
+	oidcBase := config.OIDCConnectConfig{REDACTED
+	if s.cfg != nil {
+		oidcBase = s.cfg.OIDC
+REDACTED
+
+	if raw, ok := settings[SettingKeyOIDCConnectEnabled]; ok {
+		result.OIDCConnectEnabled = raw == "true"
+REDACTED else {
+		result.OIDCConnectEnabled = oidcBase.Enabled
+REDACTED
+
+	if v, ok := settings[SettingKeyOIDCConnectProviderName]; ok && strings.TrimSpace(v) != "" {
+		result.OIDCConnectProviderName = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectProviderName = strings.TrimSpace(oidcBase.ProviderName)
+REDACTED
+	if result.OIDCConnectProviderName == "" {
+		result.OIDCConnectProviderName = "OIDC"
+REDACTED
+
+	if v, ok := settings[SettingKeyOIDCConnectClientID]; ok && strings.TrimSpace(v) != "" {
+		result.OIDCConnectClientID = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectClientID = strings.TrimSpace(oidcBase.ClientID)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectIssuerURL]; ok && strings.TrimSpace(v) != "" {
+		result.OIDCConnectIssuerURL = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectIssuerURL = strings.TrimSpace(oidcBase.IssuerURL)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectDiscoveryURL]; ok && strings.TrimSpace(v) != "" {
+		result.OIDCConnectDiscoveryURL = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectDiscoveryURL = strings.TrimSpace(oidcBase.DiscoveryURL)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectAuthorizeURL]; ok && strings.TrimSpace(v) != "" {
+		result.OIDCConnectAuthorizeURL = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectAuthorizeURL = strings.TrimSpace(oidcBase.AuthorizeURL)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectTokenURL]; ok && strings.TrimSpace(v) != "" {
+		result.OIDCConnectTokenURL = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectTokenURL = strings.TrimSpace(oidcBase.TokenURL)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectUserInfoURL]; ok && strings.TrimSpace(v) != "" {
+		result.OIDCConnectUserInfoURL = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectUserInfoURL = strings.TrimSpace(oidcBase.UserInfoURL)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectJWKSURL]; ok && strings.TrimSpace(v) != "" {
+		result.OIDCConnectJWKSURL = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectJWKSURL = strings.TrimSpace(oidcBase.JWKSURL)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectScopes]; ok && strings.TrimSpace(v) != "" {
+		result.OIDCConnectScopes = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectScopes = strings.TrimSpace(oidcBase.Scopes)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectRedirectURL]; ok && strings.TrimSpace(v) != "" {
+		result.OIDCConnectRedirectURL = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectRedirectURL = strings.TrimSpace(oidcBase.RedirectURL)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectFrontendRedirectURL]; ok && strings.TrimSpace(v) != "" {
+		result.OIDCConnectFrontendRedirectURL = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectFrontendRedirectURL = strings.TrimSpace(oidcBase.FrontendRedirectURL)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectTokenAuthMethod]; ok && strings.TrimSpace(v) != "" {
+		result.OIDCConnectTokenAuthMethod = strings.ToLower(strings.TrimSpace(v))
+REDACTED else {
+		result.OIDCConnectTokenAuthMethod = strings.ToLower(strings.TrimSpace(oidcBase.TokenAuthMethod))
+REDACTED
+	if raw, ok := settings[SettingKeyOIDCConnectUsePKCE]; ok {
+		result.OIDCConnectUsePKCE = raw == "true"
+REDACTED else {
+		result.OIDCConnectUsePKCE = oidcBase.UsePKCE
+REDACTED
+	if raw, ok := settings[SettingKeyOIDCConnectValidateIDToken]; ok {
+		result.OIDCConnectValidateIDToken = raw == "true"
+REDACTED else {
+		result.OIDCConnectValidateIDToken = oidcBase.ValidateIDToken
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectAllowedSigningAlgs]; ok && strings.TrimSpace(v) != "" {
+		result.OIDCConnectAllowedSigningAlgs = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectAllowedSigningAlgs = strings.TrimSpace(oidcBase.AllowedSigningAlgs)
+REDACTED
+	clockSkewSet := false
+	if raw, ok := settings[SettingKeyOIDCConnectClockSkewSeconds]; ok && strings.TrimSpace(raw) != "" {
+		if parsed, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil {
+			result.OIDCConnectClockSkewSeconds = parsed
+			clockSkewSet = true
+	REDACTED
+REDACTED
+	if !clockSkewSet {
+		result.OIDCConnectClockSkewSeconds = oidcBase.ClockSkewSeconds
+REDACTED
+	if !clockSkewSet && result.OIDCConnectClockSkewSeconds == 0 {
+		result.OIDCConnectClockSkewSeconds = 120
+REDACTED
+	if raw, ok := settings[SettingKeyOIDCConnectRequireEmailVerified]; ok {
+		result.OIDCConnectRequireEmailVerified = raw == "true"
+REDACTED else {
+		result.OIDCConnectRequireEmailVerified = oidcBase.RequireEmailVerified
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectUserInfoEmailPath]; ok {
+		result.OIDCConnectUserInfoEmailPath = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectUserInfoEmailPath = strings.TrimSpace(oidcBase.UserInfoEmailPath)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectUserInfoIDPath]; ok {
+		result.OIDCConnectUserInfoIDPath = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectUserInfoIDPath = strings.TrimSpace(oidcBase.UserInfoIDPath)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectUserInfoUsernamePath]; ok {
+		result.OIDCConnectUserInfoUsernamePath = strings.TrimSpace(v)
+REDACTED else {
+		result.OIDCConnectUserInfoUsernamePath = strings.TrimSpace(oidcBase.UserInfoUsernamePath)
+REDACTED
+	result.OIDCConnectClientSecret = strings.TrimSpace(settings[SettingKeyOIDCConnectClientSecret])
+	if result.OIDCConnectClientSecret == "" {
+		result.OIDCConnectClientSecret = strings.TrimSpace(oidcBase.ClientSecret)
+REDACTED
+	result.OIDCConnectClientSecretConfigured = result.OIDCConnectClientSecret != ""
 
 	// Model fallback settings
 	result.EnableModelFallback = settings[SettingKeyEnableModelFallback] == "true"
@@ -1394,6 +1579,282 @@ REDACTED
 REDACTED
 
 	return s.settingRepo.Set(ctx, SettingKeyOverloadCooldownSettings, string(data))
+REDACTED
+
+// GetOIDCConnectOAuthConfig 返回用于登录的“最终生效” OIDC 配置。
+//
+// 优先级：
+// - 若对应系统设置键存在，则覆盖 config.yaml/env 的值
+// - 否则回退到 config.yaml/env 的值
+func (s *SettingService) GetOIDCConnectOAuthConfig(ctx context.Context) (config.OIDCConnectConfig, error) {
+	if s == nil || s.cfg == nil {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.ServiceUnavailable("CONFIG_NOT_READY", "config not loaded")
+REDACTED
+
+	effective := s.cfg.OIDC
+
+	keys := []string{
+		SettingKeyOIDCConnectEnabled,
+		SettingKeyOIDCConnectProviderName,
+		SettingKeyOIDCConnectClientID,
+		SettingKeyOIDCConnectClientSecret,
+		SettingKeyOIDCConnectIssuerURL,
+		SettingKeyOIDCConnectDiscoveryURL,
+		SettingKeyOIDCConnectAuthorizeURL,
+		SettingKeyOIDCConnectTokenURL,
+		SettingKeyOIDCConnectUserInfoURL,
+		SettingKeyOIDCConnectJWKSURL,
+		SettingKeyOIDCConnectScopes,
+		SettingKeyOIDCConnectRedirectURL,
+		SettingKeyOIDCConnectFrontendRedirectURL,
+		SettingKeyOIDCConnectTokenAuthMethod,
+		SettingKeyOIDCConnectUsePKCE,
+		SettingKeyOIDCConnectValidateIDToken,
+		SettingKeyOIDCConnectAllowedSigningAlgs,
+		SettingKeyOIDCConnectClockSkewSeconds,
+		SettingKeyOIDCConnectRequireEmailVerified,
+		SettingKeyOIDCConnectUserInfoEmailPath,
+		SettingKeyOIDCConnectUserInfoIDPath,
+		SettingKeyOIDCConnectUserInfoUsernamePath,
+REDACTED
+	settings, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return config.OIDCConnectConfig{REDACTED, fmt.Errorf("get oidc connect settings: %w", err)
+REDACTED
+
+	if raw, ok := settings[SettingKeyOIDCConnectEnabled]; ok {
+		effective.Enabled = raw == "true"
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectProviderName]; ok && strings.TrimSpace(v) != "" {
+		effective.ProviderName = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectClientID]; ok && strings.TrimSpace(v) != "" {
+		effective.ClientID = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectClientSecret]; ok && strings.TrimSpace(v) != "" {
+		effective.ClientSecret = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectIssuerURL]; ok && strings.TrimSpace(v) != "" {
+		effective.IssuerURL = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectDiscoveryURL]; ok && strings.TrimSpace(v) != "" {
+		effective.DiscoveryURL = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectAuthorizeURL]; ok && strings.TrimSpace(v) != "" {
+		effective.AuthorizeURL = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectTokenURL]; ok && strings.TrimSpace(v) != "" {
+		effective.TokenURL = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectUserInfoURL]; ok && strings.TrimSpace(v) != "" {
+		effective.UserInfoURL = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectJWKSURL]; ok && strings.TrimSpace(v) != "" {
+		effective.JWKSURL = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectScopes]; ok && strings.TrimSpace(v) != "" {
+		effective.Scopes = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectRedirectURL]; ok && strings.TrimSpace(v) != "" {
+		effective.RedirectURL = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectFrontendRedirectURL]; ok && strings.TrimSpace(v) != "" {
+		effective.FrontendRedirectURL = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectTokenAuthMethod]; ok && strings.TrimSpace(v) != "" {
+		effective.TokenAuthMethod = strings.ToLower(strings.TrimSpace(v))
+REDACTED
+	if raw, ok := settings[SettingKeyOIDCConnectUsePKCE]; ok {
+		effective.UsePKCE = raw == "true"
+REDACTED
+	if raw, ok := settings[SettingKeyOIDCConnectValidateIDToken]; ok {
+		effective.ValidateIDToken = raw == "true"
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectAllowedSigningAlgs]; ok && strings.TrimSpace(v) != "" {
+		effective.AllowedSigningAlgs = strings.TrimSpace(v)
+REDACTED
+	if raw, ok := settings[SettingKeyOIDCConnectClockSkewSeconds]; ok && strings.TrimSpace(raw) != "" {
+		if parsed, parseErr := strconv.Atoi(strings.TrimSpace(raw)); parseErr == nil {
+			effective.ClockSkewSeconds = parsed
+	REDACTED
+REDACTED
+	if raw, ok := settings[SettingKeyOIDCConnectRequireEmailVerified]; ok {
+		effective.RequireEmailVerified = raw == "true"
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectUserInfoEmailPath]; ok {
+		effective.UserInfoEmailPath = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectUserInfoIDPath]; ok {
+		effective.UserInfoIDPath = strings.TrimSpace(v)
+REDACTED
+	if v, ok := settings[SettingKeyOIDCConnectUserInfoUsernamePath]; ok {
+		effective.UserInfoUsernamePath = strings.TrimSpace(v)
+REDACTED
+
+	if !effective.Enabled {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.NotFound("OAUTH_DISABLED", "oauth login is disabled")
+REDACTED
+	if strings.TrimSpace(effective.ProviderName) == "" {
+		effective.ProviderName = "OIDC"
+REDACTED
+	if strings.TrimSpace(effective.ClientID) == "" {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth client id not configured")
+REDACTED
+	if strings.TrimSpace(effective.IssuerURL) == "" {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth issuer url not configured")
+REDACTED
+	if strings.TrimSpace(effective.RedirectURL) == "" {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth redirect url not configured")
+REDACTED
+	if strings.TrimSpace(effective.FrontendRedirectURL) == "" {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth frontend redirect url not configured")
+REDACTED
+	if !scopesContainOpenID(effective.Scopes) {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth scopes must contain openid")
+REDACTED
+	if effective.ClockSkewSeconds < 0 || effective.ClockSkewSeconds > 600 {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth clock skew must be between 0 and 600")
+REDACTED
+
+	if err := config.ValidateAbsoluteHTTPURL(effective.IssuerURL); err != nil {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth issuer url invalid")
+REDACTED
+
+	discoveryURL := strings.TrimSpace(effective.DiscoveryURL)
+	if discoveryURL == "" {
+		discoveryURL = oidcDefaultDiscoveryURL(effective.IssuerURL)
+		effective.DiscoveryURL = discoveryURL
+REDACTED
+	if discoveryURL != "" {
+		if err := config.ValidateAbsoluteHTTPURL(discoveryURL); err != nil {
+			return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth discovery url invalid")
+	REDACTED
+REDACTED
+
+	needsDiscovery := strings.TrimSpace(effective.AuthorizeURL) == "" ||
+		strings.TrimSpace(effective.TokenURL) == "" ||
+		(effective.ValidateIDToken && strings.TrimSpace(effective.JWKSURL) == "")
+	if needsDiscovery && discoveryURL != "" {
+		metadata, resolveErr := oidcResolveProviderMetadata(ctx, discoveryURL)
+		if resolveErr != nil {
+			return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth discovery resolve failed").WithCause(resolveErr)
+	REDACTED
+		if strings.TrimSpace(effective.AuthorizeURL) == "" {
+			effective.AuthorizeURL = strings.TrimSpace(metadata.AuthorizationEndpoint)
+	REDACTED
+		if strings.TrimSpace(effective.TokenURL) == "" {
+			effective.TokenURL = strings.TrimSpace(metadata.TokenEndpoint)
+	REDACTED
+		if strings.TrimSpace(effective.UserInfoURL) == "" {
+			effective.UserInfoURL = strings.TrimSpace(metadata.UserInfoEndpoint)
+	REDACTED
+		if strings.TrimSpace(effective.JWKSURL) == "" {
+			effective.JWKSURL = strings.TrimSpace(metadata.JWKSURI)
+	REDACTED
+REDACTED
+
+	if strings.TrimSpace(effective.AuthorizeURL) == "" {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth authorize url not configured")
+REDACTED
+	if strings.TrimSpace(effective.TokenURL) == "" {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth token url not configured")
+REDACTED
+	if err := config.ValidateAbsoluteHTTPURL(effective.AuthorizeURL); err != nil {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth authorize url invalid")
+REDACTED
+	if err := config.ValidateAbsoluteHTTPURL(effective.TokenURL); err != nil {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth token url invalid")
+REDACTED
+	if v := strings.TrimSpace(effective.UserInfoURL); v != "" {
+		if err := config.ValidateAbsoluteHTTPURL(v); err != nil {
+			return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth userinfo url invalid")
+	REDACTED
+REDACTED
+	if effective.ValidateIDToken {
+		if strings.TrimSpace(effective.JWKSURL) == "" {
+			return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth jwks url not configured")
+	REDACTED
+		if strings.TrimSpace(effective.AllowedSigningAlgs) == "" {
+			return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth signing algs not configured")
+	REDACTED
+REDACTED
+	if v := strings.TrimSpace(effective.JWKSURL); v != "" {
+		if err := config.ValidateAbsoluteHTTPURL(v); err != nil {
+			return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth jwks url invalid")
+	REDACTED
+REDACTED
+	if err := config.ValidateAbsoluteHTTPURL(effective.RedirectURL); err != nil {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth redirect url invalid")
+REDACTED
+	if err := config.ValidateFrontendRedirectURL(effective.FrontendRedirectURL); err != nil {
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth frontend redirect url invalid")
+REDACTED
+
+	method := strings.ToLower(strings.TrimSpace(effective.TokenAuthMethod))
+	switch method {
+	case "", "client_secret_post", "client_secret_basic":
+		if strings.TrimSpace(effective.ClientSecret) == "" {
+			return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth client secret not configured")
+	REDACTED
+	case "none":
+		if !effective.UsePKCE {
+			return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth pkce must be enabled when token_auth_method=none")
+	REDACTED
+	default:
+		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth token_auth_method invalid")
+REDACTED
+
+	return effective, nil
+REDACTED
+
+func scopesContainOpenID(scopes string) bool {
+	for _, scope := range strings.Fields(strings.ToLower(strings.TrimSpace(scopes))) {
+		if scope == "openid" {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+type oidcProviderMetadata struct {
+	AuthorizationEndpoint string `json:"authorization_endpoint"`
+	TokenEndpoint         string `json:"token_endpoint"`
+	UserInfoEndpoint      string `json:"userinfo_endpoint"`
+	JWKSURI               string `json:"jwks_uri"`
+REDACTED
+
+func oidcDefaultDiscoveryURL(issuerURL string) string {
+	issuerURL = strings.TrimSpace(issuerURL)
+	if issuerURL == "" {
+		return ""
+REDACTED
+	return strings.TrimRight(issuerURL, "/") + "/.well-known/openid-configuration"
+REDACTED
+
+func oidcResolveProviderMetadata(ctx context.Context, discoveryURL string) (*oidcProviderMetadata, error) {
+	discoveryURL = strings.TrimSpace(discoveryURL)
+	if discoveryURL == "" {
+		return nil, fmt.Errorf("discovery url is empty")
+REDACTED
+
+	resp, err := req.C().
+		SetTimeout(15*time.Second).
+		R().
+		SetContext(ctx).
+		SetHeader("Accept", "application/json").
+		Get(discoveryURL)
+	if err != nil {
+		return nil, fmt.Errorf("request discovery document: %w", err)
+REDACTED
+	if !resp.IsSuccessState() {
+		return nil, fmt.Errorf("discovery request failed: status=%d", resp.StatusCode)
+REDACTED
+
+	metadata := &oidcProviderMetadata{REDACTED
+	if err := json.Unmarshal(resp.Bytes(), metadata); err != nil {
+		return nil, fmt.Errorf("parse discovery document: %w", err)
+REDACTED
+	return metadata, nil
 REDACTED
 
 // GetStreamTimeoutSettings 获取流超时处理配置

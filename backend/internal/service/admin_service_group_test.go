@@ -10,6 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func ptrString[T ~string](v T) *string {
+	s := string(v)
+	return &s
+REDACTED
+
 // groupRepoStubForAdmin 用于测试 AdminService 的 GroupRepository Stub
 type groupRepoStubForAdmin struct {
 	created *Group // 记录 Create 调用的参数
@@ -259,6 +264,116 @@ REDACTED
 	require.NotNil(t, repo.updated.ImagePrice2K)
 	require.InDelta(t, 0.15, *repo.updated.ImagePrice2K, 0.0001) // 原值保持
 	require.Nil(t, repo.updated.ImagePrice4K)
+REDACTED
+
+func TestAdminService_CreateGroup_NormalizesMessagesDispatchModelConfig(t *testing.T) {
+	repo := &groupRepoStubForAdmin{REDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:           "dispatch-group",
+		Description:    "dispatch config",
+		Platform:       PlatformOpenAI,
+		RateMultiplier: 1.0,
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			OpusMappedModel:   " gpt-5.4-high ",
+			SonnetMappedModel: " gpt-5.3-codex ",
+			HaikuMappedModel:  " gpt-5.4-mini-medium ",
+			ExactModelMappings: map[string]string{
+				" claude-sonnet-4-5-20250929 ": " gpt-5.2-high ",
+		REDACTED,
+	REDACTED,
+REDACTED)
+REDACTED
+	require.NotNil(t, group)
+	require.NotNil(t, repo.created)
+	require.Equal(t, OpenAIMessagesDispatchModelConfig{
+		OpusMappedModel:   "gpt-5.4",
+		SonnetMappedModel: "gpt-5.3-codex",
+		HaikuMappedModel:  "gpt-5.4-mini",
+		ExactModelMappings: map[string]string{
+			"claude-sonnet-4-5-20250929": "gpt-5.2",
+	REDACTED,
+REDACTED, repo.created.MessagesDispatchModelConfig)
+REDACTED
+
+func TestAdminService_UpdateGroup_NormalizesMessagesDispatchModelConfig(t *testing.T) {
+	existingGroup := &Group{
+		ID:       1,
+		Name:     "existing-group",
+		Platform: PlatformOpenAI,
+		Status:   StatusActive,
+REDACTED
+	repo := &groupRepoStubForAdmin{getByID: existingGroupREDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		MessagesDispatchModelConfig: &OpenAIMessagesDispatchModelConfig{
+			SonnetMappedModel: " gpt-5.4-medium ",
+			ExactModelMappings: map[string]string{
+				" REDACTED ": " gpt-5.4-mini-high ",
+		REDACTED,
+	REDACTED,
+REDACTED)
+REDACTED
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.Equal(t, OpenAIMessagesDispatchModelConfig{
+		SonnetMappedModel: "gpt-5.4",
+		ExactModelMappings: map[string]string{
+			"REDACTED": "gpt-5.4-mini",
+	REDACTED,
+REDACTED, repo.updated.MessagesDispatchModelConfig)
+REDACTED
+
+func TestAdminService_CreateGroup_ClearsMessagesDispatchFieldsForNonOpenAIPlatform(t *testing.T) {
+	repo := &groupRepoStubForAdmin{REDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                  "anthropic-group",
+		Description:           "non-openai",
+		Platform:              PlatformAnthropic,
+		RateMultiplier:        1.0,
+		AllowMessagesDispatch: true,
+		DefaultMappedModel:    "gpt-5.4",
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			OpusMappedModel: "gpt-5.4",
+	REDACTED,
+REDACTED)
+REDACTED
+	require.NotNil(t, group)
+	require.NotNil(t, repo.created)
+	require.False(t, repo.created.AllowMessagesDispatch)
+	require.Empty(t, repo.created.DefaultMappedModel)
+	require.Equal(t, OpenAIMessagesDispatchModelConfig{REDACTED, repo.created.MessagesDispatchModelConfig)
+REDACTED
+
+func TestAdminService_UpdateGroup_ClearsMessagesDispatchFieldsWhenPlatformChangesAwayFromOpenAI(t *testing.T) {
+	existingGroup := &Group{
+		ID:                    1,
+		Name:                  "existing-openai-group",
+		Platform:              PlatformOpenAI,
+		Status:                StatusActive,
+		AllowMessagesDispatch: true,
+		DefaultMappedModel:    "gpt-5.4",
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			SonnetMappedModel: "gpt-5.3-codex",
+	REDACTED,
+REDACTED
+	repo := &groupRepoStubForAdmin{getByID: existingGroupREDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		Platform: PlatformAnthropic,
+REDACTED)
+REDACTED
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.Equal(t, PlatformAnthropic, repo.updated.Platform)
+	require.False(t, repo.updated.AllowMessagesDispatch)
+	require.Empty(t, repo.updated.DefaultMappedModel)
+	require.Equal(t, OpenAIMessagesDispatchModelConfig{REDACTED, repo.updated.MessagesDispatchModelConfig)
 REDACTED
 
 func TestAdminService_ListGroups_WithSearch(t *testing.T) {
