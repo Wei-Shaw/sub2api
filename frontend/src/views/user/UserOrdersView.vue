@@ -15,29 +15,8 @@
       </div>
 
       <!-- Table -->
-      <DataTable :columns="columns" :data="orders" :loading="loading">
-        <template #cell-id="{ value }">
-          <span class="font-mono text-sm">#{{ value }}</span>
-        </template>
-        <template #cell-out_trade_no="{ value }">
-          <span class="text-sm text-gray-900 dark:text-white">{{ value }}</span>
-        </template>
-        <template #cell-amount="{ value, row }">
-          <div class="text-sm">
-            <span class="font-medium text-gray-900 dark:text-white">${{ value.toFixed(2) }}</span>
-            <span v-if="row.pay_amount !== value" class="ml-1 text-xs text-gray-500">(${{ row.pay_amount.toFixed(2) }})</span>
-          </div>
-        </template>
-        <template #cell-payment_type="{ value }">
-          <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.methods.' + value, value) }}</span>
-        </template>
-        <template #cell-status="{ value }">
-          <OrderStatusBadge :status="value" />
-        </template>
-        <template #cell-created_at="{ value }">
-          <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatDate(value) }}</span>
-        </template>
-        <template #cell-actions="{ row }">
+      <OrderTable :orders="orders" :loading="loading">
+        <template #actions="{ row }">
           <div class="flex items-center gap-2">
             <button v-if="row.status === 'PENDING'" @click="handleCancel(row.id)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-yellow-600 hover:bg-yellow-50 dark:text-yellow-400 dark:hover:bg-yellow-900/20">
               <Icon name="x" size="sm" />
@@ -49,7 +28,7 @@
             </button>
           </div>
         </template>
-      </DataTable>
+      </OrderTable>
 
       <!-- Pagination -->
       <Pagination
@@ -109,14 +88,12 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { PaymentOrder } from '@/types/payment'
-import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
-import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
+import OrderTable from '@/components/payment/OrderTable.vue'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -138,18 +115,6 @@ const statusFilters = computed(() => [
   { value: 'FAILED', label: t('payment.status.failed') },
   { value: 'REFUNDED', label: t('payment.status.refunded') },
 ])
-
-const columns = computed((): Column[] => [
-  { key: 'id', label: t('payment.orders.orderId') },
-  { key: 'out_trade_no', label: t('payment.orders.orderNo') },
-  { key: 'amount', label: t('payment.orders.amount') },
-  { key: 'payment_type', label: t('payment.orders.paymentMethod') },
-  { key: 'status', label: t('payment.orders.status') },
-  { key: 'created_at', label: t('payment.orders.createdAt') },
-  { key: 'actions', label: t('common.actions') },
-])
-
-function formatDate(dateStr: string) { return new Date(dateStr).toLocaleString() }
 
 async function fetchOrders() {
   loading.value = true

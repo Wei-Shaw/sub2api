@@ -19,33 +19,8 @@
       </div>
 
       <!-- Table -->
-      <DataTable :columns="orderColumns" :data="orders" :loading="ordersLoading">
-        <template #cell-id="{ value }"><span class="font-mono text-sm">#{{ value }}</span></template>
-        <template #cell-out_trade_no="{ value }">
-          <span class="text-sm text-gray-900 dark:text-white">{{ value }}</span>
-        </template>
-        <template #cell-user_email="{ value, row }">
-          <div class="text-sm">
-            <span class="text-gray-900 dark:text-white">{{ value || row.user_name || '#' + row.user_id }}</span>
-            <span v-if="row.user_notes" class="ml-1 text-xs text-gray-400">({{ row.user_notes }})</span>
-          </div>
-        </template>
-        <template #cell-amount="{ value, row }">
-          <div class="text-sm">
-            <span class="font-medium text-gray-900 dark:text-white">${{ value.toFixed(2) }}</span>
-            <span v-if="row.pay_amount !== value" class="ml-1 text-xs text-gray-500">({{ t('payment.orders.payAmount') }}: ${{ row.pay_amount.toFixed(2) }})</span>
-          </div>
-        </template>
-        <template #cell-status="{ value }">
-          <OrderStatusBadge :status="value" />
-        </template>
-        <template #cell-payment_type="{ value }">
-          <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.methods.' + value, value) }}</span>
-        </template>
-        <template #cell-created_at="{ value }">
-          <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatDateTime(value) }}</span>
-        </template>
-        <template #cell-actions="{ row }">
+      <OrderTable :orders="orders" :loading="ordersLoading" show-user>
+        <template #actions="{ row }">
           <div class="flex items-center gap-1">
             <button @click="showOrderDetail(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-600">
               <Icon name="eye" size="sm" />
@@ -76,7 +51,7 @@
             </button>
           </div>
         </template>
-      </DataTable>
+      </OrderTable>
       <Pagination v-if="orderPagination.total > 0" :page="orderPagination.page" :total="orderPagination.total" :page-size="orderPagination.page_size" @update:page="handleOrderPageChange" @update:pageSize="handleOrderPageSizeChange" />
     </div>
 
@@ -143,15 +118,14 @@ import { useAppStore } from '@/stores/app'
 import { adminPaymentAPI } from '@/api/admin/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { PaymentOrder } from '@/types/payment'
-import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AdminRefundDialog from '@/components/admin/payment/AdminRefundDialog.vue'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
+import OrderTable from '@/components/payment/OrderTable.vue'
 
 interface AuditLog {
   id: number
@@ -223,12 +197,6 @@ const orderTypeFilterOptions = computed(() => [
   { value: '', label: t('payment.admin.allOrderTypes') },
   { value: 'balance', label: t('payment.admin.balanceOrder') },
   { value: 'subscription', label: t('payment.admin.subscriptionOrder') },
-])
-
-const orderColumns = computed((): Column[] => [
-  { key: 'id', label: 'ID' }, { key: 'out_trade_no', label: t('payment.orders.orderNo') }, { key: 'user_email', label: t('payment.admin.colUser') }, { key: 'amount', label: t('payment.orders.amount') },
-  { key: 'payment_type', label: t('payment.orders.paymentMethod') }, { key: 'status', label: t('payment.orders.status') },
-  { key: 'created_at', label: t('payment.orders.createdAt') }, { key: 'actions', label: t('common.actions') },
 ])
 
 async function showOrderDetail(order: PaymentOrder) {
