@@ -355,8 +355,8 @@ REDACTED
 	return json.RawMessage("[]")
 REDACTED
 
-// GetFrameSrcOrigins returns deduplicated http(s) origins from purchase_subscription_url
-// and all custom_menu_items URLs. Used by the router layer for CSP frame-src injection.
+// GetFrameSrcOrigins returns deduplicated http(s) origins from home_content URL,
+// purchase_subscription_url, and all custom_menu_items URLs. Used by the router layer for CSP frame-src injection.
 func (s *SettingService) GetFrameSrcOrigins(ctx context.Context) ([]string, error) {
 	settings, err := s.GetPublicSettings(ctx)
 	if err != nil {
@@ -374,6 +374,9 @@ REDACTED
 		REDACTED
 	REDACTED
 REDACTED
+
+	// home content URL (when home_content is set to a URL for iframe embedding)
+	addOrigin(settings.HomeContent)
 
 	// purchase subscription URL
 	if settings.PurchaseSubscriptionEnabled {
