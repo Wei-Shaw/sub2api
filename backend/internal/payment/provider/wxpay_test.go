@@ -156,6 +156,7 @@ func TestNewWxpay(t *testing.T) {
 		"apiV3Key":    "12345678901234567890123456789012", // exactly 32 bytes
 		"publicKey":   "fake-public-key",
 		"publicKeyId": "key-id-001",
+		"certSerial":  "SERIAL001",
 	}
 
 	// helper to clone and override config fields

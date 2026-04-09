@@ -231,11 +231,11 @@ const routes: RouteRecordRaw[] = [
     name: 'PaymentResult',
     component: () => import('@/views/user/PaymentResultView.vue'),
     meta: {
-      requiresAuth: true,
+      requiresAuth: false,
       requiresAdmin: false,
       title: 'Payment Result',
       titleKey: 'payment.result.success',
-      requiresPayment: true
+      requiresPayment: false
     }
   },
   {

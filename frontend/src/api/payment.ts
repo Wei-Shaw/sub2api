@@ -67,6 +67,11 @@ export const paymentAPI = {
     return apiClient.post<PaymentOrder>('/payment/orders/verify', { out_trade_no: outTradeNo })
   },
 
+  /** Verify order payment status without auth (public endpoint for result page) */
+  verifyOrderPublic(outTradeNo: string) {
+    return apiClient.post<PaymentOrder>('/payment/public/orders/verify', { out_trade_no: outTradeNo })
+  },
+
   /** Request a refund for a completed order */
   requestRefund(id: number, data: { reason: string }) {
     return apiClient.post(`/payment/orders/${id}/refund-request`, data)

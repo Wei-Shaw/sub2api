@@ -57,7 +57,7 @@ type Wxpay struct {
 }
 
 func NewWxpay(instanceID string, config map[string]string) (*Wxpay, error) {
-	required := []string{"appId", "mchId", "privateKey", "apiV3Key", "publicKey", "publicKeyId"}
+	required := []string{"appId", "mchId", "privateKey", "apiV3Key", "publicKey", "publicKeyId", "certSerial"}
 	for _, k := range required {
 		if config[k] == "" {
 			return nil, fmt.Errorf("wxpay config missing required key: %s", k)
@@ -127,9 +127,10 @@ func (w *Wxpay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequ
 	if err != nil {
 		return nil, err
 	}
-	notifyURL := w.config["notifyUrl"]
+	// Request-first, config-fallback (consistent with EasyPay/Alipay)
+	notifyURL := req.NotifyURL
 	if notifyURL == "" {
-		notifyURL = req.NotifyURL
+		notifyURL = w.config["notifyUrl"]
 	}
 	if notifyURL == "" {
 		return nil, fmt.Errorf("wxpay notifyUrl is required")

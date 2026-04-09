@@ -136,14 +136,17 @@ onMounted(async () => {
     }
   }
 
-  // If we have an out_trade_no from a provider return URL, actively verify
-  // the payment with the upstream provider (handles missed notify callbacks)
+  // Verify payment via public endpoint (works without login)
   if (outTradeNo) {
     try {
-      const result = await paymentAPI.verifyOrder(outTradeNo)
+      const result = await paymentAPI.verifyOrderPublic(outTradeNo)
       order.value = result.data
     } catch (_err: unknown) {
-      // Verification failed, fall through to normal order lookup
+      // Public verify failed, try authenticated endpoint if logged in
+      try {
+        const result = await paymentAPI.verifyOrder(outTradeNo)
+        order.value = result.data
+      } catch (_e: unknown) { /* fall through */ }
     }
   }
 

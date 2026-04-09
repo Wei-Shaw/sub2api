@@ -10,6 +10,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -40,9 +41,17 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 		slog.Error("order not found", "orderID", oid)
 		return nil
 	}
-	if math.Abs(paid-o.PayAmount) > amountToleranceCNY {
-		s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{"expected": o.PayAmount, "paid": paid, "tradeNo": tradeNo})
-		return fmt.Errorf("amount mismatch: expected %.2f, got %.2f", o.PayAmount, paid)
+	// Skip amount check when paid=0 (e.g. QueryOrder doesn't return amount).
+	// Also skip if paid is NaN/Inf (malformed provider data).
+	if paid > 0 && !math.IsNaN(paid) && !math.IsInf(paid, 0) {
+		if math.Abs(paid-o.PayAmount) > amountToleranceCNY {
+			s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{"expected": o.PayAmount, "paid": paid, "tradeNo": tradeNo})
+			return fmt.Errorf("amount mismatch: expected %.2f, got %.2f", o.PayAmount, paid)
+		}
+	}
+	// Use order's expected amount when provider didn't report one
+	if paid <= 0 || math.IsNaN(paid) || math.IsInf(paid, 0) {
+		paid = o.PayAmount
 	}
 	return s.toPaid(ctx, o, tradeNo, paid, pk)
 }
@@ -249,27 +258,42 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 	if err != nil || g.Status != payment.EntityStatusActive {
 		return fmt.Errorf("group %d no longer exists or inactive", gid)
 	}
-	_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, AssignedBy: 0, Notes: fmt.Sprintf("payment order %d", o.ID)})
+	// Idempotency: check audit log to see if subscription was already assigned.
+	// Prevents double-extension on retry after markCompleted fails.
+	if s.hasAuditLog(ctx, o.ID, "SUBSCRIPTION_SUCCESS") {
+		slog.Info("subscription already assigned for order, skipping", "orderID", o.ID, "groupID", gid)
+		return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
+	}
+	orderNote := fmt.Sprintf("payment order %d", o.ID)
+	_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, AssignedBy: 0, Notes: orderNote})
 	if err != nil {
 		return fmt.Errorf("assign subscription: %w", err)
 	}
-	now := time.Now()
-	_, err = s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(o.ID), paymentorder.StatusEQ(OrderStatusRecharging)).SetStatus(OrderStatusCompleted).SetCompletedAt(now).Save(ctx)
-	if err != nil {
-		return fmt.Errorf("mark completed: %w", err)
-	}
-	s.writeAuditLog(ctx, o.ID, "SUBSCRIPTION_SUCCESS", "system", map[string]any{"groupId": gid, "days": days, "amount": o.Amount})
-	return nil
+	return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
+}
+
+func (s *PaymentService) hasAuditLog(ctx context.Context, orderID int64, action string) bool {
+	oid := strconv.FormatInt(orderID, 10)
+	c, _ := s.entClient.PaymentAuditLog.Query().
+		Where(paymentauditlog.OrderIDEQ(oid), paymentauditlog.ActionEQ(action)).
+		Limit(1).Count(ctx)
+	return c > 0
 }
 
 func (s *PaymentService) markFailed(ctx context.Context, oid int64, cause error) {
 	now := time.Now()
 	r := psErrMsg(cause)
-	_, e := s.entClient.PaymentOrder.UpdateOneID(oid).SetStatus(OrderStatusFailed).SetFailedAt(now).SetFailedReason(r).Save(ctx)
+	// Only mark FAILED if still in RECHARGING state — prevents overwriting
+	// a COMPLETED order when markCompleted failed but fulfillment succeeded.
+	c, e := s.entClient.PaymentOrder.Update().
+		Where(paymentorder.IDEQ(oid), paymentorder.StatusEQ(OrderStatusRecharging)).
+		SetStatus(OrderStatusFailed).SetFailedAt(now).SetFailedReason(r).Save(ctx)
 	if e != nil {
 		slog.Error("mark FAILED", "orderID", oid, "error", e)
 	}
-	s.writeAuditLog(ctx, oid, "FULFILLMENT_FAILED", "system", map[string]any{"reason": r})
+	if c > 0 {
+		s.writeAuditLog(ctx, oid, "FULFILLMENT_FAILED", "system", map[string]any{"reason": r})
+	}
 }
 
 func (s *PaymentService) RetryFulfillment(ctx context.Context, oid int64) error {

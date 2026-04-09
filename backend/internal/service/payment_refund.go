@@ -12,7 +12,6 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
-	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -70,14 +69,18 @@ func (s *PaymentService) PrepareRefund(ctx context.Context, oid int64, amt float
 	if !psSliceContains(ok, o.Status) {
 		return nil, nil, infraerrors.BadRequest("INVALID_STATUS", "order status does not allow refund")
 	}
+	if math.IsNaN(amt) || math.IsInf(amt, 0) {
+		return nil, nil, infraerrors.BadRequest("INVALID_AMOUNT", "invalid refund amount")
+	}
 	if amt <= 0 {
 		amt = o.Amount
 	}
-	if amt > o.Amount {
+	if amt-o.Amount > amountToleranceCNY {
 		return nil, nil, infraerrors.BadRequest("REFUND_AMOUNT_EXCEEDED", "refund amount exceeds recharge")
 	}
+	// Full refund: use actual pay_amount for gateway (includes fees)
 	ga := amt
-	if amt == o.Amount {
+	if math.Abs(amt-o.Amount) <= amountToleranceCNY {
 		ga = o.PayAmount
 	}
 	rr := strings.TrimSpace(reason)
@@ -122,9 +125,16 @@ func (s *PaymentService) ExecuteRefund(ctx context.Context, p *RefundPlan) (*Ref
 		return nil, infraerrors.Conflict("CONFLICT", "order status changed")
 	}
 	if p.DeductionType == payment.DeductionTypeBalance && p.BalanceToDeduct > 0 {
-		if err := s.userRepo.DeductBalance(ctx, p.Order.UserID, p.BalanceToDeduct); err != nil {
-			s.restoreStatus(ctx, p)
-			return nil, fmt.Errorf("deduction: %w", err)
+		// Skip balance deduction on retry if previous attempt already deducted
+		// but failed to roll back (REFUND_ROLLBACK_FAILED in audit log).
+		if !s.hasAuditLog(ctx, p.OrderID, "REFUND_ROLLBACK_FAILED") {
+			if err := s.userRepo.DeductBalance(ctx, p.Order.UserID, p.BalanceToDeduct); err != nil {
+				s.restoreStatus(ctx, p)
+				return nil, fmt.Errorf("deduction: %w", err)
+			}
+		} else {
+			slog.Warn("skipping balance deduction on retry (previous rollback failed)", "orderID", p.OrderID)
+			p.BalanceToDeduct = 0
 		}
 	}
 	if err := s.gwRefund(ctx, p); err != nil {
@@ -155,32 +165,9 @@ func (s *PaymentService) gwRefund(ctx context.Context, p *RefundPlan) error {
 }
 
 // getRefundProvider creates a provider using the order's original instance config.
-// Falls back to registry lookup if instance ID is missing (legacy orders).
+// Delegates to getOrderProvider which handles instance lookup and fallback.
 func (s *PaymentService) getRefundProvider(ctx context.Context, o *dbent.PaymentOrder) (payment.Provider, error) {
-	if o.ProviderInstanceID != nil && *o.ProviderInstanceID != "" {
-		instID, err := strconv.ParseInt(*o.ProviderInstanceID, 10, 64)
-		if err == nil {
-			cfg, err := s.loadBalancer.GetInstanceConfig(ctx, instID)
-			if err == nil {
-				providerKey := s.registry.GetProviderKey(o.PaymentType)
-				if providerKey == "" {
-					providerKey = o.PaymentType
-				}
-				p, err := provider.CreateProvider(providerKey, *o.ProviderInstanceID, cfg)
-				if err == nil {
-					return p, nil
-				}
-				slog.Warn("failed to create provider from instance, falling back to registry",
-					"instance_id", instID, "error", err)
-			} else {
-				slog.Warn("failed to get instance config for refund, falling back to registry",
-					"instance_id", instID, "error", err)
-			}
-		}
-	}
-	// Fallback: use registry (may pick wrong instance for multi-instance setups)
-	s.EnsureProviders(ctx)
-	return s.registry.GetProvider(o.PaymentType)
+	return s.getOrderProvider(ctx, o)
 }
 
 func (s *PaymentService) handleGwFail(ctx context.Context, p *RefundPlan, gErr error) (*RefundResult, error) {

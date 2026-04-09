@@ -363,6 +363,41 @@ func (h *PaymentHandler) VerifyOrder(c *gin.Context) {
 	response.Success(c, order)
 }
 
+// PublicOrderResult is the limited order info returned by the public verify endpoint.
+// No user details are exposed — only payment status information.
+type PublicOrderResult struct {
+	ID          int64   `json:"id"`
+	OutTradeNo  string  `json:"out_trade_no"`
+	Amount      float64 `json:"amount"`
+	PayAmount   float64 `json:"pay_amount"`
+	PaymentType string  `json:"payment_type"`
+	Status      string  `json:"status"`
+}
+
+// VerifyOrderPublic verifies payment status without requiring authentication.
+// Returns limited order info (no user details) to prevent information leakage.
+// POST /api/v1/payment/public/orders/verify
+func (h *PaymentHandler) VerifyOrderPublic(c *gin.Context) {
+	var req VerifyOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	order, err := h.paymentService.VerifyOrderPublic(c.Request.Context(), req.OutTradeNo)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, PublicOrderResult{
+		ID:          order.ID,
+		OutTradeNo:  order.OutTradeNo,
+		Amount:      order.Amount,
+		PayAmount:   order.PayAmount,
+		PaymentType: order.PaymentType,
+		Status:      order.Status,
+	})
+}
+
 // requireAuth extracts the authenticated subject from the context.
 // Returns the subject and true on success; on failure it writes an Unauthorized response and returns false.
 func requireAuth(c *gin.Context) (middleware2.AuthSubject, bool) {

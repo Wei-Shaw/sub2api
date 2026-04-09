@@ -158,6 +158,7 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 		Code   int    `json:"code"`
 		Msg    string `json:"msg"`
 		Status int    `json:"status"`
+		Money  string `json:"money"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("easypay parse query: %w", err)
@@ -166,7 +167,8 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 	if resp.Status == easypayStatusPaid {
 		status = payment.ProviderStatusPaid
 	}
-	return &payment.QueryOrderResponse{TradeNo: tradeNo, Status: status}, nil
+	amount, _ := strconv.ParseFloat(resp.Money, 64)
+	return &payment.QueryOrderResponse{TradeNo: tradeNo, Status: status, Amount: amount}, nil
 }
 
 func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[string]string) (*payment.PaymentNotification, error) {
@@ -174,9 +176,10 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 	if err != nil {
 		return nil, fmt.Errorf("parse notify: %w", err)
 	}
+	// url.ParseQuery already decodes values — no additional decode needed.
 	params := make(map[string]string)
 	for k := range values {
-		params[k] = decodeURLValue(values.Get(k))
+		params[k] = values.Get(k)
 	}
 	sign := params["sign"]
 	if sign == "" {
