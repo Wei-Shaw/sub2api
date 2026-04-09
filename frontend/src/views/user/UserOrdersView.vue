@@ -16,8 +16,11 @@
 
       <!-- Table -->
       <DataTable :columns="columns" :data="orders" :loading="loading">
-        <template #cell-id="{ value }">
-          <span class="font-mono text-sm">#{{ value }}</span>
+        <template #cell-id="{ value, row }">
+          <div>
+            <span class="font-mono text-sm">#{{ value }}</span>
+            <p v-if="row.out_trade_no" class="font-mono text-xs text-gray-400 dark:text-gray-500">{{ row.out_trade_no }}</p>
+          </div>
         </template>
         <template #cell-amount="{ value, row }">
           <div class="text-sm">
