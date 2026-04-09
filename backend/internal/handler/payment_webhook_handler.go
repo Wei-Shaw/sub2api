@@ -72,6 +72,9 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 		rawBody = string(body)
 	}
 
+	// Ensure providers are loaded (registry may be empty after restart)
+	h.paymentService.EnsureProviders(c.Request.Context())
+
 	provider, err := h.registry.GetProviderByKey(providerKey)
 	if err != nil {
 		slog.Warn("[Payment Webhook] provider not registered", "provider", providerKey, "error", err)
