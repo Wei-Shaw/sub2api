@@ -250,7 +250,7 @@ func channelListOrderBy(params pagination.PaginationParams) string {
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := strings.ToUpper(params.NormalizedSortOrder(pagination.SortOrderAsc))
 
-	column := "c.id"
+	var column string
 	switch sortBy {
 	case "":
 		column = "c.id"

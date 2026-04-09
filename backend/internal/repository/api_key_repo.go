@@ -390,7 +390,7 @@ func apiKeyListOrder(params pagination.PaginationParams) []func(*entsql.Selector
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
 
-	field := apikey.FieldID
+	var field string
 	switch sortBy {
 	case "name":
 		field = apikey.FieldName
@@ -402,8 +402,6 @@ func apiKeyListOrder(params pagination.PaginationParams) []func(*entsql.Selector
 		field = apikey.FieldLastUsedAt
 	case "created_at":
 		field = apikey.FieldCreatedAt
-	case "id", "":
-		field = apikey.FieldID
 	default:
 		field = apikey.FieldID
 REDACTED

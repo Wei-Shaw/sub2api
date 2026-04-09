@@ -161,7 +161,7 @@ func promoCodeListOrder(params pagination.PaginationParams) []func(*entsql.Selec
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
 
-	field := promocode.FieldID
+	var field string
 	switch sortBy {
 	case "bonus_amount":
 		field = promocode.FieldBonusAmount
@@ -173,8 +173,6 @@ func promoCodeListOrder(params pagination.PaginationParams) []func(*entsql.Selec
 		field = promocode.FieldCreatedAt
 	case "code":
 		field = promocode.FieldCode
-	case "id", "":
-		field = promocode.FieldID
 	default:
 		field = promocode.FieldID
 REDACTED

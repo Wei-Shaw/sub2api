@@ -319,7 +319,7 @@ func groupListOrder(params pagination.PaginationParams) []func(*entsql.Selector)
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderAsc)
 
-	field := group.FieldSortOrder
+	var field string
 	tieField := group.FieldID
 	defaultOrder := true
 	switch sortBy {

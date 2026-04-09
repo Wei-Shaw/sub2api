@@ -17,7 +17,6 @@ type adminUsageRepoCapture struct {
 	service.UsageLogRepository
 	listParams   pagination.PaginationParams
 	listFilters  usagestats.UsageLogFilters
-	statsParams  pagination.PaginationParams
 	statsFilters usagestats.UsageLogFilters
 REDACTED
 

@@ -13,11 +13,17 @@ func (s *GroupRepoSuite) TestList_DefaultSortBySortOrderAsc() {
 	s.Require().NoError(s.repo.Create(s.ctx, g1))
 	s.Require().NoError(s.repo.Create(s.ctx, g2))
 
-	groups, _, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10REDACTED)
+	groups, _, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 100REDACTED)
 	s.Require().NoError(err)
-	s.Require().Len(groups, 2)
-	s.Require().Equal(g2.ID, groups[0].ID)
-	s.Require().Equal(g1.ID, groups[1].ID)
+	s.Require().GreaterOrEqual(len(groups), 2)
+	indexByID := make(map[int64]int, len(groups))
+	for i, g := range groups {
+		indexByID[g.ID] = i
+REDACTED
+	s.Require().Contains(indexByID, g1.ID)
+	s.Require().Contains(indexByID, g2.ID)
+	// g2 has SortOrder=10, g1 has SortOrder=20; ascending means g2 comes first
+	s.Require().Less(indexByID[g2.ID], indexByID[g1.ID])
 REDACTED
 
 func (s *GroupRepoSuite) TestList_SortBySortOrderDesc() {

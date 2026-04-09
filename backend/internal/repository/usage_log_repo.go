@@ -3812,14 +3812,12 @@ func usageLogOrderBy(params pagination.PaginationParams) string {
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := strings.ToUpper(params.NormalizedSortOrder(pagination.SortOrderDesc))
 
-	column := "id"
+	var column string
 	switch sortBy {
 	case "model":
 		column = "COALESCE(NULLIF(TRIM(requested_model), ''), model)"
 	case "created_at":
 		column = "created_at"
-	case "id", "":
-		column = "id"
 	default:
 		column = "id"
 REDACTED
