@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -14,6 +15,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+
+	entsql "entgo.io/ent/dialect/sql"
 )
 
 type apiKeyRepository struct {
@@ -309,12 +312,15 @@ REDACTED
 		return nil, nil, err
 REDACTED
 
-	keys, err := q.
+	keysQuery := q.
 		WithGroup().
 		Offset(params.Offset()).
-		Limit(params.Limit()).
-		Order(dbent.Desc(apikey.FieldID)).
-		All(ctx)
+		Limit(params.Limit())
+	for _, order := range apiKeyListOrder(params) {
+		keysQuery = keysQuery.Order(order)
+REDACTED
+
+	keys, err := keysQuery.All(ctx)
 	if err != nil {
 		return nil, nil, err
 REDACTED
@@ -359,12 +365,15 @@ func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, par
 		return nil, nil, err
 REDACTED
 
-	keys, err := q.
+	keysQuery := q.
 		WithUser().
 		Offset(params.Offset()).
-		Limit(params.Limit()).
-		Order(dbent.Desc(apikey.FieldID)).
-		All(ctx)
+		Limit(params.Limit())
+	for _, order := range apiKeyListOrder(params) {
+		keysQuery = keysQuery.Order(order)
+REDACTED
+
+	keys, err := keysQuery.All(ctx)
 	if err != nil {
 		return nil, nil, err
 REDACTED
@@ -375,6 +384,34 @@ REDACTED
 REDACTED
 
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
+REDACTED
+
+func apiKeyListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
+	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
+	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
+
+	field := apikey.FieldID
+	switch sortBy {
+	case "name":
+		field = apikey.FieldName
+	case "status":
+		field = apikey.FieldStatus
+	case "expires_at":
+		field = apikey.FieldExpiresAt
+	case "last_used_at":
+		field = apikey.FieldLastUsedAt
+	case "created_at":
+		field = apikey.FieldCreatedAt
+	case "id", "":
+		field = apikey.FieldID
+	default:
+		field = apikey.FieldID
+REDACTED
+
+	if sortOrder == pagination.SortOrderAsc {
+		return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(apikey.FieldID)REDACTED
+REDACTED
+	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(apikey.FieldID)REDACTED
 REDACTED
 
 // SearchAPIKeys searches API keys by user ID and/or keyword (name)

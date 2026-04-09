@@ -148,6 +148,8 @@
           :data="accounts"
           :loading="loading"
           row-key="id"
+          :server-side-sort="true"
+          @sort="handleSort"
           default-sort-key="name"
           default-sort-order="asc"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
@@ -401,6 +403,37 @@ const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 
 // Sorting settings
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
+type AccountSortOrder = 'asc' | 'desc'
+type AccountSortState = {
+  sort_by: string
+  sort_order: AccountSortOrder
+REDACTED
+const ACCOUNT_SORTABLE_KEYS = new Set([
+  'name',
+  'status',
+  'schedulable',
+  'priority',
+  'rate_multiplier',
+  'last_used_at',
+  'expires_at'
+])
+const loadInitialAccountSortState = (): AccountSortState => {
+  const fallback: AccountSortState = { sort_by: 'name', sort_order: 'asc' REDACTED
+  try {
+    const raw = localStorage.getItem(ACCOUNT_SORT_STORAGE_KEY)
+    if (!raw) return fallback
+    const parsed = JSON.parse(raw) as { key?: string; order?: string REDACTED
+    const key = typeof parsed.key === 'string' ? parsed.key : ''
+    if (!ACCOUNT_SORTABLE_KEYS.has(key)) return fallback
+    return {
+      sort_by: key,
+      sort_order: parsed.order === 'desc' ? 'desc' : 'asc'
+    REDACTED
+  REDACTED catch {
+    return fallback
+  REDACTED
+REDACTED
+const sortState = reactive<AccountSortState>(loadInitialAccountSortState())
 
 // Auto refresh settings
 const showAutoRefreshDropdown = ref(false)
@@ -594,7 +627,16 @@ const {
   handlePageSizeChange: baseHandlePageSizeChange
 REDACTED = useTableLoader<Account, any>({
   fetchFn: adminAPI.accounts.list,
-  initialParams: { platform: '', type: '', status: '', privacy_mode: '', group: '', search: '' REDACTED
+  initialParams: {
+    platform: '',
+    type: '',
+    status: '',
+    privacy_mode: '',
+    group: '',
+    search: '',
+    sort_by: sortState.sort_by,
+    sort_order: sortState.sort_order
+  REDACTED
 REDACTED)
 
 const {
@@ -669,6 +711,19 @@ const handlePageSizeChange = (size: number) => {
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = true
   baseHandlePageSizeChange(size)
+REDACTED
+
+const handleSort = (key: string, order: AccountSortOrder) => {
+  sortState.sort_by = key
+  sortState.sort_order = order
+  const requestParams = params as any
+  requestParams.sort_by = key
+  requestParams.sort_order = order
+  pagination.page = 1
+  hasPendingListSync.value = false
+  resetAutoRefreshCache()
+  pendingTodayStatsRefresh.value = true
+  load()
 REDACTED
 
 watch(loading, (isLoading, wasLoading) => {
@@ -774,6 +829,8 @@ const refreshAccountsIncrementally = async () => {
         privacy_mode?: string
         group?: string
         search?: string
+        sort_by?: string
+        sort_order?: AccountSortOrder
 
       REDACTED,
       { etag: autoRefreshETag.value REDACTED
@@ -1103,19 +1160,58 @@ const handleBulkToggleSchedulable = async (schedulable: boolean) => {
 REDACTED
 const handleBulkUpdated = () => { showBulkEdit.value = false; clearSelection(); reload() REDACTED
 const handleDataImported = () => { showImportData.value = false; reload() REDACTED
+const ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE = 'ungrouped'
+const ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE = '__unset__'
+const buildAccountQueryFilters = () => ({
+  platform: params.platform || '',
+  type: params.type || '',
+  status: params.status || '',
+  group: params.group || '',
+  privacy_mode: params.privacy_mode || '',
+  search: params.search || '',
+  sort_by: sortState.sort_by,
+  sort_order: sortState.sort_order
+REDACTED)
 const accountMatchesCurrentFilters = (account: Account) => {
-  if (params.platform && account.platform !== params.platform) return false
-  if (params.type && account.type !== params.type) return false
-  if (params.status) {
-    if (params.status === 'rate_limited') {
-      if (!account.rate_limit_reset_at) return false
-      const resetAt = new Date(account.rate_limit_reset_at).getTime()
-      if (!Number.isFinite(resetAt) || resetAt <= Date.now()) return false
-    REDACTED else if (account.status !== params.status) {
+  const filters = buildAccountQueryFilters()
+  if (filters.platform && account.platform !== filters.platform) return false
+  if (filters.type && account.type !== filters.type) return false
+  if (filters.status) {
+    const now = Date.now()
+    const rateLimitResetAt = account.rate_limit_reset_at ? new Date(account.rate_limit_reset_at).getTime() : Number.NaN
+    const isRateLimited = Number.isFinite(rateLimitResetAt) && rateLimitResetAt > now
+    const tempUnschedUntil = account.temp_unschedulable_until ? new Date(account.temp_unschedulable_until).getTime() : Number.NaN
+    const isTempUnschedulable = Number.isFinite(tempUnschedUntil) && tempUnschedUntil > now
+
+    if (filters.status === 'active') {
+      if (account.status !== 'active' || isRateLimited || isTempUnschedulable || !account.schedulable) return false
+    REDACTED else if (filters.status === 'rate_limited') {
+      if (account.status !== 'active' || !isRateLimited || isTempUnschedulable) return false
+    REDACTED else if (filters.status === 'temp_unschedulable') {
+      if (account.status !== 'active' || !isTempUnschedulable) return false
+    REDACTED else if (filters.status === 'unschedulable') {
+      if (account.status !== 'active' || account.schedulable || isRateLimited || isTempUnschedulable) return false
+    REDACTED else if (account.status !== filters.status) {
       return false
     REDACTED
   REDACTED
-  const search = String(params.search || '').trim().toLowerCase()
+  if (filters.group) {
+    const groupIds = account.group_ids ?? account.groups?.map((group) => group.id) ?? []
+    if (filters.group === ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE) {
+      if (groupIds.length > 0) return false
+    REDACTED else if (!groupIds.includes(Number(filters.group))) {
+      return false
+    REDACTED
+  REDACTED
+  const privacyMode = typeof account.extra?.privacy_mode === 'string' ? account.extra.privacy_mode : ''
+  if (filters.privacy_mode) {
+    if (filters.privacy_mode === ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE) {
+      if (privacyMode.trim() !== '') return false
+    REDACTED else if (privacyMode !== filters.privacy_mode) {
+      return false
+    REDACTED
+  REDACTED
+  const search = String(filters.search || '').trim().toLowerCase()
   if (search && !account.name.toLowerCase().includes(search)) return false
   return true
 REDACTED
@@ -1181,12 +1277,7 @@ const handleExportData = async () => {
         ? { ids: selIds.value, includeProxies: includeProxyOnExport.value REDACTED
         : {
             includeProxies: includeProxyOnExport.value,
-            filters: {
-              platform: params.platform,
-              type: params.type,
-              status: params.status,
-              search: params.search
-            REDACTED
+            filters: buildAccountQueryFilters()
           REDACTED
     )
     const timestamp = formatExportTimestamp()

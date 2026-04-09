@@ -532,6 +532,8 @@ REDACTED{
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
+					"table_default_page_size": 20,
+						"table_page_size_options": [10, 20, 50],
 					"min_claude_code_version": "",
 					"max_claude_code_version": "",
 					"allow_ungrouped_key_scheduling": false,

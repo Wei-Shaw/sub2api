@@ -17,10 +17,16 @@ export async function list(
   filters?: {
     status?: string
     search?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+  REDACTED,
+  options?: {
+    signal?: AbortSignal
   REDACTED
 ): Promise<BasePaginationResponse<PromoCode>> {
   const { data REDACTED = await apiClient.get<BasePaginationResponse<PromoCode>>('/admin/promo-codes', {
-    params: { page, page_size: pageSize, ...filters REDACTED
+    params: { page, page_size: pageSize, ...filters REDACTED,
+    signal: options?.signal
   REDACTED)
   return data
 REDACTED

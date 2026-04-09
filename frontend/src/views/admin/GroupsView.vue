@@ -73,7 +73,15 @@
       </template>
 
       <template #table>
-        <DataTable :columns="columns" :data="groups" :loading="loading">
+        <DataTable
+          :columns="columns"
+          :data="groups"
+          :loading="loading"
+          :server-side-sort="true"
+          default-sort-key="sort_order"
+          default-sort-order="asc"
+          @sort="handleSort"
+        >
           <template #cell-name="{ value REDACTED">
             <span class="font-medium text-gray-900 dark:text-white">{{ value REDACTEDREDACTED</span>
           </template>
@@ -1983,6 +1991,10 @@ const pagination = reactive({
   total: 0,
   pages: 0
 REDACTED)
+const sortState = reactive({
+  sort_by: 'sort_order',
+  sort_order: 'asc' as 'asc' | 'desc'
+REDACTED)
 
 let abortController: AbortController | null = null
 
@@ -2297,7 +2309,9 @@ const loadGroups = async () => {
       platform: (filters.platform as GroupPlatform) || undefined,
       status: filters.status as any,
       is_exclusive: filters.is_exclusive ? filters.is_exclusive === 'true' : undefined,
-      search: searchQuery.value.trim() || undefined
+      search: searchQuery.value.trim() || undefined,
+      sort_by: sortState.sort_by,
+      sort_order: sortState.sort_order
     REDACTED, { signal REDACTED)
     if (signal.aborted) return
     groups.value = response.items
@@ -2377,6 +2391,13 @@ REDACTED
 
 const handlePageSizeChange = (pageSize: number) => {
   pagination.page_size = pageSize
+  pagination.page = 1
+  loadGroups()
+REDACTED
+
+const handleSort = (key: string, order: 'asc' | 'desc') => {
+  sortState.sort_by = key
+  sortState.sort_order = order
   pagination.page = 1
   loadGroups()
 REDACTED

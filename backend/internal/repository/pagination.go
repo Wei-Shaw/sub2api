@@ -14,3 +14,22 @@ REDACTED
 		Pages:    pages,
 REDACTED
 REDACTED
+
+func paginateSlice[T any](items []T, params pagination.PaginationParams) []T {
+	if len(items) == 0 {
+		return []T{REDACTED
+REDACTED
+
+	offset := params.Offset()
+	if offset >= len(items) {
+		return []T{REDACTED
+REDACTED
+
+	limit := params.Limit()
+	end := offset + limit
+	if end > len(items) {
+		end = len(items)
+REDACTED
+
+	return items[offset:end]
+REDACTED
