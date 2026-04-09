@@ -4521,7 +4521,7 @@ export default {
         cancelRateLimit: '限制取消频率',
         cancelRateLimitHint: '启用后，用户在时间窗口内取消订单次数超限将无法创建新订单',
         cancelRateLimitEvery: '每',
-        cancelRateLimitAllowMax: '内最多取消',
+        cancelRateLimitAllowMax: '最多',
         cancelRateLimitTimes: '次',
         cancelRateLimitWindow: '时间窗口',
         cancelRateLimitUnit: '周期',
