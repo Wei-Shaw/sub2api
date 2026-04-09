@@ -2942,8 +2942,6 @@ async function handleSaveProvider(payload: any) {
     }
     showProviderDialog.value = false
     loadProviders()
-    // Also save the overall settings so payment config changes are persisted together
-    await saveSettings()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value))
   } finally {
