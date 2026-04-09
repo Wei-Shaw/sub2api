@@ -49,28 +49,22 @@ const (
 // --- Types ---
 
 // formatOrderID converts an internal DB order ID to the external order ID sent to payment providers.
-// Format: sub2_20250409_5_aB3kX9mQ (prefix + date + dbID + 8-char random)
+// Format: sub2_20250409aB3kX9mQ_5 (prefix + date + 8-char random + dbID)
 func formatOrderID(id int64) string {
 	date := time.Now().Format("20060102")
 	rnd := generateRandomString(8)
-	return orderIDPrefix + date + "_" + strconv.FormatInt(id, 10) + "_" + rnd
+	return orderIDPrefix + date + rnd + "_" + strconv.FormatInt(id, 10)
 }
 
 // parseOrderID extracts the internal DB order ID from an external order ID.
-// Supports both new format "sub2_20250409_5_aB3kX9mQ" and legacy "sub2_5".
+// New format: sub2_20250409aB3kX9mQ_5 → extract after last "_"
+// Legacy: sub2_5 → extract after prefix
 func parseOrderID(externalID string) (int64, error) {
-	trimmed := strings.TrimPrefix(externalID, orderIDPrefix)
-	parts := strings.Split(trimmed, "_")
-	switch len(parts) {
-	case 1:
-		// Legacy: sub2_5
-		return strconv.ParseInt(parts[0], 10, 64)
-	case 3:
-		// New: 20250409_5_aB3kX9mQ → extract middle part
-		return strconv.ParseInt(parts[1], 10, 64)
-	default:
+	idx := strings.LastIndex(externalID, "_")
+	if idx < 0 {
 		return 0, fmt.Errorf("invalid order ID format: %s", externalID)
 	}
+	return strconv.ParseInt(externalID[idx+1:], 10, 64)
 }
 
 func generateRandomString(n int) string {
