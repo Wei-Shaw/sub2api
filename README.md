@@ -69,6 +69,11 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 <td width="180"><a href="https://ctok.ai"><img src="assets/partners/logos/ctok.png" alt="CTok" width="150"></a></td>
 <td>Thanks to CTok.ai for sponsoring this project! CTok.ai is dedicated to building a one-stop AI programming tool service platform. We offer professional Claude Code packages and technical community services, with support for Google Gemini and OpenAI Codex. Through carefully designed plans and a professional tech community, we provide developers with reliable service guarantees and continuous technical support, making AI-assisted programming a true productivity tool. Click <a href="https://ctok.ai">here</a> to register!</td>
 </tr>
+
+<tr>
+<td width="180"><a href="https://code.silkapi.com/"><img src="assets/partners/logos/silkapi.png" alt="silkapi" width="150"></a></td>
+<td>Thanks to SilkAPI for sponsoring this project! <a href="https://code.silkapi.com/">SilkAPI</a> is a relay service built on Sub2API, specializing in providing high-speed and stable Codex API relay.</td>
+</tr>
 </table>
 
 ## Ecosystem
@@ -408,6 +413,12 @@ default:
   api_key_prefix: "sk-"
   rate_multiplier: 1.0
 ```
+
+### Sora Status (Temporarily Unavailable)
+
+> ⚠️ Sora-related features are temporarily unavailable due to technical issues in upstream integration and media delivery.
+> Please do not rely on Sora in production at this time.
+> Existing `gateway.sora_*` configuration keys are reserved and may not take effect until these issues are resolved.
 
 Additional security-related options are available in `config.yaml`:
 

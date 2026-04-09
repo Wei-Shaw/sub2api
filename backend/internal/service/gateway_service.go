@@ -3820,8 +3820,17 @@ func rewriteSystemForNonClaudeCode(body []byte, system any) []byte {
 		originalSystemText = strings.Join(parts, "\n\n")
 	}
 
-	// 2. 将 system 替换为 Claude Code 标准提示词（纯字符串，通过 Anthropic 检测）
-	out, ok := setJSONValueBytes(body, "system", claudeCodeSystemPrompt)
+	// 2. 将 system 替换为 Claude Code 标准提示词（array 格式，与真实 Claude Code 一致）
+	//    真实 Claude Code 始终以 [{type: "text", text: "...", cache_control: {type: "ephemeral"}}] 发送 system。
+	//    使用 string 格式会被 Anthropic 检测为第三方应用。
+	claudeCodeSystemBlock := []map[string]any{
+		{
+			"type":          "text",
+			"text":          claudeCodeSystemPrompt,
+			"cache_control": map[string]string{"type": "ephemeral"},
+		},
+	}
+	out, ok := setJSONValueBytes(body, "system", claudeCodeSystemBlock)
 	if !ok {
 		logger.LegacyPrintf("service.gateway", "Warning: failed to set Claude Code system prompt")
 		return body
@@ -4059,17 +4068,22 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if shouldMimicClaudeCode {
 		// 非 Claude Code 客户端：将 system 替换为 Claude Code 标识，原始 system 迁移至 messages
 		// 条件：1) OAuth/SetupToken 账号  2) 不是 Claude Code 客户端  3) 不是 Haiku 模型  4) system 中还没有 Claude Code 提示词
+		systemRewritten := false
 		if !strings.Contains(strings.ToLower(reqModel), "haiku") &&
 			!systemIncludesClaudeCodePrompt(parsed.System) {
 			body = rewriteSystemForNonClaudeCode(body, parsed.System)
+			systemRewritten = true
 		}
 
-		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: true}
+		// system 被重写时保留 CC prompt 的 cache_control: ephemeral（匹配真实 Claude Code 行为）；
+		// 未重写时（haiku / 已含 CC 前缀）剥离客户端 cache_control，与原有行为一致。
+		// 两种情况下 enforceCacheControlLimit 都会兜底处理上限。
+		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewritten}
 		if s.identityService != nil {
 			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 			if err == nil && fp != nil {
 				// metadata 透传开启时跳过 metadata 注入
-				_, mimicMPT := s.settingService.GetGatewayForwardingSettings(ctx)
+				_, mimicMPT, _ := s.settingService.GetGatewayForwardingSettings(ctx)
 				if !mimicMPT {
 					if metadataUserID := s.buildOAuthMetadataUserID(parsed, account, fp); metadataUserID != "" {
 						normalizeOpts.injectMetadata = true
@@ -5618,9 +5632,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 
 	// OAuth账号：应用统一指纹和metadata重写（受设置开关控制）
 	var fingerprint *Fingerprint
-	enableFP, enableMPT := true, false
+	enableFP, enableMPT, enableCCH := true, false, false
 	if s.settingService != nil {
-		enableFP, enableMPT = s.settingService.GetGatewayForwardingSettings(ctx)
+		enableFP, enableMPT, enableCCH = s.settingService.GetGatewayForwardingSettings(ctx)
 	}
 	if account.IsOAuth() && s.identityService != nil {
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
@@ -5645,6 +5659,15 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 				}
 			}
 		}
+	}
+
+	// 同步 billing header cc_version 与实际发送的 User-Agent 版本
+	if fingerprint != nil {
+		body = syncBillingHeaderVersion(body, fingerprint.UserAgent)
+	}
+	// CCH 签名：将 cch=00000 占位符替换为 xxHash64 签名（需在所有 body 修改之后）
+	if enableCCH {
+		body = signBillingHeaderCCH(body)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
@@ -5689,7 +5712,6 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	// Build effective drop set: merge static defaults with dynamic beta policy filter rules
 	policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account, modelID)
 	effectiveDropSet := mergeDropSets(policyFilterSet)
-	effectiveDropWithClaudeCodeSet := mergeDropSets(policyFilterSet, claude.BetaClaudeCode)
 
 	// 处理 anthropic-beta header（OAuth 账号需要包含 oauth beta）
 	if tokenType == "oauth" {
@@ -5700,11 +5722,16 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			applyClaudeCodeMimicHeaders(req, reqStream)
 
 			incomingBeta := getHeaderRaw(req.Header, "anthropic-beta")
-			// Match real Claude CLI traffic (per mitmproxy reports):
-			// messages requests typically use only oauth + interleaved-thinking.
-			// Also drop claude-code beta if a downstream client added it.
+			// Claude Code OAuth credentials are scoped to Claude Code.
+			// Non-haiku models MUST include claude-code beta for Anthropic to recognize
+			// this as a legitimate Claude Code request; without it, the request is
+			// rejected as third-party ("out of extra usage").
+			// Haiku models are exempt from third-party detection and don't need it.
 			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinking}
-			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropWithClaudeCodeSet))
+			if !strings.Contains(strings.ToLower(modelID), "haiku") {
+				requiredBetas = []string{claude.BetaClaudeCode, claude.BetaOAuth, claude.BetaInterleavedThinking}
+			}
+			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropSet))
 		} else {
 			// Claude Code 客户端：尽量透传原始 header，仅补齐 oauth beta
 			clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
@@ -8415,9 +8442,9 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 
 	// OAuth 账号：应用统一指纹和重写 userID（受设置开关控制）
 	// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
-	ctEnableFP, ctEnableMPT := true, false
+	ctEnableFP, ctEnableMPT, ctEnableCCH := true, false, false
 	if s.settingService != nil {
-		ctEnableFP, ctEnableMPT = s.settingService.GetGatewayForwardingSettings(ctx)
+		ctEnableFP, ctEnableMPT, ctEnableCCH = s.settingService.GetGatewayForwardingSettings(ctx)
 	}
 	var ctFingerprint *Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
@@ -8433,6 +8460,14 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 				}
 			}
 		}
+	}
+
+	// 同步 billing header cc_version 与实际发送的 User-Agent 版本
+	if ctFingerprint != nil && ctEnableFP {
+		body = syncBillingHeaderVersion(body, ctFingerprint.UserAgent)
+	}
+	if ctEnableCCH {
+		body = signBillingHeaderCCH(body)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))

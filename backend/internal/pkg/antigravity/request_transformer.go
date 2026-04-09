@@ -730,13 +730,14 @@ func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 		})
 	}
 
-	if len(funcDecls) == 0 {
-		if !hasWebSearch {
-			return nil
-		}
-
-		// Web Search 工具映射
-		return []GeminiToolDeclaration{{
+	var declarations []GeminiToolDeclaration
+	if len(funcDecls) > 0 {
+		declarations = append(declarations, GeminiToolDeclaration{
+			FunctionDeclarations: funcDecls,
+		})
+	}
+	if hasWebSearch {
+		declarations = append(declarations, GeminiToolDeclaration{
 			GoogleSearch: &GeminiGoogleSearch{
 				EnhancedContent: &GeminiEnhancedContent{
 					ImageSearch: &GeminiImageSearch{
@@ -744,10 +745,11 @@ func buildTools(tools []ClaudeTool) []GeminiToolDeclaration {
 					},
 				},
 			},
-		}}
+		})
+	}
+	if len(declarations) == 0 {
+		return nil
 	}
 
-	return []GeminiToolDeclaration{{
-		FunctionDeclarations: funcDecls,
-	}}
+	return declarations
 }

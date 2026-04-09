@@ -2257,6 +2257,33 @@ func TestHandleOAuthSSEToJSON_ReconstructsEmptyOutputFromDelta(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), `"output":[]`)
 }
 
+func TestHandleNonStreamingResponse_EventStreamAppliesToAPIKeyAccounts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.output_text.delta","delta":"hello "}`,
+			`data: {"type":"response.output_text.delta","delta":"world"}`,
+			`data: {"type":"response.done","response":{"id":"resp_api_key_sse","model":"gpt-4o","output":[],"usage":{"input_tokens":2,"output_tokens":3}}}`,
+			`data: [DONE]`,
+		}, "\n"))),
+	}
+
+	usage, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{Type: AccountTypeAPIKey}, "gpt-4o", "gpt-4o")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, 2, usage.InputTokens)
+	require.Equal(t, 3, usage.OutputTokens)
+	require.Contains(t, rec.Body.String(), `"hello world"`)
+	require.NotContains(t, rec.Body.String(), `"output":[]`)
+}
+
 func TestHandleChatBufferedStreamingResponse_ReconstructsEmptyOutputFromDelta(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

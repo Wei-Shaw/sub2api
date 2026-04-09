@@ -263,6 +263,31 @@ func TestBuildTools_CustomTypeTools(t *testing.T) {
 	}
 }
 
+func TestBuildTools_PreservesGoogleSearchWithFunctionTools(t *testing.T) {
+	tools := []ClaudeTool{
+		{
+			Type: "web_search_20250305",
+			Name: "web_search",
+		},
+		{
+			Name:        "get_weather",
+			Description: "Get weather information",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"city": map[string]any{"type": "string"},
+				},
+			},
+		},
+	}
+
+	declarations := buildTools(tools)
+	require.Len(t, declarations, 2)
+	require.Len(t, declarations[0].FunctionDeclarations, 1)
+	require.Equal(t, "get_weather", declarations[0].FunctionDeclarations[0].Name)
+	require.NotNil(t, declarations[1].GoogleSearch)
+}
+
 func TestBuildGenerationConfig_ThinkingDynamicBudget(t *testing.T) {
 	tests := []struct {
 		name        string

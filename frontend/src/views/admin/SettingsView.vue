@@ -1373,6 +1373,19 @@
               </div>
               <Toggle v-model="form.enable_metadata_passthrough" />
             </div>
+
+            <!-- CCH Signing -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.gatewayForwarding.cchSigning') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.gatewayForwarding.cchSigningHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.enable_cch_signing" />
+            </div>
           </div>
         </div>
         </div><!-- /Tab: Gateway — Claude Code, Scheduling -->
@@ -2244,7 +2257,8 @@ const form = reactive<SettingsForm>({
 	allow_ungrouped_key_scheduling: false,
 	// Gateway forwarding behavior
 	enable_fingerprint_unification: true,
-	enable_metadata_passthrough: false
+	enable_metadata_passthrough: false,
+	enable_cch_signing: false
 })
 
 const defaultSubscriptionGroupOptions = computed<DefaultSubscriptionGroupOption[]>(() =>
@@ -2552,7 +2566,8 @@ async function saveSettings() {
 		max_claude_code_version: form.max_claude_code_version,
 		allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
 		enable_fingerprint_unification: form.enable_fingerprint_unification,
-		enable_metadata_passthrough: form.enable_metadata_passthrough
+		enable_metadata_passthrough: form.enable_metadata_passthrough,
+		enable_cch_signing: form.enable_cch_signing
 	}
     const updated = await adminAPI.settings.updateSettings(payload)
     Object.assign(form, updated)

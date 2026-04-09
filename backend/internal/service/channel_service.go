@@ -521,6 +521,91 @@ func checkRestricted(lk *channelLookup, groupID int64, model string) bool {
 	return true
 }
 
+// validateChannelConfig 校验渠道的定价和映射配置（冲突检测 + 区间校验 + 计费模式校验）。
+// Create 和 Update 共用此函数，避免重复。
+func validateChannelConfig(pricing []ChannelModelPricing, mapping map[string]map[string]string) error {
+	if err := validateNoConflictingModels(pricing); err != nil {
+		return err
+	}
+	if err := validatePricingIntervals(pricing); err != nil {
+		return err
+	}
+	if err := validateNoConflictingMappings(mapping); err != nil {
+		return err
+	}
+	return validatePricingBillingMode(pricing)
+}
+
+// validatePricingBillingMode 校验计费模式配置：按次/图片模式必须配价格或区间，所有价格字段不能为负，区间至少有一个价格字段。
+func validatePricingBillingMode(pricing []ChannelModelPricing) error {
+	for _, p := range pricing {
+		if err := checkBillingModeRequirements(p); err != nil {
+			return err
+		}
+		if err := checkPricesNotNegative(p); err != nil {
+			return err
+		}
+		if err := checkIntervalsHavePrices(p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkBillingModeRequirements(p ChannelModelPricing) error {
+	if p.BillingMode == BillingModePerRequest || p.BillingMode == BillingModeImage {
+		if p.PerRequestPrice == nil && len(p.Intervals) == 0 {
+			return infraerrors.BadRequest(
+				"BILLING_MODE_MISSING_PRICE",
+				"per-request price or intervals required for per_request/image billing mode",
+			)
+		}
+	}
+	return nil
+}
+
+func checkPricesNotNegative(p ChannelModelPricing) error {
+	checks := []struct {
+		field string
+		val   *float64
+	}{
+		{"input_price", p.InputPrice},
+		{"output_price", p.OutputPrice},
+		{"cache_write_price", p.CacheWritePrice},
+		{"cache_read_price", p.CacheReadPrice},
+		{"image_output_price", p.ImageOutputPrice},
+		{"per_request_price", p.PerRequestPrice},
+	}
+	for _, c := range checks {
+		if c.val != nil && *c.val < 0 {
+			return infraerrors.BadRequest("NEGATIVE_PRICE", fmt.Sprintf("%s must be >= 0", c.field))
+		}
+	}
+	return nil
+}
+
+func checkIntervalsHavePrices(p ChannelModelPricing) error {
+	for _, iv := range p.Intervals {
+		if iv.InputPrice == nil && iv.OutputPrice == nil &&
+			iv.CacheWritePrice == nil && iv.CacheReadPrice == nil &&
+			iv.PerRequestPrice == nil {
+			return infraerrors.BadRequest(
+				"INTERVAL_MISSING_PRICE",
+				fmt.Sprintf("interval [%d, %s] has no price fields set for model %v",
+					iv.MinTokens, formatMaxTokens(iv.MaxTokens), p.Models),
+			)
+		}
+	}
+	return nil
+}
+
+func formatMaxTokens(max *int) string {
+	if max == nil {
+		return "∞"
+	}
+	return fmt.Sprintf("%d", *max)
+}
+
 // ReplaceModelInBody 替换请求体 JSON 中的 model 字段。
 func ReplaceModelInBody(body []byte, newModel string) []byte {
 	if len(body) == 0 {
@@ -573,13 +658,7 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 		channel.BillingModelSource = BillingModelSourceChannelMapped
 	}
 
-	if err := validateNoConflictingModels(channel.ModelPricing); err != nil {
-		return nil, err
-	}
-	if err := validatePricingIntervals(channel.ModelPricing); err != nil {
-		return nil, err
-	}
-	if err := validateNoConflictingMappings(channel.ModelMapping); err != nil {
+	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
 	}
 
@@ -650,13 +729,7 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 		channel.BillingModelSource = input.BillingModelSource
 	}
 
-	if err := validateNoConflictingModels(channel.ModelPricing); err != nil {
-		return nil, err
-	}
-	if err := validatePricingIntervals(channel.ModelPricing); err != nil {
-		return nil, err
-	}
-	if err := validateNoConflictingMappings(channel.ModelMapping); err != nil {
+	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
 	}
 

@@ -97,6 +97,22 @@ func TestConvertClaudeToolsToGeminiTools_CustomType(t *testing.T) {
 			description: "混合工具应该都能正确转换",
 		},
 		{
+			name: "Function tool with web search",
+			tools: []any{
+				map[string]any{
+					"type": "web_search_20250305",
+					"name": "web_search",
+				},
+				map[string]any{
+					"name":         "get_weather",
+					"description":  "Get weather info",
+					"input_schema": map[string]any{"type": "object"},
+				},
+			},
+			expectedLen: 2,
+			description: "同时存在函数工具和 web search 时应同时保留两者",
+		},
+		{
 			name: "Custom tool without custom field",
 			tools: []any{
 				map[string]any{
@@ -125,8 +141,8 @@ func TestConvertClaudeToolsToGeminiTools_CustomType(t *testing.T) {
 				t.Fatalf("%s: expected non-nil result", tt.description)
 			}
 
-			if len(result) != 1 {
-				t.Errorf("%s: expected 1 tool declaration, got %d", tt.description, len(result))
+			if len(result) != tt.expectedLen {
+				t.Errorf("%s: expected %d tool declaration(s), got %d", tt.description, tt.expectedLen, len(result))
 				return
 			}
 
@@ -145,6 +161,11 @@ func TestConvertClaudeToolsToGeminiTools_CustomType(t *testing.T) {
 			for _, tool := range toolsArr {
 				toolMap, _ := tool.(map[string]any)
 				if toolMap["name"] != "" {
+					toolType, _ := toolMap["type"].(string)
+					toolName, _ := toolMap["name"].(string)
+					if strings.HasPrefix(toolType, "web_search") || toolType == "google_search" || toolName == "web_search" || toolName == "google_search" || toolName == "web_search_20250305" {
+						continue
+					}
 					// 检查是否为有效的custom工具
 					if toolMap["type"] == "custom" {
 						if toolMap["custom"] != nil {
@@ -160,8 +181,21 @@ func TestConvertClaudeToolsToGeminiTools_CustomType(t *testing.T) {
 				t.Errorf("%s: expected %d function declarations, got %d",
 					tt.description, expectedFuncCount, len(funcDecls))
 			}
+
+			if tt.name == "Function tool with web search" {
+				searchDecl, ok := result[1].(map[string]any)
+				require.True(t, ok)
+				_, exists := searchDecl["googleSearch"]
+				require.True(t, exists)
+			}
 		})
 	}
+}
+
+func TestNormalizeGeminiRequestForAIStudio_RewritesGoogleSearchKey(t *testing.T) {
+	body := []byte(`{"tools":[{"functionDeclarations":[{"name":"get_weather"}]},{"googleSearch":{}}]}`)
+	normalized := normalizeGeminiRequestForAIStudio(body)
+	require.JSONEq(t, `{"tools":[{"functionDeclarations":[{"name":"get_weather"}]},{"google_search":{}}]}`, string(normalized))
 }
 
 func TestGeminiHandleNativeNonStreamingResponse_DebugDisabledDoesNotEmitHeaderLogs(t *testing.T) {

@@ -73,26 +73,34 @@
   - `0ebe0ce5`
   - `dd5978f2`
   - `d978ac97`
+  - 当前状态：已开始吸收，`antigravity/request_transformer.go` 与 `gemini_messages_compat_service.go` 已恢复“函数工具 + Google Search 同时保留”以及 AI Studio `googleSearch -> google_search` 规范化，并补上对应测试。
 - 空 base64 图片清理
   - `936fce68`
   - `f00351c1`
+  - 当前状态：已开始吸收，`chatcompletions_to_responses.go` 与 `openai_gateway_service.go` 已恢复空 base64 图片输入清理，且 passthrough 非流式路径也重新接回 SSE-to-JSON 识别，相关测试与后端整包验证已通过。
 - content-based session hash fallback
   - `c5aac125`
   - `4fb16030`
   - `cf9efefd`
+  - 当前状态：已开始吸收，`openai_gateway_service.go` 已恢复 content-based session seed fallback，补上 `openai_content_session_seed.go` 及对应测试，并通过后端整包验证。
 - channel cleanup
   - `9151d34d`
+  - 当前状态：已开始吸收，渠道计费模式校验已从 `admin/channel_handler.go` 收回 `channel_service.go`，Create/Update 统一走 service 侧配置校验，相关测试与后端整包验证已通过。
 - 非流式 SSE 检测扩展
   - `9e515ea7`
+  - 当前状态：已开始吸收，`handleNonStreamingResponse` 已把基于 `Content-Type: text/event-stream` 的非流式 SSE 检测放宽到所有账号类型，仅保留 OAuth 的 body heuristic 兜底，并补上 API key 场景测试；后端整包验证已通过。
 - Anthropic OAuth 伪装修复
   - `1c9a2128`
+  - 当前状态：已开始吸收，`gateway_service.go` 已恢复 Claude Code 风格的 system array masquerade、非 haiku OAuth 所需的 `claude-code` beta 组合，以及对应测试断言；后端整包验证已通过。
 - billing header / CCH signing
   - `e51c9e50`
   - `b982076e`
+  - 当前状态：已开始吸收，`gateway_billing_header.go` 与测试已补回，`enable_cch_signing` 设置链已重新接到 backend/frontend，`GatewayService` 的 messages / count_tokens 请求也已接回 billing header 版本同步与可选 CCH 签名；后端整包与前端 typecheck 已通过。
 - 低风险尾巴
   - `7060596a`
   - `f54e9d0b`
   - `0d69c0cd`
+  - 当前状态：已开始吸收，Go 已提升到 `1.26.2`，CI/Docker 构建镜像版本同步更新，`VERSION` 提升到 `0.1.110`，README 也补回上游的 sponsor/Sora 状态说明；后端整包验证已通过。
 
 ### 下一批建议
 
