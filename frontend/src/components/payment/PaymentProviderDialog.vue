@@ -395,10 +395,6 @@ function handleSave() {
     emitValidationError(t('admin.settings.payment.validationNameRequired'))
     return
   }
-  if (form.supported_types.length === 0) {
-    emitValidationError(t('admin.settings.payment.validationTypesRequired'))
-    return
-  }
   // Validate required config fields — all non-optional fields must be filled
   for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
     if (f.optional) continue
@@ -419,10 +415,15 @@ function handleSave() {
   }
 
   // Inject computed callback URLs (each URL = independent base + fixed path)
+  // If base URL is empty, auto-fill with current domain
   const paths = PROVIDER_CALLBACK_PATHS[form.provider_key]
   if (paths) {
-    if (paths.notifyUrl) filteredConfig['notifyUrl'] = (notifyBaseUrl.value || defaultBaseUrl) + paths.notifyUrl
-    if (paths.returnUrl) filteredConfig['returnUrl'] = (returnBaseUrl.value || defaultBaseUrl) + paths.returnUrl
+    const notifyBase = notifyBaseUrl.value.trim() || defaultBaseUrl
+    const returnBase = returnBaseUrl.value.trim() || defaultBaseUrl
+    notifyBaseUrl.value = notifyBase
+    returnBaseUrl.value = returnBase
+    if (paths.notifyUrl) filteredConfig['notifyUrl'] = notifyBase + paths.notifyUrl
+    if (paths.returnUrl) filteredConfig['returnUrl'] = returnBase + paths.returnUrl
   }
 
   emit('save', {

@@ -13,6 +13,7 @@
         </div>
         <div class="flex items-center gap-2">
           <button
+            type="button"
             @click="emit('refresh')"
             :disabled="loading"
             class="btn btn-secondary btn-sm"
@@ -21,6 +22,7 @@
             <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
           </button>
           <button
+            type="button"
             @click="emit('create')"
             :disabled="!canCreate"
             :class="canCreate
@@ -77,6 +79,7 @@
             : t('admin.settings.payment.enableTypesFirst') }}
         </p>
         <button
+          type="button"
           v-if="canCreate"
           @click="emit('create')"
           class="btn btn-primary btn-sm mt-2"

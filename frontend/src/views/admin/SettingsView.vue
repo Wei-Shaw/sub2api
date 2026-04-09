@@ -2962,10 +2962,6 @@ async function handleToggleType(provider: ProviderInstance, type: string) {
   const updated = provider.supported_types.includes(type)
     ? provider.supported_types.filter(t => t !== type)
     : [...provider.supported_types, type]
-  if (updated.length === 0) {
-    appStore.showError(t('admin.settings.payment.validationTypesRequired'))
-    return
-  }
   try {
     await adminAPI.payment.updateProvider(provider.id, { supported_types: updated } as any)
     provider.supported_types = updated
