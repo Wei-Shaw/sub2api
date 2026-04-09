@@ -60,6 +60,7 @@ func (h *PaymentHandler) ListOrders(c *gin.Context) {
 		Status:      c.Query("status"),
 		OrderType:   c.Query("order_type"),
 		PaymentType: c.Query("payment_type"),
+		Keyword:     c.Query("keyword"),
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

@@ -95,6 +95,7 @@ type OrderListParams struct {
 	Status      string
 	OrderType   string
 	PaymentType string
+	Keyword     string
 }
 
 type RefundPlan struct {

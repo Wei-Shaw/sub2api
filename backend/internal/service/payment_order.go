@@ -354,6 +354,13 @@ func (s *PaymentService) AdminListOrders(ctx context.Context, userID int64, p Or
 	if p.PaymentType != "" {
 		q = q.Where(paymentorder.PaymentTypeEQ(p.PaymentType))
 	}
+	if p.Keyword != "" {
+		q = q.Where(paymentorder.Or(
+			paymentorder.OutTradeNoContainsFold(p.Keyword),
+			paymentorder.UserEmailContainsFold(p.Keyword),
+			paymentorder.UserNameContainsFold(p.Keyword),
+		))
+	}
 	total, err := q.Clone().Count(ctx)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count admin orders: %w", err)

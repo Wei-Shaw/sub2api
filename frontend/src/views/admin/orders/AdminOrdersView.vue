@@ -24,7 +24,12 @@
         <template #cell-out_trade_no="{ value }">
           <span class="text-sm text-gray-900 dark:text-white">{{ value }}</span>
         </template>
-        <template #cell-user_id="{ value }"><span class="text-sm text-gray-600 dark:text-gray-400">#{{ value }}</span></template>
+        <template #cell-user_email="{ value, row }">
+          <div class="text-sm">
+            <span class="text-gray-900 dark:text-white">{{ value || row.user_name || '#' + row.user_id }}</span>
+            <span v-if="row.user_notes" class="ml-1 text-xs text-gray-400">({{ row.user_notes }})</span>
+          </div>
+        </template>
         <template #cell-amount="{ value, row }">
           <div class="text-sm">
             <span class="font-medium text-gray-900 dark:text-white">${{ value.toFixed(2) }}</span>
@@ -32,7 +37,7 @@
           </div>
         </template>
         <template #cell-status="{ value }">
-          <span :class="['badge', statusBadgeClass(value)]">{{ t('payment.status.' + value.toLowerCase(), value) }}</span>
+          <OrderStatusBadge :status="value" />
         </template>
         <template #cell-payment_type="{ value }">
           <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.methods.' + value, value) }}</span>
@@ -81,7 +86,7 @@
         <div class="grid grid-cols-2 gap-4">
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</p><p class="font-mono text-sm font-medium text-gray-900 dark:text-white">#{{ selectedOrder.id }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderNo') }}</p><p class="text-sm font-medium text-gray-900 dark:text-white">{{ selectedOrder.out_trade_no }}</p></div>
-          <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.status') }}</p><span :class="['badge', statusBadgeClass(selectedOrder.status)]">{{ t('payment.status.' + selectedOrder.status.toLowerCase(), selectedOrder.status) }}</span></div>
+          <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.status') }}</p><OrderStatusBadge :status="selectedOrder.status" /></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</p><p class="text-sm font-medium text-gray-900 dark:text-white">${{ selectedOrder.amount.toFixed(2) }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</p><p class="text-sm font-medium text-gray-900 dark:text-white">${{ selectedOrder.pay_amount.toFixed(2) }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</p><p class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.methods.' + selectedOrder.payment_type, selectedOrder.payment_type) }}</p></div>
@@ -146,6 +151,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AdminRefundDialog from '@/components/admin/payment/AdminRefundDialog.vue'
+import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
 
 interface AuditLog {
   id: number
@@ -220,20 +226,10 @@ const orderTypeFilterOptions = computed(() => [
 ])
 
 const orderColumns = computed((): Column[] => [
-  { key: 'id', label: 'ID' }, { key: 'out_trade_no', label: t('payment.orders.orderNo') }, { key: 'user_id', label: t('payment.admin.colUser') }, { key: 'amount', label: t('payment.orders.amount') },
+  { key: 'id', label: 'ID' }, { key: 'out_trade_no', label: t('payment.orders.orderNo') }, { key: 'user_email', label: t('payment.admin.colUser') }, { key: 'amount', label: t('payment.orders.amount') },
   { key: 'payment_type', label: t('payment.orders.paymentMethod') }, { key: 'status', label: t('payment.orders.status') },
   { key: 'created_at', label: t('payment.orders.createdAt') }, { key: 'actions', label: t('common.actions') },
 ])
-
-function statusBadgeClass(status: string): string {
-  const m: Record<string, string> = {
-    PENDING: 'badge-warning', PAID: 'badge-info', RECHARGING: 'badge-info',
-    COMPLETED: 'badge-success', EXPIRED: 'badge-secondary', CANCELLED: 'badge-secondary',
-    FAILED: 'badge-danger', REFUND_REQUESTED: 'badge-warning', REFUNDING: 'badge-warning',
-    PARTIALLY_REFUNDED: 'badge-warning', REFUNDED: 'badge-info', REFUND_FAILED: 'badge-danger',
-  }
-  return m[status] || 'badge-secondary'
-}
 
 async function showOrderDetail(order: PaymentOrder) {
   selectedOrder.value = order
