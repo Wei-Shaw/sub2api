@@ -87,6 +87,20 @@ func (_c *PaymentOrderCreate) SetRechargeCode(v string) *PaymentOrderCreate {
 	return _c
 }
 
+// SetOutTradeNo sets the "out_trade_no" field.
+func (_c *PaymentOrderCreate) SetOutTradeNo(v string) *PaymentOrderCreate {
+	_c.mutation.SetOutTradeNo(v)
+	return _c
+}
+
+// SetNillableOutTradeNo sets the "out_trade_no" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableOutTradeNo(v *string) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetOutTradeNo(*v)
+	}
+	return _c
+}
+
 // SetPaymentType sets the "payment_type" field.
 func (_c *PaymentOrderCreate) SetPaymentType(v string) *PaymentOrderCreate {
 	_c.mutation.SetPaymentType(v)
@@ -483,6 +497,10 @@ func (_c *PaymentOrderCreate) defaults() {
 		v := paymentorder.DefaultFeeRate
 		_c.mutation.SetFeeRate(v)
 	}
+	if _, ok := _c.mutation.OutTradeNo(); !ok {
+		v := paymentorder.DefaultOutTradeNo
+		_c.mutation.SetOutTradeNo(v)
+	}
 	if _, ok := _c.mutation.OrderType(); !ok {
 		v := paymentorder.DefaultOrderType
 		_c.mutation.SetOrderType(v)
@@ -545,6 +563,14 @@ func (_c *PaymentOrderCreate) check() error {
 	if v, ok := _c.mutation.RechargeCode(); ok {
 		if err := paymentorder.RechargeCodeValidator(v); err != nil {
 			return &ValidationError{Name: "recharge_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.recharge_code": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.OutTradeNo(); !ok {
+		return &ValidationError{Name: "out_trade_no", err: errors.New(`ent: missing required field "PaymentOrder.out_trade_no"`)}
+	}
+	if v, ok := _c.mutation.OutTradeNo(); ok {
+		if err := paymentorder.OutTradeNoValidator(v); err != nil {
+			return &ValidationError{Name: "out_trade_no", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.out_trade_no": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.PaymentType(); !ok {
@@ -677,6 +703,10 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
 		_node.RechargeCode = value
+	}
+	if value, ok := _c.mutation.OutTradeNo(); ok {
+		_spec.SetField(paymentorder.FieldOutTradeNo, field.TypeString, value)
+		_node.OutTradeNo = value
 	}
 	if value, ok := _c.mutation.PaymentType(); ok {
 		_spec.SetField(paymentorder.FieldPaymentType, field.TypeString, value)
@@ -976,6 +1006,18 @@ func (u *PaymentOrderUpsert) SetRechargeCode(v string) *PaymentOrderUpsert {
 // UpdateRechargeCode sets the "recharge_code" field to the value that was provided on create.
 func (u *PaymentOrderUpsert) UpdateRechargeCode() *PaymentOrderUpsert {
 	u.SetExcluded(paymentorder.FieldRechargeCode)
+	return u
+}
+
+// SetOutTradeNo sets the "out_trade_no" field.
+func (u *PaymentOrderUpsert) SetOutTradeNo(v string) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldOutTradeNo, v)
+	return u
+}
+
+// UpdateOutTradeNo sets the "out_trade_no" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateOutTradeNo() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldOutTradeNo)
 	return u
 }
 
@@ -1611,6 +1653,20 @@ func (u *PaymentOrderUpsertOne) SetRechargeCode(v string) *PaymentOrderUpsertOne
 func (u *PaymentOrderUpsertOne) UpdateRechargeCode() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateRechargeCode()
+	})
+}
+
+// SetOutTradeNo sets the "out_trade_no" field.
+func (u *PaymentOrderUpsertOne) SetOutTradeNo(v string) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetOutTradeNo(v)
+	})
+}
+
+// UpdateOutTradeNo sets the "out_trade_no" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateOutTradeNo() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateOutTradeNo()
 	})
 }
 
@@ -2487,6 +2543,20 @@ func (u *PaymentOrderUpsertBulk) SetRechargeCode(v string) *PaymentOrderUpsertBu
 func (u *PaymentOrderUpsertBulk) UpdateRechargeCode() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateRechargeCode()
+	})
+}
+
+// SetOutTradeNo sets the "out_trade_no" field.
+func (u *PaymentOrderUpsertBulk) SetOutTradeNo(v string) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetOutTradeNo(v)
+	})
+}
+
+// UpdateOutTradeNo sets the "out_trade_no" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateOutTradeNo() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateOutTradeNo()
 	})
 }
 

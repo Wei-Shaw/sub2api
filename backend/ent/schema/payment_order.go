@@ -54,6 +54,9 @@ func (PaymentOrder) Fields() []ent.Field {
 			MaxLen(64),
 
 		// 支付信息
+		field.String("out_trade_no").
+			MaxLen(64).
+			Default(""),
 		field.String("payment_type").
 			MaxLen(30),
 		field.String("payment_trade_no").
@@ -175,6 +178,7 @@ func (PaymentOrder) Edges() []ent.Edge {
 
 func (PaymentOrder) Indexes() []ent.Index {
 	return []ent.Index{
+		index.Fields("out_trade_no"),
 		index.Fields("user_id"),
 		index.Fields("status"),
 		index.Fields("expires_at"),

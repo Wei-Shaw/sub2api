@@ -12695,6 +12695,7 @@ type PaymentOrderMutation struct {
 	fee_rate                 *float64
 	addfee_rate              *float64
 	recharge_code            *string
+	out_trade_no             *string
 	payment_type             *string
 	payment_trade_no         *string
 	pay_url                  *string
@@ -13192,6 +13193,42 @@ func (m *PaymentOrderMutation) OldRechargeCode(ctx context.Context) (v string, e
 // ResetRechargeCode resets all changes to the "recharge_code" field.
 func (m *PaymentOrderMutation) ResetRechargeCode() {
 	m.recharge_code = nil
+}
+
+// SetOutTradeNo sets the "out_trade_no" field.
+func (m *PaymentOrderMutation) SetOutTradeNo(s string) {
+	m.out_trade_no = &s
+}
+
+// OutTradeNo returns the value of the "out_trade_no" field in the mutation.
+func (m *PaymentOrderMutation) OutTradeNo() (r string, exists bool) {
+	v := m.out_trade_no
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOutTradeNo returns the old "out_trade_no" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldOutTradeNo(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOutTradeNo is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOutTradeNo requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOutTradeNo: %w", err)
+	}
+	return oldValue.OutTradeNo, nil
+}
+
+// ResetOutTradeNo resets all changes to the "out_trade_no" field.
+func (m *PaymentOrderMutation) ResetOutTradeNo() {
+	m.out_trade_no = nil
 }
 
 // SetPaymentType sets the "payment_type" field.
@@ -14567,7 +14604,7 @@ func (m *PaymentOrderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PaymentOrderMutation) Fields() []string {
-	fields := make([]string, 0, 36)
+	fields := make([]string, 0, 37)
 	if m.user != nil {
 		fields = append(fields, paymentorder.FieldUserID)
 	}
@@ -14591,6 +14628,9 @@ func (m *PaymentOrderMutation) Fields() []string {
 	}
 	if m.recharge_code != nil {
 		fields = append(fields, paymentorder.FieldRechargeCode)
+	}
+	if m.out_trade_no != nil {
+		fields = append(fields, paymentorder.FieldOutTradeNo)
 	}
 	if m.payment_type != nil {
 		fields = append(fields, paymentorder.FieldPaymentType)
@@ -14700,6 +14740,8 @@ func (m *PaymentOrderMutation) Field(name string) (ent.Value, bool) {
 		return m.FeeRate()
 	case paymentorder.FieldRechargeCode:
 		return m.RechargeCode()
+	case paymentorder.FieldOutTradeNo:
+		return m.OutTradeNo()
 	case paymentorder.FieldPaymentType:
 		return m.PaymentType()
 	case paymentorder.FieldPaymentTradeNo:
@@ -14781,6 +14823,8 @@ func (m *PaymentOrderMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldFeeRate(ctx)
 	case paymentorder.FieldRechargeCode:
 		return m.OldRechargeCode(ctx)
+	case paymentorder.FieldOutTradeNo:
+		return m.OldOutTradeNo(ctx)
 	case paymentorder.FieldPaymentType:
 		return m.OldPaymentType(ctx)
 	case paymentorder.FieldPaymentTradeNo:
@@ -14901,6 +14945,13 @@ func (m *PaymentOrderMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRechargeCode(v)
+		return nil
+	case paymentorder.FieldOutTradeNo:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOutTradeNo(v)
 		return nil
 	case paymentorder.FieldPaymentType:
 		v, ok := value.(string)
@@ -15368,6 +15419,9 @@ func (m *PaymentOrderMutation) ResetField(name string) error {
 		return nil
 	case paymentorder.FieldRechargeCode:
 		m.ResetRechargeCode()
+		return nil
+	case paymentorder.FieldOutTradeNo:
+		m.ResetOutTradeNo()
 		return nil
 	case paymentorder.FieldPaymentType:
 		m.ResetPaymentType()

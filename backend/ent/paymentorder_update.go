@@ -168,6 +168,20 @@ func (_u *PaymentOrderUpdate) SetNillableRechargeCode(v *string) *PaymentOrderUp
 	return _u
 }
 
+// SetOutTradeNo sets the "out_trade_no" field.
+func (_u *PaymentOrderUpdate) SetOutTradeNo(v string) *PaymentOrderUpdate {
+	_u.mutation.SetOutTradeNo(v)
+	return _u
+}
+
+// SetNillableOutTradeNo sets the "out_trade_no" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableOutTradeNo(v *string) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetOutTradeNo(*v)
+	}
+	return _u
+}
+
 // SetPaymentType sets the "payment_type" field.
 func (_u *PaymentOrderUpdate) SetPaymentType(v string) *PaymentOrderUpdate {
 	_u.mutation.SetPaymentType(v)
@@ -737,6 +751,11 @@ func (_u *PaymentOrderUpdate) check() error {
 			return &ValidationError{Name: "recharge_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.recharge_code": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.OutTradeNo(); ok {
+		if err := paymentorder.OutTradeNoValidator(v); err != nil {
+			return &ValidationError{Name: "out_trade_no", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.out_trade_no": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.PaymentType(); ok {
 		if err := paymentorder.PaymentTypeValidator(v); err != nil {
 			return &ValidationError{Name: "payment_type", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.payment_type": %w`, err)}
@@ -827,6 +846,9 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.OutTradeNo(); ok {
+		_spec.SetField(paymentorder.FieldOutTradeNo, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.PaymentType(); ok {
 		_spec.SetField(paymentorder.FieldPaymentType, field.TypeString, value)
@@ -1156,6 +1178,20 @@ func (_u *PaymentOrderUpdateOne) SetRechargeCode(v string) *PaymentOrderUpdateOn
 func (_u *PaymentOrderUpdateOne) SetNillableRechargeCode(v *string) *PaymentOrderUpdateOne {
 	if v != nil {
 		_u.SetRechargeCode(*v)
+	}
+	return _u
+}
+
+// SetOutTradeNo sets the "out_trade_no" field.
+func (_u *PaymentOrderUpdateOne) SetOutTradeNo(v string) *PaymentOrderUpdateOne {
+	_u.mutation.SetOutTradeNo(v)
+	return _u
+}
+
+// SetNillableOutTradeNo sets the "out_trade_no" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableOutTradeNo(v *string) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetOutTradeNo(*v)
 	}
 	return _u
 }
@@ -1742,6 +1778,11 @@ func (_u *PaymentOrderUpdateOne) check() error {
 			return &ValidationError{Name: "recharge_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.recharge_code": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.OutTradeNo(); ok {
+		if err := paymentorder.OutTradeNoValidator(v); err != nil {
+			return &ValidationError{Name: "out_trade_no", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.out_trade_no": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.PaymentType(); ok {
 		if err := paymentorder.PaymentTypeValidator(v); err != nil {
 			return &ValidationError{Name: "payment_type", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.payment_type": %w`, err)}
@@ -1849,6 +1890,9 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.OutTradeNo(); ok {
+		_spec.SetField(paymentorder.FieldOutTradeNo, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.PaymentType(); ok {
 		_spec.SetField(paymentorder.FieldPaymentType, field.TypeString, value)

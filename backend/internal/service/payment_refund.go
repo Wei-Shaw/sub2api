@@ -142,7 +142,7 @@ func (s *PaymentService) gwRefund(ctx context.Context, p *RefundPlan) error {
 	if err != nil {
 		return fmt.Errorf("get provider: %w", err)
 	}
-	_, err = prov.Refund(ctx, payment.RefundRequest{TradeNo: p.Order.PaymentTradeNo, OrderID: formatOrderID(p.Order.ID), Amount: strconv.FormatFloat(p.GatewayAmount, 'f', 2, 64), Reason: p.Reason})
+	_, err = prov.Refund(ctx, payment.RefundRequest{TradeNo: p.Order.PaymentTradeNo, OrderID: p.Order.OutTradeNo, Amount: strconv.FormatFloat(p.GatewayAmount, 'f', 2, 64), Reason: p.Reason})
 	return err
 }
 

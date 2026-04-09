@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -48,23 +46,12 @@ const (
 
 // --- Types ---
 
-// formatOrderID converts an internal DB order ID to the external order ID sent to payment providers.
-// Format: sub2_20250409aB3kX9mQ_5 (prefix + date + 8-char random + dbID)
-func formatOrderID(id int64) string {
+// generateOutTradeNo creates a unique external order ID for payment providers.
+// Format: sub2_20250409aB3kX9mQ (prefix + date + 8-char random)
+func generateOutTradeNo() string {
 	date := time.Now().Format("20060102")
 	rnd := generateRandomString(8)
-	return orderIDPrefix + date + rnd + "_" + strconv.FormatInt(id, 10)
-}
-
-// parseOrderID extracts the internal DB order ID from an external order ID.
-// New format: sub2_20250409aB3kX9mQ_5 → extract after last "_"
-// Legacy: sub2_5 → extract after prefix
-func parseOrderID(externalID string) (int64, error) {
-	idx := strings.LastIndex(externalID, "_")
-	if idx < 0 {
-		return 0, fmt.Errorf("invalid order ID format: %s", externalID)
-	}
-	return strconv.ParseInt(externalID[idx+1:], 10, 64)
+	return orderIDPrefix + date + rnd
 }
 
 func generateRandomString(n int) string {

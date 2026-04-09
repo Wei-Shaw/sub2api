@@ -95,6 +95,11 @@ func RechargeCode(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldRechargeCode, v))
 }
 
+// OutTradeNo applies equality check predicate on the "out_trade_no" field. It's identical to OutTradeNoEQ.
+func OutTradeNo(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldOutTradeNo, v))
+}
+
 // PaymentType applies equality check predicate on the "payment_type" field. It's identical to PaymentTypeEQ.
 func PaymentType(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldPaymentType, v))
@@ -643,6 +648,71 @@ func RechargeCodeEqualFold(v string) predicate.PaymentOrder {
 // RechargeCodeContainsFold applies the ContainsFold predicate on the "recharge_code" field.
 func RechargeCodeContainsFold(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldContainsFold(FieldRechargeCode, v))
+}
+
+// OutTradeNoEQ applies the EQ predicate on the "out_trade_no" field.
+func OutTradeNoEQ(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldOutTradeNo, v))
+}
+
+// OutTradeNoNEQ applies the NEQ predicate on the "out_trade_no" field.
+func OutTradeNoNEQ(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNEQ(FieldOutTradeNo, v))
+}
+
+// OutTradeNoIn applies the In predicate on the "out_trade_no" field.
+func OutTradeNoIn(vs ...string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIn(FieldOutTradeNo, vs...))
+}
+
+// OutTradeNoNotIn applies the NotIn predicate on the "out_trade_no" field.
+func OutTradeNoNotIn(vs ...string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotIn(FieldOutTradeNo, vs...))
+}
+
+// OutTradeNoGT applies the GT predicate on the "out_trade_no" field.
+func OutTradeNoGT(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGT(FieldOutTradeNo, v))
+}
+
+// OutTradeNoGTE applies the GTE predicate on the "out_trade_no" field.
+func OutTradeNoGTE(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGTE(FieldOutTradeNo, v))
+}
+
+// OutTradeNoLT applies the LT predicate on the "out_trade_no" field.
+func OutTradeNoLT(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLT(FieldOutTradeNo, v))
+}
+
+// OutTradeNoLTE applies the LTE predicate on the "out_trade_no" field.
+func OutTradeNoLTE(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLTE(FieldOutTradeNo, v))
+}
+
+// OutTradeNoContains applies the Contains predicate on the "out_trade_no" field.
+func OutTradeNoContains(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldContains(FieldOutTradeNo, v))
+}
+
+// OutTradeNoHasPrefix applies the HasPrefix predicate on the "out_trade_no" field.
+func OutTradeNoHasPrefix(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldHasPrefix(FieldOutTradeNo, v))
+}
+
+// OutTradeNoHasSuffix applies the HasSuffix predicate on the "out_trade_no" field.
+func OutTradeNoHasSuffix(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldHasSuffix(FieldOutTradeNo, v))
+}
+
+// OutTradeNoEqualFold applies the EqualFold predicate on the "out_trade_no" field.
+func OutTradeNoEqualFold(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEqualFold(FieldOutTradeNo, v))
+}
+
+// OutTradeNoContainsFold applies the ContainsFold predicate on the "out_trade_no" field.
+func OutTradeNoContainsFold(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldContainsFold(FieldOutTradeNo, v))
 }
 
 // PaymentTypeEQ applies the EQ predicate on the "payment_type" field.
