@@ -347,6 +347,12 @@ gateway:
     # Enable batch load calculation for scheduling
     # 启用调度批量负载计算
     load_batch_enabled: true
+    # Snapshot bucket MGET chunk size
+    # 调度快照分桶读取时的 MGET 分块大小
+    snapshot_mget_chunk_size: 128
+    # Snapshot bucket write chunk size
+    # 调度快照重建写入时的分块大小
+    snapshot_write_chunk_size: 256
     # Slot cleanup interval (duration)
     # 并发槽位清理周期（时间段）
     slot_cleanup_interval: 30s

@@ -1227,12 +1227,20 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 	// anthropic/gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
 	// 注意：强制平台模式不走混合调度
 	if (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform {
-		return s.selectAccountWithMixedScheduling(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+		account, err := s.selectAccountWithMixedScheduling(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+		if err != nil {
+			return nil, err
+		}
+		return s.hydrateSelectedAccount(ctx, account)
 	}
 
 	// antigravity 分组、强制平台模式或无分组使用单平台选择
 	// 注意：强制平台模式也必须遵守分组限制，不再回退到全平台查询
-	return s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+	account, err := s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+	if err != nil {
+		return nil, err
+	}
+	return s.hydrateSelectedAccount(ctx, account)
 }
 
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
@@ -1307,11 +1315,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					localExcluded[account.ID] = struct{}{} // 排除此账号
 					continue                               // 重新选择
 				}
-				return &AccountSelectionResult{
-					Account:     account,
-					Acquired:    true,
-					ReleaseFunc: result.ReleaseFunc,
-				}, nil
+				return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 			}
 
 			// 对于等待计划的情况，也需要先检查会话限制
@@ -1323,26 +1327,20 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
 				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
 				if waitingCount < cfg.StickySessionMaxWaiting {
-					return &AccountSelectionResult{
-						Account: account,
-						WaitPlan: &AccountWaitPlan{
-							AccountID:      account.ID,
-							MaxConcurrency: account.Concurrency,
-							Timeout:        cfg.StickySessionWaitTimeout,
-							MaxWaiting:     cfg.StickySessionMaxWaiting,
-						},
-					}, nil
+					return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+						AccountID:      account.ID,
+						MaxConcurrency: account.Concurrency,
+						Timeout:        cfg.StickySessionWaitTimeout,
+						MaxWaiting:     cfg.StickySessionMaxWaiting,
+					})
 				}
 			}
-			return &AccountSelectionResult{
-				Account: account,
-				WaitPlan: &AccountWaitPlan{
-					AccountID:      account.ID,
-					MaxConcurrency: account.Concurrency,
-					Timeout:        cfg.FallbackWaitTimeout,
-					MaxWaiting:     cfg.FallbackMaxWaiting,
-				},
-			}, nil
+			return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+				AccountID:      account.ID,
+				MaxConcurrency: account.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+			})
 		}
 	}
 
@@ -1512,11 +1510,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 									if s.debugModelRoutingEnabled() {
 										logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), stickyAccountID)
 									}
-									return &AccountSelectionResult{
-										Account:     stickyAccount,
-										Acquired:    true,
-										ReleaseFunc: result.ReleaseFunc,
-									}, nil
+									return s.newSelectionResult(ctx, stickyAccount, true, result.ReleaseFunc, nil)
 								}
 							}
 
@@ -1623,11 +1617,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						if s.debugModelRoutingEnabled() {
 							logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
 						}
-						return &AccountSelectionResult{
-							Account:     item.account,
-							Acquired:    true,
-							ReleaseFunc: result.ReleaseFunc,
-						}, nil
+						return s.newSelectionResult(ctx, item.account, true, result.ReleaseFunc, nil)
 					}
 				}
 
@@ -1640,15 +1630,12 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					if s.debugModelRoutingEnabled() {
 						logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed wait: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
 					}
-					return &AccountSelectionResult{
-						Account: item.account,
-						WaitPlan: &AccountWaitPlan{
-							AccountID:      item.account.ID,
-							MaxConcurrency: item.account.Concurrency,
-							Timeout:        cfg.StickySessionWaitTimeout,
-							MaxWaiting:     cfg.StickySessionMaxWaiting,
-						},
-					}, nil
+					return s.newSelectionResult(ctx, item.account, false, nil, &AccountWaitPlan{
+						AccountID:      item.account.ID,
+						MaxConcurrency: item.account.Concurrency,
+						Timeout:        cfg.StickySessionWaitTimeout,
+						MaxWaiting:     cfg.StickySessionMaxWaiting,
+					})
 				}
 				// 所有路由账号会话限制都已满，继续到 Layer 2 回退
 			}
@@ -1677,11 +1664,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 							result.ReleaseFunc() // 释放槽位，继续到 Layer 2
 						} else {
-							return &AccountSelectionResult{
-								Account:     account,
-								Acquired:    true,
-								ReleaseFunc: result.ReleaseFunc,
-							}, nil
+							if s.cache != nil {
+								_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
+							}
+							return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 						}
 					}
 
@@ -1693,15 +1679,12 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							// 会话限制已满，继续到 Layer 2
 							// Session limit full, continue to Layer 2
 						} else {
-							return &AccountSelectionResult{
-								Account: account,
-								WaitPlan: &AccountWaitPlan{
-									AccountID:      accountID,
-									MaxConcurrency: account.Concurrency,
-									Timeout:        cfg.StickySessionWaitTimeout,
-									MaxWaiting:     cfg.StickySessionMaxWaiting,
-								},
-							}, nil
+							return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+								AccountID:      accountID,
+								MaxConcurrency: account.Concurrency,
+								Timeout:        cfg.StickySessionWaitTimeout,
+								MaxWaiting:     cfg.StickySessionMaxWaiting,
+							})
 						}
 					}
 				}
@@ -1736,7 +1719,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
-		if result, ok := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); ok {
+		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); legacyErr != nil {
+			return nil, legacyErr
+		} else if ok {
 			return result, nil
 		}
 	} else {
@@ -1775,11 +1760,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					if sessionHash != "" && s.cache != nil {
 						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
 					}
-					return &AccountSelectionResult{
-						Account:     selected.account,
-						Acquired:    true,
-						ReleaseFunc: result.ReleaseFunc,
-					}, nil
+					return s.newSelectionResult(ctx, selected.account, true, result.ReleaseFunc, nil)
 				}
 			}
 
@@ -1802,20 +1783,17 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
 			continue // 会话限制已满，尝试下一个账号
 		}
-		return &AccountSelectionResult{
-			Account: acc,
-			WaitPlan: &AccountWaitPlan{
-				AccountID:      acc.ID,
-				MaxConcurrency: acc.Concurrency,
-				Timeout:        cfg.FallbackWaitTimeout,
-				MaxWaiting:     cfg.FallbackMaxWaiting,
-			},
-		}, nil
+		return s.newSelectionResult(ctx, acc, false, nil, &AccountWaitPlan{
+			AccountID:      acc.ID,
+			MaxConcurrency: acc.Concurrency,
+			Timeout:        cfg.FallbackWaitTimeout,
+			MaxWaiting:     cfg.FallbackMaxWaiting,
+		})
 	}
 	return nil, ErrNoAvailableAccounts
 }
 
-func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool) {
+func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
 	ordered := append([]*Account(nil), candidates...)
 	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
 
@@ -1830,15 +1808,15 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 			if sessionHash != "" && s.cache != nil {
 				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, stickySessionTTL)
 			}
-			return &AccountSelectionResult{
-				Account:     acc,
-				Acquired:    true,
-				ReleaseFunc: result.ReleaseFunc,
-			}, true
+			selection, err := s.newSelectionResult(ctx, acc, true, result.ReleaseFunc, nil)
+			if err != nil {
+				return nil, false, err
+			}
+			return selection, true, nil
 		}
 	}
 
-	return nil, false
+	return nil, false, nil
 }
 
 func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
@@ -2530,6 +2508,33 @@ func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID in
 		return s.schedulerSnapshot.GetAccount(ctx, accountID)
 	}
 	return s.accountRepo.GetByID(ctx, accountID)
+}
+
+func (s *GatewayService) hydrateSelectedAccount(ctx context.Context, account *Account) (*Account, error) {
+	if account == nil || s.schedulerSnapshot == nil {
+		return account, nil
+	}
+	hydrated, err := s.schedulerSnapshot.GetAccount(ctx, account.ID)
+	if err != nil {
+		return nil, err
+	}
+	if hydrated == nil {
+		return nil, fmt.Errorf("selected gateway account %d not found during hydration", account.ID)
+	}
+	return hydrated, nil
+}
+
+func (s *GatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
+	hydrated, err := s.hydrateSelectedAccount(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountSelectionResult{
+		Account:     hydrated,
+		Acquired:    acquired,
+		ReleaseFunc: release,
+		WaitPlan:    waitPlan,
+	}, nil
 }
 
 // filterByMinPriority 过滤出优先级最小的账号集合
