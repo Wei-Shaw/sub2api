@@ -2936,12 +2936,15 @@ async function handleSaveProvider(payload: any) {
   providerSaving.value = true
   try {
     if (editingProvider.value) {
-      await adminAPI.payment.updateProvider(editingProvider.value.id, payload)
+      const updated = await adminAPI.payment.updateProvider(editingProvider.value.id, payload)
+      // Update in place to preserve list order
+      const idx = providers.value.findIndex(p => p.id === editingProvider.value!.id)
+      if (idx >= 0 && updated.data) providers.value[idx] = updated.data
     } else {
       await adminAPI.payment.createProvider(payload)
+      loadProviders()
     }
     showProviderDialog.value = false
-    loadProviders()
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value))
   } finally {
