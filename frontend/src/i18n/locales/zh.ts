@@ -3700,6 +3700,14 @@ export default {
         inputTokens: '输入 Tokens',
         outputTokens: '输出 Tokens'
       },
+      openaiRetry: {
+        title: 'OpenAI 服务端重试分布',
+        subtitle: '对比 active 与 exhausted 目标组中已落库请求的服务端重试情况。',
+        failedToLoad: '加载 OpenAI 重试统计失败',
+        empty: '当前筛选条件下暂无 OpenAI 重试统计数据',
+        retriedRequestCount: '发生过重试的请求数',
+        retryCount: '服务端重试总次数'
+      },
       customTimeRange: {
         startTime: '开始时间',
         endTime: '结束时间'
@@ -3963,6 +3971,7 @@ export default {
         copyFailed: '复制失败',
         copy: '复制',
         viewError: '查看错误',
+        viewRetryErrors: '查看重试错误',
         kind: {
           success: '成功',
           error: '失败'

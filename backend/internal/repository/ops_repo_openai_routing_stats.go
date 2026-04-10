@@ -38,7 +38,9 @@ SELECT
   COUNT(*)::bigint AS request_count,
   COALESCE(SUM(COALESCE(ul.input_tokens, 0) + COALESCE(ul.output_tokens, 0)), 0)::bigint AS total_tokens,
   COALESCE(SUM(COALESCE(ul.input_tokens, 0)), 0)::bigint AS input_tokens,
-  COALESCE(SUM(COALESCE(ul.output_tokens, 0)), 0)::bigint AS output_tokens
+  COALESCE(SUM(COALESCE(ul.output_tokens, 0)), 0)::bigint AS output_tokens,
+  COUNT(*) FILTER (WHERE COALESCE(ul.routing_failover_count, 0) > 0)::bigint AS retried_request_count,
+  COALESCE(SUM(COALESCE(ul.routing_failover_count, 0)), 0)::bigint AS retry_count
 FROM usage_logs ul
 ` + join + `
 ` + where + `
@@ -64,7 +66,9 @@ ORDER BY LOWER(ul.routing_target_group) ASC`
 		var totalTokens int64
 		var inputTokens int64
 		var outputTokens int64
-		if err := rows.Scan(&targetGroup, &requestCount, &totalTokens, &inputTokens, &outputTokens); err != nil {
+		var retriedRequestCount int64
+		var retryCount int64
+		if err := rows.Scan(&targetGroup, &requestCount, &totalTokens, &inputTokens, &outputTokens, &retriedRequestCount, &retryCount); err != nil {
 			return nil, err
 		}
 		targetGroup = strings.TrimSpace(strings.ToLower(targetGroup))
@@ -75,6 +79,8 @@ ORDER BY LOWER(ul.routing_target_group) ASC`
 		resp.TotalTokensByGroup[targetGroup] = totalTokens
 		resp.InputTokensByGroup[targetGroup] = inputTokens
 		resp.OutputTokensByGroup[targetGroup] = outputTokens
+		resp.RetriedRequestCountByGroup[targetGroup] = retriedRequestCount
+		resp.RetryCountByGroup[targetGroup] = retryCount
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

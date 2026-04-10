@@ -214,6 +214,7 @@ export interface OpsRequestDetailsParams {
   model?: string
   request_id?: string
   q?: string
+  retried_only?: boolean
 
   min_duration_ms?: number
   max_duration_ms?: number
@@ -319,6 +320,8 @@ export interface OpsOpenAIRoutingStatsResponse {
   total_tokens_by_group: Record<string, number>
   input_tokens_by_group: Record<string, number>
   output_tokens_by_group: Record<string, number>
+  retried_request_count_by_group: Record<string, number>
+  retry_count_by_group: Record<string, number>
 }
 
 export interface OpsOpenAIRoutingStatsParams {

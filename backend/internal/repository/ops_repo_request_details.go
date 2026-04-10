@@ -66,6 +66,9 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 		if requestID := strings.TrimSpace(filter.RequestID); requestID != "" {
 			addCondition(fmt.Sprintf("request_id = $%d", len(args)+1), requestID)
 		}
+		if filter.RetriedOnly {
+			addCondition("COALESCE(routing_failover_count, 0) > 0")
+		}
 		if q := strings.TrimSpace(filter.Query); q != "" {
 			like := "%" + strings.ToLower(q) + "%"
 			startIdx := len(args) + 1

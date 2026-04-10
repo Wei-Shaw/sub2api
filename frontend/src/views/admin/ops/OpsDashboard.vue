@@ -85,7 +85,7 @@
       </div>
 
       <!-- Row: OpenAI Token Stats -->
-      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
+      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 md:grid-cols-2">
         <OpsOpenAIRoutingCard
           :platform-filter="platform"
           :group-id-filter="groupId"
@@ -93,6 +93,15 @@
           :start-time="customStartTime"
           :end-time="customEndTime"
           :refresh-token="dashboardRefreshToken"
+        />
+        <OpsOpenAIRetryCard
+          :platform-filter="platform"
+          :group-id-filter="groupId"
+          :time-range="timeRange"
+          :start-time="customStartTime"
+          :end-time="customEndTime"
+          :refresh-token="dashboardRefreshToken"
+          @open-details="openOpenAIRetryDetails"
         />
       </div>
 
@@ -128,6 +137,7 @@
           :platform="platform"
           :group-id="groupId"
           :error-type="errorDetailsType"
+          :request-id="errorDetailsRequestId"
           @update:show="showErrorDetails = $event"
           @openErrorDetail="openError"
         />
@@ -141,6 +151,18 @@
           :platform="platform"
           :group-id="groupId"
           @openErrorDetail="openError"
+          @openRequestErrors="openRetryRequestErrors"
+        />
+
+        <OpsOpenAIRetryDetailsModal
+          v-model="showOpenAIRetryDetails"
+          :time-range="timeRange"
+          :platform="platform"
+          :group-id="groupId"
+          :routing-target-group="openAIRetryTargetGroup"
+          :title="openAIRetryDetailsTitle"
+          @openErrorDetail="openError"
+          @openRequestErrors="openRetryRequestErrors"
         />
       </template>
     </div>
@@ -176,8 +198,10 @@ import OpsThroughputTrendChart from './components/OpsThroughputTrendChart.vue'
 import OpsSwitchRateTrendChart from './components/OpsSwitchRateTrendChart.vue'
 import OpsAlertEventsCard from './components/OpsAlertEventsCard.vue'
 import OpsOpenAIRoutingCard from './components/OpsOpenAIRoutingCard.vue'
+import OpsOpenAIRetryCard from './components/OpsOpenAIRetryCard.vue'
 import OpsOpenAITokenStatsCard from './components/OpsOpenAITokenStatsCard.vue'
 import OpsSystemLogTable from './components/OpsSystemLogTable.vue'
+import OpsOpenAIRetryDetailsModal from './components/OpsOpenAIRetryDetailsModal.vue'
 import OpsRequestDetailsModal, { type OpsRequestDetailsPreset } from './components/OpsRequestDetailsModal.vue'
 import OpsSettingsDialog from './components/OpsSettingsDialog.vue'
 import OpsAlertRulesCard from './components/OpsAlertRulesCard.vue'
@@ -381,6 +405,7 @@ const showErrorModal = ref(false)
 
 const showErrorDetails = ref(false)
 const errorDetailsType = ref<'request' | 'upstream'>('request')
+const errorDetailsRequestId = ref('')
 
 const showRequestDetails = ref(false)
 const requestDetailsPreset = ref<OpsRequestDetailsPreset>({
@@ -388,6 +413,8 @@ const requestDetailsPreset = ref<OpsRequestDetailsPreset>({
   kind: 'all',
   sort: 'created_at_desc'
 })
+const showOpenAIRetryDetails = ref(false)
+const openAIRetryTargetGroup = ref('')
 
 const showSettingsDialog = ref(false)
 const showAlertRulesCard = ref(false)
@@ -463,13 +490,44 @@ function handleOpenRequestDetails(preset?: OpsRequestDetailsPreset) {
   // Ensure only one modal visible at a time.
   showErrorDetails.value = false
   showErrorModal.value = false
+  errorDetailsRequestId.value = ''
   showRequestDetails.value = true
 }
 
+const openAIRetryDetailsTitle = computed(() => {
+  if (openAIRetryTargetGroup.value === 'active') {
+    return `${t('admin.ops.openaiRetry.title')} · ${t('admin.usage.routingTargetGroupActive')}`
+  }
+  if (openAIRetryTargetGroup.value === 'exhausted') {
+    return `${t('admin.ops.openaiRetry.title')} · ${t('admin.usage.routingTargetGroupExhausted')}`
+  }
+  return t('admin.ops.openaiRetry.title')
+})
+
+function openOpenAIRetryDetails(targetGroup: string) {
+  openAIRetryTargetGroup.value = targetGroup
+  showErrorDetails.value = false
+  showErrorModal.value = false
+  errorDetailsRequestId.value = ''
+  showRequestDetails.value = false
+  showOpenAIRetryDetails.value = true
+}
+
+function openRetryRequestErrors(requestId: string) {
+	errorDetailsType.value = 'upstream'
+	errorDetailsRequestId.value = requestId
+	showRequestDetails.value = false
+	showOpenAIRetryDetails.value = false
+	showErrorModal.value = false
+	showErrorDetails.value = true
+}
+
 function openErrorDetails(kind: 'request' | 'upstream') {
-  errorDetailsType.value = kind
+	errorDetailsType.value = kind
+	errorDetailsRequestId.value = ''
   // Ensure only one modal visible at a time.
   showRequestDetails.value = false
+  showOpenAIRetryDetails.value = false
   showErrorModal.value = false
   showErrorDetails.value = true
 }
@@ -518,9 +576,11 @@ function onQueryModeChange(v: string | number | boolean | null) {
 
 function openError(id: number) {
   selectedErrorId.value = id
+  errorDetailsRequestId.value = ''
   // Ensure only one modal visible at a time.
   showErrorDetails.value = false
   showRequestDetails.value = false
+  showOpenAIRetryDetails.value = false
   showErrorModal.value = true
 }
 

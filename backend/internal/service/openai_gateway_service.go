@@ -1018,6 +1018,14 @@ func isOpenAIInstructionsRequiredError(upstreamStatusCode int, upstreamMsg strin
 }
 
 func isOpenAITransientProcessingError(upstreamStatusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	errCode := strings.ToLower(strings.TrimSpace(gjson.GetBytes(upstreamBody, "error.code").String()))
+	errType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(upstreamBody, "error.type").String()))
+	if errCode == "server_is_overloaded" || errType == "service_unavailable_error" {
+		return true
+	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(upstreamMsg)), "currently overloaded") {
+		return true
+	}
 	if upstreamStatusCode != http.StatusBadRequest {
 		return false
 	}
@@ -3114,17 +3122,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	account *Account,
 	startTime time.Time,
 ) (*openaiStreamingResultPassthrough, error) {
-	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-
-	// SSE headers
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-	if v := resp.Header.Get("x-request-id"); v != "" {
-		c.Header("x-request-id", v)
-	}
-
 	w := c.Writer
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -3136,7 +3133,23 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	clientDisconnected := false
 	sawDone := false
 	sawTerminalEvent := false
+	streamStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+	startStream := func() {
+		if streamStarted {
+			return
+		}
+		writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		if upstreamRequestID != "" {
+			c.Header("x-request-id", upstreamRequestID)
+		}
+		c.Writer.WriteHeader(http.StatusOK)
+		streamStarted = true
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -3152,20 +3165,40 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
 			trimmedData := strings.TrimSpace(data)
+			if !streamStarted && firstTokenMs == nil && gjson.Get(trimmedData, "type").String() == "error" {
+				msg := extractOpenAISSEErrorMessage(dataBytes)
+				if isOpenAITransientProcessingError(http.StatusBadRequest, msg, dataBytes) {
+					return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMs}, &UpstreamFailoverError{
+						StatusCode:   http.StatusServiceUnavailable,
+						ResponseBody: dataBytes,
+					}
+				}
+			}
 			if trimmedData == "[DONE]" {
 				sawDone = true
 			}
 			if openAIStreamEventIsTerminal(trimmedData) {
 				sawTerminalEvent = true
 			}
+			if !streamStarted && !openAIResponsesEventStartsClientStream(trimmedData) {
+				s.parseSSEUsageBytes(dataBytes, usage)
+				continue
+			}
 			if firstTokenMs == nil && trimmedData != "" && trimmedData != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
+			startStream()
 		}
 
 		if !clientDisconnected {
+			if !streamStarted {
+				if data, ok := extractOpenAISSEDataLine(line); !ok || strings.TrimSpace(data) == "" || !openAIResponsesEventStartsClientStream(strings.TrimSpace(data)) {
+					continue
+				}
+				startStream()
+			}
 			if _, err := fmt.Fprintln(w, line); err != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
@@ -3729,21 +3762,6 @@ type openaiStreamingResult struct {
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
-	if s.responseHeaderFilter != nil {
-		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	}
-
-	// Set SSE response headers
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-
-	// Pass through other headers
-	if v := resp.Header.Get("x-request-id"); v != "" {
-		c.Header("x-request-id", v)
-	}
-
 	w := c.Writer
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -3807,12 +3825,51 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	clientDisconnected := false // 客户端断开后继续 drain 上游以收集 usage
 	sawTerminalEvent := false
 	streamStarted := false
+	sawResponseCreated := false
+	sawResponseInProgress := false
+	sawSubstantiveEvent := false
+	localRequestID := strings.TrimSpace(c.Writer.Header().Get("X-Request-Id"))
+	startStream := func() error {
+		if streamStarted {
+			return nil
+		}
+		if s.responseHeaderFilter != nil {
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		}
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		if v := resp.Header.Get("x-request-id"); v != "" {
+			c.Header("x-request-id", v)
+		}
+		c.Writer.WriteHeader(http.StatusOK)
+		streamStarted = true
+		if localRequestID == "" {
+			localRequestID = strings.TrimSpace(c.Writer.Header().Get("X-Request-Id"))
+		}
+		return nil
+	}
 	sendErrorEvent := func(reason string) {
 		if errorEventSent || clientDisconnected {
 			return
 		}
 		errorEventSent = true
-		payload := `{"type":"error","sequence_number":0,"error":{"type":"upstream_error","message":` + strconv.Quote(reason) + `,"code":` + strconv.Quote(reason) + `}}`
+		errorJSON := gin.H{
+			"type":              "upstream_error",
+			"message":           reason,
+			"code":              reason,
+			"upstream_request_id": strings.TrimSpace(resp.Header.Get("x-request-id")),
+		}
+		if localRequestID != "" {
+			errorJSON["request_id"] = localRequestID
+		}
+		payloadBytes, _ := json.Marshal(gin.H{"type": "error", "sequence_number": 0, "error": errorJSON})
+		payload := string(payloadBytes)
+		if err := startStream(); err != nil {
+			clientDisconnected = true
+			return
+		}
 		if err := flushBuffered(); err != nil {
 			clientDisconnected = true
 			return
@@ -3821,7 +3878,6 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			clientDisconnected = true
 			return
 		}
-		streamStarted = true
 		if err := flushBuffered(); err != nil {
 			clientDisconnected = true
 		}
@@ -3865,20 +3921,42 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			sendErrorEvent("response_too_large")
 			return resultWithUsage(), scanErr, true
 		}
-		if !streamStarted && firstTokenMs == nil {
+		if !sawSubstantiveEvent {
 			return resultWithUsage(), &UpstreamFailoverError{
 				StatusCode:   http.StatusBadGateway,
 				ResponseBody: []byte(scanErr.Error()),
 			}, true
 		}
+		logger.FromContext(ctx).Warn("openai stream read error after stream start",
+			zap.String("request_id", localRequestID),
+			zap.String("upstream_request_id", strings.TrimSpace(resp.Header.Get("x-request-id"))),
+			zap.Bool("stream_started", streamStarted),
+			zap.Bool("saw_response_created", sawResponseCreated),
+			zap.Bool("saw_response_in_progress", sawResponseInProgress),
+			zap.Bool("saw_substantive_event", sawSubstantiveEvent),
+			zap.Bool("saw_terminal_event", sawTerminalEvent),
+			zap.Error(scanErr),
+		)
 		sendErrorEvent("stream_read_error")
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true
 	}
-	processSSELine := func(line string, queueDrained bool) {
+	processSSELine := func(line string, queueDrained bool) (*openaiStreamingResult, error, bool) {
 		lastDataAt = time.Now()
 
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if data, ok := extractOpenAISSEDataLine(line); ok {
+			switch strings.TrimSpace(gjson.Get(data, "type").String()) {
+			case "response.created":
+				sawResponseCreated = true
+			case "response.in_progress":
+				sawResponseInProgress = true
+			}
+			if !streamStarted && firstTokenMs == nil && gjson.Get(data, "type").String() == "error" {
+				msg := extractOpenAISSEErrorMessage([]byte(data))
+				if isOpenAITransientProcessingError(http.StatusBadRequest, msg, []byte(data)) {
+					return resultWithUsage(), &UpstreamFailoverError{StatusCode: http.StatusServiceUnavailable, ResponseBody: []byte(data)}, true
+				}
+			}
 
 			// Replace model in response if needed.
 			// Fast path: most events do not contain model field values.
@@ -3900,10 +3978,21 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 
 			// 写入客户端（客户端断开后继续 drain 上游）
 			if !clientDisconnected {
+				if !streamStarted && !openAIResponsesEventStartsClientStream(data) {
+					s.parseSSEUsageBytes(dataBytes, usage)
+					return nil, nil, false
+				}
+				sawSubstantiveEvent = true
 				shouldFlush := queueDrained
 				if firstTokenMs == nil && data != "" && data != "[DONE]" {
 					// 保证首个 token 事件尽快出站，避免影响 TTFT。
 					shouldFlush = true
+					ms := int(time.Since(startTime).Milliseconds())
+					firstTokenMs = &ms
+				}
+				if err := startStream(); err != nil {
+					clientDisconnected = true
+					return resultWithUsage(), err, true
 				}
 				if _, err := bufferedWriter.WriteString(line); err != nil {
 					clientDisconnected = true
@@ -3912,7 +4001,6 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 					clientDisconnected = true
 					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
 				} else {
-					streamStarted = true
 					if shouldFlush {
 						if err := flushBuffered(); err != nil {
 							clientDisconnected = true
@@ -3921,18 +4009,12 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 					}
 				}
 			}
-
-			// Record first token time
-			if firstTokenMs == nil && data != "" && data != "[DONE]" {
-				ms := int(time.Since(startTime).Milliseconds())
-				firstTokenMs = &ms
-			}
 			s.parseSSEUsageBytes(dataBytes, usage)
-			return
+			return nil, nil, false
 		}
 
 		// Forward non-data lines as-is
-		if !clientDisconnected {
+		if !clientDisconnected && streamStarted {
 			if _, err := bufferedWriter.WriteString(line); err != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
@@ -3949,13 +4031,16 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				}
 			}
 		}
+		return nil, nil, false
 	}
 
 	// 无超时/无 keepalive 的常见路径走同步扫描，减少 goroutine 与 channel 开销。
 	if streamInterval <= 0 && keepaliveInterval <= 0 {
 		defer putSSEScannerBuf64K(scanBuf)
 		for scanner.Scan() {
-			processSSELine(scanner.Text(), true)
+			if result, err, done := processSSELine(scanner.Text(), true); done {
+				return result, err
+			}
 		}
 		if result, err, done := handleScanErr(scanner.Err()); done {
 			return result, err
@@ -4004,7 +4089,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			if result, err, done := handleScanErr(ev.err); done {
 				return result, err
 			}
-			processSSELine(ev.line, len(events) == 0)
+			if result, err, done := processSSELine(ev.line, len(events) == 0); done {
+				return result, err
+			}
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
@@ -4023,7 +4110,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
 
 		case <-keepaliveCh:
-			if clientDisconnected {
+			if clientDisconnected || !streamStarted {
 				continue
 			}
 			if time.Since(lastDataAt) < keepaliveInterval {
@@ -4058,6 +4145,16 @@ func extractOpenAISSEDataLine(line string) (string, bool) {
 		start++
 	}
 	return line[start:], true
+}
+
+func openAIResponsesEventStartsClientStream(data string) bool {
+	eventType := strings.TrimSpace(gjson.Get(data, "type").String())
+	switch eventType {
+	case "response.created", "response.in_progress":
+		return false
+	default:
+		return true
+	}
 }
 
 func (s *OpenAIGatewayService) replaceModelInSSELine(line, fromModel, toModel string) string {

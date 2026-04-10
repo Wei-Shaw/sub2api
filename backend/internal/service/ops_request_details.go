@@ -66,6 +66,7 @@ type OpsRequestDetailFilter struct {
 	RoutingScheduleLayer string
 	RequestID            string
 	Query                string
+	RetriedOnly          bool
 
 	MinDurationMs *int
 	MaxDurationMs *int

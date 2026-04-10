@@ -14,6 +14,8 @@ export interface OpsRequestDetailsPreset {
   sort?: OpsRequestDetailsParams['sort']
   min_duration_ms?: number
   max_duration_ms?: number
+  retried_only?: boolean
+  routing_target_group?: string
 }
 
 interface Props {
@@ -28,6 +30,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
   (e: 'openErrorDetail', errorId: number): void
+  (e: 'openRequestErrors', requestId: string): void
 }>()
 
 const { t } = useI18n()
@@ -76,6 +79,8 @@ const fetchData = async () => {
 
     if (typeof props.preset.min_duration_ms === 'number') params.min_duration_ms = props.preset.min_duration_ms
     if (typeof props.preset.max_duration_ms === 'number') params.max_duration_ms = props.preset.max_duration_ms
+    if (props.preset.retried_only) params.retried_only = true
+    if (props.preset.routing_target_group) params.routing_target_group = props.preset.routing_target_group
 
     const res = await opsAPI.listRequestDetails(params)
     items.value = res.items || []
@@ -109,7 +114,9 @@ watch(
     props.preset.kind,
     props.preset.sort,
     props.preset.min_duration_ms,
-    props.preset.max_duration_ms
+    props.preset.max_duration_ms,
+    props.preset.retried_only,
+    props.preset.routing_target_group
   ],
   () => {
     if (!props.modelValue) return
@@ -140,6 +147,13 @@ function openErrorDetail(errorId: number | null | undefined) {
   if (!errorId) return
   close()
   emit('openErrorDetail', errorId)
+}
+
+function openRequestErrors(requestId: string | null | undefined) {
+  const normalized = String(requestId || '').trim()
+  if (!normalized) return
+  close()
+  emit('openRequestErrors', normalized)
 }
 
 const kindBadgeClass = (kind: string) => {
@@ -287,14 +301,23 @@ const kindBadgeClass = (kind: string) => {
                     <span v-else class="text-xs text-gray-400">-</span>
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-right">
-                    <button
-                      v-if="row.kind === 'error' && row.error_id"
-                      class="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/30"
-                      @click="openErrorDetail(row.error_id)"
-                    >
-                      {{ t('admin.ops.requestDetails.viewError') }}
-                    </button>
-                    <span v-else class="text-xs text-gray-400">-</span>
+                    <div class="flex items-center justify-end gap-2">
+                      <button
+                        v-if="row.request_id && row.routing_failover_count != null && row.routing_failover_count > 0"
+                        class="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/30"
+                        @click="openRequestErrors(row.request_id)"
+                      >
+                        {{ t('admin.ops.requestDetails.viewRetryErrors') }}
+                      </button>
+                      <button
+                        v-if="row.kind === 'error' && row.error_id"
+                        class="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/30"
+                        @click="openErrorDetail(row.error_id)"
+                      >
+                        {{ t('admin.ops.requestDetails.viewError') }}
+                      </button>
+                      <span v-if="!(row.request_id && row.routing_failover_count != null && row.routing_failover_count > 0) && !(row.kind === 'error' && row.error_id)" class="text-xs text-gray-400">-</span>
+                    </div>
                   </td>
                 </tr>
               </tbody>

@@ -28,6 +28,8 @@ type OpsOpenAIRoutingStatsResponse struct {
 	TotalTokensByGroup  map[string]int64 `json:"total_tokens_by_group"`
 	InputTokensByGroup  map[string]int64 `json:"input_tokens_by_group"`
 	OutputTokensByGroup map[string]int64 `json:"output_tokens_by_group"`
+	RetriedRequestCountByGroup map[string]int64 `json:"retried_request_count_by_group"`
+	RetryCountByGroup          map[string]int64 `json:"retry_count_by_group"`
 }
 
 func GetOpsOpenAIRoutingStatsGroups() []string {
@@ -40,12 +42,16 @@ func NewOpsOpenAIRoutingStatsResponse() *OpsOpenAIRoutingStatsResponse {
 		TotalTokensByGroup:  make(map[string]int64, 2),
 		InputTokensByGroup:  make(map[string]int64, 2),
 		OutputTokensByGroup: make(map[string]int64, 2),
+		RetriedRequestCountByGroup: make(map[string]int64, 2),
+		RetryCountByGroup:          make(map[string]int64, 2),
 	}
 	for _, group := range GetOpsOpenAIRoutingStatsGroups() {
 		resp.RequestCountByGroup[group] = 0
 		resp.TotalTokensByGroup[group] = 0
 		resp.InputTokensByGroup[group] = 0
 		resp.OutputTokensByGroup[group] = 0
+		resp.RetriedRequestCountByGroup[group] = 0
+		resp.RetryCountByGroup[group] = 0
 	}
 	return resp
 }

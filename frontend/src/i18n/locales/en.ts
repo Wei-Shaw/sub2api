@@ -3540,6 +3540,14 @@ export default {
         inputTokens: 'Input Tokens',
         outputTokens: 'Output Tokens'
       },
+      openaiRetry: {
+        title: 'OpenAI Server Retry Distribution',
+        subtitle: 'Compare how persisted OpenAI requests were retried across active and exhausted target groups.',
+        failedToLoad: 'Failed to load OpenAI retry stats',
+        empty: 'No OpenAI retry stats for the current filters',
+        retriedRequestCount: 'Requests With Retry',
+        retryCount: 'Total Retry Count'
+      },
       fullscreen: {
         enter: 'Enter Fullscreen'
       },
@@ -3799,6 +3807,7 @@ export default {
         copyFailed: 'Copy failed',
         copy: 'Copy',
         viewError: 'View Error',
+        viewRetryErrors: 'View Retry Errors',
         kind: {
           success: 'SUCCESS',
           error: 'ERROR'

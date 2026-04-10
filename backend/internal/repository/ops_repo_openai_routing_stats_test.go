@@ -32,9 +32,11 @@ func TestOpsRepositoryGetOpenAIRoutingStats_GroupsByTargetGroup(t *testing.T) {
 		"total_tokens",
 		"input_tokens",
 		"output_tokens",
+		"retried_request_count",
+		"retry_count",
 	}).
-		AddRow("active", int64(10), int64(1200), int64(700), int64(500)).
-		AddRow("exhausted", int64(4), int64(320), int64(200), int64(120))
+		AddRow("active", int64(10), int64(1200), int64(700), int64(500), int64(3), int64(5)).
+		AddRow("exhausted", int64(4), int64(320), int64(200), int64(120), int64(2), int64(7))
 
 	mock.ExpectQuery(`SELECT\s+LOWER\(ul\.routing_target_group\) AS routing_target_group`).
 		WithArgs(start, end, groupID, "openai").
@@ -55,6 +57,10 @@ func TestOpsRepositoryGetOpenAIRoutingStats_GroupsByTargetGroup(t *testing.T) {
 	require.Equal(t, int64(200), resp.InputTokensByGroup["exhausted"])
 	require.Equal(t, int64(500), resp.OutputTokensByGroup["active"])
 	require.Equal(t, int64(120), resp.OutputTokensByGroup["exhausted"])
+	require.Equal(t, int64(3), resp.RetriedRequestCountByGroup["active"])
+	require.Equal(t, int64(2), resp.RetriedRequestCountByGroup["exhausted"])
+	require.Equal(t, int64(5), resp.RetryCountByGroup["active"])
+	require.Equal(t, int64(7), resp.RetryCountByGroup["exhausted"])
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -79,6 +85,8 @@ func TestOpsRepositoryGetOpenAIRoutingStats_EmptyResult(t *testing.T) {
 			"total_tokens",
 			"input_tokens",
 			"output_tokens",
+			"retried_request_count",
+			"retry_count",
 		}))
 
 	resp, err := repo.GetOpenAIRoutingStats(context.Background(), filter)
@@ -88,6 +96,10 @@ func TestOpsRepositoryGetOpenAIRoutingStats_EmptyResult(t *testing.T) {
 	require.Equal(t, int64(0), resp.RequestCountByGroup["exhausted"])
 	require.Equal(t, int64(0), resp.TotalTokensByGroup["active"])
 	require.Equal(t, int64(0), resp.TotalTokensByGroup["exhausted"])
+	require.Equal(t, int64(0), resp.RetriedRequestCountByGroup["active"])
+	require.Equal(t, int64(0), resp.RetriedRequestCountByGroup["exhausted"])
+	require.Equal(t, int64(0), resp.RetryCountByGroup["active"])
+	require.Equal(t, int64(0), resp.RetryCountByGroup["exhausted"])
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
