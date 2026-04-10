@@ -117,6 +117,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminPaymentAPI REDACTED from '@/api/admin/payment'
 import { extractApiErrorMessage REDACTED from '@/utils/apiError'
+import { formatOrderDateTime REDACTED from '@/components/payment/orderUtils'
 import type { PaymentOrder REDACTED from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -233,7 +234,7 @@ async function handleRefund(data: { amount: number; reason: string; deduct_balan
   finally { refundSubmitting.value = false REDACTED
 REDACTED
 
-function formatDateTime(dateStr: string): string { if (!dateStr) return '-'; return new Date(dateStr).toLocaleString() REDACTED
+function formatDateTime(dateStr: string): string { return formatOrderDateTime(dateStr) REDACTED
 
 onMounted(() => loadOrders())
 </script>

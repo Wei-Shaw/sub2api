@@ -27,6 +27,8 @@ const (
 	maxEasypayResponseSize = 1 << 20 // 1MB
 	tradeStatusSuccess     = "TRADE_SUCCESS"
 	signTypeMD5            = "MD5"
+	paymentModePopup       = "popup"
+	deviceMobile           = "mobile"
 )
 
 // EasyPay implements payment.Provider for the EasyPay aggregation platform.
@@ -61,7 +63,7 @@ func (e *EasyPay) CreatePayment(ctx context.Context, req payment.CreatePaymentRe
 	// Payment mode determined by instance config, not payment type.
 	// "popup" → hosted page (submit.php); "qrcode"/default → API call (mapi.php).
 	mode := e.config["paymentMode"]
-	if mode == "popup" {
+	if mode == paymentModePopup {
 		return e.createRedirectPayment(req)
 REDACTED
 	return e.createAPIPayment(ctx, req)
@@ -106,7 +108,7 @@ REDACTED
 		params["cid"] = cid
 REDACTED
 	if req.IsMobile {
-		params["device"] = "mobile"
+		params["device"] = deviceMobile
 REDACTED
 	params["sign"] = easyPaySign(params, e.config["pkey"])
 	params["sign_type"] = signTypeMD5

@@ -164,6 +164,7 @@ import { reactive, computed, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { PaymentOrder REDACTED from '@/types/payment'
+import { formatOrderDateTime REDACTED from '@/components/payment/orderUtils'
 
 const { t REDACTED = useI18n()
 
@@ -222,8 +223,7 @@ watch(() => props.show, (val) => {
 REDACTED)
 
 function formatDateTime(dateStr: string): string {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString()
+  return formatOrderDateTime(dateStr)
 REDACTED
 
 function handleSubmit() {
