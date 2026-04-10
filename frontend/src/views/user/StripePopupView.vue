@@ -1,43 +1,67 @@
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-gray-50 p-4 dark:bg-dark-900">
-    <div class="w-full max-w-sm space-y-4">
-      <div class="card overflow-hidden text-center">
-        <!-- Amount -->
-        <div v-if="amount" class="bg-gradient-to-br from-[#635bff] to-[#4f46e5] px-6 py-5">
-          <p class="text-3xl font-bold text-white">${{ amount }}</p>
-          <p v-if="orderId" class="mt-1 text-xs text-indigo-200">{{ t('payment.orders.orderId') }}: {{ orderId }}</p>
+  <div class="flex min-h-screen items-center justify-center bg-slate-50 p-4 dark:bg-slate-950">
+    <div
+      class="w-full max-w-md space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+    >
+      <!-- Amount + Order ID -->
+      <div v-if="amount" class="text-center">
+        <p class="text-3xl font-bold" :style="{ color: methodColor }">¥{{ amount }}</p>
+        <p v-if="orderId" class="mt-1 text-sm text-gray-500 dark:text-slate-400">
+          {{ t('payment.orders.orderId') }}: {{ orderId }}
+        </p>
+      </div>
+
+      <!-- Error -->
+      <div v-if="error" class="space-y-3">
+        <div
+          class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600 dark:border-red-700 dark:bg-red-900/30 dark:text-red-400"
+        >
+          {{ error }}
         </div>
-        <!-- Status -->
-        <div class="p-6">
-          <!-- Error -->
-          <div v-if="error" class="space-y-3">
-            <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
-              {{ error }}
-            </div>
-            <button class="text-sm text-gray-500 underline dark:text-gray-400" @click="closeWindow">{{ t('common.close') }}</button>
-          </div>
-          <!-- Success -->
-          <div v-else-if="success" class="space-y-2 py-2">
-            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-              <svg class="h-6 w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
-            </div>
-            <p class="text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.result.success') }}</p>
-          </div>
-          <!-- Loading / Redirecting -->
-          <div v-else class="flex items-center justify-center gap-3 py-4">
-            <div class="h-6 w-6 animate-spin rounded-full border-3 border-gray-200 border-t-[#635bff] dark:border-dark-600 dark:border-t-[#818cf8]"></div>
-            <span class="text-sm text-gray-500 dark:text-gray-400">{{ hint }}</span>
-          </div>
-        </div>
+        <button
+          class="w-full text-sm underline dark:text-blue-400 dark:hover:text-blue-300"
+          :style="{ color: methodColor }"
+          @click="closeWindow"
+        >
+          {{ t('common.close') }}
+        </button>
+      </div>
+
+      <!-- Success -->
+      <div v-else-if="success" class="space-y-3 py-4 text-center">
+        <div class="text-5xl text-green-600 dark:text-green-400">✓</div>
+        <p class="text-sm text-gray-500 dark:text-slate-400">{{ t('payment.result.success') }}</p>
+        <button
+          class="text-sm underline dark:text-blue-400 dark:hover:text-blue-300"
+          :style="{ color: methodColor }"
+          @click="closeWindow"
+        >
+          {{ t('common.close') }}
+        </button>
+      </div>
+
+      <!-- Loading / Redirecting -->
+      <div v-else class="flex items-center justify-center py-8">
+        <div
+          class="h-8 w-8 animate-spin rounded-full border-2 border-t-transparent"
+          :style="{ borderColor: methodColor, borderTopColor: 'transparent' }"
+        />
+        <span class="ml-3 text-sm text-gray-500 dark:text-slate-400">{{ hint }}</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
+
+const METHOD_COLORS: Record<string, string> = {
+  alipay: '#00AEEF',
+  wechat_pay: '#07C160',
+}
+const DEFAULT_METHOD_COLOR = '#635bff'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -45,6 +69,8 @@ const route = useRoute()
 const orderId = String(route.query.order_id || '')
 const method = String(route.query.method || 'alipay')
 const amount = String(route.query.amount || '')
+
+const methodColor = computed(() => METHOD_COLORS[method] || DEFAULT_METHOD_COLOR)
 
 const error = ref('')
 const success = ref(false)
