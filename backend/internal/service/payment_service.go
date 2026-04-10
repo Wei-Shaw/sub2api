@@ -109,6 +109,7 @@ type RefundPlan struct {
 	DeductionType   string
 	BalanceToDeduct float64
 	SubDaysToDeduct int
+	SubscriptionID  int64
 }
 
 type RefundResult struct {

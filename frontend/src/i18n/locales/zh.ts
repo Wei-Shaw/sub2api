@@ -5369,6 +5369,7 @@ export default {
       qrFailed: '未能获取微信支付二维码',
     },
     subscribeNow: '立即开通',
+    renewNow: '续费',
     planFeatures: '功能特性',
     planCard: {
       rate: '倍率',

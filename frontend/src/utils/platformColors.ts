@@ -78,6 +78,32 @@ const DISCOUNT: Record<Platform, string> = {
 }
 const DISCOUNT_DEFAULT = 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
 
+// ── Header gradient (subscription confirm) ─────────────────────────
+const GRADIENT: Record<Platform, string> = {
+  anthropic: 'from-orange-500 to-orange-600',
+  openai: 'from-emerald-500 to-emerald-600',
+  antigravity: 'from-purple-500 to-purple-600',
+  gemini: 'from-blue-500 to-blue-600',
+}
+const GRADIENT_DEFAULT = 'from-primary-500 to-primary-600'
+
+// ── Header text (light text on gradient bg) ────────────────────────
+const GRADIENT_TEXT: Record<Platform, string> = {
+  anthropic: 'text-orange-100',
+  openai: 'text-emerald-100',
+  antigravity: 'text-purple-100',
+  gemini: 'text-blue-100',
+}
+const GRADIENT_TEXT_DEFAULT = 'text-primary-100'
+
+const GRADIENT_SUBTEXT: Record<Platform, string> = {
+  anthropic: 'text-orange-200',
+  openai: 'text-emerald-200',
+  antigravity: 'text-purple-200',
+  gemini: 'text-blue-200',
+}
+const GRADIENT_SUBTEXT_DEFAULT = 'text-primary-200'
+
 // ── Public API ──────────────────────────────────────────────────────
 
 function isPlatform(p: string): p is Platform {
@@ -114,6 +140,18 @@ export function platformButtonClass(p: string): string {
 
 export function platformDiscountClass(p: string): string {
   return isPlatform(p) ? DISCOUNT[p] : DISCOUNT_DEFAULT
+}
+
+export function platformGradientClass(p: string): string {
+  return isPlatform(p) ? GRADIENT[p] : GRADIENT_DEFAULT
+}
+
+export function platformGradientTextClass(p: string): string {
+  return isPlatform(p) ? GRADIENT_TEXT[p] : GRADIENT_TEXT_DEFAULT
+}
+
+export function platformGradientSubtextClass(p: string): string {
+  return isPlatform(p) ? GRADIENT_SUBTEXT[p] : GRADIENT_SUBTEXT_DEFAULT
 }
 
 export function platformLabel(p: string): string {

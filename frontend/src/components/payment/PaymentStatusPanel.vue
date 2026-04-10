@@ -70,8 +70,14 @@
       <div class="card p-6">
         <div class="flex flex-col items-center space-y-4">
           <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ scanTitle }}</p>
-          <div class="rounded-2xl bg-white p-4 shadow-sm dark:bg-dark-800">
+          <div :class="['relative rounded-lg border-2 p-4', qrBorderClass]">
             <canvas ref="qrCanvas" class="mx-auto"></canvas>
+            <!-- Brand logo overlay -->
+            <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <span :class="['rounded-full p-2 shadow ring-2 ring-white', qrLogoBgClass]">
+                <img :src="isAlipay ? alipayIcon : wxpayIcon" alt="" class="h-5 w-5 brightness-0 invert" />
+              </span>
+            </div>
           </div>
           <p v-if="scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">{{ scanHint }}</p>
         </div>
@@ -152,6 +158,18 @@ let countdownTimer: ReturnType<typeof setInterval> | null = null
 const isAlipay = computed(() => props.paymentType.includes('alipay'))
 const isWxpay = computed(() => props.paymentType.includes('wxpay'))
 
+const qrBorderClass = computed(() => {
+  if (isAlipay.value) return 'border-[#00AEEF] bg-blue-50 dark:border-[#00AEEF]/70 dark:bg-blue-950/20'
+  if (isWxpay.value) return 'border-[#2BB741] bg-green-50 dark:border-[#2BB741]/70 dark:bg-green-950/20'
+  return 'border-gray-200 bg-white dark:border-dark-600 dark:bg-dark-800'
+})
+
+const qrLogoBgClass = computed(() => {
+  if (isAlipay.value) return 'bg-[#00AEEF]'
+  if (isWxpay.value) return 'bg-[#2BB741]'
+  return 'bg-gray-400'
+})
+
 const scanTitle = computed(() => {
   if (isAlipay.value) return t('payment.qr.scanAlipay')
   if (isWxpay.value) return t('payment.qr.scanWxpay')
@@ -179,33 +197,10 @@ function reopenPopup() {
 async function renderQR() {
   await nextTick()
   if (!qrCanvas.value || !qrUrl.value) return
-  const logoSrc = isAlipay.value ? alipayIcon : isWxpay.value ? wxpayIcon : null
   await QRCode.toCanvas(qrCanvas.value, qrUrl.value, {
     width: 220, margin: 2,
-    errorCorrectionLevel: logoSrc ? 'H' : 'M',
+    errorCorrectionLevel: 'H',
   })
-  if (!logoSrc) return
-  const canvas = qrCanvas.value
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  const img = new Image()
-  img.src = logoSrc
-  img.onload = () => {
-    const logoSize = 40
-    const x = (canvas.width - logoSize) / 2
-    const y = (canvas.height - logoSize) / 2
-    const pad = 4
-    ctx.fillStyle = '#FFFFFF'
-    ctx.beginPath()
-    const r = 5
-    ctx.moveTo(x - pad + r, y - pad)
-    ctx.arcTo(x + logoSize + pad, y - pad, x + logoSize + pad, y + logoSize + pad, r)
-    ctx.arcTo(x + logoSize + pad, y + logoSize + pad, x - pad, y + logoSize + pad, r)
-    ctx.arcTo(x - pad, y + logoSize + pad, x - pad, y - pad, r)
-    ctx.arcTo(x - pad, y - pad, x + logoSize + pad, y - pad, r)
-    ctx.fill()
-    ctx.drawImage(img, x, y, logoSize, logoSize)
-  }
 }
 
 async function pollStatus() {

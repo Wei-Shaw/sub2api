@@ -49,18 +49,27 @@
                 </p>
               </div>
             </div>
-            <span
-              :class="[
-                'badge',
-                subscription.status === 'active'
-                  ? 'badge-success'
-                  : subscription.status === 'expired'
-                    ? 'badge-warning'
-                    : 'badge-danger'
-              ]"
-            >
-              {{ t(`userSubscriptions.status.${subscription.status}`) }}
-            </span>
+            <div class="flex items-center gap-2">
+              <span
+                :class="[
+                  'badge',
+                  subscription.status === 'active'
+                    ? 'badge-success'
+                    : subscription.status === 'expired'
+                      ? 'badge-warning'
+                      : 'badge-danger'
+                ]"
+              >
+                {{ t(`userSubscriptions.status.${subscription.status}`) }}
+              </span>
+              <button
+                v-if="subscription.status === 'active'"
+                class="btn btn-sm btn-primary"
+                @click="router.push({ path: '/purchase', query: { tab: 'subscription', group: String(subscription.group_id) } })"
+              >
+                {{ t('payment.renewNow') }}
+              </button>
+            </div>
           </div>
 
           <!-- Usage Progress -->
@@ -237,6 +246,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription } from '@/types'
@@ -245,6 +255,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { formatDateOnly } from '@/utils/format'
 
 const { t } = useI18n()
+const router = useRouter()
 const appStore = useAppStore()
 
 const subscriptions = ref<UserSubscription[]>([])

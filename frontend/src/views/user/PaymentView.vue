@@ -83,7 +83,7 @@
                 </div>
               </div>
             </div>
-            <button class="btn btn-primary w-full py-3 text-base font-medium" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
+            <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
               <span v-if="submitting" class="flex items-center justify-center gap-2">
                 <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {{ t('common.processing') }}
@@ -100,13 +100,21 @@
             <!-- Subscription confirm (inline, replaces plan list) -->
             <template v-if="selectedPlan">
               <div class="card overflow-hidden">
-                <div class="bg-gradient-to-br from-primary-500 to-primary-600 px-6 py-5 text-center">
-                  <p class="text-sm font-medium text-primary-100">{{ selectedPlan.name }}</p>
+                <div :class="['bg-gradient-to-br px-6 py-5 text-center', planGradientClass]">
+                  <p :class="['text-sm font-medium', planGradientTextClass]">{{ selectedPlan.name }}</p>
                   <div class="mt-1 flex items-baseline justify-center gap-1.5">
                     <span class="text-3xl font-bold text-white">${{ selectedPlan.price }}</span>
-                    <span v-if="selectedPlan.original_price" class="text-sm text-primary-200 line-through">${{ selectedPlan.original_price }}</span>
+                    <span v-if="selectedPlan.original_price" :class="['text-sm line-through', planGradientSubtextClass]">${{ selectedPlan.original_price }}</span>
                   </div>
-                  <p v-if="selectedPlan.description" class="mt-2 text-sm text-primary-100">{{ selectedPlan.description }}</p>
+                  <p v-if="selectedPlan.description" :class="['mt-2 text-sm', planGradientTextClass]">{{ selectedPlan.description }}</p>
+                  <div class="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-white/80">
+                    <span>{{ t('payment.planCard.rate') }}: ×{{ selectedPlan.rate_multiplier ?? 1 }}</span>
+                    <span v-if="selectedPlan.daily_limit_usd != null">{{ t('payment.planCard.dailyLimit') }}: ${{ selectedPlan.daily_limit_usd }}</span>
+                    <span v-if="selectedPlan.weekly_limit_usd != null">{{ t('payment.planCard.weeklyLimit') }}: ${{ selectedPlan.weekly_limit_usd }}</span>
+                    <span v-if="selectedPlan.monthly_limit_usd != null">{{ t('payment.planCard.monthlyLimit') }}: ${{ selectedPlan.monthly_limit_usd }}</span>
+                    <span v-if="selectedPlan.daily_limit_usd == null && selectedPlan.weekly_limit_usd == null && selectedPlan.monthly_limit_usd == null">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
+                    <span>{{ planValiditySuffix }}</span>
+                  </div>
                 </div>
               </div>
               <div v-if="enabledMethods.length >= 1" class="card p-6">
@@ -132,7 +140,7 @@
                   </div>
                 </div>
               </div>
-              <button class="btn btn-primary w-full py-3 text-base font-medium" :disabled="!canSubmitSubscription || submitting" @click="confirmSubscribe">
+              <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmitSubscription || submitting" @click="confirmSubscribe">
                 <span v-if="submitting" class="flex items-center justify-center gap-2">
                   <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                   {{ t('common.processing') }}
@@ -151,7 +159,7 @@
                 <p class="text-gray-500 dark:text-gray-400">{{ t('payment.noPlans') }}</p>
               </div>
               <div v-else :class="planGridClass">
-                <SubscriptionPlanCard v-for="plan in checkout.plans" :key="plan.id" :plan="plan" @select="selectPlan" />
+                <SubscriptionPlanCard v-for="plan in checkout.plans" :key="plan.id" :plan="plan" :active-subscriptions="activeSubscriptions" @select="selectPlan" />
               </div>
               <!-- Active subscriptions (compact, below plan list) -->
               <div v-if="activeSubscriptions.length > 0">
@@ -203,6 +211,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePaymentStore } from '@/stores/payment'
 import { useSubscriptionStore } from '@/stores/subscriptions'
@@ -214,7 +223,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
-import { platformAccentBarClass, platformBadgeLightClass, platformLabel } from '@/utils/platformColors'
+import { platformAccentBarClass, platformBadgeLightClass, platformLabel, platformGradientClass, platformGradientTextClass, platformGradientSubtextClass } from '@/utils/platformColors'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import StripePaymentInline from '@/components/payment/StripePaymentInline.vue'
@@ -222,6 +231,7 @@ import Icon from '@/components/icons/Icon.vue'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 
 const { t } = useI18n()
+const route = useRoute()
 const authStore = useAuthStore()
 const paymentStore = usePaymentStore()
 const subscriptionStore = useSubscriptionStore()
@@ -405,6 +415,29 @@ watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) 
   if (available) selectedMethod.value = available
 })
 
+// Payment button class: follows selected payment method color
+const paymentButtonClass = computed(() => {
+  const m = selectedMethod.value
+  if (!m) return 'btn-primary'
+  if (m.includes('alipay')) return 'btn-alipay'
+  if (m.includes('wxpay')) return 'btn-wxpay'
+  if (m === 'stripe') return 'btn-stripe'
+  return 'btn-primary'
+})
+
+// Subscription confirm header: platform gradient
+const planGradientClass = computed(() => platformGradientClass(selectedPlan.value?.group_platform || ''))
+const planGradientTextClass = computed(() => platformGradientTextClass(selectedPlan.value?.group_platform || ''))
+const planGradientSubtextClass = computed(() => platformGradientSubtextClass(selectedPlan.value?.group_platform || ''))
+
+const planValiditySuffix = computed(() => {
+  if (!selectedPlan.value) return ''
+  const u = selectedPlan.value.validity_unit || 'day'
+  if (u === 'month') return t('payment.perMonth')
+  if (u === 'year') return t('payment.perYear')
+  return `${selectedPlan.value.validity_days}${t('payment.days')}`
+})
+
 function selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
   errorMessage.value = ''
@@ -495,6 +528,10 @@ onMounted(async () => {
       selectedMethod.value = sorted[0]
     }
     if (checkout.value.balance_disabled) {
+      activeTab.value = 'subscription'
+    }
+    // Handle renewal navigation: ?tab=subscription&group=123
+    if (route.query.tab === 'subscription') {
       activeTab.value = 'subscription'
     }
   } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
