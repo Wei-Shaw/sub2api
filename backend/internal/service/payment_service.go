@@ -9,6 +9,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
@@ -216,6 +217,25 @@ func (s *PaymentService) loadProviders(ctx context.Context) {
 		}
 		s.registry.Register(p)
 	}
+}
+
+// GetWebhookProvider returns the provider instance that should verify a webhook.
+// It extracts out_trade_no from the raw body, looks up the order to find the
+// original provider instance, and creates a provider with that instance's credentials.
+// Falls back to the registry provider when the order cannot be found.
+func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, outTradeNo string) (payment.Provider, error) {
+	if outTradeNo != "" {
+		order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(outTradeNo)).Only(ctx)
+		if err == nil {
+			p, pErr := s.getOrderProvider(ctx, order)
+			if pErr == nil {
+				return p, nil
+			}
+			slog.Warn("[Webhook] order provider creation failed, falling back to registry", "outTradeNo", outTradeNo, "error", pErr)
+		}
+	}
+	s.EnsureProviders(ctx)
+	return s.registry.GetProviderByKey(providerKey)
 }
 
 // --- Helpers ---
