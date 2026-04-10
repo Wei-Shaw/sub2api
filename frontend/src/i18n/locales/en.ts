@@ -5173,6 +5173,7 @@ export default {
     },
     subscribeNow: 'Subscribe Now',
     renewNow: 'Renew',
+    selectPlan: 'Select Plan',
     planFeatures: 'Features',
     planCard: {
       rate: 'Rate',
