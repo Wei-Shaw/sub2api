@@ -229,15 +229,10 @@ func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, ou
 		if err == nil {
 			p, pErr := s.getOrderProvider(ctx, order)
 			if pErr == nil {
-				slog.Info("[Webhook] using order's provider instance", "outTradeNo", outTradeNo, "instanceID", order.ProviderInstanceID, "providerKey", p.ProviderKey())
 				return p, nil
 			}
-			slog.Warn("[Webhook] order provider creation failed, falling back to registry", "outTradeNo", outTradeNo, "instanceID", order.ProviderInstanceID, "error", pErr)
-		} else {
-			slog.Warn("[Webhook] order lookup failed", "outTradeNo", outTradeNo, "error", err)
+			slog.Warn("[Webhook] order provider creation failed, falling back to registry", "outTradeNo", outTradeNo, "error", pErr)
 		}
-	} else {
-		slog.Info("[Webhook] no out_trade_no extracted, using registry", "providerKey", providerKey)
 	}
 	s.EnsureProviders(ctx)
 	return s.registry.GetProviderByKey(providerKey)

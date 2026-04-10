@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -177,18 +176,18 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 	if err != nil {
 		return nil, fmt.Errorf("parse notify: %w", err)
 	}
-	// url.ParseQuery already decodes values — no additional decode needed.
+	// EasyPay callbacks may arrive with double-encoded values (e.g. via redirect
+	// chains), so url.ParseQuery decodes once, then decodeURLValue decodes again.
+	// If a value is NOT double-encoded, QueryUnescape returns it unchanged.
 	params := make(map[string]string)
 	for k := range values {
-		params[k] = values.Get(k)
+		params[k] = decodeURLValue(values.Get(k))
 	}
 	sign := params["sign"]
 	if sign == "" {
 		return nil, fmt.Errorf("missing sign")
 	}
 	if !easyPayVerifySign(params, e.config["pkey"], sign) {
-		expected := easyPaySign(params, e.config["pkey"])
-		slog.Error("[EasyPay] sign mismatch", "expected", expected, "got", sign, "pkeyLen", len(e.config["pkey"]), "instanceID", e.instanceID, "paramCount", len(params))
 		return nil, fmt.Errorf("invalid signature")
 	}
 	status := payment.ProviderStatusFailed
