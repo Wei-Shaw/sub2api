@@ -89,14 +89,20 @@ type OpsInsertErrorLogInput struct {
 	// UpstreamModel is the actual model sent to upstream after mapping. Empty means no mapping.
 	UpstreamModel string
 	// OpenAI routing observability fields. Empty/zero means unavailable.
-	RoutingTargetGroup         string
-	RoutingScheduleLayer       string
-	RoutingSelectedAccountID   *int64
-	RoutingSelectedAccountName *string
-	RoutingRequestedModel      string
-	RoutingEffectiveModel      string
-	RoutingFailoverCount       int
-	RoutingFailoverFinalReason string
+	RoutingTargetGroup           string
+	RoutingScheduleLayer         string
+	RoutingSelectedAccountID     *int64
+	RoutingSelectedAccountName   *string
+	RoutingRequestedModel        string
+	RoutingEffectiveModel        string
+	RoutingFailoverCount         int
+	RoutingFailoverFinalReason   string
+	StickySessionSource          string
+	StickySessionHashPresent     *bool
+	StickyEvalResult             string
+	StickySelectedAccountChanged *bool
+	StickyParentSessionPresent   *bool
+	StickyParentSessionKey       string
 	// RequestType is the granular request type: 0=unknown, 1=sync, 2=stream, 3=ws_v2.
 	// Matches service.RequestType enum semantics from usage_log.go.
 	RequestType *int16

@@ -218,6 +218,27 @@ func (UsageLog) Fields() []ent.Field {
 			Default(time.Now).
 			Immutable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.String("sticky_session_source").
+			MaxLen(64).
+			Optional().
+			Nillable(),
+		field.Bool("sticky_session_hash_present").
+			Optional().
+			Nillable(),
+		field.String("sticky_eval_result").
+			MaxLen(64).
+			Optional().
+			Nillable(),
+		field.Bool("sticky_selected_account_changed").
+			Optional().
+			Nillable(),
+		field.Bool("sticky_parent_session_present").
+			Optional().
+			Nillable(),
+		field.String("sticky_parent_session_key").
+			MaxLen(128).
+			Optional().
+			Nillable(),
 	}
 }
 

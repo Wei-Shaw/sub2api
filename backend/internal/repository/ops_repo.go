@@ -41,6 +41,12 @@ INSERT INTO ops_error_logs (
   routing_effective_model,
   routing_failover_count,
   routing_failover_final_reason,
+  sticky_session_source,
+  sticky_session_hash_present,
+  sticky_eval_result,
+  sticky_selected_account_changed,
+  sticky_parent_session_present,
+  sticky_parent_session_key,
   request_type,
   user_agent,
   error_phase,
@@ -70,7 +76,7 @@ INSERT INTO ops_error_logs (
   retry_count,
   created_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47,$48,$49,$50,$51
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44,$45,$46,$47,$48,$49,$50,$51,$52,$53,$54,$55,$56,$57
 )`
 
 func NewOpsRepository(db *sql.DB) service.OpsRepository {
@@ -165,6 +171,12 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 		opsNullString(input.RoutingEffectiveModel),
 		opsNullInt(input.RoutingFailoverCount),
 		opsNullString(input.RoutingFailoverFinalReason),
+		opsNullString(input.StickySessionSource),
+		opsNullBool(input.StickySessionHashPresent),
+		opsNullString(input.StickyEvalResult),
+		opsNullBool(input.StickySelectedAccountChanged),
+		opsNullBool(input.StickyParentSessionPresent),
+		opsNullString(input.StickyParentSessionKey),
 		opsNullInt16(input.RequestType),
 		opsNullString(input.UserAgent),
 		input.ErrorPhase,

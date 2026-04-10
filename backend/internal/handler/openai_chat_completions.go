@@ -16,6 +16,16 @@ import (
 	"go.uber.org/zap"
 )
 
+func captureOpenAIRoutingSnapshotForAsync(c *gin.Context) *service.OpenAIRoutingSnapshot {
+	return service.CloneOpenAIRoutingSnapshot(getOpenAIRoutingSnapshot(c))
+}
+
+func captureOpenAIUsageEndpointsForAsync(c *gin.Context, platform string) (string, string) {
+	inboundEndpoint := GetInboundEndpoint(c)
+	upstreamEndpoint := GetUpstreamEndpoint(c, platform)
+	return inboundEndpoint, upstreamEndpoint
+}
+
 // ChatCompletions handles OpenAI Chat Completions API requests.
 // POST /v1/chat/completions
 func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
@@ -295,6 +305,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
+		routingSnapshot := captureOpenAIRoutingSnapshotForAsync(c)
+		inboundEndpoint, upstreamEndpoint := captureOpenAIUsageEndpointsForAsync(c, account.Platform)
 
 		h.submitUsageRecordTask(func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
@@ -303,8 +315,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				User:               apiKey.User,
 				Account:            account,
 				Subscription:       subscription,
-				InboundEndpoint:    GetInboundEndpoint(c),
-				UpstreamEndpoint:   GetUpstreamEndpoint(c, account.Platform),
+				RoutingSnapshot:    routingSnapshot,
+				InboundEndpoint:    inboundEndpoint,
+				UpstreamEndpoint:   upstreamEndpoint,
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				APIKeyService:      h.apiKeyService,

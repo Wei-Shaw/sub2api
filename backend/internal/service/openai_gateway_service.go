@@ -3873,9 +3873,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		}
 		errorEventSent = true
 		errorJSON := gin.H{
-			"type":              "upstream_error",
-			"message":           reason,
-			"code":              reason,
+			"type":                "upstream_error",
+			"message":             reason,
+			"code":                reason,
 			"upstream_request_id": strings.TrimSpace(resp.Header.Get("x-request-id")),
 		}
 		if localRequestID != "" {
@@ -4793,6 +4793,23 @@ type openAIRecordUsageState struct {
 	BillingType                 int8
 }
 
+func CloneOpenAIRoutingSnapshot(snapshot *OpenAIRoutingSnapshot) *OpenAIRoutingSnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	cloned := *snapshot
+	cloned.Sticky = cloneOpenAIStickyEval(snapshot.Sticky)
+	if snapshot.SelectedAccountID != nil {
+		selectedAccountID := *snapshot.SelectedAccountID
+		cloned.SelectedAccountID = &selectedAccountID
+	}
+	if snapshot.SelectedAccountName != nil {
+		selectedAccountName := *snapshot.SelectedAccountName
+		cloned.SelectedAccountName = &selectedAccountName
+	}
+	return &cloned
+}
+
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
 	return s.recordUsageCore(ctx, &openAIRecordUsageCoreInput{
@@ -5075,6 +5092,14 @@ func (s *OpenAIGatewayService) buildOpenAIRecordUsageLog(input *openAIRecordUsag
 		usageLog.RoutingEffectiveModel = optionalTrimmedStringPtr(snapshot.EffectiveModel)
 		usageLog.RoutingFailoverCount = intPtrValue(snapshot.FailoverCount)
 		usageLog.RoutingFailoverFinalReason = optionalTrimmedStringPtr(snapshot.FailoverFinalReason)
+		if sticky := snapshot.Sticky; sticky != nil {
+			usageLog.StickySessionSource = optionalTrimmedStringPtr(sticky.SessionSource)
+			usageLog.StickySessionHashPresent = boolPtr(sticky.SessionHashPresent)
+			usageLog.StickyEvalResult = optionalTrimmedStringPtr(sticky.EvalResult)
+			usageLog.StickySelectedAccountChanged = boolPtr(sticky.SelectedAccountChanged)
+			usageLog.StickyParentSessionPresent = boolPtr(sticky.ParentSessionPresent)
+			usageLog.StickyParentSessionKey = optionalTrimmedStringPtr(sticky.ParentSessionKey)
+		}
 	}
 	if usageLog.BillingMode == nil {
 		billingMode := string(BillingModeToken)
