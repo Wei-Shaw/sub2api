@@ -353,7 +353,12 @@ export default {
     mySubscriptions: 'My Subscriptions',
     buySubscription: 'Recharge / Subscription',
     docs: 'Docs',
-    sora: 'Sora Studio'
+    sora: 'Sora Studio',
+    myOrders: 'My Orders',
+    orderManagement: 'Orders',
+    paymentDashboard: 'Payment Dashboard',
+    paymentConfig: 'Payment Config',
+    paymentPlans: 'Plans'
   REDACTED,
 
   // Auth
