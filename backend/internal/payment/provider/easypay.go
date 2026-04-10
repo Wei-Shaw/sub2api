@@ -176,10 +176,12 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 	if err != nil {
 		return nil, fmt.Errorf("parse notify: %w", err)
 	}
-	// url.ParseQuery already decodes values — no additional decode needed.
+	// ParseQuery decodes percent-encoding once, but some EasyPay providers
+	// send values that still need a second decode pass (e.g. Chinese characters
+	// in the "name" field). Apply decodeURLValue to normalise.
 	params := make(map[string]string)
 	for k := range values {
-		params[k] = values.Get(k)
+		params[k] = decodeURLValue(values.Get(k))
 	}
 	sign := params["sign"]
 	if sign == "" {
