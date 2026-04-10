@@ -12,7 +12,6 @@ import {
   type ReleaseInfo
 REDACTED from '@/api/admin/system'
 import { getPublicSettings as fetchPublicSettingsAPI REDACTED from '@/api/auth'
-import { syncPersistedPageSizeWithSystemDefault REDACTED from '@/composables/usePersistedPageSize'
 
 export const useAppStore = defineStore('app', () => {
   // ==================== State ====================
@@ -288,7 +287,6 @@ export const useAppStore = defineStore('app', () => {
     if (typeof window !== 'undefined') {
       window.__APP_CONFIG__ = { ...config REDACTED
     REDACTED
-    syncPersistedPageSizeWithSystemDefault(config.table_default_page_size)
     cachedPublicSettings.value = config
     siteName.value = config.site_name || 'Sub2API'
     siteLogo.value = config.site_logo || ''

@@ -122,7 +122,6 @@ import { computed, ref REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import Select from './Select.vue'
-import { setPersistedPageSize REDACTED from '@/composables/usePersistedPageSize'
 import { getConfiguredTablePageSizeOptions, normalizeTablePageSize REDACTED from '@/utils/tablePreferences'
 
 const { t REDACTED = useI18n()
@@ -225,7 +224,6 @@ REDACTED
 const handlePageSizeChange = (value: string | number | boolean | null) => {
   if (value === null || typeof value === 'boolean') return
   const newPageSize = normalizeTablePageSize(typeof value === 'string' ? parseInt(value, 10) : value)
-  setPersistedPageSize(newPageSize)
   emit('update:pageSize', newPageSize)
 REDACTED
 

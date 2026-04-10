@@ -329,85 +329,8 @@ describe('useAppStore', () => {
 
       expect((window as any).__APP_CONFIG__.table_default_page_size).toBe(1000)
       expect((window as any).__APP_CONFIG__.table_page_size_options).toEqual([20, 100, 1000])
-      expect(localStorage.getItem('table-page-size')).toBe('1000')
-      expect(localStorage.getItem('table-page-size-source')).toBe('system')
-    REDACTED)
-
-    it('fetchPublicSettings(force) 保留用户显式选择的分页大小', async () => {
-      localStorage.setItem('table-page-size', '100')
-      localStorage.setItem('table-page-size-source', 'user')
-
-      vi.mocked(getPublicSettings).mockResolvedValue({
-        registration_enabled: false,
-        email_verify_enabled: false,
-        registration_email_suffix_whitelist: [],
-        promo_code_enabled: true,
-        password_reset_enabled: false,
-        invitation_code_enabled: false,
-        turnstile_enabled: false,
-        turnstile_site_key: '',
-        site_name: 'Updated Site',
-        site_logo: '',
-        site_subtitle: '',
-        api_base_url: '',
-        contact_info: '',
-        doc_url: '',
-        home_content: '',
-        hide_ccs_import_button: false,
-        purchase_subscription_enabled: false,
-        purchase_subscription_url: '',
-        table_default_page_size: 1000,
-        table_page_size_options: [20, 50, 1000],
-        custom_menu_items: [],
-        custom_endpoints: [],
-        linuxdo_oauth_enabled: false,
-        backend_mode_enabled: false,
-        version: '1.0.0'
-      REDACTED)
-
-      const store = useAppStore()
-      await store.fetchPublicSettings(true)
-
-      expect(localStorage.getItem('table-page-size')).toBe('1000')
-      expect(localStorage.getItem('table-page-size-source')).toBe('user')
-    REDACTED)
-
-    it('fetchPublicSettings(force) 保留旧版本未标记来源的分页偏好', async () => {
-      localStorage.setItem('table-page-size', '50')
-
-      vi.mocked(getPublicSettings).mockResolvedValue({
-        registration_enabled: false,
-        email_verify_enabled: false,
-        registration_email_suffix_whitelist: [],
-        promo_code_enabled: true,
-        password_reset_enabled: false,
-        invitation_code_enabled: false,
-        turnstile_enabled: false,
-        turnstile_site_key: '',
-        site_name: 'Updated Site',
-        site_logo: '',
-        site_subtitle: '',
-        api_base_url: '',
-        contact_info: '',
-        doc_url: '',
-        home_content: '',
-        hide_ccs_import_button: false,
-        purchase_subscription_enabled: false,
-        purchase_subscription_url: '',
-        table_default_page_size: 1000,
-        table_page_size_options: [20, 50, 1000],
-        custom_menu_items: [],
-        custom_endpoints: [],
-        linuxdo_oauth_enabled: false,
-        backend_mode_enabled: false,
-        version: '1.0.0'
-      REDACTED)
-
-      const store = useAppStore()
-      await store.fetchPublicSettings(true)
-
-      expect(localStorage.getItem('table-page-size')).toBe('50')
-      expect(localStorage.getItem('table-page-size-source')).toBe('user')
+      expect(localStorage.getItem('table-page-size')).toBeNull()
+      expect(localStorage.getItem('table-page-size-source')).toBeNull()
     REDACTED)
   REDACTED)
 REDACTED)
