@@ -64,11 +64,11 @@ describe('tablePreferences', () => {
     expect(normalizeTablePageSize(undefined)).toBe(20)
   REDACTED)
 
-  it('keeps built-in selectable defaults at 10, 20, 50', () => {
+  it('keeps built-in selectable defaults at 10, 20, 50, 100', () => {
     window.__APP_CONFIG__ = {
       table_default_page_size: 1000
     REDACTED as any
 
-    expect(getConfiguredTablePageSizeOptions()).toEqual([10, 20, 50])
+    expect(getConfiguredTablePageSizeOptions()).toEqual([10, 20, 50, 100])
   REDACTED)
 REDACTED)

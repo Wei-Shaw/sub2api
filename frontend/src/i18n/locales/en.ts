@@ -4359,7 +4359,7 @@ export default {
         tableDefaultPageSize: 'Default Rows Per Page',
         tableDefaultPageSizeHint: 'Must be an integer between 5 and 1000',
         tablePageSizeOptions: 'Rows Per Page Options',
-        tablePageSizeOptionsPlaceholder: '10, 20, 50',
+        tablePageSizeOptionsPlaceholder: '10, 20, 50, 100',
         tablePageSizeOptionsHint: 'Use commas to separate integers between 5 and 1000; values are deduplicated and sorted on save',
         tableDefaultPageSizeRangeError: 'Default rows per page must be between {minREDACTED and {maxREDACTED',
         tablePageSizeOptionsFormatError: 'Invalid options format. Enter comma-separated integers between {minREDACTED and {maxREDACTED',
