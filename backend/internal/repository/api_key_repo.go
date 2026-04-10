@@ -167,6 +167,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldSupportedModelScopes,
 				group.FieldAllowMessagesDispatch,
 				group.FieldDefaultMappedModel,
+				group.FieldMessagesDispatchModelConfig,
 			)
 	REDACTED).
 		Only(ctx)
@@ -689,6 +690,7 @@ REDACTED
 		RequireOAuthOnly:                g.RequireOauthOnly,
 		RequirePrivacySet:               g.RequirePrivacySet,
 		DefaultMappedModel:              g.DefaultMappedModel,
+		MessagesDispatchModelConfig:     g.MessagesDispatchModelConfig,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 REDACTED
