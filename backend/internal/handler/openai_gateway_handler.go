@@ -43,6 +43,17 @@ var errPrepareResponsesRequestInvalidModel = errors.New("prepare responses reque
 
 const openAIRoutingSnapshotKey = "openai_routing_snapshot"
 
+const (
+	openAIScheduleSessionSourceHeaderSessionID    = "header_session_id"
+	openAIScheduleSessionSourceHeaderConversation = "header_conversation_id"
+	openAIScheduleSessionSourceHeaderAffinity     = "header_x_session_affinity"
+	openAIScheduleSessionSourcePromptCacheKey     = "prompt_cache_key"
+	openAIScheduleSessionSourceContentFallback    = "content_fallback"
+	openAIScheduleSessionSourceMetadataUserID     = "metadata_user_id"
+	openAIScheduleSessionSourceFallbackSeed       = "fallback_seed"
+	openAIScheduleSessionSourceNone               = "none"
+)
+
 func resolveOpenAIForwardDefaultMappedModel(apiKey *service.APIKey, fallbackModel string) string {
 	if fallbackModel = strings.TrimSpace(fallbackModel); fallbackModel != "" {
 		return fallbackModel
@@ -60,6 +71,55 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 	return strings.TrimSpace(apiKey.Group.ResolveMessagesDispatchModel(requestedModel))
 }
 
+func resolveOpenAIScheduleSessionSource(c *gin.Context, body []byte, sessionHash string, fallbackSource string) string {
+	if c != nil {
+		if sessionID := strings.TrimSpace(c.GetHeader("session_id")); sessionID != "" {
+			return openAIScheduleSessionSourceHeaderSessionID
+		}
+		if conversationID := strings.TrimSpace(c.GetHeader("conversation_id")); conversationID != "" {
+			return openAIScheduleSessionSourceHeaderConversation
+		}
+		if sessionAffinity := strings.TrimSpace(c.GetHeader("x-session-affinity")); sessionAffinity != "" {
+			return openAIScheduleSessionSourceHeaderAffinity
+		}
+	}
+	if promptCacheKey := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String()); promptCacheKey != "" {
+		return openAIScheduleSessionSourcePromptCacheKey
+	}
+	if strings.TrimSpace(sessionHash) == "" {
+		return openAIScheduleSessionSourceNone
+	}
+	if fallbackSource = strings.TrimSpace(fallbackSource); fallbackSource != "" {
+		return fallbackSource
+	}
+	return openAIScheduleSessionSourceContentFallback
+}
+
+func buildOpenAIAccountScheduleRequest(
+	groupID *int64,
+	previousResponseID string,
+	sessionHash string,
+	sessionSource string,
+	requestedModel string,
+	targetGroup service.AccountTargetGroup,
+	excludedIDs map[int64]struct{},
+	requiredTransport service.OpenAIUpstreamTransport,
+) service.OpenAIAccountScheduleRequest {
+	trimmedPreviousResponseID := strings.TrimSpace(previousResponseID)
+	return service.OpenAIAccountScheduleRequest{
+		GroupID:              groupID,
+		TargetGroup:          targetGroup,
+		SessionHash:          strings.TrimSpace(sessionHash),
+		SessionSource:        sessionSource,
+		PreviousResponseID:   trimmedPreviousResponseID,
+		ParentSessionPresent: trimmedPreviousResponseID != "",
+		ParentSessionKey:     trimmedPreviousResponseID,
+		RequestedModel:       requestedModel,
+		RequiredTransport:    requiredTransport,
+		ExcludedIDs:          excludedIDs,
+	}
+}
+
 func storeOpenAIRoutingSnapshot(c *gin.Context, input service.OpenAIRoutingSnapshotInput) *service.OpenAIRoutingSnapshot {
 	built := service.NewOpenAIRoutingSnapshot(input)
 	if c == nil || built == nil {
@@ -68,6 +128,7 @@ func storeOpenAIRoutingSnapshot(c *gin.Context, input service.OpenAIRoutingSnaps
 	if existing := getOpenAIRoutingSnapshot(c); existing != nil {
 		existing.TargetGroup = built.TargetGroup
 		existing.ScheduleLayer = built.ScheduleLayer
+		existing.Sticky = built.Sticky
 		existing.SelectedAccountID = built.SelectedAccountID
 		existing.SelectedAccountName = built.SelectedAccountName
 		existing.RequestedModel = built.RequestedModel
@@ -77,6 +138,24 @@ func storeOpenAIRoutingSnapshot(c *gin.Context, input service.OpenAIRoutingSnaps
 	}
 	c.Set(openAIRoutingSnapshotKey, built)
 	return built
+}
+
+func storeOpenAIRoutingSnapshotFromDecision(
+	c *gin.Context,
+	targetGroup service.AccountTargetGroup,
+	scheduleDecision service.OpenAIAccountScheduleDecision,
+	account *service.Account,
+	requestedModel string,
+	effectiveModel string,
+) *service.OpenAIRoutingSnapshot {
+	return storeOpenAIRoutingSnapshot(c, service.OpenAIRoutingSnapshotInput{
+		TargetGroup:    targetGroup,
+		ScheduleLayer:  scheduleDecision.Layer,
+		Sticky:         scheduleDecision.Sticky,
+		Account:        account,
+		RequestedModel: requestedModel,
+		EffectiveModel: effectiveModel,
+	})
 }
 
 func getOpenAIRoutingSnapshot(c *gin.Context) *service.OpenAIRoutingSnapshot {
@@ -283,6 +362,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// Generate session hash (header first; fallback to prompt_cache_key)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
+	sessionSource := resolveOpenAIScheduleSessionSource(c, sessionHashBody, sessionHash, "")
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -293,15 +373,18 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	for {
 		// Select account supporting the requested model
 		reqLog.Debug("openai.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithScheduler(
+		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerRequest(
 			c.Request.Context(),
-			apiKey.GroupID,
-			previousResponseID,
-			sessionHash,
-			reqModel,
-			targetGroup,
-			failedAccountIDs,
-			service.OpenAIUpstreamTransportAny,
+			buildOpenAIAccountScheduleRequest(
+				apiKey.GroupID,
+				previousResponseID,
+				sessionHash,
+				sessionSource,
+				reqModel,
+				targetGroup,
+				failedAccountIDs,
+				service.OpenAIUpstreamTransportAny,
+			),
 		)
 		if err != nil {
 			reqLog.Warn("openai.account_select_failed",
@@ -309,6 +392,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 		}
+		var selectedAccount *service.Account
+		if selection != nil {
+			selectedAccount = selection.Account
+		}
+		storeOpenAIRoutingSnapshotFromDecision(c, targetGroup, scheduleDecision, selectedAccount, requestedModel, reqModel)
 		if err != nil || selection == nil || selection.Account == nil {
 			action := classifyResponsesSelectionFailure(err, selection, len(failedAccountIDs), lastFailoverErr)
 			switch action {
@@ -340,13 +428,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
-		storeOpenAIRoutingSnapshot(c, service.OpenAIRoutingSnapshotInput{
-			TargetGroup:    targetGroup,
-			ScheduleLayer:  string(scheduleDecision.Layer),
-			Account:        account,
-			RequestedModel: requestedModel,
-			EffectiveModel: reqModel,
-		})
+		storeOpenAIRoutingSnapshotFromDecision(c, targetGroup, scheduleDecision, account, requestedModel, reqModel)
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
@@ -662,6 +744,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
+	sessionSource := resolveOpenAIScheduleSessionSource(c, body, sessionHash, "")
 
 	// Anthropic 格式的请求在 metadata.user_id 中携带 session 标识，
 	// 而非 OpenAI 的 session_id/conversation_id headers。
@@ -674,6 +757,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			}
 			if sessionHash == "" {
 				sessionHash = service.DeriveSessionHashFromSeed(seed)
+				sessionSource = openAIScheduleSessionSourceMetadataUserID
 			}
 		}
 	}
@@ -691,21 +775,29 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			currentRoutingModel = effectiveMappedModel
 		}
 		reqLog.Debug("openai_messages.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithScheduler(
+		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerRequest(
 			c.Request.Context(),
-			apiKey.GroupID,
-			"", // no previous_response_id
-			sessionHash,
-			currentRoutingModel,
-			service.TargetGroupAny,
-			failedAccountIDs,
-			service.OpenAIUpstreamTransportAny,
+			buildOpenAIAccountScheduleRequest(
+				apiKey.GroupID,
+				"",
+				sessionHash,
+				sessionSource,
+				currentRoutingModel,
+				service.TargetGroupAny,
+				failedAccountIDs,
+				service.OpenAIUpstreamTransportAny,
+			),
 		)
 		if err != nil {
 			reqLog.Warn("openai_messages.account_select_failed",
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			var selectedAccount *service.Account
+			if selection != nil {
+				selectedAccount = selection.Account
+			}
+			storeOpenAIRoutingSnapshotFromDecision(c, service.TargetGroupAny, scheduleDecision, selectedAccount, reqModel, currentRoutingModel)
 			if len(failedAccountIDs) == 0 {
 				if err != nil {
 					h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
@@ -727,8 +819,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		account := selection.Account
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai_messages.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
-		_ = scheduleDecision
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		storeOpenAIRoutingSnapshotFromDecision(c, service.TargetGroupAny, scheduleDecision, account, reqModel, currentRoutingModel)
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
@@ -1359,27 +1451,34 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		firstMessage,
 		openAIWSIngressFallbackSessionSeed(subject.UserID, apiKey.ID, apiKey.GroupID),
 	)
-	selection, scheduleDecision, err := h.gatewayService.SelectAccountWithScheduler(
+	sessionSource := resolveOpenAIScheduleSessionSource(c, firstMessage, sessionHash, openAIScheduleSessionSourceFallbackSeed)
+	selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerRequest(
 		ctx,
-		apiKey.GroupID,
-		previousResponseID,
-		sessionHash,
-		reqModel,
-		service.TargetGroupAny,
-		nil,
-		service.OpenAIUpstreamTransportResponsesWebsocketV2,
+		buildOpenAIAccountScheduleRequest(
+			apiKey.GroupID,
+			previousResponseID,
+			sessionHash,
+			sessionSource,
+			reqModel,
+			service.TargetGroupAny,
+			nil,
+			service.OpenAIUpstreamTransportResponsesWebsocketV2,
+		),
 	)
 	if err != nil {
 		reqLog.Warn("openai.websocket_account_select_failed", zap.Error(err))
+		storeOpenAIRoutingSnapshotFromDecision(c, service.TargetGroupAny, scheduleDecision, nil, reqModel, reqModel)
 		closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "no available account")
 		return
 	}
 	if selection == nil || selection.Account == nil {
+		storeOpenAIRoutingSnapshotFromDecision(c, service.TargetGroupAny, scheduleDecision, nil, reqModel, reqModel)
 		closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "no available account")
 		return
 	}
 
 	account := selection.Account
+	storeOpenAIRoutingSnapshotFromDecision(c, service.TargetGroupAny, scheduleDecision, account, reqModel, reqModel)
 	accountMaxConcurrency := account.Concurrency
 	if selection.WaitPlan != nil && selection.WaitPlan.MaxConcurrency > 0 {
 		accountMaxConcurrency = selection.WaitPlan.MaxConcurrency

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -43,6 +44,578 @@ func (s *openAISnapshotCacheStub) GetAccount(ctx context.Context, accountID int6
 	}
 	cloned := *account
 	return &cloned, nil
+}
+
+func requireStructFieldByName(t *testing.T, typ reflect.Type, fieldName string) reflect.StructField {
+	t.Helper()
+	field, ok := typ.FieldByName(fieldName)
+	if !ok {
+		t.Fatalf("missing field %s on %s", fieldName, typ.Name())
+	}
+	return field
+}
+
+func requireSetStringField(t *testing.T, target any, fieldName string, value string) {
+	t.Helper()
+	v := reflect.ValueOf(target)
+	if v.Kind() != reflect.Ptr || v.IsNil() {
+		t.Fatalf("target for %s must be non-nil pointer", fieldName)
+	}
+	field := v.Elem().FieldByName(fieldName)
+	if !field.IsValid() {
+		t.Fatalf("missing field %s", fieldName)
+	}
+	if !field.CanSet() || field.Kind() != reflect.String {
+		t.Fatalf("field %s is not a settable string", fieldName)
+	}
+	field.SetString(value)
+}
+
+func requireSetBoolField(t *testing.T, target any, fieldName string, value bool) {
+	t.Helper()
+	v := reflect.ValueOf(target)
+	if v.Kind() != reflect.Ptr || v.IsNil() {
+		t.Fatalf("target for %s must be non-nil pointer", fieldName)
+	}
+	field := v.Elem().FieldByName(fieldName)
+	if !field.IsValid() {
+		t.Fatalf("missing field %s", fieldName)
+	}
+	if !field.CanSet() || field.Kind() != reflect.Bool {
+		t.Fatalf("field %s is not a settable bool", fieldName)
+	}
+	field.SetBool(value)
+}
+
+func requireStickyFieldValue(t *testing.T, decision OpenAIAccountScheduleDecision, fieldName string) reflect.Value {
+	t.Helper()
+	decisionValue := reflect.ValueOf(decision)
+	stickyField := decisionValue.FieldByName("Sticky")
+	if !stickyField.IsValid() {
+		t.Fatalf("missing Sticky field on OpenAIAccountScheduleDecision")
+	}
+	if stickyField.IsNil() {
+		t.Fatalf("decision.Sticky is nil")
+	}
+	value := stickyField.Elem().FieldByName(fieldName)
+	if !value.IsValid() {
+		t.Fatalf("missing sticky field %s", fieldName)
+	}
+	return value
+}
+
+func requireStickyStringField(t *testing.T, decision OpenAIAccountScheduleDecision, fieldName string) string {
+	t.Helper()
+	value := requireStickyFieldValue(t, decision, fieldName)
+	if value.Kind() != reflect.String {
+		t.Fatalf("sticky field %s is not string", fieldName)
+	}
+	return value.String()
+}
+
+func requireStickyBoolField(t *testing.T, decision OpenAIAccountScheduleDecision, fieldName string) bool {
+	t.Helper()
+	value := requireStickyFieldValue(t, decision, fieldName)
+	if value.Kind() != reflect.Bool {
+		t.Fatalf("sticky field %s is not bool", fieldName)
+	}
+	return value.Bool()
+}
+
+func requireStickyBoundAccountID(t *testing.T, decision OpenAIAccountScheduleDecision) *int64 {
+	t.Helper()
+	value := requireStickyFieldValue(t, decision, "BoundAccountID")
+	if value.Kind() != reflect.Ptr {
+		t.Fatalf("sticky field BoundAccountID is not pointer")
+	}
+	if value.IsNil() {
+		return nil
+	}
+	if value.Elem().Kind() != reflect.Int64 {
+		t.Fatalf("sticky field BoundAccountID does not point to int64")
+	}
+	v := value.Elem().Int()
+	bound := int64(v)
+	return &bound
+}
+
+func TestOpenAIAccountScheduleContracts_StickyObservability(t *testing.T) {
+	requestType := reflect.TypeOf(OpenAIAccountScheduleRequest{})
+	requireStructFieldByName(t, requestType, "SessionSource")
+	requireStructFieldByName(t, requestType, "ParentSessionPresent")
+	requireStructFieldByName(t, requestType, "ParentSessionKey")
+
+	decisionType := reflect.TypeOf(OpenAIAccountScheduleDecision{})
+	stickyField := requireStructFieldByName(t, decisionType, "Sticky")
+	require.Equal(t, reflect.Ptr, stickyField.Type.Kind())
+	stickyType := stickyField.Type.Elem()
+	requireStructFieldByName(t, stickyType, "SessionSource")
+	requireStructFieldByName(t, stickyType, "SessionHashPresent")
+	requireStructFieldByName(t, stickyType, "EvalResult")
+	requireStructFieldByName(t, stickyType, "SelectedAccountChanged")
+	requireStructFieldByName(t, stickyType, "ParentSessionPresent")
+	requireStructFieldByName(t, stickyType, "ParentSessionKey")
+	requireStructFieldByName(t, stickyType, "BoundAccountID")
+}
+
+func TestDefaultOpenAIAccountScheduler_Select_StickyHitObservability(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(401)
+	account := Account{
+		ID:          54001,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+	}
+	service := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              &stubGatewayCache{sessionBindings: map[string]int64{"openai:sticky_hit_observed": account.ID}},
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+	schedulerAny := newDefaultOpenAIAccountScheduler(service, nil)
+	scheduler, ok := schedulerAny.(*defaultOpenAIAccountScheduler)
+	require.True(t, ok)
+
+	req := OpenAIAccountScheduleRequest{
+		GroupID:        &groupID,
+		SessionHash:    "sticky_hit_observed",
+		RequestedModel: "gpt-5.1",
+	}
+	requireSetStringField(t, &req, "SessionSource", "header_x_session_affinity")
+
+	selection, decision, err := scheduler.Select(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerSessionSticky, decision.Layer)
+	require.True(t, decision.StickySessionHit)
+	require.Equal(t, "header_x_session_affinity", requireStickyStringField(t, decision, "SessionSource"))
+	require.True(t, requireStickyBoolField(t, decision, "SessionHashPresent"))
+	require.Equal(t, "hit", requireStickyStringField(t, decision, "EvalResult"))
+	require.False(t, requireStickyBoolField(t, decision, "SelectedAccountChanged"))
+	require.False(t, requireStickyBoolField(t, decision, "ParentSessionPresent"))
+	require.Empty(t, requireStickyStringField(t, decision, "ParentSessionKey"))
+	boundAccountID := requireStickyBoundAccountID(t, decision)
+	require.NotNil(t, boundAccountID)
+	require.Equal(t, account.ID, *boundAccountID)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestDefaultOpenAIAccountScheduler_Select_StickyNoBindingObservability(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(402)
+	account := Account{
+		ID:          54002,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+	}
+	service := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              &stubGatewayCache{sessionBindings: map[string]int64{}},
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+	schedulerAny := newDefaultOpenAIAccountScheduler(service, nil)
+	scheduler, ok := schedulerAny.(*defaultOpenAIAccountScheduler)
+	require.True(t, ok)
+
+	req := OpenAIAccountScheduleRequest{
+		GroupID:        &groupID,
+		SessionHash:    "sticky_no_binding_observed",
+		RequestedModel: "gpt-5.1",
+	}
+	requireSetStringField(t, &req, "SessionSource", "prompt_cache_key")
+
+	selection, decision, err := scheduler.Select(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.Equal(t, "prompt_cache_key", requireStickyStringField(t, decision, "SessionSource"))
+	require.True(t, requireStickyBoolField(t, decision, "SessionHashPresent"))
+	require.Equal(t, "miss_no_binding", requireStickyStringField(t, decision, "EvalResult"))
+	require.False(t, requireStickyBoolField(t, decision, "SelectedAccountChanged"))
+	require.Nil(t, requireStickyBoundAccountID(t, decision))
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestDefaultOpenAIAccountScheduler_Select_StickyInvalidBindingObservability(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(404)
+	fallback := Account{
+		ID:          54006,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+	}
+	service := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{fallback}},
+		cache:              &stubGatewayCache{sessionBindings: map[string]int64{"openai:sticky_invalid_observed": 54005}},
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+	schedulerAny := newDefaultOpenAIAccountScheduler(service, nil)
+	scheduler, ok := schedulerAny.(*defaultOpenAIAccountScheduler)
+	require.True(t, ok)
+
+	req := OpenAIAccountScheduleRequest{
+		GroupID:        &groupID,
+		SessionHash:    "sticky_invalid_observed",
+		SessionSource:  "header_x_session_affinity",
+		RequestedModel: "gpt-5.1",
+	}
+
+	selection, decision, err := scheduler.Select(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, fallback.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.Equal(t, openAIStickyEvalResultMissBindingInvalid, requireStickyStringField(t, decision, "EvalResult"))
+	require.True(t, requireStickyBoolField(t, decision, "SelectedAccountChanged"))
+	boundAccountID := requireStickyBoundAccountID(t, decision)
+	require.NotNil(t, boundAccountID)
+	require.Equal(t, int64(54005), *boundAccountID)
+	require.Equal(t, 1, service.cache.(*stubGatewayCache).deletedSessions["openai:sticky_invalid_observed"])
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestDefaultOpenAIAccountScheduler_Select_StickyRestrictedBindingObservability(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(405)
+	stickyAccount := Account{
+		ID:          54007,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Extra: map[string]any{
+			"quota_limit": float64(100),
+			"quota_used":  float64(10),
+		},
+	}
+	fallback := Account{
+		ID:          54008,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Extra: map[string]any{
+			"quota_limit": float64(100),
+			"quota_used":  float64(100),
+		},
+	}
+	cache := &stubGatewayCache{sessionBindings: map[string]int64{"openai:sticky_restricted_observed": stickyAccount.ID}}
+	service := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{stickyAccount, fallback}},
+		cache:              cache,
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+	schedulerAny := newDefaultOpenAIAccountScheduler(service, nil)
+	scheduler, ok := schedulerAny.(*defaultOpenAIAccountScheduler)
+	require.True(t, ok)
+
+	req := OpenAIAccountScheduleRequest{
+		GroupID:        &groupID,
+		SessionHash:    "sticky_restricted_observed",
+		SessionSource:  "header_session_id",
+		RequestedModel: "gpt-5.1",
+		TargetGroup:    TargetGroupExhausted,
+	}
+
+	selection, decision, err := scheduler.Select(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, fallback.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.Equal(t, openAIStickyEvalResultMissBindingRestricted, requireStickyStringField(t, decision, "EvalResult"))
+	require.True(t, requireStickyBoolField(t, decision, "SelectedAccountChanged"))
+	boundAccountID := requireStickyBoundAccountID(t, decision)
+	require.NotNil(t, boundAccountID)
+	require.Equal(t, stickyAccount.ID, *boundAccountID)
+	require.Zero(t, cache.deletedSessions["openai:sticky_restricted_observed"])
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestDefaultOpenAIAccountScheduler_Select_StickyExcludedBindingObservability(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(406)
+	stickyAccount := Account{
+		ID:          54009,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+	}
+	fallback := Account{
+		ID:          54010,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+	}
+	service := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{stickyAccount, fallback}},
+		cache:              &stubGatewayCache{sessionBindings: map[string]int64{"openai:sticky_excluded_observed": stickyAccount.ID}},
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+	schedulerAny := newDefaultOpenAIAccountScheduler(service, nil)
+	scheduler, ok := schedulerAny.(*defaultOpenAIAccountScheduler)
+	require.True(t, ok)
+
+	req := OpenAIAccountScheduleRequest{
+		GroupID:        &groupID,
+		SessionHash:    "sticky_excluded_observed",
+		SessionSource:  "prompt_cache_key",
+		RequestedModel: "gpt-5.1",
+		ExcludedIDs:    map[int64]struct{}{stickyAccount.ID: {}},
+	}
+
+	selection, decision, err := scheduler.Select(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, fallback.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.Equal(t, openAIStickyEvalResultMissBindingExcluded, requireStickyStringField(t, decision, "EvalResult"))
+	require.True(t, requireStickyBoolField(t, decision, "SelectedAccountChanged"))
+	boundAccountID := requireStickyBoundAccountID(t, decision)
+	require.NotNil(t, boundAccountID)
+	require.Equal(t, stickyAccount.ID, *boundAccountID)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestDefaultOpenAIAccountScheduler_Select_StickyNoSessionSignalObservability(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(407)
+	account := Account{
+		ID:          54011,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+	}
+	service := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              &stubGatewayCache{sessionBindings: map[string]int64{}},
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+	schedulerAny := newDefaultOpenAIAccountScheduler(service, nil)
+	scheduler, ok := schedulerAny.(*defaultOpenAIAccountScheduler)
+	require.True(t, ok)
+
+	req := OpenAIAccountScheduleRequest{
+		GroupID:        &groupID,
+		SessionHash:    "pool_mode_internal_hash",
+		RequestedModel: "gpt-5.1",
+	}
+
+	selection, decision, err := scheduler.Select(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.Equal(t, openAIStickySessionSourceNone, requireStickyStringField(t, decision, "SessionSource"))
+	require.True(t, requireStickyBoolField(t, decision, "SessionHashPresent"))
+	require.Equal(t, openAIStickyEvalResultNoSessionSignal, requireStickyStringField(t, decision, "EvalResult"))
+	require.False(t, requireStickyBoolField(t, decision, "SelectedAccountChanged"))
+	require.Nil(t, requireStickyBoundAccountID(t, decision))
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestDefaultOpenAIAccountScheduler_Select_StickyHitOverridesNoSessionSignal(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(408)
+	account := Account{
+		ID:          54012,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+	}
+	service := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              &stubGatewayCache{sessionBindings: map[string]int64{"openai:sticky_no_signal_hit": account.ID}},
+		cfg:                &config.Config{},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+	schedulerAny := newDefaultOpenAIAccountScheduler(service, nil)
+	scheduler, ok := schedulerAny.(*defaultOpenAIAccountScheduler)
+	require.True(t, ok)
+
+	req := OpenAIAccountScheduleRequest{
+		GroupID:        &groupID,
+		SessionHash:    "sticky_no_signal_hit",
+		RequestedModel: "gpt-5.1",
+	}
+
+	selection, decision, err := scheduler.Select(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerSessionSticky, decision.Layer)
+	require.True(t, decision.StickySessionHit)
+	require.Equal(t, openAIStickySessionSourceNone, requireStickyStringField(t, decision, "SessionSource"))
+	require.True(t, requireStickyBoolField(t, decision, "SessionHashPresent"))
+	require.Equal(t, openAIStickyEvalResultHit, requireStickyStringField(t, decision, "EvalResult"))
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestDefaultOpenAIAccountScheduler_Select_PreviousResponseOverridesNoSessionSignal(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(409)
+	account := Account{
+		ID:          54013,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_enabled": true,
+		},
+	}
+	service := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              &stubGatewayCache{sessionBindings: map[string]int64{}},
+		cfg:                newOpenAIWSV2TestConfig(),
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+	store := service.getOpenAIWSStateStore()
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_no_signal_prev", account.ID, time.Hour))
+	schedulerAny := newDefaultOpenAIAccountScheduler(service, nil)
+	scheduler, ok := schedulerAny.(*defaultOpenAIAccountScheduler)
+	require.True(t, ok)
+
+	req := OpenAIAccountScheduleRequest{
+		GroupID:            &groupID,
+		SessionHash:        "pool_mode_internal_hash",
+		PreviousResponseID: "resp_no_signal_prev",
+		RequestedModel:     "gpt-5.1",
+	}
+	requireSetBoolField(t, &req, "ParentSessionPresent", true)
+	requireSetStringField(t, &req, "ParentSessionKey", "resp_no_signal_prev")
+
+	selection, decision, err := scheduler.Select(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerPreviousResponse, decision.Layer)
+	require.True(t, decision.StickyPreviousHit)
+	require.Equal(t, openAIStickySessionSourceNone, requireStickyStringField(t, decision, "SessionSource"))
+	require.True(t, requireStickyBoolField(t, decision, "SessionHashPresent"))
+	require.Equal(t, openAIStickyEvalResultBypassedPreviousResponse, requireStickyStringField(t, decision, "EvalResult"))
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestDefaultOpenAIAccountScheduler_Select_PreviousResponseBypassesStickyObservability(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(403)
+	previousAccount := Account{
+		ID:          54003,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_enabled": true,
+		},
+	}
+	stickyAccount := Account{
+		ID:          54004,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_enabled": true,
+		},
+	}
+	cache := &stubGatewayCache{sessionBindings: map[string]int64{"openai:sticky_prev_bypass_observed": stickyAccount.ID}}
+	cfg := newOpenAIWSV2TestConfig()
+	service := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{previousAccount, stickyAccount}},
+		cache:              cache,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+	store := service.getOpenAIWSStateStore()
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_sticky_observed", previousAccount.ID, time.Hour))
+	schedulerAny := newDefaultOpenAIAccountScheduler(service, nil)
+	scheduler, ok := schedulerAny.(*defaultOpenAIAccountScheduler)
+	require.True(t, ok)
+
+	req := OpenAIAccountScheduleRequest{
+		GroupID:            &groupID,
+		SessionHash:        "sticky_prev_bypass_observed",
+		PreviousResponseID: "resp_sticky_observed",
+		RequestedModel:     "gpt-5.1",
+	}
+	requireSetStringField(t, &req, "SessionSource", "header_session_id")
+	requireSetBoolField(t, &req, "ParentSessionPresent", true)
+	requireSetStringField(t, &req, "ParentSessionKey", "resp_sticky_observed")
+
+	selection, decision, err := scheduler.Select(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, previousAccount.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerPreviousResponse, decision.Layer)
+	require.True(t, decision.StickyPreviousHit)
+	require.Equal(t, "header_session_id", requireStickyStringField(t, decision, "SessionSource"))
+	require.True(t, requireStickyBoolField(t, decision, "SessionHashPresent"))
+	require.Equal(t, "bypassed_previous_response_id", requireStickyStringField(t, decision, "EvalResult"))
+	require.True(t, requireStickyBoolField(t, decision, "SelectedAccountChanged"))
+	require.True(t, requireStickyBoolField(t, decision, "ParentSessionPresent"))
+	require.Equal(t, "resp_sticky_observed", requireStickyStringField(t, decision, "ParentSessionKey"))
+	boundAccountID := requireStickyBoundAccountID(t, decision)
+	require.NotNil(t, boundAccountID)
+	require.Equal(t, stickyAccount.ID, *boundAccountID)
+	require.Equal(t, previousAccount.ID, cache.sessionBindings["openai:sticky_prev_bypass_observed"])
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyRateLimitedAccountFallsBackToFreshCandidate(t *testing.T) {

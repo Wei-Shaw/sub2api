@@ -121,6 +121,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
+	sessionSource := resolveOpenAIScheduleSessionSource(c, body, sessionHash, "")
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -131,15 +132,19 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	for {
 		c.Set("openai_chat_completions_fallback_model", "")
 		reqLog.Debug("openai_chat_completions.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithScheduler(
+		currentSelectionModel := reqModel
+		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerRequest(
 			c.Request.Context(),
-			apiKey.GroupID,
-			"",
-			sessionHash,
-			reqModel,
-			targetGroup,
-			failedAccountIDs,
-			service.OpenAIUpstreamTransportAny,
+			buildOpenAIAccountScheduleRequest(
+				apiKey.GroupID,
+				"",
+				sessionHash,
+				sessionSource,
+				reqModel,
+				targetGroup,
+				failedAccountIDs,
+				service.OpenAIUpstreamTransportAny,
+			),
 		)
 		if err != nil {
 			reqLog.Warn("openai_chat_completions.account_select_failed",
@@ -155,25 +160,39 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					reqLog.Info("openai_chat_completions.fallback_to_default_model",
 						zap.String("default_mapped_model", defaultModel),
 					)
-					selection, scheduleDecision, err = h.gatewayService.SelectAccountWithScheduler(
+					currentSelectionModel = defaultModel
+					selection, scheduleDecision, err = h.gatewayService.SelectAccountWithSchedulerRequest(
 						c.Request.Context(),
-						apiKey.GroupID,
-						"",
-						sessionHash,
-						defaultModel,
-						targetGroup,
-						failedAccountIDs,
-						service.OpenAIUpstreamTransportAny,
+						buildOpenAIAccountScheduleRequest(
+							apiKey.GroupID,
+							"",
+							sessionHash,
+							sessionSource,
+							defaultModel,
+							targetGroup,
+							failedAccountIDs,
+							service.OpenAIUpstreamTransportAny,
+						),
 					)
 					if err == nil && selection != nil {
 						c.Set("openai_chat_completions_fallback_model", defaultModel)
 					}
 				}
 				if err != nil {
+					var selectedAccount *service.Account
+					if selection != nil {
+						selectedAccount = selection.Account
+					}
+					storeOpenAIRoutingSnapshotFromDecision(c, targetGroup, scheduleDecision, selectedAccount, requestedModel, currentSelectionModel)
 					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
 					return
 				}
 			} else {
+				var selectedAccount *service.Account
+				if selection != nil {
+					selectedAccount = selection.Account
+				}
+				storeOpenAIRoutingSnapshotFromDecision(c, targetGroup, scheduleDecision, selectedAccount, requestedModel, currentSelectionModel)
 				if lastFailoverErr != nil {
 					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 				} else {
@@ -189,8 +208,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		account := selection.Account
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai_chat_completions.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
-		_ = scheduleDecision
 		setOpsSelectedAccount(c, account.ID, account.Platform)
+		storeOpenAIRoutingSnapshotFromDecision(c, targetGroup, scheduleDecision, account, requestedModel, currentSelectionModel)
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {

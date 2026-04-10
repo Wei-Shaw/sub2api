@@ -21,6 +21,17 @@ const (
 	openAIAccountScheduleLayerLoadBalance      = "load_balance"
 )
 
+const (
+	openAIStickyEvalResultHit                      = "hit"
+	openAIStickyEvalResultMissNoBinding            = "miss_no_binding"
+	openAIStickyEvalResultMissBindingInvalid       = "miss_binding_invalid"
+	openAIStickyEvalResultMissBindingRestricted    = "miss_binding_restricted"
+	openAIStickyEvalResultMissBindingExcluded      = "miss_binding_excluded"
+	openAIStickyEvalResultBypassedPreviousResponse = "bypassed_previous_response_id"
+	openAIStickyEvalResultNoSessionSignal          = "no_session_signal"
+	openAIStickySessionSourceNone                  = "none"
+)
+
 type AccountTargetGroup string
 
 const (
@@ -41,26 +52,120 @@ func normalizeTargetGroup(group AccountTargetGroup) AccountTargetGroup {
 }
 
 type OpenAIAccountScheduleRequest struct {
-	GroupID            *int64
-	TargetGroup        AccountTargetGroup
-	SessionHash        string
-	StickyAccountID    int64
-	PreviousResponseID string
-	RequestedModel     string
-	RequiredTransport  OpenAIUpstreamTransport
-	ExcludedIDs        map[int64]struct{}
+	GroupID              *int64
+	TargetGroup          AccountTargetGroup
+	SessionHash          string
+	SessionSource        string
+	StickyAccountID      int64
+	ParentSessionPresent bool
+	ParentSessionKey     string
+	PreviousResponseID   string
+	RequestedModel       string
+	RequiredTransport    OpenAIUpstreamTransport
+	ExcludedIDs          map[int64]struct{}
+}
+
+type openAIStickyEval struct {
+	SessionSource          string
+	SessionHashPresent     bool
+	EvalResult             string
+	SelectedAccountChanged bool
+	ParentSessionPresent   bool
+	ParentSessionKey       string
+	BoundAccountID         *int64
 }
 
 type OpenAIAccountScheduleDecision struct {
 	Layer               string
 	StickyPreviousHit   bool
 	StickySessionHit    bool
+	Sticky              *openAIStickyEval
 	CandidateCount      int
 	TopK                int
 	LatencyMs           int64
 	LoadSkew            float64
 	SelectedAccountID   int64
 	SelectedAccountType string
+}
+
+func normalizeOpenAIStickySessionSource(source string) string {
+	trimmed := strings.TrimSpace(source)
+	if trimmed == "" {
+		return openAIStickySessionSourceNone
+	}
+	return trimmed
+}
+
+func newOpenAIStickyEval(req OpenAIAccountScheduleRequest) *openAIStickyEval {
+	eval := &openAIStickyEval{
+		SessionSource:        normalizeOpenAIStickySessionSource(req.SessionSource),
+		SessionHashPresent:   strings.TrimSpace(req.SessionHash) != "",
+		ParentSessionPresent: req.ParentSessionPresent,
+		ParentSessionKey:     strings.TrimSpace(req.ParentSessionKey),
+	}
+	eval.setBoundAccountID(req.StickyAccountID)
+	if eval.ParentSessionKey != "" {
+		eval.ParentSessionPresent = true
+	}
+	if eval.SessionSource == openAIStickySessionSourceNone {
+		eval.EvalResult = openAIStickyEvalResultNoSessionSignal
+	}
+	return eval
+}
+
+func cloneOpenAIStickyEval(eval *openAIStickyEval) *openAIStickyEval {
+	if eval == nil {
+		return nil
+	}
+	cloned := *eval
+	if eval.BoundAccountID != nil {
+		boundAccountID := *eval.BoundAccountID
+		cloned.BoundAccountID = &boundAccountID
+	}
+	return &cloned
+}
+
+func (e *openAIStickyEval) setBoundAccountID(accountID int64) {
+	if e == nil {
+		return
+	}
+	if accountID <= 0 {
+		e.BoundAccountID = nil
+		return
+	}
+	boundAccountID := accountID
+	e.BoundAccountID = &boundAccountID
+}
+
+func (e *openAIStickyEval) setEvalResult(result string) {
+	if e == nil {
+		return
+	}
+	result = strings.TrimSpace(result)
+	if result == "" {
+		return
+	}
+	if e.EvalResult == openAIStickyEvalResultNoSessionSignal {
+		switch result {
+		case openAIStickyEvalResultHit, openAIStickyEvalResultBypassedPreviousResponse:
+			// 实际命中 sticky / previous_response_id 时，应该覆盖初始 no_session_signal。
+		case openAIStickyEvalResultMissBindingInvalid, openAIStickyEvalResultMissBindingRestricted, openAIStickyEvalResultMissBindingExcluded:
+			if e.BoundAccountID == nil {
+				return
+			}
+		default:
+			return
+		}
+	}
+	e.EvalResult = result
+}
+
+func (e *openAIStickyEval) finalizeSelectedAccount(selectedAccountID int64) {
+	if e == nil || e.BoundAccountID == nil || selectedAccountID <= 0 {
+		e.SelectedAccountChanged = false
+		return
+	}
+	e.SelectedAccountChanged = *e.BoundAccountID != selectedAccountID
 }
 
 type OpenAIAccountSchedulerMetricsSnapshot struct {
@@ -246,15 +351,33 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	decision := OpenAIAccountScheduleDecision{}
 	req.TargetGroup = normalizeTargetGroup(req.TargetGroup)
+	req.SessionHash = strings.TrimSpace(req.SessionHash)
+	req.SessionSource = normalizeOpenAIStickySessionSource(req.SessionSource)
+	req.PreviousResponseID = strings.TrimSpace(req.PreviousResponseID)
+	req.ParentSessionKey = strings.TrimSpace(req.ParentSessionKey)
+	if req.ParentSessionKey != "" {
+		req.ParentSessionPresent = true
+	}
+	decision := OpenAIAccountScheduleDecision{Sticky: newOpenAIStickyEval(req)}
+	if req.StickyAccountID <= 0 && req.SessionHash != "" && s != nil && s.service != nil && s.service.cache != nil {
+		if accountID, err := s.service.getStickySessionAccountID(ctx, req.GroupID, req.SessionHash); err == nil && accountID > 0 {
+			req.StickyAccountID = accountID
+			if decision.Sticky != nil {
+				decision.Sticky.setBoundAccountID(accountID)
+			}
+		}
+	}
 	start := time.Now()
 	defer func() {
 		decision.LatencyMs = time.Since(start).Milliseconds()
+		if decision.Sticky != nil {
+			decision.Sticky.finalizeSelectedAccount(decision.SelectedAccountID)
+		}
 		s.metrics.recordSelect(decision)
 	}()
 
-	previousResponseID := strings.TrimSpace(req.PreviousResponseID)
+	previousResponseID := req.PreviousResponseID
 	if previousResponseID != "" {
 		selection, err := s.service.SelectAccountByPreviousResponseID(
 			ctx,
@@ -275,6 +398,9 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		if selection != nil && selection.Account != nil {
 			decision.Layer = openAIAccountScheduleLayerPreviousResponse
 			decision.StickyPreviousHit = true
+			if decision.Sticky != nil {
+				decision.Sticky.setEvalResult(openAIStickyEvalResultBypassedPreviousResponse)
+			}
 			decision.SelectedAccountID = selection.Account.ID
 			decision.SelectedAccountType = selection.Account.Type
 			if req.SessionHash != "" {
@@ -284,7 +410,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 	}
 
-	selection, err := s.selectBySessionHash(ctx, req)
+	selection, err := s.selectBySessionHash(ctx, req, decision.Sticky)
 	if err != nil {
 		return nil, decision, err
 	}
@@ -314,9 +440,23 @@ func (s *defaultOpenAIAccountScheduler) Select(
 func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
+	sticky *openAIStickyEval,
 ) (*AccountSelectionResult, error) {
 	sessionHash := strings.TrimSpace(req.SessionHash)
-	if sessionHash == "" || s == nil || s.service == nil || s.service.cache == nil {
+	if sessionHash == "" {
+		if sticky != nil {
+			if sticky.SessionSource == openAIStickySessionSourceNone {
+				sticky.setEvalResult(openAIStickyEvalResultNoSessionSignal)
+			} else {
+				sticky.setEvalResult(openAIStickyEvalResultMissNoBinding)
+			}
+		}
+		return nil, nil
+	}
+	if s == nil || s.service == nil || s.service.cache == nil {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissNoBinding)
+		}
 		return nil, nil
 	}
 
@@ -325,53 +465,92 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		var err error
 		accountID, err = s.service.getStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		if err != nil || accountID <= 0 {
+			if sticky != nil {
+				sticky.setEvalResult(openAIStickyEvalResultMissNoBinding)
+			}
 			return nil, nil
 		}
 	}
+	if sticky != nil {
+		sticky.setBoundAccountID(accountID)
+	}
 	if accountID <= 0 {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissNoBinding)
+		}
 		return nil, nil
 	}
 	if req.ExcludedIDs != nil {
 		if _, excluded := req.ExcludedIDs[accountID]; excluded {
+			if sticky != nil {
+				sticky.setEvalResult(openAIStickyEvalResultMissBindingExcluded)
+			}
 			return nil, nil
 		}
 	}
 
 	account, err := s.service.getSchedulableAccount(ctx, accountID)
 	if err != nil || account == nil {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+		}
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
 	if !account.IsOpenAI() {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+		}
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
 	if !account.MatchesTargetGroup(req.TargetGroup) {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissBindingRestricted)
+		}
 		return nil, nil
 	}
 	if shouldClearStickySessionForTargetGroup(account, req.RequestedModel, req.TargetGroup) {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+		}
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
 	if !account.IsSchedulableForTargetGroup(req.TargetGroup) {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+		}
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
 	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissBindingRestricted)
+		}
 		return nil, nil
 	}
 	if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+		}
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
 	account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.RequestedModel, req.TargetGroup)
 	if account == nil {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+		}
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
 
 	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 	if acquireErr == nil && result.Acquired {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultHit)
+		}
 		_ = s.service.refreshStickySessionTTL(ctx, req.GroupID, sessionHash, s.service.openAIWSSessionStickyTTL())
 		return &AccountSelectionResult{
 			Account:     account,
@@ -383,6 +562,9 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	cfg := s.service.schedulingConfig()
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	if s.service.concurrencyService != nil {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultHit)
+		}
 		return &AccountSelectionResult{
 			Account: account,
 			WaitPlan: &AccountWaitPlan{
@@ -392,6 +574,9 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 				MaxWaiting:     cfg.StickySessionMaxWaiting,
 			},
 		}, nil
+	}
+	if sticky != nil && sticky.EvalResult == "" {
+		sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 	}
 	return nil, nil
 }
@@ -873,31 +1058,68 @@ func (s *OpenAIGatewayService) SelectAccountWithScheduler(
 	excludedIDs map[int64]struct{},
 	requiredTransport OpenAIUpstreamTransport,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	decision := OpenAIAccountScheduleDecision{}
+	return s.SelectAccountWithSchedulerRequest(ctx, OpenAIAccountScheduleRequest{
+		GroupID:              groupID,
+		TargetGroup:          targetGroup,
+		SessionHash:          sessionHash,
+		PreviousResponseID:   previousResponseID,
+		RequestedModel:       requestedModel,
+		RequiredTransport:    requiredTransport,
+		ExcludedIDs:          excludedIDs,
+		ParentSessionPresent: strings.TrimSpace(previousResponseID) != "",
+		ParentSessionKey:     strings.TrimSpace(previousResponseID),
+	})
+}
+
+func (s *OpenAIGatewayService) SelectAccountWithSchedulerRequest(
+	ctx context.Context,
+	req OpenAIAccountScheduleRequest,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	decision := OpenAIAccountScheduleDecision{Sticky: newOpenAIStickyEval(req)}
+	req.TargetGroup = normalizeTargetGroup(req.TargetGroup)
+	req.SessionHash = strings.TrimSpace(req.SessionHash)
+	req.SessionSource = normalizeOpenAIStickySessionSource(req.SessionSource)
+	req.PreviousResponseID = strings.TrimSpace(req.PreviousResponseID)
+	req.ParentSessionKey = strings.TrimSpace(req.ParentSessionKey)
+	if req.ParentSessionKey != "" {
+		req.ParentSessionPresent = true
+	}
 	scheduler := s.getOpenAIAccountScheduler()
 	if scheduler == nil {
-		selection, err := s.SelectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, excludedIDs)
+		selection, err := s.SelectAccountWithLoadAwareness(ctx, req.GroupID, req.SessionHash, req.RequestedModel, req.ExcludedIDs)
 		decision.Layer = openAIAccountScheduleLayerLoadBalance
+		if decision.Sticky != nil {
+			if decision.Sticky.EvalResult == "" {
+				if decision.Sticky.SessionHashPresent {
+					decision.Sticky.setEvalResult(openAIStickyEvalResultMissNoBinding)
+				} else {
+					decision.Sticky.setEvalResult(openAIStickyEvalResultNoSessionSignal)
+				}
+			}
+			if selection != nil && selection.Account != nil {
+				decision.SelectedAccountID = selection.Account.ID
+				decision.SelectedAccountType = selection.Account.Type
+			}
+			decision.Sticky.finalizeSelectedAccount(decision.SelectedAccountID)
+		}
 		return selection, decision, err
 	}
 
 	var stickyAccountID int64
-	if sessionHash != "" && s.cache != nil {
-		if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil && accountID > 0 {
+	if req.StickyAccountID > 0 {
+		stickyAccountID = req.StickyAccountID
+	}
+	if stickyAccountID <= 0 && req.SessionHash != "" && s.cache != nil {
+		if accountID, err := s.getStickySessionAccountID(ctx, req.GroupID, req.SessionHash); err == nil && accountID > 0 {
 			stickyAccountID = accountID
 		}
 	}
+	req.StickyAccountID = stickyAccountID
+	if decision.Sticky != nil {
+		decision.Sticky.setBoundAccountID(stickyAccountID)
+	}
 
-	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
-		GroupID:            groupID,
-		TargetGroup:        targetGroup,
-		SessionHash:        sessionHash,
-		StickyAccountID:    stickyAccountID,
-		PreviousResponseID: previousResponseID,
-		RequestedModel:     requestedModel,
-		RequiredTransport:  requiredTransport,
-		ExcludedIDs:        excludedIDs,
-	})
+	return scheduler.Select(ctx, req)
 }
 
 func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(accountID int64, success bool, firstTokenMs *int) {
