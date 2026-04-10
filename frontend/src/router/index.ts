@@ -84,6 +84,15 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/auth/oidc/callback',
+    name: 'OIDCOAuthCallback',
+    component: () => import('@/views/auth/OidcCallbackView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'OIDC OAuth Callback'
+    }
+  },
+  {
     path: '/forgot-password',
     name: 'ForgotPassword',
     component: () => import('@/views/auth/ForgotPasswordView.vue'),

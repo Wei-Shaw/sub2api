@@ -141,6 +141,10 @@ func (Group) Fields() []ent.Field {
 			MaxLen(100).
 			Default("").
 			Comment("默认映射模型 ID，当账号级映射找不到时使用此值"),
+		field.JSON("messages_dispatch_model_config", domain.OpenAIMessagesDispatchModelConfig{}).
+			Default(domain.OpenAIMessagesDispatchModelConfig{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("OpenAI Messages 调度模型配置：按 Claude 系列/精确模型映射到目标 GPT 模型"),
 	}
 }
 

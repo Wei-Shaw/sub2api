@@ -1124,7 +1124,327 @@
             </div>
           </div>
         </div>
-        </div><!-- /Tab: Security — Registration, Turnstile, LinuxDo -->
+
+        <!-- Generic OIDC OAuth 登录 -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.oidc.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.oidc.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{
+                  t('admin.settings.oidc.enable')
+                }}</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.oidc.enableHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.oidc_connect_enabled" />
+            </div>
+
+            <div
+              v-if="form.oidc_connect_enabled"
+              class="space-y-6 border-t border-gray-100 pt-4 dark:border-dark-700"
+            >
+              <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.providerName') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_provider_name"
+                    type="text"
+                    class="input"
+                    :placeholder="t('admin.settings.oidc.providerNamePlaceholder')"
+                  />
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.clientId') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_client_id"
+                    type="text"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.clientIdPlaceholder')"
+                  />
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.clientSecret') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_client_secret"
+                    type="password"
+                    class="input font-mono text-sm"
+                    :placeholder="
+                      form.oidc_connect_client_secret_configured
+                        ? t('admin.settings.oidc.clientSecretConfiguredPlaceholder')
+                        : t('admin.settings.oidc.clientSecretPlaceholder')
+                    "
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      form.oidc_connect_client_secret_configured
+                        ? t('admin.settings.oidc.clientSecretConfiguredHint')
+                        : t('admin.settings.oidc.clientSecretHint')
+                    }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.issuerUrl') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_issuer_url"
+                    type="url"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.issuerUrlPlaceholder')"
+                  />
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.discoveryUrl') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_discovery_url"
+                    type="url"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.discoveryUrlPlaceholder')"
+                  />
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.authorizeUrl') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_authorize_url"
+                    type="url"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.authorizeUrlPlaceholder')"
+                  />
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.tokenUrl') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_token_url"
+                    type="url"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.tokenUrlPlaceholder')"
+                  />
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.userinfoUrl') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_userinfo_url"
+                    type="url"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.userinfoUrlPlaceholder')"
+                  />
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.jwksUrl') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_jwks_url"
+                    type="url"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.jwksUrlPlaceholder')"
+                  />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.scopes') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_scopes"
+                    type="text"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.scopesPlaceholder')"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.oidc.scopesHint') }}
+                  </p>
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.redirectUrl') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_redirect_url"
+                    type="url"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.redirectUrlPlaceholder')"
+                  />
+                  <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm w-fit"
+                      @click="setAndCopyOIDCRedirectUrl"
+                    >
+                      {{ t('admin.settings.oidc.quickSetCopy') }}
+                    </button>
+                    <code
+                      v-if="oidcRedirectUrlSuggestion"
+                      class="select-all break-all rounded bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300"
+                    >
+                      {{ oidcRedirectUrlSuggestion }}
+                    </code>
+                  </div>
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.oidc.redirectUrlHint') }}
+                  </p>
+                </div>
+
+                <div class="lg:col-span-2">
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.frontendRedirectUrl') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_frontend_redirect_url"
+                    type="text"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.frontendRedirectUrlPlaceholder')"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.oidc.frontendRedirectUrlHint') }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.tokenAuthMethod') }}
+                  </label>
+                  <select v-model="form.oidc_connect_token_auth_method" class="input font-mono text-sm">
+                    <option value="client_secret_post">client_secret_post</option>
+                    <option value="client_secret_basic">client_secret_basic</option>
+                    <option value="none">none</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.clockSkewSeconds') }}
+                  </label>
+                  <input
+                    v-model.number="form.oidc_connect_clock_skew_seconds"
+                    type="number"
+                    min="0"
+                    max="600"
+                    class="input"
+                  />
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.allowedSigningAlgs') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_allowed_signing_algs"
+                    type="text"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.allowedSigningAlgsPlaceholder')"
+                  />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t('admin.settings.oidc.usePkce') }}
+                    </label>
+                  </div>
+                  <Toggle v-model="form.oidc_connect_use_pkce" />
+                </div>
+
+                <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t('admin.settings.oidc.validateIdToken') }}
+                    </label>
+                  </div>
+                  <Toggle v-model="form.oidc_connect_validate_id_token" />
+                </div>
+
+                <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t('admin.settings.oidc.requireEmailVerified') }}
+                    </label>
+                  </div>
+                  <Toggle v-model="form.oidc_connect_require_email_verified" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.userinfoEmailPath') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_userinfo_email_path"
+                    type="text"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.userinfoEmailPathPlaceholder')"
+                  />
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.userinfoIdPath') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_userinfo_id_path"
+                    type="text"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.userinfoIdPathPlaceholder')"
+                  />
+                </div>
+
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.oidc.userinfoUsernamePath') }}
+                  </label>
+                  <input
+                    v-model="form.oidc_connect_userinfo_username_path"
+                    type="text"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.oidc.userinfoUsernamePathPlaceholder')"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        </div><!-- /Tab: Security — Registration, Turnstile, LinuxDo, OIDC -->
 
         <!-- Tab: Users -->
         <div v-show="activeTab === 'users'" class="space-y-6">
@@ -2189,6 +2509,7 @@ type SettingsForm = SystemSettings & {
   smtp_password: string
   turnstile_secret_key: string
   linuxdo_connect_client_secret: string
+  oidc_connect_client_secret: string
 }
 
 const form = reactive<SettingsForm>({
@@ -2236,6 +2557,30 @@ const form = reactive<SettingsForm>({
   linuxdo_connect_client_secret: '',
   linuxdo_connect_client_secret_configured: false,
   linuxdo_connect_redirect_url: '',
+  // Generic OIDC OAuth 登录
+  oidc_connect_enabled: false,
+  oidc_connect_provider_name: 'OIDC',
+  oidc_connect_client_id: '',
+  oidc_connect_client_secret: '',
+  oidc_connect_client_secret_configured: false,
+  oidc_connect_issuer_url: '',
+  oidc_connect_discovery_url: '',
+  oidc_connect_authorize_url: '',
+  oidc_connect_token_url: '',
+  oidc_connect_userinfo_url: '',
+  oidc_connect_jwks_url: '',
+  oidc_connect_scopes: 'openid email profile',
+  oidc_connect_redirect_url: '',
+  oidc_connect_frontend_redirect_url: '/auth/oidc/callback',
+  oidc_connect_token_auth_method: 'client_secret_post',
+  oidc_connect_use_pkce: false,
+  oidc_connect_validate_id_token: true,
+  oidc_connect_allowed_signing_algs: 'RS256,ES256,PS256',
+  oidc_connect_clock_skew_seconds: 120,
+  oidc_connect_require_email_verified: false,
+  oidc_connect_userinfo_email_path: '',
+  oidc_connect_userinfo_id_path: '',
+  oidc_connect_userinfo_username_path: '',
   // Model fallback
   enable_model_fallback: false,
   fallback_model_anthropic: 'claude-3-5-sonnet-20241022',
@@ -2356,6 +2701,21 @@ async function setAndCopyLinuxdoRedirectUrl() {
   await copyToClipboard(url, t('admin.settings.linuxdo.redirectUrlSetAndCopied'))
 }
 
+const oidcRedirectUrlSuggestion = computed(() => {
+  if (typeof window === 'undefined') return ''
+  const origin =
+    window.location.origin || `${window.location.protocol}//${window.location.host}`
+  return `${origin}/api/v1/auth/oauth/oidc/callback`
+})
+
+async function setAndCopyOIDCRedirectUrl() {
+  const url = oidcRedirectUrlSuggestion.value
+  if (!url) return
+
+  form.oidc_connect_redirect_url = url
+  await copyToClipboard(url, t('admin.settings.oidc.redirectUrlSetAndCopied'))
+}
+
 // Custom menu item management
 function addMenuItem() {
   form.custom_menu_items.push({
@@ -2421,6 +2781,7 @@ async function loadSettings() {
     smtpPasswordManuallyEdited.value = false
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
+    form.oidc_connect_client_secret = ''
   } catch (error: any) {
     loadFailed.value = true
     appStore.showError(
@@ -2555,6 +2916,28 @@ async function saveSettings() {
       linuxdo_connect_client_id: form.linuxdo_connect_client_id,
       linuxdo_connect_client_secret: form.linuxdo_connect_client_secret || undefined,
       linuxdo_connect_redirect_url: form.linuxdo_connect_redirect_url,
+      oidc_connect_enabled: form.oidc_connect_enabled,
+      oidc_connect_provider_name: form.oidc_connect_provider_name,
+      oidc_connect_client_id: form.oidc_connect_client_id,
+      oidc_connect_client_secret: form.oidc_connect_client_secret || undefined,
+      oidc_connect_issuer_url: form.oidc_connect_issuer_url,
+      oidc_connect_discovery_url: form.oidc_connect_discovery_url,
+      oidc_connect_authorize_url: form.oidc_connect_authorize_url,
+      oidc_connect_token_url: form.oidc_connect_token_url,
+      oidc_connect_userinfo_url: form.oidc_connect_userinfo_url,
+      oidc_connect_jwks_url: form.oidc_connect_jwks_url,
+      oidc_connect_scopes: form.oidc_connect_scopes,
+      oidc_connect_redirect_url: form.oidc_connect_redirect_url,
+      oidc_connect_frontend_redirect_url: form.oidc_connect_frontend_redirect_url,
+      oidc_connect_token_auth_method: form.oidc_connect_token_auth_method,
+      oidc_connect_use_pkce: form.oidc_connect_use_pkce,
+      oidc_connect_validate_id_token: form.oidc_connect_validate_id_token,
+      oidc_connect_allowed_signing_algs: form.oidc_connect_allowed_signing_algs,
+      oidc_connect_clock_skew_seconds: form.oidc_connect_clock_skew_seconds,
+      oidc_connect_require_email_verified: form.oidc_connect_require_email_verified,
+      oidc_connect_userinfo_email_path: form.oidc_connect_userinfo_email_path,
+      oidc_connect_userinfo_id_path: form.oidc_connect_userinfo_id_path,
+      oidc_connect_userinfo_username_path: form.oidc_connect_userinfo_username_path,
       enable_model_fallback: form.enable_model_fallback,
       fallback_model_anthropic: form.fallback_model_anthropic,
       fallback_model_openai: form.fallback_model_openai,
@@ -2579,6 +2962,7 @@ async function saveSettings() {
     smtpPasswordManuallyEdited.value = false
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
+    form.oidc_connect_client_secret = ''
     // Refresh cached settings so sidebar/header update immediately
     await appStore.fetchPublicSettings(true)
     await adminSettingsStore.fetch(true)

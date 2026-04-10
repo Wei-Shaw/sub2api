@@ -65,6 +65,7 @@ type Config struct {
 	JWT                     JWTConfig                     `mapstructure:"jwt"`
 	Totp                    TotpConfig                    `mapstructure:"totp"`
 	LinuxDo                 LinuxDoConnectConfig          `mapstructure:"linuxdo_connect"`
+	OIDC                    OIDCConnectConfig             `mapstructure:"oidc_connect"`
 	Default                 DefaultConfig                 `mapstructure:"default"`
 	RateLimit               RateLimitConfig               `mapstructure:"rate_limit"`
 	Pricing                 PricingConfig                 `mapstructure:"pricing"`
@@ -176,6 +177,34 @@ type LinuxDoConnectConfig struct {
 	FrontendRedirectURL string `mapstructure:"frontend_redirect_url"` // 前端接收 token 的路由（默认：/auth/linuxdo/callback）
 	TokenAuthMethod     string `mapstructure:"token_auth_method"`     // client_secret_post / client_secret_basic / none
 	UsePKCE             bool   `mapstructure:"use_pkce"`
+
+	// 可选：用于从 userinfo JSON 中提取字段的 gjson 路径。
+	// 为空时，服务端会尝试一组常见字段名。
+	UserInfoEmailPath    string `mapstructure:"userinfo_email_path"`
+	UserInfoIDPath       string `mapstructure:"userinfo_id_path"`
+	UserInfoUsernamePath string `mapstructure:"userinfo_username_path"`
+}
+
+type OIDCConnectConfig struct {
+	Enabled              bool   `mapstructure:"enabled"`
+	ProviderName         string `mapstructure:"provider_name"` // 显示名: "Keycloak" 等
+	ClientID             string `mapstructure:"client_id"`
+	ClientSecret         string `mapstructure:"client_secret"`
+	IssuerURL            string `mapstructure:"issuer_url"`
+	DiscoveryURL         string `mapstructure:"discovery_url"`
+	AuthorizeURL         string `mapstructure:"authorize_url"`
+	TokenURL             string `mapstructure:"token_url"`
+	UserInfoURL          string `mapstructure:"userinfo_url"`
+	JWKSURL              string `mapstructure:"jwks_url"`
+	Scopes               string `mapstructure:"scopes"`                // 默认 "openid email profile"
+	RedirectURL          string `mapstructure:"redirect_url"`          // 后端回调地址（需在提供方后台登记）
+	FrontendRedirectURL  string `mapstructure:"frontend_redirect_url"` // 前端接收 token 的路由（默认：/auth/oidc/callback）
+	TokenAuthMethod      string `mapstructure:"token_auth_method"`     // client_secret_post / client_secret_basic / none
+	UsePKCE              bool   `mapstructure:"use_pkce"`
+	ValidateIDToken      bool   `mapstructure:"validate_id_token"`
+	AllowedSigningAlgs   string `mapstructure:"allowed_signing_algs"`   // 默认 "RS256,ES256,PS256"
+	ClockSkewSeconds     int    `mapstructure:"clock_skew_seconds"`     // 默认 120
+	RequireEmailVerified bool   `mapstructure:"require_email_verified"` // 默认 false
 
 	// 可选：用于从 userinfo JSON 中提取字段的 gjson 路径。
 	// 为空时，服务端会尝试一组常见字段名。
@@ -318,6 +347,12 @@ type GatewayConfig struct {
 	// ForceCodexCLI: 强制将 OpenAI `/v1/responses` 请求按 Codex CLI 处理。
 	// 用于网关未透传/改写 User-Agent 时的兼容兜底（默认关闭，避免影响其他客户端）。
 	ForceCodexCLI bool `mapstructure:"force_codex_cli"`
+	// ForcedCodexInstructionsTemplateFile: 服务端强制附加到 Codex 顶层 instructions 的模板文件路径。
+	// 模板渲染后会直接覆盖最终 instructions；若需要保留客户端 system 转换结果，请在模板中显式引用 {{ .ExistingInstructions }}。
+	ForcedCodexInstructionsTemplateFile string `mapstructure:"forced_codex_instructions_template_file"`
+	// ForcedCodexInstructionsTemplate: 启动时从模板文件读取并缓存的模板内容。
+	// 该字段不直接参与配置反序列化，仅用于请求热路径避免重复读盘。
+	ForcedCodexInstructionsTemplate string `mapstructure:"-"`
 	// OpenAIPassthroughAllowTimeoutHeaders: OpenAI 透传模式是否放行客户端超时头
 	// 关闭（默认）可避免 x-stainless-timeout 等头导致上游提前断流。
 	OpenAIPassthroughAllowTimeoutHeaders bool `mapstructure:"openai_passthrough_allow_timeout_headers"`
@@ -972,6 +1007,23 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.LinuxDo.UserInfoEmailPath = strings.TrimSpace(cfg.LinuxDo.UserInfoEmailPath)
 	cfg.LinuxDo.UserInfoIDPath = strings.TrimSpace(cfg.LinuxDo.UserInfoIDPath)
 	cfg.LinuxDo.UserInfoUsernamePath = strings.TrimSpace(cfg.LinuxDo.UserInfoUsernamePath)
+	cfg.OIDC.ProviderName = strings.TrimSpace(cfg.OIDC.ProviderName)
+	cfg.OIDC.ClientID = strings.TrimSpace(cfg.OIDC.ClientID)
+	cfg.OIDC.ClientSecret = strings.TrimSpace(cfg.OIDC.ClientSecret)
+	cfg.OIDC.IssuerURL = strings.TrimSpace(cfg.OIDC.IssuerURL)
+	cfg.OIDC.DiscoveryURL = strings.TrimSpace(cfg.OIDC.DiscoveryURL)
+	cfg.OIDC.AuthorizeURL = strings.TrimSpace(cfg.OIDC.AuthorizeURL)
+	cfg.OIDC.TokenURL = strings.TrimSpace(cfg.OIDC.TokenURL)
+	cfg.OIDC.UserInfoURL = strings.TrimSpace(cfg.OIDC.UserInfoURL)
+	cfg.OIDC.JWKSURL = strings.TrimSpace(cfg.OIDC.JWKSURL)
+	cfg.OIDC.Scopes = strings.TrimSpace(cfg.OIDC.Scopes)
+	cfg.OIDC.RedirectURL = strings.TrimSpace(cfg.OIDC.RedirectURL)
+	cfg.OIDC.FrontendRedirectURL = strings.TrimSpace(cfg.OIDC.FrontendRedirectURL)
+	cfg.OIDC.TokenAuthMethod = strings.ToLower(strings.TrimSpace(cfg.OIDC.TokenAuthMethod))
+	cfg.OIDC.AllowedSigningAlgs = strings.TrimSpace(cfg.OIDC.AllowedSigningAlgs)
+	cfg.OIDC.UserInfoEmailPath = strings.TrimSpace(cfg.OIDC.UserInfoEmailPath)
+	cfg.OIDC.UserInfoIDPath = strings.TrimSpace(cfg.OIDC.UserInfoIDPath)
+	cfg.OIDC.UserInfoUsernamePath = strings.TrimSpace(cfg.OIDC.UserInfoUsernamePath)
 	cfg.Dashboard.KeyPrefix = strings.TrimSpace(cfg.Dashboard.KeyPrefix)
 	cfg.CORS.AllowedOrigins = normalizeStringSlice(cfg.CORS.AllowedOrigins)
 	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
@@ -983,6 +1035,14 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Log.Environment = strings.TrimSpace(cfg.Log.Environment)
 	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
 	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
+	cfg.Gateway.ForcedCodexInstructionsTemplateFile = strings.TrimSpace(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
+	if cfg.Gateway.ForcedCodexInstructionsTemplateFile != "" {
+		content, err := os.ReadFile(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
+		if err != nil {
+			return nil, fmt.Errorf("read forced codex instructions template %q: %w", cfg.Gateway.ForcedCodexInstructionsTemplateFile, err)
+		}
+		cfg.Gateway.ForcedCodexInstructionsTemplate = string(content)
+	}
 
 	// 兼容旧键 gateway.openai_ws.sticky_previous_response_ttl_seconds。
 	// 新键未配置（<=0）时回退旧键；新键优先。
@@ -1141,6 +1201,30 @@ func setDefaults() {
 	viper.SetDefault("linuxdo_connect.userinfo_email_path", "")
 	viper.SetDefault("linuxdo_connect.userinfo_id_path", "")
 	viper.SetDefault("linuxdo_connect.userinfo_username_path", "")
+
+	// Generic OIDC OAuth 登录
+	viper.SetDefault("oidc_connect.enabled", false)
+	viper.SetDefault("oidc_connect.provider_name", "OIDC")
+	viper.SetDefault("oidc_connect.client_id", "")
+	viper.SetDefault("oidc_connect.client_secret", "")
+	viper.SetDefault("oidc_connect.issuer_url", "")
+	viper.SetDefault("oidc_connect.discovery_url", "")
+	viper.SetDefault("oidc_connect.authorize_url", "")
+	viper.SetDefault("oidc_connect.token_url", "")
+	viper.SetDefault("oidc_connect.userinfo_url", "")
+	viper.SetDefault("oidc_connect.jwks_url", "")
+	viper.SetDefault("oidc_connect.scopes", "openid email profile")
+	viper.SetDefault("oidc_connect.redirect_url", "")
+	viper.SetDefault("oidc_connect.frontend_redirect_url", "/auth/oidc/callback")
+	viper.SetDefault("oidc_connect.token_auth_method", "client_secret_post")
+	viper.SetDefault("oidc_connect.use_pkce", false)
+	viper.SetDefault("oidc_connect.validate_id_token", true)
+	viper.SetDefault("oidc_connect.allowed_signing_algs", "RS256,ES256,PS256")
+	viper.SetDefault("oidc_connect.clock_skew_seconds", 120)
+	viper.SetDefault("oidc_connect.require_email_verified", false)
+	viper.SetDefault("oidc_connect.userinfo_email_path", "")
+	viper.SetDefault("oidc_connect.userinfo_id_path", "")
+	viper.SetDefault("oidc_connect.userinfo_username_path", "")
 
 	// Database
 	viper.SetDefault("database.host", "localhost")
@@ -1577,6 +1661,87 @@ func (c *Config) Validate() error {
 		warnIfInsecureURL("linuxdo_connect.userinfo_url", c.LinuxDo.UserInfoURL)
 		warnIfInsecureURL("linuxdo_connect.redirect_url", c.LinuxDo.RedirectURL)
 		warnIfInsecureURL("linuxdo_connect.frontend_redirect_url", c.LinuxDo.FrontendRedirectURL)
+	}
+	if c.OIDC.Enabled {
+		if strings.TrimSpace(c.OIDC.ClientID) == "" {
+			return fmt.Errorf("oidc_connect.client_id is required when oidc_connect.enabled=true")
+		}
+		if strings.TrimSpace(c.OIDC.IssuerURL) == "" {
+			return fmt.Errorf("oidc_connect.issuer_url is required when oidc_connect.enabled=true")
+		}
+		if strings.TrimSpace(c.OIDC.RedirectURL) == "" {
+			return fmt.Errorf("oidc_connect.redirect_url is required when oidc_connect.enabled=true")
+		}
+		if strings.TrimSpace(c.OIDC.FrontendRedirectURL) == "" {
+			return fmt.Errorf("oidc_connect.frontend_redirect_url is required when oidc_connect.enabled=true")
+		}
+		if !scopeContainsOpenID(c.OIDC.Scopes) {
+			return fmt.Errorf("oidc_connect.scopes must contain openid")
+		}
+
+		method := strings.ToLower(strings.TrimSpace(c.OIDC.TokenAuthMethod))
+		switch method {
+		case "", "client_secret_post", "client_secret_basic", "none":
+		default:
+			return fmt.Errorf("oidc_connect.token_auth_method must be one of: client_secret_post/client_secret_basic/none")
+		}
+		if method == "none" && !c.OIDC.UsePKCE {
+			return fmt.Errorf("oidc_connect.use_pkce must be true when oidc_connect.token_auth_method=none")
+		}
+		if (method == "" || method == "client_secret_post" || method == "client_secret_basic") &&
+			strings.TrimSpace(c.OIDC.ClientSecret) == "" {
+			return fmt.Errorf("oidc_connect.client_secret is required when oidc_connect.enabled=true and token_auth_method is client_secret_post/client_secret_basic")
+		}
+		if c.OIDC.ClockSkewSeconds < 0 || c.OIDC.ClockSkewSeconds > 600 {
+			return fmt.Errorf("oidc_connect.clock_skew_seconds must be between 0 and 600")
+		}
+		if c.OIDC.ValidateIDToken && strings.TrimSpace(c.OIDC.AllowedSigningAlgs) == "" {
+			return fmt.Errorf("oidc_connect.allowed_signing_algs is required when oidc_connect.validate_id_token=true")
+		}
+
+		if err := ValidateAbsoluteHTTPURL(c.OIDC.IssuerURL); err != nil {
+			return fmt.Errorf("oidc_connect.issuer_url invalid: %w", err)
+		}
+		if v := strings.TrimSpace(c.OIDC.DiscoveryURL); v != "" {
+			if err := ValidateAbsoluteHTTPURL(v); err != nil {
+				return fmt.Errorf("oidc_connect.discovery_url invalid: %w", err)
+			}
+		}
+		if v := strings.TrimSpace(c.OIDC.AuthorizeURL); v != "" {
+			if err := ValidateAbsoluteHTTPURL(v); err != nil {
+				return fmt.Errorf("oidc_connect.authorize_url invalid: %w", err)
+			}
+		}
+		if v := strings.TrimSpace(c.OIDC.TokenURL); v != "" {
+			if err := ValidateAbsoluteHTTPURL(v); err != nil {
+				return fmt.Errorf("oidc_connect.token_url invalid: %w", err)
+			}
+		}
+		if v := strings.TrimSpace(c.OIDC.UserInfoURL); v != "" {
+			if err := ValidateAbsoluteHTTPURL(v); err != nil {
+				return fmt.Errorf("oidc_connect.userinfo_url invalid: %w", err)
+			}
+		}
+		if v := strings.TrimSpace(c.OIDC.JWKSURL); v != "" {
+			if err := ValidateAbsoluteHTTPURL(v); err != nil {
+				return fmt.Errorf("oidc_connect.jwks_url invalid: %w", err)
+			}
+		}
+		if err := ValidateAbsoluteHTTPURL(c.OIDC.RedirectURL); err != nil {
+			return fmt.Errorf("oidc_connect.redirect_url invalid: %w", err)
+		}
+		if err := ValidateFrontendRedirectURL(c.OIDC.FrontendRedirectURL); err != nil {
+			return fmt.Errorf("oidc_connect.frontend_redirect_url invalid: %w", err)
+		}
+
+		warnIfInsecureURL("oidc_connect.issuer_url", c.OIDC.IssuerURL)
+		warnIfInsecureURL("oidc_connect.discovery_url", c.OIDC.DiscoveryURL)
+		warnIfInsecureURL("oidc_connect.authorize_url", c.OIDC.AuthorizeURL)
+		warnIfInsecureURL("oidc_connect.token_url", c.OIDC.TokenURL)
+		warnIfInsecureURL("oidc_connect.userinfo_url", c.OIDC.UserInfoURL)
+		warnIfInsecureURL("oidc_connect.jwks_url", c.OIDC.JWKSURL)
+		warnIfInsecureURL("oidc_connect.redirect_url", c.OIDC.RedirectURL)
+		warnIfInsecureURL("oidc_connect.frontend_redirect_url", c.OIDC.FrontendRedirectURL)
 	}
 	if c.Billing.CircuitBreaker.Enabled {
 		if c.Billing.CircuitBreaker.FailureThreshold <= 0 {
@@ -2194,6 +2359,15 @@ func ValidateFrontendRedirectURL(raw string) error {
 		return fmt.Errorf("must not include fragment")
 	}
 	return nil
+}
+
+func scopeContainsOpenID(scopes string) bool {
+	for _, scope := range strings.Fields(strings.ToLower(strings.TrimSpace(scopes))) {
+		if scope == "openid" {
+			return true
+		}
+	}
+	return false
 }
 
 // isHTTPScheme 检查是否为 HTTP 或 HTTPS 协议
