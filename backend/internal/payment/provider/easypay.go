@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -186,6 +187,8 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 		return nil, fmt.Errorf("missing sign")
 	}
 	if !easyPayVerifySign(params, e.config["pkey"], sign) {
+		expected := easyPaySign(params, e.config["pkey"])
+		slog.Error("[EasyPay] sign mismatch", "expected", expected, "got", sign, "pkeyLen", len(e.config["pkey"]), "instanceID", e.instanceID, "paramCount", len(params))
 		return nil, fmt.Errorf("invalid signature")
 	}
 	status := payment.ProviderStatusFailed
