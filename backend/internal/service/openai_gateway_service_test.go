@@ -300,6 +300,36 @@ func TestOpenAIGatewayService_GenerateSessionHash_Priority(t *testing.T) {
 	}
 }
 
+func TestOpenAIGatewayService_GenerateSessionHash_UsesXSessionAffinityBeforePromptCacheKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("x-session-affinity", "affinity-123")
+
+	svc := &OpenAIGatewayService{}
+
+	h1 := svc.GenerateSessionHash(c, []byte(`{"prompt_cache_key":"cache-key-1"}`))
+	h2 := svc.GenerateSessionHash(c, []byte(`{"prompt_cache_key":"cache-key-2"}`))
+
+	require.NotEmpty(t, h1)
+	require.Equal(t, h1, h2)
+	require.Equal(t, fmt.Sprintf("%016x", xxhash.Sum64String("affinity-123")), h1)
+}
+
+func TestOpenAIGatewayService_ExtractSessionID_PrefersXSessionAffinityOverPromptCacheKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Request.Header.Set("x-session-affinity", "affinity-456")
+
+	svc := &OpenAIGatewayService{}
+	got := svc.ExtractSessionID(c, []byte(`{"prompt_cache_key":"cache-key-body"}`))
+
+	require.Equal(t, "affinity-456", got)
+}
+
 func TestOpenAIGatewayService_GenerateSessionHash_UsesXXHash64(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -2030,6 +2060,48 @@ func TestOpenAIBuildUpstreamRequestOAuthOfficialClientOriginatorCompatibility(t 
 			require.Equal(t, tt.wantOriginator, req.Header.Get("originator"))
 		})
 	}
+}
+
+func TestOpenAIGatewayService_BuildUpstreamRequest_UsesXSessionAffinityOverPromptCacheKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader([]byte(`{"model":"gpt-5","prompt_cache_key":"body-cache"}`)))
+	c.Request.Header.Set("x-session-affinity", "affinity-upstream")
+
+	svc := &OpenAIGatewayService{}
+	account := &Account{
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
+	}
+
+	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5","prompt_cache_key":"body-cache"}`), "token", true, "body-cache", false)
+	require.NoError(t, err)
+
+	expected := isolateOpenAISessionID(0, "affinity-upstream")
+	require.Equal(t, expected, req.Header.Get("Session_Id"))
+	require.Equal(t, expected, req.Header.Get("Conversation_Id"))
+}
+
+func TestOpenAIGatewayService_BuildUpstreamRequest_UsesXSessionAffinityOverPromptCacheKey_Passthrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader([]byte(`{"model":"gpt-5","prompt_cache_key":"body-cache"}`)))
+	c.Request.Header.Set("x-session-affinity", "affinity-passthrough")
+
+	svc := &OpenAIGatewayService{}
+	account := &Account{
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"chatgpt_account_id": "chatgpt-acc"},
+	}
+
+	req, err := svc.buildUpstreamRequestOpenAIPassthrough(c.Request.Context(), c, account, []byte(`{"model":"gpt-5","prompt_cache_key":"body-cache"}`), "token")
+	require.NoError(t, err)
+
+	expected := isolateOpenAISessionID(0, "affinity-passthrough")
+	require.Equal(t, expected, req.Header.Get("Session_Id"))
+	require.Equal(t, expected, req.Header.Get("Conversation_Id"))
 }
 
 func TestNormalizeOpenAIPassthroughOAuthBody_PromotesSystemMessagesToInstructions(t *testing.T) {
