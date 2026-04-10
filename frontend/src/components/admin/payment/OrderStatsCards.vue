@@ -1,0 +1,77 @@
+<template>
+  <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <!-- Today Revenue -->
+    <div class="card p-4">
+      <div class="flex items-center gap-3">
+        <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
+          <Icon name="dollar" size="md" class="text-green-600 dark:text-green-400" :stroke-width="2" />
+        </div>
+        <div>
+          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('payment.admin.todayRevenue') REDACTEDREDACTED</p>
+          <p class="text-xl font-bold text-gray-900 dark:text-white">${{ formatMoney(stats.today_amount) REDACTEDREDACTED</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            {{ stats.today_count REDACTEDREDACTED {{ t('payment.admin.orders') REDACTEDREDACTED
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Total Revenue -->
+    <div class="card p-4">
+      <div class="flex items-center gap-3">
+        <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
+          <Icon name="creditCard" size="md" class="text-blue-600 dark:text-blue-400" :stroke-width="2" />
+        </div>
+        <div>
+          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('payment.admin.totalRevenue') REDACTEDREDACTED</p>
+          <p class="text-xl font-bold text-gray-900 dark:text-white">${{ formatMoney(stats.total_amount) REDACTEDREDACTED</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            {{ stats.total_count REDACTEDREDACTED {{ t('payment.admin.orders') REDACTEDREDACTED
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Today Orders -->
+    <div class="card p-4">
+      <div class="flex items-center gap-3">
+        <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
+          <Icon name="chart" size="md" class="text-purple-600 dark:text-purple-400" :stroke-width="2" />
+        </div>
+        <div>
+          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('payment.admin.todayOrders') REDACTEDREDACTED</p>
+          <p class="text-xl font-bold text-gray-900 dark:text-white">{{ stats.today_count REDACTEDREDACTED</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Average Amount -->
+    <div class="card p-4">
+      <div class="flex items-center gap-3">
+        <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
+          <Icon name="chart" size="md" class="text-amber-600 dark:text-amber-400" :stroke-width="2" />
+        </div>
+        <div>
+          <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('payment.admin.avgAmount') REDACTEDREDACTED</p>
+          <p class="text-xl font-bold text-gray-900 dark:text-white">${{ formatMoney(stats.avg_amount) REDACTEDREDACTED</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { useI18n REDACTED from 'vue-i18n'
+import Icon from '@/components/icons/Icon.vue'
+import type { DashboardStats REDACTED from '@/types/payment'
+
+const { t REDACTED = useI18n()
+
+defineProps<{
+  stats: DashboardStats
+REDACTED>()
+
+function formatMoney(value: number): string {
+  return value.toFixed(2)
+REDACTED
+</script>

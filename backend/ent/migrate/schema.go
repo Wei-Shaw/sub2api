@@ -485,6 +485,158 @@ REDACTED
 		REDACTED,
 	REDACTED,
 REDACTED
+	// PaymentAuditLogsColumns holds the columns for the "payment_audit_logs" table.
+	PaymentAuditLogsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "order_id", Type: field.TypeString, Size: 64REDACTED,
+		{Name: "action", Type: field.TypeString, Size: 50REDACTED,
+		{Name: "detail", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "operator", Type: field.TypeString, Size: 100, Default: "system"REDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+REDACTED
+	// PaymentAuditLogsTable holds the schema information for the "payment_audit_logs" table.
+	PaymentAuditLogsTable = &schema.Table{
+		Name:       "payment_audit_logs",
+		Columns:    PaymentAuditLogsColumns,
+		PrimaryKey: []*schema.Column{PaymentAuditLogsColumns[0]REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "paymentauditlog_order_id",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentAuditLogsColumns[1]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	// PaymentOrdersColumns holds the columns for the "payment_orders" table.
+	PaymentOrdersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "user_email", Type: field.TypeString, Size: 255REDACTED,
+		{Name: "user_name", Type: field.TypeString, Size: 100REDACTED,
+		{Name: "user_notes", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"REDACTEDREDACTED,
+		{Name: "pay_amount", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"REDACTEDREDACTED,
+		{Name: "fee_rate", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(10,4)"REDACTEDREDACTED,
+		{Name: "recharge_code", Type: field.TypeString, Size: 64REDACTED,
+		{Name: "out_trade_no", Type: field.TypeString, Size: 64, Default: ""REDACTED,
+		{Name: "payment_type", Type: field.TypeString, Size: 30REDACTED,
+		{Name: "payment_trade_no", Type: field.TypeString, Size: 128REDACTED,
+		{Name: "pay_url", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "qr_code", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "qr_code_img", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "order_type", Type: field.TypeString, Size: 20, Default: "balance"REDACTED,
+		{Name: "plan_id", Type: field.TypeInt64, Nullable: trueREDACTED,
+		{Name: "subscription_group_id", Type: field.TypeInt64, Nullable: trueREDACTED,
+		{Name: "subscription_days", Type: field.TypeInt, Nullable: trueREDACTED,
+		{Name: "provider_instance_id", Type: field.TypeString, Nullable: true, Size: 64REDACTED,
+		{Name: "status", Type: field.TypeString, Size: 30, Default: "PENDING"REDACTED,
+		{Name: "refund_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,2)"REDACTEDREDACTED,
+		{Name: "refund_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "refund_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "force_refund", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "refund_requested_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "refund_request_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "refund_requested_by", Type: field.TypeString, Nullable: true, Size: 20REDACTED,
+		{Name: "expires_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "paid_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "failed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "failed_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "client_ip", Type: field.TypeString, Size: 50REDACTED,
+		{Name: "src_host", Type: field.TypeString, Size: 255REDACTED,
+		{Name: "src_url", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "user_id", Type: field.TypeInt64REDACTED,
+REDACTED
+	// PaymentOrdersTable holds the schema information for the "payment_orders" table.
+	PaymentOrdersTable = &schema.Table{
+		Name:       "payment_orders",
+		Columns:    PaymentOrdersColumns,
+		PrimaryKey: []*schema.Column{PaymentOrdersColumns[0]REDACTED,
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "payment_orders_users_payment_orders",
+				Columns:    []*schema.Column{PaymentOrdersColumns[37]REDACTED,
+				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
+				OnDelete:   schema.NoAction,
+		REDACTED,
+	REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "paymentorder_out_trade_no",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentOrdersColumns[8]REDACTED,
+		REDACTED,
+			{
+				Name:    "paymentorder_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentOrdersColumns[37]REDACTED,
+		REDACTED,
+			{
+				Name:    "paymentorder_status",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentOrdersColumns[19]REDACTED,
+		REDACTED,
+			{
+				Name:    "paymentorder_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentOrdersColumns[27]REDACTED,
+		REDACTED,
+			{
+				Name:    "paymentorder_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentOrdersColumns[35]REDACTED,
+		REDACTED,
+			{
+				Name:    "paymentorder_paid_at",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentOrdersColumns[28]REDACTED,
+		REDACTED,
+			{
+				Name:    "paymentorder_payment_type_paid_at",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentOrdersColumns[9], PaymentOrdersColumns[28]REDACTED,
+		REDACTED,
+			{
+				Name:    "paymentorder_order_type",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentOrdersColumns[14]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	// PaymentProviderInstancesColumns holds the columns for the "payment_provider_instances" table.
+	PaymentProviderInstancesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "provider_key", Type: field.TypeString, Size: 30REDACTED,
+		{Name: "name", Type: field.TypeString, Size: 100, Default: ""REDACTED,
+		{Name: "config", Type: field.TypeString, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "supported_types", Type: field.TypeString, Size: 200, Default: ""REDACTED,
+		{Name: "enabled", Type: field.TypeBool, Default: trueREDACTED,
+		{Name: "payment_mode", Type: field.TypeString, Size: 20, Default: ""REDACTED,
+		{Name: "sort_order", Type: field.TypeInt, Default: 0REDACTED,
+		{Name: "limits", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "refund_enabled", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+REDACTED
+	// PaymentProviderInstancesTable holds the schema information for the "payment_provider_instances" table.
+	PaymentProviderInstancesTable = &schema.Table{
+		Name:       "payment_provider_instances",
+		Columns:    PaymentProviderInstancesColumns,
+		PrimaryKey: []*schema.Column{PaymentProviderInstancesColumns[0]REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "paymentproviderinstance_provider_key",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentProviderInstancesColumns[1]REDACTED,
+		REDACTED,
+			{
+				Name:    "paymentproviderinstance_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentProviderInstancesColumns[5]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
 	// PromoCodesColumns holds the columns for the "promo_codes" table.
 	PromoCodesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
@@ -670,6 +822,41 @@ REDACTED
 		Name:       "settings",
 		Columns:    SettingsColumns,
 		PrimaryKey: []*schema.Column{SettingsColumns[0]REDACTED,
+REDACTED
+	// SubscriptionPlansColumns holds the columns for the "subscription_plans" table.
+	SubscriptionPlansColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "group_id", Type: field.TypeInt64REDACTED,
+		{Name: "name", Type: field.TypeString, Size: 100REDACTED,
+		{Name: "description", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "price", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "decimal(20,2)"REDACTEDREDACTED,
+		{Name: "original_price", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,2)"REDACTEDREDACTED,
+		{Name: "validity_days", Type: field.TypeInt, Default: 30REDACTED,
+		{Name: "validity_unit", Type: field.TypeString, Size: 10, Default: "day"REDACTED,
+		{Name: "features", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "product_name", Type: field.TypeString, Size: 100, Default: ""REDACTED,
+		{Name: "for_sale", Type: field.TypeBool, Default: trueREDACTED,
+		{Name: "sort_order", Type: field.TypeInt, Default: 0REDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+REDACTED
+	// SubscriptionPlansTable holds the schema information for the "subscription_plans" table.
+	SubscriptionPlansTable = &schema.Table{
+		Name:       "subscription_plans",
+		Columns:    SubscriptionPlansColumns,
+		PrimaryKey: []*schema.Column{SubscriptionPlansColumns[0]REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "subscriptionplan_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{SubscriptionPlansColumns[1]REDACTED,
+		REDACTED,
+			{
+				Name:    "subscriptionplan_for_sale",
+				Unique:  false,
+				Columns: []*schema.Column{SubscriptionPlansColumns[10]REDACTED,
+		REDACTED,
+	REDACTED,
 REDACTED
 	// TLSFingerprintProfilesColumns holds the columns for the "tls_fingerprint_profiles" table.
 	TLSFingerprintProfilesColumns = []*schema.Column{
@@ -1128,12 +1315,16 @@ REDACTED
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
+		PaymentAuditLogsTable,
+		PaymentOrdersTable,
+		PaymentProviderInstancesTable,
 		PromoCodesTable,
 		PromoCodeUsagesTable,
 		ProxiesTable,
 		RedeemCodesTable,
 		SecuritySecretsTable,
 		SettingsTable,
+		SubscriptionPlansTable,
 		TLSFingerprintProfilesTable,
 		UsageCleanupTasksTable,
 		UsageLogsTable,
@@ -1177,6 +1368,16 @@ REDACTED
 	IdempotencyRecordsTable.Annotation = &entsql.Annotation{
 		Table: "idempotency_records",
 REDACTED
+	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
+		Table: "payment_audit_logs",
+REDACTED
+	PaymentOrdersTable.ForeignKeys[0].RefTable = UsersTable
+	PaymentOrdersTable.Annotation = &entsql.Annotation{
+		Table: "payment_orders",
+REDACTED
+	PaymentProviderInstancesTable.Annotation = &entsql.Annotation{
+		Table: "payment_provider_instances",
+REDACTED
 	PromoCodesTable.Annotation = &entsql.Annotation{
 		Table: "promo_codes",
 REDACTED
@@ -1198,6 +1399,9 @@ REDACTED
 REDACTED
 	SettingsTable.Annotation = &entsql.Annotation{
 		Table: "settings",
+REDACTED
+	SubscriptionPlansTable.Annotation = &entsql.Annotation{
+		Table: "subscription_plans",
 REDACTED
 	TLSFingerprintProfilesTable.Annotation = &entsql.Annotation{
 		Table: "tls_fingerprint_profiles",
