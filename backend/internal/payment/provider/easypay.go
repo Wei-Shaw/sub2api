@@ -176,12 +176,10 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 	if err != nil {
 		return nil, fmt.Errorf("parse notify: %w", err)
 	}
-	// EasyPay callbacks may arrive with double-encoded values (e.g. via redirect
-	// chains), so url.ParseQuery decodes once, then decodeURLValue decodes again.
-	// If a value is NOT double-encoded, QueryUnescape returns it unchanged.
+	// url.ParseQuery already decodes values — no additional decode needed.
 	params := make(map[string]string)
 	for k := range values {
-		params[k] = decodeURLValue(values.Get(k))
+		params[k] = values.Get(k)
 	}
 	sign := params["sign"]
 	if sign == "" {
