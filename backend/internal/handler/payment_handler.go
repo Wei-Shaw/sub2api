@@ -412,5 +412,10 @@ REDACTED
 // isMobile detects mobile user agents.
 func isMobile(c *gin.Context) bool {
 	ua := strings.ToLower(c.GetHeader("User-Agent"))
-	return strings.Contains(ua, "mobile") || strings.Contains(ua, "android") || strings.Contains(ua, "iphone")
+	for _, kw := range []string{"mobile", "android", "iphone", "ipad", "ipod"REDACTED {
+		if strings.Contains(ua, kw) {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
