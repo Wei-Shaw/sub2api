@@ -16,20 +16,22 @@
     @apply min-h-screen;
   }
 
-  /* 自定义滚动条 - 默认隐藏，悬停或滚动时显示 */
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
-  }
+  /* 自定义滚动条 - 仅针对 Firefox，避免 Chrome 取消 webkit 的全局定制 */
+  @supports (-moz-appearance:none) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: transparent transparent;
+    }
 
-  *:hover,
-  *:focus-within {
-    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
-  }
+    *:hover,
+    *:focus-within {
+      scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+    }
 
-  .dark *:hover,
-  .dark *:focus-within {
-    scrollbar-color: rgba(75, 85, 99, 0.5) transparent;
+    .dark *:hover,
+    .dark *:focus-within {
+      scrollbar-color: rgba(75, 85, 99, 0.5) transparent;
+    }
   }
 
   ::-webkit-scrollbar {
@@ -58,36 +60,7 @@
     @apply bg-primary-500/20 text-primary-900 dark:text-primary-100;
   }
 
-  /*
-   * 表格滚动容器：始终显示滚动条，不跟随全局悬停策略。
-   *
-   * 浏览器兼容性说明：
-   * - Chrome 121+ 原生支持 scrollbar-color / scrollbar-width。
-   *   一旦元素匹配了这两个标准属性，::-webkit-scrollbar-* 被完全忽略。
-   *   全局 * { scrollbar-width: thin } 使所有元素都走标准属性，
-   *   因此 Chrome 121+ 只看 scrollbar-color。
-   * - Chrome < 121 不认识标准属性，只看 ::-webkit-scrollbar-*，
-   *   所以保留 ::-webkit-scrollbar-thumb 作为回退。
-   * - Firefox 始终只看 scrollbar-color / scrollbar-width。
-   */
-  .table-wrapper {
-    scrollbar-width: auto;
-    scrollbar-color: rgba(156, 163, 175, 0.7) transparent;
-  }
-  .dark .table-wrapper {
-    scrollbar-color: rgba(75, 85, 99, 0.7) transparent;
-  }
-  /* 旧版 Chrome (< 121) 兼容回退 */
-  .table-wrapper::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-  .table-wrapper::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-gray-400/70;
-  }
-  .dark .table-wrapper::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-gray-500/70;
-  }
+
 }
 
 @layer components {

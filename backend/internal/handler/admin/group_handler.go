@@ -162,6 +162,8 @@ func (h *GroupHandler) List(c *gin.Context) {
 		search = search[:100]
 	}
 	isExclusiveStr := c.Query("is_exclusive")
+	sortBy := c.DefaultQuery("sort_by", "sort_order")
+	sortOrder := c.DefaultQuery("sort_order", "asc")
 
 	var isExclusive *bool
 	if isExclusiveStr != "" {
@@ -169,7 +171,7 @@ func (h *GroupHandler) List(c *gin.Context) {
 		isExclusive = &val
 	}
 
-	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, search, isExclusive)
+	groups, total, err := h.adminService.ListGroups(c.Request.Context(), page, pageSize, platform, status, search, isExclusive, sortBy, sortOrder)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

@@ -2,12 +2,15 @@ package repository
 
 import (
 	"context"
+	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+
+	entsql "entgo.io/ent/dialect/sql"
 )
 
 type promoCodeRepository struct {
@@ -137,11 +140,14 @@ func (r *promoCodeRepository) ListWithFilters(ctx context.Context, params pagina
 		return nil, nil, err
 	}
 
-	codes, err := q.
+	codesQuery := q.
 		Offset(params.Offset()).
-		Limit(params.Limit()).
-		Order(dbent.Desc(promocode.FieldID)).
-		All(ctx)
+		Limit(params.Limit())
+	for _, order := range promoCodeListOrder(params) {
+		codesQuery = codesQuery.Order(order)
+	}
+
+	codes, err := codesQuery.All(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -149,6 +155,32 @@ func (r *promoCodeRepository) ListWithFilters(ctx context.Context, params pagina
 	outCodes := promoCodeEntitiesToService(codes)
 
 	return outCodes, paginationResultFromTotal(int64(total), params), nil
+}
+
+func promoCodeListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
+	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
+	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
+
+	var field string
+	switch sortBy {
+	case "bonus_amount":
+		field = promocode.FieldBonusAmount
+	case "status":
+		field = promocode.FieldStatus
+	case "expires_at":
+		field = promocode.FieldExpiresAt
+	case "created_at":
+		field = promocode.FieldCreatedAt
+	case "code":
+		field = promocode.FieldCode
+	default:
+		field = promocode.FieldID
+	}
+
+	if sortOrder == pagination.SortOrderAsc {
+		return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(promocode.FieldID)}
+	}
+	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(promocode.FieldID)}
 }
 
 func (r *promoCodeRepository) CreateUsage(ctx context.Context, usage *service.PromoCodeUsage) error {

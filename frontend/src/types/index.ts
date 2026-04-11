@@ -106,6 +106,8 @@ export interface PublicSettings {
   hide_ccs_import_button: boolean
   purchase_subscription_enabled: boolean
   purchase_subscription_url: string
+  table_default_page_size: number
+  table_page_size_options: number[]
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
   linuxdo_oauth_enabled: boolean
@@ -1380,6 +1382,8 @@ export interface UsageQueryParams {
   billing_mode?: string
   start_date?: string
   end_date?: string
+  sort_by?: string
+  sort_order?: 'asc' | 'desc'
 }
 
 // ==================== Account Usage Statistics ====================

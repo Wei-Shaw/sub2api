@@ -68,7 +68,7 @@
       'is-scrollable': isScrollable
     }"
   >
-    <table class="min-w-full divide-y divide-gray-200 dark:divide-dark-700">
+    <table class="w-full min-w-max divide-y divide-gray-200 dark:divide-dark-700">
       <thead class="table-header bg-gray-50 dark:bg-dark-800">
         <tr>
           <th
@@ -795,5 +795,64 @@ tbody tr:hover .sticky-col {
 
 .dark .is-scrollable .sticky-col-right::before {
   background: linear-gradient(to left, rgba(0, 0, 0, 0.2), transparent);
+}
+</style>
+
+<style>
+/* ==========================================================================
+   终极悬浮滚动条防丢器 (Sledgehammer Override)
+   绕过 style.css 中 `* { scrollbar-color: transparent }` 的全局悬停隐身诅咒！
+   ========================================================================== */
+
+/* 1. 废除全局针对所有元素的 scrollbar-width 设定，拿回 Chrome/Safari 下 Webkit 滚动条规则的控制权！ */
+.table-wrapper {
+  scrollbar-width: auto !important; /* 阻止 Chrome 121 退化到原生 Mac 闪隐滚动条 */
+}
+
+/* 2. 重写 Webkit 滚动层，全部加上 !important 强制覆盖透明悬停陷阱 */
+.table-wrapper::-webkit-scrollbar {
+  height: 12px !important;
+  width: 12px !important;
+  display: block !important;
+  background-color: transparent !important;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+  background-color: rgba(0, 0, 0, 0.03) !important;
+  border-radius: 6px !important;
+  margin: 0 4px !important;
+}
+.dark .table-wrapper::-webkit-scrollbar-track {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* 常驻、不透明的滑块，无视鼠标是否 hover 都在那！ */
+.table-wrapper::-webkit-scrollbar-thumb {
+  background-color: rgba(107, 114, 128, 0.75) !important; 
+  border-radius: 6px !important;
+  border: 2px solid transparent !important;
+  background-clip: padding-box !important;
+  -webkit-appearance: none !important;
+}
+.table-wrapper::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(75, 85, 99, 0.9) !important;
+}
+
+.dark .table-wrapper::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.75) !important;
+}
+.dark .table-wrapper::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(209, 213, 219, 0.9) !important;
+}
+
+/* 3. 仅给真正的 Firefox 留的后路 */
+@supports (-moz-appearance:none) {
+  .table-wrapper {
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(156, 163, 175, 0.5) rgba(0, 0, 0, 0.03) !important;
+  }
+  .dark .table-wrapper {
+    scrollbar-color: rgba(75, 85, 99, 0.5) rgba(255, 255, 255, 0.05) !important;
+  }
 }
 </style>

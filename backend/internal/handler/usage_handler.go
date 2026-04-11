@@ -119,7 +119,12 @@ func (h *UsageHandler) List(c *gin.Context) {
 		endTime = &t
 	}
 
-	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
+	params := pagination.PaginationParams{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    c.DefaultQuery("sort_by", "created_at"),
+		SortOrder: c.DefaultQuery("sort_order", "desc"),
+	}
 	filters := usagestats.UsageLogFilters{
 		UserID:      subject.UserID, // Always filter by current user for security
 		APIKeyID:    apiKeyID,

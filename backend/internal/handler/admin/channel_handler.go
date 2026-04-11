@@ -245,7 +245,12 @@ func (h *ChannelHandler) List(c *gin.Context) {
 		search = search[:100]
 	}
 
-	channels, pag, err := h.channelService.List(c.Request.Context(), pagination.PaginationParams{Page: page, PageSize: pageSize}, status, search)
+	channels, pag, err := h.channelService.List(c.Request.Context(), pagination.PaginationParams{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    c.DefaultQuery("sort_by", "created_at"),
+		SortOrder: c.DefaultQuery("sort_order", "desc"),
+	}, status, search)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

@@ -188,8 +188,8 @@ func (r *channelRepository) List(ctx context.Context, params pagination.Paginati
 	// 查询 channel 列表
 	dataQuery := fmt.Sprintf(
 		`SELECT c.id, c.name, c.description, c.status, c.model_mapping, c.billing_model_source, c.restrict_models, c.created_at, c.updated_at
-		 FROM channels c WHERE %s ORDER BY c.id ASC LIMIT $%d OFFSET $%d`,
-		whereClause, argIdx, argIdx+1,
+		 FROM channels c WHERE %s ORDER BY %s LIMIT $%d OFFSET $%d`,
+		whereClause, channelListOrderBy(params), argIdx, argIdx+1,
 	)
 	args = append(args, pageSize, offset)
 
@@ -244,6 +244,31 @@ func (r *channelRepository) List(ctx context.Context, params pagination.Paginati
 	}
 
 	return channels, paginationResult, nil
+}
+
+func channelListOrderBy(params pagination.PaginationParams) string {
+	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
+	sortOrder := strings.ToUpper(params.NormalizedSortOrder(pagination.SortOrderAsc))
+
+	var column string
+	switch sortBy {
+	case "":
+		column = "c.id"
+		sortOrder = "ASC"
+	case "id":
+		column = "c.id"
+	case "name":
+		column = "c.name"
+	case "status":
+		column = "c.status"
+	case "created_at":
+		column = "c.created_at"
+	default:
+		column = "c.id"
+		sortOrder = "ASC"
+	}
+
+	return fmt.Sprintf("%s %s, c.id %s", column, sortOrder, sortOrder)
 }
 
 func (r *channelRepository) ListAll(ctx context.Context) ([]service.Channel, error) {

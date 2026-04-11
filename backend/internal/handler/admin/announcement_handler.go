@@ -52,13 +52,17 @@ func (h *AnnouncementHandler) List(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
 	status := strings.TrimSpace(c.Query("status"))
 	search := strings.TrimSpace(c.Query("search"))
+	sortBy := c.DefaultQuery("sort_by", "created_at")
+	sortOrder := c.DefaultQuery("sort_order", "desc")
 	if len(search) > 200 {
 		search = search[:200]
 	}
 
 	params := pagination.PaginationParams{
-		Page:     page,
-		PageSize: pageSize,
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    sortBy,
+		SortOrder: sortOrder,
 	}
 
 	items, paginationResult, err := h.announcementService.List(
@@ -227,8 +231,10 @@ func (h *AnnouncementHandler) ListReadStatus(c *gin.Context) {
 
 	page, pageSize := response.ParsePagination(c)
 	params := pagination.PaginationParams{
-		Page:     page,
-		PageSize: pageSize,
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    c.DefaultQuery("sort_by", "email"),
+		SortOrder: c.DefaultQuery("sort_order", "asc"),
 	}
 	search := strings.TrimSpace(c.Query("search"))
 	if len(search) > 200 {

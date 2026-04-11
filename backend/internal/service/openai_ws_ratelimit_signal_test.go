@@ -492,7 +492,7 @@ func TestAdminService_ListAccounts_ExhaustedCodexExtraReturnsRateLimitedAccount(
 	}
 	svc := &adminServiceImpl{accountRepo: repo}
 
-	accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeOAuth, "", "", 0, "")
+	accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeOAuth, "", "", 0, "", "", "")
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Len(t, accounts, 1)

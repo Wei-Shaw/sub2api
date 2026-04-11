@@ -188,6 +188,7 @@ func TestAPIKeyService_GetByKey_UsesL2Cache(t *testing.T) {
 	groupID := int64(9)
 	cacheEntry := &APIKeyAuthCacheEntry{
 		Snapshot: &APIKeyAuthSnapshot{
+			Version:  apiKeyAuthSnapshotVersion,
 			APIKeyID: 1,
 			UserID:   2,
 			GroupID:  &groupID,
@@ -224,6 +225,129 @@ func TestAPIKeyService_GetByKey_UsesL2Cache(t *testing.T) {
 	require.Equal(t, groupID, apiKey.Group.ID)
 	require.True(t, apiKey.Group.ModelRoutingEnabled)
 	require.Equal(t, map[string][]int64{"claude-opus-*": {1, 2}}, apiKey.Group.ModelRouting)
+}
+
+func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t *testing.T) {
+	svc := NewAPIKeyService(nil, nil, nil, nil, nil, nil, &config.Config{})
+	groupID := int64(9)
+	apiKey := &APIKey{
+		ID:      1,
+		UserID:  2,
+		GroupID: &groupID,
+		Key:     "k-roundtrip",
+		Status:  StatusActive,
+		User: &User{
+			ID:          2,
+			Status:      StatusActive,
+			Role:        RoleUser,
+			Balance:     10,
+			Concurrency: 3,
+		},
+		Group: &Group{
+			ID:                    groupID,
+			Name:                  "openai",
+			Platform:              PlatformOpenAI,
+			Status:                StatusActive,
+			SubscriptionType:      SubscriptionTypeStandard,
+			RateMultiplier:        1,
+			AllowMessagesDispatch: true,
+			DefaultMappedModel:    "gpt-5.4",
+			MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+				OpusMappedModel:   "gpt-5.4-nano",
+				SonnetMappedModel: "gpt-5.3-codex",
+				HaikuMappedModel:  "gpt-5.4-mini",
+				ExactModelMappings: map[string]string{
+					"claude-sonnet-4.5": "gpt-5.4-nano",
+				},
+			},
+		},
+	}
+
+	snapshot := svc.snapshotFromAPIKey(apiKey)
+	roundTrip := svc.snapshotToAPIKey(apiKey.Key, snapshot)
+
+	require.NotNil(t, roundTrip)
+	require.NotNil(t, roundTrip.Group)
+	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
+}
+
+func TestAPIKeyService_GetByKey_IgnoresLegacyAuthCacheSnapshotWithoutMessagesDispatchConfig(t *testing.T) {
+	cache := &authCacheStub{}
+	var repoCalls int32
+	repo := &authRepoStub{
+		getByKeyForAuth: func(ctx context.Context, key string) (*APIKey, error) {
+			atomic.AddInt32(&repoCalls, 1)
+			groupID := int64(9)
+			return &APIKey{
+				ID:      1,
+				UserID:  2,
+				GroupID: &groupID,
+				Status:  StatusActive,
+				User: &User{
+					ID:          2,
+					Status:      StatusActive,
+					Role:        RoleUser,
+					Balance:     10,
+					Concurrency: 3,
+				},
+				Group: &Group{
+					ID:                    groupID,
+					Name:                  "openai",
+					Platform:              PlatformOpenAI,
+					Status:                StatusActive,
+					Hydrated:              true,
+					SubscriptionType:      SubscriptionTypeStandard,
+					RateMultiplier:        1,
+					AllowMessagesDispatch: true,
+					DefaultMappedModel:    "gpt-5.4",
+					MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+						OpusMappedModel: "gpt-5.4-nano",
+					},
+				},
+			}, nil
+		},
+	}
+	cfg := &config.Config{
+		APIKeyAuth: config.APIKeyAuthCacheConfig{
+			L2TTLSeconds: 60,
+		},
+	}
+	svc := NewAPIKeyService(repo, nil, nil, nil, nil, cache, cfg)
+
+	groupID := int64(9)
+	cache.getAuthCache = func(ctx context.Context, key string) (*APIKeyAuthCacheEntry, error) {
+		return &APIKeyAuthCacheEntry{
+			Snapshot: &APIKeyAuthSnapshot{
+				APIKeyID: 1,
+				UserID:   2,
+				GroupID:  &groupID,
+				Status:   StatusActive,
+				User: APIKeyAuthUserSnapshot{
+					ID:          2,
+					Status:      StatusActive,
+					Role:        RoleUser,
+					Balance:     10,
+					Concurrency: 3,
+				},
+				Group: &APIKeyAuthGroupSnapshot{
+					ID:                    groupID,
+					Name:                  "openai",
+					Platform:              PlatformOpenAI,
+					Status:                StatusActive,
+					SubscriptionType:      SubscriptionTypeStandard,
+					RateMultiplier:        1,
+					AllowMessagesDispatch: true,
+					DefaultMappedModel:    "gpt-5.4",
+				},
+			},
+		}, nil
+	}
+
+	apiKey, err := svc.GetByKey(context.Background(), "k-legacy")
+	require.NoError(t, err)
+	require.Equal(t, int32(1), atomic.LoadInt32(&repoCalls))
+	require.NotNil(t, apiKey.Group)
+	require.Equal(t, "gpt-5.4-nano", apiKey.Group.MessagesDispatchModelConfig.OpusMappedModel)
 }
 
 func TestAPIKeyService_GetByKey_NegativeCache(t *testing.T) {

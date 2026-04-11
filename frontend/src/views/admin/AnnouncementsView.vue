@@ -39,7 +39,15 @@
       </template>
 
       <template #table>
-        <DataTable :columns="columns" :data="announcements" :loading="loading">
+        <DataTable
+          :columns="columns"
+          :data="announcements"
+          :loading="loading"
+          :server-side-sort="true"
+          default-sort-key="created_at"
+          default-sort-order="desc"
+          @sort="handleSort"
+        >
           <template #cell-title="{ value, row }">
             <div class="min-w-0">
               <div class="flex items-center gap-2">
@@ -68,7 +76,7 @@
             </span>
           </template>
 
-          <template #cell-notifyMode="{ row }">
+          <template #cell-notify_mode="{ row }">
             <span
               :class="[
                 'badge',
@@ -100,7 +108,7 @@
             </div>
           </template>
 
-          <template #cell-createdAt="{ value }">
+          <template #cell-created_at="{ value }">
             <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDateTime(value) }}</span>
           </template>
 
@@ -236,7 +244,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -276,6 +284,11 @@ const pagination = reactive({
   pages: 0
 })
 
+const sortState = reactive({
+  sort_by: 'created_at',
+  sort_order: 'desc' as 'asc' | 'desc'
+})
+
 const statusFilterOptions = computed(() => [
   { value: '', label: t('admin.announcements.allStatus') },
   { value: 'draft', label: t('admin.announcements.statusLabels.draft') },
@@ -295,12 +308,12 @@ const notifyModeOptions = computed(() => [
 ])
 
 const columns = computed<Column[]>(() => [
-  { key: 'title', label: t('admin.announcements.columns.title') },
-  { key: 'status', label: t('admin.announcements.columns.status') },
-  { key: 'notifyMode', label: t('admin.announcements.columns.notifyMode') },
+  { key: 'title', label: t('admin.announcements.columns.title'), sortable: true },
+  { key: 'status', label: t('admin.announcements.columns.status'), sortable: true },
+  { key: 'notify_mode', label: t('admin.announcements.columns.notifyMode'), sortable: true },
   { key: 'targeting', label: t('admin.announcements.columns.targeting') },
   { key: 'timeRange', label: t('admin.announcements.columns.timeRange') },
-  { key: 'createdAt', label: t('admin.announcements.columns.createdAt') },
+  { key: 'created_at', label: t('admin.announcements.columns.createdAt'), sortable: true },
   { key: 'actions', label: t('admin.announcements.columns.actions') }
 ])
 
@@ -321,15 +334,21 @@ const targetingSummary = (targeting: AnnouncementTargeting) => {
 let currentController: AbortController | null = null
 
 async function loadAnnouncements() {
-  if (currentController) currentController.abort()
-  currentController = new AbortController()
+  currentController?.abort()
+  const requestController = new AbortController()
+  currentController = requestController
+  const { signal } = requestController
 
   try {
     loading.value = true
     const res = await adminAPI.announcements.list(pagination.page, pagination.page_size, {
       status: filters.status || undefined,
-      search: searchQuery.value || undefined
-    })
+      search: searchQuery.value || undefined,
+      sort_by: sortState.sort_by,
+      sort_order: sortState.sort_order
+    }, { signal })
+
+    if (signal.aborted || currentController !== requestController) return
 
     announcements.value = res.items
     pagination.total = res.total
@@ -337,11 +356,21 @@ async function loadAnnouncements() {
     pagination.page = res.page
     pagination.page_size = res.page_size
   } catch (error: any) {
-    if (currentController.signal.aborted || error?.name === 'AbortError') return
+    if (
+      signal.aborted ||
+      currentController !== requestController ||
+      error?.name === 'AbortError' ||
+      error?.code === 'ERR_CANCELED'
+    ) {
+      return
+    }
     console.error('Error loading announcements:', error)
     appStore.showError(error.response?.data?.detail || t('admin.announcements.failedToLoad'))
   } finally {
-    loading.value = false
+    if (currentController === requestController) {
+      loading.value = false
+      currentController = null
+    }
   }
 }
 
@@ -357,6 +386,13 @@ function handlePageSizeChange(pageSize: number) {
 }
 
 function handleStatusChange() {
+  pagination.page = 1
+  loadAnnouncements()
+}
+
+function handleSort(key: string, order: 'asc' | 'desc') {
+  sortState.sort_by = key
+  sortState.sort_order = order
   pagination.page = 1
   loadAnnouncements()
 }
@@ -561,5 +597,10 @@ function openReadStatus(row: Announcement) {
 onMounted(async () => {
   await loadSubscriptionGroups()
   await loadAnnouncements()
+})
+
+onUnmounted(() => {
+  if (searchDebounceTimer) window.clearTimeout(searchDebounceTimer)
+  currentController?.abort()
 })
 </script>

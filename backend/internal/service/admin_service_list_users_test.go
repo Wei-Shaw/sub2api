@@ -13,11 +13,13 @@ import (
 
 type userRepoStubForListUsers struct {
 	userRepoStub
-	users []User
-	err   error
+	users                 []User
+	err                   error
+	listWithFiltersParams pagination.PaginationParams
 }
 
 func (s *userRepoStubForListUsers) ListWithFilters(_ context.Context, params pagination.PaginationParams, _ UserListFilters) ([]User, *pagination.PaginationResult, error) {
+	s.listWithFiltersParams = params
 	if s.err != nil {
 		return nil, nil, s.err
 	}
@@ -103,7 +105,7 @@ func TestAdminService_ListUsers_BatchRateFallbackToSingle(t *testing.T) {
 		userGroupRateRepo: rateRepo,
 	}
 
-	users, total, err := svc.ListUsers(context.Background(), 1, 20, UserListFilters{})
+	users, total, err := svc.ListUsers(context.Background(), 1, 20, UserListFilters{}, "", "")
 	require.NoError(t, err)
 	require.Equal(t, int64(2), total)
 	require.Len(t, users, 2)
@@ -111,4 +113,20 @@ func TestAdminService_ListUsers_BatchRateFallbackToSingle(t *testing.T) {
 	require.ElementsMatch(t, []int64{101, 202}, rateRepo.singleCall)
 	require.Equal(t, 1.1, users[0].GroupRates[11])
 	require.Equal(t, 2.2, users[1].GroupRates[22])
+}
+
+func TestAdminService_ListUsers_PassesSortParams(t *testing.T) {
+	userRepo := &userRepoStubForListUsers{
+		users: []User{{ID: 1, Email: "a@example.com"}},
+	}
+	svc := &adminServiceImpl{userRepo: userRepo}
+
+	_, _, err := svc.ListUsers(context.Background(), 2, 50, UserListFilters{}, "email", "ASC")
+	require.NoError(t, err)
+	require.Equal(t, pagination.PaginationParams{
+		Page:      2,
+		PageSize:  50,
+		SortBy:    "email",
+		SortOrder: "ASC",
+	}, userRepo.listWithFiltersParams)
 }

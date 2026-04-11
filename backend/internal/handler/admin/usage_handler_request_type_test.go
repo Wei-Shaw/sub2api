@@ -15,11 +15,13 @@ import (
 
 type adminUsageRepoCapture struct {
 	service.UsageLogRepository
+	listParams   pagination.PaginationParams
 	listFilters  usagestats.UsageLogFilters
 	statsFilters usagestats.UsageLogFilters
 }
 
 func (s *adminUsageRepoCapture) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	s.listParams = params
 	s.listFilters = filters
 	return []service.UsageLog{}, &pagination.PaginationResult{
 		Total:    0,

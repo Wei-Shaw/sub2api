@@ -256,7 +256,7 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 			},
 		},
 		{
-			name: "filter_by_status_active_excludes_rate_limited",
+			name: "filter_by_status_active_excludes_runtime_blocked_accounts",
 			setup: func(client *dbent.Client) {
 				mustCreateAccount(s.T(), client, &service.Account{Name: "active-normal", Status: service.StatusActive})
 				rateLimited := mustCreateAccount(s.T(), client, &service.Account{Name: "active-rate-limited", Status: service.StatusActive})
@@ -264,11 +264,90 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 					SetRateLimitResetAt(time.Now().Add(10 * time.Minute)).
 					Exec(context.Background())
 				s.Require().NoError(err)
+				tempUnsched := mustCreateAccount(s.T(), client, &service.Account{Name: "active-temp-unsched", Status: service.StatusActive})
+				err = client.Account.UpdateOneID(tempUnsched.ID).
+					SetTempUnschedulableUntil(time.Now().Add(15 * time.Minute)).
+					Exec(context.Background())
+				s.Require().NoError(err)
+				unsched := mustCreateAccount(s.T(), client, &service.Account{Name: "active-unsched", Status: service.StatusActive})
+				err = client.Account.UpdateOneID(unsched.ID).
+					SetSchedulable(false).
+					Exec(context.Background())
+				s.Require().NoError(err)
 			},
 			status:    service.StatusActive,
 			wantCount: 1,
 			validate: func(accounts []service.Account) {
 				s.Require().Equal("active-normal", accounts[0].Name)
+			},
+		},
+		{
+			name: "filter_by_status_unschedulable_excludes_rate_limited_and_temp_unschedulable",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "active-normal", Status: service.StatusActive, Schedulable: true})
+				unsched := mustCreateAccount(s.T(), client, &service.Account{Name: "active-unsched", Status: service.StatusActive})
+				err := client.Account.UpdateOneID(unsched.ID).
+					SetSchedulable(false).
+					Exec(context.Background())
+				s.Require().NoError(err)
+				rateLimited := mustCreateAccount(s.T(), client, &service.Account{Name: "active-rate-limited", Status: service.StatusActive})
+				err = client.Account.UpdateOneID(rateLimited.ID).
+					SetSchedulable(false).
+					SetRateLimitResetAt(time.Now().Add(10 * time.Minute)).
+					Exec(context.Background())
+				s.Require().NoError(err)
+				tempUnsched := mustCreateAccount(s.T(), client, &service.Account{Name: "active-temp-unsched", Status: service.StatusActive})
+				err = client.Account.UpdateOneID(tempUnsched.ID).
+					SetSchedulable(false).
+					SetTempUnschedulableUntil(time.Now().Add(15 * time.Minute)).
+					Exec(context.Background())
+				s.Require().NoError(err)
+			},
+			status:    "unschedulable",
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("active-unsched", accounts[0].Name)
+			},
+		},
+		{
+			name: "filter_by_status_rate_limited_excludes_temp_unschedulable",
+			setup: func(client *dbent.Client) {
+				rateLimited := mustCreateAccount(s.T(), client, &service.Account{Name: "active-rate-limited", Status: service.StatusActive})
+				err := client.Account.UpdateOneID(rateLimited.ID).
+					SetRateLimitResetAt(time.Now().Add(10 * time.Minute)).
+					Exec(context.Background())
+				s.Require().NoError(err)
+				tempUnsched := mustCreateAccount(s.T(), client, &service.Account{Name: "active-temp-unsched", Status: service.StatusActive})
+				err = client.Account.UpdateOneID(tempUnsched.ID).
+					SetRateLimitResetAt(time.Now().Add(20 * time.Minute)).
+					SetTempUnschedulableUntil(time.Now().Add(15 * time.Minute)).
+					Exec(context.Background())
+				s.Require().NoError(err)
+			},
+			status:    "rate_limited",
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("active-rate-limited", accounts[0].Name)
+			},
+		},
+		{
+			name: "filter_by_status_temp_unschedulable_excludes_manually_unschedulable",
+			setup: func(client *dbent.Client) {
+				tempUnsched := mustCreateAccount(s.T(), client, &service.Account{Name: "active-temp-unsched", Status: service.StatusActive, Schedulable: true})
+				err := client.Account.UpdateOneID(tempUnsched.ID).
+					SetTempUnschedulableUntil(time.Now().Add(15 * time.Minute)).
+					Exec(context.Background())
+				s.Require().NoError(err)
+				unsched := mustCreateAccount(s.T(), client, &service.Account{Name: "active-unsched", Status: service.StatusActive})
+				err = client.Account.UpdateOneID(unsched.ID).
+					SetSchedulable(false).
+					Exec(context.Background())
+				s.Require().NoError(err)
+			},
+			status:    "temp_unschedulable",
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("active-temp-unsched", accounts[0].Name)
 			},
 		},
 		{

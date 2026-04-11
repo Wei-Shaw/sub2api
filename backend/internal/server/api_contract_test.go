@@ -493,8 +493,10 @@ func TestAPIContracts(t *testing.T) {
 					service.SettingKeyContactInfo:  "support",
 					service.SettingKeyDocURL:       "https://docs.example.com",
 
-					service.SettingKeyDefaultConcurrency: "5",
-					service.SettingKeyDefaultBalance:     "1.25",
+					service.SettingKeyDefaultConcurrency:   "5",
+					service.SettingKeyDefaultBalance:       "1.25",
+					service.SettingKeyTableDefaultPageSize: "20",
+					service.SettingKeyTablePageSizeOptions: "[10,20,50,100]",
 
 					service.SettingKeyOpsMonitoringEnabled:         "false",
 					service.SettingKeyOpsRealtimeMonitoringEnabled: "true",
@@ -578,6 +580,8 @@ func TestAPIContracts(t *testing.T) {
 					"hide_ccs_import_button": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
+					"table_default_page_size": 20,
+						"table_page_size_options": [10, 20, 50, 100],
 					"min_claude_code_version": "",
 					"max_claude_code_version": "",
 					"allow_ungrouped_key_scheduling": false,

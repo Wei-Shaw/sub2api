@@ -235,7 +235,17 @@
 
       <!-- Users Table -->
       <template #table>
-        <DataTable :columns="columns" :data="users" :loading="loading" :actions-count="7">
+        <DataTable
+          :columns="columns"
+          :data="users"
+          :loading="loading"
+          :actions-count="7"
+          :server-side-sort="true"
+          default-sort-key="created_at"
+          default-sort-order="desc"
+          :sort-storage-key="USER_SORT_STORAGE_KEY"
+          @sort="handleSort"
+        >
           <template #cell-email="{ value }">
             <div class="flex items-center gap-2">
               <div
@@ -774,6 +784,25 @@ const columns = computed<Column[]>(() =>
 const users = ref<AdminUser[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
+const USER_SORT_STORAGE_KEY = 'admin-users-table-sort'
+const loadInitialSortState = (): { sort_by: string; sort_order: 'asc' | 'desc' } => {
+  const fallback = { sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' }
+  const sortable = new Set(['email', 'id', 'username', 'role', 'balance', 'concurrency', 'status', 'created_at'])
+  try {
+    const raw = localStorage.getItem(USER_SORT_STORAGE_KEY)
+    if (!raw) return fallback
+    const parsed = JSON.parse(raw) as { key?: string; order?: string }
+    const key = typeof parsed.key === 'string' ? parsed.key : ''
+    if (!sortable.has(key)) return fallback
+    return {
+      sort_by: key,
+      sort_order: parsed.order === 'asc' ? 'asc' : 'desc'
+    }
+  } catch {
+    return fallback
+  }
+}
+const sortState = reactive(loadInitialSortState())
 
 // Groups data for the groups column
 const allGroups = ref<AdminGroup[]>([])
@@ -1125,7 +1154,9 @@ const loadUsers = async () => {
         search: searchQuery.value || undefined,
         group_name: filters.group || undefined,
         attributes: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
-        include_subscriptions: hasVisibleSubscriptionsColumn.value
+        include_subscriptions: hasVisibleSubscriptionsColumn.value,
+        sort_by: sortState.sort_by,
+        sort_order: sortState.sort_order
       },
       { signal }
     )
@@ -1180,6 +1211,13 @@ const handlePageChange = (page: number) => {
 
 const handlePageSizeChange = (pageSize: number) => {
   pagination.page_size = pageSize
+  pagination.page = 1
+  loadUsers()
+}
+
+const handleSort = (key: string, order: 'asc' | 'desc') => {
+  sortState.sort_by = key
+  sortState.sort_order = order
   pagination.page = 1
   loadUsers()
 }

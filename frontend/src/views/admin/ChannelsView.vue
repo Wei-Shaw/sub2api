@@ -48,7 +48,15 @@
       </template>
 
       <template #table>
-        <DataTable :columns="columns" :data="channels" :loading="loading">
+        <DataTable
+          :columns="columns"
+          :data="channels"
+          :loading="loading"
+          :server-side-sort="true"
+          default-sort-key="created_at"
+          default-sort-order="desc"
+          @sort="handleSort"
+        >
           <template #cell-name="{ value }">
             <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
           </template>
@@ -486,6 +494,10 @@ const pagination = reactive({
   page_size: getPersistedPageSize(),
   total: 0
 })
+const sortState = reactive({
+  sort_by: 'created_at',
+  sort_order: 'desc' as 'asc' | 'desc'
+})
 
 // Dialog state
 const showDialog = ref(false)
@@ -766,7 +778,9 @@ async function loadChannels() {
   try {
     const response = await adminAPI.channels.list(pagination.page, pagination.page_size, {
       status: filters.status || undefined,
-      search: searchQuery.value || undefined
+      search: searchQuery.value || undefined,
+      sort_by: sortState.sort_by,
+      sort_order: sortState.sort_order
     }, { signal: ctrl.signal })
 
     if (ctrl.signal.aborted || abortController !== ctrl) return
@@ -821,6 +835,13 @@ function handlePageChange(page: number) {
 
 function handlePageSizeChange(pageSize: number) {
   pagination.page_size = pageSize
+  pagination.page = 1
+  loadChannels()
+}
+
+function handleSort(key: string, order: 'asc' | 'desc') {
+  sortState.sort_by = key
+  sortState.sort_order = order
   pagination.page = 1
   loadChannels()
 }
