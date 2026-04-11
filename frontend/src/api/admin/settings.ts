@@ -38,6 +38,8 @@ export interface SystemSettings {
   doc_url: string
   home_content: string
   hide_ccs_import_button: boolean
+  table_default_page_size: number
+  table_page_size_options: number[]
   backend_mode_enabled: boolean
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
@@ -154,6 +156,8 @@ export interface UpdateSettingsRequest {
   doc_url?: string
   home_content?: string
   hide_ccs_import_button?: boolean
+  table_default_page_size?: number
+  table_page_size_options?: number[]
   backend_mode_enabled?: boolean
   custom_menu_items?: CustomMenuItem[]
   custom_endpoints?: CustomEndpoint[]

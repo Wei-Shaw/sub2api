@@ -74,6 +74,10 @@ REDACTED
 	require.Len(t, resp.Data.Proxies, 1)
 	require.Len(t, resp.Data.Accounts, 0)
 	require.Equal(t, "https", resp.Data.Proxies[0].Protocol)
+	require.Equal(t, 1, adminSvc.lastListProxies.calls)
+	require.Equal(t, "https", adminSvc.lastListProxies.protocol)
+	require.Equal(t, "id", adminSvc.lastListProxies.sortBy)
+	require.Equal(t, "desc", adminSvc.lastListProxies.sortOrder)
 REDACTED
 
 func TestProxyExportDataWithSelectedIDs(t *testing.T) {
@@ -113,6 +117,96 @@ REDACTED
 	require.Len(t, resp.Data.Proxies, 1)
 	require.Equal(t, "https", resp.Data.Proxies[0].Protocol)
 	require.Equal(t, "10.0.0.2", resp.Data.Proxies[0].Host)
+	require.Equal(t, 0, adminSvc.lastListProxies.calls)
+REDACTED
+
+func TestProxyExportDataPassesSortParams(t *testing.T) {
+	router, adminSvc := setupProxyDataRouter()
+
+	adminSvc.proxies = []service.Proxy{
+		{
+			ID:       1,
+			Name:     "proxy-a",
+			Protocol: "http",
+			Host:     "127.0.0.1",
+			Port:     8080,
+			Username: "user",
+			Password: "pass",
+			Status:   service.StatusActive,
+	REDACTED,
+REDACTED
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/proxies/data?protocol=http&status=active&search=proxy&sort_by=name&sort_order=asc", nil)
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Equal(t, 1, adminSvc.lastListProxies.calls)
+	require.Equal(t, "http", adminSvc.lastListProxies.protocol)
+	require.Equal(t, "active", adminSvc.lastListProxies.status)
+	require.Equal(t, "proxy", adminSvc.lastListProxies.search)
+	require.Equal(t, "name", adminSvc.lastListProxies.sortBy)
+	require.Equal(t, "asc", adminSvc.lastListProxies.sortOrder)
+REDACTED
+
+func TestProxyExportDataSortByAccountCountUsesAccountCountListing(t *testing.T) {
+	router, adminSvc := setupProxyDataRouter()
+
+	adminSvc.proxies = []service.Proxy{
+		{
+			ID:       1,
+			Name:     "proxy-id-1",
+			Protocol: "http",
+			Host:     "127.0.0.1",
+			Port:     8080,
+			Status:   service.StatusActive,
+	REDACTED,
+		{
+			ID:       2,
+			Name:     "proxy-id-2",
+			Protocol: "http",
+			Host:     "127.0.0.2",
+			Port:     8081,
+			Status:   service.StatusActive,
+	REDACTED,
+REDACTED
+	adminSvc.proxyCounts = []service.ProxyWithAccountCount{
+		{
+			Proxy: service.Proxy{
+				ID:       2,
+				Name:     "proxy-count-high",
+				Protocol: "http",
+				Host:     "127.0.0.2",
+				Port:     8081,
+				Status:   service.StatusActive,
+		REDACTED,
+			AccountCount: 9,
+	REDACTED,
+		{
+			Proxy: service.Proxy{
+				ID:       1,
+				Name:     "proxy-count-low",
+				Protocol: "http",
+				Host:     "127.0.0.1",
+				Port:     8080,
+				Status:   service.StatusActive,
+		REDACTED,
+			AccountCount: 1,
+	REDACTED,
+REDACTED
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/proxies/data?sort_by=account_count&sort_order=desc", nil)
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp proxyDataResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Len(t, resp.Data.Proxies, 2)
+	require.Equal(t, "proxy-count-high", resp.Data.Proxies[0].Name)
+	require.Equal(t, "proxy-count-low", resp.Data.Proxies[1].Name)
+	require.Equal(t, 0, adminSvc.lastListProxies.calls)
 REDACTED
 
 func TestProxyImportDataReusesAndTriggersLatencyProbe(t *testing.T) {

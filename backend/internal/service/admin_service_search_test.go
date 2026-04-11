@@ -170,13 +170,13 @@ func TestAdminService_ListAccounts_WithSearch(t *testing.T) {
 	REDACTED
 		svc := &adminServiceImpl{accountRepo: repoREDACTED
 
-		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformGemini, AccountTypeOAuth, StatusActive, "acc", 0, "")
+		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformGemini, AccountTypeOAuth, StatusActive, "acc", 0, "", "name", "ASC")
 	REDACTED
 		require.Equal(t, int64(10), total)
 		require.Equal(t, []Account{{ID: 1, Name: "acc"REDACTEDREDACTED, accounts)
 
 		require.Equal(t, 1, repo.listWithFiltersCalls)
-		require.Equal(t, pagination.PaginationParams{Page: 1, PageSize: 20REDACTED, repo.listWithFiltersParams)
+		require.Equal(t, pagination.PaginationParams{Page: 1, PageSize: 20, SortBy: "name", SortOrder: "ASC"REDACTED, repo.listWithFiltersParams)
 		require.Equal(t, PlatformGemini, repo.listWithFiltersPlatform)
 		require.Equal(t, AccountTypeOAuth, repo.listWithFiltersType)
 		require.Equal(t, StatusActive, repo.listWithFiltersStatus)
@@ -192,7 +192,7 @@ func TestAdminService_ListAccounts_WithPrivacyMode(t *testing.T) {
 	REDACTED
 		svc := &adminServiceImpl{accountRepo: repoREDACTED
 
-		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeOAuth, StatusActive, "acc2", 0, PrivacyModeCFBlocked)
+		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeOAuth, StatusActive, "acc2", 0, PrivacyModeCFBlocked, "", "")
 	REDACTED
 		require.Equal(t, int64(1), total)
 		require.Equal(t, []Account{{ID: 2, Name: "acc2"REDACTEDREDACTED, accounts)
@@ -208,13 +208,13 @@ func TestAdminService_ListProxies_WithSearch(t *testing.T) {
 	REDACTED
 		svc := &adminServiceImpl{proxyRepo: repoREDACTED
 
-		proxies, total, err := svc.ListProxies(context.Background(), 3, 50, "http", StatusActive, "p1")
+		proxies, total, err := svc.ListProxies(context.Background(), 3, 50, "http", StatusActive, "p1", "name", "ASC")
 	REDACTED
 		require.Equal(t, int64(7), total)
 		require.Equal(t, []Proxy{{ID: 2, Name: "p1"REDACTEDREDACTED, proxies)
 
 		require.Equal(t, 1, repo.listWithFiltersCalls)
-		require.Equal(t, pagination.PaginationParams{Page: 3, PageSize: 50REDACTED, repo.listWithFiltersParams)
+		require.Equal(t, pagination.PaginationParams{Page: 3, PageSize: 50, SortBy: "name", SortOrder: "ASC"REDACTED, repo.listWithFiltersParams)
 		require.Equal(t, "http", repo.listWithFiltersProtocol)
 		require.Equal(t, StatusActive, repo.listWithFiltersStatus)
 		require.Equal(t, "p1", repo.listWithFiltersSearch)
@@ -229,13 +229,13 @@ func TestAdminService_ListProxiesWithAccountCount_WithSearch(t *testing.T) {
 	REDACTED
 		svc := &adminServiceImpl{proxyRepo: repoREDACTED
 
-		proxies, total, err := svc.ListProxiesWithAccountCount(context.Background(), 2, 10, "socks5", StatusDisabled, "p2")
+		proxies, total, err := svc.ListProxiesWithAccountCount(context.Background(), 2, 10, "socks5", StatusDisabled, "p2", "account_count", "DESC")
 	REDACTED
 		require.Equal(t, int64(9), total)
 		require.Equal(t, []ProxyWithAccountCount{{Proxy: Proxy{ID: 3, Name: "p2"REDACTED, AccountCount: 5REDACTEDREDACTED, proxies)
 
 		require.Equal(t, 1, repo.listWithFiltersAndAccountCountCalls)
-		require.Equal(t, pagination.PaginationParams{Page: 2, PageSize: 10REDACTED, repo.listWithFiltersAndAccountCountParams)
+		require.Equal(t, pagination.PaginationParams{Page: 2, PageSize: 10, SortBy: "account_count", SortOrder: "DESC"REDACTED, repo.listWithFiltersAndAccountCountParams)
 		require.Equal(t, "socks5", repo.listWithFiltersAndAccountCountProtocol)
 		require.Equal(t, StatusDisabled, repo.listWithFiltersAndAccountCountStatus)
 		require.Equal(t, "p2", repo.listWithFiltersAndAccountCountSearch)
@@ -250,13 +250,13 @@ func TestAdminService_ListRedeemCodes_WithSearch(t *testing.T) {
 	REDACTED
 		svc := &adminServiceImpl{redeemCodeRepo: repoREDACTED
 
-		codes, total, err := svc.ListRedeemCodes(context.Background(), 1, 20, RedeemTypeBalance, StatusUnused, "ABC")
+		codes, total, err := svc.ListRedeemCodes(context.Background(), 1, 20, RedeemTypeBalance, StatusUnused, "ABC", "value", "ASC")
 	REDACTED
 		require.Equal(t, int64(3), total)
 		require.Equal(t, []RedeemCode{{ID: 4, Code: "ABC"REDACTEDREDACTED, codes)
 
 		require.Equal(t, 1, repo.listWithFiltersCalls)
-		require.Equal(t, pagination.PaginationParams{Page: 1, PageSize: 20REDACTED, repo.listWithFiltersParams)
+		require.Equal(t, pagination.PaginationParams{Page: 1, PageSize: 20, SortBy: "value", SortOrder: "ASC"REDACTED, repo.listWithFiltersParams)
 		require.Equal(t, RedeemTypeBalance, repo.listWithFiltersType)
 		require.Equal(t, StatusUnused, repo.listWithFiltersStatus)
 		require.Equal(t, "ABC", repo.listWithFiltersSearch)

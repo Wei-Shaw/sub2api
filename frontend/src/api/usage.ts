@@ -91,7 +91,7 @@ REDACTED
  * @returns Paginated list of usage logs
  */
 export async function query(
-  params: UsageQueryParams,
+  params: UsageQueryParams & { sort_by?: string; sort_order?: 'asc' | 'desc' REDACTED,
   config: { signal?: AbortSignal REDACTED = {REDACTED
 ): Promise<PaginatedResponse<UsageLog>> {
   const { data REDACTED = await apiClient.get<PaginatedResponse<UsageLog>>('/usage', {

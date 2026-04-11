@@ -2,12 +2,15 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+
+	entsql "entgo.io/ent/dialect/sql"
 )
 
 type announcementRepository struct {
@@ -128,17 +131,70 @@ REDACTED
 		return nil, nil, err
 REDACTED
 
-	items, err := q.
+	itemsQuery := q.
 		Offset(params.Offset()).
-		Limit(params.Limit()).
-		Order(dbent.Desc(announcement.FieldID)).
-		All(ctx)
+		Limit(params.Limit())
+	for _, order := range announcementListOrders(params) {
+		itemsQuery = itemsQuery.Order(order)
+REDACTED
+
+	items, err := itemsQuery.All(ctx)
 	if err != nil {
 		return nil, nil, err
 REDACTED
 
 	out := announcementEntitiesToService(items)
 	return out, paginationResultFromTotal(int64(total), params), nil
+REDACTED
+
+func announcementListOrder(params pagination.PaginationParams) (string, string) {
+	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
+	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
+
+	switch sortBy {
+	case "title":
+		return announcement.FieldTitle, sortOrder
+	case "status":
+		return announcement.FieldStatus, sortOrder
+	case "notify_mode":
+		return announcement.FieldNotifyMode, sortOrder
+	case "starts_at":
+		return announcement.FieldStartsAt, sortOrder
+	case "ends_at":
+		return announcement.FieldEndsAt, sortOrder
+	case "id":
+		return announcement.FieldID, sortOrder
+	case "", "created_at":
+		return announcement.FieldCreatedAt, sortOrder
+	default:
+		return announcement.FieldCreatedAt, pagination.SortOrderDesc
+REDACTED
+REDACTED
+
+func announcementListOrders(params pagination.PaginationParams) []func(*entsql.Selector) {
+	field, sortOrder := announcementListOrder(params)
+
+	if sortOrder == pagination.SortOrderAsc {
+		if field == announcement.FieldID {
+			return []func(*entsql.Selector){
+				dbent.Asc(field),
+		REDACTED
+	REDACTED
+		return []func(*entsql.Selector){
+			dbent.Asc(field),
+			dbent.Asc(announcement.FieldID),
+	REDACTED
+REDACTED
+
+	if field == announcement.FieldID {
+		return []func(*entsql.Selector){
+			dbent.Desc(field),
+	REDACTED
+REDACTED
+	return []func(*entsql.Selector){
+		dbent.Desc(field),
+		dbent.Desc(announcement.FieldID),
+REDACTED
 REDACTED
 
 func (r *announcementRepository) ListActive(ctx context.Context, now time.Time) ([]service.Announcement, error) {

@@ -1788,6 +1788,48 @@
               </p>
             </div>
 
+            <!-- Global Table Preferences -->
+            <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+              <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.settings.site.tablePreferencesTitle') REDACTEDREDACTED
+              </h3>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.site.tablePreferencesDescription') REDACTEDREDACTED
+              </p>
+              <div class="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.site.tableDefaultPageSize') REDACTEDREDACTED
+                  </label>
+                  <input
+                    v-model.number="form.table_default_page_size"
+                    type="number"
+                    min="5"
+                    max="1000"
+                    step="1"
+                    class="input w-40"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.site.tableDefaultPageSizeHint') REDACTEDREDACTED
+                  </p>
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.site.tablePageSizeOptions') REDACTEDREDACTED
+                  </label>
+                  <input
+                    v-model="tablePageSizeOptionsInput"
+                    type="text"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.site.tablePageSizeOptionsPlaceholder')"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.site.tablePageSizeOptionsHint') REDACTEDREDACTED
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <!-- Custom Endpoints -->
             <div>
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -2520,6 +2562,7 @@ const smtpPasswordManuallyEdited = ref(false)
 const testEmailAddress = ref('')
 const registrationEmailSuffixWhitelistTags = ref<string[]>([])
 const registrationEmailSuffixWhitelistDraft = ref('')
+const tablePageSizeOptionsInput = ref('10, 20, 50, 100')
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true)
@@ -2574,6 +2617,10 @@ const betaPolicyForm = reactive({
   REDACTED>
 REDACTED)
 
+const tablePageSizeMin = 5
+const tablePageSizeMax = 1000
+const tablePageSizeDefault = 20
+
 interface DefaultSubscriptionGroupOption {
   value: number
   label: string
@@ -2613,6 +2660,8 @@ const form = reactive<SettingsForm>({
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
   payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_enabled_types: [],  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',  payment_cancel_rate_limit_enabled: false,  payment_cancel_rate_limit_max: 10,  payment_cancel_rate_limit_window: 1,  payment_cancel_rate_limit_unit: 'day',  payment_cancel_rate_limit_window_mode: 'rolling',
+  table_default_page_size: tablePageSizeDefault,
+  table_page_size_options: [10, 20, 50, 100],
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: numberREDACTED>,
   custom_endpoints: [] as Array<{name: string; endpoint: string; description: stringREDACTED>,
   frontend_url: '',
@@ -2836,6 +2885,35 @@ function removeEndpoint(index: number) {
   form.custom_endpoints.splice(index, 1)
 REDACTED
 
+function formatTablePageSizeOptions(options: number[]): string {
+  return options.join(', ')
+REDACTED
+
+function parseTablePageSizeOptionsInput(raw: string): number[] | null {
+  const tokens = raw
+    .split(',')
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0)
+
+  if (tokens.length === 0) {
+    return null
+  REDACTED
+
+  const parsed = tokens.map((token) => Number(token))
+  if (parsed.some((value) => !Number.isInteger(value))) {
+    return null
+  REDACTED
+
+  const deduped = Array.from(new Set(parsed)).sort((a, b) => a - b)
+  if (
+    deduped.some((value) => value < tablePageSizeMin || value > tablePageSizeMax)
+  ) {
+    return null
+  REDACTED
+
+  return deduped
+REDACTED
+
 async function loadSettings() {
   loading.value = true
   loadFailed.value = false
@@ -2859,6 +2937,9 @@ async function loadSettings() {
       : []
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       settings.registration_email_suffix_whitelist
+    )
+    tablePageSizeOptionsInput.value = formatTablePageSizeOptions(
+      Array.isArray(settings.table_page_size_options) ? settings.table_page_size_options : [10, 20, 50, 100]
     )
     registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''
@@ -2903,6 +2984,37 @@ REDACTED
 async function saveSettings() {
   saving.value = true
   try {
+    const normalizedTableDefaultPageSize = Math.floor(Number(form.table_default_page_size))
+    if (
+      !Number.isInteger(normalizedTableDefaultPageSize) ||
+      normalizedTableDefaultPageSize < tablePageSizeMin ||
+      normalizedTableDefaultPageSize > tablePageSizeMax
+    ) {
+      appStore.showError(
+        t('admin.settings.site.tableDefaultPageSizeRangeError', {
+          min: tablePageSizeMin,
+          max: tablePageSizeMax
+        REDACTED)
+      )
+      return
+    REDACTED
+
+    const normalizedTablePageSizeOptions = parseTablePageSizeOptionsInput(
+      tablePageSizeOptionsInput.value
+    )
+    if (!normalizedTablePageSizeOptions) {
+      appStore.showError(
+        t('admin.settings.site.tablePageSizeOptionsFormatError', {
+          min: tablePageSizeMin,
+          max: tablePageSizeMax
+        REDACTED)
+      )
+      return
+    REDACTED
+
+    form.table_default_page_size = normalizedTableDefaultPageSize
+    form.table_page_size_options = normalizedTablePageSizeOptions
+
     const normalizedDefaultSubscriptions = form.default_subscriptions
       .filter((item) => item.group_id > 0 && item.validity_days > 0)
       .map((item: DefaultSubscriptionSetting) => ({
@@ -2963,6 +3075,8 @@ async function saveSettings() {
       home_content: form.home_content,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,
+      table_default_page_size: form.table_default_page_size,
+      table_page_size_options: form.table_page_size_options,
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,
@@ -3044,6 +3158,9 @@ async function saveSettings() {
     REDACTED
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       updated.registration_email_suffix_whitelist
+    )
+    tablePageSizeOptionsInput.value = formatTablePageSizeOptions(
+      Array.isArray(updated.table_page_size_options) ? updated.table_page_size_options : [10, 20, 50, 100]
     )
     registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''

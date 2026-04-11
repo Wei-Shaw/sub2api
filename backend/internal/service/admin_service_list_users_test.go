@@ -13,11 +13,13 @@ import (
 
 type userRepoStubForListUsers struct {
 	userRepoStub
-	users []User
-	err   error
+	users                 []User
+	err                   error
+	listWithFiltersParams pagination.PaginationParams
 REDACTED
 
 func (s *userRepoStubForListUsers) ListWithFilters(_ context.Context, params pagination.PaginationParams, _ UserListFilters) ([]User, *pagination.PaginationResult, error) {
+	s.listWithFiltersParams = params
 	if s.err != nil {
 		return nil, nil, s.err
 REDACTED
@@ -103,7 +105,7 @@ REDACTED
 		userGroupRateRepo: rateRepo,
 REDACTED
 
-	users, total, err := svc.ListUsers(context.Background(), 1, 20, UserListFilters{REDACTED)
+	users, total, err := svc.ListUsers(context.Background(), 1, 20, UserListFilters{REDACTED, "", "")
 REDACTED
 	require.Equal(t, int64(2), total)
 	require.Len(t, users, 2)
@@ -111,4 +113,20 @@ REDACTED
 	require.ElementsMatch(t, []int64{101, 202REDACTED, rateRepo.singleCall)
 	require.Equal(t, 1.1, users[0].GroupRates[11])
 	require.Equal(t, 2.2, users[1].GroupRates[22])
+REDACTED
+
+func TestAdminService_ListUsers_PassesSortParams(t *testing.T) {
+	userRepo := &userRepoStubForListUsers{
+		users: []User{{ID: 1, Email: "a@example.com"REDACTEDREDACTED,
+REDACTED
+	svc := &adminServiceImpl{userRepo: userRepoREDACTED
+
+	_, _, err := svc.ListUsers(context.Background(), 2, 50, UserListFilters{REDACTED, "email", "ASC")
+REDACTED
+	require.Equal(t, pagination.PaginationParams{
+		Page:      2,
+		PageSize:  50,
+		SortBy:    "email",
+		SortOrder: "ASC",
+REDACTED, userRepo.listWithFiltersParams)
 REDACTED
