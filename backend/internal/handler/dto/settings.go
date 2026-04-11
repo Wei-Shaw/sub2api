@@ -124,6 +124,9 @@ type SystemSettings struct {
 	EnableMetadataPassthrough    bool `json:"enable_metadata_passthrough"`
 	EnableCCHSigning             bool `json:"enable_cch_signing"`
 
+	// Web Search Emulation
+	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`
+
 	// Payment configuration
 	PaymentEnabled           bool     `json:"payment_enabled"`
 	PaymentMinAmount         float64  `json:"payment_min_amount"`

@@ -665,6 +665,7 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 		ModelPricing:       input.ModelPricing,
 		ModelMapping:       input.ModelMapping,
 		Features:           input.Features,
+		FeaturesConfig:     input.FeaturesConfig,
 	}
 	if channel.BillingModelSource == "" {
 		channel.BillingModelSource = BillingModelSourceChannelMapped
@@ -752,6 +753,9 @@ func (s *ChannelService) applyUpdateInput(ctx context.Context, channel *Channel,
 	}
 	if input.BillingModelSource != "" {
 		channel.BillingModelSource = input.BillingModelSource
+	}
+	if input.FeaturesConfig != nil {
+		channel.FeaturesConfig = input.FeaturesConfig
 	}
 	return nil
 }
@@ -926,6 +930,7 @@ type CreateChannelInput struct {
 	BillingModelSource string
 	RestrictModels     bool
 	Features           string
+	FeaturesConfig     map[string]any
 }
 
 // UpdateChannelInput 更新渠道输入
@@ -939,4 +944,5 @@ type UpdateChannelInput struct {
 	BillingModelSource string
 	RestrictModels     *bool
 	Features           *string
+	FeaturesConfig     map[string]any
 }

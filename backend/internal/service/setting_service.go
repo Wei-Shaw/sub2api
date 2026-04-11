@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/imroc/req/v3"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -106,6 +107,7 @@ type SettingService struct {
 	cfg                   *config.Config
 	onUpdate              func() // Callback when settings are updated (for cache invalidation)
 	version               string // Application version
+	webSearchRedis        *redis.Client // optional: Redis client for web search quota tracking
 }
 
 // NewSettingService 创建系统设置服务实例
@@ -1216,6 +1218,14 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
 	result.EnableCCHSigning = settings[SettingKeyEnableCCHSigning] == "true"
+
+	// Web search emulation: quick enabled check from the JSON config
+	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {
+		var wsCfg WebSearchEmulationConfig
+		if err := json.Unmarshal([]byte(raw), &wsCfg); err == nil {
+			result.WebSearchEmulationEnabled = wsCfg.Enabled && len(wsCfg.Providers) > 0
+		}
+	}
 
 	return result
 }
