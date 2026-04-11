@@ -103,6 +103,14 @@
           :refresh-token="dashboardRefreshToken"
           @open-details="openOpenAIRetryDetails"
         />
+        <OpsOpenAIStickyCard
+          :platform-filter="platform"
+          :group-id-filter="groupId"
+          :time-range="timeRange"
+          :start-time="customStartTime"
+          :end-time="customEndTime"
+          :refresh-token="dashboardRefreshToken"
+        />
       </div>
 
       <div v-if="opsEnabled && showOpenAITokenStats && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
@@ -199,6 +207,7 @@ import OpsSwitchRateTrendChart from './components/OpsSwitchRateTrendChart.vue'
 import OpsAlertEventsCard from './components/OpsAlertEventsCard.vue'
 import OpsOpenAIRoutingCard from './components/OpsOpenAIRoutingCard.vue'
 import OpsOpenAIRetryCard from './components/OpsOpenAIRetryCard.vue'
+import OpsOpenAIStickyCard from './components/OpsOpenAIStickyCard.vue'
 import OpsOpenAITokenStatsCard from './components/OpsOpenAITokenStatsCard.vue'
 import OpsSystemLogTable from './components/OpsSystemLogTable.vue'
 import OpsOpenAIRetryDetailsModal from './components/OpsOpenAIRetryDetailsModal.vue'

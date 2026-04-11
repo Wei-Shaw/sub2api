@@ -338,6 +338,29 @@ export interface OpsOpenAIRoutingStatsParams {
   group_id?: number | null
 }
 
+export interface OpsOpenAIStickyStatsResponse {
+  time_range: '5m' | '30m' | '1h' | '6h' | '24h' | '7d' | '30d' | 'custom'
+  start_time: string
+  end_time: string
+  platform?: string
+  group_id?: number | null
+  evaluated_request_count: number
+  sticky_hit_count: number
+  sticky_hit_rate: number
+  sticky_account_switch_count: number
+  sticky_account_switch_rate: number
+  eval_result_count: Record<string, number>
+  session_source_count: Record<string, number>
+}
+
+export interface OpsOpenAIStickyStatsParams {
+  time_range?: '5m' | '30m' | '1h' | '6h' | '24h' | '7d' | '30d' | 'custom'
+  start_time?: string
+  end_time?: string
+  platform?: string
+  group_id?: number | null
+}
+
 export interface OpsSystemMetricsSnapshot {
   id: number
   created_at: string
@@ -1171,6 +1194,17 @@ export async function getOpenAIRoutingStats(
   return data
 }
 
+export async function getOpenAIStickyStats(
+  params: OpsOpenAIStickyStatsParams,
+  options: OpsRequestOptions = {}
+): Promise<OpsOpenAIStickyStatsResponse> {
+  const { data } = await apiClient.get<OpsOpenAIStickyStatsResponse>('/admin/ops/dashboard/openai-sticky', {
+    params,
+    signal: options.signal
+  })
+  return data
+}
+
 export type OpsErrorListView = 'errors' | 'excluded' | 'all'
 
 export type OpsErrorListQueryParams = {
@@ -1421,6 +1455,7 @@ export const opsAPI = {
   getErrorDistribution,
   getOpenAITokenStats,
   getOpenAIRoutingStats,
+  getOpenAIStickyStats,
   getConcurrencyStats,
   getUserConcurrencyStats,
   getAccountAvailabilityStats,
