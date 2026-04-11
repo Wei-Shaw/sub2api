@@ -54,11 +54,11 @@ const (
 	searchDataTimeout    = 60 * time.Second // response data transfer timeout
 	searchRequestTimeout = searchDataTimeout + proxyDialTimeout
 
-	quotaKeyPrefix       = "websearch:quota:"
-	proxyUnavailableKey  = "websearch:proxy_unavailable:%d"
-	proxyUnavailableTTL  = 5 * time.Minute
-	quotaTTLBuffer       = 24 * time.Hour
-	maxCachedClients     = 100
+	quotaKeyPrefix      = "websearch:quota:"
+	proxyUnavailableKey = "websearch:proxy_unavailable:%d"
+	proxyUnavailableTTL = 5 * time.Minute
+	quotaTTLBuffer      = 24 * time.Hour
+	maxCachedClients    = 100
 )
 
 // ErrProxyUnavailable indicates the search failed due to a proxy connectivity issue.
@@ -152,14 +152,16 @@ func (m *Manager) filterAvailableProviders(ctx context.Context, accountProxyURL 
 	return out
 }
 
+// weighted is a provider candidate with computed quota weight.
+type weighted struct {
+	cfg    ProviderConfig
+	weight int64
+}
+
 // selectByQuotaWeight orders candidates by remaining quota weight.
 // Providers with quota_limit=0 (no limit set) get weight 0 and are placed last.
 // Among providers with quota, higher remaining quota = higher priority.
 func (m *Manager) selectByQuotaWeight(ctx context.Context, candidates []ProviderConfig) []ProviderConfig {
-	type weighted struct {
-		cfg    ProviderConfig
-		weight int64
-	}
 	items := make([]weighted, 0, len(candidates))
 	for _, cfg := range candidates {
 		w := int64(0)
