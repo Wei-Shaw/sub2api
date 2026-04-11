@@ -260,7 +260,7 @@ function startPolling() {
   const orderId = Number(route.query.order_id)
   if (!orderId) return
   pollTimer = setInterval(async () => {
-    const o = await paymentStore.pollOrderStatus(orderId)
+    const o = await paymentStore.syncOrderStatus(orderId)
     if (!o) return
     if (o.status === 'COMPLETED' || o.status === 'PAID') {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null }

@@ -57,6 +57,11 @@ export const paymentAPI = {
     return apiClient.get<PaymentOrder>(`/payment/orders/${id}`)
   },
 
+  /** Sync order status with upstream provider (complements webhooks) */
+  syncOrder(id: number) {
+    return apiClient.post<PaymentOrder>(`/payment/orders/${id}/sync`)
+  },
+
   /** Cancel a pending order */
   cancelOrder(id: number) {
     return apiClient.post(`/payment/orders/${id}/cancel`)

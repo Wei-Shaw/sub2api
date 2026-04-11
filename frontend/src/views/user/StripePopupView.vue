@@ -152,7 +152,8 @@ function startPolling() {
     try {
       const token = document.cookie.split('; ').find(c => c.startsWith('token='))?.split('=')[1]
         || localStorage.getItem('token') || ''
-      const res = await fetch('/api/v1/payment/orders/' + orderId, {
+      const res = await fetch('/api/v1/payment/orders/' + orderId + '/sync', {
+        method: 'POST',
         headers: token ? { Authorization: 'Bearer ' + token } : {},
         credentials: 'include',
       })

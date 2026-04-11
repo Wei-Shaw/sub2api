@@ -537,7 +537,7 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
     if (result.client_secret) {
       // Stripe: show Payment Element inline (user picks method → confirms → redirect if needed)
       paymentState.value = {
-        orderId: result.order_id, qrCode: '', expiresAt: '',
+        orderId: result.order_id, qrCode: '', expiresAt: result.expires_at || '',
         paymentType: selectedMethod.value, payUrl: '',
         clientSecret: result.client_secret, payAmount: result.pay_amount,
         orderType,

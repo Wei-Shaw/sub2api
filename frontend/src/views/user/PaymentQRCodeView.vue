@@ -133,7 +133,7 @@ async function renderQR() {
 
 async function pollStatus() {
   if (!orderId.value) return
-  const order = await paymentStore.pollOrderStatus(orderId.value)
+  const order = await paymentStore.syncOrderStatus(orderId.value)
   if (!order) return
   if (order.status === 'COMPLETED' || order.status === 'PAID') {
     cleanup()
