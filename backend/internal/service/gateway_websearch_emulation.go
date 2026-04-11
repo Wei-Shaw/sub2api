@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -147,6 +148,13 @@ func (s *GatewayService) handleWebSearchEmulation(
 
 	resp, providerName, err := doWebSearch(ctx, account, query)
 	if err != nil {
+		// Proxy unavailable → trigger account switch via UpstreamFailoverError
+		if errors.Is(err, websearch.ErrProxyUnavailable) {
+			return nil, &UpstreamFailoverError{
+				StatusCode:   http.StatusBadGateway,
+				ResponseBody: []byte(err.Error()),
+			}
+		}
 		return nil, err
 	}
 
