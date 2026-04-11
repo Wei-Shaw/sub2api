@@ -46,19 +46,23 @@ REDACTED
 
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
-	settingService   *service.SettingService
-	emailService     *service.EmailService
-	turnstileService *service.TurnstileService
-	opsService       *service.OpsService
+	settingService       *service.SettingService
+	emailService         *service.EmailService
+	turnstileService     *service.TurnstileService
+	opsService           *service.OpsService
+	paymentConfigService *service.PaymentConfigService
+	paymentService       *service.PaymentService
 REDACTED
 
 // NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService) *SettingHandler {
+func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService) *SettingHandler {
 	return &SettingHandler{
-		settingService:   settingService,
-		emailService:     emailService,
-		turnstileService: turnstileService,
-		opsService:       opsService,
+		settingService:       settingService,
+		emailService:         emailService,
+		turnstileService:     turnstileService,
+		opsService:           opsService,
+		paymentConfigService: paymentConfigService,
+		paymentService:       paymentService,
 REDACTED
 REDACTED
 
@@ -79,6 +83,15 @@ REDACTED
 			GroupID:      sub.GroupID,
 			ValidityDays: sub.ValidityDays,
 	REDACTED)
+REDACTED
+
+	// Load payment config
+	var paymentCfg *service.PaymentConfig
+	if h.paymentConfigService != nil {
+		paymentCfg, _ = h.paymentConfigService.GetPaymentConfig(c.Request.Context())
+REDACTED
+	if paymentCfg == nil {
+		paymentCfg = &service.PaymentConfig{REDACTED
 REDACTED
 
 	response.Success(c, dto.SystemSettings{
@@ -137,6 +150,8 @@ REDACTED
 		HideCcsImportButton:                  settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:          settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:              settings.PurchaseSubscriptionURL,
+		TableDefaultPageSize:                 settings.TableDefaultPageSize,
+		TablePageSizeOptions:                 settings.TablePageSizeOptions,
 		CustomMenuItems:                      dto.ParseCustomMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                      dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                   settings.DefaultConcurrency,
@@ -160,6 +175,24 @@ REDACTED
 		EnableFingerprintUnification:         settings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            settings.EnableMetadataPassthrough,
 		EnableCCHSigning:                     settings.EnableCCHSigning,
+		PaymentEnabled:                       paymentCfg.Enabled,
+		PaymentMinAmount:                     paymentCfg.MinAmount,
+		PaymentMaxAmount:                     paymentCfg.MaxAmount,
+		PaymentDailyLimit:                    paymentCfg.DailyLimit,
+		PaymentOrderTimeoutMin:               paymentCfg.OrderTimeoutMin,
+		PaymentMaxPendingOrders:              paymentCfg.MaxPendingOrders,
+		PaymentEnabledTypes:                  paymentCfg.EnabledTypes,
+		PaymentBalanceDisabled:               paymentCfg.BalanceDisabled,
+		PaymentLoadBalanceStrat:              paymentCfg.LoadBalanceStrategy,
+		PaymentProductNamePrefix:             paymentCfg.ProductNamePrefix,
+		PaymentProductNameSuffix:             paymentCfg.ProductNameSuffix,
+		PaymentHelpImageURL:                  paymentCfg.HelpImageURL,
+		PaymentHelpText:                      paymentCfg.HelpText,
+		PaymentCancelRateLimitEnabled:        paymentCfg.CancelRateLimitEnabled,
+		PaymentCancelRateLimitMax:            paymentCfg.CancelRateLimitMax,
+		PaymentCancelRateLimitWindow:         paymentCfg.CancelRateLimitWindow,
+		PaymentCancelRateLimitUnit:           paymentCfg.CancelRateLimitUnit,
+		PaymentCancelRateLimitMode:           paymentCfg.CancelRateLimitMode,
 REDACTED)
 REDACTED
 
@@ -230,6 +263,8 @@ type UpdateSettingsRequest struct {
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
+	TableDefaultPageSize        int                   `json:"table_default_page_size"`
+	TablePageSizeOptions        []int                 `json:"table_page_size_options"`
 	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
 
@@ -268,6 +303,28 @@ type UpdateSettingsRequest struct {
 	EnableFingerprintUnification *bool `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough    *bool `json:"enable_metadata_passthrough"`
 	EnableCCHSigning             *bool `json:"enable_cch_signing"`
+
+	// Payment configuration (integrated into settings, full replace)
+	PaymentEnabled           *bool    `json:"payment_enabled"`
+	PaymentMinAmount         *float64 `json:"payment_min_amount"`
+	PaymentMaxAmount         *float64 `json:"payment_max_amount"`
+	PaymentDailyLimit        *float64 `json:"payment_daily_limit"`
+	PaymentOrderTimeoutMin   *int     `json:"payment_order_timeout_minutes"`
+	PaymentMaxPendingOrders  *int     `json:"payment_max_pending_orders"`
+	PaymentEnabledTypes      []string `json:"payment_enabled_types"`
+	PaymentBalanceDisabled   *bool    `json:"payment_balance_disabled"`
+	PaymentLoadBalanceStrat  *string  `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix *string  `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix *string  `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL      *string  `json:"payment_help_image_url"`
+	PaymentHelpText          *string  `json:"payment_help_text"`
+
+	// Cancel rate limit
+	PaymentCancelRateLimitEnabled *bool   `json:"payment_cancel_rate_limit_enabled"`
+	PaymentCancelRateLimitMax     *int    `json:"payment_cancel_rate_limit_max"`
+	PaymentCancelRateLimitWindow  *int    `json:"payment_cancel_rate_limit_window"`
+	PaymentCancelRateLimitUnit    *string `json:"payment_cancel_rate_limit_unit"`
+	PaymentCancelRateLimitMode    *string `json:"payment_cancel_rate_limit_window_mode"`
 REDACTED
 
 // UpdateSettings 更新系统设置
@@ -291,6 +348,13 @@ REDACTED
 REDACTED
 	if req.DefaultBalance < 0 {
 		req.DefaultBalance = 0
+REDACTED
+	// 通用表格配置：兼容旧客户端未传字段时保留当前值。
+	if req.TableDefaultPageSize <= 0 {
+		req.TableDefaultPageSize = previousSettings.TableDefaultPageSize
+REDACTED
+	if req.TablePageSizeOptions == nil {
+		req.TablePageSizeOptions = previousSettings.TablePageSizeOptions
 REDACTED
 	req.SMTPHost = strings.TrimSpace(req.SMTPHost)
 	req.SMTPUsername = strings.TrimSpace(req.SMTPUsername)
@@ -757,6 +821,8 @@ REDACTED
 		HideCcsImportButton:              req.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:      purchaseEnabled,
 		PurchaseSubscriptionURL:          purchaseURL,
+		TableDefaultPageSize:             req.TableDefaultPageSize,
+		TablePageSizeOptions:             req.TablePageSizeOptions,
 		CustomMenuItems:                  customMenuJSON,
 		CustomEndpoints:                  customEndpointsJSON,
 		DefaultConcurrency:               req.DefaultConcurrency,
@@ -822,6 +888,39 @@ REDACTED
 		return
 REDACTED
 
+	// Update payment configuration (integrated into system settings).
+	// Skip if no payment fields were provided (prevents accidental wipe).
+	if h.paymentConfigService != nil && hasPaymentFields(req) {
+		paymentReq := service.UpdatePaymentConfigRequest{
+			Enabled:                req.PaymentEnabled,
+			MinAmount:              req.PaymentMinAmount,
+			MaxAmount:              req.PaymentMaxAmount,
+			DailyLimit:             req.PaymentDailyLimit,
+			OrderTimeoutMin:        req.PaymentOrderTimeoutMin,
+			MaxPendingOrders:       req.PaymentMaxPendingOrders,
+			EnabledTypes:           req.PaymentEnabledTypes,
+			BalanceDisabled:        req.PaymentBalanceDisabled,
+			LoadBalanceStrategy:    req.PaymentLoadBalanceStrat,
+			ProductNamePrefix:      req.PaymentProductNamePrefix,
+			ProductNameSuffix:      req.PaymentProductNameSuffix,
+			HelpImageURL:           req.PaymentHelpImageURL,
+			HelpText:               req.PaymentHelpText,
+			CancelRateLimitEnabled: req.PaymentCancelRateLimitEnabled,
+			CancelRateLimitMax:     req.PaymentCancelRateLimitMax,
+			CancelRateLimitWindow:  req.PaymentCancelRateLimitWindow,
+			CancelRateLimitUnit:    req.PaymentCancelRateLimitUnit,
+			CancelRateLimitMode:    req.PaymentCancelRateLimitMode,
+	REDACTED
+		if err := h.paymentConfigService.UpdatePaymentConfig(c.Request.Context(), paymentReq); err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
+		// Refresh in-memory provider registry so config changes take effect immediately
+		if h.paymentService != nil {
+			h.paymentService.RefreshProviders(c.Request.Context())
+	REDACTED
+REDACTED
+
 	h.auditSettingsUpdate(c, previousSettings, settings, req)
 
 	// 重新获取设置返回
@@ -836,6 +935,15 @@ REDACTED
 			GroupID:      sub.GroupID,
 			ValidityDays: sub.ValidityDays,
 	REDACTED)
+REDACTED
+
+	// Reload payment config for response
+	var updatedPaymentCfg *service.PaymentConfig
+	if h.paymentConfigService != nil {
+		updatedPaymentCfg, _ = h.paymentConfigService.GetPaymentConfig(c.Request.Context())
+REDACTED
+	if updatedPaymentCfg == nil {
+		updatedPaymentCfg = &service.PaymentConfig{REDACTED
 REDACTED
 
 	response.Success(c, dto.SystemSettings{
@@ -894,6 +1002,8 @@ REDACTED
 		HideCcsImportButton:                  updatedSettings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:          updatedSettings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:              updatedSettings.PurchaseSubscriptionURL,
+		TableDefaultPageSize:                 updatedSettings.TableDefaultPageSize,
+		TablePageSizeOptions:                 updatedSettings.TablePageSizeOptions,
 		CustomMenuItems:                      dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
 		CustomEndpoints:                      dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
@@ -917,7 +1027,38 @@ REDACTED
 		EnableFingerprintUnification:         updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                     updatedSettings.EnableCCHSigning,
+		PaymentEnabled:                       updatedPaymentCfg.Enabled,
+		PaymentMinAmount:                     updatedPaymentCfg.MinAmount,
+		PaymentMaxAmount:                     updatedPaymentCfg.MaxAmount,
+		PaymentDailyLimit:                    updatedPaymentCfg.DailyLimit,
+		PaymentOrderTimeoutMin:               updatedPaymentCfg.OrderTimeoutMin,
+		PaymentMaxPendingOrders:              updatedPaymentCfg.MaxPendingOrders,
+		PaymentEnabledTypes:                  updatedPaymentCfg.EnabledTypes,
+		PaymentBalanceDisabled:               updatedPaymentCfg.BalanceDisabled,
+		PaymentLoadBalanceStrat:              updatedPaymentCfg.LoadBalanceStrategy,
+		PaymentProductNamePrefix:             updatedPaymentCfg.ProductNamePrefix,
+		PaymentProductNameSuffix:             updatedPaymentCfg.ProductNameSuffix,
+		PaymentHelpImageURL:                  updatedPaymentCfg.HelpImageURL,
+		PaymentHelpText:                      updatedPaymentCfg.HelpText,
+		PaymentCancelRateLimitEnabled:        updatedPaymentCfg.CancelRateLimitEnabled,
+		PaymentCancelRateLimitMax:            updatedPaymentCfg.CancelRateLimitMax,
+		PaymentCancelRateLimitWindow:         updatedPaymentCfg.CancelRateLimitWindow,
+		PaymentCancelRateLimitUnit:           updatedPaymentCfg.CancelRateLimitUnit,
+		PaymentCancelRateLimitMode:           updatedPaymentCfg.CancelRateLimitMode,
 REDACTED)
+REDACTED
+
+// hasPaymentFields returns true if any payment-related field was explicitly provided.
+func hasPaymentFields(req UpdateSettingsRequest) bool {
+	return req.PaymentEnabled != nil || req.PaymentMinAmount != nil ||
+		req.PaymentMaxAmount != nil || req.PaymentDailyLimit != nil ||
+		req.PaymentOrderTimeoutMin != nil || req.PaymentMaxPendingOrders != nil ||
+		req.PaymentEnabledTypes != nil || req.PaymentBalanceDisabled != nil ||
+		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
+		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
+		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||
+		req.PaymentCancelRateLimitMax != nil || req.PaymentCancelRateLimitWindow != nil ||
+		req.PaymentCancelRateLimitUnit != nil || req.PaymentCancelRateLimitMode != nil
 REDACTED
 
 func (h *SettingHandler) auditSettingsUpdate(c *gin.Context, before *service.SystemSettings, after *service.SystemSettings, req UpdateSettingsRequest) {
@@ -1152,6 +1293,12 @@ REDACTED
 	if before.PurchaseSubscriptionURL != after.PurchaseSubscriptionURL {
 		changed = append(changed, "purchase_subscription_url")
 REDACTED
+	if before.TableDefaultPageSize != after.TableDefaultPageSize {
+		changed = append(changed, "table_default_page_size")
+REDACTED
+	if !equalIntSlice(before.TablePageSizeOptions, after.TablePageSizeOptions) {
+		changed = append(changed, "table_page_size_options")
+REDACTED
 	if before.CustomMenuItems != after.CustomMenuItems {
 		changed = append(changed, "custom_menu_items")
 REDACTED
@@ -1202,6 +1349,18 @@ func equalDefaultSubscriptions(a, b []service.DefaultSubscriptionSetting) bool {
 REDACTED
 	for i := range a {
 		if a[i].GroupID != b[i].GroupID || a[i].ValidityDays != b[i].ValidityDays {
+			return false
+	REDACTED
+REDACTED
+	return true
+REDACTED
+
+func equalIntSlice(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+REDACTED
+	for i := range a {
+		if a[i] != b[i] {
 			return false
 	REDACTED
 REDACTED

@@ -1788,6 +1788,48 @@
               </p>
             </div>
 
+            <!-- Global Table Preferences -->
+            <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+              <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                {{ t('admin.settings.site.tablePreferencesTitle') REDACTEDREDACTED
+              </h3>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.site.tablePreferencesDescription') REDACTEDREDACTED
+              </p>
+              <div class="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.site.tableDefaultPageSize') REDACTEDREDACTED
+                  </label>
+                  <input
+                    v-model.number="form.table_default_page_size"
+                    type="number"
+                    min="5"
+                    max="1000"
+                    step="1"
+                    class="input w-40"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.site.tableDefaultPageSizeHint') REDACTEDREDACTED
+                  </p>
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.site.tablePageSizeOptions') REDACTEDREDACTED
+                  </label>
+                  <input
+                    v-model="tablePageSizeOptionsInput"
+                    type="text"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.site.tablePageSizeOptionsPlaceholder')"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.site.tablePageSizeOptionsHint') REDACTEDREDACTED
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <!-- Custom Endpoints -->
             <div>
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -1947,70 +1989,6 @@
           </div>
         </div>
 
-        <!-- Purchase Subscription Page -->
-        <div class="card">
-          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('admin.settings.purchase.title') REDACTEDREDACTED
-            </h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {{ t('admin.settings.purchase.description') REDACTEDREDACTED
-            </p>
-          </div>
-          <div class="space-y-6 p-6">
-            <!-- Enable Toggle -->
-            <div class="flex items-center justify-between">
-              <div>
-                <label class="font-medium text-gray-900 dark:text-white">{{
-                  t('admin.settings.purchase.enabled')
-                REDACTEDREDACTED</label>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.purchase.enabledHint') REDACTEDREDACTED
-                </p>
-              </div>
-              <Toggle v-model="form.purchase_subscription_enabled" />
-            </div>
-
-            <!-- URL -->
-            <div>
-              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                {{ t('admin.settings.purchase.url') REDACTEDREDACTED
-              </label>
-              <input
-                v-model="form.purchase_subscription_url"
-                type="url"
-                class="input font-mono text-sm"
-                :placeholder="t('admin.settings.purchase.urlPlaceholder')"
-              />
-              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.settings.purchase.urlHint') REDACTEDREDACTED
-              </p>
-              <p class="mt-2 text-xs text-amber-600 dark:text-amber-400">
-                {{ t('admin.settings.purchase.iframeWarning') REDACTEDREDACTED
-              </p>
-            </div>
-
-            <!-- Integration Docs -->
-            <div class="flex items-center gap-2 text-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <a
-                href="https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/docs/ADMIN_PAYMENT_INTEGRATION_API.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-blue-600 hover:underline dark:text-blue-400"
-                download="ADMIN_PAYMENT_INTEGRATION_API.md"
-              >
-                {{ t('admin.settings.purchase.integrationDoc') REDACTEDREDACTED
-              </a>
-              <span class="text-gray-400 dark:text-gray-500">—</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.settings.purchase.integrationDocHint') REDACTEDREDACTED
-              </span>
-            </div>
-          </div>
-        </div>
 
         <!-- Custom Menu Items -->
         <div class="card">
@@ -2136,6 +2114,124 @@
         </div><!-- /Tab: General -->
 
         <!-- Tab: Email -->
+<!-- Tab: Payment -->
+        <div v-show="activeTab === 'payment'" class="space-y-6">
+
+        <!-- Payment System Settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.title') REDACTEDREDACTED</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.description') REDACTEDREDACTED</p>
+          </div>
+          <div class="space-y-4 p-6">
+            <!-- Enable toggle -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">{{ t('admin.settings.payment.enabled') REDACTEDREDACTED</label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.enabledHint') REDACTEDREDACTED</p>
+              </div>
+              <Toggle v-model="form.payment_enabled" />
+            </div>
+            <template v-if="form.payment_enabled">
+              <!-- Row 1: Product name -->
+              <div class="grid grid-cols-3 gap-3">
+                <div><label class="input-label">{{ t('admin.settings.payment.productNamePrefix') REDACTEDREDACTED</label><input v-model="form.payment_product_name_prefix" type="text" class="input" placeholder="Sub2API" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.productNameSuffix') REDACTEDREDACTED</label><input v-model="form.payment_product_name_suffix" type="text" class="input" placeholder="CNY" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.preview') REDACTEDREDACTED</label><div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300">{{ (form.payment_product_name_prefix || 'Sub2API') + ' 100 ' + (form.payment_product_name_suffix || 'CNY') REDACTEDREDACTED</div></div>
+              </div>
+              <!-- Row 2: Balance toggle + amounts -->
+              <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div><label class="input-label">{{ t('admin.settings.payment.minAmount') REDACTEDREDACTED</label><input :value="form.payment_min_amount || ''" @input="form.payment_min_amount = parseFloat(($event.target as HTMLInputElement).value) || 0" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.maxAmount') REDACTEDREDACTED</label><input :value="form.payment_max_amount || ''" @input="form.payment_max_amount = parseFloat(($event.target as HTMLInputElement).value) || 0" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') REDACTEDREDACTED</label><input :value="form.payment_daily_limit || ''" @input="form.payment_daily_limit = parseFloat(($event.target as HTMLInputElement).value) || 0" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
+                <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') REDACTEDREDACTED <span class="text-red-500">*</span></label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" required /><p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.payment.orderTimeoutHint') REDACTEDREDACTED</p></div>
+              </div>
+              <!-- Row 3: Pending orders + load balance + cancel rate limit (all in one row) -->
+              <div class="flex flex-wrap items-end gap-4">
+                <div class="w-28"><label class="input-label">{{ t('admin.settings.payment.maxPendingOrders') REDACTEDREDACTED</label><input v-model.number="form.payment_max_pending_orders" type="number" min="1" class="input" /></div>
+                <div>
+                  <label class="input-label">{{ t('admin.settings.payment.loadBalanceStrategy') REDACTEDREDACTED</label>
+                  <Select v-model="form.payment_load_balance_strategy" :options="loadBalanceOptions" class="w-40" />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.settings.payment.cancelRateLimit') REDACTEDREDACTED</label>
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      :class="[
+                        'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                        form.payment_cancel_rate_limit_enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+                      ]"
+                      @click="form.payment_cancel_rate_limit_enabled = !form.payment_cancel_rate_limit_enabled"
+                    >
+                      <span :class="[
+                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                        form.payment_cancel_rate_limit_enabled ? 'translate-x-5' : 'translate-x-0'
+                      ]" />
+                    </button>
+                    <Select v-model="form.payment_cancel_rate_limit_window_mode" :options="cancelRateLimitModeOptions" class="w-24" :disabled="!form.payment_cancel_rate_limit_enabled" />
+                    <span :class="['text-sm whitespace-nowrap', form.payment_cancel_rate_limit_enabled ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-600']">{{ t('admin.settings.payment.cancelRateLimitEvery') REDACTEDREDACTED</span>
+                    <input v-model.number="form.payment_cancel_rate_limit_window" type="number" min="1" required class="input w-14 text-center" :disabled="!form.payment_cancel_rate_limit_enabled" />
+                    <Select v-model="form.payment_cancel_rate_limit_unit" :options="cancelRateLimitUnitOptions" class="w-28" :disabled="!form.payment_cancel_rate_limit_enabled" />
+                    <span :class="['text-sm whitespace-nowrap', form.payment_cancel_rate_limit_enabled ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-600']">{{ t('admin.settings.payment.cancelRateLimitAllowMax') REDACTEDREDACTED</span>
+                    <input v-model.number="form.payment_cancel_rate_limit_max" type="number" min="1" required class="input w-14 text-center" :disabled="!form.payment_cancel_rate_limit_enabled" />
+                    <span :class="['text-sm whitespace-nowrap', form.payment_cancel_rate_limit_enabled ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-600']">{{ t('admin.settings.payment.cancelRateLimitTimes') REDACTEDREDACTED</span>
+                  </div>
+                </div>
+              </div>
+              <!-- Row 4: Enabled payment types (provider badges like sub2apipay) -->
+              <div>
+                <label class="input-label">{{ t('admin.settings.payment.enabledPaymentTypes') REDACTEDREDACTED</label>
+                <div class="mt-1.5 flex flex-wrap gap-2">
+                  <button
+                    v-for="pt in allPaymentTypes"
+                    :key="pt.value"
+                    type="button"
+                    @click="togglePaymentType(pt.value)"
+                    :class="[
+                      'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
+                      isPaymentTypeEnabled(pt.value)
+                        ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
+                        : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
+                    ]"
+                  >{{ pt.label REDACTEDREDACTED</button>
+                </div>
+              </div>
+              <!-- Row 5: Help image + text -->
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="input-label">{{ t('admin.settings.payment.helpImage') REDACTEDREDACTED</label>
+                  <ImageUpload v-model="form.payment_help_image_url" :placeholder="t('admin.settings.payment.helpImagePlaceholder')" />
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.settings.payment.helpText') REDACTEDREDACTED</label>
+                  <textarea v-model="form.payment_help_text" rows="3" class="input" :placeholder="t('admin.settings.payment.helpTextPlaceholder')"></textarea>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Provider Management -->
+        <PaymentProviderList
+          v-if="form.payment_enabled"
+          :providers="providers"
+          :loading="providersLoading"
+          :can-create="hasAnyPaymentTypeEnabled"
+          :enabled-payment-types="form.payment_enabled_types"
+          :all-payment-types="allPaymentTypes"
+          :redirect-label="t('admin.settings.payment.easypayRedirect')"
+          @refresh="loadProviders"
+          @create="openCreateProvider"
+          @edit="openEditProvider"
+          @delete="confirmDeleteProvider"
+          @toggle-field="handleToggleField"
+          @toggle-type="handleToggleType"
+          @reorder="handleReorderProviders"
+        />
+
+        </div>
+
         <div v-show="activeTab === 'email'" class="space-y-6">
         <!-- Email disabled hint - show when email_verify_enabled is off -->
         <div v-if="!form.email_verify_enabled" class="card">
@@ -2388,6 +2484,21 @@
           </button>
         </div>
       </form>
+
+      <!-- Provider dialogs placed outside the settings form to prevent form submission bubbling -->
+      <PaymentProviderDialog
+        ref="providerDialogRef"
+        :show="showProviderDialog"
+        :saving="providerSaving"
+        :editing="editingProvider"
+        :all-key-options="providerKeyOptions"
+        :enabled-key-options="enabledProviderKeyOptions"
+        :all-payment-types="allPaymentTypes"
+        :redirect-label="t('admin.settings.payment.easypayRedirect')"
+        @close="showProviderDialog = false"
+        @save="handleSaveProvider"
+      />
+      <ConfirmDialog :show="showDeleteProviderDialog" :title="t('admin.settings.payment.deleteProvider')" :message="t('admin.settings.payment.deleteProviderConfirm')" :confirm-text="t('common.delete')" danger @confirm="handleDeleteProvider" @cancel="showDeleteProviderDialog = false" />
     </div>
   </AppLayout>
 </template>
@@ -2402,15 +2513,20 @@ import type {
   DefaultSubscriptionSetting
 REDACTED from '@/api/admin/settings'
 import type { AdminGroup REDACTED from '@/types'
+import type { ProviderInstance REDACTED from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import PaymentProviderList from '@/components/payment/PaymentProviderList.vue'
+import PaymentProviderDialog from '@/components/payment/PaymentProviderDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import ImageUpload from '@/components/common/ImageUpload.vue'
 import BackupSettings from '@/views/admin/BackupView.vue'
 import { useClipboard REDACTED from '@/composables/useClipboard'
+import { extractApiErrorMessage REDACTED from '@/utils/apiError'
 import { useAppStore REDACTED from '@/stores'
 import { useAdminSettingsStore REDACTED from '@/stores/adminSettings'
 import {
@@ -2424,13 +2540,14 @@ const { t REDACTED = useI18n()
 const appStore = useAppStore()
 const adminSettingsStore = useAdminSettingsStore()
 
-type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'email' | 'backup'
+type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'payment' | 'email' | 'backup'
 const activeTab = ref<SettingsTab>('general')
 const settingsTabs = [
   { key: 'general'  as SettingsTab, icon: 'home'   as const REDACTED,
   { key: 'security' as SettingsTab, icon: 'shield' as const REDACTED,
   { key: 'users'    as SettingsTab, icon: 'user'   as const REDACTED,
   { key: 'gateway'  as SettingsTab, icon: 'server' as const REDACTED,
+  { key: 'payment'  as SettingsTab, icon: 'creditCard' as const REDACTED,
   { key: 'email'    as SettingsTab, icon: 'mail'   as const REDACTED,
   { key: 'backup'   as SettingsTab, icon: 'database' as const REDACTED,
 ]
@@ -2445,6 +2562,7 @@ const smtpPasswordManuallyEdited = ref(false)
 const testEmailAddress = ref('')
 const registrationEmailSuffixWhitelistTags = ref<string[]>([])
 const registrationEmailSuffixWhitelistDraft = ref('')
+const tablePageSizeOptionsInput = ref('10, 20, 50, 100')
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true)
@@ -2499,6 +2617,10 @@ const betaPolicyForm = reactive({
   REDACTED>
 REDACTED)
 
+const tablePageSizeMin = 5
+const tablePageSizeMax = 1000
+const tablePageSizeDefault = 20
+
 interface DefaultSubscriptionGroupOption {
   value: number
   label: string
@@ -2537,8 +2659,9 @@ const form = reactive<SettingsForm>({
   home_content: '',
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
-  purchase_subscription_enabled: false,
-  purchase_subscription_url: '',
+  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_enabled_types: [],  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',  payment_cancel_rate_limit_enabled: false,  payment_cancel_rate_limit_max: 10,  payment_cancel_rate_limit_window: 1,  payment_cancel_rate_limit_unit: 'day',  payment_cancel_rate_limit_window_mode: 'rolling',
+  table_default_page_size: tablePageSizeDefault,
+  table_page_size_options: [10, 20, 50, 100],
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: numberREDACTED>,
   custom_endpoints: [] as Array<{name: string; endpoint: string; description: stringREDACTED>,
   frontend_url: '',
@@ -2762,12 +2885,47 @@ function removeEndpoint(index: number) {
   form.custom_endpoints.splice(index, 1)
 REDACTED
 
+function formatTablePageSizeOptions(options: number[]): string {
+  return options.join(', ')
+REDACTED
+
+function parseTablePageSizeOptionsInput(raw: string): number[] | null {
+  const tokens = raw
+    .split(',')
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0)
+
+  if (tokens.length === 0) {
+    return null
+  REDACTED
+
+  const parsed = tokens.map((token) => Number(token))
+  if (parsed.some((value) => !Number.isInteger(value))) {
+    return null
+  REDACTED
+
+  const deduped = Array.from(new Set(parsed)).sort((a, b) => a - b)
+  if (
+    deduped.some((value) => value < tablePageSizeMin || value > tablePageSizeMax)
+  ) {
+    return null
+  REDACTED
+
+  return deduped
+REDACTED
+
 async function loadSettings() {
   loading.value = true
   loadFailed.value = false
   try {
     const settings = await adminAPI.settings.getSettings()
-    Object.assign(form, settings)
+    settings.payment_load_balance_strategy = settings.payment_load_balance_strategy || 'round-robin'
+    // Only assign non-null values from backend (null means unconfigured, keep defaults)
+    for (const [key, value] of Object.entries(settings)) {
+      if (value !== null && value !== undefined) {
+        (form as Record<string, unknown>)[key] = value
+      REDACTED
+    REDACTED
     form.backend_mode_enabled = settings.backend_mode_enabled
     form.default_subscriptions = Array.isArray(settings.default_subscriptions)
       ? settings.default_subscriptions
@@ -2780,17 +2938,18 @@ async function loadSettings() {
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       settings.registration_email_suffix_whitelist
     )
+    tablePageSizeOptionsInput.value = formatTablePageSizeOptions(
+      Array.isArray(settings.table_page_size_options) ? settings.table_page_size_options : [10, 20, 50, 100]
+    )
     registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''
     smtpPasswordManuallyEdited.value = false
     form.turnstile_secret_key = ''
     form.linuxdo_connect_client_secret = ''
     form.oidc_connect_client_secret = ''
-  REDACTED catch (error: any) {
+  REDACTED catch (error: unknown) {
     loadFailed.value = true
-    appStore.showError(
-      t('admin.settings.failedToLoad') + ': ' + (error.message || t('common.unknownError'))
-    )
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.failedToLoad')))
   REDACTED finally {
     loading.value = false
   REDACTED
@@ -2802,8 +2961,7 @@ async function loadSubscriptionGroups() {
     subscriptionGroups.value = groups.filter(
       (group) => group.subscription_type === 'subscription' && group.status === 'active'
     )
-  REDACTED catch (error) {
-    console.error('Failed to load subscription groups:', error)
+  REDACTED catch (_error: unknown) {
     subscriptionGroups.value = []
   REDACTED
 REDACTED
@@ -2826,6 +2984,37 @@ REDACTED
 async function saveSettings() {
   saving.value = true
   try {
+    const normalizedTableDefaultPageSize = Math.floor(Number(form.table_default_page_size))
+    if (
+      !Number.isInteger(normalizedTableDefaultPageSize) ||
+      normalizedTableDefaultPageSize < tablePageSizeMin ||
+      normalizedTableDefaultPageSize > tablePageSizeMax
+    ) {
+      appStore.showError(
+        t('admin.settings.site.tableDefaultPageSizeRangeError', {
+          min: tablePageSizeMin,
+          max: tablePageSizeMax
+        REDACTED)
+      )
+      return
+    REDACTED
+
+    const normalizedTablePageSizeOptions = parseTablePageSizeOptionsInput(
+      tablePageSizeOptionsInput.value
+    )
+    if (!normalizedTablePageSizeOptions) {
+      appStore.showError(
+        t('admin.settings.site.tablePageSizeOptionsFormatError', {
+          min: tablePageSizeMin,
+          max: tablePageSizeMax
+        REDACTED)
+      )
+      return
+    REDACTED
+
+    form.table_default_page_size = normalizedTableDefaultPageSize
+    form.table_page_size_options = normalizedTablePageSizeOptions
+
     const normalizedDefaultSubscriptions = form.default_subscriptions
       .filter((item) => item.group_id > 0 && item.validity_days > 0)
       .map((item: DefaultSubscriptionSetting) => ({
@@ -2863,21 +3052,6 @@ async function saveSettings() {
     // Optional URL fields: auto-clear invalid values so they don't cause backend 400 errors
     if (!isValidHttpUrl(form.frontend_url)) form.frontend_url = ''
     if (!isValidHttpUrl(form.doc_url)) form.doc_url = ''
-    // Purchase URL: required when enabled; auto-clear when disabled to avoid backend rejection
-    if (form.purchase_subscription_enabled) {
-      if (!form.purchase_subscription_url) {
-        appStore.showError(t('admin.settings.purchase.url') + ': URL is required when purchase is enabled')
-        saving.value = false
-        return
-      REDACTED
-      if (!isValidHttpUrl(form.purchase_subscription_url)) {
-        appStore.showError(t('admin.settings.purchase.url') + ': must be an absolute http(s) URL (e.g. https://example.com)')
-        saving.value = false
-        return
-      REDACTED
-    REDACTED else if (!isValidHttpUrl(form.purchase_subscription_url)) {
-      form.purchase_subscription_url = ''
-    REDACTED
 
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
@@ -2901,8 +3075,8 @@ async function saveSettings() {
       home_content: form.home_content,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,
-      purchase_subscription_enabled: form.purchase_subscription_enabled,
-      purchase_subscription_url: form.purchase_subscription_url,
+      table_default_page_size: form.table_default_page_size,
+      table_page_size_options: form.table_page_size_options,
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,
@@ -2954,12 +3128,39 @@ async function saveSettings() {
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
-      enable_cch_signing: form.enable_cch_signing
+      enable_cch_signing: form.enable_cch_signing,
+      // Payment configuration
+      payment_enabled: form.payment_enabled,
+      payment_min_amount: Number(form.payment_min_amount) || 0,
+      payment_max_amount: Number(form.payment_max_amount) || 0,
+      payment_daily_limit: Number(form.payment_daily_limit) || 0,
+      payment_max_pending_orders: Number(form.payment_max_pending_orders) || 0,
+      payment_order_timeout_minutes: Number(form.payment_order_timeout_minutes) || 0,
+      payment_balance_disabled: form.payment_balance_disabled,
+      payment_enabled_types: form.payment_enabled_types,
+      payment_load_balance_strategy: form.payment_load_balance_strategy,
+      payment_product_name_prefix: form.payment_product_name_prefix,
+      payment_product_name_suffix: form.payment_product_name_suffix,
+      payment_help_image_url: form.payment_help_image_url,
+      payment_help_text: form.payment_help_text,
+      payment_cancel_rate_limit_enabled: form.payment_cancel_rate_limit_enabled,
+      payment_cancel_rate_limit_max: Number(form.payment_cancel_rate_limit_max) || 10,
+      payment_cancel_rate_limit_window: Number(form.payment_cancel_rate_limit_window) || 1,
+      payment_cancel_rate_limit_unit: form.payment_cancel_rate_limit_unit,
+      payment_cancel_rate_limit_window_mode: form.payment_cancel_rate_limit_window_mode,
     REDACTED
+
     const updated = await adminAPI.settings.updateSettings(payload)
-    Object.assign(form, updated)
+    for (const [key, value] of Object.entries(updated)) {
+      if (value !== null && value !== undefined) {
+        (form as Record<string, unknown>)[key] = value
+      REDACTED
+    REDACTED
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       updated.registration_email_suffix_whitelist
+    )
+    tablePageSizeOptionsInput.value = formatTablePageSizeOptions(
+      Array.isArray(updated.table_page_size_options) ? updated.table_page_size_options : [10, 20, 50, 100]
     )
     registrationEmailSuffixWhitelistDraft.value = ''
     form.smtp_password = ''
@@ -2971,10 +3172,8 @@ async function saveSettings() {
     await appStore.fetchPublicSettings(true)
     await adminSettingsStore.fetch(true)
     appStore.showSuccess(t('admin.settings.settingsSaved'))
-  REDACTED catch (error: any) {
-    appStore.showError(
-      t('admin.settings.failedToSave') + ': ' + (error.message || t('common.unknownError'))
-    )
+  REDACTED catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.failedToSave')))
   REDACTED finally {
     saving.value = false
   REDACTED
@@ -2993,10 +3192,8 @@ async function testSmtpConnection() {
     REDACTED)
     // API returns { message: "..." REDACTED on success, errors are thrown as exceptions
     appStore.showSuccess(result.message || t('admin.settings.smtpConnectionSuccess'))
-  REDACTED catch (error: any) {
-    appStore.showError(
-      t('admin.settings.failedToTestSmtp') + ': ' + (error.message || t('common.unknownError'))
-    )
+  REDACTED catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.failedToTestSmtp')))
   REDACTED finally {
     testingSmtp.value = false
   REDACTED
@@ -3023,10 +3220,8 @@ async function sendTestEmail() {
     REDACTED)
     // API returns { message: "..." REDACTED on success, errors are thrown as exceptions
     appStore.showSuccess(result.message || t('admin.settings.testEmailSent'))
-  REDACTED catch (error: any) {
-    appStore.showError(
-      t('admin.settings.failedToSendTestEmail') + ': ' + (error.message || t('common.unknownError'))
-    )
+  REDACTED catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.failedToSendTestEmail')))
   REDACTED finally {
     sendingTestEmail.value = false
   REDACTED
@@ -3039,8 +3234,8 @@ async function loadAdminApiKey() {
     const status = await adminAPI.settings.getAdminApiKey()
     adminApiKeyExists.value = status.exists
     adminApiKeyMasked.value = status.masked_key
-  REDACTED catch (error: any) {
-    console.error('Failed to load admin API key status:', error)
+  REDACTED catch (_error: unknown) {
+    // Silent fail - admin API key status is non-critical
   REDACTED finally {
     adminApiKeyLoading.value = false
   REDACTED
@@ -3054,8 +3249,8 @@ async function createAdminApiKey() {
     adminApiKeyExists.value = true
     adminApiKeyMasked.value = result.key.substring(0, 10) + '...' + result.key.slice(-4)
     appStore.showSuccess(t('admin.settings.adminApiKey.keyGenerated'))
-  REDACTED catch (error: any) {
-    appStore.showError(error.message || t('common.error'))
+  REDACTED catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
   REDACTED finally {
     adminApiKeyOperating.value = false
   REDACTED
@@ -3075,8 +3270,8 @@ async function deleteAdminApiKey() {
     adminApiKeyMasked.value = ''
     newAdminApiKey.value = ''
     appStore.showSuccess(t('admin.settings.adminApiKey.keyDeleted'))
-  REDACTED catch (error: any) {
-    appStore.showError(error.message || t('common.error'))
+  REDACTED catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
   REDACTED finally {
     adminApiKeyOperating.value = false
   REDACTED
@@ -3099,8 +3294,8 @@ async function loadOverloadCooldownSettings() {
   try {
     const settings = await adminAPI.settings.getOverloadCooldownSettings()
     Object.assign(overloadCooldownForm, settings)
-  REDACTED catch (error: any) {
-    console.error('Failed to load overload cooldown settings:', error)
+  REDACTED catch (_error: unknown) {
+    // Silent fail - settings will use defaults
   REDACTED finally {
     overloadCooldownLoading.value = false
   REDACTED
@@ -3115,10 +3310,8 @@ async function saveOverloadCooldownSettings() {
     REDACTED)
     Object.assign(overloadCooldownForm, updated)
     appStore.showSuccess(t('admin.settings.overloadCooldown.saved'))
-  REDACTED catch (error: any) {
-    appStore.showError(
-      t('admin.settings.overloadCooldown.saveFailed') + ': ' + (error.message || t('common.unknownError'))
-    )
+  REDACTED catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.overloadCooldown.saveFailed')))
   REDACTED finally {
     overloadCooldownSaving.value = false
   REDACTED
@@ -3130,8 +3323,8 @@ async function loadStreamTimeoutSettings() {
   try {
     const settings = await adminAPI.settings.getStreamTimeoutSettings()
     Object.assign(streamTimeoutForm, settings)
-  REDACTED catch (error: any) {
-    console.error('Failed to load stream timeout settings:', error)
+  REDACTED catch (_error: unknown) {
+    // Silent fail - settings will use defaults
   REDACTED finally {
     streamTimeoutLoading.value = false
   REDACTED
@@ -3149,10 +3342,8 @@ async function saveStreamTimeoutSettings() {
     REDACTED)
     Object.assign(streamTimeoutForm, updated)
     appStore.showSuccess(t('admin.settings.streamTimeout.saved'))
-  REDACTED catch (error: any) {
-    appStore.showError(
-      t('admin.settings.streamTimeout.saveFailed') + ': ' + (error.message || t('common.unknownError'))
-    )
+  REDACTED catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.streamTimeout.saveFailed')))
   REDACTED finally {
     streamTimeoutSaving.value = false
   REDACTED
@@ -3168,8 +3359,8 @@ async function loadRectifierSettings() {
     if (!Array.isArray(rectifierForm.apikey_signature_patterns)) {
       rectifierForm.apikey_signature_patterns = []
     REDACTED
-  REDACTED catch (error: any) {
-    console.error('Failed to load rectifier settings:', error)
+  REDACTED catch (_error: unknown) {
+    // Silent fail - settings will use defaults
   REDACTED finally {
     rectifierLoading.value = false
   REDACTED
@@ -3192,10 +3383,8 @@ async function saveRectifierSettings() {
       rectifierForm.apikey_signature_patterns = []
     REDACTED
     appStore.showSuccess(t('admin.settings.rectifier.saved'))
-  REDACTED catch (error: any) {
-    appStore.showError(
-      t('admin.settings.rectifier.saveFailed') + ': ' + (error.message || t('common.unknownError'))
-    )
+  REDACTED catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.rectifier.saveFailed')))
   REDACTED finally {
     rectifierSaving.value = false
   REDACTED
@@ -3267,8 +3456,8 @@ async function loadBetaPolicySettings() {
   try {
     const settings = await adminAPI.settings.getBetaPolicySettings()
     betaPolicyForm.rules = settings.rules
-  REDACTED catch (error: any) {
-    console.error('Failed to load beta policy settings:', error)
+  REDACTED catch (_error: unknown) {
+    // Silent fail - settings will use defaults
   REDACTED finally {
     betaPolicyLoading.value = false
   REDACTED
@@ -3296,13 +3485,180 @@ async function saveBetaPolicySettings() {
     REDACTED)
     betaPolicyForm.rules = updated.rules
     appStore.showSuccess(t('admin.settings.betaPolicy.saved'))
-  REDACTED catch (error: any) {
-    appStore.showError(
-      t('admin.settings.betaPolicy.saveFailed') + ': ' + (error.message || t('common.unknownError'))
-    )
+  REDACTED catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.settings.betaPolicy.saveFailed')))
   REDACTED finally {
     betaPolicySaving.value = false
   REDACTED
+REDACTED
+
+// ==================== Provider Management ====================
+
+const allPaymentTypes = computed(() => [
+  { value: 'easypay', label: t('payment.methods.easypay') REDACTED,
+  { value: 'alipay', label: t('payment.methods.alipay') REDACTED,
+  { value: 'wxpay', label: t('payment.methods.wxpay') REDACTED,
+  { value: 'stripe', label: t('payment.methods.stripe') REDACTED,
+])
+
+function isPaymentTypeEnabled(type: string): boolean {
+  return form.payment_enabled_types.includes(type)
+REDACTED
+
+const hasAnyPaymentTypeEnabled = computed(() => form.payment_enabled_types.length > 0)
+
+function togglePaymentType(type: string) {
+  if (form.payment_enabled_types.includes(type)) {
+    form.payment_enabled_types = form.payment_enabled_types.filter(t => t !== type)
+    // Disable all provider instances matching this type
+    disableProvidersByType(type)
+  REDACTED else {
+    form.payment_enabled_types = [...form.payment_enabled_types, type]
+  REDACTED
+REDACTED
+
+async function disableProvidersByType(type: string) {
+  const matching = providers.value.filter(p => p.provider_key === type && p.enabled)
+  for (const p of matching) {
+    try {
+      await adminAPI.payment.updateProvider(p.id, { enabled: false REDACTED)
+      p.enabled = false
+    REDACTED catch (err: unknown) {
+      slog('disable provider failed', p.id, err)
+    REDACTED
+  REDACTED
+REDACTED
+
+function slog(...args: unknown[]) { console.warn('[payment]', ...args) REDACTED
+
+const providersLoading = ref(false)
+const providerSaving = ref(false)
+const providers = ref<ProviderInstance[]>([])
+const showProviderDialog = ref(false)
+const showDeleteProviderDialog = ref(false)
+const editingProvider = ref<ProviderInstance | null>(null)
+const deletingProviderId = ref<number | null>(null)
+const providerDialogRef = ref<InstanceType<typeof PaymentProviderDialog> | null>(null)
+
+const providerKeyOptions = computed(() => [
+  { value: 'easypay', label: t('admin.settings.payment.providerEasypay') REDACTED,
+  { value: 'alipay', label: t('admin.settings.payment.providerAlipay') REDACTED,
+  { value: 'wxpay', label: t('admin.settings.payment.providerWxpay') REDACTED,
+  { value: 'stripe', label: t('admin.settings.payment.providerStripe') REDACTED,
+])
+
+const enabledProviderKeyOptions = computed(() => {
+  const enabled = form.payment_enabled_types
+  return providerKeyOptions.value.filter(opt => enabled.includes(opt.value))
+REDACTED)
+
+const loadBalanceOptions = computed(() => [
+  { value: 'round-robin', label: t('admin.settings.payment.strategyRoundRobin') REDACTED,
+  { value: 'least-amount', label: t('admin.settings.payment.strategyLeastAmount') REDACTED,
+])
+
+const cancelRateLimitUnitOptions = computed(() => [
+  { value: 'minute', label: t('admin.settings.payment.cancelRateLimitUnitMinute') REDACTED,
+  { value: 'hour', label: t('admin.settings.payment.cancelRateLimitUnitHour') REDACTED,
+  { value: 'day', label: t('admin.settings.payment.cancelRateLimitUnitDay') REDACTED,
+])
+
+const cancelRateLimitModeOptions = computed(() => [
+  { value: 'rolling', label: t('admin.settings.payment.cancelRateLimitWindowModeRolling') REDACTED,
+  { value: 'fixed', label: t('admin.settings.payment.cancelRateLimitWindowModeFixed') REDACTED,
+])
+
+const paymentErrorMap = computed(() => ({
+  PENDING_ORDERS: t('payment.errors.PENDING_ORDERS'),
+REDACTED))
+
+async function loadProviders() {
+  providersLoading.value = true
+  try { const res = await adminAPI.payment.getProviders(); providers.value = res.data || [] REDACTED
+  catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) REDACTED
+  finally { providersLoading.value = false REDACTED
+REDACTED
+
+function openCreateProvider() {
+  editingProvider.value = null
+  providerDialogRef.value?.reset(enabledProviderKeyOptions.value[0]?.value || 'easypay')
+  showProviderDialog.value = true
+REDACTED
+
+function openEditProvider(provider: ProviderInstance) {
+  editingProvider.value = provider
+  providerDialogRef.value?.loadProvider(provider)
+  showProviderDialog.value = true
+REDACTED
+
+async function handleSaveProvider(payload: Partial<ProviderInstance>) {
+  providerSaving.value = true
+  try {
+    if (editingProvider.value) {
+      await adminAPI.payment.updateProvider(editingProvider.value.id, payload)
+    REDACTED else {
+      await adminAPI.payment.createProvider(payload)
+    REDACTED
+    showProviderDialog.value = false
+    // Reload full list (API returns decrypted/formatted data with correct sort order)
+    await loadProviders()
+    // Auto-save settings so provider changes take effect immediately
+    await saveSettings()
+  REDACTED catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value))
+  REDACTED finally {
+    providerSaving.value = false
+  REDACTED
+REDACTED
+
+async function handleToggleField(provider: ProviderInstance, field: 'enabled' | 'refund_enabled') {
+  const newValue = field === 'enabled' ? !provider.enabled : !provider.refund_enabled
+  try {
+    await adminAPI.payment.updateProvider(provider.id, { [field]: newValue REDACTED)
+    if (field === 'enabled') provider.enabled = newValue
+    else provider.refund_enabled = newValue
+  REDACTED catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value)) REDACTED
+REDACTED
+
+async function handleToggleType(provider: ProviderInstance, type: string) {
+  const updated = provider.supported_types.includes(type)
+    ? provider.supported_types.filter(t => t !== type)
+    : [...provider.supported_types, type]
+  try {
+    await adminAPI.payment.updateProvider(provider.id, { supported_types: updated REDACTED as any)
+    provider.supported_types = updated
+  REDACTED catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value)) REDACTED
+REDACTED
+
+function confirmDeleteProvider(provider: ProviderInstance) {
+  deletingProviderId.value = provider.id
+  showDeleteProviderDialog.value = true
+REDACTED
+
+async function handleReorderProviders(updates: { id: number; sort_order: number REDACTED[]) {
+  try {
+    await Promise.all(
+      updates.map(u => adminAPI.payment.updateProvider(u.id, { sort_order: u.sort_order REDACTED as Partial<ProviderInstance>))
+    )
+    // Update local state to match new order
+    for (const u of updates) {
+      const p = providers.value.find(p => p.id === u.id)
+      if (p) p.sort_order = u.sort_order
+    REDACTED
+  REDACTED catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    loadProviders()
+  REDACTED
+REDACTED
+
+async function handleDeleteProvider() {
+  if (!deletingProviderId.value) return
+  try {
+    await adminAPI.payment.deleteProvider(deletingProviderId.value)
+    appStore.showSuccess(t('common.deleted'))
+    showDeleteProviderDialog.value = false
+    loadProviders()
+  REDACTED catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value)) REDACTED
 REDACTED
 
 onMounted(() => {
@@ -3313,6 +3669,7 @@ onMounted(() => {
   loadStreamTimeoutSettings()
   loadRectifierSettings()
   loadBetaPolicySettings()
+  loadProviders()
 REDACTED)
 </script>
 

@@ -202,3 +202,24 @@ func TestParseDefaultSubscriptions_NormalizesValues(t *testing.T) {
 		{GroupID: 12, ValidityDays: MaxValidityDaysREDACTED,
 REDACTED, got)
 REDACTED
+
+func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
+	repo := &settingUpdateRepoStub{REDACTED
+	svc := NewSettingService(repo, &config.Config{REDACTED)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		TableDefaultPageSize:  50,
+		TablePageSizeOptions: []int{20, 50, 100REDACTED,
+REDACTED)
+REDACTED
+	require.Equal(t, "50", repo.updates[SettingKeyTableDefaultPageSize])
+	require.Equal(t, "[20,50,100]", repo.updates[SettingKeyTablePageSizeOptions])
+
+	err = svc.UpdateSettings(context.Background(), &SystemSettings{
+		TableDefaultPageSize:  1000,
+		TablePageSizeOptions: []int{20, 100REDACTED,
+REDACTED)
+REDACTED
+	require.Equal(t, "1000", repo.updates[SettingKeyTableDefaultPageSize])
+	require.Equal(t, "[20,100]", repo.updates[SettingKeyTablePageSizeOptions])
+REDACTED

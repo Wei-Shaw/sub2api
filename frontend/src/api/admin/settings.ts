@@ -38,8 +38,8 @@ export interface SystemSettings {
   doc_url: string
   home_content: string
   hide_ccs_import_button: boolean
-  purchase_subscription_enabled: boolean
-  purchase_subscription_url: string
+  table_default_page_size: number
+  table_page_size_options: number[]
   backend_mode_enabled: boolean
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
@@ -114,6 +114,26 @@ export interface SystemSettings {
   enable_fingerprint_unification: boolean
   enable_metadata_passthrough: boolean
   enable_cch_signing: boolean
+
+  // Payment configuration
+  payment_enabled: boolean
+  payment_min_amount: number
+  payment_max_amount: number
+  payment_daily_limit: number
+  payment_order_timeout_minutes: number
+  payment_max_pending_orders: number
+  payment_enabled_types: string[]
+  payment_balance_disabled: boolean
+  payment_load_balance_strategy: string
+  payment_product_name_prefix: string
+  payment_product_name_suffix: string
+  payment_help_image_url: string
+  payment_help_text: string
+  payment_cancel_rate_limit_enabled: boolean
+  payment_cancel_rate_limit_max: number
+  payment_cancel_rate_limit_window: number
+  payment_cancel_rate_limit_unit: string
+  payment_cancel_rate_limit_window_mode: string
 REDACTED
 
 export interface UpdateSettingsRequest {
@@ -136,8 +156,8 @@ export interface UpdateSettingsRequest {
   doc_url?: string
   home_content?: string
   hide_ccs_import_button?: boolean
-  purchase_subscription_enabled?: boolean
-  purchase_subscription_url?: string
+  table_default_page_size?: number
+  table_page_size_options?: number[]
   backend_mode_enabled?: boolean
   custom_menu_items?: CustomMenuItem[]
   custom_endpoints?: CustomEndpoint[]
@@ -194,6 +214,25 @@ export interface UpdateSettingsRequest {
   enable_fingerprint_unification?: boolean
   enable_metadata_passthrough?: boolean
   enable_cch_signing?: boolean
+  // Payment configuration
+  payment_enabled?: boolean
+  payment_min_amount?: number
+  payment_max_amount?: number
+  payment_daily_limit?: number
+  payment_order_timeout_minutes?: number
+  payment_max_pending_orders?: number
+  payment_enabled_types?: string[]
+  payment_balance_disabled?: boolean
+  payment_load_balance_strategy?: string
+  payment_product_name_prefix?: string
+  payment_product_name_suffix?: string
+  payment_help_image_url?: string
+  payment_help_text?: string
+  payment_cancel_rate_limit_enabled?: boolean
+  payment_cancel_rate_limit_max?: number
+  payment_cancel_rate_limit_window?: number
+  payment_cancel_rate_limit_unit?: string
+  payment_cancel_rate_limit_window_mode?: string
 REDACTED
 
 /**

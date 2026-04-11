@@ -13,6 +13,8 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
+const apiKeyAuthSnapshotVersion = 3
+
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
 	l1TTL         time.Duration
@@ -192,6 +194,9 @@ REDACTED
 	if entry.Snapshot == nil {
 		return nil, false, nil
 REDACTED
+	if entry.Snapshot.Version != apiKeyAuthSnapshotVersion {
+		return nil, false, nil
+REDACTED
 	return s.snapshotToAPIKey(key, entry.Snapshot), true, nil
 REDACTED
 
@@ -200,6 +205,7 @@ func (s *APIKeyService) snapshotFromAPIKey(apiKey *APIKey) *APIKeyAuthSnapshot {
 		return nil
 REDACTED
 	snapshot := &APIKeyAuthSnapshot{
+		Version:     apiKeyAuthSnapshotVersion,
 		APIKeyID:    apiKey.ID,
 		UserID:      apiKey.UserID,
 		GroupID:     apiKey.GroupID,
@@ -243,6 +249,7 @@ REDACTED
 			SupportedModelScopes:            apiKey.Group.SupportedModelScopes,
 			AllowMessagesDispatch:           apiKey.Group.AllowMessagesDispatch,
 			DefaultMappedModel:              apiKey.Group.DefaultMappedModel,
+			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
 	REDACTED
 REDACTED
 	return snapshot
@@ -298,6 +305,7 @@ REDACTED
 			SupportedModelScopes:            snapshot.Group.SupportedModelScopes,
 			AllowMessagesDispatch:           snapshot.Group.AllowMessagesDispatch,
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
+			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
 	REDACTED
 REDACTED
 	s.compileAPIKeyIPRules(apiKey)

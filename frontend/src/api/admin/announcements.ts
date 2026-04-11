@@ -17,10 +17,16 @@ export async function list(
   filters?: {
     status?: string
     search?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+  REDACTED,
+  options?: {
+    signal?: AbortSignal
   REDACTED
 ): Promise<BasePaginationResponse<Announcement>> {
   const { data REDACTED = await apiClient.get<BasePaginationResponse<Announcement>>('/admin/announcements', {
-    params: { page, page_size: pageSize, ...filters REDACTED
+    params: { page, page_size: pageSize, ...filters REDACTED,
+    signal: options?.signal
   REDACTED)
   return data
 REDACTED
@@ -49,11 +55,21 @@ export async function getReadStatus(
   id: number,
   page: number = 1,
   pageSize: number = 20,
-  search: string = ''
+  filters?: {
+    search?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+  REDACTED,
+  options?: {
+    signal?: AbortSignal
+  REDACTED
 ): Promise<BasePaginationResponse<AnnouncementUserReadStatus>> {
   const { data REDACTED = await apiClient.get<BasePaginationResponse<AnnouncementUserReadStatus>>(
     `/admin/announcements/${idREDACTED/read-status`,
-    { params: { page, page_size: pageSize, search REDACTED REDACTED
+    {
+      params: { page, page_size: pageSize, ...filters REDACTED,
+      signal: options?.signal
+    REDACTED
   )
   return data
 REDACTED
@@ -68,4 +84,3 @@ const announcementsAPI = {
 REDACTED
 
 export default announcementsAPI
-
