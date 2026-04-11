@@ -16,6 +16,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
 
@@ -55,13 +57,52 @@ REDACTED
 		compatPromptCacheInjected = promptCacheKey != ""
 REDACTED
 
-	// 3. Convert to Responses and forward
-	// ChatCompletionsToResponses always sets Stream=true (upstream always streams).
-	responsesReq, err := apicompat.ChatCompletionsToResponses(&chatReq)
-	if err != nil {
-		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
+	// 3. Build the upstream (Responses API) body.
+	//
+	// Cursor compatibility: some clients (notably Cursor cloud) send Responses
+	// API shaped bodies — `input: [...]` with no `messages` field — to the
+	// /v1/chat/completions URL. Running those through ChatCompletionsToResponses
+	// would silently drop Cursor's `input` array (the struct has no Input field)
+	// and produce `input: null`, which Codex upstreams reject with
+	// "Invalid type for 'input': expected a string, but got an object".
+	//
+	// Detect that shape and forward the raw body as-is, only rewriting `model`
+	// to the resolved upstream model. The downstream codex OAuth transform will
+	// still normalize store/stream/instructions/etc.
+	isResponsesShape := !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists()
+
+	var (
+		responsesReq  *apicompat.ResponsesRequest
+		responsesBody []byte
+		err           error
+	)
+	if isResponsesShape {
+		responsesBody, err = sjson.SetBytes(body, "model", upstreamModel)
+		if err != nil {
+			return nil, fmt.Errorf("rewrite model in responses-shape body: %w", err)
+	REDACTED
+		// Minimal stub populated from the raw body so downstream billing
+		// propagation (ServiceTier, ReasoningEffort) keeps working.
+		responsesReq = &apicompat.ResponsesRequest{
+			Model:       upstreamModel,
+			ServiceTier: gjson.GetBytes(responsesBody, "service_tier").String(),
+	REDACTED
+		if effort := gjson.GetBytes(responsesBody, "reasoning.effort").String(); effort != "" {
+			responsesReq.Reasoning = &apicompat.ResponsesReasoning{Effort: effortREDACTED
+	REDACTED
+REDACTED else {
+		// Normal path: convert Chat Completions → Responses.
+		// ChatCompletionsToResponses always sets Stream=true (upstream always streams).
+		responsesReq, err = apicompat.ChatCompletionsToResponses(&chatReq)
+		if err != nil {
+			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
+	REDACTED
+		responsesReq.Model = upstreamModel
+		responsesBody, err = json.Marshal(responsesReq)
+		if err != nil {
+			return nil, fmt.Errorf("marshal responses request: %w", err)
+	REDACTED
 REDACTED
-	responsesReq.Model = upstreamModel
 
 	logFields := []zap.Field{
 		zap.Int64("account_id", account.ID),
@@ -69,6 +110,7 @@ REDACTED
 		zap.String("billing_model", billingModel),
 		zap.String("upstream_model", upstreamModel),
 		zap.Bool("stream", clientStream),
+		zap.Bool("responses_shape", isResponsesShape),
 REDACTED
 	if compatPromptCacheInjected {
 		logFields = append(logFields,
@@ -77,12 +119,6 @@ REDACTED
 		)
 REDACTED
 	logger.L().Debug("openai chat_completions: model mapping applied", logFields...)
-
-	// 4. Marshal Responses request body, then apply OAuth codex transform
-	responsesBody, err := json.Marshal(responsesReq)
-	if err != nil {
-		return nil, fmt.Errorf("marshal responses request: %w", err)
-REDACTED
 
 	if account.Type == AccountTypeOAuth {
 		var reqBody map[string]any
