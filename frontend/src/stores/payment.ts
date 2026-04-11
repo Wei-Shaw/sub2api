@@ -81,8 +81,6 @@ export const usePaymentStore = defineStore('payment', () => {
     }
   }
 
-
-
   /** Clear current order state */
   function clearCurrentOrder() {
     currentOrder.value = null

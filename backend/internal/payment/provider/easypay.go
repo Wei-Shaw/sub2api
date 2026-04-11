@@ -286,12 +286,3 @@ func easyPaySign(params map[string]string, pkey string) string {
 func easyPayVerifySign(params map[string]string, pkey string, sign string) bool {
 	return hmac.Equal([]byte(easyPaySign(params, pkey)), []byte(sign))
 }
-
-// decodeURLValue URL-decodes a string once.
-func decodeURLValue(s string) string {
-	decoded, err := url.QueryUnescape(s)
-	if err != nil {
-		return s
-	}
-	return decoded
-}
