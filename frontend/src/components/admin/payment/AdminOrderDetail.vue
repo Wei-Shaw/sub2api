@@ -113,6 +113,7 @@
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { PaymentOrder } from '@/types/payment'
+import { statusBadgeClass, canRefund as canRefundStatus, formatOrderDateTime } from '@/components/payment/orderUtils'
 
 const { t } = useI18n()
 
@@ -128,22 +129,11 @@ const emit = defineEmits<{
   (e: 'refund', order: PaymentOrder): void
 }>()
 
-function statusBadgeClass(status: string): string {
-  const m: Record<string, string> = {
-    PENDING: 'badge-warning', PAID: 'badge-info', RECHARGING: 'badge-info',
-    COMPLETED: 'badge-success', EXPIRED: 'badge-secondary', CANCELLED: 'badge-secondary',
-    FAILED: 'badge-danger', REFUND_REQUESTED: 'badge-warning', REFUNDING: 'badge-warning',
-    PARTIALLY_REFUNDED: 'badge-warning', REFUNDED: 'badge-info', REFUND_FAILED: 'badge-danger',
-  }
-  return m[status] || 'badge-secondary'
-}
-
 function canRefund(order: PaymentOrder): boolean {
-  return ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUND_REQUESTED', 'REFUND_FAILED'].includes(order.status)
+  return canRefundStatus(order.status)
 }
 
 function formatDateTime(dateStr: string): string {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString()
+  return formatOrderDateTime(dateStr)
 }
 </script>

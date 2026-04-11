@@ -311,6 +311,8 @@ export default {
     chooseFile: '选择文件',
     notAvailable: '不可用',
     now: '现在',
+    today: '今天',
+    tomorrow: '明天',
     unknown: '未知',
     minutes: '分钟',
     time: {
@@ -5328,6 +5330,8 @@ export default {
       createdAt: '创建时间',
       cancel: '取消订单',
       userId: '用户 ID',
+      orderType: '订单类型',
+      actions: '操作',
       requestRefund: '申请退款',
     },
     result: {

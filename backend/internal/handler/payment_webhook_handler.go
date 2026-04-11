@@ -137,13 +137,19 @@ type wxpaySuccessResponse struct {
 	Message string `json:"message"`
 }
 
+// WeChat Pay webhook success response constants.
+const (
+	wxpaySuccessCode    = "SUCCESS"
+	wxpaySuccessMessage = "成功"
+)
+
 // writeSuccessResponse sends the provider-specific success response.
 // WeChat Pay requires JSON {"code":"SUCCESS","message":"成功"};
 // Stripe expects an empty 200; others accept plain text "success".
 func writeSuccessResponse(c *gin.Context, providerKey string) {
 	switch providerKey {
 	case payment.TypeWxpay:
-		c.JSON(http.StatusOK, wxpaySuccessResponse{Code: "SUCCESS", Message: "成功"})
+		c.JSON(http.StatusOK, wxpaySuccessResponse{Code: wxpaySuccessCode, Message: wxpaySuccessMessage})
 	case payment.TypeStripe:
 		c.String(http.StatusOK, "")
 	default:

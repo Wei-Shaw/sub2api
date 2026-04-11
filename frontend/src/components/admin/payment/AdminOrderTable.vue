@@ -108,7 +108,7 @@
             <span class="text-xs">{{ t('payment.admin.retry') }}</span>
           </button>
           <button
-            v-if="canRefund(row)"
+            v-if="canRefundRow(row)"
             @click="emit('refund', row)"
             class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
           >
@@ -139,6 +139,7 @@ import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { statusBadgeClass, canRefund, formatOrderDateTime } from '@/components/payment/orderUtils'
 
 const { t } = useI18n()
 
@@ -179,16 +180,16 @@ function emitFiltersChanged() {
   })
 }
 
-const columns: Column[] = [
-  { key: 'id', label: 'ID' },
-  { key: 'user_id', label: 'User' },
-  { key: 'amount', label: 'Amount' },
-  { key: 'payment_type', label: 'Method' },
-  { key: 'status', label: 'Status' },
-  { key: 'order_type', label: 'Type' },
-  { key: 'created_at', label: 'Created' },
-  { key: 'actions', label: 'Actions' },
-]
+const columns = computed<Column[]>(() => [
+  { key: 'id', label: t('payment.orders.orderId') },
+  { key: 'user_id', label: t('payment.orders.userId') },
+  { key: 'amount', label: t('payment.orders.amount') },
+  { key: 'payment_type', label: t('payment.orders.paymentMethod') },
+  { key: 'status', label: t('payment.orders.status') },
+  { key: 'order_type', label: t('payment.orders.orderType') },
+  { key: 'created_at', label: t('payment.orders.createdAt') },
+  { key: 'actions', label: t('payment.orders.actions') },
+])
 
 const statusFilterOptions = computed(() => [
   { value: '', label: t('payment.admin.allStatuses') },
@@ -216,22 +217,11 @@ const orderTypeFilterOptions = computed(() => [
   { value: 'subscription', label: t('payment.admin.subscriptionOrder') },
 ])
 
-function statusBadgeClass(status: string): string {
-  const m: Record<string, string> = {
-    PENDING: 'badge-warning', PAID: 'badge-info', RECHARGING: 'badge-info',
-    COMPLETED: 'badge-success', EXPIRED: 'badge-secondary', CANCELLED: 'badge-secondary',
-    FAILED: 'badge-danger', REFUND_REQUESTED: 'badge-warning', REFUNDING: 'badge-warning',
-    PARTIALLY_REFUNDED: 'badge-warning', REFUNDED: 'badge-info', REFUND_FAILED: 'badge-danger',
-  }
-  return m[status] || 'badge-secondary'
-}
-
-function canRefund(order: PaymentOrder): boolean {
-  return ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUND_REQUESTED', 'REFUND_FAILED'].includes(order.status)
+function canRefundRow(order: PaymentOrder): boolean {
+  return canRefund(order.status)
 }
 
 function formatDateTime(dateStr: string): string {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString()
+  return formatOrderDateTime(dateStr)
 }
 </script>

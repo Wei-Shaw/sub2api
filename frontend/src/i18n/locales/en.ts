@@ -311,6 +311,8 @@ export default {
     chooseFile: 'Choose File',
     notAvailable: 'N/A',
     now: 'Now',
+    today: 'Today',
+    tomorrow: 'Tomorrow',
     unknown: 'Unknown',
     minutes: 'min',
     time: {
@@ -5131,6 +5133,8 @@ export default {
       createdAt: 'Created',
       cancel: 'Cancel Order',
       userId: 'User ID',
+      orderType: 'Order Type',
+      actions: 'Actions',
       requestRefund: 'Request Refund',
     },
     result: {

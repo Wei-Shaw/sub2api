@@ -9,13 +9,13 @@ import (
 // CreateProvider creates a Provider from a provider key, instance ID and decrypted config.
 func CreateProvider(providerKey string, instanceID string, config map[string]string) (payment.Provider, error) {
 	switch providerKey {
-	case "easypay":
+	case payment.TypeEasyPay:
 		return NewEasyPay(instanceID, config)
-	case "alipay":
+	case payment.TypeAlipay:
 		return NewAlipay(instanceID, config)
-	case "wxpay":
+	case payment.TypeWxpay:
 		return NewWxpay(instanceID, config)
-	case "stripe":
+	case payment.TypeStripe:
 		return NewStripe(instanceID, config)
 	default:
 		return nil, fmt.Errorf("unknown provider key: %s", providerKey)

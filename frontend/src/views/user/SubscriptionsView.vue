@@ -313,10 +313,10 @@ function formatExpirationDate(expiresAt: string): string {
   const dateStr = formatDateOnly(expires)
 
   if (days === 0) {
-    return `${dateStr} (Today)`
+    return `${dateStr} (${t('common.today')})`
   }
   if (days === 1) {
-    return `${dateStr} (Tomorrow)`
+    return `${dateStr} (${t('common.tomorrow')})`
   }
 
   return t('userSubscriptions.daysRemaining', { days }) + ` (${dateStr})`
