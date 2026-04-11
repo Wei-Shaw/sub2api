@@ -21,6 +21,22 @@ import (
 	"go.uber.org/zap"
 )
 
+// cursorResponsesUnsupportedFields are top-level Responses API parameters that
+// Codex upstreams reject with "Unsupported parameter: ...". They must be
+// stripped when forwarding a raw client body through the Responses-shape
+// short-circuit in ForwardAsChatCompletions (see isResponsesShape branch).
+// The normal Chat Completions → Responses conversion path is unaffected
+// because ChatCompletionsRequest has no fields for these parameters — unknown
+// fields are dropped naturally by json.Unmarshal. Kept semantically in sync
+// with the list in openai_gateway_service.go:2034 used by the /v1/responses
+// passthrough path.
+var cursorResponsesUnsupportedFields = []string{
+	"prompt_cache_retention",
+	"safety_identifier",
+	"metadata",
+	"stream_options",
+REDACTED
+
 // ForwardAsChatCompletions accepts a Chat Completions request body, converts it
 // to OpenAI Responses API format, forwards to the OpenAI upstream, and converts
 // the response back to Chat Completions format. All account types (OAuth and API
@@ -80,6 +96,16 @@ REDACTED
 		responsesBody, err = sjson.SetBytes(body, "model", upstreamModel)
 		if err != nil {
 			return nil, fmt.Errorf("rewrite model in responses-shape body: %w", err)
+	REDACTED
+		// Strip Responses API parameters that no Codex upstream accepts.
+		// Because this branch forwards the raw body (the normal path rebuilds
+		// it from ChatCompletionsRequest and drops unknown fields naturally),
+		// we must filter these fields explicitly here — otherwise the upstream
+		// rejects the request with "Unsupported parameter: ...".
+		for _, field := range cursorResponsesUnsupportedFields {
+			if stripped, derr := sjson.DeleteBytes(responsesBody, field); derr == nil {
+				responsesBody = stripped
+		REDACTED
 	REDACTED
 		// Minimal stub populated from the raw body so downstream billing
 		// propagation (ServiceTier, ReasoningEffort) keeps working.
