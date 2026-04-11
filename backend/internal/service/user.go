@@ -30,6 +30,11 @@ type User struct {
 	TotpEnabled         bool       // 是否启用 TOTP
 	TotpEnabledAt       *time.Time // TOTP 启用时间
 
+	// 余额不足通知
+	BalanceNotifyEnabled     bool
+	BalanceNotifyThreshold   *float64
+	BalanceNotifyExtraEmails []string
+
 	APIKeys       []APIKey
 	Subscriptions []UserSubscription
 }

@@ -106,6 +106,13 @@ type SystemSettings struct {
 	EnableFingerprintUnification bool // 是否统一 OAuth 账号的指纹头（默认 true）
 	EnableMetadataPassthrough    bool // 是否透传客户端原始 metadata（默认 false）
 	EnableCCHSigning             bool // 是否对 billing header cch 进行签名（默认 false）
+
+	// Balance low notification
+	BalanceLowNotifyEnabled   bool
+	BalanceLowNotifyThreshold float64
+
+	// Account quota notification
+	AccountQuotaNotifyEmails []string
 }
 
 type DefaultSubscriptionSetting struct {

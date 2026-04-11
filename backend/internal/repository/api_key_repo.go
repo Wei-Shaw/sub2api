@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -639,22 +640,32 @@ func userEntityToService(u *dbent.User) *service.User {
 	if u == nil {
 		return nil
 	}
-	return &service.User{
-		ID:                  u.ID,
-		Email:               u.Email,
-		Username:            u.Username,
-		Notes:               u.Notes,
-		PasswordHash:        u.PasswordHash,
-		Role:                u.Role,
-		Balance:             u.Balance,
-		Concurrency:         u.Concurrency,
-		Status:              u.Status,
-		TotpSecretEncrypted: u.TotpSecretEncrypted,
-		TotpEnabled:         u.TotpEnabled,
-		TotpEnabledAt:       u.TotpEnabledAt,
-		CreatedAt:           u.CreatedAt,
-		UpdatedAt:           u.UpdatedAt,
+	out := &service.User{
+		ID:                   u.ID,
+		Email:                u.Email,
+		Username:             u.Username,
+		Notes:                u.Notes,
+		PasswordHash:         u.PasswordHash,
+		Role:                 u.Role,
+		Balance:              u.Balance,
+		Concurrency:          u.Concurrency,
+		Status:               u.Status,
+		TotpSecretEncrypted:  u.TotpSecretEncrypted,
+		TotpEnabled:          u.TotpEnabled,
+		TotpEnabledAt:        u.TotpEnabledAt,
+		BalanceNotifyEnabled: u.BalanceNotifyEnabled,
+		BalanceNotifyThreshold: u.BalanceNotifyThreshold,
+		CreatedAt:            u.CreatedAt,
+		UpdatedAt:            u.UpdatedAt,
 	}
+	// Parse extra emails JSON array
+	if u.BalanceNotifyExtraEmails != "" && u.BalanceNotifyExtraEmails != "[]" {
+		var emails []string
+		if err := json.Unmarshal([]byte(u.BalanceNotifyExtraEmails), &emails); err == nil {
+			out.BalanceNotifyExtraEmails = emails
+		}
+	}
+	return out
 }
 
 func groupEntityToService(g *dbent.Group) *service.Group {

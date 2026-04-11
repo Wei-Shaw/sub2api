@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   totalLimit: number | null
   dailyLimit: number | null
   weeklyLimit: number | null
@@ -14,7 +14,20 @@ const props = defineProps<{
   weeklyResetDay: number | null
   weeklyResetHour: number | null
   resetTimezone: string | null
-}>()
+  quotaNotifyDailyEnabled?: boolean | null
+  quotaNotifyDailyThreshold?: number | null
+  quotaNotifyWeeklyEnabled?: boolean | null
+  quotaNotifyWeeklyThreshold?: number | null
+  quotaNotifyTotalEnabled?: boolean | null
+  quotaNotifyTotalThreshold?: number | null
+}>(), {
+  quotaNotifyDailyEnabled: null,
+  quotaNotifyDailyThreshold: null,
+  quotaNotifyWeeklyEnabled: null,
+  quotaNotifyWeeklyThreshold: null,
+  quotaNotifyTotalEnabled: null,
+  quotaNotifyTotalThreshold: null,
+})
 
 const emit = defineEmits<{
   'update:totalLimit': [value: number | null]
@@ -26,6 +39,12 @@ const emit = defineEmits<{
   'update:weeklyResetDay': [value: number | null]
   'update:weeklyResetHour': [value: number | null]
   'update:resetTimezone': [value: string | null]
+  'update:quotaNotifyDailyEnabled': [value: boolean | null]
+  'update:quotaNotifyDailyThreshold': [value: number | null]
+  'update:quotaNotifyWeeklyEnabled': [value: boolean | null]
+  'update:quotaNotifyWeeklyThreshold': [value: number | null]
+  'update:quotaNotifyTotalEnabled': [value: boolean | null]
+  'update:quotaNotifyTotalThreshold': [value: number | null]
 }>()
 
 const enabled = computed(() =>
@@ -203,6 +222,36 @@ const onWeeklyModeChange = (e: Event) => {
               {{ t('admin.accounts.quotaDailyLimitHint') }}
             </template>
           </p>
+          <!-- 日配额告警 -->
+          <div v-if="dailyLimit && dailyLimit > 0" class="ml-4 mt-2 flex items-center gap-3">
+            <label class="text-sm text-gray-500 whitespace-nowrap">{{ t('admin.accounts.quotaNotify.alert') }}</label>
+            <button
+              type="button"
+              @click="emit('update:quotaNotifyDailyEnabled', !(props.quotaNotifyDailyEnabled))"
+              :class="[
+                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                props.quotaNotifyDailyEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  props.quotaNotifyDailyEnabled ? 'translate-x-4' : 'translate-x-0'
+                ]"
+              />
+            </button>
+            <div v-if="props.quotaNotifyDailyEnabled" class="relative flex-1">
+              <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+              <input
+                :value="props.quotaNotifyDailyThreshold"
+                @input="emit('update:quotaNotifyDailyThreshold', parseFloat(($event.target as HTMLInputElement).value) || null)"
+                type="number"
+                min="0"
+                step="0.01"
+                class="input pl-6 py-1 text-sm"
+              />
+            </div>
+          </div>
         </div>
 
         <!-- 周配额 -->
@@ -259,6 +308,36 @@ const onWeeklyModeChange = (e: Event) => {
               {{ t('admin.accounts.quotaWeeklyLimitHint') }}
             </template>
           </p>
+          <!-- 周配额告警 -->
+          <div v-if="weeklyLimit && weeklyLimit > 0" class="ml-4 mt-2 flex items-center gap-3">
+            <label class="text-sm text-gray-500 whitespace-nowrap">{{ t('admin.accounts.quotaNotify.alert') }}</label>
+            <button
+              type="button"
+              @click="emit('update:quotaNotifyWeeklyEnabled', !(props.quotaNotifyWeeklyEnabled))"
+              :class="[
+                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                props.quotaNotifyWeeklyEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  props.quotaNotifyWeeklyEnabled ? 'translate-x-4' : 'translate-x-0'
+                ]"
+              />
+            </button>
+            <div v-if="props.quotaNotifyWeeklyEnabled" class="relative flex-1">
+              <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+              <input
+                :value="props.quotaNotifyWeeklyThreshold"
+                @input="emit('update:quotaNotifyWeeklyThreshold', parseFloat(($event.target as HTMLInputElement).value) || null)"
+                type="number"
+                min="0"
+                step="0.01"
+                class="input pl-6 py-1 text-sm"
+              />
+            </div>
+          </div>
         </div>
 
         <!-- 时区选择（当任一维度使用固定模式时显示） -->
@@ -289,6 +368,36 @@ const onWeeklyModeChange = (e: Event) => {
             />
           </div>
           <p class="input-hint">{{ t('admin.accounts.quotaTotalLimitHint') }}</p>
+          <!-- 总配额告警 -->
+          <div v-if="totalLimit && totalLimit > 0" class="ml-4 mt-2 flex items-center gap-3">
+            <label class="text-sm text-gray-500 whitespace-nowrap">{{ t('admin.accounts.quotaNotify.alert') }}</label>
+            <button
+              type="button"
+              @click="emit('update:quotaNotifyTotalEnabled', !(props.quotaNotifyTotalEnabled))"
+              :class="[
+                'relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                props.quotaNotifyTotalEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  props.quotaNotifyTotalEnabled ? 'translate-x-4' : 'translate-x-0'
+                ]"
+              />
+            </button>
+            <div v-if="props.quotaNotifyTotalEnabled" class="relative flex-1">
+              <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+              <input
+                :value="props.quotaNotifyTotalThreshold"
+                @input="emit('update:quotaNotifyTotalThreshold', parseFloat(($event.target as HTMLInputElement).value) || null)"
+                type="number"
+                min="0"
+                step="0.01"
+                class="input pl-6 py-1 text-sm"
+              />
+            </div>
+          </div>
         </div>
       </div>
   </div>
