@@ -281,31 +281,6 @@ func (h *PaymentHandler) GetOrder(c *gin.Context) {
 	response.Success(c, order)
 }
 
-// SyncOrder queries the upstream payment provider to check if a pending
-// order has been paid. This complements webhooks — the frontend calls it
-// during active polling so that payment is detected even when the webhook
-// is delayed or unreachable.
-// POST /api/v1/payment/orders/:id/sync
-func (h *PaymentHandler) SyncOrder(c *gin.Context) {
-	subject, ok := requireAuth(c)
-	if !ok {
-		return
-	}
-
-	orderID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid order ID")
-		return
-	}
-
-	order, err := h.paymentService.SyncOrderStatus(c.Request.Context(), orderID, subject.UserID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, order)
-}
-
 // CancelOrder cancels a pending order for the authenticated user.
 // POST /api/v1/payment/orders/:id/cancel
 func (h *PaymentHandler) CancelOrder(c *gin.Context) {

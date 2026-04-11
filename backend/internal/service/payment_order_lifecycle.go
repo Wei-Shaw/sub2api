@@ -163,31 +163,6 @@ func (s *PaymentService) checkPaid(ctx context.Context, o *dbent.PaymentOrder) s
 	return ""
 }
 
-// SyncOrderStatus queries the upstream provider to check if a PENDING order
-// has been paid. Called by frontend polling to complement webhooks — if the
-// webhook is delayed or unreachable, this ensures timely payment detection.
-// Idempotent: toPaid uses atomic UPDATE WHERE status=PENDING, so concurrent
-// calls from webhook + sync won't double-credit.
-func (s *PaymentService) SyncOrderStatus(ctx context.Context, orderID int64, userID int64) (*dbent.PaymentOrder, error) {
-	o, err := s.entClient.PaymentOrder.Get(ctx, orderID)
-	if err != nil {
-		return nil, infraerrors.NotFound("NOT_FOUND", "order not found")
-	}
-	if o.UserID != userID {
-		return nil, infraerrors.Forbidden("FORBIDDEN", "no permission for this order")
-	}
-	if o.Status == OrderStatusPending {
-		result := s.checkPaid(ctx, o)
-		if result == checkPaidResultAlreadyPaid {
-			o, err = s.entClient.PaymentOrder.Get(ctx, orderID)
-			if err != nil {
-				return nil, fmt.Errorf("reload order: %w", err)
-			}
-		}
-	}
-	return o, nil
-}
-
 // VerifyOrderByOutTradeNo actively queries the upstream provider to check
 // if a payment was made, and processes it if so. This handles the case where
 // the provider's notify callback was missed (e.g. EasyPay popup mode).

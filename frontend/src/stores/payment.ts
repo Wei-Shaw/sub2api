@@ -81,20 +81,7 @@ export const usePaymentStore = defineStore('payment', () => {
     }
   }
 
-  /** Sync order status with upstream provider (checks if paid) */
-  async function syncOrderStatus(orderId: number): Promise<PaymentOrder | null> {
-    try {
-      const response = await paymentAPI.syncOrder(orderId)
-      const order = response.data
-      if (currentOrder.value?.id === orderId) {
-        currentOrder.value = order
-      }
-      return order
-    } catch (error: unknown) {
-      console.error('[payment] Failed to sync order status:', error)
-      return null
-    }
-  }
+
 
   /** Clear current order state */
   function clearCurrentOrder() {
@@ -111,7 +98,6 @@ export const usePaymentStore = defineStore('payment', () => {
     fetchPlans,
     createOrder,
     pollOrderStatus,
-    syncOrderStatus,
     clearCurrentOrder
   }
 })
