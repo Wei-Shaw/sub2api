@@ -90,6 +90,8 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 
 每种服务商需要不同的凭证和参数。在 **服务商管理 → 添加服务商** 中选择类型后填写。
 
+> **回调地址自动生成**：添加服务商时，异步回调地址（Notify URL）和同步跳转地址（Return URL）由系统根据你的站点域名自动拼接，无需手动填写。管理员只需确认域名正确即可。
+
 ### EasyPay（易支付）
 
 兼容任何 EasyPay 协议的支付服务商。
@@ -99,8 +101,6 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 | **商户 ID（PID）** | EasyPay 商户 ID | 是 |
 | **商户密钥（PKey）** | EasyPay 商户密钥 | 是 |
 | **API 地址** | EasyPay API 基础地址 | 是 |
-| **异步回调地址** | 支付成功后的回调 URL | 是 |
-| **同步跳转地址** | 支付完成后的跳转 URL | 否 |
 | **支付宝通道 ID** | 指定支付宝通道（可选） | 否 |
 | **微信通道 ID** | 指定微信通道（可选） | 否 |
 
@@ -115,8 +115,6 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 | **AppID** | 支付宝应用 AppID | 是 |
 | **应用私钥** | RSA2 应用私钥 | 是 |
 | **支付宝公钥** | 支付宝公钥 | 是 |
-| **异步回调地址** | 支付成功后的回调 URL | 是 |
-| **同步跳转地址** | 支付完成后的跳转 URL | 否 |
 
 ### 微信官方
 
@@ -127,11 +125,10 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 | **AppID** | 微信支付 AppID | 是 |
 | **商户号（MchID）** | 微信支付商户号 | 是 |
 | **商户 API 私钥** | 商户 API 私钥（PEM 格式） | 是 |
-| **商户证书序列号** | 商户证书序列号 | 是 |
 | **APIv3 密钥** | 32 位 APIv3 密钥 | 是 |
 | **微信支付公钥** | 微信支付公钥（PEM 格式） | 是 |
-| **微信支付公钥 ID** | 微信支付公钥 ID | 是 |
-| **异步回调地址** | 支付成功后的回调 URL | 是 |
+| **微信支付公钥 ID** | 微信支付公钥 ID | 否 |
+| **商户证书序列号** | 商户证书序列号 | 否 |
 
 ### Stripe
 
@@ -176,14 +173,16 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 
 ### 回调地址格式
 
-| 服务商 | 回调地址 |
-|--------|---------|
-| **EasyPay** | `https://your-domain.com/api/v1/payment/easypay/notify` |
-| **支付宝官方** | `https://your-domain.com/api/v1/payment/alipay/notify` |
-| **微信官方** | `https://your-domain.com/api/v1/payment/wxpay/notify` |
-| **Stripe** | `https://your-domain.com/api/v1/payment/stripe/webhook` |
+添加服务商时，系统会自动根据站点域名拼接回调地址，格式如下：
 
-> 将 `your-domain.com` 替换为你的实际域名。
+| 服务商 | 回调路径 |
+|--------|---------|
+| **EasyPay** | `https://your-domain.com/api/v1/payment/webhook/easypay` |
+| **支付宝官方** | `https://your-domain.com/api/v1/payment/webhook/alipay` |
+| **微信官方** | `https://your-domain.com/api/v1/payment/webhook/wxpay` |
+| **Stripe** | `https://your-domain.com/api/v1/payment/webhook/stripe` |
+
+> 将 `your-domain.com` 替换为你的实际域名。EasyPay / 支付宝 / 微信的回调地址在添加服务商时自动填入，无需手动配置。
 
 ### Stripe Webhook 设置
 

@@ -90,6 +90,8 @@ Prevents users from repeatedly creating and canceling orders:
 
 Each provider type requires different credentials. Select the type when adding a new provider instance in **Provider Management → Add Provider**.
 
+> **Callback URLs are auto-generated**: When adding a provider, the Notify URL and Return URL are automatically constructed from your site domain. You only need to confirm the domain is correct.
+
 ### EasyPay
 
 Compatible with any payment service that implements the EasyPay protocol.
@@ -99,8 +101,6 @@ Compatible with any payment service that implements the EasyPay protocol.
 | **Merchant ID (PID)** | EasyPay merchant ID | Yes |
 | **Merchant Key (PKey)** | EasyPay merchant secret key | Yes |
 | **API Base URL** | EasyPay API base address | Yes |
-| **Notify URL** | Async callback URL for payment success | Yes |
-| **Return URL** | Redirect URL after payment completion | No |
 | **Alipay Channel ID** | Specify Alipay channel (optional) | No |
 | **WeChat Channel ID** | Specify WeChat channel (optional) | No |
 
@@ -113,8 +113,6 @@ Direct integration with Alipay Open Platform. Supports PC page pay and H5 mobile
 | **AppID** | Alipay application AppID | Yes |
 | **Private Key** | RSA2 application private key | Yes |
 | **Alipay Public Key** | Alipay public key | Yes |
-| **Notify URL** | Async callback URL | Yes |
-| **Return URL** | Redirect URL after payment | No |
 
 ### WeChat Pay (Direct)
 
@@ -125,11 +123,10 @@ Direct integration with WeChat Pay APIv3. Supports Native QR code and H5 payment
 | **AppID** | WeChat Pay AppID | Yes |
 | **Merchant ID (MchID)** | WeChat Pay merchant ID | Yes |
 | **Merchant API Private Key** | Merchant API private key (PEM format) | Yes |
-| **Certificate Serial Number** | Merchant certificate serial number | Yes |
 | **APIv3 Key** | 32-byte APIv3 key | Yes |
 | **WeChat Pay Public Key** | WeChat Pay public key (PEM format) | Yes |
-| **WeChat Pay Public Key ID** | WeChat Pay public key ID | Yes |
-| **Notify URL** | Async callback URL | Yes |
+| **WeChat Pay Public Key ID** | WeChat Pay public key ID | No |
+| **Certificate Serial Number** | Merchant certificate serial number | No |
 
 ### Stripe
 
@@ -174,14 +171,16 @@ Payment callbacks are essential for the payment system to work correctly.
 
 ### Callback URL Format
 
-| Provider | Callback URL |
-|----------|-------------|
-| **EasyPay** | `https://your-domain.com/api/v1/payment/easypay/notify` |
-| **Alipay (Direct)** | `https://your-domain.com/api/v1/payment/alipay/notify` |
-| **WeChat Pay (Direct)** | `https://your-domain.com/api/v1/payment/wxpay/notify` |
-| **Stripe** | `https://your-domain.com/api/v1/payment/stripe/webhook` |
+When adding a provider, the system auto-generates callback URLs from your site domain:
 
-> Replace `your-domain.com` with your actual domain.
+| Provider | Callback Path |
+|----------|-------------|
+| **EasyPay** | `https://your-domain.com/api/v1/payment/webhook/easypay` |
+| **Alipay (Direct)** | `https://your-domain.com/api/v1/payment/webhook/alipay` |
+| **WeChat Pay (Direct)** | `https://your-domain.com/api/v1/payment/webhook/wxpay` |
+| **Stripe** | `https://your-domain.com/api/v1/payment/webhook/stripe` |
+
+> Replace `your-domain.com` with your actual domain. For EasyPay / Alipay / WeChat Pay, the callback URL is auto-filled when adding the provider — no manual configuration needed.
 
 ### Stripe Webhook Setup
 
