@@ -30,54 +30,83 @@
 | 分支 | 说明 |
 |------|------|
 | `main` | 我们的主分支，包含所有定制功能 |
-| `release/custom-X.Y.Z` | 基于官方 `vX.Y.Z` 的发布分支 |
-| `upstream/main` | 上游官方仓库 |
+| `release/custom-X.Y.Z` | 基于我们的 release 分支 + 上游 `vX.Y.Z` 合并 |
+| `feat/*` | 功能分支，基于 `upstream/main`，用于提交上游 PR |
+| `upstream/main` | 上游官方仓库（remote: upstream） |
 
 ---
 
 ## 发布流程（基于新官方版本）
 
-当官方发布新版本（如 `v0.1.69`）时：
+当官方发布新版本（如 `v0.1.110`）时：
 
-### 1. 同步上游并创建发布分支
+> **核心原则**：始终从我们的 release 分支出发，将上游代码合并进来。**禁止**基于上游标签创建分支再合并我们的代码——这会导致上游非相关改动以 auto-merge 方式混入，破坏我们的定制功能。
+
+### 1. 从我们的 release 出发，合并上游
 
 ```bash
 # 获取上游最新代码
 git fetch upstream --tags
 
-# 基于官方标签创建新的发布分支
-git checkout v0.1.69 -b release/custom-0.1.69
+# 从我们当前的 release 创建新的 release 分支
+git checkout -b release/custom-0.1.110 release/custom-0.1.108
 
-# 合并我们的 main 分支（包含所有定制功能）
-git merge main --no-edit
+# 合并上游新版本（我们的代码是基底，上游变更合并进来）
+git merge v0.1.110 --no-edit
 
-# 解决可能的冲突后继续
+# 解决冲突时：
+# - 我们的定制代码优先保留
+# - 上游的新功能/修复按需采纳
+# - 仔细检查 auto-merge 的文件是否引入了不兼容变更
 ```
 
-### 2. 更新版本号并打标签
+### 2. 验证合并结果
+
+```bash
+# 检查 auto-merge 引入的文件变更
+git diff release/custom-0.1.108 release/custom-0.1.110 --stat
+
+# 重点关注可能冲突的文件：
+# - backend/internal/service/gateway_service.go
+# - backend/internal/service/openai_gateway_service.go
+# - backend/internal/service/antigravity_gateway_service.go
+# - backend/internal/handler/handler.go
+
+# 本地构建验证
+cd backend && go build ./... && cd ..
+cd frontend && pnpm build && cd ..
+```
+
+### 3. 更新版本号并打标签
 
 ```bash
 # 更新版本号文件
-echo "0.1.69.1" > backend/cmd/server/VERSION
+echo "0.1.110.1" > backend/cmd/server/VERSION
 git add backend/cmd/server/VERSION
-git commit -m "chore: bump version to 0.1.69.1"
+git commit -m "chore: bump version to 0.1.110.1"
 
 # 打上我们自己的标签
-git tag v0.1.69.1
+git tag v0.1.110.1
 
 # 推送分支和标签
-git push origin release/custom-0.1.69
-git push origin v0.1.69.1
+git push origin release/custom-0.1.110
+git push origin v0.1.110.1
 ```
 
-### 3. 更新 main 分支
+### 4. 更新 main 分支
 
 ```bash
 # 将发布分支合并回 main，保持 main 包含最新定制功能
 git checkout main
-git merge release/custom-0.1.69
+git merge release/custom-0.1.110
 git push origin main
 ```
+
+### ⚠️ 注意事项
+
+- **禁止反向合并**：不要 `git checkout v0.1.110 -b release/custom-0.1.110 && git merge main`。这种方式会以上游为基底，导致我们的定制代码在 merge 时被上游的改动覆盖或产生 auto-merge 错误。
+- **cherry-pick 功能分支改动到 release**：如果有 `feat/*` 分支的改进需要带入 release，使用 `git cherry-pick` 而非 `git merge`，避免引入 PR 分支的 upstream/main 基底代码。
+- **合并后必须全量测试**：部署到 beta 环境验证所有核心功能（API 转发、支付、认证等），确认无 auto-merge 引入的问题。
 
 ---
 
@@ -1495,19 +1524,67 @@ const id = String(route.query.order_id || '')
 
 ### 向上游提交 PR
 
-PR 目标是上游官方仓库，**只包含通用功能改动**（bug fix、新功能、性能优化等）。
+PR 目标是上游官方仓库 `Wei-Shaw/sub2api:main`，**只包含通用功能改动**（bug fix、新功能、性能优化等）。
 
-**以下文件禁止出现在 PR 中**（属于我们 fork 的定制化内容）：
+#### PR 分支创建流程
+
+> **核心原则**：PR 分支必须基于 `upstream/main`，代码来源是我们的 release 分支（已测试过的代码）。通过 cherry-pick 将支付/功能代码从 release 带入 PR 分支，**禁止**将 PR 分支 merge 回 release（会带入 upstream/main 的非相关代码）。
+
+```bash
+# 1. 获取最新上游代码
+git fetch upstream
+
+# 2. 从 upstream/main 创建 PR 分支
+git checkout -b feat/my-feature upstream/main
+
+# 3. 从 release 分支 cherry-pick 功能代码
+#    方式一：cherry-pick 已有的精简 commit
+git cherry-pick <commit1> <commit2> ...
+
+#    方式二：如果 release 上有大量零散 commit，
+#    先在 release 分支整理为 1-2 个精简 commit，再 cherry-pick
+
+# 4. 验证 PR 分支只包含功能相关改动
+git diff --name-only upstream/main feat/my-feature
+# 确认没有 fork 定制文件（见下方禁止列表）
+
+# 5. 推送并等待 CI
+git push origin feat/my-feature
+gh run list --repo touwaeriol/sub2api --branch feat/my-feature
+```
+
+#### 将 PR 改进带入 release（反向同步）
+
+当 PR 分支有额外的代码改进（如代码规范优化、H5 支持等）需要带入 release 时：
+
+```bash
+# 从 release 出发，cherry-pick PR 的改进 commit
+git checkout release/custom-0.1.108
+git checkout -b release/custom-0.1.110
+git cherry-pick <pr-improvement-commit1> <pr-improvement-commit2> ...
+
+# ⚠️ 禁止：git merge feat/my-feature
+# 这会把 upstream/main 的所有代码带入 release！
+```
+
+#### 禁止出现在 PR 中的文件
+
+以下属于我们 fork 的定制化内容：
 - `CLAUDE.md`、`AGENTS.md` — 我们的开发文档
 - `backend/cmd/server/VERSION` — 我们的版本号文件
 - UI 定制改动（GitHub 链接移除、微信客服按钮、首页定制等）
 - 部署配置（`deploy/` 目录下的定制修改）
+- `sora_client_enabled` 相关代码
+- 测试脚本（`stress_test_*.sh`、`test_*.py`）
+- partner logos（`assets/partners/`）
 
-**PR 流程**：
-1. 从我们的当前开发分支（如 `release/custom-0.1.93`）或对应功能分支创建 PR 分支，只包含要提交给上游的通用改动
-2. 推送分支后，**等待 4 个 CI job 全部通过**
-3. 确认通过后再创建 PR
-4. 使用 `gh run list --repo touwaeriol/sub2api --branch <branch>` 检查状态
+#### PR 提交检查清单
+
+1. PR 分支基于最新 `upstream/main` ✅
+2. 只包含通用功能代码，无 fork 定制 ✅
+3. 推送后 4 个 CI job 全部通过 ✅
+4. 使用 `gh run list --repo touwaeriol/sub2api --branch <branch>` 确认
+5. PR 描述符合中英文格式规范（见下方模板）✅
 
 ### 自有分支推送（release/custom-X.Y.Z / 功能分支 / main）
 
