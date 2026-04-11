@@ -33,11 +33,13 @@ REDACTED else {
 		protocol := c.Query("protocol")
 		status := c.Query("status")
 		search := strings.TrimSpace(c.Query("search"))
+		sortBy := c.DefaultQuery("sort_by", "id")
+		sortOrder := c.DefaultQuery("sort_order", "desc")
 		if len(search) > 100 {
 			search = search[:100]
 	REDACTED
 
-		proxies, err = h.listProxiesFiltered(ctx, protocol, status, search)
+		proxies, err = h.listProxiesFiltered(ctx, protocol, status, search, sortBy, sortOrder)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
@@ -89,7 +91,7 @@ REDACTED
 	ctx := c.Request.Context()
 	result := DataImportResult{REDACTED
 
-	existingProxies, err := h.listProxiesFiltered(ctx, "", "", "")
+	existingProxies, err := h.listProxiesFiltered(ctx, "", "", "", "id", "desc")
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -220,18 +222,33 @@ REDACTED
 	return ids, nil
 REDACTED
 
-func (h *ProxyHandler) listProxiesFiltered(ctx context.Context, protocol, status, search string) ([]service.Proxy, error) {
+func (h *ProxyHandler) listProxiesFiltered(ctx context.Context, protocol, status, search, sortBy, sortOrder string) ([]service.Proxy, error) {
 	page := 1
 	pageSize := dataPageCap
 	var out []service.Proxy
+	sortBy = strings.TrimSpace(sortBy)
+	useAccountCountSort := strings.EqualFold(sortBy, "account_count")
 	for {
-		items, total, err := h.adminService.ListProxies(ctx, page, pageSize, protocol, status, search)
-		if err != nil {
-			return nil, err
-	REDACTED
-		out = append(out, items...)
-		if len(out) >= int(total) || len(items) == 0 {
-			break
+		if useAccountCountSort {
+			items, total, err := h.adminService.ListProxiesWithAccountCount(ctx, page, pageSize, protocol, status, search, sortBy, sortOrder)
+			if err != nil {
+				return nil, err
+		REDACTED
+			for i := range items {
+				out = append(out, items[i].Proxy)
+		REDACTED
+			if len(out) >= int(total) || len(items) == 0 {
+				break
+		REDACTED
+	REDACTED else {
+			items, total, err := h.adminService.ListProxies(ctx, page, pageSize, protocol, status, search, sortBy, sortOrder)
+			if err != nil {
+				return nil, err
+		REDACTED
+			out = append(out, items...)
+			if len(out) >= int(total) || len(items) == 0 {
+				break
+		REDACTED
 	REDACTED
 		page++
 REDACTED

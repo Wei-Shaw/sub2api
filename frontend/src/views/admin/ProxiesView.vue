@@ -89,7 +89,15 @@
 
       <template #table>
         <div ref="proxyTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <DataTable :columns="columns" :data="proxies" :loading="loading">
+        <DataTable
+          :columns="columns"
+          :data="proxies"
+          :loading="loading"
+          :server-side-sort="true"
+          default-sort-key="id"
+          default-sort-order="desc"
+          @sort="handleSort"
+        >
           <template #header-select>
             <input
               type="checkbox"
@@ -946,6 +954,10 @@ const pagination = reactive({
   total: 0,
   pages: 0
 REDACTED)
+const sortState = reactive({
+  sort_by: 'id',
+  sort_order: 'desc' as 'asc' | 'desc'
+REDACTED)
 
 const showCreateModal = ref(false)
 const createPasswordVisible = ref(false)
@@ -1050,6 +1062,14 @@ const toggleSelectAllVisible = (event: Event) => {
   toggleVisible(target.checked)
 REDACTED
 
+const buildProxyQueryFilters = () => ({
+  protocol: filters.protocol || undefined,
+  status: (filters.status || undefined) as 'active' | 'inactive' | undefined,
+  search: searchQuery.value || undefined,
+  sort_by: sortState.sort_by,
+  sort_order: sortState.sort_order
+REDACTED)
+
 const loadProxies = async () => {
   if (abortController) {
     abortController.abort()
@@ -1058,11 +1078,12 @@ const loadProxies = async () => {
   abortController = currentAbortController
   loading.value = true
   try {
-    const response = await adminAPI.proxies.list(pagination.page, pagination.page_size, {
-      protocol: filters.protocol || undefined,
-      status: filters.status as any,
-      search: searchQuery.value || undefined
-    REDACTED, { signal: currentAbortController.signal REDACTED)
+    const response = await adminAPI.proxies.list(
+      pagination.page,
+      pagination.page_size,
+      buildProxyQueryFilters(),
+      { signal: currentAbortController.signal REDACTED
+    )
     if (currentAbortController.signal.aborted || abortController !== currentAbortController) {
       return
     REDACTED
@@ -1099,6 +1120,13 @@ REDACTED
 
 const handlePageSizeChange = (pageSize: number) => {
   pagination.page_size = pageSize
+  pagination.page = 1
+  loadProxies()
+REDACTED
+
+const handleSort = (key: string, order: 'asc' | 'desc') => {
+  sortState.sort_by = key
+  sortState.sort_order = order
   pagination.page = 1
   loadProxies()
 REDACTED
@@ -1581,7 +1609,9 @@ const fetchAllProxiesForBatch = async (): Promise<Proxy[]> => {
       {
         protocol: filters.protocol || undefined,
         status: filters.status as any,
-        search: searchQuery.value || undefined
+        search: searchQuery.value || undefined,
+        sort_by: sortState.sort_by,
+        sort_order: sortState.sort_order
       REDACTED
     )
     result.push(...response.items)
@@ -1689,11 +1719,7 @@ const handleExportData = async () => {
       selectedCount.value > 0
         ? { ids: Array.from(selectedProxyIds.value) REDACTED
         : {
-            filters: {
-              protocol: filters.protocol || undefined,
-              status: (filters.status || undefined) as 'active' | 'inactive' | undefined,
-              search: searchQuery.value || undefined
-            REDACTED
+            filters: buildProxyQueryFilters()
           REDACTED
     )
     const timestamp = formatExportTimestamp()

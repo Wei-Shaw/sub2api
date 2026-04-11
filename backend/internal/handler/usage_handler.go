@@ -119,7 +119,12 @@ REDACTED
 		endTime = &t
 REDACTED
 
-	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
+	params := pagination.PaginationParams{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    c.DefaultQuery("sort_by", "created_at"),
+		SortOrder: c.DefaultQuery("sort_order", "desc"),
+REDACTED
 	filters := usagestats.UsageLogFilters{
 		UserID:      subject.UserID, // Always filter by current user for security
 		APIKeyID:    apiKeyID,

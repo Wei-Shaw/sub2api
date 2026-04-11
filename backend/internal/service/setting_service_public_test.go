@@ -62,3 +62,18 @@ REDACTED
 REDACTED
 	require.Equal(t, []string{"@example.com", "@foo.bar"REDACTED, settings.RegistrationEmailSuffixWhitelist)
 REDACTED
+
+func TestSettingService_GetPublicSettings_ExposesTablePreferences(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyTableDefaultPageSize:  "50",
+			SettingKeyTablePageSizeOptions: "[20,50,100]",
+	REDACTED,
+REDACTED
+	svc := NewSettingService(repo, &config.Config{REDACTED)
+
+	settings, err := svc.GetPublicSettings(context.Background())
+REDACTED
+	require.Equal(t, 50, settings.TableDefaultPageSize)
+	require.Equal(t, []int{20, 50, 100REDACTED, settings.TablePageSizeOptions)
+REDACTED

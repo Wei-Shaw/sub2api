@@ -1,7 +1,7 @@
 import { ref, reactive, onUnmounted, toRaw REDACTED from 'vue'
 import { useDebounceFn REDACTED from '@vueuse/core'
 import type { BasePaginationResponse, FetchOptions REDACTED from '@/types'
-import { getPersistedPageSize, setPersistedPageSize REDACTED from './usePersistedPageSize'
+import { getPersistedPageSize REDACTED from './usePersistedPageSize'
 
 interface PaginationState {
   page: number
@@ -88,7 +88,6 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
   const handlePageSizeChange = (size: number) => {
     pagination.page_size = size
     pagination.page = 1
-    setPersistedPageSize(size)
     load()
   REDACTED
 

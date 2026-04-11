@@ -165,7 +165,12 @@ REDACTED
 		endTime = &t
 REDACTED
 
-	params := pagination.PaginationParams{Page: page, PageSize: pageSizeREDACTED
+	params := pagination.PaginationParams{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    c.DefaultQuery("sort_by", "created_at"),
+		SortOrder: c.DefaultQuery("sort_order", "desc"),
+REDACTED
 	filters := usagestats.UsageLogFilters{
 		UserID:      userID,
 		APIKeyID:    apiKeyID,
@@ -339,7 +344,7 @@ func (h *UsageHandler) SearchUsers(c *gin.Context) {
 REDACTED
 
 	// Limit to 30 results
-	users, _, err := h.adminService.ListUsers(c.Request.Context(), 1, 30, service.UserListFilters{Search: keywordREDACTED)
+	users, _, err := h.adminService.ListUsers(c.Request.Context(), 1, 30, service.UserListFilters{Search: keywordREDACTED, "email", "asc")
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
