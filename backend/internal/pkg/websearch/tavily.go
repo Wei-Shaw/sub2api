@@ -60,7 +60,7 @@ func (t *TavilyProvider) Search(ctx context.Context, req SearchRequest) (*Search
 	if err != nil {
 		return nil, fmt.Errorf("tavily: request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {

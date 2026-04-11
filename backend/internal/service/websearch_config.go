@@ -96,8 +96,7 @@ const (
 // GetWebSearchEmulationConfig returns the configuration with in-process cache + singleflight.
 func (s *SettingService) GetWebSearchEmulationConfig(ctx context.Context) (*WebSearchEmulationConfig, error) {
 	if cached := webSearchEmulationCache.Load(); cached != nil {
-		c := cached.(*cachedWebSearchEmulationConfig)
-		if time.Now().UnixNano() < c.expiresAt {
+		if c, ok := cached.(*cachedWebSearchEmulationConfig); ok && time.Now().UnixNano() < c.expiresAt {
 			return c.config, nil
 		}
 	}
@@ -107,7 +106,10 @@ func (s *SettingService) GetWebSearchEmulationConfig(ctx context.Context) (*WebS
 	if err != nil {
 		return &WebSearchEmulationConfig{}, err
 	}
-	return result.(*WebSearchEmulationConfig), nil
+	if cfg, ok := result.(*WebSearchEmulationConfig); ok {
+		return cfg, nil
+	}
+	return &WebSearchEmulationConfig{}, nil
 }
 
 func (s *SettingService) loadWebSearchConfigFromDB() (*WebSearchEmulationConfig, error) {

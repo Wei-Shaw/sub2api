@@ -105,8 +105,8 @@ type SettingService struct {
 	settingRepo           SettingRepository
 	defaultSubGroupReader DefaultSubscriptionGroupReader
 	cfg                   *config.Config
-	onUpdate              func() // Callback when settings are updated (for cache invalidation)
-	version               string // Application version
+	onUpdate              func()        // Callback when settings are updated (for cache invalidation)
+	version               string        // Application version
 	webSearchRedis        *redis.Client // optional: Redis client for web search quota tracking
 }
 
