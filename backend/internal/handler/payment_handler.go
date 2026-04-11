@@ -412,5 +412,10 @@ func requireAuth(c *gin.Context) (middleware2.AuthSubject, bool) {
 // isMobile detects mobile user agents.
 func isMobile(c *gin.Context) bool {
 	ua := strings.ToLower(c.GetHeader("User-Agent"))
-	return strings.Contains(ua, "mobile") || strings.Contains(ua, "android") || strings.Contains(ua, "iphone")
+	for _, kw := range []string{"mobile", "android", "iphone", "ipad", "ipod"} {
+		if strings.Contains(ua, kw) {
+			return true
+		}
+	}
+	return false
 }

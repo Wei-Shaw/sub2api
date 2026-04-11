@@ -81,6 +81,9 @@ func (e *EasyPay) createRedirectPayment(req payment.CreatePaymentRequest) (*paym
 	if cid := e.resolveCID(req.PaymentType); cid != "" {
 		params["cid"] = cid
 	}
+	if req.IsMobile {
+		params["device"] = deviceMobile
+	}
 	params["sign"] = easyPaySign(params, e.config["pkey"])
 	params["sign_type"] = signTypeMD5
 
@@ -120,6 +123,7 @@ func (e *EasyPay) createAPIPayment(ctx context.Context, req payment.CreatePaymen
 		Msg     string `json:"msg"`
 		TradeNo string `json:"trade_no"`
 		PayURL  string `json:"payurl"`
+		PayURL2 string `json:"payurl2"` // H5 mobile payment URL
 		QRCode  string `json:"qrcode"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
@@ -128,7 +132,11 @@ func (e *EasyPay) createAPIPayment(ctx context.Context, req payment.CreatePaymen
 	if resp.Code != easypayCodeSuccess {
 		return nil, fmt.Errorf("easypay error: %s", resp.Msg)
 	}
-	return &payment.CreatePaymentResponse{TradeNo: resp.TradeNo, PayURL: resp.PayURL, QRCode: resp.QRCode}, nil
+	payURL := resp.PayURL
+	if req.IsMobile && resp.PayURL2 != "" {
+		payURL = resp.PayURL2
+	}
+	return &payment.CreatePaymentResponse{TradeNo: resp.TradeNo, PayURL: payURL, QRCode: resp.QRCode}, nil
 }
 
 // resolveURLs returns (notifyURL, returnURL) preferring request values,

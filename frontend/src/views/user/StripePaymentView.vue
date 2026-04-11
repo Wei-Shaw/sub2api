@@ -100,6 +100,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { isMobileDevice } from '@/utils/device'
 import type { PaymentOrder } from '@/types/payment'
 import type { Stripe, StripeElements } from '@stripe/stripe-js'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -191,7 +192,7 @@ async function confirmWechatPay(stripe: Stripe, clientSecret: string) {
   const { paymentIntent, error } = await (stripe as Stripe & {
     confirmWechatPayPayment: (cs: string, opts: Record<string, unknown>) => Promise<{ paymentIntent?: { status: string; next_action?: { wechat_pay_display_qr_code?: { image_data_url?: string } } }; error?: { message?: string } }>
   }).confirmWechatPayPayment(clientSecret, {
-    payment_method_options: { wechat_pay: { client: 'web' } },
+    payment_method_options: { wechat_pay: { client: isMobileDevice() ? 'mobile_web' : 'web' } },
   })
 
   if (error) {

@@ -263,6 +263,7 @@ import { useSubscriptionStore } from '@/stores/subscriptions'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { isMobileDevice } from '@/utils/device'
 import type { SubscriptionPlan, CheckoutInfoResponse } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
@@ -528,7 +529,10 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       plan_id: planId,
     })
     const openWindow = (url: string) => {
-      window.open(url, 'paymentPopup', POPUP_WINDOW_FEATURES)
+      const win = window.open(url, 'paymentPopup', POPUP_WINDOW_FEATURES)
+      if (!win || win.closed) {
+        window.location.href = url
+      }
     }
     if (result.client_secret) {
       // Stripe: show Payment Element inline (user picks method → confirms → redirect if needed)
@@ -539,6 +543,17 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
         orderType,
       }
       paymentPhase.value = 'stripe'
+    } else if (isMobileDevice() && result.pay_url) {
+      // Mobile + pay_url: redirect directly instead of QR/popup (mobile browsers block popups)
+      paymentState.value = {
+        orderId: result.order_id, qrCode: '', expiresAt: result.expires_at || '',
+        paymentType: selectedMethod.value, payUrl: result.pay_url,
+        clientSecret: '', payAmount: 0,
+        orderType,
+      }
+      paymentPhase.value = 'paying'
+      window.location.href = result.pay_url
+      return
     } else if (result.qr_code) {
       // QR mode: show QR code inline
       paymentState.value = {
