@@ -129,6 +129,8 @@ deploy/docker-compose.override.yml
 vite.config.js
 docs/*
 !docs/ACCOUNT_SCHEDULING_FLOW.md
+!docs/PAYMENT.md
+!docs/PAYMENT_CN.md
 .serena/
 
 # ===================
