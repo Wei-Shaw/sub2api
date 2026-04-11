@@ -3812,6 +3812,15 @@ export default {
           success: 'SUCCESS',
           error: 'ERROR'
         },
+        sticky: {
+          title: 'Sticky',
+          sessionSource: 'Session Source',
+          sessionHashPresent: 'Session Hash Present',
+          evalResult: 'Sticky Result',
+          selectedAccountChanged: 'Selected Account Changed',
+          parentSessionPresent: 'Parent Session Present',
+          parentSessionKey: 'Parent Session Key'
+        },
         table: {
           time: 'Time',
           kind: 'Kind',

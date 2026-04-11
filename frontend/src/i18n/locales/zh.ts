@@ -3976,6 +3976,15 @@ export default {
           success: '成功',
           error: '失败'
         },
+        sticky: {
+          title: 'Sticky',
+          sessionSource: '会话来源',
+          sessionHashPresent: '是否有会话哈希',
+          evalResult: 'Sticky 结果',
+          selectedAccountChanged: '最终账号是否变化',
+          parentSessionPresent: '是否有父会话',
+          parentSessionKey: '父会话键'
+        },
         table: {
           time: '时间',
           kind: '类型',

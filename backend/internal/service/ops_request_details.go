@@ -28,6 +28,12 @@ type OpsRequestDetail struct {
 	RoutingEffectiveModel      string  `json:"routing_effective_model,omitempty"`
 	RoutingFailoverCount       *int    `json:"routing_failover_count,omitempty"`
 	RoutingFailoverFinalReason string  `json:"routing_failover_final_reason,omitempty"`
+	StickySessionSource          *string `json:"sticky_session_source,omitempty"`
+	StickySessionHashPresent     *bool   `json:"sticky_session_hash_present,omitempty"`
+	StickyEvalResult             *string `json:"sticky_eval_result,omitempty"`
+	StickySelectedAccountChanged *bool   `json:"sticky_selected_account_changed,omitempty"`
+	StickyParentSessionPresent   *bool   `json:"sticky_parent_session_present,omitempty"`
+	StickyParentSessionKey       *string `json:"sticky_parent_session_key,omitempty"`
 
 	DurationMs *int `json:"duration_ms,omitempty"`
 	StatusCode *int `json:"status_code,omitempty"`

@@ -160,6 +160,28 @@ const kindBadgeClass = (kind: string) => {
   if (kind === 'error') return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
   return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
 }
+
+function hasStickyData(row: OpsRequestDetail): boolean {
+  return !!(
+    row.sticky_session_source ||
+    row.sticky_eval_result ||
+    row.sticky_parent_session_key ||
+    row.sticky_session_hash_present != null ||
+    row.sticky_selected_account_changed != null ||
+    row.sticky_parent_session_present != null
+  )
+}
+
+function formatBool(value: boolean | null | undefined): string {
+  if (value == null) return '-'
+  return value ? t('common.yes') : t('common.no')
+}
+
+function shouldShowStickySelectedAccountChanged(row: OpsRequestDetail): boolean {
+  if (row.sticky_selected_account_changed == null) return false
+  const evalResult = String(row.sticky_eval_result || '').trim()
+  return evalResult !== 'no_session_signal' && evalResult !== 'miss_no_binding'
+}
 </script>
 
 <template>
@@ -258,7 +280,7 @@ const kindBadgeClass = (kind: string) => {
                     </div>
                   </td>
                   <td class="max-w-[260px] px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
-                    <div v-if="row.routing_target_group || row.routing_schedule_layer || row.routing_selected_account_name || row.routing_failover_count != null" class="space-y-1">
+                    <div v-if="row.routing_target_group || row.routing_schedule_layer || row.routing_selected_account_name || row.routing_failover_count != null || hasStickyData(row)" class="space-y-2">
                       <div v-if="row.routing_target_group">
                         <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.routingTargetGroup') }}:</span>
                         <span class="ml-1">{{ row.routing_target_group }}</span>
@@ -276,6 +298,38 @@ const kindBadgeClass = (kind: string) => {
                         <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.routingFailover') }}:</span>
                         <span class="ml-1">{{ row.routing_failover_count }}</span>
                         <span v-if="row.routing_failover_final_reason" class="ml-1 text-gray-400">({{ row.routing_failover_final_reason }})</span>
+                      </div>
+
+                      <div v-if="hasStickyData(row)" class="rounded-lg bg-gray-50 px-2 py-2 dark:bg-dark-900/40">
+                        <div class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          {{ t('admin.ops.requestDetails.sticky.title') }}
+                        </div>
+                        <div class="space-y-1">
+                          <div v-if="row.sticky_session_source">
+                            <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.ops.requestDetails.sticky.sessionSource') }}:</span>
+                            <span class="ml-1 break-all">{{ row.sticky_session_source }}</span>
+                          </div>
+                          <div v-if="row.sticky_eval_result">
+                            <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.ops.requestDetails.sticky.evalResult') }}:</span>
+                            <span class="ml-1 break-all">{{ row.sticky_eval_result }}</span>
+                          </div>
+                          <div v-if="row.sticky_parent_session_key">
+                            <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.ops.requestDetails.sticky.parentSessionKey') }}:</span>
+                            <span class="ml-1 break-all font-mono text-[11px]">{{ row.sticky_parent_session_key }}</span>
+                          </div>
+                          <div v-if="row.sticky_session_hash_present != null">
+                            <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.ops.requestDetails.sticky.sessionHashPresent') }}:</span>
+                            <span class="ml-1">{{ formatBool(row.sticky_session_hash_present) }}</span>
+                          </div>
+                          <div v-if="shouldShowStickySelectedAccountChanged(row)">
+                            <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.ops.requestDetails.sticky.selectedAccountChanged') }}:</span>
+                            <span class="ml-1">{{ formatBool(row.sticky_selected_account_changed) }}</span>
+                          </div>
+                          <div v-if="row.sticky_parent_session_present != null">
+                            <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.ops.requestDetails.sticky.parentSessionPresent') }}:</span>
+                            <span class="ml-1">{{ formatBool(row.sticky_parent_session_present) }}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                     <span v-else>-</span>

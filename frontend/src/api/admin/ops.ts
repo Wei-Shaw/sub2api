@@ -179,6 +179,12 @@ export interface OpsRequestDetail {
   routing_effective_model?: string | null
   routing_failover_count?: number | null
   routing_failover_final_reason?: string | null
+  sticky_session_source?: string | null
+  sticky_session_hash_present?: boolean | null
+  sticky_eval_result?: string | null
+  sticky_selected_account_changed?: boolean | null
+  sticky_parent_session_present?: boolean | null
+  sticky_parent_session_key?: string | null
   duration_ms?: number | null
   status_code?: number | null
 
