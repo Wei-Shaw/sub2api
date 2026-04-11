@@ -482,6 +482,42 @@ export async function updateBetaPolicySettings(
   return data
 REDACTED
 
+// --- Web Search Emulation Config ---
+
+export interface WebSearchProviderConfig {
+  type: 'brave' | 'tavily'
+  api_key: string
+  api_key_configured: boolean
+  priority: number
+  quota_limit: number
+  quota_refresh_interval: 'daily' | 'weekly' | 'monthly'
+  quota_used?: number
+  proxy_id: number | null
+  expires_at: number | null
+REDACTED
+
+export interface WebSearchEmulationConfig {
+  enabled: boolean
+  providers: WebSearchProviderConfig[]
+REDACTED
+
+export async function getWebSearchEmulationConfig(): Promise<WebSearchEmulationConfig> {
+  const { data REDACTED = await apiClient.get<WebSearchEmulationConfig>(
+    '/admin/settings/web-search-emulation'
+  )
+  return data
+REDACTED
+
+export async function updateWebSearchEmulationConfig(
+  config: WebSearchEmulationConfig
+): Promise<WebSearchEmulationConfig> {
+  const { data REDACTED = await apiClient.put<WebSearchEmulationConfig>(
+    '/admin/settings/web-search-emulation',
+    config
+  )
+  return data
+REDACTED
+
 export const settingsAPI = {
   getSettings,
   updateSettings,
@@ -497,7 +533,9 @@ export const settingsAPI = {
   getRectifierSettings,
   updateRectifierSettings,
   getBetaPolicySettings,
-  updateBetaPolicySettings
+  updateBetaPolicySettings,
+  getWebSearchEmulationConfig,
+  updateWebSearchEmulationConfig
 REDACTED
 
 export default settingsAPI
