@@ -146,6 +146,8 @@ type UsageLog struct {
 	RateMultiplier    float64
 	// AccountRateMultiplier 账号计费倍率快照（nil 表示历史数据，按 1.0 处理）
 	AccountRateMultiplier *float64
+	// AccountStatsCost 账号统计定价预计算费用（nil = 使用默认公式 total_cost × account_rate_multiplier）
+	AccountStatsCost *float64
 
 	BillingType  int8
 	RequestType  RequestType

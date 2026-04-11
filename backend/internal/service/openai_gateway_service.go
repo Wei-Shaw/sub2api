@@ -4569,6 +4569,15 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.SubscriptionID = &subscription.ID
 	}
 
+	// 计算账号统计定价费用
+	if apiKey.GroupID != nil {
+		usageLog.AccountStatsCost = resolveAccountStatsCost(
+			ctx, s.channelService, s.billingService,
+			account.ID, *apiKey.GroupID, billingModel,
+			tokens, 1, serviceTier,
+		)
+	}
+
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())

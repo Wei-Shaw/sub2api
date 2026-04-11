@@ -7745,6 +7745,23 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
 		requestedModel, multiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
 
+	// 计算账号统计定价费用
+	if apiKey.GroupID != nil {
+		usageLog.AccountStatsCost = resolveAccountStatsCost(
+			ctx, s.channelService, s.billingService,
+			account.ID, *apiKey.GroupID, billingModel,
+			UsageTokens{
+				InputTokens:         result.Usage.InputTokens,
+				OutputTokens:        result.Usage.OutputTokens,
+				CacheCreationTokens: result.Usage.CacheCreationInputTokens,
+				CacheReadTokens:     result.Usage.CacheReadInputTokens,
+				ImageOutputTokens:   result.Usage.ImageOutputTokens,
+			},
+			1,  // requestCount
+			"", // serviceTier: Anthropic 平台不使用 service tier
+		)
+	}
+
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
