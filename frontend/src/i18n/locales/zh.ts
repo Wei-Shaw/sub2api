@@ -1923,7 +1923,18 @@ export default {
         noPlatforms: '点击"添加平台"开始配置渠道',
         mappingCount: '条映射',
         pricingEntry: '定价配置',
-        noModels: '未添加模型'
+        noModels: '未添加模型',
+        applyPricingToAccountStats: '应用模型定价到账号统计',
+        applyPricingToAccountStatsDesc: '启用后，账号统计费用将使用渠道模型定价计算。账号自身的统计倍率仍然生效。',
+        accountStatsPricingRules: '自定义账号统计定价规则',
+        addRule: '添加规则',
+        noRulesConfigured: '未配置自定义规则，将使用上方的模型定价。',
+        ruleName: '规则名称（可选）',
+        ruleGroups: '分组',
+        ruleAccounts: '账号 ID',
+        ruleAccountsPlaceholder: '输入账号 ID，逗号分隔',
+        ruleModelPricing: '模型定价',
+        noGroupsInChannel: '上方平台标签页中未选择分组'
       REDACTED
     REDACTED,
 

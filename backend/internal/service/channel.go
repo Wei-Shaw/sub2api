@@ -49,21 +49,25 @@ type Channel struct {
 	ModelPricing []ChannelModelPricing
 	// 渠道级模型映射（按平台分组：platform → {src→dstREDACTED）
 	ModelMapping map[string]map[string]string
-	// 渠道特性配置（如 {"web_search_emulation": {"anthropic": trueREDACTEDREDACTED）
-	FeaturesConfig map[string]any
+
+	// 账号统计定价
+	ApplyPricingToAccountStats bool                      // 是否应用渠道模型定价到账号统计
+	AccountStatsPricingRules   []AccountStatsPricingRule // 自定义账号统计定价规则（按 SortOrder 排序，先命中为准）
 REDACTED
 
-// IsWebSearchEmulationEnabled 返回该渠道是否为指定平台启用了 web search 模拟。
-func (c *Channel) IsWebSearchEmulationEnabled(platform string) bool {
-	if c == nil || c.FeaturesConfig == nil {
-		return false
-REDACTED
-	wse, ok := c.FeaturesConfig[featureKeyWebSearchEmulation].(map[string]any)
-	if !ok {
-		return false
-REDACTED
-	enabled, ok := wse[platform].(bool)
-	return ok && enabled
+// AccountStatsPricingRule 账号统计定价规则
+// 每条规则包含匹配条件（分组/账号）和独立的模型定价。
+// 多条规则按 SortOrder 排序，先命中为准。
+type AccountStatsPricingRule struct {
+	ID         int64
+	ChannelID  int64
+	Name       string
+	GroupIDs   []int64
+	AccountIDs []int64
+	SortOrder  int
+	Pricing    []ChannelModelPricing // 规则内的模型定价（复用现有定价结构）
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 REDACTED
 
 // ChannelModelPricing 渠道模型定价条目
@@ -190,6 +194,26 @@ REDACTED
 				inner[k] = v
 		REDACTED
 			cp.ModelMapping[platform] = inner
+	REDACTED
+REDACTED
+	if c.AccountStatsPricingRules != nil {
+		cp.AccountStatsPricingRules = make([]AccountStatsPricingRule, len(c.AccountStatsPricingRules))
+		for i, rule := range c.AccountStatsPricingRules {
+			cp.AccountStatsPricingRules[i] = rule
+			if rule.GroupIDs != nil {
+				cp.AccountStatsPricingRules[i].GroupIDs = make([]int64, len(rule.GroupIDs))
+				copy(cp.AccountStatsPricingRules[i].GroupIDs, rule.GroupIDs)
+		REDACTED
+			if rule.AccountIDs != nil {
+				cp.AccountStatsPricingRules[i].AccountIDs = make([]int64, len(rule.AccountIDs))
+				copy(cp.AccountStatsPricingRules[i].AccountIDs, rule.AccountIDs)
+		REDACTED
+			if rule.Pricing != nil {
+				cp.AccountStatsPricingRules[i].Pricing = make([]ChannelModelPricing, len(rule.Pricing))
+				for j := range rule.Pricing {
+					cp.AccountStatsPricingRules[i].Pricing[j] = rule.Pricing[j].Clone()
+			REDACTED
+		REDACTED
 	REDACTED
 REDACTED
 	return &cp

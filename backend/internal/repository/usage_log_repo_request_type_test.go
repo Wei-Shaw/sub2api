@@ -85,6 +85,7 @@ REDACTED
 			sqlmock.AnyArg(), // model_mapping_chain
 			sqlmock.AnyArg(), // billing_tier
 			sqlmock.AnyArg(), // billing_mode
+			sqlmock.AnyArg(), // account_stats_cost
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"REDACTED).AddRow(int64(99), createdAt))
@@ -163,6 +164,7 @@ REDACTED
 			sqlmock.AnyArg(), // model_mapping_chain
 			sqlmock.AnyArg(), // billing_tier
 			sqlmock.AnyArg(), // billing_mode
+			sqlmock.AnyArg(), // account_stats_cost
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"REDACTED).AddRow(int64(100), createdAt))
@@ -483,10 +485,11 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			false,
-			sql.NullInt64{REDACTED,  // channel_id
-			sql.NullString{REDACTED, // model_mapping_chain
-			sql.NullString{REDACTED, // billing_tier
-			sql.NullString{REDACTED, // billing_mode
+			sql.NullInt64{REDACTED,   // channel_id
+			sql.NullString{REDACTED,  // model_mapping_chain
+			sql.NullString{REDACTED,  // billing_tier
+			sql.NullString{REDACTED,  // billing_mode
+			sql.NullFloat64{REDACTED, // account_stats_cost
 			now,
 	REDACTEDREDACTED)
 	REDACTED
@@ -530,10 +533,11 @@ REDACTED)
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			false,
-			sql.NullInt64{REDACTED,  // channel_id
-			sql.NullString{REDACTED, // model_mapping_chain
-			sql.NullString{REDACTED, // billing_tier
-			sql.NullString{REDACTED, // billing_mode
+			sql.NullInt64{REDACTED,   // channel_id
+			sql.NullString{REDACTED,  // model_mapping_chain
+			sql.NullString{REDACTED,  // billing_tier
+			sql.NullString{REDACTED,  // billing_mode
+			sql.NullFloat64{REDACTED, // account_stats_cost
 			now,
 	REDACTEDREDACTED)
 	REDACTED
@@ -577,10 +581,11 @@ REDACTED)
 			sql.NullString{REDACTED,
 			sql.NullString{REDACTED,
 			false,
-			sql.NullInt64{REDACTED,  // channel_id
-			sql.NullString{REDACTED, // model_mapping_chain
-			sql.NullString{REDACTED, // billing_tier
-			sql.NullString{REDACTED, // billing_mode
+			sql.NullInt64{REDACTED,   // channel_id
+			sql.NullString{REDACTED,  // model_mapping_chain
+			sql.NullString{REDACTED,  // billing_tier
+			sql.NullString{REDACTED,  // billing_mode
+			sql.NullFloat64{REDACTED, // account_stats_cost
 			now,
 	REDACTEDREDACTED)
 	REDACTED
