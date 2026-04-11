@@ -122,6 +122,7 @@ function translateSessionSource(key: string): string {
     content_fallback: t('admin.ops.openaiSticky.source.contentFallback'),
     fallback_seed: t('admin.ops.openaiSticky.source.fallbackSeed'),
     none: t('admin.ops.openaiSticky.source.none'),
+    unknown: t('admin.ops.openaiSticky.source.unknown'),
   }
   return map[key] || key
 }

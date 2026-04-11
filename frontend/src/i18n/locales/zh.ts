@@ -3735,7 +3735,8 @@ export default {
           promptCacheKey: 'prompt_cache_key',
           contentFallback: '内容回退',
           fallbackSeed: '回退种子',
-          none: '无'
+          none: '无',
+          unknown: '未知/未记录'
         }
       },
       customTimeRange: {

@@ -51,5 +51,6 @@ func TestOpsRepositoryGetOpenAIStickyStats(t *testing.T) {
 	require.Equal(t, int64(4), resp.EvalResultCount["bypassed_previous_response_id"])
 	require.Equal(t, int64(14), resp.SessionSourceCount["header_x_session_affinity"])
 	require.Equal(t, int64(3), resp.SessionSourceCount["content_fallback"])
+	require.Equal(t, int64(5), resp.SessionSourceCount["unknown"])
 	require.NoError(t, mock.ExpectationsWereMet())
 }

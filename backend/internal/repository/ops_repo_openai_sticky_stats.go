@@ -100,9 +100,10 @@ ORDER BY sticky_session_source, sticky_eval_result`
 		}
 		sessionSource = strings.TrimSpace(sessionSource)
 		evalResult = strings.TrimSpace(evalResult)
-		if sessionSource != "" {
-			resp.SessionSourceCount[sessionSource] += requestCount
+		if sessionSource == "" {
+			sessionSource = "unknown"
 		}
+		resp.SessionSourceCount[sessionSource] += requestCount
 		if evalResult != "" {
 			resp.EvalResultCount[evalResult] += requestCount
 		}

@@ -3575,7 +3575,8 @@ export default {
           promptCacheKey: 'prompt_cache_key',
           contentFallback: 'content fallback',
           fallbackSeed: 'fallback seed',
-          none: 'none'
+          none: 'none',
+          unknown: 'unknown / missing'
         }
       },
       fullscreen: {

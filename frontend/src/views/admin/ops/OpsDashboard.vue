@@ -85,7 +85,7 @@
       </div>
 
       <!-- Row: OpenAI Token Stats -->
-      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6 md:grid-cols-2">
+      <div v-if="opsEnabled && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
         <OpsOpenAIRoutingCard
           :platform-filter="platform"
           :group-id-filter="groupId"
