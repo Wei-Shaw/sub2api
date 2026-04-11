@@ -1,27 +1,9 @@
-const STORAGE_KEY = 'table-page-size'
-const DEFAULT_PAGE_SIZE = 20
+import { getConfiguredTableDefaultPageSize, normalizeTablePageSize } from '@/utils/tablePreferences'
 
 /**
- * 从 localStorage 读取/写入 pageSize
- * 全局共享一个 key，所有表格统一偏好
+ * 读取当前系统配置的表格默认每页条数。
+ * 不再使用本地持久化缓存，所有页面统一以通用表格设置为准。
  */
-export function getPersistedPageSize(fallback = DEFAULT_PAGE_SIZE): number {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      const parsed = Number(stored)
-      if (Number.isFinite(parsed) && parsed > 0) return parsed
-    }
-  } catch {
-    // localStorage 不可用（隐私模式等）
-  }
-  return fallback
-}
-
-export function setPersistedPageSize(size: number): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, String(size))
-  } catch {
-    // 静默失败
-  }
+export function getPersistedPageSize(fallback = getConfiguredTableDefaultPageSize()): number {
+  return normalizeTablePageSize(getConfiguredTableDefaultPageSize() || fallback)
 }

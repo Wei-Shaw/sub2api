@@ -3,12 +3,16 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"sort"
+	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+
+	entsql "entgo.io/ent/dialect/sql"
 )
 
 type sqlQuerier interface {
@@ -135,11 +139,14 @@ func (r *proxyRepository) ListWithFilters(ctx context.Context, params pagination
 		return nil, nil, err
 	}
 
-	proxies, err := q.
+	proxiesQuery := q.
 		Offset(params.Offset()).
-		Limit(params.Limit()).
-		Order(dbent.Desc(proxy.FieldID)).
-		All(ctx)
+		Limit(params.Limit())
+	for _, order := range proxyListOrder(params) {
+		proxiesQuery = proxiesQuery.Order(order)
+	}
+
+	proxies, err := proxiesQuery.All(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -170,22 +177,58 @@ func (r *proxyRepository) ListWithFiltersAndAccountCount(ctx context.Context, pa
 		return nil, nil, err
 	}
 
-	proxies, err := q.
+	if strings.EqualFold(strings.TrimSpace(params.SortBy), "account_count") {
+		return r.listWithAccountCountSort(ctx, q, params, total)
+	}
+
+	proxiesQuery := q.
 		Offset(params.Offset()).
-		Limit(params.Limit()).
+		Limit(params.Limit())
+	for _, order := range proxyListOrder(params) {
+		proxiesQuery = proxiesQuery.Order(order)
+	}
+
+	proxies, err := proxiesQuery.All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return r.buildProxyWithAccountCountResult(ctx, proxies, params, int64(total))
+}
+
+func (r *proxyRepository) listWithAccountCountSort(ctx context.Context, q *dbent.ProxyQuery, params pagination.PaginationParams, total int) ([]service.ProxyWithAccountCount, *pagination.PaginationResult, error) {
+	proxies, err := q.
 		Order(dbent.Desc(proxy.FieldID)).
 		All(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Get account counts
+	result, _, err := r.buildProxyWithAccountCountResult(ctx, proxies, params, int64(total))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].AccountCount == result[j].AccountCount {
+			return result[i].ID > result[j].ID
+		}
+		if sortOrder == pagination.SortOrderAsc {
+			return result[i].AccountCount < result[j].AccountCount
+		}
+		return result[i].AccountCount > result[j].AccountCount
+	})
+
+	return paginateSlice(result, params), paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *proxyRepository) buildProxyWithAccountCountResult(ctx context.Context, proxies []*dbent.Proxy, params pagination.PaginationParams, total int64) ([]service.ProxyWithAccountCount, *pagination.PaginationResult, error) {
 	counts, err := r.GetAccountCountsForProxies(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Build result with account counts
 	result := make([]service.ProxyWithAccountCount, 0, len(proxies))
 	for i := range proxies {
 		proxyOut := proxyEntityToService(proxies[i])
@@ -198,7 +241,31 @@ func (r *proxyRepository) ListWithFiltersAndAccountCount(ctx context.Context, pa
 		})
 	}
 
-	return result, paginationResultFromTotal(int64(total), params), nil
+	return result, paginationResultFromTotal(total, params), nil
+}
+
+func proxyListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
+	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
+	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
+
+	var field string
+	switch sortBy {
+	case "name":
+		field = proxy.FieldName
+	case "protocol":
+		field = proxy.FieldProtocol
+	case "status":
+		field = proxy.FieldStatus
+	case "created_at":
+		field = proxy.FieldCreatedAt
+	default:
+		field = proxy.FieldID
+	}
+
+	if sortOrder == pagination.SortOrderAsc {
+		return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(proxy.FieldID)}
+	}
+	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(proxy.FieldID)}
 }
 
 func (r *proxyRepository) ListActive(ctx context.Context) ([]service.Proxy, error) {

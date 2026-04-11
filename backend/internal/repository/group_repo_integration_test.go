@@ -113,6 +113,33 @@ func (s *GroupRepoSuite) TestUpdate() {
 	s.Require().Equal("updated", got.Name)
 }
 
+func (s *GroupRepoSuite) TestGetByID_PreservesMessagesDispatchModelConfig() {
+	group := &service.Group{
+		Name:                  "openai-dispatch",
+		Platform:              service.PlatformOpenAI,
+		RateMultiplier:        1.0,
+		IsExclusive:           false,
+		Status:                service.StatusActive,
+		SubscriptionType:      service.SubscriptionTypeStandard,
+		AllowMessagesDispatch: true,
+		DefaultMappedModel:    "gpt-5.4",
+		MessagesDispatchModelConfig: service.OpenAIMessagesDispatchModelConfig{
+			OpusMappedModel:   "gpt-5.4",
+			SonnetMappedModel: "gpt-5.3-codex",
+			HaikuMappedModel:  "gpt-5.4-mini",
+			ExactModelMappings: map[string]string{
+				"claude-sonnet-4.5": "gpt-5.4-nano",
+			},
+		},
+	}
+
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+
+	got, err := s.repo.GetByID(s.ctx, group.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(group.MessagesDispatchModelConfig, got.MessagesDispatchModelConfig)
+}
+
 func (s *GroupRepoSuite) TestDelete() {
 	group := &service.Group{
 		Name:             "to-delete",

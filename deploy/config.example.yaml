@@ -202,6 +202,32 @@ gateway:
   #
   # 注意：开启后会影响所有客户端的行为（不仅限于 VS Code / Codex CLI），请谨慎开启。
   force_codex_cli: false
+  # Optional: template file used to build the final top-level Codex `instructions`.
+  # 可选：用于构建最终 Codex 顶层 `instructions` 的模板文件路径。
+  #
+  # This is applied on the `/v1/messages -> Responses/Codex` conversion path,
+  # after Claude `system` has already been normalized into Codex `instructions`.
+  # 该模板作用于 `/v1/messages -> Responses/Codex` 转换链路，且发生在 Claude `system`
+  # 已经被归一化为 Codex `instructions` 之后。
+  #
+  # The template can reference:
+  # 模板可引用：
+  # - {{ .ExistingInstructions }} : converted client instructions/system
+  # - {{ .OriginalModel }}        : original requested model
+  # - {{ .NormalizedModel }}      : normalized routing model
+  # - {{ .BillingModel }}         : billing model
+  # - {{ .UpstreamModel }}        : final upstream model
+  #
+  # If you want to preserve client system prompts, keep {{ .ExistingInstructions }}
+  # somewhere in the template. If omitted, the template output fully replaces it.
+  # 如需保留客户端 system 提示词，请在模板中显式包含 {{ .ExistingInstructions }}。
+  # 若省略，则模板输出会完全覆盖它。
+  #
+  # Docker users can mount a host file to /app/data/codex-instructions.md.tmpl
+  # and point this field there.
+  # Docker 用户可将宿主机文件挂载到 /app/data/codex-instructions.md.tmpl，
+  # 然后把本字段指向该路径。
+  forced_codex_instructions_template_file: ""
   # OpenAI 透传模式是否放行客户端超时头（如 x-stainless-timeout）
   # 默认 false：过滤超时头，降低上游提前断流风险。
   openai_passthrough_allow_timeout_headers: false
@@ -816,6 +842,46 @@ linuxdo_connect:
   token_auth_method: "client_secret_post" # client_secret_post | client_secret_basic | none
   # 注意：当 token_auth_method=none（public client）时，必须启用 PKCE
   use_pkce: false
+  userinfo_email_path: ""
+  userinfo_id_path: ""
+  userinfo_username_path: ""
+
+# =============================================================================
+# Generic OIDC OAuth Login (SSO)
+# 通用 OIDC OAuth 登录（用于 Sub2API 用户登录）
+# =============================================================================
+oidc_connect:
+  enabled: false
+  provider_name: "OIDC"
+  client_id: ""
+  client_secret: ""
+  # 例如: "https://keycloak.example.com/realms/myrealm"
+  issuer_url: ""
+  # 可选: OIDC Discovery URL。为空时可手动填写 authorize/token/userinfo/jwks
+  discovery_url: ""
+  authorize_url: ""
+  token_url: ""
+  # 可选（仅补充 email/username，不用于 sub 可信绑定）
+  userinfo_url: ""
+  # validate_id_token=true 时必填
+  jwks_url: ""
+  scopes: "openid email profile"
+  # 示例: "https://your-domain.com/api/v1/auth/oauth/oidc/callback"
+  redirect_url: ""
+  # 安全提示：
+  # - 建议使用同源相对路径（以 / 开头），避免把 token 重定向到意外的第三方域名
+  # - 该地址不应包含 #fragment（本实现使用 URL fragment 传递 access_token）
+  frontend_redirect_url: "/auth/oidc/callback"
+  token_auth_method: "client_secret_post" # client_secret_post | client_secret_basic | none
+  # 注意：当 token_auth_method=none（public client）时，必须启用 PKCE
+  use_pkce: false
+  # 开启后强制校验 id_token 的签名和 claims（推荐）
+  validate_id_token: true
+  allowed_signing_algs: "RS256,ES256,PS256"
+  # 允许的时钟偏移（秒）
+  clock_skew_seconds: 120
+  # 若 Provider 返回 email_verified=false，是否拒绝登录
+  require_email_verified: false
   userinfo_email_path: ""
   userinfo_id_path: ""
   userinfo_username_path: ""

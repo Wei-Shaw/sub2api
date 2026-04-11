@@ -24,6 +24,8 @@ export async function list(
     group_name?: string         // fuzzy filter by allowed group name
     attributes?: Record<number, string>  // attributeId -> value
     include_subscriptions?: boolean
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
   },
   options?: {
     signal?: AbortSignal
@@ -37,7 +39,9 @@ export async function list(
     role: filters?.role,
     search: filters?.search,
     group_name: filters?.group_name,
-    include_subscriptions: filters?.include_subscriptions
+    include_subscriptions: filters?.include_subscriptions,
+    sort_by: filters?.sort_by,
+    sort_order: filters?.sort_order
   }
 
   // Add attribute filters as attr[id]=value

@@ -33,11 +33,13 @@ func (h *ProxyHandler) ExportData(c *gin.Context) {
 		protocol := c.Query("protocol")
 		status := c.Query("status")
 		search := strings.TrimSpace(c.Query("search"))
+		sortBy := c.DefaultQuery("sort_by", "id")
+		sortOrder := c.DefaultQuery("sort_order", "desc")
 		if len(search) > 100 {
 			search = search[:100]
 		}
 
-		proxies, err = h.listProxiesFiltered(ctx, protocol, status, search)
+		proxies, err = h.listProxiesFiltered(ctx, protocol, status, search, sortBy, sortOrder)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
@@ -89,7 +91,7 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 	ctx := c.Request.Context()
 	result := DataImportResult{}
 
-	existingProxies, err := h.listProxiesFiltered(ctx, "", "", "")
+	existingProxies, err := h.listProxiesFiltered(ctx, "", "", "", "id", "desc")
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -220,18 +222,33 @@ func parseProxyIDs(c *gin.Context) ([]int64, error) {
 	return ids, nil
 }
 
-func (h *ProxyHandler) listProxiesFiltered(ctx context.Context, protocol, status, search string) ([]service.Proxy, error) {
+func (h *ProxyHandler) listProxiesFiltered(ctx context.Context, protocol, status, search, sortBy, sortOrder string) ([]service.Proxy, error) {
 	page := 1
 	pageSize := dataPageCap
 	var out []service.Proxy
+	sortBy = strings.TrimSpace(sortBy)
+	useAccountCountSort := strings.EqualFold(sortBy, "account_count")
 	for {
-		items, total, err := h.adminService.ListProxies(ctx, page, pageSize, protocol, status, search)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, items...)
-		if len(out) >= int(total) || len(items) == 0 {
-			break
+		if useAccountCountSort {
+			items, total, err := h.adminService.ListProxiesWithAccountCount(ctx, page, pageSize, protocol, status, search, sortBy, sortOrder)
+			if err != nil {
+				return nil, err
+			}
+			for i := range items {
+				out = append(out, items[i].Proxy)
+			}
+			if len(out) >= int(total) || len(items) == 0 {
+				break
+			}
+		} else {
+			items, total, err := h.adminService.ListProxies(ctx, page, pageSize, protocol, status, search, sortBy, sortOrder)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, items...)
+			if len(out) >= int(total) || len(items) == 0 {
+				break
+			}
 		}
 		page++
 	}

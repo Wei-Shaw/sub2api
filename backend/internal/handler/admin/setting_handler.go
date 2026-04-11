@@ -35,6 +35,15 @@ func generateMenuItemID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+func scopesContainOpenID(scopes string) bool {
+	for _, scope := range strings.Fields(strings.ToLower(strings.TrimSpace(scopes))) {
+		if scope == "openid" {
+			return true
+		}
+	}
+	return false
+}
+
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
 	settingService       *service.SettingService
@@ -109,6 +118,28 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		LinuxDoConnectClientID:               settings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured: settings.LinuxDoConnectClientSecretConfigured,
 		LinuxDoConnectRedirectURL:            settings.LinuxDoConnectRedirectURL,
+		OIDCConnectEnabled:                   settings.OIDCConnectEnabled,
+		OIDCConnectProviderName:              settings.OIDCConnectProviderName,
+		OIDCConnectClientID:                  settings.OIDCConnectClientID,
+		OIDCConnectClientSecretConfigured:    settings.OIDCConnectClientSecretConfigured,
+		OIDCConnectIssuerURL:                 settings.OIDCConnectIssuerURL,
+		OIDCConnectDiscoveryURL:              settings.OIDCConnectDiscoveryURL,
+		OIDCConnectAuthorizeURL:              settings.OIDCConnectAuthorizeURL,
+		OIDCConnectTokenURL:                  settings.OIDCConnectTokenURL,
+		OIDCConnectUserInfoURL:               settings.OIDCConnectUserInfoURL,
+		OIDCConnectJWKSURL:                   settings.OIDCConnectJWKSURL,
+		OIDCConnectScopes:                    settings.OIDCConnectScopes,
+		OIDCConnectRedirectURL:               settings.OIDCConnectRedirectURL,
+		OIDCConnectFrontendRedirectURL:       settings.OIDCConnectFrontendRedirectURL,
+		OIDCConnectTokenAuthMethod:           settings.OIDCConnectTokenAuthMethod,
+		OIDCConnectUsePKCE:                   settings.OIDCConnectUsePKCE,
+		OIDCConnectValidateIDToken:           settings.OIDCConnectValidateIDToken,
+		OIDCConnectAllowedSigningAlgs:        settings.OIDCConnectAllowedSigningAlgs,
+		OIDCConnectClockSkewSeconds:          settings.OIDCConnectClockSkewSeconds,
+		OIDCConnectRequireEmailVerified:      settings.OIDCConnectRequireEmailVerified,
+		OIDCConnectUserInfoEmailPath:         settings.OIDCConnectUserInfoEmailPath,
+		OIDCConnectUserInfoIDPath:            settings.OIDCConnectUserInfoIDPath,
+		OIDCConnectUserInfoUsernamePath:      settings.OIDCConnectUserInfoUsernamePath,
 		SiteName:                             settings.SiteName,
 		SiteLogo:                             settings.SiteLogo,
 		SiteSubtitle:                         settings.SiteSubtitle,
@@ -119,6 +150,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		HideCcsImportButton:                  settings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:          settings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:              settings.PurchaseSubscriptionURL,
+		TableDefaultPageSize:                 settings.TableDefaultPageSize,
+		TablePageSizeOptions:                 settings.TablePageSizeOptions,
 		CustomMenuItems:                      dto.ParseCustomMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                      dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                   settings.DefaultConcurrency,
@@ -141,6 +174,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		BackendModeEnabled:                   settings.BackendModeEnabled,
 		EnableFingerprintUnification:         settings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            settings.EnableMetadataPassthrough,
+		EnableCCHSigning:                     settings.EnableCCHSigning,
 		PaymentEnabled:                       paymentCfg.Enabled,
 		PaymentMinAmount:                     paymentCfg.MinAmount,
 		PaymentMaxAmount:                     paymentCfg.MaxAmount,
@@ -194,6 +228,30 @@ type UpdateSettingsRequest struct {
 	LinuxDoConnectClientSecret string `json:"linuxdo_connect_client_secret"`
 	LinuxDoConnectRedirectURL  string `json:"linuxdo_connect_redirect_url"`
 
+	// Generic OIDC OAuth 登录
+	OIDCConnectEnabled              bool   `json:"oidc_connect_enabled"`
+	OIDCConnectProviderName         string `json:"oidc_connect_provider_name"`
+	OIDCConnectClientID             string `json:"oidc_connect_client_id"`
+	OIDCConnectClientSecret         string `json:"oidc_connect_client_secret"`
+	OIDCConnectIssuerURL            string `json:"oidc_connect_issuer_url"`
+	OIDCConnectDiscoveryURL         string `json:"oidc_connect_discovery_url"`
+	OIDCConnectAuthorizeURL         string `json:"oidc_connect_authorize_url"`
+	OIDCConnectTokenURL             string `json:"oidc_connect_token_url"`
+	OIDCConnectUserInfoURL          string `json:"oidc_connect_userinfo_url"`
+	OIDCConnectJWKSURL              string `json:"oidc_connect_jwks_url"`
+	OIDCConnectScopes               string `json:"oidc_connect_scopes"`
+	OIDCConnectRedirectURL          string `json:"oidc_connect_redirect_url"`
+	OIDCConnectFrontendRedirectURL  string `json:"oidc_connect_frontend_redirect_url"`
+	OIDCConnectTokenAuthMethod      string `json:"oidc_connect_token_auth_method"`
+	OIDCConnectUsePKCE              bool   `json:"oidc_connect_use_pkce"`
+	OIDCConnectValidateIDToken      bool   `json:"oidc_connect_validate_id_token"`
+	OIDCConnectAllowedSigningAlgs   string `json:"oidc_connect_allowed_signing_algs"`
+	OIDCConnectClockSkewSeconds     int    `json:"oidc_connect_clock_skew_seconds"`
+	OIDCConnectRequireEmailVerified bool   `json:"oidc_connect_require_email_verified"`
+	OIDCConnectUserInfoEmailPath    string `json:"oidc_connect_userinfo_email_path"`
+	OIDCConnectUserInfoIDPath       string `json:"oidc_connect_userinfo_id_path"`
+	OIDCConnectUserInfoUsernamePath string `json:"oidc_connect_userinfo_username_path"`
+
 	// OEM设置
 	SiteName                    string                `json:"site_name"`
 	SiteLogo                    string                `json:"site_logo"`
@@ -205,6 +263,8 @@ type UpdateSettingsRequest struct {
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
+	TableDefaultPageSize        int                   `json:"table_default_page_size"`
+	TablePageSizeOptions        []int                 `json:"table_page_size_options"`
 	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
 
@@ -242,6 +302,7 @@ type UpdateSettingsRequest struct {
 	// Gateway forwarding behavior
 	EnableFingerprintUnification *bool `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough    *bool `json:"enable_metadata_passthrough"`
+	EnableCCHSigning             *bool `json:"enable_cch_signing"`
 
 	// Payment configuration (integrated into settings, full replace)
 	PaymentEnabled           *bool    `json:"payment_enabled"`
@@ -287,6 +348,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if req.DefaultBalance < 0 {
 		req.DefaultBalance = 0
+	}
+	// 通用表格配置：兼容旧客户端未传字段时保留当前值。
+	if req.TableDefaultPageSize <= 0 {
+		req.TableDefaultPageSize = previousSettings.TableDefaultPageSize
+	}
+	if req.TablePageSizeOptions == nil {
+		req.TablePageSizeOptions = previousSettings.TablePageSizeOptions
 	}
 	req.SMTPHost = strings.TrimSpace(req.SMTPHost)
 	req.SMTPUsername = strings.TrimSpace(req.SMTPUsername)
@@ -372,6 +440,122 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return
 			}
 			req.LinuxDoConnectClientSecret = previousSettings.LinuxDoConnectClientSecret
+		}
+	}
+
+	// Generic OIDC 参数验证
+	if req.OIDCConnectEnabled {
+		req.OIDCConnectProviderName = strings.TrimSpace(req.OIDCConnectProviderName)
+		req.OIDCConnectClientID = strings.TrimSpace(req.OIDCConnectClientID)
+		req.OIDCConnectClientSecret = strings.TrimSpace(req.OIDCConnectClientSecret)
+		req.OIDCConnectIssuerURL = strings.TrimSpace(req.OIDCConnectIssuerURL)
+		req.OIDCConnectDiscoveryURL = strings.TrimSpace(req.OIDCConnectDiscoveryURL)
+		req.OIDCConnectAuthorizeURL = strings.TrimSpace(req.OIDCConnectAuthorizeURL)
+		req.OIDCConnectTokenURL = strings.TrimSpace(req.OIDCConnectTokenURL)
+		req.OIDCConnectUserInfoURL = strings.TrimSpace(req.OIDCConnectUserInfoURL)
+		req.OIDCConnectJWKSURL = strings.TrimSpace(req.OIDCConnectJWKSURL)
+		req.OIDCConnectScopes = strings.TrimSpace(req.OIDCConnectScopes)
+		req.OIDCConnectRedirectURL = strings.TrimSpace(req.OIDCConnectRedirectURL)
+		req.OIDCConnectFrontendRedirectURL = strings.TrimSpace(req.OIDCConnectFrontendRedirectURL)
+		req.OIDCConnectTokenAuthMethod = strings.ToLower(strings.TrimSpace(req.OIDCConnectTokenAuthMethod))
+		req.OIDCConnectAllowedSigningAlgs = strings.TrimSpace(req.OIDCConnectAllowedSigningAlgs)
+		req.OIDCConnectUserInfoEmailPath = strings.TrimSpace(req.OIDCConnectUserInfoEmailPath)
+		req.OIDCConnectUserInfoIDPath = strings.TrimSpace(req.OIDCConnectUserInfoIDPath)
+		req.OIDCConnectUserInfoUsernamePath = strings.TrimSpace(req.OIDCConnectUserInfoUsernamePath)
+
+		if req.OIDCConnectProviderName == "" {
+			req.OIDCConnectProviderName = "OIDC"
+		}
+		if req.OIDCConnectClientID == "" {
+			response.BadRequest(c, "OIDC Client ID is required when enabled")
+			return
+		}
+		if req.OIDCConnectIssuerURL == "" {
+			response.BadRequest(c, "OIDC Issuer URL is required when enabled")
+			return
+		}
+		if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectIssuerURL); err != nil {
+			response.BadRequest(c, "OIDC Issuer URL must be an absolute http(s) URL")
+			return
+		}
+		if req.OIDCConnectDiscoveryURL != "" {
+			if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectDiscoveryURL); err != nil {
+				response.BadRequest(c, "OIDC Discovery URL must be an absolute http(s) URL")
+				return
+			}
+		}
+		if req.OIDCConnectAuthorizeURL != "" {
+			if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectAuthorizeURL); err != nil {
+				response.BadRequest(c, "OIDC Authorize URL must be an absolute http(s) URL")
+				return
+			}
+		}
+		if req.OIDCConnectTokenURL != "" {
+			if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectTokenURL); err != nil {
+				response.BadRequest(c, "OIDC Token URL must be an absolute http(s) URL")
+				return
+			}
+		}
+		if req.OIDCConnectUserInfoURL != "" {
+			if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectUserInfoURL); err != nil {
+				response.BadRequest(c, "OIDC UserInfo URL must be an absolute http(s) URL")
+				return
+			}
+		}
+		if req.OIDCConnectRedirectURL == "" {
+			response.BadRequest(c, "OIDC Redirect URL is required when enabled")
+			return
+		}
+		if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectRedirectURL); err != nil {
+			response.BadRequest(c, "OIDC Redirect URL must be an absolute http(s) URL")
+			return
+		}
+		if req.OIDCConnectFrontendRedirectURL == "" {
+			response.BadRequest(c, "OIDC Frontend Redirect URL is required when enabled")
+			return
+		}
+		if err := config.ValidateFrontendRedirectURL(req.OIDCConnectFrontendRedirectURL); err != nil {
+			response.BadRequest(c, "OIDC Frontend Redirect URL is invalid")
+			return
+		}
+		if !scopesContainOpenID(req.OIDCConnectScopes) {
+			response.BadRequest(c, "OIDC scopes must contain openid")
+			return
+		}
+		switch req.OIDCConnectTokenAuthMethod {
+		case "", "client_secret_post", "client_secret_basic", "none":
+		default:
+			response.BadRequest(c, "OIDC Token Auth Method must be one of client_secret_post/client_secret_basic/none")
+			return
+		}
+		if req.OIDCConnectTokenAuthMethod == "none" && !req.OIDCConnectUsePKCE {
+			response.BadRequest(c, "OIDC PKCE must be enabled when token_auth_method=none")
+			return
+		}
+		if req.OIDCConnectClockSkewSeconds < 0 || req.OIDCConnectClockSkewSeconds > 600 {
+			response.BadRequest(c, "OIDC clock skew seconds must be between 0 and 600")
+			return
+		}
+		if req.OIDCConnectValidateIDToken {
+			if req.OIDCConnectAllowedSigningAlgs == "" {
+				response.BadRequest(c, "OIDC Allowed Signing Algs is required when validate_id_token=true")
+				return
+			}
+		}
+		if req.OIDCConnectJWKSURL != "" {
+			if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectJWKSURL); err != nil {
+				response.BadRequest(c, "OIDC JWKS URL must be an absolute http(s) URL")
+				return
+			}
+		}
+		if req.OIDCConnectTokenAuthMethod == "" || req.OIDCConnectTokenAuthMethod == "client_secret_post" || req.OIDCConnectTokenAuthMethod == "client_secret_basic" {
+			if req.OIDCConnectClientSecret == "" {
+				if previousSettings.OIDCConnectClientSecret == "" {
+					response.BadRequest(c, "OIDC Client Secret is required when enabled")
+					return
+				}
+				req.OIDCConnectClientSecret = previousSettings.OIDCConnectClientSecret
+			}
 		}
 	}
 
@@ -605,6 +789,28 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		LinuxDoConnectClientID:           req.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecret:       req.LinuxDoConnectClientSecret,
 		LinuxDoConnectRedirectURL:        req.LinuxDoConnectRedirectURL,
+		OIDCConnectEnabled:               req.OIDCConnectEnabled,
+		OIDCConnectProviderName:          req.OIDCConnectProviderName,
+		OIDCConnectClientID:              req.OIDCConnectClientID,
+		OIDCConnectClientSecret:          req.OIDCConnectClientSecret,
+		OIDCConnectIssuerURL:             req.OIDCConnectIssuerURL,
+		OIDCConnectDiscoveryURL:          req.OIDCConnectDiscoveryURL,
+		OIDCConnectAuthorizeURL:          req.OIDCConnectAuthorizeURL,
+		OIDCConnectTokenURL:              req.OIDCConnectTokenURL,
+		OIDCConnectUserInfoURL:           req.OIDCConnectUserInfoURL,
+		OIDCConnectJWKSURL:               req.OIDCConnectJWKSURL,
+		OIDCConnectScopes:                req.OIDCConnectScopes,
+		OIDCConnectRedirectURL:           req.OIDCConnectRedirectURL,
+		OIDCConnectFrontendRedirectURL:   req.OIDCConnectFrontendRedirectURL,
+		OIDCConnectTokenAuthMethod:       req.OIDCConnectTokenAuthMethod,
+		OIDCConnectUsePKCE:               req.OIDCConnectUsePKCE,
+		OIDCConnectValidateIDToken:       req.OIDCConnectValidateIDToken,
+		OIDCConnectAllowedSigningAlgs:    req.OIDCConnectAllowedSigningAlgs,
+		OIDCConnectClockSkewSeconds:      req.OIDCConnectClockSkewSeconds,
+		OIDCConnectRequireEmailVerified:  req.OIDCConnectRequireEmailVerified,
+		OIDCConnectUserInfoEmailPath:     req.OIDCConnectUserInfoEmailPath,
+		OIDCConnectUserInfoIDPath:        req.OIDCConnectUserInfoIDPath,
+		OIDCConnectUserInfoUsernamePath:  req.OIDCConnectUserInfoUsernamePath,
 		SiteName:                         req.SiteName,
 		SiteLogo:                         req.SiteLogo,
 		SiteSubtitle:                     req.SiteSubtitle,
@@ -615,6 +821,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		HideCcsImportButton:              req.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:      purchaseEnabled,
 		PurchaseSubscriptionURL:          purchaseURL,
+		TableDefaultPageSize:             req.TableDefaultPageSize,
+		TablePageSizeOptions:             req.TablePageSizeOptions,
 		CustomMenuItems:                  customMenuJSON,
 		CustomEndpoints:                  customEndpointsJSON,
 		DefaultConcurrency:               req.DefaultConcurrency,
@@ -666,6 +874,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.EnableMetadataPassthrough
 			}
 			return previousSettings.EnableMetadataPassthrough
+		}(),
+		EnableCCHSigning: func() bool {
+			if req.EnableCCHSigning != nil {
+				return *req.EnableCCHSigning
+			}
+			return previousSettings.EnableCCHSigning
 		}(),
 	}
 
@@ -756,6 +970,28 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		LinuxDoConnectClientID:               updatedSettings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured: updatedSettings.LinuxDoConnectClientSecretConfigured,
 		LinuxDoConnectRedirectURL:            updatedSettings.LinuxDoConnectRedirectURL,
+		OIDCConnectEnabled:                   updatedSettings.OIDCConnectEnabled,
+		OIDCConnectProviderName:              updatedSettings.OIDCConnectProviderName,
+		OIDCConnectClientID:                  updatedSettings.OIDCConnectClientID,
+		OIDCConnectClientSecretConfigured:    updatedSettings.OIDCConnectClientSecretConfigured,
+		OIDCConnectIssuerURL:                 updatedSettings.OIDCConnectIssuerURL,
+		OIDCConnectDiscoveryURL:              updatedSettings.OIDCConnectDiscoveryURL,
+		OIDCConnectAuthorizeURL:              updatedSettings.OIDCConnectAuthorizeURL,
+		OIDCConnectTokenURL:                  updatedSettings.OIDCConnectTokenURL,
+		OIDCConnectUserInfoURL:               updatedSettings.OIDCConnectUserInfoURL,
+		OIDCConnectJWKSURL:                   updatedSettings.OIDCConnectJWKSURL,
+		OIDCConnectScopes:                    updatedSettings.OIDCConnectScopes,
+		OIDCConnectRedirectURL:               updatedSettings.OIDCConnectRedirectURL,
+		OIDCConnectFrontendRedirectURL:       updatedSettings.OIDCConnectFrontendRedirectURL,
+		OIDCConnectTokenAuthMethod:           updatedSettings.OIDCConnectTokenAuthMethod,
+		OIDCConnectUsePKCE:                   updatedSettings.OIDCConnectUsePKCE,
+		OIDCConnectValidateIDToken:           updatedSettings.OIDCConnectValidateIDToken,
+		OIDCConnectAllowedSigningAlgs:        updatedSettings.OIDCConnectAllowedSigningAlgs,
+		OIDCConnectClockSkewSeconds:          updatedSettings.OIDCConnectClockSkewSeconds,
+		OIDCConnectRequireEmailVerified:      updatedSettings.OIDCConnectRequireEmailVerified,
+		OIDCConnectUserInfoEmailPath:         updatedSettings.OIDCConnectUserInfoEmailPath,
+		OIDCConnectUserInfoIDPath:            updatedSettings.OIDCConnectUserInfoIDPath,
+		OIDCConnectUserInfoUsernamePath:      updatedSettings.OIDCConnectUserInfoUsernamePath,
 		SiteName:                             updatedSettings.SiteName,
 		SiteLogo:                             updatedSettings.SiteLogo,
 		SiteSubtitle:                         updatedSettings.SiteSubtitle,
@@ -766,6 +1002,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		HideCcsImportButton:                  updatedSettings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:          updatedSettings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:              updatedSettings.PurchaseSubscriptionURL,
+		TableDefaultPageSize:                 updatedSettings.TableDefaultPageSize,
+		TablePageSizeOptions:                 updatedSettings.TablePageSizeOptions,
 		CustomMenuItems:                      dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
 		CustomEndpoints:                      dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                   updatedSettings.DefaultConcurrency,
@@ -788,6 +1026,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		BackendModeEnabled:                   updatedSettings.BackendModeEnabled,
 		EnableFingerprintUnification:         updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            updatedSettings.EnableMetadataPassthrough,
+		EnableCCHSigning:                     updatedSettings.EnableCCHSigning,
 		PaymentEnabled:                       updatedPaymentCfg.Enabled,
 		PaymentMinAmount:                     updatedPaymentCfg.MinAmount,
 		PaymentMaxAmount:                     updatedPaymentCfg.MaxAmount,
@@ -904,6 +1143,72 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.LinuxDoConnectRedirectURL != after.LinuxDoConnectRedirectURL {
 		changed = append(changed, "linuxdo_connect_redirect_url")
 	}
+	if before.OIDCConnectEnabled != after.OIDCConnectEnabled {
+		changed = append(changed, "oidc_connect_enabled")
+	}
+	if before.OIDCConnectProviderName != after.OIDCConnectProviderName {
+		changed = append(changed, "oidc_connect_provider_name")
+	}
+	if before.OIDCConnectClientID != after.OIDCConnectClientID {
+		changed = append(changed, "oidc_connect_client_id")
+	}
+	if req.OIDCConnectClientSecret != "" {
+		changed = append(changed, "oidc_connect_client_secret")
+	}
+	if before.OIDCConnectIssuerURL != after.OIDCConnectIssuerURL {
+		changed = append(changed, "oidc_connect_issuer_url")
+	}
+	if before.OIDCConnectDiscoveryURL != after.OIDCConnectDiscoveryURL {
+		changed = append(changed, "oidc_connect_discovery_url")
+	}
+	if before.OIDCConnectAuthorizeURL != after.OIDCConnectAuthorizeURL {
+		changed = append(changed, "oidc_connect_authorize_url")
+	}
+	if before.OIDCConnectTokenURL != after.OIDCConnectTokenURL {
+		changed = append(changed, "oidc_connect_token_url")
+	}
+	if before.OIDCConnectUserInfoURL != after.OIDCConnectUserInfoURL {
+		changed = append(changed, "oidc_connect_userinfo_url")
+	}
+	if before.OIDCConnectJWKSURL != after.OIDCConnectJWKSURL {
+		changed = append(changed, "oidc_connect_jwks_url")
+	}
+	if before.OIDCConnectScopes != after.OIDCConnectScopes {
+		changed = append(changed, "oidc_connect_scopes")
+	}
+	if before.OIDCConnectRedirectURL != after.OIDCConnectRedirectURL {
+		changed = append(changed, "oidc_connect_redirect_url")
+	}
+	if before.OIDCConnectFrontendRedirectURL != after.OIDCConnectFrontendRedirectURL {
+		changed = append(changed, "oidc_connect_frontend_redirect_url")
+	}
+	if before.OIDCConnectTokenAuthMethod != after.OIDCConnectTokenAuthMethod {
+		changed = append(changed, "oidc_connect_token_auth_method")
+	}
+	if before.OIDCConnectUsePKCE != after.OIDCConnectUsePKCE {
+		changed = append(changed, "oidc_connect_use_pkce")
+	}
+	if before.OIDCConnectValidateIDToken != after.OIDCConnectValidateIDToken {
+		changed = append(changed, "oidc_connect_validate_id_token")
+	}
+	if before.OIDCConnectAllowedSigningAlgs != after.OIDCConnectAllowedSigningAlgs {
+		changed = append(changed, "oidc_connect_allowed_signing_algs")
+	}
+	if before.OIDCConnectClockSkewSeconds != after.OIDCConnectClockSkewSeconds {
+		changed = append(changed, "oidc_connect_clock_skew_seconds")
+	}
+	if before.OIDCConnectRequireEmailVerified != after.OIDCConnectRequireEmailVerified {
+		changed = append(changed, "oidc_connect_require_email_verified")
+	}
+	if before.OIDCConnectUserInfoEmailPath != after.OIDCConnectUserInfoEmailPath {
+		changed = append(changed, "oidc_connect_userinfo_email_path")
+	}
+	if before.OIDCConnectUserInfoIDPath != after.OIDCConnectUserInfoIDPath {
+		changed = append(changed, "oidc_connect_userinfo_id_path")
+	}
+	if before.OIDCConnectUserInfoUsernamePath != after.OIDCConnectUserInfoUsernamePath {
+		changed = append(changed, "oidc_connect_userinfo_username_path")
+	}
 	if before.SiteName != after.SiteName {
 		changed = append(changed, "site_name")
 	}
@@ -988,6 +1293,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.PurchaseSubscriptionURL != after.PurchaseSubscriptionURL {
 		changed = append(changed, "purchase_subscription_url")
 	}
+	if before.TableDefaultPageSize != after.TableDefaultPageSize {
+		changed = append(changed, "table_default_page_size")
+	}
+	if !equalIntSlice(before.TablePageSizeOptions, after.TablePageSizeOptions) {
+		changed = append(changed, "table_page_size_options")
+	}
 	if before.CustomMenuItems != after.CustomMenuItems {
 		changed = append(changed, "custom_menu_items")
 	}
@@ -996,6 +1307,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.EnableMetadataPassthrough != after.EnableMetadataPassthrough {
 		changed = append(changed, "enable_metadata_passthrough")
+	}
+	if before.EnableCCHSigning != after.EnableCCHSigning {
+		changed = append(changed, "enable_cch_signing")
 	}
 	return changed
 }
@@ -1035,6 +1349,18 @@ func equalDefaultSubscriptions(a, b []service.DefaultSubscriptionSetting) bool {
 	}
 	for i := range a {
 		if a[i].GroupID != b[i].GroupID || a[i].ValidityDays != b[i].ValidityDays {
+			return false
+		}
+	}
+	return true
+}
+
+func equalIntSlice(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
 			return false
 		}
 	}

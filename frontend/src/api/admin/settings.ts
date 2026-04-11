@@ -38,6 +38,8 @@ export interface SystemSettings {
   doc_url: string
   home_content: string
   hide_ccs_import_button: boolean
+  table_default_page_size: number
+  table_page_size_options: number[]
   backend_mode_enabled: boolean
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
@@ -59,6 +61,30 @@ export interface SystemSettings {
   linuxdo_connect_client_id: string
   linuxdo_connect_client_secret_configured: boolean
   linuxdo_connect_redirect_url: string
+
+  // Generic OIDC OAuth settings
+  oidc_connect_enabled: boolean
+  oidc_connect_provider_name: string
+  oidc_connect_client_id: string
+  oidc_connect_client_secret_configured: boolean
+  oidc_connect_issuer_url: string
+  oidc_connect_discovery_url: string
+  oidc_connect_authorize_url: string
+  oidc_connect_token_url: string
+  oidc_connect_userinfo_url: string
+  oidc_connect_jwks_url: string
+  oidc_connect_scopes: string
+  oidc_connect_redirect_url: string
+  oidc_connect_frontend_redirect_url: string
+  oidc_connect_token_auth_method: string
+  oidc_connect_use_pkce: boolean
+  oidc_connect_validate_id_token: boolean
+  oidc_connect_allowed_signing_algs: string
+  oidc_connect_clock_skew_seconds: number
+  oidc_connect_require_email_verified: boolean
+  oidc_connect_userinfo_email_path: string
+  oidc_connect_userinfo_id_path: string
+  oidc_connect_userinfo_username_path: string
 
   // Model fallback configuration
   enable_model_fallback: boolean
@@ -87,6 +113,7 @@ export interface SystemSettings {
   // Gateway forwarding behavior
   enable_fingerprint_unification: boolean
   enable_metadata_passthrough: boolean
+  enable_cch_signing: boolean
 
   // Payment configuration
   payment_enabled: boolean
@@ -129,6 +156,8 @@ export interface UpdateSettingsRequest {
   doc_url?: string
   home_content?: string
   hide_ccs_import_button?: boolean
+  table_default_page_size?: number
+  table_page_size_options?: number[]
   backend_mode_enabled?: boolean
   custom_menu_items?: CustomMenuItem[]
   custom_endpoints?: CustomEndpoint[]
@@ -146,6 +175,28 @@ export interface UpdateSettingsRequest {
   linuxdo_connect_client_id?: string
   linuxdo_connect_client_secret?: string
   linuxdo_connect_redirect_url?: string
+  oidc_connect_enabled?: boolean
+  oidc_connect_provider_name?: string
+  oidc_connect_client_id?: string
+  oidc_connect_client_secret?: string
+  oidc_connect_issuer_url?: string
+  oidc_connect_discovery_url?: string
+  oidc_connect_authorize_url?: string
+  oidc_connect_token_url?: string
+  oidc_connect_userinfo_url?: string
+  oidc_connect_jwks_url?: string
+  oidc_connect_scopes?: string
+  oidc_connect_redirect_url?: string
+  oidc_connect_frontend_redirect_url?: string
+  oidc_connect_token_auth_method?: string
+  oidc_connect_use_pkce?: boolean
+  oidc_connect_validate_id_token?: boolean
+  oidc_connect_allowed_signing_algs?: string
+  oidc_connect_clock_skew_seconds?: number
+  oidc_connect_require_email_verified?: boolean
+  oidc_connect_userinfo_email_path?: string
+  oidc_connect_userinfo_id_path?: string
+  oidc_connect_userinfo_username_path?: string
   enable_model_fallback?: boolean
   fallback_model_anthropic?: string
   fallback_model_openai?: string
@@ -162,6 +213,7 @@ export interface UpdateSettingsRequest {
   allow_ungrouped_key_scheduling?: boolean
   enable_fingerprint_unification?: boolean
   enable_metadata_passthrough?: boolean
+  enable_cch_signing?: boolean
   // Payment configuration
   payment_enabled?: boolean
   payment_min_amount?: number
@@ -394,6 +446,9 @@ export interface BetaPolicyRule {
   action: 'pass' | 'filter' | 'block'
   scope: 'all' | 'oauth' | 'apikey' | 'bedrock'
   error_message?: string
+  model_whitelist?: string[]
+  fallback_action?: 'pass' | 'filter' | 'block'
+  fallback_error_message?: string
 }
 
 /**

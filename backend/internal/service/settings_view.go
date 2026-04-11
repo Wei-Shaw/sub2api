@@ -31,6 +31,31 @@ type SystemSettings struct {
 	LinuxDoConnectClientSecretConfigured bool
 	LinuxDoConnectRedirectURL            string
 
+	// Generic OIDC OAuth 登录
+	OIDCConnectEnabled                bool
+	OIDCConnectProviderName           string
+	OIDCConnectClientID               string
+	OIDCConnectClientSecret           string
+	OIDCConnectClientSecretConfigured bool
+	OIDCConnectIssuerURL              string
+	OIDCConnectDiscoveryURL           string
+	OIDCConnectAuthorizeURL           string
+	OIDCConnectTokenURL               string
+	OIDCConnectUserInfoURL            string
+	OIDCConnectJWKSURL                string
+	OIDCConnectScopes                 string
+	OIDCConnectRedirectURL            string
+	OIDCConnectFrontendRedirectURL    string
+	OIDCConnectTokenAuthMethod        string
+	OIDCConnectUsePKCE                bool
+	OIDCConnectValidateIDToken        bool
+	OIDCConnectAllowedSigningAlgs     string
+	OIDCConnectClockSkewSeconds       int
+	OIDCConnectRequireEmailVerified   bool
+	OIDCConnectUserInfoEmailPath      string
+	OIDCConnectUserInfoIDPath         string
+	OIDCConnectUserInfoUsernamePath   string
+
 	SiteName                    string
 	SiteLogo                    string
 	SiteSubtitle                string
@@ -41,6 +66,8 @@ type SystemSettings struct {
 	HideCcsImportButton         bool
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
+	TableDefaultPageSize        int
+	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
@@ -78,6 +105,7 @@ type SystemSettings struct {
 	// Gateway forwarding behavior
 	EnableFingerprintUnification bool // 是否统一 OAuth 账号的指纹头（默认 true）
 	EnableMetadataPassthrough    bool // 是否透传客户端原始 metadata（默认 false）
+	EnableCCHSigning             bool // 是否对 billing header cch 进行签名（默认 false）
 }
 
 type DefaultSubscriptionSetting struct {
@@ -106,13 +134,17 @@ type PublicSettings struct {
 
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
+	TableDefaultPageSize        int
+	TablePageSizeOptions        []int
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
-	LinuxDoOAuthEnabled bool
-	BackendModeEnabled  bool
-	PaymentEnabled      bool
-	Version             string
+	LinuxDoOAuthEnabled   bool
+	BackendModeEnabled    bool
+	PaymentEnabled        bool
+	OIDCOAuthEnabled      bool
+	OIDCOAuthProviderName string
+	Version               string
 }
 
 // StreamTimeoutSettings 流超时处理配置（仅控制超时后的处理方式，超时判定由网关配置控制）
@@ -179,10 +211,13 @@ const (
 
 // BetaPolicyRule 单条 Beta 策略规则
 type BetaPolicyRule struct {
-	BetaToken    string `json:"beta_token"`              // beta token 值
-	Action       string `json:"action"`                  // "pass" | "filter" | "block"
-	Scope        string `json:"scope"`                   // "all" | "oauth" | "apikey" | "bedrock"
-	ErrorMessage string `json:"error_message,omitempty"` // 自定义错误消息 (action=block 时生效)
+	BetaToken            string   `json:"beta_token"`                       // beta token 值
+	Action               string   `json:"action"`                           // "pass" | "filter" | "block"
+	Scope                string   `json:"scope"`                            // "all" | "oauth" | "apikey" | "bedrock"
+	ErrorMessage         string   `json:"error_message,omitempty"`          // 自定义错误消息 (action=block 时生效)
+	ModelWhitelist       []string `json:"model_whitelist,omitempty"`        // 模型匹配模式列表（为空=对所有模型生效）
+	FallbackAction       string   `json:"fallback_action,omitempty"`        // 未匹配白名单的模型的处理方式
+	FallbackErrorMessage string   `json:"fallback_error_message,omitempty"` // 未匹配白名单时的自定义错误消息 (fallback_action=block 时生效)
 }
 
 // BetaPolicySettings Beta 策略配置

@@ -256,6 +256,17 @@ describe('user UsageView tooltip', () => {
     await setupState.exportToCSV()
 
     expect(exportedBlob).not.toBeNull()
+    const hasSortedExportQuery = query.mock.calls.some((call) => {
+      const params = call[0] as Record<string, unknown> | undefined
+      const config = call[1]
+      return (
+        params?.page_size === 100 &&
+        params?.sort_by === 'created_at' &&
+        params?.sort_order === 'desc' &&
+        config === undefined
+      )
+    })
+    expect(hasSortedExportQuery).toBe(true)
     expect(clickSpy).toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalled()
 

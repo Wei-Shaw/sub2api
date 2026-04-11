@@ -55,8 +55,10 @@ func (h *PromoHandler) List(c *gin.Context) {
 	}
 
 	params := pagination.PaginationParams{
-		Page:     page,
-		PageSize: pageSize,
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    c.DefaultQuery("sort_by", "created_at"),
+		SortOrder: c.DefaultQuery("sort_order", "desc"),
 	}
 
 	codes, paginationResult, err := h.promoService.List(c.Request.Context(), params, status, search)

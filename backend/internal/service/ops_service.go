@@ -16,7 +16,7 @@ import (
 var ErrOpsDisabled = infraerrors.NotFound("OPS_DISABLED", "Ops monitoring is disabled")
 
 const (
-	opsMaxStoredRequestBodyBytes = 10 * 1024
+	opsMaxStoredRequestBodyBytes = 256 * 1024
 	opsMaxStoredErrorBodyBytes   = 20 * 1024
 )
 
