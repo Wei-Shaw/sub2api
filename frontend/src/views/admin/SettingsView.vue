@@ -2121,7 +2121,13 @@
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.settings.payment.title') }}</h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.description') }}</p>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.payment.description') }}
+              <a :href="locale === 'zh' ? 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md' : 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md'" target="_blank" rel="noopener noreferrer" class="ml-2 inline-flex items-center text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300">
+                <svg class="mr-0.5 h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                {{ t('admin.settings.payment.configGuide') }}
+              </a>
+            </p>
           </div>
           <div class="space-y-4 p-6">
             <!-- Enable toggle -->
@@ -2536,7 +2542,7 @@ import {
   parseRegistrationEmailSuffixWhitelistInput
 } from '@/utils/registrationEmailPolicy'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const appStore = useAppStore()
 const adminSettingsStore = useAdminSettingsStore()
 
