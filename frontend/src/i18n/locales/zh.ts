@@ -4608,6 +4608,7 @@ export default {
       payment: {
         title: '支付设置',
         description: '配置支付系统选项',
+        configGuide: '支付配置指南',
         enabled: '启用支付',
         enabledHint: '启用或禁用支付系统',
         enabledPaymentTypes: '启用的服务商',

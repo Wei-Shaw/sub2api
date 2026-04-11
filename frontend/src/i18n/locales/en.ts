@@ -4444,6 +4444,7 @@ export default {
       payment: {
         title: 'Payment Settings',
         description: 'Configure payment system options',
+        configGuide: 'Configuration Guide',
         enabled: 'Enable Payment',
         enabledHint: 'Enable or disable the payment system',
         enabledPaymentTypes: 'Enabled Providers',
