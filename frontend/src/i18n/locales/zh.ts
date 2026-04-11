@@ -355,7 +355,6 @@ export default {
     mySubscriptions: '我的订阅',
     buySubscription: '充值/订阅',
     docs: '文档',
-    sora: 'Sora 创作',
     myOrders: '我的订单',
     orderManagement: '订单管理',
     paymentDashboard: '支付概览',
@@ -4353,7 +4352,6 @@ export default {
         gateway: '网关服务',
         email: '邮件设置',
         backup: '数据备份',
-        data: 'Sora 存储',
         payment: '支付设置',
       REDACTED,
       emailTabDisabledTitle: '邮箱验证未启用',
@@ -5364,6 +5362,7 @@ export default {
     REDACTED
   REDACTED,
 
+  // Payment System
   payment: {
     title: '充值/订阅',
     amountLabel: '充值金额',
