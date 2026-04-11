@@ -28,7 +28,7 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 
 > 支付宝官方 / 微信官方与 EasyPay 可以共存。官方渠道直接对接 API，资金直达商户账户，手续费更低；EasyPay 通过第三方平台聚合，接入门槛更低。
 
-> **EasyPay 推荐**：个人推荐 [ZPay](https://z-pay.cn/?uid=23808)（`https://z-pay.cn/?uid=23808`）作为 EasyPay 服务商（链接含作者邀请码，介意可去掉）。ZPay 支持**个人用户**（无营业执照）每日 1 万元以内交易；拥有营业执照则无限额。支付渠道的安全性、稳定性及合规性请自行鉴别，本项目不对任何第三方支付服务商做担保或背书。
+> **EasyPay 推荐**：个人推荐 [ZPay](https://z-pay.cn/?uid=23808)（`https://z-pay.cn/?uid=23808`）作为 EasyPay 服务商（链接含 [Sub2ApiPay](https://github.com/touwaeriol/sub2apipay) 原作者 [@touwaeriol](https://github.com/touwaeriol) 的邀请码，介意可去掉）。ZPay 支持**个人用户**（无营业执照）每日 1 万元以内交易；拥有营业执照则无限额。支付渠道的安全性、稳定性及合规性请自行鉴别，本项目不对任何第三方支付服务商做担保或背书。
 
 ---
 
