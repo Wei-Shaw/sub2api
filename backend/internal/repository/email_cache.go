@@ -11,6 +11,7 @@ import (
 
 const (
 	verifyCodeKeyPrefix          = "verify_code:"
+	notifyVerifyKeyPrefix        = "notify_verify:"
 	passwordResetKeyPrefix       = "password_reset:"
 	passwordResetSentAtKeyPrefix = "password_reset_sent:"
 )
@@ -18,6 +19,11 @@ const (
 // verifyCodeKey generates the Redis key for email verification code.
 func verifyCodeKey(email string) string {
 	return verifyCodeKeyPrefix + email
+REDACTED
+
+// notifyVerifyKey generates the Redis key for notify email verification code.
+func notifyVerifyKey(email string) string {
+	return notifyVerifyKeyPrefix + email
 REDACTED
 
 // passwordResetKey generates the Redis key for password reset token.
@@ -105,4 +111,33 @@ REDACTED
 func (c *emailCache) SetPasswordResetEmailCooldown(ctx context.Context, email string, ttl time.Duration) error {
 	key := passwordResetSentAtKey(email)
 	return c.rdb.Set(ctx, key, "1", ttl).Err()
+REDACTED
+
+// Notify email verification code methods
+
+func (c *emailCache) GetNotifyVerifyCode(ctx context.Context, email string) (*service.VerificationCodeData, error) {
+	key := notifyVerifyKey(email)
+	val, err := c.rdb.Get(ctx, key).Result()
+	if err != nil {
+		return nil, err
+REDACTED
+	var data service.VerificationCodeData
+	if err := json.Unmarshal([]byte(val), &data); err != nil {
+		return nil, err
+REDACTED
+	return &data, nil
+REDACTED
+
+func (c *emailCache) SetNotifyVerifyCode(ctx context.Context, email string, data *service.VerificationCodeData, ttl time.Duration) error {
+	key := notifyVerifyKey(email)
+	val, err := json.Marshal(data)
+	if err != nil {
+		return err
+REDACTED
+	return c.rdb.Set(ctx, key, val, ttl).Err()
+REDACTED
+
+func (c *emailCache) DeleteNotifyVerifyCode(ctx context.Context, email string) error {
+	key := notifyVerifyKey(email)
+	return c.rdb.Del(ctx, key).Err()
 REDACTED

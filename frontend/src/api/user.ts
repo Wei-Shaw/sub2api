@@ -22,6 +22,9 @@ REDACTED
  */
 export async function updateProfile(profile: {
   username?: string
+  balance_notify_enabled?: boolean
+  balance_notify_threshold?: number | null
+  balance_notify_extra_emails?: string[]
 REDACTED): Promise<User> {
   const { data REDACTED = await apiClient.put<User>('/user', profile)
   return data
@@ -45,10 +48,38 @@ export async function changePassword(
   return data
 REDACTED
 
+/**
+ * Send verification code for adding a notify email
+ * @param email - Email address to verify
+ */
+export async function sendNotifyEmailCode(email: string): Promise<void> {
+  await apiClient.post('/user/notify-email/send-code', { email REDACTED)
+REDACTED
+
+/**
+ * Verify and add a notify email
+ * @param email - Email address to add
+ * @param code - Verification code
+ */
+export async function verifyNotifyEmail(email: string, code: string): Promise<void> {
+  await apiClient.post('/user/notify-email/verify', { email, code REDACTED)
+REDACTED
+
+/**
+ * Remove a notify email
+ * @param email - Email address to remove
+ */
+export async function removeNotifyEmail(email: string): Promise<void> {
+  await apiClient.delete('/user/notify-email', { data: { email REDACTED REDACTED)
+REDACTED
+
 export const userAPI = {
   getProfile,
   updateProfile,
-  changePassword
+  changePassword,
+  sendNotifyEmailCode,
+  verifyNotifyEmail,
+  removeNotifyEmail
 REDACTED
 
 export default userAPI

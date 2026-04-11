@@ -107,8 +107,12 @@ type SystemSettings struct {
 	EnableMetadataPassthrough    bool // 是否透传客户端原始 metadata（默认 false）
 	EnableCCHSigning             bool // 是否对 billing header cch 进行签名（默认 false）
 
-	// Web Search Emulation (read-only quick check; full config via dedicated API)
-	WebSearchEmulationEnabled bool
+	// Balance low notification
+	BalanceLowNotifyEnabled   bool
+	BalanceLowNotifyThreshold float64
+
+	// Account quota notification
+	AccountQuotaNotifyEmails []string
 REDACTED
 
 type DefaultSubscriptionSetting struct {
@@ -144,9 +148,9 @@ type PublicSettings struct {
 
 	LinuxDoOAuthEnabled   bool
 	BackendModeEnabled    bool
+	PaymentEnabled        bool
 	OIDCOAuthEnabled      bool
 	OIDCOAuthProviderName string
-	PaymentEnabled        bool
 	Version               string
 REDACTED
 

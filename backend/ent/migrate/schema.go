@@ -1078,6 +1078,9 @@ REDACTED
 		{Name: "totp_secret_encrypted", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "totp_enabled", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "totp_enabled_at", Type: field.TypeTime, Nullable: trueREDACTED,
+		{Name: "balance_notify_enabled", Type: field.TypeBool, Default: trueREDACTED,
+		{Name: "balance_notify_threshold", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "balance_notify_extra_emails", Type: field.TypeString, Default: "[]", SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 REDACTED
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{

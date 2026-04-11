@@ -34,6 +34,11 @@ type EmailCache interface {
 	SetVerificationCode(ctx context.Context, email string, data *VerificationCodeData, ttl time.Duration) error
 	DeleteVerificationCode(ctx context.Context, email string) error
 
+	// Notify email verification code methods
+	GetNotifyVerifyCode(ctx context.Context, email string) (*VerificationCodeData, error)
+	SetNotifyVerifyCode(ctx context.Context, email string, data *VerificationCodeData, ttl time.Duration) error
+	DeleteNotifyVerifyCode(ctx context.Context, email string) error
+
 	// Password reset token methods
 	GetPasswordResetToken(ctx context.Context, email string) (*PasswordResetTokenData, error)
 	SetPasswordResetToken(ctx context.Context, email string, data *PasswordResetTokenData, ttl time.Duration) error

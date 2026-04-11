@@ -114,7 +114,7 @@ REDACTED
 func TestUpdateBalance_Success(t *testing.T) {
 	repo := &mockUserRepo{REDACTED
 	cache := &mockBillingCache{REDACTED
-	svc := NewUserService(repo, nil, cache)
+	svc := NewUserService(repo, nil, nil, cache)
 
 	err := svc.UpdateBalance(context.Background(), 42, 100.0)
 REDACTED
@@ -131,7 +131,7 @@ REDACTED
 
 func TestUpdateBalance_NilBillingCache_NoPanic(t *testing.T) {
 	repo := &mockUserRepo{REDACTED
-	svc := NewUserService(repo, nil, nil) // billingCache = nil
+	svc := NewUserService(repo, nil, nil, nil) // billingCache = nil
 
 	err := svc.UpdateBalance(context.Background(), 1, 50.0)
 	require.NoError(t, err, "billingCache 为 nil 时不应 panic")
@@ -140,7 +140,7 @@ REDACTED
 func TestUpdateBalance_CacheFailure_DoesNotAffectReturn(t *testing.T) {
 	repo := &mockUserRepo{REDACTED
 	cache := &mockBillingCache{invalidateErr: errors.New("redis connection refused")REDACTED
-	svc := NewUserService(repo, nil, cache)
+	svc := NewUserService(repo, nil, nil, cache)
 
 	err := svc.UpdateBalance(context.Background(), 99, 200.0)
 	require.NoError(t, err, "缓存失效失败不应影响主流程返回值")
@@ -154,7 +154,7 @@ REDACTED
 func TestUpdateBalance_RepoError_ReturnsError(t *testing.T) {
 	repo := &mockUserRepo{updateBalanceErr: errors.New("database error")REDACTED
 	cache := &mockBillingCache{REDACTED
-	svc := NewUserService(repo, nil, cache)
+	svc := NewUserService(repo, nil, nil, cache)
 
 	err := svc.UpdateBalance(context.Background(), 1, 100.0)
 	require.Error(t, err, "repo 失败时应返回错误")
@@ -170,7 +170,7 @@ func TestUpdateBalance_WithAuthCacheInvalidator(t *testing.T) {
 	repo := &mockUserRepo{REDACTED
 	auth := &mockAuthCacheInvalidator{REDACTED
 	cache := &mockBillingCache{REDACTED
-	svc := NewUserService(repo, auth, cache)
+	svc := NewUserService(repo, nil, auth, cache)
 
 	err := svc.UpdateBalance(context.Background(), 77, 300.0)
 REDACTED
@@ -191,7 +191,7 @@ func TestNewUserService_FieldsAssignment(t *testing.T) {
 	auth := &mockAuthCacheInvalidator{REDACTED
 	cache := &mockBillingCache{REDACTED
 
-	svc := NewUserService(repo, auth, cache)
+	svc := NewUserService(repo, nil, auth, cache)
 	require.NotNil(t, svc)
 	require.Equal(t, repo, svc.userRepo)
 	require.Equal(t, auth, svc.authCacheInvalidator)

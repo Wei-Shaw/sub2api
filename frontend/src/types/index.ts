@@ -33,6 +33,9 @@ export interface User {
   concurrency: number // Allowed concurrent requests
   status: 'active' | 'disabled' // Account status
   allowed_groups: number[] | null // Allowed group IDs (null = all non-exclusive groups)
+  balance_notify_enabled: boolean
+  balance_notify_threshold: number | null
+  balance_notify_extra_emails: string[]
   subscriptions?: UserSubscription[] // User's active subscriptions
   created_at: string
   updated_at: string

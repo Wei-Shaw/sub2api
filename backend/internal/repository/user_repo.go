@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -137,7 +138,7 @@ REDACTED else {
 		txClient = r.client
 REDACTED
 
-	updated, err := txClient.User.UpdateOneID(userIn.ID).
+	updateOp := txClient.User.UpdateOneID(userIn.ID).
 		SetEmail(userIn.Email).
 		SetUsername(userIn.Username).
 		SetNotes(userIn.Notes).
@@ -146,7 +147,13 @@ REDACTED
 		SetBalance(userIn.Balance).
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
-		Save(ctx)
+		SetBalanceNotifyEnabled(userIn.BalanceNotifyEnabled).
+		SetNillableBalanceNotifyThreshold(userIn.BalanceNotifyThreshold).
+		SetBalanceNotifyExtraEmails(marshalExtraEmails(userIn.BalanceNotifyExtraEmails))
+	if userIn.BalanceNotifyThreshold == nil {
+		updateOp = updateOp.ClearBalanceNotifyThreshold()
+REDACTED
+	updated, err := updateOp.Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, service.ErrEmailExists)
 REDACTED
@@ -547,6 +554,18 @@ REDACTED
 	dst.ID = src.ID
 	dst.CreatedAt = src.CreatedAt
 	dst.UpdatedAt = src.UpdatedAt
+REDACTED
+
+// marshalExtraEmails serializes a string slice to JSON for storage.
+func marshalExtraEmails(emails []string) string {
+	if len(emails) == 0 {
+		return "[]"
+REDACTED
+	data, err := json.Marshal(emails)
+	if err != nil {
+		return "[]"
+REDACTED
+	return string(data)
 REDACTED
 
 // UpdateTotpSecret 更新用户的 TOTP 加密密钥

@@ -18,7 +18,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/imroc/req/v3"
-	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -107,7 +106,6 @@ type SettingService struct {
 	cfg                   *config.Config
 	onUpdate              func() // Callback when settings are updated (for cache invalidation)
 	version               string // Application version
-	webSearchRedis        *redis.Client // optional: Redis client for web search quota tracking
 REDACTED
 
 // NewSettingService 创建系统设置服务实例
@@ -170,9 +168,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyCustomEndpoints,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyBackendModeEnabled,
+		SettingPaymentEnabled,
 		SettingKeyOIDCConnectEnabled,
 		SettingKeyOIDCConnectProviderName,
-		SettingPaymentEnabled,
 REDACTED
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -237,9 +235,9 @@ REDACTED
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
 		LinuxDoOAuthEnabled:              linuxDoEnabled,
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
+		PaymentEnabled:                   settings[SettingPaymentEnabled] == "true",
 		OIDCOAuthEnabled:                 oidcEnabled,
 		OIDCOAuthProviderName:            oidcProviderName,
-		PaymentEnabled:                   settings[SettingPaymentEnabled] == "true",
 REDACTED, nil
 REDACTED
 
@@ -289,9 +287,9 @@ REDACTED
 		CustomEndpoints                  json.RawMessage `json:"custom_endpoints"`
 		LinuxDoOAuthEnabled              bool            `json:"linuxdo_oauth_enabled"`
 		BackendModeEnabled               bool            `json:"backend_mode_enabled"`
+		PaymentEnabled                   bool            `json:"payment_enabled"`
 		OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
 		OIDCOAuthProviderName            string          `json:"oidc_oauth_provider_name"`
-		PaymentEnabled                   bool            `json:"payment_enabled"`
 		Version                          string          `json:"version,omitempty"`
 REDACTED{
 		RegistrationEnabled:              settings.RegistrationEnabled,
@@ -319,9 +317,9 @@ REDACTED{
 		CustomEndpoints:                  safeRawJSONArray(settings.CustomEndpoints),
 		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
 		BackendModeEnabled:               settings.BackendModeEnabled,
+		PaymentEnabled:                   settings.PaymentEnabled,
 		OIDCOAuthEnabled:                 settings.OIDCOAuthEnabled,
 		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
-		PaymentEnabled:                   settings.PaymentEnabled,
 		Version:                          s.version,
 REDACTED, nil
 REDACTED
@@ -596,6 +594,15 @@ REDACTED
 	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
 	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
 	updates[SettingKeyEnableCCHSigning] = strconv.FormatBool(settings.EnableCCHSigning)
+
+	// Balance low notification
+	updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(settings.BalanceLowNotifyEnabled)
+	updates[SettingKeyBalanceLowNotifyThreshold] = strconv.FormatFloat(settings.BalanceLowNotifyThreshold, 'f', 8, 64)
+	accountQuotaNotifyEmailsJSON, err := json.Marshal(settings.AccountQuotaNotifyEmails)
+	if err != nil {
+		return fmt.Errorf("marshal account quota notify emails: %w", err)
+REDACTED
+	updates[SettingKeyAccountQuotaNotifyEmails] = string(accountQuotaNotifyEmailsJSON)
 
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
@@ -1219,12 +1226,21 @@ REDACTED
 	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
 	result.EnableCCHSigning = settings[SettingKeyEnableCCHSigning] == "true"
 
-	// Web search emulation: quick enabled check from the JSON config
-	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {
-		var wsCfg WebSearchEmulationConfig
-		if err := json.Unmarshal([]byte(raw), &wsCfg); err == nil {
-			result.WebSearchEmulationEnabled = wsCfg.Enabled && len(wsCfg.Providers) > 0
+	// Balance low notification
+	result.BalanceLowNotifyEnabled = settings[SettingKeyBalanceLowNotifyEnabled] == "true"
+	if v, err := strconv.ParseFloat(settings[SettingKeyBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
+		result.BalanceLowNotifyThreshold = v
+REDACTED
+
+	// Account quota notification emails
+	if raw := strings.TrimSpace(settings[SettingKeyAccountQuotaNotifyEmails]); raw != "" {
+		var emails []string
+		if err := json.Unmarshal([]byte(raw), &emails); err == nil {
+			result.AccountQuotaNotifyEmails = emails
 	REDACTED
+REDACTED
+	if result.AccountQuotaNotifyEmails == nil {
+		result.AccountQuotaNotifyEmails = []string{REDACTED
 REDACTED
 
 	return result
