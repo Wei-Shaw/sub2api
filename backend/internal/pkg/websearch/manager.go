@@ -253,25 +253,35 @@ func resolveProxyID(cfg ProviderConfig, accountProxyURL string) int64 {
 	return cfg.ProxyID
 }
 
-// isProxyError checks whether the error is likely caused by proxy connectivity.
+// isProxyError checks whether the error is likely caused by proxy or network connectivity
+// (as opposed to an API-level error from the search provider).
 func isProxyError(err error) bool {
 	if err == nil {
 		return false
 	}
+	// Network-level errors (timeout, connection refused, DNS failure)
 	var netErr net.Error
-	if errors.As(err, &netErr) && netErr.Timeout() {
+	if errors.As(err, &netErr) {
 		return true
 	}
 	var opErr *net.OpError
 	if errors.As(err, &opErr) {
 		return true
 	}
-	msg := err.Error()
+	// TLS handshake failures (often caused by proxy intercepting/blocking)
+	var tlsErr *tls.RecordHeaderError
+	if errors.As(err, &tlsErr) {
+		return true
+	}
+	// String-based detection for wrapped errors
+	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "proxy") ||
-		strings.Contains(msg, "SOCKS") ||
+		strings.Contains(msg, "socks") ||
 		strings.Contains(msg, "connection refused") ||
 		strings.Contains(msg, "no such host") ||
-		strings.Contains(msg, "i/o timeout")
+		strings.Contains(msg, "i/o timeout") ||
+		strings.Contains(msg, "tls handshake") ||
+		strings.Contains(msg, "certificate")
 }
 
 // --- Quota management ---
