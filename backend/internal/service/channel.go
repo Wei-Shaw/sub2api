@@ -49,6 +49,8 @@ type Channel struct {
 	ModelPricing []ChannelModelPricing
 	// 渠道级模型映射（按平台分组：platform → {src→dst}）
 	ModelMapping map[string]map[string]string
+	// 渠道特性配置（如 {"web_search_emulation": {"anthropic": true}}）
+	FeaturesConfig map[string]any
 
 	// 账号统计定价
 	ApplyPricingToAccountStats bool                      // 是否应用渠道模型定价到账号统计
@@ -68,6 +70,19 @@ type AccountStatsPricingRule struct {
 	Pricing    []ChannelModelPricing // 规则内的模型定价（复用现有定价结构）
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+}
+
+// IsWebSearchEmulationEnabled 返回该渠道是否为指定平台启用了 web search 模拟。
+func (c *Channel) IsWebSearchEmulationEnabled(platform string) bool {
+	if c == nil || c.FeaturesConfig == nil {
+		return false
+	}
+	wse, ok := c.FeaturesConfig[featureKeyWebSearchEmulation].(map[string]any)
+	if !ok {
+		return false
+	}
+	enabled, ok := wse[platform].(bool)
+	return ok && enabled
 }
 
 // ChannelModelPricing 渠道模型定价条目
