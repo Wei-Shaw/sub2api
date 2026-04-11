@@ -28,6 +28,8 @@ Sub2API has a built-in payment system that enables user self-service top-up with
 
 > Alipay/WeChat Pay direct and EasyPay can coexist. Direct channels connect to payment APIs directly with lower fees; EasyPay aggregates through third-party platforms with easier setup.
 
+> **EasyPay Recommendation**: [ZPay](https://z-pay.cn/?uid=23808) is recommended as an EasyPay provider (link contains the author's referral code — feel free to remove it). ZPay supports **individual users** (no business license required) with up to 10,000 CNY daily transactions; business-licensed accounts have no limit. Please evaluate the security, reliability, and compliance of any third-party payment provider on your own — this project does not endorse or guarantee any of them.
+
 ---
 
 ## Quick Start
