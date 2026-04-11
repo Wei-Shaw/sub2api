@@ -1140,20 +1140,34 @@ func buildOpenAIUpstreamErrorEnvelope(status int, body []byte, fallback string) 
 	return status, envelope
 }
 
+func extractOpenAISessionSignal(c *gin.Context, body []byte, includeContentFallback bool) string {
+	if c != nil {
+		if sessionID := strings.TrimSpace(c.GetHeader("session_id")); sessionID != "" {
+			return sessionID
+		}
+		if conversationID := strings.TrimSpace(c.GetHeader("conversation_id")); conversationID != "" {
+			return conversationID
+		}
+		if sessionAffinity := strings.TrimSpace(c.GetHeader("x-session-affinity")); sessionAffinity != "" {
+			return sessionAffinity
+		}
+	}
+	if len(body) == 0 {
+		return ""
+	}
+	if promptCacheKey := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String()); promptCacheKey != "" {
+		return promptCacheKey
+	}
+	if includeContentFallback {
+		return deriveOpenAIContentSessionSeed(body)
+	}
+	return ""
+}
+
 // ExtractSessionID extracts the raw session ID from headers or body without hashing.
 // Used by ForwardAsAnthropic to pass as prompt_cache_key for upstream cache.
 func (s *OpenAIGatewayService) ExtractSessionID(c *gin.Context, body []byte) string {
-	if c == nil {
-		return ""
-	}
-	sessionID := strings.TrimSpace(c.GetHeader("session_id"))
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(c.GetHeader("conversation_id"))
-	}
-	if sessionID == "" && len(body) > 0 {
-		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
-	}
-	return sessionID
+	return extractOpenAISessionSignal(c, body, false)
 }
 
 // GenerateSessionHash generates a sticky-session hash for OpenAI requests.
@@ -1161,23 +1175,15 @@ func (s *OpenAIGatewayService) ExtractSessionID(c *gin.Context, body []byte) str
 // Priority:
 //  1. Header: session_id
 //  2. Header: conversation_id
-//  3. Body:   prompt_cache_key (opencode)
-//  4. Body:   content-based fallback (model + system + tools + first user message)
+//  3. Header: x-session-affinity
+//  4. Body:   prompt_cache_key (opencode)
+//  5. Body:   content-based fallback (model + system + tools + first user message)
 func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) string {
 	if c == nil {
 		return ""
 	}
 
-	sessionID := strings.TrimSpace(c.GetHeader("session_id"))
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(c.GetHeader("conversation_id"))
-	}
-	if sessionID == "" && len(body) > 0 {
-		sessionID = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
-	}
-	if sessionID == "" && len(body) > 0 {
-		sessionID = deriveOpenAIContentSessionSeed(body)
-	}
+	sessionID := extractOpenAISessionSignal(c, body, true)
 	if sessionID == "" {
 		return ""
 	}
@@ -1188,7 +1194,7 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 }
 
 // GenerateSessionHashWithFallback 先按常规信号生成会话哈希；
-// 当未携带 session_id/conversation_id/prompt_cache_key 时，使用 fallbackSeed 生成稳定哈希。
+// 当未携带 session_id/conversation_id/x-session-affinity/prompt_cache_key 时，使用 fallbackSeed 生成稳定哈希。
 // 该方法用于 WS ingress，避免会话信号缺失时发生跨账号漂移。
 func (s *OpenAIGatewayService) GenerateSessionHashWithFallback(c *gin.Context, body []byte, fallbackSeed string) string {
 	sessionHash := s.GenerateSessionHash(c, body)
@@ -2902,7 +2908,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 
 	// OAuth 透传到 ChatGPT internal API 时补齐必要头。
 	if account.Type == AccountTypeOAuth {
-		promptCacheKey := strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
+		sessionSignal := extractOpenAISessionSignal(c, body, false)
 		req.Host = "chatgpt.com"
 		if chatgptAccountID := account.GetChatGPTAccountID(); chatgptAccountID != "" {
 			req.Header.Set("chatgpt-account-id", chatgptAccountID)
@@ -2911,13 +2917,19 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		// 先保存客户端原始值，再做 compact 补充，避免后续统一隔离时读到已处理的值。
 		clientSessionID := strings.TrimSpace(req.Header.Get("session_id"))
 		clientConversationID := strings.TrimSpace(req.Header.Get("conversation_id"))
+		if clientSessionID == "" {
+			clientSessionID = sessionSignal
+		}
+		if clientConversationID == "" {
+			clientConversationID = sessionSignal
+		}
 		if isOpenAIResponsesCompactPath(c) {
 			req.Header.Set("accept", "application/json")
 			if req.Header.Get("version") == "" {
 				req.Header.Set("version", codexCLIVersion)
 			}
 			if clientSessionID == "" {
-				clientSessionID = resolveOpenAICompactSessionID(c)
+				clientSessionID = resolveOpenAICompactSessionID(c, body)
 			}
 		} else if req.Header.Get("accept") == "" {
 			req.Header.Set("accept", "text/event-stream")
@@ -2929,12 +2941,6 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 			req.Header.Set("originator", "codex_cli_rs")
 		}
 		// 用隔离后的 session 标识符覆盖客户端透传值，防止跨用户会话碰撞。
-		if clientSessionID == "" {
-			clientSessionID = promptCacheKey
-		}
-		if clientConversationID == "" {
-			clientConversationID = promptCacheKey
-		}
 		if clientSessionID != "" {
 			req.Header.Set("session_id", isolateOpenAISessionID(apiKeyID, clientSessionID))
 		}
@@ -3418,6 +3424,13 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	if err != nil {
 		return nil, err
 	}
+	sessionSignal := ""
+	if account.Type == AccountTypeOAuth {
+		sessionSignal = extractOpenAISessionSignal(c, body, false)
+		if sessionSignal == "" {
+			sessionSignal = strings.TrimSpace(promptCacheKey)
+		}
+	}
 
 	// Set authentication header
 	req.Header.Set("authorization", "Bearer "+token)
@@ -3450,20 +3463,24 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		req.Header.Set("OpenAI-Beta", "responses=experimental")
 		req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 		apiKeyID := getAPIKeyIDFromContext(c)
+		clientSessionID := sessionSignal
+		clientConversationID := sessionSignal
 		if isOpenAIResponsesCompactPath(c) {
 			req.Header.Set("accept", "application/json")
 			if req.Header.Get("version") == "" {
 				req.Header.Set("version", codexCLIVersion)
 			}
-			compactSession := resolveOpenAICompactSessionID(c)
-			req.Header.Set("session_id", isolateOpenAISessionID(apiKeyID, compactSession))
+			if clientSessionID == "" {
+				clientSessionID = resolveOpenAICompactSessionID(c, body)
+			}
 		} else {
 			req.Header.Set("accept", "text/event-stream")
 		}
-		if promptCacheKey != "" {
-			isolated := isolateOpenAISessionID(apiKeyID, promptCacheKey)
-			req.Header.Set("conversation_id", isolated)
-			req.Header.Set("session_id", isolated)
+		if clientSessionID != "" {
+			req.Header.Set("session_id", isolateOpenAISessionID(apiKeyID, clientSessionID))
+		}
+		if clientConversationID != "" {
+			req.Header.Set("conversation_id", isolateOpenAISessionID(apiKeyID, clientConversationID))
 		}
 	}
 
@@ -3856,9 +3873,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		}
 		errorEventSent = true
 		errorJSON := gin.H{
-			"type":              "upstream_error",
-			"message":           reason,
-			"code":              reason,
+			"type":                "upstream_error",
+			"message":             reason,
+			"code":                reason,
 			"upstream_request_id": strings.TrimSpace(resp.Header.Get("x-request-id")),
 		}
 		if localRequestID != "" {
@@ -4660,14 +4677,11 @@ func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 	return normalized, true, nil
 }
 
-func resolveOpenAICompactSessionID(c *gin.Context) string {
+func resolveOpenAICompactSessionID(c *gin.Context, body []byte) string {
+	if sessionID := extractOpenAISessionSignal(c, body, false); sessionID != "" {
+		return sessionID
+	}
 	if c != nil {
-		if sessionID := strings.TrimSpace(c.GetHeader("session_id")); sessionID != "" {
-			return sessionID
-		}
-		if conversationID := strings.TrimSpace(c.GetHeader("conversation_id")); conversationID != "" {
-			return conversationID
-		}
 		if seed, ok := c.Get(openAICompactSessionSeedKey); ok {
 			if seedStr, ok := seed.(string); ok && strings.TrimSpace(seedStr) != "" {
 				return strings.TrimSpace(seedStr)
@@ -4777,6 +4791,23 @@ type openAIRecordUsageState struct {
 	PricingSource               string
 	IsSubscriptionBilling       bool
 	BillingType                 int8
+}
+
+func CloneOpenAIRoutingSnapshot(snapshot *OpenAIRoutingSnapshot) *OpenAIRoutingSnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	cloned := *snapshot
+	cloned.Sticky = cloneOpenAIStickyEval(snapshot.Sticky)
+	if snapshot.SelectedAccountID != nil {
+		selectedAccountID := *snapshot.SelectedAccountID
+		cloned.SelectedAccountID = &selectedAccountID
+	}
+	if snapshot.SelectedAccountName != nil {
+		selectedAccountName := *snapshot.SelectedAccountName
+		cloned.SelectedAccountName = &selectedAccountName
+	}
+	return &cloned
 }
 
 // RecordUsage records usage and deducts balance
@@ -5061,6 +5092,14 @@ func (s *OpenAIGatewayService) buildOpenAIRecordUsageLog(input *openAIRecordUsag
 		usageLog.RoutingEffectiveModel = optionalTrimmedStringPtr(snapshot.EffectiveModel)
 		usageLog.RoutingFailoverCount = intPtrValue(snapshot.FailoverCount)
 		usageLog.RoutingFailoverFinalReason = optionalTrimmedStringPtr(snapshot.FailoverFinalReason)
+		if sticky := snapshot.Sticky; sticky != nil {
+			usageLog.StickySessionSource = optionalTrimmedStringPtr(sticky.SessionSource)
+			usageLog.StickySessionHashPresent = boolPtr(sticky.SessionHashPresent)
+			usageLog.StickyEvalResult = optionalTrimmedStringPtr(sticky.EvalResult)
+			usageLog.StickySelectedAccountChanged = boolPtr(sticky.SelectedAccountChanged)
+			usageLog.StickyParentSessionPresent = boolPtr(sticky.ParentSessionPresent)
+			usageLog.StickyParentSessionKey = optionalTrimmedStringPtr(sticky.ParentSessionKey)
+		}
 	}
 	if usageLog.BillingMode == nil {
 		billingMode := string(BillingModeToken)

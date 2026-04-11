@@ -372,6 +372,17 @@ func applyOpenAIRoutingSnapshotToOpsEntry(entry *service.OpsInsertErrorLogInput,
 	entry.RoutingEffectiveModel = strings.TrimSpace(snapshot.EffectiveModel)
 	entry.RoutingFailoverCount = snapshot.FailoverCount
 	entry.RoutingFailoverFinalReason = strings.TrimSpace(snapshot.FailoverFinalReason)
+	if sticky := snapshot.Sticky; sticky != nil {
+		entry.StickySessionSource = strings.TrimSpace(sticky.SessionSource)
+		stickySessionHashPresent := sticky.SessionHashPresent
+		entry.StickySessionHashPresent = &stickySessionHashPresent
+		entry.StickyEvalResult = strings.TrimSpace(sticky.EvalResult)
+		stickySelectedAccountChanged := sticky.SelectedAccountChanged
+		entry.StickySelectedAccountChanged = &stickySelectedAccountChanged
+		stickyParentSessionPresent := sticky.ParentSessionPresent
+		entry.StickyParentSessionPresent = &stickyParentSessionPresent
+		entry.StickyParentSessionKey = strings.TrimSpace(sticky.ParentSessionKey)
+	}
 }
 
 func attachOpsRequestBodyToEntry(c *gin.Context, entry *service.OpsInsertErrorLogInput) {

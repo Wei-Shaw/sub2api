@@ -34,6 +34,7 @@ type OpsRepository interface {
 	GetErrorDistribution(ctx context.Context, filter *OpsDashboardFilter) (*OpsErrorDistributionResponse, error)
 	GetOpenAITokenStats(ctx context.Context, filter *OpsOpenAITokenStatsFilter) (*OpsOpenAITokenStatsResponse, error)
 	GetOpenAIRoutingStats(ctx context.Context, filter *OpsOpenAIRoutingStatsFilter) (*OpsOpenAIRoutingStatsResponse, error)
+	GetOpenAIStickyStats(ctx context.Context, filter *OpsOpenAIStickyStatsFilter) (*OpsOpenAIStickyStatsResponse, error)
 
 	InsertSystemMetrics(ctx context.Context, input *OpsInsertSystemMetricsInput) error
 	GetLatestSystemMetrics(ctx context.Context, windowMinutes int) (*OpsSystemMetricsSnapshot, error)
@@ -89,14 +90,20 @@ type OpsInsertErrorLogInput struct {
 	// UpstreamModel is the actual model sent to upstream after mapping. Empty means no mapping.
 	UpstreamModel string
 	// OpenAI routing observability fields. Empty/zero means unavailable.
-	RoutingTargetGroup         string
-	RoutingScheduleLayer       string
-	RoutingSelectedAccountID   *int64
-	RoutingSelectedAccountName *string
-	RoutingRequestedModel      string
-	RoutingEffectiveModel      string
-	RoutingFailoverCount       int
-	RoutingFailoverFinalReason string
+	RoutingTargetGroup           string
+	RoutingScheduleLayer         string
+	RoutingSelectedAccountID     *int64
+	RoutingSelectedAccountName   *string
+	RoutingRequestedModel        string
+	RoutingEffectiveModel        string
+	RoutingFailoverCount         int
+	RoutingFailoverFinalReason   string
+	StickySessionSource          string
+	StickySessionHashPresent     *bool
+	StickyEvalResult             string
+	StickySelectedAccountChanged *bool
+	StickyParentSessionPresent   *bool
+	StickyParentSessionKey       string
 	// RequestType is the granular request type: 0=unknown, 1=sync, 2=stream, 3=ws_v2.
 	// Matches service.RequestType enum semantics from usage_log.go.
 	RequestType *int16

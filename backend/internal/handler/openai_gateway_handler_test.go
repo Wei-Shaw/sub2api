@@ -6,10 +6,13 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -21,6 +24,58 @@ import (
 	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
+
+type openAIAccountSchedulerStub struct {
+	selectFn func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error)
+}
+
+func (s *openAIAccountSchedulerStub) Select(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+	if s != nil && s.selectFn != nil {
+		return s.selectFn(ctx, req)
+	}
+	return nil, service.OpenAIAccountScheduleDecision{}, nil
+}
+
+func (s *openAIAccountSchedulerStub) ReportResult(accountID int64, success bool, firstTokenMs *int) {}
+
+func (s *openAIAccountSchedulerStub) ReportSwitch() {}
+
+func (s *openAIAccountSchedulerStub) SnapshotMetrics() service.OpenAIAccountSchedulerMetricsSnapshot {
+	return service.OpenAIAccountSchedulerMetricsSnapshot{}
+}
+
+func setUnexportedFieldForTest(t *testing.T, target any, fieldName string, value any) {
+	t.Helper()
+	targetValue := reflect.ValueOf(target)
+	if targetValue.Kind() != reflect.Ptr || targetValue.IsNil() {
+		t.Fatalf("target for %s must be a non-nil pointer", fieldName)
+	}
+	field := targetValue.Elem().FieldByName(fieldName)
+	if !field.IsValid() {
+		t.Fatalf("field %s not found", fieldName)
+	}
+	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
+}
+
+func newOpenAIStickyDecisionForTest(t *testing.T, layer string, evalResult string) service.OpenAIAccountScheduleDecision {
+	t.Helper()
+	decision := service.OpenAIAccountScheduleDecision{Layer: layer}
+	decisionValue := reflect.ValueOf(&decision).Elem()
+	stickyField := decisionValue.FieldByName("Sticky")
+	if !stickyField.IsValid() {
+		t.Fatal("missing Sticky field on OpenAIAccountScheduleDecision")
+	}
+	stickyValue := reflect.New(stickyField.Type().Elem())
+	stickyElem := stickyValue.Elem()
+	stickyElem.FieldByName("SessionSource").SetString("header_x_session_affinity")
+	stickyElem.FieldByName("SessionHashPresent").SetBool(true)
+	stickyElem.FieldByName("EvalResult").SetString(evalResult)
+	stickyElem.FieldByName("SelectedAccountChanged").SetBool(false)
+	stickyElem.FieldByName("ParentSessionPresent").SetBool(false)
+	stickyElem.FieldByName("ParentSessionKey").SetString("")
+	stickyField.Set(stickyValue)
+	return decision
+}
 
 func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 	tests := []struct {
@@ -580,6 +635,250 @@ func TestStoreOpenAIRoutingSnapshot(t *testing.T) {
 	if assert.NotNil(t, snap.SelectedAccountName) {
 		assert.Equal(t, "acc-66", *snap.SelectedAccountName)
 	}
+}
+
+func TestStoreOpenAIRoutingSnapshot_StickyObservability(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	account := &service.Account{ID: 6601, Name: "sticky-acc"}
+	decisionType := reflect.TypeOf(service.OpenAIAccountScheduleDecision{})
+	stickyField, ok := decisionType.FieldByName("Sticky")
+	if !ok {
+		t.Fatal("missing Sticky field on OpenAIAccountScheduleDecision")
+	}
+	stickyValue := reflect.New(stickyField.Type.Elem())
+	stickyElem := stickyValue.Elem()
+	stickyElem.FieldByName("SessionSource").SetString("header_x_session_affinity")
+	stickyElem.FieldByName("SessionHashPresent").SetBool(true)
+	stickyElem.FieldByName("EvalResult").SetString("hit")
+	stickyElem.FieldByName("SelectedAccountChanged").SetBool(false)
+	stickyElem.FieldByName("ParentSessionPresent").SetBool(false)
+	stickyElem.FieldByName("ParentSessionKey").SetString("")
+	boundAccountID := int64(6601)
+	stickyElem.FieldByName("BoundAccountID").Set(reflect.ValueOf(&boundAccountID))
+
+	input := service.OpenAIRoutingSnapshotInput{
+		TargetGroup:    service.TargetGroupAny,
+		ScheduleLayer:  "session_hash",
+		Account:        account,
+		RequestedModel: "gpt-5.1",
+		EffectiveModel: "gpt-5.1",
+	}
+	inputValue := reflect.ValueOf(&input).Elem()
+	stickyInputField := inputValue.FieldByName("Sticky")
+	if !stickyInputField.IsValid() {
+		t.Fatal("missing Sticky field on OpenAIRoutingSnapshotInput")
+	}
+	stickyInputField.Set(stickyValue)
+
+	snap := storeOpenAIRoutingSnapshot(c, input)
+	require.NotNil(t, snap)
+
+	snapshotStickyField := reflect.ValueOf(snap).Elem().FieldByName("Sticky")
+	if !snapshotStickyField.IsValid() {
+		t.Fatal("missing Sticky field on OpenAIRoutingSnapshot")
+	}
+	if snapshotStickyField.IsNil() {
+		t.Fatal("snapshot Sticky is nil")
+	}
+	snapshotStickyValue := snapshotStickyField.Elem()
+	require.Equal(t, "hit", snapshotStickyValue.FieldByName("EvalResult").String())
+	require.Equal(t, "", snapshotStickyValue.FieldByName("ParentSessionKey").String())
+	require.False(t, snapshotStickyValue.FieldByName("SelectedAccountChanged").Bool())
+	storedBoundAccountID := snapshotStickyValue.FieldByName("BoundAccountID")
+	require.Equal(t, reflect.Ptr, storedBoundAccountID.Kind())
+	require.False(t, storedBoundAccountID.IsNil())
+	require.Equal(t, account.ID, storedBoundAccountID.Elem().Int())
+}
+
+func TestResolveOpenAIScheduleSessionSource_StickyContentFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+
+	source := resolveOpenAIScheduleSessionSource(c, []byte(`{"model":"gpt-5.1","input":[{"type":"input_text","text":"hello"}]}`), "derived_content_hash", "")
+	require.Equal(t, openAIScheduleSessionSourceContentFallback, source)
+}
+
+func TestResolveOpenAIScheduleSessionSource_StickyFallbackSeed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/openai/v1/responses", nil)
+
+	source := resolveOpenAIScheduleSessionSource(c, nil, "derived_fallback_hash", openAIScheduleSessionSourceFallbackSeed)
+	require.Equal(t, openAIScheduleSessionSourceFallbackSeed, source)
+}
+
+func TestOpenAIResponses_FailedSelectionStillStoresStickySnapshot(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-5.1","stream":false,"input":[{"type":"input_text","text":"hello"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("x-session-affinity", "affinity-failure-path")
+
+	groupID := int64(12)
+	apiKey := &service.APIKey{
+		ID:      101,
+		GroupID: &groupID,
+		User:    &service.User{ID: 1},
+	}
+	c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1, Concurrency: 1})
+
+	billingCfg := &config.Config{RunMode: config.RunModeSimple}
+	billingService := service.NewBillingCacheService(nil, nil, nil, nil, billingCfg)
+	defer billingService.Stop()
+
+	gatewayService := &service.OpenAIGatewayService{}
+	setUnexportedFieldForTest(t, gatewayService, "openaiScheduler", &openAIAccountSchedulerStub{
+		selectFn: func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+			return nil, newOpenAIStickyDecisionForTest(t, "load_balance", "miss_no_binding"), service.ErrNoAvailableAccounts
+		},
+	})
+
+	concurrencyCache := &concurrencyCacheMock{
+		acquireUserSlotFn: func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
+			return true, nil
+		},
+	}
+	h := &OpenAIGatewayHandler{
+		gatewayService:      gatewayService,
+		billingCacheService: billingService,
+		apiKeyService:       &service.APIKeyService{},
+		concurrencyHelper:   NewConcurrencyHelper(service.NewConcurrencyService(concurrencyCache), SSEPingFormatNone, time.Second),
+	}
+
+	h.Responses(c)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	snapshot := getOpenAIRoutingSnapshot(c)
+	require.NotNil(t, snapshot)
+	require.Equal(t, "load_balance", snapshot.ScheduleLayer)
+	require.Nil(t, snapshot.SelectedAccountID)
+	snapshotStickyField := reflect.ValueOf(snapshot).Elem().FieldByName("Sticky")
+	require.True(t, snapshotStickyField.IsValid())
+	require.False(t, snapshotStickyField.IsNil())
+	snapshotSticky := snapshotStickyField.Elem()
+	require.Equal(t, "miss_no_binding", snapshotSticky.FieldByName("EvalResult").String())
+	require.Equal(t, "header_x_session_affinity", snapshotSticky.FieldByName("SessionSource").String())
+	require.True(t, snapshotSticky.FieldByName("SessionHashPresent").Bool())
+}
+
+func TestOpenAIMessages_FailedSelectionStillStoresStickySnapshot(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-sonnet-4-20250514","stream":false,"messages":[{"role":"user","content":"hello"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("x-session-affinity", "affinity-messages-failure")
+
+	groupID := int64(13)
+	apiKey := &service.APIKey{
+		ID:      102,
+		GroupID: &groupID,
+		User:    &service.User{ID: 2},
+	}
+	c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 2, Concurrency: 1})
+
+	billingCfg := &config.Config{RunMode: config.RunModeSimple}
+	billingService := service.NewBillingCacheService(nil, nil, nil, nil, billingCfg)
+	defer billingService.Stop()
+
+	gatewayService := &service.OpenAIGatewayService{}
+	setUnexportedFieldForTest(t, gatewayService, "openaiScheduler", &openAIAccountSchedulerStub{
+		selectFn: func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+			return nil, newOpenAIStickyDecisionForTest(t, "load_balance", "miss_no_binding"), service.ErrNoAvailableAccounts
+		},
+	})
+
+	concurrencyCache := &concurrencyCacheMock{
+		acquireUserSlotFn: func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
+			return true, nil
+		},
+	}
+	h := &OpenAIGatewayHandler{
+		gatewayService:      gatewayService,
+		billingCacheService: billingService,
+		apiKeyService:       &service.APIKeyService{},
+		concurrencyHelper:   NewConcurrencyHelper(service.NewConcurrencyService(concurrencyCache), SSEPingFormatNone, time.Second),
+	}
+
+	h.Messages(c)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	snapshot := getOpenAIRoutingSnapshot(c)
+	require.NotNil(t, snapshot)
+	require.Equal(t, "load_balance", snapshot.ScheduleLayer)
+	require.Nil(t, snapshot.SelectedAccountID)
+	snapshotStickyField := reflect.ValueOf(snapshot).Elem().FieldByName("Sticky")
+	require.True(t, snapshotStickyField.IsValid())
+	require.False(t, snapshotStickyField.IsNil())
+	snapshotSticky := snapshotStickyField.Elem()
+	require.Equal(t, "miss_no_binding", snapshotSticky.FieldByName("EvalResult").String())
+	require.Equal(t, "header_x_session_affinity", snapshotSticky.FieldByName("SessionSource").String())
+	require.True(t, snapshotSticky.FieldByName("SessionHashPresent").Bool())
+}
+
+func TestOpenAIChatCompletions_FailedSelectionStillStoresStickySnapshot(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5.1","stream":false,"messages":[{"role":"user","content":"hello"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("x-session-affinity", "affinity-chat-failure")
+
+	groupID := int64(14)
+	apiKey := &service.APIKey{
+		ID:      103,
+		GroupID: &groupID,
+		User:    &service.User{ID: 3},
+	}
+	c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 3, Concurrency: 1})
+
+	billingCfg := &config.Config{RunMode: config.RunModeSimple}
+	billingService := service.NewBillingCacheService(nil, nil, nil, nil, billingCfg)
+	defer billingService.Stop()
+
+	gatewayService := &service.OpenAIGatewayService{}
+	setUnexportedFieldForTest(t, gatewayService, "openaiScheduler", &openAIAccountSchedulerStub{
+		selectFn: func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+			return nil, newOpenAIStickyDecisionForTest(t, "load_balance", "miss_no_binding"), service.ErrNoAvailableAccounts
+		},
+	})
+
+	concurrencyCache := &concurrencyCacheMock{
+		acquireUserSlotFn: func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
+			return true, nil
+		},
+	}
+	h := &OpenAIGatewayHandler{
+		gatewayService:      gatewayService,
+		billingCacheService: billingService,
+		apiKeyService:       &service.APIKeyService{},
+		concurrencyHelper:   NewConcurrencyHelper(service.NewConcurrencyService(concurrencyCache), SSEPingFormatNone, time.Second),
+	}
+
+	h.ChatCompletions(c)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	snapshot := getOpenAIRoutingSnapshot(c)
+	require.NotNil(t, snapshot)
+	require.Equal(t, "load_balance", snapshot.ScheduleLayer)
+	require.Nil(t, snapshot.SelectedAccountID)
+	snapshotStickyField := reflect.ValueOf(snapshot).Elem().FieldByName("Sticky")
+	require.True(t, snapshotStickyField.IsValid())
+	require.False(t, snapshotStickyField.IsNil())
+	snapshotSticky := snapshotStickyField.Elem()
+	require.Equal(t, "miss_no_binding", snapshotSticky.FieldByName("EvalResult").String())
+	require.Equal(t, "header_x_session_affinity", snapshotSticky.FieldByName("SessionSource").String())
+	require.True(t, snapshotSticky.FieldByName("SessionHashPresent").Bool())
 }
 
 func TestResponsesSelectionFailure_FirstAttemptNoAvailableUsesTargetGroup(t *testing.T) {

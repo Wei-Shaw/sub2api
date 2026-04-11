@@ -128,6 +128,18 @@ type UsageLog struct {
 	CacheTTLOverridden bool `json:"cache_ttl_overridden,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
+	// StickySessionSource holds the value of the "sticky_session_source" field.
+	StickySessionSource *string `json:"sticky_session_source,omitempty"`
+	// StickySessionHashPresent holds the value of the "sticky_session_hash_present" field.
+	StickySessionHashPresent *bool `json:"sticky_session_hash_present,omitempty"`
+	// StickyEvalResult holds the value of the "sticky_eval_result" field.
+	StickyEvalResult *string `json:"sticky_eval_result,omitempty"`
+	// StickySelectedAccountChanged holds the value of the "sticky_selected_account_changed" field.
+	StickySelectedAccountChanged *bool `json:"sticky_selected_account_changed,omitempty"`
+	// StickyParentSessionPresent holds the value of the "sticky_parent_session_present" field.
+	StickyParentSessionPresent *bool `json:"sticky_parent_session_present,omitempty"`
+	// StickyParentSessionKey holds the value of the "sticky_parent_session_key" field.
+	StickyParentSessionKey *string `json:"sticky_parent_session_key,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the UsageLogQuery when eager-loading is set.
 	Edges        UsageLogEdges `json:"edges"`
@@ -211,13 +223,13 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case usagelog.FieldStream, usagelog.FieldCacheTTLOverridden:
+		case usagelog.FieldStream, usagelog.FieldCacheTTLOverridden, usagelog.FieldStickySessionHashPresent, usagelog.FieldStickySelectedAccountChanged, usagelog.FieldStickyParentSessionPresent:
 			values[i] = new(sql.NullBool)
 		case usagelog.FieldImageOutputCost, usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier, usagelog.FieldPriorityAccountMultiplier, usagelog.FieldEffectiveMultiplier, usagelog.FieldEffectiveInputUnitPrice, usagelog.FieldEffectiveOutputUnitPrice, usagelog.FieldEffectiveCacheReadUnitPrice:
 			values[i] = new(sql.NullFloat64)
 		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldRoutingSelectedAccountID, usagelog.FieldRoutingFailoverCount, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldImageOutputTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldRoutingTargetGroup, usagelog.FieldRoutingScheduleLayer, usagelog.FieldRoutingSelectedAccountName, usagelog.FieldRoutingEffectiveModel, usagelog.FieldRoutingFailoverFinalReason, usagelog.FieldPricingSource, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldMediaType:
+		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldRoutingTargetGroup, usagelog.FieldRoutingScheduleLayer, usagelog.FieldRoutingSelectedAccountName, usagelog.FieldRoutingEffectiveModel, usagelog.FieldRoutingFailoverFinalReason, usagelog.FieldPricingSource, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldMediaType, usagelog.FieldStickySessionSource, usagelog.FieldStickyEvalResult, usagelog.FieldStickyParentSessionKey:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -587,6 +599,48 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
 				_m.CreatedAt = value.Time
+			}
+		case usagelog.FieldStickySessionSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field sticky_session_source", values[i])
+			} else if value.Valid {
+				_m.StickySessionSource = new(string)
+				*_m.StickySessionSource = value.String
+			}
+		case usagelog.FieldStickySessionHashPresent:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field sticky_session_hash_present", values[i])
+			} else if value.Valid {
+				_m.StickySessionHashPresent = new(bool)
+				*_m.StickySessionHashPresent = value.Bool
+			}
+		case usagelog.FieldStickyEvalResult:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field sticky_eval_result", values[i])
+			} else if value.Valid {
+				_m.StickyEvalResult = new(string)
+				*_m.StickyEvalResult = value.String
+			}
+		case usagelog.FieldStickySelectedAccountChanged:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field sticky_selected_account_changed", values[i])
+			} else if value.Valid {
+				_m.StickySelectedAccountChanged = new(bool)
+				*_m.StickySelectedAccountChanged = value.Bool
+			}
+		case usagelog.FieldStickyParentSessionPresent:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field sticky_parent_session_present", values[i])
+			} else if value.Valid {
+				_m.StickyParentSessionPresent = new(bool)
+				*_m.StickyParentSessionPresent = value.Bool
+			}
+		case usagelog.FieldStickyParentSessionKey:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field sticky_parent_session_key", values[i])
+			} else if value.Valid {
+				_m.StickyParentSessionKey = new(string)
+				*_m.StickyParentSessionKey = value.String
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])

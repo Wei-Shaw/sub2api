@@ -125,6 +125,10 @@ func (m *opsRepoMock) GetOpenAIRoutingStats(ctx context.Context, filter *OpsOpen
 	return &OpsOpenAIRoutingStatsResponse{}, nil
 }
 
+func (m *opsRepoMock) GetOpenAIStickyStats(ctx context.Context, filter *OpsOpenAIStickyStatsFilter) (*OpsOpenAIStickyStatsResponse, error) {
+	return &OpsOpenAIStickyStatsResponse{}, nil
+}
+
 func (m *opsRepoMock) InsertSystemMetrics(ctx context.Context, input *OpsInsertSystemMetricsInput) error {
 	return nil
 }

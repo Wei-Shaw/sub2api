@@ -108,6 +108,12 @@ WITH combined AS (
     COALESCE(NULLIF(ul.routing_effective_model, ''), NULLIF(ul.upstream_model, ''), '') AS routing_effective_model,
     ul.routing_failover_count AS routing_failover_count,
     COALESCE(NULLIF(ul.routing_failover_final_reason, ''), '') AS routing_failover_final_reason,
+    NULLIF(ul.sticky_session_source, '') AS sticky_session_source,
+    ul.sticky_session_hash_present AS sticky_session_hash_present,
+    NULLIF(ul.sticky_eval_result, '') AS sticky_eval_result,
+    ul.sticky_selected_account_changed AS sticky_selected_account_changed,
+    ul.sticky_parent_session_present AS sticky_parent_session_present,
+    NULLIF(ul.sticky_parent_session_key, '') AS sticky_parent_session_key,
     ul.duration_ms AS duration_ms,
     NULL::INT AS status_code,
     NULL::BIGINT AS error_id,
@@ -139,6 +145,12 @@ WITH combined AS (
     COALESCE(NULLIF(o.routing_effective_model, ''), NULLIF(o.upstream_model, ''), '') AS routing_effective_model,
     o.routing_failover_count AS routing_failover_count,
     COALESCE(NULLIF(o.routing_failover_final_reason, ''), '') AS routing_failover_final_reason,
+    NULLIF(o.sticky_session_source, '') AS sticky_session_source,
+    o.sticky_session_hash_present AS sticky_session_hash_present,
+    NULLIF(o.sticky_eval_result, '') AS sticky_eval_result,
+    o.sticky_selected_account_changed AS sticky_selected_account_changed,
+    o.sticky_parent_session_present AS sticky_parent_session_present,
+    NULLIF(o.sticky_parent_session_key, '') AS sticky_parent_session_key,
     o.duration_ms AS duration_ms,
     o.status_code AS status_code,
     o.id AS error_id,
@@ -195,6 +207,12 @@ SELECT
   routing_effective_model,
   routing_failover_count,
   routing_failover_final_reason,
+  sticky_session_source,
+  sticky_session_hash_present,
+  sticky_eval_result,
+  sticky_selected_account_changed,
+  sticky_parent_session_present,
+  sticky_parent_session_key,
   duration_ms,
   status_code,
   error_id,
@@ -249,6 +267,12 @@ LIMIT $%d OFFSET $%d
 			routingEffectiveModel      sql.NullString
 			routingFailoverCount       sql.NullInt64
 			routingFailoverFinalReason sql.NullString
+			stickySessionSource          sql.NullString
+			stickySessionHashPresent     sql.NullBool
+			stickyEvalResult             sql.NullString
+			stickySelectedAccountChanged sql.NullBool
+			stickyParentSessionPresent   sql.NullBool
+			stickyParentSessionKey       sql.NullString
 
 			durationMs sql.NullInt64
 			statusCode sql.NullInt64
@@ -279,6 +303,12 @@ LIMIT $%d OFFSET $%d
 			&routingEffectiveModel,
 			&routingFailoverCount,
 			&routingFailoverFinalReason,
+			&stickySessionSource,
+			&stickySessionHashPresent,
+			&stickyEvalResult,
+			&stickySelectedAccountChanged,
+			&stickyParentSessionPresent,
+			&stickyParentSessionKey,
 			&durationMs,
 			&statusCode,
 			&errorID,
@@ -307,6 +337,12 @@ LIMIT $%d OFFSET $%d
 			RoutingEffectiveModel:      strings.TrimSpace(routingEffectiveModel.String),
 			RoutingFailoverCount:       toIntPtr(routingFailoverCount),
 			RoutingFailoverFinalReason: strings.TrimSpace(routingFailoverFinalReason.String),
+			StickySessionSource:          nullStringPtr(stickySessionSource),
+			StickySessionHashPresent:     nullBoolPtr(stickySessionHashPresent),
+			StickyEvalResult:             nullStringPtr(stickyEvalResult),
+			StickySelectedAccountChanged: nullBoolPtr(stickySelectedAccountChanged),
+			StickyParentSessionPresent:   nullBoolPtr(stickyParentSessionPresent),
+			StickyParentSessionKey:       nullStringPtr(stickyParentSessionKey),
 
 			DurationMs: toIntPtr(durationMs),
 			StatusCode: toIntPtr(statusCode),
@@ -345,4 +381,12 @@ func nullStringPtr(value sql.NullString) *string {
 		return nil
 	}
 	return &trimmed
+}
+
+func nullBoolPtr(value sql.NullBool) *bool {
+	if !value.Valid {
+		return nil
+	}
+	b := value.Bool
+	return &b
 }

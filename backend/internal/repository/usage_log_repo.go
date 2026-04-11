@@ -28,7 +28,7 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, channel_id, model_mapping_chain, billing_tier, billing_mode, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, priority_account_multiplier, effective_multiplier, effective_input_unit_price, effective_output_unit_price, effective_cache_read_unit_price, pricing_source, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, routing_target_group, routing_schedule_layer, routing_selected_account_id, routing_selected_account_name, routing_effective_model, routing_failover_count, routing_failover_final_reason, cache_ttl_overridden, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, channel_id, model_mapping_chain, billing_tier, billing_mode, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, priority_account_multiplier, effective_multiplier, effective_input_unit_price, effective_output_unit_price, effective_cache_read_unit_price, pricing_source, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, routing_target_group, routing_schedule_layer, routing_selected_account_id, routing_selected_account_name, routing_effective_model, routing_failover_count, routing_failover_final_reason, sticky_session_source, sticky_session_hash_present, sticky_eval_result, sticky_selected_account_changed, sticky_parent_session_present, sticky_parent_session_key, cache_ttl_overridden, created_at"
 
 // usageLogInsertArgTypes must stay in the same order as:
 //  1. prepareUsageLogInsert().args
@@ -94,6 +94,12 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // routing_effective_model
 	"integer",     // routing_failover_count
 	"text",        // routing_failover_final_reason
+	"text",        // sticky_session_source
+	"boolean",     // sticky_session_hash_present
+	"text",        // sticky_eval_result
+	"boolean",     // sticky_selected_account_changed
+	"boolean",     // sticky_parent_session_present
+	"text",        // sticky_parent_session_key
 	"boolean",     // cache_ttl_overridden
 	"timestamptz", // created_at
 }
@@ -385,6 +391,12 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			routing_effective_model,
 			routing_failover_count,
 			routing_failover_final_reason,
+			sticky_session_source,
+			sticky_session_hash_present,
+			sticky_eval_result,
+			sticky_selected_account_changed,
+			sticky_parent_session_present,
+			sticky_parent_session_key,
 			cache_ttl_overridden,
 			created_at
 		) VALUES (
@@ -393,7 +405,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			$12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23, $24, $25,
-			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58
+			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -835,11 +847,17 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			routing_effective_model,
 			routing_failover_count,
 			routing_failover_final_reason,
+			sticky_session_source,
+			sticky_session_hash_present,
+			sticky_eval_result,
+			sticky_selected_account_changed,
+			sticky_parent_session_present,
+			sticky_parent_session_key,
 			cache_ttl_overridden,
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(keys)*60)
+	args := make([]any, 0, len(keys)*(len(usageLogInsertArgTypes)+1))
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -924,6 +942,12 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				routing_effective_model,
 				routing_failover_count,
 				routing_failover_final_reason,
+				sticky_session_source,
+				sticky_session_hash_present,
+				sticky_eval_result,
+				sticky_selected_account_changed,
+				sticky_parent_session_present,
+				sticky_parent_session_key,
 				cache_ttl_overridden,
 				created_at
 			)
@@ -984,6 +1008,12 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				routing_effective_model,
 				routing_failover_count,
 				routing_failover_final_reason,
+				sticky_session_source,
+				sticky_session_hash_present,
+				sticky_eval_result,
+				sticky_selected_account_changed,
+				sticky_parent_session_present,
+				sticky_parent_session_key,
 				cache_ttl_overridden,
 				created_at
 			FROM input
@@ -1084,11 +1114,17 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			routing_effective_model,
 			routing_failover_count,
 			routing_failover_final_reason,
+			sticky_session_source,
+			sticky_session_hash_present,
+			sticky_eval_result,
+			sticky_selected_account_changed,
+			sticky_parent_session_present,
+			sticky_parent_session_key,
 			cache_ttl_overridden,
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*59)
+	args := make([]any, 0, len(preparedList)*len(usageLogInsertArgTypes))
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1170,6 +1206,12 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			routing_effective_model,
 			routing_failover_count,
 			routing_failover_final_reason,
+			sticky_session_source,
+			sticky_session_hash_present,
+			sticky_eval_result,
+			sticky_selected_account_changed,
+			sticky_parent_session_present,
+			sticky_parent_session_key,
 			cache_ttl_overridden,
 			created_at
 		)
@@ -1230,6 +1272,12 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			routing_effective_model,
 			routing_failover_count,
 			routing_failover_final_reason,
+			sticky_session_source,
+			sticky_session_hash_present,
+			sticky_eval_result,
+			sticky_selected_account_changed,
+			sticky_parent_session_present,
+			sticky_parent_session_key,
 			cache_ttl_overridden,
 			created_at
 		FROM input
@@ -1298,6 +1346,12 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			routing_effective_model,
 			routing_failover_count,
 			routing_failover_final_reason,
+			sticky_session_source,
+			sticky_session_hash_present,
+			sticky_eval_result,
+			sticky_selected_account_changed,
+			sticky_parent_session_present,
+			sticky_parent_session_key,
 			cache_ttl_overridden,
 			created_at
 		) VALUES (
@@ -1306,7 +1360,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			$12, $13,
 			$14, $15, $16, $17,
 			$18, $19, $20, $21, $22, $23, $24, $25,
-			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59
+			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1348,6 +1402,12 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	routingEffectiveModel := nullString(log.RoutingEffectiveModel)
 	routingFailoverCount := nullInt(log.RoutingFailoverCount)
 	routingFailoverFinalReason := nullString(log.RoutingFailoverFinalReason)
+	stickySessionSource := nullString(log.StickySessionSource)
+	stickySessionHashPresent := nullBool(log.StickySessionHashPresent)
+	stickyEvalResult := nullString(log.StickyEvalResult)
+	stickySelectedAccountChanged := nullBool(log.StickySelectedAccountChanged)
+	stickyParentSessionPresent := nullBool(log.StickyParentSessionPresent)
+	stickyParentSessionKey := nullString(log.StickyParentSessionKey)
 	priorityAccountMultiplier := nullFloat64(log.PriorityAccountMultiplier)
 	effectiveMultiplier := nullFloat64(log.EffectiveMultiplier)
 	effectiveInputUnitPrice := nullFloat64(log.EffectiveInputUnitPrice)
@@ -1427,6 +1487,12 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			routingEffectiveModel,
 			routingFailoverCount,
 			routingFailoverFinalReason,
+			stickySessionSource,
+			stickySessionHashPresent,
+			stickyEvalResult,
+			stickySelectedAccountChanged,
+			stickyParentSessionPresent,
+			stickyParentSessionKey,
 			log.CacheTTLOverridden,
 			createdAt,
 		},
@@ -4156,65 +4222,71 @@ func (r *usageLogRepository) loadSubscriptions(ctx context.Context, ids []int64)
 
 func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, error) {
 	var (
-		id                          int64
-		userID                      int64
-		apiKeyID                    int64
-		accountID                   int64
-		requestID                   sql.NullString
-		model                       string
-		requestedModel              sql.NullString
-		upstreamModel               sql.NullString
-		channelID                   sql.NullInt64
-		modelMappingChain           sql.NullString
-		billingTier                 sql.NullString
-		billingMode                 sql.NullString
-		groupID                     sql.NullInt64
-		subscriptionID              sql.NullInt64
-		inputTokens                 int
-		outputTokens                int
-		cacheCreationTokens         int
-		cacheReadTokens             int
-		cacheCreation5m             int
-		cacheCreation1h             int
-		imageOutputTokens           int
-		imageOutputCost             float64
-		inputCost                   float64
-		outputCost                  float64
-		cacheCreationCost           float64
-		cacheReadCost               float64
-		totalCost                   float64
-		actualCost                  float64
-		rateMultiplier              float64
-		accountRateMultiplier       sql.NullFloat64
-		priorityAccountMultiplier   sql.NullFloat64
-		effectiveMultiplier         sql.NullFloat64
-		effectiveInputUnitPrice     sql.NullFloat64
-		effectiveOutputUnitPrice    sql.NullFloat64
-		effectiveCacheReadUnitPrice sql.NullFloat64
-		pricingSource               sql.NullString
-		billingType                 int16
-		requestTypeRaw              int16
-		stream                      bool
-		openaiWSMode                bool
-		durationMs                  sql.NullInt64
-		firstTokenMs                sql.NullInt64
-		userAgent                   sql.NullString
-		ipAddress                   sql.NullString
-		imageCount                  int
-		imageSize                   sql.NullString
-		serviceTier                 sql.NullString
-		reasoningEffort             sql.NullString
-		inboundEndpoint             sql.NullString
-		upstreamEndpoint            sql.NullString
-		routingTargetGroup          sql.NullString
-		routingScheduleLayer        sql.NullString
-		routingSelectedAccountID    sql.NullInt64
-		routingSelectedAccountName  sql.NullString
-		routingEffectiveModel       sql.NullString
-		routingFailoverCount        sql.NullInt64
-		routingFailoverFinalReason  sql.NullString
-		cacheTTLOverridden          bool
-		createdAt                   time.Time
+		id                           int64
+		userID                       int64
+		apiKeyID                     int64
+		accountID                    int64
+		requestID                    sql.NullString
+		model                        string
+		requestedModel               sql.NullString
+		upstreamModel                sql.NullString
+		channelID                    sql.NullInt64
+		modelMappingChain            sql.NullString
+		billingTier                  sql.NullString
+		billingMode                  sql.NullString
+		groupID                      sql.NullInt64
+		subscriptionID               sql.NullInt64
+		inputTokens                  int
+		outputTokens                 int
+		cacheCreationTokens          int
+		cacheReadTokens              int
+		cacheCreation5m              int
+		cacheCreation1h              int
+		imageOutputTokens            int
+		imageOutputCost              float64
+		inputCost                    float64
+		outputCost                   float64
+		cacheCreationCost            float64
+		cacheReadCost                float64
+		totalCost                    float64
+		actualCost                   float64
+		rateMultiplier               float64
+		accountRateMultiplier        sql.NullFloat64
+		priorityAccountMultiplier    sql.NullFloat64
+		effectiveMultiplier          sql.NullFloat64
+		effectiveInputUnitPrice      sql.NullFloat64
+		effectiveOutputUnitPrice     sql.NullFloat64
+		effectiveCacheReadUnitPrice  sql.NullFloat64
+		pricingSource                sql.NullString
+		billingType                  int16
+		requestTypeRaw               int16
+		stream                       bool
+		openaiWSMode                 bool
+		durationMs                   sql.NullInt64
+		firstTokenMs                 sql.NullInt64
+		userAgent                    sql.NullString
+		ipAddress                    sql.NullString
+		imageCount                   int
+		imageSize                    sql.NullString
+		serviceTier                  sql.NullString
+		reasoningEffort              sql.NullString
+		inboundEndpoint              sql.NullString
+		upstreamEndpoint             sql.NullString
+		routingTargetGroup           sql.NullString
+		routingScheduleLayer         sql.NullString
+		routingSelectedAccountID     sql.NullInt64
+		routingSelectedAccountName   sql.NullString
+		routingEffectiveModel        sql.NullString
+		routingFailoverCount         sql.NullInt64
+		routingFailoverFinalReason   sql.NullString
+		stickySessionSource          sql.NullString
+		stickySessionHashPresent     sql.NullBool
+		stickyEvalResult             sql.NullString
+		stickySelectedAccountChanged sql.NullBool
+		stickyParentSessionPresent   sql.NullBool
+		stickyParentSessionKey       sql.NullString
+		cacheTTLOverridden           bool
+		createdAt                    time.Time
 	)
 
 	if err := scanner.Scan(
@@ -4275,6 +4347,12 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&routingEffectiveModel,
 		&routingFailoverCount,
 		&routingFailoverFinalReason,
+		&stickySessionSource,
+		&stickySessionHashPresent,
+		&stickyEvalResult,
+		&stickySelectedAccountChanged,
+		&stickyParentSessionPresent,
+		&stickyParentSessionKey,
 		&cacheTTLOverridden,
 		&createdAt,
 	); err != nil {
@@ -4402,6 +4480,27 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 	}
 	if routingFailoverFinalReason.Valid {
 		log.RoutingFailoverFinalReason = &routingFailoverFinalReason.String
+	}
+	if stickySessionSource.Valid {
+		log.StickySessionSource = &stickySessionSource.String
+	}
+	if stickySessionHashPresent.Valid {
+		value := stickySessionHashPresent.Bool
+		log.StickySessionHashPresent = &value
+	}
+	if stickyEvalResult.Valid {
+		log.StickyEvalResult = &stickyEvalResult.String
+	}
+	if stickySelectedAccountChanged.Valid {
+		value := stickySelectedAccountChanged.Bool
+		log.StickySelectedAccountChanged = &value
+	}
+	if stickyParentSessionPresent.Valid {
+		value := stickyParentSessionPresent.Bool
+		log.StickyParentSessionPresent = &value
+	}
+	if stickyParentSessionKey.Valid {
+		log.StickyParentSessionKey = &stickyParentSessionKey.String
 	}
 
 	return log, nil

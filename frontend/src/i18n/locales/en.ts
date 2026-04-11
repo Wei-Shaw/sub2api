@@ -3548,6 +3548,36 @@ export default {
         retriedRequestCount: 'Requests With Retry',
         retryCount: 'Total Retry Count'
       },
+      openaiSticky: {
+        title: 'OpenAI Sticky Session Observability',
+        subtitle: 'Sticky hit quality and session-source distribution across persisted OpenAI requests.',
+        failedToLoad: 'Failed to load OpenAI sticky stats',
+        empty: 'No OpenAI sticky stats for the current filters',
+        evaluatedRequestCount: 'Evaluated Requests',
+        stickyHitCount: 'Sticky Hits',
+        stickyHitRate: 'Sticky Hit Rate',
+        stickyAccountSwitchRate: 'Account Switch Rate',
+        evalBreakdown: 'Sticky Result Breakdown',
+        sessionSourceBreakdown: 'Session Source Breakdown',
+        eval: {
+          hit: 'Hit',
+          missNoBinding: 'Miss: No Binding',
+          missBindingInvalid: 'Miss: Binding Invalid',
+          missBindingRestricted: 'Miss: Binding Restricted',
+          missBindingExcluded: 'Miss: Binding Excluded',
+          bypassedPreviousResponseId: 'Bypassed: previous_response_id',
+          noSessionSignal: 'No Session Signal'
+        },
+        source: {
+          headerSessionId: 'Header session_id',
+          headerConversationId: 'Header conversation_id',
+          headerXSessionAffinity: 'Header x-session-affinity',
+          promptCacheKey: 'prompt_cache_key',
+          contentFallback: 'content fallback',
+          fallbackSeed: 'fallback seed',
+          none: 'none'
+        }
+      },
       fullscreen: {
         enter: 'Enter Fullscreen'
       },
@@ -3811,6 +3841,15 @@ export default {
         kind: {
           success: 'SUCCESS',
           error: 'ERROR'
+        },
+        sticky: {
+          title: 'Sticky',
+          sessionSource: 'Session Source',
+          sessionHashPresent: 'Session Hash Present',
+          evalResult: 'Sticky Result',
+          selectedAccountChanged: 'Selected Account Changed',
+          parentSessionPresent: 'Parent Session Present',
+          parentSessionKey: 'Parent Session Key'
         },
         table: {
           time: 'Time',

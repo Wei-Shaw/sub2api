@@ -184,22 +184,34 @@ func TestPrepareUsageLogInsert_IncludesOpenAIRoutingFields(t *testing.T) {
 	routingEffectiveModel := "gpt-5.4"
 	routingFailoverCount := 1
 	routingFailoverFinalReason := "selected_exhausted_fallback"
+	stickySessionSource := "header_x_session_affinity"
+	stickyEvalResult := "hit"
+	stickyParentSessionKey := "resp_parent_123"
+	stickySessionHashPresent := false
+	stickySelectedAccountChanged := true
+	stickyParentSessionPresent := true
 
 	prepared := prepareUsageLogInsert(&service.UsageLog{
-		UserID:                     1,
-		APIKeyID:                   2,
-		AccountID:                  3,
-		RequestID:                  "req-routing-fields",
-		Model:                      "gpt-5.4-Sys",
-		RequestedModel:             "gpt-5.4-Sys",
-		RoutingTargetGroup:         &routingTargetGroup,
-		RoutingScheduleLayer:       &routingScheduleLayer,
-		RoutingSelectedAccountID:   &routingAccountID,
-		RoutingSelectedAccountName: &routingAccountName,
-		RoutingEffectiveModel:      &routingEffectiveModel,
-		RoutingFailoverCount:       &routingFailoverCount,
-		RoutingFailoverFinalReason: &routingFailoverFinalReason,
-		CreatedAt:                  time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC),
+		UserID:                       1,
+		APIKeyID:                     2,
+		AccountID:                    3,
+		RequestID:                    "req-routing-fields",
+		Model:                        "gpt-5.4-Sys",
+		RequestedModel:               "gpt-5.4-Sys",
+		RoutingTargetGroup:           &routingTargetGroup,
+		RoutingScheduleLayer:         &routingScheduleLayer,
+		RoutingSelectedAccountID:     &routingAccountID,
+		RoutingSelectedAccountName:   &routingAccountName,
+		RoutingEffectiveModel:        &routingEffectiveModel,
+		RoutingFailoverCount:         &routingFailoverCount,
+		RoutingFailoverFinalReason:   &routingFailoverFinalReason,
+		StickySessionSource:          &stickySessionSource,
+		StickySessionHashPresent:     &stickySessionHashPresent,
+		StickyEvalResult:             &stickyEvalResult,
+		StickySelectedAccountChanged: &stickySelectedAccountChanged,
+		StickyParentSessionPresent:   &stickyParentSessionPresent,
+		StickyParentSessionKey:       &stickyParentSessionKey,
+		CreatedAt:                    time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC),
 	})
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
@@ -210,6 +222,12 @@ func TestPrepareUsageLogInsert_IncludesOpenAIRoutingFields(t *testing.T) {
 	require.Equal(t, sql.NullString{String: routingEffectiveModel, Valid: true}, prepared.args[53])
 	require.Equal(t, sql.NullInt64{Int64: int64(routingFailoverCount), Valid: true}, prepared.args[54])
 	require.Equal(t, sql.NullString{String: routingFailoverFinalReason, Valid: true}, prepared.args[55])
+	require.Equal(t, sql.NullString{String: stickySessionSource, Valid: true}, prepared.args[56])
+	require.Equal(t, sql.NullBool{Bool: stickySessionHashPresent, Valid: true}, prepared.args[57])
+	require.Equal(t, sql.NullString{String: stickyEvalResult, Valid: true}, prepared.args[58])
+	require.Equal(t, sql.NullBool{Bool: stickySelectedAccountChanged, Valid: true}, prepared.args[59])
+	require.Equal(t, sql.NullBool{Bool: stickyParentSessionPresent, Valid: true}, prepared.args[60])
+	require.Equal(t, sql.NullString{String: stickyParentSessionKey, Valid: true}, prepared.args[61])
 }
 
 func TestPrepareUsageLogInsert_IncludesBillingBreakdownFields(t *testing.T) {
@@ -596,6 +614,12 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullInt64{},
 			sql.NullString{},
+			sql.NullString{},
+			sql.NullBool{},
+			sql.NullString{},
+			sql.NullBool{},
+			sql.NullBool{},
+			sql.NullString{},
 			false,
 			now,
 		}})
@@ -655,6 +679,12 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullInt64{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullBool{},
+			sql.NullString{},
+			sql.NullBool{},
+			sql.NullBool{},
 			sql.NullString{},
 			false,
 			now,
@@ -716,6 +746,12 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullInt64{},
 			sql.NullString{},
+			sql.NullString{},
+			sql.NullBool{},
+			sql.NullString{},
+			sql.NullBool{},
+			sql.NullBool{},
+			sql.NullString{},
 			false,
 			now,
 		}})
@@ -760,11 +796,11 @@ func TestScanUsageLog_PreservesBillingBreakdownFields(t *testing.T) {
 		false,
 		sql.NullInt64{},
 		sql.NullInt64{},
-			sql.NullString{},
-			sql.NullString{},
-			0,
-			sql.NullString{},
-			sql.NullString{Valid: true, String: "priority"},
+		sql.NullString{},
+		sql.NullString{},
+		0,
+		sql.NullString{},
+		sql.NullString{Valid: true, String: "priority"},
 		sql.NullString{},
 		sql.NullString{},
 		sql.NullString{},
@@ -774,6 +810,12 @@ func TestScanUsageLog_PreservesBillingBreakdownFields(t *testing.T) {
 		sql.NullString{},
 		sql.NullString{},
 		sql.NullInt64{},
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullBool{},
+		sql.NullString{},
+		sql.NullBool{},
+		sql.NullBool{},
 		sql.NullString{},
 		false,
 		now,
@@ -791,6 +833,79 @@ func TestScanUsageLog_PreservesBillingBreakdownFields(t *testing.T) {
 	require.Equal(t, 0.5e-6, *log.EffectiveCacheReadUnitPrice)
 	require.NotNil(t, log.PricingSource)
 	require.Equal(t, "priority_pricing,priority_account_multiplier", *log.PricingSource)
+}
+
+func TestScanUsageLog_PreservesStickyObservabilityFields(t *testing.T) {
+	now := time.Now().UTC()
+	log, err := scanUsageLog(usageLogScannerStub{values: []any{
+		int64(5),
+		int64(14),
+		int64(24),
+		int64(34),
+		sql.NullString{Valid: true, String: "req-sticky"},
+		"gpt-5.4-Sys",
+		sql.NullString{Valid: true, String: "gpt-5.4-Sys"},
+		sql.NullString{Valid: true, String: "gpt-5.4"},
+		sql.NullInt64{},
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullInt64{},
+		sql.NullInt64{},
+		1, 2, 3, 4, 5, 6,
+		0, 0.0,
+		0.1, 0.2, 0.3, 0.4, 1.0, 0.9,
+		1.0,
+		sql.NullFloat64{},
+		sql.NullFloat64{},
+		sql.NullFloat64{},
+		sql.NullFloat64{},
+		sql.NullFloat64{},
+		sql.NullFloat64{},
+		sql.NullString{},
+		int16(service.BillingTypeBalance),
+		int16(service.RequestTypeSync),
+		false,
+		false,
+		sql.NullInt64{},
+		sql.NullInt64{},
+		sql.NullString{},
+		sql.NullString{},
+		0,
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullString{},
+		sql.NullString{Valid: true, String: "exhausted"},
+		sql.NullString{Valid: true, String: "load_balance"},
+		sql.NullInt64{Valid: true, Int64: 66},
+		sql.NullString{Valid: true, String: "acc-66"},
+		sql.NullString{Valid: true, String: "gpt-5.4"},
+		sql.NullInt64{Valid: true, Int64: 1},
+		sql.NullString{Valid: true, String: "selected_exhausted_fallback"},
+		sql.NullString{Valid: true, String: "header_x_session_affinity"},
+		sql.NullBool{Valid: true, Bool: true},
+		sql.NullString{Valid: true, String: "hit"},
+		sql.NullBool{Valid: true, Bool: false},
+		sql.NullBool{Valid: true, Bool: true},
+		sql.NullString{Valid: true, String: "resp_parent_123"},
+		false,
+		now,
+	}})
+	require.NoError(t, err)
+	require.NotNil(t, log.StickySessionSource)
+	require.Equal(t, "header_x_session_affinity", *log.StickySessionSource)
+	require.NotNil(t, log.StickySessionHashPresent)
+	require.True(t, *log.StickySessionHashPresent)
+	require.NotNil(t, log.StickyEvalResult)
+	require.Equal(t, "hit", *log.StickyEvalResult)
+	require.NotNil(t, log.StickySelectedAccountChanged)
+	require.False(t, *log.StickySelectedAccountChanged)
+	require.NotNil(t, log.StickyParentSessionPresent)
+	require.True(t, *log.StickyParentSessionPresent)
+	require.NotNil(t, log.StickyParentSessionKey)
+	require.Equal(t, "resp_parent_123", *log.StickyParentSessionKey)
 }
 
 func TestScanUsageLog_PreservesChannelAndImageOutputFields(t *testing.T) {
@@ -843,6 +958,12 @@ func TestScanUsageLog_PreservesChannelAndImageOutputFields(t *testing.T) {
 		sql.NullString{},                  // routing_effective_model
 		sql.NullInt64{},                   // routing_failover_count
 		sql.NullString{},                  // routing_failover_final_reason
+		sql.NullString{},                  // sticky_session_source
+		sql.NullBool{},                    // sticky_session_hash_present
+		sql.NullString{},                  // sticky_eval_result
+		sql.NullBool{},                    // sticky_selected_account_changed
+		sql.NullBool{},                    // sticky_parent_session_present
+		sql.NullString{},                  // sticky_parent_session_key
 		false,                             // cache_ttl_overridden
 		now,                               // created_at
 	}})

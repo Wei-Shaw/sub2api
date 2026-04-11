@@ -120,6 +120,18 @@ const (
 	FieldCacheTTLOverridden = "cache_ttl_overridden"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
+	// FieldStickySessionSource holds the string denoting the sticky_session_source field in the database.
+	FieldStickySessionSource = "sticky_session_source"
+	// FieldStickySessionHashPresent holds the string denoting the sticky_session_hash_present field in the database.
+	FieldStickySessionHashPresent = "sticky_session_hash_present"
+	// FieldStickyEvalResult holds the string denoting the sticky_eval_result field in the database.
+	FieldStickyEvalResult = "sticky_eval_result"
+	// FieldStickySelectedAccountChanged holds the string denoting the sticky_selected_account_changed field in the database.
+	FieldStickySelectedAccountChanged = "sticky_selected_account_changed"
+	// FieldStickyParentSessionPresent holds the string denoting the sticky_parent_session_present field in the database.
+	FieldStickyParentSessionPresent = "sticky_parent_session_present"
+	// FieldStickyParentSessionKey holds the string denoting the sticky_parent_session_key field in the database.
+	FieldStickyParentSessionKey = "sticky_parent_session_key"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// EdgeAPIKey holds the string denoting the api_key edge name in mutations.
@@ -225,6 +237,12 @@ var Columns = []string{
 	FieldMediaType,
 	FieldCacheTTLOverridden,
 	FieldCreatedAt,
+	FieldStickySessionSource,
+	FieldStickySessionHashPresent,
+	FieldStickyEvalResult,
+	FieldStickySelectedAccountChanged,
+	FieldStickyParentSessionPresent,
+	FieldStickyParentSessionKey,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).

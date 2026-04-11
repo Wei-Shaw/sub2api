@@ -36,6 +36,12 @@ func TestOpsServiceListRequestDetails_PreservesRoutingFields(t *testing.T) {
 			RoutingEffectiveModel:      "gpt-5.4",
 			RoutingFailoverCount:       intValuePtr(1),
 			RoutingFailoverFinalReason: "upstream_502",
+			StickySessionSource:          strPtr("header_x_session_affinity"),
+			StickySessionHashPresent:     boolPtr(true),
+			StickyEvalResult:             strPtr("hit"),
+			StickySelectedAccountChanged: boolPtr(false),
+			StickyParentSessionPresent:   boolPtr(true),
+			StickyParentSessionKey:       strPtr("parent_abc"),
 		}},
 		total: 1,
 	}
@@ -54,6 +60,18 @@ func TestOpsServiceListRequestDetails_PreservesRoutingFields(t *testing.T) {
 	require.NotNil(t, out.Items[0].RoutingFailoverCount)
 	require.Equal(t, 1, *out.Items[0].RoutingFailoverCount)
 	require.Equal(t, "upstream_502", out.Items[0].RoutingFailoverFinalReason)
+	require.NotNil(t, out.Items[0].StickySessionSource)
+	require.Equal(t, "header_x_session_affinity", *out.Items[0].StickySessionSource)
+	require.NotNil(t, out.Items[0].StickySessionHashPresent)
+	require.True(t, *out.Items[0].StickySessionHashPresent)
+	require.NotNil(t, out.Items[0].StickyEvalResult)
+	require.Equal(t, "hit", *out.Items[0].StickyEvalResult)
+	require.NotNil(t, out.Items[0].StickySelectedAccountChanged)
+	require.False(t, *out.Items[0].StickySelectedAccountChanged)
+	require.NotNil(t, out.Items[0].StickyParentSessionPresent)
+	require.True(t, *out.Items[0].StickyParentSessionPresent)
+	require.NotNil(t, out.Items[0].StickyParentSessionKey)
+	require.Equal(t, "parent_abc", *out.Items[0].StickyParentSessionKey)
 }
 
 func intValuePtr(v int) *int {

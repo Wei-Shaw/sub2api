@@ -3708,6 +3708,36 @@ export default {
         retriedRequestCount: '发生过重试的请求数',
         retryCount: '服务端重试总次数'
       },
+      openaiSticky: {
+        title: 'OpenAI Sticky 会话观测',
+        subtitle: '展示已落库 OpenAI 请求中的 sticky 命中质量与会话来源分布。',
+        failedToLoad: '加载 OpenAI sticky 统计失败',
+        empty: '当前筛选条件下暂无 OpenAI sticky 统计数据',
+        evaluatedRequestCount: '参与 sticky 判定的请求数',
+        stickyHitCount: 'Sticky 命中次数',
+        stickyHitRate: 'Sticky 命中率',
+        stickyAccountSwitchRate: '账号切换率',
+        evalBreakdown: 'Sticky 结果分布',
+        sessionSourceBreakdown: '会话来源分布',
+        eval: {
+          hit: '命中',
+          missNoBinding: '未命中：无绑定',
+          missBindingInvalid: '未命中：绑定失效',
+          missBindingRestricted: '未命中：绑定受限',
+          missBindingExcluded: '未命中：绑定被排除',
+          bypassedPreviousResponseId: '绕过：previous_response_id',
+          noSessionSignal: '无会话信号'
+        },
+        source: {
+          headerSessionId: 'Header session_id',
+          headerConversationId: 'Header conversation_id',
+          headerXSessionAffinity: 'Header x-session-affinity',
+          promptCacheKey: 'prompt_cache_key',
+          contentFallback: '内容回退',
+          fallbackSeed: '回退种子',
+          none: '无'
+        }
+      },
       customTimeRange: {
         startTime: '开始时间',
         endTime: '结束时间'
@@ -3975,6 +4005,15 @@ export default {
         kind: {
           success: '成功',
           error: '失败'
+        },
+        sticky: {
+          title: 'Sticky',
+          sessionSource: '会话来源',
+          sessionHashPresent: '是否有会话哈希',
+          evalResult: 'Sticky 结果',
+          selectedAccountChanged: '最终账号是否变化',
+          parentSessionPresent: '是否有父会话',
+          parentSessionKey: '父会话键'
         },
         table: {
           time: '时间',

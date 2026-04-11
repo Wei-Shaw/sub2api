@@ -33,6 +33,12 @@ func TestOpsRepositoryListRequestDetails_IncludesRoutingFields(t *testing.T) {
 		"routing_effective_model",
 		"routing_failover_count",
 		"routing_failover_final_reason",
+		"sticky_session_source",
+		"sticky_session_hash_present",
+		"sticky_eval_result",
+		"sticky_selected_account_changed",
+		"sticky_parent_session_present",
+		"sticky_parent_session_key",
 		"duration_ms",
 		"status_code",
 		"error_id",
@@ -57,6 +63,12 @@ func TestOpsRepositoryListRequestDetails_IncludesRoutingFields(t *testing.T) {
 		"gpt-5.4",
 		int64(1),
 		"upstream_502",
+		"header_x_session_affinity",
+		true,
+		"hit",
+		false,
+		true,
+		"parent_abc",
 		int64(1800),
 		502,
 		int64(9),
@@ -88,5 +100,17 @@ func TestOpsRepositoryListRequestDetails_IncludesRoutingFields(t *testing.T) {
 	require.NotNil(t, items[0].RoutingFailoverCount)
 	require.Equal(t, 1, *items[0].RoutingFailoverCount)
 	require.Equal(t, "upstream_502", items[0].RoutingFailoverFinalReason)
+	require.NotNil(t, items[0].StickySessionSource)
+	require.Equal(t, "header_x_session_affinity", *items[0].StickySessionSource)
+	require.NotNil(t, items[0].StickySessionHashPresent)
+	require.True(t, *items[0].StickySessionHashPresent)
+	require.NotNil(t, items[0].StickyEvalResult)
+	require.Equal(t, "hit", *items[0].StickyEvalResult)
+	require.NotNil(t, items[0].StickySelectedAccountChanged)
+	require.False(t, *items[0].StickySelectedAccountChanged)
+	require.NotNil(t, items[0].StickyParentSessionPresent)
+	require.True(t, *items[0].StickyParentSessionPresent)
+	require.NotNil(t, items[0].StickyParentSessionKey)
+	require.Equal(t, "parent_abc", *items[0].StickyParentSessionKey)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
