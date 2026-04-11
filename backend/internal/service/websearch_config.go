@@ -10,7 +10,6 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
-	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -167,7 +166,7 @@ func (s *SettingService) SaveWebSearchEmulationConfig(ctx context.Context, cfg *
 	})
 
 	// Hot-reload: rebuild the global Manager with new config
-	s.RebuildWebSearchManager(ctx)
+	s.rebuildWebSearchManager(ctx)
 	return nil
 }
 
@@ -209,34 +208,25 @@ func (s *SettingService) IsWebSearchEmulationEnabled(ctx context.Context) bool {
 	return cfg.Enabled && len(cfg.Providers) > 0
 }
 
-// SetWebSearchRedisClient injects the Redis client used for quota tracking.
-// Call after construction, before first use. Triggers initial Manager build.
-func (s *SettingService) SetWebSearchRedisClient(ctx context.Context, redisClient *redis.Client) {
-	s.webSearchRedis = redisClient
-	s.RebuildWebSearchManager(ctx)
+// SetWebSearchManagerBuilder injects a callback that creates and wires a websearch.Manager.
+// The infra layer (main/wire) provides this builder, keeping redis out of the service layer.
+// Triggers initial build.
+func (s *SettingService) SetWebSearchManagerBuilder(ctx context.Context, builder WebSearchManagerBuilder) {
+	s.webSearchManagerBuilder = builder
+	s.rebuildWebSearchManager(ctx)
 }
 
-// RebuildWebSearchManager reads the current config and (re)creates the global websearch.Manager.
-// Called on startup and after SaveWebSearchEmulationConfig.
-func (s *SettingService) RebuildWebSearchManager(ctx context.Context) {
+// rebuildWebSearchManager reads the current config and invokes the builder.
+func (s *SettingService) rebuildWebSearchManager(ctx context.Context) {
+	if s.webSearchManagerBuilder == nil {
+		return
+	}
 	cfg, err := s.GetWebSearchEmulationConfig(ctx)
-	if err != nil || !cfg.Enabled || len(cfg.Providers) == 0 {
+	if err != nil {
 		SetWebSearchManager(nil)
 		return
 	}
-	providerConfigs := make([]websearch.ProviderConfig, 0, len(cfg.Providers))
-	for _, p := range cfg.Providers {
-		providerConfigs = append(providerConfigs, websearch.ProviderConfig{
-			Type:                 p.Type,
-			APIKey:               p.APIKey,
-			Priority:             p.Priority,
-			QuotaLimit:           p.QuotaLimit,
-			QuotaRefreshInterval: p.QuotaRefreshInterval,
-			ExpiresAt:            p.ExpiresAt,
-		})
-	}
-	SetWebSearchManager(websearch.NewManager(providerConfigs, s.webSearchRedis))
-	slog.Info("websearch: manager rebuilt", "provider_count", len(providerConfigs))
+	s.webSearchManagerBuilder(cfg)
 }
 
 // SanitizeWebSearchConfig returns a copy with api_key fields masked for API responses.
