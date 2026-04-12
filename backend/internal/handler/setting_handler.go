@@ -63,5 +63,6 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		Version:                          h.version,
 		BalanceLowNotifyEnabled:          settings.BalanceLowNotifyEnabled,
 		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,
+		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
 	})
 }

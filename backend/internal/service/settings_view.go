@@ -157,8 +157,9 @@ type PublicSettings struct {
 	OIDCOAuthProviderName string
 	Version               string
 
-	BalanceLowNotifyEnabled    bool
-	AccountQuotaNotifyEnabled  bool
+	BalanceLowNotifyEnabled          bool
+	AccountQuotaNotifyEnabled        bool
+	BalanceLowNotifyThreshold        float64
 }
 
 // StreamTimeoutSettings 流超时处理配置（仅控制超时后的处理方式，超时判定由网关配置控制）
