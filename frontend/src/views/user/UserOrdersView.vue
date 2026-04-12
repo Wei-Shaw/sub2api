@@ -22,7 +22,7 @@
               <Icon name="x" size="sm" />
               <span>{{ t('payment.orders.cancel') }}</span>
             </button>
-            <button v-if="row.status === 'COMPLETED'" @click="openRefundDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20">
+            <button v-if="canRequestRefund(row)" @click="openRefundDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20">
               <Icon name="dollar" size="sm" />
               <span>{{ t('payment.orders.requestRefund') }}</span>
             </button>
@@ -102,6 +102,7 @@ const appStore = useAppStore()
 const loading = ref(false)
 const actionLoading = ref(false)
 const orders = ref<PaymentOrder[]>([])
+const refundEligibleProviders = ref<Set<string>>(new Set())
 const currentFilter = ref('')
 const cancelTargetId = ref<number | null>(null)
 const refundTarget = ref<PaymentOrder | null>(null)
@@ -171,5 +172,18 @@ async function confirmRefund() {
   }
 }
 
-onMounted(() => fetchOrders())
+function canRequestRefund(order: PaymentOrder): boolean {
+  if (order.status !== 'COMPLETED') return false
+  if (!order.provider_instance_id) return false
+  return refundEligibleProviders.value.has(order.provider_instance_id)
+}
+
+async function loadRefundEligibility() {
+  try {
+    const res = await paymentAPI.getRefundEligibleProviders()
+    refundEligibleProviders.value = new Set(res.data.provider_instance_ids || [])
+  } catch { /* ignore — default to hiding refund button */ }
+}
+
+onMounted(() => { fetchOrders(); loadRefundEligibility() })
 </script>

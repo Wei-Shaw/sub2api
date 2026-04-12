@@ -4586,6 +4586,7 @@ export default {
         supportedTypes: 'Supported Payment Types',
         supportedTypesHint: 'Comma-separated, e.g. alipay,wxpay',
         refundEnabled: 'Allow Refund',
+        allowUserRefund: 'Allow User Refund',
       },
       balanceNotify: {
         title: 'Balance Low Notification',
@@ -5331,6 +5332,7 @@ export default {
       refundSuccess: 'Refund successful',
       refundInfo: 'Refund Info',
       refundEnabled: 'Refund Enabled',
+      allowUserRefund: 'Allow User Refund',
       alreadyRefunded: 'Already Refunded',
       deductBalance: 'Deduct Balance',
       deductBalanceHint: 'Subtract recharged amount from user balance',

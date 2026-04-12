@@ -4063,12 +4063,26 @@ async function handleSaveProvider(payload: Partial<ProviderInstance>) {
   }
 }
 
-async function handleToggleField(provider: ProviderInstance, field: 'enabled' | 'refund_enabled') {
-  const newValue = field === 'enabled' ? !provider.enabled : !provider.refund_enabled
+async function handleToggleField(provider: ProviderInstance, field: 'enabled' | 'refund_enabled' | 'allow_user_refund') {
+  let newValue: boolean
+  if (field === 'enabled') newValue = !provider.enabled
+  else if (field === 'refund_enabled') newValue = !provider.refund_enabled
+  else newValue = !provider.allow_user_refund
+
+  const payload: Record<string, boolean> = { [field]: newValue }
+  // Cascade: turning off refund_enabled also turns off allow_user_refund
+  if (field === 'refund_enabled' && !newValue) {
+    payload.allow_user_refund = false
+  }
   try {
-    await adminAPI.payment.updateProvider(provider.id, { [field]: newValue })
+    await adminAPI.payment.updateProvider(provider.id, payload)
     if (field === 'enabled') provider.enabled = newValue
-    else provider.refund_enabled = newValue
+    else if (field === 'refund_enabled') {
+      provider.refund_enabled = newValue
+      if (!newValue) provider.allow_user_refund = false
+    } else {
+      provider.allow_user_refund = newValue
+    }
   } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value)) }
 }
 

@@ -89,6 +89,7 @@ export interface PaymentOrder {
   refund_requested_by?: number
   refund_request_reason?: string
   plan_id?: number
+  provider_instance_id?: string
 }
 
 // ==================== Plans & Channels ====================
@@ -138,6 +139,7 @@ export interface ProviderInstance {
   enabled: boolean
   payment_mode: string
   refund_enabled: boolean
+  allow_user_refund: boolean
   limits: string
   sort_order: number
 }

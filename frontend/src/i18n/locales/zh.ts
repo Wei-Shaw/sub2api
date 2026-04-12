@@ -4758,6 +4758,7 @@ export default {
         supportedTypes: '支持的支付方式',
         supportedTypesHint: '逗号分隔，如 alipay,wxpay',
         refundEnabled: '允许退款',
+        allowUserRefund: '允许用户退款',
       },
       balanceNotify: {
         title: '余额不足提醒',
