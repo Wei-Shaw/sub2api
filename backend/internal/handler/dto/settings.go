@@ -123,6 +123,28 @@ type SystemSettings struct {
 	EnableFingerprintUnification bool `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough    bool `json:"enable_metadata_passthrough"`
 	EnableCCHSigning             bool `json:"enable_cch_signing"`
+
+	// Payment configuration
+	PaymentEnabled           bool     `json:"payment_enabled"`
+	PaymentMinAmount         float64  `json:"payment_min_amount"`
+	PaymentMaxAmount         float64  `json:"payment_max_amount"`
+	PaymentDailyLimit        float64  `json:"payment_daily_limit"`
+	PaymentOrderTimeoutMin   int      `json:"payment_order_timeout_minutes"`
+	PaymentMaxPendingOrders  int      `json:"payment_max_pending_orders"`
+	PaymentEnabledTypes      []string `json:"payment_enabled_types"`
+	PaymentBalanceDisabled   bool     `json:"payment_balance_disabled"`
+	PaymentLoadBalanceStrat  string   `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix string   `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix string   `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL      string   `json:"payment_help_image_url"`
+	PaymentHelpText          string   `json:"payment_help_text"`
+
+	// Cancel rate limit
+	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`
+	PaymentCancelRateLimitMax     int    `json:"payment_cancel_rate_limit_max"`
+	PaymentCancelRateLimitWindow  int    `json:"payment_cancel_rate_limit_window"`
+	PaymentCancelRateLimitUnit    string `json:"payment_cancel_rate_limit_unit"`
+	PaymentCancelRateLimitMode    string `json:"payment_cancel_rate_limit_window_mode"`
 }
 
 type DefaultSubscriptionSetting struct {
@@ -159,6 +181,7 @@ type PublicSettings struct {
 	OIDCOAuthProviderName            string           `json:"oidc_oauth_provider_name"`
 	SoraClientEnabled                bool             `json:"sora_client_enabled"`
 	BackendModeEnabled               bool             `json:"backend_mode_enabled"`
+	PaymentEnabled                   bool             `json:"payment_enabled"`
 	Version                          string           `json:"version"`
 }
 

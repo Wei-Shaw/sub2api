@@ -271,7 +271,9 @@ apiClient.interceptors.response.use(
         status,
         code: apiData.code,
         error: apiData.error,
-        message: apiData.message || apiData.detail || error.message
+        message: apiData.message || apiData.detail || error.message,
+        reason: apiData.reason,
+        metadata: apiData.metadata,
       })
     }
 

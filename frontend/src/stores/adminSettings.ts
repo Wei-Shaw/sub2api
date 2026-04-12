@@ -48,6 +48,7 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
   const opsMonitoringEnabled = ref(readCachedBool('ops_monitoring_enabled_cached', true))
   const opsRealtimeMonitoringEnabled = ref(readCachedBool('ops_realtime_monitoring_enabled_cached', true))
   const opsQueryModeDefault = ref(readCachedString('ops_query_mode_default_cached', 'auto'))
+  const paymentEnabled = ref(readCachedBool('payment_enabled_cached', false))
   const customMenuItems = ref<CustomMenuItem[]>([])
 
   async function fetch(force = false): Promise<void> {
@@ -56,7 +57,10 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
 
     loading.value = true
     try {
-      const settings = await adminAPI.settings.getSettings()
+      const [settings, paymentConfigResp] = await Promise.all([
+        adminAPI.settings.getSettings(),
+        adminAPI.payment.getConfig()
+      ])
       opsMonitoringEnabled.value = settings.ops_monitoring_enabled ?? true
       writeCachedBool('ops_monitoring_enabled_cached', opsMonitoringEnabled.value)
 
@@ -67,6 +71,9 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
       writeCachedString('ops_query_mode_default_cached', opsQueryModeDefault.value)
 
       customMenuItems.value = Array.isArray(settings.custom_menu_items) ? settings.custom_menu_items : []
+
+      paymentEnabled.value = paymentConfigResp.data?.enabled ?? false
+      writeCachedBool('payment_enabled_cached', paymentEnabled.value)
 
       loaded.value = true
     } catch (err) {
@@ -87,6 +94,12 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
   function setOpsRealtimeMonitoringEnabledLocal(value: boolean) {
     opsRealtimeMonitoringEnabled.value = value
     writeCachedBool('ops_realtime_monitoring_enabled_cached', value)
+    loaded.value = true
+  }
+
+  function setPaymentEnabledLocal(value: boolean) {
+    paymentEnabled.value = value
+    writeCachedBool('payment_enabled_cached', value)
     loaded.value = true
   }
 
@@ -126,10 +139,12 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
     opsMonitoringEnabled,
     opsRealtimeMonitoringEnabled,
     opsQueryModeDefault,
+    paymentEnabled,
     customMenuItems,
     fetch,
     setOpsMonitoringEnabledLocal,
     setOpsRealtimeMonitoringEnabledLocal,
+    setPaymentEnabledLocal,
     setOpsQueryModeDefaultLocal
   }
 })

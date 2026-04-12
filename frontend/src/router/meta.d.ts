@@ -42,5 +42,21 @@ declare module 'vue-router' {
      * @default false
      */
     hideInMenu?: boolean
+
+    /**
+     * Whether this route requires internal payment system to be enabled
+     * @default false
+     */
+    requiresPayment?: boolean
+
+    /**
+     * i18n key for the page title
+     */
+    titleKey?: string
+
+    /**
+     * i18n key for the page description
+     */
+    descriptionKey?: string
   }
 }
