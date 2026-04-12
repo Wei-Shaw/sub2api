@@ -51,12 +51,16 @@ REDACTED
 		return
 REDACTED
 
-	globalEnabled, globalThresholdType, globalThresholdValue := s.getBalanceNotifyConfig(ctx)
+	globalEnabled, globalThreshold := s.getBalanceNotifyConfig(ctx)
 	if !globalEnabled {
 		return
 REDACTED
 
-	threshold := s.resolveEffectiveThreshold(user, globalThresholdType, globalThresholdValue)
+	// User custom threshold overrides system default
+	threshold := globalThreshold
+	if user.BalanceNotifyThreshold != nil {
+		threshold = *user.BalanceNotifyThreshold
+REDACTED
 	if threshold <= 0 {
 		return
 REDACTED
@@ -74,30 +78,6 @@ REDACTED
 			s.sendBalanceLowEmails(recipients, user.Username, user.Email, newBalance, threshold, siteName)
 	REDACTED()
 REDACTED
-REDACTED
-
-// resolveEffectiveThreshold computes the actual USD threshold based on type and user settings.
-// When user sets a custom threshold, their type is used independently (defaults to "fixed" if unset).
-func (s *BalanceNotifyService) resolveEffectiveThreshold(user *User, globalType string, globalValue float64) float64 {
-	if user.BalanceNotifyThreshold != nil {
-		thresholdType := user.BalanceNotifyThresholdType
-		if thresholdType == "" {
-			thresholdType = ThresholdTypeFixed // user custom value defaults to fixed, not inherited
-	REDACTED
-		return computeThreshold(thresholdType, *user.BalanceNotifyThreshold, user.TotalRecharged)
-REDACTED
-	return computeThreshold(globalType, globalValue, user.TotalRecharged)
-REDACTED
-
-// computeThreshold converts a threshold value to USD based on type.
-func computeThreshold(thresholdType string, value, totalRecharged float64) float64 {
-	if thresholdType == ThresholdTypePercentage {
-		if totalRecharged <= 0 {
-			return 0 // no recharge history → skip percentage check
-	REDACTED
-		return totalRecharged * value / 100
-REDACTED
-	return value // fixed USD amount
 REDACTED
 
 // quotaDim describes one quota dimension for notification checking.
@@ -154,21 +134,13 @@ REDACTED()
 REDACTED
 
 // getBalanceNotifyConfig reads global balance notification settings.
-func (s *BalanceNotifyService) getBalanceNotifyConfig(ctx context.Context) (enabled bool, thresholdType string, threshold float64) {
-	keys := []string{
-		SettingKeyBalanceLowNotifyEnabled,
-		SettingKeyBalanceLowNotifyThresholdType,
-		SettingKeyBalanceLowNotifyThreshold,
-REDACTED
+func (s *BalanceNotifyService) getBalanceNotifyConfig(ctx context.Context) (enabled bool, threshold float64) {
+	keys := []string{SettingKeyBalanceLowNotifyEnabled, SettingKeyBalanceLowNotifyThresholdREDACTED
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
 	if err != nil {
-		return false, ThresholdTypeFixed, 0
+		return false, 0
 REDACTED
 	enabled = settings[SettingKeyBalanceLowNotifyEnabled] == "true"
-	thresholdType = settings[SettingKeyBalanceLowNotifyThresholdType]
-	if thresholdType == "" {
-		thresholdType = ThresholdTypeFixed
-REDACTED
 	if v := settings[SettingKeyBalanceLowNotifyThreshold]; v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			threshold = f
