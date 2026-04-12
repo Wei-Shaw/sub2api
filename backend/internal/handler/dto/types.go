@@ -19,9 +19,11 @@ type User struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 
 	// 余额不足通知
-	BalanceNotifyEnabled     bool     `json:"balance_notify_enabled"`
-	BalanceNotifyThreshold   *float64 `json:"balance_notify_threshold"`
-	BalanceNotifyExtraEmails []string `json:"balance_notify_extra_emails"`
+	BalanceNotifyEnabled       bool     `json:"balance_notify_enabled"`
+	BalanceNotifyThresholdType string   `json:"balance_notify_threshold_type"`
+	BalanceNotifyThreshold     *float64 `json:"balance_notify_threshold"`
+	BalanceNotifyExtraEmails   []string `json:"balance_notify_extra_emails"`
+	TotalRecharged             float64  `json:"total_recharged"`
 
 	APIKeys       []APIKey           `json:"api_keys,omitempty"`
 	Subscriptions []UserSubscription `json:"subscriptions,omitempty"`

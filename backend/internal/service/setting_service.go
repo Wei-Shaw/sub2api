@@ -601,6 +601,11 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 
 	// Balance low notification
 	updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(settings.BalanceLowNotifyEnabled)
+	thresholdType := settings.BalanceLowNotifyThresholdType
+	if thresholdType == "" {
+		thresholdType = ThresholdTypeFixed
+	}
+	updates[SettingKeyBalanceLowNotifyThresholdType] = thresholdType
 	updates[SettingKeyBalanceLowNotifyThreshold] = strconv.FormatFloat(settings.BalanceLowNotifyThreshold, 'f', 8, 64)
 	accountQuotaNotifyEmailsJSON, err := json.Marshal(settings.AccountQuotaNotifyEmails)
 	if err != nil {
@@ -1240,6 +1245,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Balance low notification
 	result.BalanceLowNotifyEnabled = settings[SettingKeyBalanceLowNotifyEnabled] == "true"
+	result.BalanceLowNotifyThresholdType = settings[SettingKeyBalanceLowNotifyThresholdType]
+	if result.BalanceLowNotifyThresholdType == "" {
+		result.BalanceLowNotifyThresholdType = ThresholdTypeFixed
+	}
 	if v, err := strconv.ParseFloat(settings[SettingKeyBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
 		result.BalanceLowNotifyThreshold = v
 	}

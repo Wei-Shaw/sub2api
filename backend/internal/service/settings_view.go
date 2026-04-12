@@ -111,8 +111,9 @@ type SystemSettings struct {
 	WebSearchEmulationEnabled bool
 
 	// Balance low notification
-	BalanceLowNotifyEnabled   bool
-	BalanceLowNotifyThreshold float64
+	BalanceLowNotifyEnabled       bool
+	BalanceLowNotifyThresholdType string // "fixed" (default) | "percentage"
+	BalanceLowNotifyThreshold     float64
 
 	// Account quota notification
 	AccountQuotaNotifyEmails []string

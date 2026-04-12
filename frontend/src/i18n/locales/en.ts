@@ -4588,8 +4588,12 @@ export default {
         title: 'Balance Low Notification',
         description: 'Send email notification when user balance falls below threshold',
         enabled: 'Enable Balance Low Notification',
+        thresholdType: 'Threshold Type',
+        typeFixed: 'Fixed Amount',
+        typePercentage: 'Percentage of Recharged',
         threshold: 'Default Threshold',
         thresholdHint: 'Used when user has not set a custom value',
+        percentageHint: 'Notify when balance falls below this percentage of total recharged amount',
         thresholdPlaceholder: 'Enter amount',
       },
       quotaNotify: {

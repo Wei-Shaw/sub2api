@@ -47,10 +47,14 @@ type User struct {
 	TotpEnabledAt *time.Time `json:"totp_enabled_at,omitempty"`
 	// BalanceNotifyEnabled holds the value of the "balance_notify_enabled" field.
 	BalanceNotifyEnabled bool `json:"balance_notify_enabled,omitempty"`
+	// BalanceNotifyThresholdType holds the value of the "balance_notify_threshold_type" field.
+	BalanceNotifyThresholdType string `json:"balance_notify_threshold_type,omitempty"`
 	// BalanceNotifyThreshold holds the value of the "balance_notify_threshold" field.
 	BalanceNotifyThreshold *float64 `json:"balance_notify_threshold,omitempty"`
 	// BalanceNotifyExtraEmails holds the value of the "balance_notify_extra_emails" field.
 	BalanceNotifyExtraEmails string `json:"balance_notify_extra_emails,omitempty"`
+	// TotalRecharged holds the value of the "total_recharged" field.
+	TotalRecharged float64 `json:"total_recharged,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the UserQuery when eager-loading is set.
 	Edges        UserEdges `json:"edges"`
@@ -192,11 +196,11 @@ func (*User) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case user.FieldTotpEnabled, user.FieldBalanceNotifyEnabled:
 			values[i] = new(sql.NullBool)
-		case user.FieldBalance, user.FieldBalanceNotifyThreshold:
+		case user.FieldBalance, user.FieldBalanceNotifyThreshold, user.FieldTotalRecharged:
 			values[i] = new(sql.NullFloat64)
 		case user.FieldID, user.FieldConcurrency:
 			values[i] = new(sql.NullInt64)
-		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldBalanceNotifyExtraEmails:
+		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails:
 			values[i] = new(sql.NullString)
 		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt:
 			values[i] = new(sql.NullTime)
@@ -314,6 +318,12 @@ func (_m *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.BalanceNotifyEnabled = value.Bool
 			}
+		case user.FieldBalanceNotifyThresholdType:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field balance_notify_threshold_type", values[i])
+			} else if value.Valid {
+				_m.BalanceNotifyThresholdType = value.String
+			}
 		case user.FieldBalanceNotifyThreshold:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field balance_notify_threshold", values[i])
@@ -326,6 +336,12 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field balance_notify_extra_emails", values[i])
 			} else if value.Valid {
 				_m.BalanceNotifyExtraEmails = value.String
+			}
+		case user.FieldTotalRecharged:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field total_recharged", values[i])
+			} else if value.Valid {
+				_m.TotalRecharged = value.Float64
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -469,6 +485,9 @@ func (_m *User) String() string {
 	builder.WriteString("balance_notify_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.BalanceNotifyEnabled))
 	builder.WriteString(", ")
+	builder.WriteString("balance_notify_threshold_type=")
+	builder.WriteString(_m.BalanceNotifyThresholdType)
+	builder.WriteString(", ")
 	if v := _m.BalanceNotifyThreshold; v != nil {
 		builder.WriteString("balance_notify_threshold=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
@@ -476,6 +495,9 @@ func (_m *User) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("balance_notify_extra_emails=")
 	builder.WriteString(_m.BalanceNotifyExtraEmails)
+	builder.WriteString(", ")
+	builder.WriteString("total_recharged=")
+	builder.WriteString(fmt.Sprintf("%v", _m.TotalRecharged))
 	builder.WriteByte(')')
 	return builder.String()
 }

@@ -148,6 +148,7 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
 		SetBalanceNotifyEnabled(userIn.BalanceNotifyEnabled).
+		SetBalanceNotifyThresholdType(userIn.BalanceNotifyThresholdType).
 		SetNillableBalanceNotifyThreshold(userIn.BalanceNotifyThreshold).
 		SetBalanceNotifyExtraEmails(marshalExtraEmails(userIn.BalanceNotifyExtraEmails))
 	if userIn.BalanceNotifyThreshold == nil {
@@ -389,7 +390,12 @@ func (r *userRepository) filterUsersByAttributes(ctx context.Context, attrs map[
 
 func (r *userRepository) UpdateBalance(ctx context.Context, id int64, amount float64) error {
 	client := clientFromContext(ctx, r.client)
-	n, err := client.User.Update().Where(dbuser.IDEQ(id)).AddBalance(amount).Save(ctx)
+	update := client.User.Update().Where(dbuser.IDEQ(id)).AddBalance(amount)
+	// Track cumulative recharge amount for percentage-based notifications
+	if amount > 0 {
+		update = update.AddTotalRecharged(amount)
+	}
+	n, err := update.Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}

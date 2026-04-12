@@ -137,6 +137,7 @@ export interface SystemSettings {
 
   // Balance & quota notification
   balance_low_notify_enabled: boolean
+  balance_low_notify_threshold_type: 'fixed' | 'percentage'
   balance_low_notify_threshold: number
   account_quota_notify_emails: string[]
 }
@@ -240,6 +241,7 @@ export interface UpdateSettingsRequest {
   payment_cancel_rate_limit_window_mode?: string
   // Balance & quota notification
   balance_low_notify_enabled?: boolean
+  balance_low_notify_threshold_type?: 'fixed' | 'percentage'
   balance_low_notify_threshold?: number
   account_quota_notify_emails?: string[]
 }

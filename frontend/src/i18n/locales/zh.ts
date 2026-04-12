@@ -4760,8 +4760,12 @@ export default {
         title: '余额不足提醒',
         description: '当用户余额低于阈值时发送邮件提醒',
         enabled: '启用余额不足提醒',
-        threshold: '默认提醒阈值',
+        thresholdType: '阈值类型',
+        typeFixed: '固定金额',
+        typePercentage: '充值百分比',
+        threshold: '提醒阈值',
         thresholdHint: '用户未自定义时使用此值',
+        percentageHint: '当余额低于累计充值额的此百分比时提醒',
         thresholdPlaceholder: '输入金额',
       },
       quotaNotify: {

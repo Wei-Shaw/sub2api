@@ -255,8 +255,13 @@ const (
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config"
 
 	// Balance Low Notification
-	SettingKeyBalanceLowNotifyEnabled   = "balance_low_notify_enabled"   // 全局开关
-	SettingKeyBalanceLowNotifyThreshold = "balance_low_notify_threshold" // 默认阈值（USD）
+	SettingKeyBalanceLowNotifyEnabled       = "balance_low_notify_enabled"        // 全局开关
+	SettingKeyBalanceLowNotifyThresholdType = "balance_low_notify_threshold_type" // "fixed" | "percentage"
+	SettingKeyBalanceLowNotifyThreshold     = "balance_low_notify_threshold"      // 默认阈值（USD 或百分比）
+
+	// Threshold type constants
+	ThresholdTypeFixed      = "fixed"
+	ThresholdTypePercentage = "percentage"
 
 	// Account Quota Notification
 	SettingKeyAccountQuotaNotifyEmails = "account_quota_notify_emails" // 管理员通知邮箱列表（JSON 数组）

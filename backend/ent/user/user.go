@@ -45,10 +45,14 @@ const (
 	FieldTotpEnabledAt = "totp_enabled_at"
 	// FieldBalanceNotifyEnabled holds the string denoting the balance_notify_enabled field in the database.
 	FieldBalanceNotifyEnabled = "balance_notify_enabled"
+	// FieldBalanceNotifyThresholdType holds the string denoting the balance_notify_threshold_type field in the database.
+	FieldBalanceNotifyThresholdType = "balance_notify_threshold_type"
 	// FieldBalanceNotifyThreshold holds the string denoting the balance_notify_threshold field in the database.
 	FieldBalanceNotifyThreshold = "balance_notify_threshold"
 	// FieldBalanceNotifyExtraEmails holds the string denoting the balance_notify_extra_emails field in the database.
 	FieldBalanceNotifyExtraEmails = "balance_notify_extra_emails"
+	// FieldTotalRecharged holds the string denoting the total_recharged field in the database.
+	FieldTotalRecharged = "total_recharged"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -168,8 +172,10 @@ var Columns = []string{
 	FieldTotpEnabled,
 	FieldTotpEnabledAt,
 	FieldBalanceNotifyEnabled,
+	FieldBalanceNotifyThresholdType,
 	FieldBalanceNotifyThreshold,
 	FieldBalanceNotifyExtraEmails,
+	FieldTotalRecharged,
 }
 
 var (
@@ -228,8 +234,12 @@ var (
 	DefaultTotpEnabled bool
 	// DefaultBalanceNotifyEnabled holds the default value on creation for the "balance_notify_enabled" field.
 	DefaultBalanceNotifyEnabled bool
+	// DefaultBalanceNotifyThresholdType holds the default value on creation for the "balance_notify_threshold_type" field.
+	DefaultBalanceNotifyThresholdType string
 	// DefaultBalanceNotifyExtraEmails holds the default value on creation for the "balance_notify_extra_emails" field.
 	DefaultBalanceNotifyExtraEmails string
+	// DefaultTotalRecharged holds the default value on creation for the "total_recharged" field.
+	DefaultTotalRecharged float64
 )
 
 // OrderOption defines the ordering options for the User queries.
@@ -315,6 +325,11 @@ func ByBalanceNotifyEnabled(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBalanceNotifyEnabled, opts...).ToFunc()
 }
 
+// ByBalanceNotifyThresholdType orders the results by the balance_notify_threshold_type field.
+func ByBalanceNotifyThresholdType(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBalanceNotifyThresholdType, opts...).ToFunc()
+}
+
 // ByBalanceNotifyThreshold orders the results by the balance_notify_threshold field.
 func ByBalanceNotifyThreshold(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBalanceNotifyThreshold, opts...).ToFunc()
@@ -323,6 +338,11 @@ func ByBalanceNotifyThreshold(opts ...sql.OrderTermOption) OrderOption {
 // ByBalanceNotifyExtraEmails orders the results by the balance_notify_extra_emails field.
 func ByBalanceNotifyExtraEmails(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBalanceNotifyExtraEmails, opts...).ToFunc()
+}
+
+// ByTotalRecharged orders the results by the total_recharged field.
+func ByTotalRecharged(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTotalRecharged, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

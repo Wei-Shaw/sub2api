@@ -1297,10 +1297,18 @@ func init() {
 	userDescBalanceNotifyEnabled := userFields[11].Descriptor()
 	// user.DefaultBalanceNotifyEnabled holds the default value on creation for the balance_notify_enabled field.
 	user.DefaultBalanceNotifyEnabled = userDescBalanceNotifyEnabled.Default.(bool)
+	// userDescBalanceNotifyThresholdType is the schema descriptor for balance_notify_threshold_type field.
+	userDescBalanceNotifyThresholdType := userFields[12].Descriptor()
+	// user.DefaultBalanceNotifyThresholdType holds the default value on creation for the balance_notify_threshold_type field.
+	user.DefaultBalanceNotifyThresholdType = userDescBalanceNotifyThresholdType.Default.(string)
 	// userDescBalanceNotifyExtraEmails is the schema descriptor for balance_notify_extra_emails field.
-	userDescBalanceNotifyExtraEmails := userFields[13].Descriptor()
+	userDescBalanceNotifyExtraEmails := userFields[14].Descriptor()
 	// user.DefaultBalanceNotifyExtraEmails holds the default value on creation for the balance_notify_extra_emails field.
 	user.DefaultBalanceNotifyExtraEmails = userDescBalanceNotifyExtraEmails.Default.(string)
+	// userDescTotalRecharged is the schema descriptor for total_recharged field.
+	userDescTotalRecharged := userFields[15].Descriptor()
+	// user.DefaultTotalRecharged holds the default value on creation for the total_recharged field.
+	user.DefaultTotalRecharged = userDescTotalRecharged.Default.(float64)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.
