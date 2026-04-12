@@ -19,7 +19,7 @@
       </div>
 
       <template v-if="notifyEnabled">
-        <!-- Custom threshold -->
+        <!-- Custom threshold with save button -->
         <div>
           <label class="input-label">
             {{ t('profile.balanceNotify.threshold') }}
@@ -34,8 +34,14 @@
               step="0.01"
               class="input flex-1"
               :placeholder="systemDefaultThreshold > 0 ? `${t('profile.balanceNotify.systemDefault')} $${systemDefaultThreshold}` : t('profile.balanceNotify.thresholdPlaceholder')"
-              @blur="handleThresholdUpdate"
             />
+            <button
+              @click="handleThresholdUpdate"
+              :disabled="savingThreshold"
+              class="btn btn-primary btn-sm whitespace-nowrap"
+            >
+              {{ savingThreshold ? t('common.saving') : t('common.save') }}
+            </button>
           </div>
         </div>
 
@@ -152,6 +158,7 @@ const customThreshold = ref<number | null>(props.threshold)
 const extraEmails = ref<string[]>([...props.extraEmails])
 const pendingEmails = ref<PendingEmail[]>([])
 const newEmail = ref('')
+const savingThreshold = ref(false)
 
 watch(() => props.enabled, (val) => { notifyEnabled.value = val })
 watch(() => props.threshold, (val) => { customThreshold.value = val })
@@ -174,12 +181,16 @@ const handleToggle = async () => {
 }
 
 const handleThresholdUpdate = async () => {
+  savingThreshold.value = true
   try {
     const threshold = customThreshold.value && customThreshold.value > 0 ? customThreshold.value : 0
     const updated = await userAPI.updateProfile({ balance_notify_threshold: threshold })
     authStore.user = updated
+    appStore.showSuccess(t('common.saved'))
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    savingThreshold.value = false
   }
 }
 
