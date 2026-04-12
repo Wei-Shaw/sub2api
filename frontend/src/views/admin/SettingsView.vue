@@ -21,7 +21,7 @@
               <span class="settings-tab-icon">
                 <Icon :name="tab.icon" size="sm" />
               </span>
-              <span>{{ t(`admin.settings.tabs.${tab.key}`) }}</span>
+              <span>{{ tab.label ?? t(`admin.settings.tabs.${tab.key}`) }}</span>
             </button>
           </nav>
         </div>
@@ -2173,6 +2173,279 @@
 
         </div><!-- /Tab: General -->
 
+        <!-- Tab: Payment -->
+        <div v-show="activeTab === 'payment'" class="space-y-6">
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ tOr('admin.settings.payment.title', 'Payment Settings') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ tOr('admin.settings.payment.description', 'Configure payment behavior and supported methods.') }}
+              <a
+                :href="paymentGuideUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="ml-2 inline-flex items-center gap-1 text-primary-600 hover:text-primary-500"
+              >
+                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13.5 6H18m0 0v4.5M18 6l-7.5 7.5M6 7.5v9A1.5 1.5 0 007.5 18h9"
+                  />
+                </svg>
+                <span>{{ tOr('admin.settings.payment.configGuide', 'Configuration Guide') }}</span>
+              </a>
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">
+                  {{ tOr('admin.settings.payment.enabled', 'Enable Payment') }}
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ tOr('admin.settings.payment.enabledHint', 'Enable upstream payment settings and checkout controls.') }}
+                </p>
+              </div>
+              <Toggle v-model="form.payment_enabled" />
+            </div>
+
+            <template v-if="form.payment_enabled">
+              <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ tOr('admin.settings.payment.productNamePrefix', 'Product Name Prefix') }}
+                  </label>
+                  <input
+                    v-model="form.payment_product_name_prefix"
+                    type="text"
+                    class="input"
+                    placeholder="Sub2API"
+                  />
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ tOr('admin.settings.payment.productNameSuffix', 'Product Name Suffix') }}
+                  </label>
+                  <input
+                    v-model="form.payment_product_name_suffix"
+                    type="text"
+                    class="input"
+                    placeholder="CNY"
+                  />
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ tOr('admin.settings.payment.preview', 'Preview') }}
+                  </label>
+                  <div
+                    class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300"
+                  >
+                    {{ `${form.payment_product_name_prefix || 'Sub2API'} 100 ${form.payment_product_name_suffix || 'CNY'}` }}
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ tOr('admin.settings.payment.minAmount', 'Minimum Amount') }}
+                  </label>
+                  <input
+                    v-model.number="form.payment_min_amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="input"
+                    :placeholder="tOr('admin.settings.payment.noLimit', 'No limit')"
+                  />
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ tOr('admin.settings.payment.maxAmount', 'Maximum Amount') }}
+                  </label>
+                  <input
+                    v-model.number="form.payment_max_amount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="input"
+                    :placeholder="tOr('admin.settings.payment.noLimit', 'No limit')"
+                  />
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ tOr('admin.settings.payment.dailyLimit', 'Daily Limit') }}
+                  </label>
+                  <input
+                    v-model.number="form.payment_daily_limit"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="input"
+                    :placeholder="tOr('admin.settings.payment.noLimit', 'No limit')"
+                  />
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ tOr('admin.settings.payment.orderTimeout', 'Order Timeout (minutes)') }}
+                  </label>
+                  <input
+                    v-model.number="form.payment_order_timeout_minutes"
+                    type="number"
+                    min="1"
+                    class="input"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ tOr('admin.settings.payment.orderTimeoutHint', 'Pending orders expire after this timeout.') }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ tOr('admin.settings.payment.maxPendingOrders', 'Max Pending Orders') }}
+                  </label>
+                  <input
+                    v-model.number="form.payment_max_pending_orders"
+                    type="number"
+                    min="1"
+                    class="input max-w-xs"
+                  />
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ tOr('admin.settings.payment.loadBalanceStrategy', 'Load Balance Strategy') }}
+                  </label>
+                  <Select v-model="form.payment_load_balance_strategy" :options="loadBalanceOptions" />
+                </div>
+              </div>
+
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ tOr('admin.settings.payment.enabledPaymentTypes', 'Enabled Payment Types') }}
+                    </label>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {{ tOr('admin.settings.payment.enabledPaymentTypesHint', 'Choose which payment types are exposed in the payment flow.') }}
+                    </p>
+                  </div>
+                  <a
+                    :href="paymentMethodsGuideUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="shrink-0 text-xs text-primary-600 hover:text-primary-500"
+                  >
+                    {{ tOr('admin.settings.payment.findProvider', 'View Supported Methods') }}
+                  </a>
+                </div>
+                <div class="mt-4 flex flex-wrap gap-2">
+                  <button
+                    v-for="paymentType in allPaymentTypes"
+                    :key="paymentType.value"
+                    type="button"
+                    @click="togglePaymentType(paymentType.value)"
+                    :class="[
+                      'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
+                      isPaymentTypeEnabled(paymentType.value)
+                        ? 'border-primary-500 bg-primary-500 text-white'
+                        : 'border-gray-300 bg-white text-gray-600 hover:border-primary-300 hover:text-primary-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-primary-600',
+                    ]"
+                  >
+                    {{ paymentType.label }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ tOr('admin.settings.payment.cancelRateLimit', 'Cancel Rate Limit') }}
+                    </label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ tOr('admin.settings.payment.cancelRateLimitHint', 'Throttle frequent order cancellations to reduce abuse.') }}
+                    </p>
+                  </div>
+                  <Toggle v-model="form.payment_cancel_rate_limit_enabled" />
+                </div>
+
+                <div
+                  v-if="form.payment_cancel_rate_limit_enabled"
+                  class="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4"
+                >
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ tOr('admin.settings.payment.cancelRateLimitWindowMode', 'Window Mode') }}
+                    </label>
+                    <Select
+                      v-model="form.payment_cancel_rate_limit_window_mode"
+                      :options="cancelRateLimitModeOptions"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ tOr('admin.settings.payment.cancelRateLimitWindow', 'Window Size') }}
+                    </label>
+                    <input
+                      v-model.number="form.payment_cancel_rate_limit_window"
+                      type="number"
+                      min="1"
+                      class="input"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ tOr('admin.settings.payment.cancelRateLimitUnit', 'Window Unit') }}
+                    </label>
+                    <Select
+                      v-model="form.payment_cancel_rate_limit_unit"
+                      :options="cancelRateLimitUnitOptions"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ tOr('admin.settings.payment.cancelRateLimitAllowMax', 'Allowed Cancels') }}
+                    </label>
+                    <input
+                      v-model.number="form.payment_cancel_rate_limit_max"
+                      type="number"
+                      min="1"
+                      class="input"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 gap-6 border-t border-gray-100 pt-4 dark:border-dark-700 md:grid-cols-2">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ tOr('admin.settings.payment.helpImage', 'Help Image') }}
+                  </label>
+                  <ImageUpload v-model="form.payment_help_image_url" mode="image" />
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ tOr('admin.settings.payment.helpText', 'Help Text') }}
+                  </label>
+                  <textarea
+                    v-model="form.payment_help_text"
+                    rows="4"
+                    class="input"
+                    :placeholder="tOr('admin.settings.payment.helpTextPlaceholder', 'Optional checkout help text shown to users.')"
+                  ></textarea>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+        </div><!-- /Tab: Payment -->
+
         <!-- Tab: Email -->
         <div v-show="activeTab === 'email'" class="space-y-6">
         <!-- Email disabled hint - show when email_verify_enabled is off -->
@@ -2458,17 +2731,35 @@ import {
   parseRegistrationEmailSuffixWhitelistInput
 } from '@/utils/registrationEmailPolicy'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const appStore = useAppStore()
 const adminSettingsStore = useAdminSettingsStore()
 
-type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'email' | 'backup'
+function tOr(key: string, fallback: string): string {
+  const translated = t(key as any)
+  return translated === key ? fallback : translated
+}
+
+const isZhLocale = computed(() => String(locale.value).startsWith('zh'))
+const paymentGuideUrl = computed(() =>
+  isZhLocale.value
+    ? 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md'
+    : 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md'
+)
+const paymentMethodsGuideUrl = computed(() =>
+  isZhLocale.value
+    ? 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md#%E6%94%AF%E6%8C%81%E7%9A%84%E6%94%AF%E4%BB%98%E6%96%B9%E5%BC%8F'
+    : 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md#supported-payment-methods'
+)
+
+type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'payment' | 'email' | 'backup'
 const activeTab = ref<SettingsTab>('general')
 const settingsTabs = [
   { key: 'general'  as SettingsTab, icon: 'home'   as const },
   { key: 'security' as SettingsTab, icon: 'shield' as const },
   { key: 'users'    as SettingsTab, icon: 'user'   as const },
   { key: 'gateway'  as SettingsTab, icon: 'server' as const },
+  { key: 'payment'  as SettingsTab, icon: 'creditCard' as const, label: 'Payment' },
   { key: 'email'    as SettingsTab, icon: 'mail'   as const },
   { key: 'backup'   as SettingsTab, icon: 'database' as const },
 ]
@@ -2542,6 +2833,36 @@ const tablePageSizeMin = 5
 const tablePageSizeMax = 1000
 const tablePageSizeDefault = 20
 
+type PaymentProviderType = 'easypay' | 'alipay' | 'wxpay' | 'stripe'
+type PaymentLoadBalanceStrategy = 'round-robin' | 'least-amount'
+type PaymentRateLimitUnit = 'minute' | 'hour' | 'day'
+type PaymentRateLimitWindowMode = 'rolling' | 'fixed'
+
+type PaymentSettingsFields = {
+  payment_enabled: boolean
+  payment_min_amount: number
+  payment_max_amount: number
+  payment_daily_limit: number
+  payment_max_pending_orders: number
+  payment_order_timeout_minutes: number
+  payment_balance_disabled: boolean
+  payment_enabled_types: PaymentProviderType[]
+  payment_help_image_url: string
+  payment_help_text: string
+  payment_product_name_prefix: string
+  payment_product_name_suffix: string
+  payment_load_balance_strategy: PaymentLoadBalanceStrategy
+  payment_cancel_rate_limit_enabled: boolean
+  payment_cancel_rate_limit_max: number
+  payment_cancel_rate_limit_window: number
+  payment_cancel_rate_limit_unit: PaymentRateLimitUnit
+  payment_cancel_rate_limit_window_mode: PaymentRateLimitWindowMode
+}
+
+const paymentProviderTypes: PaymentProviderType[] = ['easypay', 'alipay', 'wxpay', 'stripe']
+const paymentRateLimitUnits: PaymentRateLimitUnit[] = ['minute', 'hour', 'day']
+const paymentRateLimitWindowModes: PaymentRateLimitWindowMode[] = ['rolling', 'fixed']
+
 interface DefaultSubscriptionGroupOption {
   value: number
   label: string
@@ -2552,7 +2873,7 @@ interface DefaultSubscriptionGroupOption {
   [key: string]: unknown
 }
 
-type SettingsForm = SystemSettings & {
+type SettingsForm = SystemSettings & PaymentSettingsFields & {
   smtp_password: string
   turnstile_secret_key: string
   linuxdo_connect_client_secret: string
@@ -2582,6 +2903,24 @@ const form = reactive<SettingsForm>({
   hide_ccs_import_button: false,
   purchase_subscription_enabled: false,
   purchase_subscription_url: '',
+  payment_enabled: false,
+  payment_min_amount: 1,
+  payment_max_amount: 10000,
+  payment_daily_limit: 50000,
+  payment_max_pending_orders: 3,
+  payment_order_timeout_minutes: 30,
+  payment_balance_disabled: false,
+  payment_enabled_types: [] as PaymentProviderType[],
+  payment_help_image_url: '',
+  payment_help_text: '',
+  payment_product_name_prefix: '',
+  payment_product_name_suffix: '',
+  payment_load_balance_strategy: 'round-robin',
+  payment_cancel_rate_limit_enabled: false,
+  payment_cancel_rate_limit_max: 10,
+  payment_cancel_rate_limit_window: 1,
+  payment_cancel_rate_limit_unit: 'day',
+  payment_cancel_rate_limit_window_mode: 'rolling',
   table_default_page_size: tablePageSizeDefault,
   table_page_size_options: [10, 20, 50, 100],
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: number}>,
@@ -2836,12 +3175,126 @@ function parseTablePageSizeOptionsInput(raw: string): number[] | null {
   return deduped
 }
 
+function normalizePaymentEnabledTypes(value: unknown): PaymentProviderType[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.filter(
+    (item): item is PaymentProviderType =>
+      typeof item === 'string' && paymentProviderTypes.includes(item as PaymentProviderType)
+  )
+}
+
+function normalizePaymentForm() {
+  form.payment_enabled = Boolean(form.payment_enabled)
+  form.payment_balance_disabled = Boolean(form.payment_balance_disabled)
+  form.payment_enabled_types = normalizePaymentEnabledTypes(form.payment_enabled_types)
+  form.payment_load_balance_strategy =
+    form.payment_load_balance_strategy === 'least-amount' ? 'least-amount' : 'round-robin'
+  form.payment_cancel_rate_limit_enabled = Boolean(form.payment_cancel_rate_limit_enabled)
+  form.payment_cancel_rate_limit_unit = paymentRateLimitUnits.includes(
+    form.payment_cancel_rate_limit_unit as PaymentRateLimitUnit
+  )
+    ? (form.payment_cancel_rate_limit_unit as PaymentRateLimitUnit)
+    : 'day'
+  form.payment_cancel_rate_limit_window_mode = paymentRateLimitWindowModes.includes(
+    form.payment_cancel_rate_limit_window_mode as PaymentRateLimitWindowMode
+  )
+    ? (form.payment_cancel_rate_limit_window_mode as PaymentRateLimitWindowMode)
+    : 'rolling'
+
+  const paymentMinAmount = Number(form.payment_min_amount)
+  const paymentMaxAmount = Number(form.payment_max_amount)
+  const paymentDailyLimit = Number(form.payment_daily_limit)
+  const paymentMaxPendingOrders = Math.floor(Number(form.payment_max_pending_orders))
+  const paymentOrderTimeout = Math.floor(Number(form.payment_order_timeout_minutes))
+  const paymentCancelRateLimitMax = Math.floor(Number(form.payment_cancel_rate_limit_max))
+  const paymentCancelRateLimitWindow = Math.floor(Number(form.payment_cancel_rate_limit_window))
+
+  form.payment_min_amount = Number.isFinite(paymentMinAmount) ? paymentMinAmount : 0
+  form.payment_max_amount = Number.isFinite(paymentMaxAmount) ? paymentMaxAmount : 0
+  form.payment_daily_limit = Number.isFinite(paymentDailyLimit) ? paymentDailyLimit : 0
+  form.payment_max_pending_orders = paymentMaxPendingOrders > 0 ? paymentMaxPendingOrders : 3
+  form.payment_order_timeout_minutes = paymentOrderTimeout > 0 ? paymentOrderTimeout : 30
+  form.payment_cancel_rate_limit_max = paymentCancelRateLimitMax > 0 ? paymentCancelRateLimitMax : 10
+  form.payment_cancel_rate_limit_window = paymentCancelRateLimitWindow > 0 ? paymentCancelRateLimitWindow : 1
+  form.payment_product_name_prefix = typeof form.payment_product_name_prefix === 'string'
+    ? form.payment_product_name_prefix
+    : ''
+  form.payment_product_name_suffix = typeof form.payment_product_name_suffix === 'string'
+    ? form.payment_product_name_suffix
+    : ''
+  form.payment_help_image_url = typeof form.payment_help_image_url === 'string'
+    ? form.payment_help_image_url
+    : ''
+  form.payment_help_text = typeof form.payment_help_text === 'string' ? form.payment_help_text : ''
+}
+
+const allPaymentTypes = computed(() => [
+  { value: 'easypay' as PaymentProviderType, label: tOr('payment.methods.easypay', 'EasyPay') },
+  { value: 'alipay' as PaymentProviderType, label: tOr('payment.methods.alipay', 'Alipay') },
+  { value: 'wxpay' as PaymentProviderType, label: tOr('payment.methods.wxpay', 'WeChat Pay') },
+  { value: 'stripe' as PaymentProviderType, label: tOr('payment.methods.stripe', 'Stripe') }
+])
+
+const loadBalanceOptions = computed(() => [
+  {
+    value: 'round-robin' as PaymentLoadBalanceStrategy,
+    label: tOr('admin.settings.payment.strategyRoundRobin', 'Round Robin')
+  },
+  {
+    value: 'least-amount' as PaymentLoadBalanceStrategy,
+    label: tOr('admin.settings.payment.strategyLeastAmount', 'Least Amount')
+  }
+])
+
+const cancelRateLimitUnitOptions = computed(() => [
+  {
+    value: 'minute' as PaymentRateLimitUnit,
+    label: tOr('admin.settings.payment.cancelRateLimitUnitMinute', 'Minute')
+  },
+  {
+    value: 'hour' as PaymentRateLimitUnit,
+    label: tOr('admin.settings.payment.cancelRateLimitUnitHour', 'Hour')
+  },
+  {
+    value: 'day' as PaymentRateLimitUnit,
+    label: tOr('admin.settings.payment.cancelRateLimitUnitDay', 'Day')
+  }
+])
+
+const cancelRateLimitModeOptions = computed(() => [
+  {
+    value: 'rolling' as PaymentRateLimitWindowMode,
+    label: tOr('admin.settings.payment.cancelRateLimitWindowModeRolling', 'Rolling')
+  },
+  {
+    value: 'fixed' as PaymentRateLimitWindowMode,
+    label: tOr('admin.settings.payment.cancelRateLimitWindowModeFixed', 'Fixed')
+  }
+])
+
+function isPaymentTypeEnabled(type: PaymentProviderType): boolean {
+  return form.payment_enabled_types.includes(type)
+}
+
+function togglePaymentType(type: PaymentProviderType) {
+  if (form.payment_enabled_types.includes(type)) {
+    form.payment_enabled_types = form.payment_enabled_types.filter((item) => item !== type)
+    return
+  }
+
+  form.payment_enabled_types = [...form.payment_enabled_types, type]
+}
+
 async function loadSettings() {
   loading.value = true
   loadFailed.value = false
   try {
     const settings = await adminAPI.settings.getSettings()
-    Object.assign(form, settings)
+    Object.assign(form, settings as Partial<SettingsForm>)
+    normalizePaymentForm()
     form.backend_mode_enabled = settings.backend_mode_enabled
     form.default_subscriptions = Array.isArray(settings.default_subscriptions)
       ? settings.default_subscriptions
@@ -2987,7 +3440,9 @@ async function saveSettings() {
       form.purchase_subscription_url = ''
     }
 
-    const payload: UpdateSettingsRequest = {
+    normalizePaymentForm()
+
+    const payload: UpdateSettingsRequest & PaymentSettingsFields = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
       registration_email_suffix_whitelist: registrationEmailSuffixWhitelistTags.value.map(
@@ -3064,10 +3519,29 @@ async function saveSettings() {
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
-      enable_cch_signing: form.enable_cch_signing
+      enable_cch_signing: form.enable_cch_signing,
+      payment_enabled: form.payment_enabled,
+      payment_min_amount: form.payment_min_amount,
+      payment_max_amount: form.payment_max_amount,
+      payment_daily_limit: form.payment_daily_limit,
+      payment_max_pending_orders: form.payment_max_pending_orders,
+      payment_order_timeout_minutes: form.payment_order_timeout_minutes,
+      payment_balance_disabled: form.payment_balance_disabled,
+      payment_enabled_types: form.payment_enabled_types,
+      payment_help_image_url: form.payment_help_image_url,
+      payment_help_text: form.payment_help_text,
+      payment_product_name_prefix: form.payment_product_name_prefix,
+      payment_product_name_suffix: form.payment_product_name_suffix,
+      payment_load_balance_strategy: form.payment_load_balance_strategy,
+      payment_cancel_rate_limit_enabled: form.payment_cancel_rate_limit_enabled,
+      payment_cancel_rate_limit_max: form.payment_cancel_rate_limit_max,
+      payment_cancel_rate_limit_window: form.payment_cancel_rate_limit_window,
+      payment_cancel_rate_limit_unit: form.payment_cancel_rate_limit_unit,
+      payment_cancel_rate_limit_window_mode: form.payment_cancel_rate_limit_window_mode
     }
     const updated = await adminAPI.settings.updateSettings(payload)
-    Object.assign(form, updated)
+    Object.assign(form, updated as Partial<SettingsForm>)
+    normalizePaymentForm()
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       updated.registration_email_suffix_whitelist
     )
