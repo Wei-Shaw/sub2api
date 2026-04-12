@@ -85,71 +85,57 @@ func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, u
 	}
 }
 
+// quotaDim describes one quota dimension for notification checking.
+type quotaDim struct {
+	name      string
+	enabled   bool
+	threshold float64
+	oldUsed   float64
+	limit     float64
+}
+
+// buildQuotaDims returns the three quota dimensions for notification checking.
+func buildQuotaDims(account *Account) []quotaDim {
+	return []quotaDim{
+		{quotaDimDaily, account.GetQuotaNotifyDailyEnabled(), account.GetQuotaNotifyDailyThreshold(), account.GetQuotaDailyUsed(), account.GetQuotaDailyLimit()},
+		{quotaDimWeekly, account.GetQuotaNotifyWeeklyEnabled(), account.GetQuotaNotifyWeeklyThreshold(), account.GetQuotaWeeklyUsed(), account.GetQuotaWeeklyLimit()},
+		{quotaDimTotal, account.GetQuotaNotifyTotalEnabled(), account.GetQuotaNotifyTotalThreshold(), account.GetQuotaUsed(), account.GetQuotaLimit()},
+	}
+}
+
 // CheckAccountQuotaAfterIncrement checks if any quota dimension crossed above its notify threshold.
 // The account's Extra fields contain pre-increment usage values.
 func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Context, account *Account, cost float64) {
 	if account == nil || s.emailService == nil || s.settingRepo == nil || cost <= 0 {
 		return
 	}
-
 	adminEmails := s.getAccountQuotaNotifyEmails(ctx)
 	if len(adminEmails) == 0 {
 		return
 	}
 
 	siteName := s.getSiteName(ctx)
-
-	// Check each dimension
-	type quotaDim struct {
-		name      string
-		enabled   bool
-		threshold float64
-		oldUsed   float64
-		limit     float64
-	}
-
-	dims := []quotaDim{
-		{
-			name:      quotaDimDaily,
-			enabled:   account.GetQuotaNotifyDailyEnabled(),
-			threshold: account.GetQuotaNotifyDailyThreshold(),
-			oldUsed:   account.GetQuotaDailyUsed(),
-			limit:     account.GetQuotaDailyLimit(),
-		},
-		{
-			name:      quotaDimWeekly,
-			enabled:   account.GetQuotaNotifyWeeklyEnabled(),
-			threshold: account.GetQuotaNotifyWeeklyThreshold(),
-			oldUsed:   account.GetQuotaWeeklyUsed(),
-			limit:     account.GetQuotaWeeklyLimit(),
-		},
-		{
-			name:      quotaDimTotal,
-			enabled:   account.GetQuotaNotifyTotalEnabled(),
-			threshold: account.GetQuotaNotifyTotalThreshold(),
-			oldUsed:   account.GetQuotaUsed(),
-			limit:     account.GetQuotaLimit(),
-		},
-	}
-
-	for _, dim := range dims {
+	for _, dim := range buildQuotaDims(account) {
 		if !dim.enabled || dim.threshold <= 0 {
 			continue
 		}
 		newUsed := dim.oldUsed + cost
-		// Only notify on first crossing
 		if dim.oldUsed < dim.threshold && newUsed >= dim.threshold {
-			dimCopy := dim // capture loop variable
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						slog.Error("panic in quota notification", "recover", r)
-					}
-				}()
-				s.sendQuotaAlertEmails(adminEmails, account.Name, dimCopy.name, newUsed, dimCopy.limit, dimCopy.threshold, siteName)
-			}()
+			s.asyncSendQuotaAlert(adminEmails, account.Name, dim, newUsed, siteName)
 		}
 	}
+}
+
+// asyncSendQuotaAlert sends quota alert email in a goroutine with panic recovery.
+func (s *BalanceNotifyService) asyncSendQuotaAlert(adminEmails []string, accountName string, dim quotaDim, newUsed float64, siteName string) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("panic in quota notification", "recover", r)
+			}
+		}()
+		s.sendQuotaAlertEmails(adminEmails, accountName, dim.name, newUsed, dim.limit, dim.threshold, siteName)
+	}()
 }
 
 // getBalanceNotifyConfig reads global balance notification settings.
@@ -191,7 +177,7 @@ func (s *BalanceNotifyService) collectBalanceNotifyRecipients(user *User) []stri
 	recipients := []string{user.Email}
 	for _, extra := range user.BalanceNotifyExtraEmails {
 		email := strings.TrimSpace(extra)
-		if email != "" && email != user.Email {
+		if email != "" && !strings.EqualFold(email, user.Email) {
 			recipients = append(recipients, email)
 		}
 	}
@@ -234,6 +220,7 @@ func (s *BalanceNotifyService) sendQuotaAlertEmails(adminEmails []string, accoun
 }
 
 // buildBalanceLowEmailBody builds HTML email for balance low notification.
+// Lines exceed 30 due to inline HTML template (not splittable).
 func (s *BalanceNotifyService) buildBalanceLowEmailBody(userName string, balance, threshold float64, siteName string) string {
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html>
@@ -271,6 +258,7 @@ func (s *BalanceNotifyService) buildBalanceLowEmailBody(userName string, balance
 }
 
 // buildQuotaAlertEmailBody builds HTML email for account quota alert.
+// Lines exceed 30 due to inline HTML template (not splittable).
 func (s *BalanceNotifyService) buildQuotaAlertEmailBody(accountName, dimLabel string, used, limit, threshold float64, siteName string) string {
 	limitStr := fmt.Sprintf("$%.2f", limit)
 	if limit <= 0 {
