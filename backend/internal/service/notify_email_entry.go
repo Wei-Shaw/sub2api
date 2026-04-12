@@ -80,28 +80,3 @@ func MarshalNotifyEmails(entries []NotifyEmailEntry) string {
 	return string(data)
 }
 
-// filterEnabledEmails returns only non-disabled email addresses from entries.
-// Empty email placeholders are skipped (caller should resolve them separately).
-func FilterEnabledEmails(entries []NotifyEmailEntry) []string {
-	var result []string
-	for _, e := range entries {
-		if e.Disabled {
-			continue
-		}
-		email := strings.TrimSpace(e.Email)
-		if email != "" {
-			result = append(result, email)
-		}
-	}
-	return result
-}
-
-// isPrimaryDisabled checks if the primary email placeholder (email="") exists and is disabled.
-func IsPrimaryDisabled(entries []NotifyEmailEntry) bool {
-	for _, e := range entries {
-		if e.Email == "" {
-			return e.Disabled
-		}
-	}
-	return false // No primary placeholder = not disabled
-}

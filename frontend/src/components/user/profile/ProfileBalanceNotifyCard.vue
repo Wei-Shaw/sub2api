@@ -48,8 +48,9 @@
         <!-- Email list with toggles -->
         <div>
           <label class="input-label">{{ t('profile.balanceNotify.extraEmails') }}</label>
-          <div class="space-y-2 mb-3">
-            <!-- All email entries (primary placeholder + extra) -->
+
+          <!-- Saved email entries -->
+          <div v-if="emailEntries.length > 0" class="space-y-2 mb-3">
             <div v-for="(entry, idx) in emailEntries" :key="idx"
               class="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-dark-700 rounded-lg">
               <div class="flex items-center gap-2 min-w-0 flex-1">
@@ -57,21 +58,19 @@
                   <input type="checkbox" :checked="!entry.disabled" @change="handleEmailToggle(entry)" class="sr-only peer" />
                   <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-gray-500 peer-checked:bg-primary-600"></div>
                 </label>
-                <span class="text-sm text-gray-700 dark:text-gray-300 truncate">
-                  {{ entry.email === '' ? userEmail : entry.email }}
-                </span>
+                <span class="text-sm text-gray-700 dark:text-gray-300 truncate">{{ entry.email }}</span>
               </div>
               <div class="flex items-center gap-2 shrink-0">
-                <span v-if="entry.email === ''" class="text-xs text-gray-400">{{ t('profile.balanceNotify.primaryEmail') }}</span>
-                <span v-else-if="!entry.verified" class="text-xs text-yellow-500">{{ t('profile.balanceNotify.unverified') }}</span>
-                <button v-if="entry.email !== ''" @click="handleRemoveEmail(entry.email)" class="text-red-500 hover:text-red-700 text-xs">
+                <span v-if="!entry.verified" class="text-xs text-yellow-500">{{ t('profile.balanceNotify.unverified') }}</span>
+                <span v-else class="text-xs text-green-500">{{ t('profile.balanceNotify.verified') }}</span>
+                <button @click="handleRemoveEmail(entry.email)" class="text-red-500 hover:text-red-700 text-xs">
                   {{ t('profile.balanceNotify.removeEmail') }}
                 </button>
               </div>
             </div>
           </div>
 
-          <!-- Pending (unverified) emails -->
+          <!-- Pending (unverified) emails in verification flow -->
           <div v-if="pendingEmails.length > 0" class="space-y-2 mb-3">
             <div v-for="(pe, idx) in pendingEmails" :key="pe.email"
               class="flex items-center gap-2 px-3 py-2 bg-yellow-50 dark:bg-yellow-900/10 rounded-lg border border-yellow-200 dark:border-yellow-800">
@@ -130,7 +129,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
@@ -138,7 +137,7 @@ import { userAPI } from '@/api'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { NotifyEmailEntry } from '@/types'
 
-const maxTotalEmails = 3 // primary + 2 extra
+const maxTotalEmails = 3
 
 interface PendingEmail {
   email: string
@@ -176,6 +175,13 @@ const canAddMore = computed(() => {
 watch(() => props.enabled, (val) => { notifyEnabled.value = val })
 watch(() => props.threshold, (val) => { customThreshold.value = val })
 watch(() => props.extraEmails, (val) => { emailEntries.value = [...val] })
+
+// When list is empty on mount, pre-fill the add input with user's email
+onMounted(() => {
+  if (emailEntries.value.length === 0 && props.userEmail) {
+    newEmail.value = props.userEmail
+  }
+})
 
 onUnmounted(() => {
   for (const pe of pendingEmails.value) {
@@ -221,10 +227,9 @@ async function handleEmailToggle(entry: NotifyEmailEntry) {
 function addPendingEmail() {
   const email = newEmail.value.trim()
   if (!email) return
-  // Check duplicates against existing entries and pending
-  const isDuplicate = emailEntries.value.some(e =>
-    (e.email === '' ? props.userEmail : e.email).toLowerCase() === email.toLowerCase()
-  ) || pendingEmails.value.some(p => p.email.toLowerCase() === email.toLowerCase())
+  // Check duplicates
+  const isDuplicate = emailEntries.value.some(e => e.email.toLowerCase() === email.toLowerCase())
+    || pendingEmails.value.some(p => p.email.toLowerCase() === email.toLowerCase())
   if (isDuplicate) {
     appStore.showError(t('profile.balanceNotify.emailDuplicate'))
     return
