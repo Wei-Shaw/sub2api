@@ -251,6 +251,24 @@
                 </label>
               </div>
             </div>
+
+            <!-- Apply Pricing to Account Stats (toggle only in basic settings) -->
+            <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.channels.form.applyPricingToAccountStats') }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.channels.form.applyPricingToAccountStatsDesc') }}
+                  </p>
+                </div>
+                <Toggle
+                  :modelValue="form.apply_pricing_to_account_stats"
+                  @update:modelValue="form.apply_pricing_to_account_stats = $event"
+                />
+              </div>
+            </div>
           </div>
 
           <!-- Platform Tab Content -->
@@ -394,49 +412,30 @@
                 />
               </div>
             </div>
-          </div>
 
-          <!-- Account Stats Pricing (always visible, not tied to platform tabs) -->
-          <div class="mt-6 border-t border-gray-200 pt-4 dark:border-dark-700">
-            <!-- Toggle -->
-            <div class="flex items-center justify-between mb-3">
-              <div>
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.channels.form.applyPricingToAccountStats', 'Apply Pricing to Account Stats') }}
-                </label>
-                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.channels.form.applyPricingToAccountStatsDesc', 'When enabled, account statistics cost will use channel model pricing. Account rate multiplier still applies.') }}
-                </p>
-              </div>
-              <Toggle
-                :modelValue="form.apply_pricing_to_account_stats"
-                @update:modelValue="form.apply_pricing_to_account_stats = $event"
-              />
-            </div>
-
-            <!-- Custom rules (only when toggle is on) -->
-            <div v-if="form.apply_pricing_to_account_stats" class="mt-4 space-y-4">
+            <!-- Account Stats Pricing Rules (per-platform, only when global toggle is on) -->
+            <div v-if="form.apply_pricing_to_account_stats" class="mt-4 border-t border-gray-200 pt-4 dark:border-dark-700 space-y-3">
               <div class="flex items-center justify-between">
                 <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.channels.form.accountStatsPricingRules', 'Custom Account Stats Pricing Rules') }}
+                  {{ t('admin.channels.form.accountStatsPricingRules') }}
                 </h4>
                 <button
                   type="button"
                   @click="addAccountStatsRule()"
                   class="rounded-lg border border-primary-300 px-3 py-1 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:border-primary-600 dark:text-primary-400 dark:hover:bg-primary-900/20"
                 >
-                  + {{ t('admin.channels.form.addRule', 'Add Rule') }}
+                  + {{ t('admin.channels.form.addRule') }}
                 </button>
               </div>
 
+              <!-- Filter rules for this platform's groups -->
               <p
                 v-if="form.account_stats_pricing_rules.length === 0"
                 class="text-xs italic text-gray-400 dark:text-gray-500"
               >
-                {{ t('admin.channels.form.noRulesConfigured', 'No custom rules configured. Channel model pricing above will be used.') }}
+                {{ t('admin.channels.form.noRulesConfigured') }}
               </p>
 
-              <!-- Rule cards -->
               <div
                 v-for="(rule, ruleIndex) in form.account_stats_pricing_rules"
                 :key="ruleIndex"
@@ -445,85 +444,60 @@
                 <div class="flex items-center justify-between">
                   <input
                     v-model="rule.name"
-                    :placeholder="t('admin.channels.form.ruleName', 'Rule name (optional)')"
+                    :placeholder="t('admin.channels.form.ruleName')"
                     class="bg-transparent text-sm font-medium text-gray-700 placeholder-gray-400 outline-none dark:text-gray-300"
                   />
-                  <button
-                    type="button"
-                    @click="removeAccountStatsRule(ruleIndex)"
-                    class="text-xs text-red-500 hover:text-red-700"
-                  >
-                    {{ t('common.delete', 'Delete') }}
+                  <button type="button" @click="removeAccountStatsRule(ruleIndex)" class="text-xs text-red-500 hover:text-red-700">
+                    {{ t('common.delete') }}
                   </button>
                 </div>
 
-                <!-- Group selection (multi-select from channel's groups) -->
                 <div>
-                  <label class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.channels.form.ruleGroups', 'Groups') }}
-                  </label>
+                  <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.channels.form.ruleGroups') }}</label>
                   <div class="mt-1 flex flex-wrap gap-1">
                     <label
-                      v-for="gid in allFormGroupIds"
+                      v-for="gid in section.group_ids"
                       :key="gid"
                       class="inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors"
                       :class="rule.group_ids.includes(gid)
                         ? 'border-primary-300 bg-primary-50 dark:border-primary-700 dark:bg-primary-900/20'
                         : 'border-gray-200 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700'"
                     >
-                      <input
-                        type="checkbox"
-                        :checked="rule.group_ids.includes(gid)"
-                        class="h-3 w-3 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                        @change="rule.group_ids.includes(gid) ? rule.group_ids.splice(rule.group_ids.indexOf(gid), 1) : rule.group_ids.push(gid)"
-                      />
+                      <input type="checkbox" :checked="rule.group_ids.includes(gid)" class="h-3 w-3 rounded border-gray-300 text-primary-600 focus:ring-primary-500" @change="rule.group_ids.includes(gid) ? rule.group_ids.splice(rule.group_ids.indexOf(gid), 1) : rule.group_ids.push(gid)" />
                       <span>{{ getGroupNameById(gid) }}</span>
                     </label>
                   </div>
-                  <p v-if="allFormGroupIds.length === 0" class="mt-1 text-xs text-gray-400">
-                    {{ t('admin.channels.form.noGroupsInChannel', 'No groups selected in platform tabs above') }}
+                  <p v-if="section.group_ids.length === 0" class="mt-1 text-xs text-gray-400">
+                    {{ t('admin.channels.form.noGroupsInChannel') }}
                   </p>
                 </div>
 
-                <!-- Account IDs input -->
                 <div>
-                  <label class="text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.channels.form.ruleAccounts', 'Account IDs') }}
-                  </label>
+                  <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.channels.form.ruleAccounts') }}</label>
                   <input
                     :value="rule.account_ids.join(', ')"
                     @change="rule.account_ids = parseAccountIdsInput(($event.target as HTMLInputElement).value)"
-                    :placeholder="t('admin.channels.form.ruleAccountsPlaceholder', 'Enter account IDs, comma-separated')"
+                    :placeholder="t('admin.channels.form.ruleAccountsPlaceholder')"
                     class="input mt-1 text-sm"
                   />
                 </div>
 
-                <!-- Model Pricing entries -->
                 <div>
                   <div class="mb-1 flex items-center justify-between">
-                    <label class="text-xs text-gray-500 dark:text-gray-400">
-                      {{ t('admin.channels.form.ruleModelPricing', 'Model Pricing') }}
-                    </label>
-                    <button
-                      type="button"
-                      @click="addRulePricingEntry(ruleIndex)"
-                      class="text-xs text-primary-600 hover:text-primary-700"
-                    >
-                      + {{ t('common.add', 'Add') }}
+                    <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.channels.form.ruleModelPricing') }}</label>
+                    <button type="button" @click="addRulePricingEntry(ruleIndex)" class="text-xs text-primary-600 hover:text-primary-700">
+                      + {{ t('common.add') }}
                     </button>
                   </div>
-                  <div
-                    v-if="rule.pricing.length === 0"
-                    class="rounded border border-dashed border-gray-300 p-2 text-center text-xs text-gray-400 dark:border-dark-500"
-                  >
-                    {{ t('admin.channels.form.noPricingRules', 'No pricing rules yet. Click "Add" to create one.') }}
+                  <div v-if="rule.pricing.length === 0" class="rounded border border-dashed border-gray-300 p-2 text-center text-xs text-gray-400 dark:border-dark-500">
+                    {{ t('admin.channels.form.noPricingRules') }}
                   </div>
                   <div v-else class="space-y-2">
                     <PricingEntryCard
                       v-for="(entry, pIdx) in rule.pricing"
                       :key="pIdx"
                       :entry="entry"
-                      platform=""
+                      :platform="section.platform"
                       @update="rule.pricing.splice(pIdx, 1, $event)"
                       @remove="removeRulePricingEntry(ruleIndex, pIdx)"
                     />
@@ -888,18 +862,6 @@ function getGroupNameById(groupId: number): string {
   const group = allGroups.value.find(g => g.id === groupId)
   return group ? group.name : `#${groupId}`
 }
-
-/** Collect all group_ids from enabled platform sections */
-const allFormGroupIds = computed(() => {
-  const ids = new Set<number>()
-  for (const section of form.platforms) {
-    if (!section.enabled) continue
-    for (const gid of section.group_ids) {
-      ids.add(gid)
-    }
-  }
-  return [...ids]
-})
 
 function parseAccountIdsInput(value: string): number[] {
   return value
