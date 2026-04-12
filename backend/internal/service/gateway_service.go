@@ -7343,12 +7343,9 @@ REDACTED
 		deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), p.User, p.User.Balance, p.Cost.ActualCost)
 REDACTED
 
-	// Account quota notification
+	// Account quota notification (use same cost formula as postUsageBilling)
 	if p.Cost.TotalCost > 0 && p.Account != nil && p.Account.IsAPIKeyOrBedrock() && deps.balanceNotifyService != nil {
-		accountCost := p.Cost.TotalCost
-		if p.AccountRateMultiplier > 0 {
-			accountCost *= p.AccountRateMultiplier
-	REDACTED
+		accountCost := p.Cost.TotalCost * p.AccountRateMultiplier
 		deps.balanceNotifyService.CheckAccountQuotaAfterIncrement(context.Background(), p.Account, accountCost)
 REDACTED
 REDACTED
