@@ -2236,7 +2236,7 @@ export default {
         alert: 'Alert Threshold',
         enabled: 'Enable Alert',
         threshold: 'Alert Amount',
-        thresholdPlaceholder: 'Enter alert amount',
+        thresholdPlaceholder: 'Enter percentage',
       },
       testConnection: 'Test Connection',
       reAuthorize: 'Re-Authorize',
@@ -4595,6 +4595,7 @@ export default {
       quotaNotify: {
         title: 'Account Quota Notification',
         description: 'Notify admins when account quota usage reaches alert threshold',
+        enabled: 'Enable Account Quota Notification',
         emails: 'Notification Emails',
         emailsHint: 'Leave empty to disable notifications',
         addEmail: 'Add Email',

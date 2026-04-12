@@ -2718,11 +2718,15 @@
             </p>
           </div>
           <div class="px-6 py-6 space-y-4">
-            <div>
+            <div class="flex items-center justify-between">
+              <label class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.quotaNotify.enabled') }}</label>
+              <Toggle v-model="form.account_quota_notify_enabled" />
+            </div>
+            <div v-if="form.account_quota_notify_enabled">
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.quotaNotify.emails') }}</label>
               <div class="space-y-2">
                 <div v-for="(_, index) in (form.account_quota_notify_emails || [])" :key="index" class="flex items-center gap-2">
-                  <input v-model="form.account_quota_notify_emails[index]" type="email" class="input flex-1" />
+                  <input v-model="form.account_quota_notify_emails[index]" type="email" class="input flex-1" :placeholder="t('admin.settings.quotaNotify.emailPlaceholder')" />
                   <button @click="form.account_quota_notify_emails.splice(index, 1)" class="btn btn-secondary px-2" type="button">
                     <Icon name="x" size="xs" class="h-4 w-4" />
                   </button>
@@ -3018,6 +3022,7 @@ const form = reactive<SettingsForm>({
   // Balance & quota notification
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
+  account_quota_notify_enabled: false,
   account_quota_notify_emails: [] as string[]
 })
 
@@ -3588,6 +3593,7 @@ async function saveSettings() {
       // Balance & quota notification
       balance_low_notify_enabled: form.balance_low_notify_enabled,
       balance_low_notify_threshold: Number(form.balance_low_notify_threshold) || 0,
+      account_quota_notify_enabled: form.account_quota_notify_enabled,
       account_quota_notify_emails: (form.account_quota_notify_emails || []).filter((e: string) => e.trim() !== ''),
     }
 

@@ -17,17 +17,23 @@ const props = withDefaults(defineProps<{
   resetTimezone: string | null
   quotaNotifyDailyEnabled?: boolean | null
   quotaNotifyDailyThreshold?: number | null
+  quotaNotifyDailyThresholdType?: string | null
   quotaNotifyWeeklyEnabled?: boolean | null
   quotaNotifyWeeklyThreshold?: number | null
+  quotaNotifyWeeklyThresholdType?: string | null
   quotaNotifyTotalEnabled?: boolean | null
   quotaNotifyTotalThreshold?: number | null
+  quotaNotifyTotalThresholdType?: string | null
 }>(), {
   quotaNotifyDailyEnabled: null,
   quotaNotifyDailyThreshold: null,
+  quotaNotifyDailyThresholdType: null,
   quotaNotifyWeeklyEnabled: null,
   quotaNotifyWeeklyThreshold: null,
+  quotaNotifyWeeklyThresholdType: null,
   quotaNotifyTotalEnabled: null,
   quotaNotifyTotalThreshold: null,
+  quotaNotifyTotalThresholdType: null,
 })
 
 const emit = defineEmits<{
@@ -42,10 +48,13 @@ const emit = defineEmits<{
   'update:resetTimezone': [value: string | null]
   'update:quotaNotifyDailyEnabled': [value: boolean | null]
   'update:quotaNotifyDailyThreshold': [value: number | null]
+  'update:quotaNotifyDailyThresholdType': [value: string | null]
   'update:quotaNotifyWeeklyEnabled': [value: boolean | null]
   'update:quotaNotifyWeeklyThreshold': [value: number | null]
+  'update:quotaNotifyWeeklyThresholdType': [value: string | null]
   'update:quotaNotifyTotalEnabled': [value: boolean | null]
   'update:quotaNotifyTotalThreshold': [value: number | null]
+  'update:quotaNotifyTotalThresholdType': [value: string | null]
 }>()
 
 const enabled = computed(() =>
@@ -228,8 +237,10 @@ const onWeeklyModeChange = (e: Event) => {
             v-if="dailyLimit && dailyLimit > 0"
             :enabled="props.quotaNotifyDailyEnabled"
             :threshold="props.quotaNotifyDailyThreshold"
+            :threshold-type="props.quotaNotifyDailyThresholdType"
             @update:enabled="emit('update:quotaNotifyDailyEnabled', $event)"
             @update:threshold="emit('update:quotaNotifyDailyThreshold', $event)"
+            @update:threshold-type="emit('update:quotaNotifyDailyThresholdType', $event)"
           />
         </div>
 
@@ -292,8 +303,10 @@ const onWeeklyModeChange = (e: Event) => {
             v-if="weeklyLimit && weeklyLimit > 0"
             :enabled="props.quotaNotifyWeeklyEnabled"
             :threshold="props.quotaNotifyWeeklyThreshold"
+            :threshold-type="props.quotaNotifyWeeklyThresholdType"
             @update:enabled="emit('update:quotaNotifyWeeklyEnabled', $event)"
             @update:threshold="emit('update:quotaNotifyWeeklyThreshold', $event)"
+            @update:threshold-type="emit('update:quotaNotifyWeeklyThresholdType', $event)"
           />
         </div>
 
@@ -330,8 +343,10 @@ const onWeeklyModeChange = (e: Event) => {
             v-if="totalLimit && totalLimit > 0"
             :enabled="props.quotaNotifyTotalEnabled"
             :threshold="props.quotaNotifyTotalThreshold"
+            :threshold-type="props.quotaNotifyTotalThresholdType"
             @update:enabled="emit('update:quotaNotifyTotalEnabled', $event)"
             @update:threshold="emit('update:quotaNotifyTotalThreshold', $event)"
+            @update:threshold-type="emit('update:quotaNotifyTotalThresholdType', $event)"
           />
         </div>
       </div>

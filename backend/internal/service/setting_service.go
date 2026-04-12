@@ -182,6 +182,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingPaymentEnabled,
 		SettingKeyOIDCConnectEnabled,
 		SettingKeyOIDCConnectProviderName,
+		SettingKeyBalanceLowNotifyEnabled,
+		SettingKeyAccountQuotaNotifyEnabled,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -249,6 +251,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PaymentEnabled:                   settings[SettingPaymentEnabled] == "true",
 		OIDCOAuthEnabled:                 oidcEnabled,
 		OIDCOAuthProviderName:            oidcProviderName,
+		BalanceLowNotifyEnabled:          settings[SettingKeyBalanceLowNotifyEnabled] == "true",
+		AccountQuotaNotifyEnabled:        settings[SettingKeyAccountQuotaNotifyEnabled] == "true",
 	}, nil
 }
 
@@ -302,6 +306,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
 		OIDCOAuthProviderName            string          `json:"oidc_oauth_provider_name"`
 		Version                          string          `json:"version,omitempty"`
+		BalanceLowNotifyEnabled          bool            `json:"balance_low_notify_enabled"`
+		AccountQuotaNotifyEnabled        bool            `json:"account_quota_notify_enabled"`
 	}{
 		RegistrationEnabled:              settings.RegistrationEnabled,
 		EmailVerifyEnabled:               settings.EmailVerifyEnabled,
@@ -332,6 +338,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		OIDCOAuthEnabled:                 settings.OIDCOAuthEnabled,
 		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
 		Version:                          s.version,
+		BalanceLowNotifyEnabled:          settings.BalanceLowNotifyEnabled,
+		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,
 	}, nil
 }
 
@@ -609,6 +617,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	// Balance low notification
 	updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(settings.BalanceLowNotifyEnabled)
 	updates[SettingKeyBalanceLowNotifyThreshold] = strconv.FormatFloat(settings.BalanceLowNotifyThreshold, 'f', 8, 64)
+	updates[SettingKeyAccountQuotaNotifyEnabled] = strconv.FormatBool(settings.AccountQuotaNotifyEnabled)
 	accountQuotaNotifyEmailsJSON, err := json.Marshal(settings.AccountQuotaNotifyEmails)
 	if err != nil {
 		return fmt.Errorf("marshal account quota notify emails: %w", err)
@@ -1251,7 +1260,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.BalanceLowNotifyThreshold = v
 	}
 
-	// Account quota notification emails
+	// Account quota notification
+	result.AccountQuotaNotifyEnabled = settings[SettingKeyAccountQuotaNotifyEnabled] == "true"
 	if raw := strings.TrimSpace(settings[SettingKeyAccountQuotaNotifyEmails]); raw != "" {
 		var emails []string
 		if err := json.Unmarshal([]byte(raw), &emails); err == nil {

@@ -6,12 +6,18 @@ const { t } = useI18n()
 defineProps<{
   enabled: boolean | null
   threshold: number | null
+  thresholdType: string | null // "fixed" (default) or "percentage"
 }>()
 
 const emit = defineEmits<{
   'update:enabled': [value: boolean | null]
   'update:threshold': [value: number | null]
+  'update:thresholdType': [value: string | null]
 }>()
+
+function toggleType(current: string | null) {
+  emit('update:thresholdType', current === 'percentage' ? 'fixed' : 'percentage')
+}
 </script>
 
 <template>
@@ -32,15 +38,32 @@ const emit = defineEmits<{
         ]"
       />
     </button>
-    <div v-if="enabled" class="relative flex-1">
-      <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+    <div v-if="enabled" class="flex items-center gap-1 flex-1">
+      <button
+        type="button"
+        class="px-1.5 py-0.5 text-xs font-medium rounded border transition-colors"
+        :class="(!thresholdType || thresholdType === 'fixed') ? 'bg-primary-100 text-primary-700 border-primary-300 dark:bg-primary-900/30 dark:text-primary-400 dark:border-primary-700' : 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:border-dark-500'"
+        @click="toggleType(thresholdType)"
+      >
+        $
+      </button>
+      <button
+        type="button"
+        class="px-1.5 py-0.5 text-xs font-medium rounded border transition-colors"
+        :class="thresholdType === 'percentage' ? 'bg-primary-100 text-primary-700 border-primary-300 dark:bg-primary-900/30 dark:text-primary-400 dark:border-primary-700' : 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:border-dark-500'"
+        @click="toggleType(thresholdType)"
+      >
+        %
+      </button>
       <input
         :value="threshold"
         @input="emit('update:threshold', parseFloat(($event.target as HTMLInputElement).value) || null)"
         type="number"
         min="0"
-        step="0.01"
-        class="input pl-6 py-1 text-sm"
+        :max="thresholdType === 'percentage' ? 100 : undefined"
+        :step="thresholdType === 'percentage' ? 1 : 0.01"
+        class="input py-1 text-sm flex-1"
+        :placeholder="thresholdType === 'percentage' ? t('admin.accounts.quotaNotify.thresholdPlaceholder') : t('admin.accounts.quotaNotify.threshold')"
       />
     </div>
   </div>
