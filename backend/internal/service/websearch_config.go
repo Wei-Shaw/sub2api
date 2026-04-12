@@ -22,15 +22,14 @@ REDACTED
 
 // WebSearchProviderConfig describes a single search provider (Brave or Tavily).
 type WebSearchProviderConfig struct {
-	Type                 string `json:"type"`                   // websearch.ProviderTypeBrave | Tavily
-	APIKey               string `json:"api_key,omitempty"`      // secret — omitted in API responses
-	APIKeyConfigured     bool   `json:"api_key_configured"`     // read-only mask
-	Priority             int    `json:"priority"`               // lower = higher priority
-	QuotaLimit           int64  `json:"quota_limit"`            // 0 = unlimited
-	QuotaRefreshInterval string `json:"quota_refresh_interval"` // websearch.QuotaRefresh*
-	QuotaUsed            int64  `json:"quota_used,omitempty"`   // read-only: current period usage
-	ProxyID              *int64 `json:"proxy_id"`               // optional proxy association
-	ExpiresAt            *int64 `json:"expires_at,omitempty"`   // optional expiration timestamp
+	Type             string `json:"type"`                    // websearch.ProviderTypeBrave | Tavily
+	APIKey           string `json:"api_key,omitempty"`       // secret — omitted in API responses
+	APIKeyConfigured bool   `json:"api_key_configured"`      // read-only mask
+	QuotaLimit       int64  `json:"quota_limit"`             // 0 = unlimited
+	SubscribedAt     *int64 `json:"subscribed_at,omitempty"` // subscription start (unix seconds); quota resets monthly
+	QuotaUsed        int64  `json:"quota_used,omitempty"`    // read-only: current usage from Redis
+	ProxyID          *int64 `json:"proxy_id"`                // optional proxy association
+	ExpiresAt        *int64 `json:"expires_at,omitempty"`    // optional expiration timestamp
 REDACTED
 
 // --- Validation ---
@@ -40,13 +39,6 @@ const maxWebSearchProviders = 10
 var validProviderTypes = map[string]bool{
 	websearch.ProviderTypeBrave:  true,
 	websearch.ProviderTypeTavily: true,
-REDACTED
-
-var validQuotaIntervals = map[string]bool{
-	websearch.QuotaRefreshDaily:   true,
-	websearch.QuotaRefreshWeekly:  true,
-	websearch.QuotaRefreshMonthly: true,
-	"":                            true, // defaults to monthly
 REDACTED
 
 func validateWebSearchConfig(cfg *WebSearchEmulationConfig) error {
@@ -60,9 +52,6 @@ REDACTED
 	for i, p := range cfg.Providers {
 		if !validProviderTypes[p.Type] {
 			return fmt.Errorf("provider[%d]: invalid type %q", i, p.Type)
-	REDACTED
-		if !validQuotaIntervals[p.QuotaRefreshInterval] {
-			return fmt.Errorf("provider[%d]: invalid quota_refresh_interval %q", i, p.QuotaRefreshInterval)
 	REDACTED
 		if p.QuotaLimit < 0 {
 			return fmt.Errorf("provider[%d]: quota_limit must be >= 0", i)
@@ -237,17 +226,55 @@ REDACTED
 	slog.Info("websearch: manager rebuilt", "provider_count", len(providerConfigs))
 REDACTED
 
-// SanitizeWebSearchConfig returns a copy with api_key fields masked for API responses.
-func SanitizeWebSearchConfig(cfg *WebSearchEmulationConfig) *WebSearchEmulationConfig {
+// WebSearchTestResult holds the result of a search test.
+type WebSearchTestResult struct {
+	Provider string                   `json:"provider"`
+	Results  []websearch.SearchResult `json:"results"`
+	Query    string                   `json:"query"`
+REDACTED
+
+// TestWebSearch executes a test search using the currently configured Manager.
+// Uses Manager.TestSearch which bypasses quota tracking.
+func TestWebSearch(ctx context.Context, query string) (*WebSearchTestResult, error) {
+	mgr := getWebSearchManager()
+	if mgr == nil {
+		return nil, fmt.Errorf("web search: manager not initialized, save config first")
+REDACTED
+	resp, providerName, err := mgr.TestSearch(ctx, websearch.SearchRequest{
+		Query:      query,
+		MaxResults: webSearchDefaultMaxResults,
+REDACTED)
+	if err != nil {
+		return nil, err
+REDACTED
+	return &WebSearchTestResult{
+		Provider: providerName,
+		Results:  resp.Results,
+		Query:    resp.Query,
+REDACTED, nil
+REDACTED
+
+// SanitizeWebSearchConfig returns a copy with api_key fields masked and quota usage populated.
+func SanitizeWebSearchConfig(ctx context.Context, cfg *WebSearchEmulationConfig) *WebSearchEmulationConfig {
 	if cfg == nil {
 		return nil
 REDACTED
 	out := *cfg
 	out.Providers = make([]WebSearchProviderConfig, len(cfg.Providers))
+
+	// Load usage from the global Manager (reads from Redis)
+	mgr := getWebSearchManager()
+
 	for i, p := range cfg.Providers {
 		out.Providers[i] = p
 		out.Providers[i].APIKeyConfigured = p.APIKey != ""
 		out.Providers[i].APIKey = "" // never return the secret
+
+		// Populate quota usage from Redis
+		if mgr != nil {
+			used, _ := mgr.GetUsage(ctx, p.Type)
+			out.Providers[i].QuotaUsed = used
+	REDACTED
 REDACTED
 	return &out
 REDACTED
