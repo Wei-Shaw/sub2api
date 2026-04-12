@@ -254,12 +254,16 @@ REDACTED
 
 // TestWebSearch executes a test search using the currently configured Manager.
 // Uses Manager.TestSearch which bypasses quota tracking.
+const testSearchTimeout = 15 * time.Second
+
 func TestWebSearch(ctx context.Context, query string) (*WebSearchTestResult, error) {
 	mgr := getWebSearchManager()
 	if mgr == nil {
 		return nil, fmt.Errorf("web search: manager not initialized, save config first")
 REDACTED
-	resp, providerName, err := mgr.TestSearch(ctx, websearch.SearchRequest{
+	testCtx, cancel := context.WithTimeout(ctx, testSearchTimeout)
+	defer cancel()
+	resp, providerName, err := mgr.TestSearch(testCtx, websearch.SearchRequest{
 		Query:      query,
 		MaxResults: webSearchDefaultMaxResults,
 REDACTED)
