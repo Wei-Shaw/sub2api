@@ -235,6 +235,7 @@ func (s *SettingService) resolveProviderProxyURLs(ctx context.Context, cfg *WebS
 	}
 	proxies, err := s.proxyRepo.ListByIDs(ctx, ids)
 	if err != nil {
+		slog.Warn("websearch: failed to resolve proxy URLs", "error", err)
 		return nil
 	}
 	result := make(map[int64]string, len(proxies))
