@@ -132,6 +132,8 @@ export default {
     model: 'Model',
     requests: 'Requests',
     inputTokens: 'Input Tokens',
+    grossInputTokens: 'Total Input Tokens',
+    netInputTokens: 'Net Input Tokens',
     outputTokens: 'Output Tokens',
     cacheCreationTokens: 'Cache Creation',
     cacheReadTokens: 'Cache Read',

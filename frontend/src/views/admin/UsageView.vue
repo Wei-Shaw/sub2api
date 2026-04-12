@@ -138,6 +138,7 @@ import { useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'; import { adminAPI } from '@/api/admin'; import { adminUsageAPI } from '@/api/admin/usage'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
+import { buildUsageTokenDisplay } from '@/utils/usageTokens'
 import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
@@ -458,6 +459,15 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 }
 const cancelExport = () => exportAbortController?.abort()
 const openCleanupDialog = () => { cleanupDialogVisible.value = true }
+const getDisplayInputTokens = (row: Pick<AdminUsageLog, 'input_tokens' | 'output_tokens' | 'cache_read_tokens' | 'cache_creation_tokens'>) =>
+  buildUsageTokenDisplay(row).displayInputTokens
+
+const getNetInputTokens = (row: Pick<AdminUsageLog, 'input_tokens' | 'output_tokens' | 'cache_read_tokens' | 'cache_creation_tokens'>) =>
+  buildUsageTokenDisplay(row).netInputTokens
+
+const getDisplayTotalTokens = (row: Pick<AdminUsageLog, 'input_tokens' | 'output_tokens' | 'cache_read_tokens' | 'cache_creation_tokens'>) =>
+  buildUsageTokenDisplay(row).displayTotalTokens
+
 const getRequestTypeLabel = (log: AdminUsageLog): string => {
   const requestType = resolveUsageRequestType(log)
   if (requestType === 'ws_v2') return t('usage.ws')
@@ -485,8 +495,9 @@ const exportToExcel = async () => {
       t('admin.usage.routingTargetGroup'), t('admin.usage.routingScheduleLayer'), t('admin.usage.routedAccount'),
       t('admin.usage.effectiveModel'), t('admin.usage.routingFailover'), t('admin.usage.routingFailoverReason'),
       t('usage.type'), t('admin.usage.billingMode'),
-      t('admin.usage.inputTokens'), t('admin.usage.outputTokens'),
+      t('usage.grossInputTokens'), t('usage.netInputTokens'), t('admin.usage.outputTokens'),
       t('admin.usage.cacheReadTokens'), t('admin.usage.cacheCreationTokens'),
+      t('usage.totalTokens'),
       t('admin.usage.inputCost'), t('admin.usage.outputCost'),
       t('admin.usage.cacheReadCost'), t('admin.usage.cacheCreationCost'),
       t('usage.rate'), t('usage.accountMultiplier'), t('usage.original'), t('usage.userBilled'), t('usage.accountBilled'),
@@ -505,7 +516,7 @@ const exportToExcel = async () => {
         log.upstream_model || '', formatReasoningEffort(log.reasoning_effort), log.group?.name || '',
         log.inbound_endpoint || '', log.upstream_endpoint || '', log.routing_target_group || '', log.routing_schedule_layer || '',
         log.routing_selected_account_name || '', log.routing_effective_model || '', log.routing_failover_count ?? '', log.routing_failover_final_reason || '', getRequestTypeLabel(log), getBillingModeLabel(log.billing_mode),
-        log.input_tokens, log.output_tokens, log.cache_read_tokens, log.cache_creation_tokens,
+        getDisplayInputTokens(log), getNetInputTokens(log), log.output_tokens, log.cache_read_tokens, log.cache_creation_tokens, getDisplayTotalTokens(log),
         log.input_cost?.toFixed(6) || '0.000000', log.output_cost?.toFixed(6) || '0.000000',
         log.cache_read_cost?.toFixed(6) || '0.000000', log.cache_creation_cost?.toFixed(6) || '0.000000',
         log.rate_multiplier?.toPrecision(4) || '1.00', (log.account_rate_multiplier ?? 1).toPrecision(4),

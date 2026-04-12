@@ -132,6 +132,8 @@ export default {
     model: '模型',
     requests: '请求数',
     inputTokens: '输入 Tokens',
+    grossInputTokens: '总输入 Tokens',
+    netInputTokens: '净输入 Tokens',
     outputTokens: '输出 Tokens',
     cacheCreationTokens: '缓存创建',
     cacheReadTokens: '缓存读取',

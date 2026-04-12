@@ -22,6 +22,8 @@ const messages: Record<string, string> = {
   'admin.usage.cacheReadCost': 'Cache Read Cost',
   'usage.inputTokenPrice': 'Input price',
   'usage.outputTokenPrice': 'Output price',
+  'usage.grossInputTokens': 'Total Input Tokens',
+  'usage.netInputTokens': 'Net Input Tokens',
   'usage.perMillionTokens': '/ 1M tokens',
   'usage.serviceTier': 'Service tier',
   'usage.serviceTierPriority': 'Fast',
@@ -230,6 +232,84 @@ describe('user UsageView tooltip', () => {
     expect(text).toContain('$30.00 / 1M tokens')
   })
 
+  it('shows gross input as primary token value and net input in token tooltip', async () => {
+    const row = {
+      request_id: 'req-user-token-1',
+      actual_cost: 0,
+      total_cost: 0,
+      rate_multiplier: 1,
+      input_cost: 0,
+      output_cost: 0,
+      cache_creation_cost: 0,
+      cache_read_cost: 0,
+      input_tokens: 100,
+      output_tokens: 20,
+      cache_creation_tokens: 10,
+      cache_read_tokens: 30,
+      cache_creation_5m_tokens: 0,
+      cache_creation_1h_tokens: 0,
+      cache_ttl_overridden: false,
+      image_count: 0,
+      image_size: null,
+      first_token_ms: null,
+      duration_ms: 1,
+      created_at: '2026-03-08T00:00:00Z',
+      model: 'gpt-5.4',
+      reasoning_effort: null,
+      api_key: { name: 'demo-key' },
+    }
+
+    query.mockResolvedValue({
+      items: [row],
+      total: 1,
+      pages: 1,
+    })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 1,
+      total_input_tokens: 100,
+      total_output_tokens: 20,
+      total_cache_tokens: 40,
+      total_tokens: 160,
+      total_cost: 0,
+      avg_duration_ms: 1,
+    })
+    list.mockResolvedValue({ items: [] })
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          DataTable: UserDataTableStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    await nextTick()
+
+    expect(wrapper.text()).toContain('140')
+    expect(wrapper.text()).toContain('Net Input Tokens: 100')
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.tokenTooltipData = row
+    setupState.tokenTooltipVisible = true
+    await nextTick()
+
+    const text = wrapper.text()
+    expect(text).toContain('Total Input Tokens')
+    expect(text).toContain('140')
+    expect(text).toContain('Net Input Tokens')
+    expect(text).toContain('100')
+    expect(text).toContain('160')
+  })
+
   it('exports csv with input and output unit price columns', async () => {
     const exportedLogs = [
       {
@@ -317,6 +397,8 @@ describe('user UsageView tooltip', () => {
     expect(hasSortedExportQuery).toBe(true)
     expect(clickSpy).toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalled()
+
+    expect(exportedBlob).toBeTruthy()
 
     window.URL.createObjectURL = originalCreateObjectURL
     window.URL.revokeObjectURL = originalRevokeObjectURL

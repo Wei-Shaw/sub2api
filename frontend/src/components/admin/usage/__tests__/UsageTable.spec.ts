@@ -12,6 +12,9 @@ const messages: Record<string, string> = {
   'admin.usage.cacheReadCost': 'Cache Read Cost',
   'usage.inputTokenPrice': 'Input price',
   'usage.outputTokenPrice': 'Output price',
+  'usage.grossInputTokens': 'Total Input Tokens',
+  'usage.netInputTokens': 'Net Input Tokens',
+  'usage.tokenDetails': 'Token Details',
   'usage.perMillionTokens': '/ 1M tokens',
   'usage.serviceTier': 'Service tier',
   'usage.serviceTierPriority': 'Fast',
@@ -26,6 +29,9 @@ const messages: Record<string, string> = {
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per Request',
   'admin.usage.billingModeImage': 'Image',
+  'admin.usage.inputTokens': 'Input Tokens',
+  'admin.usage.outputTokens': 'Output Tokens',
+  'usage.totalTokens': 'Total Tokens',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -45,6 +51,7 @@ const DataTableStub = {
       <div v-for="row in data" :key="row.request_id">
         <slot name="cell-model" :row="row" :value="row.model" />
         <slot name="cell-billing_mode" :row="row" />
+        <slot name="cell-tokens" :row="row" :value="row.input_tokens" />
         <slot name="cell-cost" :row="row" />
       </div>
     </div>
@@ -98,7 +105,9 @@ describe('admin UsageTable tooltip', () => {
       },
     })
 
-    await wrapper.find('.group.relative').trigger('mouseenter')
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.tooltipData = row
+    setupState.tooltipVisible = true
     await nextTick()
 
     const text = wrapper.text()
@@ -193,5 +202,57 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('alias-model')
     expect(text).toContain('claude-sonnet-4')
     expect(text).toContain('Image')
+  })
+
+  it('shows total input as primary value and net input in tooltip', async () => {
+    const row = {
+      request_id: 'req-admin-token-1',
+      actual_cost: 0,
+      total_cost: 0,
+      account_rate_multiplier: 1,
+      rate_multiplier: 1,
+      input_cost: 0,
+      output_cost: 0,
+      cache_creation_cost: 0,
+      cache_read_cost: 0,
+      input_tokens: 100,
+      output_tokens: 20,
+      cache_read_tokens: 30,
+      cache_creation_tokens: 10,
+      cache_creation_5m_tokens: 0,
+      cache_creation_1h_tokens: 0,
+      cache_ttl_overridden: false,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('140')
+    expect(text).toContain('Net Input Tokens: 100')
+
+    const tokenInfoButtons = wrapper.findAll('.group.relative')
+    await tokenInfoButtons[0].trigger('mouseenter')
+    await nextTick()
+
+    const tooltipText = wrapper.text()
+    expect(tooltipText).toContain('Total Input Tokens')
+    expect(tooltipText).toContain('140')
+    expect(tooltipText).toContain('Net Input Tokens')
+    expect(tooltipText).toContain('100')
+    expect(tooltipText).toContain('160')
   })
 })

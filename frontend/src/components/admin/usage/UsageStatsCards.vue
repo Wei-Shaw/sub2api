@@ -14,10 +14,13 @@
       <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30 text-amber-600"><svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" /></svg></div>
       <div>
         <p class="text-xs font-medium text-gray-500">{{ t('usage.totalTokens') }}</p>
-        <p class="text-xl font-bold">{{ formatTokens(stats?.total_tokens || 0) }}</p>
+        <p class="text-xl font-bold">{{ formatTokens(getStatsTokenDisplay(stats).displayTotalTokens) }}</p>
         <p class="text-xs text-gray-500">
-          {{ t('usage.in') }}: {{ formatTokens(stats?.total_input_tokens || 0) }} /
+          {{ t('usage.grossInputTokens') }}: {{ formatTokens(getStatsTokenDisplay(stats).displayInputTokens) }} /
           {{ t('usage.out') }}: {{ formatTokens(stats?.total_output_tokens || 0) }}
+        </p>
+        <p class="text-xs text-gray-400">
+          {{ t('usage.netInputTokens') }}: {{ formatTokens(getStatsTokenDisplay(stats).netInputTokens) }}
         </p>
       </div>
     </div>
@@ -55,6 +58,7 @@
 import { useI18n } from 'vue-i18n'
 import type { AdminUsageStatsResponse } from '@/api/admin/usage'
 import Icon from '@/components/icons/Icon.vue'
+import { buildUsageTokenDisplay } from '@/utils/usageTokens'
 
 defineProps<{ stats: AdminUsageStatsResponse | null }>()
 
@@ -69,4 +73,12 @@ const formatTokens = (value: number) => {
   if (value >= 1e3) return (value / 1e3).toFixed(2) + 'K'
   return value.toLocaleString()
 }
+
+const getStatsTokenDisplay = (stats: AdminUsageStatsResponse | null) =>
+  buildUsageTokenDisplay({
+    input_tokens: stats?.total_input_tokens || 0,
+    output_tokens: stats?.total_output_tokens || 0,
+    cache_read_tokens: stats?.total_cache_tokens || 0,
+    cache_creation_tokens: 0,
+  })
 </script>

@@ -3,19 +3,21 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import UsageView from '../UsageView.vue'
 
-const { list, getStats, getSnapshotV2, getById } = vi.hoisted(() => {
+const { list, getStats, getSnapshotV2, getById, exportList, saveAsMock } = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
     getItem: vi.fn(() => null),
     setItem: vi.fn(),
     removeItem: vi.fn(),
   })
 
-  return {
-    list: vi.fn(),
-    getStats: vi.fn(),
-    getSnapshotV2: vi.fn(),
-    getById: vi.fn(),
-  }
+    return {
+      list: vi.fn(),
+      exportList: vi.fn(),
+      getStats: vi.fn(),
+      getSnapshotV2: vi.fn(),
+      getById: vi.fn(),
+      saveAsMock: vi.fn(),
+    }
 })
 
 const messages: Record<string, string> = {
@@ -23,6 +25,9 @@ const messages: Record<string, string> = {
   'admin.dashboard.day': 'Day',
   'admin.dashboard.hour': 'Hour',
   'admin.usage.failedToLoadUser': 'Failed to load user',
+  'usage.grossInputTokens': 'Total Input Tokens',
+  'usage.netInputTokens': 'Net Input Tokens',
+  'usage.totalTokens': 'Total Tokens',
 }
 
 const formatLocalDate = (date: Date): string => {
@@ -49,9 +54,11 @@ vi.mock('@/api/admin', () => ({
 
 vi.mock('@/api/admin/usage', () => ({
   adminUsageAPI: {
-    list: vi.fn(),
+    list: exportList,
   },
 }))
+
+vi.mock('file-saver', () => ({ saveAs: saveAsMock }))
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
@@ -109,11 +116,18 @@ describe('admin UsageView distribution metric toggles', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     list.mockReset()
+    exportList.mockReset()
     getStats.mockReset()
     getSnapshotV2.mockReset()
     getById.mockReset()
+    saveAsMock.mockReset()
 
     list.mockResolvedValue({
+      items: [],
+      total: 0,
+      pages: 0,
+    })
+    exportList.mockResolvedValue({
       items: [],
       total: 0,
       pages: 0,
@@ -192,5 +206,98 @@ describe('admin UsageView distribution metric toggles', () => {
     expect(modelChart.find('.metric').text()).toBe('actual_cost')
     expect(groupChart.find('.metric').text()).toBe('actual_cost')
     expect(getSnapshotV2).toHaveBeenCalledTimes(1)
+  })
+
+  it('exports admin usage with total input, net input and total tokens', async () => {
+    const exportedLogs = [
+      {
+        request_id: 'req-admin-export',
+        created_at: '2026-03-08T00:00:00Z',
+        user: { email: 'demo@example.com' },
+        api_key: { name: 'demo-key' },
+        account: { name: 'demo-account' },
+        model: 'gpt-5.4',
+        upstream_model: '',
+        reasoning_effort: null,
+        group: { name: 'default' },
+        inbound_endpoint: '',
+        upstream_endpoint: '',
+        routing_target_group: '',
+        routing_schedule_layer: '',
+        routing_selected_account_name: '',
+        routing_effective_model: '',
+        routing_failover_count: null,
+        routing_failover_final_reason: '',
+        billing_mode: 'token',
+        input_tokens: 100,
+        output_tokens: 20,
+        cache_read_tokens: 30,
+        cache_creation_tokens: 10,
+        input_cost: 0,
+        output_cost: 0,
+        cache_read_cost: 0,
+        cache_creation_cost: 0,
+        rate_multiplier: 1,
+        account_rate_multiplier: 1,
+        total_cost: 0,
+        actual_cost: 0,
+        first_token_ms: 5,
+        duration_ms: 100,
+        user_agent: '',
+        ip_address: '',
+      },
+    ]
+
+    list.mockResolvedValue({ items: exportedLogs, total: 1, pages: 1 })
+    exportList.mockResolvedValue({ items: exportedLogs, total: 1, pages: 1 })
+
+    const aoaToSheetSpy = vi.fn(() => ({}))
+    const sheetAddSpy = vi.fn()
+    vi.doMock('xlsx', () => ({
+      utils: {
+        aoa_to_sheet: aoaToSheetSpy,
+        sheet_add_aoa: sheetAddSpy,
+        book_new: vi.fn(() => ({})),
+        book_append_sheet: vi.fn(),
+      },
+      write: vi.fn(() => new ArrayBuffer(8)),
+    }))
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          UsageStatsCards: true,
+          UsageFilters: UsageFiltersStub,
+          UsageTable: true,
+          UsageExportProgress: true,
+          UsageCleanupDialog: true,
+          UserBalanceHistoryModal: true,
+          Pagination: true,
+          Select: true,
+          DateRangePicker: true,
+          Icon: true,
+          TokenUsageTrend: true,
+          ModelDistributionChart: true,
+          GroupDistributionChart: true,
+          EndpointDistributionChart: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    const setupState = (wrapper.vm as any).$?.setupState
+    await setupState.exportToExcel()
+
+    expect(exportList).toHaveBeenCalled()
+    const headerRow = aoaToSheetSpy.mock.calls[0]?.[0]?.[0] || []
+    const dataRow = sheetAddSpy.mock.calls[0]?.[1]?.[0] || []
+    expect(headerRow).toContain('Total Input Tokens')
+    expect(headerRow).toContain('Net Input Tokens')
+    expect(headerRow).toContain('Total Tokens')
+    expect(dataRow).toContain(140)
+    expect(dataRow).toContain(100)
+    expect(dataRow).toContain(160)
+    expect(saveAsMock).toHaveBeenCalled()
   })
 })

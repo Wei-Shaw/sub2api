@@ -34,11 +34,14 @@
                 {{ t('usage.totalTokens') }}
               </p>
               <p class="text-xl font-bold text-gray-900 dark:text-white">
-                {{ formatTokens(usageStats?.total_tokens || 0) }}
+                {{ formatTokens(getUsageStatsDisplay(usageStats).displayTotalTokens) }}
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('usage.in') }}: {{ formatTokens(usageStats?.total_input_tokens || 0) }} /
+                {{ t('usage.grossInputTokens') }}: {{ formatTokens(getUsageStatsDisplay(usageStats).displayInputTokens) }} /
                 {{ t('usage.out') }}: {{ formatTokens(usageStats?.total_output_tokens || 0) }}
+              </p>
+              <p class="text-xs text-gray-400 dark:text-gray-500">
+                {{ t('usage.netInputTokens') }}: {{ formatTokens(getUsageStatsDisplay(usageStats).netInputTokens) }}
               </p>
             </div>
           </div>
@@ -226,7 +229,7 @@
                   <div class="inline-flex items-center gap-1">
                     <Icon name="arrowDown" size="sm" class="text-emerald-500" />
                     <span class="font-medium text-gray-900 dark:text-white">{{
-                      row.input_tokens.toLocaleString()
+                      getDisplayInputTokens(row).toLocaleString()
                     }}</span>
                   </div>
                   <!-- Output -->
@@ -236,6 +239,9 @@
                       row.output_tokens.toLocaleString()
                     }}</span>
                   </div>
+                </div>
+                <div class="text-[11px] text-gray-400 dark:text-gray-500">
+                  {{ t('usage.netInputTokens') }}: {{ getNetInputTokens(row).toLocaleString() }}
                 </div>
                 <!-- Cache Tokens (Read + Write) -->
                 <div
@@ -366,9 +372,13 @@
           <!-- Token Breakdown -->
           <div>
             <div class="text-xs font-semibold text-gray-300 mb-1">{{ t('usage.tokenDetails') }}</div>
-            <div v-if="tokenTooltipData && tokenTooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
-              <span class="text-gray-400">{{ t('admin.usage.inputTokens') }}</span>
-              <span class="font-medium text-white">{{ tokenTooltipData.input_tokens.toLocaleString() }}</span>
+            <div v-if="tokenTooltipData && getDisplayInputTokens(tokenTooltipData) > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('usage.grossInputTokens') }}</span>
+              <span class="font-medium text-white">{{ getDisplayInputTokens(tokenTooltipData).toLocaleString() }}</span>
+            </div>
+            <div v-if="tokenTooltipData && getNetInputTokens(tokenTooltipData) > 0" class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ t('usage.netInputTokens') }}</span>
+              <span class="font-medium text-white">{{ getNetInputTokens(tokenTooltipData).toLocaleString() }}</span>
             </div>
             <div v-if="tokenTooltipData && tokenTooltipData.output_tokens > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.outputTokens') }}</span>
@@ -413,7 +423,7 @@
           <!-- Total -->
           <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
             <span class="text-gray-400">{{ t('usage.totalTokens') }}</span>
-            <span class="font-semibold text-blue-400">{{ ((tokenTooltipData?.input_tokens || 0) + (tokenTooltipData?.output_tokens || 0) + (tokenTooltipData?.cache_creation_tokens || 0) + (tokenTooltipData?.cache_read_tokens || 0)).toLocaleString() }}</span>
+            <span class="font-semibold text-blue-400">{{ tokenTooltipData ? getDisplayTotalTokens(tokenTooltipData).toLocaleString() : '0' }}</span>
           </div>
         </div>
         <!-- Tooltip Arrow (left side) -->
@@ -547,6 +557,7 @@ import { formatDateTime, formatReasoningEffort } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
+import { buildUsageTokenDisplay } from '@/utils/usageTokens'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
 
@@ -652,6 +663,23 @@ const formatDuration = (ms: number): string => {
 const formatUserAgent = (ua: string): string => {
   return ua
 }
+
+const getDisplayInputTokens = (row: Pick<UsageLog, 'input_tokens' | 'output_tokens' | 'cache_read_tokens' | 'cache_creation_tokens'>) =>
+  buildUsageTokenDisplay(row).displayInputTokens
+
+const getNetInputTokens = (row: Pick<UsageLog, 'input_tokens' | 'output_tokens' | 'cache_read_tokens' | 'cache_creation_tokens'>) =>
+  buildUsageTokenDisplay(row).netInputTokens
+
+const getDisplayTotalTokens = (row: Pick<UsageLog, 'input_tokens' | 'output_tokens' | 'cache_read_tokens' | 'cache_creation_tokens'>) =>
+  buildUsageTokenDisplay(row).displayTotalTokens
+
+const getUsageStatsDisplay = (stats: UsageStatsResponse | null) =>
+  buildUsageTokenDisplay({
+    input_tokens: stats?.total_input_tokens || 0,
+    output_tokens: stats?.total_output_tokens || 0,
+    cache_read_tokens: stats?.total_cache_tokens || 0,
+    cache_creation_tokens: 0,
+  })
 
 const getRequestTypeLabel = (log: UsageLog): string => {
   const requestType = resolveUsageRequestType(log)
@@ -892,10 +920,12 @@ const exportToCSV = async () => {
       'Inbound Endpoint',
       'Type',
       'Billing Mode',
-      'Input Tokens',
+      'Total Input Tokens',
+      'Net Input Tokens',
       'Output Tokens',
       'Cache Read Tokens',
       'Cache Creation Tokens',
+      'Total Tokens',
       'Rate Multiplier',
       'Billed Cost',
       'Original Cost',
@@ -911,10 +941,12 @@ const exportToCSV = async () => {
         log.inbound_endpoint || '',
         getRequestTypeExportText(log),
         getBillingModeLabel(log.billing_mode),
-        log.input_tokens,
+        getDisplayInputTokens(log),
+        getNetInputTokens(log),
         log.output_tokens,
         log.cache_read_tokens,
         log.cache_creation_tokens,
+        getDisplayTotalTokens(log),
         log.rate_multiplier,
         log.actual_cost.toFixed(8),
         log.total_cost.toFixed(8),
