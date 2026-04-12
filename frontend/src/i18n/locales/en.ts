@@ -929,6 +929,7 @@ export default {
       verifySuccess: 'Email added successfully',
       removeEmail: 'Remove',
       removeSuccess: 'Email removed',
+      emailDuplicate: 'This email already exists',
     REDACTED
   REDACTED,
 
