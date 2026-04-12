@@ -2255,7 +2255,7 @@ export default {
         alert: '告警阈值',
         enabled: '启用告警',
         threshold: '告警金额',
-        thresholdPlaceholder: '输入告警金额',
+        thresholdPlaceholder: '输入百分比',
       REDACTED,
       testConnection: '测试连接',
       reAuthorize: '重新授权',
@@ -4804,6 +4804,7 @@ export default {
       quotaNotify: {
         title: '账号限额通知',
         description: '当账号配额用量达到告警阈值时通知管理员',
+        enabled: '启用账号限额通知',
         emails: '通知邮箱',
         emailsHint: '留空则不发送通知',
         addEmail: '添加邮箱',

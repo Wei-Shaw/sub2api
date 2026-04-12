@@ -82,19 +82,29 @@ REDACTED
 
 // quotaDim describes one quota dimension for notification checking.
 type quotaDim struct {
-	name      string
-	enabled   bool
-	threshold float64
-	oldUsed   float64
-	limit     float64
+	name          string
+	enabled       bool
+	threshold     float64
+	thresholdType string // "fixed" (default) or "percentage"
+	oldUsed       float64
+	limit         float64
+REDACTED
+
+// resolvedThreshold returns the effective threshold value.
+// For percentage type, it computes threshold = limit * percentage / 100.
+func (d quotaDim) resolvedThreshold() float64 {
+	if d.thresholdType == "percentage" && d.limit > 0 {
+		return d.limit * d.threshold / 100
+REDACTED
+	return d.threshold
 REDACTED
 
 // buildQuotaDims returns the three quota dimensions for notification checking.
 func buildQuotaDims(account *Account) []quotaDim {
 	return []quotaDim{
-		{quotaDimDaily, account.GetQuotaNotifyDailyEnabled(), account.GetQuotaNotifyDailyThreshold(), account.GetQuotaDailyUsed(), account.GetQuotaDailyLimit()REDACTED,
-		{quotaDimWeekly, account.GetQuotaNotifyWeeklyEnabled(), account.GetQuotaNotifyWeeklyThreshold(), account.GetQuotaWeeklyUsed(), account.GetQuotaWeeklyLimit()REDACTED,
-		{quotaDimTotal, account.GetQuotaNotifyTotalEnabled(), account.GetQuotaNotifyTotalThreshold(), account.GetQuotaUsed(), account.GetQuotaLimit()REDACTED,
+		{quotaDimDaily, account.GetQuotaNotifyDailyEnabled(), account.GetQuotaNotifyDailyThreshold(), account.GetQuotaNotifyDailyThresholdType(), account.GetQuotaDailyUsed(), account.GetQuotaDailyLimit()REDACTED,
+		{quotaDimWeekly, account.GetQuotaNotifyWeeklyEnabled(), account.GetQuotaNotifyWeeklyThreshold(), account.GetQuotaNotifyWeeklyThresholdType(), account.GetQuotaWeeklyUsed(), account.GetQuotaWeeklyLimit()REDACTED,
+		{quotaDimTotal, account.GetQuotaNotifyTotalEnabled(), account.GetQuotaNotifyTotalThreshold(), account.GetQuotaNotifyTotalThresholdType(), account.GetQuotaUsed(), account.GetQuotaLimit()REDACTED,
 REDACTED
 REDACTED
 
@@ -102,6 +112,9 @@ REDACTED
 // The account's Extra fields contain pre-increment usage values.
 func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Context, account *Account, cost float64) {
 	if account == nil || s.emailService == nil || s.settingRepo == nil || cost <= 0 {
+		return
+REDACTED
+	if !s.isAccountQuotaNotifyEnabled(ctx) {
 		return
 REDACTED
 	adminEmails := s.getAccountQuotaNotifyEmails(ctx)
@@ -114,22 +127,26 @@ REDACTED
 		if !dim.enabled || dim.threshold <= 0 {
 			continue
 	REDACTED
+		effectiveThreshold := dim.resolvedThreshold()
+		if effectiveThreshold <= 0 {
+			continue
+	REDACTED
 		newUsed := dim.oldUsed + cost
-		if dim.oldUsed < dim.threshold && newUsed >= dim.threshold {
-			s.asyncSendQuotaAlert(adminEmails, account.Name, dim, newUsed, siteName)
+		if dim.oldUsed < effectiveThreshold && newUsed >= effectiveThreshold {
+			s.asyncSendQuotaAlert(adminEmails, account.Name, dim, newUsed, effectiveThreshold, siteName)
 	REDACTED
 REDACTED
 REDACTED
 
 // asyncSendQuotaAlert sends quota alert email in a goroutine with panic recovery.
-func (s *BalanceNotifyService) asyncSendQuotaAlert(adminEmails []string, accountName string, dim quotaDim, newUsed float64, siteName string) {
+func (s *BalanceNotifyService) asyncSendQuotaAlert(adminEmails []string, accountName string, dim quotaDim, newUsed, effectiveThreshold float64, siteName string) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
 				slog.Error("panic in quota notification", "recover", r)
 		REDACTED
 	REDACTED()
-		s.sendQuotaAlertEmails(adminEmails, accountName, dim.name, newUsed, dim.limit, dim.threshold, siteName)
+		s.sendQuotaAlertEmails(adminEmails, accountName, dim.name, newUsed, dim.limit, effectiveThreshold, siteName)
 REDACTED()
 REDACTED
 
@@ -147,6 +164,15 @@ REDACTED
 	REDACTED
 REDACTED
 	return
+REDACTED
+
+// isAccountQuotaNotifyEnabled checks the global account quota notification toggle.
+func (s *BalanceNotifyService) isAccountQuotaNotifyEnabled(ctx context.Context) bool {
+	val, err := s.settingRepo.GetValue(ctx, SettingKeyAccountQuotaNotifyEnabled)
+	if err != nil {
+		return false
+REDACTED
+	return val == "true"
 REDACTED
 
 // getAccountQuotaNotifyEmails reads admin notification emails from settings.
