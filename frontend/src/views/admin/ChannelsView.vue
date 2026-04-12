@@ -306,6 +306,21 @@
               </div>
             </div>
 
+            <!-- Web Search Emulation (Anthropic only, hidden when global disabled) -->
+            <div v-if="section.platform === 'anthropic' && webSearchGlobalEnabled" class="border-t border-gray-200 pt-3 dark:border-dark-600">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-xs font-medium text-orange-600 dark:text-orange-400">
+                    {{ t('admin.channels.form.webSearchEmulation') REDACTEDREDACTED
+                  </label>
+                  <p class="mt-0.5 text-[11px] text-amber-500 dark:text-amber-400">
+                    {{ t('admin.channels.form.webSearchEmulationHint') REDACTEDREDACTED
+                  </p>
+                </div>
+                <Toggle v-model="section.web_search_emulation" />
+              </div>
+            </div>
+
             <!-- Model Mapping -->
             <div>
               <div class="mb-1 flex items-center justify-between">
@@ -560,6 +575,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
+import { extractApiErrorMessage REDACTED from '@/utils/apiError'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule REDACTED from '@/api/admin/channels'
 import type { PricingFormEntry REDACTED from '@/components/admin/channel/types'
@@ -583,6 +599,18 @@ import { getPersistedPageSize REDACTED from '@/composables/usePersistedPageSize'
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
 
+// Web Search global enabled state (loaded once on mount)
+const webSearchGlobalEnabled = ref(false)
+async function loadWebSearchGlobalState() {
+  try {
+    const cfg = await adminAPI.settings.getWebSearchEmulationConfig()
+    webSearchGlobalEnabled.value = cfg?.enabled === true && (cfg?.providers?.length ?? 0) > 0
+  REDACTED catch (err: unknown) {
+    console.warn('Failed to load web search global state:', err)
+    webSearchGlobalEnabled.value = false
+  REDACTED
+REDACTED
+
 // ── Platform Section type ──
 interface PlatformSection {
   platform: GroupPlatform
@@ -591,6 +619,7 @@ interface PlatformSection {
   group_ids: number[]
   model_mapping: Record<string, string>
   model_pricing: PricingFormEntry[]
+  web_search_emulation: boolean
 REDACTED
 
 // ── Table columns ──
@@ -709,7 +738,8 @@ function addPlatformSection(platform: GroupPlatform) {
     collapsed: false,
     group_ids: [],
     model_mapping: {REDACTED,
-    model_pricing: []
+    model_pricing: [],
+    web_search_emulation: false,
   REDACTED)
 REDACTED
 
@@ -901,10 +931,14 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
 REDACTED
 
 // ── Form ↔ API conversion ──
-function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[], model_mapping: Record<string, Record<string, string>> REDACTED {
+function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[], model_mapping: Record<string, Record<string, string>>, features_config: Record<string, unknown> REDACTED {
   const group_ids: number[] = []
   const model_pricing: ChannelModelPricing[] = []
   const model_mapping: Record<string, Record<string, string>> = {REDACTED
+  // Preserve existing features_config fields not managed by the form
+  const featuresConfig: Record<string, unknown> = editingChannel.value?.features_config
+    ? { ...editingChannel.value.features_config REDACTED
+    : {REDACTED
 
   for (const section of form.platforms) {
     if (!section.enabled) continue
@@ -933,7 +967,19 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     REDACTED
   REDACTED
 
-  return { group_ids, model_pricing, model_mapping REDACTED
+  // Collect web_search_emulation (only anthropic platform supports it)
+  const wsEmulation: Record<string, boolean> = {REDACTED
+  for (const section of form.platforms) {
+    if (!section.enabled) continue
+    if (section.web_search_emulation && section.platform === 'anthropic') {
+      wsEmulation[section.platform] = true
+    REDACTED
+  REDACTED
+  if (Object.keys(wsEmulation).length > 0) {
+    featuresConfig.web_search_emulation = wsEmulation
+  REDACTED
+
+  return { group_ids, model_pricing, model_mapping, features_config: featuresConfig REDACTED
 REDACTED
 
 function apiToForm(channel: Channel): PlatformSection[] {
@@ -977,13 +1023,19 @@ function apiToForm(channel: Channel): PlatformSection[] {
         intervals: apiIntervalsToForm(p.intervals || [])
       REDACTED as PricingFormEntry))
 
+    // Read web_search_emulation from features_config
+    const fc = channel.features_config
+    const wsEmulation = fc?.web_search_emulation as Record<string, boolean> | undefined
+    const webSearchEnabled = wsEmulation?.[platform] === true
+
     sections.push({
       platform,
       enabled: true,
       collapsed: false,
       group_ids: groupIds,
       model_mapping: { ...mapping REDACTED,
-      model_pricing: pricing
+      model_pricing: pricing,
+      web_search_emulation: webSearchEnabled,
     REDACTED)
   REDACTED
 
@@ -1008,10 +1060,10 @@ async function loadChannels() {
     if (ctrl.signal.aborted || abortController !== ctrl) return
     channels.value = response.items || []
     pagination.total = response.total
-  REDACTED catch (error: any) {
-    if (error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') return
-    appStore.showError(t('admin.channels.loadError', 'Failed to load channels'))
-    console.error('Error loading channels:', error)
+  REDACTED catch (error: unknown) {
+    const e = error as { name?: string; code?: string REDACTED
+    if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
+    appStore.showError(extractApiErrorMessage(error, t('admin.channels.loadError', 'Failed to load channels')))
   REDACTED finally {
     if (abortController === ctrl) {
       loading.value = false
@@ -1210,7 +1262,7 @@ async function handleSubmit() {
     REDACTED
   REDACTED
 
-  const { group_ids, model_pricing, model_mapping REDACTED = formToAPI()
+  const { group_ids, model_pricing, model_mapping, features_config REDACTED = formToAPI()
 
   submitting.value = true
   try {
@@ -1224,6 +1276,7 @@ async function handleSubmit() {
         model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {REDACTED,
         billing_model_source: form.billing_model_source,
         restrict_models: form.restrict_models,
+        features_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
         account_stats_pricing_rules: accountStatsRulesToAPI()
       REDACTED
@@ -1238,6 +1291,7 @@ async function handleSubmit() {
         model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {REDACTED,
         billing_model_source: form.billing_model_source,
         restrict_models: form.restrict_models,
+        features_config,
         apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
         account_stats_pricing_rules: accountStatsRulesToAPI()
       REDACTED
@@ -1246,12 +1300,10 @@ async function handleSubmit() {
     REDACTED
     closeDialog()
     loadChannels()
-  REDACTED catch (error: any) {
-    const msg = error.response?.data?.detail || (editingChannel.value
+  REDACTED catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, editingChannel.value
       ? t('admin.channels.updateError', 'Failed to update channel')
-      : t('admin.channels.createError', 'Failed to create channel'))
-    appStore.showError(msg)
-    console.error('Error saving channel:', error)
+      : t('admin.channels.createError', 'Failed to create channel')))
   REDACTED finally {
     submitting.value = false
   REDACTED
@@ -1289,9 +1341,8 @@ async function confirmDelete() {
     showDeleteDialog.value = false
     deletingChannel.value = null
     loadChannels()
-  REDACTED catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.channels.deleteError', 'Failed to delete channel'))
-    console.error('Error deleting channel:', error)
+  REDACTED catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.channels.deleteError', 'Failed to delete channel')))
   REDACTED
 REDACTED
 
@@ -1299,6 +1350,7 @@ REDACTED
 onMounted(() => {
   loadChannels()
   loadGroups()
+  loadWebSearchGlobalState()
 REDACTED)
 
 onUnmounted(() => {
