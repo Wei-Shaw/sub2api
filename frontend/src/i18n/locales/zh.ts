@@ -936,6 +936,7 @@ export default {
       emailDuplicate: '该邮箱已存在',
       maxEmailsReached: '已达到通知邮箱数量上限',
       unverified: '未验证',
+      verified: '已验证',
     REDACTED
   REDACTED,
 

@@ -192,11 +192,10 @@ REDACTED
 	var recipients []string
 	seen := make(map[string]bool)
 	for _, entry := range entries {
-		if entry.Disabled {
+		if entry.Disabled || !entry.Verified {
 			continue
 	REDACTED
 		email := strings.TrimSpace(entry.Email)
-		// email="" placeholder is not resolved here; admin should configure actual emails
 		if email == "" {
 			continue
 	REDACTED
@@ -219,20 +218,17 @@ REDACTED
 	return name
 REDACTED
 
-// collectBalanceNotifyRecipients collects all non-disabled email recipients for balance notifications.
-// Entries with email="" are resolved to the user's primary email.
+// collectBalanceNotifyRecipients returns verified, non-disabled email recipients.
+// Only emails with verified=true and disabled=false are included.
 func (s *BalanceNotifyService) collectBalanceNotifyRecipients(user *User) []string {
 	var recipients []string
 	seen := make(map[string]bool)
 
 	for _, entry := range user.BalanceNotifyExtraEmails {
-		if entry.Disabled {
+		if entry.Disabled || !entry.Verified {
 			continue
 	REDACTED
 		email := strings.TrimSpace(entry.Email)
-		if email == "" {
-			email = user.Email // Resolve primary email placeholder
-	REDACTED
 		if email == "" {
 			continue
 	REDACTED
@@ -242,11 +238,6 @@ func (s *BalanceNotifyService) collectBalanceNotifyRecipients(user *User) []stri
 	REDACTED
 		seen[lower] = true
 		recipients = append(recipients, email)
-REDACTED
-
-	// If no entries exist at all (legacy/empty), fall back to user's primary email
-	if len(user.BalanceNotifyExtraEmails) == 0 && user.Email != "" {
-		recipients = append(recipients, user.Email)
 REDACTED
 
 	return recipients

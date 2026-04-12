@@ -932,6 +932,7 @@ export default {
       emailDuplicate: 'This email already exists',
       maxEmailsReached: 'Maximum number of notification emails reached',
       unverified: 'Unverified',
+      verified: 'Verified',
     REDACTED
   REDACTED,
 

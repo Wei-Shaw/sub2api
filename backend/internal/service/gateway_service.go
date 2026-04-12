@@ -7338,9 +7338,15 @@ REDACTED
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
 
-	// Balance low notification
+	// Balance low notification — use real-time balance from billing cache (not stale snapshot)
 	if !p.IsSubscriptionBill && p.Cost.ActualCost > 0 && p.User != nil && deps.balanceNotifyService != nil {
-		deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), p.User, p.User.Balance, p.Cost.ActualCost)
+		oldBalance := p.User.Balance // fallback to snapshot
+		if deps.billingCacheService != nil {
+			if realBalance, err := deps.billingCacheService.GetUserBalance(context.Background(), p.User.ID); err == nil {
+				oldBalance = realBalance + p.Cost.ActualCost // DB already deducted, reconstruct pre-deduction balance
+		REDACTED
+	REDACTED
+		deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), p.User, oldBalance, p.Cost.ActualCost)
 REDACTED
 
 	// Account quota notification (use same cost formula as postUsageBilling)
