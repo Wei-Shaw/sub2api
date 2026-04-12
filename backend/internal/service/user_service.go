@@ -336,14 +336,18 @@ func (s *UserService) VerifyAndAddNotifyEmail(ctx context.Context, userID int64,
 		return err
 	}
 
-	// Check if already exists
-	for _, e := range user.BalanceNotifyExtraEmails {
+	// Check if already exists — if unverified, mark as verified
+	for i, e := range user.BalanceNotifyExtraEmails {
 		if strings.EqualFold(e.Email, email) {
-			return nil // Already added
+			if !e.Verified {
+				user.BalanceNotifyExtraEmails[i].Verified = true
+				return s.userRepo.Update(ctx, user)
+			}
+			return nil // Already verified
 		}
 	}
 
-	// Check limit (total includes primary email="" placeholder + extra emails)
+	// Check limit
 	if len(user.BalanceNotifyExtraEmails) >= maxNotifyEmails {
 		return infraerrors.BadRequest("TOO_MANY_NOTIFY_EMAILS", fmt.Sprintf("maximum %d notification emails allowed", maxNotifyEmails))
 	}

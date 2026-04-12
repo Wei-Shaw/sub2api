@@ -61,7 +61,34 @@
                 <span class="text-sm text-gray-700 dark:text-gray-300 truncate">{{ entry.email }}</span>
               </div>
               <div class="flex items-center gap-2 shrink-0">
-                <span v-if="!entry.verified" class="text-xs text-yellow-500">{{ t('profile.balanceNotify.unverified') }}</span>
+                <template v-if="!entry.verified">
+                  <!-- Inline verify flow for saved unverified emails -->
+                  <template v-if="verifyingEmail === entry.email">
+                    <input
+                      v-model="verifyCode"
+                      type="text"
+                      maxlength="6"
+                      class="w-20 rounded border border-gray-300 px-2 py-1 text-xs dark:border-dark-500 dark:bg-dark-700"
+                      :placeholder="t('profile.balanceNotify.codePlaceholder')"
+                    />
+                    <button @click="verifySavedEmail(entry.email)" :disabled="!verifyCode || verifyCode.length !== 6 || verifyingSaved" class="text-xs text-primary-600 hover:text-primary-700">
+                      {{ t('profile.balanceNotify.verify') }}
+                    </button>
+                    <span v-if="verifyCountdown > 0" class="text-xs text-gray-400">{{ verifyCountdown }}s</span>
+                    <button v-else @click="sendCodeForSaved(entry.email)" :disabled="sendingSavedCode" class="text-xs text-gray-500 hover:text-gray-700">
+                      {{ t('profile.balanceNotify.resend') }}
+                    </button>
+                    <button @click="verifyingEmail = ''" class="text-xs text-gray-400 hover:text-gray-600">
+                      {{ t('common.cancel') }}
+                    </button>
+                  </template>
+                  <template v-else>
+                    <button @click="sendCodeForSaved(entry.email)" :disabled="sendingSavedCode" class="text-xs text-primary-600 hover:text-primary-700">
+                      {{ t('profile.balanceNotify.verify') }}
+                    </button>
+                    <span class="text-xs text-yellow-500">{{ t('profile.balanceNotify.unverified') }}</span>
+                  </template>
+                </template>
                 <span v-else class="text-xs text-green-500">{{ t('profile.balanceNotify.verified') }}</span>
                 <button @click="handleRemoveEmail(entry.email)" class="text-red-500 hover:text-red-700 text-xs">
                   {{ t('profile.balanceNotify.removeEmail') }}
@@ -168,6 +195,14 @@ const pendingEmails = ref<PendingEmail[]>([])
 const newEmail = ref('')
 const savingThreshold = ref(false)
 
+// State for verifying saved unverified emails
+const verifyingEmail = ref('')
+const verifyCode = ref('')
+const verifyingSaved = ref(false)
+const sendingSavedCode = ref(false)
+const verifyCountdown = ref(0)
+let verifyTimer: ReturnType<typeof setInterval> | null = null
+
 const canAddMore = computed(() => {
   return emailEntries.value.length + pendingEmails.value.length < maxTotalEmails
 })
@@ -187,6 +222,7 @@ onUnmounted(() => {
   for (const pe of pendingEmails.value) {
     if (pe.timer) clearInterval(pe.timer)
   }
+  if (verifyTimer) clearInterval(verifyTimer)
 })
 
 const handleToggle = async () => {
@@ -289,6 +325,49 @@ const handleRemoveEmail = async (email: string) => {
     emailEntries.value = [...updated.balance_notify_extra_emails]
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  }
+}
+
+// Verify saved unverified emails
+async function sendCodeForSaved(email: string) {
+  sendingSavedCode.value = true
+  try {
+    await userAPI.sendNotifyEmailCode(email)
+    verifyingEmail.value = email
+    verifyCode.value = ''
+    verifyCountdown.value = 60
+    if (verifyTimer) clearInterval(verifyTimer)
+    verifyTimer = setInterval(() => {
+      verifyCountdown.value--
+      if (verifyCountdown.value <= 0 && verifyTimer) {
+        clearInterval(verifyTimer)
+        verifyTimer = null
+      }
+    }, 1000)
+    appStore.showSuccess(t('profile.balanceNotify.codeSent'))
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    sendingSavedCode.value = false
+  }
+}
+
+async function verifySavedEmail(email: string) {
+  if (!verifyCode.value || verifyCode.value.length !== 6) return
+  verifyingSaved.value = true
+  try {
+    await userAPI.verifyNotifyEmail(email, verifyCode.value)
+    verifyingEmail.value = ''
+    verifyCode.value = ''
+    if (verifyTimer) { clearInterval(verifyTimer); verifyTimer = null }
+    appStore.showSuccess(t('profile.balanceNotify.verifySuccess'))
+    const updated = await userAPI.getProfile()
+    authStore.user = updated
+    emailEntries.value = [...updated.balance_notify_extra_emails]
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    verifyingSaved.value = false
   }
 }
 </script>
