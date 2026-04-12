@@ -4444,10 +4444,12 @@ export default {
       payment: {
         title: 'Payment Settings',
         description: 'Configure payment system options',
+        configGuide: 'Configuration Guide',
         enabled: 'Enable Payment',
         enabledHint: 'Enable or disable the payment system',
         enabledPaymentTypes: 'Enabled Providers',
-        enabledPaymentTypesHint: 'Disabling a provider will also disable its instances',
+        enabledPaymentTypesHint: 'Disabling a provider will also disable its instances.',
+        findProvider: 'Looking for a suitable EasyPay provider?',
         minAmount: 'Minimum Amount',
         maxAmount: 'Maximum Amount',
         dailyLimit: 'Daily Limit',
