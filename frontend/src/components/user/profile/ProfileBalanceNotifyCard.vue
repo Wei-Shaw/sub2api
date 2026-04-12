@@ -49,14 +49,16 @@
             </div>
           </div>
 
-          <!-- Verified extra emails -->
+          <!-- Verified extra emails with toggle -->
           <div v-if="extraEmails.length > 0" class="space-y-2 mb-3">
             <div v-for="email in extraEmails" :key="email"
               class="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-dark-700 rounded-lg">
               <span class="text-sm text-gray-700 dark:text-gray-300">{{ email }}</span>
-              <button @click="handleRemoveEmail(email)" class="text-red-500 hover:text-red-700 text-sm">
-                {{ t('profile.balanceNotify.removeEmail') }}
-              </button>
+              <div class="flex items-center gap-2">
+                <button @click="handleRemoveEmail(email)" class="text-red-500 hover:text-red-700 text-xs">
+                  {{ t('profile.balanceNotify.removeEmail') }}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -185,7 +187,7 @@ function addPendingEmail() {
   const email = newEmail.value.trim()
   if (!email) return
   if (email === props.userEmail || extraEmails.value.includes(email) || pendingEmails.value.some(p => p.email === email)) {
-    appStore.showError(t('common.error'))
+    appStore.showError(t('profile.balanceNotify.emailDuplicate'))
     return
   }
   pendingEmails.value.push({ email, codeSent: false, code: '', sending: false, verifying: false, countdown: 0, timer: null })
