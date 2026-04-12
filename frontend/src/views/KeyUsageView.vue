@@ -707,10 +707,13 @@ const usageStatCells = computed<StatCell[]>(() => {
 
   const today = usage.today || {}
   const total = usage.total || {}
+  const todayTotalInput = (today.input_tokens || 0) + (today.cache_read_tokens || 0) + (today.cache_creation_tokens || 0)
+  const totalInput = (total.input_tokens || 0) + (total.cache_read_tokens || 0) + (total.cache_creation_tokens || 0)
 
   return [
     { label: t('keyUsage.todayRequests'), value: fmtNum(today.requests) },
-    { label: t('keyUsage.todayInputTokens'), value: fmtNum(today.input_tokens) },
+    { label: t('keyUsage.grossInputTokens'), value: fmtNum(todayTotalInput) },
+    { label: t('keyUsage.netInputTokens'), value: fmtNum(today.input_tokens) },
     { label: t('keyUsage.todayOutputTokens'), value: fmtNum(today.output_tokens) },
     { label: t('keyUsage.todayTokens'), value: fmtNum(today.total_tokens) },
     { label: t('keyUsage.todayCacheCreation'), value: fmtNum(today.cache_creation_tokens) },
@@ -718,7 +721,8 @@ const usageStatCells = computed<StatCell[]>(() => {
     { label: t('keyUsage.todayCost'), value: usd(today.actual_cost) },
     { label: t('keyUsage.rpmTpm'), value: `${usage.rpm || 0} / ${usage.tpm || 0}` },
     { label: t('keyUsage.totalRequests'), value: fmtNum(total.requests) },
-    { label: t('keyUsage.totalInputTokens'), value: fmtNum(total.input_tokens) },
+    { label: t('keyUsage.grossInputTokens'), value: fmtNum(totalInput) },
+    { label: t('keyUsage.netInputTokens'), value: fmtNum(total.input_tokens) },
     { label: t('keyUsage.totalOutputTokens'), value: fmtNum(total.output_tokens) },
     { label: t('keyUsage.totalTokensLabel'), value: fmtNum(total.total_tokens) },
     { label: t('keyUsage.totalCacheCreation'), value: fmtNum(total.cache_creation_tokens) },

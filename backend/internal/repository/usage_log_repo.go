@@ -238,13 +238,14 @@ func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usage
 	return repo
 }
 
-// getPerformanceStats 获取 RPM 和 TPM（近5分钟平均值，可选按用户过滤）
+// getPerformanceStats 获取 RPM 和 TPM（近5分钟平均值，可选按用户过滤）。
+// TPM 口径统一按总 token 计算：input + output + cache_creation + cache_read。
 func (r *usageLogRepository) getPerformanceStats(ctx context.Context, userID int64) (rpm, tpm int64, err error) {
 	fiveMinutesAgo := time.Now().Add(-5 * time.Minute)
 	query := `
 		SELECT
 			COUNT(*) as request_count,
-			COALESCE(SUM(input_tokens + output_tokens), 0) as token_count
+			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as token_count
 		FROM usage_logs
 		WHERE created_at >= $1`
 	args := []any{fiveMinutesAgo}
