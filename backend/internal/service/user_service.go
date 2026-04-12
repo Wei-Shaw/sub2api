@@ -145,7 +145,9 @@ REDACTED
 		user.BalanceNotifyEnabled = *req.BalanceNotifyEnabled
 REDACTED
 	if req.BalanceNotifyThresholdType != nil {
-		user.BalanceNotifyThresholdType = *req.BalanceNotifyThresholdType
+		if *req.BalanceNotifyThresholdType == ThresholdTypeFixed || *req.BalanceNotifyThresholdType == ThresholdTypePercentage {
+			user.BalanceNotifyThresholdType = *req.BalanceNotifyThresholdType
+	REDACTED
 REDACTED
 	if req.BalanceNotifyThreshold != nil {
 		if *req.BalanceNotifyThreshold <= 0 {

@@ -150,7 +150,8 @@ REDACTED
 		SetBalanceNotifyEnabled(userIn.BalanceNotifyEnabled).
 		SetBalanceNotifyThresholdType(userIn.BalanceNotifyThresholdType).
 		SetNillableBalanceNotifyThreshold(userIn.BalanceNotifyThreshold).
-		SetBalanceNotifyExtraEmails(marshalExtraEmails(userIn.BalanceNotifyExtraEmails))
+		SetBalanceNotifyExtraEmails(marshalExtraEmails(userIn.BalanceNotifyExtraEmails)).
+		SetTotalRecharged(userIn.TotalRecharged)
 	if userIn.BalanceNotifyThreshold == nil {
 		updateOp = updateOp.ClearBalanceNotifyThreshold()
 REDACTED

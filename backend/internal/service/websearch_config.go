@@ -10,7 +10,6 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
-	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -85,8 +84,7 @@ const (
 // GetWebSearchEmulationConfig returns the configuration with in-process cache + singleflight.
 func (s *SettingService) GetWebSearchEmulationConfig(ctx context.Context) (*WebSearchEmulationConfig, error) {
 	if cached := webSearchEmulationCache.Load(); cached != nil {
-		c := cached.(*cachedWebSearchEmulationConfig)
-		if time.Now().UnixNano() < c.expiresAt {
+		if c, ok := cached.(*cachedWebSearchEmulationConfig); ok && time.Now().UnixNano() < c.expiresAt {
 			return c.config, nil
 	REDACTED
 REDACTED
@@ -96,7 +94,10 @@ REDACTED)
 	if err != nil {
 		return &WebSearchEmulationConfig{REDACTED, err
 REDACTED
-	return result.(*WebSearchEmulationConfig), nil
+	if cfg, ok := result.(*WebSearchEmulationConfig); ok {
+		return cfg, nil
+REDACTED
+	return &WebSearchEmulationConfig{REDACTED, nil
 REDACTED
 
 func (s *SettingService) loadWebSearchConfigFromDB() (*WebSearchEmulationConfig, error) {
@@ -154,7 +155,7 @@ REDACTED
 REDACTED)
 
 	// Hot-reload: rebuild the global Manager with new config
-	s.RebuildWebSearchManager(ctx)
+	s.rebuildWebSearchManager(ctx)
 	return nil
 REDACTED
 
@@ -196,34 +197,51 @@ REDACTED
 	return cfg.Enabled && len(cfg.Providers) > 0
 REDACTED
 
-// SetWebSearchRedisClient injects the Redis client used for quota tracking.
-// Call after construction, before first use. Triggers initial Manager build.
-func (s *SettingService) SetWebSearchRedisClient(ctx context.Context, redisClient *redis.Client) {
-	s.webSearchRedis = redisClient
-	s.RebuildWebSearchManager(ctx)
+// SetWebSearchManagerBuilder injects a callback that creates and wires a websearch.Manager.
+// The infra layer (main/wire) provides this builder, keeping redis out of the service layer.
+// Triggers initial build.
+func (s *SettingService) SetWebSearchManagerBuilder(ctx context.Context, builder WebSearchManagerBuilder) {
+	s.webSearchManagerBuilder = builder
+	s.rebuildWebSearchManager(ctx)
 REDACTED
 
-// RebuildWebSearchManager reads the current config and (re)creates the global websearch.Manager.
-// Called on startup and after SaveWebSearchEmulationConfig.
-func (s *SettingService) RebuildWebSearchManager(ctx context.Context) {
+// rebuildWebSearchManager reads the current config, resolves proxy URLs, and invokes the builder.
+func (s *SettingService) rebuildWebSearchManager(ctx context.Context) {
+	if s.webSearchManagerBuilder == nil {
+		return
+REDACTED
 	cfg, err := s.GetWebSearchEmulationConfig(ctx)
-	if err != nil || !cfg.Enabled || len(cfg.Providers) == 0 {
+	if err != nil {
 		SetWebSearchManager(nil)
 		return
 REDACTED
-	providerConfigs := make([]websearch.ProviderConfig, 0, len(cfg.Providers))
-	for _, p := range cfg.Providers {
-		providerConfigs = append(providerConfigs, websearch.ProviderConfig{
-			Type:                 p.Type,
-			APIKey:               p.APIKey,
-			Priority:             p.Priority,
-			QuotaLimit:           p.QuotaLimit,
-			QuotaRefreshInterval: p.QuotaRefreshInterval,
-			ExpiresAt:            p.ExpiresAt,
-	REDACTED)
+	proxyURLs := s.resolveProviderProxyURLs(ctx, cfg)
+	s.webSearchManagerBuilder(cfg, proxyURLs)
 REDACTED
-	SetWebSearchManager(websearch.NewManager(providerConfigs, s.webSearchRedis))
-	slog.Info("websearch: manager rebuilt", "provider_count", len(providerConfigs))
+
+// resolveProviderProxyURLs collects proxy IDs from providers and resolves them to URLs.
+func (s *SettingService) resolveProviderProxyURLs(ctx context.Context, cfg *WebSearchEmulationConfig) map[int64]string {
+	if cfg == nil || s.proxyRepo == nil {
+		return nil
+REDACTED
+	var ids []int64
+	for _, p := range cfg.Providers {
+		if p.ProxyID != nil && *p.ProxyID > 0 {
+			ids = append(ids, *p.ProxyID)
+	REDACTED
+REDACTED
+	if len(ids) == 0 {
+		return nil
+REDACTED
+	proxies, err := s.proxyRepo.ListByIDs(ctx, ids)
+	if err != nil {
+		return nil
+REDACTED
+	result := make(map[int64]string, len(proxies))
+	for _, px := range proxies {
+		result[px.ID] = px.URL()
+REDACTED
+	return result
 REDACTED
 
 // WebSearchTestResult holds the result of a search test.

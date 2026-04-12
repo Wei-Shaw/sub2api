@@ -3109,8 +3109,12 @@ async function copyApiKey(idx: number) {
     appStore.showError(t('admin.settings.webSearchEmulation.apiKeyPlaceholder'))
     return
   REDACTED
-  await navigator.clipboard.writeText(key)
-  appStore.showSuccess(t('admin.settings.webSearchEmulation.copied'))
+  try {
+    await navigator.clipboard.writeText(key)
+    appStore.showSuccess(t('admin.settings.webSearchEmulation.copied'))
+  REDACTED catch {
+    appStore.showError(t('common.error'))
+  REDACTED
 REDACTED
 
 async function testWebSearchProvider() {
