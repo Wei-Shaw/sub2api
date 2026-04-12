@@ -177,7 +177,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EnableCCHSigning:                     settings.EnableCCHSigning,
 		WebSearchEmulationEnabled:            settings.WebSearchEmulationEnabled,
 		BalanceLowNotifyEnabled:              settings.BalanceLowNotifyEnabled,
-		BalanceLowNotifyThresholdType:        settings.BalanceLowNotifyThresholdType,
 		BalanceLowNotifyThreshold:            settings.BalanceLowNotifyThreshold,
 		AccountQuotaNotifyEmails:             settings.AccountQuotaNotifyEmails,
 		PaymentEnabled:                       paymentCfg.Enabled,
@@ -310,10 +309,9 @@ type UpdateSettingsRequest struct {
 	EnableCCHSigning             *bool `json:"enable_cch_signing"`
 
 	// Balance low notification
-	BalanceLowNotifyEnabled       *bool     `json:"balance_low_notify_enabled"`
-	BalanceLowNotifyThresholdType *string   `json:"balance_low_notify_threshold_type"`
-	BalanceLowNotifyThreshold     *float64  `json:"balance_low_notify_threshold"`
-	AccountQuotaNotifyEmails      *[]string `json:"account_quota_notify_emails"`
+	BalanceLowNotifyEnabled   *bool     `json:"balance_low_notify_enabled"`
+	BalanceLowNotifyThreshold *float64  `json:"balance_low_notify_threshold"`
+	AccountQuotaNotifyEmails  *[]string `json:"account_quota_notify_emails"`
 
 	// Payment configuration (integrated into settings, full replace)
 	PaymentEnabled           *bool    `json:"payment_enabled"`
@@ -898,12 +896,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.BalanceLowNotifyEnabled
 		}(),
-		BalanceLowNotifyThresholdType: func() string {
-			if req.BalanceLowNotifyThresholdType != nil {
-				return *req.BalanceLowNotifyThresholdType
-			}
-			return previousSettings.BalanceLowNotifyThresholdType
-		}(),
 		BalanceLowNotifyThreshold: func() float64 {
 			if req.BalanceLowNotifyThreshold != nil {
 				return *req.BalanceLowNotifyThreshold
@@ -1063,7 +1055,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableMetadataPassthrough:            updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                     updatedSettings.EnableCCHSigning,
 		BalanceLowNotifyEnabled:              updatedSettings.BalanceLowNotifyEnabled,
-		BalanceLowNotifyThresholdType:        updatedSettings.BalanceLowNotifyThresholdType,
 		BalanceLowNotifyThreshold:            updatedSettings.BalanceLowNotifyThreshold,
 		AccountQuotaNotifyEmails:             updatedSettings.AccountQuotaNotifyEmails,
 		PaymentEnabled:                       updatedPaymentCfg.Enabled,

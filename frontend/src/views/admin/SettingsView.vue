@@ -2675,43 +2675,13 @@
               <label class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.balanceNotify.enabled') }}</label>
               <Toggle v-model="form.balance_low_notify_enabled" />
             </div>
-            <div v-if="form.balance_low_notify_enabled" class="space-y-3">
-              <!-- Threshold type selector -->
-              <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.balanceNotify.thresholdType') }}</label>
-                <div class="flex gap-4">
-                  <label class="flex items-center gap-1.5 text-sm cursor-pointer">
-                    <input type="radio" v-model="form.balance_low_notify_threshold_type" value="fixed" class="accent-primary-500" />
-                    {{ t('admin.settings.balanceNotify.typeFixed') }}
-                  </label>
-                  <label class="flex items-center gap-1.5 text-sm cursor-pointer">
-                    <input type="radio" v-model="form.balance_low_notify_threshold_type" value="percentage" class="accent-primary-500" />
-                    {{ t('admin.settings.balanceNotify.typePercentage') }}
-                  </label>
-                </div>
+            <div v-if="form.balance_low_notify_enabled">
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.balanceNotify.threshold') }}</label>
+              <div class="relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                <input v-model.number="form.balance_low_notify_threshold" type="number" min="0" step="0.01" class="input pl-7" />
               </div>
-              <!-- Threshold value -->
-              <div>
-                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.balanceNotify.threshold') }}</label>
-                <div class="relative">
-                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                    {{ form.balance_low_notify_threshold_type === 'percentage' ? '%' : '$' }}
-                  </span>
-                  <input
-                    v-model.number="form.balance_low_notify_threshold"
-                    type="number"
-                    :min="0"
-                    :max="form.balance_low_notify_threshold_type === 'percentage' ? 100 : undefined"
-                    :step="form.balance_low_notify_threshold_type === 'percentage' ? 1 : 0.01"
-                    class="input pl-7"
-                  />
-                </div>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {{ form.balance_low_notify_threshold_type === 'percentage'
-                    ? t('admin.settings.balanceNotify.percentageHint')
-                    : t('admin.settings.balanceNotify.thresholdHint') }}
-                </p>
-              </div>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.balanceNotify.thresholdHint') }}</p>
             </div>
           </div>
         </div>
@@ -3026,7 +2996,6 @@ const form = reactive<SettingsForm>({
   enable_cch_signing: false,
   // Balance & quota notification
   balance_low_notify_enabled: false,
-  balance_low_notify_threshold_type: 'fixed' as 'fixed' | 'percentage',
   balance_low_notify_threshold: 0,
   account_quota_notify_emails: [] as string[]
 })
@@ -3591,7 +3560,6 @@ async function saveSettings() {
       payment_cancel_rate_limit_window_mode: form.payment_cancel_rate_limit_window_mode,
       // Balance & quota notification
       balance_low_notify_enabled: form.balance_low_notify_enabled,
-      balance_low_notify_threshold_type: form.balance_low_notify_threshold_type,
       balance_low_notify_threshold: Number(form.balance_low_notify_threshold) || 0,
       account_quota_notify_emails: (form.account_quota_notify_emails || []).filter((e: string) => e.trim() !== ''),
     }
