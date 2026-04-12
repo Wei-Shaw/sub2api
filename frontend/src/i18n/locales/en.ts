@@ -1877,7 +1877,7 @@ export default {
         pricingEntry: 'Pricing Entry',
         noModels: 'No models added',
         applyPricingToAccountStats: 'Apply Pricing to Account Stats',
-        applyPricingToAccountStatsDesc: 'When enabled, account statistics cost will use channel model pricing. Account rate multiplier still applies.',
+        applyPricingToAccountStatsDesc: 'When enabled, custom account stats model pricing rules will be applied.',
         accountStatsPricingRules: 'Custom Account Stats Pricing Rules',
         addRule: 'Add Rule',
         noRulesConfigured: 'No custom rules configured. Channel model pricing above will be used.',

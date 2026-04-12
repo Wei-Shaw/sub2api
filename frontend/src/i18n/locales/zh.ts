@@ -1956,7 +1956,7 @@ export default {
         pricingEntry: '定价配置',
         noModels: '未添加模型',
         applyPricingToAccountStats: '应用模型定价到账号统计',
-        applyPricingToAccountStatsDesc: '启用后，账号统计费用将使用渠道模型定价计算。账号自身的统计倍率仍然生效。',
+        applyPricingToAccountStatsDesc: '启用后将支持自定义账号统计的模型价格',
         accountStatsPricingRules: '自定义账号统计定价规则',
         addRule: '添加规则',
         noRulesConfigured: '未配置自定义规则，将使用上方的模型定价。',
