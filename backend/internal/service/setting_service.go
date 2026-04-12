@@ -1272,13 +1272,10 @@ REDACTED
 	// Account quota notification
 	result.AccountQuotaNotifyEnabled = settings[SettingKeyAccountQuotaNotifyEnabled] == "true"
 	if raw := strings.TrimSpace(settings[SettingKeyAccountQuotaNotifyEmails]); raw != "" {
-		var emails []string
-		if err := json.Unmarshal([]byte(raw), &emails); err == nil {
-			result.AccountQuotaNotifyEmails = emails
-	REDACTED
+		result.AccountQuotaNotifyEmails = ParseNotifyEmails(raw)
 REDACTED
 	if result.AccountQuotaNotifyEmails == nil {
-		result.AccountQuotaNotifyEmails = []string{REDACTED
+		result.AccountQuotaNotifyEmails = []NotifyEmailEntry{REDACTED
 REDACTED
 
 	return result

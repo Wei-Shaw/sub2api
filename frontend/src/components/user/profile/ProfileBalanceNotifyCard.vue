@@ -45,23 +45,26 @@
           </div>
         </div>
 
-        <!-- Primary email (always shown, with toggle) -->
+        <!-- Email list with toggles -->
         <div>
           <label class="input-label">{{ t('profile.balanceNotify.extraEmails') REDACTEDREDACTED</label>
           <div class="space-y-2 mb-3">
-            <div class="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-dark-700 rounded-lg">
-              <span class="text-sm text-gray-700 dark:text-gray-300">{{ userEmail REDACTEDREDACTED</span>
-              <span class="text-xs text-gray-400">{{ t('profile.balanceNotify.primaryEmail') REDACTEDREDACTED</span>
-            </div>
-          </div>
-
-          <!-- Verified extra emails with toggle -->
-          <div v-if="extraEmails.length > 0" class="space-y-2 mb-3">
-            <div v-for="email in extraEmails" :key="email"
+            <!-- All email entries (primary placeholder + extra) -->
+            <div v-for="(entry, idx) in emailEntries" :key="idx"
               class="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-dark-700 rounded-lg">
-              <span class="text-sm text-gray-700 dark:text-gray-300">{{ email REDACTEDREDACTED</span>
-              <div class="flex items-center gap-2">
-                <button @click="handleRemoveEmail(email)" class="text-red-500 hover:text-red-700 text-xs">
+              <div class="flex items-center gap-2 min-w-0 flex-1">
+                <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input type="checkbox" :checked="!entry.disabled" @change="handleEmailToggle(entry)" class="sr-only peer" />
+                  <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-gray-500 peer-checked:bg-primary-600"></div>
+                </label>
+                <span class="text-sm text-gray-700 dark:text-gray-300 truncate">
+                  {{ entry.email === '' ? userEmail : entry.email REDACTEDREDACTED
+                </span>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span v-if="entry.email === ''" class="text-xs text-gray-400">{{ t('profile.balanceNotify.primaryEmail') REDACTEDREDACTED</span>
+                <span v-else-if="!entry.verified" class="text-xs text-yellow-500">{{ t('profile.balanceNotify.unverified') REDACTEDREDACTED</span>
+                <button v-if="entry.email !== ''" @click="handleRemoveEmail(entry.email)" class="text-red-500 hover:text-red-700 text-xs">
                   {{ t('profile.balanceNotify.removeEmail') REDACTEDREDACTED
                 </button>
               </div>
@@ -100,8 +103,8 @@
             </div>
           </div>
 
-          <!-- Add new email input -->
-          <div class="flex gap-2">
+          <!-- Add new email input (hidden when at limit) -->
+          <div v-if="canAddMore" class="flex gap-2">
             <input
               v-model="newEmail"
               type="email"
@@ -117,6 +120,9 @@
               {{ t('common.add') REDACTEDREDACTED
             </button>
           </div>
+          <p v-else class="text-xs text-gray-400">
+            {{ t('profile.balanceNotify.maxEmailsReached') REDACTEDREDACTED
+          </p>
         </div>
       </template>
     </div>
@@ -124,12 +130,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted REDACTED from 'vue'
+import { ref, computed, watch, onUnmounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAuthStore REDACTED from '@/stores/auth'
 import { useAppStore REDACTED from '@/stores/app'
 import { userAPI REDACTED from '@/api'
 import { extractApiErrorMessage REDACTED from '@/utils/apiError'
+import type { NotifyEmailEntry REDACTED from '@/types'
+
+const maxTotalEmails = 3 // primary + 2 extra
 
 interface PendingEmail {
   email: string
@@ -144,7 +153,7 @@ REDACTED
 const props = defineProps<{
   enabled: boolean
   threshold: number | null
-  extraEmails: string[]
+  extraEmails: NotifyEmailEntry[]
   systemDefaultThreshold: number
   userEmail: string
 REDACTED>()
@@ -155,14 +164,18 @@ const appStore = useAppStore()
 
 const notifyEnabled = ref(props.enabled)
 const customThreshold = ref<number | null>(props.threshold)
-const extraEmails = ref<string[]>([...props.extraEmails])
+const emailEntries = ref<NotifyEmailEntry[]>([...props.extraEmails])
 const pendingEmails = ref<PendingEmail[]>([])
 const newEmail = ref('')
 const savingThreshold = ref(false)
 
+const canAddMore = computed(() => {
+  return emailEntries.value.length + pendingEmails.value.length < maxTotalEmails
+REDACTED)
+
 watch(() => props.enabled, (val) => { notifyEnabled.value = val REDACTED)
 watch(() => props.threshold, (val) => { customThreshold.value = val REDACTED)
-watch(() => props.extraEmails, (val) => { extraEmails.value = [...val] REDACTED)
+watch(() => props.extraEmails, (val) => { emailEntries.value = [...val] REDACTED)
 
 onUnmounted(() => {
   for (const pe of pendingEmails.value) {
@@ -194,10 +207,25 @@ const handleThresholdUpdate = async () => {
   REDACTED
 REDACTED
 
+async function handleEmailToggle(entry: NotifyEmailEntry) {
+  const newDisabled = !entry.disabled
+  try {
+    const updated = await userAPI.toggleNotifyEmail(entry.email, newDisabled)
+    authStore.user = updated
+    emailEntries.value = [...updated.balance_notify_extra_emails]
+  REDACTED catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  REDACTED
+REDACTED
+
 function addPendingEmail() {
   const email = newEmail.value.trim()
   if (!email) return
-  if (email === props.userEmail || extraEmails.value.includes(email) || pendingEmails.value.some(p => p.email === email)) {
+  // Check duplicates against existing entries and pending
+  const isDuplicate = emailEntries.value.some(e =>
+    (e.email === '' ? props.userEmail : e.email).toLowerCase() === email.toLowerCase()
+  ) || pendingEmails.value.some(p => p.email.toLowerCase() === email.toLowerCase())
+  if (isDuplicate) {
     appStore.showError(t('profile.balanceNotify.emailDuplicate'))
     return
   REDACTED
@@ -234,12 +262,12 @@ async function verifyPending(idx: number) {
   pe.verifying = true
   try {
     await userAPI.verifyNotifyEmail(pe.email, pe.code)
-    extraEmails.value.push(pe.email)
     if (pe.timer) clearInterval(pe.timer)
     pendingEmails.value.splice(idx, 1)
     appStore.showSuccess(t('profile.balanceNotify.verifySuccess'))
     const updated = await userAPI.getProfile()
     authStore.user = updated
+    emailEntries.value = [...updated.balance_notify_extra_emails]
   REDACTED catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
   REDACTED finally {
@@ -250,10 +278,10 @@ REDACTED
 const handleRemoveEmail = async (email: string) => {
   try {
     await userAPI.removeNotifyEmail(email)
-    extraEmails.value = extraEmails.value.filter(e => e !== email)
     appStore.showSuccess(t('profile.balanceNotify.removeSuccess'))
     const updated = await userAPI.getProfile()
     authStore.user = updated
+    emailEntries.value = [...updated.balance_notify_extra_emails]
   REDACTED catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
   REDACTED

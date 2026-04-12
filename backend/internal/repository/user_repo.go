@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -563,16 +562,9 @@ REDACTED
 	dst.UpdatedAt = src.UpdatedAt
 REDACTED
 
-// marshalExtraEmails serializes a string slice to JSON for storage.
-func marshalExtraEmails(emails []string) string {
-	if len(emails) == 0 {
-		return "[]"
-REDACTED
-	data, err := json.Marshal(emails)
-	if err != nil {
-		return "[]"
-REDACTED
-	return string(data)
+// marshalExtraEmails serializes notify email entries to JSON for storage.
+func marshalExtraEmails(entries []service.NotifyEmailEntry) string {
+	return service.MarshalNotifyEmails(entries)
 REDACTED
 
 // UpdateTotpSecret 更新用户的 TOTP 加密密钥

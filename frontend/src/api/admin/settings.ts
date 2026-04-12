@@ -4,7 +4,7 @@
  */
 
 import { apiClient REDACTED from '../client'
-import type { CustomMenuItem, CustomEndpoint REDACTED from '@/types'
+import type { CustomMenuItem, CustomEndpoint, NotifyEmailEntry REDACTED from '@/types'
 
 export interface DefaultSubscriptionSetting {
   group_id: number
@@ -139,7 +139,7 @@ export interface SystemSettings {
   balance_low_notify_enabled: boolean
   balance_low_notify_threshold: number
   account_quota_notify_enabled: boolean
-  account_quota_notify_emails: string[]
+  account_quota_notify_emails: NotifyEmailEntry[]
 REDACTED
 
 export interface UpdateSettingsRequest {
@@ -243,7 +243,7 @@ export interface UpdateSettingsRequest {
   balance_low_notify_enabled?: boolean
   balance_low_notify_threshold?: number
   account_quota_notify_enabled?: boolean
-  account_quota_notify_emails?: string[]
+  account_quota_notify_emails?: NotifyEmailEntry[]
 REDACTED
 
 /**

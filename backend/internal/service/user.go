@@ -34,7 +34,7 @@ type User struct {
 	BalanceNotifyEnabled       bool
 	BalanceNotifyThresholdType string   // "fixed" (default) | "percentage"
 	BalanceNotifyThreshold     *float64
-	BalanceNotifyExtraEmails   []string
+	BalanceNotifyExtraEmails   []NotifyEmailEntry
 	TotalRecharged             float64
 
 	APIKeys       []APIKey

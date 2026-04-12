@@ -113,7 +113,7 @@ type SystemSettings struct {
 
 	// Account quota notification
 	AccountQuotaNotifyEnabled bool
-	AccountQuotaNotifyEmails  []string
+	AccountQuotaNotifyEmails  []NotifyEmailEntry
 REDACTED
 
 type DefaultSubscriptionSetting struct {

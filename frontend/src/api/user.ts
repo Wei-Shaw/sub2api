@@ -4,7 +4,7 @@
  */
 
 import { apiClient REDACTED from './client'
-import type { User, ChangePasswordRequest REDACTED from '@/types'
+import type { User, ChangePasswordRequest, NotifyEmailEntry REDACTED from '@/types'
 
 /**
  * Get current user profile
@@ -24,7 +24,7 @@ export async function updateProfile(profile: {
   username?: string
   balance_notify_enabled?: boolean
   balance_notify_threshold?: number | null
-  balance_notify_extra_emails?: string[]
+  balance_notify_extra_emails?: NotifyEmailEntry[]
 REDACTED): Promise<User> {
   const { data REDACTED = await apiClient.put<User>('/user', profile)
   return data
@@ -73,13 +73,24 @@ export async function removeNotifyEmail(email: string): Promise<void> {
   await apiClient.delete('/user/notify-email', { data: { email REDACTED REDACTED)
 REDACTED
 
+/**
+ * Toggle a notify email's disabled state
+ * @param email - Email address (empty string for primary email placeholder)
+ * @param disabled - Whether to disable the email
+ */
+export async function toggleNotifyEmail(email: string, disabled: boolean): Promise<User> {
+  const { data REDACTED = await apiClient.put<User>('/user/notify-email/toggle', { email, disabled REDACTED)
+  return data
+REDACTED
+
 export const userAPI = {
   getProfile,
   updateProfile,
   changePassword,
   sendNotifyEmailCode,
   verifyNotifyEmail,
-  removeNotifyEmail
+  removeNotifyEmail,
+  toggleNotifyEmail
 REDACTED
 
 export default userAPI
