@@ -143,6 +143,11 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				user.FieldRole,
 				user.FieldBalance,
 				user.FieldConcurrency,
+				user.FieldBalanceNotifyEnabled,
+				user.FieldBalanceNotifyThresholdType,
+				user.FieldBalanceNotifyThreshold,
+				user.FieldBalanceNotifyExtraEmails,
+				user.FieldTotalRecharged,
 			)
 		}).
 		WithGroup(func(q *dbent.GroupQuery) {

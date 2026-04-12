@@ -77,12 +77,12 @@ func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, u
 }
 
 // resolveEffectiveThreshold computes the actual USD threshold based on type and user settings.
+// When user sets a custom threshold, their type is used independently (defaults to "fixed" if unset).
 func (s *BalanceNotifyService) resolveEffectiveThreshold(user *User, globalType string, globalValue float64) float64 {
-	// User-level override takes full precedence
 	if user.BalanceNotifyThreshold != nil {
 		thresholdType := user.BalanceNotifyThresholdType
 		if thresholdType == "" {
-			thresholdType = globalType
+			thresholdType = ThresholdTypeFixed // user custom value defaults to fixed, not inherited
 		}
 		return computeThreshold(thresholdType, *user.BalanceNotifyThreshold, user.TotalRecharged)
 	}

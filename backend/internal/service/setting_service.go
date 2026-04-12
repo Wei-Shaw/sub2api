@@ -100,12 +100,14 @@ type DefaultSubscriptionGroupReader interface {
 }
 
 // WebSearchManagerBuilder creates a websearch.Manager from config (injected by infra layer).
-type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig)
+// proxyURLs maps proxy ID to resolved URL for provider-level proxy support.
+type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[int64]string)
 
 // SettingService 系统设置服务
 type SettingService struct {
 	settingRepo             SettingRepository
 	defaultSubGroupReader   DefaultSubscriptionGroupReader
+	proxyRepo               ProxyRepository // for resolving websearch provider proxy URLs
 	cfg                     *config.Config
 	onUpdate                func() // Callback when settings are updated (for cache invalidation)
 	version                 string // Application version
@@ -123,6 +125,11 @@ func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *Setti
 // SetDefaultSubscriptionGroupReader injects an optional group reader for default subscription validation.
 func (s *SettingService) SetDefaultSubscriptionGroupReader(reader DefaultSubscriptionGroupReader) {
 	s.defaultSubGroupReader = reader
+}
+
+// SetProxyRepository injects a proxy repo for resolving websearch provider proxy URLs.
+func (s *SettingService) SetProxyRepository(repo ProxyRepository) {
+	s.proxyRepo = repo
 }
 
 // GetAllSettings 获取所有系统设置
@@ -602,7 +609,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	// Balance low notification
 	updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(settings.BalanceLowNotifyEnabled)
 	thresholdType := settings.BalanceLowNotifyThresholdType
-	if thresholdType == "" {
+	if thresholdType != ThresholdTypeFixed && thresholdType != ThresholdTypePercentage {
 		thresholdType = ThresholdTypeFixed
 	}
 	updates[SettingKeyBalanceLowNotifyThresholdType] = thresholdType

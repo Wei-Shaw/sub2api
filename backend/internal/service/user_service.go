@@ -145,7 +145,9 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID int64, req Updat
 		user.BalanceNotifyEnabled = *req.BalanceNotifyEnabled
 	}
 	if req.BalanceNotifyThresholdType != nil {
-		user.BalanceNotifyThresholdType = *req.BalanceNotifyThresholdType
+		if *req.BalanceNotifyThresholdType == ThresholdTypeFixed || *req.BalanceNotifyThresholdType == ThresholdTypePercentage {
+			user.BalanceNotifyThresholdType = *req.BalanceNotifyThresholdType
+		}
 	}
 	if req.BalanceNotifyThreshold != nil {
 		if *req.BalanceNotifyThreshold <= 0 {

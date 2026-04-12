@@ -373,10 +373,11 @@ func ProvideBackupService(
 	return svc
 }
 
-// ProvideSettingService wires SettingService with group reader for default subscription validation.
-func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, cfg *config.Config) *SettingService {
+// ProvideSettingService wires SettingService with group reader and proxy repo.
+func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, cfg *config.Config) *SettingService {
 	svc := NewSettingService(settingRepo, cfg)
 	svc.SetDefaultSubscriptionGroupReader(groupRepo)
+	svc.SetProxyRepository(proxyRepo)
 	return svc
 }
 

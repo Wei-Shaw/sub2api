@@ -205,7 +205,7 @@ func (s *SettingService) SetWebSearchManagerBuilder(ctx context.Context, builder
 	s.rebuildWebSearchManager(ctx)
 }
 
-// rebuildWebSearchManager reads the current config and invokes the builder.
+// rebuildWebSearchManager reads the current config, resolves proxy URLs, and invokes the builder.
 func (s *SettingService) rebuildWebSearchManager(ctx context.Context) {
 	if s.webSearchManagerBuilder == nil {
 		return
@@ -215,7 +215,33 @@ func (s *SettingService) rebuildWebSearchManager(ctx context.Context) {
 		SetWebSearchManager(nil)
 		return
 	}
-	s.webSearchManagerBuilder(cfg)
+	proxyURLs := s.resolveProviderProxyURLs(ctx, cfg)
+	s.webSearchManagerBuilder(cfg, proxyURLs)
+}
+
+// resolveProviderProxyURLs collects proxy IDs from providers and resolves them to URLs.
+func (s *SettingService) resolveProviderProxyURLs(ctx context.Context, cfg *WebSearchEmulationConfig) map[int64]string {
+	if cfg == nil || s.proxyRepo == nil {
+		return nil
+	}
+	var ids []int64
+	for _, p := range cfg.Providers {
+		if p.ProxyID != nil && *p.ProxyID > 0 {
+			ids = append(ids, *p.ProxyID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	proxies, err := s.proxyRepo.ListByIDs(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	result := make(map[int64]string, len(proxies))
+	for _, px := range proxies {
+		result[px.ID] = px.URL()
+	}
+	return result
 }
 
 // WebSearchTestResult holds the result of a search test.
