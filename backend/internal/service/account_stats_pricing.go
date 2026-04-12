@@ -8,23 +8,18 @@ import (
 
 // resolveAccountStatsCost 计算账号统计定价费用。
 // 返回 nil 表示不覆盖，使用默认公式（total_cost × account_rate_multiplier）。
-//
-// 匹配优先级（先命中为准）：
-//  1. 自定义规则（AccountStatsPricingRules，按数组顺序遍历）
-//  2. 渠道已有的模型定价（ApplyPricingToAccountStats 开启时）
-//  3. nil → 走默认公式
+// 仅匹配自定义规则（AccountStatsPricingRules），按数组顺序先命中为准。
+// upstreamModel 是最终发往上游的模型 ID，用于匹配自定义规则中的模型定价。
 func resolveAccountStatsCost(
 	ctx context.Context,
 	channelService *ChannelService,
-	billingService *BillingService,
 	accountID int64,
 	groupID int64,
-	billingModel string,
+	upstreamModel string,
 	tokens UsageTokens,
 	requestCount int,
-	serviceTier string,
 ) *float64 {
-	if channelService == nil || billingService == nil {
+	if channelService == nil || upstreamModel == "" {
 		return nil
 	}
 	channel, err := channelService.GetChannelForGroup(ctx, groupID)
@@ -33,22 +28,15 @@ func resolveAccountStatsCost(
 	}
 
 	platform := channelService.GetGroupPlatform(ctx, groupID)
-	modelLower := strings.ToLower(billingModel)
-
-	// 优先级 1：自定义规则
-	if cost := tryCustomRules(channel, accountID, groupID, platform, modelLower, tokens, requestCount); cost != nil {
-		return cost
-	}
-
-	// 优先级 2：渠道已有模型定价
-	return tryChannelPricing(ctx, channelService, groupID, billingModel, tokens, requestCount)
+	return tryCustomRules(channel, accountID, groupID, platform, upstreamModel, tokens, requestCount)
 }
 
 // tryCustomRules 遍历自定义规则，按数组顺序先命中为准。
 func tryCustomRules(
 	channel *Channel, accountID, groupID int64,
-	platform, modelLower string, tokens UsageTokens, requestCount int,
+	platform, model string, tokens UsageTokens, requestCount int,
 ) *float64 {
+	modelLower := strings.ToLower(model)
 	for _, rule := range channel.AccountStatsPricingRules {
 		if !matchAccountStatsRule(&rule, accountID, groupID) {
 			continue
@@ -60,18 +48,6 @@ func tryCustomRules(
 		return calculateStatsCost(pricing, tokens, requestCount)
 	}
 	return nil
-}
-
-// tryChannelPricing 使用渠道已有的模型定价计算账号统计费用。
-func tryChannelPricing(
-	ctx context.Context, channelService *ChannelService,
-	groupID int64, billingModel string, tokens UsageTokens, requestCount int,
-) *float64 {
-	pricing := channelService.GetChannelModelPricing(ctx, groupID, billingModel)
-	if pricing == nil {
-		return nil
-	}
-	return calculateStatsCost(pricing, tokens, requestCount)
 }
 
 // matchAccountStatsRule 检查规则是否匹配指定的 accountID 和 groupID。

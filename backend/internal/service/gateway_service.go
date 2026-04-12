@@ -7772,11 +7772,15 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
 		requestedModel, multiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
 
-	// 计算账号统计定价费用
+	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {
+		upstreamModel := result.UpstreamModel
+		if upstreamModel == "" {
+			upstreamModel = result.Model
+		}
 		usageLog.AccountStatsCost = resolveAccountStatsCost(
-			ctx, s.channelService, s.billingService,
-			account.ID, *apiKey.GroupID, billingModel,
+			ctx, s.channelService,
+			account.ID, *apiKey.GroupID, upstreamModel,
 			UsageTokens{
 				InputTokens:         result.Usage.InputTokens,
 				OutputTokens:        result.Usage.OutputTokens,
@@ -7784,8 +7788,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 				CacheReadTokens:     result.Usage.CacheReadInputTokens,
 				ImageOutputTokens:   result.Usage.ImageOutputTokens,
 			},
-			1,  // requestCount
-			"", // serviceTier: Anthropic 平台不使用 service tier
+			1, // requestCount
 		)
 	}
 

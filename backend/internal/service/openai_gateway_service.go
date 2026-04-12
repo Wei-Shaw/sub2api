@@ -4573,12 +4573,16 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.SubscriptionID = &subscription.ID
 	}
 
-	// 计算账号统计定价费用
+	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {
+		statsModel := result.UpstreamModel
+		if statsModel == "" {
+			statsModel = result.Model
+		}
 		usageLog.AccountStatsCost = resolveAccountStatsCost(
-			ctx, s.channelService, s.billingService,
-			account.ID, *apiKey.GroupID, billingModel,
-			tokens, 1, serviceTier,
+			ctx, s.channelService,
+			account.ID, *apiKey.GroupID, statsModel,
+			tokens, 1,
 		)
 	}
 
