@@ -1789,40 +1789,42 @@
 
                 <!-- Expanded content -->
                 <div v-if="expandedProviders[pIdx]" class="space-y-3 border-t border-gray-100 px-4 pb-4 pt-3 dark:border-dark-700">
-                  <!-- API Key with show/copy -->
+                  <!-- API Key with inline show/copy -->
                   <div>
                     <label class="text-xs text-gray-500">{{ t('admin.settings.webSearchEmulation.apiKey') }}</label>
-                    <div class="flex items-center gap-1">
+                    <div class="relative">
                       <input
                         v-model="provider.api_key"
                         :type="apiKeyVisible[pIdx] ? 'text' : 'password'"
-                        class="input flex-1 text-sm"
+                        class="input w-full pr-16 text-sm"
                         :placeholder="provider.api_key_configured ? '••••••••' : t('admin.settings.webSearchEmulation.apiKeyPlaceholder')"
                       />
-                      <button
-                        type="button"
-                        class="btn btn-secondary btn-sm px-2"
-                        :title="apiKeyVisible[pIdx] ? t('admin.settings.webSearchEmulation.hideApiKey') : t('admin.settings.webSearchEmulation.showApiKey')"
-                        @click="apiKeyVisible[pIdx] = !apiKeyVisible[pIdx]"
-                      >
-                        <svg v-if="!apiKeyVisible[pIdx]" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
-                        <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        class="btn btn-secondary btn-sm px-2"
-                        :title="t('admin.settings.webSearchEmulation.copyApiKey')"
-                        @click="copyApiKey(pIdx)"
-                      >
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      </button>
+                      <div class="absolute inset-y-0 right-0 flex items-center pr-1.5">
+                        <button
+                          type="button"
+                          class="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                          :title="apiKeyVisible[pIdx] ? t('admin.settings.webSearchEmulation.hideApiKey') : t('admin.settings.webSearchEmulation.showApiKey')"
+                          @click="apiKeyVisible[pIdx] = !apiKeyVisible[pIdx]"
+                        >
+                          <svg v-if="!apiKeyVisible[pIdx]" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          class="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                          :title="t('admin.settings.webSearchEmulation.copyApiKey')"
+                          @click="copyApiKey(pIdx)"
+                        >
+                          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -1858,47 +1860,66 @@
                     <span class="text-xs text-gray-500">{{ provider.quota_used ?? 0 }} / {{ provider.quota_limit }}</span>
                   </div>
 
-                  <!-- Proxy -->
-                  <div>
-                    <label class="text-xs text-gray-500">{{ t('admin.settings.webSearchEmulation.proxy') }}</label>
-                    <ProxySelector v-model="provider.proxy_id" :proxies="webSearchProxies" />
-                  </div>
-
-                  <!-- Test button -->
-                  <div class="border-t border-gray-100 pt-3 dark:border-dark-700">
-                    <div class="flex items-center gap-2">
-                      <input
-                        v-model="wsTestQuery"
-                        type="text"
-                        class="input flex-1 text-sm"
-                        :placeholder="t('admin.settings.webSearchEmulation.testDefaultQuery')"
-                        @keyup.enter="testWebSearchProvider()"
-                      />
-                      <button
-                        type="button"
-                        class="btn btn-secondary btn-sm"
-                        :disabled="wsTestLoading"
-                        @click="testWebSearchProvider()"
-                      >
-                        {{ wsTestLoading ? t('admin.settings.webSearchEmulation.testing') : t('admin.settings.webSearchEmulation.test') }}
-                      </button>
+                  <!-- Proxy + Test on same row -->
+                  <div class="flex items-end gap-3">
+                    <div class="flex-1">
+                      <label class="text-xs text-gray-500">{{ t('admin.settings.webSearchEmulation.proxy') }}</label>
+                      <ProxySelector v-model="provider.proxy_id" :proxies="webSearchProxies" />
                     </div>
-                    <!-- Test results -->
-                    <div v-if="wsTestResult" class="mt-2 rounded-lg bg-gray-50 p-3 text-xs dark:bg-dark-700">
-                      <p class="mb-1 font-medium text-gray-700 dark:text-gray-300">
-                        {{ t('admin.settings.webSearchEmulation.testResultProvider') }}: {{ wsTestResult.provider }}
-                      </p>
-                      <div v-if="wsTestResult.results.length === 0" class="text-gray-400">
-                        {{ t('admin.settings.webSearchEmulation.testNoResults') }}
-                      </div>
-                      <div v-for="(r, rIdx) in wsTestResult.results.slice(0, 3)" :key="rIdx" class="mt-1">
-                        <a :href="r.url" target="_blank" class="font-medium text-blue-600 hover:underline dark:text-blue-400">{{ r.title }}</a>
-                        <p class="text-gray-500 dark:text-gray-400">{{ r.snippet && r.snippet.length > 120 ? r.snippet.slice(0, 120) + '...' : r.snippet }}</p>
-                      </div>
-                    </div>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm whitespace-nowrap"
+                      @click="openTestDialog()"
+                    >
+                      {{ t('admin.settings.webSearchEmulation.test') }}
+                    </button>
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Web Search Test Dialog -->
+        <div v-if="wsTestDialogOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" @click.self="wsTestDialogOpen = false">
+          <div class="mx-4 w-full max-w-lg rounded-xl bg-white p-6 shadow-xl dark:bg-dark-800">
+            <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.webSearchEmulation.testResultTitle') }}
+            </h3>
+            <div class="flex items-center gap-2">
+              <input
+                v-model="wsTestQuery"
+                type="text"
+                class="input flex-1 text-sm"
+                :placeholder="t('admin.settings.webSearchEmulation.testDefaultQuery')"
+                @keyup.enter="testWebSearchProvider()"
+              />
+              <button
+                type="button"
+                class="btn btn-primary btn-sm"
+                :disabled="wsTestLoading"
+                @click="testWebSearchProvider()"
+              >
+                {{ wsTestLoading ? t('admin.settings.webSearchEmulation.testing') : t('admin.settings.webSearchEmulation.test') }}
+              </button>
+            </div>
+            <!-- Test results -->
+            <div v-if="wsTestResult" class="mt-4 max-h-80 overflow-y-auto rounded-lg bg-gray-50 p-4 dark:bg-dark-700">
+              <p class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.webSearchEmulation.testResultProvider') }}: {{ wsTestResult.provider }}
+              </p>
+              <div v-if="wsTestResult.results.length === 0" class="text-sm text-gray-400">
+                {{ t('admin.settings.webSearchEmulation.testNoResults') }}
+              </div>
+              <div v-for="(r, rIdx) in wsTestResult.results" :key="rIdx" class="mt-2 border-t border-gray-200 pt-2 first:mt-0 first:border-0 first:pt-0 dark:border-dark-600">
+                <a :href="r.url" target="_blank" class="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">{{ r.title }}</a>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ r.snippet }}</p>
+              </div>
+            </div>
+            <div class="mt-4 flex justify-end">
+              <button type="button" class="btn btn-secondary btn-sm" @click="wsTestDialogOpen = false">
+                {{ t('common.close') }}
+              </button>
             </div>
           </div>
         </div>
@@ -3016,6 +3037,12 @@ const apiKeyVisible = reactive<Record<number, boolean>>({})
 const wsTestQuery = ref('')
 const wsTestLoading = ref(false)
 const wsTestResult = ref<WebSearchTestResult | null>(null)
+const wsTestDialogOpen = ref(false)
+
+function openTestDialog() {
+  wsTestResult.value = null
+  wsTestDialogOpen.value = true
+}
 
 function toggleProviderExpand(idx: number) {
   expandedProviders[idx] = !expandedProviders[idx]

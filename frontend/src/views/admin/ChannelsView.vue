@@ -306,21 +306,18 @@
               </div>
             </div>
 
-            <!-- Web Search Emulation (Anthropic only) -->
-            <div v-if="section.platform === 'anthropic'" class="border-t border-gray-200 pt-3 dark:border-dark-600">
+            <!-- Web Search Emulation (Anthropic only, hidden when global disabled) -->
+            <div v-if="section.platform === 'anthropic' && webSearchGlobalEnabled" class="border-t border-gray-200 pt-3 dark:border-dark-600">
               <div class="flex items-center justify-between">
                 <div>
                   <label class="text-xs font-medium text-orange-600 dark:text-orange-400">
                     {{ t('admin.channels.form.webSearchEmulation') }}
                   </label>
-                  <p v-if="webSearchGlobalEnabled" class="mt-0.5 text-[11px] text-amber-500 dark:text-amber-400">
+                  <p class="mt-0.5 text-[11px] text-amber-500 dark:text-amber-400">
                     {{ t('admin.channels.form.webSearchEmulationHint') }}
                   </p>
-                  <p v-else class="mt-0.5 text-[11px] text-gray-400">
-                    {{ t('admin.channels.form.webSearchEmulationGlobalDisabled') }}
-                  </p>
                 </div>
-                <Toggle v-model="section.web_search_emulation" :disabled="!webSearchGlobalEnabled" />
+                <Toggle v-model="section.web_search_emulation" />
               </div>
             </div>
 
