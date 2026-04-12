@@ -1796,10 +1796,11 @@
                       <input
                         v-model="provider.api_key"
                         :type="apiKeyVisible[pIdx] ? 'text' : 'password'"
-                        class="input w-full pr-16 text-sm"
+                        class="input w-full text-sm"
+                        :class="provider.api_key ? 'pr-16' : ''"
                         :placeholder="provider.api_key_configured ? '••••••••' : t('admin.settings.webSearchEmulation.apiKeyPlaceholder')"
                       />
-                      <div class="absolute inset-y-0 right-0 flex items-center pr-1.5">
+                      <div v-if="provider.api_key" class="absolute inset-y-0 right-0 flex items-center pr-1.5">
                         <button
                           type="button"
                           class="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
