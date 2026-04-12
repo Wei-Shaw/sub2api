@@ -108,8 +108,9 @@ type SystemSettings struct {
 	EnableCCHSigning             bool // 是否对 billing header cch 进行签名（默认 false）
 
 	// Balance low notification
-	BalanceLowNotifyEnabled   bool
-	BalanceLowNotifyThreshold float64
+	BalanceLowNotifyEnabled       bool
+	BalanceLowNotifyThresholdType string // "fixed" (default) | "percentage"
+	BalanceLowNotifyThreshold     float64
 
 	// Account quota notification
 	AccountQuotaNotifyEmails []string

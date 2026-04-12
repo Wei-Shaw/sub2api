@@ -2660,6 +2660,90 @@
             </div>
           </div>
         </div>
+        <!-- Balance Low Notification -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h3 class="text-base font-medium text-gray-900 dark:text-white">
+              {{ t('admin.settings.balanceNotify.title') REDACTEDREDACTED
+            </h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.balanceNotify.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="px-6 py-6 space-y-4">
+            <div class="flex items-center justify-between">
+              <label class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.balanceNotify.enabled') REDACTEDREDACTED</label>
+              <Toggle v-model="form.balance_low_notify_enabled" />
+            </div>
+            <div v-if="form.balance_low_notify_enabled" class="space-y-3">
+              <!-- Threshold type selector -->
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.balanceNotify.thresholdType') REDACTEDREDACTED</label>
+                <div class="flex gap-4">
+                  <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="radio" v-model="form.balance_low_notify_threshold_type" value="fixed" class="accent-primary-500" />
+                    {{ t('admin.settings.balanceNotify.typeFixed') REDACTEDREDACTED
+                  </label>
+                  <label class="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="radio" v-model="form.balance_low_notify_threshold_type" value="percentage" class="accent-primary-500" />
+                    {{ t('admin.settings.balanceNotify.typePercentage') REDACTEDREDACTED
+                  </label>
+                </div>
+              </div>
+              <!-- Threshold value -->
+              <div>
+                <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.balanceNotify.threshold') REDACTEDREDACTED</label>
+                <div class="relative">
+                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    {{ form.balance_low_notify_threshold_type === 'percentage' ? '%' : '$' REDACTEDREDACTED
+                  </span>
+                  <input
+                    v-model.number="form.balance_low_notify_threshold"
+                    type="number"
+                    :min="0"
+                    :max="form.balance_low_notify_threshold_type === 'percentage' ? 100 : undefined"
+                    :step="form.balance_low_notify_threshold_type === 'percentage' ? 1 : 0.01"
+                    class="input pl-7"
+                  />
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ form.balance_low_notify_threshold_type === 'percentage'
+                    ? t('admin.settings.balanceNotify.percentageHint')
+                    : t('admin.settings.balanceNotify.thresholdHint') REDACTEDREDACTED
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Account Quota Notification -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h3 class="text-base font-medium text-gray-900 dark:text-white">
+              {{ t('admin.settings.quotaNotify.title') REDACTEDREDACTED
+            </h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.quotaNotify.description') REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="px-6 py-6 space-y-4">
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.quotaNotify.emails') REDACTEDREDACTED</label>
+              <div class="space-y-2">
+                <div v-for="(_, index) in (form.account_quota_notify_emails || [])" :key="index" class="flex items-center gap-2">
+                  <input v-model="form.account_quota_notify_emails[index]" type="email" class="input flex-1" />
+                  <button @click="form.account_quota_notify_emails.splice(index, 1)" class="btn btn-secondary px-2" type="button">
+                    <Icon name="x" size="xs" class="h-4 w-4" />
+                  </button>
+                </div>
+                <button @click="addQuotaNotifyEmail" class="btn btn-secondary btn-sm" type="button">
+                  + {{ t('admin.settings.quotaNotify.addEmail') REDACTEDREDACTED
+                </button>
+              </div>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.quotaNotify.emailsHint') REDACTEDREDACTED</p>
+            </div>
+          </div>
+        </div>
         </div><!-- /Tab: Email -->
 
         <!-- Tab: Backup -->
@@ -2939,7 +3023,12 @@ const form = reactive<SettingsForm>({
   // Gateway forwarding behavior
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
-  enable_cch_signing: false
+  enable_cch_signing: false,
+  // Balance & quota notification
+  balance_low_notify_enabled: false,
+  balance_low_notify_threshold_type: 'fixed' as 'fixed' | 'percentage',
+  balance_low_notify_threshold: 0,
+  account_quota_notify_emails: [] as string[]
 REDACTED)
 
 // Proxies for web search emulation ProxySelector
@@ -3147,6 +3236,14 @@ function handleRegistrationEmailSuffixWhitelistPaste(event: ClipboardEvent) {
   for (const token of tokens) {
     addRegistrationEmailSuffixWhitelistTag(token)
   REDACTED
+REDACTED
+
+// Quota notify email helpers
+const addQuotaNotifyEmail = () => {
+  if (!form.account_quota_notify_emails) {
+    form.account_quota_notify_emails = []
+  REDACTED
+  form.account_quota_notify_emails.push('')
 REDACTED
 
 // LinuxDo OAuth redirect URL suggestion
@@ -3488,6 +3585,11 @@ async function saveSettings() {
       payment_cancel_rate_limit_window: Number(form.payment_cancel_rate_limit_window) || 1,
       payment_cancel_rate_limit_unit: form.payment_cancel_rate_limit_unit,
       payment_cancel_rate_limit_window_mode: form.payment_cancel_rate_limit_window_mode,
+      // Balance & quota notification
+      balance_low_notify_enabled: form.balance_low_notify_enabled,
+      balance_low_notify_threshold_type: form.balance_low_notify_threshold_type,
+      balance_low_notify_threshold: Number(form.balance_low_notify_threshold) || 0,
+      account_quota_notify_emails: (form.account_quota_notify_emails || []).filter((e: string) => e.trim() !== ''),
     REDACTED
 
     const updated = await adminAPI.settings.updateSettings(payload)

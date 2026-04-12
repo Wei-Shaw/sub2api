@@ -28211,9 +28211,12 @@ type UserMutation struct {
 	totp_enabled                  *bool
 	totp_enabled_at               *time.Time
 	balance_notify_enabled        *bool
+	balance_notify_threshold_type *string
 	balance_notify_threshold      *float64
 	addbalance_notify_threshold   *float64
 	balance_notify_extra_emails   *string
+	total_recharged               *float64
+	addtotal_recharged            *float64
 	clearedFields                 map[string]struct{REDACTED
 	api_keys                      map[int64]struct{REDACTED
 	removedapi_keys               map[int64]struct{REDACTED
@@ -28967,6 +28970,42 @@ func (m *UserMutation) ResetBalanceNotifyEnabled() {
 	m.balance_notify_enabled = nil
 REDACTED
 
+// SetBalanceNotifyThresholdType sets the "balance_notify_threshold_type" field.
+func (m *UserMutation) SetBalanceNotifyThresholdType(s string) {
+	m.balance_notify_threshold_type = &s
+REDACTED
+
+// BalanceNotifyThresholdType returns the value of the "balance_notify_threshold_type" field in the mutation.
+func (m *UserMutation) BalanceNotifyThresholdType() (r string, exists bool) {
+	v := m.balance_notify_threshold_type
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldBalanceNotifyThresholdType returns the old "balance_notify_threshold_type" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldBalanceNotifyThresholdType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBalanceNotifyThresholdType is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBalanceNotifyThresholdType requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBalanceNotifyThresholdType: %w", err)
+REDACTED
+	return oldValue.BalanceNotifyThresholdType, nil
+REDACTED
+
+// ResetBalanceNotifyThresholdType resets all changes to the "balance_notify_threshold_type" field.
+func (m *UserMutation) ResetBalanceNotifyThresholdType() {
+	m.balance_notify_threshold_type = nil
+REDACTED
+
 // SetBalanceNotifyThreshold sets the "balance_notify_threshold" field.
 func (m *UserMutation) SetBalanceNotifyThreshold(f float64) {
 	m.balance_notify_threshold = &f
@@ -29071,6 +29110,62 @@ REDACTED
 // ResetBalanceNotifyExtraEmails resets all changes to the "balance_notify_extra_emails" field.
 func (m *UserMutation) ResetBalanceNotifyExtraEmails() {
 	m.balance_notify_extra_emails = nil
+REDACTED
+
+// SetTotalRecharged sets the "total_recharged" field.
+func (m *UserMutation) SetTotalRecharged(f float64) {
+	m.total_recharged = &f
+	m.addtotal_recharged = nil
+REDACTED
+
+// TotalRecharged returns the value of the "total_recharged" field in the mutation.
+func (m *UserMutation) TotalRecharged() (r float64, exists bool) {
+	v := m.total_recharged
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// OldTotalRecharged returns the old "total_recharged" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldTotalRecharged(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotalRecharged is only allowed on UpdateOne operations")
+REDACTED
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotalRecharged requires an ID field in the mutation")
+REDACTED
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotalRecharged: %w", err)
+REDACTED
+	return oldValue.TotalRecharged, nil
+REDACTED
+
+// AddTotalRecharged adds f to the "total_recharged" field.
+func (m *UserMutation) AddTotalRecharged(f float64) {
+	if m.addtotal_recharged != nil {
+		*m.addtotal_recharged += f
+REDACTED else {
+		m.addtotal_recharged = &f
+REDACTED
+REDACTED
+
+// AddedTotalRecharged returns the value that was added to the "total_recharged" field in this mutation.
+func (m *UserMutation) AddedTotalRecharged() (r float64, exists bool) {
+	v := m.addtotal_recharged
+	if v == nil {
+		return
+REDACTED
+	return *v, true
+REDACTED
+
+// ResetTotalRecharged resets all changes to the "total_recharged" field.
+func (m *UserMutation) ResetTotalRecharged() {
+	m.total_recharged = nil
+	m.addtotal_recharged = nil
 REDACTED
 
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
@@ -29647,7 +29742,7 @@ REDACTED
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 17)
+	fields := make([]string, 0, 19)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 REDACTED
@@ -29693,11 +29788,17 @@ REDACTED
 	if m.balance_notify_enabled != nil {
 		fields = append(fields, user.FieldBalanceNotifyEnabled)
 REDACTED
+	if m.balance_notify_threshold_type != nil {
+		fields = append(fields, user.FieldBalanceNotifyThresholdType)
+REDACTED
 	if m.balance_notify_threshold != nil {
 		fields = append(fields, user.FieldBalanceNotifyThreshold)
 REDACTED
 	if m.balance_notify_extra_emails != nil {
 		fields = append(fields, user.FieldBalanceNotifyExtraEmails)
+REDACTED
+	if m.total_recharged != nil {
+		fields = append(fields, user.FieldTotalRecharged)
 REDACTED
 	return fields
 REDACTED
@@ -29737,10 +29838,14 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.TotpEnabledAt()
 	case user.FieldBalanceNotifyEnabled:
 		return m.BalanceNotifyEnabled()
+	case user.FieldBalanceNotifyThresholdType:
+		return m.BalanceNotifyThresholdType()
 	case user.FieldBalanceNotifyThreshold:
 		return m.BalanceNotifyThreshold()
 	case user.FieldBalanceNotifyExtraEmails:
 		return m.BalanceNotifyExtraEmails()
+	case user.FieldTotalRecharged:
+		return m.TotalRecharged()
 REDACTED
 	return nil, false
 REDACTED
@@ -29780,10 +29885,14 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldTotpEnabledAt(ctx)
 	case user.FieldBalanceNotifyEnabled:
 		return m.OldBalanceNotifyEnabled(ctx)
+	case user.FieldBalanceNotifyThresholdType:
+		return m.OldBalanceNotifyThresholdType(ctx)
 	case user.FieldBalanceNotifyThreshold:
 		return m.OldBalanceNotifyThreshold(ctx)
 	case user.FieldBalanceNotifyExtraEmails:
 		return m.OldBalanceNotifyExtraEmails(ctx)
+	case user.FieldTotalRecharged:
+		return m.OldTotalRecharged(ctx)
 REDACTED
 	return nil, fmt.Errorf("unknown User field %s", name)
 REDACTED
@@ -29898,6 +30007,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 	REDACTED
 		m.SetBalanceNotifyEnabled(v)
 		return nil
+	case user.FieldBalanceNotifyThresholdType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetBalanceNotifyThresholdType(v)
+		return nil
 	case user.FieldBalanceNotifyThreshold:
 		v, ok := value.(float64)
 		if !ok {
@@ -29911,6 +30027,13 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.SetBalanceNotifyExtraEmails(v)
+		return nil
+	case user.FieldTotalRecharged:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.SetTotalRecharged(v)
 		return nil
 REDACTED
 	return fmt.Errorf("unknown User field %s", name)
@@ -29929,6 +30052,9 @@ REDACTED
 	if m.addbalance_notify_threshold != nil {
 		fields = append(fields, user.FieldBalanceNotifyThreshold)
 REDACTED
+	if m.addtotal_recharged != nil {
+		fields = append(fields, user.FieldTotalRecharged)
+REDACTED
 	return fields
 REDACTED
 
@@ -29943,6 +30069,8 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedConcurrency()
 	case user.FieldBalanceNotifyThreshold:
 		return m.AddedBalanceNotifyThreshold()
+	case user.FieldTotalRecharged:
+		return m.AddedTotalRecharged()
 REDACTED
 	return nil, false
 REDACTED
@@ -29972,6 +30100,13 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 	REDACTED
 		m.AddBalanceNotifyThreshold(v)
+		return nil
+	case user.FieldTotalRecharged:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+	REDACTED
+		m.AddTotalRecharged(v)
 		return nil
 REDACTED
 	return fmt.Errorf("unknown User numeric field %s", name)
@@ -30072,11 +30207,17 @@ func (m *UserMutation) ResetField(name string) error {
 	case user.FieldBalanceNotifyEnabled:
 		m.ResetBalanceNotifyEnabled()
 		return nil
+	case user.FieldBalanceNotifyThresholdType:
+		m.ResetBalanceNotifyThresholdType()
+		return nil
 	case user.FieldBalanceNotifyThreshold:
 		m.ResetBalanceNotifyThreshold()
 		return nil
 	case user.FieldBalanceNotifyExtraEmails:
 		m.ResetBalanceNotifyExtraEmails()
+		return nil
+	case user.FieldTotalRecharged:
+		m.ResetTotalRecharged()
 		return nil
 REDACTED
 	return fmt.Errorf("unknown User field %s", name)

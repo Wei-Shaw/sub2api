@@ -257,6 +257,20 @@ REDACTED
 	return _u
 REDACTED
 
+// SetBalanceNotifyThresholdType sets the "balance_notify_threshold_type" field.
+func (_u *UserUpdate) SetBalanceNotifyThresholdType(v string) *UserUpdate {
+	_u.mutation.SetBalanceNotifyThresholdType(v)
+	return _u
+REDACTED
+
+// SetNillableBalanceNotifyThresholdType sets the "balance_notify_threshold_type" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableBalanceNotifyThresholdType(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetBalanceNotifyThresholdType(*v)
+REDACTED
+	return _u
+REDACTED
+
 // SetBalanceNotifyThreshold sets the "balance_notify_threshold" field.
 func (_u *UserUpdate) SetBalanceNotifyThreshold(v float64) *UserUpdate {
 	_u.mutation.ResetBalanceNotifyThreshold()
@@ -295,6 +309,27 @@ func (_u *UserUpdate) SetNillableBalanceNotifyExtraEmails(v *string) *UserUpdate
 	if v != nil {
 		_u.SetBalanceNotifyExtraEmails(*v)
 REDACTED
+	return _u
+REDACTED
+
+// SetTotalRecharged sets the "total_recharged" field.
+func (_u *UserUpdate) SetTotalRecharged(v float64) *UserUpdate {
+	_u.mutation.ResetTotalRecharged()
+	_u.mutation.SetTotalRecharged(v)
+	return _u
+REDACTED
+
+// SetNillableTotalRecharged sets the "total_recharged" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableTotalRecharged(v *float64) *UserUpdate {
+	if v != nil {
+		_u.SetTotalRecharged(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddTotalRecharged adds value to the "total_recharged" field.
+func (_u *UserUpdate) AddTotalRecharged(v float64) *UserUpdate {
+	_u.mutation.AddTotalRecharged(v)
 	return _u
 REDACTED
 
@@ -804,6 +839,9 @@ REDACTED
 	if value, ok := _u.mutation.BalanceNotifyEnabled(); ok {
 		_spec.SetField(user.FieldBalanceNotifyEnabled, field.TypeBool, value)
 REDACTED
+	if value, ok := _u.mutation.BalanceNotifyThresholdType(); ok {
+		_spec.SetField(user.FieldBalanceNotifyThresholdType, field.TypeString, value)
+REDACTED
 	if value, ok := _u.mutation.BalanceNotifyThreshold(); ok {
 		_spec.SetField(user.FieldBalanceNotifyThreshold, field.TypeFloat64, value)
 REDACTED
@@ -815,6 +853,12 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.BalanceNotifyExtraEmails(); ok {
 		_spec.SetField(user.FieldBalanceNotifyExtraEmails, field.TypeString, value)
+REDACTED
+	if value, ok := _u.mutation.TotalRecharged(); ok {
+		_spec.SetField(user.FieldTotalRecharged, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedTotalRecharged(); ok {
+		_spec.AddField(user.FieldTotalRecharged, field.TypeFloat64, value)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1518,6 +1562,20 @@ REDACTED
 	return _u
 REDACTED
 
+// SetBalanceNotifyThresholdType sets the "balance_notify_threshold_type" field.
+func (_u *UserUpdateOne) SetBalanceNotifyThresholdType(v string) *UserUpdateOne {
+	_u.mutation.SetBalanceNotifyThresholdType(v)
+	return _u
+REDACTED
+
+// SetNillableBalanceNotifyThresholdType sets the "balance_notify_threshold_type" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableBalanceNotifyThresholdType(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetBalanceNotifyThresholdType(*v)
+REDACTED
+	return _u
+REDACTED
+
 // SetBalanceNotifyThreshold sets the "balance_notify_threshold" field.
 func (_u *UserUpdateOne) SetBalanceNotifyThreshold(v float64) *UserUpdateOne {
 	_u.mutation.ResetBalanceNotifyThreshold()
@@ -1556,6 +1614,27 @@ func (_u *UserUpdateOne) SetNillableBalanceNotifyExtraEmails(v *string) *UserUpd
 	if v != nil {
 		_u.SetBalanceNotifyExtraEmails(*v)
 REDACTED
+	return _u
+REDACTED
+
+// SetTotalRecharged sets the "total_recharged" field.
+func (_u *UserUpdateOne) SetTotalRecharged(v float64) *UserUpdateOne {
+	_u.mutation.ResetTotalRecharged()
+	_u.mutation.SetTotalRecharged(v)
+	return _u
+REDACTED
+
+// SetNillableTotalRecharged sets the "total_recharged" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableTotalRecharged(v *float64) *UserUpdateOne {
+	if v != nil {
+		_u.SetTotalRecharged(*v)
+REDACTED
+	return _u
+REDACTED
+
+// AddTotalRecharged adds value to the "total_recharged" field.
+func (_u *UserUpdateOne) AddTotalRecharged(v float64) *UserUpdateOne {
+	_u.mutation.AddTotalRecharged(v)
 	return _u
 REDACTED
 
@@ -2095,6 +2174,9 @@ REDACTED
 	if value, ok := _u.mutation.BalanceNotifyEnabled(); ok {
 		_spec.SetField(user.FieldBalanceNotifyEnabled, field.TypeBool, value)
 REDACTED
+	if value, ok := _u.mutation.BalanceNotifyThresholdType(); ok {
+		_spec.SetField(user.FieldBalanceNotifyThresholdType, field.TypeString, value)
+REDACTED
 	if value, ok := _u.mutation.BalanceNotifyThreshold(); ok {
 		_spec.SetField(user.FieldBalanceNotifyThreshold, field.TypeFloat64, value)
 REDACTED
@@ -2106,6 +2188,12 @@ REDACTED
 REDACTED
 	if value, ok := _u.mutation.BalanceNotifyExtraEmails(); ok {
 		_spec.SetField(user.FieldBalanceNotifyExtraEmails, field.TypeString, value)
+REDACTED
+	if value, ok := _u.mutation.TotalRecharged(); ok {
+		_spec.SetField(user.FieldTotalRecharged, field.TypeFloat64, value)
+REDACTED
+	if value, ok := _u.mutation.AddedTotalRecharged(); ok {
+		_spec.AddField(user.FieldTotalRecharged, field.TypeFloat64, value)
 REDACTED
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

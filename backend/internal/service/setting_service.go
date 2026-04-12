@@ -597,6 +597,11 @@ REDACTED
 
 	// Balance low notification
 	updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(settings.BalanceLowNotifyEnabled)
+	thresholdType := settings.BalanceLowNotifyThresholdType
+	if thresholdType == "" {
+		thresholdType = ThresholdTypeFixed
+REDACTED
+	updates[SettingKeyBalanceLowNotifyThresholdType] = thresholdType
 	updates[SettingKeyBalanceLowNotifyThreshold] = strconv.FormatFloat(settings.BalanceLowNotifyThreshold, 'f', 8, 64)
 	accountQuotaNotifyEmailsJSON, err := json.Marshal(settings.AccountQuotaNotifyEmails)
 	if err != nil {
@@ -1228,6 +1233,10 @@ REDACTED
 
 	// Balance low notification
 	result.BalanceLowNotifyEnabled = settings[SettingKeyBalanceLowNotifyEnabled] == "true"
+	result.BalanceLowNotifyThresholdType = settings[SettingKeyBalanceLowNotifyThresholdType]
+	if result.BalanceLowNotifyThresholdType == "" {
+		result.BalanceLowNotifyThresholdType = ThresholdTypeFixed
+REDACTED
 	if v, err := strconv.ParseFloat(settings[SettingKeyBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
 		result.BalanceLowNotifyThreshold = v
 REDACTED
