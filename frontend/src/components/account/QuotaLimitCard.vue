@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import QuotaNotifyToggle from './QuotaNotifyToggle.vue'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   totalLimit: number | null
   dailyLimit: number | null
   weeklyLimit: number | null
@@ -14,7 +15,20 @@ const props = defineProps<{
   weeklyResetDay: number | null
   weeklyResetHour: number | null
   resetTimezone: string | null
-}>()
+  quotaNotifyDailyEnabled?: boolean | null
+  quotaNotifyDailyThreshold?: number | null
+  quotaNotifyWeeklyEnabled?: boolean | null
+  quotaNotifyWeeklyThreshold?: number | null
+  quotaNotifyTotalEnabled?: boolean | null
+  quotaNotifyTotalThreshold?: number | null
+}>(), {
+  quotaNotifyDailyEnabled: null,
+  quotaNotifyDailyThreshold: null,
+  quotaNotifyWeeklyEnabled: null,
+  quotaNotifyWeeklyThreshold: null,
+  quotaNotifyTotalEnabled: null,
+  quotaNotifyTotalThreshold: null,
+})
 
 const emit = defineEmits<{
   'update:totalLimit': [value: number | null]
@@ -26,6 +40,12 @@ const emit = defineEmits<{
   'update:weeklyResetDay': [value: number | null]
   'update:weeklyResetHour': [value: number | null]
   'update:resetTimezone': [value: string | null]
+  'update:quotaNotifyDailyEnabled': [value: boolean | null]
+  'update:quotaNotifyDailyThreshold': [value: number | null]
+  'update:quotaNotifyWeeklyEnabled': [value: boolean | null]
+  'update:quotaNotifyWeeklyThreshold': [value: number | null]
+  'update:quotaNotifyTotalEnabled': [value: boolean | null]
+  'update:quotaNotifyTotalThreshold': [value: number | null]
 }>()
 
 const enabled = computed(() =>
@@ -203,6 +223,14 @@ const onWeeklyModeChange = (e: Event) => {
               {{ t('admin.accounts.quotaDailyLimitHint') }}
             </template>
           </p>
+          <!-- 日配额告警 -->
+          <QuotaNotifyToggle
+            v-if="dailyLimit && dailyLimit > 0"
+            :enabled="props.quotaNotifyDailyEnabled"
+            :threshold="props.quotaNotifyDailyThreshold"
+            @update:enabled="emit('update:quotaNotifyDailyEnabled', $event)"
+            @update:threshold="emit('update:quotaNotifyDailyThreshold', $event)"
+          />
         </div>
 
         <!-- 周配额 -->
@@ -259,6 +287,14 @@ const onWeeklyModeChange = (e: Event) => {
               {{ t('admin.accounts.quotaWeeklyLimitHint') }}
             </template>
           </p>
+          <!-- 周配额告警 -->
+          <QuotaNotifyToggle
+            v-if="weeklyLimit && weeklyLimit > 0"
+            :enabled="props.quotaNotifyWeeklyEnabled"
+            :threshold="props.quotaNotifyWeeklyThreshold"
+            @update:enabled="emit('update:quotaNotifyWeeklyEnabled', $event)"
+            @update:threshold="emit('update:quotaNotifyWeeklyThreshold', $event)"
+          />
         </div>
 
         <!-- 时区选择（当任一维度使用固定模式时显示） -->
@@ -289,6 +325,14 @@ const onWeeklyModeChange = (e: Event) => {
             />
           </div>
           <p class="input-hint">{{ t('admin.accounts.quotaTotalLimitHint') }}</p>
+          <!-- 总配额告警 -->
+          <QuotaNotifyToggle
+            v-if="totalLimit && totalLimit > 0"
+            :enabled="props.quotaNotifyTotalEnabled"
+            :threshold="props.quotaNotifyTotalThreshold"
+            @update:enabled="emit('update:quotaNotifyTotalEnabled', $event)"
+            @update:threshold="emit('update:quotaNotifyTotalThreshold', $event)"
+          />
         </div>
       </div>
   </div>

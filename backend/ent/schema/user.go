@@ -72,6 +72,17 @@ func (User) Fields() []ent.Field {
 		field.Time("totp_enabled_at").
 			Optional().
 			Nillable(),
+
+		// 余额不足通知
+		field.Bool("balance_notify_enabled").
+			Default(true),
+		field.Float("balance_notify_threshold").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Optional().
+			Nillable(),
+		field.String("balance_notify_extra_emails").
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			Default("[]"),
 	}
 }
 

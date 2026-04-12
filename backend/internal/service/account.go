@@ -1406,6 +1406,19 @@ func (a *Account) getExtraTime(key string) time.Time {
 	return time.Time{}
 }
 
+// getExtraBool 从 Extra 中读取指定 key 的 bool 值
+func (a *Account) getExtraBool(key string) bool {
+	if a.Extra == nil {
+		return false
+	}
+	if v, ok := a.Extra[key]; ok {
+		if b, ok := v.(bool); ok {
+			return b
+		}
+	}
+	return false
+}
+
 // getExtraString 从 Extra 中读取指定 key 的字符串值
 func (a *Account) getExtraString(key string) string {
 	if a.Extra == nil {
@@ -1473,6 +1486,32 @@ func (a *Account) GetQuotaResetTimezone() string {
 		return tz
 	}
 	return "UTC"
+}
+
+// --- Quota Notification Getters ---
+
+func (a *Account) GetQuotaNotifyDailyEnabled() bool {
+	return a.getExtraBool("quota_notify_daily_enabled")
+}
+
+func (a *Account) GetQuotaNotifyDailyThreshold() float64 {
+	return a.getExtraFloat64("quota_notify_daily_threshold")
+}
+
+func (a *Account) GetQuotaNotifyWeeklyEnabled() bool {
+	return a.getExtraBool("quota_notify_weekly_enabled")
+}
+
+func (a *Account) GetQuotaNotifyWeeklyThreshold() float64 {
+	return a.getExtraFloat64("quota_notify_weekly_threshold")
+}
+
+func (a *Account) GetQuotaNotifyTotalEnabled() bool {
+	return a.getExtraBool("quota_notify_total_enabled")
+}
+
+func (a *Account) GetQuotaNotifyTotalThreshold() float64 {
+	return a.getExtraFloat64("quota_notify_total_threshold")
 }
 
 // nextFixedDailyReset 计算在 after 之后的下一个每日固定重置时间点

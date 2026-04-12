@@ -109,6 +109,13 @@ type SystemSettings struct {
 
 	// Web Search Emulation (read-only quick check; full config via dedicated API)
 	WebSearchEmulationEnabled bool
+
+	// Balance low notification
+	BalanceLowNotifyEnabled   bool
+	BalanceLowNotifyThreshold float64
+
+	// Account quota notification
+	AccountQuotaNotifyEmails []string
 }
 
 type DefaultSubscriptionSetting struct {

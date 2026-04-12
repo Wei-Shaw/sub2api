@@ -18,6 +18,11 @@ type User struct {
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 
+	// 余额不足通知
+	BalanceNotifyEnabled     bool     `json:"balance_notify_enabled"`
+	BalanceNotifyThreshold   *float64 `json:"balance_notify_threshold"`
+	BalanceNotifyExtraEmails []string `json:"balance_notify_extra_emails"`
+
 	APIKeys       []APIKey           `json:"api_keys,omitempty"`
 	Subscriptions []UserSubscription `json:"subscriptions,omitempty"`
 }
@@ -217,6 +222,14 @@ type Account struct {
 	QuotaResetTimezone   *string `json:"quota_reset_timezone,omitempty"`
 	QuotaDailyResetAt    *string `json:"quota_daily_reset_at,omitempty"`
 	QuotaWeeklyResetAt   *string `json:"quota_weekly_reset_at,omitempty"`
+
+	// 配额通知配置
+	QuotaNotifyDailyEnabled    *bool    `json:"quota_notify_daily_enabled,omitempty"`
+	QuotaNotifyDailyThreshold  *float64 `json:"quota_notify_daily_threshold,omitempty"`
+	QuotaNotifyWeeklyEnabled   *bool    `json:"quota_notify_weekly_enabled,omitempty"`
+	QuotaNotifyWeeklyThreshold *float64 `json:"quota_notify_weekly_threshold,omitempty"`
+	QuotaNotifyTotalEnabled    *bool    `json:"quota_notify_total_enabled,omitempty"`
+	QuotaNotifyTotalThreshold  *float64 `json:"quota_notify_total_threshold,omitempty"`
 
 	Proxy         *Proxy         `json:"proxy,omitempty"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`

@@ -26,6 +26,14 @@ func RegisterUserRoutes(
 			user.PUT("/password", h.User.ChangePassword)
 			user.PUT("", h.User.UpdateProfile)
 
+			// 通知邮箱管理
+			notifyEmail := user.Group("/notify-email")
+			{
+				notifyEmail.POST("/send-code", h.User.SendNotifyEmailCode)
+				notifyEmail.POST("/verify", h.User.VerifyNotifyEmail)
+				notifyEmail.DELETE("", h.User.RemoveNotifyEmail)
+			}
+
 			// TOTP 双因素认证
 			totp := user.Group("/totp")
 			{

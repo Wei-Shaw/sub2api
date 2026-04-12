@@ -22,6 +22,9 @@ export async function getProfile(): Promise<User> {
  */
 export async function updateProfile(profile: {
   username?: string
+  balance_notify_enabled?: boolean
+  balance_notify_threshold?: number | null
+  balance_notify_extra_emails?: string[]
 }): Promise<User> {
   const { data } = await apiClient.put<User>('/user', profile)
   return data
@@ -45,10 +48,38 @@ export async function changePassword(
   return data
 }
 
+/**
+ * Send verification code for adding a notify email
+ * @param email - Email address to verify
+ */
+export async function sendNotifyEmailCode(email: string): Promise<void> {
+  await apiClient.post('/user/notify-email/send-code', { email })
+}
+
+/**
+ * Verify and add a notify email
+ * @param email - Email address to add
+ * @param code - Verification code
+ */
+export async function verifyNotifyEmail(email: string, code: string): Promise<void> {
+  await apiClient.post('/user/notify-email/verify', { email, code })
+}
+
+/**
+ * Remove a notify email
+ * @param email - Email address to remove
+ */
+export async function removeNotifyEmail(email: string): Promise<void> {
+  await apiClient.delete('/user/notify-email', { data: { email } })
+}
+
 export const userAPI = {
   getProfile,
   updateProfile,
-  changePassword
+  changePassword,
+  sendNotifyEmailCode,
+  verifyNotifyEmail,
+  removeNotifyEmail
 }
 
 export default userAPI

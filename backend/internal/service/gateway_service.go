@@ -569,6 +569,7 @@ type GatewayService struct {
 	resolver              *ModelPricingResolver
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
+	balanceNotifyService  *BalanceNotifyService
 }
 
 // NewGatewayService creates a new GatewayService
@@ -598,6 +599,7 @@ func NewGatewayService(
 	tlsFPProfileService *TLSFingerprintProfileService,
 	channelService *ChannelService,
 	resolver *ModelPricingResolver,
+	balanceNotifyService *BalanceNotifyService,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -632,6 +634,7 @@ func NewGatewayService(
 		tlsFPProfileService:  tlsFPProfileService,
 		channelService:       channelService,
 		resolver:             resolver,
+		balanceNotifyService: balanceNotifyService,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -7525,6 +7528,17 @@ func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps) {
 	}
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
+
+	// Balance low notification
+	if !p.IsSubscriptionBill && p.Cost.ActualCost > 0 && p.User != nil && deps.balanceNotifyService != nil {
+		deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), p.User, p.User.Balance, p.Cost.ActualCost)
+	}
+
+	// Account quota notification (use same cost formula as postUsageBilling)
+	if p.Cost.TotalCost > 0 && p.Account != nil && p.Account.IsAPIKeyOrBedrock() && deps.balanceNotifyService != nil {
+		accountCost := p.Cost.TotalCost * p.AccountRateMultiplier
+		deps.balanceNotifyService.CheckAccountQuotaAfterIncrement(context.Background(), p.Account, accountCost)
+	}
 }
 
 func detachedBillingContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -7547,20 +7561,22 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 
 // billingDeps 扣费逻辑依赖的服务（由各 gateway service 提供）
 type billingDeps struct {
-	accountRepo         AccountRepository
-	userRepo            UserRepository
-	userSubRepo         UserSubscriptionRepository
-	billingCacheService *BillingCacheService
-	deferredService     *DeferredService
+	accountRepo          AccountRepository
+	userRepo             UserRepository
+	userSubRepo          UserSubscriptionRepository
+	billingCacheService  *BillingCacheService
+	deferredService      *DeferredService
+	balanceNotifyService *BalanceNotifyService
 }
 
 func (s *GatewayService) billingDeps() *billingDeps {
 	return &billingDeps{
-		accountRepo:         s.accountRepo,
-		userRepo:            s.userRepo,
-		userSubRepo:         s.userSubRepo,
-		billingCacheService: s.billingCacheService,
-		deferredService:     s.deferredService,
+		accountRepo:          s.accountRepo,
+		userRepo:             s.userRepo,
+		userSubRepo:          s.userSubRepo,
+		billingCacheService:  s.billingCacheService,
+		deferredService:      s.deferredService,
+		balanceNotifyService: s.balanceNotifyService,
 	}
 }
 
