@@ -183,6 +183,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyOIDCConnectEnabled,
 		SettingKeyOIDCConnectProviderName,
 		SettingKeyBalanceLowNotifyEnabled,
+		SettingKeyBalanceLowNotifyThreshold,
 		SettingKeyAccountQuotaNotifyEnabled,
 REDACTED
 
@@ -222,6 +223,11 @@ REDACTED
 		settings[SettingKeyTablePageSizeOptions],
 	)
 
+	var balanceLowNotifyThreshold float64
+	if v, err := strconv.ParseFloat(settings[SettingKeyBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
+		balanceLowNotifyThreshold = v
+REDACTED
+
 	return &PublicSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:               emailVerifyEnabled,
@@ -253,6 +259,7 @@ REDACTED
 		OIDCOAuthProviderName:            oidcProviderName,
 		BalanceLowNotifyEnabled:          settings[SettingKeyBalanceLowNotifyEnabled] == "true",
 		AccountQuotaNotifyEnabled:        settings[SettingKeyAccountQuotaNotifyEnabled] == "true",
+		BalanceLowNotifyThreshold:        balanceLowNotifyThreshold,
 REDACTED, nil
 REDACTED
 
@@ -308,6 +315,7 @@ REDACTED
 		Version                          string          `json:"version,omitempty"`
 		BalanceLowNotifyEnabled          bool            `json:"balance_low_notify_enabled"`
 		AccountQuotaNotifyEnabled        bool            `json:"account_quota_notify_enabled"`
+		BalanceLowNotifyThreshold        float64         `json:"balance_low_notify_threshold"`
 REDACTED{
 		RegistrationEnabled:              settings.RegistrationEnabled,
 		EmailVerifyEnabled:               settings.EmailVerifyEnabled,
@@ -340,6 +348,7 @@ REDACTED{
 		Version:                          s.version,
 		BalanceLowNotifyEnabled:          settings.BalanceLowNotifyEnabled,
 		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,
+		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
 REDACTED, nil
 REDACTED
 

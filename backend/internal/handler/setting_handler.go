@@ -63,5 +63,6 @@ REDACTED
 		Version:                          h.version,
 		BalanceLowNotifyEnabled:          settings.BalanceLowNotifyEnabled,
 		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,
+		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
 REDACTED)
 REDACTED
