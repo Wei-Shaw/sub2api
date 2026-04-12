@@ -93,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch REDACTED from 'vue'
+import { ref, watch, onUnmounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAuthStore REDACTED from '@/stores/auth'
 import { useAppStore REDACTED from '@/stores/app'
@@ -121,6 +121,10 @@ const verifying = ref(false)
 const codeCountdown = ref(0)
 
 let countdownTimer: ReturnType<typeof setInterval> | null = null
+
+onUnmounted(() => {
+  if (countdownTimer) clearInterval(countdownTimer)
+REDACTED)
 
 watch(() => props.enabled, (val) => { notifyEnabled.value = val REDACTED)
 watch(() => props.threshold, (val) => { customThreshold.value = val REDACTED)

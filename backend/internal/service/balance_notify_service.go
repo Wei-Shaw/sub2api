@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -195,7 +196,10 @@ REDACTED
 
 // collectBalanceNotifyRecipients collects all email recipients for balance notifications.
 func (s *BalanceNotifyService) collectBalanceNotifyRecipients(user *User) []string {
-	recipients := []string{user.EmailREDACTED
+	var recipients []string
+	if user.Email != "" {
+		recipients = append(recipients, user.Email)
+REDACTED
 	for _, extra := range user.BalanceNotifyExtraEmails {
 		email := strings.TrimSpace(extra)
 		if email != "" && !strings.EqualFold(email, user.Email) {
@@ -224,7 +228,7 @@ func (s *BalanceNotifyService) sendBalanceLowEmails(recipients []string, userNam
 		displayName = userEmail
 REDACTED
 	subject := fmt.Sprintf("[%s] 余额不足提醒 / Balance Low Alert", siteName)
-	body := s.buildBalanceLowEmailBody(displayName, balance, threshold, siteName)
+	body := s.buildBalanceLowEmailBody(html.EscapeString(displayName), balance, threshold, html.EscapeString(siteName))
 	s.sendEmails(recipients, subject, body, "user_email", userEmail, "balance", balance)
 REDACTED
 
@@ -236,7 +240,7 @@ func (s *BalanceNotifyService) sendQuotaAlertEmails(adminEmails []string, accoun
 REDACTED
 
 	subject := fmt.Sprintf("[%s] 账号限额告警 / Account Quota Alert - %s", siteName, accountName)
-	body := s.buildQuotaAlertEmailBody(accountName, dimLabel, used, limit, threshold, siteName)
+	body := s.buildQuotaAlertEmailBody(html.EscapeString(accountName), html.EscapeString(dimLabel), used, limit, threshold, html.EscapeString(siteName))
 	s.sendEmails(adminEmails, subject, body, "account", accountName, "dimension", dimension)
 REDACTED
 
