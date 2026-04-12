@@ -186,13 +186,13 @@ REDACTED
 
 // sendEmails sends an email to all recipients with shared timeout and error logging.
 func (s *BalanceNotifyService) sendEmails(recipients []string, subject, body string, logAttrs ...any) {
-	ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
-	defer cancel()
 	for _, to := range recipients {
+		ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
 		if err := s.emailService.SendEmail(ctx, to, subject, body); err != nil {
 			attrs := append([]any{"to", to, "error", errREDACTED, logAttrs...)
 			slog.Error("failed to send notification", attrs...)
 	REDACTED
+		cancel()
 REDACTED
 REDACTED
 

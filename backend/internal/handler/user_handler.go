@@ -205,5 +205,12 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, gin.H{"message": "Email removed successfully"REDACTED)
+	// Return updated user
+	updatedUser, err := h.userService.GetByID(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, dto.UserFromService(updatedUser))
 REDACTED
