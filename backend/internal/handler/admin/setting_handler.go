@@ -1857,7 +1857,7 @@ func (h *SettingHandler) GetWebSearchEmulationConfig(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, service.SanitizeWebSearchConfig(cfg))
+	response.Success(c, service.SanitizeWebSearchConfig(c.Request.Context(), cfg))
 }
 
 // UpdateWebSearchEmulationConfig 更新 Web Search 模拟配置
@@ -1880,5 +1880,27 @@ func (h *SettingHandler) UpdateWebSearchEmulationConfig(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, service.SanitizeWebSearchConfig(updated))
+	response.Success(c, service.SanitizeWebSearchConfig(c.Request.Context(), updated))
+}
+
+// TestWebSearchEmulation 测试 Web Search 搜索
+// POST /api/v1/admin/settings/web-search-emulation/test
+func (h *SettingHandler) TestWebSearchEmulation(c *gin.Context) {
+	var req struct {
+		Query string `json:"query"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Query) == "" {
+		req.Query = "搜索今年世界大事件"
+	}
+
+	result, err := service.TestWebSearch(c.Request.Context(), req.Query)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }

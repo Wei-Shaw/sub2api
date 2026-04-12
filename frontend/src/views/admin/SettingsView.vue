@@ -1751,61 +1751,152 @@
               </div>
 
               <div v-for="(provider, pIdx) in webSearchConfig.providers" :key="pIdx"
-                class="rounded-lg border border-gray-200 p-4 space-y-3 dark:border-dark-600">
-                <div class="flex items-center justify-between">
-                  <Select
-                    v-model="provider.type"
-                    :options="[
-                      { value: 'brave', label: 'Brave Search' },
-                      { value: 'tavily', label: 'Tavily' },
-                    ]"
-                    class="w-40"
-                  />
-                  <button type="button" class="text-red-500 hover:text-red-700 text-xs" @click="webSearchConfig.providers.splice(pIdx, 1)">
+                class="rounded-lg border border-gray-200 dark:border-dark-600">
+                <!-- Collapsible header -->
+                <div
+                  class="flex cursor-pointer items-center justify-between px-4 py-3"
+                  @click="toggleProviderExpand(pIdx)"
+                >
+                  <div class="flex items-center gap-3">
+                    <svg
+                      class="h-4 w-4 text-gray-400 transition-transform"
+                      :class="{ 'rotate-90': expandedProviders[pIdx] }"
+                      fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                    <Select
+                      v-model="provider.type"
+                      :options="[
+                        { value: 'brave', label: 'Brave Search' },
+                        { value: 'tavily', label: 'Tavily' },
+                      ]"
+                      class="w-36"
+                      @click.stop
+                    />
+                    <!-- Quota summary in collapsed state -->
+                    <span v-if="!expandedProviders[pIdx] && provider.quota_limit > 0" class="text-xs text-gray-400">
+                      {{ provider.quota_used ?? 0 }} / {{ provider.quota_limit }}
+                    </span>
+                    <span v-if="!expandedProviders[pIdx] && provider.api_key_configured" class="text-xs text-green-500">
+                      {{ t('admin.settings.webSearchEmulation.apiKeyConfigured') }}
+                    </span>
+                  </div>
+                  <button type="button" class="text-red-500 hover:text-red-700 text-xs" @click.stop="removeWebSearchProvider(pIdx)">
                     {{ t('admin.settings.webSearchEmulation.removeProvider') }}
                   </button>
                 </div>
 
-                <div class="grid grid-cols-2 gap-3">
+                <!-- Expanded content -->
+                <div v-if="expandedProviders[pIdx]" class="space-y-3 border-t border-gray-100 px-4 pb-4 pt-3 dark:border-dark-700">
+                  <!-- API Key with show/copy -->
                   <div>
                     <label class="text-xs text-gray-500">{{ t('admin.settings.webSearchEmulation.apiKey') }}</label>
-                    <input
-                      v-model="provider.api_key"
-                      type="password"
-                      class="input text-sm"
-                      :placeholder="provider.api_key_configured ? '••••••••' : t('admin.settings.webSearchEmulation.apiKeyPlaceholder')"
-                    />
+                    <div class="flex items-center gap-1">
+                      <input
+                        v-model="provider.api_key"
+                        :type="apiKeyVisible[pIdx] ? 'text' : 'password'"
+                        class="input flex-1 text-sm"
+                        :placeholder="provider.api_key_configured ? '••••••••' : t('admin.settings.webSearchEmulation.apiKeyPlaceholder')"
+                      />
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-sm px-2"
+                        :title="apiKeyVisible[pIdx] ? t('admin.settings.webSearchEmulation.hideApiKey') : t('admin.settings.webSearchEmulation.showApiKey')"
+                        @click="apiKeyVisible[pIdx] = !apiKeyVisible[pIdx]"
+                      >
+                        <svg v-if="!apiKeyVisible[pIdx]" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                        <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-sm px-2"
+                        :title="t('admin.settings.webSearchEmulation.copyApiKey')"
+                        @click="copyApiKey(pIdx)"
+                      >
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <label class="text-xs text-gray-500">{{ t('admin.settings.webSearchEmulation.priority') }}</label>
-                    <input v-model.number="provider.priority" type="number" min="1" class="input text-sm" />
-                    <p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.webSearchEmulation.priorityHint') }}</p>
-                  </div>
-                  <div>
-                    <label class="text-xs text-gray-500">{{ t('admin.settings.webSearchEmulation.quotaLimit') }}</label>
-                    <input v-model.number="provider.quota_limit" type="number" min="0" class="input text-sm" />
-                    <p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.webSearchEmulation.quotaLimitHint') }}</p>
-                    <p v-if="provider.quota_used != null" class="mt-0.5 text-xs text-gray-400">
-                      {{ t('admin.settings.webSearchEmulation.quotaUsed') }}: {{ provider.quota_used }} / {{ provider.quota_limit || '∞' }}
-                    </p>
-                  </div>
-                  <div>
-                    <label class="text-xs text-gray-500">{{ t('admin.settings.webSearchEmulation.quotaRefreshInterval') }}</label>
-                    <Select
-                      v-model="provider.quota_refresh_interval"
-                      :options="[
-                        { value: 'daily', label: t('admin.settings.webSearchEmulation.daily') },
-                        { value: 'weekly', label: t('admin.settings.webSearchEmulation.weekly') },
-                        { value: 'monthly', label: t('admin.settings.webSearchEmulation.monthly') },
-                      ]"
-                      class="w-full"
-                    />
-                  </div>
-                </div>
 
-                <div>
-                  <label class="text-xs text-gray-500">{{ t('admin.settings.webSearchEmulation.proxy') }}</label>
-                  <ProxySelector v-model="provider.proxy_id" :proxies="webSearchProxies" />
+                  <!-- Quota + Subscription in compact row -->
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <label class="text-xs text-gray-500">{{ t('admin.settings.webSearchEmulation.quotaLimit') }}</label>
+                      <input v-model.number="provider.quota_limit" type="number" min="0" class="input text-sm" />
+                      <p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.webSearchEmulation.quotaLimitHint') }}</p>
+                    </div>
+                    <div>
+                      <label class="text-xs text-gray-500">{{ t('admin.settings.webSearchEmulation.subscribedAt') }}</label>
+                      <input
+                        :value="formatSubscribedAt(provider.subscribed_at)"
+                        type="date"
+                        class="input text-sm"
+                        @input="provider.subscribed_at = parseSubscribedAt(($event.target as HTMLInputElement).value)"
+                      />
+                      <p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.webSearchEmulation.subscribedAtHint') }}</p>
+                    </div>
+                  </div>
+
+                  <!-- Usage display -->
+                  <div v-if="provider.quota_limit > 0" class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500">{{ t('admin.settings.webSearchEmulation.quotaUsage') }}:</span>
+                    <div class="flex-1 rounded-full bg-gray-200 dark:bg-dark-600" style="height: 6px">
+                      <div
+                        class="h-full rounded-full transition-all"
+                        :class="quotaPercentage(provider) > 90 ? 'bg-red-500' : quotaPercentage(provider) > 70 ? 'bg-yellow-500' : 'bg-green-500'"
+                        :style="{ width: Math.min(quotaPercentage(provider), 100) + '%' }"
+                      />
+                    </div>
+                    <span class="text-xs text-gray-500">{{ provider.quota_used ?? 0 }} / {{ provider.quota_limit }}</span>
+                  </div>
+
+                  <!-- Proxy -->
+                  <div>
+                    <label class="text-xs text-gray-500">{{ t('admin.settings.webSearchEmulation.proxy') }}</label>
+                    <ProxySelector v-model="provider.proxy_id" :proxies="webSearchProxies" />
+                  </div>
+
+                  <!-- Test button -->
+                  <div class="border-t border-gray-100 pt-3 dark:border-dark-700">
+                    <div class="flex items-center gap-2">
+                      <input
+                        v-model="wsTestQuery"
+                        type="text"
+                        class="input flex-1 text-sm"
+                        :placeholder="t('admin.settings.webSearchEmulation.testDefaultQuery')"
+                        @keyup.enter="testWebSearchProvider()"
+                      />
+                      <button
+                        type="button"
+                        class="btn btn-secondary btn-sm"
+                        :disabled="wsTestLoading"
+                        @click="testWebSearchProvider()"
+                      >
+                        {{ wsTestLoading ? t('admin.settings.webSearchEmulation.testing') : t('admin.settings.webSearchEmulation.test') }}
+                      </button>
+                    </div>
+                    <!-- Test results -->
+                    <div v-if="wsTestResult" class="mt-2 rounded-lg bg-gray-50 p-3 text-xs dark:bg-dark-700">
+                      <p class="mb-1 font-medium text-gray-700 dark:text-gray-300">
+                        {{ t('admin.settings.webSearchEmulation.testResultProvider') }}: {{ wsTestResult.provider }}
+                      </p>
+                      <div v-if="wsTestResult.results.length === 0" class="text-gray-400">
+                        {{ t('admin.settings.webSearchEmulation.testNoResults') }}
+                      </div>
+                      <div v-for="(r, rIdx) in wsTestResult.results.slice(0, 3)" :key="rIdx" class="mt-1">
+                        <a :href="r.url" target="_blank" class="font-medium text-blue-600 hover:underline dark:text-blue-400">{{ r.title }}</a>
+                        <p class="text-gray-500 dark:text-gray-400">{{ r.snippet && r.snippet.length > 120 ? r.snippet.slice(0, 120) + '...' : r.snippet }}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2627,6 +2718,7 @@ import type {
   DefaultSubscriptionSetting,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
+  WebSearchTestResult,
 } from '@/api/admin/settings'
 import type { AdminGroup, Proxy } from '@/types'
 import type { ProviderInstance } from '@/types/payment'
@@ -2861,17 +2953,88 @@ const webSearchConfig = reactive<WebSearchEmulationConfig>({
   providers: [],
 })
 
+const expandedProviders = reactive<Record<number, boolean>>({})
+const apiKeyVisible = reactive<Record<number, boolean>>({})
+const wsTestQuery = ref('')
+const wsTestLoading = ref(false)
+const wsTestResult = ref<WebSearchTestResult | null>(null)
+
+function toggleProviderExpand(idx: number) {
+  expandedProviders[idx] = !expandedProviders[idx]
+}
+
+function removeWebSearchProvider(idx: number) {
+  webSearchConfig.providers.splice(idx, 1)
+  // Re-index expandedProviders and apiKeyVisible after removal
+  const newExpanded: Record<number, boolean> = {}
+  const newVisible: Record<number, boolean> = {}
+  for (let i = 0; i < webSearchConfig.providers.length; i++) {
+    const oldIdx = i >= idx ? i + 1 : i
+    newExpanded[i] = expandedProviders[oldIdx] ?? false
+    newVisible[i] = apiKeyVisible[oldIdx] ?? false
+  }
+  Object.keys(expandedProviders).forEach((k) => delete expandedProviders[Number(k)])
+  Object.keys(apiKeyVisible).forEach((k) => delete apiKeyVisible[Number(k)])
+  Object.assign(expandedProviders, newExpanded)
+  Object.assign(apiKeyVisible, newVisible)
+}
+
 function addWebSearchProvider() {
+  const idx = webSearchConfig.providers.length
   webSearchConfig.providers.push({
     type: 'brave',
     api_key: '',
     api_key_configured: false,
-    priority: webSearchConfig.providers.length + 1,
     quota_limit: DEFAULT_WEB_SEARCH_QUOTA_LIMIT,
-    quota_refresh_interval: 'monthly',
+    subscribed_at: null,
     proxy_id: null,
     expires_at: null,
   } as WebSearchProviderConfig)
+  expandedProviders[idx] = true
+}
+
+function formatSubscribedAt(ts: number | null): string {
+  if (!ts) return ''
+  // Use UTC to avoid timezone drift on repeated edits
+  const d = new Date(ts * 1000)
+  const y = d.getUTCFullYear()
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(d.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function parseSubscribedAt(dateStr: string): number | null {
+  if (!dateStr) return null
+  // Parse as UTC to match formatSubscribedAt
+  return Math.floor(new Date(dateStr + 'T00:00:00Z').getTime() / 1000)
+}
+
+function quotaPercentage(provider: WebSearchProviderConfig): number {
+  if (!provider.quota_limit || provider.quota_limit <= 0) return 0
+  return ((provider.quota_used ?? 0) / provider.quota_limit) * 100
+}
+
+async function copyApiKey(idx: number) {
+  const key = webSearchConfig.providers[idx]?.api_key
+  if (!key) {
+    appStore.showError(t('admin.settings.webSearchEmulation.apiKeyPlaceholder'))
+    return
+  }
+  await navigator.clipboard.writeText(key)
+  appStore.showSuccess(t('admin.settings.webSearchEmulation.copied'))
+}
+
+async function testWebSearchProvider() {
+  wsTestLoading.value = true
+  wsTestResult.value = null
+  try {
+    const query = wsTestQuery.value.trim() || t('admin.settings.webSearchEmulation.testDefaultQuery')
+    wsTestResult.value = await adminAPI.settings.testWebSearchEmulation(query)
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    wsTestLoading.value = false
+  }
 }
 
 async function loadWebSearchConfig() {
