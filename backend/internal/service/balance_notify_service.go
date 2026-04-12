@@ -176,13 +176,38 @@ func (s *BalanceNotifyService) isAccountQuotaNotifyEnabled(ctx context.Context) 
 	return val == "true"
 }
 
-// getAccountQuotaNotifyEmails reads admin notification emails from settings.
+// getAccountQuotaNotifyEmails reads admin notification emails from settings,
+// filtering out disabled entries. Entries with email="" are resolved to the first admin's email.
 func (s *BalanceNotifyService) getAccountQuotaNotifyEmails(ctx context.Context) []string {
 	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAccountQuotaNotifyEmails)
 	if err != nil || strings.TrimSpace(raw) == "" || raw == "[]" {
 		return nil
 	}
-	return parseJSONStringArray(raw)
+
+	entries := ParseNotifyEmails(raw)
+	if len(entries) == 0 {
+		return nil
+	}
+
+	var recipients []string
+	seen := make(map[string]bool)
+	for _, entry := range entries {
+		if entry.Disabled {
+			continue
+		}
+		email := strings.TrimSpace(entry.Email)
+		// email="" placeholder is not resolved here; admin should configure actual emails
+		if email == "" {
+			continue
+		}
+		lower := strings.ToLower(email)
+		if seen[lower] {
+			continue
+		}
+		seen[lower] = true
+		recipients = append(recipients, email)
+	}
+	return recipients
 }
 
 // getSiteName reads site name from settings with fallback.
@@ -194,18 +219,36 @@ func (s *BalanceNotifyService) getSiteName(ctx context.Context) string {
 	return name
 }
 
-// collectBalanceNotifyRecipients collects all email recipients for balance notifications.
+// collectBalanceNotifyRecipients collects all non-disabled email recipients for balance notifications.
+// Entries with email="" are resolved to the user's primary email.
 func (s *BalanceNotifyService) collectBalanceNotifyRecipients(user *User) []string {
 	var recipients []string
-	if user.Email != "" {
+	seen := make(map[string]bool)
+
+	for _, entry := range user.BalanceNotifyExtraEmails {
+		if entry.Disabled {
+			continue
+		}
+		email := strings.TrimSpace(entry.Email)
+		if email == "" {
+			email = user.Email // Resolve primary email placeholder
+		}
+		if email == "" {
+			continue
+		}
+		lower := strings.ToLower(email)
+		if seen[lower] {
+			continue
+		}
+		seen[lower] = true
+		recipients = append(recipients, email)
+	}
+
+	// If no entries exist at all (legacy/empty), fall back to user's primary email
+	if len(user.BalanceNotifyExtraEmails) == 0 && user.Email != "" {
 		recipients = append(recipients, user.Email)
 	}
-	for _, extra := range user.BalanceNotifyExtraEmails {
-		email := strings.TrimSpace(extra)
-		if email != "" && !strings.EqualFold(email, user.Email) {
-			recipients = append(recipients, email)
-		}
-	}
+
 	return recipients
 }
 

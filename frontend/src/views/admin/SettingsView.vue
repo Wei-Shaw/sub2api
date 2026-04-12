@@ -2726,8 +2726,12 @@
             <div v-if="form.account_quota_notify_enabled">
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.quotaNotify.emails') }}</label>
               <div class="space-y-2">
-                <div v-for="(_, index) in (form.account_quota_notify_emails || [])" :key="index" class="flex items-center gap-2">
-                  <input v-model="form.account_quota_notify_emails[index]" type="email" class="input flex-1" :placeholder="t('admin.settings.quotaNotify.emailPlaceholder')" />
+                <div v-for="(entry, index) in (form.account_quota_notify_emails || [])" :key="index" class="flex items-center gap-2">
+                  <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input type="checkbox" :checked="!entry.disabled" @change="entry.disabled = !entry.disabled" class="sr-only peer" />
+                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:after:border-gray-500 peer-checked:bg-primary-600"></div>
+                  </label>
+                  <input v-model="entry.email" type="email" class="input flex-1" :placeholder="t('admin.settings.quotaNotify.emailPlaceholder')" />
                   <button @click="form.account_quota_notify_emails.splice(index, 1)" class="btn btn-secondary px-2" type="button">
                     <Icon name="x" size="xs" class="h-4 w-4" />
                   </button>
@@ -3024,7 +3028,7 @@ const form = reactive<SettingsForm>({
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
   account_quota_notify_enabled: false,
-  account_quota_notify_emails: [] as string[]
+  account_quota_notify_emails: [] as { email: string; disabled: boolean; verified: boolean }[]
 })
 
 // Proxies for web search emulation ProxySelector
@@ -3249,7 +3253,7 @@ const addQuotaNotifyEmail = () => {
   if (!form.account_quota_notify_emails) {
     form.account_quota_notify_emails = []
   }
-  form.account_quota_notify_emails.push('')
+  form.account_quota_notify_emails.push({ email: '', disabled: false, verified: true })
 }
 
 // LinuxDo OAuth redirect URL suggestion
@@ -3595,7 +3599,7 @@ async function saveSettings() {
       balance_low_notify_enabled: form.balance_low_notify_enabled,
       balance_low_notify_threshold: Number(form.balance_low_notify_threshold) || 0,
       account_quota_notify_enabled: form.account_quota_notify_enabled,
-      account_quota_notify_emails: (form.account_quota_notify_emails || []).filter((e: string) => e.trim() !== ''),
+      account_quota_notify_emails: (form.account_quota_notify_emails || []).filter((e) => e.email.trim() !== ''),
     }
 
     const updated = await adminAPI.settings.updateSettings(payload)

@@ -18,7 +18,7 @@ var (
 	ErrInsufficientPerms = infraerrors.Forbidden("INSUFFICIENT_PERMISSIONS", "insufficient permissions")
 )
 
-const maxNotifyExtraEmails = 5
+const maxNotifyEmails = 3 // Total limit: primary (email="") + up to 2 extra
 
 // UserListFilters contains all filter options for listing users
 type UserListFilters struct {
@@ -338,17 +338,21 @@ func (s *UserService) VerifyAndAddNotifyEmail(ctx context.Context, userID int64,
 
 	// Check if already exists
 	for _, e := range user.BalanceNotifyExtraEmails {
-		if strings.EqualFold(e, email) {
+		if strings.EqualFold(e.Email, email) {
 			return nil // Already added
 		}
 	}
 
-	// Check limit
-	if len(user.BalanceNotifyExtraEmails) >= maxNotifyExtraEmails {
-		return infraerrors.BadRequest("TOO_MANY_NOTIFY_EMAILS", fmt.Sprintf("maximum %d extra notification emails allowed", maxNotifyExtraEmails))
+	// Check limit (total includes primary email="" placeholder + extra emails)
+	if len(user.BalanceNotifyExtraEmails) >= maxNotifyEmails {
+		return infraerrors.BadRequest("TOO_MANY_NOTIFY_EMAILS", fmt.Sprintf("maximum %d notification emails allowed", maxNotifyEmails))
 	}
 
-	user.BalanceNotifyExtraEmails = append(user.BalanceNotifyExtraEmails, email)
+	user.BalanceNotifyExtraEmails = append(user.BalanceNotifyExtraEmails, NotifyEmailEntry{
+		Email:    email,
+		Disabled: false,
+		Verified: true,
+	})
 	return s.userRepo.Update(ctx, user)
 }
 
@@ -359,13 +363,35 @@ func (s *UserService) RemoveNotifyEmail(ctx context.Context, userID int64, email
 		return err
 	}
 
-	filtered := make([]string, 0, len(user.BalanceNotifyExtraEmails))
+	filtered := make([]NotifyEmailEntry, 0, len(user.BalanceNotifyExtraEmails))
 	for _, e := range user.BalanceNotifyExtraEmails {
-		if !strings.EqualFold(e, email) {
+		if !strings.EqualFold(e.Email, email) {
 			filtered = append(filtered, e)
 		}
 	}
 	user.BalanceNotifyExtraEmails = filtered
+	return s.userRepo.Update(ctx, user)
+}
+
+// ToggleNotifyEmail toggles the disabled state of a notification email entry.
+func (s *UserService) ToggleNotifyEmail(ctx context.Context, userID int64, email string, disabled bool) error {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	found := false
+	for i, e := range user.BalanceNotifyExtraEmails {
+		if strings.EqualFold(e.Email, email) {
+			user.BalanceNotifyExtraEmails[i].Disabled = disabled
+			found = true
+			break
+		}
+	}
+	if !found {
+		return infraerrors.BadRequest("EMAIL_NOT_FOUND", "notification email not found")
+	}
+
 	return s.userRepo.Update(ctx, user)
 }
 

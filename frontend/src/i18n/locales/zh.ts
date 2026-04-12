@@ -937,6 +937,8 @@ export default {
       removeEmail: '移除',
       removeSuccess: '邮箱已移除',
       emailDuplicate: '该邮箱已存在',
+      maxEmailsReached: '已达到通知邮箱数量上限',
+      unverified: '未验证',
     }
   },
 

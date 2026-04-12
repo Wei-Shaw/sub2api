@@ -933,6 +933,8 @@ export default {
       removeEmail: 'Remove',
       removeSuccess: 'Email removed',
       emailDuplicate: 'This email already exists',
+      maxEmailsReached: 'Maximum number of notification emails reached',
+      unverified: 'Unverified',
     }
   },
 

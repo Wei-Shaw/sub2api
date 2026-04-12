@@ -13,7 +13,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 3
+const apiKeyAuthSnapshotVersion = 4 // v4: added balance notification fields to UserSnapshot
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -219,11 +219,17 @@ func (s *APIKeyService) snapshotFromAPIKey(apiKey *APIKey) *APIKeyAuthSnapshot {
 		RateLimit1d: apiKey.RateLimit1d,
 		RateLimit7d: apiKey.RateLimit7d,
 		User: APIKeyAuthUserSnapshot{
-			ID:          apiKey.User.ID,
-			Status:      apiKey.User.Status,
-			Role:        apiKey.User.Role,
-			Balance:     apiKey.User.Balance,
-			Concurrency: apiKey.User.Concurrency,
+			ID:                         apiKey.User.ID,
+			Status:                     apiKey.User.Status,
+			Role:                       apiKey.User.Role,
+			Balance:                    apiKey.User.Balance,
+			Concurrency:                apiKey.User.Concurrency,
+			Email:                      apiKey.User.Email,
+			Username:                   apiKey.User.Username,
+			BalanceNotifyEnabled:       apiKey.User.BalanceNotifyEnabled,
+			BalanceNotifyThresholdType: apiKey.User.BalanceNotifyThresholdType,
+			BalanceNotifyThreshold:     apiKey.User.BalanceNotifyThreshold,
+			BalanceNotifyExtraEmails:   apiKey.User.BalanceNotifyExtraEmails,
 		},
 	}
 	if apiKey.Group != nil {
@@ -274,11 +280,17 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		RateLimit1d: snapshot.RateLimit1d,
 		RateLimit7d: snapshot.RateLimit7d,
 		User: &User{
-			ID:          snapshot.User.ID,
-			Status:      snapshot.User.Status,
-			Role:        snapshot.User.Role,
-			Balance:     snapshot.User.Balance,
-			Concurrency: snapshot.User.Concurrency,
+			ID:                         snapshot.User.ID,
+			Status:                     snapshot.User.Status,
+			Role:                       snapshot.User.Role,
+			Balance:                    snapshot.User.Balance,
+			Concurrency:                snapshot.User.Concurrency,
+			Email:                      snapshot.User.Email,
+			Username:                   snapshot.User.Username,
+			BalanceNotifyEnabled:       snapshot.User.BalanceNotifyEnabled,
+			BalanceNotifyThresholdType: snapshot.User.BalanceNotifyThresholdType,
+			BalanceNotifyThreshold:     snapshot.User.BalanceNotifyThreshold,
+			BalanceNotifyExtraEmails:   snapshot.User.BalanceNotifyExtraEmails,
 		},
 	}
 	if snapshot.Group != nil {

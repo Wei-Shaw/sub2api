@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -667,12 +666,9 @@ func userEntityToService(u *dbent.User) *service.User {
 		CreatedAt:                  u.CreatedAt,
 		UpdatedAt:                  u.UpdatedAt,
 	}
-	// Parse extra emails JSON array
+	// Parse extra emails JSON (supports both old []string and new []NotifyEmailEntry format)
 	if u.BalanceNotifyExtraEmails != "" && u.BalanceNotifyExtraEmails != "[]" {
-		var emails []string
-		if err := json.Unmarshal([]byte(u.BalanceNotifyExtraEmails), &emails); err == nil {
-			out.BalanceNotifyExtraEmails = emails
-		}
+		out.BalanceNotifyExtraEmails = service.ParseNotifyEmails(u.BalanceNotifyExtraEmails)
 	}
 	return out
 }

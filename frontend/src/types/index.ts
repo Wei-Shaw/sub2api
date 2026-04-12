@@ -22,6 +22,16 @@ export interface FetchOptions {
   signal?: AbortSignal
 }
 
+// ==================== Notification Types ====================
+
+/** Notification email entry with enable/disable and verification state.
+ *  email="" is a placeholder for the primary email (user's registration email or admin email). */
+export interface NotifyEmailEntry {
+  email: string
+  disabled: boolean
+  verified: boolean
+}
+
 // ==================== User & Auth Types ====================
 
 export interface User {
@@ -35,7 +45,7 @@ export interface User {
   allowed_groups: number[] | null // Allowed group IDs (null = all non-exclusive groups)
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
-  balance_notify_extra_emails: string[]
+  balance_notify_extra_emails: NotifyEmailEntry[]
   subscriptions?: UserSubscription[] // User's active subscriptions
   created_at: string
   updated_at: string

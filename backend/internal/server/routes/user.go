@@ -31,6 +31,7 @@ func RegisterUserRoutes(
 			{
 				notifyEmail.POST("/send-code", h.User.SendNotifyEmailCode)
 				notifyEmail.POST("/verify", h.User.VerifyNotifyEmail)
+				notifyEmail.PUT("/toggle", h.User.ToggleNotifyEmail)
 				notifyEmail.DELETE("", h.User.RemoveNotifyEmail)
 			}
 
