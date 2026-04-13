@@ -1138,6 +1138,12 @@ REDACTED
 	if !equalStringSlice(before.RegistrationEmailSuffixWhitelist, after.RegistrationEmailSuffixWhitelist) {
 		changed = append(changed, "registration_email_suffix_whitelist")
 REDACTED
+	if before.PromoCodeEnabled != after.PromoCodeEnabled {
+		changed = append(changed, "promo_code_enabled")
+REDACTED
+	if before.InvitationCodeEnabled != after.InvitationCodeEnabled {
+		changed = append(changed, "invitation_code_enabled")
+REDACTED
 	if before.PasswordResetEnabled != after.PasswordResetEnabled {
 		changed = append(changed, "password_reset_enabled")
 REDACTED
@@ -1347,6 +1353,9 @@ REDACTED
 REDACTED
 	if before.CustomMenuItems != after.CustomMenuItems {
 		changed = append(changed, "custom_menu_items")
+REDACTED
+	if before.CustomEndpoints != after.CustomEndpoints {
+		changed = append(changed, "custom_endpoints")
 REDACTED
 	if before.EnableFingerprintUnification != after.EnableFingerprintUnification {
 		changed = append(changed, "enable_fingerprint_unification")

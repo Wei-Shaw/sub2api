@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { QUOTA_THRESHOLD_TYPE_FIXED, QUOTA_THRESHOLD_TYPE_PERCENTAGE REDACTED from '@/constants/account'
+import { QUOTA_THRESHOLD_TYPE_FIXED, QUOTA_THRESHOLD_TYPE_PERCENTAGE, type QuotaThresholdType REDACTED from '@/constants/account'
 
 defineProps<{
   enabled: boolean | null
   threshold: number | null
-  thresholdType: string | null // "fixed" (default) or "percentage"
+  thresholdType: QuotaThresholdType | null
 REDACTED>()
 
 const emit = defineEmits<{
   'update:enabled': [value: boolean | null]
   'update:threshold': [value: number | null]
-  'update:thresholdType': [value: string | null]
+  'update:thresholdType': [value: QuotaThresholdType | null]
 REDACTED>()
 </script>
 
@@ -43,7 +43,7 @@ REDACTED>()
       />
       <select
         :value="thresholdType || QUOTA_THRESHOLD_TYPE_FIXED"
-        @change="emit('update:thresholdType', ($event.target as HTMLSelectElement).value)"
+        @change="emit('update:thresholdType', ($event.target as HTMLSelectElement).value as QuotaThresholdType)"
         class="input py-1 text-xs w-[4.5rem] flex-shrink-0 text-center"
       >
         <option :value="QUOTA_THRESHOLD_TYPE_FIXED">$</option>

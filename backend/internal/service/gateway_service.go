@@ -1194,12 +1194,20 @@ REDACTED
 	// anthropic/gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
 	// 注意：强制平台模式不走混合调度
 	if (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform {
-		return s.selectAccountWithMixedScheduling(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+		account, err := s.selectAccountWithMixedScheduling(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+		if err != nil {
+			return nil, err
+	REDACTED
+		return s.hydrateSelectedAccount(ctx, account)
 REDACTED
 
 	// antigravity 分组、强制平台模式或无分组使用单平台选择
 	// 注意：强制平台模式也必须遵守分组限制，不再回退到全平台查询
-	return s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+	account, err := s.selectAccountForModelWithPlatform(ctx, groupID, sessionHash, requestedModel, excludedIDs, platform)
+	if err != nil {
+		return nil, err
+REDACTED
+	return s.hydrateSelectedAccount(ctx, account)
 REDACTED
 
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
@@ -1275,11 +1283,7 @@ REDACTED
 					localExcluded[account.ID] = struct{REDACTED{REDACTED // 排除此账号
 					continue                               // 重新选择
 			REDACTED
-				return &AccountSelectionResult{
-					Account:     account,
-					Acquired:    true,
-					ReleaseFunc: result.ReleaseFunc,
-			REDACTED, nil
+				return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 		REDACTED
 
 			// 对于等待计划的情况，也需要先检查会话限制
@@ -1291,26 +1295,20 @@ REDACTED
 			if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
 				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
 				if waitingCount < cfg.StickySessionMaxWaiting {
-					return &AccountSelectionResult{
-						Account: account,
-						WaitPlan: &AccountWaitPlan{
-							AccountID:      account.ID,
-							MaxConcurrency: account.Concurrency,
-							Timeout:        cfg.StickySessionWaitTimeout,
-							MaxWaiting:     cfg.StickySessionMaxWaiting,
-					REDACTED,
-				REDACTED, nil
+					return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+						AccountID:      account.ID,
+						MaxConcurrency: account.Concurrency,
+						Timeout:        cfg.StickySessionWaitTimeout,
+						MaxWaiting:     cfg.StickySessionMaxWaiting,
+				REDACTED)
 			REDACTED
 		REDACTED
-			return &AccountSelectionResult{
-				Account: account,
-				WaitPlan: &AccountWaitPlan{
-					AccountID:      account.ID,
-					MaxConcurrency: account.Concurrency,
-					Timeout:        cfg.FallbackWaitTimeout,
-					MaxWaiting:     cfg.FallbackMaxWaiting,
-			REDACTED,
-		REDACTED, nil
+			return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+				AccountID:      account.ID,
+				MaxConcurrency: account.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+		REDACTED)
 	REDACTED
 REDACTED
 
@@ -1433,53 +1431,76 @@ REDACTED
 				if containsInt64(routingAccountIDs, stickyAccountID) && !isExcluded(stickyAccountID) {
 					// 粘性账号在路由列表中，优先使用
 					if stickyAccount, ok := accountByID[stickyAccountID]; ok {
-						if s.isAccountSchedulableForSelection(stickyAccount) &&
+						var stickyCacheMissReason string
+
+						gatePass := s.isAccountSchedulableForSelection(stickyAccount) &&
 							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
 							(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel)) &&
 							s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
 							s.isAccountSchedulableForQuota(stickyAccount) &&
-							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true) &&
+							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true)
 
-							s.isAccountSchedulableForRPM(ctx, stickyAccount, true) { // 粘性会话窗口费用+RPM 检查
+						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
+
+						if rpmPass { // 粘性会话窗口费用+RPM 检查
 							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
 							if err == nil && result.Acquired {
 								// 会话数量限制检查
 								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
 									result.ReleaseFunc() // 释放槽位
+									stickyCacheMissReason = "session_limit"
 									// 继续到负载感知选择
 							REDACTED else {
 									if s.debugModelRoutingEnabled() {
 										logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), stickyAccountID)
 								REDACTED
-									return &AccountSelectionResult{
-										Account:     stickyAccount,
-										Acquired:    true,
-										ReleaseFunc: result.ReleaseFunc,
-								REDACTED, nil
+									return s.newSelectionResult(ctx, stickyAccount, true, result.ReleaseFunc, nil)
 							REDACTED
 						REDACTED
 
-							waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, stickyAccountID)
-							if waitingCount < cfg.StickySessionMaxWaiting {
-								// 会话数量限制检查（等待计划也需要占用会话配额）
-								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
-									// 会话限制已满，继续到负载感知选择
+							if stickyCacheMissReason == "" {
+								waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, stickyAccountID)
+								if waitingCount < cfg.StickySessionMaxWaiting {
+									// 会话数量限制检查（等待计划也需要占用会话配额）
+									if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
+										stickyCacheMissReason = "session_limit"
+										// 会话限制已满，继续到负载感知选择
+								REDACTED else {
+										return &AccountSelectionResult{
+											Account: stickyAccount,
+											WaitPlan: &AccountWaitPlan{
+												AccountID:      stickyAccountID,
+												MaxConcurrency: stickyAccount.Concurrency,
+												Timeout:        cfg.StickySessionWaitTimeout,
+												MaxWaiting:     cfg.StickySessionMaxWaiting,
+										REDACTED,
+									REDACTED, nil
+								REDACTED
 							REDACTED else {
-									return &AccountSelectionResult{
-										Account: stickyAccount,
-										WaitPlan: &AccountWaitPlan{
-											AccountID:      stickyAccountID,
-											MaxConcurrency: stickyAccount.Concurrency,
-											Timeout:        cfg.StickySessionWaitTimeout,
-											MaxWaiting:     cfg.StickySessionMaxWaiting,
-									REDACTED,
-								REDACTED, nil
+									stickyCacheMissReason = "wait_queue_full"
 							REDACTED
 						REDACTED
 							// 粘性账号槽位满且等待队列已满，继续使用负载感知选择
+					REDACTED else if !gatePass {
+							stickyCacheMissReason = "gate_check"
+					REDACTED else {
+							stickyCacheMissReason = "rpm_red"
+					REDACTED
+
+						// 记录粘性缓存未命中的结构化日志
+						if stickyCacheMissReason != "" {
+							baseRPM := stickyAccount.GetBaseRPM()
+							var currentRPM int
+							if count, ok := rpmFromPrefetchContext(ctx, stickyAccount.ID); ok {
+								currentRPM = count
+						REDACTED
+							logger.LegacyPrintf("service.gateway", "[StickyCacheMiss] reason=%s account_id=%d session=%s current_rpm=%d base_rpm=%d",
+								stickyCacheMissReason, stickyAccountID, shortSessionHash(sessionHash), currentRPM, baseRPM)
 					REDACTED
 				REDACTED else {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
+						logger.LegacyPrintf("service.gateway", "[StickyCacheMiss] reason=account_cleared account_id=%d session=%s current_rpm=0 base_rpm=0",
+							stickyAccountID, shortSessionHash(sessionHash))
 				REDACTED
 			REDACTED
 		REDACTED
@@ -1544,11 +1565,7 @@ REDACTED
 						if s.debugModelRoutingEnabled() {
 							logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
 					REDACTED
-						return &AccountSelectionResult{
-							Account:     item.account,
-							Acquired:    true,
-							ReleaseFunc: result.ReleaseFunc,
-					REDACTED, nil
+						return s.newSelectionResult(ctx, item.account, true, result.ReleaseFunc, nil)
 				REDACTED
 			REDACTED
 
@@ -1561,15 +1578,12 @@ REDACTED
 					if s.debugModelRoutingEnabled() {
 						logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed wait: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
 				REDACTED
-					return &AccountSelectionResult{
-						Account: item.account,
-						WaitPlan: &AccountWaitPlan{
-							AccountID:      item.account.ID,
-							MaxConcurrency: item.account.Concurrency,
-							Timeout:        cfg.StickySessionWaitTimeout,
-							MaxWaiting:     cfg.StickySessionMaxWaiting,
-					REDACTED,
-				REDACTED, nil
+					return s.newSelectionResult(ctx, item.account, false, nil, &AccountWaitPlan{
+						AccountID:      item.account.ID,
+						MaxConcurrency: item.account.Concurrency,
+						Timeout:        cfg.StickySessionWaitTimeout,
+						MaxWaiting:     cfg.StickySessionMaxWaiting,
+				REDACTED)
 			REDACTED
 				// 所有路由账号会话限制都已满，继续到 Layer 2 回退
 		REDACTED
@@ -1603,11 +1617,10 @@ REDACTED
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 							result.ReleaseFunc() // 释放槽位，继续到 Layer 2
 					REDACTED else {
-							return &AccountSelectionResult{
-								Account:     account,
-								Acquired:    true,
-								ReleaseFunc: result.ReleaseFunc,
-						REDACTED, nil
+							if s.cache != nil {
+								_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
+						REDACTED
+							return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 					REDACTED
 				REDACTED
 
@@ -1617,15 +1630,12 @@ REDACTED
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 							// 会话限制已满，继续到 Layer 2
 					REDACTED else {
-							return &AccountSelectionResult{
-								Account: account,
-								WaitPlan: &AccountWaitPlan{
-									AccountID:      accountID,
-									MaxConcurrency: account.Concurrency,
-									Timeout:        cfg.StickySessionWaitTimeout,
-									MaxWaiting:     cfg.StickySessionMaxWaiting,
-							REDACTED,
-						REDACTED, nil
+							return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+								AccountID:      accountID,
+								MaxConcurrency: account.Concurrency,
+								Timeout:        cfg.StickySessionWaitTimeout,
+								MaxWaiting:     cfg.StickySessionMaxWaiting,
+						REDACTED)
 					REDACTED
 				REDACTED
 			REDACTED
@@ -1684,7 +1694,9 @@ REDACTED
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
-		if result, ok := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); ok {
+		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); legacyErr != nil {
+			return nil, legacyErr
+	REDACTED else if ok {
 			return result, nil
 	REDACTED
 REDACTED else {
@@ -1723,11 +1735,7 @@ REDACTED else {
 					if sessionHash != "" && s.cache != nil {
 						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
 				REDACTED
-					return &AccountSelectionResult{
-						Account:     selected.account,
-						Acquired:    true,
-						ReleaseFunc: result.ReleaseFunc,
-				REDACTED, nil
+					return s.newSelectionResult(ctx, selected.account, true, result.ReleaseFunc, nil)
 			REDACTED
 		REDACTED
 
@@ -1750,20 +1758,17 @@ REDACTED
 		if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
 			continue // 会话限制已满，尝试下一个账号
 	REDACTED
-		return &AccountSelectionResult{
-			Account: acc,
-			WaitPlan: &AccountWaitPlan{
-				AccountID:      acc.ID,
-				MaxConcurrency: acc.Concurrency,
-				Timeout:        cfg.FallbackWaitTimeout,
-				MaxWaiting:     cfg.FallbackMaxWaiting,
-		REDACTED,
-	REDACTED, nil
+		return s.newSelectionResult(ctx, acc, false, nil, &AccountWaitPlan{
+			AccountID:      acc.ID,
+			MaxConcurrency: acc.Concurrency,
+			Timeout:        cfg.FallbackWaitTimeout,
+			MaxWaiting:     cfg.FallbackMaxWaiting,
+	REDACTED)
 REDACTED
 	return nil, ErrNoAvailableAccounts
 REDACTED
 
-func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool) {
+func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
 	ordered := append([]*Account(nil), candidates...)
 	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
 
@@ -1778,15 +1783,15 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 			if sessionHash != "" && s.cache != nil {
 				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, stickySessionTTL)
 		REDACTED
-			return &AccountSelectionResult{
-				Account:     acc,
-				Acquired:    true,
-				ReleaseFunc: result.ReleaseFunc,
-		REDACTED, true
+			selection, err := s.newSelectionResult(ctx, acc, true, result.ReleaseFunc, nil)
+			if err != nil {
+				return nil, false, err
+		REDACTED
+			return selection, true, nil
 	REDACTED
 REDACTED
 
-	return nil, false
+	return nil, false, nil
 REDACTED
 
 func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
@@ -2401,6 +2406,33 @@ REDACTED
 	return s.accountRepo.GetByID(ctx, accountID)
 REDACTED
 
+func (s *GatewayService) hydrateSelectedAccount(ctx context.Context, account *Account) (*Account, error) {
+	if account == nil || s.schedulerSnapshot == nil {
+		return account, nil
+REDACTED
+	hydrated, err := s.schedulerSnapshot.GetAccount(ctx, account.ID)
+	if err != nil {
+		return nil, err
+REDACTED
+	if hydrated == nil {
+		return nil, fmt.Errorf("selected gateway account %d not found during hydration", account.ID)
+REDACTED
+	return hydrated, nil
+REDACTED
+
+func (s *GatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
+	hydrated, err := s.hydrateSelectedAccount(ctx, account)
+	if err != nil {
+		return nil, err
+REDACTED
+	return &AccountSelectionResult{
+		Account:     hydrated,
+		Acquired:    acquired,
+		ReleaseFunc: release,
+		WaitPlan:    waitPlan,
+REDACTED, nil
+REDACTED
+
 // filterByMinPriority 过滤出优先级最小的账号集合
 func filterByMinPriority(accounts []accountWithLoad) []accountWithLoad {
 	if len(accounts) == 0 {
@@ -2676,6 +2708,12 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	preferOAuth := platform == PlatformGemini
 	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, platform)
 
+	// require_privacy_set: 获取分组信息
+	var schedGroup *Group
+	if groupID != nil && s.groupRepo != nil {
+		schedGroup, _ = s.groupRepo.GetByID(ctx, *groupID)
+REDACTED
+
 	var accounts []Account
 	accountsLoaded := false
 
@@ -2745,6 +2783,12 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 			// avoid selecting accounts that were recently rate-limited/overloaded.
 			if !s.isAccountSchedulableForSelection(acc) {
+				continue
+		REDACTED
+			// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
+			if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
+				_ = s.accountRepo.SetError(ctx, acc.ID,
+					fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 				continue
 		REDACTED
 			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
@@ -2852,6 +2896,12 @@ REDACTED
 		if !s.isAccountSchedulableForSelection(acc) {
 			continue
 	REDACTED
+		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
+		if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
+			_ = s.accountRepo.SetError(ctx, acc.ID,
+				fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
+			continue
+	REDACTED
 		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
 			continue
 	REDACTED
@@ -2918,6 +2968,12 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	preferOAuth := nativePlatform == PlatformGemini
 	routingAccountIDs := s.routingAccountIDsForRequest(ctx, groupID, requestedModel, nativePlatform)
 
+	// require_privacy_set: 获取分组信息
+	var schedGroup *Group
+	if groupID != nil && s.groupRepo != nil {
+		schedGroup, _ = s.groupRepo.GetByID(ctx, *groupID)
+REDACTED
+
 	var accounts []Account
 	accountsLoaded := false
 
@@ -2983,6 +3039,12 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 			// avoid selecting accounts that were recently rate-limited/overloaded.
 			if !s.isAccountSchedulableForSelection(acc) {
+				continue
+		REDACTED
+			// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
+			if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
+				_ = s.accountRepo.SetError(ctx, acc.ID,
+					fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 				continue
 		REDACTED
 			// 过滤：原生平台直接通过，antigravity 需要启用混合调度
@@ -3078,6 +3140,7 @@ REDACTED
 	ctx = s.withRPMPrefetch(ctx, accounts)
 
 	// 3. 按优先级+最久未用选择（考虑模型支持和混合调度）
+	// needsUpstreamCheck 仅在主选择循环中使用；粘性会话命中时跳过此检查。
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 	var selected *Account
 	for i := range accounts {
@@ -3088,6 +3151,12 @@ REDACTED
 		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 		// avoid selecting accounts that were recently rate-limited/overloaded.
 		if !s.isAccountSchedulableForSelection(acc) {
+			continue
+	REDACTED
+		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
+		if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
+			_ = s.accountRepo.SetError(ctx, acc.ID,
+				fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 			continue
 	REDACTED
 		// 过滤：原生平台直接通过，antigravity 需要启用混合调度
@@ -3257,8 +3326,7 @@ REDACTED
 		return selectionFailureDiagnosis{Category: "excluded"REDACTED
 REDACTED
 	if !s.isAccountSchedulableForSelection(acc) {
-		detail := "generic_unschedulable"
-		return selectionFailureDiagnosis{Category: "unschedulable", Detail: detailREDACTED
+		return selectionFailureDiagnosis{Category: "unschedulable", Detail: "generic_unschedulable"REDACTED
 REDACTED
 	if isPlatformFilteredForSelection(acc, platform, allowMixedScheduling) {
 		return selectionFailureDiagnosis{
@@ -3282,7 +3350,6 @@ REDACTED
 	return selectionFailureDiagnosis{Category: "eligible"REDACTED
 REDACTED
 
-// GetAccessToken 获取账号凭证
 func isPlatformFilteredForSelection(acc *Account, platform string, allowMixedScheduling bool) bool {
 	if acc == nil {
 		return true
@@ -3653,6 +3720,86 @@ REDACTED
 	return result
 REDACTED
 
+// rewriteSystemForNonClaudeCode 将非 Claude Code 客户端的 system prompt 迁移至 messages，
+// system 字段仅保留 Claude Code 标识提示词。
+// Anthropic 基于 system 参数内容检测第三方应用，仅前置追加 Claude Code 提示词
+// 无法通过检测，因为后续内容仍为非 Claude Code 格式。
+// 策略：将原始 system prompt 提取并注入为 user/assistant 消息对，system 仅保留 Claude Code 标识。
+func rewriteSystemForNonClaudeCode(body []byte, system any) []byte {
+	system = normalizeSystemParam(system)
+
+	// 1. 提取原始 system prompt 文本
+	var originalSystemText string
+	switch v := system.(type) {
+	case string:
+		originalSystemText = strings.TrimSpace(v)
+	case []any:
+		var parts []string
+		for _, item := range v {
+			if m, ok := item.(map[string]any); ok {
+				if text, ok := m["text"].(string); ok && strings.TrimSpace(text) != "" {
+					parts = append(parts, text)
+			REDACTED
+		REDACTED
+	REDACTED
+		originalSystemText = strings.Join(parts, "\n\n")
+REDACTED
+
+	// 2. 将 system 替换为 Claude Code 标准提示词（array 格式，与真实 Claude Code 一致）
+	//    真实 Claude Code 始终以 [{type: "text", text: "...", cache_control: {type: "ephemeral"REDACTEDREDACTED] 发送 system。
+	//    使用 string 格式会被 Anthropic 检测为第三方应用。
+	claudeCodeSystemBlock := []map[string]any{
+		{
+			"type":          "text",
+			"text":          claudeCodeSystemPrompt,
+			"cache_control": map[string]string{"type": "ephemeral"REDACTED,
+	REDACTED,
+REDACTED
+	out, ok := setJSONValueBytes(body, "system", claudeCodeSystemBlock)
+	if !ok {
+		logger.LegacyPrintf("service.gateway", "Warning: failed to set Claude Code system prompt")
+		return body
+REDACTED
+
+	// 3. 将原始 system prompt 作为 user/assistant 消息对注入到 messages 开头
+	//    模型仍通过 messages 接收完整指令，保留客户端功能
+	ccPromptTrimmed := strings.TrimSpace(claudeCodeSystemPrompt)
+	if originalSystemText != "" && originalSystemText != ccPromptTrimmed && !hasClaudeCodePrefix(originalSystemText) {
+		instrMsg, err1 := json.Marshal(map[string]any{
+			"role": "user",
+			"content": []map[string]any{
+				{"type": "text", "text": "[System Instructions]\n" + originalSystemTextREDACTED,
+		REDACTED,
+	REDACTED)
+		ackMsg, err2 := json.Marshal(map[string]any{
+			"role": "assistant",
+			"content": []map[string]any{
+				{"type": "text", "text": "Understood. I will follow these instructions."REDACTED,
+		REDACTED,
+	REDACTED)
+		if err1 != nil || err2 != nil {
+			logger.LegacyPrintf("service.gateway", "Warning: failed to marshal system-to-messages injection")
+			return out
+	REDACTED
+
+		// 重建 messages 数组：[instruction, ack, ...originalMessages]
+		items := [][]byte{instrMsg, ackMsgREDACTED
+		messagesResult := gjson.GetBytes(out, "messages")
+		if messagesResult.IsArray() {
+			messagesResult.ForEach(func(_, msg gjson.Result) bool {
+				items = append(items, []byte(msg.Raw))
+				return true
+		REDACTED)
+	REDACTED
+
+		if next, setOk := setJSONRawBytes(out, "messages", buildJSONArrayRaw(items)); setOk {
+			out = next
+	REDACTED
+REDACTED
+
+	return out
+REDACTED
+
 type cacheControlPath struct {
 	path string
 	log  string
@@ -3819,7 +3966,7 @@ REDACTED
 	// Beta policy: evaluate once; block check + cache filter set for buildUpstreamRequest.
 	// Always overwrite the cache to prevent stale values from a previous retry with a different account.
 	if account.Platform == PlatformAnthropic && c != nil {
-		policy := s.evaluateBetaPolicy(ctx, c.GetHeader("anthropic-beta"), account)
+		policy := s.evaluateBetaPolicy(ctx, c.GetHeader("anthropic-beta"), account, parsed.Model)
 		if policy.blockErr != nil {
 			return nil, policy.blockErr
 	REDACTED
@@ -3849,19 +3996,24 @@ REDACTED
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
 
 	if shouldMimicClaudeCode {
-		// 智能注入 Claude Code 系统提示词（仅 OAuth/SetupToken 账号需要）
+		// 非 Claude Code 客户端：将 system 替换为 Claude Code 标识，原始 system 迁移至 messages
 		// 条件：1) OAuth/SetupToken 账号  2) 不是 Claude Code 客户端  3) 不是 Haiku 模型  4) system 中还没有 Claude Code 提示词
+		systemRewritten := false
 		if !strings.Contains(strings.ToLower(reqModel), "haiku") &&
 			!systemIncludesClaudeCodePrompt(parsed.System) {
-			body = injectClaudeCodePrompt(body, parsed.System)
+			body = rewriteSystemForNonClaudeCode(body, parsed.System)
+			systemRewritten = true
 	REDACTED
 
-		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: trueREDACTED
+		// system 被重写时保留 CC prompt 的 cache_control: ephemeral（匹配真实 Claude Code 行为）；
+		// 未重写时（haiku / 已含 CC 前缀）剥离客户端 cache_control，与原有行为一致。
+		// 两种情况下 enforceCacheControlLimit 都会兜底处理上限。
+		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewrittenREDACTED
 		if s.identityService != nil {
 			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 			if err == nil && fp != nil {
 				// metadata 透传开启时跳过 metadata 注入
-				_, mimicMPT := s.settingService.GetGatewayForwardingSettings(ctx)
+				_, mimicMPT, _ := s.settingService.GetGatewayForwardingSettings(ctx)
 				if !mimicMPT {
 					if metadataUserID := s.buildOAuthMetadataUserID(parsed, account, fp); metadataUserID != "" {
 						normalizeOpts.injectMetadata = true
@@ -5407,9 +5559,9 @@ REDACTED
 
 	// OAuth账号：应用统一指纹和metadata重写（受设置开关控制）
 	var fingerprint *Fingerprint
-	enableFP, enableMPT := true, false
+	enableFP, enableMPT, enableCCH := true, false, false
 	if s.settingService != nil {
-		enableFP, enableMPT = s.settingService.GetGatewayForwardingSettings(ctx)
+		enableFP, enableMPT, enableCCH = s.settingService.GetGatewayForwardingSettings(ctx)
 REDACTED
 	if account.IsOAuth() && s.identityService != nil {
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
@@ -5434,6 +5586,15 @@ REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
+REDACTED
+
+	// 同步 billing header cc_version 与实际发送的 User-Agent 版本
+	if fingerprint != nil {
+		body = syncBillingHeaderVersion(body, fingerprint.UserAgent)
+REDACTED
+	// CCH 签名：将 cch=00000 占位符替换为 xxHash64 签名（需在所有 body 修改之后）
+	if enableCCH {
+		body = signBillingHeaderCCH(body)
 REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
@@ -5476,9 +5637,8 @@ REDACTED
 REDACTED
 
 	// Build effective drop set: merge static defaults with dynamic beta policy filter rules
-	policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account)
+	policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account, modelID)
 	effectiveDropSet := mergeDropSets(policyFilterSet)
-	effectiveDropWithClaudeCodeSet := mergeDropSets(policyFilterSet, claude.BetaClaudeCode)
 
 	// 处理 anthropic-beta header（OAuth 账号需要包含 oauth beta）
 	if tokenType == "oauth" {
@@ -5489,11 +5649,16 @@ REDACTED
 			applyClaudeCodeMimicHeaders(req, reqStream)
 
 			incomingBeta := getHeaderRaw(req.Header, "anthropic-beta")
-			// Match real Claude CLI traffic (per mitmproxy reports):
-			// messages requests typically use only oauth + interleaved-thinking.
-			// Also drop claude-code beta if a downstream client added it.
+			// Claude Code OAuth credentials are scoped to Claude Code.
+			// Non-haiku models MUST include claude-code beta for Anthropic to recognize
+			// this as a legitimate Claude Code request; without it, the request is
+			// rejected as third-party ("out of extra usage").
+			// Haiku models are exempt from third-party detection and don't need it.
 			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinkingREDACTED
-			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropWithClaudeCodeSet))
+			if !strings.Contains(strings.ToLower(modelID), "haiku") {
+				requiredBetas = []string{claude.BetaClaudeCode, claude.BetaOAuth, claude.BetaInterleavedThinkingREDACTED
+		REDACTED
+			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropSet))
 	REDACTED else {
 			// Claude Code 客户端：尽量透传原始 header，仅补齐 oauth beta
 			clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
@@ -5716,7 +5881,7 @@ type betaPolicyResult struct {
 REDACTED
 
 // evaluateBetaPolicy loads settings once and evaluates all rules against the given request.
-func (s *GatewayService) evaluateBetaPolicy(ctx context.Context, betaHeader string, account *Account) betaPolicyResult {
+func (s *GatewayService) evaluateBetaPolicy(ctx context.Context, betaHeader string, account *Account, model string) betaPolicyResult {
 	if s.settingService == nil {
 		return betaPolicyResult{REDACTED
 REDACTED
@@ -5731,10 +5896,11 @@ REDACTED
 		if !betaPolicyScopeMatches(rule.Scope, isOAuth, isBedrock) {
 			continue
 	REDACTED
-		switch rule.Action {
+		effectiveAction, effectiveErrMsg := resolveRuleAction(rule, model)
+		switch effectiveAction {
 		case BetaPolicyActionBlock:
 			if result.blockErr == nil && betaHeader != "" && containsBetaToken(betaHeader, rule.BetaToken) {
-				msg := rule.ErrorMessage
+				msg := effectiveErrMsg
 				if msg == "" {
 					msg = "beta feature " + rule.BetaToken + " is not allowed"
 			REDACTED
@@ -5776,7 +5942,7 @@ const betaPolicyFilterSetKey = "betaPolicyFilterSet"
 // In the /v1/messages path, Forward() evaluates the policy first and caches the result;
 // buildUpstreamRequest reuses it (zero extra DB calls). In the count_tokens path, this
 // evaluates on demand (one DB call).
-func (s *GatewayService) getBetaPolicyFilterSet(ctx context.Context, c *gin.Context, account *Account) map[string]struct{REDACTED {
+func (s *GatewayService) getBetaPolicyFilterSet(ctx context.Context, c *gin.Context, account *Account, model string) map[string]struct{REDACTED {
 	if c != nil {
 		if v, ok := c.Get(betaPolicyFilterSetKey); ok {
 			if fs, ok := v.(map[string]struct{REDACTED); ok {
@@ -5784,7 +5950,7 @@ func (s *GatewayService) getBetaPolicyFilterSet(ctx context.Context, c *gin.Cont
 		REDACTED
 	REDACTED
 REDACTED
-	return s.evaluateBetaPolicy(ctx, "", account).filterSet
+	return s.evaluateBetaPolicy(ctx, "", account, model).filterSet
 REDACTED
 
 // betaPolicyScopeMatches checks whether a rule's scope matches the current account type.
@@ -5801,6 +5967,33 @@ func betaPolicyScopeMatches(scope string, isOAuth bool, isBedrock bool) bool {
 	default:
 		return true // unknown scope → match all (fail-open)
 REDACTED
+REDACTED
+
+// matchModelWhitelist checks if a model matches any pattern in the whitelist.
+// Reuses matchModelPattern from group.go which supports exact and wildcard prefix matching.
+func matchModelWhitelist(model string, whitelist []string) bool {
+	for _, pattern := range whitelist {
+		if matchModelPattern(pattern, model) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+// resolveRuleAction determines the effective action and error message for a rule given the request model.
+// When ModelWhitelist is empty, the rule's primary Action/ErrorMessage applies unconditionally.
+// When non-empty, Action applies to matching models; FallbackAction/FallbackErrorMessage applies to others.
+func resolveRuleAction(rule BetaPolicyRule, model string) (action, errorMessage string) {
+	if len(rule.ModelWhitelist) == 0 {
+		return rule.Action, rule.ErrorMessage
+REDACTED
+	if matchModelWhitelist(model, rule.ModelWhitelist) {
+		return rule.Action, rule.ErrorMessage
+REDACTED
+	if rule.FallbackAction != "" {
+		return rule.FallbackAction, rule.FallbackErrorMessage
+REDACTED
+	return BetaPolicyActionPass, "" // default fallback: pass (fail-open)
 REDACTED
 
 // droppedBetaSet returns claude.DroppedBetas as a set, with optional extra tokens.
@@ -5849,7 +6042,7 @@ func (s *GatewayService) resolveBedrockBetaTokensForRequest(
 	modelID string,
 ) ([]string, error) {
 	// 1. 对原始 header 中的 beta token 做 block 检查（快速失败）
-	policy := s.evaluateBetaPolicy(ctx, betaHeader, account)
+	policy := s.evaluateBetaPolicy(ctx, betaHeader, account, modelID)
 	if policy.blockErr != nil {
 		return nil, policy.blockErr
 REDACTED
@@ -5861,7 +6054,7 @@ REDACTED
 	//    例如：管理员 block 了 interleaved-thinking，客户端不在 header 中带该 token，
 	//    但请求体中包含 thinking 字段 → autoInjectBedrockBetaTokens 会自动补齐 →
 	//    如果不做此检查，block 规则会被绕过。
-	if blockErr := s.checkBetaPolicyBlockForTokens(ctx, betaTokens, account); blockErr != nil {
+	if blockErr := s.checkBetaPolicyBlockForTokens(ctx, betaTokens, account, modelID); blockErr != nil {
 		return nil, blockErr
 REDACTED
 
@@ -5870,7 +6063,7 @@ REDACTED
 
 // checkBetaPolicyBlockForTokens 检查 token 列表中是否有被管理员 block 规则命中的 token。
 // 用于补充 evaluateBetaPolicy 对 header 的检查，覆盖 body 自动注入的 token。
-func (s *GatewayService) checkBetaPolicyBlockForTokens(ctx context.Context, tokens []string, account *Account) *BetaBlockedError {
+func (s *GatewayService) checkBetaPolicyBlockForTokens(ctx context.Context, tokens []string, account *Account, model string) *BetaBlockedError {
 	if s.settingService == nil || len(tokens) == 0 {
 		return nil
 REDACTED
@@ -5882,14 +6075,15 @@ REDACTED
 	isBedrock := account.IsBedrock()
 	tokenSet := buildBetaTokenSet(tokens)
 	for _, rule := range settings.Rules {
-		if rule.Action != BetaPolicyActionBlock {
+		effectiveAction, effectiveErrMsg := resolveRuleAction(rule, model)
+		if effectiveAction != BetaPolicyActionBlock {
 			continue
 	REDACTED
 		if !betaPolicyScopeMatches(rule.Scope, isOAuth, isBedrock) {
 			continue
 	REDACTED
 		if _, present := tokenSet[rule.BetaToken]; present {
-			msg := rule.ErrorMessage
+			msg := effectiveErrMsg
 			if msg == "" {
 				msg = "beta feature " + rule.BetaToken + " is not allowed"
 		REDACTED
@@ -7146,49 +7340,41 @@ func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
 	return p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
 REDACTED
 
-// postUsageBilling 统一处理使用量记录后的扣费逻辑：
-//   - 订阅/余额扣费
-//   - API Key 配额更新
-//   - API Key 限速用量更新
-//   - 账号配额用量更新（账号口径：TotalCost × 账号计费倍率）
+// postUsageBilling is the legacy fallback billing path used when the unified
+// billing repo is unavailable (nil). Production uses applyUsageBilling → repo.Apply
+// for atomic billing. This path only runs in tests or degraded mode.
 func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps) {
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
 
 	cost := p.Cost
 
-	// 1. 订阅 / 余额扣费
 	if p.IsSubscriptionBill {
 		if cost.TotalCost > 0 {
 			if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.TotalCost); err != nil {
 				slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
 		REDACTED
-			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, cost.TotalCost)
 	REDACTED
 REDACTED else {
 		if cost.ActualCost > 0 {
 			if err := deps.userRepo.DeductBalance(billingCtx, p.User.ID, cost.ActualCost); err != nil {
 				slog.Error("deduct balance failed", "user_id", p.User.ID, "error", err)
 		REDACTED
-			deps.billingCacheService.QueueDeductBalance(p.User.ID, cost.ActualCost)
 	REDACTED
 REDACTED
 
-	// 2. API Key 配额
 	if p.shouldDeductAPIKeyQuota() {
 		if err := p.APIKeyService.UpdateQuotaUsed(billingCtx, p.APIKey.ID, cost.ActualCost); err != nil {
 			slog.Error("update api key quota failed", "api_key_id", p.APIKey.ID, "error", err)
 	REDACTED
 REDACTED
 
-	// 3. API Key 限速用量
 	if p.shouldUpdateRateLimits() {
 		if err := p.APIKeyService.UpdateRateLimitUsage(billingCtx, p.APIKey.ID, cost.ActualCost); err != nil {
 			slog.Error("update api key rate limit usage failed", "api_key_id", p.APIKey.ID, "error", err)
 	REDACTED
 REDACTED
 
-	// 4. 账号配额用量（账号口径：TotalCost × 账号计费倍率）
 	if p.shouldUpdateAccountQuota() {
 		accountCost := cost.TotalCost * p.AccountRateMultiplier
 		if err := deps.accountRepo.IncrementQuotaUsed(billingCtx, p.Account.ID, accountCost); err != nil {
@@ -7196,7 +7382,10 @@ REDACTED
 	REDACTED
 REDACTED
 
-	finalizePostUsageBilling(p, deps)
+	// NOTE: finalizePostUsageBilling is NOT called here to avoid double-queuing
+	// cache updates. The legacy path does DB writes directly; the finalize path
+	// does cache queue + notifications. Notifications are dispatched separately
+	// by the caller after recording the usage log.
 REDACTED
 
 func resolveUsageBillingRequestID(ctx context.Context, upstreamRequestID string) string {
@@ -7250,9 +7439,6 @@ REDACTED
 		cmd.CacheCreationTokens = usageLog.CacheCreationTokens
 		cmd.CacheReadTokens = usageLog.CacheReadTokens
 		cmd.ImageCount = usageLog.ImageCount
-		if usageLog.MediaType != nil {
-			cmd.MediaType = *usageLog.MediaType
-	REDACTED
 		if usageLog.ServiceTier != nil {
 			cmd.ServiceTier = *usageLog.ServiceTier
 	REDACTED
@@ -7315,11 +7501,11 @@ REDACTED
 	REDACTED
 REDACTED
 
-	finalizePostUsageBilling(p, deps)
+	finalizePostUsageBilling(p, deps, result)
 	return true, nil
 REDACTED
 
-func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps) {
+func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
 	if p == nil || p.Cost == nil || deps == nil {
 		return
 REDACTED
@@ -7338,22 +7524,82 @@ REDACTED
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
 
-	// Balance low notification — use real-time balance from billing cache (not stale snapshot)
-	if !p.IsSubscriptionBill && p.Cost.ActualCost > 0 && p.User != nil && deps.balanceNotifyService != nil {
-		oldBalance := p.User.Balance // fallback to snapshot
-		if deps.billingCacheService != nil {
-			if realBalance, err := deps.billingCacheService.GetUserBalance(context.Background(), p.User.ID); err == nil {
-				oldBalance = realBalance + p.Cost.ActualCost // DB already deducted, reconstruct pre-deduction balance
-		REDACTED
-	REDACTED
-		deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), p.User, oldBalance, p.Cost.ActualCost)
+	// Notification checks run async — all parameters are already captured,
+	// no dependency on the request context or upstream connection.
+	go notifyBalanceLow(p, deps, result)
+	go notifyAccountQuota(p, deps, result)
 REDACTED
 
-	// Account quota notification (use same cost formula as postUsageBilling)
-	if p.Cost.TotalCost > 0 && p.Account != nil && p.Account.IsAPIKeyOrBedrock() && deps.balanceNotifyService != nil {
-		accountCost := p.Cost.TotalCost * p.AccountRateMultiplier
-		deps.balanceNotifyService.CheckAccountQuotaAfterIncrement(context.Background(), p.Account, accountCost)
+// notifyBalanceLow sends balance low notification after deduction.
+// When result.NewBalance is available (from DB transaction RETURNING), it is used directly
+// to reconstruct oldBalance, avoiding stale Redis reads and concurrent-deduction races.
+func notifyBalanceLow(p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic in notifyBalanceLow", "recover", r)
+	REDACTED
+REDACTED()
+	if p.IsSubscriptionBill || p.Cost.ActualCost <= 0 || p.User == nil || deps.balanceNotifyService == nil {
+		slog.Debug("notifyBalanceLow: skipped",
+			"is_subscription", p.IsSubscriptionBill,
+			"actual_cost", p.Cost.ActualCost,
+			"user_nil", p.User == nil,
+			"service_nil", deps.balanceNotifyService == nil,
+		)
+		return
 REDACTED
+
+	oldBalance := resolveOldBalance(p, result)
+	slog.Debug("notifyBalanceLow: calling CheckBalanceAfterDeduction",
+		"user_id", p.User.ID,
+		"old_balance", oldBalance,
+		"cost", p.Cost.ActualCost,
+		"notify_enabled", p.User.BalanceNotifyEnabled,
+		"threshold", p.User.BalanceNotifyThreshold,
+		"result_has_new_balance", result != nil && result.NewBalance != nil,
+	)
+	deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), p.User, oldBalance, p.Cost.ActualCost)
+REDACTED
+
+// resolveOldBalance returns the pre-deduction balance.
+// Prefers the DB transaction result (newBalance + cost) over snapshot.
+func resolveOldBalance(p *postUsageBillingParams, result *UsageBillingApplyResult) float64 {
+	if result != nil && result.NewBalance != nil {
+		return *result.NewBalance + p.Cost.ActualCost
+REDACTED
+	// Legacy fallback: snapshot balance from request context
+	return p.User.Balance
+REDACTED
+
+// notifyAccountQuota sends account quota threshold notification after increment.
+// When result.QuotaState is available (from DB transaction RETURNING), it is passed directly
+// to avoid a separate DB read that may see stale or concurrently-modified data.
+func notifyAccountQuota(p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic in notifyAccountQuota", "recover", r)
+	REDACTED
+REDACTED()
+	if p.Cost.TotalCost <= 0 || p.Account == nil || !p.Account.IsAPIKeyOrBedrock() || deps.balanceNotifyService == nil {
+		slog.Debug("notifyAccountQuota: skipped",
+			"total_cost", p.Cost.TotalCost,
+			"account_nil", p.Account == nil,
+			"is_apikey_or_bedrock", p.Account != nil && p.Account.IsAPIKeyOrBedrock(),
+			"service_nil", deps.balanceNotifyService == nil,
+		)
+		return
+REDACTED
+	accountCost := p.Cost.TotalCost * p.AccountRateMultiplier
+	var quotaState *AccountQuotaState
+	if result != nil {
+		quotaState = result.QuotaState
+REDACTED
+	slog.Debug("notifyAccountQuota: calling CheckAccountQuotaAfterIncrement",
+		"account_id", p.Account.ID,
+		"account_cost", accountCost,
+		"has_quota_state", quotaState != nil,
+	)
+	deps.balanceNotifyService.CheckAccountQuotaAfterIncrement(context.Background(), p.Account, accountCost, quotaState)
 REDACTED
 
 func detachedBillingContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -7422,11 +7668,11 @@ REDACTED
 
 // recordUsageOpts 内部选项，参数化 RecordUsage 与 RecordUsageWithLongContext 的差异点。
 type recordUsageOpts struct {
-	// ParsedRequest（可选，仅 Claude 路径传入）
+	// Claude Max 策略所需的 ParsedRequest（可选，仅 Claude 路径传入）
 	ParsedRequest *ParsedRequest
 
 	// EnableClaudePath 启用 Claude 路径特有逻辑：
-	// - MediaType 字段写入使用日志
+	// - Claude Max 缓存计费策略
 	EnableClaudePath bool
 
 	// 长上下文计费（仅 Gemini 路径需要）
@@ -7451,7 +7697,6 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		APIKeyService:      input.APIKeyService,
 		ChannelUsageFields: input.ChannelUsageFields,
 REDACTED, &recordUsageOpts{
-		ParsedRequest:    input.ParsedRequest,
 		EnableClaudePath: true,
 REDACTED)
 REDACTED
@@ -7517,6 +7762,7 @@ REDACTED
 
 // recordUsageCore 是 RecordUsage 和 RecordUsageWithLongContext 的统一实现。
 // opts 中的字段控制两者之间的差异行为：
+// - ParsedRequest != nil → 启用 Claude Max 缓存计费策略
 // - LongContextThreshold > 0 → Token 计费回退走 CalculateCostWithLongContext
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput, opts *recordUsageOpts) error {
 	result := input.Result
@@ -7583,13 +7829,10 @@ REDACTED
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {
-		upstreamModel := result.UpstreamModel
-		if upstreamModel == "" {
-			upstreamModel = result.Model
-	REDACTED
-		usageLog.AccountStatsCost = resolveAccountStatsCost(
-			ctx, s.channelService, s.billingService,
-			account.ID, *apiKey.GroupID, upstreamModel,
+		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
+			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
+			// Anthropic's input_tokens excludes cache_read and cache_creation (billed separately);
+			// OpenAI gateway uses actualInputTokens which also excludes cache_read for the same reason.
 			UsageTokens{
 				InputTokens:         result.Usage.InputTokens,
 				OutputTokens:        result.Usage.OutputTokens,
@@ -7597,7 +7840,6 @@ REDACTED
 				CacheReadTokens:     result.Usage.CacheReadInputTokens,
 				ImageOutputTokens:   result.Usage.ImageOutputTokens,
 		REDACTED,
-			1, // requestCount
 			cost.TotalCost,
 		)
 REDACTED
@@ -7796,13 +8038,12 @@ func (s *GatewayService) buildRecordUsageLog(
 		RateMultiplier:        multiplier,
 		AccountRateMultiplier: &accountRateMultiplier,
 		BillingType:           billingType,
-		BillingMode:           resolveBillingMode(opts, result, cost),
+		BillingMode:           resolveBillingMode(result, cost),
 		Stream:                result.Stream,
 		DurationMs:            &durationMs,
 		FirstTokenMs:          result.FirstTokenMs,
 		ImageCount:            result.ImageCount,
 		ImageSize:             optionalTrimmedStringPtr(result.ImageSize),
-		MediaType:             resolveMediaType(opts, result),
 		CacheTTLOverridden:    cacheTTLOverridden,
 		ChannelID:             optionalInt64Ptr(input.ChannelID),
 		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
@@ -7826,7 +8067,7 @@ REDACTED
 REDACTED
 
 // resolveBillingMode 根据计费结果和请求类型确定计费模式。
-func resolveBillingMode(opts *recordUsageOpts, result *ForwardResult, cost *CostBreakdown) *string {
+func resolveBillingMode(result *ForwardResult, cost *CostBreakdown) *string {
 	var mode string
 	switch {
 	case cost != nil && cost.BillingMode != "":
@@ -7837,10 +8078,6 @@ func resolveBillingMode(opts *recordUsageOpts, result *ForwardResult, cost *Cost
 		mode = string(BillingModeToken)
 REDACTED
 	return &mode
-REDACTED
-
-func resolveMediaType(opts *recordUsageOpts, result *ForwardResult) *string {
-	return nil
 REDACTED
 
 func optionalSubscriptionID(subscription *UserSubscription) *int64 {
@@ -8349,9 +8586,9 @@ REDACTED
 
 	// OAuth 账号：应用统一指纹和重写 userID（受设置开关控制）
 	// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
-	ctEnableFP, ctEnableMPT := true, false
+	ctEnableFP, ctEnableMPT, ctEnableCCH := true, false, false
 	if s.settingService != nil {
-		ctEnableFP, ctEnableMPT = s.settingService.GetGatewayForwardingSettings(ctx)
+		ctEnableFP, ctEnableMPT, ctEnableCCH = s.settingService.GetGatewayForwardingSettings(ctx)
 REDACTED
 	var ctFingerprint *Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
@@ -8367,6 +8604,14 @@ REDACTED
 			REDACTED
 		REDACTED
 	REDACTED
+REDACTED
+
+	// 同步 billing header cc_version 与实际发送的 User-Agent 版本
+	if ctFingerprint != nil && ctEnableFP {
+		body = syncBillingHeaderVersion(body, ctFingerprint.UserAgent)
+REDACTED
+	if ctEnableCCH {
+		body = signBillingHeaderCCH(body)
 REDACTED
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
@@ -8409,7 +8654,7 @@ REDACTED
 REDACTED
 
 	// Build effective drop set for count_tokens: merge static defaults with dynamic beta policy filter rules
-	ctEffectiveDropSet := mergeDropSets(s.getBetaPolicyFilterSet(ctx, c, account))
+	ctEffectiveDropSet := mergeDropSets(s.getBetaPolicyFilterSet(ctx, c, account, modelID))
 
 	// OAuth 账号：处理 anthropic-beta header
 	if tokenType == "oauth" {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useI18n REDACTED from 'vue-i18n'
 import QuotaNotifyToggle from './QuotaNotifyToggle.vue'
+import type { QuotaThresholdType, QuotaResetMode REDACTED from '@/constants/account'
 
 const { t REDACTED = useI18n()
 
@@ -11,9 +12,9 @@ const props = defineProps<{
   quotaNotifyGlobalEnabled: boolean
   notifyEnabled: boolean | null
   notifyThreshold: number | null
-  notifyThresholdType: string | null
+  notifyThresholdType: QuotaThresholdType | null
   // Reset mode (only for daily/weekly, null for total)
-  resetMode: 'rolling' | 'fixed' | null
+  resetMode: QuotaResetMode | null
   resetHour: number | null
   resetDay: number | null  // weekly only
   resetTimezone: string | null
@@ -22,14 +23,15 @@ const props = defineProps<{
   // Shared options passed from parent
   hourOptions: number[]
   dayOptions: { value: number; key: string REDACTED[]
+  timezoneOptions?: string[]
 REDACTED>()
 
 const emit = defineEmits<{
   'update:limit': [value: number | null]
   'update:notifyEnabled': [value: boolean | null]
   'update:notifyThreshold': [value: number | null]
-  'update:notifyThresholdType': [value: string | null]
-  'update:resetMode': [value: 'rolling' | 'fixed' | null]
+  'update:notifyThresholdType': [value: QuotaThresholdType | null]
+  'update:resetMode': [value: QuotaResetMode | null]
   'update:resetHour': [value: number | null]
   'update:resetDay': [value: number | null]
   'update:resetTimezone': [value: string | null]
@@ -43,12 +45,23 @@ const onLimitInput = (e: Event) => {
 REDACTED
 
 const onModeChange = (e: Event) => {
-  const val = (e.target as HTMLSelectElement).value as 'rolling' | 'fixed'
+  const val = (e.target as HTMLSelectElement).value as QuotaResetMode
   emit('update:resetMode', val)
   if (val === 'fixed') {
     if (props.resetHour == null) emit('update:resetHour', 0)
     if (props.dim === 'weekly' && props.resetDay == null) emit('update:resetDay', 1)
     if (!props.resetTimezone) emit('update:resetTimezone', 'UTC')
+  REDACTED
+REDACTED
+
+function getTimezoneOffsetLabel(tz: string): string {
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' REDACTED)
+    const parts = dtf.formatToParts(new Date())
+    const tzPart = parts.find(p => p.type === 'timeZoneName')
+    return tzPart ? (tzPart.value === 'GMT' ? 'GMT+0' : tzPart.value) : ''
+  REDACTED catch {
+    return ''
   REDACTED
 REDACTED
 </script>
@@ -95,6 +108,11 @@ REDACTED
         <select :value="resetHour ?? 0" @change="emit('update:resetHour', Number(($event.target as HTMLSelectElement).value))" class="input py-1 text-xs w-24">
           <option v-for="h in hourOptions" :key="h" :value="h">{{ String(h).padStart(2, '0') REDACTEDREDACTED:00</option>
         </select>
+        <template v-if="timezoneOptions && timezoneOptions.length > 0">
+          <select :value="resetTimezone || 'UTC'" @change="emit('update:resetTimezone', ($event.target as HTMLSelectElement).value)" class="input py-1 text-xs w-auto">
+            <option v-for="tz in timezoneOptions" :key="tz" :value="tz">{{ tz REDACTEDREDACTED ({{ getTimezoneOffsetLabel(tz) REDACTEDREDACTED)</option>
+          </select>
+        </template>
       </template>
       <span class="text-[11px] text-gray-500 dark:text-gray-400">
         <template v-if="resetMode === 'fixed'">{{ hintFixed REDACTEDREDACTED</template>

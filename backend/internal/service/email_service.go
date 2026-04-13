@@ -55,6 +55,7 @@ type VerificationCodeData struct {
 	Code      string
 	Attempts  int
 	CreatedAt time.Time
+	ExpiresAt time.Time // absolute expiry; used to preserve remaining TTL when updating attempts
 REDACTED
 
 // PasswordResetTokenData represents password reset token data
@@ -263,6 +264,7 @@ REDACTED
 		Code:      code,
 		Attempts:  0,
 		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(verifyCodeTTL),
 REDACTED
 	if err := s.cache.SetVerificationCode(ctx, email, data, verifyCodeTTL); err != nil {
 		return fmt.Errorf("save verify code: %w", err)
@@ -295,7 +297,11 @@ REDACTED
 	// 验证码不匹配 (constant-time comparison to prevent timing attacks)
 	if subtle.ConstantTimeCompare([]byte(data.Code), []byte(code)) != 1 {
 		data.Attempts++
-		if err := s.cache.SetVerificationCode(ctx, email, data, verifyCodeTTL); err != nil {
+		remaining := time.Until(data.ExpiresAt)
+		if remaining <= 0 {
+			return ErrInvalidVerifyCode
+	REDACTED
+		if err := s.cache.SetVerificationCode(ctx, email, data, remaining); err != nil {
 			slog.Error("failed to update verification attempt count", "email", email, "error", err)
 	REDACTED
 		if data.Attempts >= maxVerifyCodeAttempts {

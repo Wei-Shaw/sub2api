@@ -1,6 +1,6 @@
 import { reactive, ref REDACTED from 'vue'
 import { adminAPI REDACTED from '@/api/admin'
-import { QUOTA_THRESHOLD_TYPE_FIXED REDACTED from '@/constants/account'
+import { QUOTA_THRESHOLD_TYPE_FIXED, type QuotaThresholdType REDACTED from '@/constants/account'
 
 export const QUOTA_NOTIFY_DIMS = ['daily', 'weekly', 'total'] as const
 export type QuotaNotifyDim = (typeof QUOTA_NOTIFY_DIMS)[number]
@@ -8,7 +8,7 @@ export type QuotaNotifyDim = (typeof QUOTA_NOTIFY_DIMS)[number]
 interface DimState {
   enabled: boolean | null
   threshold: number | null
-  thresholdType: string | null
+  thresholdType: QuotaThresholdType | null
 REDACTED
 
 export function useQuotaNotifyState() {
@@ -34,7 +34,7 @@ export function useQuotaNotifyState() {
     for (const d of QUOTA_NOTIFY_DIMS) {
       state[d].enabled = (extra?.[`quota_notify_${dREDACTED_enabled`] as boolean) ?? null
       state[d].threshold = (extra?.[`quota_notify_${dREDACTED_threshold`] as number) ?? null
-      state[d].thresholdType = (extra?.[`quota_notify_${dREDACTED_threshold_type`] as string) ?? null
+      state[d].thresholdType = (extra?.[`quota_notify_${dREDACTED_threshold_type`] as QuotaThresholdType) ?? null
     REDACTED
   REDACTED
 
