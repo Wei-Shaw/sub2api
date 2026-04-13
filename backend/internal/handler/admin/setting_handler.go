@@ -178,6 +178,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		WebSearchEmulationEnabled:            settings.WebSearchEmulationEnabled,
 		BalanceLowNotifyEnabled:              settings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:            settings.BalanceLowNotifyThreshold,
+		AccountQuotaNotifyEnabled:            settings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:             dto.NotifyEmailEntriesFromService(settings.AccountQuotaNotifyEmails),
 		PaymentEnabled:                       paymentCfg.Enabled,
 		PaymentMinAmount:                     paymentCfg.MinAmount,
@@ -311,6 +312,7 @@ type UpdateSettingsRequest struct {
 	// Balance low notification
 	BalanceLowNotifyEnabled   *bool     `json:"balance_low_notify_enabled"`
 	BalanceLowNotifyThreshold *float64  `json:"balance_low_notify_threshold"`
+	AccountQuotaNotifyEnabled *bool     `json:"account_quota_notify_enabled"`
 	AccountQuotaNotifyEmails  *[]dto.NotifyEmailEntry `json:"account_quota_notify_emails"`
 
 	// Payment configuration (integrated into settings, full replace)
@@ -902,6 +904,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.BalanceLowNotifyThreshold
 		}(),
+		AccountQuotaNotifyEnabled: func() bool {
+			if req.AccountQuotaNotifyEnabled != nil {
+				return *req.AccountQuotaNotifyEnabled
+			}
+			return previousSettings.AccountQuotaNotifyEnabled
+		}(),
 		AccountQuotaNotifyEmails: func() []service.NotifyEmailEntry {
 			if req.AccountQuotaNotifyEmails != nil {
 				return dto.NotifyEmailEntriesToService(*req.AccountQuotaNotifyEmails)
@@ -1056,6 +1064,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableCCHSigning:                     updatedSettings.EnableCCHSigning,
 		BalanceLowNotifyEnabled:              updatedSettings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:            updatedSettings.BalanceLowNotifyThreshold,
+		AccountQuotaNotifyEnabled:            updatedSettings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:             dto.NotifyEmailEntriesFromService(updatedSettings.AccountQuotaNotifyEmails),
 		PaymentEnabled:                       updatedPaymentCfg.Enabled,
 		PaymentMinAmount:                     updatedPaymentCfg.MinAmount,
