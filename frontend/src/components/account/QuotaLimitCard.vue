@@ -15,6 +15,7 @@ const props = withDefaults(defineProps<{
   weeklyResetDay: number | null
   weeklyResetHour: number | null
   resetTimezone: string | null
+  quotaNotifyGlobalEnabled?: boolean
   quotaNotifyDailyEnabled?: boolean | null
   quotaNotifyDailyThreshold?: number | null
   quotaNotifyDailyThresholdType?: string | null
@@ -25,6 +26,7 @@ const props = withDefaults(defineProps<{
   quotaNotifyTotalThreshold?: number | null
   quotaNotifyTotalThresholdType?: string | null
 REDACTED>(), {
+  quotaNotifyGlobalEnabled: false,
   quotaNotifyDailyEnabled: null,
   quotaNotifyDailyThreshold: null,
   quotaNotifyDailyThresholdType: null,
@@ -234,7 +236,7 @@ REDACTED
           </p>
           <!-- 日配额告警 -->
           <QuotaNotifyToggle
-            v-if="dailyLimit && dailyLimit > 0"
+            v-if="quotaNotifyGlobalEnabled && dailyLimit && dailyLimit > 0"
             :enabled="props.quotaNotifyDailyEnabled"
             :threshold="props.quotaNotifyDailyThreshold"
             :threshold-type="props.quotaNotifyDailyThresholdType"
@@ -300,7 +302,7 @@ REDACTED
           </p>
           <!-- 周配额告警 -->
           <QuotaNotifyToggle
-            v-if="weeklyLimit && weeklyLimit > 0"
+            v-if="quotaNotifyGlobalEnabled && weeklyLimit && weeklyLimit > 0"
             :enabled="props.quotaNotifyWeeklyEnabled"
             :threshold="props.quotaNotifyWeeklyThreshold"
             :threshold-type="props.quotaNotifyWeeklyThresholdType"
@@ -340,7 +342,7 @@ REDACTED
           <p class="input-hint">{{ t('admin.accounts.quotaTotalLimitHint') REDACTEDREDACTED</p>
           <!-- 总配额告警 -->
           <QuotaNotifyToggle
-            v-if="totalLimit && totalLimit > 0"
+            v-if="quotaNotifyGlobalEnabled && totalLimit && totalLimit > 0"
             :enabled="props.quotaNotifyTotalEnabled"
             :threshold="props.quotaNotifyTotalThreshold"
             :threshold-type="props.quotaNotifyTotalThresholdType"
