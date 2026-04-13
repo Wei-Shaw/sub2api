@@ -1493,6 +1493,15 @@
           :dailyLimit="editQuotaDailyLimit"
           :weeklyLimit="editQuotaWeeklyLimit"
           :quotaNotifyGlobalEnabled="quotaNotifyGlobalEnabled"
+          :quotaNotifyDailyEnabled="quotaNotifyDailyEnabled"
+          :quotaNotifyDailyThreshold="quotaNotifyDailyThreshold"
+          :quotaNotifyDailyThresholdType="quotaNotifyDailyThresholdType"
+          :quotaNotifyWeeklyEnabled="quotaNotifyWeeklyEnabled"
+          :quotaNotifyWeeklyThreshold="quotaNotifyWeeklyThreshold"
+          :quotaNotifyWeeklyThresholdType="quotaNotifyWeeklyThresholdType"
+          :quotaNotifyTotalEnabled="quotaNotifyTotalEnabled"
+          :quotaNotifyTotalThreshold="quotaNotifyTotalThreshold"
+          :quotaNotifyTotalThresholdType="quotaNotifyTotalThresholdType"
           :dailyResetMode="editDailyResetMode"
           :dailyResetHour="editDailyResetHour"
           :weeklyResetMode="editWeeklyResetMode"
@@ -1502,6 +1511,15 @@
           @update:totalLimit="editQuotaLimit = $event"
           @update:dailyLimit="editQuotaDailyLimit = $event"
           @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+          @update:quotaNotifyDailyEnabled="quotaNotifyDailyEnabled = $event"
+          @update:quotaNotifyDailyThreshold="quotaNotifyDailyThreshold = $event"
+          @update:quotaNotifyDailyThresholdType="quotaNotifyDailyThresholdType = $event"
+          @update:quotaNotifyWeeklyEnabled="quotaNotifyWeeklyEnabled = $event"
+          @update:quotaNotifyWeeklyThreshold="quotaNotifyWeeklyThreshold = $event"
+          @update:quotaNotifyWeeklyThresholdType="quotaNotifyWeeklyThresholdType = $event"
+          @update:quotaNotifyTotalEnabled="quotaNotifyTotalEnabled = $event"
+          @update:quotaNotifyTotalThreshold="quotaNotifyTotalThreshold = $event"
+          @update:quotaNotifyTotalThresholdType="quotaNotifyTotalThresholdType = $event"
           @update:dailyResetMode="editDailyResetMode = $event"
           @update:dailyResetHour="editDailyResetHour = $event"
           @update:weeklyResetMode="editWeeklyResetMode = $event"
@@ -1527,6 +1545,15 @@
           :dailyLimit="editQuotaDailyLimit"
           :weeklyLimit="editQuotaWeeklyLimit"
           :quotaNotifyGlobalEnabled="quotaNotifyGlobalEnabled"
+          :quotaNotifyDailyEnabled="quotaNotifyDailyEnabled"
+          :quotaNotifyDailyThreshold="quotaNotifyDailyThreshold"
+          :quotaNotifyDailyThresholdType="quotaNotifyDailyThresholdType"
+          :quotaNotifyWeeklyEnabled="quotaNotifyWeeklyEnabled"
+          :quotaNotifyWeeklyThreshold="quotaNotifyWeeklyThreshold"
+          :quotaNotifyWeeklyThresholdType="quotaNotifyWeeklyThresholdType"
+          :quotaNotifyTotalEnabled="quotaNotifyTotalEnabled"
+          :quotaNotifyTotalThreshold="quotaNotifyTotalThreshold"
+          :quotaNotifyTotalThresholdType="quotaNotifyTotalThresholdType"
           :dailyResetMode="editDailyResetMode"
           :dailyResetHour="editDailyResetHour"
           :weeklyResetMode="editWeeklyResetMode"
@@ -1536,6 +1563,15 @@
           @update:totalLimit="editQuotaLimit = $event"
           @update:dailyLimit="editQuotaDailyLimit = $event"
           @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+          @update:quotaNotifyDailyEnabled="quotaNotifyDailyEnabled = $event"
+          @update:quotaNotifyDailyThreshold="quotaNotifyDailyThreshold = $event"
+          @update:quotaNotifyDailyThresholdType="quotaNotifyDailyThresholdType = $event"
+          @update:quotaNotifyWeeklyEnabled="quotaNotifyWeeklyEnabled = $event"
+          @update:quotaNotifyWeeklyThreshold="quotaNotifyWeeklyThreshold = $event"
+          @update:quotaNotifyWeeklyThresholdType="quotaNotifyWeeklyThresholdType = $event"
+          @update:quotaNotifyTotalEnabled="quotaNotifyTotalEnabled = $event"
+          @update:quotaNotifyTotalThreshold="quotaNotifyTotalThreshold = $event"
+          @update:quotaNotifyTotalThresholdType="quotaNotifyTotalThresholdType = $event"
           @update:dailyResetMode="editDailyResetMode = $event"
           @update:dailyResetHour="editDailyResetHour = $event"
           @update:weeklyResetMode="editWeeklyResetMode = $event"
@@ -3041,6 +3077,15 @@ const anthropicPassthroughEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
 const quotaNotifyGlobalEnabled = ref(false)
+const quotaNotifyDailyEnabled = ref<boolean | null>(null)
+const quotaNotifyDailyThreshold = ref<number | null>(null)
+const quotaNotifyDailyThresholdType = ref<string | null>(null)
+const quotaNotifyWeeklyEnabled = ref<boolean | null>(null)
+const quotaNotifyWeeklyThreshold = ref<number | null>(null)
+const quotaNotifyWeeklyThresholdType = ref<string | null>(null)
+const quotaNotifyTotalEnabled = ref<boolean | null>(null)
+const quotaNotifyTotalThreshold = ref<number | null>(null)
+const quotaNotifyTotalThresholdType = ref<string | null>(null)
 
 // Load global feature states once
 adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
@@ -4152,6 +4197,22 @@ const createAccountAndFinish = async (
     }
     if (editDailyResetMode.value === 'fixed' || editWeeklyResetMode.value === 'fixed') {
       quotaExtra.quota_reset_timezone = editResetTimezone.value || 'UTC'
+    }
+    // Quota notify config
+    if (quotaNotifyDailyEnabled.value) {
+      quotaExtra.quota_notify_daily_enabled = true
+      if (quotaNotifyDailyThreshold.value != null) quotaExtra.quota_notify_daily_threshold = quotaNotifyDailyThreshold.value
+      quotaExtra.quota_notify_daily_threshold_type = quotaNotifyDailyThresholdType.value || 'fixed'
+    }
+    if (quotaNotifyWeeklyEnabled.value) {
+      quotaExtra.quota_notify_weekly_enabled = true
+      if (quotaNotifyWeeklyThreshold.value != null) quotaExtra.quota_notify_weekly_threshold = quotaNotifyWeeklyThreshold.value
+      quotaExtra.quota_notify_weekly_threshold_type = quotaNotifyWeeklyThresholdType.value || 'fixed'
+    }
+    if (quotaNotifyTotalEnabled.value) {
+      quotaExtra.quota_notify_total_enabled = true
+      if (quotaNotifyTotalThreshold.value != null) quotaExtra.quota_notify_total_threshold = quotaNotifyTotalThreshold.value
+      quotaExtra.quota_notify_total_threshold_type = quotaNotifyTotalThresholdType.value || 'fixed'
     }
     if (Object.keys(quotaExtra).length > 0) {
       finalExtra = quotaExtra

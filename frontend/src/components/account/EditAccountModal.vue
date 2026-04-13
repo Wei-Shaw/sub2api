@@ -2,7 +2,7 @@
   <BaseDialog
     :show="show"
     :title="t('admin.accounts.editAccount')"
-    width="normal"
+    width="wide"
     @close="handleClose"
   >
     <form

@@ -259,7 +259,7 @@ func (s *BalanceNotifyService) asyncSendQuotaAlert(adminEmails []string, account
 				slog.Error("panic in quota notification", "recover", r)
 			}
 		}()
-		s.sendQuotaAlertEmails(adminEmails, accountID, accountName, platform, dim.name, newUsed, dim.limit, effectiveThreshold, siteName)
+		s.sendQuotaAlertEmails(adminEmails, accountID, accountName, platform, dim, newUsed, siteName)
 	}()
 }
 
@@ -386,15 +386,25 @@ func (s *BalanceNotifyService) sendBalanceLowEmails(recipients []string, userNam
 }
 
 // sendQuotaAlertEmails sends quota alert notification to admin emails.
-func (s *BalanceNotifyService) sendQuotaAlertEmails(adminEmails []string, accountID int64, accountName, platform, dimension string, used, limit, threshold float64, siteName string) {
-	dimLabel := quotaDimLabels[dimension]
+func (s *BalanceNotifyService) sendQuotaAlertEmails(adminEmails []string, accountID int64, accountName, platform string, dim quotaDim, used float64, siteName string) {
+	dimLabel := quotaDimLabels[dim.name]
 	if dimLabel == "" {
-		dimLabel = dimension
+		dimLabel = dim.name
+	}
+
+	// Format the remaining-based threshold for display
+	thresholdDisplay := fmt.Sprintf("$%.2f", dim.threshold)
+	if dim.thresholdType == thresholdTypePercentage {
+		thresholdDisplay = fmt.Sprintf("%.0f%%", dim.threshold)
+	}
+	remaining := dim.limit - used
+	if remaining < 0 {
+		remaining = 0
 	}
 
 	subject := fmt.Sprintf("[%s] 账号限额告警 / Account Quota Alert - %s", sanitizeEmailHeader(siteName), sanitizeEmailHeader(accountName))
-	body := s.buildQuotaAlertEmailBody(accountID, html.EscapeString(accountName), html.EscapeString(platform), html.EscapeString(dimLabel), used, limit, threshold, html.EscapeString(siteName))
-	s.sendEmails(adminEmails, subject, body, "account", accountName, "dimension", dimension)
+	body := s.buildQuotaAlertEmailBody(accountID, html.EscapeString(accountName), html.EscapeString(platform), html.EscapeString(dimLabel), used, dim.limit, remaining, thresholdDisplay, html.EscapeString(siteName))
+	s.sendEmails(adminEmails, subject, body, "account", accountName, "dimension", dim.name)
 }
 
 // sanitizeEmailHeader removes CR/LF characters to prevent SMTP header injection.
@@ -442,7 +452,7 @@ const balanceLowEmailTemplate = `<!DOCTYPE html>
 </html>`
 
 // quotaAlertEmailTemplate is the HTML template for account quota alert notifications.
-// Format args: siteName, accountID, accountName, platform, dimLabel, used, limitStr, threshold.
+// Format args: siteName, accountID, accountName, platform, dimLabel, used, limitStr, remaining, thresholdDisplay.
 const quotaAlertEmailTemplate = `<!DOCTYPE html>
 <html>
 <head>
@@ -471,10 +481,11 @@ const quotaAlertEmailTemplate = `<!DOCTYPE html>
             <div class="metric"><span class="metric-label">维度 / Dimension</span><span class="metric-value">%s</span></div>
             <div class="metric"><span class="metric-label">已使用 / Used</span><span class="metric-value">$%.2f</span></div>
             <div class="metric"><span class="metric-label">限额 / Limit</span><span class="metric-value">%s</span></div>
-            <div class="metric"><span class="metric-label">告警阈值 / Threshold</span><span class="metric-value">$%.2f</span></div>
+            <div class="metric"><span class="metric-label">剩余额度 / Remaining</span><span class="metric-value">$%.2f</span></div>
+            <div class="metric"><span class="metric-label">提醒阈值 / Alert Threshold</span><span class="metric-value">%s</span></div>
             <div class="info">
-                <p>账号配额用量已达到告警阈值，请及时关注。</p>
-                <p>Account quota usage has reached the alert threshold.</p>
+                <p>账号剩余额度已低于提醒阈值，请及时关注。</p>
+                <p>Account remaining quota has fallen below the alert threshold.</p>
             </div>
         </div>
         <div class="footer"><p>此邮件由系统自动发送，请勿回复。</p></div>
@@ -492,11 +503,11 @@ func (s *BalanceNotifyService) buildBalanceLowEmailBody(userName string, balance
 }
 
 // buildQuotaAlertEmailBody builds HTML email for account quota alert.
-func (s *BalanceNotifyService) buildQuotaAlertEmailBody(accountID int64, accountName, platform, dimLabel string, used, limit, threshold float64, siteName string) string {
+func (s *BalanceNotifyService) buildQuotaAlertEmailBody(accountID int64, accountName, platform, dimLabel string, used, limit, remaining float64, thresholdDisplay, siteName string) string {
 	limitStr := fmt.Sprintf("$%.2f", limit)
 	if limit <= 0 {
 		limitStr = "无限制 / Unlimited"
 	}
-	return fmt.Sprintf(quotaAlertEmailTemplate, siteName, accountID, accountName, platform, dimLabel, used, limitStr, threshold)
+	return fmt.Sprintf(quotaAlertEmailTemplate, siteName, accountID, accountName, platform, dimLabel, used, limitStr, remaining, thresholdDisplay)
 }
 
