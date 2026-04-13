@@ -14,15 +14,11 @@ const emit = defineEmits<{
   'update:threshold': [value: number | null]
   'update:thresholdType': [value: string | null]
 }>()
-
-function toggleType(current: string | null) {
-  emit('update:thresholdType', current === 'percentage' ? 'fixed' : 'percentage')
-}
 </script>
 
 <template>
-  <div class="flex items-center gap-2">
-    <label class="text-sm text-gray-500 whitespace-nowrap">{{ t('admin.accounts.quotaNotify.alert') }}</label>
+  <div class="flex items-center gap-1.5">
+    <label class="text-xs text-gray-500 whitespace-nowrap">{{ t('admin.accounts.quotaNotify.alert') }}</label>
     <button
       type="button"
       @click="emit('update:enabled', !enabled)"
@@ -39,38 +35,24 @@ function toggleType(current: string | null) {
       />
     </button>
     <template v-if="enabled">
-      <button
-        type="button"
-        class="px-1.5 py-0.5 text-xs font-medium rounded border transition-colors"
-        :class="(!thresholdType || thresholdType === 'fixed') ? 'bg-primary-100 text-primary-700 border-primary-300 dark:bg-primary-900/30 dark:text-primary-400 dark:border-primary-700' : 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:border-dark-500'"
-        @click="toggleType(thresholdType)"
+      <input
+        :value="threshold"
+        @input="emit('update:threshold', parseFloat(($event.target as HTMLInputElement).value) || null)"
+        type="number"
+        min="0"
+        :max="thresholdType === 'percentage' ? 100 : undefined"
+        :step="thresholdType === 'percentage' ? 1 : 0.01"
+        class="input py-1 text-sm flex-1 min-w-0"
+        :placeholder="thresholdType === 'percentage' ? t('admin.accounts.quotaNotify.thresholdPlaceholder') : t('admin.accounts.quotaNotify.threshold')"
+      />
+      <select
+        :value="thresholdType || 'fixed'"
+        @change="emit('update:thresholdType', ($event.target as HTMLSelectElement).value)"
+        class="input py-1 text-xs w-12 flex-shrink-0 text-center"
       >
-        $
-      </button>
-      <button
-        type="button"
-        class="px-1.5 py-0.5 text-xs font-medium rounded border transition-colors"
-        :class="thresholdType === 'percentage' ? 'bg-primary-100 text-primary-700 border-primary-300 dark:bg-primary-900/30 dark:text-primary-400 dark:border-primary-700' : 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:border-dark-500'"
-        @click="toggleType(thresholdType)"
-      >
-        %
-      </button>
-      <div class="relative flex-1">
-        <input
-          :value="threshold"
-          @input="emit('update:threshold', parseFloat(($event.target as HTMLInputElement).value) || null)"
-          type="number"
-          min="0"
-          :max="thresholdType === 'percentage' ? 100 : undefined"
-          :step="thresholdType === 'percentage' ? 1 : 0.01"
-          class="input py-1 text-sm w-full"
-          :class="thresholdType === 'percentage' ? 'pr-7' : 'pr-7'"
-          :placeholder="thresholdType === 'percentage' ? t('admin.accounts.quotaNotify.thresholdPlaceholder') : t('admin.accounts.quotaNotify.threshold')"
-        />
-        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-          {{ thresholdType === 'percentage' ? '%' : '$' }}
-        </span>
-      </div>
+        <option value="fixed">$</option>
+        <option value="percentage">%</option>
+      </select>
     </template>
   </div>
 </template>
