@@ -19,8 +19,8 @@ func validatePlanRequired(name string, groupID int64, price float64, validityDay
 	if groupID <= 0 {
 		return infraerrors.BadRequest("PLAN_GROUP_REQUIRED", "group is required")
 	}
-	if price < 0 {
-		return infraerrors.BadRequest("PLAN_PRICE_INVALID", "price must be >= 0")
+	if price <= 0 {
+		return infraerrors.BadRequest("PLAN_PRICE_INVALID", "price must be > 0")
 	}
 	if validityDays <= 0 {
 		return infraerrors.BadRequest("PLAN_VALIDITY_REQUIRED", "validity days must be > 0")
