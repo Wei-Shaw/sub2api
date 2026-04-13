@@ -2705,6 +2705,11 @@
               </div>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.balanceNotify.thresholdHint') }}</p>
             </div>
+            <div>
+              <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.balanceNotify.rechargeUrl') }}</label>
+              <input v-model="form.balance_low_notify_recharge_url" type="url" class="input" :placeholder="t('admin.settings.balanceNotify.rechargeUrlPlaceholder')" />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.balanceNotify.rechargeUrlHint') }}</p>
+            </div>
           </div>
         </div>
 
@@ -3027,6 +3032,7 @@ const form = reactive<SettingsForm>({
   // Balance & quota notification
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
+  balance_low_notify_recharge_url: '',
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [] as NotifyEmailEntry[]
 })
@@ -3598,6 +3604,7 @@ async function saveSettings() {
       // Balance & quota notification
       balance_low_notify_enabled: form.balance_low_notify_enabled,
       balance_low_notify_threshold: Number(form.balance_low_notify_threshold) || 0,
+      balance_low_notify_recharge_url: form.balance_low_notify_recharge_url || '',
       account_quota_notify_enabled: form.account_quota_notify_enabled,
       account_quota_notify_emails: (form.account_quota_notify_emails || []).filter((e) => e.email.trim() !== ''),
     }

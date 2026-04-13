@@ -138,6 +138,7 @@ export interface SystemSettings {
   // Balance & quota notification
   balance_low_notify_enabled: boolean
   balance_low_notify_threshold: number
+  balance_low_notify_recharge_url: string
   account_quota_notify_enabled: boolean
   account_quota_notify_emails: NotifyEmailEntry[]
 }
@@ -242,6 +243,7 @@ export interface UpdateSettingsRequest {
   // Balance & quota notification
   balance_low_notify_enabled?: boolean
   balance_low_notify_threshold?: number
+  balance_low_notify_recharge_url?: string
   account_quota_notify_enabled?: boolean
   account_quota_notify_emails?: NotifyEmailEntry[]
 }

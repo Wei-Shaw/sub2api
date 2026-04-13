@@ -310,8 +310,9 @@ type UpdateSettingsRequest struct {
 	EnableCCHSigning             *bool `json:"enable_cch_signing"`
 
 	// Balance low notification
-	BalanceLowNotifyEnabled   *bool     `json:"balance_low_notify_enabled"`
-	BalanceLowNotifyThreshold *float64  `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyEnabled      *bool     `json:"balance_low_notify_enabled"`
+	BalanceLowNotifyThreshold    *float64  `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyRechargeURL  *string   `json:"balance_low_notify_recharge_url"`
 	AccountQuotaNotifyEnabled *bool     `json:"account_quota_notify_enabled"`
 	AccountQuotaNotifyEmails  *[]dto.NotifyEmailEntry `json:"account_quota_notify_emails"`
 
@@ -903,6 +904,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.BalanceLowNotifyThreshold
 			}
 			return previousSettings.BalanceLowNotifyThreshold
+		}(),
+		BalanceLowNotifyRechargeURL: func() string {
+			if req.BalanceLowNotifyRechargeURL != nil {
+				return *req.BalanceLowNotifyRechargeURL
+			}
+			return previousSettings.BalanceLowNotifyRechargeURL
 		}(),
 		AccountQuotaNotifyEnabled: func() bool {
 			if req.AccountQuotaNotifyEnabled != nil {
