@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
-import QuotaNotifyToggle from './QuotaNotifyToggle.vue'
+import QuotaDimensionRow from './QuotaDimensionRow.vue'
 
 const { t REDACTED = useI18n()
 
@@ -96,25 +96,23 @@ const hasFixedMode = computed(() =>
 
 // Common timezone options
 const timezoneOptions = [
-  'UTC',
-  'Asia/Shanghai',
-  'Asia/Tokyo',
-  'Asia/Seoul',
-  'Asia/Singapore',
-  'Asia/Kolkata',
-  'Asia/Dubai',
-  'Europe/London',
-  'Europe/Paris',
-  'Europe/Berlin',
-  'Europe/Moscow',
-  'America/New_York',
-  'America/Chicago',
-  'America/Denver',
-  'America/Los_Angeles',
-  'America/Sao_Paulo',
-  'Australia/Sydney',
-  'Pacific/Auckland',
+  'UTC', 'Asia/Shanghai', 'Asia/Tokyo', 'Asia/Seoul', 'Asia/Singapore', 'Asia/Kolkata',
+  'Asia/Dubai', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Moscow',
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+  'America/Sao_Paulo', 'Australia/Sydney', 'Pacific/Auckland',
 ]
+
+// Compute GMT offset label (e.g. "GMT+8", "GMT-5") for a given IANA timezone.
+function getTimezoneOffsetLabel(tz: string): string {
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' REDACTED)
+    const parts = dtf.formatToParts(new Date())
+    const tzPart = parts.find(p => p.type === 'timeZoneName')
+    return tzPart ? (tzPart.value === 'GMT' ? 'GMT+0' : tzPart.value) : ''
+  REDACTED catch {
+    return ''
+  REDACTED
+REDACTED
 
 // Hours for dropdown (0-23)
 const hourOptions = Array.from({ length: 24 REDACTED, (_, i) => i)
@@ -130,37 +128,22 @@ const dayOptions = [
   { value: 0, key: 'sunday' REDACTED,
 ]
 
-const onTotalInput = (e: Event) => {
-  const raw = (e.target as HTMLInputElement).valueAsNumber
-  emit('update:totalLimit', Number.isNaN(raw) ? null : raw)
-REDACTED
-const onDailyInput = (e: Event) => {
-  const raw = (e.target as HTMLInputElement).valueAsNumber
-  emit('update:dailyLimit', Number.isNaN(raw) ? null : raw)
-REDACTED
-const onWeeklyInput = (e: Event) => {
-  const raw = (e.target as HTMLInputElement).valueAsNumber
-  emit('update:weeklyLimit', Number.isNaN(raw) ? null : raw)
-REDACTED
+// Precomputed hint strings for the weekly fixed mode
+const weeklyFixedHint = computed(() => {
+  const dayKey = dayOptions.find(d => d.value === (props.weeklyResetDay ?? 1))?.key || 'monday'
+  return t('admin.accounts.quotaWeeklyLimitHintFixed', {
+    day: t('admin.accounts.dayOfWeek.' + dayKey),
+    hour: String(props.weeklyResetHour ?? 0).padStart(2, '0'),
+    timezone: props.resetTimezone || 'UTC',
+  REDACTED)
+REDACTED)
 
-const onDailyModeChange = (e: Event) => {
-  const val = (e.target as HTMLSelectElement).value as 'rolling' | 'fixed'
-  emit('update:dailyResetMode', val)
-  if (val === 'fixed') {
-    if (props.dailyResetHour == null) emit('update:dailyResetHour', 0)
-    if (!props.resetTimezone) emit('update:resetTimezone', 'UTC')
-  REDACTED
-REDACTED
-
-const onWeeklyModeChange = (e: Event) => {
-  const val = (e.target as HTMLSelectElement).value as 'rolling' | 'fixed'
-  emit('update:weeklyResetMode', val)
-  if (val === 'fixed') {
-    if (props.weeklyResetDay == null) emit('update:weeklyResetDay', 1)
-    if (props.weeklyResetHour == null) emit('update:weeklyResetHour', 0)
-    if (!props.resetTimezone) emit('update:resetTimezone', 'UTC')
-  REDACTED
-REDACTED
+const dailyFixedHint = computed(() =>
+  t('admin.accounts.quotaDailyLimitHintFixed', {
+    hour: String(props.dailyResetHour ?? 0).padStart(2, '0'),
+    timezone: props.resetTimezone || 'UTC',
+  REDACTED)
+)
 </script>
 
 <template>
@@ -197,117 +180,89 @@ REDACTED
 
       <!-- Collapsible content -->
       <div v-if="localEnabled && !collapsed" class="space-y-2 p-4 pt-3">
-        <!-- 日配额 -->
-        <div>
-          <!-- 标题行（仅全局通知开启时显示） -->
-          <div v-if="quotaNotifyGlobalEnabled" class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0">{{ t('admin.accounts.quotaDailyLimit') REDACTEDREDACTED</span>
-            <span v-if="dailyLimit && dailyLimit > 0" class="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0">{{ t('admin.accounts.quotaNotify.alert') REDACTEDREDACTED</span>
-          </div>
-          <label v-else class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">{{ t('admin.accounts.quotaDailyLimit') REDACTEDREDACTED</label>
-          <!-- 输入行 -->
-          <div class="flex items-center gap-2">
-            <div :class="['relative', quotaNotifyGlobalEnabled ? 'w-28 flex-shrink-0' : 'flex-1']">
-              <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 text-sm">$</span>
-              <input :value="dailyLimit" @input="onDailyInput" type="number" min="0" step="0.01" class="input pl-6 py-1.5 text-sm" :placeholder="t('admin.accounts.quotaLimitPlaceholder')" />
-            </div>
-            <QuotaNotifyToggle
-              v-if="quotaNotifyGlobalEnabled && dailyLimit && dailyLimit > 0"
-              class="flex-1 min-w-0"
-              :enabled="props.quotaNotifyDailyEnabled" :threshold="props.quotaNotifyDailyThreshold" :threshold-type="props.quotaNotifyDailyThresholdType"
-              @update:enabled="emit('update:quotaNotifyDailyEnabled', $event)" @update:threshold="emit('update:quotaNotifyDailyThreshold', $event)" @update:threshold-type="emit('update:quotaNotifyDailyThresholdType', $event)"
-            />
-          </div>
-          <div class="mt-1 flex items-center gap-2 flex-wrap">
-            <label class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ t('admin.accounts.quotaResetMode') REDACTEDREDACTED</label>
-            <select :value="dailyResetMode || 'rolling'" @change="onDailyModeChange" class="input py-1 text-xs w-auto">
-              <option value="rolling">{{ t('admin.accounts.quotaResetModeRolling') REDACTEDREDACTED</option>
-              <option value="fixed">{{ t('admin.accounts.quotaResetModeFixed') REDACTEDREDACTED</option>
-            </select>
-            <template v-if="dailyResetMode === 'fixed'">
-              <label class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ t('admin.accounts.quotaResetHour') REDACTEDREDACTED</label>
-              <select :value="dailyResetHour ?? 0" @change="emit('update:dailyResetHour', Number(($event.target as HTMLSelectElement).value))" class="input py-1 text-xs w-24">
-                <option v-for="h in hourOptions" :key="h" :value="h">{{ String(h).padStart(2, '0') REDACTEDREDACTED:00</option>
-              </select>
-            </template>
-          </div>
-          <p class="input-hint mb-0 text-[11px]">
-            <template v-if="dailyResetMode === 'fixed'">{{ t('admin.accounts.quotaDailyLimitHintFixed', { hour: String(dailyResetHour ?? 0).padStart(2, '0'), timezone: resetTimezone || 'UTC' REDACTED) REDACTEDREDACTED</template>
-            <template v-else>{{ t('admin.accounts.quotaDailyLimitHint') REDACTEDREDACTED</template>
-          </p>
-        </div>
+        <!-- Daily quota -->
+        <QuotaDimensionRow
+          dim="daily"
+          :label="t('admin.accounts.quotaDailyLimit')"
+          :limit="dailyLimit"
+          :quota-notify-global-enabled="quotaNotifyGlobalEnabled"
+          :notify-enabled="props.quotaNotifyDailyEnabled"
+          :notify-threshold="props.quotaNotifyDailyThreshold"
+          :notify-threshold-type="props.quotaNotifyDailyThresholdType"
+          :reset-mode="dailyResetMode"
+          :reset-hour="dailyResetHour"
+          :reset-day="null"
+          :reset-timezone="resetTimezone"
+          :hint-rolling="t('admin.accounts.quotaDailyLimitHint')"
+          :hint-fixed="dailyFixedHint"
+          :hour-options="hourOptions"
+          :day-options="dayOptions"
+          @update:limit="emit('update:dailyLimit', $event)"
+          @update:notify-enabled="emit('update:quotaNotifyDailyEnabled', $event)"
+          @update:notify-threshold="emit('update:quotaNotifyDailyThreshold', $event)"
+          @update:notify-threshold-type="emit('update:quotaNotifyDailyThresholdType', $event)"
+          @update:reset-mode="emit('update:dailyResetMode', $event)"
+          @update:reset-hour="emit('update:dailyResetHour', $event)"
+          @update:reset-timezone="emit('update:resetTimezone', $event)"
+        />
 
-        <!-- 周配额 -->
-        <div>
-          <div v-if="quotaNotifyGlobalEnabled" class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0">{{ t('admin.accounts.quotaWeeklyLimit') REDACTEDREDACTED</span>
-            <span v-if="weeklyLimit && weeklyLimit > 0" class="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0">{{ t('admin.accounts.quotaNotify.alert') REDACTEDREDACTED</span>
-          </div>
-          <label v-else class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">{{ t('admin.accounts.quotaWeeklyLimit') REDACTEDREDACTED</label>
-          <div class="flex items-center gap-2">
-            <div :class="['relative', quotaNotifyGlobalEnabled ? 'w-28 flex-shrink-0' : 'flex-1']">
-              <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 text-sm">$</span>
-              <input :value="weeklyLimit" @input="onWeeklyInput" type="number" min="0" step="0.01" class="input pl-6 py-1.5 text-sm" :placeholder="t('admin.accounts.quotaLimitPlaceholder')" />
-            </div>
-            <QuotaNotifyToggle
-              v-if="quotaNotifyGlobalEnabled && weeklyLimit && weeklyLimit > 0"
-              class="flex-1 min-w-0"
-              :enabled="props.quotaNotifyWeeklyEnabled" :threshold="props.quotaNotifyWeeklyThreshold" :threshold-type="props.quotaNotifyWeeklyThresholdType"
-              @update:enabled="emit('update:quotaNotifyWeeklyEnabled', $event)" @update:threshold="emit('update:quotaNotifyWeeklyThreshold', $event)" @update:threshold-type="emit('update:quotaNotifyWeeklyThresholdType', $event)"
-            />
-          </div>
-          <div class="mt-1 flex items-center gap-2 flex-wrap">
-            <label class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ t('admin.accounts.quotaResetMode') REDACTEDREDACTED</label>
-            <select :value="weeklyResetMode || 'rolling'" @change="onWeeklyModeChange" class="input py-1 text-xs w-auto">
-              <option value="rolling">{{ t('admin.accounts.quotaResetModeRolling') REDACTEDREDACTED</option>
-              <option value="fixed">{{ t('admin.accounts.quotaResetModeFixed') REDACTEDREDACTED</option>
-            </select>
-            <template v-if="weeklyResetMode === 'fixed'">
-              <label class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ t('admin.accounts.quotaWeeklyResetDay') REDACTEDREDACTED</label>
-              <select :value="weeklyResetDay ?? 1" @change="emit('update:weeklyResetDay', Number(($event.target as HTMLSelectElement).value))" class="input py-1 text-xs w-28">
-                <option v-for="d in dayOptions" :key="d.value" :value="d.value">{{ t('admin.accounts.dayOfWeek.' + d.key) REDACTEDREDACTED</option>
-              </select>
-              <label class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ t('admin.accounts.quotaResetHour') REDACTEDREDACTED</label>
-              <select :value="weeklyResetHour ?? 0" @change="emit('update:weeklyResetHour', Number(($event.target as HTMLSelectElement).value))" class="input py-1 text-xs w-24">
-                <option v-for="h in hourOptions" :key="h" :value="h">{{ String(h).padStart(2, '0') REDACTEDREDACTED:00</option>
-              </select>
-            </template>
-          </div>
-          <p class="input-hint mb-0 text-[11px]">
-            <template v-if="weeklyResetMode === 'fixed'">{{ t('admin.accounts.quotaWeeklyLimitHintFixed', { day: t('admin.accounts.dayOfWeek.' + (dayOptions.find(d => d.value === (weeklyResetDay ?? 1))?.key || 'monday')), hour: String(weeklyResetHour ?? 0).padStart(2, '0'), timezone: resetTimezone || 'UTC' REDACTED) REDACTEDREDACTED</template>
-            <template v-else>{{ t('admin.accounts.quotaWeeklyLimitHint') REDACTEDREDACTED</template>
-          </p>
-        </div>
+        <!-- Weekly quota -->
+        <QuotaDimensionRow
+          dim="weekly"
+          :label="t('admin.accounts.quotaWeeklyLimit')"
+          :limit="weeklyLimit"
+          :quota-notify-global-enabled="quotaNotifyGlobalEnabled"
+          :notify-enabled="props.quotaNotifyWeeklyEnabled"
+          :notify-threshold="props.quotaNotifyWeeklyThreshold"
+          :notify-threshold-type="props.quotaNotifyWeeklyThresholdType"
+          :reset-mode="weeklyResetMode"
+          :reset-hour="weeklyResetHour"
+          :reset-day="weeklyResetDay"
+          :reset-timezone="resetTimezone"
+          :hint-rolling="t('admin.accounts.quotaWeeklyLimitHint')"
+          :hint-fixed="weeklyFixedHint"
+          :hour-options="hourOptions"
+          :day-options="dayOptions"
+          @update:limit="emit('update:weeklyLimit', $event)"
+          @update:notify-enabled="emit('update:quotaNotifyWeeklyEnabled', $event)"
+          @update:notify-threshold="emit('update:quotaNotifyWeeklyThreshold', $event)"
+          @update:notify-threshold-type="emit('update:quotaNotifyWeeklyThresholdType', $event)"
+          @update:reset-mode="emit('update:weeklyResetMode', $event)"
+          @update:reset-hour="emit('update:weeklyResetHour', $event)"
+          @update:reset-day="emit('update:weeklyResetDay', $event)"
+          @update:reset-timezone="emit('update:resetTimezone', $event)"
+        />
 
-        <!-- 时区选择 -->
+        <!-- Timezone selector (shared by daily/weekly when fixed mode is active) -->
         <div v-if="hasFixedMode">
           <label class="input-label">{{ t('admin.accounts.quotaResetTimezone') REDACTEDREDACTED</label>
           <select :value="resetTimezone || 'UTC'" @change="emit('update:resetTimezone', ($event.target as HTMLSelectElement).value)" class="input text-sm">
-            <option v-for="tz in timezoneOptions" :key="tz" :value="tz">{{ tz REDACTEDREDACTED</option>
+            <option v-for="tz in timezoneOptions" :key="tz" :value="tz">{{ tz REDACTEDREDACTED ({{ getTimezoneOffsetLabel(tz) REDACTEDREDACTED)</option>
           </select>
         </div>
 
-        <!-- 总配额 -->
-        <div>
-          <div v-if="quotaNotifyGlobalEnabled" class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0">{{ t('admin.accounts.quotaTotalLimit') REDACTEDREDACTED</span>
-            <span v-if="totalLimit && totalLimit > 0" class="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0">{{ t('admin.accounts.quotaNotify.alert') REDACTEDREDACTED</span>
-          </div>
-          <label v-else class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">{{ t('admin.accounts.quotaTotalLimit') REDACTEDREDACTED</label>
-          <div class="flex items-center gap-2">
-            <div :class="['relative', quotaNotifyGlobalEnabled ? 'w-28 flex-shrink-0' : 'flex-1']">
-              <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 text-sm">$</span>
-              <input :value="totalLimit" @input="onTotalInput" type="number" min="0" step="0.01" class="input pl-6 py-1.5 text-sm" :placeholder="t('admin.accounts.quotaLimitPlaceholder')" />
-            </div>
-            <QuotaNotifyToggle
-              v-if="quotaNotifyGlobalEnabled && totalLimit && totalLimit > 0"
-              class="flex-1 min-w-0"
-              :enabled="props.quotaNotifyTotalEnabled" :threshold="props.quotaNotifyTotalThreshold" :threshold-type="props.quotaNotifyTotalThresholdType"
-              @update:enabled="emit('update:quotaNotifyTotalEnabled', $event)" @update:threshold="emit('update:quotaNotifyTotalThreshold', $event)" @update:threshold-type="emit('update:quotaNotifyTotalThresholdType', $event)"
-            />
-          </div>
-          <p class="input-hint mb-0 text-[11px]">{{ t('admin.accounts.quotaTotalLimitHint') REDACTEDREDACTED</p>
-        </div>
+        <!-- Total quota -->
+        <QuotaDimensionRow
+          dim="total"
+          :label="t('admin.accounts.quotaTotalLimit')"
+          :limit="totalLimit"
+          :quota-notify-global-enabled="quotaNotifyGlobalEnabled"
+          :notify-enabled="props.quotaNotifyTotalEnabled"
+          :notify-threshold="props.quotaNotifyTotalThreshold"
+          :notify-threshold-type="props.quotaNotifyTotalThresholdType"
+          :reset-mode="null"
+          :reset-hour="null"
+          :reset-day="null"
+          :reset-timezone="null"
+          :hint-rolling="t('admin.accounts.quotaTotalLimitHint')"
+          hint-fixed=""
+          :hour-options="hourOptions"
+          :day-options="dayOptions"
+          @update:limit="emit('update:totalLimit', $event)"
+          @update:notify-enabled="emit('update:quotaNotifyTotalEnabled', $event)"
+          @update:notify-threshold="emit('update:quotaNotifyTotalThreshold', $event)"
+          @update:notify-threshold-type="emit('update:quotaNotifyTotalThresholdType', $event)"
+        />
       </div>
   </div>
 </template>
