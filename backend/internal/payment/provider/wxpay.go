@@ -72,7 +72,7 @@ REDACTED
 func (w *Wxpay) Name() string        { return "Wxpay" REDACTED
 func (w *Wxpay) ProviderKey() string { return payment.TypeWxpay REDACTED
 func (w *Wxpay) SupportedTypes() []payment.PaymentType {
-	return []payment.PaymentType{payment.TypeWxpayDirectREDACTED
+	return []payment.PaymentType{payment.TypeWxpayREDACTED
 REDACTED
 
 func formatPEM(key, keyType string) string {
