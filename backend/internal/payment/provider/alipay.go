@@ -76,7 +76,7 @@ REDACTED
 func (a *Alipay) Name() string        { return "Alipay" REDACTED
 func (a *Alipay) ProviderKey() string { return payment.TypeAlipay REDACTED
 func (a *Alipay) SupportedTypes() []payment.PaymentType {
-	return []payment.PaymentType{payment.TypeAlipayDirectREDACTED
+	return []payment.PaymentType{payment.TypeAlipayREDACTED
 REDACTED
 
 // CreatePayment creates an Alipay payment page URL.
