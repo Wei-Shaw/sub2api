@@ -291,6 +291,12 @@ REDACTED
 		return fmt.Errorf("generate code: %w", err)
 REDACTED
 
+	// Send email first — if SMTP fails, don't write cache or increment counters,
+	// so the user is not locked out by cooldown/rate-limit for a code they never received.
+	if err := s.sendNotifyVerifyEmail(ctx, emailService, email, code); err != nil {
+		return err
+REDACTED
+
 	if err := saveNotifyVerifyCode(ctx, cache, email, code); err != nil {
 		return err
 REDACTED
@@ -300,7 +306,7 @@ REDACTED
 		slog.Error("failed to increment notify code user rate", "user_id", userID, "error", err)
 REDACTED
 
-	return s.sendNotifyVerifyEmail(ctx, emailService, email, code)
+	return nil
 REDACTED
 
 // checkNotifyCodeRateLimit checks both email cooldown and user-level rate limit.

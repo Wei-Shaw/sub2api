@@ -511,7 +511,7 @@
                         :class="{ 'opacity-50': rule.account_ids.includes(account.id) REDACTED"
                         :disabled="rule.account_ids.includes(account.id)"
                       >
-                        <span>{{ account.name REDACTEDREDACTED</span>
+                        <span :class="platformTextClass(account.platform)">{{ account.name REDACTEDREDACTED</span>
                         <span class="ml-2 text-xs text-gray-400">#{{ account.id REDACTEDREDACTED</span>
                       </button>
                     </div>
@@ -595,6 +595,7 @@ import type { PricingFormEntry REDACTED from '@/components/admin/channel/types'
 import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals REDACTED from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform REDACTED from '@/types'
 import type { Column REDACTED from '@/components/common/types'
+import { platformTextClass REDACTED from '@/utils/platformColors'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -911,7 +912,7 @@ function getGroupNameById(groupId: number): string {
 REDACTED
 
 // ── Account search for pricing rules ──
-interface SimpleAccount { id: number; name: string REDACTED
+interface SimpleAccount { id: number; name: string; platform: string REDACTED
 
 const ruleAccountSearchKeyword = ref<Record<string, string>>({REDACTED)
 const ruleAccountSearchResults = ref<Record<string, SimpleAccount[]>>({REDACTED)
@@ -924,7 +925,7 @@ const ruleAccountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
   search: async (keyword, { key, signal REDACTED) => {
     const platform = key.split('-')[0]
     const res = await adminAPI.accounts.list(1, 20, { platform, search: keyword REDACTED, { signal REDACTED)
-    return res.items.map(a => ({ id: a.id, name: a.name REDACTED))
+    return res.items.map(a => ({ id: a.id, name: a.name, platform: a.platform REDACTED))
   REDACTED,
   onSuccess: (key, result) => { ruleAccountSearchResults.value[key] = result REDACTED,
   onError: (key) => { ruleAccountSearchResults.value[key] = [] REDACTED,

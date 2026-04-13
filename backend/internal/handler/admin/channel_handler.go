@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -351,6 +352,11 @@ REDACTED
 
 	var statsRules []service.AccountStatsPricingRule
 	for i, r := range req.AccountStatsPricingRules {
+		if len(r.GroupIDs) == 0 && len(r.AccountIDs) == 0 {
+			response.ErrorFrom(c, infraerrors.BadRequest("PRICING_RULE_EMPTY_SCOPE",
+				fmt.Sprintf("pricing rule #%d must have at least one group or account", i+1)))
+			return
+	REDACTED
 		rule := accountStatsPricingRuleRequestToService(r)
 		rule.SortOrder = i
 		statsRules = append(statsRules, rule)
@@ -409,6 +415,11 @@ REDACTED
 	if req.AccountStatsPricingRules != nil {
 		statsRules := make([]service.AccountStatsPricingRule, 0, len(*req.AccountStatsPricingRules))
 		for i, r := range *req.AccountStatsPricingRules {
+			if len(r.GroupIDs) == 0 && len(r.AccountIDs) == 0 {
+				response.ErrorFrom(c, infraerrors.BadRequest("PRICING_RULE_EMPTY_SCOPE",
+					fmt.Sprintf("pricing rule #%d must have at least one group or account", i+1)))
+				return
+		REDACTED
 			rule := accountStatsPricingRuleRequestToService(r)
 			rule.SortOrder = i
 			statsRules = append(statsRules, rule)
