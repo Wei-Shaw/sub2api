@@ -196,6 +196,14 @@ REDACTED
 REDACTED
 	defer func() { _ = client.Close() REDACTED()
 
+	// Opportunistic STARTTLS: upgrade to encrypted connection if the server supports it.
+	// This mirrors the behavior of smtp.SendMail which we replaced for timeout support.
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err = client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12REDACTED); err != nil {
+			return fmt.Errorf("starttls: %w", err)
+	REDACTED
+REDACTED
+
 	if err = client.Auth(auth); err != nil {
 		return fmt.Errorf("smtp auth: %w", err)
 REDACTED
