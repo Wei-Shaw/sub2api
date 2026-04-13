@@ -12,11 +12,11 @@ import (
 )
 
 const (
-	verifyCodeKeyPrefix            = "verify_code:"
-	notifyVerifyKeyPrefix          = "notify_verify:"
-	passwordResetKeyPrefix         = "password_reset:"
-	passwordResetSentAtKeyPrefix   = "password_reset_sent:"
-	notifyCodeUserRateKeyPrefix    = "notify_code_user_rate:"
+	verifyCodeKeyPrefix          = "verify_code:"
+	notifyVerifyKeyPrefix        = "notify_verify:"
+	passwordResetKeyPrefix       = "password_reset:"
+	passwordResetSentAtKeyPrefix = "password_reset_sent:"
+	notifyCodeUserRateKeyPrefix  = "notify_code_user_rate:"
 )
 
 // verifyCodeKey generates the Redis key for email verification code.

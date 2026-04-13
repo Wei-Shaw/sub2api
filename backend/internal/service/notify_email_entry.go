@@ -79,4 +79,3 @@ func MarshalNotifyEmails(entries []NotifyEmailEntry) string {
 	}
 	return string(data)
 }
-

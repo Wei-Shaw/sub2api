@@ -181,18 +181,33 @@ func calculatePerRequestStatsCost(pricing *ChannelModelPricing, requestCount int
 }
 
 // calculateTokenStatsCost Token 计费。
+// If the pricing has intervals, find the matching interval by total token count
+// and use its prices instead of the flat pricing fields.
 func calculateTokenStatsCost(pricing *ChannelModelPricing, tokens UsageTokens) *float64 {
-	deref := func(p *float64) float64 {
-		if p == nil {
+	p := pricing
+	if len(pricing.Intervals) > 0 {
+		totalTokens := tokens.InputTokens + tokens.OutputTokens + tokens.CacheCreationTokens + tokens.CacheReadTokens
+		if iv := FindMatchingInterval(pricing.Intervals, totalTokens); iv != nil {
+			p = &ChannelModelPricing{
+				InputPrice:      iv.InputPrice,
+				OutputPrice:     iv.OutputPrice,
+				CacheWritePrice: iv.CacheWritePrice,
+				CacheReadPrice:  iv.CacheReadPrice,
+				PerRequestPrice: iv.PerRequestPrice,
+			}
+		}
+	}
+	deref := func(ptr *float64) float64 {
+		if ptr == nil {
 			return 0
 		}
-		return *p
+		return *ptr
 	}
-	cost := float64(tokens.InputTokens)*deref(pricing.InputPrice) +
-		float64(tokens.OutputTokens)*deref(pricing.OutputPrice) +
-		float64(tokens.CacheCreationTokens)*deref(pricing.CacheWritePrice) +
-		float64(tokens.CacheReadTokens)*deref(pricing.CacheReadPrice) +
-		float64(tokens.ImageOutputTokens)*deref(pricing.ImageOutputPrice)
+	cost := float64(tokens.InputTokens)*deref(p.InputPrice) +
+		float64(tokens.OutputTokens)*deref(p.OutputPrice) +
+		float64(tokens.CacheCreationTokens)*deref(p.CacheWritePrice) +
+		float64(tokens.CacheReadTokens)*deref(p.CacheReadPrice) +
+		float64(tokens.ImageOutputTokens)*deref(p.ImageOutputPrice)
 	if cost <= 0 {
 		return nil
 	}
