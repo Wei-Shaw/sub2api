@@ -21,7 +21,7 @@ function toggleType(current: string | null) {
 </script>
 
 <template>
-  <div class="ml-4 mt-2 flex items-center gap-3">
+  <div class="flex items-center gap-2">
     <label class="text-sm text-gray-500 whitespace-nowrap">{{ t('admin.accounts.quotaNotify.alert') }}</label>
     <button
       type="button"
@@ -38,7 +38,7 @@ function toggleType(current: string | null) {
         ]"
       />
     </button>
-    <div v-if="enabled" class="flex items-center gap-1 flex-1">
+    <template v-if="enabled">
       <button
         type="button"
         class="px-1.5 py-0.5 text-xs font-medium rounded border transition-colors"
@@ -55,16 +55,22 @@ function toggleType(current: string | null) {
       >
         %
       </button>
-      <input
-        :value="threshold"
-        @input="emit('update:threshold', parseFloat(($event.target as HTMLInputElement).value) || null)"
-        type="number"
-        min="0"
-        :max="thresholdType === 'percentage' ? 100 : undefined"
-        :step="thresholdType === 'percentage' ? 1 : 0.01"
-        class="input py-1 text-sm flex-1"
-        :placeholder="thresholdType === 'percentage' ? t('admin.accounts.quotaNotify.thresholdPlaceholder') : t('admin.accounts.quotaNotify.threshold')"
-      />
-    </div>
+      <div class="relative flex-1">
+        <input
+          :value="threshold"
+          @input="emit('update:threshold', parseFloat(($event.target as HTMLInputElement).value) || null)"
+          type="number"
+          min="0"
+          :max="thresholdType === 'percentage' ? 100 : undefined"
+          :step="thresholdType === 'percentage' ? 1 : 0.01"
+          class="input py-1 text-sm w-full"
+          :class="thresholdType === 'percentage' ? 'pr-7' : 'pr-7'"
+          :placeholder="thresholdType === 'percentage' ? t('admin.accounts.quotaNotify.thresholdPlaceholder') : t('admin.accounts.quotaNotify.threshold')"
+        />
+        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
+          {{ thresholdType === 'percentage' ? '%' : '$' }}
+        </span>
+      </div>
+    </template>
   </div>
 </template>
