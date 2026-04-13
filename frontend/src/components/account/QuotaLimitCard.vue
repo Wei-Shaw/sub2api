@@ -201,12 +201,12 @@ const onWeeklyModeChange = (e: Event) => {
         <div>
           <!-- 标题行 -->
           <div class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 w-32 flex-shrink-0">{{ t('admin.accounts.quotaDailyLimit') }}</span>
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 w-28 flex-shrink-0">{{ t('admin.accounts.quotaDailyLimit') }}</span>
             <span v-if="quotaNotifyGlobalEnabled && dailyLimit && dailyLimit > 0" class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.quotaNotify.alert') }}</span>
           </div>
           <!-- 输入行 -->
           <div class="flex items-center gap-2">
-            <div class="relative w-32 flex-shrink-0">
+            <div class="relative w-28 flex-shrink-0">
               <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 text-sm">$</span>
               <input :value="dailyLimit" @input="onDailyInput" type="number" min="0" step="0.01" class="input pl-6 py-1.5 text-sm" :placeholder="t('admin.accounts.quotaLimitPlaceholder')" />
             </div>
@@ -239,11 +239,11 @@ const onWeeklyModeChange = (e: Event) => {
         <!-- 周配额 -->
         <div>
           <div class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 w-32 flex-shrink-0">{{ t('admin.accounts.quotaWeeklyLimit') }}</span>
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 w-28 flex-shrink-0">{{ t('admin.accounts.quotaWeeklyLimit') }}</span>
             <span v-if="quotaNotifyGlobalEnabled && weeklyLimit && weeklyLimit > 0" class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.quotaNotify.alert') }}</span>
           </div>
           <div class="flex items-center gap-2">
-            <div class="relative w-32 flex-shrink-0">
+            <div class="relative w-28 flex-shrink-0">
               <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 text-sm">$</span>
               <input :value="weeklyLimit" @input="onWeeklyInput" type="number" min="0" step="0.01" class="input pl-6 py-1.5 text-sm" :placeholder="t('admin.accounts.quotaLimitPlaceholder')" />
             </div>
@@ -288,11 +288,11 @@ const onWeeklyModeChange = (e: Event) => {
         <!-- 总配额 -->
         <div>
           <div class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 w-32 flex-shrink-0">{{ t('admin.accounts.quotaTotalLimit') }}</span>
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 w-28 flex-shrink-0">{{ t('admin.accounts.quotaTotalLimit') }}</span>
             <span v-if="quotaNotifyGlobalEnabled && totalLimit && totalLimit > 0" class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.quotaNotify.alert') }}</span>
           </div>
           <div class="flex items-center gap-2">
-            <div class="relative w-32 flex-shrink-0">
+            <div class="relative w-28 flex-shrink-0">
               <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 text-sm">$</span>
               <input :value="totalLimit" @input="onTotalInput" type="number" min="0" step="0.01" class="input pl-6 py-1.5 text-sm" :placeholder="t('admin.accounts.quotaLimitPlaceholder')" />
             </div>
