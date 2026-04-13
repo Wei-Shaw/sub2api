@@ -277,6 +277,28 @@ REDACTED
 REDACTED, nil
 REDACTED
 
+// PopulateWebSearchUsage returns a copy with quota usage populated from Redis (api_key kept as-is).
+func PopulateWebSearchUsage(ctx context.Context, cfg *WebSearchEmulationConfig) *WebSearchEmulationConfig {
+	if cfg == nil {
+		return nil
+REDACTED
+	out := *cfg
+	out.Providers = make([]WebSearchProviderConfig, len(cfg.Providers))
+
+	mgr := getWebSearchManager()
+
+	for i, p := range cfg.Providers {
+		out.Providers[i] = p
+		out.Providers[i].APIKeyConfigured = p.APIKey != ""
+
+		if mgr != nil {
+			used, _ := mgr.GetUsage(ctx, p.Type)
+			out.Providers[i].QuotaUsed = used
+	REDACTED
+REDACTED
+	return &out
+REDACTED
+
 // SanitizeWebSearchConfig returns a copy with api_key fields masked and quota usage populated.
 func SanitizeWebSearchConfig(ctx context.Context, cfg *WebSearchEmulationConfig) *WebSearchEmulationConfig {
 	if cfg == nil {
