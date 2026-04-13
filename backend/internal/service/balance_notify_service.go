@@ -21,6 +21,8 @@ const (
 	quotaDimDaily  = "daily"
 	quotaDimWeekly = "weekly"
 	quotaDimTotal  = "total"
+
+	defaultSiteName = "Sub2API"
 )
 
 // quotaDimLabels maps dimension names to display labels.
@@ -61,70 +63,70 @@ REDACTED
 REDACTED
 
 // CheckBalanceAfterDeduction checks if balance crossed below threshold after deduction.
-// oldBalance is the balance before deduction, cost is the amount deducted.
 // Notification is sent only on first crossing: oldBalance >= threshold && newBalance < threshold.
 func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, user *User, oldBalance, cost float64) {
-	if user == nil || s.emailService == nil || s.settingRepo == nil {
-		slog.Debug("CheckBalanceAfterDeduction: skipped (nil check)",
-			"user_nil", user == nil,
-			"email_svc_nil", s.emailService == nil,
-			"setting_repo_nil", s.settingRepo == nil,
-		)
+	if !s.canNotifyBalance(user) {
 		return
 REDACTED
-	if !user.BalanceNotifyEnabled {
-		slog.Debug("CheckBalanceAfterDeduction: user notify disabled", "user_id", user.ID)
+	effectiveThreshold, rechargeURL, ok := s.resolveUserEffectiveThreshold(ctx, user)
+	if !ok {
 		return
+REDACTED
+	newBalance := oldBalance - cost
+	if !crossedDownward(oldBalance, newBalance, effectiveThreshold) {
+		return
+REDACTED
+	s.dispatchBalanceLowEmail(ctx, user, newBalance, effectiveThreshold, rechargeURL)
 REDACTED
 
+// canNotifyBalance checks nil guards and user-level toggle.
+func (s *BalanceNotifyService) canNotifyBalance(user *User) bool {
+	if user == nil || s.emailService == nil || s.settingRepo == nil {
+		return false
+REDACTED
+	return user.BalanceNotifyEnabled
+REDACTED
+
+// resolveUserEffectiveThreshold reads global + user config, returns the effective threshold.
+// Returns ok=false when notifications should be skipped.
+func (s *BalanceNotifyService) resolveUserEffectiveThreshold(ctx context.Context, user *User) (effectiveThreshold float64, rechargeURL string, ok bool) {
 	globalEnabled, globalThreshold, rechargeURL := s.getBalanceNotifyConfig(ctx)
 	if !globalEnabled {
-		slog.Info("CheckBalanceAfterDeduction: global notify disabled", "user_id", user.ID)
-		return
+		return 0, "", false
 REDACTED
-
-	// User custom threshold overrides system default
 	threshold := globalThreshold
 	if user.BalanceNotifyThreshold != nil {
 		threshold = *user.BalanceNotifyThreshold
 REDACTED
 	if threshold <= 0 {
-		slog.Debug("CheckBalanceAfterDeduction: threshold <= 0", "user_id", user.ID, "threshold", threshold)
-		return
+		return 0, "", false
 REDACTED
-
-	effectiveThreshold := resolveBalanceThreshold(threshold, user.BalanceNotifyThresholdType, user.TotalRecharged)
+	effectiveThreshold = resolveBalanceThreshold(threshold, user.BalanceNotifyThresholdType, user.TotalRecharged)
 	if effectiveThreshold <= 0 {
-		slog.Debug("CheckBalanceAfterDeduction: effective threshold <= 0", "user_id", user.ID)
-		return
+		return 0, "", false
+REDACTED
+	return effectiveThreshold, rechargeURL, true
 REDACTED
 
-	newBalance := oldBalance - cost
-	slog.Info("CheckBalanceAfterDeduction: crossing check",
-		"user_id", user.ID,
-		"old_balance", oldBalance,
-		"new_balance", newBalance,
-		"effective_threshold", effectiveThreshold,
-		"crossed", oldBalance >= effectiveThreshold && newBalance < effectiveThreshold,
-	)
-	if oldBalance >= effectiveThreshold && newBalance < effectiveThreshold {
-		siteName := s.getSiteName(ctx)
-		recipients := s.collectBalanceNotifyRecipients(user)
-		slog.Info("CheckBalanceAfterDeduction: sending notification",
-			"user_id", user.ID,
-			"recipients", recipients,
-			"new_balance", newBalance,
-			"threshold", effectiveThreshold,
-		)
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					slog.Error("panic in balance notification", "recover", r)
-			REDACTED
-		REDACTED()
-			s.sendBalanceLowEmails(recipients, user.Username, user.Email, newBalance, effectiveThreshold, siteName, rechargeURL)
-	REDACTED()
+// crossedDownward returns true when oldV was at-or-above threshold but newV dropped below it.
+func crossedDownward(oldV, newV, threshold float64) bool {
+	return oldV >= threshold && newV < threshold
 REDACTED
+
+// dispatchBalanceLowEmail collects recipients and sends the alert in a goroutine.
+func (s *BalanceNotifyService) dispatchBalanceLowEmail(ctx context.Context, user *User, newBalance, threshold float64, rechargeURL string) {
+	siteName := s.getSiteName(ctx)
+	recipients := s.collectBalanceNotifyRecipients(user)
+	slog.Info("CheckBalanceAfterDeduction: sending notification",
+		"user_id", user.ID, "recipients", recipients, "new_balance", newBalance, "threshold", threshold)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("panic in balance notification", "recover", r)
+		REDACTED
+	REDACTED()
+		s.sendBalanceLowEmails(recipients, user.Username, user.Email, newBalance, threshold, siteName, rechargeURL)
+REDACTED()
 REDACTED
 
 // quotaDim describes one quota dimension for notification checking.
@@ -160,6 +162,16 @@ func buildQuotaDims(account *Account) []quotaDim {
 REDACTED
 REDACTED
 
+// buildQuotaDimsFromState builds quota dimensions using DB transaction state instead of account snapshot.
+// Notification settings (enabled, threshold, thresholdType) come from the account; usage values from quotaState.
+func buildQuotaDimsFromState(account *Account, state *AccountQuotaState) []quotaDim {
+	return []quotaDim{
+		{quotaDimDaily, account.GetQuotaNotifyDailyEnabled(), account.GetQuotaNotifyDailyThreshold(), account.GetQuotaNotifyDailyThresholdType(), state.DailyUsed, state.DailyLimitREDACTED,
+		{quotaDimWeekly, account.GetQuotaNotifyWeeklyEnabled(), account.GetQuotaNotifyWeeklyThreshold(), account.GetQuotaNotifyWeeklyThresholdType(), state.WeeklyUsed, state.WeeklyLimitREDACTED,
+		{quotaDimTotal, account.GetQuotaNotifyTotalEnabled(), account.GetQuotaNotifyTotalThreshold(), account.GetQuotaNotifyTotalThresholdType(), state.TotalUsed, state.TotalLimitREDACTED,
+REDACTED
+REDACTED
+
 // CheckAccountQuotaAfterIncrement checks if any quota dimension crossed above its notify threshold.
 // When quotaState is non-nil (from DB transaction RETURNING), it is used directly for threshold
 // checking, avoiding a separate DB read. Otherwise it falls back to fetching fresh account data.
@@ -176,13 +188,15 @@ REDACTED
 REDACTED
 
 	siteName := s.getSiteName(ctx)
+	var dims []quotaDim
 	if quotaState != nil {
-		s.checkQuotaDimCrossingsFromState(account, quotaState, cost, adminEmails, siteName)
-		return
+		dims = buildQuotaDimsFromState(account, quotaState)
+REDACTED else {
+		freshAccount := s.fetchFreshAccount(ctx, account)
+		dims = buildQuotaDims(freshAccount)
+		account = freshAccount // use fresh data for alert metadata
 REDACTED
-
-	freshAccount := s.fetchFreshAccount(ctx, account)
-	s.checkQuotaDimCrossings(freshAccount, cost, adminEmails, siteName)
+	s.checkQuotaDimCrossings(account, dims, cost, adminEmails, siteName)
 REDACTED
 
 // fetchFreshAccount loads the latest account from DB; falls back to the snapshot on error.
@@ -199,41 +213,10 @@ REDACTED
 	return fresh
 REDACTED
 
-// checkQuotaDimCrossings iterates quota dimensions and sends alerts for threshold crossings.
-// freshAccount has post-increment values; pre-increment is reconstructed as currentUsed - cost.
-func (s *BalanceNotifyService) checkQuotaDimCrossings(freshAccount *Account, cost float64, adminEmails []string, siteName string) {
-	for _, dim := range buildQuotaDims(freshAccount) {
-		if !dim.enabled || dim.threshold <= 0 {
-			continue
-	REDACTED
-		effectiveThreshold := dim.resolvedThreshold()
-		if effectiveThreshold <= 0 {
-			continue
-	REDACTED
-		// currentUsed is the post-increment value from fresh DB data;
-		// reconstruct pre-increment value to detect threshold crossing.
-		newUsed := dim.currentUsed
-		oldUsed := dim.currentUsed - cost
-		if oldUsed < effectiveThreshold && newUsed >= effectiveThreshold {
-			s.asyncSendQuotaAlert(adminEmails, freshAccount.ID, freshAccount.Name, freshAccount.Platform, dim, newUsed, effectiveThreshold, siteName)
-	REDACTED
-REDACTED
-REDACTED
-
-// buildQuotaDimsFromState builds quota dimensions using DB transaction state instead of account snapshot.
-// Notification settings (enabled, threshold, thresholdType) come from the account; usage values from quotaState.
-func buildQuotaDimsFromState(account *Account, state *AccountQuotaState) []quotaDim {
-	return []quotaDim{
-		{quotaDimDaily, account.GetQuotaNotifyDailyEnabled(), account.GetQuotaNotifyDailyThreshold(), account.GetQuotaNotifyDailyThresholdType(), state.DailyUsed, state.DailyLimitREDACTED,
-		{quotaDimWeekly, account.GetQuotaNotifyWeeklyEnabled(), account.GetQuotaNotifyWeeklyThreshold(), account.GetQuotaNotifyWeeklyThresholdType(), state.WeeklyUsed, state.WeeklyLimitREDACTED,
-		{quotaDimTotal, account.GetQuotaNotifyTotalEnabled(), account.GetQuotaNotifyTotalThreshold(), account.GetQuotaNotifyTotalThresholdType(), state.TotalUsed, state.TotalLimitREDACTED,
-REDACTED
-REDACTED
-
-// checkQuotaDimCrossingsFromState checks threshold crossings using DB transaction quota state.
-// This avoids a separate DB read and ensures the values are consistent with the atomic increment.
-func (s *BalanceNotifyService) checkQuotaDimCrossingsFromState(account *Account, state *AccountQuotaState, cost float64, adminEmails []string, siteName string) {
-	for _, dim := range buildQuotaDimsFromState(account, state) {
+// checkQuotaDimCrossings iterates pre-built quota dimensions and sends alerts for threshold crossings.
+// Pre-increment value is reconstructed as currentUsed - cost to detect the crossing moment.
+func (s *BalanceNotifyService) checkQuotaDimCrossings(account *Account, dims []quotaDim, cost float64, adminEmails []string, siteName string) {
+	for _, dim := range dims {
 		if !dim.enabled || dim.threshold <= 0 {
 			continue
 	REDACTED
@@ -324,7 +307,7 @@ REDACTED
 func (s *BalanceNotifyService) getSiteName(ctx context.Context) string {
 	name, err := s.settingRepo.GetValue(ctx, SettingKeySiteName)
 	if err != nil || name == "" {
-		return "Sub2API"
+		return defaultSiteName
 REDACTED
 	return name
 REDACTED

@@ -1523,40 +1523,49 @@ REDACTED
 
 // --- Quota Notification Getters ---
 
+// QuotaNotifyConfig returns the notify configuration for a given quota dimension.
+// dim must be one of quotaDimDaily, quotaDimWeekly, quotaDimTotal.
+func (a *Account) QuotaNotifyConfig(dim string) (enabled bool, threshold float64, thresholdType string) {
+	enabled = a.getExtraBool("quota_notify_" + dim + "_enabled")
+	threshold = a.getExtraFloat64("quota_notify_" + dim + "_threshold")
+	thresholdType = a.getExtraStringDefault("quota_notify_"+dim+"_threshold_type", thresholdTypeFixed)
+	return
+REDACTED
+
 func (a *Account) GetQuotaNotifyDailyEnabled() bool {
-	return a.getExtraBool("quota_notify_daily_enabled")
+	e, _, _ := a.QuotaNotifyConfig(quotaDimDaily); return e
 REDACTED
 
 func (a *Account) GetQuotaNotifyDailyThreshold() float64 {
-	return a.getExtraFloat64("quota_notify_daily_threshold")
+	_, t, _ := a.QuotaNotifyConfig(quotaDimDaily); return t
 REDACTED
 
 func (a *Account) GetQuotaNotifyDailyThresholdType() string {
-	return a.getExtraStringDefault("quota_notify_daily_threshold_type", thresholdTypeFixed)
+	_, _, tt := a.QuotaNotifyConfig(quotaDimDaily); return tt
 REDACTED
 
 func (a *Account) GetQuotaNotifyWeeklyEnabled() bool {
-	return a.getExtraBool("quota_notify_weekly_enabled")
+	e, _, _ := a.QuotaNotifyConfig(quotaDimWeekly); return e
 REDACTED
 
 func (a *Account) GetQuotaNotifyWeeklyThreshold() float64 {
-	return a.getExtraFloat64("quota_notify_weekly_threshold")
+	_, t, _ := a.QuotaNotifyConfig(quotaDimWeekly); return t
 REDACTED
 
 func (a *Account) GetQuotaNotifyWeeklyThresholdType() string {
-	return a.getExtraStringDefault("quota_notify_weekly_threshold_type", thresholdTypeFixed)
+	_, _, tt := a.QuotaNotifyConfig(quotaDimWeekly); return tt
 REDACTED
 
 func (a *Account) GetQuotaNotifyTotalEnabled() bool {
-	return a.getExtraBool("quota_notify_total_enabled")
+	e, _, _ := a.QuotaNotifyConfig(quotaDimTotal); return e
 REDACTED
 
 func (a *Account) GetQuotaNotifyTotalThreshold() float64 {
-	return a.getExtraFloat64("quota_notify_total_threshold")
+	_, t, _ := a.QuotaNotifyConfig(quotaDimTotal); return t
 REDACTED
 
 func (a *Account) GetQuotaNotifyTotalThresholdType() string {
-	return a.getExtraStringDefault("quota_notify_total_threshold_type", thresholdTypeFixed)
+	_, _, tt := a.QuotaNotifyConfig(quotaDimTotal); return tt
 REDACTED
 
 // nextFixedDailyReset 计算在 after 之后的下一个每日固定重置时间点
