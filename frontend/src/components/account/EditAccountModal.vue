@@ -1161,7 +1161,7 @@
               {{ t('admin.accounts.anthropic.webSearchEmulationDesc') REDACTEDREDACTED
             </p>
           </div>
-          <select v-model="webSearchEmulationMode" class="input w-32 text-sm">
+          <select v-model="webSearchEmulationMode" class="input w-24 text-sm">
             <option value="default">{{ t('admin.accounts.anthropic.webSearchDefault') REDACTEDREDACTED</option>
             <option value="enabled">{{ t('admin.accounts.anthropic.webSearchEnabled') REDACTEDREDACTED</option>
             <option value="disabled">{{ t('admin.accounts.anthropic.webSearchDisabled') REDACTEDREDACTED</option>
