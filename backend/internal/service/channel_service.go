@@ -566,13 +566,19 @@ func ReplaceModelInBody(body []byte, newModel string) []byte {
 // validateChannelConfig 校验渠道的定价和映射配置（冲突检测 + 区间校验 + 计费模式校验）。
 // Create 和 Update 共用此函数，避免重复。
 func validateChannelConfig(pricing []ChannelModelPricing, mapping map[string]map[string]string) error {
+	if err := validatePricingEntries(pricing); err != nil {
+		return err
+	}
+	return validateNoConflictingMappings(mapping)
+}
+
+// validatePricingEntries 校验定价条目（冲突检测 + 区间校验 + 计费模式校验），
+// 同时用于主渠道定价和 account_stats_pricing_rules 的内部定价。
+func validatePricingEntries(pricing []ChannelModelPricing) error {
 	if err := validateNoConflictingModels(pricing); err != nil {
 		return err
 	}
 	if err := validatePricingIntervals(pricing); err != nil {
-		return err
-	}
-	if err := validateNoConflictingMappings(mapping); err != nil {
 		return err
 	}
 	return validatePricingBillingMode(pricing)
@@ -685,6 +691,11 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
 	}
+	for i, rule := range channel.AccountStatsPricingRules {
+		if err := validatePricingEntries(rule.Pricing); err != nil {
+			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
+		}
+	}
 
 	if err := s.repo.Create(ctx, channel); err != nil {
 		return nil, fmt.Errorf("create channel: %w", err)
@@ -712,6 +723,11 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
+	}
+	for i, rule := range channel.AccountStatsPricingRules {
+		if err := validatePricingEntries(rule.Pricing); err != nil {
+			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
+		}
 	}
 
 	oldGroupIDs := s.getOldGroupIDs(ctx, id)
