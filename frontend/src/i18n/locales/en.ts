@@ -4649,6 +4649,9 @@ export default {
         threshold: 'Default Threshold',
         thresholdHint: 'Used when user has not set a custom value',
         thresholdPlaceholder: 'Enter amount',
+        rechargeUrl: 'Recharge Page URL',
+        rechargeUrlPlaceholder: 'https://example.com/payment',
+        rechargeUrlHint: 'A top-up button will appear in the email when set',
       REDACTED,
       quotaNotify: {
         title: 'Account Quota Notification',

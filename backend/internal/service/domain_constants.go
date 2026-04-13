@@ -251,8 +251,9 @@ const (
 	SettingKeyEnableCCHSigning = "enable_cch_signing"
 
 	// Balance Low Notification
-	SettingKeyBalanceLowNotifyEnabled   = "balance_low_notify_enabled"   // 全局开关
-	SettingKeyBalanceLowNotifyThreshold = "balance_low_notify_threshold" // 默认阈值（USD）
+	SettingKeyBalanceLowNotifyEnabled    = "balance_low_notify_enabled"    // 全局开关
+	SettingKeyBalanceLowNotifyThreshold  = "balance_low_notify_threshold"  // 默认阈值（USD）
+	SettingKeyBalanceLowNotifyRechargeURL = "balance_low_notify_recharge_url" // 充值页面 URL
 
 	// Account Quota Notification
 	SettingKeyAccountQuotaNotifyEnabled = "account_quota_notify_enabled" // 全局开关

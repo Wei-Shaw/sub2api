@@ -4813,6 +4813,9 @@ export default {
         threshold: '默认提醒阈值',
         thresholdHint: '用户未自定义时使用此值',
         thresholdPlaceholder: '输入金额',
+        rechargeUrl: '充值页面 URL',
+        rechargeUrlPlaceholder: 'https://example.com/payment',
+        rechargeUrlHint: '设置后邮件中将包含充值链接按钮',
       REDACTED,
       quotaNotify: {
         title: '账号限额通知',
