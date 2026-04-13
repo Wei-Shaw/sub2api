@@ -199,7 +199,7 @@ async function renderQR() {
   if (!qrCanvas.value || !qrUrl.value) return
   await QRCode.toCanvas(qrCanvas.value, qrUrl.value, {
     width: 220, margin: 2,
-    errorCorrectionLevel: 'H',
+    errorCorrectionLevel: 'M',
   })
 }
 

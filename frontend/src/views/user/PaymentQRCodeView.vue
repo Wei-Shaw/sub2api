@@ -94,12 +94,12 @@ async function renderQR() {
   await nextTick()
   if (!qrCanvas.value || !qrUrl.value) return
 
-  // Use high error correction to support logo overlay
+  // Use medium error correction to support logo overlay while keeping QR code scannable
   const logoSrc = getLogoForType()
   await QRCode.toCanvas(qrCanvas.value, qrUrl.value, {
     width: 256,
     margin: 2,
-    errorCorrectionLevel: logoSrc ? 'H' : 'M',
+    errorCorrectionLevel: logoSrc ? 'M' : 'L',
   })
 
   if (!logoSrc) return

@@ -154,7 +154,7 @@ async function renderQR() {
   await QRCode.toCanvas(qrCanvas.value, qrUrl.value, {
     width: 220,
     margin: 2,
-    errorCorrectionLevel: logoSrc ? 'H' : 'M',
+    errorCorrectionLevel: logoSrc ? 'M' : 'L',
   })
   if (!logoSrc) return
   const canvas = qrCanvas.value
