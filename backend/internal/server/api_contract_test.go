@@ -53,8 +53,13 @@ func TestAPIContracts(t *testing.T) {
 					"username": "alice",
 					"role": "user",
 					"balance": 12.5,
+					"balance_notify_enabled": false,
+					"balance_notify_extra_emails": null,
+					"balance_notify_threshold": null,
+					"balance_notify_threshold_type": "",
 					"concurrency": 5,
 					"status": "active",
+					"total_recharged": 0,
 					"allowed_groups": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z",
@@ -606,7 +611,12 @@ func TestAPIContracts(t *testing.T) {
 					"payment_cancel_rate_limit_max": 0,
 					"payment_cancel_rate_limit_window": 0,
 					"payment_cancel_rate_limit_unit": "",
-					"payment_cancel_rate_limit_window_mode": ""
+					"payment_cancel_rate_limit_window_mode": "",
+					"balance_low_notify_enabled": false,
+					"balance_low_notify_threshold": 0,
+					"balance_low_notify_recharge_url": "",
+					"account_quota_notify_enabled": false,
+					"account_quota_notify_emails": []
 				}
 			}`,
 		},
@@ -699,7 +709,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 		RunMode: config.RunModeStandard,
 	}
 
-	userService := service.NewUserService(userRepo, nil, nil)
+	userService := service.NewUserService(userRepo, nil, nil, nil)
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, nil, apiKeyCache, cfg)
 
 	usageRepo := newStubUsageLogRepo()

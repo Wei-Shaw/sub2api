@@ -1041,7 +1041,7 @@ const flushPendingAutoLoad = () => {
   const source = pendingAutoLoadSource.value
   pendingAutoLoad.value = false
   pendingAutoLoadSource.value = undefined
-  loadUsage(source).catch((e) => {
+  loadUsage({ source }).catch((e) => {
     console.error('Failed to load deferred usage:', e)
   })
 }
@@ -1053,7 +1053,7 @@ const requestAutoLoad = (source?: 'passive' | 'active') => {
     pendingAutoLoadSource.value = source
     return
   }
-  loadUsage(source).catch((e) => {
+  loadUsage({ source }).catch((e) => {
     console.error('Failed to auto load usage:', e)
   })
 }
