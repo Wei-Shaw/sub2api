@@ -7598,6 +7598,7 @@ REDACTED
 				ImageOutputTokens:   result.Usage.ImageOutputTokens,
 		REDACTED,
 			1, // requestCount
+			cost.TotalCost,
 		)
 REDACTED
 
