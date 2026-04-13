@@ -31,6 +31,26 @@ func validatePlanRequired(name string, groupID int64, price float64, validityDay
 	return nil
 }
 
+// validatePlanPatch validates only the non-nil fields in a patch update.
+func validatePlanPatch(req UpdatePlanRequest) error {
+	if req.Name != nil && strings.TrimSpace(*req.Name) == "" {
+		return infraerrors.BadRequest("PLAN_NAME_REQUIRED", "plan name is required")
+	}
+	if req.GroupID != nil && *req.GroupID <= 0 {
+		return infraerrors.BadRequest("PLAN_GROUP_REQUIRED", "group is required")
+	}
+	if req.Price != nil && *req.Price <= 0 {
+		return infraerrors.BadRequest("PLAN_PRICE_INVALID", "price must be > 0")
+	}
+	if req.ValidityDays != nil && *req.ValidityDays <= 0 {
+		return infraerrors.BadRequest("PLAN_VALIDITY_REQUIRED", "validity days must be > 0")
+	}
+	if req.ValidityUnit != nil && strings.TrimSpace(*req.ValidityUnit) == "" {
+		return infraerrors.BadRequest("PLAN_VALIDITY_UNIT_REQUIRED", "validity unit is required")
+	}
+	return nil
+}
+
 // --- Plan CRUD ---
 
 // PlanGroupInfo holds the group details needed for subscription plan display.
@@ -110,8 +130,12 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 }
 
 // UpdatePlan updates a subscription plan by ID (patch semantics).
-// NOTE: This function exceeds 30 lines due to per-field nil-check patch update boilerplate.
+// NOTE: This function exceeds 30 lines due to per-field nil-check patch update boilerplate
+// plus a validation guard for non-nil fields.
 func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req UpdatePlanRequest) (*dbent.SubscriptionPlan, error) {
+	if err := validatePlanPatch(req); err != nil {
+		return nil, err
+	}
 	u := s.entClient.SubscriptionPlan.UpdateOneID(id)
 	if req.GroupID != nil {
 		u.SetGroupID(*req.GroupID)

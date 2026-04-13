@@ -1060,6 +1060,10 @@ export interface AdminUsageLog extends UsageLog {
   // 自定义定价规则计算的账号统计费用（nil 时使用 total_cost * multiplier）
   account_stats_cost?: number | null
 
+  // 渠道 ID 和计费等级（仅管理员可见）
+  channel_id?: number | null
+  billing_tier?: string | null
+
   // 用户请求 IP（仅管理员可见）
   ip_address?: string | null
 

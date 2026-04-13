@@ -50,8 +50,8 @@ func TestGetWebSearchEmulationMode_OldBoolTrue(t *testing.T) {
 		Type:     AccountTypeAPIKey,
 		Extra:    map[string]any{featureKeyWebSearchEmulation: true},
 	}
-	// bool is not a string, type assertion fails → default
-	require.Equal(t, WebSearchModeDefault, a.GetWebSearchEmulationMode())
+	// bool true → tolerant fallback → enabled (not default)
+	require.Equal(t, WebSearchModeEnabled, a.GetWebSearchEmulationMode())
 }
 
 func TestGetWebSearchEmulationMode_OldBoolFalse(t *testing.T) {

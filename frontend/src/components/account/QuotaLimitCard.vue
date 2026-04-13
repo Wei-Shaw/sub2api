@@ -215,8 +215,8 @@ const onWeeklyModeChange = (e: Event) => {
         <div>
           <!-- 标题行（仅全局通知开启时显示） -->
           <div v-if="quotaNotifyGlobalEnabled" class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 w-28 flex-shrink-0">{{ t('admin.accounts.quotaDailyLimit') }}</span>
-            <span v-if="dailyLimit && dailyLimit > 0" class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.quotaNotify.alert') }}</span>
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0">{{ t('admin.accounts.quotaDailyLimit') }}</span>
+            <span v-if="dailyLimit && dailyLimit > 0" class="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0">{{ t('admin.accounts.quotaNotify.alert') }}</span>
           </div>
           <label v-else class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">{{ t('admin.accounts.quotaDailyLimit') }}</label>
           <!-- 输入行 -->
@@ -254,8 +254,8 @@ const onWeeklyModeChange = (e: Event) => {
         <!-- 周配额 -->
         <div>
           <div v-if="quotaNotifyGlobalEnabled" class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 w-28 flex-shrink-0">{{ t('admin.accounts.quotaWeeklyLimit') }}</span>
-            <span v-if="weeklyLimit && weeklyLimit > 0" class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.quotaNotify.alert') }}</span>
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0">{{ t('admin.accounts.quotaWeeklyLimit') }}</span>
+            <span v-if="weeklyLimit && weeklyLimit > 0" class="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0">{{ t('admin.accounts.quotaNotify.alert') }}</span>
           </div>
           <label v-else class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">{{ t('admin.accounts.quotaWeeklyLimit') }}</label>
           <div class="flex items-center gap-2">
@@ -304,8 +304,8 @@ const onWeeklyModeChange = (e: Event) => {
         <!-- 总配额 -->
         <div>
           <div v-if="quotaNotifyGlobalEnabled" class="flex items-center gap-2 mb-1">
-            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 w-28 flex-shrink-0">{{ t('admin.accounts.quotaTotalLimit') }}</span>
-            <span v-if="totalLimit && totalLimit > 0" class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.quotaNotify.alert') }}</span>
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0">{{ t('admin.accounts.quotaTotalLimit') }}</span>
+            <span v-if="totalLimit && totalLimit > 0" class="text-xs font-medium text-gray-700 dark:text-gray-300 flex-1 min-w-0">{{ t('admin.accounts.quotaNotify.alert') }}</span>
           </div>
           <label v-else class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">{{ t('admin.accounts.quotaTotalLimit') }}</label>
           <div class="flex items-center gap-2">

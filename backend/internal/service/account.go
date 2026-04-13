@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"hash/fnv"
+	"log/slog"
 	"reflect"
 	"sort"
 	"strconv"
@@ -1178,12 +1179,21 @@ const (
 
 // GetWebSearchEmulationMode 返回账号的 WebSearch 模拟模式。
 // 三态：default（跟随渠道）/ enabled（强制开启）/ disabled（强制关闭）。
-// 旧 bool 值需通过 SQL 迁移脚本转换，Go 代码不做兼容。
+// 兼容旧 bool 值：true→enabled, false→default（并记录 debug 日志）。
 func (a *Account) GetWebSearchEmulationMode() string {
 	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey || a.Extra == nil {
 		return WebSearchModeDefault
 	}
-	mode, ok := a.Extra[featureKeyWebSearchEmulation].(string)
+	raw := a.Extra[featureKeyWebSearchEmulation]
+	// Tolerant: legacy bool values (pre-migration or stale writes)
+	if b, ok := raw.(bool); ok {
+		slog.Debug("legacy bool web_search_emulation value", "account_id", a.ID, "value", b)
+		if b {
+			return WebSearchModeEnabled
+		}
+		return WebSearchModeDefault
+	}
+	mode, ok := raw.(string)
 	if !ok {
 		return WebSearchModeDefault
 	}
@@ -1522,7 +1532,7 @@ func (a *Account) GetQuotaNotifyDailyThreshold() float64 {
 }
 
 func (a *Account) GetQuotaNotifyDailyThresholdType() string {
-	return a.getExtraStringDefault("quota_notify_daily_threshold_type", "fixed")
+	return a.getExtraStringDefault("quota_notify_daily_threshold_type", thresholdTypeFixed)
 }
 
 func (a *Account) GetQuotaNotifyWeeklyEnabled() bool {
@@ -1534,7 +1544,7 @@ func (a *Account) GetQuotaNotifyWeeklyThreshold() float64 {
 }
 
 func (a *Account) GetQuotaNotifyWeeklyThresholdType() string {
-	return a.getExtraStringDefault("quota_notify_weekly_threshold_type", "fixed")
+	return a.getExtraStringDefault("quota_notify_weekly_threshold_type", thresholdTypeFixed)
 }
 
 func (a *Account) GetQuotaNotifyTotalEnabled() bool {
@@ -1546,7 +1556,7 @@ func (a *Account) GetQuotaNotifyTotalThreshold() float64 {
 }
 
 func (a *Account) GetQuotaNotifyTotalThresholdType() string {
-	return a.getExtraStringDefault("quota_notify_total_threshold_type", "fixed")
+	return a.getExtraStringDefault("quota_notify_total_threshold_type", thresholdTypeFixed)
 }
 
 // nextFixedDailyReset 计算在 after 之后的下一个每日固定重置时间点
