@@ -116,6 +116,20 @@ const timezoneOptions = [
   'Pacific/Auckland',
 ]
 
+// Compute GMT offset label (e.g. "GMT+8", "GMT-5") for a given IANA timezone.
+// Uses the current moment so DST is reflected automatically.
+function getTimezoneOffsetLabel(tz: string): string {
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' })
+    const parts = dtf.formatToParts(new Date())
+    const tzPart = parts.find(p => p.type === 'timeZoneName')
+    // shortOffset returns "GMT+8" / "GMT-5:30" / "GMT" for UTC
+    return tzPart ? (tzPart.value === 'GMT' ? 'GMT+0' : tzPart.value) : ''
+  } catch {
+    return ''
+  }
+}
+
 // Hours for dropdown (0-23)
 const hourOptions = Array.from({ length: 24 }, (_, i) => i)
 
@@ -207,7 +221,7 @@ const onWeeklyModeChange = (e: Event) => {
           <label v-else class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">{{ t('admin.accounts.quotaDailyLimit') }}</label>
           <!-- 输入行 -->
           <div class="flex items-center gap-2">
-            <div :class="['relative', quotaNotifyGlobalEnabled ? 'w-28 flex-shrink-0' : 'flex-1']">
+            <div :class="['relative', quotaNotifyGlobalEnabled ? 'flex-1 min-w-0' : 'flex-1']">
               <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 text-sm">$</span>
               <input :value="dailyLimit" @input="onDailyInput" type="number" min="0" step="0.01" class="input pl-6 py-1.5 text-sm" :placeholder="t('admin.accounts.quotaLimitPlaceholder')" />
             </div>
@@ -230,11 +244,11 @@ const onWeeklyModeChange = (e: Event) => {
                 <option v-for="h in hourOptions" :key="h" :value="h">{{ String(h).padStart(2, '0') }}:00</option>
               </select>
             </template>
+            <span class="text-[11px] text-gray-500 dark:text-gray-400">
+              <template v-if="dailyResetMode === 'fixed'">{{ t('admin.accounts.quotaDailyLimitHintFixed', { hour: String(dailyResetHour ?? 0).padStart(2, '0'), timezone: resetTimezone || 'UTC' }) }}</template>
+              <template v-else>{{ t('admin.accounts.quotaDailyLimitHint') }}</template>
+            </span>
           </div>
-          <p class="input-hint mb-0 text-[11px]">
-            <template v-if="dailyResetMode === 'fixed'">{{ t('admin.accounts.quotaDailyLimitHintFixed', { hour: String(dailyResetHour ?? 0).padStart(2, '0'), timezone: resetTimezone || 'UTC' }) }}</template>
-            <template v-else>{{ t('admin.accounts.quotaDailyLimitHint') }}</template>
-          </p>
         </div>
 
         <!-- 周配额 -->
@@ -245,7 +259,7 @@ const onWeeklyModeChange = (e: Event) => {
           </div>
           <label v-else class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">{{ t('admin.accounts.quotaWeeklyLimit') }}</label>
           <div class="flex items-center gap-2">
-            <div :class="['relative', quotaNotifyGlobalEnabled ? 'w-28 flex-shrink-0' : 'flex-1']">
+            <div :class="['relative', quotaNotifyGlobalEnabled ? 'flex-1 min-w-0' : 'flex-1']">
               <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 text-sm">$</span>
               <input :value="weeklyLimit" @input="onWeeklyInput" type="number" min="0" step="0.01" class="input pl-6 py-1.5 text-sm" :placeholder="t('admin.accounts.quotaLimitPlaceholder')" />
             </div>
@@ -272,18 +286,18 @@ const onWeeklyModeChange = (e: Event) => {
                 <option v-for="h in hourOptions" :key="h" :value="h">{{ String(h).padStart(2, '0') }}:00</option>
               </select>
             </template>
+            <span class="text-[11px] text-gray-500 dark:text-gray-400">
+              <template v-if="weeklyResetMode === 'fixed'">{{ t('admin.accounts.quotaWeeklyLimitHintFixed', { day: t('admin.accounts.dayOfWeek.' + (dayOptions.find(d => d.value === (weeklyResetDay ?? 1))?.key || 'monday')), hour: String(weeklyResetHour ?? 0).padStart(2, '0'), timezone: resetTimezone || 'UTC' }) }}</template>
+              <template v-else>{{ t('admin.accounts.quotaWeeklyLimitHint') }}</template>
+            </span>
           </div>
-          <p class="input-hint mb-0 text-[11px]">
-            <template v-if="weeklyResetMode === 'fixed'">{{ t('admin.accounts.quotaWeeklyLimitHintFixed', { day: t('admin.accounts.dayOfWeek.' + (dayOptions.find(d => d.value === (weeklyResetDay ?? 1))?.key || 'monday')), hour: String(weeklyResetHour ?? 0).padStart(2, '0'), timezone: resetTimezone || 'UTC' }) }}</template>
-            <template v-else>{{ t('admin.accounts.quotaWeeklyLimitHint') }}</template>
-          </p>
         </div>
 
         <!-- 时区选择 -->
         <div v-if="hasFixedMode">
           <label class="input-label">{{ t('admin.accounts.quotaResetTimezone') }}</label>
           <select :value="resetTimezone || 'UTC'" @change="emit('update:resetTimezone', ($event.target as HTMLSelectElement).value)" class="input text-sm">
-            <option v-for="tz in timezoneOptions" :key="tz" :value="tz">{{ tz }}</option>
+            <option v-for="tz in timezoneOptions" :key="tz" :value="tz">{{ tz }} ({{ getTimezoneOffsetLabel(tz) }})</option>
           </select>
         </div>
 
@@ -295,7 +309,7 @@ const onWeeklyModeChange = (e: Event) => {
           </div>
           <label v-else class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">{{ t('admin.accounts.quotaTotalLimit') }}</label>
           <div class="flex items-center gap-2">
-            <div :class="['relative', quotaNotifyGlobalEnabled ? 'w-28 flex-shrink-0' : 'flex-1']">
+            <div :class="['relative', quotaNotifyGlobalEnabled ? 'flex-1 min-w-0' : 'flex-1']">
               <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 text-sm">$</span>
               <input :value="totalLimit" @input="onTotalInput" type="number" min="0" step="0.01" class="input pl-6 py-1.5 text-sm" :placeholder="t('admin.accounts.quotaLimitPlaceholder')" />
             </div>
