@@ -166,8 +166,8 @@
             class="channel-tab group"
             :class="activeTab === section.platform ? 'channel-tab-active' : 'channel-tab-inactive'"
           >
-            <PlatformIcon :platform="section.platform" size="xs" :class="getPlatformTextColor(section.platform)" />
-            <span :class="getPlatformTextColor(section.platform)">{{ t('admin.groups.platforms.' + section.platform, section.platform) }}</span>
+            <PlatformIcon :platform="section.platform" size="xs" :class="platformTextClass(section.platform)" />
+            <span :class="platformTextClass(section.platform)">{{ t('admin.groups.platforms.' + section.platform, section.platform) }}</span>
           </button>
         </div>
 
@@ -246,8 +246,8 @@
                     class="h-3.5 w-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                     @change="togglePlatform(p)"
                   />
-                  <PlatformIcon :platform="p" size="xs" :class="getPlatformTextColor(p)" />
-                  <span :class="getPlatformTextColor(p)">{{ t('admin.groups.platforms.' + p, p) }}</span>
+                  <PlatformIcon :platform="p" size="xs" :class="platformTextClass(p)" />
+                  <span :class="platformTextClass(p)">{{ t('admin.groups.platforms.' + p, p) }}</span>
                 </label>
               </div>
             </div>
@@ -310,9 +310,9 @@
                       class="h-3 w-3 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                       @change="toggleGroupInSection(sIdx, group.id)"
                     />
-                    <span :class="['font-medium', getPlatformTextColor(group.platform)]">{{ group.name }}</span>
+                    <span :class="['font-medium', platformTextClass(group.platform)]">{{ group.name }}</span>
                     <span
-                      :class="['rounded-full px-1 py-0 text-[10px]', getRateBadgeClass(group.platform)]"
+                      :class="['rounded-full px-1 py-0 text-[10px]', platformBadgeLightClass(group.platform)]"
                     >{{ group.rate_multiplier }}x</span>
                     <span class="text-[10px] text-gray-400">{{ group.account_count || 0 }}</span>
                     <span
@@ -363,7 +363,7 @@
                     :value="srcModel"
                     type="text"
                     class="input flex-1 text-xs"
-                    :class="getPlatformTextColor(section.platform)"
+                    :class="platformTextClass(section.platform)"
                     :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
                     @change="renameMappingKey(sIdx, srcModel, ($event.target as HTMLInputElement).value)"
                   />
@@ -372,7 +372,7 @@
                     :value="section.model_mapping[srcModel]"
                     type="text"
                     class="input flex-1 text-xs"
-                    :class="getPlatformTextColor(section.platform)"
+                    :class="platformTextClass(section.platform)"
                     :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
                     @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
                   />
@@ -464,7 +464,7 @@
                         : 'border-gray-200 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700'"
                     >
                       <input type="checkbox" :checked="rule.group_ids.includes(gid)" class="h-3 w-3 rounded border-gray-300 text-primary-600 focus:ring-primary-500" @change="rule.group_ids.includes(gid) ? rule.group_ids.splice(rule.group_ids.indexOf(gid), 1) : rule.group_ids.push(gid)" />
-                      <span :class="['font-medium', getPlatformTextColor(section.platform)]">{{ getGroupNameById(gid) }}</span>
+                      <span :class="['font-medium', platformTextClass(section.platform)]">{{ getGroupNameById(gid) }}</span>
                     </label>
                   </div>
                   <p v-if="section.group_ids.length === 0" class="mt-1 text-xs text-gray-400">
@@ -481,7 +481,7 @@
                       :key="accountId"
                       class="inline-flex items-center gap-1 rounded-md border border-primary-300 bg-primary-50 px-2 py-0.5 text-xs dark:border-primary-700 dark:bg-primary-900/20"
                     >
-                      <span :class="['font-medium', getPlatformTextColor(section.platform)]">{{ getRuleAccountLabel(accountId) }}</span>
+                      <span :class="['font-medium', platformTextClass(section.platform)]">{{ getRuleAccountLabel(accountId) }}</span>
                       <button type="button" @click="removeRuleAccount(rule, accountId)" class="text-gray-400 hover:text-red-500">
                         <Icon name="x" size="xs" />
                       </button>
@@ -595,7 +595,7 @@ import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
-import { platformTextClass } from '@/utils/platformColors'
+import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -719,26 +719,6 @@ let abortController: AbortController | null = null
 
 // ── Platform config ──
 const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity']
-
-function getPlatformTextColor(platform: string): string {
-  switch (platform) {
-    case 'anthropic': return 'text-orange-600 dark:text-orange-400'
-    case 'openai': return 'text-emerald-600 dark:text-emerald-400'
-    case 'gemini': return 'text-blue-600 dark:text-blue-400'
-    case 'antigravity': return 'text-purple-600 dark:text-purple-400'
-    default: return 'text-gray-600 dark:text-gray-400'
-  }
-}
-
-function getRateBadgeClass(platform: string): string {
-  switch (platform) {
-    case 'anthropic': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-    case 'openai': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-    case 'gemini': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-    case 'antigravity': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-    default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
-  }
-}
 
 // ── Helpers ──
 function formatDate(value: string): string {

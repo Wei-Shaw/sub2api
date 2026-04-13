@@ -2,6 +2,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import QuotaDimensionRow from './QuotaDimensionRow.vue'
+import type { QuotaThresholdType, QuotaResetMode } from '@/constants/account'
 
 const { t } = useI18n()
 
@@ -9,22 +10,22 @@ const props = withDefaults(defineProps<{
   totalLimit: number | null
   dailyLimit: number | null
   weeklyLimit: number | null
-  dailyResetMode: 'rolling' | 'fixed' | null
+  dailyResetMode: QuotaResetMode | null
   dailyResetHour: number | null
-  weeklyResetMode: 'rolling' | 'fixed' | null
+  weeklyResetMode: QuotaResetMode | null
   weeklyResetDay: number | null
   weeklyResetHour: number | null
   resetTimezone: string | null
   quotaNotifyGlobalEnabled?: boolean
   quotaNotifyDailyEnabled?: boolean | null
   quotaNotifyDailyThreshold?: number | null
-  quotaNotifyDailyThresholdType?: string | null
+  quotaNotifyDailyThresholdType?: QuotaThresholdType | null
   quotaNotifyWeeklyEnabled?: boolean | null
   quotaNotifyWeeklyThreshold?: number | null
-  quotaNotifyWeeklyThresholdType?: string | null
+  quotaNotifyWeeklyThresholdType?: QuotaThresholdType | null
   quotaNotifyTotalEnabled?: boolean | null
   quotaNotifyTotalThreshold?: number | null
-  quotaNotifyTotalThresholdType?: string | null
+  quotaNotifyTotalThresholdType?: QuotaThresholdType | null
 }>(), {
   quotaNotifyGlobalEnabled: false,
   quotaNotifyDailyEnabled: null,
@@ -42,21 +43,21 @@ const emit = defineEmits<{
   'update:totalLimit': [value: number | null]
   'update:dailyLimit': [value: number | null]
   'update:weeklyLimit': [value: number | null]
-  'update:dailyResetMode': [value: 'rolling' | 'fixed' | null]
+  'update:dailyResetMode': [value: QuotaResetMode | null]
   'update:dailyResetHour': [value: number | null]
-  'update:weeklyResetMode': [value: 'rolling' | 'fixed' | null]
+  'update:weeklyResetMode': [value: QuotaResetMode | null]
   'update:weeklyResetDay': [value: number | null]
   'update:weeklyResetHour': [value: number | null]
   'update:resetTimezone': [value: string | null]
   'update:quotaNotifyDailyEnabled': [value: boolean | null]
   'update:quotaNotifyDailyThreshold': [value: number | null]
-  'update:quotaNotifyDailyThresholdType': [value: string | null]
+  'update:quotaNotifyDailyThresholdType': [value: QuotaThresholdType | null]
   'update:quotaNotifyWeeklyEnabled': [value: boolean | null]
   'update:quotaNotifyWeeklyThreshold': [value: number | null]
-  'update:quotaNotifyWeeklyThresholdType': [value: string | null]
+  'update:quotaNotifyWeeklyThresholdType': [value: QuotaThresholdType | null]
   'update:quotaNotifyTotalEnabled': [value: boolean | null]
   'update:quotaNotifyTotalThreshold': [value: number | null]
-  'update:quotaNotifyTotalThresholdType': [value: string | null]
+  'update:quotaNotifyTotalThresholdType': [value: QuotaThresholdType | null]
 }>()
 
 const enabled = computed(() =>
@@ -89,11 +90,6 @@ watch(localEnabled, (val) => {
   }
 })
 
-// Whether any fixed mode is active (to show timezone selector)
-const hasFixedMode = computed(() =>
-  props.dailyResetMode === 'fixed' || props.weeklyResetMode === 'fixed'
-)
-
 // Common timezone options
 const timezoneOptions = [
   'UTC', 'Asia/Shanghai', 'Asia/Tokyo', 'Asia/Seoul', 'Asia/Singapore', 'Asia/Kolkata',
@@ -101,18 +97,6 @@ const timezoneOptions = [
   'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
   'America/Sao_Paulo', 'Australia/Sydney', 'Pacific/Auckland',
 ]
-
-// Compute GMT offset label (e.g. "GMT+8", "GMT-5") for a given IANA timezone.
-function getTimezoneOffsetLabel(tz: string): string {
-  try {
-    const dtf = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' })
-    const parts = dtf.formatToParts(new Date())
-    const tzPart = parts.find(p => p.type === 'timeZoneName')
-    return tzPart ? (tzPart.value === 'GMT' ? 'GMT+0' : tzPart.value) : ''
-  } catch {
-    return ''
-  }
-}
 
 // Hours for dropdown (0-23)
 const hourOptions = Array.from({ length: 24 }, (_, i) => i)
@@ -197,6 +181,7 @@ const dailyFixedHint = computed(() =>
           :hint-fixed="dailyFixedHint"
           :hour-options="hourOptions"
           :day-options="dayOptions"
+          :timezone-options="timezoneOptions"
           @update:limit="emit('update:dailyLimit', $event)"
           @update:notify-enabled="emit('update:quotaNotifyDailyEnabled', $event)"
           @update:notify-threshold="emit('update:quotaNotifyDailyThreshold', $event)"
@@ -223,6 +208,7 @@ const dailyFixedHint = computed(() =>
           :hint-fixed="weeklyFixedHint"
           :hour-options="hourOptions"
           :day-options="dayOptions"
+          :timezone-options="timezoneOptions"
           @update:limit="emit('update:weeklyLimit', $event)"
           @update:notify-enabled="emit('update:quotaNotifyWeeklyEnabled', $event)"
           @update:notify-threshold="emit('update:quotaNotifyWeeklyThreshold', $event)"
@@ -232,14 +218,6 @@ const dailyFixedHint = computed(() =>
           @update:reset-day="emit('update:weeklyResetDay', $event)"
           @update:reset-timezone="emit('update:resetTimezone', $event)"
         />
-
-        <!-- Timezone selector (shared by daily/weekly when fixed mode is active) -->
-        <div v-if="hasFixedMode">
-          <label class="input-label">{{ t('admin.accounts.quotaResetTimezone') }}</label>
-          <select :value="resetTimezone || 'UTC'" @change="emit('update:resetTimezone', ($event.target as HTMLSelectElement).value)" class="input text-sm">
-            <option v-for="tz in timezoneOptions" :key="tz" :value="tz">{{ tz }} ({{ getTimezoneOffsetLabel(tz) }})</option>
-          </select>
-        </div>
 
         <!-- Total quota -->
         <QuotaDimensionRow

@@ -330,6 +330,7 @@ func saveNotifyVerifyCode(ctx context.Context, cache EmailCache, email, code str
 		Code:      code,
 		Attempts:  0,
 		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(verifyCodeTTL),
 	}
 	if err := cache.SetNotifyVerifyCode(ctx, email, data, verifyCodeTTL); err != nil {
 		return fmt.Errorf("save verify code: %w", err)
@@ -370,7 +371,11 @@ func verifyNotifyCode(ctx context.Context, cache EmailCache, email, code string)
 	}
 	if subtle.ConstantTimeCompare([]byte(data.Code), []byte(code)) != 1 {
 		data.Attempts++
-		if err := cache.SetNotifyVerifyCode(ctx, email, data, verifyCodeTTL); err != nil {
+		remaining := time.Until(data.ExpiresAt)
+		if remaining <= 0 {
+			return ErrInvalidVerifyCode
+		}
+		if err := cache.SetNotifyVerifyCode(ctx, email, data, remaining); err != nil {
 			slog.Error("failed to update notify verify code attempts", "email", email, "error", err)
 		}
 		if data.Attempts >= maxVerifyCodeAttempts {
@@ -418,10 +423,16 @@ func (s *UserService) RemoveNotifyEmail(ctx context.Context, userID int64, email
 	}
 
 	filtered := make([]NotifyEmailEntry, 0, len(user.BalanceNotifyExtraEmails))
+	found := false
 	for _, e := range user.BalanceNotifyExtraEmails {
-		if !strings.EqualFold(e.Email, email) {
+		if strings.EqualFold(e.Email, email) {
+			found = true
+		} else {
 			filtered = append(filtered, e)
 		}
+	}
+	if !found {
+		return infraerrors.BadRequest("EMAIL_NOT_FOUND", "notification email not found")
 	}
 	user.BalanceNotifyExtraEmails = filtered
 	return s.userRepo.Update(ctx, user)

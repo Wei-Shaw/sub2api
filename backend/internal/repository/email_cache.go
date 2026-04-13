@@ -20,8 +20,9 @@ const (
 )
 
 // verifyCodeKey generates the Redis key for email verification code.
+// Email is lowercased for case-insensitive consistency.
 func verifyCodeKey(email string) string {
-	return verifyCodeKeyPrefix + email
+	return verifyCodeKeyPrefix + strings.ToLower(email)
 }
 
 // notifyVerifyKey generates the Redis key for notify email verification code.
@@ -33,12 +34,12 @@ func notifyVerifyKey(email string) string {
 
 // passwordResetKey generates the Redis key for password reset token.
 func passwordResetKey(email string) string {
-	return passwordResetKeyPrefix + email
+	return passwordResetKeyPrefix + strings.ToLower(email)
 }
 
 // passwordResetSentAtKey generates the Redis key for password reset email sent timestamp.
 func passwordResetSentAtKey(email string) string {
-	return passwordResetSentAtKeyPrefix + email
+	return passwordResetSentAtKeyPrefix + strings.ToLower(email)
 }
 
 type emailCache struct {

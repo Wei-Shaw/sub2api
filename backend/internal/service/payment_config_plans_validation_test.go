@@ -128,3 +128,66 @@ func TestValidatePlanPatch_NilOriginalPrice(t *testing.T) {
 	err := validatePlanPatch(UpdatePlanRequest{OriginalPrice: nil})
 	require.NoError(t, err)
 }
+
+// --- validatePlanPatch: other fields ---
+
+func ptrStr(s string) *string    { return &s }
+func ptrInt(i int) *int          { return &i }
+func ptrInt64(i int64) *int64    { return &i }
+func ptrFloat(f float64) *float64 { return &f }
+
+func TestValidatePlanPatch_EmptyName(t *testing.T) {
+	err := validatePlanPatch(UpdatePlanRequest{Name: ptrStr("")})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "plan name")
+}
+
+func TestValidatePlanPatch_ValidName(t *testing.T) {
+	err := validatePlanPatch(UpdatePlanRequest{Name: ptrStr("Basic")})
+	require.NoError(t, err)
+}
+
+func TestValidatePlanPatch_ZeroGroupID(t *testing.T) {
+	err := validatePlanPatch(UpdatePlanRequest{GroupID: ptrInt64(0)})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "group")
+}
+
+func TestValidatePlanPatch_NegativePrice(t *testing.T) {
+	err := validatePlanPatch(UpdatePlanRequest{Price: ptrFloat(-1)})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "price")
+}
+
+func TestValidatePlanPatch_ZeroPrice(t *testing.T) {
+	err := validatePlanPatch(UpdatePlanRequest{Price: ptrFloat(0)})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "price")
+}
+
+func TestValidatePlanPatch_ValidPrice(t *testing.T) {
+	err := validatePlanPatch(UpdatePlanRequest{Price: ptrFloat(9.99)})
+	require.NoError(t, err)
+}
+
+func TestValidatePlanPatch_ZeroValidityDays(t *testing.T) {
+	err := validatePlanPatch(UpdatePlanRequest{ValidityDays: ptrInt(0)})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "validity days")
+}
+
+func TestValidatePlanPatch_EmptyValidityUnit(t *testing.T) {
+	err := validatePlanPatch(UpdatePlanRequest{ValidityUnit: ptrStr("")})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "validity unit")
+}
+
+func TestValidatePlanPatch_ValidValidityUnit(t *testing.T) {
+	err := validatePlanPatch(UpdatePlanRequest{ValidityUnit: ptrStr("days")})
+	require.NoError(t, err)
+}
+
+func TestValidatePlanPatch_AllNil(t *testing.T) {
+	err := validatePlanPatch(UpdatePlanRequest{})
+	require.NoError(t, err)
+}

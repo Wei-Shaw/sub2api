@@ -1139,6 +1139,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if !equalStringSlice(before.RegistrationEmailSuffixWhitelist, after.RegistrationEmailSuffixWhitelist) {
 		changed = append(changed, "registration_email_suffix_whitelist")
 	}
+	if before.PromoCodeEnabled != after.PromoCodeEnabled {
+		changed = append(changed, "promo_code_enabled")
+	}
+	if before.InvitationCodeEnabled != after.InvitationCodeEnabled {
+		changed = append(changed, "invitation_code_enabled")
+	}
 	if before.PasswordResetEnabled != after.PasswordResetEnabled {
 		changed = append(changed, "password_reset_enabled")
 	}
@@ -1348,6 +1354,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.CustomMenuItems != after.CustomMenuItems {
 		changed = append(changed, "custom_menu_items")
+	}
+	if before.CustomEndpoints != after.CustomEndpoints {
+		changed = append(changed, "custom_endpoints")
 	}
 	if before.EnableFingerprintUnification != after.EnableFingerprintUnification {
 		changed = append(changed, "enable_fingerprint_unification")
