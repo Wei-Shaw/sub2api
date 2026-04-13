@@ -66,15 +66,17 @@ const enabled = computed(() =>
 )
 
 const localEnabled = ref(enabled.value)
+const collapsed = ref(false)
 
 // Sync when props change externally
 watch(enabled, (val) => {
   localEnabled.value = val
 })
 
-// When toggle is turned off, clear all values
+// When toggle is turned off, clear all values and expand
 watch(localEnabled, (val) => {
   if (!val) {
+    collapsed.value = false
     emit('update:totalLimit', null)
     emit('update:dailyLimit', null)
     emit('update:weeklyLimit', null)
@@ -162,13 +164,19 @@ const onWeeklyModeChange = (e: Event) => {
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
-      <div class="mb-3 flex items-center justify-between">
-        <div>
-          <label class="input-label mb-0">{{ t('admin.accounts.quotaLimitToggle') }}</label>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {{ t('admin.accounts.quotaLimitToggleHint') }}
-          </p>
+  <div class="rounded-lg border border-gray-200 dark:border-dark-600">
+      <!-- Header: toggle + collapse -->
+      <div class="flex items-center justify-between p-4" :class="{ 'pb-0': localEnabled && !collapsed }">
+        <div class="flex items-center gap-2 flex-1 cursor-pointer" @click="localEnabled && (collapsed = !collapsed)">
+          <svg v-if="localEnabled" class="h-4 w-4 text-gray-400 transition-transform" :class="{ '-rotate-90': collapsed }" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+          </svg>
+          <div>
+            <label class="input-label mb-0 cursor-pointer">{{ t('admin.accounts.quotaLimitToggle') }}</label>
+            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.quotaLimitToggleHint') }}
+            </p>
+          </div>
         </div>
         <button
           type="button"
@@ -187,7 +195,8 @@ const onWeeklyModeChange = (e: Event) => {
         </button>
       </div>
 
-      <div v-if="localEnabled" class="space-y-3">
+      <!-- Collapsible content -->
+      <div v-if="localEnabled && !collapsed" class="space-y-3 p-4 pt-3">
         <!-- 日配额 -->
         <div>
           <label class="input-label">{{ t('admin.accounts.quotaDailyLimit') }}</label>
@@ -203,8 +212,7 @@ const onWeeklyModeChange = (e: Event) => {
               :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
             />
           </div>
-          <!-- 日配额：重置方式 + 告警阈值同行 -->
-          <div class="mt-2 flex items-center gap-2 flex-wrap">
+          <div class="mt-1.5 flex items-center gap-2 flex-wrap">
             <label class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ t('admin.accounts.quotaResetMode') }}</label>
             <select
               :value="dailyResetMode || 'rolling'"
@@ -214,7 +222,6 @@ const onWeeklyModeChange = (e: Event) => {
               <option value="rolling">{{ t('admin.accounts.quotaResetModeRolling') }}</option>
               <option value="fixed">{{ t('admin.accounts.quotaResetModeFixed') }}</option>
             </select>
-            <!-- 固定模式：小时选择 -->
             <template v-if="dailyResetMode === 'fixed'">
               <label class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ t('admin.accounts.quotaResetHour') }}</label>
               <select
@@ -226,7 +233,7 @@ const onWeeklyModeChange = (e: Event) => {
               </select>
             </template>
           </div>
-          <p class="input-hint">
+          <p class="input-hint mb-0">
             <template v-if="dailyResetMode === 'fixed'">
               {{ t('admin.accounts.quotaDailyLimitHintFixed', { hour: String(dailyResetHour ?? 0).padStart(2, '0'), timezone: resetTimezone || 'UTC' }) }}
             </template>
@@ -260,8 +267,7 @@ const onWeeklyModeChange = (e: Event) => {
               :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
             />
           </div>
-          <!-- 周配额：重置方式 + 告警阈值同行 -->
-          <div class="mt-2 flex items-center gap-2 flex-wrap">
+          <div class="mt-1.5 flex items-center gap-2 flex-wrap">
             <label class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ t('admin.accounts.quotaResetMode') }}</label>
             <select
               :value="weeklyResetMode || 'rolling'"
@@ -271,7 +277,6 @@ const onWeeklyModeChange = (e: Event) => {
               <option value="rolling">{{ t('admin.accounts.quotaResetModeRolling') }}</option>
               <option value="fixed">{{ t('admin.accounts.quotaResetModeFixed') }}</option>
             </select>
-            <!-- 固定模式：星期几 + 小时 -->
             <template v-if="weeklyResetMode === 'fixed'">
               <label class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ t('admin.accounts.quotaWeeklyResetDay') }}</label>
               <select
@@ -291,7 +296,7 @@ const onWeeklyModeChange = (e: Event) => {
               </select>
             </template>
           </div>
-          <p class="input-hint">
+          <p class="input-hint mb-0">
             <template v-if="weeklyResetMode === 'fixed'">
               {{ t('admin.accounts.quotaWeeklyLimitHintFixed', { day: t('admin.accounts.dayOfWeek.' + (dayOptions.find(d => d.value === (weeklyResetDay ?? 1))?.key || 'monday')), hour: String(weeklyResetHour ?? 0).padStart(2, '0'), timezone: resetTimezone || 'UTC' }) }}
             </template>
@@ -337,8 +342,7 @@ const onWeeklyModeChange = (e: Event) => {
               :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
             />
           </div>
-          <p class="input-hint">{{ t('admin.accounts.quotaTotalLimitHint') }}</p>
-          <!-- 总配额告警 -->
+          <p class="input-hint mb-0">{{ t('admin.accounts.quotaTotalLimitHint') }}</p>
           <QuotaNotifyToggle
             v-if="quotaNotifyGlobalEnabled && totalLimit && totalLimit > 0"
             :enabled="props.quotaNotifyTotalEnabled"
