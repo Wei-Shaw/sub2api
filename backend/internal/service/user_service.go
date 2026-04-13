@@ -224,6 +224,11 @@ REDACTED
 REDACTED
 	if s.billingCache != nil {
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("panic in balance cache invalidation", "user_id", userID, "recover", r)
+			REDACTED
+		REDACTED()
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := s.billingCache.InvalidateUserBalance(cacheCtx, userID); err != nil {
@@ -359,7 +364,9 @@ REDACTED
 REDACTED
 	if subtle.ConstantTimeCompare([]byte(data.Code), []byte(code)) != 1 {
 		data.Attempts++
-		_ = cache.SetNotifyVerifyCode(ctx, email, data, verifyCodeTTL)
+		if err := cache.SetNotifyVerifyCode(ctx, email, data, verifyCodeTTL); err != nil {
+			slog.Error("failed to update notify verify code attempts", "email", email, "error", err)
+	REDACTED
 		if data.Attempts >= maxVerifyCodeAttempts {
 			return ErrVerifyCodeMaxAttempts
 	REDACTED
