@@ -81,9 +81,9 @@ type wildcardMappingEntry struct {
 type channelCache struct {
 	// 热路径查找
 	pricingByGroupModel     map[channelModelKey]*ChannelModelPricing            // (groupID, platform, model) → 定价
-	wildcardByGroupPlatform map[channelGroupPlatformKey][]*wildcardPricingEntry // (groupID, platform) → 通配符定价（前缀长度降序）
+	wildcardByGroupPlatform map[channelGroupPlatformKey][]*wildcardPricingEntry // (groupID, platform) → 通配符定价（按配置顺序，先匹配先使用）
 	mappingByGroupModel     map[channelModelKey]string                          // (groupID, platform, model) → 映射目标
-	wildcardMappingByGP     map[channelGroupPlatformKey][]*wildcardMappingEntry // (groupID, platform) → 通配符映射（前缀长度降序）
+	wildcardMappingByGP     map[channelGroupPlatformKey][]*wildcardMappingEntry // (groupID, platform) → 通配符映射（按配置顺序，先匹配先使用）
 	channelByGroupID        map[int64]*Channel                                  // groupID → 渠道
 	groupPlatform           map[int64]string                                    // groupID → platform
 

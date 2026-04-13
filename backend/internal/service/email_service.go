@@ -48,6 +48,10 @@ type EmailCache interface {
 	// Returns true if in cooldown period (email was sent recently)
 	IsPasswordResetEmailInCooldown(ctx context.Context, email string) bool
 	SetPasswordResetEmailCooldown(ctx context.Context, email string, ttl time.Duration) error
+
+	// User-level rate limiting for notify email verification codes
+	IncrNotifyCodeUserRate(ctx context.Context, userID int64, window time.Duration) (int64, error)
+	GetNotifyCodeUserRate(ctx context.Context, userID int64) (int64, error)
 }
 
 // VerificationCodeData represents verification code data

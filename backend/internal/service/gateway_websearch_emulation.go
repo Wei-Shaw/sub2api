@@ -214,17 +214,23 @@ func writeWebSearchStreamResponse(
 ) (*ForwardResult, error) {
 	msgID := webSearchMsgIDPrefix + uuid.New().String()
 	toolUseID := webSearchToolUseIDPrefix + uuid.New().String()[:16]
+	textSummary := buildTextSummary(query, resp.Results)
 
 	setSSEHeaders(c)
-	if err := writeSSEMessageStart(c.Writer, msgID, model); err != nil {
-		return nil, fmt.Errorf("web search emulation: SSE write: %w", err)
+	w := c.Writer
+	for _, fn := range []func() error{
+		func() error { return writeSSEMessageStart(w, msgID, model) },
+		func() error { return writeSSEServerToolUse(w, toolUseID, query, 0) },
+		func() error { return writeSSEToolResult(w, toolUseID, resp.Results, 1) },
+		func() error { return writeSSETextBlock(w, textSummary, 2) },
+		func() error { return writeSSEMessageEnd(w, len(textSummary)/tokenEstimateDivisor) },
+	} {
+		if err := fn(); err != nil {
+			slog.Warn("web search emulation: SSE write failed, stopping", "error", err)
+			break
+		}
 	}
-	writeSSEServerToolUse(c.Writer, toolUseID, query, 0)
-	writeSSEToolResult(c.Writer, toolUseID, resp.Results, 1)
-	textSummary := buildTextSummary(query, resp.Results)
-	writeSSETextBlock(c.Writer, textSummary, 2)
-	writeSSEMessageEnd(c.Writer, len(textSummary)/tokenEstimateDivisor)
-	c.Writer.Flush()
+	w.Flush()
 
 	return &ForwardResult{Model: model, Duration: time.Since(startTime), Usage: ClaudeUsage{}}, nil
 }
@@ -249,7 +255,7 @@ func writeSSEMessageStart(w http.ResponseWriter, msgID, model string) error {
 	return flushSSEJSON(w, "message_start", evt)
 }
 
-func writeSSEServerToolUse(w http.ResponseWriter, toolUseID, query string, index int) {
+func writeSSEServerToolUse(w http.ResponseWriter, toolUseID, query string, index int) error {
 	start := map[string]any{
 		"type": "content_block_start", "index": index,
 		"content_block": map[string]any{
@@ -257,11 +263,13 @@ func writeSSEServerToolUse(w http.ResponseWriter, toolUseID, query string, index
 			"name": toolNameWebSearch, "input": map[string]string{"query": query},
 		},
 	}
-	_ = flushSSEJSON(w, "content_block_start", start)
-	_ = flushSSEJSON(w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": index})
+	if err := flushSSEJSON(w, "content_block_start", start); err != nil {
+		return err
+	}
+	return flushSSEJSON(w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": index})
 }
 
-func writeSSEToolResult(w http.ResponseWriter, toolUseID string, results []websearch.SearchResult, index int) {
+func writeSSEToolResult(w http.ResponseWriter, toolUseID string, results []websearch.SearchResult, index int) error {
 	start := map[string]any{
 		"type": "content_block_start", "index": index,
 		"content_block": map[string]any{
@@ -269,40 +277,48 @@ func writeSSEToolResult(w http.ResponseWriter, toolUseID string, results []webse
 			"content": buildSearchResultBlocks(results),
 		},
 	}
-	_ = flushSSEJSON(w, "content_block_start", start)
-	_ = flushSSEJSON(w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": index})
+	if err := flushSSEJSON(w, "content_block_start", start); err != nil {
+		return err
+	}
+	return flushSSEJSON(w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": index})
 }
 
-func writeSSETextBlock(w http.ResponseWriter, text string, index int) {
-	_ = flushSSEJSON(w, "content_block_start", map[string]any{
+func writeSSETextBlock(w http.ResponseWriter, text string, index int) error {
+	if err := flushSSEJSON(w, "content_block_start", map[string]any{
 		"type": "content_block_start", "index": index,
 		"content_block": map[string]any{"type": "text", "text": ""},
-	})
-	_ = flushSSEJSON(w, "content_block_delta", map[string]any{
+	}); err != nil {
+		return err
+	}
+	if err := flushSSEJSON(w, "content_block_delta", map[string]any{
 		"type": "content_block_delta", "index": index,
 		"delta": map[string]string{"type": "text_delta", "text": text},
-	})
-	_ = flushSSEJSON(w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": index})
+	}); err != nil {
+		return err
+	}
+	return flushSSEJSON(w, "content_block_stop", map[string]any{"type": "content_block_stop", "index": index})
 }
 
-func writeSSEMessageEnd(w http.ResponseWriter, outputTokens int) {
-	_ = flushSSEJSON(w, "message_delta", map[string]any{
+func writeSSEMessageEnd(w http.ResponseWriter, outputTokens int) error {
+	if err := flushSSEJSON(w, "message_delta", map[string]any{
 		"type":  "message_delta",
 		"delta": map[string]any{"stop_reason": "end_turn", "stop_sequence": nil},
 		"usage": map[string]int{"output_tokens": outputTokens},
-	})
-	_ = flushSSEJSON(w, "message_stop", map[string]string{"type": "message_stop"})
+	}); err != nil {
+		return err
+	}
+	return flushSSEJSON(w, "message_stop", map[string]string{"type": "message_stop"})
 }
 
-// flushSSEJSON marshals data to JSON and writes an SSE event. Returns error on marshal failure.
+// flushSSEJSON marshals data to JSON and writes an SSE event.
 func flushSSEJSON(w http.ResponseWriter, event string, data any) error {
 	b, err := json.Marshal(data)
 	if err != nil {
-		slog.Error("web search emulation: failed to marshal SSE event",
-			"event", event, "error", err)
-		return err
+		return fmt.Errorf("marshal: %w", err)
 	}
-	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, b)
+	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, b); err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}

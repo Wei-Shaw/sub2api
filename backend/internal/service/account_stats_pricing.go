@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"sort"
 	"strings"
 )
 
@@ -104,14 +103,8 @@ func matchAccountStatsRule(rule *AccountStatsPricingRule, accountID, groupID int
 	return false
 }
 
-// wildcardMatch 通配符匹配候选项（用于排序）
-type wildcardMatch struct {
-	prefixLen int
-	pricing   *ChannelModelPricing
-}
-
 // findPricingForModel 在定价列表中查找匹配的模型定价。
-// 先精确匹配，再通配符匹配（前缀越长优先级越高）。
+// 先精确匹配，再通配符匹配（按配置顺序，先匹配先使用）。
 func findPricingForModel(pricingList []ChannelModelPricing, platform, modelLower string) *ChannelModelPricing {
 	// 精确匹配优先
 	for i := range pricingList {
@@ -125,8 +118,7 @@ func findPricingForModel(pricingList []ChannelModelPricing, platform, modelLower
 			}
 		}
 	}
-	// 通配符匹配：收集所有匹配项，按前缀长度降序取最长
-	var matches []wildcardMatch
+	// 通配符匹配：按配置顺序，先匹配先使用
 	for i := range pricingList {
 		p := &pricingList[i]
 		if !isPlatformMatch(platform, p.Platform) {
@@ -139,17 +131,11 @@ func findPricingForModel(pricingList []ChannelModelPricing, platform, modelLower
 			}
 			prefix := strings.TrimSuffix(ml, "*")
 			if strings.HasPrefix(modelLower, prefix) {
-				matches = append(matches, wildcardMatch{prefixLen: len(prefix), pricing: p})
+				return p
 			}
 		}
 	}
-	if len(matches) == 0 {
-		return nil
-	}
-	sort.Slice(matches, func(i, j int) bool {
-		return matches[i].prefixLen > matches[j].prefixLen
-	})
-	return matches[0].pricing
+	return nil
 }
 
 // isPlatformMatch 判断平台是否匹配（空平台视为不限平台）。

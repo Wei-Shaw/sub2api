@@ -140,6 +140,16 @@ func (s *SettingService) SaveWebSearchEmulationConfig(ctx context.Context, cfg *
 	}
 	s.mergeExistingAPIKeys(ctx, cfg)
 
+	// After merge, validate all enabled providers have API keys
+	if cfg.Enabled {
+		for _, p := range cfg.Providers {
+			if p.APIKey == "" {
+				return infraerrors.BadRequest("MISSING_API_KEY",
+					fmt.Sprintf("provider %s has no API key configured", p.Type))
+			}
+		}
+	}
+
 	data, err := json.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("websearch: marshal config: %w", err)

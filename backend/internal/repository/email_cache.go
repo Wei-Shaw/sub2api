@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -10,10 +11,11 @@ import (
 )
 
 const (
-	verifyCodeKeyPrefix          = "verify_code:"
-	notifyVerifyKeyPrefix        = "notify_verify:"
-	passwordResetKeyPrefix       = "password_reset:"
-	passwordResetSentAtKeyPrefix = "password_reset_sent:"
+	verifyCodeKeyPrefix            = "verify_code:"
+	notifyVerifyKeyPrefix          = "notify_verify:"
+	passwordResetKeyPrefix         = "password_reset:"
+	passwordResetSentAtKeyPrefix   = "password_reset_sent:"
+	notifyCodeUserRateKeyPrefix    = "notify_code_user_rate:"
 )
 
 // verifyCodeKey generates the Redis key for email verification code.
@@ -140,4 +142,32 @@ func (c *emailCache) SetNotifyVerifyCode(ctx context.Context, email string, data
 func (c *emailCache) DeleteNotifyVerifyCode(ctx context.Context, email string) error {
 	key := notifyVerifyKey(email)
 	return c.rdb.Del(ctx, key).Err()
+}
+
+// User-level rate limiting for notify email verification codes
+
+func notifyCodeUserRateKey(userID int64) string {
+	return notifyCodeUserRateKeyPrefix + fmt.Sprintf("%d", userID)
+}
+
+func (c *emailCache) IncrNotifyCodeUserRate(ctx context.Context, userID int64, window time.Duration) (int64, error) {
+	key := notifyCodeUserRateKey(userID)
+	count, err := c.rdb.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+	// Set TTL only on first increment (when count becomes 1)
+	if count == 1 {
+		c.rdb.Expire(ctx, key, window)
+	}
+	return count, nil
+}
+
+func (c *emailCache) GetNotifyCodeUserRate(ctx context.Context, userID int64) (int64, error) {
+	key := notifyCodeUserRateKey(userID)
+	count, err := c.rdb.Get(ctx, key).Int64()
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }
