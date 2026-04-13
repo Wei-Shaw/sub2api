@@ -134,8 +134,9 @@ func buildQuotaDims(account *Account) []quotaDim {
 }
 
 // CheckAccountQuotaAfterIncrement checks if any quota dimension crossed above its notify threshold.
-// It fetches real-time quota usage from DB to avoid stale snapshot values.
-func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Context, account *Account, cost float64) {
+// When quotaState is non-nil (from DB transaction RETURNING), it is used directly for threshold
+// checking, avoiding a separate DB read. Otherwise it falls back to fetching fresh account data.
+func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Context, account *Account, cost float64, quotaState *AccountQuotaState) {
 	if account == nil || s.emailService == nil || s.settingRepo == nil || cost <= 0 {
 		return
 	}
@@ -147,8 +148,13 @@ func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Conte
 		return
 	}
 
-	freshAccount := s.fetchFreshAccount(ctx, account)
 	siteName := s.getSiteName(ctx)
+	if quotaState != nil {
+		s.checkQuotaDimCrossingsFromState(account, quotaState, cost, adminEmails, siteName)
+		return
+	}
+
+	freshAccount := s.fetchFreshAccount(ctx, account)
 	s.checkQuotaDimCrossings(freshAccount, cost, adminEmails, siteName)
 }
 
@@ -183,6 +189,35 @@ func (s *BalanceNotifyService) checkQuotaDimCrossings(freshAccount *Account, cos
 		oldUsed := dim.currentUsed - cost
 		if oldUsed < effectiveThreshold && newUsed >= effectiveThreshold {
 			s.asyncSendQuotaAlert(adminEmails, freshAccount.Name, dim, newUsed, effectiveThreshold, siteName)
+		}
+	}
+}
+
+// buildQuotaDimsFromState builds quota dimensions using DB transaction state instead of account snapshot.
+// Notification settings (enabled, threshold, thresholdType) come from the account; usage values from quotaState.
+func buildQuotaDimsFromState(account *Account, state *AccountQuotaState) []quotaDim {
+	return []quotaDim{
+		{quotaDimDaily, account.GetQuotaNotifyDailyEnabled(), account.GetQuotaNotifyDailyThreshold(), account.GetQuotaNotifyDailyThresholdType(), state.DailyUsed, state.DailyLimit},
+		{quotaDimWeekly, account.GetQuotaNotifyWeeklyEnabled(), account.GetQuotaNotifyWeeklyThreshold(), account.GetQuotaNotifyWeeklyThresholdType(), state.WeeklyUsed, state.WeeklyLimit},
+		{quotaDimTotal, account.GetQuotaNotifyTotalEnabled(), account.GetQuotaNotifyTotalThreshold(), account.GetQuotaNotifyTotalThresholdType(), state.TotalUsed, state.TotalLimit},
+	}
+}
+
+// checkQuotaDimCrossingsFromState checks threshold crossings using DB transaction quota state.
+// This avoids a separate DB read and ensures the values are consistent with the atomic increment.
+func (s *BalanceNotifyService) checkQuotaDimCrossingsFromState(account *Account, state *AccountQuotaState, cost float64, adminEmails []string, siteName string) {
+	for _, dim := range buildQuotaDimsFromState(account, state) {
+		if !dim.enabled || dim.threshold <= 0 {
+			continue
+		}
+		effectiveThreshold := dim.resolvedThreshold()
+		if effectiveThreshold <= 0 {
+			continue
+		}
+		newUsed := dim.currentUsed
+		oldUsed := dim.currentUsed - cost
+		if oldUsed < effectiveThreshold && newUsed >= effectiveThreshold {
+			s.asyncSendQuotaAlert(adminEmails, account.Name, dim, newUsed, effectiveThreshold, siteName)
 		}
 	}
 }
