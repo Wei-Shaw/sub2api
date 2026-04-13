@@ -1,5 +1,5 @@
 <template>
-  <div class="md:hidden space-y-3">
+  <div v-if="!isDesktopViewport" class="space-y-3">
     <template v-if="loading">
       <div v-for="i in 5" :key="i" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
         <div class="space-y-3">
@@ -61,8 +61,9 @@
   </div>
 
   <div
+    v-else
     ref="tableWrapperRef"
-    class="table-wrapper hidden md:block"
+    class="table-wrapper"
     :class="{
       'actions-expanded': actionsExpanded,
       'is-scrollable': isScrollable
@@ -203,6 +204,11 @@ import Icon from '@/components/icons/Icon.vue'
 
 const { t REDACTED = useI18n()
 
+const desktopViewportQuery = '(min-width: 768px)'
+const isDesktopViewport = ref(
+  typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches
+)
+
 const emit = defineEmits<{
   sort: [key: string, order: 'asc' | 'desc']
 REDACTED>()
@@ -268,8 +274,19 @@ REDACTED
 // 监听尺寸变化
 let resizeObserver: ResizeObserver | null = null
 let resizeHandler: (() => void) | null = null
+let desktopViewportMediaQuery: MediaQueryList | null = null
+let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = null
 
-onMounted(() => {
+const detachDesktopTableTracking = () => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  if (resizeHandler) {
+    window.removeEventListener('resize', resizeHandler)
+    resizeHandler = null
+  REDACTED
+REDACTED
+
+const attachDesktopTableTracking = () => {
   checkScrollable()
   checkActionsColumnWidth()
   if (tableWrapperRef.value && typeof ResizeObserver !== 'undefined') {
@@ -286,14 +303,34 @@ onMounted(() => {
     REDACTED
     window.addEventListener('resize', resizeHandler)
   REDACTED
+REDACTED
+
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
+    isDesktopViewport.value = desktopViewportMediaQuery.matches
+    desktopViewportListener = (event: MediaQueryListEvent) => {
+      isDesktopViewport.value = event.matches
+    REDACTED
+    if (typeof desktopViewportMediaQuery.addEventListener === 'function') {
+      desktopViewportMediaQuery.addEventListener('change', desktopViewportListener)
+    REDACTED else {
+      desktopViewportMediaQuery.addListener(desktopViewportListener)
+    REDACTED
+  REDACTED
 REDACTED)
 
 onUnmounted(() => {
-  resizeObserver?.disconnect()
-  if (resizeHandler) {
-    window.removeEventListener('resize', resizeHandler)
-    resizeHandler = null
+  detachDesktopTableTracking()
+  if (desktopViewportMediaQuery && desktopViewportListener) {
+    if (typeof desktopViewportMediaQuery.removeEventListener === 'function') {
+      desktopViewportMediaQuery.removeEventListener('change', desktopViewportListener)
+    REDACTED else {
+      desktopViewportMediaQuery.removeListener(desktopViewportListener)
+    REDACTED
+    desktopViewportListener = null
   REDACTED
+  desktopViewportMediaQuery = null
 REDACTED)
 
 interface Props {
@@ -470,6 +507,17 @@ const columnsSignature = computed(() =>
   props.columns.map((column) => `${column.keyREDACTED:${column.sortable ? '1' : '0'REDACTED`).join('|')
 )
 
+watch(
+  isDesktopViewport,
+  async (isDesktop) => {
+    detachDesktopTableTracking()
+    if (!isDesktop) return
+    await nextTick()
+    attachDesktopTableTracking()
+  REDACTED,
+  { immediate: true, flush: 'post' REDACTED
+)
+
 // 数据/列变化时重新检查滚动状态
 // 注意：不能监听 actionsExpanded，因为 checkActionsColumnWidth 会临时修改它，会导致无限循环
 watch(
@@ -526,7 +574,7 @@ REDACTED)
 
 // --- Virtual scrolling ---
 const rowVirtualizer = useVirtualizer(computed(() => ({
-  count: sortedData.value?.length ?? 0,
+  count: isDesktopViewport.value ? (sortedData.value?.length ?? 0) : 0,
   getScrollElement: () => tableWrapperRef.value,
   estimateSize: () => props.estimateRowHeight ?? 56,
   overscan: props.overscan ?? 5,

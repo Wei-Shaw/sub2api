@@ -1,5 +1,5 @@
 <template>
-  <div v-if="showUsageWindows">
+  <div ref="rootRef" v-if="showUsageWindows">
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
     <template
       v-if="
@@ -371,7 +371,7 @@
   </div>
 
   <!-- Non-OAuth/Setup-Token accounts -->
-  <div v-else>
+  <div ref="rootRef" v-else>
     <!-- Gemini API Key accounts: show quota info -->
     <AccountQuotaInfo v-if="account.platform === 'gemini'" :account="account" />
     <!-- Key/Bedrock accounts: show today stats + optional quota bars -->
@@ -439,7 +439,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch REDACTED from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats REDACTED from '@/types'
@@ -463,11 +463,23 @@ const props = withDefaults(
 )
 
 const { t REDACTED = useI18n()
+const desktopViewportQuery = '(min-width: 768px)'
 
 const loading = ref(false)
 const activeQueryLoading = ref(false)
 const error = ref<string | null>(null)
 const usageInfo = ref<AccountUsageInfo | null>(null)
+const rootRef = ref<HTMLElement | null>(null)
+const isDesktopViewport = ref(
+  typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches
+)
+const hasEnteredViewport = ref(false)
+const pendingAutoLoad = ref(false)
+const pendingAutoLoadSource = ref<'passive' | 'active' | undefined>(undefined)
+
+let desktopViewportMediaQuery: MediaQueryList | null = null
+let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = null
+let visibilityObserver: IntersectionObserver | null = null
 
 // Show usage windows for OAuth and Setup Token accounts
 const showUsageWindows = computed(() => {
@@ -512,6 +524,10 @@ const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.ac
 
 const shouldAutoLoadUsageOnMount = computed(() => {
   return shouldFetchUsage.value
+REDACTED)
+
+const shouldLazyLoadOnMobile = computed(() => {
+  return shouldFetchUsage.value && !isDesktopViewport.value
 REDACTED)
 
 // Antigravity quota types (用于 API 返回的数据)
@@ -941,6 +957,56 @@ const loadUsage = async (source?: 'passive' | 'active') => {
   REDACTED
 REDACTED
 
+const flushPendingAutoLoad = () => {
+  if (!pendingAutoLoad.value) return
+  const source = pendingAutoLoadSource.value
+  pendingAutoLoad.value = false
+  pendingAutoLoadSource.value = undefined
+  loadUsage(source).catch((e) => {
+    console.error('Failed to load deferred usage:', e)
+  REDACTED)
+REDACTED
+
+const requestAutoLoad = (source?: 'passive' | 'active') => {
+  if (!shouldFetchUsage.value) return
+  if (shouldLazyLoadOnMobile.value && !hasEnteredViewport.value) {
+    pendingAutoLoad.value = true
+    pendingAutoLoadSource.value = source
+    return
+  REDACTED
+  loadUsage(source).catch((e) => {
+    console.error('Failed to auto load usage:', e)
+  REDACTED)
+REDACTED
+
+const detachVisibilityObserver = () => {
+  visibilityObserver?.disconnect()
+  visibilityObserver = null
+REDACTED
+
+const attachVisibilityObserver = () => {
+  detachVisibilityObserver()
+  if (!shouldLazyLoadOnMobile.value || hasEnteredViewport.value) return
+  if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') {
+    hasEnteredViewport.value = true
+    flushPendingAutoLoad()
+    return
+  REDACTED
+  if (!rootRef.value) return
+
+  visibilityObserver = new IntersectionObserver((entries) => {
+    if (!entries.some((entry) => entry.isIntersecting)) return
+    hasEnteredViewport.value = true
+    detachVisibilityObserver()
+    flushPendingAutoLoad()
+  REDACTED, {
+    root: null,
+    rootMargin: '200px 0px',
+    threshold: 0.01
+  REDACTED)
+  visibilityObserver.observe(rootRef.value)
+REDACTED
+
 const loadActiveUsage = async () => {
   activeQueryLoading.value = true
   try {
@@ -1040,18 +1106,29 @@ const formatKeyUserCost = computed(() => {
 REDACTED)
 
 onMounted(() => {
+  if (typeof window !== 'undefined') {
+    desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
+    isDesktopViewport.value = desktopViewportMediaQuery.matches
+    desktopViewportListener = (event: MediaQueryListEvent) => {
+      isDesktopViewport.value = event.matches
+    REDACTED
+    if (typeof desktopViewportMediaQuery.addEventListener === 'function') {
+      desktopViewportMediaQuery.addEventListener('change', desktopViewportListener)
+    REDACTED else {
+      desktopViewportMediaQuery.addListener(desktopViewportListener)
+    REDACTED
+  REDACTED
+
   if (!shouldAutoLoadUsageOnMount.value) return
   const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
-  loadUsage(source)
+  requestAutoLoad(source)
 REDACTED)
 
 watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
-  loadUsage().catch((e) => {
-    console.error('Failed to refresh OpenAI usage:', e)
-  REDACTED)
+  requestAutoLoad()
 REDACTED)
 
 watch(
@@ -1061,9 +1138,43 @@ watch(
     if (!shouldFetchUsage.value) return
 
     const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
-    loadUsage(source).catch((e) => {
-      console.error('Failed to refresh usage after manual refresh:', e)
-    REDACTED)
+    requestAutoLoad(source)
   REDACTED
 )
+
+watch(
+  [rootRef, shouldLazyLoadOnMobile],
+  () => {
+    if (shouldLazyLoadOnMobile.value) {
+      attachVisibilityObserver()
+      return
+    REDACTED
+    detachVisibilityObserver()
+  REDACTED,
+  { immediate: true, flush: 'post' REDACTED
+)
+
+watch(isDesktopViewport, (isDesktop) => {
+  if (isDesktop) {
+    detachVisibilityObserver()
+    hasEnteredViewport.value = true
+    flushPendingAutoLoad()
+    return
+  REDACTED
+  hasEnteredViewport.value = false
+  attachVisibilityObserver()
+REDACTED)
+
+onUnmounted(() => {
+  detachVisibilityObserver()
+  if (desktopViewportMediaQuery && desktopViewportListener) {
+    if (typeof desktopViewportMediaQuery.removeEventListener === 'function') {
+      desktopViewportMediaQuery.removeEventListener('change', desktopViewportListener)
+    REDACTED else {
+      desktopViewportMediaQuery.removeListener(desktopViewportListener)
+    REDACTED
+  REDACTED
+  desktopViewportListener = null
+  desktopViewportMediaQuery = null
+REDACTED)
 </script>
