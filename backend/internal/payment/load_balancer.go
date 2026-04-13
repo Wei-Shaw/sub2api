@@ -94,17 +94,21 @@ func (lb *DefaultLoadBalancer) SelectInstance(
 	return lb.buildSelection(selected.inst)
 }
 
-// queryEnabledInstances returns enabled instances for providerKey that support paymentType.
+// queryEnabledInstances returns enabled instances that support paymentType.
+// When providerKey is non-empty, only instances with that provider key are considered.
+// When providerKey is empty, instances across all providers are considered,
+// enabling cross-provider load balancing (e.g. EasyPay + Alipay direct for "alipay").
 func (lb *DefaultLoadBalancer) queryEnabledInstances(
 	ctx context.Context,
 	providerKey string,
 	paymentType PaymentType,
 ) ([]*dbent.PaymentProviderInstance, error) {
-	instances, err := lb.db.PaymentProviderInstance.Query().
-		Where(
-			paymentproviderinstance.ProviderKey(providerKey),
-			paymentproviderinstance.Enabled(true),
-		).
+	query := lb.db.PaymentProviderInstance.Query().
+		Where(paymentproviderinstance.Enabled(true))
+	if providerKey != "" {
+		query = query.Where(paymentproviderinstance.ProviderKey(providerKey))
+	}
+	instances, err := query.
 		Order(dbent.Asc(paymentproviderinstance.FieldSortOrder)).
 		All(ctx)
 	if err != nil {
@@ -113,12 +117,12 @@ func (lb *DefaultLoadBalancer) queryEnabledInstances(
 
 	var matched []*dbent.PaymentProviderInstance
 	for _, inst := range instances {
-		if paymentType == providerKey || InstanceSupportsType(inst.SupportedTypes, paymentType) {
+		if InstanceSupportsType(inst.SupportedTypes, paymentType) {
 			matched = append(matched, inst)
 		}
 	}
 	if len(matched) == 0 {
-		return nil, fmt.Errorf("no enabled instance for provider %s type %s", providerKey, paymentType)
+		return nil, fmt.Errorf("no enabled instance for payment type %s", paymentType)
 	}
 	return matched, nil
 }
@@ -258,6 +262,7 @@ func (lb *DefaultLoadBalancer) buildSelection(selected *dbent.PaymentProviderIns
 
 	return &InstanceSelection{
 		InstanceID:     fmt.Sprintf("%d", selected.ID),
+		ProviderKey:    selected.ProviderKey,
 		Config:         config,
 		SupportedTypes: selected.SupportedTypes,
 		PaymentMode:    selected.PaymentMode,

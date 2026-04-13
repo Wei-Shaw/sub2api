@@ -72,7 +72,7 @@ func NewWxpay(instanceID string, config map[string]string) (*Wxpay, error) {
 func (w *Wxpay) Name() string        { return "Wxpay" }
 func (w *Wxpay) ProviderKey() string { return payment.TypeWxpay }
 func (w *Wxpay) SupportedTypes() []payment.PaymentType {
-	return []payment.PaymentType{payment.TypeWxpayDirect}
+	return []payment.PaymentType{payment.TypeWxpay}
 }
 
 func formatPEM(key, keyType string) string {
