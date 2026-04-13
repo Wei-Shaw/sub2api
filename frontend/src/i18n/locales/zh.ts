@@ -2517,8 +2517,8 @@ export default {
           '仅对 Anthropic API Key 生效。开启后，messages/count_tokens 请求将透传上游并仅替换认证，保留计费/并发/审计及必要安全过滤；关闭即可回滚到现有兼容链路。',
         webSearchEmulation: 'Web Search 模拟',
         webSearchEmulationDesc:
-          '为该 API Key 账号启用 web search 模拟。客户端发送纯 web_search 请求时，由网关调用第三方搜索 API 并构造响应返回。',
-        webSearchDefault: '默认（跟随渠道）',
+          '为该 API Key 账号启用 web search 模拟。客户端发送纯 web_search 请求时，由网关调用第三方搜索 API 并构造响应返回。默认跟随渠道配置。',
+        webSearchDefault: '默认',
         webSearchEnabled: '开启',
         webSearchDisabled: '关闭',
       },
