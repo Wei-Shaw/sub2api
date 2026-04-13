@@ -200,16 +200,28 @@ const onWeeklyModeChange = (e: Event) => {
         <!-- 日配额 -->
         <div>
           <label class="input-label">{{ t('admin.accounts.quotaDailyLimit') }}</label>
-          <div class="relative">
-            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
-            <input
-              :value="dailyLimit"
-              @input="onDailyInput"
-              type="number"
-              min="0"
-              step="0.01"
-              class="input pl-7"
-              :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
+          <div class="flex items-start gap-2">
+            <div class="relative flex-1">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
+              <input
+                :value="dailyLimit"
+                @input="onDailyInput"
+                type="number"
+                min="0"
+                step="0.01"
+                class="input pl-7"
+                :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
+              />
+            </div>
+            <QuotaNotifyToggle
+              v-if="quotaNotifyGlobalEnabled && dailyLimit && dailyLimit > 0"
+              class="flex-1"
+              :enabled="props.quotaNotifyDailyEnabled"
+              :threshold="props.quotaNotifyDailyThreshold"
+              :threshold-type="props.quotaNotifyDailyThresholdType"
+              @update:enabled="emit('update:quotaNotifyDailyEnabled', $event)"
+              @update:threshold="emit('update:quotaNotifyDailyThreshold', $event)"
+              @update:threshold-type="emit('update:quotaNotifyDailyThresholdType', $event)"
             />
           </div>
           <div class="mt-1.5 flex items-center gap-2 flex-wrap">
@@ -241,30 +253,33 @@ const onWeeklyModeChange = (e: Event) => {
               {{ t('admin.accounts.quotaDailyLimitHint') }}
             </template>
           </p>
-          <QuotaNotifyToggle
-            v-if="quotaNotifyGlobalEnabled && dailyLimit && dailyLimit > 0"
-            :enabled="props.quotaNotifyDailyEnabled"
-            :threshold="props.quotaNotifyDailyThreshold"
-            :threshold-type="props.quotaNotifyDailyThresholdType"
-            @update:enabled="emit('update:quotaNotifyDailyEnabled', $event)"
-            @update:threshold="emit('update:quotaNotifyDailyThreshold', $event)"
-            @update:threshold-type="emit('update:quotaNotifyDailyThresholdType', $event)"
-          />
         </div>
 
         <!-- 周配额 -->
         <div>
           <label class="input-label">{{ t('admin.accounts.quotaWeeklyLimit') }}</label>
-          <div class="relative">
-            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
-            <input
-              :value="weeklyLimit"
-              @input="onWeeklyInput"
-              type="number"
-              min="0"
-              step="0.01"
-              class="input pl-7"
-              :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
+          <div class="flex items-start gap-2">
+            <div class="relative flex-1">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
+              <input
+                :value="weeklyLimit"
+                @input="onWeeklyInput"
+                type="number"
+                min="0"
+                step="0.01"
+                class="input pl-7"
+                :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
+              />
+            </div>
+            <QuotaNotifyToggle
+              v-if="quotaNotifyGlobalEnabled && weeklyLimit && weeklyLimit > 0"
+              class="flex-1"
+              :enabled="props.quotaNotifyWeeklyEnabled"
+              :threshold="props.quotaNotifyWeeklyThreshold"
+              :threshold-type="props.quotaNotifyWeeklyThresholdType"
+              @update:enabled="emit('update:quotaNotifyWeeklyEnabled', $event)"
+              @update:threshold="emit('update:quotaNotifyWeeklyThreshold', $event)"
+              @update:threshold-type="emit('update:quotaNotifyWeeklyThresholdType', $event)"
             />
           </div>
           <div class="mt-1.5 flex items-center gap-2 flex-wrap">
@@ -304,15 +319,6 @@ const onWeeklyModeChange = (e: Event) => {
               {{ t('admin.accounts.quotaWeeklyLimitHint') }}
             </template>
           </p>
-          <QuotaNotifyToggle
-            v-if="quotaNotifyGlobalEnabled && weeklyLimit && weeklyLimit > 0"
-            :enabled="props.quotaNotifyWeeklyEnabled"
-            :threshold="props.quotaNotifyWeeklyThreshold"
-            :threshold-type="props.quotaNotifyWeeklyThresholdType"
-            @update:enabled="emit('update:quotaNotifyWeeklyEnabled', $event)"
-            @update:threshold="emit('update:quotaNotifyWeeklyThreshold', $event)"
-            @update:threshold-type="emit('update:quotaNotifyWeeklyThresholdType', $event)"
-          />
         </div>
 
         <!-- 时区选择（当任一维度使用固定模式时显示） -->
@@ -330,28 +336,31 @@ const onWeeklyModeChange = (e: Event) => {
         <!-- 总配额 -->
         <div>
           <label class="input-label">{{ t('admin.accounts.quotaTotalLimit') }}</label>
-          <div class="relative">
-            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
-            <input
-              :value="totalLimit"
-              @input="onTotalInput"
-              type="number"
-              min="0"
-              step="0.01"
-              class="input pl-7"
-              :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
+          <div class="flex items-start gap-2">
+            <div class="relative flex-1">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">$</span>
+              <input
+                :value="totalLimit"
+                @input="onTotalInput"
+                type="number"
+                min="0"
+                step="0.01"
+                class="input pl-7"
+                :placeholder="t('admin.accounts.quotaLimitPlaceholder')"
+              />
+            </div>
+            <QuotaNotifyToggle
+              v-if="quotaNotifyGlobalEnabled && totalLimit && totalLimit > 0"
+              class="flex-1"
+              :enabled="props.quotaNotifyTotalEnabled"
+              :threshold="props.quotaNotifyTotalThreshold"
+              :threshold-type="props.quotaNotifyTotalThresholdType"
+              @update:enabled="emit('update:quotaNotifyTotalEnabled', $event)"
+              @update:threshold="emit('update:quotaNotifyTotalThreshold', $event)"
+              @update:threshold-type="emit('update:quotaNotifyTotalThresholdType', $event)"
             />
           </div>
           <p class="input-hint mb-0">{{ t('admin.accounts.quotaTotalLimitHint') }}</p>
-          <QuotaNotifyToggle
-            v-if="quotaNotifyGlobalEnabled && totalLimit && totalLimit > 0"
-            :enabled="props.quotaNotifyTotalEnabled"
-            :threshold="props.quotaNotifyTotalThreshold"
-            :threshold-type="props.quotaNotifyTotalThresholdType"
-            @update:enabled="emit('update:quotaNotifyTotalEnabled', $event)"
-            @update:threshold="emit('update:quotaNotifyTotalThreshold', $event)"
-            @update:threshold-type="emit('update:quotaNotifyTotalThresholdType', $event)"
-          />
         </div>
       </div>
   </div>
