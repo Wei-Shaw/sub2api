@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -10,10 +11,11 @@ import (
 )
 
 const (
-	verifyCodeKeyPrefix          = "verify_code:"
-	notifyVerifyKeyPrefix        = "notify_verify:"
-	passwordResetKeyPrefix       = "password_reset:"
-	passwordResetSentAtKeyPrefix = "password_reset_sent:"
+	verifyCodeKeyPrefix            = "verify_code:"
+	notifyVerifyKeyPrefix          = "notify_verify:"
+	passwordResetKeyPrefix         = "password_reset:"
+	passwordResetSentAtKeyPrefix   = "password_reset_sent:"
+	notifyCodeUserRateKeyPrefix    = "notify_code_user_rate:"
 )
 
 // verifyCodeKey generates the Redis key for email verification code.
@@ -140,4 +142,32 @@ REDACTED
 func (c *emailCache) DeleteNotifyVerifyCode(ctx context.Context, email string) error {
 	key := notifyVerifyKey(email)
 	return c.rdb.Del(ctx, key).Err()
+REDACTED
+
+// User-level rate limiting for notify email verification codes
+
+func notifyCodeUserRateKey(userID int64) string {
+	return notifyCodeUserRateKeyPrefix + fmt.Sprintf("%d", userID)
+REDACTED
+
+func (c *emailCache) IncrNotifyCodeUserRate(ctx context.Context, userID int64, window time.Duration) (int64, error) {
+	key := notifyCodeUserRateKey(userID)
+	count, err := c.rdb.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+REDACTED
+	// Always set TTL (idempotent) to avoid orphan keys if process crashes between INCR and EXPIRE.
+	if err := c.rdb.Expire(ctx, key, window).Err(); err != nil {
+		return count, fmt.Errorf("expire notify code rate key: %w", err)
+REDACTED
+	return count, nil
+REDACTED
+
+func (c *emailCache) GetNotifyCodeUserRate(ctx context.Context, userID int64) (int64, error) {
+	key := notifyCodeUserRateKey(userID)
+	count, err := c.rdb.Get(ctx, key).Int64()
+	if err != nil {
+		return 0, err
+REDACTED
+	return count, nil
 REDACTED
