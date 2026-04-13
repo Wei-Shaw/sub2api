@@ -5412,6 +5412,7 @@ export default {
       tabPlanConfig: 'Plan Configuration',
       tabUserSubs: 'User Subscriptions',
       selectGroup: 'Select a group',
+      groupRequired: 'Please select a subscription group',
       groupMissing: 'Missing',
       groupInfo: 'Group Info',
       platform: 'Platform',

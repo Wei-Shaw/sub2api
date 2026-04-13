@@ -5607,6 +5607,7 @@ export default {
       tabPlanConfig: '套餐配置',
       tabUserSubs: '用户订阅',
       selectGroup: '请选择分组',
+      groupRequired: '请选择订阅分组',
       groupMissing: '缺失',
       groupInfo: '分组信息',
       platform: '平台',

@@ -3,12 +3,33 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
+
+// validatePlanRequired checks that all required fields for a plan are provided.
+func validatePlanRequired(name string, groupID int64, price float64, validityDays int, validityUnit string) error {
+	if strings.TrimSpace(name) == "" {
+		return infraerrors.BadRequest("PLAN_NAME_REQUIRED", "plan name is required")
+	}
+	if groupID <= 0 {
+		return infraerrors.BadRequest("PLAN_GROUP_REQUIRED", "group is required")
+	}
+	if price < 0 {
+		return infraerrors.BadRequest("PLAN_PRICE_INVALID", "price must be >= 0")
+	}
+	if validityDays <= 0 {
+		return infraerrors.BadRequest("PLAN_VALIDITY_REQUIRED", "validity days must be > 0")
+	}
+	if strings.TrimSpace(validityUnit) == "" {
+		return infraerrors.BadRequest("PLAN_VALIDITY_UNIT_REQUIRED", "validity unit is required")
+	}
+	return nil
+}
 
 // --- Plan CRUD ---
 
@@ -66,14 +87,17 @@ func (s *PaymentConfigService) GetGroupInfoMap(ctx context.Context, plans []*dbe
 }
 
 func (s *PaymentConfigService) ListPlans(ctx context.Context) ([]*dbent.SubscriptionPlan, error) {
-	return s.entClient.SubscriptionPlan.Query().Order(subscriptionplan.BySortOrder()).All(ctx)
+	return s.entClient.SubscriptionPlan.Query().Order(subscriptionplan.ByCreatedAt()).All(ctx)
 }
 
 func (s *PaymentConfigService) ListPlansForSale(ctx context.Context) ([]*dbent.SubscriptionPlan, error) {
-	return s.entClient.SubscriptionPlan.Query().Where(subscriptionplan.ForSaleEQ(true)).Order(subscriptionplan.BySortOrder()).All(ctx)
+	return s.entClient.SubscriptionPlan.Query().Where(subscriptionplan.ForSaleEQ(true)).Order(subscriptionplan.ByCreatedAt()).All(ctx)
 }
 
 func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanRequest) (*dbent.SubscriptionPlan, error) {
+	if err := validatePlanRequired(req.Name, req.GroupID, req.Price, req.ValidityDays, req.ValidityUnit); err != nil {
+		return nil, err
+	}
 	b := s.entClient.SubscriptionPlan.Create().
 		SetGroupID(req.GroupID).SetName(req.Name).SetDescription(req.Description).
 		SetPrice(req.Price).SetValidityDays(req.ValidityDays).SetValidityUnit(req.ValidityUnit).

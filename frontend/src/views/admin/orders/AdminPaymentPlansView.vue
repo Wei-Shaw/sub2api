@@ -29,7 +29,7 @@
         </template>
         <template #cell-price="{ value, row }">
           <div class="text-sm">
-            <span class="font-medium text-gray-900 dark:text-white">${{ value.toFixed(2) }}</span>
+            <span class="font-medium text-gray-900 dark:text-white">${{ (value ?? 0).toFixed(2) }}</span>
             <span v-if="row.original_price" class="ml-1 text-xs text-gray-400 line-through">${{ row.original_price.toFixed(2) }}</span>
           </div>
         </template>
@@ -71,12 +71,12 @@
       <form id="plan-form" @submit.prevent="handleSavePlan" class="space-y-4">
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="input-label">{{ t('payment.admin.planName') }}</label>
+            <label class="input-label">{{ t('payment.admin.planName') }} <span class="text-red-500">*</span></label>
             <input v-model="planForm.name" type="text" class="input" required />
           </div>
           <div>
-            <label class="input-label">{{ t('payment.admin.group') }}</label>
-            <Select v-model="planForm.group_id" :options="groupOptions" class="w-full">
+            <label class="input-label">{{ t('payment.admin.group') }} <span class="text-red-500">*</span></label>
+            <Select v-model="planForm.group_id" :options="groupOptions" :placeholder="t('payment.admin.selectGroup')" class="w-full">
               <template #selected="{ option }">
                 <span v-if="option?.platform" :class="platformTextClass(String(option.platform))">{{ option.label }}</span>
                 <span v-else>{{ option?.label || t('payment.admin.selectGroup') }}</span>
@@ -101,15 +101,14 @@
           </div>
         </div>
 
-        <div><label class="input-label">{{ t('payment.admin.planDescription') }}</label><textarea v-model="planForm.description" rows="2" class="input"></textarea></div>
-        <div class="grid grid-cols-3 gap-4">
-          <div><label class="input-label">{{ t('payment.admin.price') }}</label><input v-model.number="planForm.price" type="number" step="0.01" min="0" class="input" required /></div>
+        <div><label class="input-label">{{ t('payment.admin.planDescription') }} <span class="text-red-500">*</span></label><textarea v-model="planForm.description" rows="2" class="input" required></textarea></div>
+        <div class="grid grid-cols-2 gap-4">
+          <div><label class="input-label">{{ t('payment.admin.price') }} <span class="text-red-500">*</span></label><input v-model.number="planForm.price" type="number" step="0.01" min="0" class="input" required /></div>
           <div><label class="input-label">{{ t('payment.admin.originalPrice') }}</label><input v-model.number="planForm.original_price" type="number" step="0.01" min="0" class="input" /></div>
-          <div><label class="input-label">{{ t('payment.admin.sortOrder') }}</label><input v-model.number="planForm.sort_order" type="number" min="0" class="input" /></div>
         </div>
         <div class="grid grid-cols-2 gap-4">
-          <div><label class="input-label">{{ t('payment.admin.validityDays') }}</label><input v-model.number="planForm.validity_days" type="number" min="1" class="input" required /></div>
-          <div><label class="input-label">{{ t('payment.admin.validityUnit') }}</label><Select v-model="planForm.validity_unit" :options="validityUnitOptions" /></div>
+          <div><label class="input-label">{{ t('payment.admin.validityDays') }} <span class="text-red-500">*</span></label><input v-model.number="planForm.validity_days" type="number" min="1" class="input" required /></div>
+          <div><label class="input-label">{{ t('payment.admin.validityUnit') }} <span class="text-red-500">*</span></label><Select v-model="planForm.validity_unit" :options="validityUnitOptions" /></div>
         </div>
         <div>
           <label class="input-label">{{ t('payment.admin.features') }}</label>
@@ -190,16 +189,15 @@ function getPlanNameClass(groupId: number): string {
   return group ? platformTextClass(group.platform) : 'text-gray-900 dark:text-white'
 }
 
-const groupOptions = computed(() => [
-  { value: 0, label: t('payment.admin.selectGroup'), platform: '' },
-  ...groups.value
+const groupOptions = computed(() =>
+  groups.value
     .filter(g => g.subscription_type === 'subscription')
     .map(g => ({
       value: g.id,
       label: `${g.name} — ${g.platform} (${g.rate_multiplier}x)`,
       platform: g.platform,
     })),
-])
+)
 
 const selectedGroupInfo = computed(() => {
   if (!planForm.group_id) return null
@@ -215,7 +213,7 @@ const showDeletePlanDialog = ref(false)
 const planSaving = ref(false)
 const editingPlan = ref<SubscriptionPlan | null>(null)
 const deletingPlanId = ref<number | null>(null)
-const planForm = reactive({ name: '', group_id: 0, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', for_sale: true, sort_order: 0 })
+const planForm = reactive({ name: '', group_id: null as number | null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', for_sale: true })
 const planFeaturesText = ref('')
 
 const validityUnitOptions = computed(() => [
@@ -231,7 +229,6 @@ const planColumns = computed((): Column[] => [
   { key: 'price', label: t('payment.admin.price') },
   { key: 'validity_days', label: t('payment.admin.validityDays') },
   { key: 'for_sale', label: t('payment.admin.forSale') },
-  { key: 'sort_order', label: t('payment.admin.sortOrder') },
   { key: 'actions', label: t('common.actions') },
 ])
 
@@ -254,10 +251,10 @@ async function loadPlans() {
 function openPlanEdit(plan: SubscriptionPlan | null) {
   editingPlan.value = plan
   if (plan) {
-    Object.assign(planForm, { name: plan.name, group_id: plan.group_id, description: plan.description, price: plan.price, original_price: plan.original_price || 0, validity_days: plan.validity_days, validity_unit: plan.validity_unit || 'days', for_sale: plan.for_sale, sort_order: plan.sort_order })
+    Object.assign(planForm, { name: plan.name, group_id: plan.group_id, description: plan.description, price: plan.price, original_price: plan.original_price || 0, validity_days: plan.validity_days, validity_unit: plan.validity_unit || 'days', for_sale: plan.for_sale })
     planFeaturesText.value = (plan.features || []).join('\n')
   } else {
-    Object.assign(planForm, { name: '', group_id: 0, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', for_sale: true, sort_order: 0 })
+    Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', for_sale: true })
     planFeaturesText.value = ''
   }
   showPlanDialog.value = true
@@ -275,12 +272,15 @@ function buildPlanPayload() {
     validity_days: planForm.validity_days,
     validity_unit: planForm.validity_unit,
     for_sale: planForm.for_sale,
-    sort_order: planForm.sort_order,
     features,
   }
 }
 
 async function handleSavePlan() {
+  if (!planForm.group_id) {
+    appStore.showError(t('payment.admin.groupRequired'))
+    return
+  }
   planSaving.value = true
   try {
     const data = buildPlanPayload()
