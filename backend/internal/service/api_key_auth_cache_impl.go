@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"time"
 
@@ -99,7 +100,7 @@ func (s *APIKeyService) StartAuthCacheInvalidationSubscriber(ctx context.Context
 		s.authCacheL1.Del(cacheKey)
 	}); err != nil {
 		// Log but don't fail - L1 cache will still work, just without cross-instance invalidation
-		println("[Service] Warning: failed to start auth cache invalidation subscriber:", err.Error())
+		slog.Warn("failed to start auth cache invalidation subscriber", "error", err)
 	}
 }
 

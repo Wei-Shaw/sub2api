@@ -1057,6 +1057,8 @@ export interface AdminUsageLog extends UsageLog {
 
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null
+  // 自定义定价规则计算的账号统计费用（nil 时使用 total_cost * multiplier）
+  account_stats_cost?: number | null
 
   // 用户请求 IP（仅管理员可见）
   ip_address?: string | null
