@@ -2707,7 +2707,7 @@
             </div>
             <div>
               <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.settings.balanceNotify.rechargeUrl') }}</label>
-              <input v-model="form.balance_low_notify_recharge_url" type="url" class="input" :placeholder="t('admin.settings.balanceNotify.rechargeUrlPlaceholder')" />
+              <input v-model="form.balance_low_notify_recharge_url" type="url" class="input" :placeholder="currentOrigin" />
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.balanceNotify.rechargeUrlHint') }}</p>
             </div>
           </div>
@@ -3262,6 +3262,8 @@ const addQuotaNotifyEmail = () => {
   form.account_quota_notify_emails.push({ email: '', disabled: false, verified: true })
 }
 
+const currentOrigin = typeof window !== 'undefined' ? window.location.origin : ''
+
 // LinuxDo OAuth redirect URL suggestion
 const linuxdoRedirectUrlSuggestion = computed(() => {
   if (typeof window === 'undefined') return ''
@@ -3604,7 +3606,7 @@ async function saveSettings() {
       // Balance & quota notification
       balance_low_notify_enabled: form.balance_low_notify_enabled,
       balance_low_notify_threshold: Number(form.balance_low_notify_threshold) || 0,
-      balance_low_notify_recharge_url: form.balance_low_notify_recharge_url || '',
+      balance_low_notify_recharge_url: form.balance_low_notify_recharge_url || currentOrigin,
       account_quota_notify_enabled: form.account_quota_notify_enabled,
       account_quota_notify_emails: (form.account_quota_notify_emails || []).filter((e) => e.email.trim() !== ''),
     }
