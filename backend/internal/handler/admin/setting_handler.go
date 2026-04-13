@@ -5,11 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -1120,11 +1119,11 @@ REDACTED
 
 	subject, _ := middleware.GetAuthSubjectFromContext(c)
 	role, _ := middleware.GetUserRoleFromContext(c)
-	log.Printf("AUDIT: settings updated at=%s user_id=%d role=%s changed=%v",
-		time.Now().UTC().Format(time.RFC3339),
-		subject.UserID,
-		role,
-		changed,
+	slog.Info("settings updated",
+		"audit", true,
+		"user_id", subject.UserID,
+		"role", role,
+		"changed", changed,
 	)
 REDACTED
 
@@ -1358,6 +1357,22 @@ REDACTED
 	if before.EnableCCHSigning != after.EnableCCHSigning {
 		changed = append(changed, "enable_cch_signing")
 REDACTED
+	// Balance & quota notification
+	if before.BalanceLowNotifyEnabled != after.BalanceLowNotifyEnabled {
+		changed = append(changed, "balance_low_notify_enabled")
+REDACTED
+	if before.BalanceLowNotifyThreshold != after.BalanceLowNotifyThreshold {
+		changed = append(changed, "balance_low_notify_threshold")
+REDACTED
+	if before.BalanceLowNotifyRechargeURL != after.BalanceLowNotifyRechargeURL {
+		changed = append(changed, "balance_low_notify_recharge_url")
+REDACTED
+	if before.AccountQuotaNotifyEnabled != after.AccountQuotaNotifyEnabled {
+		changed = append(changed, "account_quota_notify_enabled")
+REDACTED
+	if !equalNotifyEmailEntries(before.AccountQuotaNotifyEmails, after.AccountQuotaNotifyEmails) {
+		changed = append(changed, "account_quota_notify_emails")
+REDACTED
 	return changed
 REDACTED
 
@@ -1408,6 +1423,18 @@ func equalIntSlice(a, b []int) bool {
 REDACTED
 	for i := range a {
 		if a[i] != b[i] {
+			return false
+	REDACTED
+REDACTED
+	return true
+REDACTED
+
+func equalNotifyEmailEntries(a, b []service.NotifyEmailEntry) bool {
+	if len(a) != len(b) {
+		return false
+REDACTED
+	for i := range a {
+		if a[i].Email != b[i].Email || a[i].Verified != b[i].Verified || a[i].Disabled != b[i].Disabled {
 			return false
 	REDACTED
 REDACTED
