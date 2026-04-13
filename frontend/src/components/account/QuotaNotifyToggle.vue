@@ -42,7 +42,7 @@ const emit = defineEmits<{
       <select
         :value="thresholdType || 'fixed'"
         @change="emit('update:thresholdType', ($event.target as HTMLSelectElement).value)"
-        class="input py-1 text-xs w-14 flex-shrink-0 text-center appearance-auto"
+        class="input py-1 text-xs w-16 flex-shrink-0 text-center"
       >
         <option value="fixed">$</option>
         <option value="percentage">%</option>

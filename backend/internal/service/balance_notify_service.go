@@ -137,13 +137,18 @@ type quotaDim struct {
 	limit         float64
 }
 
-// resolvedThreshold returns the effective threshold value.
-// For percentage type, it computes threshold = limit * percentage / 100.
+// resolvedThreshold converts the user-facing "remaining" threshold into a usage-based trigger point.
+// The threshold represents how much quota REMAINS when the alert fires:
+//   - Fixed ($): threshold=400, limit=1000 → fires when usage reaches 600 (remaining drops to 400)
+//   - Percentage (%): threshold=30, limit=1000 → fires when usage reaches 700 (remaining drops to 30%)
 func (d quotaDim) resolvedThreshold() float64 {
-	if d.thresholdType == thresholdTypePercentage && d.limit > 0 {
-		return d.limit * d.threshold / 100
+	if d.limit <= 0 {
+		return 0
 	}
-	return d.threshold
+	if d.thresholdType == thresholdTypePercentage {
+		return d.limit * (1 - d.threshold/100)
+	}
+	return d.limit - d.threshold
 }
 
 // buildQuotaDims returns the three quota dimensions for notification checking.
