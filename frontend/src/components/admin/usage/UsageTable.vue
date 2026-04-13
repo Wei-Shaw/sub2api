@@ -93,7 +93,7 @@
 
         <template #cell-tokens="{ row }">
           <!-- 图片生成请求（仅按次计费时显示图片格式） -->
-          <div v-if="row.image_count > 0 && row.billing_mode === 'image'" class="flex items-center gap-1.5">
+          <div v-if="row.image_count > 0 && row.billing_mode === BILLING_MODE_IMAGE" class="flex items-center gap-1.5">
             <svg class="h-4 w-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
@@ -280,7 +280,7 @@
               <span class="font-medium text-white">${{ tooltipData.output_cost.toFixed(6) }}</span>
             </div>
             <!-- Token billing: show unit prices per 1M tokens -->
-            <template v-if="!tooltipData?.billing_mode || tooltipData.billing_mode === 'token'">
+            <template v-if="!tooltipData?.billing_mode || tooltipData.billing_mode === BILLING_MODE_TOKEN">
               <div v-if="tooltipData && tooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.inputTokenPrice') }}</span>
                 <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens) }} {{ t('usage.perMillionTokens') }}</span>
@@ -292,7 +292,7 @@
             </template>
             <!-- Per-request / image billing: show unit price -->
             <div v-else class="flex items-center justify-between gap-4">
-              <span class="text-gray-400">{{ tooltipData.billing_mode === 'image' ? t('usage.imageUnitPrice') : t('usage.unitPrice') }}</span>
+              <span class="text-gray-400">{{ tooltipData.billing_mode === BILLING_MODE_IMAGE ? t('usage.imageUnitPrice') : t('usage.unitPrice') }}</span>
               <span class="font-medium text-sky-300">${{ tooltipData.total_cost?.toFixed(6) || '0.000000' }}</span>
             </div>
             <div v-if="tooltipData && tooltipData.cache_creation_cost > 0" class="flex items-center justify-between gap-4">
@@ -350,7 +350,7 @@ import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
-import { getBillingModeLabel, getBillingModeBadgeClass } from '@/utils/billingMode'
+import { getBillingModeLabel, getBillingModeBadgeClass, BILLING_MODE_TOKEN, BILLING_MODE_IMAGE } from '@/utils/billingMode'
 
 /** Compute the account-billed cost for display: (account_stats_cost ?? total_cost) * rate_multiplier */
 function accountBilled(row: { total_cost?: number | null; account_stats_cost?: number | null; account_rate_multiplier?: number | null }): number {
