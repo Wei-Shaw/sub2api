@@ -155,7 +155,7 @@
               </div>
             </div>
             <div v-if="row.account_rate_multiplier != null" class="mt-0.5 text-[11px] text-gray-400">
-              A ${{ (row.account_stats_cost != null ? row.account_stats_cost * (row.account_rate_multiplier ?? 1) : row.total_cost * row.account_rate_multiplier).toFixed(6) }}
+              A ${{ (row.account_stats_cost != null ? row.account_stats_cost * (row.account_rate_multiplier ?? 1) : row.total_cost * (row.account_rate_multiplier ?? 1)).toFixed(6) }}
             </div>
           </div>
         </template>

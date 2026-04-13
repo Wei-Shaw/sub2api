@@ -7555,7 +7555,7 @@ func notifyBalanceLow(p *postUsageBillingParams, deps *billingDeps, result *Usag
 	}
 
 	oldBalance := resolveOldBalance(p, result)
-	slog.Info("notifyBalanceLow: calling CheckBalanceAfterDeduction",
+	slog.Debug("notifyBalanceLow: calling CheckBalanceAfterDeduction",
 		"user_id", p.User.ID,
 		"old_balance", oldBalance,
 		"cost", p.Cost.ActualCost,
@@ -7599,7 +7599,7 @@ func notifyAccountQuota(p *postUsageBillingParams, deps *billingDeps, result *Us
 	if result != nil {
 		quotaState = result.QuotaState
 	}
-	slog.Info("notifyAccountQuota: calling CheckAccountQuotaAfterIncrement",
+	slog.Debug("notifyAccountQuota: calling CheckAccountQuotaAfterIncrement",
 		"account_id", p.Account.ID,
 		"account_cost", accountCost,
 		"has_quota_state", quotaState != nil,

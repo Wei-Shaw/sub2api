@@ -21,6 +21,8 @@ const (
 	quotaDimDaily  = "daily"
 	quotaDimWeekly = "weekly"
 	quotaDimTotal  = "total"
+
+	defaultSiteName = "Sub2API"
 )
 
 // quotaDimLabels maps dimension names to display labels.
@@ -79,7 +81,7 @@ func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, u
 
 	globalEnabled, globalThreshold, rechargeURL := s.getBalanceNotifyConfig(ctx)
 	if !globalEnabled {
-		slog.Info("CheckBalanceAfterDeduction: global notify disabled", "user_id", user.ID)
+		slog.Debug("CheckBalanceAfterDeduction: global notify disabled", "user_id", user.ID)
 		return
 	}
 
@@ -100,7 +102,7 @@ func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, u
 	}
 
 	newBalance := oldBalance - cost
-	slog.Info("CheckBalanceAfterDeduction: crossing check",
+	slog.Debug("CheckBalanceAfterDeduction: crossing check",
 		"user_id", user.ID,
 		"old_balance", oldBalance,
 		"new_balance", newBalance,
@@ -324,7 +326,7 @@ func (s *BalanceNotifyService) getAccountQuotaNotifyEmails(ctx context.Context) 
 func (s *BalanceNotifyService) getSiteName(ctx context.Context) string {
 	name, err := s.settingRepo.GetValue(ctx, SettingKeySiteName)
 	if err != nil || name == "" {
-		return "Sub2API"
+		return defaultSiteName
 	}
 	return name
 }
