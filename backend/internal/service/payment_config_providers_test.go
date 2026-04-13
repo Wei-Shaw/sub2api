@@ -101,7 +101,7 @@ func TestIsSensitiveConfigField(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		field    string
+		field   string
 		wantSen bool
 	}{
 		// Sensitive fields (contain key/secret/private/password/pkey patterns)

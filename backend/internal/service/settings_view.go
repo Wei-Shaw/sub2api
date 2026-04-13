@@ -111,8 +111,8 @@ type SystemSettings struct {
 	WebSearchEmulationEnabled bool
 
 	// Balance low notification
-	BalanceLowNotifyEnabled    bool
-	BalanceLowNotifyThreshold  float64
+	BalanceLowNotifyEnabled     bool
+	BalanceLowNotifyThreshold   float64
 	BalanceLowNotifyRechargeURL string
 
 	// Account quota notification
@@ -158,10 +158,10 @@ type PublicSettings struct {
 	OIDCOAuthProviderName string
 	Version               string
 
-	BalanceLowNotifyEnabled          bool
-	AccountQuotaNotifyEnabled        bool
-	BalanceLowNotifyThreshold        float64
-	BalanceLowNotifyRechargeURL      string
+	BalanceLowNotifyEnabled     bool
+	AccountQuotaNotifyEnabled   bool
+	BalanceLowNotifyThreshold   float64
+	BalanceLowNotifyRechargeURL string
 }
 
 // StreamTimeoutSettings 流超时处理配置（仅控制超时后的处理方式，超时判定由网关配置控制）

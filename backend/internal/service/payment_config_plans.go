@@ -57,7 +57,6 @@ func validatePlanPatch(req UpdatePlanRequest) error {
 	return nil
 }
 
-
 // --- Plan CRUD ---
 
 // PlanGroupInfo holds the group details needed for subscription plan display.

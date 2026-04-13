@@ -65,15 +65,15 @@ func TestBuildBalanceLowEmailBody_NoRechargeURLOmitsButton(t *testing.T) {
 func TestBuildQuotaAlertEmailBody_AllFieldsPresent(t *testing.T) {
 	s := &BalanceNotifyService{}
 	body := s.buildQuotaAlertEmailBody(
-		42,                      // accountID
-		"acc-foo",               // accountName
-		"anthropic",             // platform
-		"日限额 / Daily",          // dimLabel
-		750.50,                  // used
-		1000.0,                  // limit
-		249.50,                  // remaining
-		"$249.50",               // thresholdDisplay
-		"MySite",                // siteName
+		42,            // accountID
+		"acc-foo",     // accountName
+		"anthropic",   // platform
+		"日限额 / Daily", // dimLabel
+		750.50,        // used
+		1000.0,        // limit
+		249.50,        // remaining
+		"$249.50",     // thresholdDisplay
+		"MySite",      // siteName
 	)
 
 	require.Contains(t, body, "MySite")

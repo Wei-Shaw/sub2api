@@ -150,11 +150,11 @@ type SystemSettings struct {
 	PaymentCancelRateLimitMode    string `json:"payment_cancel_rate_limit_window_mode"`
 
 	// Balance low notification
-	BalanceLowNotifyEnabled      bool     `json:"balance_low_notify_enabled"`
-	BalanceLowNotifyThreshold    float64  `json:"balance_low_notify_threshold"`
-	BalanceLowNotifyRechargeURL  string   `json:"balance_low_notify_recharge_url"`
-	AccountQuotaNotifyEnabled    bool     `json:"account_quota_notify_enabled"`
-	AccountQuotaNotifyEmails  []NotifyEmailEntry `json:"account_quota_notify_emails"`
+	BalanceLowNotifyEnabled     bool               `json:"balance_low_notify_enabled"`
+	BalanceLowNotifyThreshold   float64            `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyRechargeURL string             `json:"balance_low_notify_recharge_url"`
+	AccountQuotaNotifyEnabled   bool               `json:"account_quota_notify_enabled"`
+	AccountQuotaNotifyEmails    []NotifyEmailEntry `json:"account_quota_notify_emails"`
 }
 
 type DefaultSubscriptionSetting struct {

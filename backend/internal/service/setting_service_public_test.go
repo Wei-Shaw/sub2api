@@ -66,7 +66,7 @@ func TestSettingService_GetPublicSettings_ExposesRegistrationEmailSuffixWhitelis
 func TestSettingService_GetPublicSettings_ExposesTablePreferences(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{
-			SettingKeyTableDefaultPageSize:  "50",
+			SettingKeyTableDefaultPageSize: "50",
 			SettingKeyTablePageSizeOptions: "[20,50,100]",
 		},
 	}

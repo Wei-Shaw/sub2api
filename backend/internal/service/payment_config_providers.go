@@ -22,17 +22,17 @@ func (s *PaymentConfigService) ListProviderInstances(ctx context.Context) ([]*db
 
 // ProviderInstanceResponse is the API response for a provider instance.
 type ProviderInstanceResponse struct {
-	ID             int64             `json:"id"`
-	ProviderKey    string            `json:"provider_key"`
-	Name           string            `json:"name"`
-	Config         map[string]string `json:"config"`
-	SupportedTypes []string          `json:"supported_types"`
-	Limits         string            `json:"limits"`
-	Enabled        bool              `json:"enabled"`
-	RefundEnabled    bool              `json:"refund_enabled"`
-	AllowUserRefund  bool              `json:"allow_user_refund"`
-	SortOrder      int               `json:"sort_order"`
-	PaymentMode    string            `json:"payment_mode"`
+	ID              int64             `json:"id"`
+	ProviderKey     string            `json:"provider_key"`
+	Name            string            `json:"name"`
+	Config          map[string]string `json:"config"`
+	SupportedTypes  []string          `json:"supported_types"`
+	Limits          string            `json:"limits"`
+	Enabled         bool              `json:"enabled"`
+	RefundEnabled   bool              `json:"refund_enabled"`
+	AllowUserRefund bool              `json:"allow_user_refund"`
+	SortOrder       int               `json:"sort_order"`
+	PaymentMode     string            `json:"payment_mode"`
 }
 
 // ListProviderInstancesWithConfig returns provider instances with decrypted config.
