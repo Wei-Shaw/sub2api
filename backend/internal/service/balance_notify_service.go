@@ -65,14 +65,21 @@ func resolveBalanceThreshold(threshold float64, thresholdType string, totalRecha
 // Notification is sent only on first crossing: oldBalance >= threshold && newBalance < threshold.
 func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, user *User, oldBalance, cost float64) {
 	if user == nil || s.emailService == nil || s.settingRepo == nil {
+		slog.Debug("CheckBalanceAfterDeduction: skipped (nil check)",
+			"user_nil", user == nil,
+			"email_svc_nil", s.emailService == nil,
+			"setting_repo_nil", s.settingRepo == nil,
+		)
 		return
 	}
 	if !user.BalanceNotifyEnabled {
+		slog.Debug("CheckBalanceAfterDeduction: user notify disabled", "user_id", user.ID)
 		return
 	}
 
 	globalEnabled, globalThreshold := s.getBalanceNotifyConfig(ctx)
 	if !globalEnabled {
+		slog.Info("CheckBalanceAfterDeduction: global notify disabled", "user_id", user.ID)
 		return
 	}
 
@@ -82,18 +89,33 @@ func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, u
 		threshold = *user.BalanceNotifyThreshold
 	}
 	if threshold <= 0 {
+		slog.Debug("CheckBalanceAfterDeduction: threshold <= 0", "user_id", user.ID, "threshold", threshold)
 		return
 	}
 
 	effectiveThreshold := resolveBalanceThreshold(threshold, user.BalanceNotifyThresholdType, user.TotalRecharged)
 	if effectiveThreshold <= 0 {
+		slog.Debug("CheckBalanceAfterDeduction: effective threshold <= 0", "user_id", user.ID)
 		return
 	}
 
 	newBalance := oldBalance - cost
+	slog.Info("CheckBalanceAfterDeduction: crossing check",
+		"user_id", user.ID,
+		"old_balance", oldBalance,
+		"new_balance", newBalance,
+		"effective_threshold", effectiveThreshold,
+		"crossed", oldBalance >= effectiveThreshold && newBalance < effectiveThreshold,
+	)
 	if oldBalance >= effectiveThreshold && newBalance < effectiveThreshold {
 		siteName := s.getSiteName(ctx)
 		recipients := s.collectBalanceNotifyRecipients(user)
+		slog.Info("CheckBalanceAfterDeduction: sending notification",
+			"user_id", user.ID,
+			"recipients", recipients,
+			"new_balance", newBalance,
+			"threshold", effectiveThreshold,
+		)
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -328,11 +350,17 @@ func (s *BalanceNotifyService) collectBalanceNotifyRecipients(user *User) []stri
 
 // sendEmails sends an email to all recipients with shared timeout and error logging.
 func (s *BalanceNotifyService) sendEmails(recipients []string, subject, body string, logAttrs ...any) {
+	if len(recipients) == 0 {
+		slog.Warn("sendEmails: no recipients", "subject", subject)
+		return
+	}
 	for _, to := range recipients {
 		ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
 		if err := s.emailService.SendEmail(ctx, to, subject, body); err != nil {
 			attrs := append([]any{"to", to, "error", err}, logAttrs...)
 			slog.Error("failed to send notification", attrs...)
+		} else {
+			slog.Info("notification email sent successfully", "to", to, "subject", subject)
 		}
 		cancel()
 	}
