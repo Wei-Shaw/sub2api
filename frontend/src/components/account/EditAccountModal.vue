@@ -1190,6 +1190,7 @@
           :weeklyResetDay="editWeeklyResetDay"
           :weeklyResetHour="editWeeklyResetHour"
           :resetTimezone="editResetTimezone"
+          :quotaNotifyGlobalEnabled="quotaNotifyGlobalEnabled"
           :quotaNotifyDailyEnabled="editQuotaNotifyDailyEnabled"
           :quotaNotifyDailyThreshold="editQuotaNotifyDailyThreshold"
           :quotaNotifyDailyThresholdType="editQuotaNotifyDailyThresholdType"
@@ -1240,6 +1241,7 @@
           :weeklyResetDay="editWeeklyResetDay"
           :weeklyResetHour="editWeeklyResetHour"
           :resetTimezone="editResetTimezone"
+          :quotaNotifyGlobalEnabled="quotaNotifyGlobalEnabled"
           :quotaNotifyDailyEnabled="editQuotaNotifyDailyEnabled"
           :quotaNotifyDailyThreshold="editQuotaNotifyDailyThreshold"
           :quotaNotifyDailyThresholdType="editQuotaNotifyDailyThresholdType"
@@ -1991,11 +1993,16 @@ const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
+const quotaNotifyGlobalEnabled = ref(false)
 
-// Load web search global state once
+// Load global feature states once
 adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
   webSearchGlobalEnabled.value = cfg?.enabled === true && (cfg?.providers?.length ?? 0) > 0
 }).catch(() => { webSearchGlobalEnabled.value = false })
+
+adminAPI.settings.getSettings().then(settings => {
+  quotaNotifyGlobalEnabled.value = settings.account_quota_notify_enabled === true
+}).catch(() => { quotaNotifyGlobalEnabled.value = false })
 const editQuotaLimit = ref<number | null>(null)
 const editQuotaDailyLimit = ref<number | null>(null)
 const editQuotaWeeklyLimit = ref<number | null>(null)
