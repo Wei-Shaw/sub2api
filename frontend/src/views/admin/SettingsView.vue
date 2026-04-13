@@ -1775,8 +1775,8 @@
                       @click.stop
                     />
                     <!-- Quota summary in collapsed state -->
-                    <span v-if="!expandedProviders[pIdx] && provider.quota_limit > 0" class="text-xs text-gray-400">
-                      {{ provider.quota_used ?? 0 }} / {{ provider.quota_limit }}
+                    <span v-if="!expandedProviders[pIdx]" class="text-xs text-gray-400">
+                      {{ provider.quota_used ?? 0 }} / {{ provider.quota_limit > 0 ? provider.quota_limit : '∞' }}
                     </span>
                     <span v-if="!expandedProviders[pIdx] && provider.api_key_configured" class="text-xs text-green-500">
                       {{ t('admin.settings.webSearchEmulation.apiKeyConfigured') }}
@@ -1797,10 +1797,10 @@
                         v-model="provider.api_key"
                         :type="apiKeyVisible[pIdx] ? 'text' : 'password'"
                         class="input w-full text-sm"
-                        :class="provider.api_key ? 'pr-16' : ''"
+                        :class="(provider.api_key || provider.api_key_configured) ? 'pr-16' : ''"
                         :placeholder="provider.api_key_configured ? '••••••••' : t('admin.settings.webSearchEmulation.apiKeyPlaceholder')"
                       />
-                      <div v-if="provider.api_key" class="absolute inset-y-0 right-0 flex items-center pr-1.5">
+                      <div v-if="provider.api_key || provider.api_key_configured" class="absolute inset-y-0 right-0 flex items-center pr-1.5">
                         <button
                           type="button"
                           class="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
@@ -1818,7 +1818,9 @@
                         <button
                           type="button"
                           class="rounded p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                          :class="{ 'opacity-30 cursor-not-allowed': !provider.api_key }"
                           :title="t('admin.settings.webSearchEmulation.copyApiKey')"
+                          :disabled="!provider.api_key"
                           @click="copyApiKey(pIdx)"
                         >
                           <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1849,16 +1851,17 @@
                   </div>
 
                   <!-- Usage display -->
-                  <div v-if="provider.quota_limit > 0" class="flex items-center gap-2">
+                  <div class="flex items-center gap-2">
                     <span class="text-xs text-gray-500">{{ t('admin.settings.webSearchEmulation.quotaUsage') }}:</span>
-                    <div class="flex-1 rounded-full bg-gray-200 dark:bg-dark-600" style="height: 6px">
+                    <div v-if="provider.quota_limit > 0" class="flex-1 rounded-full bg-gray-200 dark:bg-dark-600" style="height: 6px">
                       <div
                         class="h-full rounded-full transition-all"
                         :class="quotaPercentage(provider) > 90 ? 'bg-red-500' : quotaPercentage(provider) > 70 ? 'bg-yellow-500' : 'bg-green-500'"
                         :style="{ width: Math.min(quotaPercentage(provider), 100) + '%' }"
                       />
                     </div>
-                    <span class="text-xs text-gray-500">{{ provider.quota_used ?? 0 }} / {{ provider.quota_limit }}</span>
+                    <div v-else class="flex-1" />
+                    <span class="text-xs text-gray-500">{{ provider.quota_used ?? 0 }} / {{ provider.quota_limit > 0 ? provider.quota_limit : '∞' }}</span>
                   </div>
 
                   <!-- Proxy + Test on same row -->
@@ -3164,9 +3167,13 @@ async function loadWebSearchConfig() {
 
 async function saveWebSearchConfig(): Promise<boolean> {
   try {
+    const providers = webSearchConfig.providers.map((p: WebSearchProviderConfig) => ({
+      ...p,
+      quota_limit: typeof p.quota_limit === 'number' && p.quota_limit > 0 ? p.quota_limit : 0,
+    }))
     await adminAPI.settings.updateWebSearchEmulationConfig({
       enabled: webSearchConfig.enabled,
-      providers: webSearchConfig.providers as WebSearchProviderConfig[],
+      providers,
     })
     return true
   } catch (err: unknown) {
