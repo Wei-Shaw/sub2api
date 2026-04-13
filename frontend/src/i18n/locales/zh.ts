@@ -2262,7 +2262,7 @@ export default {
       quotaLimitAmount: '总限额',
       quotaLimitAmountHint: '累计消费上限，不会自动重置。',
       quotaNotify: {
-        alert: '告警阈值',
+        alert: '提醒阈值',
         enabled: '启用告警',
         threshold: '告警金额',
         thresholdPlaceholder: '输入百分比',

@@ -2264,7 +2264,7 @@ export default {
       quotaLimitAmount: 'Total Limit',
       quotaLimitAmountHint: 'Cumulative spending limit. Does not auto-reset.',
       quotaNotify: {
-        alert: 'Alert Threshold',
+        alert: 'Alert',
         enabled: 'Enable Alert',
         threshold: 'Alert Amount',
         thresholdPlaceholder: 'Enter percentage',
