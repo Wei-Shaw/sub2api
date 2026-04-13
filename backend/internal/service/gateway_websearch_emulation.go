@@ -49,10 +49,9 @@ func getWebSearchManager() *websearch.Manager {
 
 // shouldEmulateWebSearch checks whether a request should be intercepted.
 //
-// Judgment chain: manager exists → only web_search tool → global enabled → account enabled.
-// Note: channel-level control is enforced via the account's extra field; the channel toggle
-// in the admin UI sets the account's flag for all accounts in that channel's groups.
-func (s *GatewayService) shouldEmulateWebSearch(ctx context.Context, account *Account, body []byte) bool {
+// Judgment chain: manager exists → only web_search tool → global enabled → account/channel enabled.
+// Account-level mode: "enabled" (force on), "disabled" (force off), "default" (follow channel).
+func (s *GatewayService) shouldEmulateWebSearch(ctx context.Context, account *Account, groupID *int64, body []byte) bool {
 	if getWebSearchManager() == nil {
 		return false
 	}
@@ -62,10 +61,23 @@ func (s *GatewayService) shouldEmulateWebSearch(ctx context.Context, account *Ac
 	if !s.settingService.IsWebSearchEmulationEnabled(ctx) {
 		return false
 	}
-	if !account.IsWebSearchEmulationEnabled() {
+
+	mode := account.GetWebSearchEmulationMode()
+	switch mode {
+	case WebSearchModeEnabled:
+		return true
+	case WebSearchModeDisabled:
 		return false
+	default: // "default" → follow channel config
+		if groupID == nil || s.channelService == nil {
+			return false
+		}
+		ch, err := s.channelService.GetChannelForGroup(ctx, *groupID)
+		if err != nil || ch == nil {
+			return false
+		}
+		return ch.IsWebSearchEmulationEnabled(account.Platform)
 	}
-	return true
 }
 
 // isOnlyWebSearchToolInBody checks if the body contains exactly one web_search tool.

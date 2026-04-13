@@ -27,17 +27,24 @@ var quotaDimLabels = map[string]string{
 	quotaDimTotal:  "总限额 / Total",
 }
 
+// AccountQuotaReader provides read access to account quota data.
+type AccountQuotaReader interface {
+	GetByID(ctx context.Context, id int64) (*Account, error)
+}
+
 // BalanceNotifyService handles balance and quota threshold notifications.
 type BalanceNotifyService struct {
 	emailService *EmailService
 	settingRepo  SettingRepository
+	accountRepo  AccountQuotaReader
 }
 
 // NewBalanceNotifyService creates a new BalanceNotifyService.
-func NewBalanceNotifyService(emailService *EmailService, settingRepo SettingRepository) *BalanceNotifyService {
+func NewBalanceNotifyService(emailService *EmailService, settingRepo SettingRepository, accountRepo AccountQuotaReader) *BalanceNotifyService {
 	return &BalanceNotifyService{
 		emailService: emailService,
 		settingRepo:  settingRepo,
+		accountRepo:  accountRepo,
 	}
 }
 
@@ -110,7 +117,7 @@ func buildQuotaDims(account *Account) []quotaDim {
 }
 
 // CheckAccountQuotaAfterIncrement checks if any quota dimension crossed above its notify threshold.
-// The account's Extra fields contain pre-increment usage values.
+// It fetches real-time quota usage from DB to avoid stale snapshot values.
 func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Context, account *Account, cost float64) {
 	if account == nil || s.emailService == nil || s.settingRepo == nil || cost <= 0 {
 		return
@@ -123,8 +130,29 @@ func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Conte
 		return
 	}
 
+	freshAccount := s.fetchFreshAccount(ctx, account)
 	siteName := s.getSiteName(ctx)
-	for _, dim := range buildQuotaDims(account) {
+	s.checkQuotaDimCrossings(freshAccount, cost, adminEmails, siteName)
+}
+
+// fetchFreshAccount loads the latest account from DB; falls back to the snapshot on error.
+func (s *BalanceNotifyService) fetchFreshAccount(ctx context.Context, snapshot *Account) *Account {
+	if s.accountRepo == nil {
+		return snapshot
+	}
+	fresh, err := s.accountRepo.GetByID(ctx, snapshot.ID)
+	if err != nil {
+		slog.Warn("failed to fetch fresh account for quota notify, using snapshot",
+			"account_id", snapshot.ID, "error", err)
+		return snapshot
+	}
+	return fresh
+}
+
+// checkQuotaDimCrossings iterates quota dimensions and sends alerts for threshold crossings.
+// freshAccount has post-increment values; oldUsed is reconstructed as freshUsed - cost.
+func (s *BalanceNotifyService) checkQuotaDimCrossings(freshAccount *Account, cost float64, adminEmails []string, siteName string) {
+	for _, dim := range buildQuotaDims(freshAccount) {
 		if !dim.enabled || dim.threshold <= 0 {
 			continue
 		}
@@ -132,9 +160,12 @@ func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Conte
 		if effectiveThreshold <= 0 {
 			continue
 		}
-		newUsed := dim.oldUsed + cost
-		if dim.oldUsed < effectiveThreshold && newUsed >= effectiveThreshold {
-			s.asyncSendQuotaAlert(adminEmails, account.Name, dim, newUsed, effectiveThreshold, siteName)
+		// dim.oldUsed is actually the post-increment value from fresh DB data;
+		// reconstruct pre-increment value to detect threshold crossing.
+		newUsed := dim.oldUsed
+		oldUsed := dim.oldUsed - cost
+		if oldUsed < effectiveThreshold && newUsed >= effectiveThreshold {
+			s.asyncSendQuotaAlert(adminEmails, freshAccount.Name, dim, newUsed, effectiveThreshold, siteName)
 		}
 	}
 }

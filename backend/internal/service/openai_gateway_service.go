@@ -4580,7 +4580,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			statsModel = result.Model
 		}
 		usageLog.AccountStatsCost = resolveAccountStatsCost(
-			ctx, s.channelService,
+			ctx, s.channelService, s.billingService,
 			account.ID, *apiKey.GroupID, statsModel,
 			tokens, 1,
 		)

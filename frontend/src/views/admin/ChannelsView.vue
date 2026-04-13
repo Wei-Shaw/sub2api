@@ -413,8 +413,8 @@
               </div>
             </div>
 
-            <!-- Account Stats Pricing Rules (per-platform, only when global toggle is on) -->
-            <div v-if="form.apply_pricing_to_account_stats" class="mt-4 border-t border-gray-200 pt-4 dark:border-dark-700 space-y-3">
+            <!-- Account Stats Pricing Rules (per-platform, always visible) -->
+            <div class="mt-4 border-t border-gray-200 pt-4 dark:border-dark-700 space-y-3">
               <div class="flex items-center justify-between">
                 <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {{ t('admin.channels.form.accountStatsPricingRules') }}
@@ -474,12 +474,51 @@
 
                 <div>
                   <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.channels.form.ruleAccounts') }}</label>
-                  <input
-                    :value="rule.account_ids.join(', ')"
-                    @change="rule.account_ids = parseAccountIdsInput(($event.target as HTMLInputElement).value)"
-                    :placeholder="t('admin.channels.form.ruleAccountsPlaceholder')"
-                    class="input mt-1 text-sm"
-                  />
+                  <!-- Selected account chips -->
+                  <div class="mt-1 flex flex-wrap gap-1">
+                    <span
+                      v-for="accountId in rule.account_ids"
+                      :key="accountId"
+                      class="inline-flex items-center gap-1 rounded-md border border-primary-300 bg-primary-50 px-2 py-0.5 text-xs dark:border-primary-700 dark:bg-primary-900/20"
+                    >
+                      <span>{{ getRuleAccountLabel(accountId) }}</span>
+                      <button type="button" @click="removeRuleAccount(rule, accountId)" class="text-gray-400 hover:text-red-500">
+                        <Icon name="x" size="xs" />
+                      </button>
+                    </span>
+                  </div>
+                  <!-- Account search input -->
+                  <div class="relative mt-1 rule-account-search-container">
+                    <input
+                      v-model="ruleAccountSearchKeyword[`${section.platform}-${ruleIndex}`]"
+                      type="text"
+                      class="input text-sm"
+                      :placeholder="t('admin.channels.form.searchAccountPlaceholder')"
+                      @input="onRuleAccountSearchInput(section.platform, ruleIndex)"
+                      @focus="onRuleAccountSearchFocus(section.platform, ruleIndex)"
+                    />
+                    <!-- Search results dropdown -->
+                    <div
+                      v-if="showRuleAccountDropdown[`${section.platform}-${ruleIndex}`] && (ruleAccountSearchResults[`${section.platform}-${ruleIndex}`]?.length ?? 0) > 0"
+                      class="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                    >
+                      <button
+                        v-for="account in ruleAccountSearchResults[`${section.platform}-${ruleIndex}`]"
+                        :key="account.id"
+                        type="button"
+                        @click="selectRuleAccount(rule, account, section.platform, ruleIndex)"
+                        class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-700"
+                        :class="{ 'opacity-50': rule.account_ids.includes(account.id) }"
+                        :disabled="rule.account_ids.includes(account.id)"
+                      >
+                        <span>{{ account.name }}</span>
+                        <span class="ml-2 text-xs text-gray-400">#{{ account.id }}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ t('admin.channels.form.ruleAccountsHint') }}
+                  </p>
                 </div>
 
                 <div>
@@ -569,6 +608,7 @@ import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import PricingEntryCard from '@/components/admin/channel/PricingEntryCard.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { useKeyedDebouncedSearch } from '@/composables/useKeyedDebouncedSearch'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -852,6 +892,9 @@ function addRulePricingEntry(ruleIndex: number) {
 
 function removeAccountStatsRule(ruleIndex: number) {
   form.account_stats_pricing_rules.splice(ruleIndex, 1)
+  // Clear all search state since indices shift after removal
+  ruleAccountSearchRunner.clearAll()
+  clearAllRuleAccountSearchState()
 }
 
 function removeRulePricingEntry(ruleIndex: number, pricingIndex: number) {
@@ -863,11 +906,78 @@ function getGroupNameById(groupId: number): string {
   return group ? group.name : `#${groupId}`
 }
 
-function parseAccountIdsInput(value: string): number[] {
-  return value
-    .split(',')
-    .map(s => parseInt(s.trim()))
-    .filter(n => !isNaN(n) && n > 0)
+// ── Account search for pricing rules ──
+interface SimpleAccount { id: number; name: string }
+
+const ruleAccountSearchKeyword = ref<Record<string, string>>({})
+const ruleAccountSearchResults = ref<Record<string, SimpleAccount[]>>({})
+const showRuleAccountDropdown = ref<Record<string, boolean>>({})
+// Cache: account ID → name, populated when search results are selected
+const ruleAccountNameCache = ref<Record<number, string>>({})
+
+const ruleAccountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
+  delay: 300,
+  search: async (keyword, { key, signal }) => {
+    const platform = key.split('-')[0]
+    const res = await adminAPI.accounts.list(1, 20, { platform, search: keyword }, { signal })
+    return res.items.map(a => ({ id: a.id, name: a.name }))
+  },
+  onSuccess: (key, result) => { ruleAccountSearchResults.value[key] = result },
+  onError: (key) => { ruleAccountSearchResults.value[key] = [] },
+})
+
+function onRuleAccountSearchInput(platform: string, ruleIndex: number) {
+  const key = `${platform}-${ruleIndex}`
+  showRuleAccountDropdown.value[key] = true
+  ruleAccountSearchRunner.trigger(key, ruleAccountSearchKeyword.value[key] || '')
+}
+
+function onRuleAccountSearchFocus(platform: string, ruleIndex: number) {
+  const key = `${platform}-${ruleIndex}`
+  showRuleAccountDropdown.value[key] = true
+  if (!ruleAccountSearchResults.value[key]?.length) {
+    ruleAccountSearchRunner.trigger(key, ruleAccountSearchKeyword.value[key] || '')
+  }
+}
+
+function selectRuleAccount(
+  rule: { account_ids: number[] },
+  account: SimpleAccount,
+  platform: string,
+  ruleIndex: number,
+) {
+  if (!rule.account_ids.includes(account.id)) {
+    rule.account_ids.push(account.id)
+    ruleAccountNameCache.value[account.id] = account.name
+  }
+  const key = `${platform}-${ruleIndex}`
+  ruleAccountSearchKeyword.value[key] = ''
+  showRuleAccountDropdown.value[key] = false
+}
+
+function removeRuleAccount(rule: { account_ids: number[] }, accountId: number) {
+  const idx = rule.account_ids.indexOf(accountId)
+  if (idx !== -1) rule.account_ids.splice(idx, 1)
+}
+
+function getRuleAccountLabel(accountId: number): string {
+  const name = ruleAccountNameCache.value[accountId]
+  return name ? `${name} #${accountId}` : `#${accountId}`
+}
+
+function handleRuleAccountClickOutside(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  if (!target.closest('.rule-account-search-container')) {
+    Object.keys(showRuleAccountDropdown.value).forEach(key => {
+      showRuleAccountDropdown.value[key] = false
+    })
+  }
+}
+
+function clearAllRuleAccountSearchState() {
+  ruleAccountSearchKeyword.value = {}
+  ruleAccountSearchResults.value = {}
+  showRuleAccountDropdown.value = {}
 }
 
 function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
@@ -1093,6 +1203,9 @@ function resetForm() {
   form.apply_pricing_to_account_stats = false
   form.account_stats_pricing_rules = []
   activeTab.value = 'basic'
+  ruleAccountSearchRunner.clearAll()
+  clearAllRuleAccountSearchState()
+  ruleAccountNameCache.value = {}
 }
 
 async function openCreateDialog() {
@@ -1313,11 +1426,15 @@ onMounted(() => {
   loadChannels()
   loadGroups()
   loadWebSearchGlobalState()
+  document.addEventListener('click', handleRuleAccountClickOutside)
 })
 
 onUnmounted(() => {
   clearTimeout(searchTimeout)
   abortController?.abort()
+  document.removeEventListener('click', handleRuleAccountClickOutside)
+  ruleAccountSearchRunner.clearAll()
+  clearAllRuleAccountSearchState()
 })
 </script>
 

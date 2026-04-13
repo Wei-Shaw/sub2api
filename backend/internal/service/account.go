@@ -1169,15 +1169,30 @@ func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
 	return ok && enabled
 }
 
-// IsWebSearchEmulationEnabled 返回 Anthropic API Key 账号是否启用 web search 模拟。
-// 字段：accounts.extra.web_search_emulation。
-// 字段缺失或类型不正确时，按 false（关闭）处理。
-func (a *Account) IsWebSearchEmulationEnabled() bool {
+// WebSearch 模拟三态常量
+const (
+	WebSearchModeDefault  = "default"  // 跟随渠道配置
+	WebSearchModeEnabled  = "enabled"  // 强制开启
+	WebSearchModeDisabled = "disabled" // 强制关闭
+)
+
+// GetWebSearchEmulationMode 返回账号的 WebSearch 模拟模式。
+// 三态：default（跟随渠道）/ enabled（强制开启）/ disabled（强制关闭）。
+// 旧 bool 值需通过 SQL 迁移脚本转换，Go 代码不做兼容。
+func (a *Account) GetWebSearchEmulationMode() string {
 	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey || a.Extra == nil {
-		return false
+		return WebSearchModeDefault
 	}
-	enabled, ok := a.Extra[featureKeyWebSearchEmulation].(bool)
-	return ok && enabled
+	mode, ok := a.Extra[featureKeyWebSearchEmulation].(string)
+	if !ok {
+		return WebSearchModeDefault
+	}
+	switch mode {
+	case WebSearchModeEnabled, WebSearchModeDisabled:
+		return mode
+	default:
+		return WebSearchModeDefault
+	}
 }
 
 // IsCodexCLIOnlyEnabled 返回 OpenAI OAuth 账号是否启用"仅允许 Codex 官方客户端"。

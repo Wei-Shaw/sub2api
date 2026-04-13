@@ -8,11 +8,17 @@ import (
 
 // resolveAccountStatsCost 计算账号统计定价费用。
 // 返回 nil 表示不覆盖，使用默认公式（total_cost × account_rate_multiplier）。
-// 仅匹配自定义规则（AccountStatsPricingRules），按数组顺序先命中为准。
-// upstreamModel 是最终发往上游的模型 ID，用于匹配自定义规则中的模型定价。
+//
+// 优先级（先命中为准）：
+//  1. 自定义规则（始终尝试，不依赖 ApplyPricingToAccountStats 开关）
+//  2. ApplyPricingToAccountStats 启用时，用模型定价文件（LiteLLM）中上游模型的标准价格计算
+//  3. nil → 走默认公式
+//
+// upstreamModel 是最终发往上游的模型 ID。
 func resolveAccountStatsCost(
 	ctx context.Context,
 	channelService *ChannelService,
+	billingService *BillingService,
 	accountID int64,
 	groupID int64,
 	upstreamModel string,
@@ -23,12 +29,39 @@ func resolveAccountStatsCost(
 		return nil
 	}
 	channel, err := channelService.GetChannelForGroup(ctx, groupID)
-	if err != nil || channel == nil || !channel.ApplyPricingToAccountStats {
+	if err != nil || channel == nil {
 		return nil
 	}
 
 	platform := channelService.GetGroupPlatform(ctx, groupID)
-	return tryCustomRules(channel, accountID, groupID, platform, upstreamModel, tokens, requestCount)
+
+	// 优先级 1：自定义规则（始终尝试）
+	if cost := tryCustomRules(channel, accountID, groupID, platform, upstreamModel, tokens, requestCount); cost != nil {
+		return cost
+	}
+
+	// 优先级 2：模型定价文件（LiteLLM/fallback）中上游模型的标准价格
+	if channel.ApplyPricingToAccountStats && billingService != nil {
+		return tryModelFilePricing(billingService, upstreamModel, tokens)
+	}
+
+	return nil
+}
+
+// tryModelFilePricing 使用模型定价文件（LiteLLM/fallback）中的标准价格计算费用。
+func tryModelFilePricing(billingService *BillingService, model string, tokens UsageTokens) *float64 {
+	pricing, err := billingService.GetModelPricing(model)
+	if err != nil || pricing == nil {
+		return nil
+	}
+	cost := float64(tokens.InputTokens)*pricing.InputPricePerToken +
+		float64(tokens.OutputTokens)*pricing.OutputPricePerToken +
+		float64(tokens.CacheCreationTokens)*pricing.CacheCreationPricePerToken +
+		float64(tokens.CacheReadTokens)*pricing.CacheReadPricePerToken
+	if cost <= 0 {
+		return nil
+	}
+	return &cost
 }
 
 // tryCustomRules 遍历自定义规则，按数组顺序先命中为准。
