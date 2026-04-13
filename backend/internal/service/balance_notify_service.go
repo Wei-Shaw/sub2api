@@ -225,7 +225,7 @@ func (s *BalanceNotifyService) isAccountQuotaNotifyEnabled(ctx context.Context) 
 }
 
 // getAccountQuotaNotifyEmails reads admin notification emails from settings,
-// filtering out disabled entries. Entries with email="" are resolved to the first admin's email.
+// filtering out disabled and unverified entries.
 func (s *BalanceNotifyService) getAccountQuotaNotifyEmails(ctx context.Context) []string {
 	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAccountQuotaNotifyEmails)
 	if err != nil || strings.TrimSpace(raw) == "" || raw == "[]" {

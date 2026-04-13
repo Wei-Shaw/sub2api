@@ -157,9 +157,13 @@ func (s *EmailService) SendEmail(ctx context.Context, to, subject, body string) 
 
 // SendEmailWithConfig 使用指定配置发送邮件
 func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
-	from := config.From
+	// Sanitize all SMTP header fields to prevent header injection (CR/LF removal).
+	to = sanitizeEmailHeader(to)
+	subject = sanitizeEmailHeader(subject)
+
+	from := sanitizeEmailHeader(config.From)
 	if config.FromName != "" {
-		from = fmt.Sprintf("%s <%s>", config.FromName, config.From)
+		from = fmt.Sprintf("%s <%s>", sanitizeEmailHeader(config.FromName), sanitizeEmailHeader(config.From))
 	}
 
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n%s",
