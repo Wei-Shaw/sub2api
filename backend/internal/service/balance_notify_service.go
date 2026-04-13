@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"html"
 	"log/slog"
@@ -13,6 +12,10 @@ import (
 
 const (
 	emailSendTimeout = 30 * time.Second
+
+	// Threshold type values
+	thresholdTypeFixed      = "fixed"
+	thresholdTypePercentage = "percentage"
 
 	// Quota dimension labels
 	quotaDimDaily  = "daily"
@@ -48,6 +51,15 @@ func NewBalanceNotifyService(emailService *EmailService, settingRepo SettingRepo
 	}
 }
 
+// resolveBalanceThreshold returns the effective balance threshold.
+// For percentage type, it computes threshold = totalRecharged * percentage / 100.
+func resolveBalanceThreshold(threshold float64, thresholdType string, totalRecharged float64) float64 {
+	if thresholdType == thresholdTypePercentage && totalRecharged > 0 {
+		return totalRecharged * threshold / 100
+	}
+	return threshold
+}
+
 // CheckBalanceAfterDeduction checks if balance crossed below threshold after deduction.
 // oldBalance is the balance before deduction, cost is the amount deducted.
 // Notification is sent only on first crossing: oldBalance >= threshold && newBalance < threshold.
@@ -73,8 +85,13 @@ func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, u
 		return
 	}
 
+	effectiveThreshold := resolveBalanceThreshold(threshold, user.BalanceNotifyThresholdType, user.TotalRecharged)
+	if effectiveThreshold <= 0 {
+		return
+	}
+
 	newBalance := oldBalance - cost
-	if oldBalance >= threshold && newBalance < threshold {
+	if oldBalance >= effectiveThreshold && newBalance < effectiveThreshold {
 		siteName := s.getSiteName(ctx)
 		recipients := s.collectBalanceNotifyRecipients(user)
 		go func() {
@@ -83,7 +100,7 @@ func (s *BalanceNotifyService) CheckBalanceAfterDeduction(ctx context.Context, u
 					slog.Error("panic in balance notification", "recover", r)
 				}
 			}()
-			s.sendBalanceLowEmails(recipients, user.Username, user.Email, newBalance, threshold, siteName)
+			s.sendBalanceLowEmails(recipients, user.Username, user.Email, newBalance, effectiveThreshold, siteName)
 		}()
 	}
 }
@@ -94,14 +111,14 @@ type quotaDim struct {
 	enabled       bool
 	threshold     float64
 	thresholdType string // "fixed" (default) or "percentage"
-	oldUsed       float64
+	currentUsed   float64
 	limit         float64
 }
 
 // resolvedThreshold returns the effective threshold value.
 // For percentage type, it computes threshold = limit * percentage / 100.
 func (d quotaDim) resolvedThreshold() float64 {
-	if d.thresholdType == "percentage" && d.limit > 0 {
+	if d.thresholdType == thresholdTypePercentage && d.limit > 0 {
 		return d.limit * d.threshold / 100
 	}
 	return d.threshold
@@ -150,7 +167,7 @@ func (s *BalanceNotifyService) fetchFreshAccount(ctx context.Context, snapshot *
 }
 
 // checkQuotaDimCrossings iterates quota dimensions and sends alerts for threshold crossings.
-// freshAccount has post-increment values; oldUsed is reconstructed as freshUsed - cost.
+// freshAccount has post-increment values; pre-increment is reconstructed as currentUsed - cost.
 func (s *BalanceNotifyService) checkQuotaDimCrossings(freshAccount *Account, cost float64, adminEmails []string, siteName string) {
 	for _, dim := range buildQuotaDims(freshAccount) {
 		if !dim.enabled || dim.threshold <= 0 {
@@ -160,10 +177,10 @@ func (s *BalanceNotifyService) checkQuotaDimCrossings(freshAccount *Account, cos
 		if effectiveThreshold <= 0 {
 			continue
 		}
-		// dim.oldUsed is actually the post-increment value from fresh DB data;
+		// currentUsed is the post-increment value from fresh DB data;
 		// reconstruct pre-increment value to detect threshold crossing.
-		newUsed := dim.oldUsed
-		oldUsed := dim.oldUsed - cost
+		newUsed := dim.currentUsed
+		oldUsed := dim.currentUsed - cost
 		if oldUsed < effectiveThreshold && newUsed >= effectiveThreshold {
 			s.asyncSendQuotaAlert(adminEmails, freshAccount.Name, dim, newUsed, effectiveThreshold, siteName)
 		}
@@ -309,10 +326,9 @@ func (s *BalanceNotifyService) sendQuotaAlertEmails(adminEmails []string, accoun
 	s.sendEmails(adminEmails, subject, body, "account", accountName, "dimension", dimension)
 }
 
-// buildBalanceLowEmailBody builds HTML email for balance low notification.
-// Lines exceed 30 due to inline HTML template (not splittable).
-func (s *BalanceNotifyService) buildBalanceLowEmailBody(userName string, balance, threshold float64, siteName string) string {
-	return fmt.Sprintf(`<!DOCTYPE html>
+// balanceLowEmailTemplate is the HTML template for balance low notifications.
+// Format args: siteName, userName, userName, balance, threshold, threshold.
+const balanceLowEmailTemplate = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -344,17 +360,11 @@ func (s *BalanceNotifyService) buildBalanceLowEmailBody(userName string, balance
         <div class="footer"><p>此邮件由系统自动发送，请勿回复。</p></div>
     </div>
 </body>
-</html>`, siteName, userName, userName, balance, threshold, threshold)
-}
+</html>`
 
-// buildQuotaAlertEmailBody builds HTML email for account quota alert.
-// Lines exceed 30 due to inline HTML template (not splittable).
-func (s *BalanceNotifyService) buildQuotaAlertEmailBody(accountName, dimLabel string, used, limit, threshold float64, siteName string) string {
-	limitStr := fmt.Sprintf("$%.2f", limit)
-	if limit <= 0 {
-		limitStr = "无限制 / Unlimited"
-	}
-	return fmt.Sprintf(`<!DOCTYPE html>
+// quotaAlertEmailTemplate is the HTML template for account quota alert notifications.
+// Format args: siteName, accountName, dimLabel, used, limitStr, threshold.
+const quotaAlertEmailTemplate = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -389,18 +399,19 @@ func (s *BalanceNotifyService) buildQuotaAlertEmailBody(accountName, dimLabel st
         <div class="footer"><p>此邮件由系统自动发送，请勿回复。</p></div>
     </div>
 </body>
-</html>`, siteName, accountName, dimLabel, used, limitStr, threshold)
+</html>`
+
+// buildBalanceLowEmailBody builds HTML email for balance low notification.
+func (s *BalanceNotifyService) buildBalanceLowEmailBody(userName string, balance, threshold float64, siteName string) string {
+	return fmt.Sprintf(balanceLowEmailTemplate, siteName, userName, userName, balance, threshold, threshold)
 }
 
-// parseJSONStringArray parses a JSON string array, returns nil on error.
-func parseJSONStringArray(raw string) []string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "[]" {
-		return nil
+// buildQuotaAlertEmailBody builds HTML email for account quota alert.
+func (s *BalanceNotifyService) buildQuotaAlertEmailBody(accountName, dimLabel string, used, limit, threshold float64, siteName string) string {
+	limitStr := fmt.Sprintf("$%.2f", limit)
+	if limit <= 0 {
+		limitStr = "无限制 / Unlimited"
 	}
-	var result []string
-	if err := json.Unmarshal([]byte(raw), &result); err != nil {
-		return nil
-	}
-	return result
+	return fmt.Sprintf(quotaAlertEmailTemplate, siteName, accountName, dimLabel, used, limitStr, threshold)
 }
+

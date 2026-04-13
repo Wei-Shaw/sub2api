@@ -1868,7 +1868,8 @@ export default {
         searchAccountPlaceholder: 'Search accounts...',
         ruleAccountsHint: 'Leave empty to match all accounts',
         ruleModelPricing: 'Model Pricing',
-        noGroupsInChannel: 'No groups selected in platform tabs above'
+        noGroupsInChannel: 'No groups selected in platform tabs above',
+        unnamed: 'Unnamed'
       }
     },
 

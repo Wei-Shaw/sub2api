@@ -627,11 +627,7 @@ func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSet
 	updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(settings.BalanceLowNotifyEnabled)
 	updates[SettingKeyBalanceLowNotifyThreshold] = strconv.FormatFloat(settings.BalanceLowNotifyThreshold, 'f', 8, 64)
 	updates[SettingKeyAccountQuotaNotifyEnabled] = strconv.FormatBool(settings.AccountQuotaNotifyEnabled)
-	accountQuotaNotifyEmailsJSON, err := json.Marshal(settings.AccountQuotaNotifyEmails)
-	if err != nil {
-		return fmt.Errorf("marshal account quota notify emails: %w", err)
-	}
-	updates[SettingKeyAccountQuotaNotifyEmails] = string(accountQuotaNotifyEmailsJSON)
+	updates[SettingKeyAccountQuotaNotifyEmails] = MarshalNotifyEmails(settings.AccountQuotaNotifyEmails)
 
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {

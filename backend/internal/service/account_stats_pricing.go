@@ -57,7 +57,8 @@ func tryModelFilePricing(billingService *BillingService, model string, tokens Us
 	cost := float64(tokens.InputTokens)*pricing.InputPricePerToken +
 		float64(tokens.OutputTokens)*pricing.OutputPricePerToken +
 		float64(tokens.CacheCreationTokens)*pricing.CacheCreationPricePerToken +
-		float64(tokens.CacheReadTokens)*pricing.CacheReadPricePerToken
+		float64(tokens.CacheReadTokens)*pricing.CacheReadPricePerToken +
+		float64(tokens.ImageOutputTokens)*pricing.ImageOutputPricePerToken
 	if cost <= 0 {
 		return nil
 	}
@@ -194,7 +195,7 @@ func calculateTokenStatsCost(pricing *ChannelModelPricing, tokens UsageTokens) *
 		float64(tokens.CacheCreationTokens)*deref(pricing.CacheWritePrice) +
 		float64(tokens.CacheReadTokens)*deref(pricing.CacheReadPrice) +
 		float64(tokens.ImageOutputTokens)*deref(pricing.ImageOutputPrice)
-	if cost == 0 {
+	if cost <= 0 {
 		return nil
 	}
 	return &cost

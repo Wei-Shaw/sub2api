@@ -980,26 +980,38 @@ function clearAllRuleAccountSearchState() {
   showRuleAccountDropdown.value = {}
 }
 
+function inferRulePlatform(groupIds: number[]): string {
+  const platforms = new Set<string>()
+  for (const gid of groupIds) {
+    const group = allGroups.value.find(g => g.id === gid)
+    if (group) platforms.add(group.platform)
+  }
+  return platforms.size === 1 ? [...platforms][0] : ''
+}
+
 function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
-  return form.account_stats_pricing_rules.map(rule => ({
-    name: rule.name,
-    group_ids: rule.group_ids,
-    account_ids: rule.account_ids,
-    pricing: rule.pricing
-      .filter(p => p.models.length > 0)
-      .map(p => ({
-        platform: '',
-        models: p.models,
-        billing_mode: p.billing_mode,
-        input_price: mTokToPerToken(p.input_price),
-        output_price: mTokToPerToken(p.output_price),
-        cache_write_price: mTokToPerToken(p.cache_write_price),
-        cache_read_price: mTokToPerToken(p.cache_read_price),
-        image_output_price: mTokToPerToken(p.image_output_price),
-        per_request_price: p.per_request_price != null && p.per_request_price !== '' ? Number(p.per_request_price) : null,
-        intervals: formIntervalsToAPI(p.intervals || [])
-      }))
-  }))
+  return form.account_stats_pricing_rules.map(rule => {
+    const platform = inferRulePlatform(rule.group_ids)
+    return {
+      name: rule.name,
+      group_ids: rule.group_ids,
+      account_ids: rule.account_ids,
+      pricing: rule.pricing
+        .filter(p => p.models.length > 0)
+        .map(p => ({
+          platform,
+          models: p.models,
+          billing_mode: p.billing_mode,
+          input_price: mTokToPerToken(p.input_price),
+          output_price: mTokToPerToken(p.output_price),
+          cache_write_price: mTokToPerToken(p.cache_write_price),
+          cache_read_price: mTokToPerToken(p.cache_read_price),
+          image_output_price: mTokToPerToken(p.image_output_price),
+          per_request_price: p.per_request_price != null && p.per_request_price !== '' ? Number(p.per_request_price) : null,
+          intervals: formIntervalsToAPI(p.intervals || [])
+        }))
+    }
+  })
 }
 
 // ── Form ↔ API conversion ──
@@ -1329,7 +1341,7 @@ async function handleSubmit() {
       const intervalErr = validateIntervals(entry.intervals)
       if (intervalErr) {
         const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
-        const modelLabel = entry.models.join(', ') || '未命名'
+        const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
         appStore.showError(`${platformLabel} - ${modelLabel}: ${intervalErr}`)
         activeTab.value = section.platform
         return

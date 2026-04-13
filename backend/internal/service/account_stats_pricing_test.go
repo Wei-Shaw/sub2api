@@ -428,3 +428,102 @@ func TestTryCustomRules_RuleMatchesButModelNot_ContinuesToNext(t *testing.T) {
 	require.NotNil(t, result)
 	require.InDelta(t, 5.0, *result, 1e-12) // 使用规则2
 }
+
+// ---------------------------------------------------------------------------
+// tryModelFilePricing
+// ---------------------------------------------------------------------------
+
+// newTestBillingServiceWithPrices creates a BillingService with pre-populated
+// fallback prices for testing. No config or pricing service is needed.
+// The key must match what getFallbackPricing resolves to for a given model name.
+// E.g., model "claude-sonnet-4" resolves to key "claude-sonnet-4".
+func newTestBillingServiceWithPrices(prices map[string]*ModelPricing) *BillingService {
+	return &BillingService{
+		fallbackPrices: prices,
+	}
+}
+
+func TestTryModelFilePricing_Success(t *testing.T) {
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-sonnet-4": {
+			InputPricePerToken:  0.001,
+			OutputPricePerToken: 0.002,
+		},
+	})
+	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
+	result := tryModelFilePricing(bs, "claude-sonnet-4", tokens)
+	require.NotNil(t, result)
+	// 100*0.001 + 50*0.002 = 0.1 + 0.1 = 0.2
+	require.InDelta(t, 0.2, *result, 1e-12)
+}
+
+func TestTryModelFilePricing_PricingNotFound(t *testing.T) {
+	// "nonexistent-model" does not match any fallback pattern
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{})
+	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
+	result := tryModelFilePricing(bs, "nonexistent-model", tokens)
+	require.Nil(t, result)
+}
+
+func TestTryModelFilePricing_NilFallback(t *testing.T) {
+	// getFallbackPricing returns nil when key maps to nil
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-sonnet-4": nil,
+	})
+	tokens := UsageTokens{InputTokens: 100}
+	result := tryModelFilePricing(bs, "claude-sonnet-4", tokens)
+	require.Nil(t, result)
+}
+
+func TestTryModelFilePricing_ZeroCost(t *testing.T) {
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-sonnet-4": {
+			InputPricePerToken:  0.001,
+			OutputPricePerToken: 0.002,
+		},
+	})
+	tokens := UsageTokens{} // all zero tokens → cost = 0 → nil
+	result := tryModelFilePricing(bs, "claude-sonnet-4", tokens)
+	require.Nil(t, result)
+}
+
+func TestTryModelFilePricing_WithImageOutput(t *testing.T) {
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-sonnet-4": {
+			InputPricePerToken:       0.001,
+			OutputPricePerToken:      0.002,
+			ImageOutputPricePerToken: 0.01,
+		},
+	})
+	tokens := UsageTokens{
+		InputTokens:       100,
+		OutputTokens:      50,
+		ImageOutputTokens: 10,
+	}
+	result := tryModelFilePricing(bs, "claude-sonnet-4", tokens)
+	require.NotNil(t, result)
+	// 100*0.001 + 50*0.002 + 10*0.01 = 0.1 + 0.1 + 0.1 = 0.3
+	require.InDelta(t, 0.3, *result, 1e-12)
+}
+
+func TestTryModelFilePricing_WithCacheTokens(t *testing.T) {
+	bs := newTestBillingServiceWithPrices(map[string]*ModelPricing{
+		"claude-sonnet-4": {
+			InputPricePerToken:         0.001,
+			OutputPricePerToken:        0.002,
+			CacheCreationPricePerToken: 0.003,
+			CacheReadPricePerToken:     0.0005,
+		},
+	})
+	tokens := UsageTokens{
+		InputTokens:         100,
+		OutputTokens:        50,
+		CacheCreationTokens: 200,
+		CacheReadTokens:     300,
+	}
+	result := tryModelFilePricing(bs, "claude-sonnet-4", tokens)
+	require.NotNil(t, result)
+	// 100*0.001 + 50*0.002 + 200*0.003 + 300*0.0005
+	// = 0.1 + 0.1 + 0.6 + 0.15 = 0.95
+	require.InDelta(t, 0.95, *result, 1e-12)
+}

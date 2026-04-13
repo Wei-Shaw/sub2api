@@ -1,3 +1,5 @@
+//go:build unit
+
 package service
 
 import (
@@ -6,66 +8,98 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAccount_IsWebSearchEmulationEnabled_Enabled(t *testing.T) {
+func TestGetWebSearchEmulationMode_Enabled(t *testing.T) {
+	a := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{featureKeyWebSearchEmulation: "enabled"},
+	}
+	require.Equal(t, WebSearchModeEnabled, a.GetWebSearchEmulationMode())
+}
+
+func TestGetWebSearchEmulationMode_Disabled(t *testing.T) {
+	a := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{featureKeyWebSearchEmulation: "disabled"},
+	}
+	require.Equal(t, WebSearchModeDisabled, a.GetWebSearchEmulationMode())
+}
+
+func TestGetWebSearchEmulationMode_Default(t *testing.T) {
+	a := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{featureKeyWebSearchEmulation: "default"},
+	}
+	require.Equal(t, WebSearchModeDefault, a.GetWebSearchEmulationMode())
+}
+
+func TestGetWebSearchEmulationMode_UnknownString(t *testing.T) {
+	a := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{featureKeyWebSearchEmulation: "unknown"},
+	}
+	require.Equal(t, WebSearchModeDefault, a.GetWebSearchEmulationMode())
+}
+
+func TestGetWebSearchEmulationMode_OldBoolTrue(t *testing.T) {
 	a := &Account{
 		Platform: PlatformAnthropic,
 		Type:     AccountTypeAPIKey,
 		Extra:    map[string]any{featureKeyWebSearchEmulation: true},
 	}
-	require.True(t, a.IsWebSearchEmulationEnabled())
+	// bool is not a string, type assertion fails → default
+	require.Equal(t, WebSearchModeDefault, a.GetWebSearchEmulationMode())
 }
 
-func TestAccount_IsWebSearchEmulationEnabled_Disabled(t *testing.T) {
+func TestGetWebSearchEmulationMode_OldBoolFalse(t *testing.T) {
 	a := &Account{
 		Platform: PlatformAnthropic,
 		Type:     AccountTypeAPIKey,
 		Extra:    map[string]any{featureKeyWebSearchEmulation: false},
 	}
-	require.False(t, a.IsWebSearchEmulationEnabled())
+	require.Equal(t, WebSearchModeDefault, a.GetWebSearchEmulationMode())
 }
 
-func TestAccount_IsWebSearchEmulationEnabled_MissingField(t *testing.T) {
+func TestGetWebSearchEmulationMode_NilAccount(t *testing.T) {
+	var a *Account
+	require.Equal(t, WebSearchModeDefault, a.GetWebSearchEmulationMode())
+}
+
+func TestGetWebSearchEmulationMode_NilExtra(t *testing.T) {
+	a := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra:    nil,
+	}
+	require.Equal(t, WebSearchModeDefault, a.GetWebSearchEmulationMode())
+}
+
+func TestGetWebSearchEmulationMode_MissingField(t *testing.T) {
 	a := &Account{
 		Platform: PlatformAnthropic,
 		Type:     AccountTypeAPIKey,
 		Extra:    map[string]any{},
 	}
-	require.False(t, a.IsWebSearchEmulationEnabled())
+	require.Equal(t, WebSearchModeDefault, a.GetWebSearchEmulationMode())
 }
 
-func TestAccount_IsWebSearchEmulationEnabled_WrongType(t *testing.T) {
-	a := &Account{
-		Platform: PlatformAnthropic,
-		Type:     AccountTypeAPIKey,
-		Extra:    map[string]any{featureKeyWebSearchEmulation: "true"},
-	}
-	require.False(t, a.IsWebSearchEmulationEnabled())
-}
-
-func TestAccount_IsWebSearchEmulationEnabled_NilExtra(t *testing.T) {
-	a := &Account{Platform: PlatformAnthropic, Type: AccountTypeAPIKey, Extra: nil}
-	require.False(t, a.IsWebSearchEmulationEnabled())
-}
-
-func TestAccount_IsWebSearchEmulationEnabled_NilAccount(t *testing.T) {
-	var a *Account
-	require.False(t, a.IsWebSearchEmulationEnabled())
-}
-
-func TestAccount_IsWebSearchEmulationEnabled_NonAnthropicPlatform(t *testing.T) {
+func TestGetWebSearchEmulationMode_NonAnthropicPlatform(t *testing.T) {
 	a := &Account{
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeAPIKey,
-		Extra:    map[string]any{featureKeyWebSearchEmulation: true},
+		Extra:    map[string]any{featureKeyWebSearchEmulation: "enabled"},
 	}
-	require.False(t, a.IsWebSearchEmulationEnabled())
+	require.Equal(t, WebSearchModeDefault, a.GetWebSearchEmulationMode())
 }
 
-func TestAccount_IsWebSearchEmulationEnabled_NonAPIKeyType(t *testing.T) {
+func TestGetWebSearchEmulationMode_NonAPIKeyType(t *testing.T) {
 	a := &Account{
 		Platform: PlatformAnthropic,
 		Type:     AccountTypeOAuth,
-		Extra:    map[string]any{featureKeyWebSearchEmulation: true},
+		Extra:    map[string]any{featureKeyWebSearchEmulation: "enabled"},
 	}
-	require.False(t, a.IsWebSearchEmulationEnabled())
+	require.Equal(t, WebSearchModeDefault, a.GetWebSearchEmulationMode())
 }
