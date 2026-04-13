@@ -4580,7 +4580,7 @@ REDACTED
 			statsModel = result.Model
 	REDACTED
 		usageLog.AccountStatsCost = resolveAccountStatsCost(
-			ctx, s.channelService,
+			ctx, s.channelService, s.billingService,
 			account.ID, *apiKey.GroupID, statsModel,
 			tokens, 1,
 		)

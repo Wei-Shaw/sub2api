@@ -2337,7 +2337,11 @@
               {{ t('admin.accounts.anthropic.webSearchEmulationDesc') REDACTEDREDACTED
             </p>
           </div>
-          <Toggle v-model="webSearchEmulationEnabled" />
+          <select v-model="webSearchEmulationMode" class="input w-32 text-sm">
+            <option value="default">{{ t('admin.accounts.anthropic.webSearchDefault') REDACTEDREDACTED</option>
+            <option value="enabled">{{ t('admin.accounts.anthropic.webSearchEnabled') REDACTEDREDACTED</option>
+            <option value="disabled">{{ t('admin.accounts.anthropic.webSearchDisabled') REDACTEDREDACTED</option>
+          </select>
         </div>
       </div>
 
@@ -2846,7 +2850,6 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
-import Toggle from '@/components/common/Toggle.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
@@ -2997,7 +3000,7 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
-const webSearchEmulationEnabled = ref(false)
+const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
 
 // Load web search global state once
@@ -3331,7 +3334,7 @@ watch(
     REDACTED
     if (newPlatform !== 'anthropic') {
       anthropicPassthroughEnabled.value = false
-      webSearchEmulationEnabled.value = false
+      webSearchEmulationMode.value = 'default'
     REDACTED
     // Reset OAuth states
     oauth.resetState()
@@ -3351,7 +3354,7 @@ watch(
     REDACTED
     if (platform !== 'anthropic' || category !== 'apikey') {
       anthropicPassthroughEnabled.value = false
-      webSearchEmulationEnabled.value = false
+      webSearchEmulationMode.value = 'default'
     REDACTED
   REDACTED
 )
@@ -3716,7 +3719,7 @@ const resetForm = () => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   anthropicPassthroughEnabled.value = false
-  webSearchEmulationEnabled.value = false
+  webSearchEmulationMode.value = 'default'
   // Reset quota control state
   windowCostEnabled.value = false
   windowCostLimit.value = null
@@ -3804,10 +3807,10 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
   REDACTED else {
     delete extra.anthropic_passthrough
   REDACTED
-  if (webSearchEmulationEnabled.value) {
-    extra.web_search_emulation = true
-  REDACTED else {
+  if (webSearchEmulationMode.value === 'default') {
     delete extra.web_search_emulation
+  REDACTED else {
+    extra.web_search_emulation = webSearchEmulationMode.value
   REDACTED
 
   return Object.keys(extra).length > 0 ? extra : undefined
