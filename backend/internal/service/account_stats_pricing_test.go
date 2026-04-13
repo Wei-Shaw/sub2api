@@ -145,14 +145,14 @@ func TestFindPricingForModel(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name: "longer wildcard prefix wins over shorter",
+			name: "wildcard matches by config order (first match wins)",
 			list: []ChannelModelPricing{
 				{ID: 10, Models: []string{"claude-*"}},
 				{ID: 11, Models: []string{"claude-opus-*"}},
 			},
 			platform: "",
 			model:    "claude-opus-4",
-			wantID:   11, // "claude-opus-" (12 chars) > "claude-" (7 chars)
+			wantID:   10, // config order: "claude-*" is first and matches, so it wins
 		},
 		{
 			name: "shorter wildcard used when longer does not match",

@@ -211,6 +211,9 @@ func (c *Channel) Clone() *Channel {
 			cp.ModelMapping[platform] = inner
 		}
 	}
+	if c.FeaturesConfig != nil {
+		cp.FeaturesConfig = deepCopyFeaturesConfig(c.FeaturesConfig)
+	}
 	if c.AccountStatsPricingRules != nil {
 		cp.AccountStatsPricingRules = make([]AccountStatsPricingRule, len(c.AccountStatsPricingRules))
 		for i, rule := range c.AccountStatsPricingRules {
@@ -232,6 +235,19 @@ func (c *Channel) Clone() *Channel {
 		}
 	}
 	return &cp
+}
+
+// deepCopyFeaturesConfig creates a deep copy of FeaturesConfig to prevent cache pollution.
+func deepCopyFeaturesConfig(src map[string]any) map[string]any {
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		if inner, ok := v.(map[string]any); ok {
+			dst[k] = deepCopyFeaturesConfig(inner)
+		} else {
+			dst[k] = v
+		}
+	}
+	return dst
 }
 
 // ValidateIntervals 校验区间列表的合法性。

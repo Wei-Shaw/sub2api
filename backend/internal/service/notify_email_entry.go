@@ -6,7 +6,7 @@ import (
 )
 
 // NotifyEmailEntry represents a notification email with enable/disable and verification state.
-// Email="" is a placeholder for the "primary email" (user's registration email or first admin email).
+// All emails are user-managed; maximum 3 entries per user.
 type NotifyEmailEntry struct {
 	Email    string `json:"email"`
 	Disabled bool   `json:"disabled"`

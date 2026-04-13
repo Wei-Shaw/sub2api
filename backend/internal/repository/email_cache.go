@@ -156,9 +156,9 @@ func (c *emailCache) IncrNotifyCodeUserRate(ctx context.Context, userID int64, w
 	if err != nil {
 		return 0, err
 	}
-	// Set TTL only on first increment (when count becomes 1)
-	if count == 1 {
-		c.rdb.Expire(ctx, key, window)
+	// Always set TTL (idempotent) to avoid orphan keys if process crashes between INCR and EXPIRE.
+	if err := c.rdb.Expire(ctx, key, window).Err(); err != nil {
+		return count, fmt.Errorf("expire notify code rate key: %w", err)
 	}
 	return count, nil
 }

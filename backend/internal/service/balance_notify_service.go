@@ -309,7 +309,7 @@ func (s *BalanceNotifyService) sendBalanceLowEmails(recipients []string, userNam
 	if displayName == "" {
 		displayName = userEmail
 	}
-	subject := fmt.Sprintf("[%s] 余额不足提醒 / Balance Low Alert", siteName)
+	subject := fmt.Sprintf("[%s] 余额不足提醒 / Balance Low Alert", sanitizeEmailHeader(siteName))
 	body := s.buildBalanceLowEmailBody(html.EscapeString(displayName), balance, threshold, html.EscapeString(siteName))
 	s.sendEmails(recipients, subject, body, "user_email", userEmail, "balance", balance)
 }
@@ -321,9 +321,14 @@ func (s *BalanceNotifyService) sendQuotaAlertEmails(adminEmails []string, accoun
 		dimLabel = dimension
 	}
 
-	subject := fmt.Sprintf("[%s] 账号限额告警 / Account Quota Alert - %s", siteName, accountName)
+	subject := fmt.Sprintf("[%s] 账号限额告警 / Account Quota Alert - %s", sanitizeEmailHeader(siteName), sanitizeEmailHeader(accountName))
 	body := s.buildQuotaAlertEmailBody(html.EscapeString(accountName), html.EscapeString(dimLabel), used, limit, threshold, html.EscapeString(siteName))
 	s.sendEmails(adminEmails, subject, body, "account", accountName, "dimension", dimension)
+}
+
+// sanitizeEmailHeader removes CR/LF characters to prevent SMTP header injection.
+func sanitizeEmailHeader(s string) string {
+	return strings.NewReplacer("\r", "", "\n", "").Replace(s)
 }
 
 // balanceLowEmailTemplate is the HTML template for balance low notifications.

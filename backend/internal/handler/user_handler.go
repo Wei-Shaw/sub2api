@@ -217,7 +217,7 @@ func (h *UserHandler) RemoveNotifyEmail(c *gin.Context) {
 
 // ToggleNotifyEmailRequest represents the request to toggle a notify email's disabled state
 type ToggleNotifyEmailRequest struct {
-	Email    string `json:"email"`    // empty string for primary email placeholder
+	Email    string `json:"email" binding:"required,email"`
 	Disabled bool   `json:"disabled"`
 }
 

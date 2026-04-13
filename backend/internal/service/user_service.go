@@ -20,7 +20,7 @@ var (
 )
 
 const (
-	maxNotifyEmails = 3 // Total limit: primary (email="") + up to 2 extra
+	maxNotifyEmails = 3 // Maximum number of notification emails per user
 
 	// User-level rate limiting for notify email verification codes
 	notifyCodeUserRateLimit  = 5
