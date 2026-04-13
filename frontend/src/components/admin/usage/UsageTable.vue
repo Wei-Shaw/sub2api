@@ -155,7 +155,7 @@
               </div>
             </div>
             <div v-if="row.account_rate_multiplier != null" class="mt-0.5 text-[11px] text-gray-400">
-              A ${{ (row.total_cost * row.account_rate_multiplier).toFixed(6) REDACTEDREDACTED
+              A ${{ accountBilled(row).toFixed(6) REDACTEDREDACTED
             </div>
           </div>
         </template>
@@ -328,7 +328,11 @@
           <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
             <span class="text-gray-400">{{ t('usage.accountBilled') REDACTEDREDACTED</span>
             <span class="font-semibold text-green-400">
-              ${{ (((tooltipData?.total_cost || 0) * (tooltipData?.account_rate_multiplier ?? 1)) || 0).toFixed(6) REDACTEDREDACTED
+              ${{ accountBilled({
+                total_cost: tooltipData?.total_cost,
+                account_stats_cost: tooltipData?.account_stats_cost,
+                account_rate_multiplier: tooltipData?.account_rate_multiplier,
+              REDACTED).toFixed(6) REDACTEDREDACTED
             </span>
           </div>
         </div>
@@ -347,6 +351,13 @@ import { formatTokenPricePerMillion REDACTED from '@/utils/usagePricing'
 import { getUsageServiceTierLabel REDACTED from '@/utils/usageServiceTier'
 import { resolveUsageRequestType REDACTED from '@/utils/usageRequestType'
 import { getBillingModeLabel, getBillingModeBadgeClass REDACTED from '@/utils/billingMode'
+
+/** Compute the account-billed cost for display: (account_stats_cost ?? total_cost) * rate_multiplier */
+function accountBilled(row: { total_cost?: number | null; account_stats_cost?: number | null; account_rate_multiplier?: number | null REDACTED): number {
+  const base = row.account_stats_cost != null ? row.account_stats_cost : (row.total_cost ?? 0)
+  return base * (row.account_rate_multiplier ?? 1)
+REDACTED
+
 import DataTable from '@/components/common/DataTable.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'

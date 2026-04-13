@@ -1067,6 +1067,10 @@ export interface AdminUsageLog extends UsageLog {
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null
 
+  // 渠道 ID 和计费等级（仅管理员可见）
+  channel_id?: number | null
+  billing_tier?: string | null
+
   // 用户请求 IP（仅管理员可见）
   ip_address?: string | null
 
