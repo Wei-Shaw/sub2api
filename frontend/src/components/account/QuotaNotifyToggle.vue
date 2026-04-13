@@ -1,8 +1,4 @@
 <script setup lang="ts">
-import { useI18n } from 'vue-i18n'
-
-const { t } = useI18n()
-
 defineProps<{
   enabled: boolean | null
   threshold: number | null
@@ -18,7 +14,6 @@ const emit = defineEmits<{
 
 <template>
   <div class="flex items-center gap-1.5">
-    <label class="text-xs text-gray-500 whitespace-nowrap">{{ t('admin.accounts.quotaNotify.alert') }}</label>
     <button
       type="button"
       @click="emit('update:enabled', !enabled)"
@@ -43,12 +38,11 @@ const emit = defineEmits<{
         :max="thresholdType === 'percentage' ? 100 : undefined"
         :step="thresholdType === 'percentage' ? 1 : 0.01"
         class="input py-1 text-sm flex-1 min-w-0"
-        :placeholder="thresholdType === 'percentage' ? t('admin.accounts.quotaNotify.thresholdPlaceholder') : t('admin.accounts.quotaNotify.threshold')"
       />
       <select
         :value="thresholdType || 'fixed'"
         @change="emit('update:thresholdType', ($event.target as HTMLSelectElement).value)"
-        class="input py-1 text-xs w-12 flex-shrink-0 text-center"
+        class="input py-1 text-xs w-14 flex-shrink-0 text-center appearance-auto"
       >
         <option value="fixed">$</option>
         <option value="percentage">%</option>
