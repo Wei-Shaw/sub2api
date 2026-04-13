@@ -2804,7 +2804,7 @@ import type {
   WebSearchProviderConfig,
   WebSearchTestResult,
 REDACTED from '@/api/admin/settings'
-import type { AdminGroup, Proxy REDACTED from '@/types'
+import type { AdminGroup, Proxy, NotifyEmailEntry REDACTED from '@/types'
 import type { ProviderInstance REDACTED from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -3028,7 +3028,7 @@ const form = reactive<SettingsForm>({
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
   account_quota_notify_enabled: false,
-  account_quota_notify_emails: [] as { email: string; disabled: boolean; verified: boolean REDACTED[]
+  account_quota_notify_emails: [] as NotifyEmailEntry[]
 REDACTED)
 
 // Proxies for web search emulation ProxySelector

@@ -192,7 +192,7 @@
           <template #cell-billing_mode="{ row REDACTED">
             <span class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium"
                   :class="getBillingModeBadgeClass(row.billing_mode)">
-              {{ getBillingModeLabel(row.billing_mode) REDACTEDREDACTED
+              {{ getBillingModeLabel(row.billing_mode, t) REDACTEDREDACTED
             </span>
           </template>
 
@@ -524,6 +524,7 @@ import { formatCacheTokens, formatMultiplier REDACTED from '@/utils/formatters'
 import { formatTokenPricePerMillion REDACTED from '@/utils/usagePricing'
 import { getUsageServiceTierLabel REDACTED from '@/utils/usageServiceTier'
 import { resolveUsageRequestType REDACTED from '@/utils/usageRequestType'
+import { getBillingModeLabel, getBillingModeBadgeClass REDACTED from '@/utils/billingMode'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
@@ -644,17 +645,6 @@ const getRequestTypeBadgeClass = (log: UsageLog): string => {
   return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
 REDACTED
 
-const getBillingModeLabel = (mode: string | null | undefined): string => {
-  if (mode === 'per_request') return t('admin.usage.billingModePerRequest')
-  if (mode === 'image') return t('admin.usage.billingModeImage')
-  return t('admin.usage.billingModeToken')
-REDACTED
-
-const getBillingModeBadgeClass = (mode: string | null | undefined): string => {
-  if (mode === 'per_request') return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
-  if (mode === 'image') return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200'
-  return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-REDACTED
 
 const getRequestTypeExportText = (log: UsageLog): string => {
   const requestType = resolveUsageRequestType(log)
@@ -866,7 +856,7 @@ const exportToCSV = async () => {
         formatReasoningEffort(log.reasoning_effort),
         log.inbound_endpoint || '',
         getRequestTypeExportText(log),
-        getBillingModeLabel(log.billing_mode),
+        getBillingModeLabel(log.billing_mode, t),
         log.input_tokens,
         log.output_tokens,
         log.cache_read_tokens,

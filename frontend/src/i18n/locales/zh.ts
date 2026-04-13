@@ -1968,7 +1968,8 @@ export default {
         searchAccountPlaceholder: '搜索账号...',
         ruleAccountsHint: '留空表示匹配所有账号',
         ruleModelPricing: '模型定价',
-        noGroupsInChannel: '上方平台标签页中未选择分组'
+        noGroupsInChannel: '上方平台标签页中未选择分组',
+        unnamed: '未命名'
       REDACTED
     REDACTED,
 
