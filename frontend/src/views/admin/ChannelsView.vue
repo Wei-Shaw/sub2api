@@ -464,7 +464,7 @@
                         : 'border-gray-200 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700'"
                     >
                       <input type="checkbox" :checked="rule.group_ids.includes(gid)" class="h-3 w-3 rounded border-gray-300 text-primary-600 focus:ring-primary-500" @change="rule.group_ids.includes(gid) ? rule.group_ids.splice(rule.group_ids.indexOf(gid), 1) : rule.group_ids.push(gid)" />
-                      <span>{{ getGroupNameById(gid) }}</span>
+                      <span :class="['font-medium', getPlatformTextColor(section.platform)]">{{ getGroupNameById(gid) }}</span>
                     </label>
                   </div>
                   <p v-if="section.group_ids.length === 0" class="mt-1 text-xs text-gray-400">
@@ -481,7 +481,7 @@
                       :key="accountId"
                       class="inline-flex items-center gap-1 rounded-md border border-primary-300 bg-primary-50 px-2 py-0.5 text-xs dark:border-primary-700 dark:bg-primary-900/20"
                     >
-                      <span>{{ getRuleAccountLabel(accountId) }}</span>
+                      <span :class="['font-medium', getPlatformTextColor(section.platform)]">{{ getRuleAccountLabel(accountId) }}</span>
                       <button type="button" @click="removeRuleAccount(rule, accountId)" class="text-gray-400 hover:text-red-500">
                         <Icon name="x" size="xs" />
                       </button>
