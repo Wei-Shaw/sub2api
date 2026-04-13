@@ -10,10 +10,12 @@ import (
 //
 // 优先级（先命中为准）：
 //  1. 自定义规则（始终尝试，不依赖 ApplyPricingToAccountStats 开关）
-//  2. ApplyPricingToAccountStats 启用时，用模型定价文件（LiteLLM）中上游模型的标准价格计算
-//  3. nil → 走默认公式
+//  2. ApplyPricingToAccountStats 启用时，直接使用本次请求的客户计费（倍率前的 totalCost）
+//  3. 模型定价文件（LiteLLM）中上游模型的默认价格
+//  4. nil → 走默认公式（total_cost × account_rate_multiplier）
 //
 // upstreamModel 是最终发往上游的模型 ID。
+// totalCost 是本次请求的客户计费（倍率前），用于优先级 2。
 func resolveAccountStatsCost(
 	ctx context.Context,
 	channelService *ChannelService,
@@ -23,6 +25,7 @@ func resolveAccountStatsCost(
 	upstreamModel string,
 	tokens UsageTokens,
 	requestCount int,
+	totalCost float64,
 ) *float64 {
 	if channelService == nil || upstreamModel == "" {
 		return nil
@@ -39,8 +42,17 @@ func resolveAccountStatsCost(
 		return cost
 	}
 
-	// 优先级 2：模型定价文件（LiteLLM/fallback）中上游模型的标准价格
-	if channel.ApplyPricingToAccountStats && billingService != nil {
+	// 优先级 2：渠道开启"应用模型定价到账号统计"时，直接使用客户计费（倍率前）
+	if channel.ApplyPricingToAccountStats {
+		cost := totalCost
+		if cost <= 0 {
+			return nil
+		}
+		return &cost
+	}
+
+	// 优先级 3：模型定价文件（LiteLLM）默认价格
+	if billingService != nil {
 		return tryModelFilePricing(billingService, upstreamModel, tokens)
 	}
 
