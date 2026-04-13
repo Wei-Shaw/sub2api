@@ -16,8 +16,26 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
 )
+
+// cursorResponsesUnsupportedFields are top-level Responses API parameters that
+// Codex upstreams reject with "Unsupported parameter: ...". They must be
+// stripped when forwarding a raw client body through the Responses-shape
+// short-circuit in ForwardAsChatCompletions (see isResponsesShape branch).
+// The normal Chat Completions → Responses conversion path is unaffected
+// because ChatCompletionsRequest has no fields for these parameters — unknown
+// fields are dropped naturally by json.Unmarshal. Kept semantically in sync
+// with the list in openai_gateway_service.go:2034 used by the /v1/responses
+// passthrough path.
+var cursorResponsesUnsupportedFields = []string{
+	"prompt_cache_retention",
+	"safety_identifier",
+	"metadata",
+	"stream_options",
+}
 
 // ForwardAsChatCompletions accepts a Chat Completions request body, converts it
 // to OpenAI Responses API format, forwards to the OpenAI upstream, and converts
@@ -55,13 +73,62 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		compatPromptCacheInjected = promptCacheKey != ""
 	}
 
-	// 3. Convert to Responses and forward
-	// ChatCompletionsToResponses always sets Stream=true (upstream always streams).
-	responsesReq, err := apicompat.ChatCompletionsToResponses(&chatReq)
-	if err != nil {
-		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
+	// 3. Build the upstream (Responses API) body.
+	//
+	// Cursor compatibility: some clients (notably Cursor cloud) send Responses
+	// API shaped bodies — `input: [...]` with no `messages` field — to the
+	// /v1/chat/completions URL. Running those through ChatCompletionsToResponses
+	// would silently drop Cursor's `input` array (the struct has no Input field)
+	// and produce `input: null`, which Codex upstreams reject with
+	// "Invalid type for 'input': expected a string, but got an object".
+	//
+	// Detect that shape and forward the raw body as-is, only rewriting `model`
+	// to the resolved upstream model. The downstream codex OAuth transform will
+	// still normalize store/stream/instructions/etc.
+	isResponsesShape := !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists()
+
+	var (
+		responsesReq  *apicompat.ResponsesRequest
+		responsesBody []byte
+		err           error
+	)
+	if isResponsesShape {
+		responsesBody, err = sjson.SetBytes(body, "model", upstreamModel)
+		if err != nil {
+			return nil, fmt.Errorf("rewrite model in responses-shape body: %w", err)
+		}
+		// Strip Responses API parameters that no Codex upstream accepts.
+		// Because this branch forwards the raw body (the normal path rebuilds
+		// it from ChatCompletionsRequest and drops unknown fields naturally),
+		// we must filter these fields explicitly here — otherwise the upstream
+		// rejects the request with "Unsupported parameter: ...".
+		for _, field := range cursorResponsesUnsupportedFields {
+			if stripped, derr := sjson.DeleteBytes(responsesBody, field); derr == nil {
+				responsesBody = stripped
+			}
+		}
+		// Minimal stub populated from the raw body so downstream billing
+		// propagation (ServiceTier, ReasoningEffort) keeps working.
+		responsesReq = &apicompat.ResponsesRequest{
+			Model:       upstreamModel,
+			ServiceTier: gjson.GetBytes(responsesBody, "service_tier").String(),
+		}
+		if effort := gjson.GetBytes(responsesBody, "reasoning.effort").String(); effort != "" {
+			responsesReq.Reasoning = &apicompat.ResponsesReasoning{Effort: effort}
+		}
+	} else {
+		// Normal path: convert Chat Completions → Responses.
+		// ChatCompletionsToResponses always sets Stream=true (upstream always streams).
+		responsesReq, err = apicompat.ChatCompletionsToResponses(&chatReq)
+		if err != nil {
+			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
+		}
+		responsesReq.Model = upstreamModel
+		responsesBody, err = json.Marshal(responsesReq)
+		if err != nil {
+			return nil, fmt.Errorf("marshal responses request: %w", err)
+		}
 	}
-	responsesReq.Model = upstreamModel
 
 	logFields := []zap.Field{
 		zap.Int64("account_id", account.ID),
@@ -69,6 +136,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		zap.String("billing_model", billingModel),
 		zap.String("upstream_model", upstreamModel),
 		zap.Bool("stream", clientStream),
+		zap.Bool("responses_shape", isResponsesShape),
 	}
 	if compatPromptCacheInjected {
 		logFields = append(logFields,
@@ -77,12 +145,6 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		)
 	}
 	logger.L().Debug("openai chat_completions: model mapping applied", logFields...)
-
-	// 4. Marshal Responses request body, then apply OAuth codex transform
-	responsesBody, err := json.Marshal(responsesReq)
-	if err != nil {
-		return nil, fmt.Errorf("marshal responses request: %w", err)
-	}
 
 	{
 		var reqBody map[string]any
