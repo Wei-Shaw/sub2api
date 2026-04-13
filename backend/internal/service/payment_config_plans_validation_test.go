@@ -131,9 +131,9 @@ REDACTED
 
 // --- validatePlanPatch: other fields ---
 
-func ptrStr(s string) *string    { return &s REDACTED
-func ptrInt(i int) *int          { return &i REDACTED
-func ptrInt64(i int64) *int64    { return &i REDACTED
+func ptrStr(s string) *string     { return &s REDACTED
+func ptrInt(i int) *int           { return &i REDACTED
+func ptrInt64(i int64) *int64     { return &i REDACTED
 func ptrFloat(f float64) *float64 { return &f REDACTED
 
 func TestValidatePlanPatch_EmptyName(t *testing.T) {

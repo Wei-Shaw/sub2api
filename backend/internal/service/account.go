@@ -1533,39 +1533,48 @@ func (a *Account) QuotaNotifyConfig(dim string) (enabled bool, threshold float64
 REDACTED
 
 func (a *Account) GetQuotaNotifyDailyEnabled() bool {
-	e, _, _ := a.QuotaNotifyConfig(quotaDimDaily); return e
+	e, _, _ := a.QuotaNotifyConfig(quotaDimDaily)
+	return e
 REDACTED
 
 func (a *Account) GetQuotaNotifyDailyThreshold() float64 {
-	_, t, _ := a.QuotaNotifyConfig(quotaDimDaily); return t
+	_, t, _ := a.QuotaNotifyConfig(quotaDimDaily)
+	return t
 REDACTED
 
 func (a *Account) GetQuotaNotifyDailyThresholdType() string {
-	_, _, tt := a.QuotaNotifyConfig(quotaDimDaily); return tt
+	_, _, tt := a.QuotaNotifyConfig(quotaDimDaily)
+	return tt
 REDACTED
 
 func (a *Account) GetQuotaNotifyWeeklyEnabled() bool {
-	e, _, _ := a.QuotaNotifyConfig(quotaDimWeekly); return e
+	e, _, _ := a.QuotaNotifyConfig(quotaDimWeekly)
+	return e
 REDACTED
 
 func (a *Account) GetQuotaNotifyWeeklyThreshold() float64 {
-	_, t, _ := a.QuotaNotifyConfig(quotaDimWeekly); return t
+	_, t, _ := a.QuotaNotifyConfig(quotaDimWeekly)
+	return t
 REDACTED
 
 func (a *Account) GetQuotaNotifyWeeklyThresholdType() string {
-	_, _, tt := a.QuotaNotifyConfig(quotaDimWeekly); return tt
+	_, _, tt := a.QuotaNotifyConfig(quotaDimWeekly)
+	return tt
 REDACTED
 
 func (a *Account) GetQuotaNotifyTotalEnabled() bool {
-	e, _, _ := a.QuotaNotifyConfig(quotaDimTotal); return e
+	e, _, _ := a.QuotaNotifyConfig(quotaDimTotal)
+	return e
 REDACTED
 
 func (a *Account) GetQuotaNotifyTotalThreshold() float64 {
-	_, t, _ := a.QuotaNotifyConfig(quotaDimTotal); return t
+	_, t, _ := a.QuotaNotifyConfig(quotaDimTotal)
+	return t
 REDACTED
 
 func (a *Account) GetQuotaNotifyTotalThresholdType() string {
-	_, _, tt := a.QuotaNotifyConfig(quotaDimTotal); return tt
+	_, _, tt := a.QuotaNotifyConfig(quotaDimTotal)
+	return tt
 REDACTED
 
 // nextFixedDailyReset 计算在 after 之后的下一个每日固定重置时间点

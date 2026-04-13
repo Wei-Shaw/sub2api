@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	ErrUserNotFound           = infraerrors.NotFound("USER_NOT_FOUND", "user not found")
-	ErrPasswordIncorrect      = infraerrors.BadRequest("PASSWORD_INCORRECT", "current password is incorrect")
-	ErrInsufficientPerms      = infraerrors.Forbidden("INSUFFICIENT_PERMISSIONS", "insufficient permissions")
+	ErrUserNotFound            = infraerrors.NotFound("USER_NOT_FOUND", "user not found")
+	ErrPasswordIncorrect       = infraerrors.BadRequest("PASSWORD_INCORRECT", "current password is incorrect")
+	ErrInsufficientPerms       = infraerrors.Forbidden("INSUFFICIENT_PERMISSIONS", "insufficient permissions")
 	ErrNotifyCodeUserRateLimit = infraerrors.TooManyRequests("NOTIFY_CODE_USER_RATE_LIMIT", "too many verification codes requested, please try again later")
 )
 
