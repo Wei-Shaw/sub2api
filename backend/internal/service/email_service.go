@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"net"
 	"net/smtp"
 	"net/url"
 	"strconv"
@@ -152,6 +153,9 @@ REDACTED
 	return s.SendEmailWithConfig(config, to, subject, body)
 REDACTED
 
+const smtpDialTimeout = 10 * time.Second
+const smtpIOTimeout = 20 * time.Second
+
 // SendEmailWithConfig 使用指定配置发送邮件
 func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
 	// Sanitize all SMTP header fields to prevent header injection (CR/LF removal).
@@ -173,7 +177,46 @@ REDACTED
 		return s.sendMailTLS(addr, auth, config.From, to, []byte(msg), config.Host)
 REDACTED
 
-	return smtp.SendMail(addr, auth, config.From, []string{toREDACTED, []byte(msg))
+	return s.sendMailPlain(addr, auth, config.From, to, []byte(msg), config.Host)
+REDACTED
+
+// sendMailPlain sends mail without TLS using a dialer with timeout.
+func (s *EmailService) sendMailPlain(addr string, auth smtp.Auth, from, to string, msg []byte, host string) error {
+	dialer := &net.Dialer{Timeout: smtpDialTimeoutREDACTED
+	conn, err := dialer.Dial("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("smtp dial: %w", err)
+REDACTED
+	_ = conn.SetDeadline(time.Now().Add(smtpIOTimeout))
+	defer func() { _ = conn.Close() REDACTED()
+
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return fmt.Errorf("new smtp client: %w", err)
+REDACTED
+	defer func() { _ = client.Close() REDACTED()
+
+	if err = client.Auth(auth); err != nil {
+		return fmt.Errorf("smtp auth: %w", err)
+REDACTED
+	if err = client.Mail(from); err != nil {
+		return fmt.Errorf("smtp mail: %w", err)
+REDACTED
+	if err = client.Rcpt(to); err != nil {
+		return fmt.Errorf("smtp rcpt: %w", err)
+REDACTED
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("smtp data: %w", err)
+REDACTED
+	if _, err = w.Write(msg); err != nil {
+		return fmt.Errorf("write msg: %w", err)
+REDACTED
+	if err = w.Close(); err != nil {
+		return fmt.Errorf("close writer: %w", err)
+REDACTED
+	_ = client.Quit()
+	return nil
 REDACTED
 
 // sendMailTLS 使用TLS发送邮件
@@ -184,10 +227,12 @@ func (s *EmailService) sendMailTLS(addr string, auth smtp.Auth, from, to string,
 		MinVersion: tls.VersionTLS12,
 REDACTED
 
-	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	dialer := &net.Dialer{Timeout: smtpDialTimeoutREDACTED
+	conn, err := tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
 	if err != nil {
 		return fmt.Errorf("tls dial: %w", err)
 REDACTED
+	_ = conn.SetDeadline(time.Now().Add(smtpIOTimeout))
 	defer func() { _ = conn.Close() REDACTED()
 
 	client, err := smtp.NewClient(conn, host)
