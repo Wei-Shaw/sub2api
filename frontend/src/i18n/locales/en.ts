@@ -5413,6 +5413,8 @@ export default {
       tabUserSubs: 'User Subscriptions',
       selectGroup: 'Select a group',
       groupRequired: 'Please select a subscription group',
+      priceRequired: 'Price must be greater than 0',
+      validityDaysRequired: 'Validity days must be greater than 0',
       groupMissing: 'Missing',
       groupInfo: 'Group Info',
       platform: 'Platform',

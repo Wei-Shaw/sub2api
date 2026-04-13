@@ -281,6 +281,14 @@ async function handleSavePlan() {
     appStore.showError(t('payment.admin.groupRequired'))
     return
   }
+  if (!planForm.price || planForm.price <= 0) {
+    appStore.showError(t('payment.admin.priceRequired'))
+    return
+  }
+  if (!planForm.validity_days || planForm.validity_days < 1) {
+    appStore.showError(t('payment.admin.validityDaysRequired'))
+    return
+  }
   planSaving.value = true
   try {
     const data = buildPlanPayload()

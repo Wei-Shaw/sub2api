@@ -5608,6 +5608,8 @@ export default {
       tabUserSubs: '用户订阅',
       selectGroup: '请选择分组',
       groupRequired: '请选择订阅分组',
+      priceRequired: '价格必须大于 0',
+      validityDaysRequired: '有效期天数必须大于 0',
       groupMissing: '缺失',
       groupInfo: '分组信息',
       platform: '平台',
