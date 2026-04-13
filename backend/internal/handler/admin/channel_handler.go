@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -355,6 +356,11 @@ func (h *ChannelHandler) Create(c *gin.Context) {
 
 	var statsRules []service.AccountStatsPricingRule
 	for i, r := range req.AccountStatsPricingRules {
+		if len(r.GroupIDs) == 0 && len(r.AccountIDs) == 0 {
+			response.ErrorFrom(c, infraerrors.BadRequest("PRICING_RULE_EMPTY_SCOPE",
+				fmt.Sprintf("pricing rule #%d must have at least one group or account", i+1)))
+			return
+		}
 		rule := accountStatsPricingRuleRequestToService(r)
 		rule.SortOrder = i
 		statsRules = append(statsRules, rule)
@@ -415,6 +421,11 @@ func (h *ChannelHandler) Update(c *gin.Context) {
 	if req.AccountStatsPricingRules != nil {
 		statsRules := make([]service.AccountStatsPricingRule, 0, len(*req.AccountStatsPricingRules))
 		for i, r := range *req.AccountStatsPricingRules {
+			if len(r.GroupIDs) == 0 && len(r.AccountIDs) == 0 {
+				response.ErrorFrom(c, infraerrors.BadRequest("PRICING_RULE_EMPTY_SCOPE",
+					fmt.Sprintf("pricing rule #%d must have at least one group or account", i+1)))
+				return
+			}
 			rule := accountStatsPricingRuleRequestToService(r)
 			rule.SortOrder = i
 			statsRules = append(statsRules, rule)

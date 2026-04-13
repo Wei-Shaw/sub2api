@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -24,8 +25,10 @@ func verifyCodeKey(email string) string {
 }
 
 // notifyVerifyKey generates the Redis key for notify email verification code.
+// Email is lowercased to prevent case-sensitive key mismatch (the business layer
+// uses strings.EqualFold for comparison).
 func notifyVerifyKey(email string) string {
-	return notifyVerifyKeyPrefix + email
+	return notifyVerifyKeyPrefix + strings.ToLower(email)
 }
 
 // passwordResetKey generates the Redis key for password reset token.

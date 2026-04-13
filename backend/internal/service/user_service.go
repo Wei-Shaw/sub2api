@@ -291,6 +291,12 @@ func (s *UserService) SendNotifyEmailCode(ctx context.Context, userID int64, ema
 		return fmt.Errorf("generate code: %w", err)
 	}
 
+	// Send email first — if SMTP fails, don't write cache or increment counters,
+	// so the user is not locked out by cooldown/rate-limit for a code they never received.
+	if err := s.sendNotifyVerifyEmail(ctx, emailService, email, code); err != nil {
+		return err
+	}
+
 	if err := saveNotifyVerifyCode(ctx, cache, email, code); err != nil {
 		return err
 	}
@@ -300,7 +306,7 @@ func (s *UserService) SendNotifyEmailCode(ctx context.Context, userID int64, ema
 		slog.Error("failed to increment notify code user rate", "user_id", userID, "error", err)
 	}
 
-	return s.sendNotifyVerifyEmail(ctx, emailService, email, code)
+	return nil
 }
 
 // checkNotifyCodeRateLimit checks both email cooldown and user-level rate limit.

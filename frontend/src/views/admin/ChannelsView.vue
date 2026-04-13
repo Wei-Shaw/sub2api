@@ -511,7 +511,7 @@
                         :class="{ 'opacity-50': rule.account_ids.includes(account.id) }"
                         :disabled="rule.account_ids.includes(account.id)"
                       >
-                        <span>{{ account.name }}</span>
+                        <span :class="platformTextClass(account.platform)">{{ account.name }}</span>
                         <span class="ml-2 text-xs text-gray-400">#{{ account.id }}</span>
                       </button>
                     </div>
@@ -595,6 +595,7 @@ import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
+import { platformTextClass } from '@/utils/platformColors'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -911,7 +912,7 @@ function getGroupNameById(groupId: number): string {
 }
 
 // ── Account search for pricing rules ──
-interface SimpleAccount { id: number; name: string }
+interface SimpleAccount { id: number; name: string; platform: string }
 
 const ruleAccountSearchKeyword = ref<Record<string, string>>({})
 const ruleAccountSearchResults = ref<Record<string, SimpleAccount[]>>({})
@@ -924,7 +925,7 @@ const ruleAccountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
   search: async (keyword, { key, signal }) => {
     const platform = key.split('-')[0]
     const res = await adminAPI.accounts.list(1, 20, { platform, search: keyword }, { signal })
-    return res.items.map(a => ({ id: a.id, name: a.name }))
+    return res.items.map(a => ({ id: a.id, name: a.name, platform: a.platform }))
   },
   onSuccess: (key, result) => { ruleAccountSearchResults.value[key] = result },
   onError: (key) => { ruleAccountSearchResults.value[key] = [] },
