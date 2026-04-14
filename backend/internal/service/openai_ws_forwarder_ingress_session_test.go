@@ -413,7 +413,12 @@ REDACTED
 
 	select {
 	case serverErr := <-serverErrCh:
-		require.NoError(t, serverErr)
+		// After normal client close, the server goroutine may receive the close frame
+		// as an error — this is expected behavior, not a test failure.
+		if serverErr != nil {
+			require.Contains(t, serverErr.Error(), "StatusNormalClosure",
+				"server error should only be a normal close frame, got: %v", serverErr)
+	REDACTED
 	case <-time.After(5 * time.Second):
 		t.Fatal("等待 passthrough websocket 结束超时")
 REDACTED

@@ -102,6 +102,8 @@ REDACTED)
 REDACTED)
 REDACTED
 
+// TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError
+// OpenAI OAuth 401 缓存失效出错时仍走 temp_unschedulable
 func TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError(t *testing.T) {
 	repo := &rateLimitAccountRepoStub{REDACTED
 	invalidator := &tokenCacheInvalidatorRecorder{err: errors.New("boom")REDACTED
@@ -109,7 +111,7 @@ func TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError(t *testin
 	service.SetTokenCacheInvalidator(invalidator)
 	account := &Account{
 		ID:       101,
-REDACTED
+		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
 REDACTED
 
