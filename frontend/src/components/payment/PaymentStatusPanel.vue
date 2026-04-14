@@ -22,7 +22,11 @@
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') REDACTEDREDACTED</span>
-                <span class="font-medium text-gray-900 dark:text-white">${{ paidOrder.pay_amount.toFixed(2) REDACTEDREDACTED</span>
+                <span class="font-medium text-gray-900 dark:text-white">{{ paidOrder.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ paidOrder.amount.toFixed(2) REDACTEDREDACTED</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') REDACTEDREDACTED</span>
+                <span class="font-medium text-gray-900 dark:text-white">¥{{ paidOrder.pay_amount.toFixed(2) REDACTEDREDACTED</span>
               </div>
             </div>
           </div>

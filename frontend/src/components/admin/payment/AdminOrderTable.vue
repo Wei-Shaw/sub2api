@@ -53,9 +53,9 @@
 
       <template #cell-amount="{ value, row REDACTED">
         <div class="text-sm">
-          <span class="font-medium text-gray-900 dark:text-white">${{ value.toFixed(2) REDACTEDREDACTED</span>
+          <span class="font-medium text-gray-900 dark:text-white">{{ row.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ value.toFixed(2) REDACTEDREDACTED</span>
           <span v-if="row.pay_amount !== value" class="ml-1 text-xs text-gray-500">
-            ({{ t('payment.orders.payAmount') REDACTEDREDACTED: ${{ row.pay_amount.toFixed(2) REDACTEDREDACTED)
+            ({{ t('payment.orders.payAmount') REDACTEDREDACTED: ¥{{ row.pay_amount.toFixed(2) REDACTEDREDACTED)
           </span>
         </div>
       </template>

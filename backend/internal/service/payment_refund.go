@@ -113,11 +113,7 @@ REDACTED
 	if amt-o.Amount > amountToleranceCNY {
 		return nil, nil, infraerrors.BadRequest("REFUND_AMOUNT_EXCEEDED", "refund amount exceeds recharge")
 REDACTED
-	// Full refund: use actual pay_amount for gateway (includes fees)
-	ga := amt
-	if math.Abs(amt-o.Amount) <= amountToleranceCNY {
-		ga = o.PayAmount
-REDACTED
+	ga := calculateGatewayRefundAmount(o.Amount, o.PayAmount, amt)
 	rr := strings.TrimSpace(reason)
 	if rr == "" && o.RefundRequestReason != nil {
 		rr = *o.RefundRequestReason

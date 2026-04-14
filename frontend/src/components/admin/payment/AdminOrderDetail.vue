@@ -19,11 +19,11 @@
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') REDACTEDREDACTED</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">${{ order.amount.toFixed(2) REDACTEDREDACTED</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ order.amount.toFixed(2) REDACTEDREDACTED</p>
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') REDACTEDREDACTED</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">${{ order.pay_amount.toFixed(2) REDACTEDREDACTED</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ order.pay_amount.toFixed(2) REDACTEDREDACTED</p>
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') REDACTEDREDACTED</p>
@@ -73,7 +73,7 @@
         <div class="grid grid-cols-2 gap-2 text-sm">
           <div>
             <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundAmount') REDACTEDREDACTED:</span>
-            <span class="ml-1 font-medium text-red-700 dark:text-red-300">${{ order.refund_amount.toFixed(2) REDACTEDREDACTED</span>
+            <span class="ml-1 font-medium text-red-700 dark:text-red-300">{{ order.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ order.refund_amount.toFixed(2) REDACTEDREDACTED</span>
           </div>
           <div v-if="order.refund_reason" class="col-span-2">
             <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundReason') REDACTEDREDACTED:</span>
