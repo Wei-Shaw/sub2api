@@ -616,6 +616,7 @@ REDACTED
 		{Name: "sort_order", Type: field.TypeInt, Default: 0REDACTED,
 		{Name: "limits", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "refund_enabled", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "allow_user_refund", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 REDACTED
