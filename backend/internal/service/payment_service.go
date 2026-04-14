@@ -288,7 +288,6 @@ func psComputeValidityDays(days int, unit string) int {
 	}
 }
 
-
 func psStartOfDayUTC(t time.Time) time.Time {
 	y, m, d := t.UTC().Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
