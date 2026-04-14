@@ -58,7 +58,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if err != nil {
 		return nil, err
 	}
-	resp, err := s.invokeProvider(ctx, order, req, cfg, payAmountStr, payAmount, plan)
+	resp, err := s.invokeProvider(ctx, order, req, cfg, limitAmount, payAmountStr, payAmount, plan)
 	if err != nil {
 		_, _ = s.entClient.PaymentOrder.UpdateOneID(order.ID).
 			SetStatus(OrderStatusFailed).
@@ -196,7 +196,7 @@ func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, user
 	return nil
 }
 
-func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.PaymentOrder, req CreateOrderRequest, cfg *PaymentConfig, payAmountStr string, payAmount float64, plan *dbent.SubscriptionPlan) (*CreateOrderResponse, error) {
+func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.PaymentOrder, req CreateOrderRequest, cfg *PaymentConfig, limitAmount float64, payAmountStr string, payAmount float64, plan *dbent.SubscriptionPlan) (*CreateOrderResponse, error) {
 	// Select an instance across all providers that support the requested payment type.
 	// This enables cross-provider load balancing (e.g. EasyPay + Alipay direct for "alipay").
 	sel, err := s.loadBalancer.SelectInstance(ctx, "", req.PaymentType, payment.Strategy(cfg.LoadBalanceStrategy), payAmount)
@@ -210,7 +210,7 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 	if err != nil {
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", "payment method is temporarily unavailable")
 	}
-	subject := s.buildPaymentSubject(plan, payAmountStr, cfg)
+	subject := s.buildPaymentSubject(plan, limitAmount, cfg)
 	outTradeNo := order.OutTradeNo
 	pr, err := prov.CreatePayment(ctx, payment.CreatePaymentRequest{OrderID: outTradeNo, Amount: payAmountStr, PaymentType: req.PaymentType, Subject: subject, ClientIP: req.ClientIP, IsMobile: req.IsMobile, InstanceSubMethods: sel.SupportedTypes})
 	if err != nil {
@@ -231,19 +231,20 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 	return &CreateOrderResponse{OrderID: order.ID, Amount: order.Amount, PayAmount: payAmount, FeeRate: order.FeeRate, Status: OrderStatusPending, PaymentType: req.PaymentType, PayURL: pr.PayURL, QRCode: pr.QRCode, ClientSecret: pr.ClientSecret, ExpiresAt: order.ExpiresAt, PaymentMode: sel.PaymentMode}, nil
 }
 
-func (s *PaymentService) buildPaymentSubject(plan *dbent.SubscriptionPlan, payAmountStr string, cfg *PaymentConfig) string {
+func (s *PaymentService) buildPaymentSubject(plan *dbent.SubscriptionPlan, limitAmount float64, cfg *PaymentConfig) string {
 	if plan != nil {
 		if plan.ProductName != "" {
 			return plan.ProductName
 		}
 		return "Sub2API Subscription " + plan.Name
 	}
+	amountStr := strconv.FormatFloat(limitAmount, 'f', 2, 64)
 	pf := strings.TrimSpace(cfg.ProductNamePrefix)
 	sf := strings.TrimSpace(cfg.ProductNameSuffix)
 	if pf != "" || sf != "" {
-		return strings.TrimSpace(pf + " " + payAmountStr + " " + sf)
+		return strings.TrimSpace(pf + " " + amountStr + " " + sf)
 	}
-	return "Sub2API " + payAmountStr + " CNY"
+	return "Sub2API " + amountStr + " CNY"
 }
 
 // --- Order Queries ---
