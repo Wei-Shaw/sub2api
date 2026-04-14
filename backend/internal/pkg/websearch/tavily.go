@@ -60,7 +60,7 @@ REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("tavily: request failed: %w", err)
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {

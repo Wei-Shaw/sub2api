@@ -412,10 +412,10 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_SubscriptionGroup_Blocked(t *test
 	userRepo := &userRepoStubForGroupUpdate{REDACTED
 	svc := &adminServiceImpl{apiKeyRepo: apiKeyRepo, groupRepo: groupRepo, userRepo: userRepoREDACTED
 
-	// 订阅类型分组应被阻止绑定
+	// userSubRepo is nil → SUBSCRIPTION_REPOSITORY_UNAVAILABLE
 	_, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10))
 REDACTED
-	require.Equal(t, "SUBSCRIPTION_GROUP_NOT_ALLOWED", infraerrors.Reason(err))
+	require.Equal(t, "SUBSCRIPTION_REPOSITORY_UNAVAILABLE", infraerrors.Reason(err))
 	require.False(t, userRepo.addGroupCalled)
 REDACTED
 

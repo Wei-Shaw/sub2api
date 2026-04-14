@@ -168,6 +168,7 @@ REDACTED
 		nil, // tlsFPProfileService
 		nil, // channelService
 		nil, // resolver
+		nil, // balanceNotifyService
 	)
 
 	// RunModeSimple：跳过计费检查，避免引入 repo/cache 依赖。

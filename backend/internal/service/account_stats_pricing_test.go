@@ -147,14 +147,14 @@ REDACTED{
 			wantNil: true,
 	REDACTED,
 		{
-			name: "wildcard matches by config order (first match wins)",
+			name: "wildcard matches by longest prefix (most specific wins)",
 			list: []ChannelModelPricing{
 				{ID: 10, Models: []string{"claude-*"REDACTEDREDACTED,
 				{ID: 11, Models: []string{"claude-opus-*"REDACTEDREDACTED,
 		REDACTED,
 			platform: "",
 			model:    "claude-opus-4",
-			wantID:   10, // config order: "claude-*" is first and matches, so it wins
+			wantID:   11, // "claude-opus-*" is longer prefix, wins over "claude-*"
 	REDACTED,
 		{
 			name: "shorter wildcard used when longer does not match",

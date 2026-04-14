@@ -273,13 +273,13 @@ REDACTED{
 			wantValue: string(service.BillingModeToken),
 	REDACTED,
 		{
-			name: "empty platform defaults to anthropic",
+			name: "empty platform stays empty",
 			req: channelModelPricingRequest{
 				Models:   []string{"m1"REDACTED,
 				Platform: "",
 		REDACTED,
 			wantField: "Platform",
-			wantValue: "anthropic",
+			wantValue: "",
 	REDACTED,
 REDACTED
 

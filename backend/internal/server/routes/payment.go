@@ -78,7 +78,6 @@ REDACTED
 			adminOrders.POST("/:id/refund", adminPaymentHandler.ProcessRefund)
 	REDACTED
 
-
 		// Subscription Plans
 		plans := adminGroup.Group("/plans")
 		{
