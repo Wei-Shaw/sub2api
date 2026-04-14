@@ -1962,7 +1962,28 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	response.Success(c, service.SanitizeWebSearchConfig(c.Request.Context(), updated))
+	response.Success(c, service.PopulateWebSearchUsage(c.Request.Context(), updated))
+REDACTED
+
+// ResetWebSearchUsage 重置指定 provider 的配额用量
+// POST /api/v1/admin/settings/web-search-emulation/reset-usage
+func (h *SettingHandler) ResetWebSearchUsage(c *gin.Context) {
+	var req struct {
+		ProviderType string `json:"provider_type"`
+REDACTED
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+	if req.ProviderType == "" {
+		response.BadRequest(c, "provider_type is required")
+		return
+REDACTED
+	if err := service.ResetWebSearchUsage(c.Request.Context(), req.ProviderType); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, nil)
 REDACTED
 
 // TestWebSearchEmulation 测试 Web Search 搜索

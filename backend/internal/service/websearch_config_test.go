@@ -17,8 +17,8 @@ func TestValidateWebSearchConfig_Valid(t *testing.T) {
 	cfg := &WebSearchEmulationConfig{
 		Enabled: true,
 		Providers: []WebSearchProviderConfig{
-			{Type: "brave", QuotaLimit: 1000REDACTED,
-			{Type: "tavily", QuotaLimit: 500REDACTED,
+			{Type: "brave", QuotaLimit: int64Ptr(1000)REDACTED,
+			{Type: "tavily", QuotaLimit: int64Ptr(500)REDACTED,
 	REDACTED,
 REDACTED
 	require.NoError(t, validateWebSearchConfig(cfg))
@@ -42,9 +42,9 @@ REDACTED
 
 func TestValidateWebSearchConfig_NegativeQuotaLimit(t *testing.T) {
 	cfg := &WebSearchEmulationConfig{
-		Providers: []WebSearchProviderConfig{{Type: "brave", QuotaLimit: -1REDACTEDREDACTED,
+		Providers: []WebSearchProviderConfig{{Type: "brave", QuotaLimit: int64Ptr(-1)REDACTEDREDACTED,
 REDACTED
-	require.ErrorContains(t, validateWebSearchConfig(cfg), "quota_limit must be >= 0")
+	require.ErrorContains(t, validateWebSearchConfig(cfg), "quota_limit must be > 0 or null")
 REDACTED
 
 func TestValidateWebSearchConfig_DuplicateType(t *testing.T) {
@@ -57,9 +57,9 @@ REDACTED
 	require.ErrorContains(t, validateWebSearchConfig(cfg), "duplicate type")
 REDACTED
 
-func TestValidateWebSearchConfig_ZeroQuotaLimit(t *testing.T) {
+func TestValidateWebSearchConfig_NilQuotaLimit(t *testing.T) {
 	cfg := &WebSearchEmulationConfig{
-		Providers: []WebSearchProviderConfig{{Type: "brave", QuotaLimit: 0REDACTEDREDACTED,
+		Providers: []WebSearchProviderConfig{{Type: "brave", QuotaLimit: nilREDACTEDREDACTED,
 REDACTED
 	require.NoError(t, validateWebSearchConfig(cfg))
 REDACTED
@@ -92,7 +92,7 @@ func TestParseWebSearchConfigJSON_BackwardCompatibility(t *testing.T) {
 	cfg := parseWebSearchConfigJSON(raw)
 	require.True(t, cfg.Enabled)
 	require.Len(t, cfg.Providers, 1)
-	require.Equal(t, int64(1000), cfg.Providers[0].QuotaLimit)
+	require.Equal(t, int64(1000), *cfg.Providers[0].QuotaLimit)
 REDACTED
 
 // --- SanitizeWebSearchConfig ---
@@ -126,12 +126,12 @@ func TestSanitizeWebSearchConfig_PreservesOtherFields(t *testing.T) {
 	cfg := &WebSearchEmulationConfig{
 		Enabled: true,
 		Providers: []WebSearchProviderConfig{
-			{Type: "brave", APIKey: "secret", QuotaLimit: 1000REDACTED,
+			{Type: "brave", APIKey: "secret", QuotaLimit: int64Ptr(1000)REDACTED,
 	REDACTED,
 REDACTED
 	out := SanitizeWebSearchConfig(context.Background(), cfg)
 	require.True(t, out.Enabled)
-	require.Equal(t, int64(1000), out.Providers[0].QuotaLimit)
+	require.Equal(t, int64(1000), *out.Providers[0].QuotaLimit)
 REDACTED
 
 func TestSanitizeWebSearchConfig_DoesNotMutateOriginal(t *testing.T) {

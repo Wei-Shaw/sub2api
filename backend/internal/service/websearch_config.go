@@ -24,7 +24,7 @@ type WebSearchProviderConfig struct {
 	Type             string `json:"type"`                    // websearch.ProviderTypeBrave | Tavily
 	APIKey           string `json:"api_key,omitempty"`       // secret — omitted in API responses
 	APIKeyConfigured bool   `json:"api_key_configured"`      // read-only mask
-	QuotaLimit       int64  `json:"quota_limit"`             // 0 = unlimited
+	QuotaLimit       *int64 `json:"quota_limit"`             // nil = unlimited, >0 = limited
 	SubscribedAt     *int64 `json:"subscribed_at,omitempty"` // subscription start (unix seconds); quota resets monthly
 	QuotaUsed        int64  `json:"quota_used,omitempty"`    // read-only: current usage from Redis
 	ProxyID          *int64 `json:"proxy_id"`                // optional proxy association
@@ -52,8 +52,8 @@ REDACTED
 		if !validProviderTypes[p.Type] {
 			return fmt.Errorf("provider[%d]: invalid type %q", i, p.Type)
 	REDACTED
-		if p.QuotaLimit < 0 {
-			return fmt.Errorf("provider[%d]: quota_limit must be >= 0", i)
+		if p.QuotaLimit != nil && *p.QuotaLimit < 0 {
+			return fmt.Errorf("provider[%d]: quota_limit must be > 0 or null", i)
 	REDACTED
 		if seen[p.Type] {
 			return fmt.Errorf("provider[%d]: duplicate type %q", i, p.Type)
@@ -297,6 +297,15 @@ REDACTED
 	REDACTED
 REDACTED
 	return &out
+REDACTED
+
+// ResetWebSearchUsage deletes the Redis quota key for the given provider type.
+func ResetWebSearchUsage(ctx context.Context, providerType string) error {
+	mgr := getWebSearchManager()
+	if mgr == nil {
+		return fmt.Errorf("web search manager not initialized")
+REDACTED
+	return mgr.ResetUsage(ctx, providerType)
 REDACTED
 
 // SanitizeWebSearchConfig returns a copy with api_key fields masked and quota usage populated.
