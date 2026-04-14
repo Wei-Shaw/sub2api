@@ -39,7 +39,8 @@ type Channel struct {
 	Status             string
 	BillingModelSource string // "requested", "upstream", or "channel_mapped"
 	RestrictModels     bool   // 是否限制模型（仅允许定价列表中的模型）
-	Features           string // 渠道特性描述（JSON 数组），用于支付页面展示
+	Features           string         // 渠道特性描述（JSON 数组），用于支付页面展示
+	FeaturesConfig     map[string]any // 渠道功能配置（如 web search emulation）
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 
@@ -220,6 +221,19 @@ REDACTED
 	REDACTED
 REDACTED
 	return &cp
+REDACTED
+
+// IsWebSearchEmulationEnabled 返回该渠道是否为指定平台启用了 web search 模拟。
+func (c *Channel) IsWebSearchEmulationEnabled(platform string) bool {
+	if c == nil || c.FeaturesConfig == nil {
+		return false
+REDACTED
+	wse, ok := c.FeaturesConfig[featureKeyWebSearchEmulation].(map[string]any)
+	if !ok {
+		return false
+REDACTED
+	enabled, ok := wse[platform].(bool)
+	return ok && enabled
 REDACTED
 
 // deepCopyFeaturesConfig creates a deep copy of FeaturesConfig to prevent cache pollution.

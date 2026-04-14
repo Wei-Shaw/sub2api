@@ -107,6 +107,9 @@ type SystemSettings struct {
 	EnableMetadataPassthrough    bool // 是否透传客户端原始 metadata（默认 false）
 	EnableCCHSigning             bool // 是否对 billing header cch 进行签名（默认 false）
 
+	// Web Search Emulation
+	WebSearchEmulationEnabled bool // 是否启用 web search 模拟
+
 	// Balance low notification
 	BalanceLowNotifyEnabled     bool
 	BalanceLowNotifyThreshold   float64

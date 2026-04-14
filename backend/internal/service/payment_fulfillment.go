@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strconv"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -20,11 +22,17 @@ func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payme
 	if n.Status != payment.NotificationStatusSuccess {
 		return nil
 REDACTED
-	oid, err := parseOrderID(n.OrderID)
+	// Look up order by out_trade_no (the external order ID we sent to the provider)
+	order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(n.OrderID)).Only(ctx)
 	if err != nil {
-		return fmt.Errorf("invalid order ID: %s", n.OrderID)
+		// Fallback: try legacy format (sub2_N where N is DB ID)
+		trimmed := strings.TrimPrefix(n.OrderID, orderIDPrefix)
+		if oid, parseErr := strconv.ParseInt(trimmed, 10, 64); parseErr == nil {
+			return s.confirmPayment(ctx, oid, n.TradeNo, n.Amount, pk)
+	REDACTED
+		return fmt.Errorf("order not found for out_trade_no: %s", n.OrderID)
 REDACTED
-	return s.confirmPayment(ctx, oid, n.TradeNo, n.Amount, pk)
+	return s.confirmPayment(ctx, order.ID, n.TradeNo, n.Amount, pk)
 REDACTED
 
 func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo string, paid float64, pk string) error {

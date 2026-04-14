@@ -227,3 +227,24 @@ REDACTED
 REDACTED
 	return &cost
 REDACTED
+
+// applyAccountStatsCost resolves the account stats cost for a usage log entry.
+// It resolves the upstream model (falling back to the requested model) and calls
+// the 4-level priority chain via resolveAccountStatsCost.
+func applyAccountStatsCost(
+	ctx context.Context,
+	usageLog *UsageLog,
+	cs *ChannelService, bs *BillingService,
+	accountID int64, groupID int64,
+	upstreamModel, requestedModel string,
+	tokens UsageTokens,
+	totalCost float64,
+) {
+	model := upstreamModel
+	if model == "" {
+		model = requestedModel
+REDACTED
+	usageLog.AccountStatsCost = resolveAccountStatsCost(
+		ctx, cs, bs, accountID, groupID, model, tokens, 1, totalCost,
+	)
+REDACTED
