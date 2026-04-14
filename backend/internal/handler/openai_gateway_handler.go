@@ -557,6 +557,8 @@ REDACTED
 		return
 REDACTED
 	reqModel := modelResult.String()
+	routingModel := service.NormalizeOpenAICompatRequestedModel(reqModel)
+	preferredMappedModel := resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
 	reqStream := gjson.GetBytes(body, "stream").Bool()
 
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
@@ -615,17 +617,20 @@ REDACTED
 	failedAccountIDs := make(map[int64]struct{REDACTED)
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
+	effectiveMappedModel := preferredMappedModel
 
 	for {
-		// 清除上一次迭代的降级模型标记，避免残留影响本次迭代
-		c.Set("openai_messages_fallback_model", "")
+		currentRoutingModel := routingModel
+		if effectiveMappedModel != "" {
+			currentRoutingModel = effectiveMappedModel
+	REDACTED
 		reqLog.Debug("openai_messages.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithScheduler(
 			c.Request.Context(),
 			apiKey.GroupID,
 			"", // no previous_response_id
 			sessionHash,
-			reqModel,
+			currentRoutingModel,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
 		)
@@ -634,29 +639,7 @@ REDACTED
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
-			// 首次调度失败 + 有默认映射模型 → 用默认模型重试
 			if len(failedAccountIDs) == 0 {
-				defaultModel := ""
-				if apiKey.Group != nil {
-					defaultModel = apiKey.Group.DefaultMappedModel
-			REDACTED
-				if defaultModel != "" && defaultModel != reqModel {
-					reqLog.Info("openai_messages.fallback_to_default_model",
-						zap.String("default_mapped_model", defaultModel),
-					)
-					selection, scheduleDecision, err = h.gatewayService.SelectAccountWithScheduler(
-						c.Request.Context(),
-						apiKey.GroupID,
-						"",
-						sessionHash,
-						defaultModel,
-						failedAccountIDs,
-						service.OpenAIUpstreamTransportAny,
-					)
-					if err == nil && selection != nil {
-						c.Set("openai_messages_fallback_model", defaultModel)
-				REDACTED
-			REDACTED
 				if err != nil {
 					h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
 					return
@@ -688,9 +671,7 @@ REDACTED
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
 
-		// Forward 层需要始终拿到 group 默认映射模型，这样未命中账号级映射的
-		// Claude 兼容模型才不会在后续 Codex 规范化中意外退化到 gpt-5.1。
-		defaultMappedModel := resolveOpenAIForwardDefaultMappedModel(apiKey, c.GetString("openai_messages_fallback_model"))
+		defaultMappedModel := strings.TrimSpace(effectiveMappedModel)
 		// 应用渠道模型映射到请求体
 		forwardBody := body
 		if channelMappingMsg.Mapped {
