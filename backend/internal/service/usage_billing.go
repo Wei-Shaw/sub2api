@@ -100,9 +100,22 @@ REDACTED
 	return *v
 REDACTED
 
+// AccountQuotaState holds the post-increment quota state returned by the DB transaction.
+// All values are post-update (i.e., already include the increment).
+type AccountQuotaState struct {
+	TotalUsed   float64
+	TotalLimit  float64
+	DailyUsed   float64
+	DailyLimit  float64
+	WeeklyUsed  float64
+	WeeklyLimit float64
+REDACTED
+
 type UsageBillingApplyResult struct {
 	Applied              bool
 	APIKeyQuotaExhausted bool
+	NewBalance           *float64           // post-deduction balance (nil = no balance deduction)
+	QuotaState           *AccountQuotaState // post-increment quota state (nil = no quota increment)
 REDACTED
 
 type UsageBillingRepository interface {

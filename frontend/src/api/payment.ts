@@ -75,5 +75,10 @@ export const paymentAPI = {
   /** Request a refund for a completed order */
   requestRefund(id: number, data: { reason: string REDACTED) {
     return apiClient.post(`/payment/orders/${idREDACTED/refund-request`, data)
+  REDACTED,
+
+  /** Get provider instance IDs that allow user refund */
+  getRefundEligibleProviders() {
+    return apiClient.get<{ provider_instance_ids: string[] REDACTED>('/payment/orders/refund-eligible-providers')
   REDACTED
 REDACTED

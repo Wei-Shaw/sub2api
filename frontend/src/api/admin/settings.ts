@@ -4,7 +4,7 @@
  */
 
 import { apiClient REDACTED from '../client'
-import type { CustomMenuItem, CustomEndpoint REDACTED from '@/types'
+import type { CustomMenuItem, CustomEndpoint, NotifyEmailEntry REDACTED from '@/types'
 
 export interface DefaultSubscriptionSetting {
   group_id: number
@@ -114,6 +114,7 @@ export interface SystemSettings {
   enable_fingerprint_unification: boolean
   enable_metadata_passthrough: boolean
   enable_cch_signing: boolean
+  web_search_emulation_enabled?: boolean
 
   // Payment configuration
   payment_enabled: boolean
@@ -134,6 +135,13 @@ export interface SystemSettings {
   payment_cancel_rate_limit_window: number
   payment_cancel_rate_limit_unit: string
   payment_cancel_rate_limit_window_mode: string
+
+  // Balance & quota notification
+  balance_low_notify_enabled: boolean
+  balance_low_notify_threshold: number
+  balance_low_notify_recharge_url: string
+  account_quota_notify_enabled: boolean
+  account_quota_notify_emails: NotifyEmailEntry[]
 REDACTED
 
 export interface UpdateSettingsRequest {
@@ -233,6 +241,12 @@ export interface UpdateSettingsRequest {
   payment_cancel_rate_limit_window?: number
   payment_cancel_rate_limit_unit?: string
   payment_cancel_rate_limit_window_mode?: string
+  // Balance & quota notification
+  balance_low_notify_enabled?: boolean
+  balance_low_notify_threshold?: number
+  balance_low_notify_recharge_url?: string
+  account_quota_notify_enabled?: boolean
+  account_quota_notify_emails?: NotifyEmailEntry[]
 REDACTED
 
 /**
@@ -482,6 +496,63 @@ export async function updateBetaPolicySettings(
   return data
 REDACTED
 
+// --- Web Search Emulation Config ---
+
+export interface WebSearchProviderConfig {
+  type: 'brave' | 'tavily'
+  api_key: string
+  api_key_configured: boolean
+  quota_limit: number | null
+  subscribed_at: number | null
+  quota_used?: number
+  proxy_id: number | null
+  expires_at: number | null
+REDACTED
+
+export interface WebSearchEmulationConfig {
+  enabled: boolean
+  providers: WebSearchProviderConfig[]
+REDACTED
+
+export interface WebSearchTestResult {
+  provider: string
+  results: { url: string; title: string; snippet: string; page_age?: string REDACTED[]
+  query: string
+REDACTED
+
+export async function getWebSearchEmulationConfig(): Promise<WebSearchEmulationConfig> {
+  const { data REDACTED = await apiClient.get<WebSearchEmulationConfig>(
+    '/admin/settings/web-search-emulation'
+  )
+  return data
+REDACTED
+
+export async function updateWebSearchEmulationConfig(
+  config: WebSearchEmulationConfig
+): Promise<WebSearchEmulationConfig> {
+  const { data REDACTED = await apiClient.put<WebSearchEmulationConfig>(
+    '/admin/settings/web-search-emulation',
+    config
+  )
+  return data
+REDACTED
+
+export async function testWebSearchEmulation(
+  query: string
+): Promise<WebSearchTestResult> {
+  const { data REDACTED = await apiClient.post<WebSearchTestResult>(
+    '/admin/settings/web-search-emulation/test',
+    { query REDACTED
+  )
+  return data
+REDACTED
+
+export async function resetWebSearchUsage(
+  payload: { provider_type: string REDACTED
+): Promise<void> {
+  await apiClient.post('/admin/settings/web-search-emulation/reset-usage', payload)
+REDACTED
+
 export const settingsAPI = {
   getSettings,
   updateSettings,
@@ -497,7 +568,11 @@ export const settingsAPI = {
   getRectifierSettings,
   updateRectifierSettings,
   getBetaPolicySettings,
-  updateBetaPolicySettings
+  updateBetaPolicySettings,
+  getWebSearchEmulationConfig,
+  updateWebSearchEmulationConfig,
+  testWebSearchEmulation,
+  resetWebSearchUsage
 REDACTED
 
 export default settingsAPI

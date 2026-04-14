@@ -616,6 +616,7 @@ REDACTED
 		{Name: "sort_order", Type: field.TypeInt, Default: 0REDACTED,
 		{Name: "limits", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "refund_enabled", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "allow_user_refund", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 REDACTED
@@ -1078,6 +1079,11 @@ REDACTED
 		{Name: "totp_secret_encrypted", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "totp_enabled", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "totp_enabled_at", Type: field.TypeTime, Nullable: trueREDACTED,
+		{Name: "balance_notify_enabled", Type: field.TypeBool, Default: trueREDACTED,
+		{Name: "balance_notify_threshold_type", Type: field.TypeString, Default: "fixed"REDACTED,
+		{Name: "balance_notify_threshold", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "balance_notify_extra_emails", Type: field.TypeString, Default: "[]", SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
+		{Name: "total_recharged", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 REDACTED
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{

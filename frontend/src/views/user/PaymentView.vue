@@ -71,15 +71,15 @@
               <div class="space-y-2 text-sm">
                 <div class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') REDACTEDREDACTED</span>
-                  <span class="text-gray-900 dark:text-white">${{ validAmount.toFixed(2) REDACTEDREDACTED</span>
+                  <span class="text-gray-900 dark:text-white">¥{{ validAmount.toFixed(2) REDACTEDREDACTED</span>
                 </div>
                 <div class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') REDACTEDREDACTED ({{ feeRate REDACTEDREDACTED%)</span>
-                  <span class="text-gray-900 dark:text-white">${{ feeAmount.toFixed(2) REDACTEDREDACTED</span>
+                  <span class="text-gray-900 dark:text-white">¥{{ feeAmount.toFixed(2) REDACTEDREDACTED</span>
                 </div>
                 <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
                   <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') REDACTEDREDACTED</span>
-                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">${{ totalAmount.toFixed(2) REDACTEDREDACTED</span>
+                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ totalAmount.toFixed(2) REDACTEDREDACTED</span>
                 </div>
               </div>
             </div>
@@ -88,7 +88,7 @@
                 <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {{ t('common.processing') REDACTEDREDACTED
               </span>
-              <span v-else>{{ t('payment.createOrder') REDACTEDREDACTED ${{ (feeRate > 0 && validAmount > 0 ? totalAmount : validAmount).toFixed(2) REDACTEDREDACTED</span>
+              <span v-else>{{ t('payment.createOrder') REDACTEDREDACTED ¥{{ (feeRate > 0 && validAmount > 0 ? totalAmount : validAmount).toFixed(2) REDACTEDREDACTED</span>
             </button>
             <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
               <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage REDACTEDREDACTED</p>
@@ -110,9 +110,9 @@
                 <!-- Price -->
                 <div class="flex items-baseline gap-2">
                   <span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through dark:text-gray-500">
-                    ${{ selectedPlan.original_price REDACTEDREDACTED
+                    ¥{{ selectedPlan.original_price REDACTEDREDACTED
                   </span>
-                  <span :class="['text-3xl font-bold', planTextClass]">${{ selectedPlan.price REDACTEDREDACTED</span>
+                  <span :class="['text-3xl font-bold', planTextClass]">¥{{ selectedPlan.price REDACTEDREDACTED</span>
                   <span class="text-sm text-gray-500 dark:text-gray-400">/ {{ planValiditySuffix REDACTEDREDACTED</span>
                 </div>
                 <!-- Description -->
@@ -156,15 +156,15 @@
                 <div class="space-y-2 text-sm">
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') REDACTEDREDACTED</span>
-                    <span class="text-gray-900 dark:text-white">${{ selectedPlan.price.toFixed(2) REDACTEDREDACTED</span>
+                    <span class="text-gray-900 dark:text-white">¥{{ selectedPlan.price.toFixed(2) REDACTEDREDACTED</span>
                   </div>
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') REDACTEDREDACTED ({{ feeRate REDACTEDREDACTED%)</span>
-                    <span class="text-gray-900 dark:text-white">${{ subFeeAmount.toFixed(2) REDACTEDREDACTED</span>
+                    <span class="text-gray-900 dark:text-white">¥{{ subFeeAmount.toFixed(2) REDACTEDREDACTED</span>
                   </div>
                   <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
                     <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') REDACTEDREDACTED</span>
-                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">${{ subTotalAmount.toFixed(2) REDACTEDREDACTED</span>
+                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ subTotalAmount.toFixed(2) REDACTEDREDACTED</span>
                   </div>
                 </div>
               </div>
@@ -173,7 +173,7 @@
                   <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                   {{ t('common.processing') REDACTEDREDACTED
                 </span>
-                <span v-else>{{ t('payment.createOrder') REDACTEDREDACTED ${{ (feeRate > 0 ? subTotalAmount : selectedPlan.price).toFixed(2) REDACTEDREDACTED</span>
+                <span v-else>{{ t('payment.createOrder') REDACTEDREDACTED ¥{{ (feeRate > 0 ? subTotalAmount : selectedPlan.price).toFixed(2) REDACTEDREDACTED</span>
               </button>
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') REDACTEDREDACTED</button>
               <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">

@@ -87,13 +87,13 @@
 
         <template #cell-billing_mode="{ row REDACTED">
           <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium" :class="getBillingModeBadgeClass(row.billing_mode)">
-            {{ getBillingModeLabel(row.billing_mode) REDACTEDREDACTED
+            {{ getBillingModeLabel(row.billing_mode, t) REDACTEDREDACTED
           </span>
         </template>
 
         <template #cell-tokens="{ row REDACTED">
           <!-- 图片生成请求（仅按次计费时显示图片格式） -->
-          <div v-if="row.image_count > 0 && row.billing_mode === 'image'" class="flex items-center gap-1.5">
+          <div v-if="row.image_count > 0 && row.billing_mode === BILLING_MODE_IMAGE" class="flex items-center gap-1.5">
             <svg class="h-4 w-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
@@ -155,7 +155,7 @@
               </div>
             </div>
             <div v-if="row.account_rate_multiplier != null" class="mt-0.5 text-[11px] text-gray-400">
-              A ${{ (row.total_cost * row.account_rate_multiplier).toFixed(6) REDACTEDREDACTED
+              A ${{ accountBilled(row).toFixed(6) REDACTEDREDACTED
             </div>
           </div>
         </template>
@@ -279,13 +279,21 @@
               <span class="text-gray-400">{{ t('admin.usage.outputCost') REDACTEDREDACTED</span>
               <span class="font-medium text-white">${{ tooltipData.output_cost.toFixed(6) REDACTEDREDACTED</span>
             </div>
-            <div v-if="tooltipData && tooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
-              <span class="text-gray-400">{{ t('usage.inputTokenPrice') REDACTEDREDACTED</span>
-              <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens) REDACTEDREDACTED {{ t('usage.perMillionTokens') REDACTEDREDACTED</span>
-            </div>
-            <div v-if="tooltipData && tooltipData.output_tokens > 0" class="flex items-center justify-between gap-4">
-              <span class="text-gray-400">{{ t('usage.outputTokenPrice') REDACTEDREDACTED</span>
-              <span class="font-medium text-violet-300">{{ formatTokenPricePerMillion(tooltipData.output_cost, tooltipData.output_tokens) REDACTEDREDACTED {{ t('usage.perMillionTokens') REDACTEDREDACTED</span>
+            <!-- Token billing: show unit prices per 1M tokens -->
+            <template v-if="!tooltipData?.billing_mode || tooltipData.billing_mode === BILLING_MODE_TOKEN">
+              <div v-if="tooltipData && tooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.inputTokenPrice') REDACTEDREDACTED</span>
+                <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens) REDACTEDREDACTED {{ t('usage.perMillionTokens') REDACTEDREDACTED</span>
+              </div>
+              <div v-if="tooltipData && tooltipData.output_tokens > 0" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.outputTokenPrice') REDACTEDREDACTED</span>
+                <span class="font-medium text-violet-300">{{ formatTokenPricePerMillion(tooltipData.output_cost, tooltipData.output_tokens) REDACTEDREDACTED {{ t('usage.perMillionTokens') REDACTEDREDACTED</span>
+              </div>
+            </template>
+            <!-- Per-request / image billing: show unit price -->
+            <div v-else class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ tooltipData.billing_mode === BILLING_MODE_IMAGE ? t('usage.imageUnitPrice') : t('usage.unitPrice') REDACTEDREDACTED</span>
+              <span class="font-medium text-sky-300">${{ tooltipData.total_cost?.toFixed(6) || '0.000000' REDACTEDREDACTED</span>
             </div>
             <div v-if="tooltipData && tooltipData.cache_creation_cost > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.cacheCreationCost') REDACTEDREDACTED</span>
@@ -306,10 +314,6 @@
             <span class="font-semibold text-blue-400">{{ formatMultiplier(tooltipData?.rate_multiplier || 1) REDACTEDREDACTEDx</span>
           </div>
           <div class="flex items-center justify-between gap-6">
-            <span class="text-gray-400">{{ t('usage.accountMultiplier') REDACTEDREDACTED</span>
-            <span class="font-semibold text-blue-400">{{ formatMultiplier(tooltipData?.account_rate_multiplier ?? 1) REDACTEDREDACTEDx</span>
-          </div>
-          <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.original') REDACTEDREDACTED</span>
             <span class="font-medium text-white">${{ tooltipData?.total_cost?.toFixed(6) || '0.000000' REDACTEDREDACTED</span>
           </div>
@@ -317,10 +321,19 @@
             <span class="text-gray-400">{{ t('usage.userBilled') REDACTEDREDACTED</span>
             <span class="font-semibold text-green-400">${{ tooltipData?.actual_cost?.toFixed(6) || '0.000000' REDACTEDREDACTED</span>
           </div>
+          <!-- Account billing (separated from user billing) -->
           <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
+            <span class="text-gray-400">{{ t('usage.accountMultiplier') REDACTEDREDACTED</span>
+            <span class="font-semibold text-blue-400">{{ formatMultiplier(tooltipData?.account_rate_multiplier ?? 1) REDACTEDREDACTEDx</span>
+          </div>
+          <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.accountBilled') REDACTEDREDACTED</span>
             <span class="font-semibold text-green-400">
-              ${{ (((tooltipData?.total_cost || 0) * (tooltipData?.account_rate_multiplier ?? 1)) || 0).toFixed(6) REDACTEDREDACTED
+              ${{ accountBilled({
+                total_cost: tooltipData?.total_cost,
+                account_stats_cost: tooltipData?.account_stats_cost,
+                account_rate_multiplier: tooltipData?.account_rate_multiplier,
+              REDACTED).toFixed(6) REDACTEDREDACTED
             </span>
           </div>
         </div>
@@ -338,6 +351,15 @@ import { formatCacheTokens, formatMultiplier REDACTED from '@/utils/formatters'
 import { formatTokenPricePerMillion REDACTED from '@/utils/usagePricing'
 import { getUsageServiceTierLabel REDACTED from '@/utils/usageServiceTier'
 import { resolveUsageRequestType REDACTED from '@/utils/usageRequestType'
+import { getBillingModeLabel, getBillingModeBadgeClass, BILLING_MODE_TOKEN, BILLING_MODE_IMAGE REDACTED from '@/utils/billingMode'
+
+/** Compute the account-billed cost for display: (account_stats_cost ?? total_cost) * rate_multiplier */
+function accountBilled(row: { total_cost?: number | null; account_stats_cost?: number | null; account_rate_multiplier?: number | null REDACTED): number {
+  const base = row.account_stats_cost != null ? row.account_stats_cost : (row.total_cost ?? 0)
+  const result = base * (row.account_rate_multiplier ?? 1)
+  return Number.isNaN(result) ? 0 : result
+REDACTED
+
 import DataTable from '@/components/common/DataTable.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -391,17 +413,6 @@ const getRequestTypeBadgeClass = (row: AdminUsageLog): string => {
   return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
 REDACTED
 
-const getBillingModeLabel = (mode: string | null | undefined): string => {
-  if (mode === 'per_request') return t('admin.usage.billingModePerRequest')
-  if (mode === 'image') return t('admin.usage.billingModeImage')
-  return t('admin.usage.billingModeToken')
-REDACTED
-
-const getBillingModeBadgeClass = (mode: string | null | undefined): string => {
-  if (mode === 'per_request') return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-  if (mode === 'image') return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-  return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
-REDACTED
 
 
 const formatUserAgent = (ua: string): string => {

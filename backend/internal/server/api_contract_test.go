@@ -58,6 +58,11 @@ REDACTED{
 					"allowed_groups": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z",
+					"balance_notify_enabled": false,
+					"balance_notify_threshold_type": "",
+					"balance_notify_threshold": null,
+					"balance_notify_extra_emails": null,
+					"total_recharged": 0,
 					"run_mode": "standard"
 			REDACTED
 		REDACTED`,
@@ -204,11 +209,10 @@ REDACTED{
 						"image_price_1k": null,
 						"image_price_2k": null,
 						"image_price_4k": null,
-							"claude_code_only": false,
+						"claude_code_only": false,
 						"allow_messages_dispatch": false,
 						"fallback_group_id": null,
 						"fallback_group_id_on_invalid_request": null,
-						"allow_messages_dispatch": false,
 						"require_oauth_only": false,
 						"require_privacy_set": false,
 						"created_at": "2025-01-02T03:04:05Z",
@@ -587,26 +591,32 @@ REDACTED{
 					"enable_cch_signing": false,
 					"enable_fingerprint_unification": true,
 					"enable_metadata_passthrough": false,
+					"web_search_emulation_enabled": false,
+					"custom_menu_items": [],
+					"custom_endpoints": [],
 					"payment_enabled": false,
 					"payment_min_amount": 0,
 					"payment_max_amount": 0,
 					"payment_daily_limit": 0,
 					"payment_order_timeout_minutes": 0,
 					"payment_max_pending_orders": 0,
-					"payment_enabled_types": null,
 					"payment_balance_disabled": false,
 					"payment_load_balance_strategy": "",
 					"payment_product_name_prefix": "",
 					"payment_product_name_suffix": "",
 					"payment_help_image_url": "",
 					"payment_help_text": "",
+					"payment_enabled_types": null,
 					"payment_cancel_rate_limit_enabled": false,
 					"payment_cancel_rate_limit_max": 0,
 					"payment_cancel_rate_limit_window": 0,
 					"payment_cancel_rate_limit_unit": "",
 					"payment_cancel_rate_limit_window_mode": "",
-					"custom_menu_items": [],
-					"custom_endpoints": []
+					"balance_low_notify_enabled": false,
+					"account_quota_notify_enabled": false,
+					"balance_low_notify_threshold": 0,
+					"balance_low_notify_recharge_url": "",
+					"account_quota_notify_emails": []
 			REDACTED
 		REDACTED`,
 	REDACTED,
@@ -699,7 +709,7 @@ REDACTED
 		RunMode: config.RunModeStandard,
 REDACTED
 
-	userService := service.NewUserService(userRepo, nil, nil)
+	userService := service.NewUserService(userRepo, nil, nil, nil)
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, nil, apiKeyCache, cfg)
 
 	usageRepo := newStubUsageLogRepo()

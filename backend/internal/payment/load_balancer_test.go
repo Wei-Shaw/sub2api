@@ -242,7 +242,7 @@ REDACTED{
 			wantIDs:     nil,
 	REDACTED,
 		{
-			name: "empty candidates returns empty",
+			name:        "empty candidates returns empty",
 			candidates:  nil,
 			paymentType: "alipay",
 			orderAmount: 10,

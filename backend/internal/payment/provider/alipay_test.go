@@ -98,9 +98,9 @@ REDACTED{
 			errSubstr: "privateKey",
 	REDACTED,
 		{
-			name:    "nil config map returns error for appId",
-			config:  map[string]string{REDACTED,
-			wantErr: true,
+			name:      "nil config map returns error for appId",
+			config:    map[string]string{REDACTED,
+			wantErr:   true,
 			errSubstr: "appId",
 	REDACTED,
 REDACTED

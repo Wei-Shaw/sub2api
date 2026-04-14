@@ -363,7 +363,6 @@ func TestCalculateImageCost(t *testing.T) {
 	require.InDelta(t, 0.134*3, cost.ActualCost, 1e-10)
 REDACTED
 
-
 func TestIsModelSupported(t *testing.T) {
 	svc := newTestBillingService()
 
@@ -718,4 +717,124 @@ REDACTED
 	require.Equal(t, 999, pricing.LongContextInputThreshold)
 	require.InDelta(t, 1.5, pricing.LongContextInputMultiplier, 1e-12)
 	require.InDelta(t, 1.25, pricing.LongContextOutputMultiplier, 1e-12)
+REDACTED
+
+// ---------------------------------------------------------------------------
+// GetModelPricingWithChannel
+// ---------------------------------------------------------------------------
+
+func TestGetModelPricingWithChannel_NilChannelPricing_ReturnsOriginal(t *testing.T) {
+	svc := newTestBillingService()
+
+	pricing, err := svc.GetModelPricingWithChannel("claude-sonnet-4", nil)
+REDACTED
+	require.NotNil(t, pricing)
+
+	// Should be identical to GetModelPricing
+	original, err := svc.GetModelPricing("claude-sonnet-4")
+REDACTED
+	require.InDelta(t, original.InputPricePerToken, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, original.OutputPricePerToken, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, original.CacheCreationPricePerToken, pricing.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, original.CacheReadPricePerToken, pricing.CacheReadPricePerToken, 1e-12)
+REDACTED
+
+func TestGetModelPricingWithChannel_OverrideInputPriceOnly(t *testing.T) {
+	svc := newTestBillingService()
+
+	chPricing := &ChannelModelPricing{
+		InputPrice: testPtrFloat64(99e-6),
+REDACTED
+	pricing, err := svc.GetModelPricingWithChannel("claude-sonnet-4", chPricing)
+REDACTED
+
+	// InputPrice overridden (both normal and priority)
+	require.InDelta(t, 99e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 99e-6, pricing.InputPricePerTokenPriority, 1e-12)
+
+	// OutputPrice unchanged (claude-sonnet-4 fallback = 15e-6)
+	require.InDelta(t, 15e-6, pricing.OutputPricePerToken, 1e-12)
+REDACTED
+
+func TestGetModelPricingWithChannel_OverrideOutputPriceOnly(t *testing.T) {
+	svc := newTestBillingService()
+
+	chPricing := &ChannelModelPricing{
+		OutputPrice: testPtrFloat64(88e-6),
+REDACTED
+	pricing, err := svc.GetModelPricingWithChannel("claude-sonnet-4", chPricing)
+REDACTED
+
+	// OutputPrice overridden
+	require.InDelta(t, 88e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 88e-6, pricing.OutputPricePerTokenPriority, 1e-12)
+
+	// InputPrice unchanged (claude-sonnet-4 fallback = 3e-6)
+	require.InDelta(t, 3e-6, pricing.InputPricePerToken, 1e-12)
+REDACTED
+
+func TestGetModelPricingWithChannel_OverrideAllFields(t *testing.T) {
+	svc := newTestBillingService()
+
+	chPricing := &ChannelModelPricing{
+		InputPrice:       testPtrFloat64(10e-6),
+		OutputPrice:      testPtrFloat64(20e-6),
+		CacheWritePrice:  testPtrFloat64(5e-6),
+		CacheReadPrice:   testPtrFloat64(1e-6),
+		ImageOutputPrice: testPtrFloat64(50e-6),
+REDACTED
+	pricing, err := svc.GetModelPricingWithChannel("claude-sonnet-4", chPricing)
+REDACTED
+
+	require.InDelta(t, 10e-6, pricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 10e-6, pricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 20e-6, pricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 20e-6, pricing.OutputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 5e-6, pricing.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 5e-6, pricing.CacheCreation5mPrice, 1e-12)
+	require.InDelta(t, 5e-6, pricing.CacheCreation1hPrice, 1e-12)
+	require.InDelta(t, 1e-6, pricing.CacheReadPricePerToken, 1e-12)
+	require.InDelta(t, 1e-6, pricing.CacheReadPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 50e-6, pricing.ImageOutputPricePerToken, 1e-12)
+REDACTED
+
+func TestGetModelPricingWithChannel_CacheWritePriceAffects5mAnd1h(t *testing.T) {
+	svc := newTestBillingService()
+
+	chPricing := &ChannelModelPricing{
+		CacheWritePrice: testPtrFloat64(7e-6),
+REDACTED
+	pricing, err := svc.GetModelPricingWithChannel("claude-sonnet-4", chPricing)
+REDACTED
+
+	// CacheWritePrice should set all three: CacheCreationPricePerToken, 5m, and 1h
+	require.InDelta(t, 7e-6, pricing.CacheCreationPricePerToken, 1e-12)
+	require.InDelta(t, 7e-6, pricing.CacheCreation5mPrice, 1e-12)
+	require.InDelta(t, 7e-6, pricing.CacheCreation1hPrice, 1e-12)
+REDACTED
+
+func TestGetModelPricingWithChannel_CacheReadPriceAffectsPriority(t *testing.T) {
+	svc := newTestBillingService()
+
+	chPricing := &ChannelModelPricing{
+		CacheReadPrice: testPtrFloat64(2e-6),
+REDACTED
+	pricing, err := svc.GetModelPricingWithChannel("claude-sonnet-4", chPricing)
+REDACTED
+
+	// CacheReadPrice should set both normal and priority
+	require.InDelta(t, 2e-6, pricing.CacheReadPricePerToken, 1e-12)
+	require.InDelta(t, 2e-6, pricing.CacheReadPricePerTokenPriority, 1e-12)
+REDACTED
+
+func TestGetModelPricingWithChannel_UnknownModelReturnsError(t *testing.T) {
+	svc := newTestBillingService()
+
+	chPricing := &ChannelModelPricing{
+		InputPrice: testPtrFloat64(1e-6),
+REDACTED
+	pricing, err := svc.GetModelPricingWithChannel("totally-unknown-model", chPricing)
+REDACTED
+	require.Nil(t, pricing)
+	require.Contains(t, err.Error(), "pricing not found")
 REDACTED
