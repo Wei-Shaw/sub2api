@@ -34,7 +34,7 @@
           <span class="font-mono text-gray-900 dark:text-white">#{{ order?.id REDACTEDREDACTED</span>
         </div>
         <div class="mt-1 flex justify-between text-sm">
-          <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') REDACTEDREDACTED</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') REDACTEDREDACTED</span>
           <span class="font-medium text-gray-900 dark:text-white">{{ order?.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ order?.amount?.toFixed(2) REDACTEDREDACTED</span>
         </div>
         <div class="mt-1 flex justify-between text-sm">

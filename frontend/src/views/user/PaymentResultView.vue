@@ -37,12 +37,16 @@
               <span class="font-medium text-gray-900 dark:text-white">{{ order.out_trade_no REDACTEDREDACTED</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') REDACTEDREDACTED</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ order.amount.toFixed(2) REDACTEDREDACTED</span>
-            </div>
-            <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') REDACTEDREDACTED</span>
               <span class="font-medium text-gray-900 dark:text-white">&#165;{{ order.pay_amount.toFixed(2) REDACTEDREDACTED</span>
+            </div>
+            <div v-if="order.fee_rate > 0" class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') REDACTEDREDACTED ({{ order.fee_rate REDACTEDREDACTED%)</span>
+              <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.orders.includedInPayAmount') REDACTEDREDACTED</span>
+            </div>
+            <div v-if="order.amount !== order.pay_amount" class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') REDACTEDREDACTED</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ order.amount.toFixed(2) REDACTEDREDACTED</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') REDACTEDREDACTED</span>
