@@ -24,6 +24,7 @@ const (
 	SettingLoadBalanceStrategy = "LOAD_BALANCE_STRATEGY"
 	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
 	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
+	SettingRechargeFeeRate    = "RECHARGE_FEE_RATE"
 	SettingProductNamePrefix   = "PRODUCT_NAME_PREFIX"
 	SettingProductNameSuffix   = "PRODUCT_NAME_SUFFIX"
 	SettingHelpImageURL        = "PAYMENT_HELP_IMAGE_URL"
@@ -52,6 +53,7 @@ type PaymentConfig struct {
 	EnabledTypes              []string `json:"enabled_payment_types"`
 	BalanceDisabled           bool     `json:"balance_disabled"`
 	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
+	RechargeFeeRate          float64  `json:"recharge_fee_rate"`
 	LoadBalanceStrategy       string   `json:"load_balance_strategy"`
 	ProductNamePrefix    string   `json:"product_name_prefix"`
 	ProductNameSuffix    string   `json:"product_name_suffix"`
@@ -78,6 +80,7 @@ type UpdatePaymentConfigRequest struct {
 	EnabledTypes              []string `json:"enabled_payment_types"`
 	BalanceDisabled           *bool    `json:"balance_disabled"`
 	BalanceRechargeMultiplier *float64 `json:"balance_recharge_multiplier"`
+	RechargeFeeRate          *float64 `json:"recharge_fee_rate"`
 	LoadBalanceStrategy       *string  `json:"load_balance_strategy"`
 	ProductNamePrefix   *string  `json:"product_name_prefix"`
 	ProductNameSuffix   *string  `json:"product_name_suffix"`
@@ -188,7 +191,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 	keys := []string{
 		SettingPaymentEnabled, SettingMinRechargeAmount, SettingMaxRechargeAmount,
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
-		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingLoadBalanceStrategy,
+		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
 		SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
@@ -214,6 +217,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		MaxPendingOrders:    pcParseInt(vals[SettingMaxPendingOrders], defaultMaxPendingOrders),
 		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
 		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
+		RechargeFeeRate:          pcParseFloat(vals[SettingRechargeFeeRate], 0),
 		LoadBalanceStrategy:       vals[SettingLoadBalanceStrategy],
 		ProductNamePrefix:   vals[SettingProductNamePrefix],
 		ProductNameSuffix:   vals[SettingProductNameSuffix],
@@ -267,6 +271,11 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return infraerrors.BadRequest("INVALID_BALANCE_RECHARGE_MULTIPLIER", "balance recharge multiplier must be greater than 0")
 		}
 	}
+	if req.RechargeFeeRate != nil {
+		if math.IsNaN(*req.RechargeFeeRate) || math.IsInf(*req.RechargeFeeRate, 0) || *req.RechargeFeeRate < 0 {
+			return infraerrors.BadRequest("INVALID_RECHARGE_FEE_RATE", "recharge fee rate must be >= 0")
+		}
+	}
 	m := map[string]string{
 		SettingPaymentEnabled:      formatBoolOrEmpty(req.Enabled),
 		SettingMinRechargeAmount:   formatPositiveFloat(req.MinAmount),
@@ -276,6 +285,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingMaxPendingOrders:    formatPositiveInt(req.MaxPendingOrders),
 		SettingBalancePayDisabled:  formatBoolOrEmpty(req.BalanceDisabled),
 		SettingBalanceRechargeMult: formatPositiveFloat(req.BalanceRechargeMultiplier),
+		SettingRechargeFeeRate:    formatNonNegativeFloat(req.RechargeFeeRate),
 		SettingLoadBalanceStrategy: derefStr(req.LoadBalanceStrategy),
 		SettingProductNamePrefix:   derefStr(req.ProductNamePrefix),
 		SettingProductNameSuffix:   derefStr(req.ProductNameSuffix),
@@ -305,6 +315,13 @@ func formatBoolOrEmpty(v *bool) string {
 func formatPositiveFloat(v *float64) string {
 	if v == nil || *v <= 0 {
 		return "" // empty → parsePaymentConfig uses default
+	}
+	return strconv.FormatFloat(*v, 'f', 2, 64)
+}
+
+func formatNonNegativeFloat(v *float64) string {
+	if v == nil || *v < 0 {
+		return ""
 	}
 	return strconv.FormatFloat(*v, 'f', 2, 64)
 }
