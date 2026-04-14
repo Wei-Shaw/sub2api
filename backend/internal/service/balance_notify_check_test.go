@@ -178,3 +178,227 @@ func TestGetSiteName_Configured(t *testing.T) {
 	repo.data[SettingKeySiteName] = "My Site"
 	require.Equal(t, "My Site", s.getSiteName(context.Background()))
 }
+
+// ---------- crossedDownward ----------
+
+func TestCrossedDownward_CrossesBelow(t *testing.T) {
+	// oldBalance > threshold, newBalance < threshold → true
+	require.True(t, crossedDownward(100, 5, 10))
+}
+
+func TestCrossedDownward_ExactlyAtThreshold(t *testing.T) {
+	// oldBalance > threshold, newBalance == threshold → false (not below)
+	require.False(t, crossedDownward(100, 10, 10))
+}
+
+func TestCrossedDownward_OldExactlyAtThreshold_NewBelow(t *testing.T) {
+	// oldBalance == threshold, newBalance < threshold → true
+	// (at-or-above → below counts as a crossing)
+	require.True(t, crossedDownward(10, 5, 10))
+}
+
+func TestCrossedDownward_AlreadyBelow(t *testing.T) {
+	// oldBalance < threshold → false (already below, no new crossing)
+	require.False(t, crossedDownward(5, 3, 10))
+}
+
+func TestCrossedDownward_BothAbove(t *testing.T) {
+	// oldBalance > threshold, newBalance > threshold → false (no crossing)
+	require.False(t, crossedDownward(100, 50, 10))
+}
+
+func TestCrossedDownward_ZeroThreshold(t *testing.T) {
+	// threshold == 0 → oldV >= 0 is always true, but newV < 0 only for negatives
+	// Typical case: positive balances should not fire when threshold is 0.
+	require.False(t, crossedDownward(10, 5, 0))
+	require.False(t, crossedDownward(0, 0, 0))
+}
+
+func TestCrossedDownward_ZeroThreshold_NegativeNew(t *testing.T) {
+	// Edge case: newBalance goes negative with threshold=0.
+	require.True(t, crossedDownward(5, -1, 0))
+}
+
+func TestCrossedDownward_NegativeValues(t *testing.T) {
+	// Both already negative, threshold is positive → no crossing (already below).
+	require.False(t, crossedDownward(-5, -10, 10))
+}
+
+func TestCrossedDownward_LargeDecrement(t *testing.T) {
+	// A single large deduction crosses the threshold.
+	require.True(t, crossedDownward(1000, 0.5, 100))
+}
+
+func TestCrossedDownward_SmallDecrement_NoCrossing(t *testing.T) {
+	// A tiny deduction stays above threshold.
+	require.False(t, crossedDownward(100, 99.99, 10))
+}
+
+// ---------- checkQuotaDimCrossings ----------
+
+func TestCheckQuotaDimCrossings_NoDimensions(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	account := &Account{ID: 1, Name: "test", Platform: PlatformAnthropic}
+	// Empty dims → no crossing, no panic.
+	s.checkQuotaDimCrossings(account, nil, 10, []string{"admin@example.com"}, "TestSite")
+	s.checkQuotaDimCrossings(account, []quotaDim{}, 10, []string{"admin@example.com"}, "TestSite")
+}
+
+func TestCheckQuotaDimCrossings_DisabledDimension(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	account := &Account{ID: 1, Name: "test", Platform: PlatformAnthropic}
+	dims := []quotaDim{
+		{
+			name:          quotaDimDaily,
+			enabled:       false, // disabled
+			threshold:     100,
+			thresholdType: thresholdTypeFixed,
+			currentUsed:   950,
+			limit:         1000,
+		},
+	}
+	// Disabled dimension should be skipped even if crossing would occur.
+	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+}
+
+func TestCheckQuotaDimCrossings_ZeroThresholdSkipped(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	account := &Account{ID: 1, Name: "test", Platform: PlatformAnthropic}
+	dims := []quotaDim{
+		{
+			name:          quotaDimDaily,
+			enabled:       true,
+			threshold:     0, // zero threshold
+			thresholdType: thresholdTypeFixed,
+			currentUsed:   950,
+			limit:         1000,
+		},
+	}
+	// Zero threshold → skipped.
+	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+}
+
+func TestCheckQuotaDimCrossings_NoCrossing_BothBelowThreshold(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	account := &Account{ID: 1, Name: "test", Platform: PlatformAnthropic}
+	// threshold=400 remaining, limit=1000 → effectiveThreshold = 600 (usage trigger)
+	// currentUsed=300 (after), oldUsed=300-50=250 (before). Both < 600, no crossing.
+	dims := []quotaDim{
+		{
+			name:          quotaDimDaily,
+			enabled:       true,
+			threshold:     400,
+			thresholdType: thresholdTypeFixed,
+			currentUsed:   300,
+			limit:         1000,
+		},
+	}
+	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+}
+
+func TestCheckQuotaDimCrossings_NoCrossing_BothAboveThreshold(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	account := &Account{ID: 1, Name: "test", Platform: PlatformAnthropic}
+	// threshold=400 remaining, limit=1000 → effectiveThreshold = 600 (usage trigger)
+	// currentUsed=800 (after), oldUsed=800-50=750 (before). Both >= 600, no crossing.
+	dims := []quotaDim{
+		{
+			name:          quotaDimDaily,
+			enabled:       true,
+			threshold:     400,
+			thresholdType: thresholdTypeFixed,
+			currentUsed:   800,
+			limit:         1000,
+		},
+	}
+	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+}
+
+func TestCheckQuotaDimCrossings_NegativeResolvedThreshold_Skipped(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	account := &Account{ID: 1, Name: "test", Platform: PlatformAnthropic}
+	// threshold=1200 remaining, limit=1000 → effectiveThreshold = 1000-1200 = -200
+	// Negative resolved threshold → skipped.
+	dims := []quotaDim{
+		{
+			name:          quotaDimDaily,
+			enabled:       true,
+			threshold:     1200,
+			thresholdType: thresholdTypeFixed,
+			currentUsed:   950,
+			limit:         1000,
+		},
+	}
+	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+}
+
+func TestCheckQuotaDimCrossings_PercentageThreshold_NoCrossing(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	account := &Account{ID: 1, Name: "test", Platform: PlatformAnthropic}
+	// threshold=30%, limit=1000 → effectiveThreshold = 1000 * (1 - 0.30) = 700
+	// currentUsed=500, oldUsed=500-50=450. Both < 700, no crossing.
+	dims := []quotaDim{
+		{
+			name:          quotaDimWeekly,
+			enabled:       true,
+			threshold:     30,
+			thresholdType: thresholdTypePercentage,
+			currentUsed:   500,
+			limit:         1000,
+		},
+	}
+	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+}
+
+func TestCheckQuotaDimCrossings_ZeroLimit_Skipped(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	account := &Account{ID: 1, Name: "test", Platform: PlatformAnthropic}
+	// limit=0 → resolvedThreshold returns 0 → skipped.
+	dims := []quotaDim{
+		{
+			name:          quotaDimTotal,
+			enabled:       true,
+			threshold:     100,
+			thresholdType: thresholdTypeFixed,
+			currentUsed:   50,
+			limit:         0,
+		},
+	}
+	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+}
+
+func TestCheckQuotaDimCrossings_MultipleDims_MixedResults(t *testing.T) {
+	s, _ := newBalanceNotifyServiceForTest()
+	account := &Account{ID: 1, Name: "test", Platform: PlatformAnthropic}
+	// dim1: no crossing (both below effective threshold)
+	// dim2: disabled (skipped)
+	// dim3: zero threshold (skipped)
+	dims := []quotaDim{
+		{
+			name:          quotaDimDaily,
+			enabled:       true,
+			threshold:     400,
+			thresholdType: thresholdTypeFixed,
+			currentUsed:   300, // oldUsed=250, effectiveThreshold=600, both below
+			limit:         1000,
+		},
+		{
+			name:          quotaDimWeekly,
+			enabled:       false,
+			threshold:     100,
+			thresholdType: thresholdTypeFixed,
+			currentUsed:   900,
+			limit:         1000,
+		},
+		{
+			name:          quotaDimTotal,
+			enabled:       true,
+			threshold:     0,
+			thresholdType: thresholdTypeFixed,
+			currentUsed:   500,
+			limit:         1000,
+		},
+	}
+	// None should trigger. No panic expected.
+	s.checkQuotaDimCrossings(account, dims, 50, []string{"admin@example.com"}, "TestSite")
+}

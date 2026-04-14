@@ -1,9 +1,12 @@
+//go:build unit
+
 package service
 
 import (
 	"context"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	"github.com/stretchr/testify/require"
 )
 
@@ -140,4 +143,124 @@ func TestSanitizeWebSearchConfig_DoesNotMutateOriginal(t *testing.T) {
 	}
 	_ = SanitizeWebSearchConfig(context.Background(), cfg)
 	require.Equal(t, "secret", cfg.Providers[0].APIKey)
+}
+
+// --- PopulateWebSearchUsage ---
+
+func TestPopulateWebSearchUsage_NilInput(t *testing.T) {
+	require.Nil(t, PopulateWebSearchUsage(context.Background(), nil))
+}
+
+func TestPopulateWebSearchUsage_NoManager_QuotaUsedZero(t *testing.T) {
+	// Ensure no global manager is set
+	SetWebSearchManager(nil)
+	defer SetWebSearchManager(nil)
+
+	cfg := &WebSearchEmulationConfig{
+		Enabled: true,
+		Providers: []WebSearchProviderConfig{
+			{Type: "brave", APIKey: "sk-key", QuotaLimit: int64Ptr(1000)},
+		},
+	}
+	out := PopulateWebSearchUsage(context.Background(), cfg)
+	require.NotNil(t, out)
+	require.Len(t, out.Providers, 1)
+	require.Equal(t, int64(0), out.Providers[0].QuotaUsed)
+}
+
+func TestPopulateWebSearchUsage_APIKeyConfigured_True(t *testing.T) {
+	SetWebSearchManager(nil)
+	defer SetWebSearchManager(nil)
+
+	cfg := &WebSearchEmulationConfig{
+		Providers: []WebSearchProviderConfig{
+			{Type: "brave", APIKey: "sk-key"},
+		},
+	}
+	out := PopulateWebSearchUsage(context.Background(), cfg)
+	require.True(t, out.Providers[0].APIKeyConfigured)
+}
+
+func TestPopulateWebSearchUsage_APIKeyConfigured_False(t *testing.T) {
+	SetWebSearchManager(nil)
+	defer SetWebSearchManager(nil)
+
+	cfg := &WebSearchEmulationConfig{
+		Providers: []WebSearchProviderConfig{
+			{Type: "brave", APIKey: ""},
+		},
+	}
+	out := PopulateWebSearchUsage(context.Background(), cfg)
+	require.False(t, out.Providers[0].APIKeyConfigured)
+}
+
+func TestPopulateWebSearchUsage_NilQuotaLimit(t *testing.T) {
+	SetWebSearchManager(nil)
+	defer SetWebSearchManager(nil)
+
+	cfg := &WebSearchEmulationConfig{
+		Providers: []WebSearchProviderConfig{
+			{Type: "brave", APIKey: "sk-key", QuotaLimit: nil},
+		},
+	}
+	out := PopulateWebSearchUsage(context.Background(), cfg)
+	require.Nil(t, out.Providers[0].QuotaLimit)
+}
+
+func TestPopulateWebSearchUsage_NonNilQuotaLimit(t *testing.T) {
+	SetWebSearchManager(nil)
+	defer SetWebSearchManager(nil)
+
+	cfg := &WebSearchEmulationConfig{
+		Providers: []WebSearchProviderConfig{
+			{Type: "brave", APIKey: "sk-key", QuotaLimit: int64Ptr(500)},
+		},
+	}
+	out := PopulateWebSearchUsage(context.Background(), cfg)
+	require.NotNil(t, out.Providers[0].QuotaLimit)
+	require.Equal(t, int64(500), *out.Providers[0].QuotaLimit)
+}
+
+func TestPopulateWebSearchUsage_WithManager_NilRedis(t *testing.T) {
+	// Manager with nil Redis returns 0 usage without error
+	mgr := websearch.NewManager([]websearch.ProviderConfig{
+		{Type: "brave", APIKey: "k"},
+	}, nil)
+	SetWebSearchManager(mgr)
+	defer SetWebSearchManager(nil)
+
+	cfg := &WebSearchEmulationConfig{
+		Providers: []WebSearchProviderConfig{
+			{Type: "brave", APIKey: "sk-key", QuotaLimit: int64Ptr(1000)},
+		},
+	}
+	out := PopulateWebSearchUsage(context.Background(), cfg)
+	require.Equal(t, int64(0), out.Providers[0].QuotaUsed)
+	require.True(t, out.Providers[0].APIKeyConfigured)
+}
+
+func TestPopulateWebSearchUsage_DoesNotMutateOriginal(t *testing.T) {
+	SetWebSearchManager(nil)
+	defer SetWebSearchManager(nil)
+
+	cfg := &WebSearchEmulationConfig{
+		Providers: []WebSearchProviderConfig{
+			{Type: "brave", APIKey: "secret", QuotaLimit: int64Ptr(100)},
+		},
+	}
+	_ = PopulateWebSearchUsage(context.Background(), cfg)
+	// Original should be unchanged
+	require.Equal(t, "secret", cfg.Providers[0].APIKey)
+	require.Equal(t, int64(0), cfg.Providers[0].QuotaUsed)
+}
+
+// --- ResetWebSearchUsage ---
+
+func TestResetWebSearchUsage_NilManager(t *testing.T) {
+	SetWebSearchManager(nil)
+	defer SetWebSearchManager(nil)
+
+	err := ResetWebSearchUsage(context.Background(), "brave")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not initialized")
 }

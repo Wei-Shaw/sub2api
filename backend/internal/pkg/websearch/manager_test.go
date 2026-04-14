@@ -313,3 +313,11 @@ func TestNewHTTPClient_ValidSOCKS5Proxy(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, c)
 }
+
+// --- ResetUsage ---
+
+func TestManager_ResetUsage_NilRedis(t *testing.T) {
+	m := NewManager(nil, nil)
+	err := m.ResetUsage(context.Background(), "brave")
+	require.NoError(t, err)
+}
