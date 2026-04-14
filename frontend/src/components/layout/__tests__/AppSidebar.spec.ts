@@ -22,8 +22,11 @@ REDACTED)
 describe('AppSidebar header styles', () => {
   it('does not clip the version badge dropdown', () => {
     const sidebarHeaderBlockMatch = styleSource.match(/\.sidebar-header\s*\{[\s\S]*?\n  \REDACTED/)
+    const sidebarBrandBlockMatch = componentSource.match(/\.sidebar-brand\s*\{[\s\S]*?\n\REDACTED/)
 
     expect(sidebarHeaderBlockMatch).not.toBeNull()
+    expect(sidebarBrandBlockMatch).not.toBeNull()
     expect(sidebarHeaderBlockMatch?.[0]).not.toContain('@apply overflow-hidden;')
+    expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   REDACTED)
 REDACTED)
