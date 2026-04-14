@@ -239,7 +239,7 @@ func TestAntigravityRetryLoop_ModelRateLimited_InjectsCredits(t *testing.T) {
 		Extra: map[string]any{
 			"allow_overages": true,
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-6": map[string]any{
+				"claude-sonnet-4-5": map[string]any{
 					"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
 					"rate_limit_reset_at": time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
 				},
@@ -290,7 +290,7 @@ func TestAntigravityRetryLoop_CreditsExhausted_DoesNotInject(t *testing.T) {
 		Extra: map[string]any{
 			"allow_overages": true,
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-6": map[string]any{
+				"claude-sonnet-4-5": map[string]any{
 					"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
 					"rate_limit_reset_at": time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
 				},
@@ -355,7 +355,7 @@ func TestAntigravityRetryLoop_CreditErrorMarksExhausted(t *testing.T) {
 		Extra: map[string]any{
 			"allow_overages": true,
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-6": map[string]any{
+				"claude-sonnet-4-5": map[string]any{
 					"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
 					"rate_limit_reset_at": time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
 				},
@@ -418,25 +418,13 @@ func TestShouldMarkCreditsExhausted(t *testing.T) {
 		require.True(t, shouldMarkCreditsExhausted(resp, body, nil))
 	})
 
-	t.Run("单模型配额耗尽不标记（积分对此无效）", func(t *testing.T) {
-		resp := &http.Response{StatusCode: http.StatusTooManyRequests}
-		body := []byte(`{"error":{"code":429,"message":"You have exhausted your capacity on this model. Your quota will reset after 146h11m17s.","status":"RESOURCE_EXHAUSTED"}}`)
-		require.False(t, shouldMarkCreditsExhausted(resp, body, nil))
-	})
-
-	t.Run("429 结构化限流不标记（节点限流/瞬时 rate limit 与积分无关）", func(t *testing.T) {
+	t.Run("结构化限流不标记", func(t *testing.T) {
 		resp := &http.Response{StatusCode: http.StatusTooManyRequests}
 		body := []byte(`{"error":{"status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"RATE_LIMIT_EXCEEDED"},{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"0.5s"}]}}`)
 		require.False(t, shouldMarkCreditsExhausted(resp, body, nil))
 	})
 
-	t.Run("429 含积分关键词时标记", func(t *testing.T) {
-		resp := &http.Response{StatusCode: http.StatusTooManyRequests}
-		body := []byte(`{"error":{"message":"Insufficient credits to complete this request"}}`)
-		require.True(t, shouldMarkCreditsExhausted(resp, body, nil))
-	})
-
-	t.Run("含 credits 关键词时标记（403 场景）", func(t *testing.T) {
+	t.Run("含 credits 关键词时标记", func(t *testing.T) {
 		resp := &http.Response{StatusCode: http.StatusForbidden}
 		for _, keyword := range []string{
 			"Insufficient GOOGLE_ONE_AI credits",
@@ -515,7 +503,7 @@ func TestClearCreditsExhausted(t *testing.T) {
 			ID: 1,
 			Extra: map[string]any{
 				modelRateLimitsKey: map[string]any{
-					"claude-sonnet-4-6": map[string]any{
+					"claude-sonnet-4-5": map[string]any{
 						"rate_limited_at":     "2026-03-15T00:00:00Z",
 						"rate_limit_reset_at": "2099-03-15T00:00:00Z",
 					},
@@ -532,7 +520,7 @@ func TestClearCreditsExhausted(t *testing.T) {
 			ID: 1,
 			Extra: map[string]any{
 				modelRateLimitsKey: map[string]any{
-					"claude-sonnet-4-6": map[string]any{
+					"claude-sonnet-4-5": map[string]any{
 						"rate_limited_at":     "2026-03-15T00:00:00Z",
 						"rate_limit_reset_at": "2099-03-15T00:00:00Z",
 					},
@@ -550,109 +538,7 @@ func TestClearCreditsExhausted(t *testing.T) {
 		_, exists := rawLimits[creditsExhaustedKey]
 		require.False(t, exists, "AICredits key 应被删除")
 		// 普通模型限流应保留
-		_, exists = rawLimits["claude-sonnet-4-6"]
+		_, exists = rawLimits["claude-sonnet-4-5"]
 		require.True(t, exists, "普通模型限流应保留")
 	})
-}
-
-// ===========================================================================
-// hasEnoughCredits — standalone credits balance check
-// ===========================================================================
-
-func TestHasEnoughCredits(t *testing.T) {
-	tests := []struct {
-		name string
-		info *UsageInfo
-		want bool
-	}{
-		{
-			name: "nil UsageInfo",
-			info: nil,
-			want: false,
-		},
-		{
-			name: "empty AICredits list",
-			info: &UsageInfo{AICredits: []AICredit{}},
-			want: false,
-		},
-		{
-			name: "GOOGLE_ONE_AI with enough credits (amount=18778, minimum=50)",
-			info: &UsageInfo{
-				AICredits: []AICredit{
-					{CreditType: "GOOGLE_ONE_AI", Amount: 18778, MinimumBalance: 50},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "GOOGLE_ONE_AI below minimum (amount=3, minimum=5)",
-			info: &UsageInfo{
-				AICredits: []AICredit{
-					{CreditType: "GOOGLE_ONE_AI", Amount: 3, MinimumBalance: 5},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "GOOGLE_ONE_AI with zero MinimumBalance defaults to 5, amount=6",
-			info: &UsageInfo{
-				AICredits: []AICredit{
-					{CreditType: "GOOGLE_ONE_AI", Amount: 6, MinimumBalance: 0},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "GOOGLE_ONE_AI with zero MinimumBalance defaults to 5, amount=4",
-			info: &UsageInfo{
-				AICredits: []AICredit{
-					{CreditType: "GOOGLE_ONE_AI", Amount: 4, MinimumBalance: 0},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "GOOGLE_ONE_AI exactly at minimum (amount=5, minimum=5)",
-			info: &UsageInfo{
-				AICredits: []AICredit{
-					{CreditType: "GOOGLE_ONE_AI", Amount: 5, MinimumBalance: 5},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "no GOOGLE_ONE_AI credit type",
-			info: &UsageInfo{
-				AICredits: []AICredit{
-					{CreditType: "OTHER_CREDIT", Amount: 10000, MinimumBalance: 5},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "multiple credits, GOOGLE_ONE_AI present with enough",
-			info: &UsageInfo{
-				AICredits: []AICredit{
-					{CreditType: "OTHER_CREDIT", Amount: 0, MinimumBalance: 5},
-					{CreditType: "GOOGLE_ONE_AI", Amount: 100, MinimumBalance: 10},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "negative MinimumBalance defaults to 5",
-			info: &UsageInfo{
-				AICredits: []AICredit{
-					{CreditType: "GOOGLE_ONE_AI", Amount: 6, MinimumBalance: -1},
-				},
-			},
-			want: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, hasEnoughCredits(tt.info))
-		})
-	}
 }

@@ -846,22 +846,6 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 	return usage, nil
 }
 
-// GetAntigravityCredits 返回账号的 AI Credits 信息，复用 getAntigravityUsage 的缓存。
-// 如果缓存存在且 TTL 充足则直接返回；TTL 不足时自动刷新。
-func (s *AccountUsageService) GetAntigravityCredits(ctx context.Context, account *Account) (*UsageInfo, error) {
-	if account == nil || account.Platform != PlatformAntigravity {
-		return nil, nil
-	}
-	return s.getAntigravityUsage(ctx, account)
-}
-
-// InvalidateAntigravityCreditsCache 清除指定账号的 Antigravity 用量缓存，
-// 使下次调用 GetAntigravityCredits 时强制重新拉取。
-// 用于 credits 降级响应重试场景：避免重试命中同一个降级缓存。
-func (s *AccountUsageService) InvalidateAntigravityCreditsCache(accountID int64) {
-	s.cache.antigravityCache.Delete(accountID)
-}
-
 // recalcAntigravityRemainingSeconds 重新计算 Antigravity UsageInfo 中各窗口的 RemainingSeconds
 // 用于从缓存取出时更新倒计时，避免返回过时的剩余秒数
 func recalcAntigravityRemainingSeconds(info *UsageInfo) {

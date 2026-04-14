@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -18,139 +17,7 @@ const (
 	// 与普通模型限流完全同构：通过 SetModelRateLimit / isRateLimitActiveForKey 读写。
 	creditsExhaustedKey      = "AICredits"
 	creditsExhaustedDuration = 5 * time.Hour
-
-	// credits 降级响应重试参数
-	creditsRetryMaxAttempts  = 3
-	creditsRetryBaseInterval = 500 * time.Millisecond
 )
-
-// creditsRetryableErrorCodes 是降级响应中可重试的错误码集合。
-// forbidden 是稳定的封号状态，不属于可恢复的瞬态错误，不重试。
-var creditsRetryableErrorCodes = map[string]bool{
-	errorCodeUnauthenticated: true,
-	errorCodeRateLimited:     true,
-	errorCodeNetworkError:    true,
-}
-
-// isAntigravityDegradedResponse 检查 UsageInfo 是否为可重试的降级响应。
-// 仅检测 3 个瞬态错误码（unauthenticated/rate_limited/network_error），
-// forbidden 是稳定的封号状态，不属于降级。
-func isAntigravityDegradedResponse(info *UsageInfo) bool {
-	if info == nil || info.ErrorCode == "" {
-		return false
-	}
-	return creditsRetryableErrorCodes[info.ErrorCode]
-}
-
-// checkAccountCredits 通过共享的 AccountUsageService 缓存检查账号是否有足够的 AI Credits。
-// 缓存 TTL 不足时会自动从 Google loadCodeAssist API 刷新。
-// 检测到降级响应时会清除缓存并重试，最终 fail-open（返回 true）。
-func (s *AntigravityGatewayService) checkAccountCredits(
-	ctx context.Context, account *Account,
-) bool {
-	if account == nil || account.ID == 0 {
-		return false
-	}
-	if s.accountUsageService == nil {
-		return true // 无 usage service 时不阻断
-	}
-
-	usageInfo, err := s.accountUsageService.GetAntigravityCredits(ctx, account)
-	if err != nil {
-		slog.Error("check_credits: get_credits_failed",
-			"account_id", account.ID, "error", err)
-		return true // 出错时 fail-open
-	}
-
-	// 非降级响应：直接检查积分余额
-	if !isAntigravityDegradedResponse(usageInfo) {
-		return s.logCreditsResult(account, usageInfo)
-	}
-
-	// 降级响应：清除缓存后重试
-	return s.retryCreditsOnDegraded(ctx, account, usageInfo)
-}
-
-// retryCreditsOnDegraded 在检测到降级响应后，清除缓存并重试获取 credits。
-// 使用指数退避（500ms → 1s → 2s），最多重试 creditsRetryMaxAttempts 次。
-// 所有重试失败后 fail-open（返回 true），不做熔断。
-func (s *AntigravityGatewayService) retryCreditsOnDegraded(
-	ctx context.Context, account *Account, lastInfo *UsageInfo,
-) bool {
-	for attempt := 1; attempt <= creditsRetryMaxAttempts; attempt++ {
-		delay := creditsRetryBaseInterval << (attempt - 1) // 指数退避：500ms, 1s, 2s
-		slog.Warn("check_credits: degraded response, retrying",
-			"account_id", account.ID,
-			"attempt", attempt,
-			"max_attempts", creditsRetryMaxAttempts,
-			"error_code", lastInfo.ErrorCode,
-			"delay", delay,
-		)
-
-		select {
-		case <-ctx.Done():
-			slog.Warn("check_credits: context cancelled during retry, fail-open",
-				"account_id", account.ID, "attempt", attempt)
-			return true
-		case <-time.After(delay):
-		}
-
-		// 清除缓存，强制下次 GetAntigravityCredits 重新拉取
-		s.accountUsageService.InvalidateAntigravityCreditsCache(account.ID)
-
-		info, err := s.accountUsageService.GetAntigravityCredits(ctx, account)
-		if err != nil {
-			slog.Error("check_credits: retry get_credits_failed",
-				"account_id", account.ID, "attempt", attempt, "error", err)
-			continue
-		}
-
-		// 重试成功（不再是降级响应）：检查积分余额
-		if !isAntigravityDegradedResponse(info) {
-			slog.Info("check_credits: retry succeeded",
-				"account_id", account.ID, "attempt", attempt)
-			return s.logCreditsResult(account, info)
-		}
-		lastInfo = info
-	}
-
-	// 所有重试失败：fail-open，不做熔断
-	slog.Warn("check_credits: all retries exhausted, fail-open",
-		"account_id", account.ID,
-		"last_error_code", lastInfo.ErrorCode,
-	)
-	return true
-}
-
-// logCreditsResult 检查积分并记录不足日志，返回是否有积分。
-func (s *AntigravityGatewayService) logCreditsResult(account *Account, info *UsageInfo) bool {
-	hasCredits := hasEnoughCredits(info)
-	if !hasCredits {
-		slog.Warn("check_credits: insufficient credits",
-			"account_id", account.ID)
-	}
-	return hasCredits
-}
-
-// hasEnoughCredits 检查 UsageInfo 中是否有足够的 GOOGLE_ONE_AI 积分。
-// 返回 true 表示积分可用，false 表示积分不足或无积分信息。
-func hasEnoughCredits(info *UsageInfo) bool {
-	if info == nil || len(info.AICredits) == 0 {
-		return false
-	}
-
-	for _, credit := range info.AICredits {
-		if credit.CreditType == "GOOGLE_ONE_AI" {
-			minimum := credit.MinimumBalance
-			if minimum <= 0 {
-				minimum = 5
-			}
-			return credit.Amount >= minimum
-		}
-	}
-
-	return false
-}
 
 type antigravity429Category string
 
@@ -224,10 +91,6 @@ func (s *AntigravityGatewayService) clearCreditsExhausted(ctx context.Context, a
 	}); err != nil {
 		logger.LegacyPrintf("service.antigravity_gateway", "clear credits exhausted failed: account=%d err=%v", account.ID, err)
 	}
-	// 同步更新 Redis 调度快照，避免其他节点/请求延迟感知
-	if s.schedulerSnapshot != nil {
-		_ = s.schedulerSnapshot.UpdateAccountInCache(ctx, account)
-	}
 }
 
 // classifyAntigravity429 将 Antigravity 的 429 响应归类为配额耗尽、限流或未知。
@@ -278,14 +141,6 @@ func resolveCreditsOveragesModelKey(ctx context.Context, account *Account, upstr
 }
 
 // shouldMarkCreditsExhausted 判断一次 credits 请求失败是否应标记为 credits 耗尽。
-// 此函数在积分注入后失败时调用（预检查注入 + attemptCreditsOveragesRetry 两条路径）。
-//   - 429 + 单模型限流（"exhausted your capacity on this model"）：该模型免费配额用完，
-//     积分注入对此无效，但账号积分对其他模型可能仍可用 → 不标记积分耗尽。
-//   - 429 + 积分关键词（如 "insufficient credits"）：积分确实不足 → 标记耗尽。
-//   - 429 + 无积分关键词（节点限流、瞬时 rate limit 等）：与积分无关 → 不标记。
-//   - 403 等其他 4xx：检查 body 是否包含积分不足的关键词。
-//
-// clearCreditsExhausted 会在后续成功时自动清除。
 func shouldMarkCreditsExhausted(resp *http.Response, respBody []byte, reqErr error) bool {
 	if reqErr != nil || resp == nil {
 		return false
@@ -293,23 +148,13 @@ func shouldMarkCreditsExhausted(resp *http.Response, respBody []byte, reqErr err
 	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusRequestTimeout {
 		return false
 	}
-	bodyLower := strings.ToLower(string(respBody))
-	// 积分注入后仍 429
-	if resp.StatusCode == http.StatusTooManyRequests {
-		// 单模型配额耗尽：积分注入对此无效，不标记整个账号积分耗尽
-		if strings.Contains(bodyLower, "exhausted your capacity on this model") {
-			return false
-		}
-		// 仅当 body 包含积分相关关键词时才标记耗尽；
-		// 节点限流、瞬时 rate limit 等非积分 429 不应触发 5 小时熔断。
-		return containsCreditsExhaustedKeyword(bodyLower)
+	// 注意：不再检查 isURLLevelRateLimit。此函数仅在积分重试失败后调用，
+	// 如果注入 enabledCreditTypes 后仍返回 "Resource has been exhausted"，
+	// 说明积分也已耗尽，应该标记。clearCreditsExhausted 会在后续成功时自动清除。
+	if info := parseAntigravitySmartRetryInfo(respBody); info != nil {
+		return false
 	}
-	// 其他 4xx：关键词匹配（如 403 + "Insufficient credits"）
-	return containsCreditsExhaustedKeyword(bodyLower)
-}
-
-// containsCreditsExhaustedKeyword 检查响应体是否包含积分耗尽的关键词。
-func containsCreditsExhaustedKeyword(bodyLower string) bool {
+	bodyLower := strings.ToLower(string(respBody))
 	for _, keyword := range creditsExhaustedKeywords {
 		if strings.Contains(bodyLower, keyword) {
 			return true
@@ -336,16 +181,6 @@ func (s *AntigravityGatewayService) attemptCreditsOveragesRetry(
 	if creditsBody == nil {
 		return &creditsOveragesRetryResult{handled: false}
 	}
-
-	// Check actual credits balance before attempting retry
-	if !s.checkAccountCredits(p.ctx, p.account) {
-		s.setCreditsExhausted(p.ctx, p.account)
-		modelKey := resolveCreditsOveragesModelKey(p.ctx, p.account, modelName, p.requestedModel)
-		logger.LegacyPrintf("service.antigravity_gateway", "%s credit_overages_no_credits model=%s account=%d (skipping credits retry)",
-			p.prefix, modelKey, p.account.ID)
-		return &creditsOveragesRetryResult{handled: true}
-	}
-
 	modelKey := resolveCreditsOveragesModelKey(p.ctx, p.account, modelName, p.requestedModel)
 	logger.LegacyPrintf("service.antigravity_gateway", "%s status=429 credit_overages_retry model=%s account=%d (injecting enabledCreditTypes)",
 		p.prefix, modelKey, p.account.ID)

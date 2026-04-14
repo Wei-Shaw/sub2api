@@ -1,3 +1,0 @@
-ALTER TABLE groups
-    ADD COLUMN IF NOT EXISTS simulate_claude_max_enabled BOOLEAN NOT NULL DEFAULT FALSE;
-
