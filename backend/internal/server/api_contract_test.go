@@ -601,6 +601,8 @@ func TestAPIContracts(t *testing.T) {
 					"payment_order_timeout_minutes": 0,
 					"payment_max_pending_orders": 0,
 					"payment_balance_disabled": false,
+					"payment_balance_recharge_multiplier": 0,
+					"payment_recharge_fee_rate": 0,
 					"payment_load_balance_strategy": "",
 					"payment_product_name_prefix": "",
 					"payment_product_name_suffix": "",
