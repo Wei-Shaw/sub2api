@@ -272,8 +272,13 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		}
 	}
 	if req.RechargeFeeRate != nil {
-		if math.IsNaN(*req.RechargeFeeRate) || math.IsInf(*req.RechargeFeeRate, 0) || *req.RechargeFeeRate < 0 {
-			return infraerrors.BadRequest("INVALID_RECHARGE_FEE_RATE", "recharge fee rate must be >= 0")
+		v := *req.RechargeFeeRate
+		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 100 {
+			return infraerrors.BadRequest("INVALID_RECHARGE_FEE_RATE", "recharge fee rate must be between 0 and 100")
+		}
+		// Enforce max 2 decimal places
+		if math.Round(v*100) != v*100 {
+			return infraerrors.BadRequest("INVALID_RECHARGE_FEE_RATE", "recharge fee rate allows at most 2 decimal places")
 		}
 	}
 	m := map[string]string{

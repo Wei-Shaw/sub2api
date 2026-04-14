@@ -2383,7 +2383,10 @@
                 </div>
                 <div>
                   <label class="input-label">{{ t('admin.settings.payment.rechargeFeeRate') }}</label>
-                  <input :value="form.payment_recharge_fee_rate || ''" @input="form.payment_recharge_fee_rate = parseFloat(($event.target as HTMLInputElement).value) || 0" type="number" step="0.01" min="0" class="input" />
+                  <div class="relative">
+                    <input :value="form.payment_recharge_fee_rate ?? ''" @input="form.payment_recharge_fee_rate = Math.min(100, Math.max(0, Math.round(parseFloat(($event.target as HTMLInputElement).value || '0') * 100) / 100))" type="number" step="0.01" min="0" max="100" class="input pr-8" />
+                    <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400">%</span>
+                  </div>
                   <p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.payment.rechargeFeeRateHint') }}</p>
                   <p v-if="(Number(form.payment_recharge_fee_rate) || 0) > 0" class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400">{{ t('admin.settings.payment.rechargeFeePreview', { fee: (Number(form.payment_recharge_fee_rate) || 0).toFixed(2) }) }}</p>
                 </div>
