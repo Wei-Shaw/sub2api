@@ -1,0 +1,73 @@
+package service
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestNormalizeOpenAIBuiltinTools(t *testing.T) {
+	t.Parallel()
+
+	webSearch := []map[string]any{{"type": "web_search"}}
+
+	tests := []struct {
+		name string
+		raw  any
+		want []map[string]any
+	}{
+		{
+			name: "true enables web search",
+			raw:  true,
+			want: webSearch,
+		},
+		{
+			name: "any slice ignores unsupported builtin tools",
+			raw:  []any{"web_search", "code_interpreter"},
+			want: webSearch,
+		},
+		{
+			name: "string slice keeps supported builtin tool only",
+			raw:  []string{"web_search", "image_generation"},
+			want: webSearch,
+		},
+		{
+			name: "any slice accepts web search tool object",
+			raw:  []any{map[string]any{"type": "web_search"}},
+			want: webSearch,
+		},
+		{
+			name: "map slice accepts web search tool object",
+			raw:  []map[string]any{{"type": "web_search"}},
+			want: webSearch,
+		},
+		{
+			name: "map requires explicit true value",
+			raw:  map[string]any{"web_search": true, "image_generation": true},
+			want: webSearch,
+		},
+		{
+			name: "false returns nil",
+			raw:  false,
+			want: nil,
+		},
+		{
+			name: "map false returns nil",
+			raw:  map[string]any{"web_search": false},
+			want: nil,
+		},
+		{
+			name: "duplicate requests collapse to one entry",
+			raw:  []any{"web_search", "code_interpreter", "web_search"},
+			want: webSearch,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, normalizeOpenAIBuiltinTools(tt.raw))
+		})
+	}
+}

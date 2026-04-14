@@ -390,7 +390,13 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 	var out []ResponsesTool
 
 	for _, t := range tools {
-		if t.Type != "function" || t.Function == nil {
+		if t.Type != "function" {
+			if strings.TrimSpace(t.Type) != "" {
+				out = append(out, ResponsesTool{Type: t.Type})
+			}
+			continue
+		}
+		if t.Function == nil {
 			continue
 		}
 		rt := ResponsesTool{

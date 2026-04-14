@@ -77,3 +77,43 @@ func TestDeriveCompatPromptCacheKey_UsesResolvedSparkFamily(t *testing.T) {
 	require.NotEmpty(t, k1)
 	require.Equal(t, k1, k2, "resolved spark family should derive a stable compat cache key")
 }
+
+func TestDeriveCompatPromptCacheKey_IncludesAugmentedBuiltinTools(t *testing.T) {
+	base := &apicompat.ChatCompletionsRequest{
+		Model: "gpt-5.4",
+		Messages: []apicompat.ChatMessage{
+			{Role: "user", Content: mustRawJSON(t, `"hello"`)},
+		},
+	}
+	withBuiltin := *base
+	withBuiltin.BuiltinTools = true
+	withExplicitTool := *base
+	withExplicitTool.Tools = []apicompat.ChatTool{{Type: "web_search"}}
+
+	baseKey := deriveCompatPromptCacheKey(base, "gpt-5.4")
+	builtinKey := deriveCompatPromptCacheKey(&withBuiltin, "gpt-5.4")
+	explicitKey := deriveCompatPromptCacheKey(&withExplicitTool, "gpt-5.4")
+
+	require.NotEqual(t, baseKey, builtinKey)
+	require.Equal(t, explicitKey, builtinKey)
+}
+
+func TestDeriveCompatPromptCacheKey_BuiltinToolsOnlyAffectsSupportedWebSearch(t *testing.T) {
+	base := &apicompat.ChatCompletionsRequest{
+		Model: "gpt-5.4",
+		Messages: []apicompat.ChatMessage{
+			{Role: "user", Content: mustRawJSON(t, `"hello"`)},
+		},
+	}
+	withUnsupported := *base
+	withUnsupported.BuiltinTools = []any{"image_generation"}
+	withWebSearch := *base
+	withWebSearch.BuiltinTools = []any{"web_search", "image_generation"}
+
+	baseKey := deriveCompatPromptCacheKey(base, "gpt-5.4")
+	unsupportedKey := deriveCompatPromptCacheKey(&withUnsupported, "gpt-5.4")
+	webSearchKey := deriveCompatPromptCacheKey(&withWebSearch, "gpt-5.4")
+
+	require.Equal(t, baseKey, unsupportedKey)
+	require.NotEqual(t, baseKey, webSearchKey)
+}

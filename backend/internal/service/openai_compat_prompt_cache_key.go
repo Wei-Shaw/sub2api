@@ -43,6 +43,11 @@ func deriveCompatPromptCacheKey(req *apicompat.ChatCompletionsRequest, mappedMod
 			seedParts = append(seedParts, "tools="+normalizeCompatSeedJSON(raw))
 		}
 	}
+	if len(req.Tools) == 0 && req.BuiltinTools != nil {
+		if raw, err := json.Marshal(normalizeOpenAIBuiltinTools(req.BuiltinTools)); err == nil && string(raw) != "null" && string(raw) != "[]" {
+			seedParts = append(seedParts, "tools="+normalizeCompatSeedJSON(raw))
+		}
+	}
 	if len(req.Functions) > 0 {
 		if raw, err := json.Marshal(req.Functions); err == nil {
 			seedParts = append(seedParts, "functions="+normalizeCompatSeedJSON(raw))

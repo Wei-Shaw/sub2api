@@ -2203,6 +2203,15 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
+	if applyOpenAIBuiltinToolsRequestPathTransform(c, reqBody) {
+		bodyModified = true
+		if isOpenAIResponsesCompactPath(c) {
+			markPatchDelete("builtin_tools")
+		} else {
+			disablePatch()
+		}
+	}
+
 	// Handle max_output_tokens based on platform and account type
 	if !isCodexCLI {
 		if maxOutputTokens, hasMaxOutputTokens := reqBody["max_output_tokens"]; hasMaxOutputTokens {
@@ -2668,6 +2677,10 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	reqStream bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
+	if strippedBody, changed := stripOpenAIBuiltinToolsFieldFromBody(body); changed {
+		body = strippedBody
+	}
+
 	if account != nil && account.Type == AccountTypeOAuth {
 		if rejectReason := detectOpenAIPassthroughInstructionsRejectReason(reqModel, body); rejectReason != "" {
 			rejectMsg := "OpenAI codex passthrough requires a non-empty instructions field"
@@ -4634,6 +4647,86 @@ func sanitizeEncryptedReasoningInputItem(item any) (next any, changed bool, keep
 		return nil, true, false
 	}
 	return inputItem, true, true
+}
+
+func stripOpenAIBuiltinToolsField(reqBody map[string]any) bool {
+	if reqBody == nil {
+		return false
+	}
+	if _, ok := reqBody["builtin_tools"]; !ok {
+		return false
+	}
+	delete(reqBody, "builtin_tools")
+	return true
+}
+
+func applyOpenAIBuiltinToolsAugmentation(reqBody map[string]any) bool {
+	if reqBody == nil {
+		return false
+	}
+
+	raw, ok := reqBody["builtin_tools"]
+	if !ok {
+		return false
+	}
+
+	stripOpenAIBuiltinToolsField(reqBody)
+	augmented := normalizeOpenAIBuiltinTools(raw)
+	if len(augmented) == 0 {
+		return true
+	}
+
+	var existing []any
+	if toolsRaw, hasTools := reqBody["tools"]; hasTools {
+		var ok bool
+		existing, ok = toolsRaw.([]any)
+		if !ok {
+			return true
+		}
+	}
+	if hasOpenAIBuiltinTool(existing, "web_search") {
+		return true
+	}
+
+	reqBody["tools"] = append(existing, augmented[0])
+	return true
+}
+
+func applyOpenAIBuiltinToolsRequestPathTransform(c *gin.Context, reqBody map[string]any) bool {
+	if isOpenAIResponsesCompactPath(c) {
+		return stripOpenAIBuiltinToolsField(reqBody)
+	}
+	return applyOpenAIBuiltinToolsAugmentation(reqBody)
+}
+
+func stripOpenAIBuiltinToolsFieldFromBody(body []byte) ([]byte, bool) {
+	if len(body) == 0 {
+		return body, false
+	}
+
+	if !gjson.GetBytes(body, "builtin_tools").Exists() {
+		return body, false
+	}
+
+	strippedBody, err := sjson.DeleteBytes(body, "builtin_tools")
+	if err != nil {
+		return body, false
+	}
+
+	return strippedBody, true
+}
+
+func hasOpenAIBuiltinTool(tools []any, toolType string) bool {
+	for _, rawTool := range tools {
+		tool, ok := rawTool.(map[string]any)
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(fmt.Sprint(tool["type"])) == toolType {
+			return true
+		}
+	}
+	return false
 }
 
 func IsOpenAIResponsesCompactPathForTest(c *gin.Context) bool {
