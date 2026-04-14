@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -93,14 +94,15 @@ REDACTED
 	// Check provider instance allows admin refund
 	inst, instErr := s.getOrderProviderInstance(ctx, o)
 	if instErr != nil {
-		slog.Warn("refund: provider instance not found", "orderID", oid, "error", instErr)
+		slog.Warn("refund: provider instance lookup failed", "orderID", oid, "error", instErr)
+		return nil, nil, infraerrors.InternalServer("PROVIDER_LOOKUP_FAILED", "failed to look up payment provider for this order")
 REDACTED
-	if inst != nil && !inst.RefundEnabled {
-		return nil, nil, infraerrors.Forbidden("REFUND_DISABLED", "refund is not enabled for this provider")
-REDACTED
-	if inst == nil && instErr == nil {
+	if inst == nil {
 		// Legacy order without provider_instance_id — block refund
 		return nil, nil, infraerrors.Forbidden("REFUND_DISABLED", "refund is not available for this order")
+REDACTED
+	if !inst.RefundEnabled {
+		return nil, nil, infraerrors.Forbidden("REFUND_DISABLED", "refund is not enabled for this provider")
 REDACTED
 	if math.IsNaN(amt) || math.IsInf(amt, 0) {
 		return nil, nil, infraerrors.BadRequest("INVALID_AMOUNT", "invalid refund amount")
@@ -183,10 +185,17 @@ REDACTED
 		if !s.hasAuditLog(ctx, p.OrderID, "REFUND_ROLLBACK_FAILED") {
 			_, err := s.subscriptionSvc.ExtendSubscription(ctx, p.SubscriptionID, -p.SubDaysToDeduct)
 			if err != nil {
-				slog.Info("subscription deduction would expire, revoking", "orderID", p.OrderID, "subID", p.SubscriptionID, "days", p.SubDaysToDeduct)
-				if revokeErr := s.subscriptionSvc.RevokeSubscription(ctx, p.SubscriptionID); revokeErr != nil {
+				if errors.Is(err, ErrAdjustWouldExpire) {
+					// Deduction would expire the subscription — revoke it entirely
+					slog.Info("subscription deduction would expire, revoking", "orderID", p.OrderID, "subID", p.SubscriptionID, "days", p.SubDaysToDeduct)
+					if revokeErr := s.subscriptionSvc.RevokeSubscription(ctx, p.SubscriptionID); revokeErr != nil {
+						s.restoreStatus(ctx, p)
+						return nil, fmt.Errorf("revoke subscription: %w", revokeErr)
+				REDACTED
+			REDACTED else {
+					// Other errors (DB failure, not found) — abort refund
 					s.restoreStatus(ctx, p)
-					return nil, fmt.Errorf("revoke subscription: %w", revokeErr)
+					return nil, fmt.Errorf("deduct subscription days: %w", err)
 			REDACTED
 		REDACTED
 	REDACTED else {
