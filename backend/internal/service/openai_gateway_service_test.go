@@ -16,6 +16,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -203,6 +204,76 @@ type resetReadCloser struct{ err error }
 func (r resetReadCloser) Read(p []byte) (int, error) { return 0, r.err }
 func (r resetReadCloser) Close() error               { return nil }
 
+type stubHTTPUpstream struct {
+	lastRequest *http.Request
+	lastBody    []byte
+	response    *http.Response
+	err         error
+}
+
+func (s *stubHTTPUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	s.lastRequest = req
+	if req != nil && req.Body != nil {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		s.lastBody = append([]byte(nil), body...)
+		req.Body = io.NopCloser(bytes.NewReader(body))
+	}
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.response != nil {
+		return s.response, nil
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"usage":{"input_tokens":1,"output_tokens":2,"input_tokens_details":{"cached_tokens":0}}}`)),
+	}, nil
+}
+
+func (s *stubHTTPUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	return s.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+func newOpenAITestContext(t *testing.T, path string, body []byte) (*gin.Context, *httptest.ResponseRecorder) {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	return c, rec
+}
+
+func readJSONRequestBody(t *testing.T, req *http.Request) map[string]any {
+	t.Helper()
+	body, err := io.ReadAll(req.Body)
+	require.NoError(t, err)
+	_ = req.Body.Close()
+	req.Body = io.NopCloser(bytes.NewReader(body))
+
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(body, &parsed))
+	return parsed
+}
+
+func decodeJSONMap(t *testing.T, body []byte) map[string]any {
+	t.Helper()
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(body, &parsed))
+	return parsed
+}
+
+func newOpenAITestGatewayService(httpUpstream HTTPUpstream) *OpenAIGatewayService {
+	return &OpenAIGatewayService{cfg: &config.Config{
+		Security: config.SecurityConfig{
+			URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+		},
+	}, httpUpstream: httpUpstream}
+}
+
 type failingGinWriter struct {
 	gin.ResponseWriter
 	failAfter int
@@ -298,6 +369,129 @@ func TestOpenAIGatewayService_GenerateSessionHash_Priority(t *testing.T) {
 	if h4 != "" {
 		t.Fatalf("expected empty hash when no signals")
 	}
+}
+
+func TestStripOpenAIBuiltinToolsFieldFromBody_PreservesOriginalFormatting(t *testing.T) {
+	body := []byte("{\n  \"model\": \"gpt-5.4\",\n  \"builtin_tools\": true,\n  \"tools\": {\"unexpected\": true}\n}\n")
+
+	strippedBody, changed := stripOpenAIBuiltinToolsFieldFromBody(body)
+	require.True(t, changed)
+	require.NotContains(t, string(strippedBody), `"builtin_tools"`)
+	require.Contains(t, string(strippedBody), "\n  \"model\": \"gpt-5.4\",")
+	require.Contains(t, string(strippedBody), "\n  \"tools\": {\"unexpected\": true}\n")
+}
+
+func TestForwardResponsesRequest_AugmentsBuiltinToolsAndStripsPrivateField(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","builtin_tools":true,"tool_choice":"required","tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 2)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	require.Equal(t, "get_weather", tools[0].(map[string]any)["name"])
+	require.Equal(t, "web_search", tools[1].(map[string]any)["type"])
+	require.Equal(t, "required", upstreamBody["tool_choice"])
+}
+
+func TestApplyOpenAIBuiltinToolsAugmentation_DoesNotDuplicateExistingWebSearch(t *testing.T) {
+	reqBody := map[string]any{
+		"builtin_tools": []any{"web_search", "code_interpreter"},
+		"tools": []any{
+			map[string]any{"type": "function", "name": "get_weather"},
+			map[string]any{"type": "web_search"},
+		},
+	}
+
+	changed := applyOpenAIBuiltinToolsAugmentation(reqBody)
+	require.True(t, changed)
+	require.NotContains(t, reqBody, "builtin_tools")
+
+	tools := reqBody["tools"].([]any)
+	require.Len(t, tools, 2)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	require.Equal(t, "get_weather", tools[0].(map[string]any)["name"])
+	require.Equal(t, "web_search", tools[1].(map[string]any)["type"])
+}
+
+func TestApplyOpenAIBuiltinToolsAugmentation_InvalidToolsOnlyStripsPrivateField(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","builtin_tools":true,"tools":{"type":"function","name":"broken_tools_shape"}}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+	require.IsType(t, map[string]any{}, upstreamBody["tools"])
+	require.Equal(t, map[string]any{"type": "function", "name": "broken_tools_shape"}, upstreamBody["tools"])
+}
+
+func TestForwardResponsesRequest_PassthroughStripsBuiltinToolsWithoutAugmenting(t *testing.T) {
+	rawBody := []byte(`{"model":"gpt-5.4","builtin_tools":true,"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", rawBody)
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+		Extra:       map[string]any{"openai_passthrough": true},
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, rawBody)
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 1)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	require.Equal(t, "get_weather", tools[0].(map[string]any)["name"])
+	require.False(t, hasOpenAIBuiltinTool(tools, "web_search"))
+}
+
+func TestForwardResponsesRequest_CompactPathDoesNotAugmentBuiltinTools(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","builtin_tools":true,"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses/compact", body)
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 1)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	require.Equal(t, "get_weather", tools[0].(map[string]any)["name"])
+	require.False(t, hasOpenAIBuiltinTool(tools, "web_search"))
 }
 
 func TestOpenAIGatewayService_GenerateSessionHash_UsesXSessionAffinityBeforePromptCacheKey(t *testing.T) {
