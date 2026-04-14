@@ -4116,12 +4116,13 @@ async function handleToggleField(provider: ProviderInstance, field: 'enabled' | 
   if (field === 'enabled') newValue = !provider.enabled
   else if (field === 'refund_enabled') newValue = !provider.refund_enabled
   else newValue = !provider.allow_user_refund
+
+  const payload: Record<string, boolean> = { [field]: newValue REDACTED
+  // Cascade: turning off refund_enabled also turns off allow_user_refund
+  if (field === 'refund_enabled' && !newValue) {
+    payload.allow_user_refund = false
+  REDACTED
   try {
-    const payload: Record<string, boolean> = { [field]: newValue REDACTED
-    // Cascade: turning off refund_enabled also disables allow_user_refund
-    if (field === 'refund_enabled' && !newValue) {
-      payload.allow_user_refund = false
-    REDACTED
     await adminAPI.payment.updateProvider(provider.id, payload)
     if (field === 'enabled') provider.enabled = newValue
     else if (field === 'refund_enabled') {

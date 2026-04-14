@@ -1071,6 +1071,7 @@ REDACTED
 		EnableCCHSigning:                     updatedSettings.EnableCCHSigning,
 		BalanceLowNotifyEnabled:              updatedSettings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:            updatedSettings.BalanceLowNotifyThreshold,
+		BalanceLowNotifyRechargeURL:          updatedSettings.BalanceLowNotifyRechargeURL,
 		AccountQuotaNotifyEnabled:            updatedSettings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:             dto.NotifyEmailEntriesFromService(updatedSettings.AccountQuotaNotifyEmails),
 		PaymentEnabled:                       updatedPaymentCfg.Enabled,

@@ -985,7 +985,8 @@ const {
   deselect,
   clear: clearSelectedProxies,
   removeMany: removeSelectedProxies,
-  toggleVisible
+  toggleVisible,
+  batchUpdate
 REDACTED = useTableSelection<Proxy>({
   rows: proxies,
   getId: (proxy) => proxy.id
@@ -993,7 +994,8 @@ REDACTED)
 useSwipeSelect(proxyTableRef, {
   isSelected,
   select,
-  deselect
+  deselect,
+  batchUpdate
 REDACTED)
 const accountsProxy = ref<Proxy | null>(null)
 const proxyAccounts = ref<ProxyAccountSummary[]>([])

@@ -76,6 +76,12 @@ export function useTableSelection<T>({ rows, getId REDACTED: UseTableSelectionOp
     replaceSelectedSet(next)
   REDACTED
 
+  const batchUpdate = (updater: (draft: Set<number>) => void) => {
+    const draft = new Set(selectedSet.value)
+    updater(draft)
+    replaceSelectedSet(draft)
+  REDACTED
+
   const selectVisible = () => {
     toggleVisible(true)
   REDACTED
@@ -93,6 +99,7 @@ export function useTableSelection<T>({ rows, getId REDACTED: UseTableSelectionOp
     clear,
     removeMany,
     toggleVisible,
-    selectVisible
+    selectVisible,
+    batchUpdate
   REDACTED
 REDACTED
