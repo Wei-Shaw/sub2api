@@ -117,7 +117,13 @@ func (lb *DefaultLoadBalancer) queryEnabledInstances(
 
 	var matched []*dbent.PaymentProviderInstance
 	for _, inst := range instances {
-		if InstanceSupportsType(inst.SupportedTypes, paymentType) {
+		// Stripe: match by provider_key because supported_types lists sub-types (card,link,alipay,wxpay),
+		// not "stripe" itself. The checkout page aggregates all sub-types under "stripe".
+		if paymentType == TypeStripe {
+			if inst.ProviderKey == TypeStripe {
+				matched = append(matched, inst)
+			}
+		} else if InstanceSupportsType(inst.SupportedTypes, paymentType) {
 			matched = append(matched, inst)
 		}
 	}
