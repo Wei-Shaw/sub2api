@@ -37,12 +37,16 @@
               <span class="font-medium text-gray-900 dark:text-white">{{ order.out_trade_no }}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' : '¥' }}{{ order.amount.toFixed(2) }}</span>
-            </div>
-            <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
               <span class="font-medium text-gray-900 dark:text-white">&#165;{{ order.pay_amount.toFixed(2) }}</span>
+            </div>
+            <div v-if="order.fee_rate > 0" class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') }} ({{ order.fee_rate }}%)</span>
+              <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.orders.includedInPayAmount') }}</span>
+            </div>
+            <div v-if="order.amount !== order.pay_amount" class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' : '¥' }}{{ order.amount.toFixed(2) }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</span>

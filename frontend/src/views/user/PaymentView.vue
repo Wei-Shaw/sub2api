@@ -75,19 +75,19 @@
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.paymentAmount') }}</span>
                   <span class="text-gray-900 dark:text-white">¥{{ validAmount.toFixed(2) }}</span>
                 </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
-                  <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
-                </div>
                 <div v-if="feeRate > 0" class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
                   <span class="text-gray-900 dark:text-white">¥{{ feeAmount.toFixed(2) }}</span>
                 </div>
-                <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                <div v-if="feeRate > 0" class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
                   <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
                   <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ totalAmount.toFixed(2) }}</span>
                 </div>
-                <p class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
+                <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
+                  <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
+                </div>
+                <p v-if="balanceRechargeMultiplier !== 1" class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
                   {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
                 </p>
               </div>
@@ -361,7 +361,7 @@ function onStripeRedirect(orderId: number, payUrl: string) {
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
 })
 
 const tabs = computed(() => {
@@ -414,7 +414,7 @@ const methodOptions = computed<PaymentMethodOption[]>(() =>
   })
 )
 
-const feeRate = computed(() => selectedLimit.value?.fee_rate ?? 0)
+const feeRate = computed(() => checkout.value?.recharge_fee_rate ?? 0)
 const feeAmount = computed(() =>
   feeRate.value > 0 && validAmount.value > 0
     ? Math.ceil(((validAmount.value * feeRate.value) / 100) * 100) / 100
