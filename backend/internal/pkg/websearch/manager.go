@@ -447,6 +447,15 @@ func (m *Manager) GetAllUsage(ctx context.Context) map[string]int64 {
 	return result
 }
 
+// ResetUsage deletes the Redis quota key for the given provider, resetting usage to 0.
+func (m *Manager) ResetUsage(ctx context.Context, providerType string) error {
+	if m.redis == nil {
+		return nil
+	}
+	key := quotaRedisKey(providerType)
+	return m.redis.Del(ctx, key).Err()
+}
+
 // --- Provider factory ---
 
 func (m *Manager) buildProvider(cfg ProviderConfig, client *http.Client) Provider {

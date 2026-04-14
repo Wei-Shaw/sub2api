@@ -73,7 +73,7 @@ func ProvideRouter(
 			pc := websearch.ProviderConfig{
 				Type:       p.Type,
 				APIKey:     p.APIKey,
-				QuotaLimit: p.QuotaLimit,
+				QuotaLimit: derefInt64(p.QuotaLimit),
 				ExpiresAt:  p.ExpiresAt,
 			}
 			if p.SubscribedAt != nil {
@@ -140,4 +140,11 @@ func ProvideHTTPServer(cfg *config.Config, router *gin.Engine) *http.Server {
 		// 注意：不设置 WriteTimeout，因为流式响应可能持续十几分钟
 		// 不设置 ReadTimeout，因为大请求体可能需要较长时间读取
 	}
+}
+
+func derefInt64(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }

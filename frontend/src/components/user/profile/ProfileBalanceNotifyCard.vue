@@ -48,6 +48,7 @@
         <!-- Email list with toggles -->
         <div>
           <label class="input-label">{{ t('profile.balanceNotify.extraEmails') }}</label>
+          <p class="mb-2 text-xs text-yellow-600 dark:text-yellow-400">{{ t('profile.balanceNotify.extraEmailsHint') }}</p>
 
           <!-- Saved email entries -->
           <div v-if="emailEntries.length > 0" class="space-y-2 mb-3">

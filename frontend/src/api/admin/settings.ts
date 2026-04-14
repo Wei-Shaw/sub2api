@@ -502,7 +502,7 @@ export interface WebSearchProviderConfig {
   type: 'brave' | 'tavily'
   api_key: string
   api_key_configured: boolean
-  quota_limit: number
+  quota_limit: number | null
   subscribed_at: number | null
   quota_used?: number
   proxy_id: number | null
@@ -547,6 +547,12 @@ export async function testWebSearchEmulation(
   return data
 }
 
+export async function resetWebSearchUsage(
+  payload: { provider_type: string }
+): Promise<void> {
+  await apiClient.post('/admin/settings/web-search-emulation/reset-usage', payload)
+}
+
 export const settingsAPI = {
   getSettings,
   updateSettings,
@@ -565,7 +571,8 @@ export const settingsAPI = {
   updateBetaPolicySettings,
   getWebSearchEmulationConfig,
   updateWebSearchEmulationConfig,
-  testWebSearchEmulation
+  testWebSearchEmulation,
+  resetWebSearchUsage
 }
 
 export default settingsAPI
