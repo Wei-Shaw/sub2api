@@ -105,26 +105,26 @@ type MethodLimitsResponse struct {
 REDACTED
 
 type CreateProviderInstanceRequest struct {
-	ProviderKey     string            `json:"provider_key"`
-	Name            string            `json:"name"`
-	Config          map[string]string `json:"config"`
-	SupportedTypes  []string          `json:"supported_types"`
-	Enabled         bool              `json:"enabled"`
-	PaymentMode     string            `json:"payment_mode"`
-	SortOrder       int               `json:"sort_order"`
-	Limits          string            `json:"limits"`
-	RefundEnabled   bool              `json:"refund_enabled"`
+	ProviderKey    string            `json:"provider_key"`
+	Name           string            `json:"name"`
+	Config         map[string]string `json:"config"`
+	SupportedTypes []string          `json:"supported_types"`
+	Enabled        bool              `json:"enabled"`
+	PaymentMode    string            `json:"payment_mode"`
+	SortOrder      int               `json:"sort_order"`
+	Limits         string            `json:"limits"`
+	RefundEnabled  bool              `json:"refund_enabled"`
 REDACTED
 
 type UpdateProviderInstanceRequest struct {
-	Name            *string           `json:"name"`
-	Config          map[string]string `json:"config"`
-	SupportedTypes  []string          `json:"supported_types"`
-	Enabled         *bool             `json:"enabled"`
-	PaymentMode     *string           `json:"payment_mode"`
-	SortOrder       *int              `json:"sort_order"`
-	Limits          *string           `json:"limits"`
-	RefundEnabled   *bool             `json:"refund_enabled"`
+	Name           *string           `json:"name"`
+	Config         map[string]string `json:"config"`
+	SupportedTypes []string          `json:"supported_types"`
+	Enabled        *bool             `json:"enabled"`
+	PaymentMode    *string           `json:"payment_mode"`
+	SortOrder      *int              `json:"sort_order"`
+	Limits         *string           `json:"limits"`
+	RefundEnabled  *bool             `json:"refund_enabled"`
 REDACTED
 type CreatePlanRequest struct {
 	GroupID       int64    `json:"group_id"`
