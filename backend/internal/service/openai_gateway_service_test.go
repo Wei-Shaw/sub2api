@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/cespare/xxhash/v2"
@@ -492,6 +493,106 @@ func TestForwardResponsesRequest_CompactPathDoesNotAugmentBuiltinTools(t *testin
 	require.Equal(t, "function", tools[0].(map[string]any)["type"])
 	require.Equal(t, "get_weather", tools[0].(map[string]any)["name"])
 	require.False(t, hasOpenAIBuiltinTool(tools, "web_search"))
+}
+
+func TestChatCompletionsBuiltinTools_AugmentsWebSearchWithoutChangingToolChoice(t *testing.T) {
+	req := &apicompat.ChatCompletionsRequest{
+		Model:        "gpt-5.4",
+		Messages:     []apicompat.ChatMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+		BuiltinTools: true,
+		ToolChoice:   json.RawMessage(`"auto"`),
+	}
+
+	changed := applyOpenAICompatBuiltinToolsAugmentation(req)
+	require.True(t, changed)
+	require.Nil(t, req.BuiltinTools)
+	require.Len(t, req.Tools, 1)
+	require.Equal(t, "web_search", req.Tools[0].Type)
+	require.JSONEq(t, `"auto"`, string(req.ToolChoice))
+}
+
+func TestChatCompletionsBuiltinTools_DoesNotDuplicateExistingWebSearch(t *testing.T) {
+	req := &apicompat.ChatCompletionsRequest{
+		BuiltinTools: []any{"web_search", "code_interpreter"},
+		Tools: []apicompat.ChatTool{
+			{Type: "function", Function: &apicompat.ChatFunction{Name: "get_weather"}},
+			{Type: "web_search"},
+		},
+	}
+
+	changed := applyOpenAICompatBuiltinToolsAugmentation(req)
+	require.True(t, changed)
+	require.Nil(t, req.BuiltinTools)
+	require.Len(t, req.Tools, 2)
+	require.Equal(t, "function", req.Tools[0].Type)
+	require.Equal(t, "web_search", req.Tools[1].Type)
+}
+
+func TestToolChoiceWhenBuiltinToolsAdded_ForwardAsChatCompletionsPreservesRawChoice(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"builtin_tools":true,"tool_choice":"auto"}`)
+	c, rec := newOpenAITestContext(t, "/v1/chat/completions", body)
+	upstream := &stubHTTPUpstream{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+				`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello"}]}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+				`data: [DONE]`,
+			}, "\n") + "\n")),
+		},
+	}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+	}
+
+	_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+	require.Equal(t, "auto", upstreamBody["tool_choice"])
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 1)
+	require.Equal(t, "web_search", tools[0].(map[string]any)["type"])
+}
+
+func TestChatCompletionsBuiltinTools_AugmentsWebSearchAndPreservesFunctionTool(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"builtin_tools":["web_search"],"tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object"}}}],"tool_choice":"auto"}`)
+	c, _ := newOpenAITestContext(t, "/v1/chat/completions", body)
+	upstream := &stubHTTPUpstream{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+				`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello"}]}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+				`data: [DONE]`,
+			}, "\n") + "\n")),
+		},
+	}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+	}
+
+	_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+	require.Equal(t, "auto", upstreamBody["tool_choice"])
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 2)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	require.Equal(t, "get_weather", tools[0].(map[string]any)["name"])
+	require.Equal(t, "web_search", tools[1].(map[string]any)["type"])
 }
 
 func TestOpenAIGatewayService_GenerateSessionHash_UsesXSessionAffinityBeforePromptCacheKey(t *testing.T) {

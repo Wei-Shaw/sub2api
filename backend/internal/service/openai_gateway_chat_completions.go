@@ -42,6 +42,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	originalModel := chatReq.Model
 	clientStream := chatReq.Stream
 	includeUsage := chatReq.StreamOptions != nil && chatReq.StreamOptions.IncludeUsage
+	if applyOpenAICompatBuiltinToolsAugmentation(&chatReq) {
+		// chatReq.Tools augmented in-place and BuiltinTools cleared
+	}
 
 	// 2. Resolve model mapping early so compat prompt_cache_key injection can
 	// derive a stable seed from the final upstream model family.
@@ -559,4 +562,22 @@ func writeChatCompletionsError(c *gin.Context, statusCode int, errType, message 
 		}
 	}
 	c.JSON(statusCode, payload)
+}
+
+func applyOpenAICompatBuiltinToolsAugmentation(req *apicompat.ChatCompletionsRequest) bool {
+	if req == nil {
+		return false
+	}
+	augmented := normalizeOpenAIBuiltinTools(req.BuiltinTools)
+	req.BuiltinTools = nil
+	if len(augmented) == 0 {
+		return true
+	}
+	for _, tool := range req.Tools {
+		if strings.TrimSpace(tool.Type) == "web_search" {
+			return true
+		}
+	}
+	req.Tools = append(req.Tools, apicompat.ChatTool{Type: "web_search"})
+	return true
 }
