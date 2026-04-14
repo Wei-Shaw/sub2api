@@ -3,12 +3,14 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 const (
@@ -21,6 +23,7 @@ const (
 	SettingEnabledPaymentTypes = "ENABLED_PAYMENT_TYPES"
 	SettingLoadBalanceStrategy = "LOAD_BALANCE_STRATEGY"
 	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
+	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
 	SettingProductNamePrefix   = "PRODUCT_NAME_PREFIX"
 	SettingProductNameSuffix   = "PRODUCT_NAME_SUFFIX"
 	SettingHelpImageURL        = "PAYMENT_HELP_IMAGE_URL"
@@ -46,9 +49,10 @@ type PaymentConfig struct {
 	DailyLimit           float64  `json:"daily_limit"`
 	OrderTimeoutMin      int      `json:"order_timeout_minutes"`
 	MaxPendingOrders     int      `json:"max_pending_orders"`
-	EnabledTypes         []string `json:"enabled_payment_types"`
-	BalanceDisabled      bool     `json:"balance_disabled"`
-	LoadBalanceStrategy  string   `json:"load_balance_strategy"`
+	EnabledTypes              []string `json:"enabled_payment_types"`
+	BalanceDisabled           bool     `json:"balance_disabled"`
+	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
+	LoadBalanceStrategy       string   `json:"load_balance_strategy"`
 	ProductNamePrefix    string   `json:"product_name_prefix"`
 	ProductNameSuffix    string   `json:"product_name_suffix"`
 	HelpImageURL         string   `json:"help_image_url"`
@@ -71,9 +75,10 @@ type UpdatePaymentConfigRequest struct {
 	DailyLimit          *float64 `json:"daily_limit"`
 	OrderTimeoutMin     *int     `json:"order_timeout_minutes"`
 	MaxPendingOrders    *int     `json:"max_pending_orders"`
-	EnabledTypes        []string `json:"enabled_payment_types"`
-	BalanceDisabled     *bool    `json:"balance_disabled"`
-	LoadBalanceStrategy *string  `json:"load_balance_strategy"`
+	EnabledTypes              []string `json:"enabled_payment_types"`
+	BalanceDisabled           *bool    `json:"balance_disabled"`
+	BalanceRechargeMultiplier *float64 `json:"balance_recharge_multiplier"`
+	LoadBalanceStrategy       *string  `json:"load_balance_strategy"`
 	ProductNamePrefix   *string  `json:"product_name_prefix"`
 	ProductNameSuffix   *string  `json:"product_name_suffix"`
 	HelpImageURL        *string  `json:"help_image_url"`
@@ -183,7 +188,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 	keys := []string{
 		SettingPaymentEnabled, SettingMinRechargeAmount, SettingMaxRechargeAmount,
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
-		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingLoadBalanceStrategy,
+		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingLoadBalanceStrategy,
 		SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
@@ -207,8 +212,9 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		DailyLimit:          pcParseFloat(vals[SettingDailyRechargeLimit], 0),
 		OrderTimeoutMin:     pcParseInt(vals[SettingOrderTimeoutMinutes], defaultOrderTimeoutMin),
 		MaxPendingOrders:    pcParseInt(vals[SettingMaxPendingOrders], defaultMaxPendingOrders),
-		BalanceDisabled:     vals[SettingBalancePayDisabled] == "true",
-		LoadBalanceStrategy: vals[SettingLoadBalanceStrategy],
+		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
+		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
+		LoadBalanceStrategy:       vals[SettingLoadBalanceStrategy],
 		ProductNamePrefix:   vals[SettingProductNamePrefix],
 		ProductNameSuffix:   vals[SettingProductNameSuffix],
 		HelpImageURL:        vals[SettingHelpImageURL],
@@ -256,6 +262,11 @@ func (s *PaymentConfigService) getStripePublishableKey(ctx context.Context) stri
 // nil-check before serialisation — this is inherent to patch-style update patterns
 // and cannot be meaningfully decomposed without introducing unnecessary abstraction.
 func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req UpdatePaymentConfigRequest) error {
+	if req.BalanceRechargeMultiplier != nil {
+		if math.IsNaN(*req.BalanceRechargeMultiplier) || math.IsInf(*req.BalanceRechargeMultiplier, 0) || *req.BalanceRechargeMultiplier <= 0 {
+			return infraerrors.BadRequest("INVALID_BALANCE_RECHARGE_MULTIPLIER", "balance recharge multiplier must be greater than 0")
+		}
+	}
 	m := map[string]string{
 		SettingPaymentEnabled:      formatBoolOrEmpty(req.Enabled),
 		SettingMinRechargeAmount:   formatPositiveFloat(req.MinAmount),
@@ -264,6 +275,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingOrderTimeoutMinutes: formatPositiveInt(req.OrderTimeoutMin),
 		SettingMaxPendingOrders:    formatPositiveInt(req.MaxPendingOrders),
 		SettingBalancePayDisabled:  formatBoolOrEmpty(req.BalanceDisabled),
+		SettingBalanceRechargeMult: formatPositiveFloat(req.BalanceRechargeMultiplier),
 		SettingLoadBalanceStrategy: derefStr(req.LoadBalanceStrategy),
 		SettingProductNamePrefix:   derefStr(req.ProductNamePrefix),
 		SettingProductNameSuffix:   derefStr(req.ProductNameSuffix),
