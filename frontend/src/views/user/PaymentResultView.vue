@@ -102,10 +102,12 @@ interface ReturnInfo {
 REDACTED
 const returnInfo = ref<ReturnInfo | null>(null)
 
+const SUCCESS_STATUSES = new Set(['COMPLETED', 'PAID', 'RECHARGING'])
+
 const isSuccess = computed(() => {
   // Always prioritize actual order status from backend
   if (order.value) {
-    return order.value.status === 'COMPLETED' || order.value.status === 'PAID'
+    return SUCCESS_STATUSES.has(order.value.status)
   REDACTED
   // Fallback only when order not loaded
   if (route.query.status === 'success') return true

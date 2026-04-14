@@ -391,7 +391,7 @@ REDACTED
 	REDACTED
 		batch = append(batch, AccountWithConcurrency{
 			ID:             acc.ID,
-			MaxConcurrency: acc.Concurrency,
+			MaxConcurrency: acc.EffectiveLoadFactor(),
 	REDACTED)
 REDACTED
 	if len(batch) == 0 {

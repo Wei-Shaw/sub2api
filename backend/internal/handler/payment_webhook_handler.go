@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -72,9 +73,13 @@ REDACTED else {
 		rawBody = string(body)
 REDACTED
 
-	provider, err := h.registry.GetProviderByKey(providerKey)
+	// Extract out_trade_no to look up the order's specific provider instance.
+	// This is needed when multiple instances of the same provider exist (e.g. multiple EasyPay accounts).
+	outTradeNo := extractOutTradeNo(rawBody, providerKey)
+
+	provider, err := h.paymentService.GetWebhookProvider(c.Request.Context(), providerKey, outTradeNo)
 	if err != nil {
-		slog.Warn("[Payment Webhook] provider not registered", "provider", providerKey, "error", err)
+		slog.Warn("[Payment Webhook] provider not found", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
 		writeSuccessResponse(c, providerKey)
 		return
 REDACTED
@@ -111,11 +116,32 @@ REDACTED
 	writeSuccessResponse(c, providerKey)
 REDACTED
 
+// extractOutTradeNo parses the webhook body to find the out_trade_no.
+// This allows looking up the correct provider instance before verification.
+func extractOutTradeNo(rawBody, providerKey string) string {
+	switch providerKey {
+	case payment.TypeEasyPay:
+		values, err := url.ParseQuery(rawBody)
+		if err == nil {
+			return values.Get("out_trade_no")
+	REDACTED
+REDACTED
+	// For other providers (Stripe, Alipay direct, WxPay direct), the registry
+	// typically has only one instance, so no instance lookup is needed.
+	return ""
+REDACTED
+
 // wxpaySuccessResponse is the JSON response expected by WeChat Pay webhook.
 type wxpaySuccessResponse struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 REDACTED
+
+// WeChat Pay webhook success response constants.
+const (
+	wxpaySuccessCode    = "SUCCESS"
+	wxpaySuccessMessage = "成功"
+)
 
 // writeSuccessResponse sends the provider-specific success response.
 // WeChat Pay requires JSON {"code":"SUCCESS","message":"成功"REDACTED;
@@ -123,7 +149,7 @@ REDACTED
 func writeSuccessResponse(c *gin.Context, providerKey string) {
 	switch providerKey {
 	case payment.TypeWxpay:
-		c.JSON(http.StatusOK, wxpaySuccessResponse{Code: "SUCCESS", Message: "成功"REDACTED)
+		c.JSON(http.StatusOK, wxpaySuccessResponse{Code: wxpaySuccessCode, Message: wxpaySuccessMessageREDACTED)
 	case payment.TypeStripe:
 		c.String(http.StatusOK, "")
 	default:

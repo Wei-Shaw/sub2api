@@ -429,8 +429,6 @@ export interface AdminGroup extends Group {
 
   // MCP XML 协议注入（仅 antigravity 平台使用）
   mcp_xml_inject: boolean
-  // Claude usage 模拟开关（仅 anthropic 平台使用）
-  simulate_claude_max_enabled: boolean
 
   // 支持的模型系列（仅 antigravity 平台使用）
   supported_model_scopes?: string[]
@@ -523,7 +521,6 @@ export interface CreateGroupRequest {
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
-  simulate_claude_max_enabled?: boolean
   supported_model_scopes?: string[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
@@ -549,7 +546,6 @@ export interface UpdateGroupRequest {
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
-  simulate_claude_max_enabled?: boolean
   supported_model_scopes?: string[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
@@ -691,6 +687,7 @@ export interface Account {
   // Extra fields including Codex usage and model-level rate limits (Antigravity smart retry)
   extra?: (CodexUsageSnapshot & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string REDACTED>
+    antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string REDACTED>
   REDACTED & Record<string, unknown>)
   proxy_id: number | null
   concurrency: number
@@ -751,12 +748,6 @@ export interface Account {
   // 自定义 Base URL 中继转发（仅 Anthropic OAuth/SetupToken 账号有效）
   custom_base_url_enabled?: boolean | null
   custom_base_url?: string | null
-
-  // 客户端亲和调度（仅 Anthropic/Antigravity 平台有效）
-  // 启用后新会话会优先调度到客户端之前使用过的账号
-  client_affinity_enabled?: boolean | null
-  affinity_client_count?: number | null
-  affinity_clients?: string[] | null
 
   // API Key 账号配额限制
   quota_limit?: number | null
@@ -1066,6 +1057,8 @@ export interface AdminUsageLog extends UsageLog {
 
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null
+  // 自定义定价规则计算的账号统计费用（nil 时使用 total_cost * multiplier）
+  account_stats_cost?: number | null
 
   // 渠道 ID 和计费等级（仅管理员可见）
   channel_id?: number | null

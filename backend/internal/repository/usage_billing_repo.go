@@ -113,9 +113,11 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 REDACTED
 
 	if cmd.BalanceCost > 0 {
-		if err := deductUsageBillingBalance(ctx, tx, cmd.UserID, cmd.BalanceCost); err != nil {
+		newBalance, err := deductUsageBillingBalance(ctx, tx, cmd.UserID, cmd.BalanceCost)
+		if err != nil {
 			return err
 	REDACTED
+		result.NewBalance = &newBalance
 REDACTED
 
 	if cmd.APIKeyQuotaCost > 0 {
@@ -133,9 +135,11 @@ REDACTED
 REDACTED
 
 	if cmd.AccountQuotaCost > 0 && (strings.EqualFold(cmd.AccountType, service.AccountTypeAPIKey) || strings.EqualFold(cmd.AccountType, service.AccountTypeBedrock)) {
-		if err := incrementUsageBillingAccountQuota(ctx, tx, cmd.AccountID, cmd.AccountQuotaCost); err != nil {
+		quotaState, err := incrementUsageBillingAccountQuota(ctx, tx, cmd.AccountID, cmd.AccountQuotaCost)
+		if err != nil {
 			return err
 	REDACTED
+		result.QuotaState = quotaState
 REDACTED
 
 	return nil
@@ -169,24 +173,22 @@ REDACTED
 	return service.ErrSubscriptionNotFound
 REDACTED
 
-func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) error {
-	res, err := tx.ExecContext(ctx, `
+func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, error) {
+	var newBalance float64
+	err := tx.QueryRowContext(ctx, `
 		UPDATE users
 		SET balance = balance - $1,
 			updated_at = NOW()
 		WHERE id = $2 AND deleted_at IS NULL
-	`, amount, userID)
+		RETURNING balance
+	`, amount, userID).Scan(&newBalance)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, service.ErrUserNotFound
+REDACTED
 	if err != nil {
-		return err
+		return 0, err
 REDACTED
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return err
-REDACTED
-	if affected > 0 {
-		return nil
-REDACTED
-	return service.ErrUserNotFound
+	return newBalance, nil
 REDACTED
 
 func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) (bool, error) {
@@ -240,7 +242,7 @@ REDACTED
 	return nil
 REDACTED
 
-func incrementUsageBillingAccountQuota(ctx context.Context, tx *sql.Tx, accountID int64, amount float64) error {
+func incrementUsageBillingAccountQuota(ctx context.Context, tx *sql.Tx, accountID int64, amount float64) (*service.AccountQuotaState, error) {
 	rows, err := tx.QueryContext(ctx,
 		`UPDATE accounts SET extra = (
 			COALESCE(extra, '{REDACTED'::jsonb)
@@ -279,32 +281,40 @@ func incrementUsageBillingAccountQuota(ctx context.Context, tx *sql.Tx, accountI
 		WHERE id = $2 AND deleted_at IS NULL
 		RETURNING
 			COALESCE((extra->>'quota_used')::numeric, 0),
-			COALESCE((extra->>'quota_limit')::numeric, 0)`,
+			COALESCE((extra->>'quota_limit')::numeric, 0),
+			COALESCE((extra->>'quota_daily_used')::numeric, 0),
+			COALESCE((extra->>'quota_daily_limit')::numeric, 0),
+			COALESCE((extra->>'quota_weekly_used')::numeric, 0),
+			COALESCE((extra->>'quota_weekly_limit')::numeric, 0)`,
 		amount, accountID)
 	if err != nil {
-		return err
+		return nil, err
 REDACTED
 	defer func() { _ = rows.Close() REDACTED()
 
-	var newUsed, limit float64
+	var state service.AccountQuotaState
 	if rows.Next() {
-		if err := rows.Scan(&newUsed, &limit); err != nil {
-			return err
+		if err := rows.Scan(
+			&state.TotalUsed, &state.TotalLimit,
+			&state.DailyUsed, &state.DailyLimit,
+			&state.WeeklyUsed, &state.WeeklyLimit,
+		); err != nil {
+			return nil, err
 	REDACTED
 REDACTED else {
 		if err := rows.Err(); err != nil {
-			return err
+			return nil, err
 	REDACTED
-		return service.ErrAccountNotFound
+		return nil, service.ErrAccountNotFound
 REDACTED
 	if err := rows.Err(); err != nil {
-		return err
+		return nil, err
 REDACTED
-	if limit > 0 && newUsed >= limit && (newUsed-amount) < limit {
+	if state.TotalLimit > 0 && state.TotalUsed >= state.TotalLimit && (state.TotalUsed-amount) < state.TotalLimit {
 		if err := enqueueSchedulerOutbox(ctx, tx, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
 			logger.LegacyPrintf("repository.usage_billing", "[SchedulerOutbox] enqueue quota exceeded failed: account=%d err=%v", accountID, err)
-			return err
+			return nil, err
 	REDACTED
 REDACTED
-	return nil
+	return &state, nil
 REDACTED
