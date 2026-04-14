@@ -58,6 +58,11 @@ REDACTED{
 					"allowed_groups": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z",
+					"balance_notify_enabled": false,
+					"balance_notify_threshold_type": "",
+					"balance_notify_threshold": null,
+					"balance_notify_extra_emails": null,
+					"total_recharged": 0,
 					"run_mode": "standard"
 			REDACTED
 		REDACTED`,
@@ -606,7 +611,12 @@ REDACTED{
 					"payment_cancel_rate_limit_max": 0,
 					"payment_cancel_rate_limit_window": 0,
 					"payment_cancel_rate_limit_unit": "",
-					"payment_cancel_rate_limit_window_mode": ""
+					"payment_cancel_rate_limit_window_mode": "",
+					"balance_low_notify_enabled": false,
+					"account_quota_notify_enabled": false,
+					"balance_low_notify_threshold": 0,
+					"balance_low_notify_recharge_url": "",
+					"account_quota_notify_emails": []
 			REDACTED
 		REDACTED`,
 	REDACTED,
@@ -699,7 +709,7 @@ REDACTED
 		RunMode: config.RunModeStandard,
 REDACTED
 
-	userService := service.NewUserService(userRepo, nil, nil)
+	userService := service.NewUserService(userRepo, nil, nil, nil)
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, nil, apiKeyCache, cfg)
 
 	usageRepo := newStubUsageLogRepo()

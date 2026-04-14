@@ -70,6 +70,9 @@ func (s *userRepoStubForGroupUpdate) UpdateTotpSecret(context.Context, int64, *s
 REDACTED
 func (s *userRepoStubForGroupUpdate) EnableTotp(context.Context, int64) error  { panic("unexpected") REDACTED
 func (s *userRepoStubForGroupUpdate) DisableTotp(context.Context, int64) error { panic("unexpected") REDACTED
+func (s *userRepoStubForGroupUpdate) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
+	panic("unexpected")
+REDACTED
 
 // apiKeyRepoStubForGroupUpdate implements APIKeyRepository for AdminUpdateAPIKeyGroupID tests.
 type apiKeyRepoStubForGroupUpdate struct {
@@ -152,6 +155,9 @@ REDACTED
 func (s *apiKeyRepoStubForGroupUpdate) GetRateLimitData(context.Context, int64) (*APIKeyRateLimitData, error) {
 	panic("unexpected")
 REDACTED
+func (s *apiKeyRepoStubForGroupUpdate) UpdateGroupIDByUserAndGroup(context.Context, int64, int64, int64) (int64, error) {
+	panic("unexpected")
+REDACTED
 
 // groupRepoStubForGroupUpdate implements GroupRepository for AdminUpdateAPIKeyGroupID tests.
 type groupRepoStubForGroupUpdate struct {
@@ -194,7 +200,7 @@ REDACTED
 func (s *groupRepoStubForGroupUpdate) ExistsByName(context.Context, string) (bool, error) {
 	panic("unexpected")
 REDACTED
-func (s *groupRepoStubForGroupUpdate) GetAccountCount(context.Context, int64) (int64, error) {
+func (s *groupRepoStubForGroupUpdate) GetAccountCount(context.Context, int64) (int64, int64, error) {
 	panic("unexpected")
 REDACTED
 func (s *groupRepoStubForGroupUpdate) DeleteAccountGroupsByGroupID(context.Context, int64) (int64, error) {
