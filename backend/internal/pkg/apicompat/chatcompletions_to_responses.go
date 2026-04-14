@@ -390,8 +390,11 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 	var out []ResponsesTool
 
 	for _, t := range tools {
+		if strings.TrimSpace(t.Type) == "" {
+			continue
+		}
 		if t.Type != "function" {
-			if strings.TrimSpace(t.Type) != "" {
+			if strings.TrimSpace(t.Type) == "web_search" {
 				out = append(out, ResponsesTool{Type: t.Type})
 			}
 			continue

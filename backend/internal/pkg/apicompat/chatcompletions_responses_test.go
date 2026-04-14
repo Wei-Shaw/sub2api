@@ -319,6 +319,21 @@ func TestChatCompletionsToResponses_ServiceTier(t *testing.T) {
 	assert.Equal(t, "flex", resp.ServiceTier)
 }
 
+func TestChatCompletionsToResponses_PreservesBuiltInWebSearchTool(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model: "gpt-5.4",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(`"Search the web"`)},
+		},
+		Tools: []ChatTool{{Type: "web_search"}},
+	}
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 1)
+	assert.Equal(t, "web_search", resp.Tools[0].Type)
+	assert.Empty(t, resp.Tools[0].Name)
+}
+
 func TestChatCompletionsToResponses_AssistantWithTextAndToolCalls(t *testing.T) {
 	req := &ChatCompletionsRequest{
 		Model: "gpt-4o",

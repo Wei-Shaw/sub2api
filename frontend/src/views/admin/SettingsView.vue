@@ -2377,9 +2377,39 @@
                   ></textarea>
                 </div>
               </div>
+
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <PaymentProviderList
+                  :providers="providerInstances"
+                  :loading="providerInstancesLoading || providerInstancesSaving"
+                  :can-create="form.payment_enabled_types.length > 0"
+                  :enabled-payment-types="form.payment_enabled_types"
+                  :all-payment-types="allPaymentTypes"
+                  :redirect-label="tOr('admin.settings.payment.redirectLabel', 'Redirect')"
+                  @refresh="loadProviderInstances"
+                  @create="openCreateProviderDialog"
+                  @edit="openEditProviderDialog"
+                  @delete="handleDeleteProvider"
+                  @toggle-field="handleToggleProviderField"
+                  @toggle-type="handleToggleProviderType"
+                  @reorder="handleReorderProviders"
+                />
+              </div>
             </template>
           </div>
         </div>
+
+        <PaymentProviderDialog
+          :show="providerDialogVisible"
+          :saving="providerInstancesSaving"
+          :editing="editingProvider"
+          :all-key-options="paymentProviderKeyOptions"
+          :enabled-key-options="enabledProviderKeyOptions"
+          :all-payment-types="allPaymentTypes"
+          :redirect-label="tOr('admin.settings.payment.redirectLabel', 'Redirect')"
+          @close="providerDialogVisible = false"
+          @save="handleSaveProvider"
+        />
         </div><!-- /Tab: Payment -->
 
         <!-- Tab: Email -->
@@ -2643,12 +2673,14 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api'
+import { adminPaymentAPI } from '@/api/admin/payment'
 import type {
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting
 } from '@/api/admin/settings'
 import type { AdminGroup } from '@/types'
+import type { ProviderInstance } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
@@ -2656,10 +2688,14 @@ import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import ImageUpload from '@/components/common/ImageUpload.vue'
+import PaymentProviderList from '@/components/payment/PaymentProviderList.vue'
+import PaymentProviderDialog from '@/components/payment/PaymentProviderDialog.vue'
 import BackupSettings from '@/views/admin/BackupView.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { useAppStore } from '@/stores'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
+import type { TypeOption } from '@/components/payment/providerConfig'
+import { PROVIDER_SUPPORTED_TYPES } from '@/components/payment/providerConfig'
 import {
   isRegistrationEmailSuffixDomainValid,
   normalizeRegistrationEmailSuffixDomain,
@@ -2798,6 +2834,12 @@ type PaymentSettingsFields = {
 const paymentProviderTypes: PaymentProviderType[] = ['easypay', 'alipay', 'wxpay', 'stripe']
 const paymentRateLimitUnits: PaymentRateLimitUnit[] = ['minute', 'hour', 'day']
 const paymentRateLimitWindowModes: PaymentRateLimitWindowMode[] = ['rolling', 'fixed']
+
+const providerInstancesLoading = ref(false)
+const providerInstancesSaving = ref(false)
+const providerDialogVisible = ref(false)
+const editingProvider = ref<ProviderInstance | null>(null)
+const providerInstances = ref<ProviderInstance[]>([])
 
 interface DefaultSubscriptionGroupOption {
   value: number
@@ -3172,6 +3214,21 @@ const allPaymentTypes = computed(() => [
   { value: 'stripe' as PaymentProviderType, label: tOr('payment.methods.stripe', 'Stripe') }
 ])
 
+const paymentProviderKeyOptions = computed<TypeOption[]>(() => [
+  { value: 'easypay', label: tOr('admin.settings.payment.providerEasypay', 'EasyPay') },
+  { value: 'alipay', label: tOr('admin.settings.payment.providerAlipay', 'Alipay') },
+  { value: 'wxpay', label: tOr('admin.settings.payment.providerWxpay', 'WeChat Pay') },
+  { value: 'stripe', label: tOr('admin.settings.payment.providerStripe', 'Stripe') },
+])
+
+const enabledProviderKeyOptions = computed<TypeOption[]>(() => {
+  const enabledTypes = new Set(form.payment_enabled_types)
+  return paymentProviderKeyOptions.value.filter((provider) => {
+    const supported = PROVIDER_SUPPORTED_TYPES[provider.value] || []
+    return supported.some((type) => enabledTypes.has(type as PaymentProviderType))
+  })
+})
+
 const loadBalanceOptions = computed(() => [
   {
     value: 'round-robin' as PaymentLoadBalanceStrategy,
@@ -3220,6 +3277,119 @@ function togglePaymentType(type: PaymentProviderType) {
   }
 
   form.payment_enabled_types = [...form.payment_enabled_types, type]
+}
+
+async function loadProviderInstances() {
+	providerInstancesLoading.value = true
+	try {
+		const res = await adminPaymentAPI.getProviders()
+		providerInstances.value = Array.isArray(res.data) ? res.data : []
+	} catch (error: any) {
+		appStore.showError(
+			tOr('admin.settings.payment.loadProvidersFailed', 'Failed to load payment providers') + ': ' + (error.message || t('common.unknownError'))
+		)
+	} finally {
+		providerInstancesLoading.value = false
+	}
+}
+
+function openCreateProviderDialog() {
+	editingProvider.value = null
+	providerDialogVisible.value = true
+}
+
+function openEditProviderDialog(provider: ProviderInstance) {
+	editingProvider.value = provider
+	providerDialogVisible.value = true
+}
+
+async function handleSaveProvider(payload: Record<string, unknown>) {
+	providerInstancesSaving.value = true
+	try {
+		if (editingProvider.value) {
+			await adminPaymentAPI.updateProvider(editingProvider.value.id, payload)
+			appStore.showSuccess(tOr('admin.settings.payment.providerUpdated', 'Payment provider updated'))
+		} else {
+			await adminPaymentAPI.createProvider(payload)
+			appStore.showSuccess(tOr('admin.settings.payment.providerCreated', 'Payment provider created'))
+		}
+		providerDialogVisible.value = false
+		editingProvider.value = null
+		await loadProviderInstances()
+	} catch (error: any) {
+		appStore.showError(
+			tOr('admin.settings.payment.saveProviderFailed', 'Failed to save payment provider') + ': ' + (error.message || t('common.unknownError'))
+		)
+	} finally {
+		providerInstancesSaving.value = false
+	}
+}
+
+async function handleDeleteProvider(provider: ProviderInstance) {
+	if (!window.confirm(tOr('admin.settings.payment.deleteProviderConfirm', 'Delete this payment provider?'))) {
+		return
+	}
+	providerInstancesSaving.value = true
+	try {
+		await adminPaymentAPI.deleteProvider(provider.id)
+		appStore.showSuccess(tOr('admin.settings.payment.providerDeleted', 'Payment provider deleted'))
+		await loadProviderInstances()
+	} catch (error: any) {
+		appStore.showError(
+			tOr('admin.settings.payment.deleteProviderFailed', 'Failed to delete payment provider') + ': ' + (error.message || t('common.unknownError'))
+		)
+	} finally {
+		providerInstancesSaving.value = false
+	}
+}
+
+async function handleToggleProviderField(provider: ProviderInstance, field: 'enabled' | 'refund_enabled') {
+	providerInstancesSaving.value = true
+	try {
+		await adminPaymentAPI.updateProvider(provider.id, {
+			[field]: !provider[field],
+		})
+		await loadProviderInstances()
+	} catch (error: any) {
+		appStore.showError(
+			tOr('admin.settings.payment.updateProviderFailed', 'Failed to update payment provider') + ': ' + (error.message || t('common.unknownError'))
+		)
+	} finally {
+		providerInstancesSaving.value = false
+	}
+}
+
+async function handleToggleProviderType(provider: ProviderInstance, type: string) {
+	const nextTypes = provider.supported_types.includes(type)
+		? provider.supported_types.filter((item) => item !== type)
+		: [...provider.supported_types, type]
+	providerInstancesSaving.value = true
+	try {
+		await adminPaymentAPI.updateProvider(provider.id, {
+			supported_types: nextTypes,
+		})
+		await loadProviderInstances()
+	} catch (error: any) {
+		appStore.showError(
+			tOr('admin.settings.payment.updateProviderFailed', 'Failed to update payment provider') + ': ' + (error.message || t('common.unknownError'))
+		)
+	} finally {
+		providerInstancesSaving.value = false
+	}
+}
+
+async function handleReorderProviders(providers: { id: number; sort_order: number }[]) {
+	providerInstancesSaving.value = true
+	try {
+		await Promise.all(providers.map((item) => adminPaymentAPI.updateProvider(item.id, { sort_order: item.sort_order })))
+		await loadProviderInstances()
+	} catch (error: any) {
+		appStore.showError(
+			tOr('admin.settings.payment.reorderProvidersFailed', 'Failed to reorder payment providers') + ': ' + (error.message || t('common.unknownError'))
+		)
+	} finally {
+		providerInstancesSaving.value = false
+	}
 }
 
 async function loadSettings() {
@@ -3811,6 +3981,7 @@ async function saveBetaPolicySettings() {
 onMounted(() => {
   loadSettings()
   loadSubscriptionGroups()
+  loadProviderInstances()
   loadAdminApiKey()
   loadOverloadCooldownSettings()
   loadStreamTimeoutSettings()
