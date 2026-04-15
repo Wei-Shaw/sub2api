@@ -1715,6 +1715,115 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 	return filtered, nil
 }
 
+func buildOpenAIReserveCandidatePool(accounts []Account) []Account {
+	pool := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account.IsOpenAIReserveCandidate() {
+			pool = append(pool, account)
+		}
+	}
+	sort.SliceStable(pool, func(i, j int) bool {
+		iScore := pool[i].OpenAIRemainingQuotaScore()
+		jScore := pool[j].OpenAIRemainingQuotaScore()
+		if iScore != jScore {
+			return iScore > jScore
+		}
+		return pool[i].ID < pool[j].ID
+	})
+	return pool
+}
+
+func calculateOpenAIConcurrentCapacity(accounts []Account) int {
+	total := 0
+	for _, account := range accounts {
+		if account.Concurrency > 0 {
+			total += account.Concurrency
+		}
+	}
+	return total
+}
+
+func buildOpenAIReservePool(activeAccounts []Account, exhaustedAccounts []Account) []Account {
+	reserveCandidates := buildOpenAIReserveCandidatePool(activeAccounts)
+	if len(reserveCandidates) == 0 {
+		return nil
+	}
+
+	exhaustedCapacity := calculateOpenAIConcurrentCapacity(exhaustedAccounts)
+	activeFreeCapacity := calculateOpenAIConcurrentCapacity(reserveCandidates)
+	totalCapacity := exhaustedCapacity + activeFreeCapacity
+	if totalCapacity <= 0 {
+		return nil
+	}
+
+	targetCapacity := (totalCapacity*60 + 99) / 100
+	reserveNeeded := targetCapacity - exhaustedCapacity
+	if reserveNeeded <= 0 {
+		return nil
+	}
+
+	reservePool := make([]Account, 0, len(reserveCandidates))
+	reserveCapacity := 0
+	for _, account := range reserveCandidates {
+		reservePool = append(reservePool, account)
+		if account.Concurrency > 0 {
+			reserveCapacity += account.Concurrency
+		}
+		if reserveCapacity >= reserveNeeded {
+			break
+		}
+	}
+	return reservePool
+}
+
+func shouldRouteExhaustedOverflowToReserve(exhaustedAccounts []Account, reserveAccounts []Account, loadMap map[int64]*AccountLoadInfo) bool {
+	if calculateOpenAIConcurrentCapacity(reserveAccounts) <= 0 {
+		return false
+	}
+
+	exhaustedCapacity := calculateOpenAIConcurrentCapacity(exhaustedAccounts)
+	if exhaustedCapacity <= 0 {
+		return false
+	}
+
+	usagePercent := calculateOpenAIConcurrentUsagePercent(exhaustedAccounts, loadMap)
+	return usagePercent > 60
+}
+
+func calculateOpenAIConcurrentUsagePercent(accounts []Account, loadMap map[int64]*AccountLoadInfo) float64 {
+	totalCapacity := calculateOpenAIConcurrentCapacity(accounts)
+	if totalCapacity <= 0 || len(accounts) == 0 {
+		return 0
+	}
+
+	currentAvailable := true
+	totalCurrent := 0
+	weightedLoad := 0
+	capacityAccounts := 0
+	for _, account := range accounts {
+		if account.Concurrency <= 0 {
+			continue
+		}
+		capacityAccounts++
+		loadInfo := loadMap[account.ID]
+		if loadInfo == nil {
+			currentAvailable = false
+			weightedLoad += 100 * account.Concurrency
+			continue
+		}
+		totalCurrent += loadInfo.CurrentConcurrency
+		weightedLoad += loadInfo.LoadRate * account.Concurrency
+	}
+
+	if capacityAccounts == 0 {
+		return 0
+	}
+	if currentAvailable {
+		return float64(totalCurrent) * 100 / float64(totalCapacity)
+	}
+	return float64(weightedLoad) / float64(totalCapacity)
+}
+
 func (s *OpenAIGatewayService) checkChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
 	if groupID == nil || s.channelService == nil || requestedModel == "" {
 		return false

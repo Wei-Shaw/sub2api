@@ -186,6 +186,165 @@ func TestListSchedulableAccounts_UngroupedKeepsUngroupedPool(t *testing.T) {
 	require.Equal(t, int64(64), accounts[0].ID)
 }
 
+func TestBuildReserveCandidatePool_FillsToSixtyPercentUsingFreeActiveCapacity(t *testing.T) {
+	exhaustedAccounts := []Account{{
+		ID:          1,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 2,
+		Credentials: map[string]any{"plan_type": "free"},
+		Extra:       map[string]any{"codex_7d_used_percent": 100.0},
+	}}
+
+	activeAccounts := []Account{
+		{
+			ID:          11,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{"plan_type": "free"},
+			Extra:       map[string]any{"codex_7d_used_percent": 10.0},
+		},
+		{
+			ID:          12,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{"plan_type": "free"},
+			Extra:       map[string]any{"codex_7d_used_percent": 30.0},
+		},
+		{
+			ID:          13,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 5,
+			Credentials: map[string]any{"plan_type": "plus"},
+		},
+		{
+			ID:          14,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 5,
+		},
+	}
+
+	reserveAccounts := buildOpenAIReservePool(activeAccounts, exhaustedAccounts)
+	require.Len(t, reserveAccounts, 1)
+	require.Equal(t, int64(11), reserveAccounts[0].ID)
+	require.Equal(t, 1, calculateOpenAIConcurrentCapacity(reserveAccounts))
+	require.Equal(t, 3, calculateOpenAIConcurrentCapacity(exhaustedAccounts)+calculateOpenAIConcurrentCapacity(reserveAccounts))
+}
+
+func TestBuildReserveCandidatePool_PrefersHigherRemainingQuotaScore(t *testing.T) {
+	activeAccounts := []Account{
+		{
+			ID:          21,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{"plan_type": "free"},
+			Extra:       map[string]any{"codex_7d_used_percent": 80.0},
+		},
+		{
+			ID:          22,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{"plan_type": "free"},
+			Extra:       map[string]any{"codex_7d_used_percent": 10.0},
+		},
+	}
+
+	reserveAccounts := buildOpenAIReservePool(activeAccounts, []Account{{
+		ID:          2,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{"plan_type": "free"},
+		Extra:       map[string]any{"codex_7d_used_percent": 100.0},
+	}})
+
+	require.Len(t, reserveAccounts, 1)
+	require.Equal(t, int64(22), reserveAccounts[0].ID)
+}
+
+func TestOpenAIRemainingQuotaScore_UsesMoreConservativeWindow(t *testing.T) {
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{"plan_type": "free"},
+		Extra: map[string]any{
+			"codex_7d_used_percent":      20.0,
+			"codex_primary_used_percent": 80.0,
+		},
+	}
+
+	require.Equal(t, 20.0, account.OpenAIRemainingQuotaScore())
+}
+
+func TestOpenAIRemainingQuotaScore_InvalidPercentReturnsUnknown(t *testing.T) {
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{"plan_type": "free"},
+		Extra: map[string]any{
+			"codex_7d_used_percent": "not-a-number",
+		},
+	}
+
+	require.Equal(t, -1.0, account.OpenAIRemainingQuotaScore())
+}
+
+func TestShouldUseReserveForExhaustedOverflow_BelowThreshold(t *testing.T) {
+	exhaustedAccounts := []Account{{ID: 31, Concurrency: 10}}
+	reserveAccounts := []Account{{ID: 32, Concurrency: 4}}
+	loadMap := map[int64]*AccountLoadInfo{
+		31: {AccountID: 31, CurrentConcurrency: 6, LoadRate: 60},
+	}
+
+	require.False(t, shouldRouteExhaustedOverflowToReserve(exhaustedAccounts, reserveAccounts, loadMap))
+}
+
+func TestShouldUseReserveForExhaustedOverflow_AboveThreshold(t *testing.T) {
+	exhaustedAccounts := []Account{{ID: 41, Concurrency: 10}}
+	reserveAccounts := []Account{{ID: 42, Concurrency: 4}}
+	loadMap := map[int64]*AccountLoadInfo{
+		41: {AccountID: 41, CurrentConcurrency: 7, LoadRate: 70},
+	}
+
+	require.True(t, shouldRouteExhaustedOverflowToReserve(exhaustedAccounts, reserveAccounts, loadMap))
+}
+
+func TestShouldUseReserveForExhaustedOverflow_SparseLoadMapDoesNotUnderestimate(t *testing.T) {
+	exhaustedAccounts := []Account{{ID: 51, Concurrency: 5}, {ID: 52, Concurrency: 5}}
+	reserveAccounts := []Account{{ID: 53, Concurrency: 2}}
+	loadMap := map[int64]*AccountLoadInfo{
+		51: {AccountID: 51, CurrentConcurrency: 2, LoadRate: 40},
+	}
+
+	require.True(t, shouldRouteExhaustedOverflowToReserve(exhaustedAccounts, reserveAccounts, loadMap))
+}
+
 type stubConcurrencyCache struct {
 	ConcurrencyCache
 	loadBatchErr    error
