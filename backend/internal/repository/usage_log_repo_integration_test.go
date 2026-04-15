@@ -753,8 +753,11 @@ func (s *UsageLogRepoSuite) TestDashboardStats_TodayTotalsAndPerformance() {
 	s.Require().Equal(baseStats.TotalTokens+int64(51), stats.TotalTokens, "TotalTokens mismatch")
 	s.Require().Equal(baseStats.TotalCost+2.3, stats.TotalCost, "TotalCost mismatch")
 	s.Require().Equal(baseStats.TotalActualCost+2.0, stats.TotalActualCost, "TotalActualCost mismatch")
+	// account_cost falls back to total_cost when account_stats_cost is NULL
+	s.Require().Equal(baseStats.TotalAccountCost+2.3, stats.TotalAccountCost, "TotalAccountCost mismatch")
 	s.Require().GreaterOrEqual(stats.TodayRequests, int64(1), "expected TodayRequests >= 1")
 	s.Require().GreaterOrEqual(stats.TodayCost, 0.0, "expected TodayCost >= 0")
+	s.Require().GreaterOrEqual(stats.TodayAccountCost, 0.0, "expected TodayAccountCost >= 0")
 
 	wantRpm, wantTpm, err := s.repo.getPerformanceStats(s.ctx, 0)
 	s.Require().NoError(err, "getPerformanceStats")
@@ -833,6 +836,8 @@ func (s *UsageLogRepoSuite) TestDashboardStatsWithRange_Fallback() {
 	s.Require().Equal(int64(45), stats.TotalTokens)
 	s.Require().Equal(1.5, stats.TotalCost)
 	s.Require().Equal(1.4, stats.TotalActualCost)
+	// account_cost = COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1) = total_cost
+	s.Require().Equal(1.5, stats.TotalAccountCost)
 	s.Require().InEpsilon(150.0, stats.AverageDurationMs, 0.0001)
 }
 

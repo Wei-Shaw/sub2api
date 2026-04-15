@@ -301,7 +301,7 @@ func TestUsageLogRepositoryGetModelStatsWithFiltersRequestTypePriority(t *testin
 
 	mock.ExpectQuery("AND \\(request_type = \\$3 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\)").
 		WithArgs(start, end, requestType).
-		WillReturnRows(sqlmock.NewRows([]string{"model", "requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost"}))
+		WillReturnRows(sqlmock.NewRows([]string{"model", "requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost", "account_cost"}))
 
 	stats, err := repo.GetModelStatsWithFilters(context.Background(), start, end, 0, 0, 0, 0, &requestType, &stream, nil)
 	require.NoError(t, err)
@@ -346,6 +346,93 @@ func TestUsageLogRepositoryGetStatsWithFiltersRequestTypePriority(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, int64(1), stats.TotalRequests)
 	require.Equal(t, int64(9), stats.TotalTokens)
+	require.NotNil(t, stats.TotalAccountCost, "TotalAccountCost should always be returned")
+	require.Equal(t, 1.2, *stats.TotalAccountCost)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryGetModelStatsAccountCostColumn(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+
+	mock.ExpectQuery("FROM usage_logs").
+		WithArgs(start, end).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"model", "requests", "input_tokens", "output_tokens",
+			"cache_creation_tokens", "cache_read_tokens", "total_tokens",
+			"cost", "actual_cost", "account_cost",
+		}).
+			AddRow("claude-opus-4-6", int64(10), int64(100), int64(200), int64(5), int64(3), int64(308), 2.5, 2.0, 1.8).
+			AddRow("claude-sonnet-4-6", int64(5), int64(50), int64(100), int64(0), int64(0), int64(150), 1.0, 0.8, 0.7))
+
+	results, err := repo.GetModelStatsWithFilters(context.Background(), start, end, 0, 0, 0, 0, nil, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	require.Equal(t, "claude-opus-4-6", results[0].Model)
+	require.Equal(t, 2.5, results[0].Cost)
+	require.Equal(t, 2.0, results[0].ActualCost)
+	require.Equal(t, 1.8, results[0].AccountCost)
+	require.Equal(t, "claude-sonnet-4-6", results[1].Model)
+	require.Equal(t, 0.7, results[1].AccountCost)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryGetGroupStatsAccountCostColumn(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+
+	mock.ExpectQuery("FROM usage_logs").
+		WithArgs(start, end).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"group_id", "group_name", "requests", "total_tokens",
+			"cost", "actual_cost", "account_cost",
+		}).
+			AddRow(int64(1), "azure-cc", int64(100), int64(5000), 10.0, 8.5, 7.2).
+			AddRow(int64(2), "max", int64(50), int64(2000), 5.0, 4.0, 3.5))
+
+	results, err := repo.GetGroupStatsWithFilters(context.Background(), start, end, 0, 0, 0, 0, nil, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	require.Equal(t, int64(1), results[0].GroupID)
+	require.Equal(t, "azure-cc", results[0].GroupName)
+	require.Equal(t, 10.0, results[0].Cost)
+	require.Equal(t, 8.5, results[0].ActualCost)
+	require.Equal(t, 7.2, results[0].AccountCost)
+	require.Equal(t, int64(2), results[1].GroupID)
+	require.Equal(t, 3.5, results[1].AccountCost)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryGetStatsWithFiltersAlwaysReturnsAccountCost(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	// No AccountID filter set - TotalAccountCost should still be returned
+	filters := usagestats.UsageLogFilters{}
+
+	mock.ExpectQuery("FROM usage_logs").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"total_requests", "total_input_tokens", "total_output_tokens",
+			"total_cache_tokens", "total_cost", "total_actual_cost",
+			"total_account_cost", "avg_duration_ms",
+		}).AddRow(int64(50), int64(1000), int64(2000), int64(100), 15.0, 12.5, 11.0, 100.0))
+	mock.ExpectQuery("SELECT COALESCE\\(NULLIF\\(TRIM\\(inbound_endpoint\\)").
+		WillReturnRows(sqlmock.NewRows([]string{"endpoint", "requests", "total_tokens", "cost", "actual_cost"}))
+	mock.ExpectQuery("SELECT COALESCE\\(NULLIF\\(TRIM\\(upstream_endpoint\\)").
+		WillReturnRows(sqlmock.NewRows([]string{"endpoint", "requests", "total_tokens", "cost", "actual_cost"}))
+	mock.ExpectQuery("SELECT CONCAT\\(").
+		WillReturnRows(sqlmock.NewRows([]string{"endpoint", "requests", "total_tokens", "cost", "actual_cost"}))
+
+	stats, err := repo.GetStatsWithFilters(context.Background(), filters)
+	require.NoError(t, err)
+	require.NotNil(t, stats.TotalAccountCost, "TotalAccountCost must always be returned, even without AccountID filter")
+	require.Equal(t, 11.0, *stats.TotalAccountCost)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
