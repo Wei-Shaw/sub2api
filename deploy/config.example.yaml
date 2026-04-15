@@ -11,9 +11,9 @@
 # 服务器配置
 # =============================================================================
 server:
-  # Bind address (0.0.0.0 for all interfaces)
-  # 绑定地址（0.0.0.0 表示监听所有网络接口）
-  host: "0.0.0.0"
+  # Bind address (:: for IPv6/dual-stack on most Linux systems, 0.0.0.0 for IPv4 only)
+  # 绑定地址（Linux 上通常 :: 可同时监听 IPv6/IPv4 双栈，0.0.0.0 为仅 IPv4）
+  host: "::"
   # Port to listen on
   # 监听端口
   port: 8080

@@ -420,7 +420,7 @@ To change after installation:
 2. Add or modify:
    ```ini
    [Service]
-   Environment=SERVER_HOST=0.0.0.0
+   Environment=SERVER_HOST=::
    Environment=SERVER_PORT=3000
    ```
 
