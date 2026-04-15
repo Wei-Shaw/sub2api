@@ -34,7 +34,7 @@ func (r *opsRepository) GetOpenAIRoutingStats(ctx context.Context, filter *servi
 
 	querySQL := `
 SELECT
-  LOWER(ul.routing_target_group) AS routing_target_group,
+  LOWER(COALESCE(NULLIF(ul.routing_selected_group, ''), ul.routing_target_group)) AS routing_selected_group,
   COUNT(*)::bigint AS request_count,
   COALESCE(SUM(COALESCE(ul.input_tokens, 0) + COALESCE(ul.output_tokens, 0)), 0)::bigint AS total_tokens,
   COALESCE(SUM(COALESCE(ul.input_tokens, 0)), 0)::bigint AS input_tokens,
@@ -44,8 +44,8 @@ SELECT
 FROM usage_logs ul
 ` + join + `
 ` + where + `
-GROUP BY LOWER(ul.routing_target_group)
-ORDER BY LOWER(ul.routing_target_group) ASC`
+GROUP BY LOWER(COALESCE(NULLIF(ul.routing_selected_group, ''), ul.routing_target_group))
+ORDER BY LOWER(COALESCE(NULLIF(ul.routing_selected_group, ''), ul.routing_target_group)) ASC`
 
 	rows, err := r.db.QueryContext(ctx, querySQL, args...)
 	if err != nil {
@@ -61,26 +61,26 @@ ORDER BY LOWER(ul.routing_target_group) ASC`
 	resp.GroupID = dashboardFilter.GroupID
 
 	for rows.Next() {
-		var targetGroup string
+		var selectedGroup string
 		var requestCount int64
 		var totalTokens int64
 		var inputTokens int64
 		var outputTokens int64
 		var retriedRequestCount int64
 		var retryCount int64
-		if err := rows.Scan(&targetGroup, &requestCount, &totalTokens, &inputTokens, &outputTokens, &retriedRequestCount, &retryCount); err != nil {
+		if err := rows.Scan(&selectedGroup, &requestCount, &totalTokens, &inputTokens, &outputTokens, &retriedRequestCount, &retryCount); err != nil {
 			return nil, err
 		}
-		targetGroup = strings.TrimSpace(strings.ToLower(targetGroup))
-		if _, ok := resp.RequestCountByGroup[targetGroup]; !ok {
+		selectedGroup = strings.TrimSpace(strings.ToLower(selectedGroup))
+		if _, ok := resp.RequestCountByGroup[selectedGroup]; !ok {
 			continue
 		}
-		resp.RequestCountByGroup[targetGroup] = requestCount
-		resp.TotalTokensByGroup[targetGroup] = totalTokens
-		resp.InputTokensByGroup[targetGroup] = inputTokens
-		resp.OutputTokensByGroup[targetGroup] = outputTokens
-		resp.RetriedRequestCountByGroup[targetGroup] = retriedRequestCount
-		resp.RetryCountByGroup[targetGroup] = retryCount
+		resp.RequestCountByGroup[selectedGroup] = requestCount
+		resp.TotalTokensByGroup[selectedGroup] = totalTokens
+		resp.InputTokensByGroup[selectedGroup] = inputTokens
+		resp.OutputTokensByGroup[selectedGroup] = outputTokens
+		resp.RetriedRequestCountByGroup[selectedGroup] = retriedRequestCount
+		resp.RetryCountByGroup[selectedGroup] = retryCount
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

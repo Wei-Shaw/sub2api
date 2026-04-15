@@ -352,6 +352,7 @@ export interface OpsOpenAIStickyStatsResponse {
   sticky_account_switch_count: number
   sticky_account_switch_rate: number
   eval_result_count: Record<string, number>
+  selected_group_count: Record<string, number>
   session_source_count: Record<string, number>
 }
 

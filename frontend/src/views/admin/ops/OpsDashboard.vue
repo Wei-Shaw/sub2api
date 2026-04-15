@@ -167,7 +167,7 @@
           :time-range="timeRange"
           :platform="platform"
           :group-id="groupId"
-          :routing-target-group="openAIRetryTargetGroup"
+          :routing-selected-group="openAIRetrySelectedGroup"
           :title="openAIRetryDetailsTitle"
           @openErrorDetail="openError"
           @openRequestErrors="openRetryRequestErrors"
@@ -423,7 +423,7 @@ const requestDetailsPreset = ref<OpsRequestDetailsPreset>({
   sort: 'created_at_desc'
 })
 const showOpenAIRetryDetails = ref(false)
-const openAIRetryTargetGroup = ref('')
+const openAIRetrySelectedGroup = ref('')
 
 const showSettingsDialog = ref(false)
 const showAlertRulesCard = ref(false)
@@ -504,20 +504,23 @@ function handleOpenRequestDetails(preset?: OpsRequestDetailsPreset) {
 }
 
 const openAIRetryDetailsTitle = computed(() => {
-  if (openAIRetryTargetGroup.value === 'active') {
-    return `${t('admin.ops.openaiRetry.title')} · ${t('admin.usage.routingTargetGroupActive')}`
+  if (openAIRetrySelectedGroup.value === 'active') {
+	return `${t('admin.ops.openaiRetry.title')} · ${t('admin.usage.routingSelectedGroupActive')}`
   }
-  if (openAIRetryTargetGroup.value === 'exhausted') {
-    return `${t('admin.ops.openaiRetry.title')} · ${t('admin.usage.routingTargetGroupExhausted')}`
+  if (openAIRetrySelectedGroup.value === 'exhausted') {
+	return `${t('admin.ops.openaiRetry.title')} · ${t('admin.usage.routingSelectedGroupExhausted')}`
+	}
+	if (openAIRetrySelectedGroup.value === 'reserve') {
+		return `${t('admin.ops.openaiRetry.title')} · ${t('admin.usage.routingSelectedGroupReserve')}`
   }
   return t('admin.ops.openaiRetry.title')
 })
 
-function openOpenAIRetryDetails(targetGroup: string) {
-  openAIRetryTargetGroup.value = targetGroup
-  showErrorDetails.value = false
-  showErrorModal.value = false
-  errorDetailsRequestId.value = ''
+function openOpenAIRetryDetails(selectedGroup: string) {
+	openAIRetrySelectedGroup.value = selectedGroup
+	showErrorDetails.value = false
+	showErrorModal.value = false
+	errorDetailsRequestId.value = ''
   showRequestDetails.value = false
   showOpenAIRetryDetails.value = true
 }

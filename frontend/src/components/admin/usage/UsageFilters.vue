@@ -148,6 +148,7 @@
         <div class="w-full sm:w-auto sm:min-w-[180px]">
           <label class="input-label">{{ t('admin.usage.routingTargetGroup') }}</label>
           <Select v-model="filters.routing_target_group" :options="routingTargetGroupOptions" @change="emitChange" />
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.usage.routingSelectedGroupHint') }}</p>
         </div>
 
         <div class="w-full sm:w-auto sm:min-w-[220px]">

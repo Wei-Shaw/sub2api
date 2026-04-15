@@ -64,6 +64,13 @@
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
         </template>
 
+        <template #cell-routing_selected_group="{ row }">
+          <span v-if="row.routing_selected_group" class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium" :class="getRoutingSelectedGroupBadgeClass(row.routing_selected_group)">
+            {{ getRoutingSelectedGroupLabel(row.routing_selected_group) }}
+          </span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-routing_schedule_layer="{ row }">
           <span v-if="row.routing_schedule_layer" class="text-xs text-gray-700 dark:text-gray-300">
             {{ getRoutingScheduleLayerLabel(row.routing_schedule_layer) }}
@@ -463,6 +470,20 @@ const getRoutingTargetGroupLabel = (value: string): string => {
 const getRoutingTargetGroupBadgeClass = (value: string): string => {
   if (value === 'active') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
   if (value === 'exhausted') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+  return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+}
+
+const getRoutingSelectedGroupLabel = (value: string): string => {
+  if (value === 'active') return t('admin.usage.routingSelectedGroupActive')
+  if (value === 'exhausted') return t('admin.usage.routingSelectedGroupExhausted')
+  if (value === 'reserve') return t('admin.usage.routingSelectedGroupReserve')
+  return value
+}
+
+const getRoutingSelectedGroupBadgeClass = (value: string): string => {
+  if (value === 'active') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+  if (value === 'exhausted') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+  if (value === 'reserve') return 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300'
   return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
 }
 

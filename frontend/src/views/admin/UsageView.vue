@@ -492,7 +492,7 @@ const exportToExcel = async () => {
       t('usage.time'), t('admin.usage.user'), t('usage.apiKeyFilter'),
       t('admin.usage.account'), t('usage.model'), t('usage.upstreamModel'), t('usage.reasoningEffort'), t('admin.usage.group'),
       t('usage.inboundEndpoint'), t('usage.upstreamEndpoint'),
-      t('admin.usage.routingTargetGroup'), t('admin.usage.routingScheduleLayer'), t('admin.usage.routedAccount'),
+      t('admin.usage.routingTargetGroup'), t('admin.usage.routingSelectedGroup'), t('admin.usage.routingScheduleLayer'), t('admin.usage.routedAccount'),
       t('admin.usage.effectiveModel'), t('admin.usage.routingFailover'), t('admin.usage.routingFailoverReason'),
       t('usage.type'), t('admin.usage.billingMode'),
       t('usage.grossInputTokens'), t('usage.netInputTokens'), t('admin.usage.outputTokens'),
@@ -511,11 +511,11 @@ const exportToExcel = async () => {
         { signal: c.signal }
       )
       if (c.signal.aborted) break; if (p === 1) { total = res.total; exportProgress.total = total }
-      const rows = (res.items || []).map((log: AdminUsageLog) => [
-        log.created_at, log.user?.email || '', log.api_key?.name || '', log.account?.name || '', log.model,
-        log.upstream_model || '', formatReasoningEffort(log.reasoning_effort), log.group?.name || '',
-        log.inbound_endpoint || '', log.upstream_endpoint || '', log.routing_target_group || '', log.routing_schedule_layer || '',
-        log.routing_selected_account_name || '', log.routing_effective_model || '', log.routing_failover_count ?? '', log.routing_failover_final_reason || '', getRequestTypeLabel(log), getBillingModeLabel(log.billing_mode),
+		const rows = (res.items || []).map((log: AdminUsageLog) => [
+		  log.created_at, log.user?.email || '', log.api_key?.name || '', log.account?.name || '', log.model,
+		  log.upstream_model || '', formatReasoningEffort(log.reasoning_effort), log.group?.name || '',
+		  log.inbound_endpoint || '', log.upstream_endpoint || '', log.routing_target_group || '', log.routing_selected_group || '', log.routing_schedule_layer || '',
+		  log.routing_selected_account_name || '', log.routing_effective_model || '', log.routing_failover_count ?? '', log.routing_failover_final_reason || '', getRequestTypeLabel(log), getBillingModeLabel(log.billing_mode),
         getDisplayInputTokens(log), getNetInputTokens(log), log.output_tokens, log.cache_read_tokens, log.cache_creation_tokens, getDisplayTotalTokens(log),
         log.input_cost?.toFixed(6) || '0.000000', log.output_cost?.toFixed(6) || '0.000000',
         log.cache_read_cost?.toFixed(6) || '0.000000', log.cache_creation_cost?.toFixed(6) || '0.000000',
@@ -553,6 +553,7 @@ const allColumns = computed(() => [
   { key: 'account', label: t('admin.usage.account'), sortable: false },
   { key: 'model', label: t('usage.model'), sortable: true },
   { key: 'routing_target_group', label: t('admin.usage.routingTargetGroup'), sortable: false },
+  { key: 'routing_selected_group', label: t('admin.usage.routingSelectedGroup'), sortable: false },
   { key: 'routing_schedule_layer', label: t('admin.usage.routingScheduleLayer'), sortable: false },
   { key: 'routing_selected_account_name', label: t('admin.usage.routedAccount'), sortable: false },
   { key: 'routing_failover_count', label: t('admin.usage.routingFailover'), sortable: false },

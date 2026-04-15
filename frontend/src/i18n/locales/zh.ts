@@ -3546,6 +3546,11 @@ export default {
       routingTargetGroup: '目标组',
       routingTargetGroupActive: '非耗尽',
       routingTargetGroupExhausted: '耗尽',
+      routingSelectedGroup: '实际命中组',
+      routingSelectedGroupActive: '非耗尽',
+      routingSelectedGroupExhausted: '耗尽',
+      routingSelectedGroupReserve: 'Reserve',
+      routingSelectedGroupHint: 'Reserve 通过“实际命中组”展示，目标组仍保持原始请求语义。',
       routingScheduleLayer: '调度层',
       routingScheduleLayerPreviousResponse: 'previous_response',
       routingScheduleLayerSessionHash: 'sticky_session',
@@ -3716,7 +3721,7 @@ export default {
       },
       openaiRouting: {
         title: 'OpenAI 路由分布',
-        subtitle: '对比 active 与 exhausted 目标组承接的请求量和 token 体量。',
+        subtitle: '继续按 exhausted-class 请求过滤，但按实际命中组对比 active、exhausted、reserve 的承压情况。',
         failedToLoad: '加载 OpenAI 路由统计失败',
         empty: '当前筛选条件下暂无 OpenAI 路由统计数据',
         requestCount: '请求次数',
@@ -3726,7 +3731,7 @@ export default {
       },
       openaiRetry: {
         title: 'OpenAI 服务端重试分布',
-        subtitle: '对比 active 与 exhausted 目标组中已落库请求的服务端重试情况。',
+        subtitle: '继续按 exhausted-class 请求过滤，但按实际命中组对比 active、exhausted、reserve 的重试情况。',
         failedToLoad: '加载 OpenAI 重试统计失败',
         empty: '当前筛选条件下暂无 OpenAI 重试统计数据',
         retriedRequestCount: '发生过重试的请求数',
@@ -3742,6 +3747,7 @@ export default {
         stickyHitRate: 'Sticky 命中率',
         stickyAccountSwitchRate: '账号切换率',
         evalBreakdown: 'Sticky 结果分布',
+        selectedGroupBreakdown: '实际命中组分布',
         sessionSourceBreakdown: '会话来源分布',
         eval: {
           hit: '命中',

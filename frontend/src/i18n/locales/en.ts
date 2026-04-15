@@ -3388,6 +3388,11 @@ export default {
       routingTargetGroup: 'Target Group',
       routingTargetGroupActive: 'Active',
       routingTargetGroupExhausted: 'Exhausted',
+      routingSelectedGroup: 'Selected Group',
+      routingSelectedGroupActive: 'Active',
+      routingSelectedGroupExhausted: 'Exhausted',
+      routingSelectedGroupReserve: 'Reserve',
+      routingSelectedGroupHint: 'Reserve is shown via Selected Group while Target Group keeps its original request semantics.',
       routingScheduleLayer: 'Schedule Layer',
       routingScheduleLayerPreviousResponse: 'previous_response',
       routingScheduleLayerSessionHash: 'sticky_session',
@@ -3556,7 +3561,7 @@ export default {
       },
       openaiRouting: {
         title: 'OpenAI Routing Distribution',
-        subtitle: 'Compare how traffic and token volume are distributed between active and exhausted target groups.',
+        subtitle: 'Keep exhausted-class request filtering, but compare how traffic and tokens ultimately landed in active, exhausted, or reserve.',
         failedToLoad: 'Failed to load OpenAI routing stats',
         empty: 'No OpenAI routing stats for the current filters',
         requestCount: 'Requests',
@@ -3566,7 +3571,7 @@ export default {
       },
       openaiRetry: {
         title: 'OpenAI Server Retry Distribution',
-        subtitle: 'Compare how persisted OpenAI requests were retried across active and exhausted target groups.',
+        subtitle: 'Keep exhausted-class request filtering, but compare retried requests by actual selected group including reserve.',
         failedToLoad: 'Failed to load OpenAI retry stats',
         empty: 'No OpenAI retry stats for the current filters',
         retriedRequestCount: 'Requests With Retry',
@@ -3582,6 +3587,7 @@ export default {
         stickyHitRate: 'Sticky Hit Rate',
         stickyAccountSwitchRate: 'Account Switch Rate',
         evalBreakdown: 'Sticky Result Breakdown',
+        selectedGroupBreakdown: 'Selected Group Breakdown',
         sessionSourceBreakdown: 'Session Source Breakdown',
         eval: {
           hit: 'Hit',

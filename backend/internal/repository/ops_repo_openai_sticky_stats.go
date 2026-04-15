@@ -47,7 +47,8 @@ WITH combined AS (
     ul.group_id AS group_id,
     COALESCE(NULLIF(ul.sticky_session_source, ''), '') AS sticky_session_source,
     COALESCE(NULLIF(ul.sticky_eval_result, ''), '') AS sticky_eval_result,
-    COALESCE(ul.sticky_selected_account_changed, false) AS sticky_selected_account_changed
+    COALESCE(ul.sticky_selected_account_changed, false) AS sticky_selected_account_changed,
+    LOWER(COALESCE(NULLIF(ul.routing_selected_group, ''), ul.routing_target_group, '')) AS routing_selected_group
   FROM usage_logs ul
   LEFT JOIN groups g ON g.id = ul.group_id
   LEFT JOIN accounts a ON a.id = ul.account_id
@@ -60,7 +61,8 @@ WITH combined AS (
     o.group_id AS group_id,
     COALESCE(NULLIF(o.sticky_session_source, ''), '') AS sticky_session_source,
     COALESCE(NULLIF(o.sticky_eval_result, ''), '') AS sticky_eval_result,
-    COALESCE(o.sticky_selected_account_changed, false) AS sticky_selected_account_changed
+    COALESCE(o.sticky_selected_account_changed, false) AS sticky_selected_account_changed,
+    LOWER(COALESCE(NULLIF(o.routing_selected_group, ''), o.routing_target_group, '')) AS routing_selected_group
   FROM ops_error_logs o
   LEFT JOIN groups g ON g.id = o.group_id
   LEFT JOIN accounts a ON a.id = o.account_id
@@ -71,11 +73,12 @@ SELECT
   sticky_session_source,
   sticky_eval_result,
   sticky_selected_account_changed,
+  routing_selected_group,
   COUNT(*)::bigint AS request_count
 FROM combined
 ` + where + `
-GROUP BY sticky_session_source, sticky_eval_result, sticky_selected_account_changed
-ORDER BY sticky_session_source, sticky_eval_result`
+GROUP BY sticky_session_source, sticky_eval_result, sticky_selected_account_changed, routing_selected_group
+ORDER BY sticky_session_source, sticky_eval_result, routing_selected_group`
 
 	rows, err := r.db.QueryContext(ctx, querySQL, args...)
 	if err != nil {
@@ -94,16 +97,21 @@ ORDER BY sticky_session_source, sticky_eval_result`
 		var sessionSource string
 		var evalResult string
 		var selectedChanged bool
+		var selectedGroup string
 		var requestCount int64
-		if err := rows.Scan(&sessionSource, &evalResult, &selectedChanged, &requestCount); err != nil {
+		if err := rows.Scan(&sessionSource, &evalResult, &selectedChanged, &selectedGroup, &requestCount); err != nil {
 			return nil, err
 		}
 		sessionSource = strings.TrimSpace(sessionSource)
 		evalResult = strings.TrimSpace(evalResult)
+		selectedGroup = strings.TrimSpace(strings.ToLower(selectedGroup))
 		if sessionSource == "" {
 			sessionSource = "unknown"
 		}
 		resp.SessionSourceCount[sessionSource] += requestCount
+		if _, ok := resp.SelectedGroupCount[selectedGroup]; ok {
+			resp.SelectedGroupCount[selectedGroup] += requestCount
+		}
 		if evalResult != "" {
 			resp.EvalResultCount[evalResult] += requestCount
 		}

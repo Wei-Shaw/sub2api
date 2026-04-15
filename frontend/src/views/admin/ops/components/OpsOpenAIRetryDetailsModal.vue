@@ -7,7 +7,7 @@ interface Props {
   timeRange: string
   platform?: string
   groupId?: number | null
-  routingTargetGroup?: string
+  routingSelectedGroup?: string
   title: string
 }
 
@@ -23,7 +23,7 @@ const preset = computed(() => ({
   kind: 'success' as const,
   sort: 'created_at_desc' as const,
   retried_only: true,
-  routing_target_group: props.routingTargetGroup,
+  routing_selected_group: props.routingSelectedGroup,
 }))
 </script>
 

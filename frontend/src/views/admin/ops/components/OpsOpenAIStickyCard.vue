@@ -67,12 +67,18 @@ const sessionSourceItems = computed(() => {
   return entries.sort((a, b) => b[1] - a[1])
 })
 
+const selectedGroupItems = computed(() => {
+  const entries = Object.entries(response.value?.selected_group_count ?? {})
+  return entries.sort((a, b) => b[1] - a[1])
+})
+
 const hasData = computed(() => {
   const data = response.value
   return !!data && (
     data.evaluated_request_count > 0 ||
     Object.keys(data.eval_result_count || {}).length > 0 ||
-    Object.keys(data.session_source_count || {}).length > 0
+    Object.keys(data.session_source_count || {}).length > 0 ||
+    Object.values(data.selected_group_count || {}).some((count) => count > 0)
   )
 })
 
@@ -123,6 +129,15 @@ function translateSessionSource(key: string): string {
     fallback_seed: t('admin.ops.openaiSticky.source.fallbackSeed'),
     none: t('admin.ops.openaiSticky.source.none'),
     unknown: t('admin.ops.openaiSticky.source.unknown'),
+  }
+  return map[key] || key
+}
+
+function translateSelectedGroup(key: string): string {
+  const map: Record<string, string> = {
+    active: t('admin.usage.routingSelectedGroupActive'),
+    exhausted: t('admin.usage.routingSelectedGroupExhausted'),
+    reserve: t('admin.usage.routingSelectedGroupReserve'),
   }
   return map[key] || key
 }
@@ -198,7 +213,7 @@ watch(
         </article>
       </div>
 
-      <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <article class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
           <div class="text-sm font-semibold text-gray-900 dark:text-white">
             {{ t('admin.ops.openaiSticky.evalBreakdown') }}
@@ -218,6 +233,18 @@ watch(
           <div class="mt-3 space-y-2 text-sm">
             <div v-for="item in sessionSourceItems" :key="item[0]" class="flex items-center justify-between gap-3">
               <span class="text-gray-600 dark:text-gray-300">{{ translateSessionSource(item[0]) }}</span>
+              <span class="font-semibold text-gray-900 dark:text-white">{{ formatCount(item[1]) }}</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+          <div class="text-sm font-semibold text-gray-900 dark:text-white">
+            {{ t('admin.ops.openaiSticky.selectedGroupBreakdown') }}
+          </div>
+          <div class="mt-3 space-y-2 text-sm">
+            <div v-for="item in selectedGroupItems" :key="item[0]" class="flex items-center justify-between gap-3">
+              <span class="text-gray-600 dark:text-gray-300">{{ translateSelectedGroup(item[0]) }}</span>
               <span class="font-semibold text-gray-900 dark:text-white">{{ formatCount(item[1]) }}</span>
             </div>
           </div>
