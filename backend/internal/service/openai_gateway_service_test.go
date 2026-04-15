@@ -382,8 +382,8 @@ func TestStripOpenAIBuiltinToolsFieldFromBody_PreservesOriginalFormatting(t *tes
 	require.Contains(t, string(strippedBody), "\n  \"tools\": {\"unexpected\": true}\n")
 }
 
-func TestForwardResponsesRequest_AugmentsBuiltinToolsAndStripsPrivateField(t *testing.T) {
-	body := []byte(`{"model":"gpt-5.4","builtin_tools":true,"tool_choice":"required","tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+func TestForwardResponsesRequest_ObjectBuiltinToolsAugmentsAndStripsPrivateField(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","builtin_tools":{"web_search":true},"tool_choice":"required","tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
 	c, _ := newOpenAITestContext(t, "/v1/responses", body)
 	upstream := &stubHTTPUpstream{}
 	svc := newOpenAITestGatewayService(upstream)
@@ -528,8 +528,8 @@ func TestChatCompletionsBuiltinTools_DoesNotDuplicateExistingWebSearch(t *testin
 	require.Equal(t, "web_search", req.Tools[1].Type)
 }
 
-func TestToolChoiceWhenBuiltinToolsAdded_ForwardAsChatCompletionsPreservesRawChoice(t *testing.T) {
-	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"builtin_tools":true,"tool_choice":"auto"}`)
+func TestToolChoiceWhenObjectBuiltinToolsAdded_ForwardAsChatCompletionsPreservesRawChoice(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"builtin_tools":{"web_search":true},"tool_choice":"auto"}`)
 	c, rec := newOpenAITestContext(t, "/v1/chat/completions", body)
 	upstream := &stubHTTPUpstream{
 		response: &http.Response{
