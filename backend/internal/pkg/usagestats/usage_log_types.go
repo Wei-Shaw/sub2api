@@ -168,8 +168,9 @@ type UserBreakdownItem struct {
 	Email       string  `json:"email"`
 	Requests    int64   `json:"requests"`
 	TotalTokens int64   `json:"total_tokens"`
-	Cost        float64 `json:"cost"`        // 标准计费
-	ActualCost  float64 `json:"actual_cost"` // 实际扣除
+	Cost        float64 `json:"cost"`         // 标准计费
+	ActualCost  float64 `json:"actual_cost"`  // 实际扣除
+	AccountCost float64 `json:"account_cost"` // 账号成本
 }
 
 // UserBreakdownDimension specifies the dimension to filter for user breakdown.

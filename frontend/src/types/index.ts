@@ -1245,6 +1245,7 @@ export interface UserBreakdownItem {
   total_tokens: number
   cost: number
   actual_cost: number
+  account_cost: number
 }
 
 export interface UserUsageTrendPoint {
