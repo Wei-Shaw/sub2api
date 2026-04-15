@@ -31,11 +31,9 @@
           ${{ (stats?.total_actual_cost || 0).toFixed(4) }}
         </p>
         <p class="text-xs text-gray-400">
-          <span class="text-orange-500">${{ (stats?.total_account_cost || 0).toFixed(4) }}</span>
-          <span> {{ t('usage.accountCost') }}</span>
+          <span class="text-orange-500">{{ t('usage.accountCost') }} ${{ (stats?.total_account_cost || 0).toFixed(4) }}</span>
           <span> · </span>
-          <span>${{ (stats?.total_cost || 0).toFixed(4) }}</span>
-          <span> {{ t('usage.standardCost') }}</span>
+          <span>{{ t('usage.standardCost') }} ${{ (stats?.total_cost || 0).toFixed(4) }}</span>
         </p>
       </div>
     </div>
