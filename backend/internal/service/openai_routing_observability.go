@@ -4,6 +4,7 @@ import "strings"
 
 type OpenAIRoutingSnapshot struct {
 	TargetGroup         string
+	SelectedGroup       string
 	ScheduleLayer       string
 	Sticky              *openAIStickyEval
 	SelectedAccountID   *int64
@@ -16,6 +17,7 @@ type OpenAIRoutingSnapshot struct {
 
 type OpenAIRoutingSnapshotInput struct {
 	TargetGroup    AccountTargetGroup
+	SelectedGroup  string
 	ScheduleLayer  string
 	Sticky         *openAIStickyEval
 	Account        *Account
@@ -26,6 +28,7 @@ type OpenAIRoutingSnapshotInput struct {
 func NewOpenAIRoutingSnapshot(input OpenAIRoutingSnapshotInput) *OpenAIRoutingSnapshot {
 	snapshot := &OpenAIRoutingSnapshot{
 		TargetGroup:    string(normalizeTargetGroup(input.TargetGroup)),
+		SelectedGroup:  strings.TrimSpace(input.SelectedGroup),
 		ScheduleLayer:  strings.TrimSpace(input.ScheduleLayer),
 		Sticky:         cloneOpenAIStickyEval(input.Sticky),
 		RequestedModel: strings.TrimSpace(input.RequestedModel),

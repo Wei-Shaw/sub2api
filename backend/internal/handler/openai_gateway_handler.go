@@ -127,6 +127,7 @@ func storeOpenAIRoutingSnapshot(c *gin.Context, input service.OpenAIRoutingSnaps
 	}
 	if existing := getOpenAIRoutingSnapshot(c); existing != nil {
 		existing.TargetGroup = built.TargetGroup
+		existing.SelectedGroup = built.SelectedGroup
 		existing.ScheduleLayer = built.ScheduleLayer
 		existing.Sticky = built.Sticky
 		existing.SelectedAccountID = built.SelectedAccountID
@@ -148,14 +149,16 @@ func storeOpenAIRoutingSnapshotFromDecision(
 	requestedModel string,
 	effectiveModel string,
 ) *service.OpenAIRoutingSnapshot {
-	return storeOpenAIRoutingSnapshot(c, service.OpenAIRoutingSnapshotInput{
+	input := service.OpenAIRoutingSnapshotInput{
 		TargetGroup:    targetGroup,
+		SelectedGroup:  scheduleDecision.SelectedGroup,
 		ScheduleLayer:  scheduleDecision.Layer,
 		Sticky:         scheduleDecision.Sticky,
 		Account:        account,
 		RequestedModel: requestedModel,
 		EffectiveModel: effectiveModel,
-	})
+	}
+	return storeOpenAIRoutingSnapshot(c, input)
 }
 
 func getOpenAIRoutingSnapshot(c *gin.Context) *service.OpenAIRoutingSnapshot {

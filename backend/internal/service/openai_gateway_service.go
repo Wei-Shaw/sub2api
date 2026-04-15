@@ -1776,6 +1776,40 @@ func buildOpenAIReservePool(activeAccounts []Account, exhaustedAccounts []Accoun
 	return reservePool
 }
 
+func buildOpenAIReserveOverflowPool(activeAccounts []Account, exhaustedAccounts []Account) []Account {
+	reserveCandidates := buildOpenAIReserveCandidatePool(activeAccounts)
+	if len(reserveCandidates) == 0 {
+		return nil
+	}
+
+	exhaustedCapacity := calculateOpenAIConcurrentCapacity(exhaustedAccounts)
+	activeFreeCapacity := calculateOpenAIConcurrentCapacity(reserveCandidates)
+	totalCapacity := exhaustedCapacity + activeFreeCapacity
+	if totalCapacity <= 0 {
+		return nil
+	}
+
+	targetCapacity := (totalCapacity*60 + 99) / 100
+	reserveNeeded := targetCapacity - exhaustedCapacity
+	if reserveNeeded <= 0 {
+		return nil
+	}
+
+	reservePool := make([]Account, 0, len(reserveCandidates))
+	reserveCapacity := 0
+	for i := len(reserveCandidates) - 1; i >= 0; i-- {
+		account := reserveCandidates[i]
+		reservePool = append(reservePool, account)
+		if account.Concurrency > 0 {
+			reserveCapacity += account.Concurrency
+		}
+		if reserveCapacity >= reserveNeeded {
+			break
+		}
+	}
+	return reservePool
+}
+
 func shouldRouteExhaustedOverflowToReserve(exhaustedAccounts []Account, reserveAccounts []Account, loadMap map[int64]*AccountLoadInfo) bool {
 	if calculateOpenAIConcurrentCapacity(reserveAccounts) <= 0 {
 		return false
@@ -1788,6 +1822,27 @@ func shouldRouteExhaustedOverflowToReserve(exhaustedAccounts []Account, reserveA
 
 	usagePercent := calculateOpenAIConcurrentUsagePercent(exhaustedAccounts, loadMap)
 	return usagePercent > 60
+}
+
+func (s *OpenAIGatewayService) listOpenAIExhaustedWithReserveOverlay(ctx context.Context, groupID *int64) ([]Account, []Account, error) {
+	exhaustedAccounts, err := s.listSchedulableAccounts(ctx, groupID, TargetGroupExhausted)
+	if err != nil {
+		return nil, nil, err
+	}
+	allAccounts, err := s.listSchedulableAccounts(ctx, groupID, TargetGroupAny)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	activeAccounts := make([]Account, 0, len(allAccounts))
+	for _, account := range allAccounts {
+		if account.MatchesTargetGroup(TargetGroupExhausted) {
+			continue
+		}
+		activeAccounts = append(activeAccounts, account)
+	}
+
+	return exhaustedAccounts, buildOpenAIReserveOverflowPool(activeAccounts, exhaustedAccounts), nil
 }
 
 func calculateOpenAIConcurrentUsagePercent(accounts []Account, loadMap map[int64]*AccountLoadInfo) float64 {
@@ -1959,6 +2014,83 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.
 	return fresh
 }
 
+func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccount(ctx context.Context, account *Account, requestedModel string) *Account {
+	if account == nil {
+		return nil
+	}
+
+	fresh := account
+	if s.schedulerSnapshot != nil {
+		current, err := s.getSchedulableAccount(ctx, account.ID)
+		if err != nil || current == nil {
+			return nil
+		}
+		fresh = current
+	}
+
+	if !fresh.IsOpenAI() || !fresh.IsOpenAIReserveCandidate() {
+		return nil
+	}
+	if requestedModel != "" && !fresh.IsModelSupported(requestedModel) {
+		return nil
+	}
+	return fresh
+}
+
+func (s *OpenAIGatewayService) isCurrentOpenAIReserveOverlayAccount(ctx context.Context, groupID *int64, account *Account) bool {
+	if s == nil || account == nil || !account.IsOpenAIReserveCandidate() {
+		return false
+	}
+	_, reserveAccounts, err := s.listOpenAIExhaustedWithReserveOverlay(ctx, groupID)
+	if err != nil {
+		return false
+	}
+	for _, reserveAccount := range reserveAccounts {
+		if reserveAccount.ID == account.ID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *OpenAIGatewayService) isOpenAIReservePreviousResponseAnchor(ctx context.Context, groupID *int64, previousResponseID string) bool {
+	if s == nil {
+		return false
+	}
+	responseID := strings.TrimSpace(previousResponseID)
+	if responseID == "" {
+		return false
+	}
+	store := s.getOpenAIWSStateStore()
+	if store == nil {
+		return false
+	}
+	accountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), responseID)
+	if err != nil || accountID <= 0 {
+		return false
+	}
+	account, err := s.getSchedulableAccount(ctx, accountID)
+	if err != nil || account == nil {
+		return false
+	}
+	return s.isCurrentOpenAIReserveOverlayAccount(ctx, groupID, account)
+}
+
+func (s *OpenAIGatewayService) deleteOpenAIWSResponseAccount(ctx context.Context, groupID *int64, previousResponseID string) {
+	if s == nil {
+		return
+	}
+	responseID := strings.TrimSpace(previousResponseID)
+	if responseID == "" {
+		return
+	}
+	store := s.getOpenAIWSStateStore()
+	if store == nil {
+		return
+	}
+	_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+}
+
 func (s *OpenAIGatewayService) prepareSelectedOpenAIAccount(ctx context.Context, groupID *int64, account *Account, requestedModel string, targetGroup AccountTargetGroup, needsUpstreamCheck bool) *Account {
 	fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, account, requestedModel, targetGroup)
 	if fresh == nil {
@@ -2004,6 +2136,28 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 	}
 	syncOpenAICodexRateLimitFromExtra(ctx, s.accountRepo, latest, time.Now())
 	if !latest.IsOpenAI() || !latest.MatchesTargetGroup(targetGroup) || !latest.IsSchedulableForTargetGroup(targetGroup) {
+		return nil
+	}
+	if requestedModel != "" && !latest.IsModelSupported(requestedModel) {
+		return nil
+	}
+	return latest
+}
+
+func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx context.Context, account *Account, requestedModel string) *Account {
+	if account == nil {
+		return nil
+	}
+	if s.schedulerSnapshot == nil || s.accountRepo == nil {
+		return account
+	}
+
+	latest, err := s.accountRepo.GetByID(ctx, account.ID)
+	if err != nil || latest == nil {
+		return nil
+	}
+	syncOpenAICodexRateLimitFromExtra(ctx, s.accountRepo, latest, time.Now())
+	if !latest.IsOpenAI() || !latest.IsOpenAIReserveCandidate() {
 		return nil
 	}
 	if requestedModel != "" && !latest.IsModelSupported(requestedModel) {
