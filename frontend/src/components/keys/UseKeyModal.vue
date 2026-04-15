@@ -655,35 +655,32 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       }
     }
   }
-  const buildReasoningVariants = (levels: string[], withFast = false) =>
+  const buildReasoningVariants = (levels: string[]) =>
     Object.fromEntries(
-      levels.flatMap((level) => {
+      levels.map((level) => {
         const variant: Record<string, unknown> = {
           reasoningEffort: level,
           reasoningSummary: 'auto',
           include: ['reasoning.encrypted_content']
         }
 
-        if (!withFast) {
-          return [[level, variant] as const]
-        }
-
-        const pairs = [[level, variant] as const]
-        if (['low', 'medium', 'high', 'xhigh'].includes(level)) {
-          pairs.push([
-            `${level}-fast`,
-            {
-              ...variant,
-              serviceTier: 'priority'
-            }
-          ] as const)
-        }
-        return pairs
+        return [level, variant] as const
       })
     )
 
   const normalizeOpenCodeModelConfig = (model: OpenCodeOpenAIModel) => {
-    const { id: _ignoredId, cost, ...rest } = model
+    const {
+      id: _ignoredId,
+      cost,
+      experimental: _ignoredExperimental,
+      provider: _ignoredProvider,
+      tools: _ignoredTools,
+      ...rest
+    } = model as OpenCodeOpenAIModel & {
+      experimental?: unknown
+      provider?: unknown
+      tools?: unknown
+    }
     const normalizedCostEntries = Object.entries({
       input: cost?.input,
       output: cost?.output,
@@ -696,6 +693,37 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       ...(normalizedCostEntries.length > 0 ? { cost: Object.fromEntries(normalizedCostEntries) } : {})
     }
   }
+
+  // Mirrors anomalyco/opencode runtime model derivation from
+  // `packages/opencode/src/provider/provider.ts::fromModelsDevProvider()` at
+  // commit `7a6ce05`, which materializes `experimental.modes` into runtime
+  // models and lifts `provider.body` / `provider.headers` onto each derived
+  // model: https://github.com/anomalyco/opencode/blob/7a6ce05d0939826aa6c8e1c481489a713b2d633f/packages/opencode/src/provider/provider.ts#L1004-L1019
+  // We mirror the upstream runtime-derived model set here; `-Sys` and
+  // `builtin_tools` remain local extensions.
+  const buildOpenCodeOpenAIBaseModels = (source: Record<string, OpenCodeOpenAIModel>) =>
+    Object.fromEntries(
+      Object.entries(source).map(([id, model]) => {
+        const normalized = normalizeOpenCodeModelConfig(model)
+
+        return [
+          id,
+          {
+            ...normalized,
+            options: {
+              ...(normalized.options ?? {}),
+              // Local extension: upstream runtime does not consume model-level
+              // `tools`, so we pass `builtin_tools` to our API gateway service
+              // to preserve the default-on `web_search` semantic.
+              builtin_tools: { web_search: true },
+              store: false
+            },
+            headers: normalized.headers,
+            variants: buildReasoningVariants(reasoningLevels(id, model))
+          }
+        ]
+      })
+    )
 
   const withSysVariants = <T extends { name: string }>(models: Record<string, T>) => {
     const expanded: Record<string, T> = {}
@@ -742,19 +770,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     return levels
   }
 
-  const openCodeOpenAIBaseModels = Object.fromEntries(
-    Object.entries(openaiSource ?? {}).map(([id, model]) => [
-      id,
-      {
-        ...normalizeOpenCodeModelConfig(model),
-        options: {
-          ...model.options,
-          store: false
-        },
-        variants: buildReasoningVariants(reasoningLevels(id, model), id === 'gpt-5.4')
-      }
-    ])
-  )
+  const openCodeOpenAIBaseModels = buildOpenCodeOpenAIBaseModels(openaiSource ?? {})
   const openaiModels = withSysVariants(openCodeOpenAIBaseModels)
   const geminiModels = {
     'gemini-2.0-flash': {
