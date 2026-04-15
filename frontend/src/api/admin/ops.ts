@@ -211,6 +211,7 @@ export interface OpsRequestDetailsParams {
 
   platform?: string
   group_id?: number | null
+  openai_routing_only?: boolean
   routing_target_group?: string
   routing_selected_group?: string
   routing_schedule_layer?: string

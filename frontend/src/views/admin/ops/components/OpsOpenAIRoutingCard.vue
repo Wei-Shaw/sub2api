@@ -21,6 +21,10 @@ const props = withDefaults(defineProps<Props>(), {
   endTime: null,
 })
 
+const emit = defineEmits<{
+  (e: 'open-details', selectedGroup: string): void
+}>()
+
 const { t } = useI18n()
 
 const loading = ref(false)
@@ -166,7 +170,7 @@ watch(
         </div>
 
         <div class="mt-4 space-y-3 text-sm">
-          <div class="rounded-xl bg-emerald-50 p-3 dark:bg-emerald-900/20">
+          <button type="button" class="w-full rounded-xl bg-emerald-50 p-3 text-left dark:bg-emerald-900/20" @click="emit('open-details', 'active')">
             <div class="flex items-center justify-between gap-3">
               <span class="font-medium text-emerald-700 dark:text-emerald-300">{{ activeLabel }}</span>
               <span class="text-xs text-emerald-600 dark:text-emerald-400">{{ formatShare(metric.active, total(metric)) }}</span>
@@ -174,9 +178,9 @@ watch(
             <div class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
               {{ formatMetricValue(metric.active) }}
             </div>
-          </div>
+          </button>
 
-          <div class="rounded-xl bg-amber-50 p-3 dark:bg-amber-900/20">
+          <button type="button" class="w-full rounded-xl bg-amber-50 p-3 text-left dark:bg-amber-900/20" @click="emit('open-details', 'exhausted')">
             <div class="flex items-center justify-between gap-3">
               <span class="font-medium text-amber-700 dark:text-amber-300">{{ exhaustedLabel }}</span>
               <span class="text-xs text-amber-600 dark:text-amber-400">{{ formatShare(metric.exhausted, total(metric)) }}</span>
@@ -184,9 +188,9 @@ watch(
             <div class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
               {{ formatMetricValue(metric.exhausted) }}
             </div>
-          </div>
+          </button>
 
-          <div class="rounded-xl bg-sky-50 p-3 dark:bg-sky-900/20">
+          <button type="button" class="w-full rounded-xl bg-sky-50 p-3 text-left dark:bg-sky-900/20" @click="emit('open-details', 'reserve')">
             <div class="flex items-center justify-between gap-3">
               <span class="font-medium text-sky-700 dark:text-sky-300">{{ reserveLabel }}</span>
               <span class="text-xs text-sky-600 dark:text-sky-400">{{ formatShare(metric.reserve, total(metric)) }}</span>
@@ -194,7 +198,14 @@ watch(
             <div class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
               {{ formatMetricValue(metric.reserve) }}
             </div>
-          </div>
+          </button>
+
+          <button type="button" class="w-full border-t border-gray-200 pt-3 text-left text-sm dark:border-dark-700" @click="emit('open-details', '')">
+            <div class="flex items-center justify-between gap-3">
+              <span class="font-medium text-gray-600 dark:text-gray-300">{{ t('common.total') }}</span>
+              <span class="text-base font-semibold text-gray-900 dark:text-white">{{ formatMetricValue(total(metric)) }}</span>
+            </div>
+          </button>
         </div>
       </article>
     </div>

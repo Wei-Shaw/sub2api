@@ -93,6 +93,7 @@
           :start-time="customStartTime"
           :end-time="customEndTime"
           :refresh-token="dashboardRefreshToken"
+          @open-details="openOpenAIRoutingDetails"
         />
         <OpsOpenAIRetryCard
           :platform-filter="platform"
@@ -155,6 +156,8 @@
         <OpsRequestDetailsModal
           v-model="showRequestDetails"
           :time-range="timeRange"
+          :start-time="customStartTime"
+          :end-time="customEndTime"
           :preset="requestDetailsPreset"
           :platform="platform"
           :group-id="groupId"
@@ -165,6 +168,8 @@
         <OpsOpenAIRetryDetailsModal
           v-model="showOpenAIRetryDetails"
           :time-range="timeRange"
+          :start-time="customStartTime"
+          :end-time="customEndTime"
           :platform="platform"
           :group-id="groupId"
           :routing-selected-group="openAIRetrySelectedGroup"
@@ -501,6 +506,34 @@ function handleOpenRequestDetails(preset?: OpsRequestDetailsPreset) {
   showErrorModal.value = false
   errorDetailsRequestId.value = ''
   showRequestDetails.value = true
+}
+
+const openAIRoutingDetailsTitle = computed(() => {
+	if (openAIRetrySelectedGroup.value === 'active') {
+		return `${t('admin.ops.openaiRouting.title')} · ${t('admin.usage.routingSelectedGroupActive')}`
+	}
+	if (openAIRetrySelectedGroup.value === 'exhausted') {
+		return `${t('admin.ops.openaiRouting.title')} · ${t('admin.usage.routingSelectedGroupExhausted')}`
+	}
+	if (openAIRetrySelectedGroup.value === 'reserve') {
+		return `${t('admin.ops.openaiRouting.title')} · ${t('admin.usage.routingSelectedGroupReserve')}`
+	}
+	return t('admin.ops.openaiRouting.title')
+})
+
+function openOpenAIRoutingDetails(selectedGroup: string) {
+	openAIRetrySelectedGroup.value = selectedGroup
+	handleOpenRequestDetails({
+		title: openAIRoutingDetailsTitle.value,
+		kind: 'success',
+		sort: 'created_at_desc',
+		openai_routing_only: true,
+		routing_selected_group: selectedGroup || undefined,
+	})
+	showOpenAIRetryDetails.value = false
+	showErrorModal.value = false
+	showErrorDetails.value = false
+	errorDetailsRequestId.value = ''
 }
 
 const openAIRetryDetailsTitle = computed(() => {

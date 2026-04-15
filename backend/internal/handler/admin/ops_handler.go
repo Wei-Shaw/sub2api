@@ -645,6 +645,7 @@ func (h *OpsHandler) ListRequestDetails(c *gin.Context) {
 	filter.Query = strings.TrimSpace(c.Query("q"))
 	filter.Sort = strings.TrimSpace(c.Query("sort"))
 	filter.RetriedOnly = strings.EqualFold(strings.TrimSpace(c.Query("retried_only")), "true")
+	filter.OpenAIRoutingOnly = strings.EqualFold(strings.TrimSpace(c.Query("openai_routing_only")), "true")
 
 	if v := strings.TrimSpace(c.Query("user_id")); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)

@@ -57,11 +57,14 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 		if model := strings.TrimSpace(filter.Model); model != "" {
 			addCondition(fmt.Sprintf("model = $%d", len(args)+1), model)
 		}
+		if filter.OpenAIRoutingOnly {
+			addCondition("routing_target_group IN ('active','exhausted')")
+		}
 		if targetGroup := strings.TrimSpace(strings.ToLower(filter.RoutingTargetGroup)); targetGroup != "" {
 			addCondition(fmt.Sprintf("routing_target_group = $%d", len(args)+1), targetGroup)
 		}
 		if selectedGroup := strings.TrimSpace(strings.ToLower(filter.RoutingSelectedGroup)); selectedGroup != "" {
-			addCondition(fmt.Sprintf("routing_selected_group = $%d", len(args)+1), selectedGroup)
+			addCondition(fmt.Sprintf("LOWER(COALESCE(NULLIF(routing_selected_group,''), routing_target_group)) = $%d", len(args)+1), selectedGroup)
 		}
 		if scheduleLayer := strings.TrimSpace(filter.RoutingScheduleLayer); scheduleLayer != "" {
 			addCondition(fmt.Sprintf("routing_schedule_layer = $%d", len(args)+1), scheduleLayer)

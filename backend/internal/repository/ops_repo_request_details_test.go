@@ -128,10 +128,10 @@ func TestOpsRepositoryListRequestDetails_FiltersRoutingSelectedGroup(t *testing.
 		RoutingSelectedGroup: "reserve",
 	}
 
-	mock.ExpectQuery("SELECT COUNT\\(1\\) FROM combined WHERE routing_selected_group = \\$3").
+	mock.ExpectQuery("SELECT COUNT\\(1\\) FROM combined WHERE LOWER\\(COALESCE\\(NULLIF\\(routing_selected_group,''\\), routing_target_group\\)\\) = \\$3").
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "reserve").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
-	mock.ExpectQuery("SELECT[\\s\\S]*FROM combined[\\s\\S]*WHERE routing_selected_group = \\$3").
+	mock.ExpectQuery("SELECT[\\s\\S]*FROM combined[\\s\\S]*WHERE LOWER\\(COALESCE\\(NULLIF\\(routing_selected_group,''\\), routing_target_group\\)\\) = \\$3").
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "reserve", 10, 0).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"kind",

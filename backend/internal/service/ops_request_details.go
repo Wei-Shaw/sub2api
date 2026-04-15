@@ -69,6 +69,7 @@ type OpsRequestDetailFilter struct {
 	AccountID *int64
 
 	Model                string
+	OpenAIRoutingOnly    bool
 	RoutingTargetGroup   string
 	RoutingSelectedGroup string
 	RoutingScheduleLayer string

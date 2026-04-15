@@ -12,6 +12,7 @@ export interface OpsRequestDetailsPreset {
   title: string
   kind?: OpsRequestDetailsParams['kind']
   sort?: OpsRequestDetailsParams['sort']
+  openai_routing_only?: boolean
   min_duration_ms?: number
   max_duration_ms?: number
   retried_only?: boolean
@@ -22,6 +23,8 @@ export interface OpsRequestDetailsPreset {
 interface Props {
   modelValue: boolean
   timeRange: string
+  startTime?: string | null
+  endTime?: string | null
   preset: OpsRequestDetailsPreset
   platform?: string
   groupId?: number | null
@@ -53,6 +56,12 @@ const rangeLabel = computed(() => {
 })
 
 function buildTimeParams(): Pick<OpsRequestDetailsParams, 'start_time' | 'end_time'> {
+	if (props.timeRange === 'custom' && props.startTime && props.endTime) {
+		return {
+			start_time: props.startTime,
+			end_time: props.endTime,
+		}
+	}
   const minutes = parseTimeRangeMinutes(props.timeRange)
   const endTime = new Date()
   const startTime = new Date(endTime.getTime() - minutes * 60 * 1000)
@@ -78,8 +87,9 @@ const fetchData = async () => {
     if (platform) params.platform = platform
     if (typeof props.groupId === 'number' && props.groupId > 0) params.group_id = props.groupId
 
-    if (typeof props.preset.min_duration_ms === 'number') params.min_duration_ms = props.preset.min_duration_ms
-    if (typeof props.preset.max_duration_ms === 'number') params.max_duration_ms = props.preset.max_duration_ms
+	if (typeof props.preset.min_duration_ms === 'number') params.min_duration_ms = props.preset.min_duration_ms
+	if (typeof props.preset.max_duration_ms === 'number') params.max_duration_ms = props.preset.max_duration_ms
+	if (props.preset.openai_routing_only) params.openai_routing_only = true
 	if (props.preset.retried_only) params.retried_only = true
 	if (props.preset.routing_target_group) params.routing_target_group = props.preset.routing_target_group
 	if (props.preset.routing_selected_group) params.routing_selected_group = props.preset.routing_selected_group
@@ -111,10 +121,13 @@ watch(
 watch(
   () => [
     props.timeRange,
+    props.startTime,
+    props.endTime,
     props.platform,
     props.groupId,
     props.preset.kind,
     props.preset.sort,
+    props.preset.openai_routing_only,
     props.preset.min_duration_ms,
     props.preset.max_duration_ms,
     props.preset.retried_only,
