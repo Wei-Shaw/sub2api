@@ -40,6 +40,7 @@ export type OpenCodeOpenAIModel = {
   }
   release_date?: string
   options?: Record<string, unknown>
+  headers?: Record<string, string>
 }
 
 export type OpenCodeOpenAIModelsResponse = {
