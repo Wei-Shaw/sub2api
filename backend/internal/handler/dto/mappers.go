@@ -617,6 +617,7 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 		ModelMappingChain:          l.ModelMappingChain,
 		BillingTier:                l.BillingTier,
 		RoutingTargetGroup:         l.RoutingTargetGroup,
+		RoutingSelectedGroup:       l.RoutingSelectedGroup,
 		RoutingScheduleLayer:       l.RoutingScheduleLayer,
 		RoutingSelectedAccountID:   l.RoutingSelectedAccountID,
 		RoutingSelectedAccountName: l.RoutingSelectedAccountName,

@@ -124,6 +124,7 @@ type UsageLog struct {
 	UpstreamEndpoint *string
 	// OpenAI routing observability fields. Nil means non-OpenAI or snapshot unavailable.
 	RoutingTargetGroup           *string
+	RoutingSelectedGroup         *string
 	RoutingScheduleLayer         *string
 	RoutingSelectedAccountID     *int64
 	RoutingSelectedAccountName   *string

@@ -5445,6 +5445,7 @@ func (s *OpenAIGatewayService) buildOpenAIRecordUsageLog(input *openAIRecordUsag
 	}
 	if snapshot := input.RoutingSnapshot; snapshot != nil {
 		usageLog.RoutingTargetGroup = optionalTrimmedStringPtr(snapshot.TargetGroup)
+		usageLog.RoutingSelectedGroup = optionalTrimmedStringPtr(snapshot.SelectedGroup)
 		usageLog.RoutingScheduleLayer = optionalTrimmedStringPtr(snapshot.ScheduleLayer)
 		usageLog.RoutingSelectedAccountID = snapshot.SelectedAccountID
 		usageLog.RoutingSelectedAccountName = snapshot.SelectedAccountName

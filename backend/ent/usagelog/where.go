@@ -115,6 +115,11 @@ func RoutingTargetGroup(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldRoutingTargetGroup, v))
 }
 
+// RoutingSelectedGroup applies equality check predicate on the "routing_selected_group" field. It's identical to RoutingSelectedGroupEQ.
+func RoutingSelectedGroup(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingSelectedGroup, v))
+}
+
 // RoutingScheduleLayer applies equality check predicate on the "routing_schedule_layer" field. It's identical to RoutingScheduleLayerEQ.
 func RoutingScheduleLayer(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldRoutingScheduleLayer, v))
@@ -318,6 +323,36 @@ func CacheTTLOverridden(v bool) predicate.UsageLog {
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCreatedAt, v))
+}
+
+// StickySessionSource applies equality check predicate on the "sticky_session_source" field. It's identical to StickySessionSourceEQ.
+func StickySessionSource(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldStickySessionSource, v))
+}
+
+// StickySessionHashPresent applies equality check predicate on the "sticky_session_hash_present" field. It's identical to StickySessionHashPresentEQ.
+func StickySessionHashPresent(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldStickySessionHashPresent, v))
+}
+
+// StickyEvalResult applies equality check predicate on the "sticky_eval_result" field. It's identical to StickyEvalResultEQ.
+func StickyEvalResult(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldStickyEvalResult, v))
+}
+
+// StickySelectedAccountChanged applies equality check predicate on the "sticky_selected_account_changed" field. It's identical to StickySelectedAccountChangedEQ.
+func StickySelectedAccountChanged(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldStickySelectedAccountChanged, v))
+}
+
+// StickyParentSessionPresent applies equality check predicate on the "sticky_parent_session_present" field. It's identical to StickyParentSessionPresentEQ.
+func StickyParentSessionPresent(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldStickyParentSessionPresent, v))
+}
+
+// StickyParentSessionKey applies equality check predicate on the "sticky_parent_session_key" field. It's identical to StickyParentSessionKeyEQ.
+func StickyParentSessionKey(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldStickyParentSessionKey, v))
 }
 
 // UserIDEQ applies the EQ predicate on the "user_id" field.
@@ -1008,6 +1043,81 @@ func RoutingTargetGroupEqualFold(v string) predicate.UsageLog {
 // RoutingTargetGroupContainsFold applies the ContainsFold predicate on the "routing_target_group" field.
 func RoutingTargetGroupContainsFold(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldContainsFold(FieldRoutingTargetGroup, v))
+}
+
+// RoutingSelectedGroupEQ applies the EQ predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldRoutingSelectedGroup, v))
+}
+
+// RoutingSelectedGroupNEQ applies the NEQ predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldRoutingSelectedGroup, v))
+}
+
+// RoutingSelectedGroupIn applies the In predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldRoutingSelectedGroup, vs...))
+}
+
+// RoutingSelectedGroupNotIn applies the NotIn predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldRoutingSelectedGroup, vs...))
+}
+
+// RoutingSelectedGroupGT applies the GT predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldRoutingSelectedGroup, v))
+}
+
+// RoutingSelectedGroupGTE applies the GTE predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldRoutingSelectedGroup, v))
+}
+
+// RoutingSelectedGroupLT applies the LT predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldRoutingSelectedGroup, v))
+}
+
+// RoutingSelectedGroupLTE applies the LTE predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldRoutingSelectedGroup, v))
+}
+
+// RoutingSelectedGroupContains applies the Contains predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldRoutingSelectedGroup, v))
+}
+
+// RoutingSelectedGroupHasPrefix applies the HasPrefix predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldRoutingSelectedGroup, v))
+}
+
+// RoutingSelectedGroupHasSuffix applies the HasSuffix predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldRoutingSelectedGroup, v))
+}
+
+// RoutingSelectedGroupIsNil applies the IsNil predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldRoutingSelectedGroup))
+}
+
+// RoutingSelectedGroupNotNil applies the NotNil predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldRoutingSelectedGroup))
+}
+
+// RoutingSelectedGroupEqualFold applies the EqualFold predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldRoutingSelectedGroup, v))
+}
+
+// RoutingSelectedGroupContainsFold applies the ContainsFold predicate on the "routing_selected_group" field.
+func RoutingSelectedGroupContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldRoutingSelectedGroup, v))
 }
 
 // RoutingScheduleLayerEQ applies the EQ predicate on the "routing_schedule_layer" field.
@@ -2983,6 +3093,291 @@ func CreatedAtLT(v time.Time) predicate.UsageLog {
 // CreatedAtLTE applies the LTE predicate on the "created_at" field.
 func CreatedAtLTE(v time.Time) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldLTE(FieldCreatedAt, v))
+}
+
+// StickySessionSourceEQ applies the EQ predicate on the "sticky_session_source" field.
+func StickySessionSourceEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldStickySessionSource, v))
+}
+
+// StickySessionSourceNEQ applies the NEQ predicate on the "sticky_session_source" field.
+func StickySessionSourceNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldStickySessionSource, v))
+}
+
+// StickySessionSourceIn applies the In predicate on the "sticky_session_source" field.
+func StickySessionSourceIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldStickySessionSource, vs...))
+}
+
+// StickySessionSourceNotIn applies the NotIn predicate on the "sticky_session_source" field.
+func StickySessionSourceNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldStickySessionSource, vs...))
+}
+
+// StickySessionSourceGT applies the GT predicate on the "sticky_session_source" field.
+func StickySessionSourceGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldStickySessionSource, v))
+}
+
+// StickySessionSourceGTE applies the GTE predicate on the "sticky_session_source" field.
+func StickySessionSourceGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldStickySessionSource, v))
+}
+
+// StickySessionSourceLT applies the LT predicate on the "sticky_session_source" field.
+func StickySessionSourceLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldStickySessionSource, v))
+}
+
+// StickySessionSourceLTE applies the LTE predicate on the "sticky_session_source" field.
+func StickySessionSourceLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldStickySessionSource, v))
+}
+
+// StickySessionSourceContains applies the Contains predicate on the "sticky_session_source" field.
+func StickySessionSourceContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldStickySessionSource, v))
+}
+
+// StickySessionSourceHasPrefix applies the HasPrefix predicate on the "sticky_session_source" field.
+func StickySessionSourceHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldStickySessionSource, v))
+}
+
+// StickySessionSourceHasSuffix applies the HasSuffix predicate on the "sticky_session_source" field.
+func StickySessionSourceHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldStickySessionSource, v))
+}
+
+// StickySessionSourceIsNil applies the IsNil predicate on the "sticky_session_source" field.
+func StickySessionSourceIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldStickySessionSource))
+}
+
+// StickySessionSourceNotNil applies the NotNil predicate on the "sticky_session_source" field.
+func StickySessionSourceNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldStickySessionSource))
+}
+
+// StickySessionSourceEqualFold applies the EqualFold predicate on the "sticky_session_source" field.
+func StickySessionSourceEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldStickySessionSource, v))
+}
+
+// StickySessionSourceContainsFold applies the ContainsFold predicate on the "sticky_session_source" field.
+func StickySessionSourceContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldStickySessionSource, v))
+}
+
+// StickySessionHashPresentEQ applies the EQ predicate on the "sticky_session_hash_present" field.
+func StickySessionHashPresentEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldStickySessionHashPresent, v))
+}
+
+// StickySessionHashPresentNEQ applies the NEQ predicate on the "sticky_session_hash_present" field.
+func StickySessionHashPresentNEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldStickySessionHashPresent, v))
+}
+
+// StickySessionHashPresentIsNil applies the IsNil predicate on the "sticky_session_hash_present" field.
+func StickySessionHashPresentIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldStickySessionHashPresent))
+}
+
+// StickySessionHashPresentNotNil applies the NotNil predicate on the "sticky_session_hash_present" field.
+func StickySessionHashPresentNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldStickySessionHashPresent))
+}
+
+// StickyEvalResultEQ applies the EQ predicate on the "sticky_eval_result" field.
+func StickyEvalResultEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldStickyEvalResult, v))
+}
+
+// StickyEvalResultNEQ applies the NEQ predicate on the "sticky_eval_result" field.
+func StickyEvalResultNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldStickyEvalResult, v))
+}
+
+// StickyEvalResultIn applies the In predicate on the "sticky_eval_result" field.
+func StickyEvalResultIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldStickyEvalResult, vs...))
+}
+
+// StickyEvalResultNotIn applies the NotIn predicate on the "sticky_eval_result" field.
+func StickyEvalResultNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldStickyEvalResult, vs...))
+}
+
+// StickyEvalResultGT applies the GT predicate on the "sticky_eval_result" field.
+func StickyEvalResultGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldStickyEvalResult, v))
+}
+
+// StickyEvalResultGTE applies the GTE predicate on the "sticky_eval_result" field.
+func StickyEvalResultGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldStickyEvalResult, v))
+}
+
+// StickyEvalResultLT applies the LT predicate on the "sticky_eval_result" field.
+func StickyEvalResultLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldStickyEvalResult, v))
+}
+
+// StickyEvalResultLTE applies the LTE predicate on the "sticky_eval_result" field.
+func StickyEvalResultLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldStickyEvalResult, v))
+}
+
+// StickyEvalResultContains applies the Contains predicate on the "sticky_eval_result" field.
+func StickyEvalResultContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldStickyEvalResult, v))
+}
+
+// StickyEvalResultHasPrefix applies the HasPrefix predicate on the "sticky_eval_result" field.
+func StickyEvalResultHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldStickyEvalResult, v))
+}
+
+// StickyEvalResultHasSuffix applies the HasSuffix predicate on the "sticky_eval_result" field.
+func StickyEvalResultHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldStickyEvalResult, v))
+}
+
+// StickyEvalResultIsNil applies the IsNil predicate on the "sticky_eval_result" field.
+func StickyEvalResultIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldStickyEvalResult))
+}
+
+// StickyEvalResultNotNil applies the NotNil predicate on the "sticky_eval_result" field.
+func StickyEvalResultNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldStickyEvalResult))
+}
+
+// StickyEvalResultEqualFold applies the EqualFold predicate on the "sticky_eval_result" field.
+func StickyEvalResultEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldStickyEvalResult, v))
+}
+
+// StickyEvalResultContainsFold applies the ContainsFold predicate on the "sticky_eval_result" field.
+func StickyEvalResultContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldStickyEvalResult, v))
+}
+
+// StickySelectedAccountChangedEQ applies the EQ predicate on the "sticky_selected_account_changed" field.
+func StickySelectedAccountChangedEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldStickySelectedAccountChanged, v))
+}
+
+// StickySelectedAccountChangedNEQ applies the NEQ predicate on the "sticky_selected_account_changed" field.
+func StickySelectedAccountChangedNEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldStickySelectedAccountChanged, v))
+}
+
+// StickySelectedAccountChangedIsNil applies the IsNil predicate on the "sticky_selected_account_changed" field.
+func StickySelectedAccountChangedIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldStickySelectedAccountChanged))
+}
+
+// StickySelectedAccountChangedNotNil applies the NotNil predicate on the "sticky_selected_account_changed" field.
+func StickySelectedAccountChangedNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldStickySelectedAccountChanged))
+}
+
+// StickyParentSessionPresentEQ applies the EQ predicate on the "sticky_parent_session_present" field.
+func StickyParentSessionPresentEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldStickyParentSessionPresent, v))
+}
+
+// StickyParentSessionPresentNEQ applies the NEQ predicate on the "sticky_parent_session_present" field.
+func StickyParentSessionPresentNEQ(v bool) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldStickyParentSessionPresent, v))
+}
+
+// StickyParentSessionPresentIsNil applies the IsNil predicate on the "sticky_parent_session_present" field.
+func StickyParentSessionPresentIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldStickyParentSessionPresent))
+}
+
+// StickyParentSessionPresentNotNil applies the NotNil predicate on the "sticky_parent_session_present" field.
+func StickyParentSessionPresentNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldStickyParentSessionPresent))
+}
+
+// StickyParentSessionKeyEQ applies the EQ predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldStickyParentSessionKey, v))
+}
+
+// StickyParentSessionKeyNEQ applies the NEQ predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldStickyParentSessionKey, v))
+}
+
+// StickyParentSessionKeyIn applies the In predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldStickyParentSessionKey, vs...))
+}
+
+// StickyParentSessionKeyNotIn applies the NotIn predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldStickyParentSessionKey, vs...))
+}
+
+// StickyParentSessionKeyGT applies the GT predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldStickyParentSessionKey, v))
+}
+
+// StickyParentSessionKeyGTE applies the GTE predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldStickyParentSessionKey, v))
+}
+
+// StickyParentSessionKeyLT applies the LT predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldStickyParentSessionKey, v))
+}
+
+// StickyParentSessionKeyLTE applies the LTE predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldStickyParentSessionKey, v))
+}
+
+// StickyParentSessionKeyContains applies the Contains predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldStickyParentSessionKey, v))
+}
+
+// StickyParentSessionKeyHasPrefix applies the HasPrefix predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldStickyParentSessionKey, v))
+}
+
+// StickyParentSessionKeyHasSuffix applies the HasSuffix predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldStickyParentSessionKey, v))
+}
+
+// StickyParentSessionKeyIsNil applies the IsNil predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldStickyParentSessionKey))
+}
+
+// StickyParentSessionKeyNotNil applies the NotNil predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldStickyParentSessionKey))
+}
+
+// StickyParentSessionKeyEqualFold applies the EqualFold predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldStickyParentSessionKey, v))
+}
+
+// StickyParentSessionKeyContainsFold applies the ContainsFold predicate on the "sticky_parent_session_key" field.
+func StickyParentSessionKeyContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldStickyParentSessionKey, v))
 }
 
 // HasUser applies the HasEdge predicate on the "user" edge.

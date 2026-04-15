@@ -152,6 +152,7 @@ func TestUsageLogFromServiceAdmin_IncludesRoutingSnapshot(t *testing.T) {
 	t.Parallel()
 
 	routingTargetGroup := "exhausted"
+	routingSelectedGroup := "reserve"
 	routingScheduleLayer := "load_balance"
 	routingSelectedAccountID := int64(66)
 	routingSelectedAccountName := "acc-66"
@@ -163,6 +164,7 @@ func TestUsageLogFromServiceAdmin_IncludesRoutingSnapshot(t *testing.T) {
 		RequestID:                  "req-routing-1",
 		Model:                      "gpt-5.4-Sys",
 		RoutingTargetGroup:         &routingTargetGroup,
+		RoutingSelectedGroup:       &routingSelectedGroup,
 		RoutingScheduleLayer:       &routingScheduleLayer,
 		RoutingSelectedAccountID:   &routingSelectedAccountID,
 		RoutingSelectedAccountName: &routingSelectedAccountName,
@@ -175,6 +177,8 @@ func TestUsageLogFromServiceAdmin_IncludesRoutingSnapshot(t *testing.T) {
 
 	require.NotNil(t, adminDTO.RoutingTargetGroup)
 	require.Equal(t, routingTargetGroup, *adminDTO.RoutingTargetGroup)
+	require.NotNil(t, adminDTO.RoutingSelectedGroup)
+	require.Equal(t, routingSelectedGroup, *adminDTO.RoutingSelectedGroup)
 	require.NotNil(t, adminDTO.RoutingScheduleLayer)
 	require.Equal(t, routingScheduleLayer, *adminDTO.RoutingScheduleLayer)
 	require.NotNil(t, adminDTO.RoutingSelectedAccountID)

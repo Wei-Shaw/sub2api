@@ -249,6 +249,26 @@ func (_u *UsageLogUpdate) ClearRoutingTargetGroup() *UsageLogUpdate {
 	return _u
 }
 
+// SetRoutingSelectedGroup sets the "routing_selected_group" field.
+func (_u *UsageLogUpdate) SetRoutingSelectedGroup(v string) *UsageLogUpdate {
+	_u.mutation.SetRoutingSelectedGroup(v)
+	return _u
+}
+
+// SetNillableRoutingSelectedGroup sets the "routing_selected_group" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableRoutingSelectedGroup(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetRoutingSelectedGroup(*v)
+	}
+	return _u
+}
+
+// ClearRoutingSelectedGroup clears the value of the "routing_selected_group" field.
+func (_u *UsageLogUpdate) ClearRoutingSelectedGroup() *UsageLogUpdate {
+	_u.mutation.ClearRoutingSelectedGroup()
+	return _u
+}
+
 // SetRoutingScheduleLayer sets the "routing_schedule_layer" field.
 func (_u *UsageLogUpdate) SetRoutingScheduleLayer(v string) *UsageLogUpdate {
 	_u.mutation.SetRoutingScheduleLayer(v)
@@ -1124,6 +1144,126 @@ func (_u *UsageLogUpdate) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpdate
 	return _u
 }
 
+// SetStickySessionSource sets the "sticky_session_source" field.
+func (_u *UsageLogUpdate) SetStickySessionSource(v string) *UsageLogUpdate {
+	_u.mutation.SetStickySessionSource(v)
+	return _u
+}
+
+// SetNillableStickySessionSource sets the "sticky_session_source" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableStickySessionSource(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetStickySessionSource(*v)
+	}
+	return _u
+}
+
+// ClearStickySessionSource clears the value of the "sticky_session_source" field.
+func (_u *UsageLogUpdate) ClearStickySessionSource() *UsageLogUpdate {
+	_u.mutation.ClearStickySessionSource()
+	return _u
+}
+
+// SetStickySessionHashPresent sets the "sticky_session_hash_present" field.
+func (_u *UsageLogUpdate) SetStickySessionHashPresent(v bool) *UsageLogUpdate {
+	_u.mutation.SetStickySessionHashPresent(v)
+	return _u
+}
+
+// SetNillableStickySessionHashPresent sets the "sticky_session_hash_present" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableStickySessionHashPresent(v *bool) *UsageLogUpdate {
+	if v != nil {
+		_u.SetStickySessionHashPresent(*v)
+	}
+	return _u
+}
+
+// ClearStickySessionHashPresent clears the value of the "sticky_session_hash_present" field.
+func (_u *UsageLogUpdate) ClearStickySessionHashPresent() *UsageLogUpdate {
+	_u.mutation.ClearStickySessionHashPresent()
+	return _u
+}
+
+// SetStickyEvalResult sets the "sticky_eval_result" field.
+func (_u *UsageLogUpdate) SetStickyEvalResult(v string) *UsageLogUpdate {
+	_u.mutation.SetStickyEvalResult(v)
+	return _u
+}
+
+// SetNillableStickyEvalResult sets the "sticky_eval_result" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableStickyEvalResult(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetStickyEvalResult(*v)
+	}
+	return _u
+}
+
+// ClearStickyEvalResult clears the value of the "sticky_eval_result" field.
+func (_u *UsageLogUpdate) ClearStickyEvalResult() *UsageLogUpdate {
+	_u.mutation.ClearStickyEvalResult()
+	return _u
+}
+
+// SetStickySelectedAccountChanged sets the "sticky_selected_account_changed" field.
+func (_u *UsageLogUpdate) SetStickySelectedAccountChanged(v bool) *UsageLogUpdate {
+	_u.mutation.SetStickySelectedAccountChanged(v)
+	return _u
+}
+
+// SetNillableStickySelectedAccountChanged sets the "sticky_selected_account_changed" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableStickySelectedAccountChanged(v *bool) *UsageLogUpdate {
+	if v != nil {
+		_u.SetStickySelectedAccountChanged(*v)
+	}
+	return _u
+}
+
+// ClearStickySelectedAccountChanged clears the value of the "sticky_selected_account_changed" field.
+func (_u *UsageLogUpdate) ClearStickySelectedAccountChanged() *UsageLogUpdate {
+	_u.mutation.ClearStickySelectedAccountChanged()
+	return _u
+}
+
+// SetStickyParentSessionPresent sets the "sticky_parent_session_present" field.
+func (_u *UsageLogUpdate) SetStickyParentSessionPresent(v bool) *UsageLogUpdate {
+	_u.mutation.SetStickyParentSessionPresent(v)
+	return _u
+}
+
+// SetNillableStickyParentSessionPresent sets the "sticky_parent_session_present" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableStickyParentSessionPresent(v *bool) *UsageLogUpdate {
+	if v != nil {
+		_u.SetStickyParentSessionPresent(*v)
+	}
+	return _u
+}
+
+// ClearStickyParentSessionPresent clears the value of the "sticky_parent_session_present" field.
+func (_u *UsageLogUpdate) ClearStickyParentSessionPresent() *UsageLogUpdate {
+	_u.mutation.ClearStickyParentSessionPresent()
+	return _u
+}
+
+// SetStickyParentSessionKey sets the "sticky_parent_session_key" field.
+func (_u *UsageLogUpdate) SetStickyParentSessionKey(v string) *UsageLogUpdate {
+	_u.mutation.SetStickyParentSessionKey(v)
+	return _u
+}
+
+// SetNillableStickyParentSessionKey sets the "sticky_parent_session_key" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableStickyParentSessionKey(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetStickyParentSessionKey(*v)
+	}
+	return _u
+}
+
+// ClearStickyParentSessionKey clears the value of the "sticky_parent_session_key" field.
+func (_u *UsageLogUpdate) ClearStickyParentSessionKey() *UsageLogUpdate {
+	_u.mutation.ClearStickyParentSessionKey()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdate) SetUser(v *User) *UsageLogUpdate {
 	return _u.SetUserID(v.ID)
@@ -1253,6 +1393,11 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "routing_target_group", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_target_group": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RoutingSelectedGroup(); ok {
+		if err := usagelog.RoutingSelectedGroupValidator(v); err != nil {
+			return &ValidationError{Name: "routing_selected_group", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_selected_group": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RoutingScheduleLayer(); ok {
 		if err := usagelog.RoutingScheduleLayerValidator(v); err != nil {
 			return &ValidationError{Name: "routing_schedule_layer", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_schedule_layer": %w`, err)}
@@ -1296,6 +1441,21 @@ func (_u *UsageLogUpdate) check() error {
 	if v, ok := _u.mutation.MediaType(); ok {
 		if err := usagelog.MediaTypeValidator(v); err != nil {
 			return &ValidationError{Name: "media_type", err: fmt.Errorf(`ent: validator failed for field "UsageLog.media_type": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.StickySessionSource(); ok {
+		if err := usagelog.StickySessionSourceValidator(v); err != nil {
+			return &ValidationError{Name: "sticky_session_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.sticky_session_source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.StickyEvalResult(); ok {
+		if err := usagelog.StickyEvalResultValidator(v); err != nil {
+			return &ValidationError{Name: "sticky_eval_result", err: fmt.Errorf(`ent: validator failed for field "UsageLog.sticky_eval_result": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.StickyParentSessionKey(); ok {
+		if err := usagelog.StickyParentSessionKeyValidator(v); err != nil {
+			return &ValidationError{Name: "sticky_parent_session_key", err: fmt.Errorf(`ent: validator failed for field "UsageLog.sticky_parent_session_key": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -1372,6 +1532,12 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.RoutingTargetGroupCleared() {
 		_spec.ClearField(usagelog.FieldRoutingTargetGroup, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingSelectedGroup(); ok {
+		_spec.SetField(usagelog.FieldRoutingSelectedGroup, field.TypeString, value)
+	}
+	if _u.mutation.RoutingSelectedGroupCleared() {
+		_spec.ClearField(usagelog.FieldRoutingSelectedGroup, field.TypeString)
 	}
 	if value, ok := _u.mutation.RoutingScheduleLayer(); ok {
 		_spec.SetField(usagelog.FieldRoutingScheduleLayer, field.TypeString, value)
@@ -1624,6 +1790,42 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.StickySessionSource(); ok {
+		_spec.SetField(usagelog.FieldStickySessionSource, field.TypeString, value)
+	}
+	if _u.mutation.StickySessionSourceCleared() {
+		_spec.ClearField(usagelog.FieldStickySessionSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.StickySessionHashPresent(); ok {
+		_spec.SetField(usagelog.FieldStickySessionHashPresent, field.TypeBool, value)
+	}
+	if _u.mutation.StickySessionHashPresentCleared() {
+		_spec.ClearField(usagelog.FieldStickySessionHashPresent, field.TypeBool)
+	}
+	if value, ok := _u.mutation.StickyEvalResult(); ok {
+		_spec.SetField(usagelog.FieldStickyEvalResult, field.TypeString, value)
+	}
+	if _u.mutation.StickyEvalResultCleared() {
+		_spec.ClearField(usagelog.FieldStickyEvalResult, field.TypeString)
+	}
+	if value, ok := _u.mutation.StickySelectedAccountChanged(); ok {
+		_spec.SetField(usagelog.FieldStickySelectedAccountChanged, field.TypeBool, value)
+	}
+	if _u.mutation.StickySelectedAccountChangedCleared() {
+		_spec.ClearField(usagelog.FieldStickySelectedAccountChanged, field.TypeBool)
+	}
+	if value, ok := _u.mutation.StickyParentSessionPresent(); ok {
+		_spec.SetField(usagelog.FieldStickyParentSessionPresent, field.TypeBool, value)
+	}
+	if _u.mutation.StickyParentSessionPresentCleared() {
+		_spec.ClearField(usagelog.FieldStickyParentSessionPresent, field.TypeBool)
+	}
+	if value, ok := _u.mutation.StickyParentSessionKey(); ok {
+		_spec.SetField(usagelog.FieldStickyParentSessionKey, field.TypeString, value)
+	}
+	if _u.mutation.StickyParentSessionKeyCleared() {
+		_spec.ClearField(usagelog.FieldStickyParentSessionKey, field.TypeString)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2004,6 +2206,26 @@ func (_u *UsageLogUpdateOne) SetNillableRoutingTargetGroup(v *string) *UsageLogU
 // ClearRoutingTargetGroup clears the value of the "routing_target_group" field.
 func (_u *UsageLogUpdateOne) ClearRoutingTargetGroup() *UsageLogUpdateOne {
 	_u.mutation.ClearRoutingTargetGroup()
+	return _u
+}
+
+// SetRoutingSelectedGroup sets the "routing_selected_group" field.
+func (_u *UsageLogUpdateOne) SetRoutingSelectedGroup(v string) *UsageLogUpdateOne {
+	_u.mutation.SetRoutingSelectedGroup(v)
+	return _u
+}
+
+// SetNillableRoutingSelectedGroup sets the "routing_selected_group" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableRoutingSelectedGroup(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetRoutingSelectedGroup(*v)
+	}
+	return _u
+}
+
+// ClearRoutingSelectedGroup clears the value of the "routing_selected_group" field.
+func (_u *UsageLogUpdateOne) ClearRoutingSelectedGroup() *UsageLogUpdateOne {
+	_u.mutation.ClearRoutingSelectedGroup()
 	return _u
 }
 
@@ -2882,6 +3104,126 @@ func (_u *UsageLogUpdateOne) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpd
 	return _u
 }
 
+// SetStickySessionSource sets the "sticky_session_source" field.
+func (_u *UsageLogUpdateOne) SetStickySessionSource(v string) *UsageLogUpdateOne {
+	_u.mutation.SetStickySessionSource(v)
+	return _u
+}
+
+// SetNillableStickySessionSource sets the "sticky_session_source" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableStickySessionSource(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetStickySessionSource(*v)
+	}
+	return _u
+}
+
+// ClearStickySessionSource clears the value of the "sticky_session_source" field.
+func (_u *UsageLogUpdateOne) ClearStickySessionSource() *UsageLogUpdateOne {
+	_u.mutation.ClearStickySessionSource()
+	return _u
+}
+
+// SetStickySessionHashPresent sets the "sticky_session_hash_present" field.
+func (_u *UsageLogUpdateOne) SetStickySessionHashPresent(v bool) *UsageLogUpdateOne {
+	_u.mutation.SetStickySessionHashPresent(v)
+	return _u
+}
+
+// SetNillableStickySessionHashPresent sets the "sticky_session_hash_present" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableStickySessionHashPresent(v *bool) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetStickySessionHashPresent(*v)
+	}
+	return _u
+}
+
+// ClearStickySessionHashPresent clears the value of the "sticky_session_hash_present" field.
+func (_u *UsageLogUpdateOne) ClearStickySessionHashPresent() *UsageLogUpdateOne {
+	_u.mutation.ClearStickySessionHashPresent()
+	return _u
+}
+
+// SetStickyEvalResult sets the "sticky_eval_result" field.
+func (_u *UsageLogUpdateOne) SetStickyEvalResult(v string) *UsageLogUpdateOne {
+	_u.mutation.SetStickyEvalResult(v)
+	return _u
+}
+
+// SetNillableStickyEvalResult sets the "sticky_eval_result" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableStickyEvalResult(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetStickyEvalResult(*v)
+	}
+	return _u
+}
+
+// ClearStickyEvalResult clears the value of the "sticky_eval_result" field.
+func (_u *UsageLogUpdateOne) ClearStickyEvalResult() *UsageLogUpdateOne {
+	_u.mutation.ClearStickyEvalResult()
+	return _u
+}
+
+// SetStickySelectedAccountChanged sets the "sticky_selected_account_changed" field.
+func (_u *UsageLogUpdateOne) SetStickySelectedAccountChanged(v bool) *UsageLogUpdateOne {
+	_u.mutation.SetStickySelectedAccountChanged(v)
+	return _u
+}
+
+// SetNillableStickySelectedAccountChanged sets the "sticky_selected_account_changed" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableStickySelectedAccountChanged(v *bool) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetStickySelectedAccountChanged(*v)
+	}
+	return _u
+}
+
+// ClearStickySelectedAccountChanged clears the value of the "sticky_selected_account_changed" field.
+func (_u *UsageLogUpdateOne) ClearStickySelectedAccountChanged() *UsageLogUpdateOne {
+	_u.mutation.ClearStickySelectedAccountChanged()
+	return _u
+}
+
+// SetStickyParentSessionPresent sets the "sticky_parent_session_present" field.
+func (_u *UsageLogUpdateOne) SetStickyParentSessionPresent(v bool) *UsageLogUpdateOne {
+	_u.mutation.SetStickyParentSessionPresent(v)
+	return _u
+}
+
+// SetNillableStickyParentSessionPresent sets the "sticky_parent_session_present" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableStickyParentSessionPresent(v *bool) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetStickyParentSessionPresent(*v)
+	}
+	return _u
+}
+
+// ClearStickyParentSessionPresent clears the value of the "sticky_parent_session_present" field.
+func (_u *UsageLogUpdateOne) ClearStickyParentSessionPresent() *UsageLogUpdateOne {
+	_u.mutation.ClearStickyParentSessionPresent()
+	return _u
+}
+
+// SetStickyParentSessionKey sets the "sticky_parent_session_key" field.
+func (_u *UsageLogUpdateOne) SetStickyParentSessionKey(v string) *UsageLogUpdateOne {
+	_u.mutation.SetStickyParentSessionKey(v)
+	return _u
+}
+
+// SetNillableStickyParentSessionKey sets the "sticky_parent_session_key" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableStickyParentSessionKey(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetStickyParentSessionKey(*v)
+	}
+	return _u
+}
+
+// ClearStickyParentSessionKey clears the value of the "sticky_parent_session_key" field.
+func (_u *UsageLogUpdateOne) ClearStickyParentSessionKey() *UsageLogUpdateOne {
+	_u.mutation.ClearStickyParentSessionKey()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdateOne) SetUser(v *User) *UsageLogUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -3024,6 +3366,11 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "routing_target_group", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_target_group": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.RoutingSelectedGroup(); ok {
+		if err := usagelog.RoutingSelectedGroupValidator(v); err != nil {
+			return &ValidationError{Name: "routing_selected_group", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_selected_group": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.RoutingScheduleLayer(); ok {
 		if err := usagelog.RoutingScheduleLayerValidator(v); err != nil {
 			return &ValidationError{Name: "routing_schedule_layer", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_schedule_layer": %w`, err)}
@@ -3067,6 +3414,21 @@ func (_u *UsageLogUpdateOne) check() error {
 	if v, ok := _u.mutation.MediaType(); ok {
 		if err := usagelog.MediaTypeValidator(v); err != nil {
 			return &ValidationError{Name: "media_type", err: fmt.Errorf(`ent: validator failed for field "UsageLog.media_type": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.StickySessionSource(); ok {
+		if err := usagelog.StickySessionSourceValidator(v); err != nil {
+			return &ValidationError{Name: "sticky_session_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.sticky_session_source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.StickyEvalResult(); ok {
+		if err := usagelog.StickyEvalResultValidator(v); err != nil {
+			return &ValidationError{Name: "sticky_eval_result", err: fmt.Errorf(`ent: validator failed for field "UsageLog.sticky_eval_result": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.StickyParentSessionKey(); ok {
+		if err := usagelog.StickyParentSessionKeyValidator(v); err != nil {
+			return &ValidationError{Name: "sticky_parent_session_key", err: fmt.Errorf(`ent: validator failed for field "UsageLog.sticky_parent_session_key": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -3160,6 +3522,12 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.RoutingTargetGroupCleared() {
 		_spec.ClearField(usagelog.FieldRoutingTargetGroup, field.TypeString)
+	}
+	if value, ok := _u.mutation.RoutingSelectedGroup(); ok {
+		_spec.SetField(usagelog.FieldRoutingSelectedGroup, field.TypeString, value)
+	}
+	if _u.mutation.RoutingSelectedGroupCleared() {
+		_spec.ClearField(usagelog.FieldRoutingSelectedGroup, field.TypeString)
 	}
 	if value, ok := _u.mutation.RoutingScheduleLayer(); ok {
 		_spec.SetField(usagelog.FieldRoutingScheduleLayer, field.TypeString, value)
@@ -3412,6 +3780,42 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.StickySessionSource(); ok {
+		_spec.SetField(usagelog.FieldStickySessionSource, field.TypeString, value)
+	}
+	if _u.mutation.StickySessionSourceCleared() {
+		_spec.ClearField(usagelog.FieldStickySessionSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.StickySessionHashPresent(); ok {
+		_spec.SetField(usagelog.FieldStickySessionHashPresent, field.TypeBool, value)
+	}
+	if _u.mutation.StickySessionHashPresentCleared() {
+		_spec.ClearField(usagelog.FieldStickySessionHashPresent, field.TypeBool)
+	}
+	if value, ok := _u.mutation.StickyEvalResult(); ok {
+		_spec.SetField(usagelog.FieldStickyEvalResult, field.TypeString, value)
+	}
+	if _u.mutation.StickyEvalResultCleared() {
+		_spec.ClearField(usagelog.FieldStickyEvalResult, field.TypeString)
+	}
+	if value, ok := _u.mutation.StickySelectedAccountChanged(); ok {
+		_spec.SetField(usagelog.FieldStickySelectedAccountChanged, field.TypeBool, value)
+	}
+	if _u.mutation.StickySelectedAccountChangedCleared() {
+		_spec.ClearField(usagelog.FieldStickySelectedAccountChanged, field.TypeBool)
+	}
+	if value, ok := _u.mutation.StickyParentSessionPresent(); ok {
+		_spec.SetField(usagelog.FieldStickyParentSessionPresent, field.TypeBool, value)
+	}
+	if _u.mutation.StickyParentSessionPresentCleared() {
+		_spec.ClearField(usagelog.FieldStickyParentSessionPresent, field.TypeBool)
+	}
+	if value, ok := _u.mutation.StickyParentSessionKey(); ok {
+		_spec.SetField(usagelog.FieldStickyParentSessionKey, field.TypeString, value)
+	}
+	if _u.mutation.StickyParentSessionKeyCleared() {
+		_spec.ClearField(usagelog.FieldStickyParentSessionKey, field.TypeString)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

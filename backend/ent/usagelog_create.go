@@ -155,6 +155,20 @@ func (_c *UsageLogCreate) SetNillableRoutingTargetGroup(v *string) *UsageLogCrea
 	return _c
 }
 
+// SetRoutingSelectedGroup sets the "routing_selected_group" field.
+func (_c *UsageLogCreate) SetRoutingSelectedGroup(v string) *UsageLogCreate {
+	_c.mutation.SetRoutingSelectedGroup(v)
+	return _c
+}
+
+// SetNillableRoutingSelectedGroup sets the "routing_selected_group" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableRoutingSelectedGroup(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetRoutingSelectedGroup(*v)
+	}
+	return _c
+}
+
 // SetRoutingScheduleLayer sets the "routing_schedule_layer" field.
 func (_c *UsageLogCreate) SetRoutingScheduleLayer(v string) *UsageLogCreate {
 	_c.mutation.SetRoutingScheduleLayer(v)
@@ -729,6 +743,90 @@ func (_c *UsageLogCreate) SetNillableCreatedAt(v *time.Time) *UsageLogCreate {
 	return _c
 }
 
+// SetStickySessionSource sets the "sticky_session_source" field.
+func (_c *UsageLogCreate) SetStickySessionSource(v string) *UsageLogCreate {
+	_c.mutation.SetStickySessionSource(v)
+	return _c
+}
+
+// SetNillableStickySessionSource sets the "sticky_session_source" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableStickySessionSource(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetStickySessionSource(*v)
+	}
+	return _c
+}
+
+// SetStickySessionHashPresent sets the "sticky_session_hash_present" field.
+func (_c *UsageLogCreate) SetStickySessionHashPresent(v bool) *UsageLogCreate {
+	_c.mutation.SetStickySessionHashPresent(v)
+	return _c
+}
+
+// SetNillableStickySessionHashPresent sets the "sticky_session_hash_present" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableStickySessionHashPresent(v *bool) *UsageLogCreate {
+	if v != nil {
+		_c.SetStickySessionHashPresent(*v)
+	}
+	return _c
+}
+
+// SetStickyEvalResult sets the "sticky_eval_result" field.
+func (_c *UsageLogCreate) SetStickyEvalResult(v string) *UsageLogCreate {
+	_c.mutation.SetStickyEvalResult(v)
+	return _c
+}
+
+// SetNillableStickyEvalResult sets the "sticky_eval_result" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableStickyEvalResult(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetStickyEvalResult(*v)
+	}
+	return _c
+}
+
+// SetStickySelectedAccountChanged sets the "sticky_selected_account_changed" field.
+func (_c *UsageLogCreate) SetStickySelectedAccountChanged(v bool) *UsageLogCreate {
+	_c.mutation.SetStickySelectedAccountChanged(v)
+	return _c
+}
+
+// SetNillableStickySelectedAccountChanged sets the "sticky_selected_account_changed" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableStickySelectedAccountChanged(v *bool) *UsageLogCreate {
+	if v != nil {
+		_c.SetStickySelectedAccountChanged(*v)
+	}
+	return _c
+}
+
+// SetStickyParentSessionPresent sets the "sticky_parent_session_present" field.
+func (_c *UsageLogCreate) SetStickyParentSessionPresent(v bool) *UsageLogCreate {
+	_c.mutation.SetStickyParentSessionPresent(v)
+	return _c
+}
+
+// SetNillableStickyParentSessionPresent sets the "sticky_parent_session_present" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableStickyParentSessionPresent(v *bool) *UsageLogCreate {
+	if v != nil {
+		_c.SetStickyParentSessionPresent(*v)
+	}
+	return _c
+}
+
+// SetStickyParentSessionKey sets the "sticky_parent_session_key" field.
+func (_c *UsageLogCreate) SetStickyParentSessionKey(v string) *UsageLogCreate {
+	_c.mutation.SetStickyParentSessionKey(v)
+	return _c
+}
+
+// SetNillableStickyParentSessionKey sets the "sticky_parent_session_key" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableStickyParentSessionKey(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetStickyParentSessionKey(*v)
+	}
+	return _c
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_c *UsageLogCreate) SetUser(v *User) *UsageLogCreate {
 	return _c.SetUserID(v.ID)
@@ -928,6 +1026,11 @@ func (_c *UsageLogCreate) check() error {
 			return &ValidationError{Name: "routing_target_group", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_target_group": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.RoutingSelectedGroup(); ok {
+		if err := usagelog.RoutingSelectedGroupValidator(v); err != nil {
+			return &ValidationError{Name: "routing_selected_group", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_selected_group": %w`, err)}
+		}
+	}
 	if v, ok := _c.mutation.RoutingScheduleLayer(); ok {
 		if err := usagelog.RoutingScheduleLayerValidator(v); err != nil {
 			return &ValidationError{Name: "routing_schedule_layer", err: fmt.Errorf(`ent: validator failed for field "UsageLog.routing_schedule_layer": %w`, err)}
@@ -1033,6 +1136,21 @@ func (_c *UsageLogCreate) check() error {
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "UsageLog.created_at"`)}
 	}
+	if v, ok := _c.mutation.StickySessionSource(); ok {
+		if err := usagelog.StickySessionSourceValidator(v); err != nil {
+			return &ValidationError{Name: "sticky_session_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.sticky_session_source": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.StickyEvalResult(); ok {
+		if err := usagelog.StickyEvalResultValidator(v); err != nil {
+			return &ValidationError{Name: "sticky_eval_result", err: fmt.Errorf(`ent: validator failed for field "UsageLog.sticky_eval_result": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.StickyParentSessionKey(); ok {
+		if err := usagelog.StickyParentSessionKeyValidator(v); err != nil {
+			return &ValidationError{Name: "sticky_parent_session_key", err: fmt.Errorf(`ent: validator failed for field "UsageLog.sticky_parent_session_key": %w`, err)}
+		}
+	}
 	if len(_c.mutation.UserIDs()) == 0 {
 		return &ValidationError{Name: "user", err: errors.New(`ent: missing required edge "UsageLog.user"`)}
 	}
@@ -1104,6 +1222,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RoutingTargetGroup(); ok {
 		_spec.SetField(usagelog.FieldRoutingTargetGroup, field.TypeString, value)
 		_node.RoutingTargetGroup = &value
+	}
+	if value, ok := _c.mutation.RoutingSelectedGroup(); ok {
+		_spec.SetField(usagelog.FieldRoutingSelectedGroup, field.TypeString, value)
+		_node.RoutingSelectedGroup = &value
 	}
 	if value, ok := _c.mutation.RoutingScheduleLayer(); ok {
 		_spec.SetField(usagelog.FieldRoutingScheduleLayer, field.TypeString, value)
@@ -1260,6 +1382,30 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(usagelog.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
+	}
+	if value, ok := _c.mutation.StickySessionSource(); ok {
+		_spec.SetField(usagelog.FieldStickySessionSource, field.TypeString, value)
+		_node.StickySessionSource = &value
+	}
+	if value, ok := _c.mutation.StickySessionHashPresent(); ok {
+		_spec.SetField(usagelog.FieldStickySessionHashPresent, field.TypeBool, value)
+		_node.StickySessionHashPresent = &value
+	}
+	if value, ok := _c.mutation.StickyEvalResult(); ok {
+		_spec.SetField(usagelog.FieldStickyEvalResult, field.TypeString, value)
+		_node.StickyEvalResult = &value
+	}
+	if value, ok := _c.mutation.StickySelectedAccountChanged(); ok {
+		_spec.SetField(usagelog.FieldStickySelectedAccountChanged, field.TypeBool, value)
+		_node.StickySelectedAccountChanged = &value
+	}
+	if value, ok := _c.mutation.StickyParentSessionPresent(); ok {
+		_spec.SetField(usagelog.FieldStickyParentSessionPresent, field.TypeBool, value)
+		_node.StickyParentSessionPresent = &value
+	}
+	if value, ok := _c.mutation.StickyParentSessionKey(); ok {
+		_spec.SetField(usagelog.FieldStickyParentSessionKey, field.TypeString, value)
+		_node.StickyParentSessionKey = &value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1587,6 +1733,24 @@ func (u *UsageLogUpsert) UpdateRoutingTargetGroup() *UsageLogUpsert {
 // ClearRoutingTargetGroup clears the value of the "routing_target_group" field.
 func (u *UsageLogUpsert) ClearRoutingTargetGroup() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldRoutingTargetGroup)
+	return u
+}
+
+// SetRoutingSelectedGroup sets the "routing_selected_group" field.
+func (u *UsageLogUpsert) SetRoutingSelectedGroup(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldRoutingSelectedGroup, v)
+	return u
+}
+
+// UpdateRoutingSelectedGroup sets the "routing_selected_group" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateRoutingSelectedGroup() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldRoutingSelectedGroup)
+	return u
+}
+
+// ClearRoutingSelectedGroup clears the value of the "routing_selected_group" field.
+func (u *UsageLogUpsert) ClearRoutingSelectedGroup() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldRoutingSelectedGroup)
 	return u
 }
 
@@ -2358,6 +2522,114 @@ func (u *UsageLogUpsert) UpdateCacheTTLOverridden() *UsageLogUpsert {
 	return u
 }
 
+// SetStickySessionSource sets the "sticky_session_source" field.
+func (u *UsageLogUpsert) SetStickySessionSource(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldStickySessionSource, v)
+	return u
+}
+
+// UpdateStickySessionSource sets the "sticky_session_source" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateStickySessionSource() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldStickySessionSource)
+	return u
+}
+
+// ClearStickySessionSource clears the value of the "sticky_session_source" field.
+func (u *UsageLogUpsert) ClearStickySessionSource() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldStickySessionSource)
+	return u
+}
+
+// SetStickySessionHashPresent sets the "sticky_session_hash_present" field.
+func (u *UsageLogUpsert) SetStickySessionHashPresent(v bool) *UsageLogUpsert {
+	u.Set(usagelog.FieldStickySessionHashPresent, v)
+	return u
+}
+
+// UpdateStickySessionHashPresent sets the "sticky_session_hash_present" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateStickySessionHashPresent() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldStickySessionHashPresent)
+	return u
+}
+
+// ClearStickySessionHashPresent clears the value of the "sticky_session_hash_present" field.
+func (u *UsageLogUpsert) ClearStickySessionHashPresent() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldStickySessionHashPresent)
+	return u
+}
+
+// SetStickyEvalResult sets the "sticky_eval_result" field.
+func (u *UsageLogUpsert) SetStickyEvalResult(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldStickyEvalResult, v)
+	return u
+}
+
+// UpdateStickyEvalResult sets the "sticky_eval_result" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateStickyEvalResult() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldStickyEvalResult)
+	return u
+}
+
+// ClearStickyEvalResult clears the value of the "sticky_eval_result" field.
+func (u *UsageLogUpsert) ClearStickyEvalResult() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldStickyEvalResult)
+	return u
+}
+
+// SetStickySelectedAccountChanged sets the "sticky_selected_account_changed" field.
+func (u *UsageLogUpsert) SetStickySelectedAccountChanged(v bool) *UsageLogUpsert {
+	u.Set(usagelog.FieldStickySelectedAccountChanged, v)
+	return u
+}
+
+// UpdateStickySelectedAccountChanged sets the "sticky_selected_account_changed" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateStickySelectedAccountChanged() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldStickySelectedAccountChanged)
+	return u
+}
+
+// ClearStickySelectedAccountChanged clears the value of the "sticky_selected_account_changed" field.
+func (u *UsageLogUpsert) ClearStickySelectedAccountChanged() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldStickySelectedAccountChanged)
+	return u
+}
+
+// SetStickyParentSessionPresent sets the "sticky_parent_session_present" field.
+func (u *UsageLogUpsert) SetStickyParentSessionPresent(v bool) *UsageLogUpsert {
+	u.Set(usagelog.FieldStickyParentSessionPresent, v)
+	return u
+}
+
+// UpdateStickyParentSessionPresent sets the "sticky_parent_session_present" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateStickyParentSessionPresent() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldStickyParentSessionPresent)
+	return u
+}
+
+// ClearStickyParentSessionPresent clears the value of the "sticky_parent_session_present" field.
+func (u *UsageLogUpsert) ClearStickyParentSessionPresent() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldStickyParentSessionPresent)
+	return u
+}
+
+// SetStickyParentSessionKey sets the "sticky_parent_session_key" field.
+func (u *UsageLogUpsert) SetStickyParentSessionKey(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldStickyParentSessionKey, v)
+	return u
+}
+
+// UpdateStickyParentSessionKey sets the "sticky_parent_session_key" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateStickyParentSessionKey() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldStickyParentSessionKey)
+	return u
+}
+
+// ClearStickyParentSessionKey clears the value of the "sticky_parent_session_key" field.
+func (u *UsageLogUpsert) ClearStickyParentSessionKey() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldStickyParentSessionKey)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2624,6 +2896,27 @@ func (u *UsageLogUpsertOne) UpdateRoutingTargetGroup() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearRoutingTargetGroup() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearRoutingTargetGroup()
+	})
+}
+
+// SetRoutingSelectedGroup sets the "routing_selected_group" field.
+func (u *UsageLogUpsertOne) SetRoutingSelectedGroup(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingSelectedGroup(v)
+	})
+}
+
+// UpdateRoutingSelectedGroup sets the "routing_selected_group" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateRoutingSelectedGroup() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingSelectedGroup()
+	})
+}
+
+// ClearRoutingSelectedGroup clears the value of the "routing_selected_group" field.
+func (u *UsageLogUpsertOne) ClearRoutingSelectedGroup() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingSelectedGroup()
 	})
 }
 
@@ -3523,6 +3816,132 @@ func (u *UsageLogUpsertOne) UpdateCacheTTLOverridden() *UsageLogUpsertOne {
 	})
 }
 
+// SetStickySessionSource sets the "sticky_session_source" field.
+func (u *UsageLogUpsertOne) SetStickySessionSource(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetStickySessionSource(v)
+	})
+}
+
+// UpdateStickySessionSource sets the "sticky_session_source" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateStickySessionSource() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateStickySessionSource()
+	})
+}
+
+// ClearStickySessionSource clears the value of the "sticky_session_source" field.
+func (u *UsageLogUpsertOne) ClearStickySessionSource() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearStickySessionSource()
+	})
+}
+
+// SetStickySessionHashPresent sets the "sticky_session_hash_present" field.
+func (u *UsageLogUpsertOne) SetStickySessionHashPresent(v bool) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetStickySessionHashPresent(v)
+	})
+}
+
+// UpdateStickySessionHashPresent sets the "sticky_session_hash_present" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateStickySessionHashPresent() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateStickySessionHashPresent()
+	})
+}
+
+// ClearStickySessionHashPresent clears the value of the "sticky_session_hash_present" field.
+func (u *UsageLogUpsertOne) ClearStickySessionHashPresent() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearStickySessionHashPresent()
+	})
+}
+
+// SetStickyEvalResult sets the "sticky_eval_result" field.
+func (u *UsageLogUpsertOne) SetStickyEvalResult(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetStickyEvalResult(v)
+	})
+}
+
+// UpdateStickyEvalResult sets the "sticky_eval_result" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateStickyEvalResult() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateStickyEvalResult()
+	})
+}
+
+// ClearStickyEvalResult clears the value of the "sticky_eval_result" field.
+func (u *UsageLogUpsertOne) ClearStickyEvalResult() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearStickyEvalResult()
+	})
+}
+
+// SetStickySelectedAccountChanged sets the "sticky_selected_account_changed" field.
+func (u *UsageLogUpsertOne) SetStickySelectedAccountChanged(v bool) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetStickySelectedAccountChanged(v)
+	})
+}
+
+// UpdateStickySelectedAccountChanged sets the "sticky_selected_account_changed" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateStickySelectedAccountChanged() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateStickySelectedAccountChanged()
+	})
+}
+
+// ClearStickySelectedAccountChanged clears the value of the "sticky_selected_account_changed" field.
+func (u *UsageLogUpsertOne) ClearStickySelectedAccountChanged() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearStickySelectedAccountChanged()
+	})
+}
+
+// SetStickyParentSessionPresent sets the "sticky_parent_session_present" field.
+func (u *UsageLogUpsertOne) SetStickyParentSessionPresent(v bool) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetStickyParentSessionPresent(v)
+	})
+}
+
+// UpdateStickyParentSessionPresent sets the "sticky_parent_session_present" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateStickyParentSessionPresent() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateStickyParentSessionPresent()
+	})
+}
+
+// ClearStickyParentSessionPresent clears the value of the "sticky_parent_session_present" field.
+func (u *UsageLogUpsertOne) ClearStickyParentSessionPresent() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearStickyParentSessionPresent()
+	})
+}
+
+// SetStickyParentSessionKey sets the "sticky_parent_session_key" field.
+func (u *UsageLogUpsertOne) SetStickyParentSessionKey(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetStickyParentSessionKey(v)
+	})
+}
+
+// UpdateStickyParentSessionKey sets the "sticky_parent_session_key" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateStickyParentSessionKey() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateStickyParentSessionKey()
+	})
+}
+
+// ClearStickyParentSessionKey clears the value of the "sticky_parent_session_key" field.
+func (u *UsageLogUpsertOne) ClearStickyParentSessionKey() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearStickyParentSessionKey()
+	})
+}
+
 // Exec executes the query.
 func (u *UsageLogUpsertOne) Exec(ctx context.Context) error {
 	if len(u.create.conflict) == 0 {
@@ -3955,6 +4374,27 @@ func (u *UsageLogUpsertBulk) UpdateRoutingTargetGroup() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearRoutingTargetGroup() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearRoutingTargetGroup()
+	})
+}
+
+// SetRoutingSelectedGroup sets the "routing_selected_group" field.
+func (u *UsageLogUpsertBulk) SetRoutingSelectedGroup(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetRoutingSelectedGroup(v)
+	})
+}
+
+// UpdateRoutingSelectedGroup sets the "routing_selected_group" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateRoutingSelectedGroup() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateRoutingSelectedGroup()
+	})
+}
+
+// ClearRoutingSelectedGroup clears the value of the "routing_selected_group" field.
+func (u *UsageLogUpsertBulk) ClearRoutingSelectedGroup() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearRoutingSelectedGroup()
 	})
 }
 
@@ -4851,6 +5291,132 @@ func (u *UsageLogUpsertBulk) SetCacheTTLOverridden(v bool) *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) UpdateCacheTTLOverridden() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheTTLOverridden()
+	})
+}
+
+// SetStickySessionSource sets the "sticky_session_source" field.
+func (u *UsageLogUpsertBulk) SetStickySessionSource(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetStickySessionSource(v)
+	})
+}
+
+// UpdateStickySessionSource sets the "sticky_session_source" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateStickySessionSource() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateStickySessionSource()
+	})
+}
+
+// ClearStickySessionSource clears the value of the "sticky_session_source" field.
+func (u *UsageLogUpsertBulk) ClearStickySessionSource() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearStickySessionSource()
+	})
+}
+
+// SetStickySessionHashPresent sets the "sticky_session_hash_present" field.
+func (u *UsageLogUpsertBulk) SetStickySessionHashPresent(v bool) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetStickySessionHashPresent(v)
+	})
+}
+
+// UpdateStickySessionHashPresent sets the "sticky_session_hash_present" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateStickySessionHashPresent() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateStickySessionHashPresent()
+	})
+}
+
+// ClearStickySessionHashPresent clears the value of the "sticky_session_hash_present" field.
+func (u *UsageLogUpsertBulk) ClearStickySessionHashPresent() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearStickySessionHashPresent()
+	})
+}
+
+// SetStickyEvalResult sets the "sticky_eval_result" field.
+func (u *UsageLogUpsertBulk) SetStickyEvalResult(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetStickyEvalResult(v)
+	})
+}
+
+// UpdateStickyEvalResult sets the "sticky_eval_result" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateStickyEvalResult() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateStickyEvalResult()
+	})
+}
+
+// ClearStickyEvalResult clears the value of the "sticky_eval_result" field.
+func (u *UsageLogUpsertBulk) ClearStickyEvalResult() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearStickyEvalResult()
+	})
+}
+
+// SetStickySelectedAccountChanged sets the "sticky_selected_account_changed" field.
+func (u *UsageLogUpsertBulk) SetStickySelectedAccountChanged(v bool) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetStickySelectedAccountChanged(v)
+	})
+}
+
+// UpdateStickySelectedAccountChanged sets the "sticky_selected_account_changed" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateStickySelectedAccountChanged() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateStickySelectedAccountChanged()
+	})
+}
+
+// ClearStickySelectedAccountChanged clears the value of the "sticky_selected_account_changed" field.
+func (u *UsageLogUpsertBulk) ClearStickySelectedAccountChanged() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearStickySelectedAccountChanged()
+	})
+}
+
+// SetStickyParentSessionPresent sets the "sticky_parent_session_present" field.
+func (u *UsageLogUpsertBulk) SetStickyParentSessionPresent(v bool) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetStickyParentSessionPresent(v)
+	})
+}
+
+// UpdateStickyParentSessionPresent sets the "sticky_parent_session_present" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateStickyParentSessionPresent() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateStickyParentSessionPresent()
+	})
+}
+
+// ClearStickyParentSessionPresent clears the value of the "sticky_parent_session_present" field.
+func (u *UsageLogUpsertBulk) ClearStickyParentSessionPresent() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearStickyParentSessionPresent()
+	})
+}
+
+// SetStickyParentSessionKey sets the "sticky_parent_session_key" field.
+func (u *UsageLogUpsertBulk) SetStickyParentSessionKey(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetStickyParentSessionKey(v)
+	})
+}
+
+// UpdateStickyParentSessionKey sets the "sticky_parent_session_key" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateStickyParentSessionKey() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateStickyParentSessionKey()
+	})
+}
+
+// ClearStickyParentSessionKey clears the value of the "sticky_parent_session_key" field.
+func (u *UsageLogUpsertBulk) ClearStickyParentSessionKey() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearStickyParentSessionKey()
 	})
 }
 

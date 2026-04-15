@@ -36,16 +36,18 @@ type UsageLog struct {
 	RequestedModel *string `json:"requested_model,omitempty"`
 	// UpstreamModel holds the value of the "upstream_model" field.
 	UpstreamModel *string `json:"upstream_model,omitempty"`
-	// ChannelID holds the value of the "channel_id" field.
+	// 渠道 ID
 	ChannelID *int64 `json:"channel_id,omitempty"`
-	// ModelMappingChain holds the value of the "model_mapping_chain" field.
+	// 模型映射链
 	ModelMappingChain *string `json:"model_mapping_chain,omitempty"`
-	// BillingTier holds the value of the "billing_tier" field.
+	// 计费层级标签
 	BillingTier *string `json:"billing_tier,omitempty"`
-	// BillingMode holds the value of the "billing_mode" field.
+	// 计费模式：token/per_request/image
 	BillingMode *string `json:"billing_mode,omitempty"`
 	// RoutingTargetGroup holds the value of the "routing_target_group" field.
 	RoutingTargetGroup *string `json:"routing_target_group,omitempty"`
+	// RoutingSelectedGroup holds the value of the "routing_selected_group" field.
+	RoutingSelectedGroup *string `json:"routing_selected_group,omitempty"`
 	// RoutingScheduleLayer holds the value of the "routing_schedule_layer" field.
 	RoutingScheduleLayer *string `json:"routing_schedule_layer,omitempty"`
 	// RoutingSelectedAccountID holds the value of the "routing_selected_account_id" field.
@@ -229,7 +231,7 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldRoutingSelectedAccountID, usagelog.FieldRoutingFailoverCount, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldImageOutputTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldRoutingTargetGroup, usagelog.FieldRoutingScheduleLayer, usagelog.FieldRoutingSelectedAccountName, usagelog.FieldRoutingEffectiveModel, usagelog.FieldRoutingFailoverFinalReason, usagelog.FieldPricingSource, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldMediaType, usagelog.FieldStickySessionSource, usagelog.FieldStickyEvalResult, usagelog.FieldStickyParentSessionKey:
+		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldRoutingTargetGroup, usagelog.FieldRoutingSelectedGroup, usagelog.FieldRoutingScheduleLayer, usagelog.FieldRoutingSelectedAccountName, usagelog.FieldRoutingEffectiveModel, usagelog.FieldRoutingFailoverFinalReason, usagelog.FieldPricingSource, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldMediaType, usagelog.FieldStickySessionSource, usagelog.FieldStickyEvalResult, usagelog.FieldStickyParentSessionKey:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -332,6 +334,13 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.RoutingTargetGroup = new(string)
 				*_m.RoutingTargetGroup = value.String
+			}
+		case usagelog.FieldRoutingSelectedGroup:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field routing_selected_group", values[i])
+			} else if value.Valid {
+				_m.RoutingSelectedGroup = new(string)
+				*_m.RoutingSelectedGroup = value.String
 			}
 		case usagelog.FieldRoutingScheduleLayer:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -753,6 +762,11 @@ func (_m *UsageLog) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
+	if v := _m.RoutingSelectedGroup; v != nil {
+		builder.WriteString("routing_selected_group=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
 	if v := _m.RoutingScheduleLayer; v != nil {
 		builder.WriteString("routing_schedule_layer=")
 		builder.WriteString(*v)
@@ -917,6 +931,36 @@ func (_m *UsageLog) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	if v := _m.StickySessionSource; v != nil {
+		builder.WriteString("sticky_session_source=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.StickySessionHashPresent; v != nil {
+		builder.WriteString("sticky_session_hash_present=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.StickyEvalResult; v != nil {
+		builder.WriteString("sticky_eval_result=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.StickySelectedAccountChanged; v != nil {
+		builder.WriteString("sticky_selected_account_changed=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.StickyParentSessionPresent; v != nil {
+		builder.WriteString("sticky_parent_session_present=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.StickyParentSessionKey; v != nil {
+		builder.WriteString("sticky_parent_session_key=")
+		builder.WriteString(*v)
+	}
 	builder.WriteByte(')')
 	return builder.String()
 }

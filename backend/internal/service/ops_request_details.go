@@ -19,15 +19,16 @@ type OpsRequestDetail struct {
 	CreatedAt time.Time      `json:"created_at"`
 	RequestID string         `json:"request_id"`
 
-	Platform                   string  `json:"platform,omitempty"`
-	Model                      string  `json:"model,omitempty"`
-	RoutingTargetGroup         string  `json:"routing_target_group,omitempty"`
-	RoutingScheduleLayer       string  `json:"routing_schedule_layer,omitempty"`
-	RoutingSelectedAccountID   *int64  `json:"routing_selected_account_id,omitempty"`
-	RoutingSelectedAccountName *string `json:"routing_selected_account_name,omitempty"`
-	RoutingEffectiveModel      string  `json:"routing_effective_model,omitempty"`
-	RoutingFailoverCount       *int    `json:"routing_failover_count,omitempty"`
-	RoutingFailoverFinalReason string  `json:"routing_failover_final_reason,omitempty"`
+	Platform                     string  `json:"platform,omitempty"`
+	Model                        string  `json:"model,omitempty"`
+	RoutingTargetGroup           string  `json:"routing_target_group,omitempty"`
+	RoutingSelectedGroup         string  `json:"routing_selected_group,omitempty"`
+	RoutingScheduleLayer         string  `json:"routing_schedule_layer,omitempty"`
+	RoutingSelectedAccountID     *int64  `json:"routing_selected_account_id,omitempty"`
+	RoutingSelectedAccountName   *string `json:"routing_selected_account_name,omitempty"`
+	RoutingEffectiveModel        string  `json:"routing_effective_model,omitempty"`
+	RoutingFailoverCount         *int    `json:"routing_failover_count,omitempty"`
+	RoutingFailoverFinalReason   string  `json:"routing_failover_final_reason,omitempty"`
 	StickySessionSource          *string `json:"sticky_session_source,omitempty"`
 	StickySessionHashPresent     *bool   `json:"sticky_session_hash_present,omitempty"`
 	StickyEvalResult             *string `json:"sticky_eval_result,omitempty"`
@@ -69,6 +70,7 @@ type OpsRequestDetailFilter struct {
 
 	Model                string
 	RoutingTargetGroup   string
+	RoutingSelectedGroup string
 	RoutingScheduleLayer string
 	RequestID            string
 	Query                string

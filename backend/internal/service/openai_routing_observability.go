@@ -32,9 +32,19 @@ type OpenAIRoutingSnapshotInput struct {
 }
 
 func NewOpenAIRoutingSnapshot(input OpenAIRoutingSnapshotInput) *OpenAIRoutingSnapshot {
+	selectedGroup := normalizeOpenAISelectedGroup(input.SelectedGroup)
+	if selectedGroup == "" {
+		switch normalizeTargetGroup(input.TargetGroup) {
+		case TargetGroupActive:
+			selectedGroup = string(TargetGroupActive)
+		case TargetGroupExhausted:
+			selectedGroup = string(TargetGroupExhausted)
+		}
+	}
+
 	snapshot := &OpenAIRoutingSnapshot{
 		TargetGroup:    string(normalizeTargetGroup(input.TargetGroup)),
-		SelectedGroup:  strings.TrimSpace(input.SelectedGroup),
+		SelectedGroup:  selectedGroup,
 		ScheduleLayer:  strings.TrimSpace(input.ScheduleLayer),
 		Sticky:         cloneOpenAIStickyEval(input.Sticky),
 		RequestedModel: strings.TrimSpace(input.RequestedModel),

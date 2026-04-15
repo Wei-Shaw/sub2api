@@ -173,6 +173,7 @@ export interface OpsRequestDetail {
   platform?: string
   model?: string
   routing_target_group?: string | null
+  routing_selected_group?: string | null
   routing_schedule_layer?: string | null
   routing_selected_account_id?: number | null
   routing_selected_account_name?: string | null
@@ -211,6 +212,7 @@ export interface OpsRequestDetailsParams {
   platform?: string
   group_id?: number | null
   routing_target_group?: string
+  routing_selected_group?: string
   routing_schedule_layer?: string
 
   user_id?: number

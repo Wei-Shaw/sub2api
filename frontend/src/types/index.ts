@@ -1055,6 +1055,7 @@ export interface AdminUsageLog extends UsageLog {
   upstream_model?: string | null
   model_mapping_chain?: string | null
   routing_target_group?: string | null
+  routing_selected_group?: string | null
   routing_schedule_layer?: string | null
   routing_selected_account_id?: number | null
   routing_selected_account_name?: string | null

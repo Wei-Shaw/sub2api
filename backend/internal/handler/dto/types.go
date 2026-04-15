@@ -408,12 +408,13 @@ type AdminUsageLog struct {
 
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).
-	UpstreamModel *string `json:"upstream_model,omitempty"`
-	ChannelID     *int64  `json:"channel_id,omitempty"`
+	UpstreamModel     *string `json:"upstream_model,omitempty"`
+	ChannelID         *int64  `json:"channel_id,omitempty"`
 	ModelMappingChain *string `json:"model_mapping_chain,omitempty"`
-	BillingTier   *string `json:"billing_tier,omitempty"`
+	BillingTier       *string `json:"billing_tier,omitempty"`
 	// OpenAI routing observability fields. Omitted when snapshot is unavailable.
 	RoutingTargetGroup         *string `json:"routing_target_group,omitempty"`
+	RoutingSelectedGroup       *string `json:"routing_selected_group,omitempty"`
 	RoutingScheduleLayer       *string `json:"routing_schedule_layer,omitempty"`
 	RoutingSelectedAccountID   *int64  `json:"routing_selected_account_id,omitempty"`
 	RoutingSelectedAccountName *string `json:"routing_selected_account_name,omitempty"`
