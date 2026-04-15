@@ -154,16 +154,10 @@
                 </div>
               </div>
             </div>
-            <div v-if="row.account_rate_multiplier != null" class="mt-0.5 text-[11px] text-gray-400">
-              A ${{ accountBilled(row).toFixed(6) REDACTEDREDACTED
+            <div v-if="row.account_rate_multiplier != null" class="mt-0.5 text-[11px] text-orange-500 dark:text-orange-400">
+              {{ t('usage.accountCost') REDACTEDREDACTED ${{ accountBilled(row).toFixed(6) REDACTEDREDACTED
             </div>
           </div>
-        </template>
-
-        <template #cell-account_cost="{ row REDACTED">
-          <span class="text-sm font-medium text-orange-500 dark:text-orange-400">
-            ${{ accountBilled(row).toFixed(6) REDACTEDREDACTED
-          </span>
         </template>
 
         <template #cell-first_token="{ row REDACTED">
