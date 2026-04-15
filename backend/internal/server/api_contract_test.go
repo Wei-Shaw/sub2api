@@ -1,10 +1,9 @@
-//go:build unit
-
 package server_test
 
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"math"
@@ -25,6 +24,84 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAPIContract_OpenCodeOpenAIModels(t *testing.T) {
+	deps := newContractDeps(t)
+	installModelsDevTransport(t, map[string]any{
+		"openai": map[string]any{
+			"models": map[string]any{
+				"gpt-5.4": map[string]any{
+					"id":                "gpt-5.4",
+					"name":              "GPT-5.4",
+					"reasoning":         true,
+					"attachment":        true,
+					"tool_call":         true,
+					"structured_output": true,
+					"temperature":       false,
+					"modalities": map[string]any{
+						"input":  []any{"text", "image", "pdf"},
+						"output": []any{"text"},
+					},
+					"cost":  map[string]any{"input": 2.5, "output": 15.0, "cache_read": 0.25},
+					"limit": map[string]any{"context": 1050000, "input": 922000, "output": 128000},
+					"experimental": map[string]any{
+						"modes": map[string]any{
+							"fast": map[string]any{
+								"cost": map[string]any{"input": 5.0, "output": 30.0, "cache_read": 0.5},
+								"provider": map[string]any{
+									"body":    map[string]any{"service_tier": "priority"},
+									"headers": map[string]any{"x-test-header": "fast-mode"},
+								},
+							},
+						},
+					},
+				},
+				"gpt-4o": map[string]any{
+					"id":   "gpt-4o",
+					"name": "GPT-4o",
+					"experimental": map[string]any{
+						"modes": map[string]any{
+							"fast": map[string]any{
+								"provider": map[string]any{
+									"body":    map[string]any{"service_tier": "priority"},
+									"headers": map[string]any{"x-test-header": "filtered-out"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	status, body := doRequest(t, deps.router, http.MethodGet, "/api/v1/keys/opencode/openai-models", "", nil)
+
+	require.Equal(t, http.StatusOK, status)
+	require.NotContains(t, body, "\"experimental\"")
+	require.NotContains(t, body, "\"provider\"")
+	require.NotContains(t, body, "\"service_tier\"")
+
+	var resp struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			Models map[string]map[string]any `json:"models"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, "success", resp.Message)
+	require.Contains(t, resp.Data.Models, "gpt-5.4-fast")
+	require.NotContains(t, resp.Data.Models, "gpt-4o-fast")
+
+	fast := resp.Data.Models["gpt-5.4-fast"]
+	require.Equal(t, "GPT-5.4 Fast", fast["name"])
+	require.Equal(t, "gpt-5.4-fast", fast["id"])
+	require.NotContains(t, fast, "experimental")
+	require.NotContains(t, fast, "provider")
+	require.Equal(t, "priority", requireContractMap(t, fast, "options")["serviceTier"])
+	require.Equal(t, "fast-mode", requireContractMap(t, fast, "headers")["x-test-header"])
+}
 
 func TestAPIContracts(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -803,7 +880,46 @@ func doRequest(t *testing.T, router http.Handler, method, path, body string, hea
 	return w.Result().StatusCode, string(respBody)
 }
 
+func installModelsDevTransport(t *testing.T, payload map[string]any) {
+	t.Helper()
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	old := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() != "https://models.dev/api.json" {
+			return old.RoundTrip(req)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"application/json"},
+			},
+			Body:    io.NopCloser(bytes.NewReader(body)),
+			Request: req,
+		}, nil
+	})
+	t.Cleanup(func() {
+		http.DefaultTransport = old
+	})
+}
+
+func requireContractMap(t *testing.T, src map[string]any, key string) map[string]any {
+	t.Helper()
+	value, ok := src[key]
+	require.True(t, ok, "%s should exist", key)
+	mapped, ok := value.(map[string]any)
+	require.True(t, ok, "%s should be an object", key)
+	return mapped
+}
+
 func ptr[T any](v T) *T { return &v }
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
 
 type stubUserRepo struct {
 	users map[int64]*service.User

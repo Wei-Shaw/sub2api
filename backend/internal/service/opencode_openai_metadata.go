@@ -30,6 +30,8 @@ type OpenCodeOpenAIModel struct {
 	Cost             OpenCodeOpenAIModelCost       `json:"cost,omitempty"`
 	Limit            OpenCodeOpenAIModelLimit      `json:"limit,omitempty"`
 	ReleaseDate      string                        `json:"release_date,omitempty"`
+	Options          map[string]any                `json:"options,omitempty"`
+	Headers          map[string]string             `json:"headers,omitempty"`
 }
 
 type OpenCodeOpenAIModelModalities struct {
@@ -161,6 +163,9 @@ func extractOpenCodeOpenAIModels(payload map[string]any) (map[string]OpenCodeOpe
 			model.ID = id
 		}
 		models[id] = model
+		for derivedID, derivedModel := range materializeOpenCodeOpenAIExperimentalModes(id, model, raw) {
+			models[derivedID] = derivedModel
+		}
 	}
 
 	return filterOpenCodeOpenAIModelsForCodexOAuth(models), nil
@@ -182,15 +187,24 @@ func filterOpenCodeOpenAIModelsForCodexOAuth(src map[string]OpenCodeOpenAIModel)
 	}
 	out := map[string]OpenCodeOpenAIModel{}
 	for id, model := range src {
-		if strings.Contains(id, "codex") {
-			out[id] = model
-			continue
-		}
-		if _, ok := allowed[id]; ok {
+		if shouldAllowOpenCodeOpenAIModelForCodexOAuth(id, allowed) {
 			out[id] = model
 		}
 	}
 	return out
+}
+
+func shouldAllowOpenCodeOpenAIModelForCodexOAuth(id string, allowed map[string]struct{}) bool {
+	if strings.Contains(id, "codex") {
+		return true
+	}
+	if _, ok := allowed[id]; ok {
+		return true
+	}
+	if strings.HasSuffix(id, "-fast") {
+		return shouldAllowOpenCodeOpenAIModelForCodexOAuth(strings.TrimSuffix(id, "-fast"), allowed)
+	}
+	return false
 }
 
 func shouldKeepOpenCodeOpenAIModel(id string, raw map[string]any) bool {
@@ -258,6 +272,116 @@ func convertOpenCodeOpenAIModel(raw map[string]any) (OpenCodeOpenAIModel, error)
 	}
 
 	return model, nil
+}
+
+func materializeOpenCodeOpenAIExperimentalModes(baseID string, baseModel OpenCodeOpenAIModel, raw map[string]any) map[string]OpenCodeOpenAIModel {
+	experimental, ok := mapValue(raw, "experimental")
+	if !ok {
+		return nil
+	}
+	modes, ok := mapValue(experimental, "modes")
+	if !ok {
+		return nil
+	}
+
+	derived := make(map[string]OpenCodeOpenAIModel, len(modes))
+	// Mirrors anomalyco/opencode packages/opencode/src/provider/provider.ts::fromModelsDevProvider()
+	// at commit 7a6ce05, especially the experimental.modes flattening at
+	// https://github.com/anomalyco/opencode/blob/7a6ce05/packages/opencode/src/provider/provider.ts#L1004-L1020.
+	// backend only mirrors/flattens upstream model aliases here; local -Sys and builtin_tools
+	// expansions are handled later by our own recommendation layer.
+	for mode, item := range modes {
+		mode = strings.TrimSpace(mode)
+		if mode == "" {
+			continue
+		}
+		rawMode, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		derivedID := baseID + "-" + mode
+		model := cloneOpenCodeOpenAIModel(baseModel)
+		model.ID = derivedID
+		model.Name = baseModel.Name + " " + strings.ToUpper(mode[:1]) + mode[1:]
+		if cost, ok := mapValue(rawMode, "cost"); ok {
+			model.Cost = mergeOpenCodeOpenAIModelCost(model.Cost, cost)
+		}
+		if provider, ok := mapValue(rawMode, "provider"); ok {
+			if body, ok := mapValue(provider, "body"); ok {
+				model.Options = toCamelCaseProviderBody(body)
+			}
+			if headers, ok := mapValue(provider, "headers"); ok {
+				model.Headers = stringMapValue(headers)
+			}
+		}
+		derived[derivedID] = model
+	}
+	return derived
+}
+
+func mergeOpenCodeOpenAIModelCost(base OpenCodeOpenAIModelCost, raw map[string]any) OpenCodeOpenAIModelCost {
+	merged := base
+	if _, ok := raw["input"]; ok {
+		merged.Input = floatValue(raw, "input")
+	}
+	if _, ok := raw["output"]; ok {
+		merged.Output = floatValue(raw, "output")
+	}
+	if _, ok := raw["cache_read"]; ok {
+		merged.CacheRead = floatValue(raw, "cache_read")
+	}
+	if _, ok := raw["cache_write"]; ok {
+		merged.CacheWrite = floatValue(raw, "cache_write")
+	}
+	if over, ok := mapValue(raw, "context_over_200k"); ok {
+		if _, ok := over["input"]; ok {
+			merged.ContextOver200K.Input = floatValue(over, "input")
+		}
+		if _, ok := over["output"]; ok {
+			merged.ContextOver200K.Output = floatValue(over, "output")
+		}
+		if _, ok := over["cache_read"]; ok {
+			merged.ContextOver200K.CacheRead = floatValue(over, "cache_read")
+		}
+		if _, ok := over["cache_write"]; ok {
+			merged.ContextOver200K.CacheWrite = floatValue(over, "cache_write")
+		}
+	}
+	return merged
+}
+
+func toCamelCaseProviderBody(input map[string]any) map[string]any {
+	if len(input) == 0 {
+		return nil
+	}
+	output := make(map[string]any, len(input))
+	for key, value := range input {
+		output[toCamelCaseKey(key)] = value
+	}
+	return output
+}
+
+func toCamelCaseKey(input string) string {
+	if input == "" || !strings.Contains(input, "_") {
+		return input
+	}
+	parts := strings.Split(input, "_")
+	if len(parts) == 0 {
+		return input
+	}
+	var builder strings.Builder
+	builder.WriteString(parts[0])
+	for _, part := range parts[1:] {
+		if part == "" {
+			continue
+		}
+		builder.WriteString(strings.ToUpper(part[:1]))
+		if len(part) > 1 {
+			builder.WriteString(part[1:])
+		}
+	}
+	return builder.String()
 }
 
 func mapValue(raw map[string]any, key string) (map[string]any, bool) {
@@ -344,18 +468,68 @@ func stringSliceValue(value any) []string {
 	return out
 }
 
+func stringMapValue(raw map[string]any) map[string]string {
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(raw))
+	for key, value := range raw {
+		text, ok := value.(string)
+		if !ok {
+			continue
+		}
+		text = strings.TrimSpace(text)
+		if text == "" {
+			continue
+		}
+		out[key] = text
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func cloneOpenCodeOpenAIModel(model OpenCodeOpenAIModel) OpenCodeOpenAIModel {
+	copy := model
+	copy.Modalities = OpenCodeOpenAIModelModalities{
+		Input:  append([]string(nil), model.Modalities.Input...),
+		Output: append([]string(nil), model.Modalities.Output...),
+	}
+	copy.Options = cloneAnyMap(model.Options)
+	copy.Headers = cloneStringMap(model.Headers)
+	return copy
+}
+
+func cloneAnyMap(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneStringMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
+}
+
 func cloneOpenCodeOpenAIModels(src map[string]OpenCodeOpenAIModel) map[string]OpenCodeOpenAIModel {
 	if len(src) == 0 {
 		return nil
 	}
 	out := make(map[string]OpenCodeOpenAIModel, len(src))
 	for id, model := range src {
-		copy := model
-		copy.Modalities = OpenCodeOpenAIModelModalities{
-			Input:  append([]string(nil), model.Modalities.Input...),
-			Output: append([]string(nil), model.Modalities.Output...),
-		}
-		out[id] = copy
+		out[id] = cloneOpenCodeOpenAIModel(model)
 	}
 	return out
 }
