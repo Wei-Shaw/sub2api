@@ -12,6 +12,8 @@ const { openaiModelsMock } = vi.hoisted(() => ({
     attachment: true,
     reasoning: true,
     tool_call: true,
+    structured_output: true,
+    temperature: false,
     modalities: {
       input: ['text', 'image', 'pdf'],
       output: ['text']
@@ -31,7 +33,77 @@ const { openaiModelsMock } = vi.hoisted(() => ({
         cache_read: 0.5
       }
     },
-    release_date: '2026-03-05'
+    release_date: '2026-03-05',
+    experimental: {
+      modes: {
+        fast: {
+          provider: {
+            body: {
+              service_tier: 'priority'
+            },
+            headers: {
+              'x-test-header': 'fast-mode'
+            }
+          }
+        }
+      }
+    },
+    provider: {
+      body: {
+        service_tier: 'default'
+      },
+      headers: {
+        'x-base-header': 'base-mode'
+      }
+    },
+    tools: [{ type: 'web_search' }]
+  },
+  'gpt-5.4-fast': {
+    id: 'gpt-5.4-fast',
+    name: 'GPT-5.4 Fast',
+    attachment: true,
+    reasoning: true,
+    tool_call: true,
+    structured_output: true,
+    temperature: false,
+    modalities: {
+      input: ['text', 'image', 'pdf'],
+      output: ['text']
+    },
+    limit: {
+      context: 1050000,
+      input: 922000,
+      output: 128000
+    },
+    cost: {
+      input: 5,
+      output: 30,
+      cache_read: 0.5,
+      context_over_200k: {
+        input: 10,
+        output: 45,
+        cache_read: 1
+      }
+    },
+    release_date: '2026-03-05',
+    options: {
+      serviceTier: 'priority'
+    },
+    headers: {
+      'x-test-header': 'fast-mode'
+    },
+    experimental: {
+      leaked: true
+    },
+    provider: {
+      body: {
+        service_tier: 'priority'
+      },
+      headers: {
+        'x-test-header': 'fast-mode'
+      }
+    },
+    tools: [{ type: 'web_search' }]
   },
   'gpt-5.4-mini': {
     id: 'gpt-5.4-mini',
@@ -195,38 +267,66 @@ describe('UseKeyModal', () => {
     expect(codeBlock.exists()).toBe(true)
     expect(codeBlock.text()).toContain('"sub2api-openai"')
     expect(codeBlock.text()).toContain('"baseURL": "https://example.com/v1"')
+    expect(codeBlock.text()).toContain('"gpt-5.4-fast"')
     expect(codeBlock.text()).toContain('"gpt-5.4-Sys"')
+    expect(codeBlock.text()).toContain('"gpt-5.4-fast-Sys"')
     expect(codeBlock.text()).toContain('"name": "GPT-5.4 (Sys)"')
     expect(codeBlock.text()).not.toContain('"provider": {\n    "openai"')
 
     const parsed = JSON.parse(codeBlock.text())
-    const gpt54Variants = parsed.provider['sub2api-openai'].models['gpt-5.4'].variants
-    const gpt54SysVariants = parsed.provider['sub2api-openai'].models['gpt-5.4-Sys'].variants
-    const gpt52Variants = parsed.provider['sub2api-openai'].models['gpt-5.2'].variants
-    const gpt54 = parsed.provider['sub2api-openai'].models['gpt-5.4']
-    const gpt54Sys = parsed.provider['sub2api-openai'].models['gpt-5.4-Sys']
-    const gpt54Mini = parsed.provider['sub2api-openai'].models['gpt-5.4-mini']
+    const sub2apiProvider = parsed.provider['sub2api-openai']
+    const models = sub2apiProvider.models
+    const modelsJson = JSON.stringify(models)
+    const gpt54 = models['gpt-5.4']
+    const gpt54Fast = models['gpt-5.4-fast']
+    const gpt54Sys = models['gpt-5.4-Sys']
+    const gpt54FastSys = models['gpt-5.4-fast-Sys']
+    const gpt54Mini = models['gpt-5.4-mini']
+    const gpt54Variants = gpt54.variants ?? {}
+    const gpt54SysVariants = gpt54Sys.variants ?? {}
+    const gpt54MiniVariants = gpt54Mini.variants ?? {}
 
+    expect(sub2apiProvider).toBeDefined()
+    expect(sub2apiProvider.npm).toBe('@ai-sdk/openai')
+    expect(parsed.provider.openai).toBeUndefined()
+    expect(gpt54).toBeDefined()
+    expect(gpt54Fast).toBeDefined()
+    expect(gpt54Sys).toBeDefined()
+    expect(gpt54FastSys).toBeDefined()
     expect(gpt54.attachment).toBe(true)
     expect(gpt54.modalities.input).toEqual(expect.arrayContaining(['text', 'image', 'pdf']))
     expect(gpt54.modalities.output).toEqual(['text'])
     expect(gpt54.id).toBeUndefined()
+    expect(gpt54Fast.id).toBeUndefined()
     expect(gpt54Sys.id).toBeUndefined()
+    expect(gpt54FastSys.id).toBeUndefined()
     expect(gpt54.cost.context_over_200k).toBeUndefined()
+    expect(gpt54Fast.cost.context_over_200k).toBeUndefined()
     expect(gpt54Mini.cost.context_over_200k).toBeUndefined()
     expect(gpt54Sys.attachment).toBe(true)
     expect(gpt54Sys.modalities.input).toEqual(expect.arrayContaining(['text', 'image', 'pdf']))
     expect(gpt54Sys.modalities.output).toEqual(['text'])
-    expect(gpt54Variants['low-fast'].serviceTier).toBe('priority')
-    expect(gpt54Variants['medium-fast'].serviceTier).toBe('priority')
-    expect(gpt54Variants['high-fast'].serviceTier).toBe('priority')
-    expect(gpt54Variants['xhigh-fast'].serviceTier).toBe('priority')
-    expect(gpt54Variants['xhigh-fast'].reasoningEffort).toBe('xhigh')
-    expect(gpt54SysVariants['xhigh-fast'].serviceTier).toBe('priority')
-    expect(gpt54SysVariants['xhigh-fast'].reasoningEffort).toBe('xhigh')
-    expect(gpt54Variants['fast-low']).toBeUndefined()
-    expect(gpt54SysVariants['fast-low']).toBeUndefined()
-    expect(gpt52Variants['low-fast']).toBeUndefined()
+    expect(gpt54.options.builtin_tools).toEqual({ web_search: true })
+    expect(gpt54Fast.options.serviceTier).toBe('priority')
+    expect(gpt54Fast.options.builtin_tools).toEqual({ web_search: true })
+    expect(gpt54Fast.headers['x-test-header']).toBe('fast-mode')
+    expect(gpt54Sys.options.builtin_tools).toEqual({ web_search: true })
+    expect(gpt54FastSys.options.serviceTier).toBe('priority')
+    expect(gpt54FastSys.options.builtin_tools).toEqual({ web_search: true })
+    expect(gpt54FastSys.headers['x-test-header']).toBe('fast-mode')
+    expect(gpt54Mini.options.builtin_tools).toEqual({ web_search: true })
+    expect(gpt54Variants['low-fast']).toBeUndefined()
+    expect(gpt54Variants['medium-fast']).toBeUndefined()
+    expect(gpt54Variants['high-fast']).toBeUndefined()
+    expect(gpt54Variants['xhigh-fast']).toBeUndefined()
+    expect(Object.keys(gpt54Variants).some((variant) => variant.endsWith('-fast'))).toBe(false)
+    expect(Object.keys(gpt54SysVariants).some((variant) => variant.endsWith('-fast'))).toBe(false)
+    expect(Object.keys(gpt54MiniVariants).some((variant) => variant.endsWith('-fast'))).toBe(false)
+    expect(modelsJson).not.toContain('"experimental"')
+    expect(modelsJson).not.toContain('"provider"')
+    expect(modelsJson).not.toContain('"tools"')
+    expect(parsed.agent.build.options.store).toBe(false)
+    expect(parsed.agent.plan.options.store).toBe(false)
   })
 
   it('describes OpenCode config as custom provider based', async () => {

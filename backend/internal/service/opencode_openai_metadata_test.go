@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -104,6 +105,67 @@ func TestExtractOpenCodeOpenAIModels_UsesBuiltInOpenAIProvider(t *testing.T) {
 	require.NotContains(t, models, "claude-sonnet-4")
 }
 
+func TestExtractOpenCodeOpenAIModels_MaterializesFastModes(t *testing.T) {
+	payload := map[string]any{
+		"openai": map[string]any{
+			"models": map[string]any{
+				"gpt-5.4": map[string]any{
+					"id":                "gpt-5.4",
+					"name":              "GPT-5.4",
+					"reasoning":         true,
+					"attachment":        true,
+					"tool_call":         true,
+					"structured_output": true,
+					"temperature":       false,
+					"modalities": map[string]any{
+						"input":  []any{"text", "image", "pdf"},
+						"output": []any{"text"},
+					},
+					"cost":  map[string]any{"input": 2.5, "output": 15.0, "cache_read": 0.25},
+					"limit": map[string]any{"context": 1050000, "input": 922000, "output": 128000},
+					"experimental": map[string]any{
+						"modes": map[string]any{
+							"fast": map[string]any{
+								"cost": map[string]any{"input": 5.0, "output": 30.0, "cache_read": 0.5},
+								"provider": map[string]any{
+									"body":    map[string]any{"service_tier": "priority"},
+									"headers": map[string]any{"x-test-header": "fast-mode"},
+								},
+							},
+						},
+					},
+				},
+				"gpt-4o": map[string]any{
+					"id":   "gpt-4o",
+					"name": "GPT-4o",
+					"experimental": map[string]any{
+						"modes": map[string]any{
+							"fast": map[string]any{
+								"provider": map[string]any{
+									"body":    map[string]any{"service_tier": "priority"},
+									"headers": map[string]any{"x-test-header": "filtered-out"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	models, err := extractOpenCodeOpenAIModels(payload)
+
+	require.NoError(t, err)
+	require.Contains(t, models, "gpt-5.4")
+	require.Contains(t, models, "gpt-5.4-fast")
+	require.NotContains(t, models, "gpt-4o-fast")
+	require.Equal(t, "GPT-5.4 Fast", models["gpt-5.4-fast"].Name)
+	require.Equal(t, 5.0, models["gpt-5.4-fast"].Cost.Input)
+	require.Equal(t, 30.0, models["gpt-5.4-fast"].Cost.Output)
+	require.Equal(t, "priority", requireOpenCodeModelOptions(t, models["gpt-5.4-fast"])["serviceTier"])
+	require.Equal(t, "fast-mode", requireOpenCodeModelHeaders(t, models["gpt-5.4-fast"])["x-test-header"])
+}
+
 func TestOpenCodeMetadataServiceGetOpenAIModels_UsesCacheOnFailure(t *testing.T) {
 	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/api.json", r.URL.Path)
@@ -146,7 +208,9 @@ func TestOpenCodeMetadataServiceGetOpenAIModels_UsesCacheOnFailure(t *testing.T)
 func TestFilterOpenCodeOpenAIModelsForCodexOAuth(t *testing.T) {
 	models := map[string]OpenCodeOpenAIModel{
 		"gpt-4o":             {ID: "gpt-4o", Name: "GPT-4o"},
+		"gpt-4o-fast":        {ID: "gpt-4o-fast", Name: "GPT-4o Fast"},
 		"gpt-5.4":            {ID: "gpt-5.4", Name: "GPT-5.4"},
+		"gpt-5.4-fast":       {ID: "gpt-5.4-fast", Name: "GPT-5.4 Fast"},
 		"gpt-5.4-mini":       {ID: "gpt-5.4-mini", Name: "GPT-5.4 Mini"},
 		"gpt-5.2":            {ID: "gpt-5.2", Name: "GPT-5.2"},
 		"gpt-5.1-codex":      {ID: "gpt-5.1-codex", Name: "GPT-5.1 Codex"},
@@ -160,10 +224,30 @@ func TestFilterOpenCodeOpenAIModelsForCodexOAuth(t *testing.T) {
 	filtered := filterOpenCodeOpenAIModelsForCodexOAuth(models)
 
 	require.Contains(t, filtered, "gpt-5.4")
+	require.Contains(t, filtered, "gpt-5.4-fast")
 	require.Contains(t, filtered, "gpt-5.4-mini")
 	require.Contains(t, filtered, "gpt-5.2")
 	require.Contains(t, filtered, "gpt-5.1-codex")
 	require.Contains(t, filtered, "gpt-5.3-codex")
 	require.Contains(t, filtered, "codex-mini-latest")
 	require.NotContains(t, filtered, "gpt-4o")
+	require.NotContains(t, filtered, "gpt-4o-fast")
+}
+
+func requireOpenCodeModelOptions(t *testing.T, model OpenCodeOpenAIModel) map[string]any {
+	t.Helper()
+	field := reflect.ValueOf(model).FieldByName("Options")
+	require.True(t, field.IsValid(), "OpenCodeOpenAIModel.Options should exist")
+	options, ok := field.Interface().(map[string]any)
+	require.True(t, ok, "OpenCodeOpenAIModel.Options should be map[string]any")
+	return options
+}
+
+func requireOpenCodeModelHeaders(t *testing.T, model OpenCodeOpenAIModel) map[string]string {
+	t.Helper()
+	field := reflect.ValueOf(model).FieldByName("Headers")
+	require.True(t, field.IsValid(), "OpenCodeOpenAIModel.Headers should exist")
+	headers, ok := field.Interface().(map[string]string)
+	require.True(t, ok, "OpenCodeOpenAIModel.Headers should be map[string]string")
+	return headers
 }
