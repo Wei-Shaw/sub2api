@@ -135,9 +135,11 @@ func storeOpenAIRoutingSnapshot(c *gin.Context, input service.OpenAIRoutingSnaps
 		existing.RequestedModel = built.RequestedModel
 		existing.EffectiveModel = built.EffectiveModel
 		c.Set(openAIRoutingSnapshotKey, existing)
+		service.BindOpenAIRoutingAffinityBinding(c, existing)
 		return existing
 	}
 	c.Set(openAIRoutingSnapshotKey, built)
+	service.BindOpenAIRoutingAffinityBinding(c, built)
 	return built
 }
 
@@ -1263,7 +1265,7 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 		return nil, false
 	}
 	if fastAcquired {
-		if err := h.gatewayService.BindStickySession(ctx, groupID, sessionHash, account.ID); err != nil {
+		if err := h.gatewayService.BindOpenAIStickySession(ctx, groupID, sessionHash, account.ID, selection.SelectedGroup); err != nil {
 			reqLog.Warn("openai.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 		}
 		return wrapReleaseOnDone(ctx, fastReleaseFunc), true
@@ -1306,7 +1308,7 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 
 	// Slot acquired: no longer waiting in queue.
 	releaseWait()
-	if err := h.gatewayService.BindStickySession(ctx, groupID, sessionHash, account.ID); err != nil {
+	if err := h.gatewayService.BindOpenAIStickySession(ctx, groupID, sessionHash, account.ID, selection.SelectedGroup); err != nil {
 		reqLog.Warn("openai.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 	}
 	return wrapReleaseOnDone(ctx, accountReleaseFunc), true

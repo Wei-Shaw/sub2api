@@ -2296,6 +2296,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	if responseID != "" && stateStore != nil {
 		ttl := s.openAIWSResponseStickyTTL()
 		logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, stateStore.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
+		_ = bindOpenAIWSResponseAffinityBinding(ctx, stateStore, groupID, responseID, GetOpenAIRoutingAffinityBinding(c), ttl)
 		stateStore.BindResponseConn(responseID, lease.ConnID(), ttl)
 	}
 	if stateStore != nil && storeDisabled && sessionHash != "" {
@@ -3441,6 +3442,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if responseID != "" && stateStore != nil {
 			ttl := s.openAIWSResponseStickyTTL()
 			logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, stateStore.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
+			_ = bindOpenAIWSResponseAffinityBinding(ctx, stateStore, groupID, responseID, GetOpenAIRoutingAffinityBinding(c), ttl)
 			stateStore.BindResponseConn(responseID, connID, ttl)
 		}
 		if stateStore != nil && storeDisabled && sessionHash != "" {
@@ -3801,62 +3803,77 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	requestedModel string,
 	targetGroup AccountTargetGroup,
 	excludedIDs map[int64]struct{},
-) (*AccountSelectionResult, error) {
+) (*AccountSelectionResult, *openAIAffinityBinding, error) {
 	if s == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	responseID := strings.TrimSpace(previousResponseID)
 	if responseID == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	store := s.getOpenAIWSStateStore()
 	if store == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	accountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), responseID)
 	if err != nil || accountID <= 0 {
-		return nil, nil
+		return nil, nil, nil
+	}
+	affinityBinding, _ := getOpenAIWSResponseAffinityBinding(store, derefGroupID(groupID), responseID)
+	if affinityBinding != nil && affinityBinding.BoundAccountID > 0 && affinityBinding.BoundAccountID != accountID {
+		deleteOpenAIWSResponseAffinityBinding(ctx, store, derefGroupID(groupID), responseID)
+		affinityBinding = nil
 	}
 	if excludedIDs != nil {
 		if _, excluded := excludedIDs[accountID]; excluded {
-			return nil, nil
+			return nil, nil, nil
 		}
 	}
 
 	account, err := s.getSchedulableAccount(ctx, accountID)
 	if err != nil || account == nil {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-		return nil, nil
+		return nil, nil, nil
 	}
 	targetGroup = normalizeTargetGroup(targetGroup)
 	if !account.IsOpenAI() {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-		return nil, nil
+		return nil, nil, nil
 	}
-	if !account.MatchesTargetGroup(targetGroup) {
-		return nil, nil
+	reserveAffinityBinding := isOpenAIReserveAffinityBinding(affinityBinding)
+	if reserveAffinityBinding && targetGroup == TargetGroupExhausted && !account.IsOpenAIReserveCandidate() && !account.MatchesTargetGroup(TargetGroupExhausted) {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return nil, nil, nil
+	}
+	reserveAffinityHit := reserveAffinityBinding && targetGroup == TargetGroupExhausted && account.IsOpenAIReserveCandidate()
+	if !account.MatchesTargetGroup(targetGroup) && !reserveAffinityHit {
+		return nil, nil, nil
 	}
 	// 非 WSv2 场景（如 force_http/全局关闭）不应使用 previous_response_id 粘连，
 	// 以保持“回滚到 HTTP”后的历史行为一致性。
 	if s.getOpenAIWSProtocolResolver().Resolve(account).Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if shouldClearStickySessionForTargetGroup(account, requestedModel, targetGroup) {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-		return nil, nil
+		return nil, nil, nil
 	}
-	if !account.IsSchedulableForTargetGroup(targetGroup) {
+	if !account.IsSchedulableForTargetGroup(targetGroup) && !reserveAffinityHit {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-		return nil, nil
+		return nil, nil, nil
 	}
 	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
-		return nil, nil
+		return nil, nil, nil
 	}
-	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, targetGroup)
+	if reserveAffinityHit {
+		account = s.recheckSelectedOpenAIReserveAccountFromDB(ctx, account, requestedModel)
+	} else {
+		account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, targetGroup)
+	}
 	if account == nil {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	result, acquireErr := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
@@ -3867,11 +3884,14 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 			responseID,
 			store.BindResponseAccount(ctx, derefGroupID(groupID), responseID, accountID, s.openAIWSResponseStickyTTL()),
 		)
+		if affinityBinding != nil {
+			_ = bindOpenAIWSResponseAffinityBinding(ctx, store, derefGroupID(groupID), responseID, affinityBinding, s.openAIWSResponseStickyTTL())
+		}
 		return &AccountSelectionResult{
 			Account:     account,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
-		}, nil
+		}, cloneOpenAIAffinityBinding(affinityBinding), nil
 	}
 
 	cfg := s.schedulingConfig()
@@ -3884,9 +3904,9 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 				Timeout:        cfg.StickySessionWaitTimeout,
 				MaxWaiting:     cfg.StickySessionMaxWaiting,
 			},
-		}, nil
+		}, cloneOpenAIAffinityBinding(affinityBinding), nil
 	}
-	return nil, nil
+	return nil, nil, nil
 }
 
 func classifyOpenAIWSAcquireError(err error) string {

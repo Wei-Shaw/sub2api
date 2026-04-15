@@ -1,6 +1,12 @@
 package service
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/gin-gonic/gin"
+)
+
+const openAIRoutingAffinityBindingKey = "openai_routing_affinity_binding"
 
 type OpenAIRoutingSnapshot struct {
 	TargetGroup         string
@@ -49,4 +55,30 @@ func (s *OpenAIRoutingSnapshot) RecordFailover(reason string) {
 	}
 	s.FailoverCount++
 	s.FailoverFinalReason = strings.TrimSpace(reason)
+}
+
+func buildOpenAIRoutingAffinityBinding(snapshot *OpenAIRoutingSnapshot) *openAIAffinityBinding {
+	if snapshot == nil || snapshot.SelectedAccountID == nil {
+		return nil
+	}
+	return newOpenAIAffinityBinding(*snapshot.SelectedAccountID, snapshot.SelectedGroup)
+}
+
+func BindOpenAIRoutingAffinityBinding(c *gin.Context, snapshot *OpenAIRoutingSnapshot) {
+	if c == nil {
+		return
+	}
+	c.Set(openAIRoutingAffinityBindingKey, buildOpenAIRoutingAffinityBinding(snapshot))
+}
+
+func GetOpenAIRoutingAffinityBinding(c *gin.Context) *openAIAffinityBinding {
+	if c == nil {
+		return nil
+	}
+	value, ok := c.Get(openAIRoutingAffinityBindingKey)
+	if !ok {
+		return nil
+	}
+	binding, _ := value.(*openAIAffinityBinding)
+	return cloneOpenAIAffinityBinding(binding)
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"reflect"
@@ -139,6 +140,42 @@ func requireStickyBoundAccountID(t *testing.T, decision OpenAIAccountScheduleDec
 	return &bound
 }
 
+func requireStickyAffinityBindingValue(t *testing.T, decision OpenAIAccountScheduleDecision) reflect.Value {
+	t.Helper()
+	value := requireStickyFieldValue(t, decision, "AffinityBinding")
+	if value.Kind() != reflect.Ptr {
+		t.Fatalf("sticky field AffinityBinding is not pointer")
+	}
+	if value.IsNil() {
+		t.Fatalf("sticky field AffinityBinding is nil")
+	}
+	return value.Elem()
+}
+
+func requireStickyAffinityBindingStringField(t *testing.T, decision OpenAIAccountScheduleDecision, fieldName string) string {
+	t.Helper()
+	value := requireStickyAffinityBindingValue(t, decision).FieldByName(fieldName)
+	if !value.IsValid() {
+		t.Fatalf("missing affinity binding field %s", fieldName)
+	}
+	if value.Kind() != reflect.String {
+		t.Fatalf("affinity binding field %s is not string", fieldName)
+	}
+	return value.String()
+}
+
+func requireStickyAffinityBindingAccountID(t *testing.T, decision OpenAIAccountScheduleDecision) int64 {
+	t.Helper()
+	value := requireStickyAffinityBindingValue(t, decision).FieldByName("BoundAccountID")
+	if !value.IsValid() {
+		t.Fatalf("missing affinity binding field BoundAccountID")
+	}
+	if value.Kind() != reflect.Int64 {
+		t.Fatalf("affinity binding field BoundAccountID is not int64")
+	}
+	return value.Int()
+}
+
 func requireDecisionStringField(t *testing.T, decision OpenAIAccountScheduleDecision, fieldName string) string {
 	t.Helper()
 	value := reflect.ValueOf(decision).FieldByName(fieldName)
@@ -169,6 +206,12 @@ func TestOpenAIAccountScheduleContracts_StickyObservability(t *testing.T) {
 	requireStructFieldByName(t, stickyType, "ParentSessionPresent")
 	requireStructFieldByName(t, stickyType, "ParentSessionKey")
 	requireStructFieldByName(t, stickyType, "BoundAccountID")
+	affinityBindingField := requireStructFieldByName(t, stickyType, "AffinityBinding")
+	require.Equal(t, reflect.Ptr, affinityBindingField.Type.Kind())
+	affinityBindingType := affinityBindingField.Type.Elem()
+	requireStructFieldByName(t, affinityBindingType, "BoundAccountID")
+	requireStructFieldByName(t, affinityBindingType, "AffinityDomain")
+	requireStructFieldByName(t, affinityBindingType, "SelectedGroup")
 }
 
 func TestDefaultOpenAIAccountScheduler_Select_StickyHitObservability(t *testing.T) {
@@ -1616,7 +1659,7 @@ func TestSelectByLoadBalance_TargetGroupActiveNeverSelectsReserve(t *testing.T) 
 	}
 }
 
-func TestSelectByLoadBalance_ReserveSelectedGroupDoesNotWriteSharedSticky(t *testing.T) {
+func TestSelectByLoadBalance_ReserveSelectedGroupWritesSharedAndAffinitySticky(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(1308)
 	sessionHash := "session_hash_reserve_no_shared_sticky"
@@ -1628,7 +1671,7 @@ func TestSelectByLoadBalance_ReserveSelectedGroupDoesNotWriteSharedSticky(t *tes
 		3801: {AccountID: 3801, CurrentConcurrency: 7, LoadRate: 70},
 		3802: {AccountID: 3802, CurrentConcurrency: 0, LoadRate: 80},
 	}
-	cache := &stubGatewayCache{sessionBindings: map[string]int64{}}
+	cache := newOpenAIAffinityGatewayCacheStub()
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.LBTopK = 1
 	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
@@ -1654,8 +1697,150 @@ func TestSelectByLoadBalance_ReserveSelectedGroupDoesNotWriteSharedSticky(t *tes
 	require.NotNil(t, selection.Account)
 	require.Equal(t, int64(3802), selection.Account.ID)
 	require.Equal(t, "reserve", requireDecisionStringField(t, decision, "SelectedGroup"))
-	_, bound := cache.sessionBindings["openai:"+sessionHash]
-	require.False(t, bound)
+	require.Equal(t, int64(3802), cache.sessionBindings["openai:"+sessionHash])
+	binding := cache.mustGetAffinityBinding(t, openAIStickyAffinityBindingNamespace, groupID, "openai:"+sessionHash)
+	require.Equal(t, int64(3802), binding.BoundAccountID)
+	require.Equal(t, string(TargetGroupExhausted), binding.AffinityDomain)
+	require.Equal(t, openAISelectedGroupReserve, binding.SelectedGroup)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestStickyReserveBindingStillMatchesExhaustedClass(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(1317)
+	sessionHash := "session_hash_reserve_affinity_exhausted"
+	accounts := []Account{
+		newOpenAIExhaustedAccountForTest(3931, 10),
+		newOpenAIReserveCandidateAccountForTest(3932, 10, 20),
+	}
+	sharedCache := newOpenAIAffinityGatewayCacheStub()
+	writerConcurrencyCache := &stubConcurrencyCache{loadMap: map[int64]*AccountLoadInfo{
+		3931: {AccountID: 3931, CurrentConcurrency: 7, LoadRate: 70},
+		3932: {AccountID: 3932, CurrentConcurrency: 0, LoadRate: 0},
+	}}
+	readerConcurrencyCache := &stubConcurrencyCache{loadMap: map[int64]*AccountLoadInfo{
+		3931: {AccountID: 3931, CurrentConcurrency: 1, LoadRate: 10},
+		3932: {AccountID: 3932, CurrentConcurrency: 9, LoadRate: 90},
+	}}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	writerSvc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: accounts},
+		cache:              sharedCache,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(writerConcurrencyCache),
+	}
+	readerSvc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: accounts},
+		cache:              sharedCache,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(readerConcurrencyCache),
+	}
+
+	selection, decision, err := writerSvc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		sessionHash,
+		"gpt-5.1",
+		TargetGroupExhausted,
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(3932), selection.Account.ID)
+	require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, int64(3932), sharedCache.sessionBindings["openai:"+sessionHash])
+	binding := sharedCache.mustGetAffinityBinding(t, openAIStickyAffinityBindingNamespace, groupID, "openai:"+sessionHash)
+	require.Equal(t, int64(3932), binding.BoundAccountID)
+	require.Equal(t, string(TargetGroupExhausted), binding.AffinityDomain)
+	require.Equal(t, openAISelectedGroupReserve, binding.SelectedGroup)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+
+	selection, decision, err = readerSvc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		sessionHash,
+		"gpt-5.1",
+		TargetGroupExhausted,
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(3932), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerSessionSticky, decision.Layer)
+	require.True(t, decision.StickySessionHit)
+	require.Equal(t, openAIStickyEvalResultHit, requireStickyStringField(t, decision, "EvalResult"))
+	require.NotEqual(t, openAIStickyEvalResultMissBindingRestricted, requireStickyStringField(t, decision, "EvalResult"))
+	require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, int64(3932), requireStickyAffinityBindingAccountID(t, decision))
+	require.Equal(t, string(TargetGroupExhausted), requireStickyAffinityBindingStringField(t, decision, "AffinityDomain"))
+	require.Equal(t, openAISelectedGroupReserve, requireStickyAffinityBindingStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, int64(3932), sharedCache.sessionBindings["openai:"+sessionHash])
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestStickyAffinityBindingPersistsAcrossServiceInstances(t *testing.T) {
+	TestStickyReserveBindingStillMatchesExhaustedClass(t)
+}
+
+func TestPreviousResponseReserveBindingDoesNotMissBindingRestricted(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(1318)
+	sessionHash := "session_hash_previous_response_reserve_affinity"
+	reserveAccount := newOpenAIReserveCandidateAccountForTest(3933, 1, 20)
+	cache := newOpenAIAffinityGatewayCacheStub()
+	cfg := newOpenAIWSV2TestConfig()
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{reserveAccount}},
+		cache:              cache,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+	store := svc.getOpenAIWSStateStore()
+	binding := &openAIAffinityBinding{
+		BoundAccountID: reserveAccount.ID,
+		AffinityDomain: string(TargetGroupExhausted),
+		SelectedGroup:  openAISelectedGroupReserve,
+	}
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_reserve_affinity", reserveAccount.ID, time.Hour))
+	cache.setAffinityBinding(t, openAIResponseAffinityBindingNamespace, groupID, "resp_prev_reserve_affinity", binding, time.Hour)
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"resp_prev_reserve_affinity",
+		sessionHash,
+		"gpt-5.1",
+		TargetGroupExhausted,
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, reserveAccount.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerPreviousResponse, decision.Layer)
+	require.True(t, decision.StickyPreviousHit)
+	require.Equal(t, openAIStickyEvalResultBypassedPreviousResponse, requireStickyStringField(t, decision, "EvalResult"))
+	require.NotEqual(t, openAIStickyEvalResultMissBindingRestricted, requireStickyStringField(t, decision, "EvalResult"))
+	require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, int64(3933), requireStickyAffinityBindingAccountID(t, decision))
+	require.Equal(t, string(TargetGroupExhausted), requireStickyAffinityBindingStringField(t, decision, "AffinityDomain"))
+	require.Equal(t, openAISelectedGroupReserve, requireStickyAffinityBindingStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, reserveAccount.ID, cache.sessionBindings["openai:"+sessionHash])
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
@@ -2553,4 +2738,144 @@ func newOpenAIReserveCandidateAccountForTest(id int64, concurrency int, usedPerc
 			"openai_oauth_responses_websockets_v2_enabled": true,
 		},
 	}
+}
+
+type openAIAffinityGatewayCacheRecord struct {
+	value     string
+	expiresAt time.Time
+}
+
+type openAIAffinityGatewayCacheStub struct {
+	*stubGatewayCache
+	mu                sync.Mutex
+	sessionExpiries   map[string]time.Time
+	sessionRefreshes  map[string]int
+	affinityBindings  map[string]openAIAffinityGatewayCacheRecord
+	affinityRefreshes map[string]int
+	affinityDeletes   map[string]int
+}
+
+func newOpenAIAffinityGatewayCacheStub() *openAIAffinityGatewayCacheStub {
+	return &openAIAffinityGatewayCacheStub{
+		stubGatewayCache:  &stubGatewayCache{sessionBindings: map[string]int64{}, deletedSessions: map[string]int{}},
+		sessionExpiries:   make(map[string]time.Time),
+		sessionRefreshes:  make(map[string]int),
+		affinityBindings:  make(map[string]openAIAffinityGatewayCacheRecord),
+		affinityRefreshes: make(map[string]int),
+		affinityDeletes:   make(map[string]int),
+	}
+}
+
+func (c *openAIAffinityGatewayCacheStub) SetSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, ttl time.Duration) error {
+	if err := c.stubGatewayCache.SetSessionAccountID(ctx, groupID, sessionHash, accountID, ttl); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.sessionExpiries[sessionHash] = time.Now().Add(ttl)
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *openAIAffinityGatewayCacheStub) RefreshSessionTTL(ctx context.Context, groupID int64, sessionHash string, ttl time.Duration) error {
+	if err := c.stubGatewayCache.RefreshSessionTTL(ctx, groupID, sessionHash, ttl); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.sessionRefreshes[sessionHash]++
+	c.sessionExpiries[sessionHash] = time.Now().Add(ttl)
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *openAIAffinityGatewayCacheStub) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
+	if err := c.stubGatewayCache.DeleteSessionAccountID(ctx, groupID, sessionHash); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	delete(c.sessionExpiries, sessionHash)
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *openAIAffinityGatewayCacheStub) GetOpenAICompanionBinding(ctx context.Context, groupID int64, namespace string, bindingKey string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	record, ok := c.affinityBindings[c.affinityKey(groupID, namespace, bindingKey)]
+	if !ok || time.Now().After(record.expiresAt) {
+		return "", fmt.Errorf("not found")
+	}
+	return record.value, nil
+}
+
+func (c *openAIAffinityGatewayCacheStub) SetOpenAICompanionBinding(ctx context.Context, groupID int64, namespace string, bindingKey string, value string, ttl time.Duration) error {
+	c.mu.Lock()
+	c.affinityBindings[c.affinityKey(groupID, namespace, bindingKey)] = openAIAffinityGatewayCacheRecord{
+		value:     value,
+		expiresAt: time.Now().Add(ttl),
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *openAIAffinityGatewayCacheStub) RefreshOpenAICompanionBindingTTL(ctx context.Context, groupID int64, namespace string, bindingKey string, ttl time.Duration) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	key := c.affinityKey(groupID, namespace, bindingKey)
+	record, ok := c.affinityBindings[key]
+	if !ok {
+		return fmt.Errorf("not found")
+	}
+	record.expiresAt = time.Now().Add(ttl)
+	c.affinityBindings[key] = record
+	c.affinityRefreshes[key]++
+	return nil
+}
+
+func (c *openAIAffinityGatewayCacheStub) DeleteOpenAICompanionBinding(ctx context.Context, groupID int64, namespace string, bindingKey string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	key := c.affinityKey(groupID, namespace, bindingKey)
+	delete(c.affinityBindings, key)
+	c.affinityDeletes[key]++
+	return nil
+}
+
+func (c *openAIAffinityGatewayCacheStub) affinityKey(groupID int64, namespace string, bindingKey string) string {
+	return fmt.Sprintf("%s:%d:%s", namespace, groupID, bindingKey)
+}
+
+func (c *openAIAffinityGatewayCacheStub) setAffinityBinding(t *testing.T, namespace string, groupID int64, bindingKey string, binding *openAIAffinityBinding, ttl time.Duration) {
+	t.Helper()
+	payload, err := json.Marshal(binding)
+	require.NoError(t, err)
+	require.NoError(t, c.SetOpenAICompanionBinding(context.Background(), groupID, namespace, bindingKey, string(payload), ttl))
+}
+
+func (c *openAIAffinityGatewayCacheStub) mustGetAffinityBinding(t *testing.T, namespace string, groupID int64, bindingKey string) *openAIAffinityBinding {
+	t.Helper()
+	payload, err := c.GetOpenAICompanionBinding(context.Background(), groupID, namespace, bindingKey)
+	require.NoError(t, err)
+	var binding openAIAffinityBinding
+	require.NoError(t, json.Unmarshal([]byte(payload), &binding))
+	return &binding
+}
+
+func (c *openAIAffinityGatewayCacheStub) hasAffinityBinding(namespace string, groupID int64, bindingKey string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	key := c.affinityKey(groupID, namespace, bindingKey)
+	record, ok := c.affinityBindings[key]
+	return ok && !time.Now().After(record.expiresAt)
+}
+
+func (c *openAIAffinityGatewayCacheStub) sessionExpiry(bindingKey string) time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sessionExpiries[bindingKey]
+}
+
+func (c *openAIAffinityGatewayCacheStub) affinityExpiry(namespace string, groupID int64, bindingKey string) time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.affinityBindings[c.affinityKey(groupID, namespace, bindingKey)].expiresAt
 }

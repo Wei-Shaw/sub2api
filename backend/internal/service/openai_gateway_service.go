@@ -2065,6 +2065,9 @@ func (s *OpenAIGatewayService) isOpenAIReservePreviousResponseAnchor(ctx context
 	if store == nil {
 		return false
 	}
+	if binding, ok := getOpenAIWSResponseAffinityBinding(store, derefGroupID(groupID), responseID); ok && isOpenAIReserveAffinityBinding(binding) {
+		return true
+	}
 	accountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), responseID)
 	if err != nil || accountID <= 0 {
 		return false
