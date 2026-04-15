@@ -515,22 +515,10 @@ REDACTED
 			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
 			mergeAccountExtra(account, updates)
 	REDACTED
-		if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
-			if resetAt := codexRateLimitResetAtFromSnapshot(snapshot, time.Now()); resetAt != nil {
-				_ = s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt)
-				account.RateLimitResetAt = resetAt
-		REDACTED
-	REDACTED
 REDACTED
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		if isOAuth && s.accountRepo != nil {
-			if resetAt := (&RateLimitService{REDACTED).calculateOpenAI429ResetTime(resp.Header); resetAt != nil {
-				_ = s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt)
-				account.RateLimitResetAt = resetAt
-		REDACTED
-	REDACTED
 		// 401 Unauthorized: 标记账号为永久错误
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
