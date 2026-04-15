@@ -160,6 +160,12 @@
           </div>
         </template>
 
+        <template #cell-account_cost="{ row REDACTED">
+          <span class="text-sm font-medium text-orange-500 dark:text-orange-400">
+            ${{ accountBilled(row).toFixed(6) REDACTEDREDACTED
+          </span>
+        </template>
+
         <template #cell-first_token="{ row REDACTED">
           <span v-if="row.first_token_ms != null" class="text-sm text-gray-600 dark:text-gray-400">{{ formatDuration(row.first_token_ms) REDACTEDREDACTED</span>
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>

@@ -533,6 +533,7 @@ const allColumns = computed(() => [
   { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false REDACTED,
   { key: 'tokens', label: t('usage.tokens'), sortable: false REDACTED,
   { key: 'cost', label: t('usage.cost'), sortable: false REDACTED,
+  { key: 'account_cost', label: t('usage.accountCost'), sortable: false REDACTED,
   { key: 'first_token', label: t('usage.firstToken'), sortable: false REDACTED,
   { key: 'duration', label: t('usage.duration'), sortable: false REDACTED,
   { key: 'created_at', label: t('usage.time'), sortable: true REDACTED,
