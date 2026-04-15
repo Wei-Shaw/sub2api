@@ -34,12 +34,16 @@
           <span class="font-mono text-gray-900 dark:text-white">#{{ order?.id REDACTEDREDACTED</span>
         </div>
         <div class="mt-1 flex justify-between text-sm">
-          <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') REDACTEDREDACTED</span>
-          <span class="font-medium text-gray-900 dark:text-white">${{ order?.pay_amount?.toFixed(2) REDACTEDREDACTED</span>
+          <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') REDACTEDREDACTED</span>
+          <span class="font-medium text-gray-900 dark:text-white">{{ order?.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ order?.amount?.toFixed(2) REDACTEDREDACTED</span>
+        </div>
+        <div class="mt-1 flex justify-between text-sm">
+          <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') REDACTEDREDACTED</span>
+          <span class="font-medium text-gray-900 dark:text-white">¥{{ order?.pay_amount?.toFixed(2) REDACTEDREDACTED</span>
         </div>
         <div v-if="actuallyRefunded > 0" class="mt-1 flex justify-between text-sm">
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.admin.alreadyRefunded') REDACTEDREDACTED</span>
-          <span class="font-medium text-red-600 dark:text-red-400">${{ actuallyRefunded.toFixed(2) REDACTEDREDACTED</span>
+          <span class="font-medium text-red-600 dark:text-red-400">{{ order?.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ actuallyRefunded.toFixed(2) REDACTEDREDACTED</span>
         </div>
       </div>
 
@@ -66,7 +70,7 @@
           </div>
           <div class="rounded-lg bg-gray-50 p-3 text-sm dark:bg-dark-700">
             <div class="text-gray-500 dark:text-gray-400">{{ t('payment.admin.orderAmount') REDACTEDREDACTED</div>
-            <div class="mt-1 font-semibold text-gray-900 dark:text-white">${{ order?.pay_amount?.toFixed(2) REDACTEDREDACTED</div>
+            <div class="mt-1 font-semibold text-gray-900 dark:text-white">{{ order?.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ order?.amount?.toFixed(2) REDACTEDREDACTED</div>
           </div>
         </div>
 
@@ -91,7 +95,7 @@
       <div>
         <label class="input-label">{{ t('payment.admin.refundAmount') REDACTEDREDACTED</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">{{ order?.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED</span>
           <input
             v-model.number="form.amount"
             type="number"
@@ -103,7 +107,7 @@
           />
         </div>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          {{ t('payment.admin.maxRefundable') REDACTEDREDACTED: ${{ maxRefundable.toFixed(2) REDACTEDREDACTED
+          {{ t('payment.admin.maxRefundable') REDACTEDREDACTED: {{ order?.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ maxRefundable.toFixed(2) REDACTEDREDACTED
         </p>
       </div>
 
@@ -200,12 +204,12 @@ REDACTED)
 
 const maxRefundable = computed(() => {
   if (!props.order) return 0
-  return props.order.pay_amount - actuallyRefunded.value
+  return props.order.amount - actuallyRefunded.value
 REDACTED)
 
 const balanceInsufficient = computed(() => {
   if (props.userBalance == null || !props.order) return false
-  return props.userBalance < props.order.pay_amount
+  return props.userBalance < props.order.amount
 REDACTED)
 
 watch(() => props.show, (val) => {

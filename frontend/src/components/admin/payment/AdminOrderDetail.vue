@@ -18,22 +18,26 @@
           </span>
         </div>
         <div>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') REDACTEDREDACTED</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">${{ order.amount.toFixed(2) REDACTEDREDACTED</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.baseAmount') REDACTEDREDACTED</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ baseAmount.toFixed(2) REDACTEDREDACTED</p>
+        </div>
+        <div v-if="order.fee_rate > 0">
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') REDACTEDREDACTED ({{ order.fee_rate REDACTEDREDACTED%)</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ feeAmount.toFixed(2) REDACTEDREDACTED</p>
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') REDACTEDREDACTED</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">${{ order.pay_amount.toFixed(2) REDACTEDREDACTED</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ order.pay_amount.toFixed(2) REDACTEDREDACTED</p>
+        </div>
+        <div v-if="order.amount !== order.pay_amount">
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') REDACTEDREDACTED</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ order.amount.toFixed(2) REDACTEDREDACTED</p>
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') REDACTEDREDACTED</p>
           <p class="text-sm text-gray-700 dark:text-gray-300">
             {{ t('payment.methods.' + order.payment_type, order.payment_type) REDACTEDREDACTED
           </p>
-        </div>
-        <div>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.feeRate') REDACTEDREDACTED</p>
-          <p class="text-sm text-gray-700 dark:text-gray-300">{{ (order.fee_rate * 100).toFixed(1) REDACTEDREDACTED%</p>
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.orderType') REDACTEDREDACTED</p>
@@ -73,7 +77,7 @@
         <div class="grid grid-cols-2 gap-2 text-sm">
           <div>
             <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundAmount') REDACTEDREDACTED:</span>
-            <span class="ml-1 font-medium text-red-700 dark:text-red-300">${{ order.refund_amount.toFixed(2) REDACTEDREDACTED</span>
+            <span class="ml-1 font-medium text-red-700 dark:text-red-300">{{ order.order_type === 'balance' ? '$' : '¥' REDACTEDREDACTED{{ order.refund_amount.toFixed(2) REDACTEDREDACTED</span>
           </div>
           <div v-if="order.refund_reason" class="col-span-2">
             <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundReason') REDACTEDREDACTED:</span>
@@ -110,6 +114,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { PaymentOrder REDACTED from '@/types/payment'
@@ -117,10 +122,23 @@ import { statusBadgeClass, canRefund as canRefundStatus, formatOrderDateTime RED
 
 const { t REDACTED = useI18n()
 
-defineProps<{
+const props = defineProps<{
   show: boolean
   order: PaymentOrder | null
 REDACTED>()
+
+/** 充值金额 (base amount before fee) = pay_amount - fee = pay_amount / (1 + fee_rate/100) */
+const baseAmount = computed(() => {
+  if (!props.order) return 0
+  if (props.order.fee_rate <= 0) return props.order.pay_amount
+  return props.order.pay_amount / (1 + props.order.fee_rate / 100)
+REDACTED)
+
+/** 手续费 = pay_amount - baseAmount */
+const feeAmount = computed(() => {
+  if (!props.order || props.order.fee_rate <= 0) return 0
+  return props.order.pay_amount - baseAmount.value
+REDACTED)
 
 const emit = defineEmits<{
   (e: 'close'): void

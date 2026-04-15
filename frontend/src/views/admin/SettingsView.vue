@@ -2371,10 +2371,25 @@
                 <div><label class="input-label">{{ t('admin.settings.payment.preview') REDACTEDREDACTED</label><div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300">{{ (form.payment_product_name_prefix || 'Sub2API') + ' 100 ' + (form.payment_product_name_suffix || 'CNY') REDACTEDREDACTED</div></div>
               </div>
               <!-- Row 2: Balance toggle + amounts -->
-              <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
                 <div><label class="input-label">{{ t('admin.settings.payment.minAmount') REDACTEDREDACTED</label><input :value="form.payment_min_amount || ''" @input="form.payment_min_amount = parseFloat(($event.target as HTMLInputElement).value) || 0" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.maxAmount') REDACTEDREDACTED</label><input :value="form.payment_max_amount || ''" @input="form.payment_max_amount = parseFloat(($event.target as HTMLInputElement).value) || 0" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
                 <div><label class="input-label">{{ t('admin.settings.payment.dailyLimit') REDACTEDREDACTED</label><input :value="form.payment_daily_limit || ''" @input="form.payment_daily_limit = parseFloat(($event.target as HTMLInputElement).value) || 0" type="number" step="0.01" min="0" class="input" :placeholder="t('admin.settings.payment.noLimit')" /></div>
+                <div>
+                  <label class="input-label">{{ t('admin.settings.payment.balanceRechargeMultiplier') REDACTEDREDACTED</label>
+                  <input :value="form.payment_balance_recharge_multiplier || ''" @input="form.payment_balance_recharge_multiplier = parseFloat(($event.target as HTMLInputElement).value) || 1" type="number" step="0.01" min="0.01" class="input" />
+                  <p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.payment.balanceRechargeMultiplierHint') REDACTEDREDACTED</p>
+                  <p class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400">{{ t('admin.settings.payment.balanceRechargePreview', { usd: (Number(form.payment_balance_recharge_multiplier) || 1).toFixed(2) REDACTED) REDACTEDREDACTED</p>
+                </div>
+                <div>
+                  <label class="input-label">{{ t('admin.settings.payment.rechargeFeeRate') REDACTEDREDACTED</label>
+                  <div class="relative">
+                    <input :value="form.payment_recharge_fee_rate ?? ''" @input="form.payment_recharge_fee_rate = Math.min(100, Math.max(0, Math.round(parseFloat(($event.target as HTMLInputElement).value || '0') * 100) / 100))" type="number" step="0.01" min="0" max="100" class="input pr-8" />
+                    <span class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400">%</span>
+                  </div>
+                  <p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.payment.rechargeFeeRateHint') REDACTEDREDACTED</p>
+                  <p v-if="(Number(form.payment_recharge_fee_rate) || 0) > 0" class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400">{{ t('admin.settings.payment.rechargeFeePreview', { fee: (Number(form.payment_recharge_fee_rate) || 0).toFixed(2) REDACTED) REDACTEDREDACTED</p>
+                </div>
                 <div><label class="input-label">{{ t('admin.settings.payment.orderTimeout') REDACTEDREDACTED <span class="text-red-500">*</span></label><input v-model.number="form.payment_order_timeout_minutes" type="number" min="1" class="input" required /><p class="mt-0.5 text-xs text-gray-400">{{ t('admin.settings.payment.orderTimeoutHint') REDACTEDREDACTED</p></div>
               </div>
               <!-- Row 3: Pending orders + load balance + cancel rate limit (all in one row) -->
@@ -2968,7 +2983,7 @@ const form = reactive<SettingsForm>({
   home_content: '',
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
-  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_enabled_types: [],  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',  payment_cancel_rate_limit_enabled: false,  payment_cancel_rate_limit_max: 10,  payment_cancel_rate_limit_window: 1,  payment_cancel_rate_limit_unit: 'day',  payment_cancel_rate_limit_window_mode: 'rolling',
+  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_balance_recharge_multiplier: 1,  payment_recharge_fee_rate: 0,  payment_enabled_types: [],  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',  payment_cancel_rate_limit_enabled: false,  payment_cancel_rate_limit_max: 10,  payment_cancel_rate_limit_window: 1,  payment_cancel_rate_limit_unit: 'day',  payment_cancel_rate_limit_window_mode: 'rolling',
   table_default_page_size: tablePageSizeDefault,
   table_page_size_options: [10, 20, 50, 100],
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: numberREDACTED>,
@@ -3627,6 +3642,8 @@ async function saveSettings() {
       payment_max_pending_orders: Number(form.payment_max_pending_orders) || 0,
       payment_order_timeout_minutes: Number(form.payment_order_timeout_minutes) || 0,
       payment_balance_disabled: form.payment_balance_disabled,
+      payment_balance_recharge_multiplier: Number(form.payment_balance_recharge_multiplier) || 1,
+      payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
       payment_enabled_types: form.payment_enabled_types,
       payment_load_balance_strategy: form.payment_load_balance_strategy,
       payment_product_name_prefix: form.payment_product_name_prefix,
