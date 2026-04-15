@@ -45,6 +45,7 @@
               <th class="pb-2 text-right">{{ t('admin.dashboard.requests') REDACTEDREDACTED</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.tokens') REDACTEDREDACTED</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.actual') REDACTEDREDACTED</th>
+              <th class="pb-2 text-right">{{ t('admin.dashboard.accountCost') REDACTEDREDACTED</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.standard') REDACTEDREDACTED</th>
             </tr>
           </thead>
@@ -75,13 +76,16 @@
                 <td class="py-1.5 text-right text-green-600 dark:text-green-400">
                   ${{ formatCost(group.actual_cost) REDACTEDREDACTED
                 </td>
+                <td class="py-1.5 text-right text-orange-500 dark:text-orange-400">
+                  ${{ formatCost(group.account_cost) REDACTEDREDACTED
+                </td>
                 <td class="py-1.5 text-right text-gray-400 dark:text-gray-500">
                   ${{ formatCost(group.cost) REDACTEDREDACTED
                 </td>
               </tr>
               <!-- User breakdown sub-rows -->
               <tr v-if="expandedKey === `group-${group.group_idREDACTED`">
-                <td colspan="5" class="p-0">
+                <td colspan="6" class="p-0">
                   <UserBreakdownSubTable
                     :items="breakdownItems"
                     :loading="breakdownLoading"
