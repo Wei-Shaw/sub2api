@@ -572,6 +572,37 @@ func TestForwardResponsesRequest_ObjectBuiltinToolsAugmentsAndStripsPrivateField
 	require.Equal(t, "required", upstreamBody["tool_choice"])
 }
 
+func TestForwardResponsesRequest_MetadataBuiltinToolsAugmentsAndStripsPrivateField(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","metadata":{"builtin_tools":{"web_search":true},"trace_id":"trace-1","client":"opencode"},"tool_choice":"required","tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+
+	metadata, ok := upstreamBody["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, metadata, "builtin_tools")
+	require.Equal(t, "trace-1", metadata["trace_id"])
+	require.Equal(t, "opencode", metadata["client"])
+	require.Equal(t, "required", upstreamBody["tool_choice"])
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 2)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	require.Equal(t, "get_weather", tools[0].(map[string]any)["name"])
+	require.Equal(t, "web_search", tools[1].(map[string]any)["type"])
+}
+
 func TestApplyOpenAIBuiltinToolsAugmentation_DoesNotDuplicateExistingWebSearch(t *testing.T) {
 	reqBody := map[string]any{
 		"builtin_tools": []any{"web_search", "code_interpreter"},
@@ -660,6 +691,94 @@ func TestForwardResponsesRequest_CompactPathDoesNotAugmentBuiltinTools(t *testin
 	require.False(t, hasOpenAIBuiltinTool(tools, "web_search"))
 }
 
+func TestForwardResponsesRequest_DualCarrierBuiltinToolsPrefersTopLevelAndStripsBoth(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","builtin_tools":false,"metadata":{"builtin_tools":{"web_search":true},"trace_id":"trace-2"},"tool_choice":"required","tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+	require.Equal(t, "required", upstreamBody["tool_choice"])
+
+	metadata, ok := upstreamBody["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, metadata, "builtin_tools")
+	require.Equal(t, "trace-2", metadata["trace_id"])
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 1)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	require.False(t, hasOpenAIBuiltinTool(tools, "web_search"))
+}
+
+func TestForwardResponsesRequest_PassthroughStripsBuiltinToolsWithoutAugmentingFromMetadata(t *testing.T) {
+	rawBody := []byte(`{"model":"gpt-5.4","metadata":{"builtin_tools":{"web_search":true},"trace_id":"trace-pass"},"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", rawBody)
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+		Extra:       map[string]any{"openai_passthrough": true},
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, rawBody)
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+
+	metadata, ok := upstreamBody["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, metadata, "builtin_tools")
+	require.Equal(t, "trace-pass", metadata["trace_id"])
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 1)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	require.Equal(t, "get_weather", tools[0].(map[string]any)["name"])
+	require.False(t, hasOpenAIBuiltinTool(tools, "web_search"))
+}
+
+func TestForwardResponsesRequest_CompactPathDoesNotAugmentBuiltinToolsFromMetadata(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","metadata":{"builtin_tools":{"web_search":true},"trace_id":"trace-compact"},"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses/compact", body)
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+
+	metadata, ok := upstreamBody["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, metadata, "builtin_tools")
+	require.Equal(t, "trace-compact", metadata["trace_id"])
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 1)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	require.Equal(t, "get_weather", tools[0].(map[string]any)["name"])
+	require.False(t, hasOpenAIBuiltinTool(tools, "web_search"))
+}
+
 func TestChatCompletionsBuiltinTools_AugmentsWebSearchWithoutChangingToolChoice(t *testing.T) {
 	req := &apicompat.ChatCompletionsRequest{
 		Model:        "gpt-5.4",
@@ -720,6 +839,45 @@ func TestToolChoiceWhenObjectBuiltinToolsAdded_ForwardAsChatCompletionsPreserves
 	upstreamBody := decodeJSONMap(t, upstream.lastBody)
 	require.NotContains(t, upstreamBody, "builtin_tools")
 	require.Equal(t, "auto", upstreamBody["tool_choice"])
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 1)
+	require.Equal(t, "web_search", tools[0].(map[string]any)["type"])
+}
+
+func TestToolChoiceWhenMetadataBuiltinToolsAdded_ForwardAsChatCompletionsPreservesRawChoice(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"metadata":{"builtin_tools":{"web_search":true},"trace_id":"trace-chat","client":"opencode"},"tool_choice":"auto"}`)
+	c, rec := newOpenAITestContext(t, "/v1/chat/completions", body)
+	upstream := &stubHTTPUpstream{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+				`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"hello"}]}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+				`data: [DONE]`,
+			}, "\n") + "\n")),
+		},
+	}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+	}
+
+	_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+	require.Equal(t, "auto", upstreamBody["tool_choice"])
+
+	metadata, ok := upstreamBody["metadata"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, metadata, "builtin_tools")
+	require.Equal(t, "trace-chat", metadata["trace_id"])
+	require.Equal(t, "opencode", metadata["client"])
 
 	tools := upstreamBody["tools"].([]any)
 	require.Len(t, tools, 1)
