@@ -4925,7 +4925,7 @@ func stripOpenAIBuiltinToolsField(reqBody map[string]any) bool {
 	metadata, _ := reqBody["metadata"].(map[string]any)
 	if metadata != nil {
 		if _, ok := metadata["builtin_tools"]; ok {
-			delete(metadata, "builtin_tools")
+			delete(reqBody, "metadata")
 			changed = true
 		}
 	}
@@ -5006,7 +5006,7 @@ func stripOpenAIBuiltinToolsFieldFromBody(body []byte) ([]byte, bool) {
 	}
 
 	if gjson.GetBytes(body, "metadata.builtin_tools").Exists() {
-		strippedBody, err := sjson.DeleteBytes(body, "metadata.builtin_tools")
+		strippedBody, err := sjson.DeleteBytes(body, "metadata")
 		if err != nil {
 			return body, changed
 		}

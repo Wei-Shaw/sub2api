@@ -588,12 +588,7 @@ func TestForwardResponsesRequest_MetadataBuiltinToolsAugmentsAndStripsPrivateFie
 
 	upstreamBody := decodeJSONMap(t, upstream.lastBody)
 	require.NotContains(t, upstreamBody, "builtin_tools")
-
-	metadata, ok := upstreamBody["metadata"].(map[string]any)
-	require.True(t, ok)
-	require.NotContains(t, metadata, "builtin_tools")
-	require.Equal(t, "trace-1", metadata["trace_id"])
-	require.Equal(t, "opencode", metadata["client"])
+	require.NotContains(t, upstreamBody, "metadata")
 	require.Equal(t, "required", upstreamBody["tool_choice"])
 
 	tools := upstreamBody["tools"].([]any)
@@ -708,11 +703,7 @@ func TestForwardResponsesRequest_DualCarrierBuiltinToolsPrefersTopLevelAndStrips
 	upstreamBody := decodeJSONMap(t, upstream.lastBody)
 	require.NotContains(t, upstreamBody, "builtin_tools")
 	require.Equal(t, "required", upstreamBody["tool_choice"])
-
-	metadata, ok := upstreamBody["metadata"].(map[string]any)
-	require.True(t, ok)
-	require.NotContains(t, metadata, "builtin_tools")
-	require.Equal(t, "trace-2", metadata["trace_id"])
+	require.NotContains(t, upstreamBody, "metadata")
 
 	tools := upstreamBody["tools"].([]any)
 	require.Len(t, tools, 1)
@@ -737,11 +728,7 @@ func TestForwardResponsesRequest_PassthroughStripsBuiltinToolsWithoutAugmentingF
 
 	upstreamBody := decodeJSONMap(t, upstream.lastBody)
 	require.NotContains(t, upstreamBody, "builtin_tools")
-
-	metadata, ok := upstreamBody["metadata"].(map[string]any)
-	require.True(t, ok)
-	require.NotContains(t, metadata, "builtin_tools")
-	require.Equal(t, "trace-pass", metadata["trace_id"])
+	require.NotContains(t, upstreamBody, "metadata")
 
 	tools := upstreamBody["tools"].([]any)
 	require.Len(t, tools, 1)
@@ -766,11 +753,7 @@ func TestForwardResponsesRequest_CompactPathDoesNotAugmentBuiltinToolsFromMetada
 
 	upstreamBody := decodeJSONMap(t, upstream.lastBody)
 	require.NotContains(t, upstreamBody, "builtin_tools")
-
-	metadata, ok := upstreamBody["metadata"].(map[string]any)
-	require.True(t, ok)
-	require.NotContains(t, metadata, "builtin_tools")
-	require.Equal(t, "trace-compact", metadata["trace_id"])
+	require.NotContains(t, upstreamBody, "metadata")
 
 	tools := upstreamBody["tools"].([]any)
 	require.Len(t, tools, 1)
@@ -872,12 +855,7 @@ func TestToolChoiceWhenMetadataBuiltinToolsAdded_ForwardAsChatCompletionsPreserv
 	upstreamBody := decodeJSONMap(t, upstream.lastBody)
 	require.NotContains(t, upstreamBody, "builtin_tools")
 	require.Equal(t, "auto", upstreamBody["tool_choice"])
-
-	metadata, ok := upstreamBody["metadata"].(map[string]any)
-	require.True(t, ok)
-	require.NotContains(t, metadata, "builtin_tools")
-	require.Equal(t, "trace-chat", metadata["trace_id"])
-	require.Equal(t, "opencode", metadata["client"])
+	require.NotContains(t, upstreamBody, "metadata")
 
 	tools := upstreamBody["tools"].([]any)
 	require.Len(t, tools, 1)

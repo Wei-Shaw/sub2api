@@ -614,7 +614,7 @@ func stripOpenAICompatBuiltinToolsCarrier(req *apicompat.ChatCompletionsRequest)
 	}
 	if req.Metadata != nil {
 		if _, ok := req.Metadata["builtin_tools"]; ok {
-			delete(req.Metadata, "builtin_tools")
+			req.Metadata = nil
 			changed = true
 		}
 	}
