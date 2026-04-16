@@ -6,20 +6,20 @@
 import { apiClient } from './client'
 import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse } from '@/types'
 
-export type OpenCodeOpenAIModel = {
+export interface OpenCodeOpenAIModel {
   id: string
   name: string
   family?: string
-  attachment?: boolean
-  reasoning?: boolean
-  tool_call?: boolean
-  structured_output?: boolean
-  temperature?: boolean
+  attachment: boolean
+  reasoning: boolean
+  tool_call: boolean
+  structured_output: boolean
+  temperature: boolean
   knowledge?: string
-  interleaved?: boolean | { field: 'reasoning_content' | 'reasoning_details' }
+  interleaved?: unknown
   modalities?: {
-    input: string[]
-    output: string[]
+    input?: string[]
+    output?: string[]
   }
   cost?: {
     input?: number
@@ -34,9 +34,9 @@ export type OpenCodeOpenAIModel = {
     }
   }
   limit?: {
-    context: number
+    context?: number
     input?: number
-    output: number
+    output?: number
   }
   release_date?: string
   options?: Record<string, unknown>
