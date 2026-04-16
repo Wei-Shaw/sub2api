@@ -92,6 +92,7 @@ func TestAPIContract_OpenCodeOpenAIModels(t *testing.T) {
 	require.Equal(t, 0, resp.Code)
 	require.Equal(t, "success", resp.Message)
 	require.Contains(t, resp.Data.Models, "gpt-5.4-fast")
+	require.NotContains(t, resp.Data.Models, "gpt-5.4-fast-Sys")
 	require.NotContains(t, resp.Data.Models, "gpt-4o-fast")
 
 	fast := resp.Data.Models["gpt-5.4-fast"]
