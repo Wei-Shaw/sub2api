@@ -426,6 +426,13 @@ REDACTED
 		"window_cost_sticky_reserve",
 		"max_sessions",
 		"session_idle_timeout_minutes",
+		"openai_oauth_responses_websockets_v2_enabled",
+		"openai_oauth_responses_websockets_v2_mode",
+		"openai_apikey_responses_websockets_v2_enabled",
+		"openai_apikey_responses_websockets_v2_mode",
+		"responses_websockets_v2_enabled",
+		"openai_ws_enabled",
+		"openai_ws_force_http",
 REDACTED
 	filtered := make(map[string]any)
 	for _, key := range keys {
