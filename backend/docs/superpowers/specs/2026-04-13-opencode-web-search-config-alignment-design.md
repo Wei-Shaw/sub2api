@@ -34,24 +34,27 @@
 这次必须把最终推荐配置里的“模型 key / id”规则写死，避免实现再次跑偏：
 
 1. 我们镜像 upstream 的，是 **runtime 最终可见的模型集合与附带参数语义**，不是把 upstream 内部 `api.id` 分层原样照抄进本地推荐配置。
-2. 对本地 `sub2api-openai` 推荐配置，本次继续保留现有产品语义：
-   - **最终请求出去的模型名 = 推荐配置里模型对象的 key / id**
-   - 也就是：
-     - `gpt-5.4`
-     - `gpt-5.4-fast`
-     - `gpt-5.4-Sys`
-     - `gpt-5.4-fast-Sys`
-     都继续作为本地最终请求模型名存在
-3. upstream `fromModelsDevProvider()` 中 `api.id` 与 runtime alias 的分层，这次只作为“为什么要新增 fast 模型及其 model.options/headers”的来源参考，不要求本地推荐配置也做同样的导出分层。
+2. 对本地 `sub2api-openai` 推荐配置，本次分两类处理：
+   - **基础模型与本地 `-Sys` 模型**继续保持现有产品语义：
+     - key 与 `id` 一致
+     - 例如：
+       - `gpt-5.4` -> `id: "gpt-5.4"`
+       - `gpt-5.4-Sys` -> `id: "gpt-5.4-Sys"`
+   - **upstream 物化出来的 fast 派生模型**保留独立 key，但显式覆写底层请求 `id`：
+     - `gpt-5.4-fast` -> `id: "gpt-5.4"`
+     - `gpt-5.4-fast-Sys` -> `id: "gpt-5.4-Sys"`
+3. 这样做的目的，是同时满足两层需求：
+   - OpenCode 侧仍然能看到并选择独立的 `gpt-5.4-fast` / `gpt-5.4-fast-Sys`
+   - 我们自己的网关仍只接收当前已识别的模型 id：`gpt-5.4` / `gpt-5.4-Sys`
 4. 一句话：
    - **镜像 upstream 的“模型集合与参数语义”**
-   - **保留本地推荐配置“模型 key = 最终请求 id”这一产品语义**
+   - **但对本地当前网关不识别的 fast 派生 key，显式覆写其底层 `id` 以保持兼容**
 
 ## 非目标
 
 - 不处理 `image_generation`
 - 不处理 `code_interpreter`
-- 不修改请求转发层 builtin-tools augmentation 功能本身
+- 不重做请求转发层 builtin-tools augmentation 的整体语义；本次只扩 `metadata.builtin_tools` 读取与剥离
 - 不重构整个 OpenCode metadata mirror 服务
 - 不把 upstream runtime request transform 误写成“推荐配置生成契约”
 
@@ -142,12 +145,19 @@
 - 它必须继续是“所有推荐模型都默认带上”的目标语义
 - 但实现层不能再偷懒写成 `model.tools` 这种会被误解成 upstream 原生语义的字段
 - 它应当通过我们自己的 `builtin_tools` 本地参数落地
-- 该参数作为模型级共享默认参数存在，并最终透传到我们的 API 转发服务，由转发层负责转换成真正的 OpenAI built-in tool 请求体
+- 推荐配置里的统一挂法改成：
+  - `options.metadata.builtin_tools = { web_search: true }`
+- 也就是说，`builtin_tools` 不再写在 `model.options` 顶层，而是写到 `model.options.metadata` 下面，依赖 OpenCode 当前会把 `metadata` 原样透传进 `/responses` body
+- 网关侧再按读取顺序：
+  1. 顶层 `builtin_tools`
+  2. `metadata.builtin_tools`
+  3. 都没有则不增补
+  来完成真正的 built-in tool augmentation
 
 因此，这一节现在只保留一条设计约束：
 
 - 基础模型、fast 派生模型，以及它们各自的 `-Sys` 版本，最终都必须共享同一种 `web_search` 默认开启语义
-- 这层默认开启语义统一通过 `builtin_tools` 落地，而不是通过 upstream 原生 `tools` 配置字段落地
+- 这层默认开启语义统一通过 `options.metadata.builtin_tools` 落地，而不是通过 upstream 原生 `tools` 配置字段落地
 
 ## 文件落点
 
@@ -156,6 +166,10 @@
 - `frontend/src/components/keys/UseKeyModal.vue`
 - `backend/internal/service/opencode_openai_metadata.go`
 - `frontend/src/api/keys.ts`
+- `backend/internal/service/openai_builtin_tools.go`
+- `backend/internal/service/openai_gateway_service.go`
+- `backend/internal/service/openai_gateway_chat_completions.go`
+- `backend/internal/pkg/apicompat/types.go`
 - 必要测试文件
 
 说明：
@@ -164,11 +178,35 @@
 - `opencode_openai_metadata.go` 负责 metadata mirror 与模型列表组织
 - `frontend/src/api/keys.ts` 负责前端拿到 mirror 后的数据契约
 - `opencode_openai_metadata.go` 只负责 mirror / 中间数据，不负责产出 `-Sys`、`web_search` 或 `provider["sub2api-openai"]` 本地扩展
+- `gpt-5.4-fast` / `gpt-5.4-fast-Sys` 的 `id` 覆写也属于**最终推荐配置层的本地兼容逻辑**，不能下沉到 backend mirror 层污染 upstream 对齐数据
 - backend 现有 `filterOpenCodeOpenAIModelsForCodexOAuth()` 这层本地模型筛选策略继续保留，不在本次移除或放宽
 - `builtin_tools` 的消费语义不在 OpenCode upstream，而在我们自己的 API 转发服务：
   - `backend/internal/pkg/apicompat/types.go`
+  - `backend/internal/service/openai_builtin_tools.go`
   - `backend/internal/service/openai_gateway_service.go`
   - `backend/internal/service/openai_gateway_chat_completions.go`
+
+### 四、`metadata.builtin_tools` 的本地消费边界
+
+`options.metadata.builtin_tools` 只是我们本地推荐配置向网关传递默认 built-in tool 意图的方式，不是 upstream 原生配置契约。
+
+因此这次必须把消费链写成一个完整的本地闭环：
+
+1. 推荐配置输出：
+   - 所有最终模型统一写：
+     - `options.metadata.builtin_tools = { web_search: true }`
+   - 不再默认写 `options.builtin_tools`
+2. 网关读取顺序：
+   - 先看顶层 `body.builtin_tools`
+   - 顶层不存在时，再看 `body.metadata.builtin_tools`
+   - 两层都没有时，不做 augmentation
+3. 网关完成 augmentation 后，必须把私有控制字段剥离：
+   - 顶层 `builtin_tools` 不得继续透传给 upstream
+   - `metadata.builtin_tools` 也不得继续透传给 upstream
+4. phase 1 仍然只产出：
+   - `tools += {"type":"web_search"}`
+   - 原始 `tools` 已有 `web_search` 时不重复追加
+   - passthrough / compact 继续只 strip，不 augment
 
 ## 注释要求
 
@@ -206,10 +244,15 @@
 7. 最终推荐配置中不会泄漏 raw `experimental` 或 mode provider 原始结构
 8. `web_search` 的默认开启语义在所有最终模型上保持一致
 9. 不会把 `image_generation` / `code_interpreter` 一并带入
-10. `gpt-5.4-fast` / `gpt-5.4-fast-Sys` 这类模型会作为独立推荐模型出现，但继续保持本地“模型 key = 最终请求 id”语义
+10. `gpt-5.4-fast` / `gpt-5.4-fast-Sys` 这类模型会作为独立推荐模型出现，但其底层 `id` 分别覆写回 `gpt-5.4` / `gpt-5.4-Sys`
 11. 基础模型和 `-Sys` 模型不再保留旧的 `low-fast` / `medium-fast` / `high-fast` / `xhigh-fast` 这类本地 fast variants
-12. 最终推荐配置中，`web_search` 的默认开启统一通过 `builtin_tools` 表达，而不是通过 `model.tools`
+12. 最终推荐配置中，`web_search` 的默认开启统一通过 `options.metadata.builtin_tools` 表达，而不是通过 `model.tools`
 13. 最终推荐配置里 `builtin_tools` 的推荐输出形态统一为对象形态：`{"web_search": true}`，不在不同模型间混用 `true` / 数组 / 对象三种写法
+14. gateway 必须同时兼容旧顶层 `builtin_tools` 与新的 `metadata.builtin_tools`，并在消费后把这两处私有字段都从上游请求体中剥离
+15. backend `/api/v1/keys/opencode/openai-models` contract 只需要锁住 upstream mirror 层结果：`gpt-5.4-fast` 的 `options/headers` 存在，且 raw `experimental` / raw mode provider 不泄漏
+16. 最终推荐配置层必须单独锁住：`gpt-5.4-fast-Sys` 存在，并继承 fast 的 `options/headers`，同时 `id` 覆写为 `gpt-5.4-Sys`
+17. 最终推荐配置层必须明确不存在 `options.builtin_tools`，只允许 `options.metadata.builtin_tools`
+18. `passthrough` 与 `/responses/compact` 路径对 `metadata.builtin_tools` 也必须维持现有负向语义：只 strip 私有字段，不做 augmentation
 
 ## 预期结果
 
@@ -221,4 +264,4 @@
 
 一句话总结：
 
-**先镜像 upstream 当前的 `experimental.modes -> 派生模型 + model.options/headers`，保留本地“模型 key = 最终请求 id”和 `-Sys` 扩展语义，再在这组最终模型上统一挂载本地 `builtin_tools` 默认参数，以默认开启 `web_search`。**
+**先镜像 upstream 当前的 `experimental.modes -> 派生模型 + model.options/headers`，再对 `*-fast` 模型显式覆写兼容用 `id`，保留本地 `-Sys` 扩展语义，并通过 `options.metadata.builtin_tools` 在最终模型集合上统一默认开启 `web_search`。**
