@@ -2471,11 +2471,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	if applyOpenAIBuiltinToolsRequestPathTransform(c, reqBody) {
 		bodyModified = true
-		if isOpenAIResponsesCompactPath(c) {
-			markPatchDelete("builtin_tools")
-		} else {
-			disablePatch()
-		}
+		disablePatch()
 	}
 
 	// Handle max_output_tokens based on platform and account type
@@ -4919,11 +4915,40 @@ func stripOpenAIBuiltinToolsField(reqBody map[string]any) bool {
 	if reqBody == nil {
 		return false
 	}
-	if _, ok := reqBody["builtin_tools"]; !ok {
-		return false
+
+	changed := false
+	if _, ok := reqBody["builtin_tools"]; ok {
+		delete(reqBody, "builtin_tools")
+		changed = true
 	}
-	delete(reqBody, "builtin_tools")
-	return true
+
+	metadata, _ := reqBody["metadata"].(map[string]any)
+	if metadata != nil {
+		if _, ok := metadata["builtin_tools"]; ok {
+			delete(metadata, "builtin_tools")
+			changed = true
+		}
+	}
+
+	return changed
+}
+
+func extractOpenAIBuiltinToolsCarrier(reqBody map[string]any) (any, bool) {
+	if reqBody == nil {
+		return nil, false
+	}
+
+	if raw, ok := reqBody["builtin_tools"]; ok {
+		return raw, true
+	}
+
+	metadata, _ := reqBody["metadata"].(map[string]any)
+	if metadata == nil {
+		return nil, false
+	}
+
+	raw, ok := metadata["builtin_tools"]
+	return raw, ok
 }
 
 func applyOpenAIBuiltinToolsAugmentation(reqBody map[string]any) bool {
@@ -4931,7 +4956,7 @@ func applyOpenAIBuiltinToolsAugmentation(reqBody map[string]any) bool {
 		return false
 	}
 
-	raw, ok := reqBody["builtin_tools"]
+	raw, ok := extractOpenAIBuiltinToolsCarrier(reqBody)
 	if !ok {
 		return false
 	}
@@ -4970,16 +4995,26 @@ func stripOpenAIBuiltinToolsFieldFromBody(body []byte) ([]byte, bool) {
 		return body, false
 	}
 
-	if !gjson.GetBytes(body, "builtin_tools").Exists() {
-		return body, false
+	changed := false
+	if gjson.GetBytes(body, "builtin_tools").Exists() {
+		strippedBody, err := sjson.DeleteBytes(body, "builtin_tools")
+		if err != nil {
+			return body, false
+		}
+		body = strippedBody
+		changed = true
 	}
 
-	strippedBody, err := sjson.DeleteBytes(body, "builtin_tools")
-	if err != nil {
-		return body, false
+	if gjson.GetBytes(body, "metadata.builtin_tools").Exists() {
+		strippedBody, err := sjson.DeleteBytes(body, "metadata.builtin_tools")
+		if err != nil {
+			return body, changed
+		}
+		body = strippedBody
+		changed = true
 	}
 
-	return strippedBody, true
+	return body, changed
 }
 
 func hasOpenAIBuiltinTool(tools []any, toolType string) bool {

@@ -39,10 +39,10 @@ const { openaiModelsMock } = vi.hoisted(() => ({
         fast: {
           provider: {
             body: {
-              service_tier: 'priority'
+              service_tier: 'wrong-from-raw'
             },
             headers: {
-              'x-test-header': 'fast-mode'
+              'x-test-header': 'wrong-raw-header'
             }
           }
         }
@@ -296,25 +296,35 @@ describe('UseKeyModal', () => {
     expect(gpt54.attachment).toBe(true)
     expect(gpt54.modalities.input).toEqual(expect.arrayContaining(['text', 'image', 'pdf']))
     expect(gpt54.modalities.output).toEqual(['text'])
-    expect(gpt54.id).toBeUndefined()
-    expect(gpt54Fast.id).toBeUndefined()
-    expect(gpt54Sys.id).toBeUndefined()
-    expect(gpt54FastSys.id).toBeUndefined()
+    expect(gpt54.id).toBe('gpt-5.4')
+    expect(gpt54Fast.id).toBe('gpt-5.4')
+    expect(gpt54Sys.id).toBe('gpt-5.4-Sys')
+    expect(gpt54FastSys.id).toBe('gpt-5.4-Sys')
     expect(gpt54.cost.context_over_200k).toBeUndefined()
     expect(gpt54Fast.cost.context_over_200k).toBeUndefined()
     expect(gpt54Mini.cost.context_over_200k).toBeUndefined()
     expect(gpt54Sys.attachment).toBe(true)
     expect(gpt54Sys.modalities.input).toEqual(expect.arrayContaining(['text', 'image', 'pdf']))
     expect(gpt54Sys.modalities.output).toEqual(['text'])
-    expect(gpt54.options.builtin_tools).toEqual({ web_search: true })
+    expect(gpt54.options.builtin_tools).toBeUndefined()
+    expect(gpt54.options.metadata.builtin_tools).toEqual({ web_search: true })
     expect(gpt54Fast.options.serviceTier).toBe('priority')
-    expect(gpt54Fast.options.builtin_tools).toEqual({ web_search: true })
+    expect(gpt54Fast.options.builtin_tools).toBeUndefined()
+    expect(gpt54Fast.options.metadata.builtin_tools).toEqual({ web_search: true })
     expect(gpt54Fast.headers['x-test-header']).toBe('fast-mode')
-    expect(gpt54Sys.options.builtin_tools).toEqual({ web_search: true })
+    expect(gpt54Sys.options.builtin_tools).toBeUndefined()
+    expect(gpt54Sys.options.metadata.builtin_tools).toEqual({ web_search: true })
     expect(gpt54FastSys.options.serviceTier).toBe('priority')
-    expect(gpt54FastSys.options.builtin_tools).toEqual({ web_search: true })
+    expect(gpt54FastSys.options.builtin_tools).toBeUndefined()
+    expect(gpt54FastSys.options.metadata.builtin_tools).toEqual({ web_search: true })
     expect(gpt54FastSys.headers['x-test-header']).toBe('fast-mode')
-    expect(gpt54Mini.options.builtin_tools).toEqual({ web_search: true })
+    expect(gpt54Mini.options.builtin_tools).toBeUndefined()
+    expect(gpt54Mini.options.metadata.builtin_tools).toEqual({ web_search: true })
+    expect(gpt54.tools).toBeUndefined()
+    expect(gpt54Fast.tools).toBeUndefined()
+    expect(gpt54Sys.tools).toBeUndefined()
+    expect(gpt54FastSys.tools).toBeUndefined()
+    expect(gpt54Mini.tools).toBeUndefined()
     expect(gpt54Variants['low-fast']).toBeUndefined()
     expect(gpt54Variants['medium-fast']).toBeUndefined()
     expect(gpt54Variants['high-fast']).toBeUndefined()
@@ -322,6 +332,10 @@ describe('UseKeyModal', () => {
     expect(Object.keys(gpt54Variants).some((variant) => variant.endsWith('-fast'))).toBe(false)
     expect(Object.keys(gpt54SysVariants).some((variant) => variant.endsWith('-fast'))).toBe(false)
     expect(Object.keys(gpt54MiniVariants).some((variant) => variant.endsWith('-fast'))).toBe(false)
+    expect(gpt54Fast.options.serviceTier).not.toBe('wrong-from-raw')
+    expect(gpt54Fast.headers['x-test-header']).not.toBe('wrong-raw-header')
+    expect(gpt54FastSys.options.serviceTier).not.toBe('wrong-from-raw')
+    expect(gpt54FastSys.headers['x-test-header']).not.toBe('wrong-raw-header')
     expect(modelsJson).not.toContain('"experimental"')
     expect(modelsJson).not.toContain('"provider"')
     expect(modelsJson).not.toContain('"tools"')

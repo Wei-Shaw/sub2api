@@ -87,7 +87,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return nil, fmt.Errorf("marshal responses request: %w", err)
 	}
 
-	needsReqBodyPatch := account.Type == AccountTypeOAuth
+	needsReqBodyPatch := account.Type == AccountTypeOAuth || chatReq.Metadata != nil
 	if c != nil {
 		needsReqBodyPatch = needsReqBodyPatch || c.GetBool(OpenAISysToolContinuationKey)
 	}
@@ -95,6 +95,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		var reqBody map[string]any
 		if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
+		}
+		if chatReq.Metadata != nil {
+			reqBody["metadata"] = chatReq.Metadata
 		}
 		if c != nil && c.GetBool(OpenAISysToolContinuationKey) && NeedsSysToolContinuation(reqBody) {
 			AppendMinimalSysToolContinuation(reqBody)
@@ -568,8 +571,12 @@ func applyOpenAICompatBuiltinToolsAugmentation(req *apicompat.ChatCompletionsReq
 	if req == nil {
 		return false
 	}
-	augmented := normalizeOpenAIBuiltinTools(req.BuiltinTools)
-	req.BuiltinTools = nil
+	raw, ok := extractOpenAICompatBuiltinToolsCarrier(req)
+	if !ok {
+		return false
+	}
+	stripOpenAICompatBuiltinToolsCarrier(req)
+	augmented := normalizeOpenAIBuiltinTools(raw)
 	if len(augmented) == 0 {
 		return true
 	}
@@ -580,4 +587,36 @@ func applyOpenAICompatBuiltinToolsAugmentation(req *apicompat.ChatCompletionsReq
 	}
 	req.Tools = append(req.Tools, apicompat.ChatTool{Type: "web_search"})
 	return true
+}
+
+func extractOpenAICompatBuiltinToolsCarrier(req *apicompat.ChatCompletionsRequest) (any, bool) {
+	if req == nil {
+		return nil, false
+	}
+	if req.BuiltinTools != nil {
+		return req.BuiltinTools, true
+	}
+	if req.Metadata == nil {
+		return nil, false
+	}
+	raw, ok := req.Metadata["builtin_tools"]
+	return raw, ok
+}
+
+func stripOpenAICompatBuiltinToolsCarrier(req *apicompat.ChatCompletionsRequest) bool {
+	if req == nil {
+		return false
+	}
+	changed := false
+	if req.BuiltinTools != nil {
+		req.BuiltinTools = nil
+		changed = true
+	}
+	if req.Metadata != nil {
+		if _, ok := req.Metadata["builtin_tools"]; ok {
+			delete(req.Metadata, "builtin_tools")
+			changed = true
+		}
+	}
+	return changed
 }

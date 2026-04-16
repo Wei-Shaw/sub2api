@@ -344,6 +344,7 @@ type ChatCompletionsRequest struct {
 	Stream              bool               `json:"stream,omitempty"`
 	StreamOptions       *ChatStreamOptions `json:"stream_options,omitempty"`
 	Tools               []ChatTool         `json:"tools,omitempty"`
+	Metadata            map[string]any     `json:"metadata,omitempty"`
 	BuiltinTools        any                `json:"builtin_tools,omitempty"`
 	ToolChoice          json.RawMessage    `json:"tool_choice,omitempty"`
 	ReasoningEffort     string             `json:"reasoning_effort,omitempty"` // "low" | "medium" | "high" | "xhigh"

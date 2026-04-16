@@ -285,11 +285,16 @@ func materializeOpenCodeOpenAIExperimentalModes(baseID string, baseModel OpenCod
 	}
 
 	derived := make(map[string]OpenCodeOpenAIModel, len(modes))
-	// Mirrors anomalyco/opencode packages/opencode/src/provider/provider.ts::fromModelsDevProvider()
-	// at commit 7a6ce05, especially the experimental.modes flattening at
-	// https://github.com/anomalyco/opencode/blob/7a6ce05/packages/opencode/src/provider/provider.ts#L1004-L1020.
-	// backend only mirrors/flattens upstream model aliases here; local -Sys and builtin_tools
-	// expansions are handled later by our own recommendation layer.
+	// Mirrors anomalyco/opencode runtime model materialization:
+	// repo: anomalyco/opencode
+	// file: packages/opencode/src/provider/provider.ts
+	// function: fromModelsDevProvider()
+	// commit: 7a6ce05
+	// permalink: https://github.com/anomalyco/opencode/blob/7a6ce05/packages/opencode/src/provider/provider.ts#L1004-L1020
+	// Local rewrite boundary: backend only mirrors/flattens the upstream runtime-visible model
+	// set here, not the UI custom-provider form output. This layer must not generate `-Sys`,
+	// must not perform fast-id overrides, and must not switch output to `provider["sub2api-openai"]`;
+	// those, together with `metadata.builtin_tools`, are handled later by our local extension layers.
 	for mode, item := range modes {
 		mode = strings.TrimSpace(mode)
 		if mode == "" {
