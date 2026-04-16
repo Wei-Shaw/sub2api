@@ -113,6 +113,17 @@ func TestPreviousResponseReserveBindingStillMatchesExhaustedClass(t *testing.T) 
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
+
+	// 被动耗尽后仍应命中，但当前实际命中组应回落为 exhausted，而不是继续保留 reserve 标签。
+	reserveAccount.Extra["codex_7d_used_percent"] = 100.0
+	selection, selectedBinding, err = readerSvc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, reserveAccount.ID, selection.Account.ID)
+	require.NotNil(t, selectedBinding)
+	require.Equal(t, string(TargetGroupExhausted), selectedBinding.AffinityDomain)
+	require.Equal(t, string(TargetGroupExhausted), selection.SelectedGroup)
 }
 
 func TestResponseAffinityBindingSyncsTTLAndDelete(t *testing.T) {

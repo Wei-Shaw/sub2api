@@ -350,6 +350,7 @@ type stubConcurrencyCache struct {
 	loadBatchErr    error
 	loadMap         map[int64]*AccountLoadInfo
 	acquireResults  map[int64]bool
+	acquireErrors   map[int64]error
 	waitCounts      map[int64]int
 	skipDefaultLoad bool
 }
@@ -449,6 +450,11 @@ func (w *failingGinWriter) Write(p []byte) (int, error) {
 }
 
 func (c stubConcurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
+	if c.acquireErrors != nil {
+		if err, ok := c.acquireErrors[accountID]; ok {
+			return false, err
+		}
+	}
 	if c.acquireResults != nil {
 		if result, ok := c.acquireResults[accountID]; ok {
 			return result, nil

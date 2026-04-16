@@ -3878,6 +3878,7 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 
 	result, acquireErr := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 	if acquireErr == nil && result.Acquired {
+		selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, account)
 		logOpenAIWSBindResponseAccountWarn(
 			derefGroupID(groupID),
 			accountID,
@@ -3885,17 +3886,19 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 			store.BindResponseAccount(ctx, derefGroupID(groupID), responseID, accountID, s.openAIWSResponseStickyTTL()),
 		)
 		if affinityBinding != nil {
-			_ = bindOpenAIWSResponseAffinityBinding(ctx, store, derefGroupID(groupID), responseID, affinityBinding, s.openAIWSResponseStickyTTL())
+			_ = bindOpenAIWSResponseAffinityBinding(ctx, store, derefGroupID(groupID), responseID, newOpenAIAffinityBinding(accountID, selectedGroup), s.openAIWSResponseStickyTTL())
 		}
 		return &AccountSelectionResult{
 			Account:     account,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
-		}, cloneOpenAIAffinityBinding(affinityBinding), nil
+			SelectedGroup: selectedGroup,
+		}, newOpenAIAffinityBinding(accountID, selectedGroup), nil
 	}
 
 	cfg := s.schedulingConfig()
 	if s.concurrencyService != nil {
+		selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, account)
 		return &AccountSelectionResult{
 			Account: account,
 			WaitPlan: &AccountWaitPlan{
@@ -3904,7 +3907,8 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 				Timeout:        cfg.StickySessionWaitTimeout,
 				MaxWaiting:     cfg.StickySessionMaxWaiting,
 			},
-		}, cloneOpenAIAffinityBinding(affinityBinding), nil
+			SelectedGroup: selectedGroup,
+		}, newOpenAIAffinityBinding(accountID, selectedGroup), nil
 	}
 	return nil, nil, nil
 }

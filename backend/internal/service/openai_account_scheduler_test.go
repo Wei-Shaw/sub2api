@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -1538,6 +1539,36 @@ func TestSelectByLoadBalance_ReserveAtThresholdThenCoSchedulesWithExhausted(t *t
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
+}
+
+func TestSelectByLoadBalance_ReserveOnlyOverflowFailureStillMarksSelectedGroupReserve(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(13045)
+	accounts := []Account{
+		newOpenAIExhaustedAccountForTest(3451, 10),
+		newOpenAIReserveCandidateAccountForTest(3452, 10, 20),
+	}
+	loadMap := map[int64]*AccountLoadInfo{
+		3451: {AccountID: 3451, CurrentConcurrency: 7, LoadRate: 0},
+		3452: {AccountID: 3452, CurrentConcurrency: 5, LoadRate: 99},
+	}
+	svc := newOpenAIReserveSelectionServiceForTest(accounts, loadMap)
+	svc.concurrencyService = NewConcurrencyService(stubConcurrencyCache{loadMap: loadMap, acquireErrors: map[int64]error{3452: errors.New("reserve acquire failed")}})
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"session_hash_reserve_failure_group",
+		"gpt-5.1",
+		TargetGroupExhausted,
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.Nil(t, selection)
+	require.Error(t, err)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.Equal(t, "reserve", requireDecisionStringField(t, decision, "SelectedGroup"))
 }
 
 func TestReservePoolReleasesHighestRemainingQuotaBackToActive(t *testing.T) {
