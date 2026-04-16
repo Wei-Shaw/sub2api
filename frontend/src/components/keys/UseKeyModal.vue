@@ -694,28 +694,37 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     }
   }
 
-  // Mirrors anomalyco/opencode runtime model derivation from
-  // `packages/opencode/src/provider/provider.ts::fromModelsDevProvider()` at
-  // commit `7a6ce05`, which materializes `experimental.modes` into runtime
-  // models and lifts `provider.body` / `provider.headers` onto each derived
-  // model: https://github.com/anomalyco/opencode/blob/7a6ce05d0939826aa6c8e1c481489a713b2d633f/packages/opencode/src/provider/provider.ts#L1004-L1019
-  // We mirror the upstream runtime-derived model set here; `-Sys` and
-  // `builtin_tools` remain local extensions.
+  // Mirrors the upstream runtime-derived model set, not the UI custom-provider
+  // form output.
+  // upstream repo: anomalyco/opencode
+  // file: packages/opencode/src/provider/provider.ts
+  // function: fromModelsDevProvider()
+  // commit: 7a6ce05
+  // permalink / lines: https://github.com/anomalyco/opencode/blob/7a6ce05d0939826aa6c8e1c481489a713b2d633f/packages/opencode/src/provider/provider.ts#L1004-L1019
+  // Local extensions layered after this mirror: `-Sys`, fast-id override for
+  // gateway compatibility, and `options.metadata.builtin_tools`.
   const buildOpenCodeOpenAIBaseModels = (source: Record<string, OpenCodeOpenAIModel>) =>
     Object.fromEntries(
       Object.entries(source).map(([id, model]) => {
         const normalized = normalizeOpenCodeModelConfig(model)
+        const normalizedOptions = normalized.options as Record<string, unknown> | undefined
+        const normalizedMetadata =
+          normalizedOptions?.metadata && typeof normalizedOptions.metadata === 'object' && !Array.isArray(normalizedOptions.metadata)
+            ? normalizedOptions.metadata as Record<string, unknown>
+            : undefined
+        const finalId = id.endsWith('-fast') ? id.replace(/-fast$/, '') : id
 
         return [
           id,
           {
             ...normalized,
+            id: finalId,
             options: {
-              ...(normalized.options ?? {}),
-              // Local extension: upstream runtime does not consume model-level
-              // `tools`, so we pass `builtin_tools` to our API gateway service
-              // to preserve the default-on `web_search` semantic.
-              builtin_tools: { web_search: true },
+              ...(normalizedOptions ?? {}),
+              metadata: {
+                ...(normalizedMetadata ?? {}),
+                builtin_tools: { web_search: true }
+              },
               store: false
             },
             headers: normalized.headers,
@@ -725,13 +734,14 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       })
     )
 
-  const withSysVariants = <T extends { name: string }>(models: Record<string, T>) => {
+  const withSysVariants = <T extends { id: string; name: string }>(models: Record<string, T>) => {
     const expanded: Record<string, T> = {}
 
     for (const [id, config] of Object.entries(models)) {
       expanded[id] = config
       expanded[`${id}-Sys`] = {
         ...config,
+        id: `${config.id}-Sys`,
         name: `${config.name} (Sys)`
       }
     }
