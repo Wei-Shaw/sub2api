@@ -33,19 +33,20 @@ type OpsOpenAIRoutingStatsResponse struct {
 }
 
 func GetOpsOpenAIRoutingStatsGroups() []string {
-	return []string{string(TargetGroupActive), string(TargetGroupExhausted)}
+	return []string{string(TargetGroupActive), string(TargetGroupExhausted), "reserve"}
 }
 
 func NewOpsOpenAIRoutingStatsResponse() *OpsOpenAIRoutingStatsResponse {
+	groups := GetOpsOpenAIRoutingStatsGroups()
 	resp := &OpsOpenAIRoutingStatsResponse{
-		RequestCountByGroup: make(map[string]int64, 2),
-		TotalTokensByGroup:  make(map[string]int64, 2),
-		InputTokensByGroup:  make(map[string]int64, 2),
-		OutputTokensByGroup: make(map[string]int64, 2),
-		RetriedRequestCountByGroup: make(map[string]int64, 2),
-		RetryCountByGroup:          make(map[string]int64, 2),
+		RequestCountByGroup:        make(map[string]int64, len(groups)),
+		TotalTokensByGroup:         make(map[string]int64, len(groups)),
+		InputTokensByGroup:         make(map[string]int64, len(groups)),
+		OutputTokensByGroup:        make(map[string]int64, len(groups)),
+		RetriedRequestCountByGroup: make(map[string]int64, len(groups)),
+		RetryCountByGroup:          make(map[string]int64, len(groups)),
 	}
-	for _, group := range GetOpsOpenAIRoutingStatsGroups() {
+	for _, group := range groups {
 		resp.RequestCountByGroup[group] = 0
 		resp.TotalTokensByGroup[group] = 0
 		resp.InputTokensByGroup[group] = 0

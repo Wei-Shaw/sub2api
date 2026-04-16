@@ -639,11 +639,13 @@ func (h *OpsHandler) ListRequestDetails(c *gin.Context) {
 	filter.Platform = strings.TrimSpace(c.Query("platform"))
 	filter.Model = strings.TrimSpace(c.Query("model"))
 	filter.RoutingTargetGroup = strings.TrimSpace(c.Query("routing_target_group"))
+	filter.RoutingSelectedGroup = strings.TrimSpace(c.Query("routing_selected_group"))
 	filter.RoutingScheduleLayer = strings.TrimSpace(c.Query("routing_schedule_layer"))
 	filter.RequestID = strings.TrimSpace(c.Query("request_id"))
 	filter.Query = strings.TrimSpace(c.Query("q"))
 	filter.Sort = strings.TrimSpace(c.Query("sort"))
 	filter.RetriedOnly = strings.EqualFold(strings.TrimSpace(c.Query("retried_only")), "true")
+	filter.OpenAIRoutingOnly = strings.EqualFold(strings.TrimSpace(c.Query("openai_routing_only")), "true")
 
 	if v := strings.TrimSpace(c.Query("user_id")); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)

@@ -5,9 +5,11 @@ import OpsRequestDetailsModal from './OpsRequestDetailsModal.vue'
 interface Props {
   modelValue: boolean
   timeRange: string
+  startTime?: string | null
+  endTime?: string | null
   platform?: string
   groupId?: number | null
-  routingTargetGroup?: string
+  routingSelectedGroup?: string
   title: string
 }
 
@@ -22,8 +24,9 @@ const preset = computed(() => ({
   title: props.title,
   kind: 'success' as const,
   sort: 'created_at_desc' as const,
+  openai_routing_only: true,
   retried_only: true,
-  routing_target_group: props.routingTargetGroup,
+  routing_selected_group: props.routingSelectedGroup,
 }))
 </script>
 
@@ -31,6 +34,8 @@ const preset = computed(() => ({
   <OpsRequestDetailsModal
     :model-value="modelValue"
     :time-range="timeRange"
+    :start-time="startTime"
+    :end-time="endTime"
     :preset="preset"
     :platform="platform"
     :group-id="groupId"

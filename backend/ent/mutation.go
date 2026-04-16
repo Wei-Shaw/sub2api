@@ -24793,6 +24793,7 @@ type UsageLogMutation struct {
 	billing_tier                       *string
 	billing_mode                       *string
 	routing_target_group               *string
+	routing_selected_group             *string
 	routing_schedule_layer             *string
 	routing_selected_account_id        *int64
 	addrouting_selected_account_id     *int64
@@ -24859,6 +24860,12 @@ type UsageLogMutation struct {
 	media_type                         *string
 	cache_ttl_overridden               *bool
 	created_at                         *time.Time
+	sticky_session_source              *string
+	sticky_session_hash_present        *bool
+	sticky_eval_result                 *string
+	sticky_selected_account_changed    *bool
+	sticky_parent_session_present      *bool
+	sticky_parent_session_key          *string
 	clearedFields                      map[string]struct{}
 	user                               *int64
 	cleareduser                        bool
@@ -25515,6 +25522,55 @@ func (m *UsageLogMutation) RoutingTargetGroupCleared() bool {
 func (m *UsageLogMutation) ResetRoutingTargetGroup() {
 	m.routing_target_group = nil
 	delete(m.clearedFields, usagelog.FieldRoutingTargetGroup)
+}
+
+// SetRoutingSelectedGroup sets the "routing_selected_group" field.
+func (m *UsageLogMutation) SetRoutingSelectedGroup(s string) {
+	m.routing_selected_group = &s
+}
+
+// RoutingSelectedGroup returns the value of the "routing_selected_group" field in the mutation.
+func (m *UsageLogMutation) RoutingSelectedGroup() (r string, exists bool) {
+	v := m.routing_selected_group
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRoutingSelectedGroup returns the old "routing_selected_group" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldRoutingSelectedGroup(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRoutingSelectedGroup is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRoutingSelectedGroup requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRoutingSelectedGroup: %w", err)
+	}
+	return oldValue.RoutingSelectedGroup, nil
+}
+
+// ClearRoutingSelectedGroup clears the value of the "routing_selected_group" field.
+func (m *UsageLogMutation) ClearRoutingSelectedGroup() {
+	m.routing_selected_group = nil
+	m.clearedFields[usagelog.FieldRoutingSelectedGroup] = struct{}{}
+}
+
+// RoutingSelectedGroupCleared returns if the "routing_selected_group" field was cleared in this mutation.
+func (m *UsageLogMutation) RoutingSelectedGroupCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldRoutingSelectedGroup]
+	return ok
+}
+
+// ResetRoutingSelectedGroup resets all changes to the "routing_selected_group" field.
+func (m *UsageLogMutation) ResetRoutingSelectedGroup() {
+	m.routing_selected_group = nil
+	delete(m.clearedFields, usagelog.FieldRoutingSelectedGroup)
 }
 
 // SetRoutingScheduleLayer sets the "routing_schedule_layer" field.
@@ -27816,6 +27872,300 @@ func (m *UsageLogMutation) ResetCreatedAt() {
 	m.created_at = nil
 }
 
+// SetStickySessionSource sets the "sticky_session_source" field.
+func (m *UsageLogMutation) SetStickySessionSource(s string) {
+	m.sticky_session_source = &s
+}
+
+// StickySessionSource returns the value of the "sticky_session_source" field in the mutation.
+func (m *UsageLogMutation) StickySessionSource() (r string, exists bool) {
+	v := m.sticky_session_source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStickySessionSource returns the old "sticky_session_source" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldStickySessionSource(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStickySessionSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStickySessionSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStickySessionSource: %w", err)
+	}
+	return oldValue.StickySessionSource, nil
+}
+
+// ClearStickySessionSource clears the value of the "sticky_session_source" field.
+func (m *UsageLogMutation) ClearStickySessionSource() {
+	m.sticky_session_source = nil
+	m.clearedFields[usagelog.FieldStickySessionSource] = struct{}{}
+}
+
+// StickySessionSourceCleared returns if the "sticky_session_source" field was cleared in this mutation.
+func (m *UsageLogMutation) StickySessionSourceCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldStickySessionSource]
+	return ok
+}
+
+// ResetStickySessionSource resets all changes to the "sticky_session_source" field.
+func (m *UsageLogMutation) ResetStickySessionSource() {
+	m.sticky_session_source = nil
+	delete(m.clearedFields, usagelog.FieldStickySessionSource)
+}
+
+// SetStickySessionHashPresent sets the "sticky_session_hash_present" field.
+func (m *UsageLogMutation) SetStickySessionHashPresent(b bool) {
+	m.sticky_session_hash_present = &b
+}
+
+// StickySessionHashPresent returns the value of the "sticky_session_hash_present" field in the mutation.
+func (m *UsageLogMutation) StickySessionHashPresent() (r bool, exists bool) {
+	v := m.sticky_session_hash_present
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStickySessionHashPresent returns the old "sticky_session_hash_present" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldStickySessionHashPresent(ctx context.Context) (v *bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStickySessionHashPresent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStickySessionHashPresent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStickySessionHashPresent: %w", err)
+	}
+	return oldValue.StickySessionHashPresent, nil
+}
+
+// ClearStickySessionHashPresent clears the value of the "sticky_session_hash_present" field.
+func (m *UsageLogMutation) ClearStickySessionHashPresent() {
+	m.sticky_session_hash_present = nil
+	m.clearedFields[usagelog.FieldStickySessionHashPresent] = struct{}{}
+}
+
+// StickySessionHashPresentCleared returns if the "sticky_session_hash_present" field was cleared in this mutation.
+func (m *UsageLogMutation) StickySessionHashPresentCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldStickySessionHashPresent]
+	return ok
+}
+
+// ResetStickySessionHashPresent resets all changes to the "sticky_session_hash_present" field.
+func (m *UsageLogMutation) ResetStickySessionHashPresent() {
+	m.sticky_session_hash_present = nil
+	delete(m.clearedFields, usagelog.FieldStickySessionHashPresent)
+}
+
+// SetStickyEvalResult sets the "sticky_eval_result" field.
+func (m *UsageLogMutation) SetStickyEvalResult(s string) {
+	m.sticky_eval_result = &s
+}
+
+// StickyEvalResult returns the value of the "sticky_eval_result" field in the mutation.
+func (m *UsageLogMutation) StickyEvalResult() (r string, exists bool) {
+	v := m.sticky_eval_result
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStickyEvalResult returns the old "sticky_eval_result" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldStickyEvalResult(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStickyEvalResult is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStickyEvalResult requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStickyEvalResult: %w", err)
+	}
+	return oldValue.StickyEvalResult, nil
+}
+
+// ClearStickyEvalResult clears the value of the "sticky_eval_result" field.
+func (m *UsageLogMutation) ClearStickyEvalResult() {
+	m.sticky_eval_result = nil
+	m.clearedFields[usagelog.FieldStickyEvalResult] = struct{}{}
+}
+
+// StickyEvalResultCleared returns if the "sticky_eval_result" field was cleared in this mutation.
+func (m *UsageLogMutation) StickyEvalResultCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldStickyEvalResult]
+	return ok
+}
+
+// ResetStickyEvalResult resets all changes to the "sticky_eval_result" field.
+func (m *UsageLogMutation) ResetStickyEvalResult() {
+	m.sticky_eval_result = nil
+	delete(m.clearedFields, usagelog.FieldStickyEvalResult)
+}
+
+// SetStickySelectedAccountChanged sets the "sticky_selected_account_changed" field.
+func (m *UsageLogMutation) SetStickySelectedAccountChanged(b bool) {
+	m.sticky_selected_account_changed = &b
+}
+
+// StickySelectedAccountChanged returns the value of the "sticky_selected_account_changed" field in the mutation.
+func (m *UsageLogMutation) StickySelectedAccountChanged() (r bool, exists bool) {
+	v := m.sticky_selected_account_changed
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStickySelectedAccountChanged returns the old "sticky_selected_account_changed" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldStickySelectedAccountChanged(ctx context.Context) (v *bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStickySelectedAccountChanged is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStickySelectedAccountChanged requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStickySelectedAccountChanged: %w", err)
+	}
+	return oldValue.StickySelectedAccountChanged, nil
+}
+
+// ClearStickySelectedAccountChanged clears the value of the "sticky_selected_account_changed" field.
+func (m *UsageLogMutation) ClearStickySelectedAccountChanged() {
+	m.sticky_selected_account_changed = nil
+	m.clearedFields[usagelog.FieldStickySelectedAccountChanged] = struct{}{}
+}
+
+// StickySelectedAccountChangedCleared returns if the "sticky_selected_account_changed" field was cleared in this mutation.
+func (m *UsageLogMutation) StickySelectedAccountChangedCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldStickySelectedAccountChanged]
+	return ok
+}
+
+// ResetStickySelectedAccountChanged resets all changes to the "sticky_selected_account_changed" field.
+func (m *UsageLogMutation) ResetStickySelectedAccountChanged() {
+	m.sticky_selected_account_changed = nil
+	delete(m.clearedFields, usagelog.FieldStickySelectedAccountChanged)
+}
+
+// SetStickyParentSessionPresent sets the "sticky_parent_session_present" field.
+func (m *UsageLogMutation) SetStickyParentSessionPresent(b bool) {
+	m.sticky_parent_session_present = &b
+}
+
+// StickyParentSessionPresent returns the value of the "sticky_parent_session_present" field in the mutation.
+func (m *UsageLogMutation) StickyParentSessionPresent() (r bool, exists bool) {
+	v := m.sticky_parent_session_present
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStickyParentSessionPresent returns the old "sticky_parent_session_present" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldStickyParentSessionPresent(ctx context.Context) (v *bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStickyParentSessionPresent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStickyParentSessionPresent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStickyParentSessionPresent: %w", err)
+	}
+	return oldValue.StickyParentSessionPresent, nil
+}
+
+// ClearStickyParentSessionPresent clears the value of the "sticky_parent_session_present" field.
+func (m *UsageLogMutation) ClearStickyParentSessionPresent() {
+	m.sticky_parent_session_present = nil
+	m.clearedFields[usagelog.FieldStickyParentSessionPresent] = struct{}{}
+}
+
+// StickyParentSessionPresentCleared returns if the "sticky_parent_session_present" field was cleared in this mutation.
+func (m *UsageLogMutation) StickyParentSessionPresentCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldStickyParentSessionPresent]
+	return ok
+}
+
+// ResetStickyParentSessionPresent resets all changes to the "sticky_parent_session_present" field.
+func (m *UsageLogMutation) ResetStickyParentSessionPresent() {
+	m.sticky_parent_session_present = nil
+	delete(m.clearedFields, usagelog.FieldStickyParentSessionPresent)
+}
+
+// SetStickyParentSessionKey sets the "sticky_parent_session_key" field.
+func (m *UsageLogMutation) SetStickyParentSessionKey(s string) {
+	m.sticky_parent_session_key = &s
+}
+
+// StickyParentSessionKey returns the value of the "sticky_parent_session_key" field in the mutation.
+func (m *UsageLogMutation) StickyParentSessionKey() (r string, exists bool) {
+	v := m.sticky_parent_session_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStickyParentSessionKey returns the old "sticky_parent_session_key" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldStickyParentSessionKey(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStickyParentSessionKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStickyParentSessionKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStickyParentSessionKey: %w", err)
+	}
+	return oldValue.StickyParentSessionKey, nil
+}
+
+// ClearStickyParentSessionKey clears the value of the "sticky_parent_session_key" field.
+func (m *UsageLogMutation) ClearStickyParentSessionKey() {
+	m.sticky_parent_session_key = nil
+	m.clearedFields[usagelog.FieldStickyParentSessionKey] = struct{}{}
+}
+
+// StickyParentSessionKeyCleared returns if the "sticky_parent_session_key" field was cleared in this mutation.
+func (m *UsageLogMutation) StickyParentSessionKeyCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldStickyParentSessionKey]
+	return ok
+}
+
+// ResetStickyParentSessionKey resets all changes to the "sticky_parent_session_key" field.
+func (m *UsageLogMutation) ResetStickyParentSessionKey() {
+	m.sticky_parent_session_key = nil
+	delete(m.clearedFields, usagelog.FieldStickyParentSessionKey)
+}
+
 // ClearUser clears the "user" edge to the User entity.
 func (m *UsageLogMutation) ClearUser() {
 	m.cleareduser = true
@@ -27985,7 +28335,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 53)
+	fields := make([]string, 0, 60)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -28021,6 +28371,9 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.routing_target_group != nil {
 		fields = append(fields, usagelog.FieldRoutingTargetGroup)
+	}
+	if m.routing_selected_group != nil {
+		fields = append(fields, usagelog.FieldRoutingSelectedGroup)
 	}
 	if m.routing_schedule_layer != nil {
 		fields = append(fields, usagelog.FieldRoutingScheduleLayer)
@@ -28145,6 +28498,24 @@ func (m *UsageLogMutation) Fields() []string {
 	if m.created_at != nil {
 		fields = append(fields, usagelog.FieldCreatedAt)
 	}
+	if m.sticky_session_source != nil {
+		fields = append(fields, usagelog.FieldStickySessionSource)
+	}
+	if m.sticky_session_hash_present != nil {
+		fields = append(fields, usagelog.FieldStickySessionHashPresent)
+	}
+	if m.sticky_eval_result != nil {
+		fields = append(fields, usagelog.FieldStickyEvalResult)
+	}
+	if m.sticky_selected_account_changed != nil {
+		fields = append(fields, usagelog.FieldStickySelectedAccountChanged)
+	}
+	if m.sticky_parent_session_present != nil {
+		fields = append(fields, usagelog.FieldStickyParentSessionPresent)
+	}
+	if m.sticky_parent_session_key != nil {
+		fields = append(fields, usagelog.FieldStickyParentSessionKey)
+	}
 	return fields
 }
 
@@ -28177,6 +28548,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.BillingMode()
 	case usagelog.FieldRoutingTargetGroup:
 		return m.RoutingTargetGroup()
+	case usagelog.FieldRoutingSelectedGroup:
+		return m.RoutingSelectedGroup()
 	case usagelog.FieldRoutingScheduleLayer:
 		return m.RoutingScheduleLayer()
 	case usagelog.FieldRoutingSelectedAccountID:
@@ -28259,6 +28632,18 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.CacheTTLOverridden()
 	case usagelog.FieldCreatedAt:
 		return m.CreatedAt()
+	case usagelog.FieldStickySessionSource:
+		return m.StickySessionSource()
+	case usagelog.FieldStickySessionHashPresent:
+		return m.StickySessionHashPresent()
+	case usagelog.FieldStickyEvalResult:
+		return m.StickyEvalResult()
+	case usagelog.FieldStickySelectedAccountChanged:
+		return m.StickySelectedAccountChanged()
+	case usagelog.FieldStickyParentSessionPresent:
+		return m.StickyParentSessionPresent()
+	case usagelog.FieldStickyParentSessionKey:
+		return m.StickyParentSessionKey()
 	}
 	return nil, false
 }
@@ -28292,6 +28677,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldBillingMode(ctx)
 	case usagelog.FieldRoutingTargetGroup:
 		return m.OldRoutingTargetGroup(ctx)
+	case usagelog.FieldRoutingSelectedGroup:
+		return m.OldRoutingSelectedGroup(ctx)
 	case usagelog.FieldRoutingScheduleLayer:
 		return m.OldRoutingScheduleLayer(ctx)
 	case usagelog.FieldRoutingSelectedAccountID:
@@ -28374,6 +28761,18 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldCacheTTLOverridden(ctx)
 	case usagelog.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
+	case usagelog.FieldStickySessionSource:
+		return m.OldStickySessionSource(ctx)
+	case usagelog.FieldStickySessionHashPresent:
+		return m.OldStickySessionHashPresent(ctx)
+	case usagelog.FieldStickyEvalResult:
+		return m.OldStickyEvalResult(ctx)
+	case usagelog.FieldStickySelectedAccountChanged:
+		return m.OldStickySelectedAccountChanged(ctx)
+	case usagelog.FieldStickyParentSessionPresent:
+		return m.OldStickyParentSessionPresent(ctx)
+	case usagelog.FieldStickyParentSessionKey:
+		return m.OldStickyParentSessionKey(ctx)
 	}
 	return nil, fmt.Errorf("unknown UsageLog field %s", name)
 }
@@ -28466,6 +28865,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRoutingTargetGroup(v)
+		return nil
+	case usagelog.FieldRoutingSelectedGroup:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRoutingSelectedGroup(v)
 		return nil
 	case usagelog.FieldRoutingScheduleLayer:
 		v, ok := value.(string)
@@ -28753,6 +29159,48 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCreatedAt(v)
+		return nil
+	case usagelog.FieldStickySessionSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStickySessionSource(v)
+		return nil
+	case usagelog.FieldStickySessionHashPresent:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStickySessionHashPresent(v)
+		return nil
+	case usagelog.FieldStickyEvalResult:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStickyEvalResult(v)
+		return nil
+	case usagelog.FieldStickySelectedAccountChanged:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStickySelectedAccountChanged(v)
+		return nil
+	case usagelog.FieldStickyParentSessionPresent:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStickyParentSessionPresent(v)
+		return nil
+	case usagelog.FieldStickyParentSessionKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStickyParentSessionKey(v)
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog field %s", name)
@@ -29144,6 +29592,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldRoutingTargetGroup) {
 		fields = append(fields, usagelog.FieldRoutingTargetGroup)
 	}
+	if m.FieldCleared(usagelog.FieldRoutingSelectedGroup) {
+		fields = append(fields, usagelog.FieldRoutingSelectedGroup)
+	}
 	if m.FieldCleared(usagelog.FieldRoutingScheduleLayer) {
 		fields = append(fields, usagelog.FieldRoutingScheduleLayer)
 	}
@@ -29207,6 +29658,24 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldMediaType) {
 		fields = append(fields, usagelog.FieldMediaType)
 	}
+	if m.FieldCleared(usagelog.FieldStickySessionSource) {
+		fields = append(fields, usagelog.FieldStickySessionSource)
+	}
+	if m.FieldCleared(usagelog.FieldStickySessionHashPresent) {
+		fields = append(fields, usagelog.FieldStickySessionHashPresent)
+	}
+	if m.FieldCleared(usagelog.FieldStickyEvalResult) {
+		fields = append(fields, usagelog.FieldStickyEvalResult)
+	}
+	if m.FieldCleared(usagelog.FieldStickySelectedAccountChanged) {
+		fields = append(fields, usagelog.FieldStickySelectedAccountChanged)
+	}
+	if m.FieldCleared(usagelog.FieldStickyParentSessionPresent) {
+		fields = append(fields, usagelog.FieldStickyParentSessionPresent)
+	}
+	if m.FieldCleared(usagelog.FieldStickyParentSessionKey) {
+		fields = append(fields, usagelog.FieldStickyParentSessionKey)
+	}
 	return fields
 }
 
@@ -29241,6 +29710,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldRoutingTargetGroup:
 		m.ClearRoutingTargetGroup()
+		return nil
+	case usagelog.FieldRoutingSelectedGroup:
+		m.ClearRoutingSelectedGroup()
 		return nil
 	case usagelog.FieldRoutingScheduleLayer:
 		m.ClearRoutingScheduleLayer()
@@ -29305,6 +29777,24 @@ func (m *UsageLogMutation) ClearField(name string) error {
 	case usagelog.FieldMediaType:
 		m.ClearMediaType()
 		return nil
+	case usagelog.FieldStickySessionSource:
+		m.ClearStickySessionSource()
+		return nil
+	case usagelog.FieldStickySessionHashPresent:
+		m.ClearStickySessionHashPresent()
+		return nil
+	case usagelog.FieldStickyEvalResult:
+		m.ClearStickyEvalResult()
+		return nil
+	case usagelog.FieldStickySelectedAccountChanged:
+		m.ClearStickySelectedAccountChanged()
+		return nil
+	case usagelog.FieldStickyParentSessionPresent:
+		m.ClearStickyParentSessionPresent()
+		return nil
+	case usagelog.FieldStickyParentSessionKey:
+		m.ClearStickyParentSessionKey()
+		return nil
 	}
 	return fmt.Errorf("unknown UsageLog nullable field %s", name)
 }
@@ -29348,6 +29838,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldRoutingTargetGroup:
 		m.ResetRoutingTargetGroup()
+		return nil
+	case usagelog.FieldRoutingSelectedGroup:
+		m.ResetRoutingSelectedGroup()
 		return nil
 	case usagelog.FieldRoutingScheduleLayer:
 		m.ResetRoutingScheduleLayer()
@@ -29471,6 +29964,24 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldCreatedAt:
 		m.ResetCreatedAt()
+		return nil
+	case usagelog.FieldStickySessionSource:
+		m.ResetStickySessionSource()
+		return nil
+	case usagelog.FieldStickySessionHashPresent:
+		m.ResetStickySessionHashPresent()
+		return nil
+	case usagelog.FieldStickyEvalResult:
+		m.ResetStickyEvalResult()
+		return nil
+	case usagelog.FieldStickySelectedAccountChanged:
+		m.ResetStickySelectedAccountChanged()
+		return nil
+	case usagelog.FieldStickyParentSessionPresent:
+		m.ResetStickyParentSessionPresent()
+		return nil
+	case usagelog.FieldStickyParentSessionKey:
+		m.ResetStickyParentSessionKey()
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog field %s", name)

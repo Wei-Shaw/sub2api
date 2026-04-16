@@ -31,8 +31,9 @@ const loading = ref(false)
 const errorMessage = ref('')
 const response = ref<OpsOpenAIRoutingStatsResponse | null>(null)
 
-const activeLabel = computed(() => t('admin.usage.routingTargetGroupActive'))
-const exhaustedLabel = computed(() => t('admin.usage.routingTargetGroupExhausted'))
+const activeLabel = computed(() => t('admin.usage.routingSelectedGroupActive'))
+const exhaustedLabel = computed(() => t('admin.usage.routingSelectedGroupExhausted'))
+const reserveLabel = computed(() => t('admin.usage.routingSelectedGroupReserve'))
 
 const metrics = computed(() => {
   const data = response.value
@@ -45,17 +46,19 @@ const metrics = computed(() => {
       label: t('admin.ops.openaiRetry.retriedRequestCount'),
       active: retriedRequestCountByGroup.active ?? 0,
       exhausted: retriedRequestCountByGroup.exhausted ?? 0,
+      reserve: retriedRequestCountByGroup.reserve ?? 0,
     },
     {
       key: 'retry_count',
       label: t('admin.ops.openaiRetry.retryCount'),
       active: retryCountByGroup.active ?? 0,
       exhausted: retryCountByGroup.exhausted ?? 0,
+      reserve: retryCountByGroup.reserve ?? 0,
     },
   ]
 })
 
-const hasData = computed(() => metrics.value.some((metric) => metric.active > 0 || metric.exhausted > 0))
+const hasData = computed(() => metrics.value.some((metric) => metric.active > 0 || metric.exhausted > 0 || metric.reserve > 0))
 
 function buildParams() {
   const params: Record<string, any> = {
@@ -81,8 +84,8 @@ function formatShare(value: number, total: number): string {
   return `${((value / total) * 100).toFixed(1)}%`
 }
 
-function total(metric: { active: number; exhausted: number }): number {
-  return (metric.active ?? 0) + (metric.exhausted ?? 0)
+function total(metric: { active: number; exhausted: number; reserve: number }): number {
+	return (metric.active ?? 0) + (metric.exhausted ?? 0) + (metric.reserve ?? 0)
 }
 
 async function loadData() {
@@ -168,6 +171,16 @@ watch(
             </div>
             <div class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
               {{ formatMetricValue(metric.exhausted) }}
+            </div>
+          </button>
+
+          <button type="button" class="w-full rounded-xl bg-sky-50 p-3 text-left dark:bg-sky-900/20" @click="emit('open-details', 'reserve')">
+            <div class="flex items-center justify-between gap-3">
+              <span class="font-medium text-sky-700 dark:text-sky-300">{{ reserveLabel }}</span>
+              <span class="text-xs text-sky-600 dark:text-sky-400">{{ formatShare(metric.reserve, total(metric)) }}</span>
+            </div>
+            <div class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+              {{ formatMetricValue(metric.reserve) }}
             </div>
           </button>
 

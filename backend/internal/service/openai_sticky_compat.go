@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -21,6 +22,11 @@ var (
 	openAIStickyLegacyReadFallbackTotal atomic.Int64
 	openAIStickyLegacyReadFallbackHit   atomic.Int64
 	openAIStickyLegacyDualWriteTotal    atomic.Int64
+)
+
+const (
+	openAIStickyAffinityBindingNamespace   = "sticky_affinity"
+	openAIResponseAffinityBindingNamespace = "response_affinity"
 )
 
 func openAIStickyCompatStats() (legacyReadFallbackTotal, legacyReadFallbackHit, legacyDualWriteTotal int64) {
@@ -218,4 +224,208 @@ func (s *OpenAIGatewayService) deleteStickySessionAccountID(ctx context.Context,
 		_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), legacyKey)
 	}
 	return err
+}
+
+func (s *OpenAIGatewayService) openAICompanionBindingCache() OpenAICompanionBindingCache {
+	if s == nil || s.cache == nil {
+		return nil
+	}
+	cache, _ := s.cache.(OpenAICompanionBindingCache)
+	return cache
+}
+
+func marshalOpenAIAffinityBinding(binding *openAIAffinityBinding) (string, error) {
+	if binding == nil {
+		return "", nil
+	}
+	payload, err := json.Marshal(binding)
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
+}
+
+func parseOpenAIAffinityBinding(raw string) (*openAIAffinityBinding, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+	var binding openAIAffinityBinding
+	if err := json.Unmarshal([]byte(trimmed), &binding); err != nil {
+		return nil, err
+	}
+	return cloneOpenAIAffinityBinding(&binding), nil
+}
+
+func (s *OpenAIGatewayService) getOpenAICompanionBinding(
+	ctx context.Context,
+	groupID *int64,
+	namespace string,
+	bindingKey string,
+) (*openAIAffinityBinding, error) {
+	cache := s.openAICompanionBindingCache()
+	if cache == nil || strings.TrimSpace(bindingKey) == "" {
+		return nil, nil
+	}
+	raw, err := cache.GetOpenAICompanionBinding(ctx, derefGroupID(groupID), namespace, bindingKey)
+	if err != nil {
+		return nil, err
+	}
+	return parseOpenAIAffinityBinding(raw)
+}
+
+func (s *OpenAIGatewayService) setOpenAICompanionBinding(
+	ctx context.Context,
+	groupID *int64,
+	namespace string,
+	bindingKey string,
+	binding *openAIAffinityBinding,
+	ttl time.Duration,
+) error {
+	cache := s.openAICompanionBindingCache()
+	if cache == nil || strings.TrimSpace(bindingKey) == "" || binding == nil || binding.BoundAccountID <= 0 {
+		return nil
+	}
+	payload, err := marshalOpenAIAffinityBinding(binding)
+	if err != nil {
+		return err
+	}
+	return cache.SetOpenAICompanionBinding(ctx, derefGroupID(groupID), namespace, bindingKey, payload, ttl)
+}
+
+func (s *OpenAIGatewayService) refreshOpenAICompanionBinding(
+	ctx context.Context,
+	groupID *int64,
+	namespace string,
+	bindingKey string,
+	ttl time.Duration,
+) error {
+	cache := s.openAICompanionBindingCache()
+	if cache == nil || strings.TrimSpace(bindingKey) == "" {
+		return nil
+	}
+	return cache.RefreshOpenAICompanionBindingTTL(ctx, derefGroupID(groupID), namespace, bindingKey, ttl)
+}
+
+func (s *OpenAIGatewayService) deleteOpenAICompanionBinding(
+	ctx context.Context,
+	groupID *int64,
+	namespace string,
+	bindingKey string,
+) error {
+	cache := s.openAICompanionBindingCache()
+	if cache == nil || strings.TrimSpace(bindingKey) == "" {
+		return nil
+	}
+	return cache.DeleteOpenAICompanionBinding(ctx, derefGroupID(groupID), namespace, bindingKey)
+}
+
+func (s *OpenAIGatewayService) getOpenAIStickyAffinityBinding(ctx context.Context, groupID *int64, sessionHash string) *openAIAffinityBinding {
+	if s == nil {
+		return nil
+	}
+	primaryKey := s.openAISessionCacheKey(sessionHash)
+	if primaryKey == "" {
+		return nil
+	}
+	binding, err := s.getOpenAICompanionBinding(ctx, groupID, openAIStickyAffinityBindingNamespace, primaryKey)
+	if err == nil && binding != nil {
+		return binding
+	}
+	if !s.openAISessionHashReadOldFallbackEnabled() {
+		return nil
+	}
+	legacyKey := s.openAILegacySessionCacheKey(ctx, sessionHash)
+	if legacyKey == "" {
+		return nil
+	}
+	binding, _ = s.getOpenAICompanionBinding(ctx, groupID, openAIStickyAffinityBindingNamespace, legacyKey)
+	return binding
+}
+
+func (s *OpenAIGatewayService) setOpenAIStickyAffinityBinding(ctx context.Context, groupID *int64, sessionHash string, binding *openAIAffinityBinding, ttl time.Duration) error {
+	if s == nil || binding == nil || binding.BoundAccountID <= 0 {
+		return nil
+	}
+	primaryKey := s.openAISessionCacheKey(sessionHash)
+	if primaryKey == "" {
+		return nil
+	}
+	if err := s.setOpenAICompanionBinding(ctx, groupID, openAIStickyAffinityBindingNamespace, primaryKey, binding, ttl); err != nil {
+		return err
+	}
+	if !s.openAISessionHashDualWriteOldEnabled() {
+		return nil
+	}
+	legacyKey := s.openAILegacySessionCacheKey(ctx, sessionHash)
+	if legacyKey == "" {
+		return nil
+	}
+	return s.setOpenAICompanionBinding(ctx, groupID, openAIStickyAffinityBindingNamespace, legacyKey, binding, s.openAIStickyLegacyTTL(ttl))
+}
+
+func (s *OpenAIGatewayService) refreshOpenAIStickyAffinityBinding(ctx context.Context, groupID *int64, sessionHash string, ttl time.Duration) error {
+	if s == nil {
+		return nil
+	}
+	primaryKey := s.openAISessionCacheKey(sessionHash)
+	if primaryKey == "" {
+		return nil
+	}
+	err := s.refreshOpenAICompanionBinding(ctx, groupID, openAIStickyAffinityBindingNamespace, primaryKey, ttl)
+	if !s.openAISessionHashReadOldFallbackEnabled() && !s.openAISessionHashDualWriteOldEnabled() {
+		return err
+	}
+	legacyKey := s.openAILegacySessionCacheKey(ctx, sessionHash)
+	if legacyKey != "" {
+		_ = s.refreshOpenAICompanionBinding(ctx, groupID, openAIStickyAffinityBindingNamespace, legacyKey, s.openAIStickyLegacyTTL(ttl))
+	}
+	return err
+}
+
+func (s *OpenAIGatewayService) deleteOpenAIStickyAffinityBinding(ctx context.Context, groupID *int64, sessionHash string) error {
+	if s == nil {
+		return nil
+	}
+	primaryKey := s.openAISessionCacheKey(sessionHash)
+	if primaryKey == "" {
+		return nil
+	}
+	err := s.deleteOpenAICompanionBinding(ctx, groupID, openAIStickyAffinityBindingNamespace, primaryKey)
+	if !s.openAISessionHashReadOldFallbackEnabled() && !s.openAISessionHashDualWriteOldEnabled() {
+		return err
+	}
+	legacyKey := s.openAILegacySessionCacheKey(ctx, sessionHash)
+	if legacyKey != "" {
+		_ = s.deleteOpenAICompanionBinding(ctx, groupID, openAIStickyAffinityBindingNamespace, legacyKey)
+	}
+	return err
+}
+
+func (s *OpenAIGatewayService) clearOpenAIStickySessionBindings(ctx context.Context, groupID *int64, sessionHash string) error {
+	if s == nil {
+		return nil
+	}
+	_ = s.deleteOpenAIStickyAffinityBinding(ctx, groupID, sessionHash)
+	return s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+}
+
+func (s *OpenAIGatewayService) bindOpenAIStickySessionAffinity(ctx context.Context, groupID *int64, sessionHash string, binding *openAIAffinityBinding) error {
+	if s == nil || strings.TrimSpace(sessionHash) == "" || binding == nil || binding.BoundAccountID <= 0 {
+		return nil
+	}
+	ttl := s.openAIWSSessionStickyTTL()
+	sharedErr := s.setStickySessionAccountID(ctx, groupID, sessionHash, binding.BoundAccountID, ttl)
+	if shouldBindOpenAISharedSticky(binding.SelectedGroup) {
+		_ = s.deleteOpenAIStickyAffinityBinding(ctx, groupID, sessionHash)
+		return sharedErr
+	}
+	if err := s.setOpenAIStickyAffinityBinding(ctx, groupID, sessionHash, binding, ttl); err != nil {
+		return err
+	}
+	return sharedErr
+}
+
+func (s *OpenAIGatewayService) BindOpenAIStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64, selectedGroup string) error {
+	return s.bindOpenAIStickySessionAffinity(ctx, groupID, sessionHash, newOpenAIAffinityBinding(accountID, selectedGroup))
 }

@@ -38,6 +38,8 @@ const (
 	FieldBillingMode = "billing_mode"
 	// FieldRoutingTargetGroup holds the string denoting the routing_target_group field in the database.
 	FieldRoutingTargetGroup = "routing_target_group"
+	// FieldRoutingSelectedGroup holds the string denoting the routing_selected_group field in the database.
+	FieldRoutingSelectedGroup = "routing_selected_group"
 	// FieldRoutingScheduleLayer holds the string denoting the routing_schedule_layer field in the database.
 	FieldRoutingScheduleLayer = "routing_schedule_layer"
 	// FieldRoutingSelectedAccountID holds the string denoting the routing_selected_account_id field in the database.
@@ -196,6 +198,7 @@ var Columns = []string{
 	FieldBillingTier,
 	FieldBillingMode,
 	FieldRoutingTargetGroup,
+	FieldRoutingSelectedGroup,
 	FieldRoutingScheduleLayer,
 	FieldRoutingSelectedAccountID,
 	FieldRoutingSelectedAccountName,
@@ -272,6 +275,8 @@ var (
 	BillingModeValidator func(string) error
 	// RoutingTargetGroupValidator is a validator for the "routing_target_group" field. It is called by the builders before save.
 	RoutingTargetGroupValidator func(string) error
+	// RoutingSelectedGroupValidator is a validator for the "routing_selected_group" field. It is called by the builders before save.
+	RoutingSelectedGroupValidator func(string) error
 	// RoutingScheduleLayerValidator is a validator for the "routing_schedule_layer" field. It is called by the builders before save.
 	RoutingScheduleLayerValidator func(string) error
 	// RoutingSelectedAccountNameValidator is a validator for the "routing_selected_account_name" field. It is called by the builders before save.
@@ -330,6 +335,12 @@ var (
 	DefaultCacheTTLOverridden bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
+	// StickySessionSourceValidator is a validator for the "sticky_session_source" field. It is called by the builders before save.
+	StickySessionSourceValidator func(string) error
+	// StickyEvalResultValidator is a validator for the "sticky_eval_result" field. It is called by the builders before save.
+	StickyEvalResultValidator func(string) error
+	// StickyParentSessionKeyValidator is a validator for the "sticky_parent_session_key" field. It is called by the builders before save.
+	StickyParentSessionKeyValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the UsageLog queries.
@@ -398,6 +409,11 @@ func ByBillingMode(opts ...sql.OrderTermOption) OrderOption {
 // ByRoutingTargetGroup orders the results by the routing_target_group field.
 func ByRoutingTargetGroup(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRoutingTargetGroup, opts...).ToFunc()
+}
+
+// ByRoutingSelectedGroup orders the results by the routing_selected_group field.
+func ByRoutingSelectedGroup(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRoutingSelectedGroup, opts...).ToFunc()
 }
 
 // ByRoutingScheduleLayer orders the results by the routing_schedule_layer field.
@@ -603,6 +619,36 @@ func ByCacheTTLOverridden(opts ...sql.OrderTermOption) OrderOption {
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
+}
+
+// ByStickySessionSource orders the results by the sticky_session_source field.
+func ByStickySessionSource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStickySessionSource, opts...).ToFunc()
+}
+
+// ByStickySessionHashPresent orders the results by the sticky_session_hash_present field.
+func ByStickySessionHashPresent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStickySessionHashPresent, opts...).ToFunc()
+}
+
+// ByStickyEvalResult orders the results by the sticky_eval_result field.
+func ByStickyEvalResult(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStickyEvalResult, opts...).ToFunc()
+}
+
+// ByStickySelectedAccountChanged orders the results by the sticky_selected_account_changed field.
+func ByStickySelectedAccountChanged(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStickySelectedAccountChanged, opts...).ToFunc()
+}
+
+// ByStickyParentSessionPresent orders the results by the sticky_parent_session_present field.
+func ByStickyParentSessionPresent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStickyParentSessionPresent, opts...).ToFunc()
+}
+
+// ByStickyParentSessionKey orders the results by the sticky_parent_session_key field.
+func ByStickyParentSessionKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStickyParentSessionKey, opts...).ToFunc()
 }
 
 // ByUserField orders the results by user field.

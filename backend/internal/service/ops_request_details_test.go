@@ -24,18 +24,19 @@ func TestOpsServiceListRequestDetails_PreservesRoutingFields(t *testing.T) {
 
 	repo := &opsRequestDetailsRepoStub{
 		items: []*OpsRequestDetail{{
-			Kind:                       OpsRequestKindSuccess,
-			CreatedAt:                  time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC),
-			RequestID:                  "req-routing-1",
-			Platform:                   PlatformOpenAI,
-			Model:                      "gpt-5.4-Sys",
-			RoutingTargetGroup:         "exhausted",
-			RoutingScheduleLayer:       "load_balance",
-			RoutingSelectedAccountID:   i64p(66),
-			RoutingSelectedAccountName: strPtr("acc-66"),
-			RoutingEffectiveModel:      "gpt-5.4",
-			RoutingFailoverCount:       intValuePtr(1),
-			RoutingFailoverFinalReason: "upstream_502",
+			Kind:                         OpsRequestKindSuccess,
+			CreatedAt:                    time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC),
+			RequestID:                    "req-routing-1",
+			Platform:                     PlatformOpenAI,
+			Model:                        "gpt-5.4-Sys",
+			RoutingTargetGroup:           "exhausted",
+			RoutingSelectedGroup:         "reserve",
+			RoutingScheduleLayer:         "load_balance",
+			RoutingSelectedAccountID:     i64p(66),
+			RoutingSelectedAccountName:   strPtr("acc-66"),
+			RoutingEffectiveModel:        "gpt-5.4",
+			RoutingFailoverCount:         intValuePtr(1),
+			RoutingFailoverFinalReason:   "upstream_502",
 			StickySessionSource:          strPtr("header_x_session_affinity"),
 			StickySessionHashPresent:     boolPtr(true),
 			StickyEvalResult:             strPtr("hit"),
@@ -51,6 +52,7 @@ func TestOpsServiceListRequestDetails_PreservesRoutingFields(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, out.Items, 1)
 	require.Equal(t, "exhausted", out.Items[0].RoutingTargetGroup)
+	require.Equal(t, "reserve", out.Items[0].RoutingSelectedGroup)
 	require.Equal(t, "load_balance", out.Items[0].RoutingScheduleLayer)
 	require.NotNil(t, out.Items[0].RoutingSelectedAccountID)
 	require.Equal(t, int64(66), *out.Items[0].RoutingSelectedAccountID)

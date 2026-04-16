@@ -365,6 +365,7 @@ func applyOpenAIRoutingSnapshotToOpsEntry(entry *service.OpsInsertErrorLogInput,
 		return
 	}
 	entry.RoutingTargetGroup = strings.TrimSpace(snapshot.TargetGroup)
+	entry.RoutingSelectedGroup = strings.TrimSpace(snapshot.SelectedGroup)
 	entry.RoutingScheduleLayer = strings.TrimSpace(snapshot.ScheduleLayer)
 	entry.RoutingSelectedAccountID = snapshot.SelectedAccountID
 	entry.RoutingSelectedAccountName = snapshot.SelectedAccountName

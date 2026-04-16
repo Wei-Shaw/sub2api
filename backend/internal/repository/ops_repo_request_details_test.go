@@ -27,6 +27,7 @@ func TestOpsRepositoryListRequestDetails_IncludesRoutingFields(t *testing.T) {
 		"platform",
 		"model",
 		"routing_target_group",
+		"routing_selected_group",
 		"routing_schedule_layer",
 		"routing_selected_account_id",
 		"routing_selected_account_name",
@@ -57,6 +58,7 @@ func TestOpsRepositoryListRequestDetails_IncludesRoutingFields(t *testing.T) {
 		"openai",
 		"gpt-5.4-Sys",
 		"exhausted",
+		"reserve",
 		"load_balance",
 		int64(66),
 		"acc-66",
@@ -91,6 +93,7 @@ func TestOpsRepositoryListRequestDetails_IncludesRoutingFields(t *testing.T) {
 	require.Equal(t, int64(1), total)
 	require.Len(t, items, 1)
 	require.Equal(t, "exhausted", items[0].RoutingTargetGroup)
+	require.Equal(t, "reserve", items[0].RoutingSelectedGroup)
 	require.Equal(t, "load_balance", items[0].RoutingScheduleLayer)
 	require.NotNil(t, items[0].RoutingSelectedAccountID)
 	require.Equal(t, int64(66), *items[0].RoutingSelectedAccountID)
@@ -112,5 +115,60 @@ func TestOpsRepositoryListRequestDetails_IncludesRoutingFields(t *testing.T) {
 	require.True(t, *items[0].StickyParentSessionPresent)
 	require.NotNil(t, items[0].StickyParentSessionKey)
 	require.Equal(t, "parent_abc", *items[0].StickyParentSessionKey)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestOpsRepositoryListRequestDetails_FiltersRoutingSelectedGroup(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &opsRepository{db: db}
+
+	filter := &service.OpsRequestDetailFilter{
+		Page:                 1,
+		PageSize:             10,
+		RoutingSelectedGroup: "reserve",
+	}
+
+	mock.ExpectQuery("SELECT COUNT\\(1\\) FROM combined WHERE LOWER\\(COALESCE\\(NULLIF\\(routing_selected_group,''\\), routing_target_group\\)\\) = \\$3").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "reserve").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
+	mock.ExpectQuery("SELECT[\\s\\S]*FROM combined[\\s\\S]*WHERE LOWER\\(COALESCE\\(NULLIF\\(routing_selected_group,''\\), routing_target_group\\)\\) = \\$3").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), "reserve", 10, 0).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"kind",
+			"created_at",
+			"request_id",
+			"platform",
+			"model",
+			"routing_target_group",
+			"routing_selected_group",
+			"routing_schedule_layer",
+			"routing_selected_account_id",
+			"routing_selected_account_name",
+			"routing_effective_model",
+			"routing_failover_count",
+			"routing_failover_final_reason",
+			"sticky_session_source",
+			"sticky_session_hash_present",
+			"sticky_eval_result",
+			"sticky_selected_account_changed",
+			"sticky_parent_session_present",
+			"sticky_parent_session_key",
+			"duration_ms",
+			"status_code",
+			"error_id",
+			"phase",
+			"severity",
+			"message",
+			"user_id",
+			"api_key_id",
+			"account_id",
+			"group_id",
+			"stream",
+		}))
+
+	items, total, err := repo.ListRequestDetails(context.Background(), filter)
+	require.NoError(t, err)
+	require.Empty(t, items)
+	require.Equal(t, int64(0), total)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

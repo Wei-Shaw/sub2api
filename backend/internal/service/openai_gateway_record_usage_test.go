@@ -372,7 +372,7 @@ func TestOpenAIGatewayServiceRecordUsage_NilConfigDefaultsRateMultiplierToOne(t 
 	require.InDelta(t, expected.ActualCost, userRepo.lastAmount, 1e-12)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_PersistsOpenAIRoutingFields(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_PersistsOpenAIRoutingSelectedGroupFields(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
 	subRepo := &openAIRecordUsageSubRepoStub{}
@@ -380,6 +380,7 @@ func TestOpenAIGatewayServiceRecordUsage_PersistsOpenAIRoutingFields(t *testing.
 
 	snapshot := &OpenAIRoutingSnapshot{
 		TargetGroup:         "exhausted",
+		SelectedGroup:       "reserve",
 		ScheduleLayer:       "load_balance",
 		SelectedAccountID:   i64p(66),
 		SelectedAccountName: strPtr("acc-66"),
@@ -414,6 +415,7 @@ func TestOpenAIGatewayServiceRecordUsage_PersistsOpenAIRoutingFields(t *testing.
 	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
 	require.Equal(t, snapshot.EffectiveModel, *usageRepo.lastLog.UpstreamModel)
 	require.Equal(t, &snapshot.TargetGroup, usageRepo.lastLog.RoutingTargetGroup)
+	require.Equal(t, &snapshot.SelectedGroup, usageRepo.lastLog.RoutingSelectedGroup)
 	require.Equal(t, &snapshot.ScheduleLayer, usageRepo.lastLog.RoutingScheduleLayer)
 	require.Equal(t, snapshot.SelectedAccountID, usageRepo.lastLog.RoutingSelectedAccountID)
 	require.Equal(t, snapshot.SelectedAccountName, usageRepo.lastLog.RoutingSelectedAccountName)

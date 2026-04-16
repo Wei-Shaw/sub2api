@@ -19,6 +19,9 @@ const (
 	openAIAccountScheduleLayerPreviousResponse = "previous_response_id"
 	openAIAccountScheduleLayerSessionSticky    = "session_hash"
 	openAIAccountScheduleLayerLoadBalance      = "load_balance"
+	openAISelectedGroupReserve                 = "reserve"
+	openAIAffinityDomainActive                 = "active"
+	openAIAffinityDomainExhausted              = "exhausted"
 )
 
 const (
@@ -65,6 +68,12 @@ type OpenAIAccountScheduleRequest struct {
 	ExcludedIDs          map[int64]struct{}
 }
 
+type openAIAffinityBinding struct {
+	BoundAccountID int64  `json:"bound_account_id"`
+	AffinityDomain string `json:"affinity_domain"`
+	SelectedGroup  string `json:"selected_group"`
+}
+
 type openAIStickyEval struct {
 	SessionSource          string
 	SessionHashPresent     bool
@@ -73,6 +82,78 @@ type openAIStickyEval struct {
 	ParentSessionPresent   bool
 	ParentSessionKey       string
 	BoundAccountID         *int64
+	AffinityBinding        *openAIAffinityBinding
+}
+
+func cloneOpenAIAffinityBinding(binding *openAIAffinityBinding) *openAIAffinityBinding {
+	if binding == nil {
+		return nil
+	}
+	cloned := *binding
+	cloned.AffinityDomain = normalizeOpenAIAffinityDomain(cloned.AffinityDomain)
+	cloned.SelectedGroup = normalizeOpenAISelectedGroup(cloned.SelectedGroup)
+	return &cloned
+}
+
+func normalizeOpenAISelectedGroup(group string) string {
+	switch strings.ToLower(strings.TrimSpace(group)) {
+	case "":
+		return ""
+	case string(TargetGroupActive):
+		return string(TargetGroupActive)
+	case string(TargetGroupExhausted):
+		return string(TargetGroupExhausted)
+	case openAISelectedGroupReserve:
+		return openAISelectedGroupReserve
+	default:
+		return string(TargetGroupActive)
+	}
+}
+
+func normalizeOpenAIAffinityDomain(domain string) string {
+	switch strings.ToLower(strings.TrimSpace(domain)) {
+	case openAIAffinityDomainExhausted:
+		return openAIAffinityDomainExhausted
+	default:
+		return openAIAffinityDomainActive
+	}
+}
+
+func newOpenAIAffinityBinding(accountID int64, selectedGroup string) *openAIAffinityBinding {
+	selectedGroup = normalizeOpenAISelectedGroup(selectedGroup)
+	if accountID <= 0 || selectedGroup == "" {
+		return nil
+	}
+	binding := &openAIAffinityBinding{
+		BoundAccountID: accountID,
+		SelectedGroup:  selectedGroup,
+		AffinityDomain: openAIAffinityDomainActive,
+	}
+	if selectedGroup == string(TargetGroupExhausted) || selectedGroup == openAISelectedGroupReserve {
+		binding.AffinityDomain = openAIAffinityDomainExhausted
+	}
+	return binding
+}
+
+func isOpenAIReserveAffinityBinding(binding *openAIAffinityBinding) bool {
+	if binding == nil {
+		return false
+	}
+	return binding.BoundAccountID > 0 &&
+		normalizeOpenAIAffinityDomain(binding.AffinityDomain) == openAIAffinityDomainExhausted &&
+		normalizeOpenAISelectedGroup(binding.SelectedGroup) == openAISelectedGroupReserve
+}
+
+func resolveOpenAISelectedGroupFromBindingOrAccount(binding *openAIAffinityBinding, account *Account) string {
+	if binding != nil {
+		if selectedGroup := normalizeOpenAISelectedGroup(binding.SelectedGroup); selectedGroup != "" {
+			if selectedGroup == openAISelectedGroupReserve && account != nil && account.MatchesTargetGroup(TargetGroupExhausted) {
+				return string(TargetGroupExhausted)
+			}
+			return selectedGroup
+		}
+	}
+	return resolveOpenAISelectedGroupFromAccount(account)
 }
 
 type OpenAIAccountScheduleDecision struct {
@@ -86,6 +167,7 @@ type OpenAIAccountScheduleDecision struct {
 	LoadSkew            float64
 	SelectedAccountID   int64
 	SelectedAccountType string
+	SelectedGroup       string
 }
 
 func normalizeOpenAIStickySessionSource(source string) string {
@@ -122,6 +204,7 @@ func cloneOpenAIStickyEval(eval *openAIStickyEval) *openAIStickyEval {
 		boundAccountID := *eval.BoundAccountID
 		cloned.BoundAccountID = &boundAccountID
 	}
+	cloned.AffinityBinding = cloneOpenAIAffinityBinding(eval.AffinityBinding)
 	return &cloned
 }
 
@@ -135,6 +218,16 @@ func (e *openAIStickyEval) setBoundAccountID(accountID int64) {
 	}
 	boundAccountID := accountID
 	e.BoundAccountID = &boundAccountID
+}
+
+func (e *openAIStickyEval) setAffinityBinding(binding *openAIAffinityBinding) {
+	if e == nil {
+		return
+	}
+	e.AffinityBinding = cloneOpenAIAffinityBinding(binding)
+	if e.AffinityBinding != nil {
+		e.setBoundAccountID(e.AffinityBinding.BoundAccountID)
+	}
 }
 
 func (e *openAIStickyEval) setEvalResult(result string) {
@@ -379,34 +472,59 @@ func (s *defaultOpenAIAccountScheduler) Select(
 
 	previousResponseID := req.PreviousResponseID
 	if previousResponseID != "" {
-		selection, err := s.service.SelectAccountByPreviousResponseID(
-			ctx,
-			req.GroupID,
-			previousResponseID,
-			req.RequestedModel,
-			req.TargetGroup,
-			req.ExcludedIDs,
-		)
-		if err != nil {
-			return nil, decision, err
-		}
-		if selection != nil && selection.Account != nil {
-			if !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
-				selection = nil
+		if (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) &&
+			s.service.isOpenAIReservePreviousResponseAnchor(ctx, req.GroupID, previousResponseID) {
+			s.service.deleteOpenAIWSResponseAccount(ctx, req.GroupID, previousResponseID)
+		} else {
+			selection, affinityBinding, err := s.service.SelectAccountByPreviousResponseID(
+				ctx,
+				req.GroupID,
+				previousResponseID,
+				req.RequestedModel,
+				req.TargetGroup,
+				req.ExcludedIDs,
+			)
+			if err != nil {
+				return nil, decision, err
 			}
-		}
-		if selection != nil && selection.Account != nil {
-			decision.Layer = openAIAccountScheduleLayerPreviousResponse
-			decision.StickyPreviousHit = true
-			if decision.Sticky != nil {
-				decision.Sticky.setEvalResult(openAIStickyEvalResultBypassedPreviousResponse)
+			if selection != nil && selection.Account != nil {
+				if !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
+					selection = nil
+				}
 			}
-			decision.SelectedAccountID = selection.Account.ID
-			decision.SelectedAccountType = selection.Account.Type
-			if req.SessionHash != "" {
-				_ = s.service.BindStickySession(ctx, req.GroupID, req.SessionHash, selection.Account.ID)
+			if selection != nil && selection.Account != nil {
+				if (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) &&
+					s.service.isCurrentOpenAIReserveOverlayAccount(ctx, req.GroupID, selection.Account) {
+					s.service.deleteOpenAIWSResponseAccount(ctx, req.GroupID, previousResponseID)
+					selection = nil
+				}
 			}
-			return selection, decision, nil
+			if selection != nil && selection.Account != nil {
+				decision.Layer = openAIAccountScheduleLayerPreviousResponse
+				decision.StickyPreviousHit = true
+				if decision.Sticky != nil {
+					var previousBoundAccountID int64
+					if decision.Sticky.BoundAccountID != nil {
+						previousBoundAccountID = *decision.Sticky.BoundAccountID
+					}
+					decision.Sticky.setAffinityBinding(affinityBinding)
+					if previousBoundAccountID > 0 {
+						decision.Sticky.setBoundAccountID(previousBoundAccountID)
+					}
+					decision.Sticky.setEvalResult(openAIStickyEvalResultBypassedPreviousResponse)
+				}
+				decision.SelectedAccountID = selection.Account.ID
+				decision.SelectedAccountType = selection.Account.Type
+				decision.SelectedGroup = resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, selection.Account)
+				if decision.Sticky != nil {
+					decision.Sticky.SelectedAccountChanged = decision.Sticky.BoundAccountID != nil && *decision.Sticky.BoundAccountID != decision.SelectedAccountID
+					decision.Sticky.finalizeSelectedAccount(decision.SelectedAccountID)
+				}
+				if req.SessionHash != "" {
+					_ = s.service.bindOpenAIStickySessionAffinity(ctx, req.GroupID, req.SessionHash, newOpenAIAffinityBinding(selection.Account.ID, decision.SelectedGroup))
+				}
+				return selection, decision, nil
+			}
 		}
 	}
 
@@ -419,14 +537,16 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		decision.StickySessionHit = true
 		decision.SelectedAccountID = selection.Account.ID
 		decision.SelectedAccountType = selection.Account.Type
+		decision.SelectedGroup = resolveOpenAISelectedGroupFromBindingOrAccount(decision.Sticky.AffinityBinding, selection.Account)
 		return selection, decision, nil
 	}
 
-	selection, candidateCount, topK, loadSkew, err := s.selectByLoadBalance(ctx, req)
+	selection, selectedGroup, candidateCount, topK, loadSkew, err := s.selectByLoadBalance(ctx, req)
 	decision.Layer = openAIAccountScheduleLayerLoadBalance
 	decision.CandidateCount = candidateCount
 	decision.TopK = topK
 	decision.LoadSkew = loadSkew
+	decision.SelectedGroup = selectedGroup
 	if err != nil {
 		return nil, decision, err
 	}
@@ -453,17 +573,22 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		}
 		return nil, nil
 	}
-	if s == nil || s.service == nil || s.service.cache == nil {
+	if s == nil || s.service == nil {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissNoBinding)
 		}
 		return nil, nil
 	}
 
+	affinityBinding := s.service.getOpenAIStickyAffinityBinding(ctx, req.GroupID, sessionHash)
 	accountID := req.StickyAccountID
 	if accountID <= 0 {
 		var err error
 		accountID, err = s.service.getStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		if (err != nil || accountID <= 0) && affinityBinding != nil {
+			accountID = affinityBinding.BoundAccountID
+			err = nil
+		}
 		if err != nil || accountID <= 0 {
 			if sticky != nil {
 				sticky.setEvalResult(openAIStickyEvalResultMissNoBinding)
@@ -471,8 +596,13 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			return nil, nil
 		}
 	}
+	if affinityBinding != nil && affinityBinding.BoundAccountID > 0 && affinityBinding.BoundAccountID != accountID {
+		_ = s.service.deleteOpenAIStickyAffinityBinding(ctx, req.GroupID, sessionHash)
+		affinityBinding = nil
+	}
 	if sticky != nil {
 		sticky.setBoundAccountID(accountID)
+		sticky.setAffinityBinding(affinityBinding)
 	}
 	if accountID <= 0 {
 		if sticky != nil {
@@ -494,17 +624,40 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 		}
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
 	if !account.IsOpenAI() {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 		}
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
-	if !account.MatchesTargetGroup(req.TargetGroup) {
+	if isOpenAIReserveAffinityBinding(affinityBinding) && normalizeTargetGroup(req.TargetGroup) != TargetGroupExhausted {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+		}
+		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
+		return nil, nil
+	}
+	reserveAffinityBinding := isOpenAIReserveAffinityBinding(affinityBinding)
+	if reserveAffinityBinding && !account.IsOpenAIReserveCandidate() && !account.MatchesTargetGroup(TargetGroupExhausted) {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+		}
+		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
+		return nil, nil
+	}
+	reserveAffinityHit := reserveAffinityBinding && account.IsOpenAIReserveCandidate()
+	if (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) && s.service.isCurrentOpenAIReserveOverlayAccount(ctx, req.GroupID, account) {
+		if sticky != nil {
+			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+		}
+		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
+		return nil, nil
+	}
+	if !account.MatchesTargetGroup(req.TargetGroup) && !reserveAffinityHit {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingRestricted)
 		}
@@ -514,14 +667,14 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 		}
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
-	if !account.IsSchedulableForTargetGroup(req.TargetGroup) {
+	if !account.IsSchedulableForTargetGroup(req.TargetGroup) && !reserveAffinityHit {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 		}
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
 	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
@@ -534,34 +687,43 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 		}
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
-	account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.RequestedModel, req.TargetGroup)
+	if reserveAffinityHit {
+		account = s.service.recheckSelectedOpenAIReserveAccountFromDB(ctx, account, req.RequestedModel)
+	} else {
+		account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.RequestedModel, req.TargetGroup)
+	}
 	if account == nil {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 		}
-		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
+		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
 
 	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 	if acquireErr == nil && result.Acquired {
+		selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(sticky.AffinityBinding, account)
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultHit)
 		}
-		_ = s.service.refreshStickySessionTTL(ctx, req.GroupID, sessionHash, s.service.openAIWSSessionStickyTTL())
+		if req.SessionHash != "" {
+			_ = s.service.bindOpenAIStickySessionAffinity(ctx, req.GroupID, sessionHash, newOpenAIAffinityBinding(account.ID, selectedGroup))
+		}
 		return &AccountSelectionResult{
 			Account:     account,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
+			SelectedGroup: selectedGroup,
 		}, nil
 	}
 
 	cfg := s.service.schedulingConfig()
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	if s.service.concurrencyService != nil {
+		selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(sticky.AffinityBinding, account)
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultHit)
 		}
@@ -573,6 +735,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 				Timeout:        cfg.StickySessionWaitTimeout,
 				MaxWaiting:     cfg.StickySessionMaxWaiting,
 			},
+			SelectedGroup: selectedGroup,
 		}, nil
 	}
 	if sticky != nil && sticky.EvalResult == "" {
@@ -582,12 +745,13 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 }
 
 type openAIAccountCandidateScore struct {
-	account   *Account
-	loadInfo  *AccountLoadInfo
-	score     float64
-	errorRate float64
-	ttft      float64
-	hasTTFT   bool
+	account       *Account
+	loadInfo      *AccountLoadInfo
+	score         float64
+	errorRate     float64
+	ttft          float64
+	hasTTFT       bool
+	selectedGroup string
 }
 
 type openAIAccountCandidateHeap []openAIAccountCandidateScore
@@ -785,13 +949,25 @@ func buildOpenAIWeightedSelectionOrder(
 func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
-) (*AccountSelectionResult, int, int, float64, error) {
-	accounts, err := s.service.listSchedulableAccounts(ctx, req.GroupID, req.TargetGroup)
+) (*AccountSelectionResult, string, int, int, float64, error) {
+	var (
+		accounts        []Account
+		reserveAccounts []Account
+		err             error
+	)
+	if req.TargetGroup == TargetGroupExhausted {
+		accounts, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID)
+	} else {
+		accounts, err = s.service.listSchedulableAccounts(ctx, req.GroupID, req.TargetGroup)
+		if err == nil && (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) {
+			_, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID)
+		}
+	}
 	if err != nil {
-		return nil, 0, 0, 0, err
+		return nil, "", 0, 0, 0, err
 	}
 	if len(accounts) == 0 {
-		return nil, 0, 0, 0, errors.New("no available OpenAI accounts")
+		return nil, "", 0, 0, 0, errors.New("no available OpenAI accounts")
 	}
 
 	// require_privacy_set: 获取分组信息
@@ -801,43 +977,69 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	}
 
 	filtered := make([]*Account, 0, len(accounts))
-	loadReq := make([]AccountWithConcurrency, 0, len(accounts))
-	for i := range accounts {
-		account := &accounts[i]
+	filteredValues := make([]Account, 0, len(accounts))
+	reserveFiltered := make([]*Account, 0, len(reserveAccounts))
+	reserveFilteredValues := make([]Account, 0, len(reserveAccounts))
+	loadReq := make([]AccountWithConcurrency, 0, len(accounts)+len(reserveAccounts))
+	reserveOverlayIDs := make(map[int64]struct{}, len(reserveAccounts))
+	for _, account := range reserveAccounts {
+		reserveOverlayIDs[account.ID] = struct{}{}
+	}
+	appendFilteredAccount := func(account *Account, selectedGroup string, out *[]*Account, outValues *[]Account) {
+		if account == nil {
+			return
+		}
 		if req.ExcludedIDs != nil {
 			if _, excluded := req.ExcludedIDs[account.ID]; excluded {
-				continue
+				return
 			}
 		}
 		if !account.IsOpenAI() {
-			continue
+			return
 		}
-		if !account.MatchesTargetGroup(req.TargetGroup) {
-			continue
+		if selectedGroup == openAISelectedGroupReserve {
+			if !account.IsOpenAIReserveCandidate() {
+				return
+			}
+		} else {
+			if req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive {
+				if _, reserved := reserveOverlayIDs[account.ID]; reserved {
+					return
+				}
+			}
+			if !account.MatchesTargetGroup(req.TargetGroup) {
+				return
+			}
+			if !account.IsSchedulableForTargetGroup(req.TargetGroup) {
+				return
+			}
 		}
-		if !account.IsSchedulableForTargetGroup(req.TargetGroup) {
-			continue
-		}
-		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
 		if schedGroup != nil && schedGroup.RequirePrivacySet && !account.IsPrivacySet() {
 			_ = s.service.accountRepo.SetError(ctx, account.ID,
 				fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
-			continue
+			return
 		}
 		if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
-			continue
+			return
 		}
 		if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
-			continue
+			return
 		}
-		filtered = append(filtered, account)
+		*out = append(*out, account)
+		*outValues = append(*outValues, *account)
 		loadReq = append(loadReq, AccountWithConcurrency{
 			ID:             account.ID,
 			MaxConcurrency: account.EffectiveLoadFactor(),
 		})
 	}
+	for i := range accounts {
+		appendFilteredAccount(&accounts[i], string(TargetGroupExhausted), &filtered, &filteredValues)
+	}
+	for i := range reserveAccounts {
+		appendFilteredAccount(&reserveAccounts[i], openAISelectedGroupReserve, &reserveFiltered, &reserveFilteredValues)
+	}
 	if len(filtered) == 0 {
-		return nil, 0, 0, 0, errors.New("no available OpenAI accounts")
+		return nil, "", 0, 0, 0, errors.New("no available OpenAI accounts")
 	}
 
 	loadMap := map[int64]*AccountLoadInfo{}
@@ -847,14 +1049,45 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 	}
 
-	minPriority, maxPriority := filtered[0].Priority, filtered[0].Priority
+	participantGroups := make(map[int64]string, len(filtered)+len(reserveFiltered))
+	participants := filtered
+	fallbackSelectedGroup := ""
+	if req.TargetGroup == TargetGroupExhausted && shouldRouteExhaustedOverflowToReserve(filteredValues, reserveFilteredValues, loadMap) {
+		reserveUsage := calculateOpenAIConcurrentUsagePercent(reserveFilteredValues, loadMap)
+		if reserveUsage < 60 {
+			participants = reserveFiltered
+			fallbackSelectedGroup = openAISelectedGroupReserve
+			participantGroups = make(map[int64]string, len(reserveFiltered))
+			for _, account := range reserveFiltered {
+				participantGroups[account.ID] = openAISelectedGroupReserve
+			}
+		} else {
+			participants = append(append([]*Account{}, filtered...), reserveFiltered...)
+			for _, account := range filtered {
+				participantGroups[account.ID] = string(TargetGroupExhausted)
+			}
+			for _, account := range reserveFiltered {
+				participantGroups[account.ID] = openAISelectedGroupReserve
+			}
+		}
+	}
+	if len(participantGroups) == 0 {
+		for _, account := range participants {
+			participantGroups[account.ID] = resolveOpenAISelectedGroupFromAccount(account)
+		}
+	}
+	if len(participants) == 0 {
+		return nil, "", 0, 0, 0, errors.New("no available OpenAI accounts")
+	}
+
+	minPriority, maxPriority := participants[0].Priority, participants[0].Priority
 	maxWaiting := 1
 	loadRateSum := 0.0
 	loadRateSumSquares := 0.0
 	minTTFT, maxTTFT := 0.0, 0.0
 	hasTTFTSample := false
-	candidates := make([]openAIAccountCandidateScore, 0, len(filtered))
-	for _, account := range filtered {
+	candidates := make([]openAIAccountCandidateScore, 0, len(participants))
+	for _, account := range participants {
 		loadInfo := loadMap[account.ID]
 		if loadInfo == nil {
 			loadInfo = &AccountLoadInfo{AccountID: account.ID}
@@ -886,11 +1119,12 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		loadRateSum += loadRate
 		loadRateSumSquares += loadRate * loadRate
 		candidates = append(candidates, openAIAccountCandidateScore{
-			account:   account,
-			loadInfo:  loadInfo,
-			errorRate: errorRate,
-			ttft:      ttft,
-			hasTTFT:   hasTTFT,
+			account:       account,
+			loadInfo:      loadInfo,
+			errorRate:     errorRate,
+			ttft:          ttft,
+			hasTTFT:       hasTTFT,
+			selectedGroup: participantGroups[account.ID],
 		})
 	}
 	loadSkew := calcLoadSkewByMoments(loadRateSum, loadRateSumSquares, len(candidates))
@@ -926,42 +1160,57 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	}
 	rankedCandidates := selectTopKOpenAICandidates(candidates, topK)
 	selectionOrder := buildOpenAIWeightedSelectionOrder(rankedCandidates, req)
-
-	for i := 0; i < len(selectionOrder); i++ {
-		candidate := selectionOrder[i]
+	prepareCandidate := func(candidate openAIAccountCandidateScore) *Account {
+		if candidate.selectedGroup == openAISelectedGroupReserve {
+			fresh := s.service.resolveFreshOpenAIReserveAccount(ctx, candidate.account, req.RequestedModel)
+			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+				return nil
+			}
+			fresh = s.service.recheckSelectedOpenAIReserveAccountFromDB(ctx, fresh, req.RequestedModel)
+			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+				return nil
+			}
+			return fresh
+		}
 		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, req.TargetGroup)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
-			continue
+			return nil
 		}
 		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel, req.TargetGroup)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+			return nil
+		}
+		return fresh
+	}
+
+	for i := 0; i < len(selectionOrder); i++ {
+		candidate := selectionOrder[i]
+		fresh := prepareCandidate(candidate)
+		if fresh == nil {
 			continue
 		}
 		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
 		if acquireErr != nil {
-			return nil, len(candidates), topK, loadSkew, acquireErr
+			return nil, fallbackSelectedGroup, len(candidates), topK, loadSkew, acquireErr
 		}
 		if result != nil && result.Acquired {
 			if req.SessionHash != "" {
-				_ = s.service.BindStickySession(ctx, req.GroupID, req.SessionHash, fresh.ID)
+				_ = s.service.bindOpenAIStickySessionAffinity(ctx, req.GroupID, req.SessionHash, newOpenAIAffinityBinding(fresh.ID, candidate.selectedGroup))
 			}
 			return &AccountSelectionResult{
 				Account:     fresh,
 				Acquired:    true,
 				ReleaseFunc: result.ReleaseFunc,
-			}, len(candidates), topK, loadSkew, nil
+				SelectedGroup: candidate.selectedGroup,
+			}, candidate.selectedGroup, len(candidates), topK, loadSkew, nil
 		}
 	}
 
 	cfg := s.service.schedulingConfig()
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	for _, candidate := range selectionOrder {
-		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, req.TargetGroup)
+		fresh := prepareCandidate(candidate)
 		if fresh == nil {
-			continue
-		}
-		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel, req.TargetGroup)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
 			continue
 		}
 		return &AccountSelectionResult{
@@ -972,10 +1221,25 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 				Timeout:        cfg.FallbackWaitTimeout,
 				MaxWaiting:     cfg.FallbackMaxWaiting,
 			},
-		}, len(candidates), topK, loadSkew, nil
+			SelectedGroup: candidate.selectedGroup,
+		}, candidate.selectedGroup, len(candidates), topK, loadSkew, nil
 	}
 
-	return nil, len(candidates), topK, loadSkew, ErrNoAvailableAccounts
+	return nil, fallbackSelectedGroup, len(candidates), topK, loadSkew, ErrNoAvailableAccounts
+}
+
+func resolveOpenAISelectedGroupFromAccount(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	if account.MatchesTargetGroup(TargetGroupExhausted) {
+		return string(TargetGroupExhausted)
+	}
+	return string(TargetGroupActive)
+}
+
+func shouldBindOpenAISharedSticky(selectedGroup string) bool {
+	return strings.TrimSpace(selectedGroup) != openAISelectedGroupReserve
 }
 
 func (s *defaultOpenAIAccountScheduler) isAccountTransportCompatible(account *Account, requiredTransport OpenAIUpstreamTransport) bool {
@@ -1099,6 +1363,7 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerRequest(
 			if selection != nil && selection.Account != nil {
 				decision.SelectedAccountID = selection.Account.ID
 				decision.SelectedAccountType = selection.Account.Type
+				decision.SelectedGroup = resolveOpenAISelectedGroupFromAccount(selection.Account)
 			}
 			decision.Sticky.finalizeSelectedAccount(decision.SelectedAccountID)
 		}

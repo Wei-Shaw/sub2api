@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -25,15 +26,16 @@ func TestOpsRepositoryGetOpenAIStickyStats(t *testing.T) {
 		"sticky_session_source",
 		"sticky_eval_result",
 		"sticky_selected_account_changed",
+		"routing_selected_group",
 		"request_count",
 	}).
-		AddRow("header_x_session_affinity", "hit", false, int64(8)).
-		AddRow("header_x_session_affinity", "miss_binding_invalid", true, int64(2)).
-		AddRow("content_fallback", "miss_no_binding", false, int64(3)).
-		AddRow("", "no_session_signal", false, int64(5)).
-		AddRow("header_x_session_affinity", "bypassed_previous_response_id", false, int64(4))
+		AddRow("header_x_session_affinity", "hit", false, "active", int64(8)).
+		AddRow("header_x_session_affinity", "miss_binding_invalid", true, "reserve", int64(2)).
+		AddRow("content_fallback", "miss_no_binding", false, "exhausted", int64(3)).
+		AddRow("", "no_session_signal", false, "reserve", int64(5)).
+		AddRow("header_x_session_affinity", "bypassed_previous_response_id", false, "exhausted", int64(4))
 
-	mock.ExpectQuery(`SELECT[\s\S]*sticky_session_source[\s\S]*sticky_eval_result[\s\S]*FROM combined`).
+	mock.ExpectQuery(`SELECT[\s\S]*sticky_session_source[\s\S]*sticky_eval_result[\s\S]*routing_selected_group[\s\S]*FROM combined`).
 		WithArgs(filter.StartTime, filter.EndTime, filter.Platform).
 		WillReturnRows(rows)
 
@@ -52,5 +54,14 @@ func TestOpsRepositoryGetOpenAIStickyStats(t *testing.T) {
 	require.Equal(t, int64(14), resp.SessionSourceCount["header_x_session_affinity"])
 	require.Equal(t, int64(3), resp.SessionSourceCount["content_fallback"])
 	require.Equal(t, int64(5), resp.SessionSourceCount["unknown"])
+	payload, err := json.Marshal(resp)
+	require.NoError(t, err)
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(payload, &decoded))
+	selectedGroupCount, ok := decoded["selected_group_count"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(8), selectedGroupCount["active"])
+	require.Equal(t, float64(7), selectedGroupCount["exhausted"])
+	require.Equal(t, float64(7), selectedGroupCount["reserve"])
 	require.NoError(t, mock.ExpectationsWereMet())
 }

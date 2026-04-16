@@ -400,6 +400,16 @@ type GatewayCache interface {
 	DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error
 }
 
+// OpenAICompanionBindingCache defines optional namespaced cache operations used by
+// OpenAI-specific affinity companion bindings. Existing sticky accountID semantics
+// remain unchanged; this carrier only stores OpenAI-local metadata.
+type OpenAICompanionBindingCache interface {
+	GetOpenAICompanionBinding(ctx context.Context, groupID int64, namespace string, bindingKey string) (string, error)
+	SetOpenAICompanionBinding(ctx context.Context, groupID int64, namespace string, bindingKey string, value string, ttl time.Duration) error
+	RefreshOpenAICompanionBindingTTL(ctx context.Context, groupID int64, namespace string, bindingKey string, ttl time.Duration) error
+	DeleteOpenAICompanionBinding(ctx context.Context, groupID int64, namespace string, bindingKey string) error
+}
+
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
 func derefGroupID(groupID *int64) int64 {
 	if groupID == nil {
@@ -505,6 +515,7 @@ type AccountSelectionResult struct {
 	Acquired    bool
 	ReleaseFunc func()
 	WaitPlan    *AccountWaitPlan // nil means no wait allowed
+	SelectedGroup string
 }
 
 // ClaudeUsage 表示Claude API返回的usage信息

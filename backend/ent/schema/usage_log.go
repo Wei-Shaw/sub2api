@@ -76,6 +76,10 @@ func (UsageLog) Fields() []ent.Field {
 			MaxLen(32).
 			Optional().
 			Nillable(),
+		field.String("routing_selected_group").
+			MaxLen(32).
+			Optional().
+			Nillable(),
 		field.String("routing_schedule_layer").
 			MaxLen(64).
 			Optional().
@@ -283,6 +287,7 @@ func (UsageLog) Indexes() []ent.Index {
 		index.Fields("model"),
 		index.Fields("requested_model"),
 		index.Fields("routing_target_group"),
+		index.Fields("routing_selected_group"),
 		index.Fields("routing_schedule_layer"),
 		index.Fields("request_id"),
 		// 复合索引用于时间范围查询

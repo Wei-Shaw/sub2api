@@ -142,6 +142,94 @@ func (a *Account) IsExhausted() bool {
 	return false
 }
 
+func (a *Account) IsOpenAIReserveCandidate() bool {
+	if a == nil || !a.IsOpenAIOAuth() {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(a.GetCredential("plan_type")), "free") {
+		return false
+	}
+	if a.IsExhausted() || !a.IsSchedulable() {
+		return false
+	}
+	return true
+}
+
+func (a *Account) OpenAIRemainingQuotaScore() float64 {
+	if a == nil || !a.IsOpenAIOAuth() {
+		return -1
+	}
+	if !strings.EqualFold(strings.TrimSpace(a.GetCredential("plan_type")), "free") {
+		return -1
+	}
+	if a.Extra == nil {
+		return -1
+	}
+	used7d, has7d, ok7d := getOpenAIReserveUsedPercent(a.Extra, "codex_7d_used_percent")
+	if has7d && !ok7d {
+		return -1
+	}
+	usedPrimary, hasPrimary, okPrimary := getOpenAIReserveUsedPercent(a.Extra, "codex_primary_used_percent")
+	if hasPrimary && !okPrimary {
+		return -1
+	}
+	if ok7d && okPrimary {
+		if usedPrimary > used7d {
+			return 100 - usedPrimary
+		}
+		return 100 - used7d
+	}
+	if ok7d {
+		return 100 - used7d
+	}
+	if okPrimary {
+		return 100 - usedPrimary
+	}
+	return -1
+}
+
+func getOpenAIReserveUsedPercent(extra map[string]any, key string) (float64, bool, bool) {
+	if extra == nil {
+		return 0, false, false
+	}
+	raw, ok := extra[key]
+	if !ok {
+		return 0, false, false
+	}
+	usedPercent, valid := parseStrictExtraFloat64(raw)
+	if !valid || usedPercent < 0 || usedPercent > 100 {
+		return 0, true, false
+	}
+	return usedPercent, true, true
+}
+
+func parseStrictExtraFloat64(value any) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case json.Number:
+		f, err := v.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	default:
+		return 0, false
+	}
+}
+
 func (a *Account) MatchesTargetGroup(group AccountTargetGroup) bool {
 	switch normalizeTargetGroup(group) {
 	case TargetGroupActive:

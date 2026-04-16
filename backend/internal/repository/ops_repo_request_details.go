@@ -57,8 +57,14 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 		if model := strings.TrimSpace(filter.Model); model != "" {
 			addCondition(fmt.Sprintf("model = $%d", len(args)+1), model)
 		}
+		if filter.OpenAIRoutingOnly {
+			addCondition("routing_target_group IN ('active','exhausted')")
+		}
 		if targetGroup := strings.TrimSpace(strings.ToLower(filter.RoutingTargetGroup)); targetGroup != "" {
 			addCondition(fmt.Sprintf("routing_target_group = $%d", len(args)+1), targetGroup)
+		}
+		if selectedGroup := strings.TrimSpace(strings.ToLower(filter.RoutingSelectedGroup)); selectedGroup != "" {
+			addCondition(fmt.Sprintf("LOWER(COALESCE(NULLIF(routing_selected_group,''), routing_target_group)) = $%d", len(args)+1), selectedGroup)
 		}
 		if scheduleLayer := strings.TrimSpace(filter.RoutingScheduleLayer); scheduleLayer != "" {
 			addCondition(fmt.Sprintf("routing_schedule_layer = $%d", len(args)+1), scheduleLayer)
@@ -95,14 +101,15 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 
 	cte := `
 WITH combined AS (
-  SELECT
-    'success'::TEXT AS kind,
+	SELECT
+	  'success'::TEXT AS kind,
     ul.created_at AS created_at,
     ul.request_id AS request_id,
     COALESCE(NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
-    COALESCE(NULLIF(ul.requested_model, ''), ul.model) AS model,
-    COALESCE(NULLIF(ul.routing_target_group, ''), '') AS routing_target_group,
-    COALESCE(NULLIF(ul.routing_schedule_layer, ''), '') AS routing_schedule_layer,
+	  COALESCE(NULLIF(ul.requested_model, ''), ul.model) AS model,
+	  COALESCE(NULLIF(ul.routing_target_group, ''), '') AS routing_target_group,
+	  COALESCE(NULLIF(ul.routing_selected_group, ''), '') AS routing_selected_group,
+	  COALESCE(NULLIF(ul.routing_schedule_layer, ''), '') AS routing_schedule_layer,
     COALESCE(ul.routing_selected_account_id, ul.account_id) AS routing_selected_account_id,
     NULLIF(ul.routing_selected_account_name, '') AS routing_selected_account_name,
     COALESCE(NULLIF(ul.routing_effective_model, ''), NULLIF(ul.upstream_model, ''), '') AS routing_effective_model,
@@ -132,14 +139,15 @@ WITH combined AS (
 
   UNION ALL
 
-  SELECT
-    'error'::TEXT AS kind,
+	SELECT
+	  'error'::TEXT AS kind,
     o.created_at AS created_at,
     COALESCE(NULLIF(o.request_id,''), NULLIF(o.client_request_id,''), '') AS request_id,
     COALESCE(NULLIF(o.platform, ''), NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
-    COALESCE(NULLIF(o.routing_requested_model, ''), NULLIF(o.model, ''), '') AS model,
-    COALESCE(NULLIF(o.routing_target_group, ''), '') AS routing_target_group,
-    COALESCE(NULLIF(o.routing_schedule_layer, ''), '') AS routing_schedule_layer,
+	  COALESCE(NULLIF(o.routing_requested_model, ''), NULLIF(o.model, ''), '') AS model,
+	  COALESCE(NULLIF(o.routing_target_group, ''), '') AS routing_target_group,
+	  COALESCE(NULLIF(o.routing_selected_group, ''), '') AS routing_selected_group,
+	  COALESCE(NULLIF(o.routing_schedule_layer, ''), '') AS routing_schedule_layer,
     COALESCE(o.routing_selected_account_id, o.account_id) AS routing_selected_account_id,
     NULLIF(o.routing_selected_account_name, '') AS routing_selected_account_name,
     COALESCE(NULLIF(o.routing_effective_model, ''), NULLIF(o.upstream_model, ''), '') AS routing_effective_model,
@@ -201,6 +209,7 @@ SELECT
   platform,
   model,
   routing_target_group,
+  routing_selected_group,
   routing_schedule_layer,
   routing_selected_account_id,
   routing_selected_account_name,
@@ -255,18 +264,19 @@ LIMIT $%d OFFSET $%d
 	out := make([]*service.OpsRequestDetail, 0, pageSize)
 	for rows.Next() {
 		var (
-			kind                       string
-			createdAt                  time.Time
-			requestID                  sql.NullString
-			platform                   sql.NullString
-			model                      sql.NullString
-			routingTargetGroup         sql.NullString
-			routingScheduleLayer       sql.NullString
-			routingSelectedAccountID   sql.NullInt64
-			routingSelectedAccountName sql.NullString
-			routingEffectiveModel      sql.NullString
-			routingFailoverCount       sql.NullInt64
-			routingFailoverFinalReason sql.NullString
+			kind                         string
+			createdAt                    time.Time
+			requestID                    sql.NullString
+			platform                     sql.NullString
+			model                        sql.NullString
+			routingTargetGroup           sql.NullString
+			routingSelectedGroup         sql.NullString
+			routingScheduleLayer         sql.NullString
+			routingSelectedAccountID     sql.NullInt64
+			routingSelectedAccountName   sql.NullString
+			routingEffectiveModel        sql.NullString
+			routingFailoverCount         sql.NullInt64
+			routingFailoverFinalReason   sql.NullString
 			stickySessionSource          sql.NullString
 			stickySessionHashPresent     sql.NullBool
 			stickyEvalResult             sql.NullString
@@ -297,6 +307,7 @@ LIMIT $%d OFFSET $%d
 			&platform,
 			&model,
 			&routingTargetGroup,
+			&routingSelectedGroup,
 			&routingScheduleLayer,
 			&routingSelectedAccountID,
 			&routingSelectedAccountName,
@@ -325,18 +336,19 @@ LIMIT $%d OFFSET $%d
 		}
 
 		item := &service.OpsRequestDetail{
-			Kind:                       service.OpsRequestKind(kind),
-			CreatedAt:                  createdAt,
-			RequestID:                  strings.TrimSpace(requestID.String),
-			Platform:                   strings.TrimSpace(platform.String),
-			Model:                      strings.TrimSpace(model.String),
-			RoutingTargetGroup:         strings.TrimSpace(routingTargetGroup.String),
-			RoutingScheduleLayer:       strings.TrimSpace(routingScheduleLayer.String),
-			RoutingSelectedAccountID:   toInt64Ptr(routingSelectedAccountID),
-			RoutingSelectedAccountName: nullStringPtr(routingSelectedAccountName),
-			RoutingEffectiveModel:      strings.TrimSpace(routingEffectiveModel.String),
-			RoutingFailoverCount:       toIntPtr(routingFailoverCount),
-			RoutingFailoverFinalReason: strings.TrimSpace(routingFailoverFinalReason.String),
+			Kind:                         service.OpsRequestKind(kind),
+			CreatedAt:                    createdAt,
+			RequestID:                    strings.TrimSpace(requestID.String),
+			Platform:                     strings.TrimSpace(platform.String),
+			Model:                        strings.TrimSpace(model.String),
+			RoutingTargetGroup:           strings.TrimSpace(routingTargetGroup.String),
+			RoutingSelectedGroup:         strings.TrimSpace(routingSelectedGroup.String),
+			RoutingScheduleLayer:         strings.TrimSpace(routingScheduleLayer.String),
+			RoutingSelectedAccountID:     toInt64Ptr(routingSelectedAccountID),
+			RoutingSelectedAccountName:   nullStringPtr(routingSelectedAccountName),
+			RoutingEffectiveModel:        strings.TrimSpace(routingEffectiveModel.String),
+			RoutingFailoverCount:         toIntPtr(routingFailoverCount),
+			RoutingFailoverFinalReason:   strings.TrimSpace(routingFailoverFinalReason.String),
 			StickySessionSource:          nullStringPtr(stickySessionSource),
 			StickySessionHashPresent:     nullBoolPtr(stickySessionHashPresent),
 			StickyEvalResult:             nullStringPtr(stickyEvalResult),

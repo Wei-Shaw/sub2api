@@ -10,6 +10,7 @@ import (
 )
 
 const stickySessionPrefix = "sticky_session:"
+const openAICompanionBindingPrefix = "openai_companion_binding:"
 
 type gatewayCache struct {
 	rdb *redis.Client
@@ -23,6 +24,10 @@ func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
 // 格式: sticky_session:{groupID}:{sessionHash}
 func buildSessionKey(groupID int64, sessionHash string) string {
 	return fmt.Sprintf("%s%d:%s", stickySessionPrefix, groupID, sessionHash)
+}
+
+func buildOpenAICompanionBindingKey(groupID int64, namespace string, bindingKey string) string {
+	return fmt.Sprintf("%s%s:%d:%s", openAICompanionBindingPrefix, namespace, groupID, bindingKey)
 }
 
 func (c *gatewayCache) GetSessionAccountID(ctx context.Context, groupID int64, sessionHash string) (int64, error) {
@@ -49,5 +54,25 @@ func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, ses
 // or unschedulable), allowing subsequent requests to select a new available account.
 func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
 	key := buildSessionKey(groupID, sessionHash)
+	return c.rdb.Del(ctx, key).Err()
+}
+
+func (c *gatewayCache) GetOpenAICompanionBinding(ctx context.Context, groupID int64, namespace string, bindingKey string) (string, error) {
+	key := buildOpenAICompanionBindingKey(groupID, namespace, bindingKey)
+	return c.rdb.Get(ctx, key).Result()
+}
+
+func (c *gatewayCache) SetOpenAICompanionBinding(ctx context.Context, groupID int64, namespace string, bindingKey string, value string, ttl time.Duration) error {
+	key := buildOpenAICompanionBindingKey(groupID, namespace, bindingKey)
+	return c.rdb.Set(ctx, key, value, ttl).Err()
+}
+
+func (c *gatewayCache) RefreshOpenAICompanionBindingTTL(ctx context.Context, groupID int64, namespace string, bindingKey string, ttl time.Duration) error {
+	key := buildOpenAICompanionBindingKey(groupID, namespace, bindingKey)
+	return c.rdb.Expire(ctx, key, ttl).Err()
+}
+
+func (c *gatewayCache) DeleteOpenAICompanionBinding(ctx context.Context, groupID int64, namespace string, bindingKey string) error {
+	key := buildOpenAICompanionBindingKey(groupID, namespace, bindingKey)
 	return c.rdb.Del(ctx, key).Err()
 }

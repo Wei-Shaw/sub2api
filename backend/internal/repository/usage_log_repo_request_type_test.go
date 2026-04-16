@@ -176,8 +176,9 @@ func TestPrepareUsageLogInsert_ArgCountMatchesTypes(t *testing.T) {
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
 }
 
-func TestPrepareUsageLogInsert_IncludesOpenAIRoutingFields(t *testing.T) {
+func TestPrepareUsageLogInsert_IncludesOpenAIRoutingSelectedGroupFields(t *testing.T) {
 	routingTargetGroup := "exhausted"
+	routingSelectedGroup := "reserve"
 	routingScheduleLayer := "load_balance"
 	routingAccountID := int64(66)
 	routingAccountName := "acc-66"
@@ -199,6 +200,7 @@ func TestPrepareUsageLogInsert_IncludesOpenAIRoutingFields(t *testing.T) {
 		Model:                        "gpt-5.4-Sys",
 		RequestedModel:               "gpt-5.4-Sys",
 		RoutingTargetGroup:           &routingTargetGroup,
+		RoutingSelectedGroup:         &routingSelectedGroup,
 		RoutingScheduleLayer:         &routingScheduleLayer,
 		RoutingSelectedAccountID:     &routingAccountID,
 		RoutingSelectedAccountName:   &routingAccountName,
@@ -216,18 +218,19 @@ func TestPrepareUsageLogInsert_IncludesOpenAIRoutingFields(t *testing.T) {
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
 	require.Equal(t, sql.NullString{String: routingTargetGroup, Valid: true}, prepared.args[49])
-	require.Equal(t, sql.NullString{String: routingScheduleLayer, Valid: true}, prepared.args[50])
-	require.Equal(t, sql.NullInt64{Int64: routingAccountID, Valid: true}, prepared.args[51])
-	require.Equal(t, sql.NullString{String: routingAccountName, Valid: true}, prepared.args[52])
-	require.Equal(t, sql.NullString{String: routingEffectiveModel, Valid: true}, prepared.args[53])
-	require.Equal(t, sql.NullInt64{Int64: int64(routingFailoverCount), Valid: true}, prepared.args[54])
-	require.Equal(t, sql.NullString{String: routingFailoverFinalReason, Valid: true}, prepared.args[55])
-	require.Equal(t, sql.NullString{String: stickySessionSource, Valid: true}, prepared.args[56])
-	require.Equal(t, sql.NullBool{Bool: stickySessionHashPresent, Valid: true}, prepared.args[57])
-	require.Equal(t, sql.NullString{String: stickyEvalResult, Valid: true}, prepared.args[58])
-	require.Equal(t, sql.NullBool{Bool: stickySelectedAccountChanged, Valid: true}, prepared.args[59])
-	require.Equal(t, sql.NullBool{Bool: stickyParentSessionPresent, Valid: true}, prepared.args[60])
-	require.Equal(t, sql.NullString{String: stickyParentSessionKey, Valid: true}, prepared.args[61])
+	require.Equal(t, sql.NullString{String: routingSelectedGroup, Valid: true}, prepared.args[50])
+	require.Equal(t, sql.NullString{String: routingScheduleLayer, Valid: true}, prepared.args[51])
+	require.Equal(t, sql.NullInt64{Int64: routingAccountID, Valid: true}, prepared.args[52])
+	require.Equal(t, sql.NullString{String: routingAccountName, Valid: true}, prepared.args[53])
+	require.Equal(t, sql.NullString{String: routingEffectiveModel, Valid: true}, prepared.args[54])
+	require.Equal(t, sql.NullInt64{Int64: int64(routingFailoverCount), Valid: true}, prepared.args[55])
+	require.Equal(t, sql.NullString{String: routingFailoverFinalReason, Valid: true}, prepared.args[56])
+	require.Equal(t, sql.NullString{String: stickySessionSource, Valid: true}, prepared.args[57])
+	require.Equal(t, sql.NullBool{Bool: stickySessionHashPresent, Valid: true}, prepared.args[58])
+	require.Equal(t, sql.NullString{String: stickyEvalResult, Valid: true}, prepared.args[59])
+	require.Equal(t, sql.NullBool{Bool: stickySelectedAccountChanged, Valid: true}, prepared.args[60])
+	require.Equal(t, sql.NullBool{Bool: stickyParentSessionPresent, Valid: true}, prepared.args[61])
+	require.Equal(t, sql.NullString{String: stickyParentSessionKey, Valid: true}, prepared.args[62])
 }
 
 func TestPrepareUsageLogInsert_IncludesBillingBreakdownFields(t *testing.T) {
@@ -358,6 +361,17 @@ func TestUsageLogRepositoryListWithFilters_RoutingFilters(t *testing.T) {
 	require.NotNil(t, page)
 	require.Equal(t, int64(0), page.Total)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestOpsErrorLogArgs_IncludeRoutingSelectedGroup(t *testing.T) {
+	selectedGroup := "reserve"
+	args := opsInsertErrorLogArgs(&service.OpsInsertErrorLogInput{
+		RoutingTargetGroup:   "exhausted",
+		RoutingSelectedGroup: selectedGroup,
+		CreatedAt:            time.Date(2025, 1, 7, 12, 0, 0, 0, time.UTC),
+	})
+
+	require.Equal(t, sql.NullString{String: selectedGroup, Valid: true}, args[16])
 }
 
 func TestUsageLogRepositoryListWithFilters_BillingMode(t *testing.T) {
@@ -609,6 +623,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullString{},
+			sql.NullString{},
 			sql.NullInt64{},
 			sql.NullString{},
 			sql.NullString{},
@@ -670,6 +685,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			0,
 			sql.NullString{},
 			sql.NullString{Valid: true, String: "flex"},
+			sql.NullString{},
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullString{},
@@ -741,6 +757,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullString{},
 			sql.NullString{},
+			sql.NullString{},
 			sql.NullInt64{},
 			sql.NullString{},
 			sql.NullString{},
@@ -801,6 +818,7 @@ func TestScanUsageLog_PreservesBillingBreakdownFields(t *testing.T) {
 		0,
 		sql.NullString{},
 		sql.NullString{Valid: true, String: "priority"},
+		sql.NullString{},
 		sql.NullString{},
 		sql.NullString{},
 		sql.NullString{},
@@ -878,6 +896,7 @@ func TestScanUsageLog_PreservesStickyObservabilityFields(t *testing.T) {
 		sql.NullString{},
 		sql.NullString{},
 		sql.NullString{Valid: true, String: "exhausted"},
+		sql.NullString{Valid: true, String: "reserve"},
 		sql.NullString{Valid: true, String: "load_balance"},
 		sql.NullInt64{Valid: true, Int64: 66},
 		sql.NullString{Valid: true, String: "acc-66"},
@@ -894,6 +913,8 @@ func TestScanUsageLog_PreservesStickyObservabilityFields(t *testing.T) {
 		now,
 	}})
 	require.NoError(t, err)
+	require.NotNil(t, log.RoutingSelectedGroup)
+	require.Equal(t, "reserve", *log.RoutingSelectedGroup)
 	require.NotNil(t, log.StickySessionSource)
 	require.Equal(t, "header_x_session_affinity", *log.StickySessionSource)
 	require.NotNil(t, log.StickySessionHashPresent)
@@ -952,6 +973,7 @@ func TestScanUsageLog_PreservesChannelAndImageOutputFields(t *testing.T) {
 		sql.NullString{},                  // inbound_endpoint
 		sql.NullString{},                  // upstream_endpoint
 		sql.NullString{},                  // routing_target_group
+		sql.NullString{},                  // routing_selected_group
 		sql.NullString{},                  // routing_schedule_layer
 		sql.NullInt64{},                   // routing_selected_account_id
 		sql.NullString{},                  // routing_selected_account_name

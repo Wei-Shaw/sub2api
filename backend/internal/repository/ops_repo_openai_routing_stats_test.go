@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOpsRepositoryGetOpenAIRoutingStats_GroupsByTargetGroup(t *testing.T) {
+func TestOpsRepositoryGetOpenAIRoutingStats_GroupsBySelectedGroupIncludingReserve(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &opsRepository{db: db}
 
@@ -27,7 +27,7 @@ func TestOpsRepositoryGetOpenAIRoutingStats_GroupsByTargetGroup(t *testing.T) {
 	}
 
 	rows := sqlmock.NewRows([]string{
-		"routing_target_group",
+		"routing_selected_group",
 		"request_count",
 		"total_tokens",
 		"input_tokens",
@@ -36,9 +36,10 @@ func TestOpsRepositoryGetOpenAIRoutingStats_GroupsByTargetGroup(t *testing.T) {
 		"retry_count",
 	}).
 		AddRow("active", int64(10), int64(1200), int64(700), int64(500), int64(3), int64(5)).
-		AddRow("exhausted", int64(4), int64(320), int64(200), int64(120), int64(2), int64(7))
+		AddRow("exhausted", int64(4), int64(320), int64(200), int64(120), int64(2), int64(7)).
+		AddRow("reserve", int64(6), int64(540), int64(300), int64(240), int64(4), int64(9))
 
-	mock.ExpectQuery(`SELECT\s+LOWER\(ul\.routing_target_group\) AS routing_target_group`).
+	mock.ExpectQuery(`SELECT\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_selected_group, ''\), ul\.routing_target_group\)\) AS routing_selected_group`).
 		WithArgs(start, end, groupID, "openai").
 		WillReturnRows(rows)
 
@@ -51,16 +52,22 @@ func TestOpsRepositoryGetOpenAIRoutingStats_GroupsByTargetGroup(t *testing.T) {
 	require.Equal(t, groupID, *resp.GroupID)
 	require.Equal(t, int64(10), resp.RequestCountByGroup["active"])
 	require.Equal(t, int64(4), resp.RequestCountByGroup["exhausted"])
+	require.Equal(t, int64(6), resp.RequestCountByGroup["reserve"])
 	require.Equal(t, int64(1200), resp.TotalTokensByGroup["active"])
 	require.Equal(t, int64(320), resp.TotalTokensByGroup["exhausted"])
+	require.Equal(t, int64(540), resp.TotalTokensByGroup["reserve"])
 	require.Equal(t, int64(700), resp.InputTokensByGroup["active"])
 	require.Equal(t, int64(200), resp.InputTokensByGroup["exhausted"])
+	require.Equal(t, int64(300), resp.InputTokensByGroup["reserve"])
 	require.Equal(t, int64(500), resp.OutputTokensByGroup["active"])
 	require.Equal(t, int64(120), resp.OutputTokensByGroup["exhausted"])
+	require.Equal(t, int64(240), resp.OutputTokensByGroup["reserve"])
 	require.Equal(t, int64(3), resp.RetriedRequestCountByGroup["active"])
 	require.Equal(t, int64(2), resp.RetriedRequestCountByGroup["exhausted"])
+	require.Equal(t, int64(4), resp.RetriedRequestCountByGroup["reserve"])
 	require.Equal(t, int64(5), resp.RetryCountByGroup["active"])
 	require.Equal(t, int64(7), resp.RetryCountByGroup["exhausted"])
+	require.Equal(t, int64(9), resp.RetryCountByGroup["reserve"])
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -77,10 +84,10 @@ func TestOpsRepositoryGetOpenAIRoutingStats_EmptyResult(t *testing.T) {
 		EndTime:   end,
 	}
 
-	mock.ExpectQuery(`SELECT\s+LOWER\(ul\.routing_target_group\) AS routing_target_group`).
+	mock.ExpectQuery(`SELECT\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_selected_group, ''\), ul\.routing_target_group\)\) AS routing_selected_group`).
 		WithArgs(start, end).
 		WillReturnRows(sqlmock.NewRows([]string{
-			"routing_target_group",
+			"routing_selected_group",
 			"request_count",
 			"total_tokens",
 			"input_tokens",
@@ -92,14 +99,24 @@ func TestOpsRepositoryGetOpenAIRoutingStats_EmptyResult(t *testing.T) {
 	resp, err := repo.GetOpenAIRoutingStats(context.Background(), filter)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
+	require.Contains(t, resp.RequestCountByGroup, "reserve")
+	require.Contains(t, resp.TotalTokensByGroup, "reserve")
+	require.Contains(t, resp.InputTokensByGroup, "reserve")
+	require.Contains(t, resp.OutputTokensByGroup, "reserve")
+	require.Contains(t, resp.RetriedRequestCountByGroup, "reserve")
+	require.Contains(t, resp.RetryCountByGroup, "reserve")
 	require.Equal(t, int64(0), resp.RequestCountByGroup["active"])
 	require.Equal(t, int64(0), resp.RequestCountByGroup["exhausted"])
+	require.Equal(t, int64(0), resp.RequestCountByGroup["reserve"])
 	require.Equal(t, int64(0), resp.TotalTokensByGroup["active"])
 	require.Equal(t, int64(0), resp.TotalTokensByGroup["exhausted"])
+	require.Equal(t, int64(0), resp.TotalTokensByGroup["reserve"])
 	require.Equal(t, int64(0), resp.RetriedRequestCountByGroup["active"])
 	require.Equal(t, int64(0), resp.RetriedRequestCountByGroup["exhausted"])
+	require.Equal(t, int64(0), resp.RetriedRequestCountByGroup["reserve"])
 	require.Equal(t, int64(0), resp.RetryCountByGroup["active"])
 	require.Equal(t, int64(0), resp.RetryCountByGroup["exhausted"])
+	require.Equal(t, int64(0), resp.RetryCountByGroup["reserve"])
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }

@@ -620,6 +620,7 @@ func TestStoreOpenAIRoutingSnapshot(t *testing.T) {
 	snap := storeOpenAIRoutingSnapshot(c, service.OpenAIRoutingSnapshotInput{
 		TargetGroup:    service.TargetGroupExhausted,
 		ScheduleLayer:  "load_balance",
+		SelectedGroup:  "reserve",
 		Account:        account,
 		RequestedModel: "gpt-5.4-Sys",
 		EffectiveModel: "gpt-5.4",
@@ -629,6 +630,7 @@ func TestStoreOpenAIRoutingSnapshot(t *testing.T) {
 	require.Same(t, snap, getOpenAIRoutingSnapshot(c))
 	require.Equal(t, "exhausted", snap.TargetGroup)
 	require.Equal(t, "load_balance", snap.ScheduleLayer)
+	require.Equal(t, "reserve", snap.SelectedGroup)
 	if assert.NotNil(t, snap.SelectedAccountID) {
 		assert.Equal(t, int64(66), *snap.SelectedAccountID)
 	}
@@ -662,6 +664,7 @@ func TestStoreOpenAIRoutingSnapshot_StickyObservability(t *testing.T) {
 	input := service.OpenAIRoutingSnapshotInput{
 		TargetGroup:    service.TargetGroupAny,
 		ScheduleLayer:  "session_hash",
+		SelectedGroup:  "active",
 		Account:        account,
 		RequestedModel: "gpt-5.1",
 		EffectiveModel: "gpt-5.1",
@@ -687,10 +690,99 @@ func TestStoreOpenAIRoutingSnapshot_StickyObservability(t *testing.T) {
 	require.Equal(t, "hit", snapshotStickyValue.FieldByName("EvalResult").String())
 	require.Equal(t, "", snapshotStickyValue.FieldByName("ParentSessionKey").String())
 	require.False(t, snapshotStickyValue.FieldByName("SelectedAccountChanged").Bool())
+	require.Equal(t, "active", snap.SelectedGroup)
 	storedBoundAccountID := snapshotStickyValue.FieldByName("BoundAccountID")
 	require.Equal(t, reflect.Ptr, storedBoundAccountID.Kind())
 	require.False(t, storedBoundAccountID.IsNil())
 	require.Equal(t, account.ID, storedBoundAccountID.Elem().Int())
+}
+
+func TestStoreOpenAIRoutingSnapshot_RoutingSnapshotReserveAffinityCarrier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	account := &service.Account{ID: 6602, Name: "reserve-affinity"}
+	decisionType := reflect.TypeOf(service.OpenAIAccountScheduleDecision{})
+	stickyField, ok := decisionType.FieldByName("Sticky")
+	if !ok {
+		t.Fatal("missing Sticky field on OpenAIAccountScheduleDecision")
+	}
+	stickyValue := reflect.New(stickyField.Type.Elem())
+	stickyElem := stickyValue.Elem()
+	stickyElem.FieldByName("SessionSource").SetString("header_x_session_affinity")
+	stickyElem.FieldByName("SessionHashPresent").SetBool(true)
+	stickyElem.FieldByName("EvalResult").SetString("hit")
+	stickyElem.FieldByName("SelectedAccountChanged").SetBool(false)
+	stickyElem.FieldByName("ParentSessionPresent").SetBool(true)
+	stickyElem.FieldByName("ParentSessionKey").SetString("resp_prev_reserve")
+	boundAccountID := int64(6602)
+	stickyElem.FieldByName("BoundAccountID").Set(reflect.ValueOf(&boundAccountID))
+	affinityBindingField := stickyElem.FieldByName("AffinityBinding")
+	if !affinityBindingField.IsValid() {
+		t.Fatal("missing AffinityBinding field on sticky eval")
+	}
+	affinityBindingValue := reflect.New(affinityBindingField.Type().Elem())
+	affinityBindingElem := affinityBindingValue.Elem()
+	affinityBindingElem.FieldByName("BoundAccountID").SetInt(account.ID)
+	affinityBindingElem.FieldByName("AffinityDomain").SetString(string(service.TargetGroupExhausted))
+	affinityBindingElem.FieldByName("SelectedGroup").SetString("reserve")
+	affinityBindingField.Set(affinityBindingValue)
+
+	input := service.OpenAIRoutingSnapshotInput{
+		TargetGroup:    service.TargetGroupExhausted,
+		ScheduleLayer:  "session_hash",
+		SelectedGroup:  "reserve",
+		Account:        account,
+		RequestedModel: "gpt-5.4-Sys",
+		EffectiveModel: "gpt-5.4",
+	}
+	inputValue := reflect.ValueOf(&input).Elem()
+	stickyInputField := inputValue.FieldByName("Sticky")
+	if !stickyInputField.IsValid() {
+		t.Fatal("missing Sticky field on OpenAIRoutingSnapshotInput")
+	}
+	stickyInputField.Set(stickyValue)
+
+	snap := storeOpenAIRoutingSnapshot(c, input)
+	require.NotNil(t, snap)
+	require.Equal(t, "exhausted", snap.TargetGroup)
+	require.Equal(t, "reserve", snap.SelectedGroup)
+
+	snapshotStickyField := reflect.ValueOf(snap).Elem().FieldByName("Sticky")
+	require.True(t, snapshotStickyField.IsValid())
+	require.False(t, snapshotStickyField.IsNil())
+	snapshotAffinityBindingField := snapshotStickyField.Elem().FieldByName("AffinityBinding")
+	require.True(t, snapshotAffinityBindingField.IsValid())
+	require.False(t, snapshotAffinityBindingField.IsNil())
+	snapshotAffinityBinding := snapshotAffinityBindingField.Elem()
+	require.Equal(t, account.ID, snapshotAffinityBinding.FieldByName("BoundAccountID").Int())
+	require.Equal(t, string(service.TargetGroupExhausted), snapshotAffinityBinding.FieldByName("AffinityDomain").String())
+	require.Equal(t, "reserve", snapshotAffinityBinding.FieldByName("SelectedGroup").String())
+}
+
+func TestStoreOpenAIRoutingSnapshotFromDecision_SelectedGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	account := &service.Account{ID: 6610, Name: "reserve-acc"}
+	snap := storeOpenAIRoutingSnapshotFromDecision(
+		c,
+		service.TargetGroupExhausted,
+		service.OpenAIAccountScheduleDecision{
+			Layer:         "load_balance",
+			SelectedGroup: "reserve",
+		},
+		account,
+		"gpt-5.4-Sys",
+		"gpt-5.4",
+	)
+
+	require.NotNil(t, snap)
+	require.Equal(t, "exhausted", snap.TargetGroup)
+	require.Equal(t, "reserve", snap.SelectedGroup)
+	require.Same(t, snap, getOpenAIRoutingSnapshot(c))
 }
 
 func TestResolveOpenAIScheduleSessionSource_StickyContentFallback(t *testing.T) {

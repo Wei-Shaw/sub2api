@@ -12,15 +12,19 @@ export interface OpsRequestDetailsPreset {
   title: string
   kind?: OpsRequestDetailsParams['kind']
   sort?: OpsRequestDetailsParams['sort']
+  openai_routing_only?: boolean
   min_duration_ms?: number
   max_duration_ms?: number
   retried_only?: boolean
   routing_target_group?: string
+  routing_selected_group?: string
 }
 
 interface Props {
   modelValue: boolean
   timeRange: string
+  startTime?: string | null
+  endTime?: string | null
   preset: OpsRequestDetailsPreset
   platform?: string
   groupId?: number | null
@@ -52,6 +56,12 @@ const rangeLabel = computed(() => {
 })
 
 function buildTimeParams(): Pick<OpsRequestDetailsParams, 'start_time' | 'end_time'> {
+	if (props.timeRange === 'custom' && props.startTime && props.endTime) {
+		return {
+			start_time: props.startTime,
+			end_time: props.endTime,
+		}
+	}
   const minutes = parseTimeRangeMinutes(props.timeRange)
   const endTime = new Date()
   const startTime = new Date(endTime.getTime() - minutes * 60 * 1000)
@@ -77,12 +87,14 @@ const fetchData = async () => {
     if (platform) params.platform = platform
     if (typeof props.groupId === 'number' && props.groupId > 0) params.group_id = props.groupId
 
-    if (typeof props.preset.min_duration_ms === 'number') params.min_duration_ms = props.preset.min_duration_ms
-    if (typeof props.preset.max_duration_ms === 'number') params.max_duration_ms = props.preset.max_duration_ms
-    if (props.preset.retried_only) params.retried_only = true
-    if (props.preset.routing_target_group) params.routing_target_group = props.preset.routing_target_group
+	if (typeof props.preset.min_duration_ms === 'number') params.min_duration_ms = props.preset.min_duration_ms
+	if (typeof props.preset.max_duration_ms === 'number') params.max_duration_ms = props.preset.max_duration_ms
+	if (props.preset.openai_routing_only) params.openai_routing_only = true
+	if (props.preset.retried_only) params.retried_only = true
+	if (props.preset.routing_target_group) params.routing_target_group = props.preset.routing_target_group
+	if (props.preset.routing_selected_group) params.routing_selected_group = props.preset.routing_selected_group
 
-    const res = await opsAPI.listRequestDetails(params)
+	const res = await opsAPI.listRequestDetails(params)
     items.value = res.items || []
     total.value = res.total || 0
   } catch (e: any) {
@@ -109,14 +121,18 @@ watch(
 watch(
   () => [
     props.timeRange,
+    props.startTime,
+    props.endTime,
     props.platform,
     props.groupId,
     props.preset.kind,
     props.preset.sort,
+    props.preset.openai_routing_only,
     props.preset.min_duration_ms,
     props.preset.max_duration_ms,
     props.preset.retried_only,
-    props.preset.routing_target_group
+	    props.preset.routing_target_group,
+	    props.preset.routing_selected_group
   ],
   () => {
     if (!props.modelValue) return
@@ -181,6 +197,14 @@ function shouldShowStickySelectedAccountChanged(row: OpsRequestDetail): boolean 
   if (row.sticky_selected_account_changed == null) return false
   const evalResult = String(row.sticky_eval_result || '').trim()
   return evalResult !== 'no_session_signal' && evalResult !== 'miss_no_binding'
+}
+
+function formatRoutingSelectedGroup(value: string | null | undefined): string {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (normalized === 'active') return t('admin.usage.routingSelectedGroupActive')
+  if (normalized === 'exhausted') return t('admin.usage.routingSelectedGroupExhausted')
+  if (normalized === 'reserve') return t('admin.usage.routingSelectedGroupReserve')
+  return normalized || '-'
 }
 </script>
 
@@ -280,10 +304,14 @@ function shouldShowStickySelectedAccountChanged(row: OpsRequestDetail): boolean 
                     </div>
                   </td>
                   <td class="max-w-[260px] px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
-                    <div v-if="row.routing_target_group || row.routing_schedule_layer || row.routing_selected_account_name || row.routing_failover_count != null || hasStickyData(row)" class="space-y-2">
+                    <div v-if="row.routing_target_group || row.routing_selected_group || row.routing_schedule_layer || row.routing_selected_account_name || row.routing_failover_count != null || hasStickyData(row)" class="space-y-2">
                       <div v-if="row.routing_target_group">
                         <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.routingTargetGroup') }}:</span>
                         <span class="ml-1">{{ row.routing_target_group }}</span>
+                      </div>
+                      <div v-if="row.routing_selected_group">
+                        <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.routingSelectedGroup') }}:</span>
+                        <span class="ml-1">{{ formatRoutingSelectedGroup(row.routing_selected_group) }}</span>
                       </div>
                       <div v-if="row.routing_schedule_layer">
                         <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.routingScheduleLayer') }}:</span>

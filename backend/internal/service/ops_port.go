@@ -91,6 +91,7 @@ type OpsInsertErrorLogInput struct {
 	UpstreamModel string
 	// OpenAI routing observability fields. Empty/zero means unavailable.
 	RoutingTargetGroup           string
+	RoutingSelectedGroup         string
 	RoutingScheduleLayer         string
 	RoutingSelectedAccountID     *int64
 	RoutingSelectedAccountName   *string

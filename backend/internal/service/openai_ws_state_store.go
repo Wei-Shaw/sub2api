@@ -29,6 +29,11 @@ type openAIWSConnBinding struct {
 	expiresAt time.Time
 }
 
+type openAIWSAffinityBinding struct {
+	binding   openAIAffinityBinding
+	expiresAt time.Time
+}
+
 type openAIWSTurnStateBinding struct {
 	turnState string
 	expiresAt time.Time
@@ -68,6 +73,8 @@ type defaultOpenAIWSStateStore struct {
 
 	responseToAccountMu  sync.RWMutex
 	responseToAccount    map[string]openAIWSAccountBinding
+	responseToAffinityMu sync.RWMutex
+	responseToAffinity   map[string]openAIWSAffinityBinding
 	responseToConnMu     sync.RWMutex
 	responseToConn       map[string]openAIWSConnBinding
 	sessionToTurnStateMu sync.RWMutex
@@ -83,6 +90,7 @@ func NewOpenAIWSStateStore(cache GatewayCache) OpenAIWSStateStore {
 	store := &defaultOpenAIWSStateStore{
 		cache:              cache,
 		responseToAccount:  make(map[string]openAIWSAccountBinding, 256),
+		responseToAffinity: make(map[string]openAIWSAffinityBinding, 256),
 		responseToConn:     make(map[string]openAIWSConnBinding, 256),
 		sessionToTurnState: make(map[string]openAIWSTurnStateBinding, 256),
 		sessionToConn:      make(map[string]openAIWSSessionConnBinding, 256),
@@ -155,6 +163,7 @@ func (s *defaultOpenAIWSStateStore) DeleteResponseAccount(ctx context.Context, g
 	s.responseToAccountMu.Lock()
 	delete(s.responseToAccount, id)
 	s.responseToAccountMu.Unlock()
+	deleteOpenAIWSResponseAffinityBinding(ctx, s, groupID, id)
 
 	if s.cache == nil {
 		return nil
@@ -317,6 +326,10 @@ func (s *defaultOpenAIWSStateStore) maybeCleanup() {
 	cleanupExpiredAccountBindings(s.responseToAccount, now, openAIWSStateStoreCleanupMaxPerMap)
 	s.responseToAccountMu.Unlock()
 
+	s.responseToAffinityMu.Lock()
+	cleanupExpiredAffinityBindings(s.responseToAffinity, now, openAIWSStateStoreCleanupMaxPerMap)
+	s.responseToAffinityMu.Unlock()
+
 	s.responseToConnMu.Lock()
 	cleanupExpiredConnBindings(s.responseToConn, now, openAIWSStateStoreCleanupMaxPerMap)
 	s.responseToConnMu.Unlock()
@@ -347,6 +360,22 @@ func cleanupExpiredAccountBindings(bindings map[string]openAIWSAccountBinding, n
 }
 
 func cleanupExpiredConnBindings(bindings map[string]openAIWSConnBinding, now time.Time, maxScan int) {
+	if len(bindings) == 0 || maxScan <= 0 {
+		return
+	}
+	scanned := 0
+	for key, binding := range bindings {
+		if now.After(binding.expiresAt) {
+			delete(bindings, key)
+		}
+		scanned++
+		if scanned >= maxScan {
+			break
+		}
+	}
+}
+
+func cleanupExpiredAffinityBindings(bindings map[string]openAIWSAffinityBinding, now time.Time, maxScan int) {
 	if len(bindings) == 0 || maxScan <= 0 {
 		return
 	}
@@ -437,4 +466,104 @@ func withOpenAIWSStateStoreRedisTimeout(ctx context.Context) (context.Context, c
 		ctx = context.Background()
 	}
 	return context.WithTimeout(ctx, openAIWSStateStoreRedisTimeout)
+}
+
+func openAIWSStateStoreCompanionCache(store *defaultOpenAIWSStateStore) OpenAICompanionBindingCache {
+	if store == nil || store.cache == nil {
+		return nil
+	}
+	cache, _ := store.cache.(OpenAICompanionBindingCache)
+	return cache
+}
+
+func bindOpenAIWSResponseAffinityBinding(ctx context.Context, store OpenAIWSStateStore, groupID int64, responseID string, binding *openAIAffinityBinding, ttl time.Duration) error {
+	stateStore, ok := store.(*defaultOpenAIWSStateStore)
+	if !ok || stateStore == nil || binding == nil || binding.BoundAccountID <= 0 {
+		return nil
+	}
+	id := normalizeOpenAIWSResponseID(responseID)
+	if id == "" {
+		return nil
+	}
+	ttl = normalizeOpenAIWSTTL(ttl)
+	stateStore.maybeCleanup()
+	stateStore.responseToAffinityMu.Lock()
+	ensureBindingCapacity(stateStore.responseToAffinity, id, openAIWSStateStoreMaxEntriesPerMap)
+	stateStore.responseToAffinity[id] = openAIWSAffinityBinding{
+		binding:   *cloneOpenAIAffinityBinding(binding),
+		expiresAt: time.Now().Add(ttl),
+	}
+	stateStore.responseToAffinityMu.Unlock()
+
+	cache := openAIWSStateStoreCompanionCache(stateStore)
+	if cache == nil {
+		return nil
+	}
+	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(ctx)
+	defer cancel()
+	payload, err := marshalOpenAIAffinityBinding(binding)
+	if err != nil {
+		return err
+	}
+	return cache.SetOpenAICompanionBinding(cacheCtx, groupID, openAIResponseAffinityBindingNamespace, id, payload, ttl)
+}
+
+func getOpenAIWSResponseAffinityBinding(store OpenAIWSStateStore, groupID int64, responseID string) (*openAIAffinityBinding, bool) {
+	stateStore, ok := store.(*defaultOpenAIWSStateStore)
+	if !ok || stateStore == nil {
+		return nil, false
+	}
+	id := normalizeOpenAIWSResponseID(responseID)
+	if id == "" {
+		return nil, false
+	}
+	stateStore.maybeCleanup()
+	now := time.Now()
+	stateStore.responseToAffinityMu.RLock()
+	binding, ok := stateStore.responseToAffinity[id]
+	stateStore.responseToAffinityMu.RUnlock()
+	if ok {
+		if now.After(binding.expiresAt) {
+			deleteOpenAIWSResponseAffinityBinding(context.Background(), store, groupID, responseID)
+			return nil, false
+		}
+		return cloneOpenAIAffinityBinding(&binding.binding), true
+	}
+
+	cache := openAIWSStateStoreCompanionCache(stateStore)
+	if cache == nil {
+		return nil, false
+	}
+	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(context.Background())
+	defer cancel()
+	payload, err := cache.GetOpenAICompanionBinding(cacheCtx, groupID, openAIResponseAffinityBindingNamespace, id)
+	if err != nil || strings.TrimSpace(payload) == "" {
+		return nil, false
+	}
+	parsed, err := parseOpenAIAffinityBinding(payload)
+	if err != nil || parsed == nil {
+		return nil, false
+	}
+	return parsed, true
+}
+
+func deleteOpenAIWSResponseAffinityBinding(ctx context.Context, store OpenAIWSStateStore, groupID int64, responseID string) {
+	stateStore, ok := store.(*defaultOpenAIWSStateStore)
+	if !ok || stateStore == nil {
+		return
+	}
+	id := normalizeOpenAIWSResponseID(responseID)
+	if id == "" {
+		return
+	}
+	stateStore.responseToAffinityMu.Lock()
+	delete(stateStore.responseToAffinity, id)
+	stateStore.responseToAffinityMu.Unlock()
+	cache := openAIWSStateStoreCompanionCache(stateStore)
+	if cache == nil {
+		return
+	}
+	cacheCtx, cancel := withOpenAIWSStateStoreRedisTimeout(ctx)
+	defer cancel()
+	_ = cache.DeleteOpenAICompanionBinding(cacheCtx, groupID, openAIResponseAffinityBindingNamespace, id)
 }

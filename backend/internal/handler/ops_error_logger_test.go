@@ -87,10 +87,11 @@ func TestAttachOpsRequestBodyToEntry_InvalidJSONKeepsSize(t *testing.T) {
 	require.Equal(t, int64(1), OpsErrorLogSanitizedTotal())
 }
 
-func TestApplyOpenAIRoutingSnapshotToOpsEntry(t *testing.T) {
+func TestOpsErrorApplyOpenAIRoutingSnapshotToEntry_SelectedGroup(t *testing.T) {
 	entry := &service.OpsInsertErrorLogInput{}
 	snapshot := &service.OpenAIRoutingSnapshot{
 		TargetGroup:         "exhausted",
+		SelectedGroup:       "reserve",
 		ScheduleLayer:       "load_balance",
 		SelectedAccountID:   int64Ptr(66),
 		SelectedAccountName: stringPtr("acc-66"),
@@ -103,6 +104,7 @@ func TestApplyOpenAIRoutingSnapshotToOpsEntry(t *testing.T) {
 	applyOpenAIRoutingSnapshotToOpsEntry(entry, snapshot)
 
 	require.Equal(t, snapshot.TargetGroup, entry.RoutingTargetGroup)
+	require.Equal(t, snapshot.SelectedGroup, entry.RoutingSelectedGroup)
 	require.Equal(t, snapshot.ScheduleLayer, entry.RoutingScheduleLayer)
 	require.Equal(t, snapshot.SelectedAccountID, entry.RoutingSelectedAccountID)
 	require.Equal(t, snapshot.SelectedAccountName, entry.RoutingSelectedAccountName)

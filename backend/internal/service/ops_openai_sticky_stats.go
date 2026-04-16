@@ -30,14 +30,21 @@ type OpsOpenAIStickyStatsResponse struct {
 	StickyAccountSwitchCount int64          `json:"sticky_account_switch_count"`
 	StickyAccountSwitchRate  float64        `json:"sticky_account_switch_rate"`
 	EvalResultCount        map[string]int64 `json:"eval_result_count"`
+	SelectedGroupCount     map[string]int64 `json:"selected_group_count"`
 	SessionSourceCount     map[string]int64 `json:"session_source_count"`
 }
 
 func NewOpsOpenAIStickyStatsResponse() *OpsOpenAIStickyStatsResponse {
-	return &OpsOpenAIStickyStatsResponse{
+	groups := GetOpsOpenAIRoutingStatsGroups()
+	resp := &OpsOpenAIStickyStatsResponse{
 		EvalResultCount:    make(map[string]int64),
+		SelectedGroupCount: make(map[string]int64, len(groups)),
 		SessionSourceCount: make(map[string]int64),
 	}
+	for _, group := range groups {
+		resp.SelectedGroupCount[group] = 0
+	}
+	return resp
 }
 
 func (s *OpsService) GetOpenAIStickyStats(ctx context.Context, filter *OpsOpenAIStickyStatsFilter) (*OpsOpenAIStickyStatsResponse, error) {
