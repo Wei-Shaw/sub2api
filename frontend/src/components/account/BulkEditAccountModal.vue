@@ -921,6 +921,7 @@ import {
   getPresetMappingsByPlatform
 REDACTED from '@/composables/useModelWhitelist'
 import {
+  OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
   isOpenAIWSModeEnabled,
@@ -1069,6 +1070,7 @@ const isOpenAIModelRestrictionDisabled = computed(
 
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') REDACTED,
+  { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') REDACTED,
   { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') REDACTED
 ])
 const openAIWSModeConcurrencyHintKey = computed(() =>
