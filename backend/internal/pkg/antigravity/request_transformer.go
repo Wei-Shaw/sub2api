@@ -582,8 +582,12 @@ REDACTED
 	return maxOutputTokensUpperBound
 REDACTED
 
-func isAntigravityOpus46Model(model string) bool {
-	return strings.HasPrefix(strings.ToLower(model), "claude-opus-4-6")
+// isAntigravityOpusHighTierModel 判断是否为高阶 Opus 模型（4.6+），
+// 用于 adaptive thinking 时覆写为高预算。
+func isAntigravityOpusHighTierModel(model string) bool {
+	lower := strings.ToLower(model)
+	return strings.HasPrefix(lower, "claude-opus-4-6") ||
+		strings.HasPrefix(lower, "claude-opus-4-7")
 REDACTED
 
 func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {
@@ -605,12 +609,12 @@ REDACTED
 	REDACTED
 
 		// - thinking.type=enabled：budget_tokens>0 用显式预算
-		// - thinking.type=adaptive：仅在 Antigravity 的 Opus 4.6 上覆写为 （24576）
+		// - thinking.type=adaptive：在 Antigravity 的高阶 Opus（4.6+）上覆写为 （24576）
 		budget := -1
 		if req.Thinking.BudgetTokens > 0 {
 			budget = req.Thinking.BudgetTokens
 	REDACTED
-		if req.Thinking.Type == "adaptive" && isAntigravityOpus46Model(req.Model) {
+		if req.Thinking.Type == "adaptive" && isAntigravityOpusHighTierModel(req.Model) {
 			budget = ClaudeAdaptiveHighThinkingBudgetTokens
 	REDACTED
 
