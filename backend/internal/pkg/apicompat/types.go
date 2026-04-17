@@ -260,8 +260,9 @@ type ResponsesOutput struct {
 
 // WebSearchAction describes the search action in a web_search_call output item.
 type WebSearchAction struct {
-	Type  string `json:"type,omitempty"`  // "search"
-	Query string `json:"query,omitempty"` // primary search query
+	Type    string          `json:"type,omitempty"`    // "search"
+	Query   string          `json:"query,omitempty"`   // primary search query
+	Sources json.RawMessage `json:"sources,omitempty"` // raw upstream sources payload
 }
 
 // ResponsesSummary is a summary text block inside a reasoning output.

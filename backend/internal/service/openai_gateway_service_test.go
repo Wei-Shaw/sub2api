@@ -3042,6 +3042,204 @@ func TestHandleSSEToJSON_CompletedEventReturnsJSON(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), "data:")
 }
 
+func TestHandleSSEToJSON_OAuthNonCompactSupplementsWebSearchCallAndToolUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: response.output_item.done`,
+			`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"openai pricing","sources":[{"type":"url_citation","title":"Reuters","url":"https://www.reuters.com/example"}]}}}`,
+			``,
+			`event: response.reasoning_summary_text.delta`,
+			`data: {"type":"response.reasoning_summary_text.delta","output_index":1,"summary_index":0,"delta":"search strategy"}`,
+			``,
+			`event: response.output_text.delta`,
+			`data: {"type":"response.output_text.delta","output_index":2,"content_index":0,"delta":"pricing result"}`,
+			``,
+			`event: response.completed`,
+			`data: {"type":"response.completed","response":{"id":"resp_oauth_1","model":"gpt-5.4","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"tool_usage":{"web_search":{"num_requests":0,"debug":"keep-me"},"other_tool":{"count":7}},"usage":{"input_tokens":1,"output_tokens":2}}}`,
+			``,
+			`data: [DONE]`,
+		}, "\n"))),
+	}
+
+	usage, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}, "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, 1, usage.InputTokens)
+	require.Equal(t, 2, usage.OutputTokens)
+
+	bodyText := rec.Body.String()
+	require.True(t, gjson.Get(bodyText, `output.#(type=="web_search_call")`).Exists())
+	require.Equal(t, "Reuters", gjson.Get(bodyText, `output.#(type=="web_search_call").action.sources.0.title`).String())
+	require.Equal(t, "https://www.reuters.com/example", gjson.Get(bodyText, `output.#(type=="web_search_call").action.sources.0.url`).String())
+	require.Equal(t, int64(1), gjson.Get(bodyText, `tool_usage.web_search.num_requests`).Int())
+	require.Equal(t, "keep-me", gjson.Get(bodyText, `tool_usage.web_search.debug`).String())
+	require.Equal(t, int64(7), gjson.Get(bodyText, `tool_usage.other_tool.count`).Int())
+	require.True(t, strings.HasPrefix(gjson.Get(bodyText, `output.#(type=="message").id`).String(), "msg_"))
+	require.Equal(t, "[]", gjson.Get(bodyText, `output.#(type=="message").content.0.annotations`).Raw)
+}
+
+func TestHandleSSEToJSON_OAuthNonCompactStrengthensExistingWebSearchCallWithoutDuplicate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: response.output_item.done`,
+			`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_same","status":"completed","action":{"type":"search","query":"openai pricing","sources":[{"type":"url_citation","title":"Reuters","url":"https://www.reuters.com/example"}]}}}`,
+			``,
+			`event: response.completed`,
+			`data: {"type":"response.completed","response":{"id":"resp_oauth_2","model":"gpt-5.4","output":[{"type":"web_search_call","id":"ws_same","status":"completed","action":{"type":"search","query":"openai pricing"}},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"tool_usage":{"web_search":{"num_requests":0}},"usage":{"input_tokens":1,"output_tokens":2}}}`,
+			``,
+			`data: [DONE]`,
+		}, "\n"))),
+	}
+
+	usage, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}, "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+
+	bodyText := rec.Body.String()
+	output := gjson.Get(bodyText, "output").Array()
+	wsCount := 0
+	for _, item := range output {
+		if item.Get("id").String() != "ws_same" {
+			continue
+		}
+		wsCount++
+		require.Equal(t, "https://www.reuters.com/example", item.Get("action.sources.0.url").String())
+	}
+	require.Equal(t, 1, wsCount)
+	require.Equal(t, int64(1), gjson.Get(bodyText, `tool_usage.web_search.num_requests`).Int())
+}
+
+func TestHandleSSEToJSON_UniqueDeltaOnlyMessageSlotMergesWithTerminalMessageID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: response.output_item.done`,
+			`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"openai pricing"}}}`,
+			``,
+			`event: response.output_text.delta`,
+			`data: {"type":"response.output_text.delta","output_index":1,"content_index":0,"delta":"pricing result"}`,
+			``,
+			`event: response.completed`,
+			`data: {"type":"response.completed","response":{"id":"resp_oauth_unique_1","model":"gpt-5.4","output":[{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"openai pricing"}},{"type":"message","id":"msg_term_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"tool_usage":{"web_search":{"num_requests":1}},"usage":{"input_tokens":1,"output_tokens":2}}}`,
+			``,
+			`data: [DONE]`,
+		}, "\n"))),
+	}
+
+	usage, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}, "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+
+	bodyText := rec.Body.String()
+	messageCount := 0
+	for _, item := range gjson.Get(bodyText, "output").Array() {
+		if item.Get("type").String() == "message" {
+			messageCount++
+			require.Equal(t, "msg_term_1", item.Get("id").String())
+		}
+	}
+	require.Equal(t, 1, messageCount)
+	require.Equal(t, int64(1), gjson.Get(bodyText, `tool_usage.web_search.num_requests`).Int())
+}
+
+func TestHandleSSEToJSON_OpenCodeStillFiltersSupplementedWebSearchCallAndSkipsToolUsageFix(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "opencode/1.4.3")
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+	}
+	body := []byte(strings.Join([]string{
+		`event: response.output_item.done`,
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"openai pricing","sources":[{"type":"url_citation","title":"Reuters","url":"https://www.reuters.com/example"}]}}}`,
+		``,
+		`event: response.reasoning_summary_text.delta`,
+		`data: {"type":"response.reasoning_summary_text.delta","output_index":1,"summary_index":0,"delta":"search strategy"}`,
+		``,
+		`event: response.output_text.delta`,
+		`data: {"type":"response.output_text.delta","output_index":2,"content_index":0,"delta":"pricing result"}`,
+		``,
+		`event: response.completed`,
+		`data: {"type":"response.completed","response":{"id":"resp_opencode_1","model":"gpt-5.4","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"tool_usage":{"web_search":{"num_requests":0}},"usage":{"input_tokens":1,"output_tokens":2}}}`,
+		``,
+		`data: [DONE]`,
+	}, "\n"))
+
+	usage, err := svc.handleSSEToJSONForAccount(resp, c, body, &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}, "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+
+	bodyText := rec.Body.String()
+	require.NotContains(t, bodyText, `"type":"web_search_call"`)
+	require.Contains(t, bodyText, `pricing result`)
+	require.Contains(t, bodyText, `search strategy`)
+	require.Equal(t, int64(0), gjson.Get(bodyText, `tool_usage.web_search.num_requests`).Int())
+}
+
+func TestHandleNonStreamingResponse_APIKeySSEFallbackDoesNotSupplementOAuthOnlySemantics(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: response.output_item.done`,
+			`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"completed","action":{"type":"search","query":"openai pricing","sources":[{"type":"url_citation","title":"Reuters","url":"https://www.reuters.com/example"}]}}}`,
+			``,
+			`event: response.reasoning_summary_text.delta`,
+			`data: {"type":"response.reasoning_summary_text.delta","output_index":1,"summary_index":0,"delta":"search strategy"}`,
+			``,
+			`event: response.output_text.delta`,
+			`data: {"type":"response.output_text.delta","output_index":2,"content_index":0,"delta":"pricing result"}`,
+			``,
+			`event: response.completed`,
+			`data: {"type":"response.completed","response":{"id":"resp_api_key_oauth_only_1","model":"gpt-5.4","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"tool_usage":{"web_search":{"num_requests":0}},"usage":{"input_tokens":1,"output_tokens":2}}}`,
+			``,
+			`data: [DONE]`,
+		}, "\n"))),
+	}
+
+	usage, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+
+	bodyText := rec.Body.String()
+	require.NotContains(t, bodyText, `"type":"web_search_call"`)
+	require.Equal(t, int64(0), gjson.Get(bodyText, `tool_usage.web_search.num_requests`).Int())
+}
+
 func TestHandleSSEToJSON_OpenCodeFiltersWebSearchCallFromFinalResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -3185,7 +3383,7 @@ func TestHandleNonStreamingResponse_OpenCodeFiltersWebSearchCallOutput(t *testin
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","model":"gpt-5.4","output":[{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}},{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"search strategy"}]},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"usage":{"input_tokens":1,"output_tokens":2}}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_1","model":"gpt-5.4","output":[{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}},{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"search strategy"}]},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"usage":{"input_tokens":1,"output_tokens":2}}`)),
 	}
 
 	usage, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{Type: AccountTypeAPIKey}, "gpt-5.4", "gpt-5.4")
@@ -3209,7 +3407,7 @@ func TestHandleNonStreamingResponse_NormalizesResponsesJSONForAISDK(t *testing.T
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body: io.NopCloser(strings.NewReader(`{"id":"resp_sdk_1","model":"gpt-5.4","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]},{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}}],"usage":{"input_tokens":1,"output_tokens":2}}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_sdk_1","model":"gpt-5.4","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]},{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}}],"usage":{"input_tokens":1,"output_tokens":2}}`)),
 	}
 
 	usage, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{Type: AccountTypeAPIKey}, "gpt-5.4", "gpt-5.4")

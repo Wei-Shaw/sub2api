@@ -4867,7 +4867,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	// Some OpenAI-compatible upstreams (including other sub2api instances)
 	// may return SSE even when stream=false was requested.
 	if isEventStreamResponse(resp.Header) {
-		return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
+		return s.handleSSEToJSONForAccount(resp, c, body, account, originalModel, mappedModel)
 	}
 	// For OAuth accounts, also fall back to a body-content heuristic because
 	// the upstream may omit the Content-Type header while still sending SSE.
@@ -4877,7 +4877,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	if account.Type == AccountTypeOAuth {
 		bodyLooksLikeSSE := bytes.Contains(body, []byte("data:")) || bytes.Contains(body, []byte("event:"))
 		if bodyLooksLikeSSE {
-			return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
+			return s.handleSSEToJSONForAccount(resp, c, body, account, originalModel, mappedModel)
 		}
 	}
 
@@ -4926,18 +4926,31 @@ func isEventStreamResponse(header http.Header) bool {
 }
 
 func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Context, body []byte, originalModel, mappedModel string) (*OpenAIUsage, error) {
+	return s.handleSSEToJSONForAccount(resp, c, body, nil, originalModel, mappedModel)
+}
+
+func (s *OpenAIGatewayService) handleSSEToJSONForAccount(resp *http.Response, c *gin.Context, body []byte, account *Account, originalModel, mappedModel string) (*OpenAIUsage, error) {
 	bodyText := string(body)
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
+	isOpenCodeClient := isOpenCodeResponsesClient(c)
+	applySupplement := shouldSupplementOAuthNonCompactResponses(c, account)
+	applyToolUsageReconcile := applySupplement && !isOpenCodeClient
 
 	usage := &OpenAIUsage{}
 	if ok {
 		if parsedUsage, parsed := extractOpenAIUsageFromJSONBytes(finalResponse); parsed {
 			*usage = parsedUsage
 		}
-		// When the terminal event has an empty output array, reconstruct
-		// output from accumulated delta events so the client gets full content.
-		// gjson Array() returns empty slice for null, missing, or empty arrays.
-		if len(gjson.GetBytes(finalResponse, "output").Array()) == 0 {
+		if applySupplement {
+			if mergedResponse, changed, err := mergeCompletedResponsesOutputFromSSE(finalResponse, bodyText, applyToolUsageReconcile); err != nil {
+				return nil, fmt.Errorf("merge completed responses output from sse: %w", err)
+			} else if changed {
+				finalResponse = mergedResponse
+			}
+		} else if len(gjson.GetBytes(finalResponse, "output").Array()) == 0 {
+			// When the terminal event has an empty output array, reconstruct
+			// output from accumulated delta events so the client gets full content.
+			// gjson Array() returns empty slice for null, missing, or empty arrays.
 			if outputJSON, reconstructed := reconstructResponseOutputFromSSE(bodyText); reconstructed {
 				if patched, err := sjson.SetRawBytes(finalResponse, "output", outputJSON); err == nil {
 					finalResponse = patched
@@ -4945,7 +4958,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			}
 		}
 		body = finalResponse
-		if isOpenCodeResponsesClient(c) {
+		if isOpenCodeClient {
 			filteredBody, changed, err := sanitizeOpenCodeResponsesOutput(body)
 			if err != nil {
 				return nil, fmt.Errorf("sanitize openai responses sse output: %w", err)
@@ -4977,7 +4990,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		if originalModel != mappedModel {
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
 		}
-		if isOpenCodeResponsesClient(c) {
+		if isOpenCodeClient {
 			bodyText = filterOpenCodeResponsesSSEBody(bodyText)
 		}
 		body = []byte(bodyText)
@@ -4998,7 +5011,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 }
 
 func (s *OpenAIGatewayService) handleOAuthSSEToJSON(resp *http.Response, c *gin.Context, body []byte, originalModel, mappedModel string) (*OpenAIUsage, error) {
-	return s.handleSSEToJSON(resp, c, body, originalModel, mappedModel)
+	return s.handleSSEToJSONForAccount(resp, c, body, &Account{Type: AccountTypeOAuth}, originalModel, mappedModel)
 }
 
 func extractOpenAISSETerminalEvent(body string) (string, []byte, bool) {
@@ -5092,6 +5105,425 @@ func reconstructResponseOutputFromSSE(bodyText string) ([]byte, bool) {
 		return nil, false
 	}
 	return outputJSON, true
+}
+
+func shouldSupplementOAuthNonCompactResponses(c *gin.Context, account *Account) bool {
+	return account != nil && account.Type == AccountTypeOAuth && !isOpenAIResponsesCompactPath(c)
+}
+
+type canonicalResponsesOutputSlot struct {
+	OutputIndex int
+	Item        map[string]any
+}
+
+func mergeCompletedResponsesOutputFromSSE(finalResponse []byte, bodyText string, reconcileToolUsage bool) ([]byte, bool, error) {
+	if len(finalResponse) == 0 || !gjson.ValidBytes(finalResponse) {
+		return finalResponse, false, nil
+	}
+
+	canonical, ok, err := buildCanonicalOutputMapsFromSSE(bodyText)
+	if err != nil {
+		return nil, false, err
+	}
+	if !ok {
+		return finalResponse, false, nil
+	}
+
+	var responseMap map[string]any
+	if err := json.Unmarshal(finalResponse, &responseMap); err != nil {
+		return nil, false, err
+	}
+
+	changed, err := mergeTerminalOutputWithCanonical(responseMap, canonical)
+	if err != nil {
+		return nil, false, err
+	}
+	if reconcileToolUsage && reconcileWebSearchToolUsage(responseMap) {
+		changed = true
+	}
+	if !changed {
+		return finalResponse, false, nil
+	}
+
+	mergedResponse, err := json.Marshal(responseMap)
+	if err != nil {
+		return nil, false, err
+	}
+	return mergedResponse, true, nil
+}
+
+func buildCanonicalOutputMapsFromSSE(bodyText string) ([]canonicalResponsesOutputSlot, bool, error) {
+	acc := apicompat.NewBufferedResponseAccumulator()
+	for _, line := range strings.Split(bodyText, "\n") {
+		data, ok := extractOpenAISSEDataLine(line)
+		if !ok || data == "" || data == "[DONE]" {
+			continue
+		}
+
+		var event apicompat.ResponsesStreamEvent
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+		acc.ProcessEvent(&event)
+	}
+
+	indexed := acc.BuildIndexedOutput()
+	if len(indexed) == 0 {
+		return nil, false, nil
+	}
+
+	canonical := make([]canonicalResponsesOutputSlot, 0, len(indexed))
+	for _, indexedItem := range indexed {
+		itemMap, err := responsesOutputToMap(indexedItem.Item)
+		if err != nil {
+			return nil, false, err
+		}
+		canonical = append(canonical, canonicalResponsesOutputSlot{
+			OutputIndex: indexedItem.OutputIndex,
+			Item:        itemMap,
+		})
+	}
+	return canonical, true, nil
+}
+
+func mergeTerminalOutputWithCanonical(finalResponse map[string]any, canonical []canonicalResponsesOutputSlot) (bool, error) {
+	if len(canonical) == 0 {
+		return false, nil
+	}
+
+	oldOutputJSON, err := json.Marshal(finalResponse["output"])
+	if err != nil {
+		return false, err
+	}
+
+	terminalOutput, err := responseOutputMapsFromValue(finalResponse["output"])
+	if err != nil {
+		return false, err
+	}
+
+	remainingCanonicalNoKeyByType := make(map[string]int)
+	for _, slot := range canonical {
+		if responsesOutputStableKey(slot.Item) != "" {
+			continue
+		}
+		itemType := responsesOutputMapType(slot.Item)
+		if itemType == "" {
+			continue
+		}
+		remainingCanonicalNoKeyByType[itemType]++
+	}
+
+	matchedTerminal := make([]bool, len(terminalOutput))
+	seenKeys := make(map[string]struct{})
+	unresolvedCanonicalNoKeyByType := make(map[string]int)
+	mergedOutput := make([]map[string]any, 0, len(canonical)+len(terminalOutput))
+	for _, canonicalSlot := range canonical {
+		canonicalItem := canonicalSlot.Item
+		matchIndex := findMatchingTerminalOutputItem(terminalOutput, matchedTerminal, canonicalSlot, remainingCanonicalNoKeyByType)
+		mergedItem := cloneJSONObject(canonicalItem)
+		if matchIndex >= 0 {
+			matchedTerminal[matchIndex] = true
+			mergedItem = mergeCanonicalAndTerminalOutputItem(canonicalItem, terminalOutput[matchIndex])
+		}
+		if responsesOutputStableKey(canonicalItem) == "" {
+			itemType := responsesOutputMapType(canonicalItem)
+			if itemType != "" {
+				remainingCanonicalNoKeyByType[itemType]--
+				if matchIndex < 0 {
+					unresolvedCanonicalNoKeyByType[itemType]++
+				}
+			}
+		}
+		if stableKey := responsesOutputStableKey(mergedItem); stableKey != "" {
+			if _, exists := seenKeys[stableKey]; exists {
+				continue
+			}
+			seenKeys[stableKey] = struct{}{}
+		}
+		mergedOutput = append(mergedOutput, mergedItem)
+	}
+
+	for i, terminalItem := range terminalOutput {
+		if matchedTerminal[i] {
+			continue
+		}
+		itemType := responsesOutputMapType(terminalItem)
+		stableKey := responsesOutputStableKey(terminalItem)
+		if stableKey == "" && itemType != "" && unresolvedCanonicalNoKeyByType[itemType] > 0 {
+			continue
+		}
+		if stableKey != "" {
+			if _, exists := seenKeys[stableKey]; exists {
+				continue
+			}
+			seenKeys[stableKey] = struct{}{}
+		}
+		mergedOutput = append(mergedOutput, cloneJSONObject(terminalItem))
+	}
+
+	newOutputJSON, err := json.Marshal(mergedOutput)
+	if err != nil {
+		return false, err
+	}
+	if bytes.Equal(oldOutputJSON, newOutputJSON) {
+		return false, nil
+	}
+
+	finalResponse["output"] = mergedOutput
+	return true, nil
+}
+
+func reconcileWebSearchToolUsage(finalResponse map[string]any) bool {
+	toolUsage, ok := finalResponse["tool_usage"].(map[string]any)
+	if !ok {
+		return false
+	}
+	webSearchUsage, ok := toolUsage["web_search"].(map[string]any)
+	if !ok {
+		return false
+	}
+
+	outputItems, err := responseOutputMapsFromValue(finalResponse["output"])
+	if err != nil {
+		return false
+	}
+	webSearchCalls := 0
+	for _, item := range outputItems {
+		if responsesOutputMapType(item) == "web_search_call" {
+			webSearchCalls++
+		}
+	}
+	if webSearchCalls == 0 {
+		return false
+	}
+
+	current, ok := jsonInt64Value(webSearchUsage["num_requests"])
+	if !ok {
+		current = 0
+	}
+	if current >= int64(webSearchCalls) {
+		return false
+	}
+	webSearchUsage["num_requests"] = webSearchCalls
+	return true
+}
+
+func responsesOutputToMap(item apicompat.ResponsesOutput) (map[string]any, error) {
+	raw, err := json.Marshal(item)
+	if err != nil {
+		return nil, err
+	}
+	var itemMap map[string]any
+	if err := json.Unmarshal(raw, &itemMap); err != nil {
+		return nil, err
+	}
+	return itemMap, nil
+}
+
+func responseOutputMapsFromValue(value any) ([]map[string]any, error) {
+	if value == nil {
+		return nil, nil
+	}
+
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, nil
+	}
+
+	var items []any
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil, err
+	}
+
+	output := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("response output item has type %T", item)
+		}
+		output = append(output, itemMap)
+	}
+	return output, nil
+}
+
+func findMatchingTerminalOutputItem(terminalOutput []map[string]any, matchedTerminal []bool, canonicalSlot canonicalResponsesOutputSlot, remainingCanonicalNoKeyByType map[string]int) int {
+	canonicalItem := canonicalSlot.Item
+	canonicalKey := responsesOutputStableKey(canonicalItem)
+	if canonicalKey != "" {
+		for i, terminalItem := range terminalOutput {
+			if matchedTerminal[i] || responsesOutputStableKey(terminalItem) != canonicalKey {
+				continue
+			}
+			return i
+		}
+		return -1
+	}
+
+	itemType := responsesOutputMapType(canonicalItem)
+	if itemType == "" || remainingCanonicalNoKeyByType[itemType] != 1 {
+		return -1
+	}
+
+	var candidateIndexes []int
+	for i, terminalItem := range terminalOutput {
+		if matchedTerminal[i] || responsesOutputMapType(terminalItem) != itemType {
+			continue
+		}
+		candidateIndexes = append(candidateIndexes, i)
+	}
+	if len(candidateIndexes) == 1 {
+		return candidateIndexes[0]
+	}
+	return -1
+}
+
+func mergeCanonicalAndTerminalOutputItem(canonicalItem, terminalItem map[string]any) map[string]any {
+	switch responsesOutputMapType(canonicalItem) {
+	case "message":
+		return mergeJSONObject(canonicalItem, terminalItem, true)
+	case "reasoning", "function_call", "web_search_call":
+		return mergeJSONObject(canonicalItem, terminalItem, false)
+	default:
+		return mergeJSONObject(canonicalItem, terminalItem, false)
+	}
+}
+
+func mergeJSONObject(base, overlay map[string]any, preferOverlay bool) map[string]any {
+	result := cloneJSONObject(base)
+	for key, overlayValue := range overlay {
+		existingValue, exists := result[key]
+		if !exists {
+			result[key] = cloneJSONValue(overlayValue)
+			continue
+		}
+
+		overlayMap, overlayIsMap := overlayValue.(map[string]any)
+		existingMap, existingIsMap := existingValue.(map[string]any)
+		if overlayIsMap {
+			if existingIsMap {
+				result[key] = mergeJSONObject(existingMap, overlayMap, preferOverlay)
+			} else if preferOverlay || isEmptyJSONValue(existingValue) {
+				result[key] = cloneJSONObject(overlayMap)
+			}
+			continue
+		}
+
+		if _, ok := overlayValue.([]any); ok {
+			if preferOverlay || isEmptyJSONValue(existingValue) {
+				result[key] = cloneJSONValue(overlayValue)
+			}
+			continue
+		}
+
+		if preferOverlay {
+			if !isEmptyJSONValue(overlayValue) || isEmptyJSONValue(existingValue) {
+				result[key] = cloneJSONValue(overlayValue)
+			}
+			continue
+		}
+		if isEmptyJSONValue(existingValue) && !isEmptyJSONValue(overlayValue) {
+			result[key] = cloneJSONValue(overlayValue)
+		}
+	}
+	return result
+}
+
+func responsesOutputStableKey(item map[string]any) string {
+	itemType := responsesOutputMapType(item)
+	if itemType == "" {
+		return ""
+	}
+
+	switch itemType {
+	case "function_call":
+		callID := strings.TrimSpace(asStringMaybe(item["call_id"]))
+		if callID == "" {
+			return ""
+		}
+		return itemType + ":" + callID
+	case "message", "reasoning", "web_search_call":
+		id := strings.TrimSpace(asStringMaybe(item["id"]))
+		if id == "" {
+			return ""
+		}
+		return itemType + ":" + id
+	default:
+		return ""
+	}
+}
+
+func responsesOutputMapType(item map[string]any) string {
+	return strings.TrimSpace(asStringMaybe(item["type"]))
+}
+
+func isEmptyJSONValue(value any) bool {
+	switch typed := value.(type) {
+	case nil:
+		return true
+	case string:
+		return strings.TrimSpace(typed) == ""
+	case []any:
+		return len(typed) == 0
+	case map[string]any:
+		return len(typed) == 0
+	default:
+		return false
+	}
+}
+
+func cloneJSONObject(input map[string]any) map[string]any {
+	if input == nil {
+		return nil
+	}
+	cloned, _ := cloneJSONValue(input).(map[string]any)
+	if cloned == nil {
+		return map[string]any{}
+	}
+	return cloned
+}
+
+func cloneJSONValue(value any) any {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return value
+	}
+	var cloned any
+	if err := json.Unmarshal(raw, &cloned); err != nil {
+		return value
+	}
+	return cloned
+}
+
+func jsonInt64Value(value any) (int64, bool) {
+	switch typed := value.(type) {
+	case nil:
+		return 0, false
+	case int:
+		return int64(typed), true
+	case int8:
+		return int64(typed), true
+	case int16:
+		return int64(typed), true
+	case int32:
+		return int64(typed), true
+	case int64:
+		return typed, true
+	case float32:
+		return int64(typed), true
+	case float64:
+		return int64(typed), true
+	case json.Number:
+		parsed, err := typed.Int64()
+		return parsed, err == nil
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func (s *OpenAIGatewayService) parseSSEUsageFromBody(body string) *OpenAIUsage {
