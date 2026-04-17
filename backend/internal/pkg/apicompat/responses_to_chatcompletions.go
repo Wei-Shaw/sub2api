@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -384,6 +385,20 @@ type bufferedFuncCall struct {
 	Args   strings.Builder
 }
 
+type indexedOutputSlot struct {
+	item      *ResponsesOutput
+	text      strings.Builder
+	reasoning strings.Builder
+	funcArgs  strings.Builder
+}
+
+// IndexedResponsesOutput is a canonical output item paired with its original
+// Responses output_index position.
+type IndexedResponsesOutput struct {
+	OutputIndex int
+	Item        ResponsesOutput
+}
+
 // BufferedResponseAccumulator collects content from Responses SSE delta events
 // so that non-streaming handlers can reconstruct output when the terminal event
 // (response.completed / response.done) carries an empty output array.
@@ -392,12 +407,14 @@ type BufferedResponseAccumulator struct {
 	reasoning            strings.Builder
 	funcCalls            []bufferedFuncCall
 	outputIndexToFuncIdx map[int]int
+	indexedSlots         map[int]*indexedOutputSlot
 }
 
 // NewBufferedResponseAccumulator returns an initialised accumulator.
 func NewBufferedResponseAccumulator() *BufferedResponseAccumulator {
 	return &BufferedResponseAccumulator{
 		outputIndexToFuncIdx: make(map[int]int),
+		indexedSlots:         make(map[int]*indexedOutputSlot),
 	}
 }
 
@@ -409,8 +426,12 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 	case "response.output_text.delta":
 		if event.Delta != "" {
 			_, _ = a.text.WriteString(event.Delta)
+			_, _ = a.ensureIndexedSlot(event.OutputIndex).text.WriteString(event.Delta)
 		}
 	case "response.output_item.added":
+		if event.Item != nil {
+			a.recordIndexedSlotItem(event.OutputIndex, event.Item)
+		}
 		if event.Item != nil && event.Item.Type == "function_call" {
 			idx := len(a.funcCalls)
 			a.outputIndexToFuncIdx[event.OutputIndex] = idx
@@ -421,6 +442,25 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 		}
 	case "response.function_call_arguments.delta":
 		if event.Delta != "" {
+			slot := a.ensureIndexedSlot(event.OutputIndex)
+			_, _ = slot.funcArgs.WriteString(event.Delta)
+			if slot.item != nil {
+				if slot.item.Type == "" {
+					slot.item.Type = "function_call"
+				}
+				if slot.item.CallID == "" {
+					slot.item.CallID = event.CallID
+				}
+				if slot.item.Name == "" {
+					slot.item.Name = event.Name
+				}
+			} else {
+				slot.item = &ResponsesOutput{
+					Type:   "function_call",
+					CallID: event.CallID,
+					Name:   event.Name,
+				}
+			}
 			if idx, ok := a.outputIndexToFuncIdx[event.OutputIndex]; ok {
 				_, _ = a.funcCalls[idx].Args.WriteString(event.Delta)
 			}
@@ -428,6 +468,11 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 	case "response.reasoning_summary_text.delta":
 		if event.Delta != "" {
 			_, _ = a.reasoning.WriteString(event.Delta)
+			_, _ = a.ensureIndexedSlot(event.OutputIndex).reasoning.WriteString(event.Delta)
+		}
+	case "response.output_item.done":
+		if event.Item != nil {
+			a.recordIndexedSlotItem(event.OutputIndex, event.Item)
 		}
 	}
 }
@@ -476,6 +521,34 @@ func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 	return out
 }
 
+// BuildIndexedOutput constructs a canonical SSE output view ordered by
+// output_index without changing the legacy BuildOutput ordering.
+func (a *BufferedResponseAccumulator) BuildIndexedOutput() []IndexedResponsesOutput {
+	if len(a.indexedSlots) == 0 {
+		return nil
+	}
+
+	indexes := make([]int, 0, len(a.indexedSlots))
+	for outputIndex := range a.indexedSlots {
+		indexes = append(indexes, outputIndex)
+	}
+	sort.Ints(indexes)
+
+	out := make([]IndexedResponsesOutput, 0, len(indexes))
+	for _, outputIndex := range indexes {
+		item, ok := buildIndexedResponsesItem(a.indexedSlots[outputIndex])
+		if !ok {
+			continue
+		}
+		out = append(out, IndexedResponsesOutput{
+			OutputIndex: outputIndex,
+			Item:        item,
+		})
+	}
+
+	return out
+}
+
 // SupplementResponseOutput fills resp.Output from accumulated delta content
 // when the terminal event delivered an empty output array. If resp.Output is
 // already populated, this is a no-op (preserves backward compatibility).
@@ -487,4 +560,129 @@ func (a *BufferedResponseAccumulator) SupplementResponseOutput(resp *ResponsesRe
 		return
 	}
 	resp.Output = a.BuildOutput()
+}
+
+func (a *BufferedResponseAccumulator) ensureIndexedSlot(outputIndex int) *indexedOutputSlot {
+	if slot, ok := a.indexedSlots[outputIndex]; ok {
+		return slot
+	}
+	slot := &indexedOutputSlot{}
+	a.indexedSlots[outputIndex] = slot
+	return slot
+}
+
+func (a *BufferedResponseAccumulator) recordIndexedSlotItem(outputIndex int, item *ResponsesOutput) {
+	slot := a.ensureIndexedSlot(outputIndex)
+	if slot.item != nil && item != nil && (slot.item.Type == "function_call" || item.Type == "function_call") {
+		slot.item = mergeIndexedFunctionCallItem(slot.item, item)
+		return
+	}
+	slot.item = cloneResponsesOutput(item)
+}
+
+func buildIndexedResponsesItem(slot *indexedOutputSlot) (ResponsesOutput, bool) {
+	if slot == nil {
+		return ResponsesOutput{}, false
+	}
+
+	if slot.item != nil {
+		item := *cloneResponsesOutput(slot.item)
+		switch item.Type {
+		case "message":
+			if len(item.Content) == 0 && slot.text.Len() > 0 {
+				item.Role = firstNonEmpty(item.Role, "assistant")
+				item.Content = []ResponsesContentPart{{
+					Type: "output_text",
+					Text: slot.text.String(),
+				}}
+			}
+		case "reasoning":
+			if len(item.Summary) == 0 && slot.reasoning.Len() > 0 {
+				item.Summary = []ResponsesSummary{{
+					Type: "summary_text",
+					Text: slot.reasoning.String(),
+				}}
+			}
+		case "function_call":
+			if item.Arguments == "" && slot.funcArgs.Len() > 0 {
+				item.Arguments = slot.funcArgs.String()
+			}
+		}
+		return item, item.Type != ""
+	}
+
+	if slot.reasoning.Len() > 0 {
+		return ResponsesOutput{
+			Type: "reasoning",
+			Summary: []ResponsesSummary{{
+				Type: "summary_text",
+				Text: slot.reasoning.String(),
+			}},
+		}, true
+	}
+
+	if slot.text.Len() > 0 {
+		return ResponsesOutput{
+			Type: "message",
+			Role: "assistant",
+			Content: []ResponsesContentPart{{
+				Type: "output_text",
+				Text: slot.text.String(),
+			}},
+		}, true
+	}
+
+	if slot.funcArgs.Len() > 0 {
+		return ResponsesOutput{
+			Type:      "function_call",
+			Arguments: slot.funcArgs.String(),
+		}, true
+	}
+
+	return ResponsesOutput{}, false
+}
+
+func cloneResponsesOutput(item *ResponsesOutput) *ResponsesOutput {
+	if item == nil {
+		return nil
+	}
+	cloned := *item
+	if item.Content != nil {
+		cloned.Content = append([]ResponsesContentPart(nil), item.Content...)
+	}
+	if item.Summary != nil {
+		cloned.Summary = append([]ResponsesSummary(nil), item.Summary...)
+	}
+	if item.Action != nil {
+		action := *item.Action
+		if item.Action.Sources != nil {
+			action.Sources = append(json.RawMessage(nil), item.Action.Sources...)
+		}
+		cloned.Action = &action
+	}
+	return &cloned
+}
+
+func mergeIndexedFunctionCallItem(existing, incoming *ResponsesOutput) *ResponsesOutput {
+	if existing == nil {
+		return cloneResponsesOutput(incoming)
+	}
+	merged := cloneResponsesOutput(incoming)
+	if merged == nil {
+		return cloneResponsesOutput(existing)
+	}
+	merged.Type = firstNonEmpty(merged.Type, existing.Type)
+	merged.CallID = firstNonEmpty(merged.CallID, existing.CallID)
+	merged.Name = firstNonEmpty(merged.Name, existing.Name)
+	merged.Arguments = firstNonEmpty(merged.Arguments, existing.Arguments)
+	return merged
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

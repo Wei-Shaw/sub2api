@@ -965,6 +965,166 @@ func TestChatCompletionsStreamRoundTrip(t *testing.T) {
 // BufferedResponseAccumulator tests
 // ---------------------------------------------------------------------------
 
+func TestResponsesStreamEvent_WebSearchActionRetainsSources(t *testing.T) {
+	var evt ResponsesStreamEvent
+	err := json.Unmarshal([]byte(`{
+		"type":"response.output_item.done",
+		"output_index":0,
+		"item":{
+			"type":"web_search_call",
+			"id":"ws_1",
+			"status":"completed",
+			"action":{
+				"type":"search",
+				"query":"openai pricing",
+				"sources":[{"type":"url_citation","title":"Reuters","url":"https://www.reuters.com/example"}]
+			}
+		}
+	}`), &evt)
+	require.NoError(t, err)
+	require.NotNil(t, evt.Item)
+	require.NotNil(t, evt.Item.Action)
+	assert.Equal(t, "search", evt.Item.Action.Type)
+	assert.Equal(t, "openai pricing", evt.Item.Action.Query)
+	assert.JSONEq(t, `[{"type":"url_citation","title":"Reuters","url":"https://www.reuters.com/example"}]`, string(evt.Item.Action.Sources))
+
+	raw, err := json.Marshal(evt)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"sources":[{"type":"url_citation"`)
+}
+
+func TestBufferedResponseAccumulator_BuildIndexedOutputPreservesSlots(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_1",
+			Status: "completed",
+			Action: &WebSearchAction{
+				Type:    "search",
+				Query:   "openai pricing",
+				Sources: json.RawMessage(`[{"type":"url_citation","url":"https://www.reuters.com/example"}]`),
+			},
+		},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.reasoning_summary_text.delta", OutputIndex: 1, Delta: "search strategy"})
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.output_text.delta", OutputIndex: 2, Delta: "pricing result"})
+
+	indexed := acc.BuildIndexedOutput()
+	require.Len(t, indexed, 3)
+	assert.Equal(t, 0, indexed[0].OutputIndex)
+	assert.Equal(t, "web_search_call", indexed[0].Item.Type)
+	assert.JSONEq(t, `[{"type":"url_citation","url":"https://www.reuters.com/example"}]`, string(indexed[0].Item.Action.Sources))
+	assert.Equal(t, 1, indexed[1].OutputIndex)
+	assert.Equal(t, "reasoning", indexed[1].Item.Type)
+	assert.Equal(t, "search strategy", indexed[1].Item.Summary[0].Text)
+	assert.Equal(t, 2, indexed[2].OutputIndex)
+	assert.Equal(t, "message", indexed[2].Item.Type)
+	assert.Equal(t, "pricing result", indexed[2].Item.Content[0].Text)
+}
+
+func TestBufferedResponseAccumulator_BuildIndexedOutputDoneOverridesAddedAndSortsByOutputIndex(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.output_text.delta", OutputIndex: 2, Delta: "pricing result"})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_1",
+			Status: "in_progress",
+			Action: &WebSearchAction{
+				Type:  "search",
+				Query: "stale query",
+			},
+		},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.reasoning_summary_text.delta", OutputIndex: 1, Delta: "search strategy"})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_1",
+			Status: "completed",
+			Action: &WebSearchAction{
+				Type:    "search",
+				Query:   "openai pricing",
+				Sources: json.RawMessage(`[{"type":"url_citation","title":"Reuters","url":"https://www.reuters.com/example"}]`),
+			},
+		},
+	})
+
+	indexed := acc.BuildIndexedOutput()
+	require.Len(t, indexed, 3)
+	assert.Equal(t, []int{0, 1, 2}, []int{indexed[0].OutputIndex, indexed[1].OutputIndex, indexed[2].OutputIndex})
+	assert.Equal(t, "web_search_call", indexed[0].Item.Type)
+	assert.Equal(t, "completed", indexed[0].Item.Status)
+	assert.Equal(t, "openai pricing", indexed[0].Item.Action.Query)
+	assert.JSONEq(t, `[{"type":"url_citation","title":"Reuters","url":"https://www.reuters.com/example"}]`, string(indexed[0].Item.Action.Sources))
+	assert.Equal(t, "reasoning", indexed[1].Item.Type)
+	assert.Equal(t, "search strategy", indexed[1].Item.Summary[0].Text)
+	assert.Equal(t, "message", indexed[2].Item.Type)
+	assert.Equal(t, "pricing result", indexed[2].Item.Content[0].Text)
+}
+
+func TestBufferedResponseAccumulator_BuildIndexedOutputSynthesizesFunctionCallFromArgumentsDelta(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.delta",
+		OutputIndex: 4,
+		CallID:      "call_1",
+		Name:        "lookup_weather",
+		Delta:       `{"city":"NYC"}`,
+	})
+
+	indexed := acc.BuildIndexedOutput()
+	require.Len(t, indexed, 1)
+	assert.Equal(t, 4, indexed[0].OutputIndex)
+	assert.Equal(t, "function_call", indexed[0].Item.Type)
+	assert.Equal(t, "call_1", indexed[0].Item.CallID)
+	assert.Equal(t, "lookup_weather", indexed[0].Item.Name)
+	assert.Equal(t, `{"city":"NYC"}`, indexed[0].Item.Arguments)
+}
+
+func TestBufferedResponseAccumulator_BuildIndexedOutputFunctionCallDonePreservesAddedMetadata(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 3,
+		Item: &ResponsesOutput{
+			Type:   "function_call",
+			CallID: "call_preserve",
+			Name:   "lookup_weather",
+		},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.delta",
+		OutputIndex: 3,
+		Delta:       `{"city":"NYC"}`,
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 3,
+		Item: &ResponsesOutput{
+			Type: "function_call",
+		},
+	})
+
+	indexed := acc.BuildIndexedOutput()
+	require.Len(t, indexed, 1)
+	assert.Equal(t, 3, indexed[0].OutputIndex)
+	assert.Equal(t, "function_call", indexed[0].Item.Type)
+	assert.Equal(t, "call_preserve", indexed[0].Item.CallID)
+	assert.Equal(t, "lookup_weather", indexed[0].Item.Name)
+	assert.Equal(t, `{"city":"NYC"}`, indexed[0].Item.Arguments)
+}
+
 func TestBufferedResponseAccumulator_TextOnly(t *testing.T) {
 	acc := NewBufferedResponseAccumulator()
 
