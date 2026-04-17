@@ -3199,6 +3199,32 @@ func TestHandleNonStreamingResponse_OpenCodeFiltersWebSearchCallOutput(t *testin
 	require.NotContains(t, rec.Body.String(), `"summary":[]`)
 }
 
+func TestHandleNonStreamingResponse_NormalizesResponsesJSONForAISDK(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{"id":"resp_sdk_1","model":"gpt-5.4","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]},{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}}],"usage":{"input_tokens":1,"output_tokens":2}}`)),
+	}
+
+	usage, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{Type: AccountTypeAPIKey}, "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, 1, usage.InputTokens)
+	require.Equal(t, 2, usage.OutputTokens)
+
+	body := rec.Body.String()
+	require.Contains(t, body, `"id":"msg_`)
+	require.Contains(t, body, `"annotations":[]`)
+	require.Contains(t, body, `"type":"web_search_call"`)
+	require.Contains(t, body, `pricing result`)
+}
+
 func TestHandleChatBufferedStreamingResponse_ReconstructsEmptyOutputFromDelta(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -3276,4 +3302,35 @@ func TestHandleStreamingResponse_OpenCodeSuppressesWebSearchCallFramesButPreserv
 	require.Contains(t, rec.Body.String(), `pricing result`)
 	require.NotContains(t, rec.Body.String(), `"summary":[]`)
 	require.NotContains(t, rec.Body.String(), "event: response.web_search_call")
+}
+
+func TestHandleSSEToJSON_NormalizesCompletedResponsesJSONForAISDK(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}}
+	body := []byte(strings.Join([]string{
+		`event: response.created`,
+		`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+		``,
+		`event: response.completed`,
+		`data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.4","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]},{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}}],"usage":{"input_tokens":1,"output_tokens":2}}}`,
+		``,
+		`data: [DONE]`,
+	}, "\n"))
+
+	usage, err := svc.handleSSEToJSON(resp, c, body, "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, 1, usage.InputTokens)
+	require.Equal(t, 2, usage.OutputTokens)
+
+	finalBody := rec.Body.String()
+	require.Contains(t, finalBody, `"id":"msg_`)
+	require.Contains(t, finalBody, `"annotations":[]`)
+	require.Contains(t, finalBody, `"type":"web_search_call"`)
+	require.Contains(t, finalBody, `pricing result`)
 }

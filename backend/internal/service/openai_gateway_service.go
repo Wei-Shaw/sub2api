@@ -4687,6 +4687,70 @@ func sanitizeOpenCodeResponsesOutput(body []byte) ([]byte, bool, error) {
 	return patched, true, nil
 }
 
+func normalizeResponsesJSONForAISDK(body []byte) ([]byte, bool, error) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return body, false, nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body, false, err
+	}
+	output, ok := payload["output"].([]any)
+	if !ok || len(output) == 0 {
+		return body, false, nil
+	}
+	changed := false
+	for _, item := range output {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(asStringMaybe(itemMap["type"])) != "message" {
+			continue
+		}
+		if strings.TrimSpace(asStringMaybe(itemMap["id"])) == "" {
+			itemMap["id"] = generateOpenAIMessageItemID()
+			changed = true
+		}
+		content, ok := itemMap["content"].([]any)
+		if !ok {
+			continue
+		}
+		for _, part := range content {
+			partMap, ok := part.(map[string]any)
+			if !ok {
+				continue
+			}
+			if strings.TrimSpace(asStringMaybe(partMap["type"])) != "output_text" {
+				continue
+			}
+			if _, exists := partMap["annotations"]; !exists {
+				partMap["annotations"] = []any{}
+				changed = true
+			}
+		}
+	}
+	if !changed {
+		return body, false, nil
+	}
+	normalized, err := json.Marshal(payload)
+	if err != nil {
+		return body, false, err
+	}
+	return normalized, true, nil
+}
+
+func generateOpenAIMessageItemID() string {
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	return "msg_" + hex.EncodeToString(b)
+}
+
+func asStringMaybe(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
 func filterOpenCodeResponsesSSEData(data string) (string, bool) {
 	eventType := strings.TrimSpace(gjson.Get(data, "type").String())
 	switch eventType {
@@ -4850,6 +4914,11 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 			body = filteredBody
 		}
 	}
+	if normalizedBody, changed, err := normalizeResponsesJSONForAISDK(body); err != nil {
+		return nil, fmt.Errorf("normalize responses json for ai sdk: %w", err)
+	} else if changed {
+		body = normalizedBody
+	}
 
 	// Replace model in response if needed
 	if originalModel != mappedModel {
@@ -4903,6 +4972,11 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			if changed {
 				body = filteredBody
 			}
+		}
+		if normalizedBody, changed, err := normalizeResponsesJSONForAISDK(body); err != nil {
+			return nil, fmt.Errorf("normalize completed responses json for ai sdk: %w", err)
+		} else if changed {
+			body = normalizedBody
 		}
 		if originalModel != mappedModel {
 			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
