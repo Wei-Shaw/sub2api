@@ -13,9 +13,9 @@ import (
 var ErrUpstreamResponseBodyTooLarge = errors.New("upstream response body too large")
 
 // defaultUpstreamResponseReadMaxBytes 上游非流式响应体的默认读取上限。
-// 64 MB 足以容纳多张高清图（base64 膨胀 33%，64MB ≈ 48MB 原始字节）。
+// 128 MB 可容纳 2-3 张 4K PNG（base64 膨胀 33%，单张 4K PNG 最坏约 67MB base64）。
 // 可通过 gateway.upstream_response_read_max_bytes 配置项覆盖。
-const defaultUpstreamResponseReadMaxBytes int64 = 64 * 1024 * 1024
+const defaultUpstreamResponseReadMaxBytes int64 = 128 * 1024 * 1024
 
 func resolveUpstreamResponseReadLimit(cfg *config.Config) int64 {
 	if cfg != nil && cfg.Gateway.UpstreamResponseReadMaxBytes > 0 {
