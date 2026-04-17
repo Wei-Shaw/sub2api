@@ -148,6 +148,7 @@ type RefundResponse struct {
 // InstanceSelection holds the selected provider instance and its decrypted config.
 type InstanceSelection struct {
 	InstanceID     string
+	ProviderKey    string // Provider key of the selected instance (e.g. "alipay", "easypay")
 	Config         map[string]string
 	SupportedTypes string // Comma-separated list of supported payment types from the instance
 	PaymentMode    string // Payment display mode: "qrcode", "redirect", "popup"

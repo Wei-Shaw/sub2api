@@ -165,7 +165,6 @@
         <button
           @click="handleClose"
           class="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-300 dark:hover:bg-dark-500"
-          :disabled="status === 'connecting'"
         >
           {{ t('common.close') }}
         </button>
@@ -249,7 +248,7 @@ const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
 const loadingModels = ref(false)
-let eventSource: EventSource | null = null
+let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
 const prioritizedGeminiModels = ['gemini-3.1-flash-image', 'gemini-2.5-flash-image', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3-pro-preview', 'gemini-2.0-flash']
 const supportsGeminiImageTest = computed(() => {
@@ -279,7 +278,7 @@ watch(
       resetState()
       await loadAvailableModels()
     } else {
-      closeEventSource()
+      abortStream()
     }
   }
 )
@@ -329,18 +328,14 @@ const resetState = () => {
 }
 
 const handleClose = () => {
-  // 防止在连接测试进行中关闭对话框
-  if (status.value === 'connecting') {
-    return
-  }
-  closeEventSource()
+  abortStream()
   emit('close')
 }
 
-const closeEventSource = () => {
-  if (eventSource) {
-    eventSource.close()
-    eventSource = null
+const abortStream = () => {
+  if (abortController) {
+    abortController.abort()
+    abortController = null
   }
 }
 
@@ -365,7 +360,9 @@ const startTest = async () => {
   addLine(t('admin.accounts.testAccountTypeLabel', { type: props.account.type }), 'text-gray-400')
   addLine('', 'text-gray-300')
 
-  closeEventSource()
+  abortStream()
+
+  abortController = new AbortController()
 
   try {
     // Create EventSource for SSE
@@ -381,7 +378,8 @@ const startTest = async () => {
       body: JSON.stringify({
               model_id: selectedModelId.value,
               prompt: supportsGeminiImageTest.value ? testPrompt.value.trim() : ''
-            })
+            }),
+      signal: abortController.signal
     })
 
     if (!response.ok) {
@@ -418,10 +416,15 @@ const startTest = async () => {
         }
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      status.value = 'idle'
+      return
+    }
     status.value = 'error'
-    errorMessage.value = error.message || 'Unknown error'
-    addLine(`Error: ${errorMessage.value}`, 'text-red-400')
+    const msg = error instanceof Error ? error.message : 'Unknown error'
+    errorMessage.value = msg
+    addLine(`Error: ${msg}`, 'text-red-400')
   }
 }
 

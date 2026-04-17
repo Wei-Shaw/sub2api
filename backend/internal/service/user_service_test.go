@@ -46,12 +46,12 @@ func (m *mockUserRepo) RemoveGroupFromAllowedGroups(context.Context, int64) (int
 	return 0, nil
 }
 func (m *mockUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) error { return nil }
+func (m *mockUserRepo) UpdateTotpSecret(context.Context, int64, *string) error      { return nil }
+func (m *mockUserRepo) EnableTotp(context.Context, int64) error                     { return nil }
+func (m *mockUserRepo) DisableTotp(context.Context, int64) error                    { return nil }
 func (m *mockUserRepo) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
 	return nil
 }
-func (m *mockUserRepo) UpdateTotpSecret(context.Context, int64, *string) error { return nil }
-func (m *mockUserRepo) EnableTotp(context.Context, int64) error                { return nil }
-func (m *mockUserRepo) DisableTotp(context.Context, int64) error               { return nil }
 
 // --- mock: APIKeyAuthCacheInvalidator ---
 
@@ -117,7 +117,7 @@ func (m *mockBillingCache) InvalidateAPIKeyRateLimit(context.Context, int64) err
 func TestUpdateBalance_Success(t *testing.T) {
 	repo := &mockUserRepo{}
 	cache := &mockBillingCache{}
-	svc := NewUserService(repo, nil, cache)
+	svc := NewUserService(repo, nil, nil, cache)
 
 	err := svc.UpdateBalance(context.Background(), 42, 100.0)
 	require.NoError(t, err)
@@ -134,7 +134,7 @@ func TestUpdateBalance_Success(t *testing.T) {
 
 func TestUpdateBalance_NilBillingCache_NoPanic(t *testing.T) {
 	repo := &mockUserRepo{}
-	svc := NewUserService(repo, nil, nil) // billingCache = nil
+	svc := NewUserService(repo, nil, nil, nil) // billingCache = nil
 
 	err := svc.UpdateBalance(context.Background(), 1, 50.0)
 	require.NoError(t, err, "billingCache 为 nil 时不应 panic")
@@ -143,7 +143,7 @@ func TestUpdateBalance_NilBillingCache_NoPanic(t *testing.T) {
 func TestUpdateBalance_CacheFailure_DoesNotAffectReturn(t *testing.T) {
 	repo := &mockUserRepo{}
 	cache := &mockBillingCache{invalidateErr: errors.New("redis connection refused")}
-	svc := NewUserService(repo, nil, cache)
+	svc := NewUserService(repo, nil, nil, cache)
 
 	err := svc.UpdateBalance(context.Background(), 99, 200.0)
 	require.NoError(t, err, "缓存失效失败不应影响主流程返回值")
@@ -157,7 +157,7 @@ func TestUpdateBalance_CacheFailure_DoesNotAffectReturn(t *testing.T) {
 func TestUpdateBalance_RepoError_ReturnsError(t *testing.T) {
 	repo := &mockUserRepo{updateBalanceErr: errors.New("database error")}
 	cache := &mockBillingCache{}
-	svc := NewUserService(repo, nil, cache)
+	svc := NewUserService(repo, nil, nil, cache)
 
 	err := svc.UpdateBalance(context.Background(), 1, 100.0)
 	require.Error(t, err, "repo 失败时应返回错误")
@@ -173,7 +173,7 @@ func TestUpdateBalance_WithAuthCacheInvalidator(t *testing.T) {
 	repo := &mockUserRepo{}
 	auth := &mockAuthCacheInvalidator{}
 	cache := &mockBillingCache{}
-	svc := NewUserService(repo, auth, cache)
+	svc := NewUserService(repo, nil, auth, cache)
 
 	err := svc.UpdateBalance(context.Background(), 77, 300.0)
 	require.NoError(t, err)
@@ -194,7 +194,7 @@ func TestNewUserService_FieldsAssignment(t *testing.T) {
 	auth := &mockAuthCacheInvalidator{}
 	cache := &mockBillingCache{}
 
-	svc := NewUserService(repo, auth, cache)
+	svc := NewUserService(repo, nil, auth, cache)
 	require.NotNil(t, svc)
 	require.Equal(t, repo, svc.userRepo)
 	require.Equal(t, auth, svc.authCacheInvalidator)

@@ -18,6 +18,8 @@ const (
 	NonceTemplate = "__CSP_NONCE__"
 	// CloudflareInsightsDomain is the domain for Cloudflare Web Analytics
 	CloudflareInsightsDomain = "https://static.cloudflareinsights.com"
+	// StripeDomain is the domain for Stripe.js SDK
+	StripeDomain = "https://*.stripe.com"
 )
 
 // GenerateNonce generates a cryptographically secure random nonce.
@@ -97,8 +99,9 @@ func isAPIRoutePath(c *gin.Context) bool {
 		strings.HasPrefix(path, "/responses")
 }
 
-// enhanceCSPPolicy ensures the CSP policy includes nonce support and Cloudflare Insights domain.
-// This allows the application to work correctly even if the config file has an older CSP policy.
+// enhanceCSPPolicy ensures the CSP policy includes nonce support, Cloudflare Insights,
+// and Stripe.js domains. This allows the application to work correctly even if the
+// config file has an older CSP policy.
 func enhanceCSPPolicy(policy string) string {
 	// Add nonce placeholder to script-src if not present
 	if !strings.Contains(policy, NonceTemplate) && !strings.Contains(policy, "'nonce-") {
@@ -108,6 +111,12 @@ func enhanceCSPPolicy(policy string) string {
 	// Add Cloudflare Insights domain to script-src if not present
 	if !strings.Contains(policy, CloudflareInsightsDomain) {
 		policy = addToDirective(policy, "script-src", CloudflareInsightsDomain)
+	}
+
+	// Add Stripe.js domain to script-src and frame-src if not present
+	if !strings.Contains(policy, "stripe.com") {
+		policy = addToDirective(policy, "script-src", StripeDomain)
+		policy = addToDirective(policy, "frame-src", StripeDomain)
 	}
 
 	return policy

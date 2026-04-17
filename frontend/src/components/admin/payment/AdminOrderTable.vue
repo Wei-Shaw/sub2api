@@ -51,12 +51,15 @@
         <span class="text-sm text-gray-600 dark:text-gray-400">#{{ value }}</span>
       </template>
 
-      <template #cell-amount="{ value, row }">
+      <template #cell-pay_amount="{ value, row }">
         <div class="text-sm">
-          <span class="font-medium text-gray-900 dark:text-white">${{ value.toFixed(2) }}</span>
-          <span v-if="row.pay_amount !== value" class="ml-1 text-xs text-gray-500">
-            ({{ t('payment.orders.payAmount') }}: ${{ row.pay_amount.toFixed(2) }})
+          <span class="font-medium text-gray-900 dark:text-white">¥{{ value.toFixed(2) }}</span>
+          <span v-if="row.fee_rate > 0" class="ml-1 text-xs text-gray-400" :title="t('payment.orders.fee') + ': ' + row.fee_rate + '%'">
+            ({{ row.fee_rate }}%)
           </span>
+          <div v-if="row.amount !== row.pay_amount" class="text-xs text-gray-500">
+            {{ t('payment.orders.creditedAmount') }}: {{ row.order_type === 'balance' ? '$' : '¥' }}{{ row.amount.toFixed(2) }}
+          </div>
         </div>
       </template>
 
@@ -183,7 +186,7 @@ function emitFiltersChanged() {
 const columns = computed<Column[]>(() => [
   { key: 'id', label: t('payment.orders.orderId') },
   { key: 'user_id', label: t('payment.orders.userId') },
-  { key: 'amount', label: t('payment.orders.amount') },
+  { key: 'pay_amount', label: t('payment.orders.payAmount') },
   { key: 'payment_type', label: t('payment.orders.paymentMethod') },
   { key: 'status', label: t('payment.orders.status') },
   { key: 'order_type', label: t('payment.orders.orderType') },

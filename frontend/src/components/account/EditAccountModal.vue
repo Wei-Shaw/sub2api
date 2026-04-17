@@ -2,7 +2,7 @@
   <BaseDialog
     :show="show"
     :title="t('admin.accounts.editAccount')"
-    width="normal"
+    width="wide"
     @close="handleClose"
   >
     <form
@@ -1149,10 +1149,84 @@
         </div>
       </div>
 
-      <!-- API Key / Bedrock 账号配额限制 -->
-      <div v-if="account?.type === 'apikey' || account?.type === 'bedrock'" class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
+      <!-- Anthropic API Key: Web Search Emulation (hidden when global disabled) -->
+      <div
+        v-if="account?.platform === 'anthropic' && account?.type === 'apikey' && webSearchGlobalEnabled"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.anthropic.webSearchEmulation') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.anthropic.webSearchEmulationDesc') }}
+            </p>
+          </div>
+          <select v-model="webSearchEmulationMode" class="input w-24 text-sm">
+            <option value="default">{{ t('admin.accounts.anthropic.webSearchDefault') }}</option>
+            <option value="enabled">{{ t('admin.accounts.anthropic.webSearchEnabled') }}</option>
+            <option value="disabled">{{ t('admin.accounts.anthropic.webSearchDisabled') }}</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 配额控制 (Anthropic apikey/bedrock: 配额限制 + 亲和) -->
+      <div
+        v-if="account?.platform === 'anthropic' && (account?.type === 'apikey' || account?.type === 'bedrock')"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
         <div class="mb-3">
-          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaLimit') }}</h3>
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.quotaControl.hint') }}
+          </p>
+        </div>
+        <QuotaLimitCard
+          :totalLimit="editQuotaLimit"
+          :dailyLimit="editQuotaDailyLimit"
+          :weeklyLimit="editQuotaWeeklyLimit"
+          :dailyResetMode="editDailyResetMode"
+          :dailyResetHour="editDailyResetHour"
+          :weeklyResetMode="editWeeklyResetMode"
+          :weeklyResetDay="editWeeklyResetDay"
+          :weeklyResetHour="editWeeklyResetHour"
+          :resetTimezone="editResetTimezone"
+          :quotaNotifyGlobalEnabled="quotaNotifyGlobalEnabled"
+          :quotaNotifyDailyEnabled="quotaNotifyState.daily.enabled"
+          :quotaNotifyDailyThreshold="quotaNotifyState.daily.threshold"
+          :quotaNotifyDailyThresholdType="quotaNotifyState.daily.thresholdType"
+          :quotaNotifyWeeklyEnabled="quotaNotifyState.weekly.enabled"
+          :quotaNotifyWeeklyThreshold="quotaNotifyState.weekly.threshold"
+          :quotaNotifyWeeklyThresholdType="quotaNotifyState.weekly.thresholdType"
+          :quotaNotifyTotalEnabled="quotaNotifyState.total.enabled"
+          :quotaNotifyTotalThreshold="quotaNotifyState.total.threshold"
+          :quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType"
+          @update:totalLimit="editQuotaLimit = $event"
+          @update:dailyLimit="editQuotaDailyLimit = $event"
+          @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+          @update:dailyResetMode="editDailyResetMode = $event"
+          @update:dailyResetHour="editDailyResetHour = $event"
+          @update:weeklyResetMode="editWeeklyResetMode = $event"
+          @update:weeklyResetDay="editWeeklyResetDay = $event"
+          @update:weeklyResetHour="editWeeklyResetHour = $event"
+          @update:resetTimezone="editResetTimezone = $event"
+          @update:quotaNotifyDailyEnabled="quotaNotifyState.daily.enabled = $event"
+          @update:quotaNotifyDailyThreshold="quotaNotifyState.daily.threshold = $event"
+          @update:quotaNotifyDailyThresholdType="quotaNotifyState.daily.thresholdType = $event"
+          @update:quotaNotifyWeeklyEnabled="quotaNotifyState.weekly.enabled = $event"
+          @update:quotaNotifyWeeklyThreshold="quotaNotifyState.weekly.threshold = $event"
+          @update:quotaNotifyWeeklyThresholdType="quotaNotifyState.weekly.thresholdType = $event"
+          @update:quotaNotifyTotalEnabled="quotaNotifyState.total.enabled = $event"
+          @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
+          @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
+        />
+      </div>
+      <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
+      <div
+        v-else-if="account?.type === 'apikey' || account?.type === 'bedrock'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
+        <div class="mb-3">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.accounts.quotaLimitHint') }}
           </p>
@@ -1167,6 +1241,16 @@
           :weeklyResetDay="editWeeklyResetDay"
           :weeklyResetHour="editWeeklyResetHour"
           :resetTimezone="editResetTimezone"
+          :quotaNotifyGlobalEnabled="quotaNotifyGlobalEnabled"
+          :quotaNotifyDailyEnabled="quotaNotifyState.daily.enabled"
+          :quotaNotifyDailyThreshold="quotaNotifyState.daily.threshold"
+          :quotaNotifyDailyThresholdType="quotaNotifyState.daily.thresholdType"
+          :quotaNotifyWeeklyEnabled="quotaNotifyState.weekly.enabled"
+          :quotaNotifyWeeklyThreshold="quotaNotifyState.weekly.threshold"
+          :quotaNotifyWeeklyThresholdType="quotaNotifyState.weekly.thresholdType"
+          :quotaNotifyTotalEnabled="quotaNotifyState.total.enabled"
+          :quotaNotifyTotalThreshold="quotaNotifyState.total.threshold"
+          :quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType"
           @update:totalLimit="editQuotaLimit = $event"
           @update:dailyLimit="editQuotaDailyLimit = $event"
           @update:weeklyLimit="editQuotaWeeklyLimit = $event"
@@ -1176,6 +1260,15 @@
           @update:weeklyResetDay="editWeeklyResetDay = $event"
           @update:weeklyResetHour="editWeeklyResetHour = $event"
           @update:resetTimezone="editResetTimezone = $event"
+          @update:quotaNotifyDailyEnabled="quotaNotifyState.daily.enabled = $event"
+          @update:quotaNotifyDailyThreshold="quotaNotifyState.daily.threshold = $event"
+          @update:quotaNotifyDailyThresholdType="quotaNotifyState.daily.thresholdType = $event"
+          @update:quotaNotifyWeeklyEnabled="quotaNotifyState.weekly.enabled = $event"
+          @update:quotaNotifyWeeklyThreshold="quotaNotifyState.weekly.threshold = $event"
+          @update:quotaNotifyWeeklyThresholdType="quotaNotifyState.weekly.thresholdType = $event"
+          @update:quotaNotifyTotalEnabled="quotaNotifyState.total.enabled = $event"
+          @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
+          @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
         />
       </div>
 
@@ -1237,7 +1330,7 @@
         </div>
       </div>
 
-      <!-- Quota Control Section (Anthropic OAuth/SetupToken only) -->
+      <!-- 配额控制 (Anthropic OAuth/SetupToken: 亲和 + 窗口费用 + 会话 + RPM 等) -->
       <div
         v-if="account?.platform === 'anthropic' && (account?.type === 'oauth' || account?.type === 'setup-token')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
@@ -1751,6 +1844,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type { Account, Proxy, AdminGroup, CheckMixedChannelResponse } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -1764,7 +1858,7 @@ import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import {
-  // OPENAI_WS_MODE_CTX_POOL,
+  OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
   isOpenAIWSModeEnabled,
@@ -1898,6 +1992,23 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
+const webSearchEmulationMode = ref('default')
+const webSearchGlobalEnabled = ref(false)
+const {
+  globalEnabled: quotaNotifyGlobalEnabled,
+  state: quotaNotifyState,
+  loadGlobalState: loadQuotaNotifyGlobal,
+  loadFromExtra: loadQuotaNotifyFromExtra,
+  writeToExtra: writeQuotaNotifyToExtra,
+  reset: resetQuotaNotify,
+} = useQuotaNotifyState()
+
+// Load global feature states once
+adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
+  webSearchGlobalEnabled.value = cfg?.enabled === true && (cfg?.providers?.length ?? 0) > 0
+}).catch(() => { webSearchGlobalEnabled.value = false })
+
+loadQuotaNotifyGlobal()
 const editQuotaLimit = ref<number | null>(null)
 const editQuotaDailyLimit = ref<number | null>(null)
 const editQuotaWeeklyLimit = ref<number | null>(null)
@@ -1909,8 +2020,7 @@ const editWeeklyResetHour = ref<number | null>(null)
 const editResetTimezone = ref<string | null>(null)
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
-  // TODO: ctx_pool 选项暂时隐藏，待测试完成后恢复
-  // { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
+  { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
   { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') }
 ])
 const openaiResponsesWebSocketV2Mode = computed({
@@ -2067,6 +2177,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   anthropicPassthroughEnabled.value = false
+  webSearchEmulationMode.value = 'default'
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     openaiOAuthResponsesWebSocketV2Mode.value = resolveOpenAIWSModeFromExtra(extra, {
@@ -2087,6 +2198,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   }
   if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
     anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
+    // 三态：string "default"/"enabled"/"disabled"，向后兼容旧 bool
+    const wsVal = extra?.web_search_emulation
+    if (wsVal === 'enabled' || wsVal === 'disabled') {
+      webSearchEmulationMode.value = wsVal
+    } else if (wsVal === true) {
+      webSearchEmulationMode.value = 'enabled'
+    } else {
+      webSearchEmulationMode.value = 'default'
+    }
   }
 
   // Load quota limit for apikey/bedrock accounts (bedrock quota is also loaded in its own branch above)
@@ -2104,6 +2224,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editWeeklyResetDay.value = (extra?.quota_weekly_reset_day as number) ?? null
     editWeeklyResetHour.value = (extra?.quota_weekly_reset_hour as number) ?? null
     editResetTimezone.value = (extra?.quota_reset_timezone as string) || null
+    // Load quota notify config
+    loadQuotaNotifyFromExtra(extra)
   } else {
     editQuotaLimit.value = null
     editQuotaDailyLimit.value = null
@@ -2114,6 +2236,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editWeeklyResetDay.value = null
     editWeeklyResetHour.value = null
     editResetTimezone.value = null
+    resetQuotaNotify()
   }
 
   // Load antigravity model mapping (Antigravity 只支持映射模式)
@@ -2228,6 +2351,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editQuotaLimit.value = typeof bedrockExtra.quota_limit === 'number' ? bedrockExtra.quota_limit : null
     editQuotaDailyLimit.value = typeof bedrockExtra.quota_daily_limit === 'number' ? bedrockExtra.quota_daily_limit : null
     editQuotaWeeklyLimit.value = typeof bedrockExtra.quota_weekly_limit === 'number' ? bedrockExtra.quota_weekly_limit : null
+    // Load quota notify for bedrock
+    loadQuotaNotifyFromExtra(bedrockExtra)
 
     // Load model mappings for bedrock
     const existingMappings = bedrockCreds.model_mapping as Record<string, string> | undefined
@@ -2522,8 +2647,13 @@ function loadQuotaControlSettings(account: Account) {
   customBaseUrlEnabled.value = false
   customBaseUrl.value = ''
 
-  // Only applies to Anthropic OAuth/SetupToken accounts
-  if (account.platform !== 'anthropic' || (account.type !== 'oauth' && account.type !== 'setup-token')) {
+  // Remaining quota control settings only apply to Anthropic accounts
+  if (account.platform !== 'anthropic') {
+    return
+  }
+
+  // Window cost / session limit only apply to Anthropic OAuth/SetupToken accounts
+  if (account.type !== 'oauth' && account.type !== 'setup-token') {
     return
   }
 
@@ -2949,7 +3079,7 @@ const handleSubmit = async () => {
 
     // For Anthropic OAuth/SetupToken accounts, handle quota control settings in extra
     if (props.account.platform === 'anthropic' && (props.account.type === 'oauth' || props.account.type === 'setup-token')) {
-      const currentExtra = (props.account.extra as Record<string, unknown>) || {}
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
 
       // Window cost limit settings
@@ -3037,14 +3167,19 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
-    // For Anthropic API Key accounts, handle passthrough mode in extra
+    // For Anthropic API Key accounts, handle passthrough mode + web search emulation in extra
     if (props.account.platform === 'anthropic' && props.account.type === 'apikey') {
-      const currentExtra = (props.account.extra as Record<string, unknown>) || {}
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       if (anthropicPassthroughEnabled.value) {
         newExtra.anthropic_passthrough = true
       } else {
         delete newExtra.anthropic_passthrough
+      }
+      if (webSearchEmulationMode.value === 'default') {
+        delete newExtra.web_search_emulation
+      } else {
+        newExtra.web_search_emulation = webSearchEmulationMode.value
       }
       updatePayload.extra = newExtra
     }
@@ -3089,20 +3224,27 @@ const handleSubmit = async () => {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
         (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
+      // Total quota
       if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
         newExtra.quota_limit = editQuotaLimit.value
       } else {
         delete newExtra.quota_limit
       }
+      // Daily quota
       if (editQuotaDailyLimit.value != null && editQuotaDailyLimit.value > 0) {
         newExtra.quota_daily_limit = editQuotaDailyLimit.value
       } else {
         delete newExtra.quota_daily_limit
+        delete newExtra.quota_daily_used
+        delete newExtra.quota_daily_start
       }
+      // Weekly quota
       if (editQuotaWeeklyLimit.value != null && editQuotaWeeklyLimit.value > 0) {
         newExtra.quota_weekly_limit = editQuotaWeeklyLimit.value
       } else {
         delete newExtra.quota_weekly_limit
+        delete newExtra.quota_weekly_used
+        delete newExtra.quota_weekly_start
       }
       // Quota reset mode config
       if (editDailyResetMode.value === 'fixed') {
@@ -3126,6 +3268,8 @@ const handleSubmit = async () => {
       } else {
         delete newExtra.quota_reset_timezone
       }
+      // Quota notify config
+      writeQuotaNotifyToExtra(newExtra, 'update')
       updatePayload.extra = newExtra
     }
 

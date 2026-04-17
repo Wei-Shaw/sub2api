@@ -28,7 +28,9 @@
         <template v-else-if="paymentPhase === 'stripe'">
           <StripePaymentInline
             :order-id="paymentState.orderId"
+            :amount="paymentState.amount"
             :client-secret="paymentState.clientSecret"
+            :order-type="paymentState.orderType || undefined"
             :publishable-key="checkout.stripe_publishable_key"
             :pay-amount="paymentState.payAmount"
             @success="onPaymentSuccess"
@@ -67,20 +69,27 @@
                 @select="selectedMethod = $event"
               />
             </div>
-            <div v-if="feeRate > 0 && validAmount > 0" class="card p-6">
+            <div v-if="validAmount > 0" class="card p-6">
               <div class="space-y-2 text-sm">
                 <div class="flex justify-between">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
-                  <span class="text-gray-900 dark:text-white">${{ validAmount.toFixed(2) }}</span>
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.paymentAmount') }}</span>
+                  <span class="text-gray-900 dark:text-white">¥{{ validAmount.toFixed(2) }}</span>
                 </div>
-                <div class="flex justify-between">
+                <div v-if="feeRate > 0" class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
-                  <span class="text-gray-900 dark:text-white">${{ feeAmount.toFixed(2) }}</span>
+                  <span class="text-gray-900 dark:text-white">¥{{ feeAmount.toFixed(2) }}</span>
                 </div>
-                <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                <div v-if="feeRate > 0" class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
                   <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
-                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">${{ totalAmount.toFixed(2) }}</span>
+                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ totalAmount.toFixed(2) }}</span>
                 </div>
+                <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
+                  <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
+                </div>
+                <p v-if="balanceRechargeMultiplier !== 1" class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
+                  {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
+                </p>
               </div>
             </div>
             <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
@@ -88,7 +97,7 @@
                 <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {{ t('common.processing') }}
               </span>
-              <span v-else>{{ t('payment.createOrder') }} ${{ (feeRate > 0 && validAmount > 0 ? totalAmount : validAmount).toFixed(2) }}</span>
+              <span v-else>{{ t('payment.createOrder') }} ¥{{ totalAmount.toFixed(2) }}</span>
             </button>
             <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
               <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage }}</p>
@@ -110,9 +119,9 @@
                 <!-- Price -->
                 <div class="flex items-baseline gap-2">
                   <span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through dark:text-gray-500">
-                    ${{ selectedPlan.original_price }}
+                    ¥{{ selectedPlan.original_price }}
                   </span>
-                  <span :class="['text-3xl font-bold', planTextClass]">${{ selectedPlan.price }}</span>
+                  <span :class="['text-3xl font-bold', planTextClass]">¥{{ selectedPlan.price }}</span>
                   <span class="text-sm text-gray-500 dark:text-gray-400">/ {{ planValiditySuffix }}</span>
                 </div>
                 <!-- Description -->
@@ -156,15 +165,15 @@
                 <div class="space-y-2 text-sm">
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
-                    <span class="text-gray-900 dark:text-white">${{ selectedPlan.price.toFixed(2) }}</span>
+                    <span class="text-gray-900 dark:text-white">¥{{ selectedPlan.price.toFixed(2) }}</span>
                   </div>
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
-                    <span class="text-gray-900 dark:text-white">${{ subFeeAmount.toFixed(2) }}</span>
+                    <span class="text-gray-900 dark:text-white">¥{{ subFeeAmount.toFixed(2) }}</span>
                   </div>
                   <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
                     <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
-                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">${{ subTotalAmount.toFixed(2) }}</span>
+                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ subTotalAmount.toFixed(2) }}</span>
                   </div>
                 </div>
               </div>
@@ -173,7 +182,7 @@
                   <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                   {{ t('common.processing') }}
                 </span>
-                <span v-else>{{ t('payment.createOrder') }} ${{ (feeRate > 0 ? subTotalAmount : selectedPlan.price).toFixed(2) }}</span>
+                <span v-else>{{ t('payment.createOrder') }} ¥{{ (feeRate > 0 ? subTotalAmount : selectedPlan.price).toFixed(2) }}</span>
               </button>
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
               <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
@@ -264,7 +273,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
-import type { SubscriptionPlan, CheckoutInfoResponse } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, OrderType } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
@@ -302,11 +311,21 @@ const previewImage = ref('')
 
 // Payment phase: 'select' → 'paying' (QR/redirect) or 'stripe' (inline Stripe)
 const paymentPhase = ref<'select' | 'paying' | 'stripe'>('select')
-const paymentState = ref({ orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0, orderType: '' })
+const paymentState = ref<{
+  orderId: number
+  amount: number
+  qrCode: string
+  expiresAt: string
+  paymentType: string
+  payUrl: string
+  clientSecret: string
+  payAmount: number
+  orderType: OrderType | ''
+}>({ orderId: 0, amount: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0, orderType: '' })
 
 function resetPayment() {
   paymentPhase.value = 'select'
-  paymentState.value = { orderId: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0, orderType: '' }
+  paymentState.value = { orderId: 0, amount: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0, orderType: '' }
 }
 
 function onPaymentDone() {
@@ -342,7 +361,7 @@ function onStripeRedirect(orderId: number, payUrl: string) {
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
 })
 
 const tabs = computed(() => {
@@ -354,6 +373,11 @@ const tabs = computed(() => {
 
 const enabledMethods = computed(() => Object.keys(checkout.value.methods))
 const validAmount = computed(() => amount.value ?? 0)
+const balanceRechargeMultiplier = computed(() => {
+  const multiplier = checkout.value.balance_recharge_multiplier
+  return multiplier > 0 ? multiplier : 1
+})
+const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
@@ -390,7 +414,7 @@ const methodOptions = computed<PaymentMethodOption[]>(() =>
   })
 )
 
-const feeRate = computed(() => selectedLimit.value?.fee_rate ?? 0)
+const feeRate = computed(() => checkout.value?.recharge_fee_rate ?? 0)
 const feeAmount = computed(() =>
   feeRate.value > 0 && validAmount.value > 0
     ? Math.ceil(((validAmount.value * feeRate.value) / 100) * 100) / 100
@@ -518,7 +542,7 @@ async function confirmSubscribe() {
   await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
 }
 
-async function createOrder(orderAmount: number, orderType: string, planId?: number) {
+async function createOrder(orderAmount: number, orderType: OrderType, planId?: number) {
   submitting.value = true
   errorMessage.value = ''
   try {
@@ -537,7 +561,7 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
     if (result.client_secret) {
       // Stripe: show Payment Element inline (user picks method → confirms → redirect if needed)
       paymentState.value = {
-        orderId: result.order_id, qrCode: '', expiresAt: result.expires_at || '',
+        orderId: result.order_id, amount: result.amount, qrCode: '', expiresAt: result.expires_at || '',
         paymentType: selectedMethod.value, payUrl: '',
         clientSecret: result.client_secret, payAmount: result.pay_amount,
         orderType,
@@ -546,7 +570,7 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
     } else if (isMobileDevice() && result.pay_url) {
       // Mobile + pay_url: redirect directly instead of QR/popup (mobile browsers block popups)
       paymentState.value = {
-        orderId: result.order_id, qrCode: '', expiresAt: result.expires_at || '',
+        orderId: result.order_id, amount: result.amount, qrCode: '', expiresAt: result.expires_at || '',
         paymentType: selectedMethod.value, payUrl: result.pay_url,
         clientSecret: '', payAmount: 0,
         orderType,
@@ -557,7 +581,7 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
     } else if (result.qr_code) {
       // QR mode: show QR code inline
       paymentState.value = {
-        orderId: result.order_id, qrCode: result.qr_code,
+        orderId: result.order_id, amount: result.amount, qrCode: result.qr_code,
         expiresAt: result.expires_at || '', paymentType: selectedMethod.value, payUrl: '',
         clientSecret: '', payAmount: 0,
         orderType,
@@ -567,7 +591,7 @@ async function createOrder(orderAmount: number, orderType: string, planId?: numb
       // Redirect/popup mode: open payment URL, show waiting state inline
       openWindow(result.pay_url)
       paymentState.value = {
-        orderId: result.order_id, qrCode: '', expiresAt: result.expires_at || '',
+        orderId: result.order_id, amount: result.amount, qrCode: '', expiresAt: result.expires_at || '',
         paymentType: selectedMethod.value, payUrl: result.pay_url,
         clientSecret: '', payAmount: 0,
         orderType,

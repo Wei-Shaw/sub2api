@@ -529,7 +529,6 @@
   .sidebar-header {
     @apply h-16 px-6;
     @apply flex items-center gap-3;
-    @apply overflow-hidden;
     @apply border-b border-gray-100 dark:border-dark-800;
     transition:
       padding 0.2s ease,

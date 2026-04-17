@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -16,6 +17,19 @@ import (
 )
 
 // --- Refund Flow ---
+
+// getOrderProviderInstance looks up the provider instance that processed this order.
+// Returns nil, nil for legacy orders without provider_instance_id.
+func (s *PaymentService) getOrderProviderInstance(ctx context.Context, o *dbent.PaymentOrder) (*dbent.PaymentProviderInstance, error) {
+	if o.ProviderInstanceID == nil || *o.ProviderInstanceID == "" {
+		return nil, nil
+	}
+	instID, err := strconv.ParseInt(*o.ProviderInstanceID, 10, 64)
+	if err != nil {
+		return nil, nil
+	}
+	return s.entClient.PaymentProviderInstance.Get(ctx, instID)
+}
 
 func (s *PaymentService) RequestRefund(ctx context.Context, oid, uid int64, reason string) error {
 	o, err := s.validateRefundRequest(ctx, oid, uid)
@@ -57,6 +71,14 @@ func (s *PaymentService) validateRefundRequest(ctx context.Context, oid, uid int
 	if o.Status != OrderStatusCompleted {
 		return nil, infraerrors.BadRequest("INVALID_STATUS", "only completed orders can request refund")
 	}
+	// Check provider instance allows user refund
+	inst, err := s.getOrderProviderInstance(ctx, o)
+	if err != nil || inst == nil {
+		return nil, infraerrors.Forbidden("USER_REFUND_DISABLED", "refund is not available for this order")
+	}
+	if !inst.AllowUserRefund {
+		return nil, infraerrors.Forbidden("USER_REFUND_DISABLED", "user refund is not enabled for this provider")
+	}
 	return o, nil
 }
 
@@ -69,6 +91,19 @@ func (s *PaymentService) PrepareRefund(ctx context.Context, oid int64, amt float
 	if !psSliceContains(ok, o.Status) {
 		return nil, nil, infraerrors.BadRequest("INVALID_STATUS", "order status does not allow refund")
 	}
+	// Check provider instance allows admin refund
+	inst, instErr := s.getOrderProviderInstance(ctx, o)
+	if instErr != nil {
+		slog.Warn("refund: provider instance lookup failed", "orderID", oid, "error", instErr)
+		return nil, nil, infraerrors.InternalServer("PROVIDER_LOOKUP_FAILED", "failed to look up payment provider for this order")
+	}
+	if inst == nil {
+		// Legacy order without provider_instance_id — block refund
+		return nil, nil, infraerrors.Forbidden("REFUND_DISABLED", "refund is not available for this order")
+	}
+	if !inst.RefundEnabled {
+		return nil, nil, infraerrors.Forbidden("REFUND_DISABLED", "refund is not enabled for this provider")
+	}
 	if math.IsNaN(amt) || math.IsInf(amt, 0) {
 		return nil, nil, infraerrors.BadRequest("INVALID_AMOUNT", "invalid refund amount")
 	}
@@ -78,11 +113,7 @@ func (s *PaymentService) PrepareRefund(ctx context.Context, oid int64, amt float
 	if amt-o.Amount > amountToleranceCNY {
 		return nil, nil, infraerrors.BadRequest("REFUND_AMOUNT_EXCEEDED", "refund amount exceeds recharge")
 	}
-	// Full refund: use actual pay_amount for gateway (includes fees)
-	ga := amt
-	if math.Abs(amt-o.Amount) <= amountToleranceCNY {
-		ga = o.PayAmount
-	}
+	ga := calculateGatewayRefundAmount(o.Amount, o.PayAmount, amt)
 	rr := strings.TrimSpace(reason)
 	if rr == "" && o.RefundRequestReason != nil {
 		rr = *o.RefundRequestReason
@@ -150,11 +181,17 @@ func (s *PaymentService) ExecuteRefund(ctx context.Context, p *RefundPlan) (*Ref
 		if !s.hasAuditLog(ctx, p.OrderID, "REFUND_ROLLBACK_FAILED") {
 			_, err := s.subscriptionSvc.ExtendSubscription(ctx, p.SubscriptionID, -p.SubDaysToDeduct)
 			if err != nil {
-				// If deducting would expire the subscription, revoke it entirely
-				slog.Info("subscription deduction would expire, revoking", "orderID", p.OrderID, "subID", p.SubscriptionID, "days", p.SubDaysToDeduct)
-				if revokeErr := s.subscriptionSvc.RevokeSubscription(ctx, p.SubscriptionID); revokeErr != nil {
+				if errors.Is(err, ErrAdjustWouldExpire) {
+					// Deduction would expire the subscription — revoke it entirely
+					slog.Info("subscription deduction would expire, revoking", "orderID", p.OrderID, "subID", p.SubscriptionID, "days", p.SubDaysToDeduct)
+					if revokeErr := s.subscriptionSvc.RevokeSubscription(ctx, p.SubscriptionID); revokeErr != nil {
+						s.restoreStatus(ctx, p)
+						return nil, fmt.Errorf("revoke subscription: %w", revokeErr)
+					}
+				} else {
+					// Other errors (DB failure, not found) — abort refund
 					s.restoreStatus(ctx, p)
-					return nil, fmt.Errorf("revoke subscription: %w", revokeErr)
+					return nil, fmt.Errorf("deduct subscription days: %w", err)
 				}
 			}
 		} else {

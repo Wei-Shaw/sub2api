@@ -329,6 +329,7 @@ type OpenAIGatewayService struct {
 	openAITokenProvider   *OpenAITokenProvider
 	toolCorrector         *CodexToolCorrector
 	openaiWSResolver      OpenAIWSProtocolResolver
+	balanceNotifyService  *BalanceNotifyService
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -366,6 +367,7 @@ func NewOpenAIGatewayService(
 	openAITokenProvider *OpenAITokenProvider,
 	resolver *ModelPricingResolver,
 	channelService *ChannelService,
+	balanceNotifyService *BalanceNotifyService,
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -395,6 +397,7 @@ func NewOpenAIGatewayService(
 		openaiWSResolver:      NewOpenAIWSProtocolResolver(cfg),
 		resolver:              resolver,
 		channelService:        channelService,
+		balanceNotifyService:  balanceNotifyService,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
 	}
@@ -425,11 +428,12 @@ func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle 
 
 func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 	return &billingDeps{
-		accountRepo:         s.accountRepo,
-		userRepo:            s.userRepo,
-		userSubRepo:         s.userSubRepo,
-		billingCacheService: s.billingCacheService,
-		deferredService:     s.deferredService,
+		accountRepo:          s.accountRepo,
+		userRepo:             s.userRepo,
+		userSubRepo:          s.userSubRepo,
+		billingCacheService:  s.billingCacheService,
+		deferredService:      s.deferredService,
+		balanceNotifyService: s.balanceNotifyService,
 	}
 }
 
@@ -2137,7 +2141,6 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 	if err != nil || latest == nil {
 		return nil
 	}
-	syncOpenAICodexRateLimitFromExtra(ctx, s.accountRepo, latest, time.Now())
 	if !latest.IsOpenAI() || !latest.MatchesTargetGroup(targetGroup) || !latest.IsSchedulableForTargetGroup(targetGroup) {
 		return nil
 	}
@@ -2159,7 +2162,6 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx con
 	if err != nil || latest == nil {
 		return nil
 	}
-	syncOpenAICodexRateLimitFromExtra(ctx, s.accountRepo, latest, time.Now())
 	if !latest.IsOpenAI() || !latest.IsOpenAIReserveCandidate() {
 		return nil
 	}
@@ -2182,7 +2184,6 @@ func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accoun
 	if err != nil || account == nil {
 		return account, err
 	}
-	syncOpenAICodexRateLimitFromExtra(ctx, s.accountRepo, account, time.Now())
 	return account, nil
 }
 
@@ -3527,18 +3528,8 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	resp *http.Response,
 	c *gin.Context,
 ) (*OpenAIUsage, error) {
-	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
-	body, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
-			c.JSON(http.StatusBadGateway, gin.H{
-				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream response too large",
-				},
-			})
-		}
 		return nil, err
 	}
 
@@ -4867,18 +4858,8 @@ func filterOpenCodeResponsesSSEBody(bodyText string) string {
 }
 
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*OpenAIUsage, error) {
-	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
-	body, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
-		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
-			c.JSON(http.StatusBadGateway, gin.H{
-				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream response too large",
-				},
-			})
-		}
 		return nil, err
 	}
 
@@ -5606,7 +5587,7 @@ func (s *OpenAIGatewayService) recordUsageCore(ctx context.Context, input *openA
 		return nil
 	}
 
-	usageLog := s.buildOpenAIRecordUsageLog(input, state)
+	usageLog := s.buildOpenAIRecordUsageLog(ctx, input, state)
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		logger.LegacyPrintf("service.openai_gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
@@ -5793,7 +5774,7 @@ func (s *OpenAIGatewayService) prepareOpenAIRecordUsageState(ctx context.Context
 	return state
 }
 
-func (s *OpenAIGatewayService) buildOpenAIRecordUsageLog(input *openAIRecordUsageCoreInput, state *openAIRecordUsageState) *UsageLog {
+func (s *OpenAIGatewayService) buildOpenAIRecordUsageLog(ctx context.Context, input *openAIRecordUsageCoreInput, state *openAIRecordUsageState) *UsageLog {
 	durationMs := int(state.Result.Duration.Milliseconds())
 	usageLog := &UsageLog{
 		UserID:            state.User.ID,
@@ -5873,6 +5854,20 @@ func (s *OpenAIGatewayService) buildOpenAIRecordUsageLog(input *openAIRecordUsag
 	}
 	if state.Subscription != nil {
 		usageLog.SubscriptionID = &state.Subscription.ID
+	}
+
+	if state.APIKey.GroupID != nil {
+		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
+			state.Account.ID, *state.APIKey.GroupID, state.Result.UpstreamModel, state.Result.Model,
+			UsageTokens{
+				InputTokens:         state.ActualInputTokens,
+				OutputTokens:        state.Result.Usage.OutputTokens,
+				CacheCreationTokens: state.Result.Usage.CacheCreationInputTokens,
+				CacheReadTokens:     state.Result.Usage.CacheReadInputTokens,
+				ImageOutputTokens:   state.Result.Usage.ImageOutputTokens,
+			},
+			state.Cost.TotalCost,
+		)
 	}
 
 	return usageLog
@@ -6035,69 +6030,6 @@ func buildCodexUsageExtraUpdates(snapshot *OpenAICodexUsageSnapshot, fallbackNow
 	return updates
 }
 
-func codexUsagePercentExhausted(value *float64) bool {
-	return value != nil && *value >= 100-1e-9
-}
-
-func codexRateLimitResetAtFromSnapshot(snapshot *OpenAICodexUsageSnapshot, fallbackNow time.Time) *time.Time {
-	if snapshot == nil {
-		return nil
-	}
-	normalized := snapshot.Normalize()
-	if normalized == nil {
-		return nil
-	}
-	baseTime := codexSnapshotBaseTime(snapshot, fallbackNow)
-	if codexUsagePercentExhausted(normalized.Used7dPercent) && normalized.Reset7dSeconds != nil {
-		resetAt := baseTime.Add(time.Duration(*normalized.Reset7dSeconds) * time.Second)
-		return &resetAt
-	}
-	if codexUsagePercentExhausted(normalized.Used5hPercent) && normalized.Reset5hSeconds != nil {
-		resetAt := baseTime.Add(time.Duration(*normalized.Reset5hSeconds) * time.Second)
-		return &resetAt
-	}
-	return nil
-}
-
-func codexRateLimitResetAtFromExtra(extra map[string]any, now time.Time) *time.Time {
-	if len(extra) == 0 {
-		return nil
-	}
-	if progress := buildCodexUsageProgressFromExtra(extra, "7d", now); progress != nil && codexUsagePercentExhausted(&progress.Utilization) && progress.ResetsAt != nil && now.Before(*progress.ResetsAt) {
-		resetAt := progress.ResetsAt.UTC()
-		return &resetAt
-	}
-	if progress := buildCodexUsageProgressFromExtra(extra, "5h", now); progress != nil && codexUsagePercentExhausted(&progress.Utilization) && progress.ResetsAt != nil && now.Before(*progress.ResetsAt) {
-		resetAt := progress.ResetsAt.UTC()
-		return &resetAt
-	}
-	return nil
-}
-
-func applyOpenAICodexRateLimitFromExtra(account *Account, now time.Time) (*time.Time, bool) {
-	if account == nil || !account.IsOpenAI() {
-		return nil, false
-	}
-	resetAt := codexRateLimitResetAtFromExtra(account.Extra, now)
-	if resetAt == nil {
-		return nil, false
-	}
-	if account.RateLimitResetAt != nil && now.Before(*account.RateLimitResetAt) && !account.RateLimitResetAt.Before(*resetAt) {
-		return account.RateLimitResetAt, false
-	}
-	account.RateLimitResetAt = resetAt
-	return resetAt, true
-}
-
-func syncOpenAICodexRateLimitFromExtra(ctx context.Context, repo AccountRepository, account *Account, now time.Time) *time.Time {
-	resetAt, changed := applyOpenAICodexRateLimitFromExtra(account, now)
-	if !changed || resetAt == nil || repo == nil || account == nil || account.ID <= 0 {
-		return resetAt
-	}
-	_ = repo.SetRateLimited(ctx, account.ID, *resetAt)
-	return resetAt
-}
-
 // updateCodexUsageSnapshot saves the Codex usage snapshot to account's Extra field
 func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, accountID int64, snapshot *OpenAICodexUsageSnapshot) {
 	if snapshot == nil {
@@ -6109,24 +6041,17 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 
 	now := time.Now()
 	updates := buildCodexUsageExtraUpdates(snapshot, now)
-	resetAt := codexRateLimitResetAtFromSnapshot(snapshot, now)
-	if len(updates) == 0 && resetAt == nil {
+	if len(updates) == 0 {
 		return
 	}
-	shouldPersistUpdates := len(updates) > 0 && s.getCodexSnapshotThrottle().Allow(accountID, now)
-	if !shouldPersistUpdates && resetAt == nil {
+	if !s.getCodexSnapshotThrottle().Allow(accountID, now) {
 		return
 	}
 
 	go func() {
 		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if shouldPersistUpdates {
-			_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
-		}
-		if resetAt != nil {
-			_ = s.accountRepo.SetRateLimited(updateCtx, accountID, *resetAt)
-		}
+		_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
 	}()
 }
 

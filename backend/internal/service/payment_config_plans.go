@@ -3,12 +3,59 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
+
+// validatePlanRequired checks that all required fields for a plan are provided.
+func validatePlanRequired(name string, groupID int64, price float64, validityDays int, validityUnit string, originalPrice *float64) error {
+	if strings.TrimSpace(name) == "" {
+		return infraerrors.BadRequest("PLAN_NAME_REQUIRED", "plan name is required")
+	}
+	if groupID <= 0 {
+		return infraerrors.BadRequest("PLAN_GROUP_REQUIRED", "group is required")
+	}
+	if price <= 0 {
+		return infraerrors.BadRequest("PLAN_PRICE_INVALID", "price must be > 0")
+	}
+	if validityDays <= 0 {
+		return infraerrors.BadRequest("PLAN_VALIDITY_REQUIRED", "validity days must be > 0")
+	}
+	if strings.TrimSpace(validityUnit) == "" {
+		return infraerrors.BadRequest("PLAN_VALIDITY_UNIT_REQUIRED", "validity unit is required")
+	}
+	if originalPrice != nil && *originalPrice < 0 {
+		return infraerrors.BadRequest("PLAN_ORIGINAL_PRICE_INVALID", "original price must be >= 0")
+	}
+	return nil
+}
+
+// validatePlanPatch validates only the non-nil fields in a patch update.
+func validatePlanPatch(req UpdatePlanRequest) error {
+	if req.Name != nil && strings.TrimSpace(*req.Name) == "" {
+		return infraerrors.BadRequest("PLAN_NAME_REQUIRED", "plan name is required")
+	}
+	if req.GroupID != nil && *req.GroupID <= 0 {
+		return infraerrors.BadRequest("PLAN_GROUP_REQUIRED", "group is required")
+	}
+	if req.Price != nil && *req.Price <= 0 {
+		return infraerrors.BadRequest("PLAN_PRICE_INVALID", "price must be > 0")
+	}
+	if req.ValidityDays != nil && *req.ValidityDays <= 0 {
+		return infraerrors.BadRequest("PLAN_VALIDITY_REQUIRED", "validity days must be > 0")
+	}
+	if req.ValidityUnit != nil && strings.TrimSpace(*req.ValidityUnit) == "" {
+		return infraerrors.BadRequest("PLAN_VALIDITY_UNIT_REQUIRED", "validity unit is required")
+	}
+	if req.OriginalPrice != nil && *req.OriginalPrice < 0 {
+		return infraerrors.BadRequest("PLAN_ORIGINAL_PRICE_INVALID", "original price must be >= 0")
+	}
+	return nil
+}
 
 // --- Plan CRUD ---
 
@@ -74,6 +121,9 @@ func (s *PaymentConfigService) ListPlansForSale(ctx context.Context) ([]*dbent.S
 }
 
 func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanRequest) (*dbent.SubscriptionPlan, error) {
+	if err := validatePlanRequired(req.Name, req.GroupID, req.Price, req.ValidityDays, req.ValidityUnit, req.OriginalPrice); err != nil {
+		return nil, err
+	}
 	b := s.entClient.SubscriptionPlan.Create().
 		SetGroupID(req.GroupID).SetName(req.Name).SetDescription(req.Description).
 		SetPrice(req.Price).SetValidityDays(req.ValidityDays).SetValidityUnit(req.ValidityUnit).
@@ -86,8 +136,12 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 }
 
 // UpdatePlan updates a subscription plan by ID (patch semantics).
-// NOTE: This function exceeds 30 lines due to per-field nil-check patch update boilerplate.
+// NOTE: This function exceeds 30 lines due to per-field nil-check patch update boilerplate
+// plus a validation guard for non-nil fields.
 func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req UpdatePlanRequest) (*dbent.SubscriptionPlan, error) {
+	if err := validatePlanPatch(req); err != nil {
+		return nil, err
+	}
 	u := s.entClient.SubscriptionPlan.UpdateOneID(id)
 	if req.GroupID != nil {
 		u.SetGroupID(*req.GroupID)

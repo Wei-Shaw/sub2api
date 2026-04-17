@@ -172,6 +172,8 @@ type UsageLog struct {
 	EffectiveCacheReadUnitPrice *float64
 	// PricingSource 记录本次价格来源标签，如 priority_pricing / priority_account_multiplier。
 	PricingSource *string
+	// AccountStatsCost 账号统计定价预计算费用（nil = 使用默认公式 total_cost × account_rate_multiplier）
+	AccountStatsCost *float64
 
 	BillingType  int8
 	RequestType  RequestType

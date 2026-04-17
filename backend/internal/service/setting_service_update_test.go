@@ -208,7 +208,7 @@ func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
 	svc := NewSettingService(repo, &config.Config{})
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
-		TableDefaultPageSize:  50,
+		TableDefaultPageSize: 50,
 		TablePageSizeOptions: []int{20, 50, 100},
 	})
 	require.NoError(t, err)
@@ -216,7 +216,7 @@ func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
 	require.Equal(t, "[20,50,100]", repo.updates[SettingKeyTablePageSizeOptions])
 
 	err = svc.UpdateSettings(context.Background(), &SystemSettings{
-		TableDefaultPageSize:  1000,
+		TableDefaultPageSize: 1000,
 		TablePageSizeOptions: []int{20, 100},
 	})
 	require.NoError(t, err)

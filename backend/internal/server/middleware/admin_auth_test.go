@@ -39,7 +39,7 @@ func TestAdminAuthJWTValidatesTokenVersion(t *testing.T) {
 			return &clone, nil
 		},
 	}
-	userService := service.NewUserService(userRepo, nil, nil)
+	userService := service.NewUserService(userRepo, nil, nil, nil)
 
 	router := gin.New()
 	router.Use(gin.HandlerFunc(NewAdminAuthMiddleware(authService, userService, nil)))

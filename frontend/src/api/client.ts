@@ -270,9 +270,9 @@ apiClient.interceptors.response.use(
       return Promise.reject({
         status,
         code: apiData.code,
+        reason: apiData.reason,
         error: apiData.error,
         message: apiData.message || apiData.detail || error.message,
-        reason: apiData.reason,
         metadata: apiData.metadata,
       })
     }

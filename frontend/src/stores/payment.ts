@@ -66,7 +66,7 @@ export const usePaymentStore = defineStore('payment', () => {
     return response.data
   }
 
-  /** Poll order status by ID */
+  /** Poll order status by ID (read-only, no upstream check) */
   async function pollOrderStatus(orderId: number): Promise<PaymentOrder | null> {
     try {
       const response = await paymentAPI.getOrder(orderId)

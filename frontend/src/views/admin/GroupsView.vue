@@ -3253,6 +3253,7 @@ const editForm = reactive({
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
+  default_mapped_model: '',
   opus_mapped_model: editMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: editMessagesDispatchDefaults.sonnet_mapped_model,
   haiku_mapped_model: editMessagesDispatchDefaults.haiku_mapped_model,
@@ -3731,6 +3732,19 @@ watch(
     }
   },
 );
+
+watch(
+  () => editForm.platform,
+  (newVal) => {
+    if (!['anthropic', 'antigravity'].includes(newVal)) {
+      editForm.fallback_group_id_on_invalid_request = null
+    }
+    if (newVal !== 'openai') {
+      editForm.allow_messages_dispatch = false
+      editForm.default_mapped_model = ''
+    }
+  }
+)
 
 // 点击外部关闭账号搜索下拉框
 const handleClickOutside = (event: MouseEvent) => {

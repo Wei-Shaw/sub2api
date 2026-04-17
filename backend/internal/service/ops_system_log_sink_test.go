@@ -183,6 +183,15 @@ func TestOpsSystemLogSink_StartStopAndFlushSuccess(t *testing.T) {
 	if strings.TrimSpace(item.Message) == "" {
 		t.Fatalf("message should not be empty")
 	}
+	// writtenCount is incremented after BatchInsertSystemLogsFn returns,
+	// so poll briefly to avoid a race between the done signal and the atomic add.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if sink.Health().WrittenCount > 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 	health := sink.Health()
 	if health.WrittenCount == 0 {
 		t.Fatalf("written_count should be >0")
