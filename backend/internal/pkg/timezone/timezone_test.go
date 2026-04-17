@@ -161,3 +161,45 @@ func TestStartOfWeek_Boundaries(t *testing.T) {
 		})
 	}
 }
+
+func TestIsLast24HoursPeriod(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{input: "last24hours", want: true},
+		{input: "LAST24H", want: true},
+		{input: "24h", want: true},
+		{input: "today", want: false},
+		{input: "", want: false},
+	}
+
+	for _, tt := range tests {
+		if got := IsLast24HoursPeriod(tt.input); got != tt.want {
+			t.Fatalf("IsLast24HoursPeriod(%q)=%v want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestLast24HoursInUserLocation(t *testing.T) {
+	if err := Init("UTC"); err != nil {
+		t.Fatalf("Init failed with UTC: %v", err)
+	}
+
+	before := time.Now().UTC()
+	start, end := Last24HoursInUserLocation("UTC")
+	after := time.Now().UTC()
+
+	if !start.Before(end) {
+		t.Fatalf("expected start before end, got start=%v end=%v", start, end)
+	}
+	if diff := end.Sub(start); diff != 24*time.Hour {
+		t.Fatalf("expected exact 24h window, got %v", diff)
+	}
+	if start.Before(before.Add(-24*time.Hour-time.Second)) || start.After(after.Add(-24*time.Hour+time.Second)) {
+		t.Fatalf("unexpected start time: %v", start)
+	}
+	if end.Before(before.Add(-time.Second)) || end.After(after.Add(time.Second)) {
+		t.Fatalf("unexpected end time: %v", end)
+	}
+}

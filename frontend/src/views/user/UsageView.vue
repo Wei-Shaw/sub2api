@@ -250,6 +250,7 @@ import { COMMON_ERROR_STATUS_CODES } from '@/utils/errorBadges'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+type DateRangePreset = 'last24Hours' | null
 
 type DistributionMetric = 'tokens' | 'actual_cost'
 type EndpointSource = 'inbound' | 'upstream' | 'path'
@@ -342,6 +343,7 @@ const getGranularityForRange = (start: string, end: string): 'day' | 'hour' => {
 const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start)
 const endDate = ref(defaultRange.end)
+const activeDatePreset = ref<DateRangePreset>('last24Hours')
 const granularity = ref<'day' | 'hour'>(getGranularityForRange(startDate.value, endDate.value))
 
 const modelDistributionMetric = ref<DistributionMetric>('tokens')
@@ -352,6 +354,7 @@ const activeTab = ref<'usage' | 'errors'>('usage')
 const errorViewEnabled = computed(() => appStore.cachedPublicSettings?.allow_user_view_error_requests ?? false)
 
 const filters = ref<UsageQueryParams>({
+  period: 'last24hours',
   start_date: startDate.value,
   end_date: endDate.value,
   request_type: undefined,
@@ -359,6 +362,20 @@ const filters = ref<UsageQueryParams>({
   billing_mode: null,
 })
 
+const buildRangeParams = (): Pick<UsageQueryParams, 'period' | 'start_date' | 'end_date'> => {
+  if (activeDatePreset.value === 'last24Hours') {
+    return {
+      period: 'last24hours',
+      start_date: undefined,
+      end_date: undefined,
+    }
+  }
+  return {
+    period: undefined,
+    start_date: startDate.value,
+    end_date: endDate.value,
+  }
+}
 const pagination = reactive({
   page: 1,
   page_size: getPersistedPageSize(),
@@ -414,8 +431,7 @@ const normalizedFilters = computed<UsageQueryParams>(() => {
   const legacyStream = requestType ? requestTypeToLegacyStream(requestType) : filters.value.stream
   return {
     ...filters.value,
-    start_date: startDate.value,
-    end_date: endDate.value,
+    ...buildRangeParams(),
     stream: legacyStream === null ? undefined : legacyStream,
   }
 })
@@ -544,9 +560,11 @@ const refreshData = () => {
 
 const resetFilters = () => {
   const range = getLast24HoursRangeDates()
+  activeDatePreset.value = 'last24Hours'
   startDate.value = range.start
   endDate.value = range.end
   filters.value = {
+    period: 'last24hours',
     start_date: range.start,
     end_date: range.end,
     request_type: undefined,
@@ -562,8 +580,10 @@ const resetFilters = () => {
 }
 
 const onDateRangeChange = (range: { startDate: string; endDate: string; preset: string | null }) => {
+  activeDatePreset.value = range.preset === 'last24Hours' ? 'last24Hours' : null
   startDate.value = range.startDate
   endDate.value = range.endDate
+  filters.value.period = activeDatePreset.value === 'last24Hours' ? 'last24hours' : undefined
   filters.value.start_date = range.startDate
   filters.value.end_date = range.endDate
   granularity.value = getGranularityForRange(range.startDate, range.endDate)

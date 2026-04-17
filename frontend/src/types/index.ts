@@ -1766,6 +1766,7 @@ export interface UserErrorListParams {
 export interface UsageQueryParams {
   page?: number
   page_size?: number
+  period?: string
   api_key_id?: number
   user_id?: number
   account_id?: number

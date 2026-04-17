@@ -6,6 +6,7 @@ package timezone
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -163,4 +164,22 @@ func StartOfDayInUserLocation(t time.Time, userTZ string) time.Time {
 	}
 	t = t.In(loc)
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
+}
+
+// IsLast24HoursPeriod reports whether the caller requested a rolling last-24-hours window.
+func IsLast24HoursPeriod(period string) bool {
+	switch strings.ToLower(strings.TrimSpace(period)) {
+	case "last24hours", "last24h", "24h":
+		return true
+	default:
+		return false
+	}
+}
+
+// Last24HoursInUserLocation returns a rolling [now-24h, now) window in the user's timezone.
+// The returned values represent the same instants regardless of timezone, but are expressed
+// in the resolved user/server location to keep downstream formatting consistent.
+func Last24HoursInUserLocation(userTZ string) (time.Time, time.Time) {
+	end := NowInUserLocation(userTZ)
+	return end.Add(-24 * time.Hour), end
 }

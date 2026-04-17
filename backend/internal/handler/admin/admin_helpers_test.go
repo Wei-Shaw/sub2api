@@ -32,6 +32,21 @@ func TestParseTimeRange(t *testing.T) {
 	require.False(t, end.IsZero())
 }
 
+func TestParseTimeRangeLast24Hours(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/?period=last24hours&timezone=UTC", nil)
+
+	before := time.Now().UTC()
+	start, end := parseTimeRange(c)
+	after := time.Now().UTC()
+
+	require.WithinDuration(t, before.Add(-24*time.Hour), start, 2*time.Second)
+	require.WithinDuration(t, after, end, 2*time.Second)
+	require.Equal(t, 24*time.Hour, end.Sub(start))
+}
+
 func TestParseOpsViewParam(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
