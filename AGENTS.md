@@ -126,6 +126,31 @@
 - `scp`/`ssh` 偶发 `Connection closed by ... port 22` 不一定代表构建或代码问题。
 - 先用一次 `ssh ... echo ok` 探测恢复，再重试上传/部署。
 
+5. 从本机发版到 Linux VPS 时，必须显式交叉编译目标平台
+- 不要直接在 Windows 本机 `go build` 后就上传；那会产出错误平台二进制，线上会报：
+  - `Exec format error`
+- 当前这条生产线默认目标是 Linux x86_64，至少显式指定：
+  - `GOOS=linux`
+  - `GOARCH=amd64`
+  - `CGO_ENABLED=0`
+- 上传前可先记一次本地产物的时间戳 / 大小，方便和 VPS 侧对比。
+
+6. 替换线上二进制前，先做“接入生产环境但不公开提供”的服务端预发布验证
+- 推荐流程：
+  1. 上传候选二进制到临时路径，例如 `/tmp/sub2api-linux-amd64.new`
+  2. 用 `file` 确认它确实是 Linux ELF，例如 `ELF 64-bit LSB executable, x86-64`
+  3. 用正式 env 启动临时实例，但只绑定本机回环地址和备用端口，例如：
+     - `SERVER_HOST=127.0.0.1`
+     - `SERVER_PORT=18081`
+  4. 至少验证：
+     - `curl http://127.0.0.1:18081/health`
+  5. 如果本次改动影响网关 / provider / OpenAI 兼容链，尽量再补一条真实请求链路 smoke（接生产上游，但不对外暴露）。
+  6. smoke 通过后，再把候选二进制提升为正式 `/opt/sub2api/sub2api` 并重启 systemd。
+
+7. 如果替换后服务没起来，先看 `systemd` 错误类型，再决定回滚或修复
+- `Exec format error` 优先怀疑上传了错误平台二进制。
+- 这类问题不要继续硬重启；应先立刻回滚到最近备份二进制，恢复 `active + /health ok`，再重新构建正确产物。
+
 ## 磁盘与运维经验
 
 生产机曾出现 `No space left on device`，根因不是数据库，而是：
