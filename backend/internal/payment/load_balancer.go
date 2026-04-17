@@ -261,6 +261,9 @@ func (lb *DefaultLoadBalancer) buildSelection(selected *dbent.PaymentProviderIns
 	if err != nil {
 		return nil, fmt.Errorf("decrypt instance %d config: %w", selected.ID, err)
 	}
+	if config == nil {
+		config = map[string]string{}
+	}
 
 	if selected.PaymentMode != "" {
 		config["paymentMode"] = selected.PaymentMode
@@ -275,16 +278,29 @@ func (lb *DefaultLoadBalancer) buildSelection(selected *dbent.PaymentProviderIns
 	}, nil
 }
 
-func (lb *DefaultLoadBalancer) decryptConfig(encrypted string) (map[string]string, error) {
-	plaintext, err := Decrypt(encrypted, lb.encryptionKey)
-	if err != nil {
-		return nil, err
+// decryptConfig parses a stored provider config.
+// New records are plaintext JSON; legacy records are AES-256-GCM ciphertext.
+// Unreadable values (legacy ciphertext without a valid key, or malformed data)
+// are treated as empty so the service keeps running while the admin re-enters
+// the config via the UI.
+func (lb *DefaultLoadBalancer) decryptConfig(stored string) (map[string]string, error) {
+	if stored == "" {
+		return nil, nil
 	}
 	var config map[string]string
-	if err := json.Unmarshal([]byte(plaintext), &config); err != nil {
-		return nil, fmt.Errorf("unmarshal config: %w", err)
+	if err := json.Unmarshal([]byte(stored), &config); err == nil {
+		return config, nil
 	}
-	return config, nil
+	if len(lb.encryptionKey) == AES256KeySize {
+		if plaintext, err := Decrypt(stored, lb.encryptionKey); err == nil {
+			if err := json.Unmarshal([]byte(plaintext), &config); err == nil {
+				return config, nil
+			}
+		}
+	}
+	slog.Warn("payment provider config unreadable, treating as empty for re-entry",
+		"stored_len", len(stored))
+	return nil, nil
 }
 
 // GetInstanceDailyAmount returns the total completed order amount for an instance today.

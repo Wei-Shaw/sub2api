@@ -10,12 +10,15 @@ import (
 	"strings"
 )
 
+// AES256KeySize is the required key length (in bytes) for AES-256-GCM.
+const AES256KeySize = 32
+
 // Encrypt encrypts plaintext using AES-256-GCM with the given 32-byte key.
 // The output format is "iv:authTag:ciphertext" where each component is base64-encoded,
 // matching the Node.js crypto.ts format for cross-compatibility.
 func Encrypt(plaintext string, key []byte) (string, error) {
-	if len(key) != 32 {
-		return "", fmt.Errorf("encryption key must be 32 bytes, got %d", len(key))
+	if len(key) != AES256KeySize {
+		return "", fmt.Errorf("encryption key must be %d bytes, got %d", AES256KeySize, len(key))
 	}
 
 	block, err := aes.NewCipher(key)
@@ -52,8 +55,8 @@ func Encrypt(plaintext string, key []byte) (string, error) {
 // Decrypt decrypts a ciphertext string produced by Encrypt.
 // The input format is "iv:authTag:ciphertext" where each component is base64-encoded.
 func Decrypt(ciphertext string, key []byte) (string, error) {
-	if len(key) != 32 {
-		return "", fmt.Errorf("encryption key must be 32 bytes, got %d", len(key))
+	if len(key) != AES256KeySize {
+		return "", fmt.Errorf("encryption key must be %d bytes, got %d", AES256KeySize, len(key))
 	}
 
 	parts := strings.SplitN(ciphertext, ":", 3)
