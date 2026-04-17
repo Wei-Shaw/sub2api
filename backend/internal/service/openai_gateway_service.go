@@ -4120,6 +4120,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	sawResponseCreated := false
 	sawResponseInProgress := false
 	sawSubstantiveEvent := false
+	openCodeClient := isOpenCodeResponsesClient(c)
+	pendingOpenCodeFrame := make([]string, 0, 4)
 	localRequestID := strings.TrimSpace(c.Writer.Header().Get("X-Request-Id"))
 	startStream := func() error {
 		if streamStarted {
@@ -4232,21 +4234,101 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		sendErrorEvent("stream_read_error")
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true
 	}
+	processOpenCodeSSEFrame := func(frameLines []string, queueDrained bool) (*openaiStreamingResult, error, bool) {
+		frameBody, data, hasData, keep := filterOpenCodeResponsesSSEFrame(frameLines)
+		if !keep {
+			return nil, nil, false
+		}
+		if !hasData {
+			if !clientDisconnected && streamStarted && frameBody != "" {
+				if _, err := bufferedWriter.WriteString(frameBody); err != nil {
+					clientDisconnected = true
+					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+				} else if queueDrained {
+					if err := flushBuffered(); err != nil {
+						clientDisconnected = true
+						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
+					}
+				}
+			}
+			return nil, nil, false
+		}
+
+		switch strings.TrimSpace(gjson.Get(data, "type").String()) {
+		case "response.created":
+			sawResponseCreated = true
+		case "response.in_progress":
+			sawResponseInProgress = true
+		}
+		if !streamStarted && firstTokenMs == nil && gjson.Get(data, "type").String() == "error" {
+			msg := extractOpenAISSEErrorMessage([]byte(data))
+			if isOpenAITransientProcessingError(http.StatusBadRequest, msg, []byte(data)) {
+				return resultWithUsage(), &UpstreamFailoverError{StatusCode: http.StatusServiceUnavailable, ResponseBody: []byte(data)}, true
+			}
+		}
+
+		if needModelReplace && mappedModel != "" && strings.Contains(data, mappedModel) {
+			replacedLine := s.replaceModelInSSELine("data: "+data, mappedModel, originalModel)
+			if replacedData, ok := extractOpenAISSEDataLine(replacedLine); ok {
+				data = replacedData
+				frameBody = rebuildSSEFrameWithData(frameLines, data)
+			}
+		}
+
+		dataBytes := []byte(data)
+		if openAIStreamEventIsTerminal(data) {
+			sawTerminalEvent = true
+		}
+		if correctedData, corrected := s.toolCorrector.CorrectToolCallsInSSEBytes(dataBytes); corrected {
+			dataBytes = correctedData
+			data = string(correctedData)
+			frameBody = rebuildSSEFrameWithData(frameLines, data)
+		}
+
+		if !clientDisconnected {
+			if !streamStarted && !openAIResponsesEventStartsClientStream(data) {
+				s.parseSSEUsageBytes(dataBytes, usage)
+				return nil, nil, false
+			}
+			sawSubstantiveEvent = true
+			shouldFlush := queueDrained
+			if firstTokenMs == nil && data != "" && data != "[DONE]" {
+				shouldFlush = true
+				ms := int(time.Since(startTime).Milliseconds())
+				firstTokenMs = &ms
+			}
+			if err := startStream(); err != nil {
+				clientDisconnected = true
+				return resultWithUsage(), err, true
+			}
+			if _, err := bufferedWriter.WriteString(frameBody); err != nil {
+				clientDisconnected = true
+				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
+			} else if shouldFlush {
+				if err := flushBuffered(); err != nil {
+					clientDisconnected = true
+					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
+				}
+			}
+		}
+		s.parseSSEUsageBytes(dataBytes, usage)
+		return nil, nil, false
+	}
+
 	processSSELine := func(line string, queueDrained bool) (*openaiStreamingResult, error, bool) {
 		lastDataAt = time.Now()
+		if openCodeClient {
+			pendingOpenCodeFrame = append(pendingOpenCodeFrame, line)
+			if line != "" {
+				return nil, nil, false
+			}
+			frameLines := append([]string(nil), pendingOpenCodeFrame...)
+			pendingOpenCodeFrame = pendingOpenCodeFrame[:0]
+			return processOpenCodeSSEFrame(frameLines, queueDrained)
+		}
 
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if data, ok := extractOpenAISSEDataLine(line); ok {
-			if isOpenCodeResponsesClient(c) {
-				filteredData, keep := filterOpenCodeResponsesSSEData(data)
-				if !keep {
-					return nil, nil, false
-				}
-				if filteredData != data {
-					data = filteredData
-					line = "data: " + filteredData
-				}
-			}
 			switch strings.TrimSpace(gjson.Get(data, "type").String()) {
 			case "response.created":
 				sawResponseCreated = true
@@ -4344,6 +4426,12 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				return result, err
 			}
 		}
+		if openCodeClient && len(pendingOpenCodeFrame) > 0 {
+			if result, err, done := processOpenCodeSSEFrame(append([]string(nil), pendingOpenCodeFrame...), true); done {
+				return result, err
+			}
+			pendingOpenCodeFrame = pendingOpenCodeFrame[:0]
+		}
 		if result, err, done := handleScanErr(scanner.Err()); done {
 			return result, err
 		}
@@ -4386,6 +4474,12 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				if openCodeClient && len(pendingOpenCodeFrame) > 0 {
+					if result, err, done := processOpenCodeSSEFrame(append([]string(nil), pendingOpenCodeFrame...), true); done {
+						return result, err
+					}
+					pendingOpenCodeFrame = pendingOpenCodeFrame[:0]
+				}
 				return finalizeStream()
 			}
 			if result, err, done := handleScanErr(ev.err); done {
@@ -4620,6 +4714,94 @@ func filterOpenCodeResponsesSSEData(data string) (string, bool) {
 	return data, true
 }
 
+func rebuildSSEFrame(lines []string) string {
+	trimmed := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		trimmed = append(trimmed, line)
+	}
+	if len(trimmed) == 0 {
+		return ""
+	}
+	return strings.Join(trimmed, "\n") + "\n\n"
+}
+
+func rebuildSSEFrameWithData(lines []string, newData string) string {
+	out := make([]string, 0, len(lines)+1)
+	wroteData := false
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		if _, ok := extractOpenAISSEDataLine(line); ok {
+			if !wroteData {
+				for _, part := range strings.Split(newData, "\n") {
+					out = append(out, "data: "+part)
+				}
+				wroteData = true
+			}
+			continue
+		}
+		out = append(out, line)
+	}
+	if !wroteData {
+		for _, part := range strings.Split(newData, "\n") {
+			out = append(out, "data: "+part)
+		}
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	return strings.Join(out, "\n") + "\n\n"
+}
+
+func filterOpenCodeResponsesSSEFrame(lines []string) (frame string, data string, hasData bool, keep bool) {
+	if len(lines) == 0 {
+		return "", "", false, false
+	}
+	dataLines := make([]string, 0, 1)
+	for _, line := range lines {
+		if extracted, ok := extractOpenAISSEDataLine(line); ok {
+			dataLines = append(dataLines, extracted)
+		}
+	}
+	if len(dataLines) == 0 {
+		return rebuildSSEFrame(lines), "", false, true
+	}
+	joined := strings.Join(dataLines, "\n")
+	filteredData, keep := filterOpenCodeResponsesSSEData(joined)
+	if !keep {
+		return "", joined, true, false
+	}
+	return rebuildSSEFrameWithData(lines, filteredData), filteredData, true, true
+}
+
+func filterOpenCodeResponsesSSEBody(bodyText string) string {
+	lines := strings.Split(bodyText, "\n")
+	frames := make([]string, 0, len(lines)/2)
+	current := make([]string, 0, 4)
+	flush := func() {
+		if len(current) == 0 {
+			return
+		}
+		frame, _, _, keep := filterOpenCodeResponsesSSEFrame(current)
+		if keep && frame != "" {
+			frames = append(frames, frame)
+		}
+		current = current[:0]
+	}
+	for _, line := range lines {
+		current = append(current, line)
+		if line == "" {
+			flush()
+		}
+	}
+	flush()
+	return strings.Join(frames, "")
+}
+
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*OpenAIUsage, error) {
 	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
 	body, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
@@ -4741,24 +4923,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
 		}
 		if isOpenCodeResponsesClient(c) {
-			lines := strings.Split(bodyText, "\n")
-			filteredLines := make([]string, 0, len(lines))
-			for _, line := range lines {
-				data, ok := extractOpenAISSEDataLine(line)
-				if !ok {
-					filteredLines = append(filteredLines, line)
-					continue
-				}
-				filteredData, keep := filterOpenCodeResponsesSSEData(data)
-				if !keep {
-					continue
-				}
-				if filteredData != data {
-					line = "data: " + filteredData
-				}
-				filteredLines = append(filteredLines, line)
-			}
-			bodyText = strings.Join(filteredLines, "\n")
+			bodyText = filterOpenCodeResponsesSSEBody(bodyText)
 		}
 		body = []byte(bodyText)
 	}

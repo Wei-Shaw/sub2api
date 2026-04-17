@@ -3042,6 +3042,36 @@ func TestHandleSSEToJSON_CompletedEventReturnsJSON(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), "data:")
 }
 
+func TestHandleSSEToJSON_OpenCodeFiltersWebSearchCallFromFinalResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "opencode/1.4.3")
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}}
+	body := []byte(strings.Join([]string{
+		`event: response.created`,
+		`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+		``,
+		`event: response.completed`,
+		`data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.4","output":[{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}},{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"search strategy"}]},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"usage":{"input_tokens":1,"output_tokens":2}}}`,
+		``,
+		`data: [DONE]`,
+	}, "\n"))
+
+	usage, err := svc.handleSSEToJSON(resp, c, body, "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, 1, usage.InputTokens)
+	require.Equal(t, 2, usage.OutputTokens)
+	require.NotContains(t, rec.Body.String(), `web_search_call`)
+	require.Contains(t, rec.Body.String(), `pricing result`)
+	require.Contains(t, rec.Body.String(), `search strategy`)
+	require.NotContains(t, rec.Body.String(), `"summary":[]`)
+}
+
 func TestHandleSSEToJSON_NoFinalResponseKeepsSSEBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -3144,6 +3174,31 @@ func TestHandleNonStreamingResponse_EventStreamAppliesToAPIKeyAccounts(t *testin
 	require.NotContains(t, rec.Body.String(), `"output":[]`)
 }
 
+func TestHandleNonStreamingResponse_OpenCodeFiltersWebSearchCallOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "opencode/1.4.3")
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","model":"gpt-5.4","output":[{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}},{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"search strategy"}]},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"usage":{"input_tokens":1,"output_tokens":2}}`)),
+	}
+
+	usage, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{Type: AccountTypeAPIKey}, "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, 1, usage.InputTokens)
+	require.Equal(t, 2, usage.OutputTokens)
+	require.NotContains(t, rec.Body.String(), `web_search_call`)
+	require.Contains(t, rec.Body.String(), `pricing result`)
+	require.Contains(t, rec.Body.String(), `search strategy`)
+	require.NotContains(t, rec.Body.String(), `"summary":[]`)
+}
+
 func TestHandleChatBufferedStreamingResponse_ReconstructsEmptyOutputFromDelta(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -3170,54 +3225,7 @@ func TestHandleChatBufferedStreamingResponse_ReconstructsEmptyOutputFromDelta(t 
 	require.Contains(t, rec.Body.String(), `"hello world"`)
 }
 
-func TestHandleNonStreamingResponse_OpenCodeFiltersWebSearchCallOutput(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	c.Request.Header.Set("User-Agent", "opencode/1.4.3")
-
-	svc := &OpenAIGatewayService{cfg: &config.Config{}}
-	resp := &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","model":"gpt-5.4","output":[{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"usage":{"input_tokens":1,"output_tokens":2}}`)),
-	}
-
-	usage, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{Type: AccountTypeAPIKey}, "gpt-5.4", "gpt-5.4")
-	require.NoError(t, err)
-	require.NotNil(t, usage)
-	require.Equal(t, 1, usage.InputTokens)
-	require.Equal(t, 2, usage.OutputTokens)
-	require.NotContains(t, rec.Body.String(), `web_search_call`)
-	require.Contains(t, rec.Body.String(), `pricing result`)
-}
-
-func TestHandleSSEToJSON_OpenCodeFiltersWebSearchCallFromFinalResponse(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	c.Request.Header.Set("User-Agent", "opencode/1.4.3")
-
-	svc := &OpenAIGatewayService{cfg: &config.Config{}}
-	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}}
-	body := []byte(strings.Join([]string{
-		`data: {"type":"response.created","response":{"id":"resp_1"}}`,
-		`data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.4","output":[{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"usage":{"input_tokens":1,"output_tokens":2}}}`,
-		`data: [DONE]`,
-	}, "\n"))
-
-	usage, err := svc.handleSSEToJSON(resp, c, body, "gpt-5.4", "gpt-5.4")
-	require.NoError(t, err)
-	require.NotNil(t, usage)
-	require.Equal(t, 1, usage.InputTokens)
-	require.Equal(t, 2, usage.OutputTokens)
-	require.NotContains(t, rec.Body.String(), `web_search_call`)
-	require.Contains(t, rec.Body.String(), `pricing result`)
-}
-
-func TestHandleStreamingResponse_OpenCodeSuppressesWebSearchCallEvents(t *testing.T) {
+func TestHandleStreamingResponse_OpenCodeSuppressesWebSearchCallFramesButPreservesReasoningSummary(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -3229,14 +3237,32 @@ func TestHandleStreamingResponse_OpenCodeSuppressesWebSearchCallEvents(t *testin
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: response.created`,
 			`data: {"type":"response.created","response":{"id":"resp_stream_1"}}`,
+			``,
+			`event: response.output_item.added`,
 			`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}}}`,
+			``,
+			`event: response.reasoning_summary_text.delta`,
+			`data: {"type":"response.reasoning_summary_text.delta","output_index":1,"summary_index":0,"delta":"search strategy"}`,
+			``,
+			`event: response.output_item.done`,
+			`data: {"type":"response.output_item.done","output_index":1,"item":{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"search strategy"}]}}`,
+			``,
+			`event: response.output_item.added`,
+			`data: {"type":"response.output_item.added","output_index":2,"item":{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}}`,
+			``,
+			`event: response.output_text.delta`,
+			`data: {"type":"response.output_text.delta","output_index":2,"content_index":0,"delta":"pricing result"}`,
+			``,
+			`event: response.web_search_call.searching`,
 			`data: {"type":"response.web_search_call.searching","output_index":0}`,
-			`data: {"type":"response.output_item.added","output_index":1,"item":{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}}`,
-			`data: {"type":"response.output_text.delta","delta":"pricing result"}`,
-			`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}}}`,
-			`data: {"type":"response.completed","response":{"id":"resp_stream_1","model":"gpt-5.4","output":[{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"usage":{"input_tokens":1,"output_tokens":2}}}`,
+			``,
+			`event: response.completed`,
+			`data: {"type":"response.completed","response":{"id":"resp_stream_1","model":"gpt-5.4","output":[{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}},{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"search strategy"}]},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"usage":{"input_tokens":1,"output_tokens":2}}}`,
+			``,
 			`data: [DONE]`,
+			``,
 		}, "\n"))),
 	}
 
@@ -3245,5 +3271,9 @@ func TestHandleStreamingResponse_OpenCodeSuppressesWebSearchCallEvents(t *testin
 	require.NotNil(t, result)
 	require.NotContains(t, rec.Body.String(), `web_search_call`)
 	require.NotContains(t, rec.Body.String(), `response.web_search_call.searching`)
+	require.Contains(t, rec.Body.String(), `response.reasoning_summary_text.delta`)
+	require.Contains(t, rec.Body.String(), `search strategy`)
 	require.Contains(t, rec.Body.String(), `pricing result`)
+	require.NotContains(t, rec.Body.String(), `"summary":[]`)
+	require.NotContains(t, rec.Body.String(), "event: response.web_search_call")
 }
