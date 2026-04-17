@@ -166,7 +166,7 @@
                       <input
                         type="number"
                         step="0.001"
-                        min="0"
+                        min="0.001"
                         autocomplete="off"
                         :value="entry.rate_multiplier"
                         class="hide-spinner w-20 rounded border border-gray-200 bg-white px-2 py-1 text-center text-sm font-medium transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/20 dark:border-dark-500 dark:bg-dark-700 dark:focus:border-primary-500"
