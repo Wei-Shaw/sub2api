@@ -1622,13 +1622,19 @@ export interface UserSpendingRankingItem {
   tokens: number
 }
 
-export interface UserSpendingRankingResponse {
+export interface TimeRangeMetadata {
+  start_date: string
+  end_date: string
+  start_time?: string
+  end_time?: string
+  period?: string
+}
+
+export interface UserSpendingRankingResponse extends TimeRangeMetadata {
   ranking: UserSpendingRankingItem[]
   total_actual_cost: number
   total_requests: number
   total_tokens: number
-  start_date: string
-  end_date: string
 }
 
 export interface ApiKeyUsageTrendPoint {

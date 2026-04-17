@@ -13,6 +13,7 @@ import type {
   UserUsageTrendPoint,
   UserSpendingRankingResponse,
   UserBreakdownItem,
+  TimeRangeMetadata,
   UsageRequestType
 } from '@/types'
 
@@ -59,10 +60,8 @@ export interface TrendParams {
   billing_type?: number | null
 }
 
-export interface TrendResponse {
+export interface TrendResponse extends TimeRangeMetadata {
   trend: TrendDataPoint[]
-  start_date: string
-  end_date: string
   granularity: string
 }
 
@@ -91,10 +90,8 @@ export interface ModelStatsParams {
   billing_type?: number | null
 }
 
-export interface ModelStatsResponse {
+export interface ModelStatsResponse extends TimeRangeMetadata {
   models: ModelStat[]
-  start_date: string
-  end_date: string
 }
 
 /**
@@ -120,10 +117,8 @@ export interface GroupStatsParams {
   billing_type?: number | null
 }
 
-export interface GroupStatsResponse {
+export interface GroupStatsResponse extends TimeRangeMetadata {
   groups: GroupStat[]
-  start_date: string
-  end_date: string
 }
 
 export interface DashboardSnapshotV2Params extends TrendParams {
@@ -139,10 +134,8 @@ export interface DashboardSnapshotV2Stats extends DashboardStats {
   uptime: number
 }
 
-export interface DashboardSnapshotV2Response {
+export interface DashboardSnapshotV2Response extends TimeRangeMetadata {
   generated_at: string
-  start_date: string
-  end_date: string
   granularity: string
   stats?: DashboardSnapshotV2Stats
   trend?: TrendDataPoint[]
@@ -182,10 +175,8 @@ export interface UserBreakdownParams {
   billing_type?: number | null
 }
 
-export interface UserBreakdownResponse {
+export interface UserBreakdownResponse extends TimeRangeMetadata {
   users: UserBreakdownItem[]
-  start_date: string
-  end_date: string
 }
 
 export async function getUserBreakdown(params: UserBreakdownParams): Promise<UserBreakdownResponse> {
@@ -209,10 +200,8 @@ export interface ApiKeyTrendParams extends TrendParams {
   limit?: number
 }
 
-export interface ApiKeyTrendResponse {
+export interface ApiKeyTrendResponse extends TimeRangeMetadata {
   trend: ApiKeyUsageTrendPoint[]
-  start_date: string
-  end_date: string
   granularity: string
 }
 
@@ -234,10 +223,8 @@ export interface UserTrendParams extends TrendParams {
   limit?: number
 }
 
-export interface UserTrendResponse {
+export interface UserTrendResponse extends TimeRangeMetadata {
   trend: UserUsageTrendPoint[]
-  start_date: string
-  end_date: string
   granularity: string
 }
 

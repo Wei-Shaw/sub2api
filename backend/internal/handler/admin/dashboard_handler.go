@@ -262,12 +262,10 @@ func (h *DashboardHandler) GetUsageTrend(c *gin.Context) {
 	}
 	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
 
-	response.Success(c, gin.H{
+	response.Success(c, addTimeRangeResponseMetadata(gin.H{
 		"trend":       trend,
-		"start_date":  startTime.Format("2006-01-02"),
-		"end_date":    endTime.Add(-24 * time.Hour).Format("2006-01-02"),
 		"granularity": granularity,
-	})
+	}, c, startTime, endTime))
 }
 
 // GetModelStats handles getting model usage statistics
@@ -343,11 +341,9 @@ func (h *DashboardHandler) GetModelStats(c *gin.Context) {
 	}
 	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
 
-	response.Success(c, gin.H{
-		"models":     stats,
-		"start_date": startTime.Format("2006-01-02"),
-		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
-	})
+	response.Success(c, addTimeRangeResponseMetadata(gin.H{
+		"models": stats,
+	}, c, startTime, endTime))
 }
 
 // GetGroupStats handles getting group usage statistics
@@ -414,11 +410,9 @@ func (h *DashboardHandler) GetGroupStats(c *gin.Context) {
 	}
 	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
 
-	response.Success(c, gin.H{
-		"groups":     stats,
-		"start_date": startTime.Format("2006-01-02"),
-		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
-	})
+	response.Success(c, addTimeRangeResponseMetadata(gin.H{
+		"groups": stats,
+	}, c, startTime, endTime))
 }
 
 // GetAPIKeyUsageTrend handles getting API key usage trend data
@@ -440,12 +434,10 @@ func (h *DashboardHandler) GetAPIKeyUsageTrend(c *gin.Context) {
 	}
 	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
 
-	response.Success(c, gin.H{
+	response.Success(c, addTimeRangeResponseMetadata(gin.H{
 		"trend":       trend,
-		"start_date":  startTime.Format("2006-01-02"),
-		"end_date":    endTime.Add(-24 * time.Hour).Format("2006-01-02"),
 		"granularity": granularity,
-	})
+	}, c, startTime, endTime))
 }
 
 // GetUserUsageTrend handles getting user usage trend data
@@ -467,12 +459,10 @@ func (h *DashboardHandler) GetUserUsageTrend(c *gin.Context) {
 	}
 	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
 
-	response.Success(c, gin.H{
+	response.Success(c, addTimeRangeResponseMetadata(gin.H{
 		"trend":       trend,
-		"start_date":  startTime.Format("2006-01-02"),
-		"end_date":    endTime.Add(-24 * time.Hour).Format("2006-01-02"),
 		"granularity": granularity,
-	})
+	}, c, startTime, endTime))
 }
 
 // BatchUsersUsageRequest represents the request body for batch user usage stats
@@ -523,14 +513,12 @@ func (h *DashboardHandler) GetUserSpendingRanking(c *gin.Context) {
 		return
 	}
 
-	payload := gin.H{
+	payload := addTimeRangeResponseMetadata(gin.H{
 		"ranking":           ranking.Ranking,
 		"total_actual_cost": ranking.TotalActualCost,
 		"total_requests":    ranking.TotalRequests,
 		"total_tokens":      ranking.TotalTokens,
-		"start_date":        startTime.Format("2006-01-02"),
-		"end_date":          endTime.Add(-24 * time.Hour).Format("2006-01-02"),
-	}
+	}, c, startTime, endTime)
 	dashboardUsersRankingCache.Set(cacheKey, payload)
 	c.Header("X-Snapshot-Cache", "miss")
 	response.Success(c, payload)
@@ -701,9 +689,7 @@ func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{
-		"users":      stats,
-		"start_date": startTime.Format("2006-01-02"),
-		"end_date":   endTime.Add(-24 * time.Hour).Format("2006-01-02"),
-	})
+	response.Success(c, addTimeRangeResponseMetadata(gin.H{
+		"users": stats,
+	}, c, startTime, endTime))
 }

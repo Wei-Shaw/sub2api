@@ -17,15 +17,20 @@ import (
 
 type userUsageRepoCapture struct {
 	service.UsageLogRepository
-	listParams   pagination.PaginationParams
-	listFilters  usagestats.UsageLogFilters
-	statsFilters usagestats.UsageLogFilters
-	trendFilters usagestats.UsageLogFilters
-	groupFilters usagestats.UsageLogFilters
-	listRows     []service.UsageLog
-	stats        *usagestats.UsageStats
-	modelStats   []usagestats.ModelStat
-	groupStats   []usagestats.GroupStat
+	listParams       pagination.PaginationParams
+	listFilters      usagestats.UsageLogFilters
+	statsFilters     usagestats.UsageLogFilters
+	trendFilters     usagestats.UsageLogFilters
+	trendStart       time.Time
+	trendEnd         time.Time
+	trendGranularity string
+	modelStart       time.Time
+	modelEnd         time.Time
+	groupFilters     usagestats.UsageLogFilters
+	listRows         []service.UsageLog
+	stats            *usagestats.UsageStats
+	modelStats       []usagestats.ModelStat
+	groupStats       []usagestats.GroupStat
 }
 
 func (s *userUsageRepoCapture) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
@@ -48,6 +53,9 @@ func (s *userUsageRepoCapture) GetStatsWithFilters(ctx context.Context, filters 
 }
 
 func (s *userUsageRepoCapture) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8) ([]usagestats.TrendDataPoint, error) {
+	s.trendStart = startTime
+	s.trendEnd = endTime
+	s.trendGranularity = granularity
 	s.trendFilters = usagestats.UsageLogFilters{
 		UserID:      userID,
 		APIKeyID:    apiKeyID,
@@ -62,6 +70,8 @@ func (s *userUsageRepoCapture) GetUsageTrendWithFilters(ctx context.Context, sta
 }
 
 func (s *userUsageRepoCapture) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8) ([]usagestats.ModelStat, error) {
+	s.modelStart = startTime
+	s.modelEnd = endTime
 	return s.modelStats, nil
 }
 
@@ -301,6 +311,22 @@ func TestUserUsageStatsLast24HoursPeriod(t *testing.T) {
 	require.Equal(t, 24*time.Hour, repo.statsFilters.EndTime.Sub(*repo.statsFilters.StartTime))
 }
 
+func TestUserDashboardTrendLast24HoursResponseMetadata(t *testing.T) {
+	repo := &userUsageRepoCapture{}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage/dashboard/trend?period=24h&timezone=UTC", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, int64(42), repo.trendFilters.UserID)
+	require.Equal(t, "day", repo.trendGranularity)
+	require.Contains(t, rec.Body.String(), "\"period\":\"last24hours\"")
+	require.Contains(t, rec.Body.String(), "\"start_time\"")
+	require.Contains(t, rec.Body.String(), "\"end_time\"")
+}
+
 func TestUserUsageDashboardModelsOmitsAccountCost(t *testing.T) {
 	repo := &userUsageRepoCapture{
 		modelStats: []usagestats.ModelStat{{
@@ -323,6 +349,23 @@ func TestUserUsageDashboardModelsOmitsAccountCost(t *testing.T) {
 	require.Contains(t, body, `"cost":0.1`)
 	require.Contains(t, body, `"actual_cost":0.08`)
 	require.NotContains(t, body, "account_cost")
+}
+
+func TestUserDashboardModelsDateRangeResponseMetadata(t *testing.T) {
+	repo := &userUsageRepoCapture{}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage/dashboard/models?start_date=2025-01-01&end_date=2025-01-02&timezone=UTC", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), repo.modelStart)
+	require.Equal(t, time.Date(2025, 1, 3, 0, 0, 0, 0, time.UTC), repo.modelEnd)
+	require.Contains(t, rec.Body.String(), "\"start_date\":\"2025-01-01\"")
+	require.Contains(t, rec.Body.String(), "\"end_date\":\"2025-01-02\"")
+	require.Contains(t, rec.Body.String(), "\"start_time\":\"2025-01-01T00:00:00Z\"")
+	require.Contains(t, rec.Body.String(), "\"end_time\":\"2025-01-03T00:00:00Z\"")
 }
 
 func TestUserUsageDashboardModelsRejectsAdminModelSources(t *testing.T) {

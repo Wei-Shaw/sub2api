@@ -25,8 +25,7 @@ type dashboardSnapshotV2Stats struct {
 type dashboardSnapshotV2Response struct {
 	GeneratedAt string `json:"generated_at"`
 
-	StartDate   string `json:"start_date"`
-	EndDate     string `json:"end_date"`
+	timeRangeResponseMetadata
 	Granularity string `json:"granularity"`
 
 	Stats      *dashboardSnapshotV2Stats        `json:"stats,omitempty"`
@@ -115,6 +114,7 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 
 	cached, hit, err := dashboardSnapshotV2Cache.GetOrLoad(cacheKey, func() (any, error) {
 		return h.buildSnapshotV2Response(
+			c,
 			c.Request.Context(),
 			startTime,
 			endTime,
@@ -145,6 +145,7 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 }
 
 func (h *DashboardHandler) buildSnapshotV2Response(
+	c *gin.Context,
 	ctx context.Context,
 	startTime, endTime time.Time,
 	granularity string,
@@ -153,10 +154,9 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 	usersTrendLimit int,
 ) (*dashboardSnapshotV2Response, error) {
 	resp := &dashboardSnapshotV2Response{
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		StartDate:   startTime.Format("2006-01-02"),
-		EndDate:     endTime.Add(-24 * time.Hour).Format("2006-01-02"),
-		Granularity: granularity,
+		GeneratedAt:               time.Now().UTC().Format(time.RFC3339),
+		timeRangeResponseMetadata: newTimeRangeResponseMetadata(c, startTime, endTime),
+		Granularity:               granularity,
 	}
 
 	if includeStats {

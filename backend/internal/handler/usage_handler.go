@@ -521,12 +521,10 @@ func (h *UsageHandler) DashboardTrend(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{
+	response.Success(c, addTimeRangeResponseMetadata(gin.H{
 		"trend":       trend,
-		"start_date":  parsed.StartTime.Format("2006-01-02"),
-		"end_date":    parsed.EndTime.Add(-24 * time.Hour).Format("2006-01-02"),
 		"granularity": granularity,
-	})
+	}, c, parsed.StartTime, parsed.EndTime))
 }
 
 // DashboardModels handles getting user model usage statistics
@@ -549,11 +547,9 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{
-		"models":     userModelStatsFromUsageStats(stats),
-		"start_date": parsed.StartTime.Format("2006-01-02"),
-		"end_date":   parsed.EndTime.Add(-24 * time.Hour).Format("2006-01-02"),
-	})
+	response.Success(c, addTimeRangeResponseMetadata(gin.H{
+		"models": userModelStatsFromUsageStats(stats),
+	}, c, parsed.StartTime, parsed.EndTime))
 }
 
 // DashboardSnapshotV2 returns usage-page chart data scoped to the current user.
