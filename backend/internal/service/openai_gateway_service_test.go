@@ -3169,3 +3169,81 @@ func TestHandleChatBufferedStreamingResponse_ReconstructsEmptyOutputFromDelta(t 
 	require.Equal(t, 3, result.Usage.OutputTokens)
 	require.Contains(t, rec.Body.String(), `"hello world"`)
 }
+
+func TestHandleNonStreamingResponse_OpenCodeFiltersWebSearchCallOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "opencode/1.4.3")
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(`{"id":"resp_1","model":"gpt-5.4","output":[{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"usage":{"input_tokens":1,"output_tokens":2}}`)),
+	}
+
+	usage, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{Type: AccountTypeAPIKey}, "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, 1, usage.InputTokens)
+	require.Equal(t, 2, usage.OutputTokens)
+	require.NotContains(t, rec.Body.String(), `web_search_call`)
+	require.Contains(t, rec.Body.String(), `pricing result`)
+}
+
+func TestHandleSSEToJSON_OpenCodeFiltersWebSearchCallFromFinalResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "opencode/1.4.3")
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}}
+	body := []byte(strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+		`data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.4","output":[{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"usage":{"input_tokens":1,"output_tokens":2}}}`,
+		`data: [DONE]`,
+	}, "\n"))
+
+	usage, err := svc.handleSSEToJSON(resp, c, body, "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, 1, usage.InputTokens)
+	require.Equal(t, 2, usage.OutputTokens)
+	require.NotContains(t, rec.Body.String(), `web_search_call`)
+	require.Contains(t, rec.Body.String(), `pricing result`)
+}
+
+func TestHandleStreamingResponse_OpenCodeSuppressesWebSearchCallEvents(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "opencode/1.4.3")
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.created","response":{"id":"resp_stream_1"}}`,
+			`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}}}`,
+			`data: {"type":"response.web_search_call.searching","output_index":0}`,
+			`data: {"type":"response.output_item.added","output_index":1,"item":{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}}`,
+			`data: {"type":"response.output_text.delta","delta":"pricing result"}`,
+			`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}}}`,
+			`data: {"type":"response.completed","response":{"id":"resp_stream_1","model":"gpt-5.4","output":[{"type":"web_search_call","id":"ws_1","action":{"type":"search","query":"openai pricing"}},{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"usage":{"input_tokens":1,"output_tokens":2}}}`,
+			`data: [DONE]`,
+		}, "\n"))),
+	}
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1}, time.Now(), "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotContains(t, rec.Body.String(), `web_search_call`)
+	require.NotContains(t, rec.Body.String(), `response.web_search_call.searching`)
+	require.Contains(t, rec.Body.String(), `pricing result`)
+}

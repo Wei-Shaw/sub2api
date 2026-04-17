@@ -4237,6 +4237,16 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if data, ok := extractOpenAISSEDataLine(line); ok {
+			if isOpenCodeResponsesClient(c) {
+				filteredData, keep := filterOpenCodeResponsesSSEData(data)
+				if !keep {
+					return nil, nil, false
+				}
+				if filteredData != data {
+					data = filteredData
+					line = "data: " + filteredData
+				}
+			}
 			switch strings.TrimSpace(gjson.Get(data, "type").String()) {
 			case "response.created":
 				sawResponseCreated = true
@@ -4531,6 +4541,85 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 	}, true
 }
 
+func isOpenCodeResponsesClient(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+	}
+	userAgent := strings.ToLower(strings.TrimSpace(c.Request.Header.Get("User-Agent")))
+	return strings.Contains(userAgent, "opencode")
+}
+
+func isOpenCodeFilteredProviderBuiltInOutputType(outputType string) bool {
+	switch strings.TrimSpace(outputType) {
+	case "web_search_call":
+		return true
+	default:
+		return false
+	}
+}
+
+func sanitizeOpenCodeResponsesOutput(body []byte) ([]byte, bool, error) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return body, false, nil
+	}
+	output := gjson.GetBytes(body, "output")
+	if !output.Exists() || !output.IsArray() {
+		return body, false, nil
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal([]byte(output.Raw), &items); err != nil {
+		return body, false, err
+	}
+	filtered := make([]json.RawMessage, 0, len(items))
+	changed := false
+	for _, raw := range items {
+		if isOpenCodeFilteredProviderBuiltInOutputType(gjson.GetBytes(raw, "type").String()) {
+			changed = true
+			continue
+		}
+		filtered = append(filtered, raw)
+	}
+	if !changed {
+		return body, false, nil
+	}
+	outputJSON, err := json.Marshal(filtered)
+	if err != nil {
+		return body, false, err
+	}
+	patched, err := sjson.SetRawBytes(body, "output", outputJSON)
+	if err != nil {
+		return body, false, err
+	}
+	return patched, true, nil
+}
+
+func filterOpenCodeResponsesSSEData(data string) (string, bool) {
+	eventType := strings.TrimSpace(gjson.Get(data, "type").String())
+	switch eventType {
+	case "response.web_search_call.in_progress", "response.web_search_call.searching", "response.web_search_call.completed":
+		return "", false
+	case "response.output_item.added", "response.output_item.done":
+		if isOpenCodeFilteredProviderBuiltInOutputType(gjson.Get(data, "item.type").String()) {
+			return "", false
+		}
+	case "response.completed", "response.done":
+		responseRaw := gjson.Get(data, "response").Raw
+		if responseRaw == "" {
+			return data, true
+		}
+		patched, changed, err := sanitizeOpenCodeResponsesOutput([]byte(responseRaw))
+		if err != nil || !changed {
+			return data, true
+		}
+		updated, err := sjson.SetRaw(data, "response", string(patched))
+		if err != nil {
+			return data, true
+		}
+		return updated, true
+	}
+	return data, true
+}
+
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*OpenAIUsage, error) {
 	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
 	body, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
@@ -4570,6 +4659,15 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		return nil, fmt.Errorf("parse response: invalid json response")
 	}
 	usage := &usageValue
+	if isOpenCodeResponsesClient(c) {
+		filteredBody, changed, err := sanitizeOpenCodeResponsesOutput(body)
+		if err != nil {
+			return nil, fmt.Errorf("sanitize openai responses output: %w", err)
+		}
+		if changed {
+			body = filteredBody
+		}
+	}
 
 	// Replace model in response if needed
 	if originalModel != mappedModel {
@@ -4615,6 +4713,15 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			}
 		}
 		body = finalResponse
+		if isOpenCodeResponsesClient(c) {
+			filteredBody, changed, err := sanitizeOpenCodeResponsesOutput(body)
+			if err != nil {
+				return nil, fmt.Errorf("sanitize openai responses sse output: %w", err)
+			}
+			if changed {
+				body = filteredBody
+			}
+		}
 		if originalModel != mappedModel {
 			body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 		}
@@ -4632,6 +4739,26 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		usage = s.parseSSEUsageFromBody(bodyText)
 		if originalModel != mappedModel {
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
+		}
+		if isOpenCodeResponsesClient(c) {
+			lines := strings.Split(bodyText, "\n")
+			filteredLines := make([]string, 0, len(lines))
+			for _, line := range lines {
+				data, ok := extractOpenAISSEDataLine(line)
+				if !ok {
+					filteredLines = append(filteredLines, line)
+					continue
+				}
+				filteredData, keep := filterOpenCodeResponsesSSEData(data)
+				if !keep {
+					continue
+				}
+				if filteredData != data {
+					line = "data: " + filteredData
+				}
+				filteredLines = append(filteredLines, line)
+			}
+			bodyText = strings.Join(filteredLines, "\n")
 		}
 		body = []byte(bodyText)
 	}
