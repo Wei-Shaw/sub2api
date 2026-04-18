@@ -3739,6 +3739,8 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			if clientSessionID == "" {
 				clientSessionID = resolveOpenAICompactSessionID(c, body)
 			}
+		} else if shouldRequestJSONForOAuthNonStreamIncludeSources(c, account, body, isStream) {
+			req.Header.Set("accept", "application/json")
 		} else {
 			req.Header.Set("accept", "text/event-stream")
 		}
@@ -5109,6 +5111,35 @@ func reconstructResponseOutputFromSSE(bodyText string) ([]byte, bool) {
 
 func shouldSupplementOAuthNonCompactResponses(c *gin.Context, account *Account) bool {
 	return account != nil && account.Type == AccountTypeOAuth && !isOpenAIResponsesCompactPath(c)
+}
+
+func shouldRequestJSONForOAuthNonStreamIncludeSources(c *gin.Context, account *Account, body []byte, isStream bool) bool {
+	if account == nil || account.Type != AccountTypeOAuth || isStream || isOpenAIResponsesCompactPath(c) {
+		return false
+	}
+	reqBody, err := getOpenAIRequestBodyMap(c, body)
+	if err != nil {
+		return false
+	}
+	includeValue, ok := reqBody["include"]
+	if !ok {
+		return false
+	}
+	switch includes := includeValue.(type) {
+	case []any:
+		for _, raw := range includes {
+			if include, ok := raw.(string); ok && include == "web_search_call.action.sources" {
+				return true
+			}
+		}
+	case []string:
+		for _, include := range includes {
+			if include == "web_search_call.action.sources" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type canonicalResponsesOutputSlot struct {
