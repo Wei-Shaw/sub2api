@@ -27,7 +27,7 @@ func (p *peekConn) peek(n int) ([]byte, error) {
 	if _, err := io.ReadFull(p.Conn, chunk); err != nil {
 		return nil, err
 	}
-	p.buf.Write(chunk)
+	_, _ = p.buf.Write(chunk)
 	return chunk, nil
 }
 

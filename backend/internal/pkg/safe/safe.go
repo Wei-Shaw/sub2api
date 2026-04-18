@@ -7,6 +7,7 @@
 package safe
 
 import (
+	"context"
 	"log/slog"
 	"runtime/debug"
 )
@@ -61,5 +62,5 @@ func logPanic(event string, attrs []slog.Attr, panicValue any) {
 		slog.Any("panic", panicValue),
 		slog.String("stack", string(debug.Stack())),
 	)
-	slog.LogAttrs(nil, slog.LevelError, event+panicSuffix, logAttrs...)
+	slog.LogAttrs(context.Background(), slog.LevelError, event+panicSuffix, logAttrs...)
 }

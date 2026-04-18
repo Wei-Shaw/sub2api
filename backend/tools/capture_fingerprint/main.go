@@ -49,7 +49,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("listen %s: %v", *addr, err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	logStartupBanner(*addr)
 	acceptLoop(ln, tlsCfg, *outFile)
@@ -80,7 +80,7 @@ func acceptLoop(ln net.Listener, tlsCfg *ctls.Config, outFile string) {
 }
 
 func handleConn(raw net.Conn, tlsCfg *ctls.Config, outFile string) {
-	defer raw.Close()
+	defer func() { _ = raw.Close() }()
 	_ = raw.SetDeadline(time.Now().Add(30 * time.Second))
 
 	capture := &Capture{

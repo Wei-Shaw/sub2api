@@ -186,7 +186,7 @@ func (s *h2Session) handleData(f *http2.DataFrame) {
 		if len(data) > need {
 			data = data[:need]
 		}
-		buf.Write(data)
+		_, _ = buf.Write(data)
 	}
 	if f.StreamEnded() {
 		// Attach body preview back to the matching request.

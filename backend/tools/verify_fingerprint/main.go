@@ -73,7 +73,7 @@ func main() {
 		fmt.Printf("check capture server log for ClientHello details\n")
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	fmt.Printf("status=%d body=%s\n", resp.StatusCode, body)
 }
