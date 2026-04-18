@@ -3086,6 +3086,47 @@ func TestHandleSSEToJSON_OAuthNonCompactSupplementsWebSearchCallAndToolUsage(t *
 	require.Equal(t, "[]", gjson.Get(bodyText, `output.#(type=="message").content.0.annotations`).Raw)
 }
 
+func TestHandleSSEToJSON_OAuthNonCompactSupplementsWebSearchCallSourcesWhenDoneIsWeaker(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: response.output_item.added`,
+			`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"web_search_call","id":"ws_weak_done","status":"in_progress","action":{"type":"search","query":"openai pricing","sources":[{"type":"url_citation","title":"Reuters","url":"https://www.reuters.com/example"}]}}}`,
+			``,
+			`event: response.output_item.done`,
+			`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_weak_done","status":"completed","action":{"type":"search","query":"openai pricing"}}}`,
+			``,
+			`event: response.output_text.delta`,
+			`data: {"type":"response.output_text.delta","output_index":1,"content_index":0,"delta":"pricing result"}`,
+			``,
+			`event: response.completed`,
+			`data: {"type":"response.completed","response":{"id":"resp_oauth_sources_weak_done","model":"gpt-5.4","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"pricing result"}]}],"tool_usage":{"web_search":{"num_requests":0},"other_tool":{"count":7}},"usage":{"input_tokens":1,"output_tokens":2}}}`,
+			``,
+			`data: [DONE]`,
+		}, "\n"))),
+	}
+
+	usage, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}, "gpt-5.4", "gpt-5.4")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, 1, usage.InputTokens)
+	require.Equal(t, 2, usage.OutputTokens)
+
+	bodyText := rec.Body.String()
+	require.True(t, gjson.Get(bodyText, `output.#(type=="web_search_call")`).Exists())
+	require.Equal(t, "Reuters", gjson.Get(bodyText, `output.#(type=="web_search_call").action.sources.0.title`).String())
+	require.Equal(t, "https://www.reuters.com/example", gjson.Get(bodyText, `output.#(type=="web_search_call").action.sources.0.url`).String())
+	require.Equal(t, int64(1), gjson.Get(bodyText, `tool_usage.web_search.num_requests`).Int())
+	require.Equal(t, int64(7), gjson.Get(bodyText, `tool_usage.other_tool.count`).Int())
+}
+
 func TestHandleSSEToJSON_OAuthNonCompactStrengthensExistingWebSearchCallWithoutDuplicate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

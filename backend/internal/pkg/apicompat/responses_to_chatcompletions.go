@@ -573,9 +573,15 @@ func (a *BufferedResponseAccumulator) ensureIndexedSlot(outputIndex int) *indexe
 
 func (a *BufferedResponseAccumulator) recordIndexedSlotItem(outputIndex int, item *ResponsesOutput) {
 	slot := a.ensureIndexedSlot(outputIndex)
-	if slot.item != nil && item != nil && (slot.item.Type == "function_call" || item.Type == "function_call") {
-		slot.item = mergeIndexedFunctionCallItem(slot.item, item)
-		return
+	if slot.item != nil && item != nil {
+		switch {
+		case slot.item.Type == "function_call" || item.Type == "function_call":
+			slot.item = mergeIndexedFunctionCallItem(slot.item, item)
+			return
+		case slot.item.Type == "web_search_call" || item.Type == "web_search_call":
+			slot.item = mergeIndexedWebSearchCallItem(slot.item, item)
+			return
+		}
 	}
 	slot.item = cloneResponsesOutput(item)
 }
@@ -676,6 +682,42 @@ func mergeIndexedFunctionCallItem(existing, incoming *ResponsesOutput) *Response
 	merged.Name = firstNonEmpty(merged.Name, existing.Name)
 	merged.Arguments = firstNonEmpty(merged.Arguments, existing.Arguments)
 	return merged
+}
+
+func mergeIndexedWebSearchCallItem(existing, incoming *ResponsesOutput) *ResponsesOutput {
+	if existing == nil {
+		return cloneResponsesOutput(incoming)
+	}
+	merged := cloneResponsesOutput(incoming)
+	if merged == nil {
+		return cloneResponsesOutput(existing)
+	}
+	merged.Type = firstNonEmpty(merged.Type, existing.Type)
+	merged.ID = firstNonEmpty(merged.ID, existing.ID)
+	merged.Status = firstNonEmpty(merged.Status, existing.Status)
+
+	if existing.Action != nil {
+		if merged.Action == nil {
+			action := *existing.Action
+			if existing.Action.Sources != nil {
+				action.Sources = append(json.RawMessage(nil), existing.Action.Sources...)
+			}
+			merged.Action = &action
+		} else {
+			merged.Action.Type = firstNonEmpty(merged.Action.Type, existing.Action.Type)
+			merged.Action.Query = firstNonEmpty(merged.Action.Query, existing.Action.Query)
+			if isWeakWebSearchSources(merged.Action.Sources) && !isWeakWebSearchSources(existing.Action.Sources) {
+				merged.Action.Sources = append(json.RawMessage(nil), existing.Action.Sources...)
+			}
+		}
+	}
+
+	return merged
+}
+
+func isWeakWebSearchSources(raw json.RawMessage) bool {
+	trimmed := strings.TrimSpace(string(raw))
+	return trimmed == "" || trimmed == "null" || trimmed == "[]"
 }
 
 func firstNonEmpty(values ...string) string {
