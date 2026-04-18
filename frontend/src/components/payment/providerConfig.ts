@@ -43,11 +43,13 @@ export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct',
 export const PAYMENT_MODE_QRCODE = 'qrcode'
 export const PAYMENT_MODE_POPUP = 'popup'
 
-/** Window features for payment popup windows */
-export const POPUP_WINDOW_FEATURES = 'width=1000,height=750,left=100,top=80,scrollbars=yes,resizable=yes'
+/** Window features for payment popup windows.
+ * Sized for Alipay's standard checkout (QR + account login panel),
+ * which needs ~1200px wide to render without horizontal scrolling. */
+export const POPUP_WINDOW_FEATURES = 'width=1250,height=780,left=80,top=60,scrollbars=yes,resizable=yes'
 
-/** Wider popup for Stripe redirect methods (Alipay checkout page needs ~1200px) */
-export const STRIPE_POPUP_WINDOW_FEATURES = 'width=1250,height=780,left=80,top=60,scrollbars=yes,resizable=yes'
+/** @deprecated Use POPUP_WINDOW_FEATURES. Kept as alias for any external callers. */
+export const STRIPE_POPUP_WINDOW_FEATURES = POPUP_WINDOW_FEATURES
 
 /** Webhook paths for each provider (relative to origin). */
 export const WEBHOOK_PATHS: Record<string, string> = {
