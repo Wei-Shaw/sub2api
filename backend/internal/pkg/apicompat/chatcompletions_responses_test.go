@@ -1125,6 +1125,93 @@ func TestBufferedResponseAccumulator_BuildIndexedOutputFunctionCallDonePreserves
 	assert.Equal(t, `{"city":"NYC"}`, indexed[0].Item.Arguments)
 }
 
+func TestBufferedResponseAccumulator_BuildIndexedOutputWebSearchCallDonePreservesAddedSources(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_1",
+			Status: "in_progress",
+			Action: &WebSearchAction{
+				Type:    "search",
+				Query:   "openai pricing",
+				Sources: json.RawMessage(`[{"type":"url_citation","title":"Reuters","url":"https://www.reuters.com/example"}]`),
+			},
+		},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_1",
+			Status: "completed",
+			Action: &WebSearchAction{
+				Type:  "search",
+				Query: "openai pricing",
+			},
+		},
+	})
+
+	indexed := acc.BuildIndexedOutput()
+	require.Len(t, indexed, 1)
+	assert.Equal(t, 0, indexed[0].OutputIndex)
+	assert.Equal(t, "web_search_call", indexed[0].Item.Type)
+	assert.Equal(t, "ws_1", indexed[0].Item.ID)
+	assert.Equal(t, "completed", indexed[0].Item.Status)
+	require.NotNil(t, indexed[0].Item.Action)
+	assert.Equal(t, "search", indexed[0].Item.Action.Type)
+	assert.Equal(t, "openai pricing", indexed[0].Item.Action.Query)
+	assert.JSONEq(t, `[{"type":"url_citation","title":"Reuters","url":"https://www.reuters.com/example"}]`, string(indexed[0].Item.Action.Sources))
+}
+
+func TestBufferedResponseAccumulator_BuildIndexedOutputWebSearchCallDoneNullSourcesPreservesAddedSources(t *testing.T) {
+	acc := NewBufferedResponseAccumulator()
+
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_1",
+			Status: "in_progress",
+			Action: &WebSearchAction{
+				Type:    "search",
+				Query:   "openai pricing",
+				Sources: json.RawMessage(`[{"type":"url_citation","title":"Reuters","url":"https://www.reuters.com/example"}]`),
+			},
+		},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.done",
+		OutputIndex: 0,
+		Item: &ResponsesOutput{
+			Type:   "web_search_call",
+			ID:     "ws_1",
+			Status: "completed",
+			Action: &WebSearchAction{
+				Type:    "search",
+				Query:   "openai pricing",
+				Sources: json.RawMessage(`null`),
+			},
+		},
+	})
+
+	indexed := acc.BuildIndexedOutput()
+	require.Len(t, indexed, 1)
+	assert.Equal(t, 0, indexed[0].OutputIndex)
+	assert.Equal(t, "web_search_call", indexed[0].Item.Type)
+	assert.Equal(t, "ws_1", indexed[0].Item.ID)
+	assert.Equal(t, "completed", indexed[0].Item.Status)
+	require.NotNil(t, indexed[0].Item.Action)
+	assert.Equal(t, "search", indexed[0].Item.Action.Type)
+	assert.Equal(t, "openai pricing", indexed[0].Item.Action.Query)
+	assert.JSONEq(t, `[{"type":"url_citation","title":"Reuters","url":"https://www.reuters.com/example"}]`, string(indexed[0].Item.Action.Sources))
+}
+
 func TestBufferedResponseAccumulator_TextOnly(t *testing.T) {
 	acc := NewBufferedResponseAccumulator()
 
