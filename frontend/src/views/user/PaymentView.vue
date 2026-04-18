@@ -551,6 +551,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       payment_type: selectedMethod.value,
       order_type: orderType,
       plan_id: planId,
+      is_mobile: isMobileDevice(),
     })
     const openWindow = (url: string) => {
       const win = window.open(url, 'paymentPopup', POPUP_WINDOW_FEATURES)
