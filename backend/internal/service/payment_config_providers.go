@@ -60,8 +60,26 @@ func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Conte
 	return result, nil
 }
 
+// decryptAndMaskConfig returns the stored config with sensitive fields omitted.
+// Admin UIs display masked placeholders for these; the raw values never leave
+// the server. Callers that need the full config (e.g. payment runtime) must
+// use decryptConfig directly.
 func (s *PaymentConfigService) decryptAndMaskConfig(encrypted string) (map[string]string, error) {
-	return s.decryptConfig(encrypted)
+	cfg, err := s.decryptConfig(encrypted)
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil {
+		return nil, nil
+	}
+	masked := make(map[string]string, len(cfg))
+	for k, v := range cfg {
+		if isSensitiveConfigField(k) {
+			continue
+		}
+		masked[k] = v
+	}
+	return masked, nil
 }
 
 // pendingOrderStatuses are order statuses considered "in progress".
@@ -282,9 +300,14 @@ func (s *PaymentConfigService) mergeConfig(ctx context.Context, id int64, newCon
 		return nil, fmt.Errorf("decrypt existing config for instance %d: %w", id, err)
 	}
 	if existing == nil {
-		return newConfig, nil
+		existing = map[string]string{}
 	}
 	for k, v := range newConfig {
+		// Preserve existing secrets when the client submits an empty value
+		// (admin UI omits the value to indicate "leave unchanged").
+		if v == "" && isSensitiveConfigField(k) {
+			continue
+		}
 		existing[k] = v
 	}
 	return existing, nil
