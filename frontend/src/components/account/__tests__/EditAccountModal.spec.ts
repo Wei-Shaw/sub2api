@@ -31,11 +31,13 @@ vi.mock('@/api/admin', () => ({
       checkMixedChannelRisk: checkMixedChannelRiskMock
     },
     settings: {
-      getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
-      getSettings: vi.fn().mockResolvedValue({})
-    },
-    tlsFingerprintProfiles: {
-      list: vi.fn().mockResolvedValue([])
+      getWebSearchEmulationConfig: vi.fn().mockResolvedValue({
+        enabled: false,
+        providers: []
+      }),
+      getSettings: vi.fn().mockResolvedValue({
+        account_quota_notify_enabled: false
+      })
     }
   }
 }))
@@ -93,26 +95,26 @@ const ModelWhitelistSelectorStub = defineComponent({
 })
 
 const SelectStub = defineComponent({
-  name: 'SelectStub',
+  name: 'Select',
   props: {
     modelValue: {
-      type: [String, Number, Boolean, null],
+      type: [String, Number, Boolean, Object, Array],
       default: ''
     },
     options: {
       type: Array,
       default: () => []
+    },
+    disabled: {
+      type: Boolean,
+      default: false
     }
   },
   emits: ['update:modelValue'],
   template: `
-    <select
-      v-bind="$attrs"
-      :value="modelValue"
-      @change="$emit('update:modelValue', $event.target.value)"
-    >
-      <option v-for="option in options" :key="option.value" :value="option.value">
-        {{ option.label }}
+    <select :disabled="disabled" :value="modelValue" @change="$emit('update:modelValue', $event.target.value)">
+      <option v-for="option in options" :key="String(option.value)" :value="option.value">
+        {{ option.label ?? option.value }}
       </option>
     </select>
   `
