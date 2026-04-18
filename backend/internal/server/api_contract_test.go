@@ -1060,6 +1060,10 @@ func (s *stubAccountRepo) FindByExtraField(ctx context.Context, key string, valu
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubAccountRepo) CountByTLSFingerprintProfile(ctx context.Context) (map[int64]int, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubAccountRepo) Update(ctx context.Context, account *service.Account) error {
 	return errors.New("not implemented")
 }

@@ -1611,7 +1611,9 @@
               >
                 <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
                 <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
-                <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+                <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">
+                  {{ p.name }}{{ p.bound_account_count ? ` (${p.bound_account_count})` : '' }}
+                </option>
               </select>
               <span
                 v-if="tlsFingerprintRandomized"
@@ -2024,7 +2026,7 @@ const umqModeOptions = computed(() => [
 ])
 const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
-const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
+const tlsFingerprintProfiles = ref<{ id: number; name: string; bound_account_count?: number }[]>([])
 const tlsFingerprintRandomized = ref(false)
 const tlsFingerprintRandomizing = ref(false)
 const sessionIdMaskingEnabled = ref(false)
@@ -2483,11 +2485,11 @@ watch(
 const loadTLSProfiles = async () => {
   try {
     const profiles = await adminAPI.tlsFingerprintProfiles.list()
-    // Hide auto-generated profiles from the manual dropdown; they're
-    // owned by a specific account and shouldn't be picked by others.
-    tlsFingerprintProfiles.value = profiles
-      .filter(p => !p.name.startsWith('__auto__:acc-'))
-      .map(p => ({ id: p.id, name: p.name }))
+    tlsFingerprintProfiles.value = profiles.map(p => ({
+      id: p.id,
+      name: p.name,
+      bound_account_count: p.bound_account_count,
+    }))
   } catch {
     tlsFingerprintProfiles.value = []
   }

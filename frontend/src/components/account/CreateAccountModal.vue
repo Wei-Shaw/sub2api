@@ -2169,7 +2169,9 @@
             <select v-model="tlsFingerprintProfileId" class="input">
               <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
               <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
-              <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+              <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">
+                {{ p.name }}{{ p.bound_account_count ? ` (${p.bound_account_count})` : '' }}
+              </option>
             </select>
             <!-- Auto-randomize on create (Anthropic OAuth/setup-token only) -->
             <label
@@ -3173,7 +3175,7 @@ const umqModeOptions = computed(() => [
 ])
 const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
-const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
+const tlsFingerprintProfiles = ref<{ id: number; name: string; bound_account_count?: number }[]>([])
 const tlsFingerprintRandomizeOnCreate = ref(false)
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
@@ -3343,7 +3345,13 @@ watch(
     if (newVal) {
       // Load TLS fingerprint profiles
       adminAPI.tlsFingerprintProfiles.list()
-        .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
+        .then(profiles => {
+          tlsFingerprintProfiles.value = profiles.map(p => ({
+            id: p.id,
+            name: p.name,
+            bound_account_count: p.bound_account_count,
+          }))
+        })
         .catch(() => { tlsFingerprintProfiles.value = [] })
       // Modal opened - fill related models
       allowedModels.value = [...getModelsByPlatform(form.platform)]

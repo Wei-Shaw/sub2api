@@ -257,6 +257,11 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		if profileID := a.GetTLSFingerprintProfileID(); profileID > 0 {
 			out.TLSFingerprintProfileID = &profileID
 		}
+		// TLS指纹是否由随机分配生成（决定前端是否显示「已随机化」徽章）
+		if a.IsTLSFingerprintRandomized() {
+			randomized := true
+			out.TLSFingerprintRandomized = &randomized
+		}
 		// 会话ID伪装开关
 		if a.IsSessionIDMaskingEnabled() {
 			enabled := true

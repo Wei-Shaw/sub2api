@@ -5079,6 +5079,7 @@ export default {
         name: '名称',
         description: '描述',
         grease: 'GREASE',
+        boundAccounts: '使用中',
         alpn: 'ALPN',
         actions: '操作'
       },

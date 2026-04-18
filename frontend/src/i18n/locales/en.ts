@@ -4908,6 +4908,7 @@ export default {
         name: 'Name',
         description: 'Description',
         grease: 'GREASE',
+        boundAccounts: 'In use',
         alpn: 'ALPN',
         actions: 'Actions'
       },

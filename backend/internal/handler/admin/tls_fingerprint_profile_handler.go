@@ -51,10 +51,10 @@ type UpdateTLSFingerprintProfileRequest struct {
 	Extensions          []uint16 `json:"extensions"`
 }
 
-// List 获取所有模板
+// List 获取所有模板（附带每个模板当前的绑定账号数）
 // GET /api/v1/admin/tls-fingerprint-profiles
 func (h *TLSFingerprintProfileHandler) List(c *gin.Context) {
-	profiles, err := h.service.List(c.Request.Context())
+	profiles, err := h.service.ListWithBindingCount(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

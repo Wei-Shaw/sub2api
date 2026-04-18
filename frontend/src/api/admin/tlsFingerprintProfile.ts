@@ -24,6 +24,8 @@ export interface TLSFingerprintProfile {
   extensions: number[]
   created_at: string
   updated_at: string
+  // 当前被多少账号绑定；仅 List 接口返回，GetByID/Create/Update 可能缺省
+  bound_account_count?: number
 }
 
 /**

@@ -87,6 +87,34 @@ func (s *TLSFingerprintProfileService) List(ctx context.Context) ([]*model.TLSFi
 	return s.repo.List(ctx)
 }
 
+// ProfileWithBinding 在模板基础上附加当前绑定该模板的账号数量，用于 Admin 列表展示。
+type ProfileWithBinding struct {
+	*model.TLSFingerprintProfile
+	BoundAccountCount int `json:"bound_account_count"`
+}
+
+// ListWithBindingCount 返回所有模板以及每个模板被多少账号绑定。
+// 绑定数通过 AccountRepository.CountByTLSFingerprintProfile 聚合，
+// 走 108 号迁移的表达式索引，不走全表扫描。
+func (s *TLSFingerprintProfileService) ListWithBindingCount(ctx context.Context) ([]*ProfileWithBinding, error) {
+	profiles, err := s.repo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	counts, err := s.accountRepo.CountByTLSFingerprintProfile(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*ProfileWithBinding, 0, len(profiles))
+	for _, p := range profiles {
+		result = append(result, &ProfileWithBinding{
+			TLSFingerprintProfile: p,
+			BoundAccountCount:     counts[p.ID],
+		})
+	}
+	return result, nil
+}
+
 // GetByID 根据 ID 获取模板
 func (s *TLSFingerprintProfileService) GetByID(ctx context.Context, id int64) (*model.TLSFingerprintProfile, error) {
 	return s.repo.GetByID(ctx, id)

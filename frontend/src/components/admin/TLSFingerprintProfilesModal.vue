@@ -48,6 +48,9 @@
                 {{ t('admin.tlsFingerprintProfiles.columns.grease') }}
               </th>
               <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
+                {{ t('admin.tlsFingerprintProfiles.columns.boundAccounts') }}
+              </th>
+              <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
                 {{ t('admin.tlsFingerprintProfiles.columns.alpn') }}
               </th>
               <th class="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
@@ -72,6 +75,15 @@
                   size="sm"
                   :class="profile.enable_grease ? 'text-green-500' : 'text-gray-400'"
                 />
+              </td>
+              <td class="px-3 py-2">
+                <span
+                  v-if="profile.bound_account_count"
+                  class="text-sm font-semibold text-amber-600 dark:text-amber-400"
+                >
+                  {{ profile.bound_account_count }}
+                </span>
+                <span v-else class="text-xs text-gray-400 dark:text-gray-600">0</span>
               </td>
               <td class="px-3 py-2">
                 <div v-if="profile.alpn_protocols?.length" class="flex flex-wrap gap-1">
