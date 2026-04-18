@@ -549,6 +549,7 @@ func registerTLSFingerprintProfileRoutes(admin *gin.RouterGroup, h *handler.Hand
 		profiles.POST("", h.Admin.TLSFingerprintProfile.Create)
 		profiles.PUT("/:id", h.Admin.TLSFingerprintProfile.Update)
 		profiles.DELETE("/:id", h.Admin.TLSFingerprintProfile.Delete)
+		profiles.POST("/randomize-for-account/:accountID", h.Admin.TLSFingerprintProfile.RandomizeForAccount)
 	}
 }
 

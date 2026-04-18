@@ -232,3 +232,22 @@ func (h *TLSFingerprintProfileHandler) Delete(c *gin.Context) {
 
 	response.Success(c, gin.H{"message": "Profile deleted successfully"})
 }
+
+// RandomizeForAccount 为指定账号生成并绑定一个随机化 TLS 指纹 profile。
+// 重复调用会"重新随机"：旧的 auto-generated profile 会被删除。
+// POST /api/v1/admin/tls-fingerprint-profiles/randomize-for-account/:accountID
+func (h *TLSFingerprintProfileHandler) RandomizeForAccount(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("accountID"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	profile, err := h.service.RandomizeForAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, profile)
+}

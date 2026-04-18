@@ -423,3 +423,23 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 		})
 	}
 }
+
+func TestEnsureToolsCacheControl(t *testing.T) {
+	t.Run("adds breakpoint to last tool when absent", func(t *testing.T) {
+		body := []byte(`{"tools":[{"name":"a","description":"x"},{"name":"b","description":"y"}]}`)
+		out := ensureToolsCacheControl(body)
+		require.NotEqual(t, string(body), string(out), "expected body to be modified")
+		require.Contains(t, string(out), `"tools":[{"name":"a","description":"x"},{"name":"b","description":"y","cache_control":{"type":"ephemeral"}}]`)
+	})
+
+	t.Run("respects existing breakpoint anywhere", func(t *testing.T) {
+		body := []byte(`{"tools":[{"name":"a","cache_control":{"type":"ephemeral"}},{"name":"b"}]}`)
+		out := ensureToolsCacheControl(body)
+		require.Equal(t, string(body), string(out), "existing CC must be preserved untouched")
+	})
+
+	t.Run("no-op when tools missing or empty", func(t *testing.T) {
+		require.Equal(t, `{"messages":[]}`, string(ensureToolsCacheControl([]byte(`{"messages":[]}`))))
+		require.Equal(t, `{"tools":[]}`, string(ensureToolsCacheControl([]byte(`{"tools":[]}`))))
+	})
+}

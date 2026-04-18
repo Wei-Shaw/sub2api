@@ -71,6 +71,25 @@ func (s *FailoverState) HandleFailoverError(
 ) FailoverAction {
 	s.LastFailoverErr = failoverErr
 
+	// Anti-fingerprinting (2026-04-15):
+	// Surface 429 (rate limit) directly to the client instead of auto-swapping
+	// accounts. Real Claude Code errors out on 429; a relay that retries the
+	// same request on a second account within ~200ms is a textbook rate-limit
+	// evasion signal. We mark the error as "exhausted" so the handler returns
+	// the upstream 429 verbatim.
+	//
+	// Note: RetryableOnSameAccount errors (e.g. Google intermittent 400 /
+	// empty response) are unrelated to rate limiting and still retry on the
+	// same account below. Only the *account switch* path is short-circuited.
+	if failoverErr != nil && failoverErr.StatusCode == http.StatusTooManyRequests && !failoverErr.RetryableOnSameAccount {
+		s.FailedAccountIDs[accountID] = struct{}{}
+		logger.FromContext(ctx).Warn("gateway.failover_429_no_switch",
+			zap.Int64("account_id", accountID),
+			zap.Int("upstream_status", failoverErr.StatusCode),
+		)
+		return FailoverExhausted
+	}
+
 	// 缓存计费判断
 	if needForceCacheBilling(s.hasBoundSession, failoverErr) {
 		s.ForceCacheBilling = true

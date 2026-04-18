@@ -53,6 +53,7 @@ func ProvideTokenRefreshService(
 	privacyClientFactory PrivacyClientFactory,
 	proxyRepo ProxyRepository,
 	refreshAPI *OAuthRefreshAPI,
+	gatewayService *GatewayService,
 ) *TokenRefreshService {
 	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache)
 	// 注入 OpenAI privacy opt-out 依赖
@@ -61,6 +62,38 @@ func ProvideTokenRefreshService(
 	svc.SetRefreshAPI(refreshAPI)
 	// 调用侧显式注入后台刷新策略，避免策略漂移
 	svc.SetRefreshPolicy(DefaultBackgroundRefreshPolicy())
+	// 注入 Claude 启动探测器：token 刷新成功后模拟 Claude Code 握手请求。
+	// gatewayService 可能在某些测试 wire 路径下为 nil，SetStartupProber 接受 nil。
+	if cfg != nil && cfg.SidecarProbe.StartupProbe.Enabled && gatewayService != nil {
+		svc.SetStartupProber(gatewayService)
+	}
+	svc.Start()
+	return svc
+}
+
+// ProvideClaudeSidecarProbeService wires the sidecar probe loop. When
+// sidecar_probe.usage_poll.enabled is false (or the interval config is
+// invalid) the service still instantiates but Start becomes a no-op.
+func ProvideClaudeSidecarProbeService(
+	cfg *config.Config,
+	accountRepo AccountRepository,
+	usageService *AccountUsageService,
+) *ClaudeSidecarProbeService {
+	probe := cfg.SidecarProbe.UsagePoll
+	if !probe.Enabled {
+		return NewClaudeSidecarProbeService(accountRepo, usageService, 0, 0, false)
+	}
+	minInterval := time.Duration(probe.MinIntervalSeconds) * time.Second
+	maxInterval := time.Duration(probe.MaxIntervalSeconds) * time.Second
+	// Guard against bad config: enforce a 60s floor so a misconfigured
+	// min_interval_seconds=0 does not turn into a hot spin on startup.
+	if minInterval < sidecarProbeMinIntervalFloor {
+		minInterval = sidecarProbeMinIntervalFloor
+	}
+	if maxInterval < minInterval {
+		maxInterval = minInterval
+	}
+	svc := NewClaudeSidecarProbeService(accountRepo, usageService, minInterval, maxInterval, probe.DryRun)
 	svc.Start()
 	return svc
 }
@@ -443,6 +476,7 @@ var ProviderSet = wire.NewSet(
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
 	ProvideAccountExpiryService,
+	ProvideClaudeSidecarProbeService,
 	ProvideSubscriptionExpiryService,
 	ProvideTimingWheelService,
 	ProvideDashboardAggregationService,

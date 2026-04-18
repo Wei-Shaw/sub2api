@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,10 @@ type TokenRefreshService struct {
 	// OpenAI privacy: 刷新成功后检查并设置 training opt-out
 	privacyClientFactory PrivacyClientFactory
 	proxyRepo            ProxyRepository
+
+	// Claude startup probe: token 刷新成功后可选地触发一次 max_tokens=1 的 haiku
+	// 请求，模仿真实 Claude Code CLI 拿到新 token 后的握手行为。nil 表示禁用。
+	startupProber ClaudeStartupProber
 
 	stopCh   chan struct{}
 	stopOnce sync.Once
@@ -95,6 +100,11 @@ func (s *TokenRefreshService) SetRefreshAPI(api *OAuthRefreshAPI) {
 	s.refreshAPI = api
 }
 
+// SetStartupProber 注入 Claude 启动探测器。传 nil 表示禁用启动探测。
+func (s *TokenRefreshService) SetStartupProber(prober ClaudeStartupProber) {
+	s.startupProber = prober
+}
+
 // SetRefreshPolicy 注入后台刷新调用侧策略（用于显式化平台/场景差异行为）。
 func (s *TokenRefreshService) SetRefreshPolicy(policy BackgroundRefreshPolicy) {
 	s.refreshPolicy = policy
@@ -125,26 +135,61 @@ func (s *TokenRefreshService) Stop() {
 	slog.Info("token_refresh.service_stopped")
 }
 
+// jitteredInterval returns a duration in [base*(1-pct), base*(1+pct)].
+// Used to spread refresh tick wall-clock times so they don't land on
+// predictable :00 :05 :10 offsets that Anthropic could fingerprint.
+func jitteredInterval(base time.Duration, pct float64) time.Duration {
+	if base <= 0 {
+		return base
+	}
+	if pct < 0 {
+		pct = -pct
+	}
+	if pct > 0.95 {
+		pct = 0.95
+	}
+	// random factor in [-pct, +pct]
+	factor := (rand.Float64()*2 - 1) * pct
+	return base + time.Duration(float64(base)*factor)
+}
+
 // refreshLoop 刷新循环
+//
+// Anti-fingerprinting note (2026-04-15):
+// Previous implementation used a plain time.Ticker on CheckIntervalMinutes,
+// which meant all refresh ticks landed at perfectly regular wall-clock offsets
+// (e.g. every 5 min on the :00 mark). From Anthropic's perspective, a real
+// human Claude Code user would never refresh at such mechanical intervals.
+// We now use a Timer that resets with ±25% jitter each cycle, so tick times
+// drift and look more like opportunistic activity.
 func (s *TokenRefreshService) refreshLoop() {
 	defer s.wg.Done()
 
-	// 计算检查间隔
-	checkInterval := time.Duration(s.cfg.CheckIntervalMinutes) * time.Minute
-	if checkInterval < time.Minute {
-		checkInterval = 5 * time.Minute
+	// 计算基础检查间隔
+	baseInterval := time.Duration(s.cfg.CheckIntervalMinutes) * time.Minute
+	if baseInterval < time.Minute {
+		baseInterval = 5 * time.Minute
 	}
 
-	ticker := time.NewTicker(checkInterval)
-	defer ticker.Stop()
-
-	// 启动时立即执行一次检查
+	// 启动时先加一点随机延迟再跑首次检查，避免多实例同时启动对齐
+	startupDelay := time.Duration(rand.Int64N(int64(30 * time.Second)))
+	startupTimer := time.NewTimer(startupDelay)
+	select {
+	case <-startupTimer.C:
+	case <-s.stopCh:
+		startupTimer.Stop()
+		return
+	}
 	s.processRefresh()
+
+	timer := time.NewTimer(jitteredInterval(baseInterval, 0.25))
+	defer timer.Stop()
 
 	for {
 		select {
-		case <-ticker.C:
+		case <-timer.C:
 			s.processRefresh()
+			timer.Reset(jitteredInterval(baseInterval, 0.25))
 		case <-s.stopCh:
 			return
 		}
@@ -181,8 +226,15 @@ func (s *TokenRefreshService) processRefresh() {
 
 			oauthAccounts++
 
+			// Anti-fingerprinting (2026-04-15):
+			// Add per-account jitter to the refresh window so not every
+			// account that's exactly RefreshBeforeExpiryHours from expiry
+			// refreshes in the same tick. jitterFactor in [0.6, 1.4].
+			jitterFactor := 0.6 + rand.Float64()*0.8
+			perAccountWindow := time.Duration(float64(refreshWindow) * jitterFactor)
+
 			// 检查是否需要刷新
-			if !refresher.NeedsRefresh(account, refreshWindow) {
+			if !refresher.NeedsRefresh(account, perAccountWindow) {
 				break // 不需要刷新，跳过
 			}
 
@@ -308,7 +360,27 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 		if attempt < s.cfg.MaxRetries {
 			// 指数退避：2^(attempt-1) * baseSeconds
 			backoff := time.Duration(s.cfg.RetryBackoffSeconds) * time.Second * time.Duration(1<<(attempt-1))
-			time.Sleep(backoff)
+			// 使用 timer + select，使 backoff 可被 Stop() 或 ctx 取消打断，
+			// 否则 graceful shutdown 会被单次最长数十秒的 Sleep 阻塞。
+			//
+			// Three-way select on backoff completion:
+			//   - timer.C:    normal path, retry after backoff elapses
+			//   - s.stopCh:   service.Stop() was called → wrap context.Canceled
+			//                 with an "aborted during backoff" prefix; callers can
+			//                 detect via errors.Is(err, context.Canceled)
+			//   - ctx.Done(): the per-call ctx was cancelled (could be Canceled or
+			//                 DeadlineExceeded depending on how caller scoped ctx);
+			//                 return ctx.Err() unchanged so callers can distinguish
+			//                 the cause via errors.Is
+			timer := time.NewTimer(backoff)
+			defer timer.Stop() // 已 fire 时为 no-op，统一所有路径
+			select {
+			case <-timer.C:
+			case <-s.stopCh:
+				return fmt.Errorf("token refresh aborted during backoff: %w", context.Canceled)
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 	}
 
@@ -403,6 +475,11 @@ func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *A
 	s.ensureOpenAIPrivacy(ctx, account)
 	// Antigravity OAuth: 刷新成功后，检查是否已设置 privacy_mode，未设置则调用 setUserSettings
 	s.ensureAntigravityPrivacy(ctx, account)
+	// Claude OAuth: 模拟真实 Claude Code CLI 在获取新 token 后立即发起的启动探测。
+	// Fire-and-forget：探测失败不影响刷新流程，不会回写账号状态。
+	if account.Platform == PlatformAnthropic && account.IsOAuth() && s.startupProber != nil {
+		runStartupProbeAsync(s.startupProber, account)
+	}
 }
 
 // errRefreshSkipped 表示刷新被跳过（锁竞争或已被其他路径刷新），不计入 failed 或 refreshed

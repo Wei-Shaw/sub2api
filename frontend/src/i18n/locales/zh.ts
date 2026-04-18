@@ -2318,8 +2318,8 @@ export default {
         rateLimitedAutoResume: '{time} 自动恢复',
         modelRateLimitedUntil: '{model} 限流至 {time}',
         modelCreditOveragesUntil: '{model} 正在使用 AI Credits，至 {time}',
-        creditsExhausted: 'AICredits',
-        creditsExhaustedUntil: 'AICredits, recovery at {time}',
+        creditsExhausted: '积分已用尽',
+        creditsExhaustedUntil: 'AI Credits 已用尽，预计 {time} 恢复',
         overloadedUntil: '负载过重，重置时间：{time}',
         viewTempUnschedDetails: '查看临时不可调度详情'
       },
@@ -2632,7 +2632,16 @@ export default {
           label: 'TLS 指纹模拟',
           hint: '模拟 Node.js/Claude Code 客户端的 TLS 指纹',
           defaultProfile: '内置默认',
-          randomProfile: '随机'
+          randomProfile: '随机',
+          randomizeButton: '随机分配指纹',
+          reshuffleButton: '重新随机',
+          randomizeHint: '从 Claude Code 2.1.109 基线随机扰动一个独有指纹并绑定到此账号，避免整池指纹聚类',
+          randomizedBadge: '已随机分配',
+          randomizeConfirm: '确认要为此账号重新生成随机 TLS 指纹吗？之前的随机指纹会被删除。',
+          randomizeSuccess: '已为账号生成新的随机 TLS 指纹',
+          randomizeFailed: '生成随机指纹失败',
+          randomizeOnCreate: '创建后自动随机分配指纹',
+          randomizeOnCreateHint: '账号创建成功后自动为每个新账号生成独立的随机 TLS 指纹（仅对 Anthropic OAuth / setup-token 账号生效）'
         },
         sessionIdMasking: {
           label: '会话 ID 伪装',

@@ -310,8 +310,11 @@ func TestBuildClientHelloSpecNewFields(t *testing.T) {
 		switch e := ext.(type) {
 		case *utls.ALPNExtension:
 			foundALPN = true
-			if len(e.AlpnProtocols) != 2 || e.AlpnProtocols[0] != "h2" {
-				t.Errorf("ALPN: got %v, want [h2, http/1.1]", e.AlpnProtocols)
+			// "h2" is defensively filtered out at build time because
+			// http.Transport with a custom DialTLSContext cannot speak
+			// HTTP/2 — ["h2", "http/1.1"] collapses to ["http/1.1"].
+			if len(e.AlpnProtocols) != 1 || e.AlpnProtocols[0] != "http/1.1" {
+				t.Errorf("ALPN: got %v, want [http/1.1] (h2 filtered)", e.AlpnProtocols)
 			}
 		case *utls.SupportedVersionsExtension:
 			foundVersions = true

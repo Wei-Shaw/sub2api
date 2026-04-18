@@ -87,12 +87,25 @@ export async function deleteProfile(id: number): Promise<{ message: string }> {
   return data
 }
 
+/**
+ * Generate a randomized TLS fingerprint profile, insert it into the library,
+ * and bind it to the given account. Calling this a second time reshuffles:
+ * the previous auto-generated profile is deleted after the new one is bound.
+ */
+export async function randomizeForAccount(accountID: number): Promise<TLSFingerprintProfile> {
+  const { data } = await apiClient.post<TLSFingerprintProfile>(
+    `/admin/tls-fingerprint-profiles/randomize-for-account/${accountID}`
+  )
+  return data
+}
+
 export const tlsFingerprintProfileAPI = {
   list,
   getById,
   create,
   update,
-  delete: deleteProfile
+  delete: deleteProfile,
+  randomizeForAccount
 }
 
 export default tlsFingerprintProfileAPI

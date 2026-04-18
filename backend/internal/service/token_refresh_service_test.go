@@ -755,3 +755,55 @@ func TestPathA_DBUpdateFailed(t *testing.T) {
 	require.Equal(t, 1, repo.updateCalls)  // DB 更新被尝试
 	require.Equal(t, 0, invalidator.calls) // DB 失败时不应触发缓存失效
 }
+
+// TestTokenRefreshService_RefreshWithRetry_StopsImmediately 验证 Stop() 调用能立即打断
+// refreshWithRetry 中的指数退避 sleep。使用 RetryBackoffSeconds=10 + MaxRetries=3，
+// 第一次失败后会进入 10s 退避；调用 Stop() 后必须在远小于 10s 的时间内返回，
+// 否则说明退避未响应 stopCh，graceful shutdown 会被阻塞。
+func TestTokenRefreshService_RefreshWithRetry_StopsImmediately(t *testing.T) {
+	repo := &tokenRefreshAccountRepo{}
+	invalidator := &tokenCacheInvalidatorStub{}
+	cfg := &config.Config{
+		TokenRefresh: config.TokenRefreshConfig{
+			MaxRetries:          3,
+			RetryBackoffSeconds: 10, // 第一次退避就要 10s，足以观察 Stop() 是否打断
+		},
+	}
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, invalidator, nil, cfg, nil)
+	account := &Account{
+		ID:       9001,
+		Platform: PlatformGemini,
+		Type:     AccountTypeOAuth,
+	}
+	// refresher 始终返回可重试错误（非 invalid_grant 等不可重试关键字），
+	// 强制 refreshWithRetry 进入 backoff 分支。
+	refresher := &tokenRefresherStub{err: errors.New("transient network failure")}
+
+	type result struct {
+		err     error
+		elapsed time.Duration
+	}
+	done := make(chan result, 1)
+	go func() {
+		start := time.Now()
+		err := service.refreshWithRetry(context.Background(), account, refresher, refresher, time.Hour)
+		done <- result{err: err, elapsed: time.Since(start)}
+	}()
+
+	// 让 goroutine 先进入第一次 backoff（refresh 调用是 stub，本身瞬时返回，进 sleep 很快）
+	time.Sleep(50 * time.Millisecond)
+	service.Stop()
+
+	select {
+	case res := <-done:
+		// 退避被打断，应远小于 10s（一次完整的退避周期）
+		require.Less(t, res.elapsed, 2*time.Second, "refreshWithRetry did not abort promptly: %v", res.elapsed)
+		require.Error(t, res.err)
+		// 错误信息应表明是被退避中断（包含我们注入的文案，或 wrap 了 context.Canceled）
+		if !errors.Is(res.err, context.Canceled) {
+			require.Contains(t, res.err.Error(), "aborted during backoff")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("refreshWithRetry did not return after Stop(); backoff is not interruptible")
+	}
+}

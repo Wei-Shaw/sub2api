@@ -1253,6 +1253,22 @@ func (a *Account) IsTLSFingerprintEnabled() bool {
 	return false
 }
 
+// IsTLSFingerprintRandomized 判断该账号的 TLS 指纹是否由随机分配机制
+// 维护。此标记独立于 enable_tls_fingerprint，用来告诉前端"重新随机"按
+// 钮是否可用，以及在账号变更时判断旧 profile 是否属于 auto-generated
+// 清理范围。
+func (a *Account) IsTLSFingerprintRandomized() bool {
+	if a.Extra == nil {
+		return false
+	}
+	if v, ok := a.Extra["tls_fingerprint_randomized"]; ok {
+		if b, ok := v.(bool); ok {
+			return b
+		}
+	}
+	return false
+}
+
 // GetTLSFingerprintProfileID 获取账号绑定的 TLS 指纹模板 ID
 // 返回 0 表示未绑定（使用内置默认 profile）
 func (a *Account) GetTLSFingerprintProfileID() int64 {

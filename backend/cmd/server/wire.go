@@ -97,6 +97,7 @@ func provideCleanup(
 	scheduledTestRunner *service.ScheduledTestRunnerService,
 	backupSvc *service.BackupService,
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
+	claudeSidecarProbe *service.ClaudeSidecarProbeService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -165,6 +166,12 @@ func provideCleanup(
 			}},
 			{"TokenRefreshService", func() error {
 				tokenRefresh.Stop()
+				return nil
+			}},
+			{"ClaudeSidecarProbeService", func() error {
+				if claudeSidecarProbe != nil {
+					claudeSidecarProbe.Stop()
+				}
 				return nil
 			}},
 			{"AccountExpiryService", func() error {

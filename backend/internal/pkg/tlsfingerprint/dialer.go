@@ -52,67 +52,179 @@ type SOCKS5ProxyDialer struct {
 	proxyURL *url.URL
 }
 
-// Default TLS fingerprint values captured from Claude Code (Node.js 24.x)
-// Captured via tls-fingerprint-web capture server
-// JA3 Hash: 44f88fca027f27bab4bb08d4af15f23e
-// JA4:      t13d1714h1_5b57614c22b0_7baf387fc6ff
+// Default TLS fingerprint values captured from Claude Code 2.1.109 on
+// Node.js 24.14.1 / macOS arm64, pointed at a local capture server via
+// `ANTHROPIC_BASE_URL`. Capture tool source at backend/tools/capture_fingerprint.
+//
+// Capture date: 2026-04-15
+// JA3 string:
+//
+//	771,4866-4867-4865-49199-49195-49200-49196-158-49191-103-49192-107-163-159-
+//	52393-52392-52394-49325-49311-49245-49249-49239-49235-162-49324-49310-49244-
+//	49248-49238-49234-49188-106-49187-64-49162-49172-57-56-49161-49171-51-50-
+//	157-49309-49233-156-49308-49232-61-60-53-47,
+//	65281-0-11-10-35-16-22-23-13-43-45-51,
+//	29-23-30-24-25-256-257,0-1-2
+//
+// JA3 hash: d67b094811e5145139d7cea5f014309f
+// JA4:      t13d5212h1 (part-a prefix — 52 ciphers, 12 extensions, http/1.1 ALPN)
+//
+// Critical findings from the capture that influenced these defaults:
+//   - Real Claude Code 2.1.109 advertises ONLY `http/1.1` in ALPN — it does
+//     NOT offer `h2`. Earlier concerns about Go-vs-Node HTTP/2 SETTINGS
+//     mismatch were moot because the real CLI does not use HTTP/2 on the
+//     api.anthropic.com path at all.
+//   - 52 cipher suites (not 17 — the previous hand-authored list was a
+//     substantial undercount).
+//   - 26 signature schemes, 8 supported groups (incl. 2 FFDHE + X448 + P521).
+//   - Extension order is: renegotiation_info, server_name, ec_point_formats,
+//     supported_groups, session_ticket, alpn, encrypt_then_mac(22),
+//     extended_master_secret, signature_algorithms, supported_versions,
+//     psk_key_exchange_modes, key_share. No ECH, no SCT, no status_request.
 var (
-	// defaultCipherSuites contains the 17 cipher suites from Node.js 24.x
-	// Order is critical for JA3 fingerprint matching
+	// defaultCipherSuites — 52 cipher suites in the order Node.js 24.14.1
+	// OpenSSL sends them. Do NOT reorder: JA3 hash depends on order.
 	defaultCipherSuites = []uint16{
-		// TLS 1.3 cipher suites
-		0x1301, // TLS_AES_128_GCM_SHA256
+		// TLS 1.3 (note: 1302 comes before 1303/1301)
 		0x1302, // TLS_AES_256_GCM_SHA384
 		0x1303, // TLS_CHACHA20_POLY1305_SHA256
+		0x1301, // TLS_AES_128_GCM_SHA256
 
-		// ECDHE + AES-GCM
-		0xc02b, // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+		// ECDHE + AES-GCM (RSA before ECDSA)
 		0xc02f, // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-		0xc02c, // TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+		0xc02b, // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
 		0xc030, // TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+		0xc02c, // TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
 
-		// ECDHE + ChaCha20-Poly1305
+		// DHE_RSA + AES-GCM
+		0x009e, // TLS_DHE_RSA_WITH_AES_128_GCM_SHA256
+
+		// ECDHE + AES-CBC-SHA256 (SHA256 HMAC variants)
+		0xc027, // TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+		0x0067, // TLS_DHE_RSA_WITH_AES_128_CBC_SHA256
+		0xc028, // TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384
+		0x006b, // TLS_DHE_RSA_WITH_AES_256_CBC_SHA256
+		0x00a3, // TLS_DHE_DSS_WITH_AES_256_GCM_SHA384
+		0x009f, // TLS_DHE_RSA_WITH_AES_256_GCM_SHA384
+
+		// ChaCha20-Poly1305 family (3 variants: ECDSA, RSA, DHE)
 		0xcca9, // TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
 		0xcca8, // TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+		0xccaa, // TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256
 
-		// ECDHE + AES-CBC-SHA (legacy fallback)
-		0xc009, // TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-		0xc013, // TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+		// ECCPWD, camellia, ARIA (legacy PSK/ARIA from OpenSSL enable-all)
+		0xc0ad, // TLS_ECDHE_ECDSA_WITH_AES_256_CCM
+		0xc09f, // TLS_DHE_RSA_WITH_AES_256_CCM
+		0xc05d, // TLS_ECDHE_ECDSA_WITH_ARIA_256_GCM_SHA384
+		0xc061, // TLS_ECDHE_RSA_WITH_ARIA_256_GCM_SHA384
+		0xc057, // TLS_DHE_DSS_WITH_ARIA_256_GCM_SHA384
+		0xc053, // TLS_DHE_RSA_WITH_ARIA_256_GCM_SHA384
+		0x00a2, // TLS_DHE_DSS_WITH_AES_128_GCM_SHA256
+		0xc0ac, // TLS_ECDHE_ECDSA_WITH_AES_128_CCM
+		0xc09e, // TLS_DHE_RSA_WITH_AES_128_CCM
+		0xc05c, // TLS_ECDHE_ECDSA_WITH_ARIA_128_GCM_SHA256
+		0xc060, // TLS_ECDHE_RSA_WITH_ARIA_128_GCM_SHA256
+		0xc056, // TLS_DHE_DSS_WITH_ARIA_128_GCM_SHA256
+		0xc052, // TLS_DHE_RSA_WITH_ARIA_128_GCM_SHA256
+
+		// ECDHE/DHE + CBC-SHA256/384 (legacy)
+		0xc024, // TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384
+		0x006a, // TLS_DHE_DSS_WITH_AES_256_CBC_SHA256
+		0xc023, // TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+		0x0040, // TLS_DHE_DSS_WITH_AES_128_CBC_SHA256
+
+		// ECDHE + AES-CBC-SHA (legacy — SHA1 HMAC)
 		0xc00a, // TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
 		0xc014, // TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+		0x0039, // TLS_DHE_RSA_WITH_AES_256_CBC_SHA
+		0x0038, // TLS_DHE_DSS_WITH_AES_256_CBC_SHA
+		0xc009, // TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+		0xc013, // TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+		0x0033, // TLS_DHE_RSA_WITH_AES_128_CBC_SHA
+		0x0032, // TLS_DHE_DSS_WITH_AES_128_CBC_SHA
 
-		// RSA + AES-GCM (non-PFS)
-		0x009c, // TLS_RSA_WITH_AES_128_GCM_SHA256
+		// RSA key exchange + AES-GCM (non-PFS)
 		0x009d, // TLS_RSA_WITH_AES_256_GCM_SHA384
+		0xc09d, // TLS_RSA_WITH_AES_256_CCM
+		0xc051, // TLS_RSA_WITH_ARIA_256_GCM_SHA384
+		0x009c, // TLS_RSA_WITH_AES_128_GCM_SHA256
+		0xc09c, // TLS_RSA_WITH_AES_128_CCM
+		0xc050, // TLS_RSA_WITH_ARIA_128_GCM_SHA256
 
-		// RSA + AES-CBC-SHA (non-PFS, legacy)
-		0x002f, // TLS_RSA_WITH_AES_128_CBC_SHA
+		// RSA + AES-CBC-SHA256 (legacy)
+		0x003d, // TLS_RSA_WITH_AES_256_CBC_SHA256
+		0x003c, // TLS_RSA_WITH_AES_128_CBC_SHA256
+
+		// RSA + AES-CBC-SHA (very legacy)
 		0x0035, // TLS_RSA_WITH_AES_256_CBC_SHA
+		0x002f, // TLS_RSA_WITH_AES_128_CBC_SHA
 	}
 
-	// defaultCurves contains the 3 supported groups from Node.js 24.x
+	// defaultCurves — supported groups we advertise.
+	//
+	// Real Claude Code / Node.js 24 advertises 8 groups (incl. x448,
+	// ffdhe2048, ffdhe3072) but utls's HelloRetryRequest path can only
+	// regenerate key shares for curves in curveForCurveID (X25519, P256,
+	// P384, P521). If we advertise a group utls can't handle and the
+	// server picks it via HRR, handshake fails with
+	// "tls: CurvePreferences includes unsupported curve".
+	//
+	// X25519MLKEM768 is kept because defaultKeyShareGroups always sends its
+	// key share on the initial ClientHello, so servers never need to HRR
+	// back to it. The randomizer must preserve this invariant.
 	defaultCurves = []utls.CurveID{
-		utls.X25519,    // 0x001d
-		utls.CurveP256, // 0x0017 (secp256r1)
-		utls.CurveP384, // 0x0018 (secp384r1)
+		utls.X25519MLKEM768, // 0x11ec — post-quantum hybrid
+		utls.X25519,         // 0x001d
+		utls.CurveP256,      // 0x0017 (secp256r1)
+		utls.CurveP384,      // 0x0018 (secp384r1)
+		utls.CurveP521,      // 0x0019 (secp521r1)
 	}
 
-	// defaultPointFormats contains point formats from Node.js 24.x
+	// defaultKeyShareGroups — X25519MLKEM768 + X25519, matching the real
+	// Claude Code capture (the real CLI sends two key shares: a ~1216-byte
+	// MLKEM payload and a 32-byte X25519 public key).
+	defaultKeyShareGroups = []utls.CurveID{
+		utls.X25519MLKEM768,
+		utls.X25519,
+	}
+
+	// defaultPointFormats — 3 formats (uncompressed, ansiX962, compressed).
 	defaultPointFormats = []uint16{
 		0, // uncompressed
+		1, // ansiX962_compressed_prime
+		2, // ansiX962_compressed_char2
 	}
 
-	// defaultSignatureAlgorithms contains the 9 signature algorithms from Node.js 24.x
+	// defaultSignatureAlgorithms — 26 schemes Node.js 24.14.1 advertises,
+	// in capture order. Includes Brainpool TLS 1.3 curves and several
+	// legacy SHA1 entries.
 	defaultSignatureAlgorithms = []utls.SignatureScheme{
+		0x0905, // experimental TLS 1.3 (Node.js OpenSSL)
+		0x0906, // experimental TLS 1.3
+		0x0904, // experimental TLS 1.3
 		0x0403, // ecdsa_secp256r1_sha256
-		0x0804, // rsa_pss_rsae_sha256
-		0x0401, // rsa_pkcs1_sha256
 		0x0503, // ecdsa_secp384r1_sha384
+		0x0603, // ecdsa_secp521r1_sha512
+		0x0807, // ed25519
+		0x0808, // ed448
+		0x081a, // ecdsa_brainpoolP256r1tls13_sha256
+		0x081b, // ecdsa_brainpoolP384r1tls13_sha384
+		0x081c, // ecdsa_brainpoolP512r1tls13_sha512
+		0x0809, // rsa_pss_pss_sha256
+		0x080a, // rsa_pss_pss_sha384
+		0x080b, // rsa_pss_pss_sha512
+		0x0804, // rsa_pss_rsae_sha256
 		0x0805, // rsa_pss_rsae_sha384
-		0x0501, // rsa_pkcs1_sha384
 		0x0806, // rsa_pss_rsae_sha512
+		0x0401, // rsa_pkcs1_sha256
+		0x0501, // rsa_pkcs1_sha384
 		0x0601, // rsa_pkcs1_sha512
-		0x0201, // rsa_pkcs1_sha1
+		0x0303, // SHA224-ECDSA (legacy)
+		0x0301, // SHA224-RSA (legacy)
+		0x0302, // SHA224-DSA (legacy)
+		0x0402, // SHA256-DSA (legacy)
+		0x0502, // SHA384-DSA (legacy)
+		0x0602, // SHA512-DSA (legacy)
 	}
 )
 
@@ -166,9 +278,17 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 		return nil, fmt.Errorf("create SOCKS5 dialer: %w", err)
 	}
 
-	// Step 2: Establish SOCKS5 tunnel to target
+	// Step 2: Establish SOCKS5 tunnel to target.
+	// Use ContextDialer so the caller's ctx (timeout/cancel) covers the SOCKS5
+	// handshake; otherwise an unresponsive proxy hangs goroutines for minutes
+	// and exhausts connections. x/net's *socks.Dialer satisfies ContextDialer
+	// (verified for golang.org/x/net v0.49.0).
 	slog.Debug("tls_fingerprint_socks5_establishing_tunnel", "target", addr)
-	conn, err := socksDialer.Dial("tcp", addr)
+	ctxDialer, ok := socksDialer.(proxy.ContextDialer)
+	if !ok {
+		return nil, fmt.Errorf("SOCKS5 dialer does not implement ContextDialer (x/net contract changed)")
+	}
+	conn, err := ctxDialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		slog.Debug("tls_fingerprint_socks5_connect_failed", "error", err)
 		return nil, fmt.Errorf("SOCKS5 connect: %w", err)
@@ -307,23 +427,32 @@ func toUTLSCurves(curves []uint16) []utls.CurveID {
 	return result
 }
 
-// defaultExtensionOrder is the Node.js 24.x extension order.
+// defaultExtensionOrder — 12 extensions in the exact order Node.js 24.14.1
+// sends them (captured from live Claude Code 2.1.109).
+//
+// Differences from the previous hand-authored list:
+//   - Dropped: encrypted_client_hello (65037 / ECH) — real Node.js 24 does
+//     NOT send ECH unless a server config is known.
+//   - Dropped: status_request (5) and signed_certificate_timestamp (18) —
+//     Node.js 24's default TLS extension set doesn't include them.
+//   - Added:   encrypt_then_mac (22) — RFC 7366, emitted by OpenSSL.
+//   - Reordered: renegotiation_info is now FIRST; extended_master_secret
+//     moved after encrypt_then_mac; ec_point_formats precedes supported_groups.
+//
 // Used when Profile.Extensions is empty.
 var defaultExtensionOrder = []uint16{
+	65281, // renegotiation_info (0xff01)
 	0,     // server_name
-	65037, // encrypted_client_hello
-	23,    // extended_master_secret
-	65281, // renegotiation_info
-	10,    // supported_groups
 	11,    // ec_point_formats
+	10,    // supported_groups
 	35,    // session_ticket
 	16,    // alpn
-	5,     // status_request
+	22,    // encrypt_then_mac (RFC 7366) — sent by OpenSSL/Node.js
+	23,    // extended_master_secret
 	13,    // signature_algorithms
-	18,    // signed_certificate_timestamp
-	51,    // key_share
-	45,    // psk_key_exchange_modes
 	43,    // supported_versions
+	45,    // psk_key_exchange_modes
+	51,    // key_share
 }
 
 // isGREASEValue checks if a uint16 value matches the TLS GREASE pattern (0x?a?a).
@@ -362,13 +491,19 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 	if profile != nil && len(profile.ALPNProtocols) > 0 {
 		alpnProtocols = profile.ALPNProtocols
 	}
+	// Defensive: strip "h2" from any profile (including ones persisted before
+	// the randomizer fix). http.Transport with a custom DialTLSContext cannot
+	// speak HTTP/2 — if the server negotiates h2 via ALPN, the transport writes
+	// HTTP/1.1 and the server responds with HTTP/2 SETTINGS/WINDOW_UPDATE/GOAWAY
+	// frames, surfacing as "malformed HTTP response" errors.
+	alpnProtocols = filterHTTP2FromALPN(alpnProtocols)
 
 	supportedVersions := []uint16{utls.VersionTLS13, utls.VersionTLS12}
 	if profile != nil && len(profile.SupportedVersions) > 0 {
 		supportedVersions = profile.SupportedVersions
 	}
 
-	keyShareGroups := []utls.CurveID{utls.X25519}
+	keyShareGroups := defaultKeyShareGroups
 	if profile != nil && len(profile.KeyShareGroups) > 0 {
 		keyShareGroups = toUTLSCurves(profile.KeyShareGroups)
 	}
@@ -454,6 +589,23 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 		TLSVersMax:         utls.VersionTLS13,
 		TLSVersMin:         utls.VersionTLS10,
 	}
+}
+
+// filterHTTP2FromALPN removes "h2" (and the deprecated "h2c") entries from an
+// ALPN list, guaranteeing at least ["http/1.1"] is advertised. Called before
+// every TLS handshake — see comment at call site for why h2 is unsafe.
+func filterHTTP2FromALPN(alpn []string) []string {
+	out := make([]string, 0, len(alpn))
+	for _, p := range alpn {
+		if p == "h2" || p == "h2c" {
+			continue
+		}
+		out = append(out, p)
+	}
+	if len(out) == 0 {
+		return []string{"http/1.1"}
+	}
+	return out
 }
 
 // toUint8s converts []uint16 to []uint8 (for utls fields that require []uint8).

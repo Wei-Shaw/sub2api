@@ -3857,6 +3857,41 @@ func collectCacheControlPaths(body []byte) (invalidThinking []cacheControlPath, 
 	return invalidThinking, messagePaths, systemPaths
 }
 
+// ensureToolsCacheControl stamps `cache_control: {"type":"ephemeral"}` onto
+// the final entry of the `tools` array when no tool in the request already
+// carries a cache_control marker. This matches real Claude Code traffic —
+// the CLI always caches its tool schema — so a mimicked request from a
+// non-CLI client (Cherry Studio, Cursor, plain OpenAI SDK, etc.) exhibits a
+// cache hit ratio consistent with the CLI instead of "0%, always".
+//
+// No-ops when: body lacks tools, tools is empty, or any tool already has a
+// cache_control breakpoint (trust the caller in that case).
+func ensureToolsCacheControl(body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.IsArray() {
+		return body
+	}
+	arr := tools.Array()
+	if len(arr) == 0 {
+		return body
+	}
+	for _, t := range arr {
+		if t.Get("cache_control").Exists() {
+			return body
+		}
+	}
+	lastIdx := len(arr) - 1
+	path := fmt.Sprintf("tools.%d.cache_control", lastIdx)
+	out, err := sjson.SetBytes(body, path, map[string]string{"type": "ephemeral"})
+	if err != nil {
+		return body
+	}
+	return out
+}
+
 // enforceCacheControlLimit 强制执行 cache_control 块数量限制（最多 4 个）
 // 超限时优先从 messages 中移除 cache_control，保护 system 中的缓存控制
 func enforceCacheControlLimit(body []byte) []byte {
@@ -3934,6 +3969,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
 	}
+	// Stash the session hash so downstream metadata rewrites can reuse a
+	// sticky session UUID for all requests belonging to this conversation.
+	ctx = WithSessionHash(ctx, s.GenerateSessionHash(parsed))
 
 	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
 	if account != nil && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body) {
@@ -4004,6 +4042,14 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			body = rewriteSystemForNonClaudeCode(body, parsed.System)
 			systemRewritten = true
 		}
+
+		// Real Claude Code caches its tool definitions by stamping cache_control
+		// on the final tool block; clients like Cursor / Cherry Studio / OpenAI
+		// SDK wrappers send tools without any cache_control, which produces a
+		// cache-hit-rate profile unlike a real CLI. Inject a breakpoint when
+		// none is present. enforceCacheControlLimit below guarantees we stay
+		// within Anthropic's 4-block cap.
+		body = ensureToolsCacheControl(body)
 
 		// system 被重写时保留 CC prompt 的 cache_control: ephemeral（匹配真实 Claude Code 行为）；
 		// 未重写时（haiku / 已含 CC 前缀）剥离客户端 cache_control，与原有行为一致。
@@ -4079,6 +4125,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, body)
+
+	// Sidecar: 为 Claude OAuth 账号注入 count_tokens 请求，让 endpoint 比例
+	// 看起来像真实 Claude Code CLI。非阻塞，默认关闭（由 sidecar_probe
+	// 配置控制）。详见 gateway_count_tokens_inject.go。
+	s.maybeInjectCountTokensSidecar(account, body, reqModel, token, tokenType, shouldMimicClaudeCode, isClaudeCode, proxyURL)
 
 	// 重试循环
 	var resp *http.Response
@@ -5632,9 +5683,19 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			// this as a legitimate Claude Code request; without it, the request is
 			// rejected as third-party ("out of extra usage").
 			// Haiku models are exempt from third-party detection and don't need it.
+			// Non-haiku additionally carries the betas that the current Claude Code CLI ships
+			// by default — see claude.DefaultHeaders and the clientExtraBetas constant; if we
+			// stamp that UA but drop these, upstream can rule-match the mismatch pool-wide.
 			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinking}
 			if !strings.Contains(strings.ToLower(modelID), "haiku") {
-				requiredBetas = []string{claude.BetaClaudeCode, claude.BetaOAuth, claude.BetaInterleavedThinking}
+				requiredBetas = []string{
+					claude.BetaClaudeCode,
+					claude.BetaOAuth,
+					claude.BetaInterleavedThinking,
+					claude.BetaContextManagement20250627,
+					claude.BetaPromptCachingScope20260105,
+					claude.BetaAdvisorTool20260301,
+				}
 			}
 			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropSet))
 		} else {
@@ -5768,6 +5829,11 @@ func applyClaudeOAuthHeaderDefaults(req *http.Request) {
 		if getHeaderRaw(req.Header, key) == "" {
 			setHeaderRaw(req.Header, resolveWireCasing(key), value)
 		}
+	}
+	// Retry count is sampled per-request rather than held as a constant default,
+	// so every request gets fresh variance instead of a flat "0".
+	if getHeaderRaw(req.Header, "X-Stainless-Retry-Count") == "" {
+		setHeaderRaw(req.Header, resolveWireCasing("X-Stainless-Retry-Count"), claude.SampleStainlessRetryCount())
 	}
 }
 
@@ -6101,6 +6167,9 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
 		}
 		setHeaderRaw(req.Header, resolveWireCasing(key), value)
 	}
+	// Force a freshly sampled retry count — mimic mode overrides whatever the
+	// downstream client may have sent.
+	setHeaderRaw(req.Header, resolveWireCasing("X-Stainless-Retry-Count"), claude.SampleStainlessRetryCount())
 	// Real Claude CLI uses Accept: application/json (even for streaming).
 	setHeaderRaw(req.Header, "Accept", "application/json")
 	if isStream {
@@ -8177,6 +8246,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return fmt.Errorf("parse request: empty request")
 	}
+	ctx = WithSessionHash(ctx, s.GenerateSessionHash(parsed))
 
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body
