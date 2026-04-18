@@ -277,7 +277,7 @@ import type { SubscriptionPlan, CheckoutInfoResponse, OrderType } from '@/types/
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
-import { METHOD_ORDER, POPUP_WINDOW_FEATURES } from '@/components/payment/providerConfig'
+import { METHOD_ORDER, getPaymentPopupFeatures } from '@/components/payment/providerConfig'
 import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, platformTextClass, platformLabel } from '@/utils/platformColors'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
@@ -554,7 +554,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       is_mobile: isMobileDevice(),
     })
     const openWindow = (url: string) => {
-      const win = window.open(url, 'paymentPopup', POPUP_WINDOW_FEATURES)
+      const win = window.open(url, 'paymentPopup', getPaymentPopupFeatures())
       if (!win || win.closed) {
         window.location.href = url
       }
