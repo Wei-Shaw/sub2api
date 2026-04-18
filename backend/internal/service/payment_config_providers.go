@@ -51,7 +51,7 @@ func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Conte
 			Enabled: inst.Enabled, RefundEnabled: inst.RefundEnabled, AllowUserRefund: inst.AllowUserRefund,
 			SortOrder: inst.SortOrder, PaymentMode: inst.PaymentMode,
 		}
-		resp.Config, err = s.decryptAndMaskConfig(inst.Config)
+		resp.Config, err = s.decryptAndMaskConfig(inst.ProviderKey, inst.Config)
 		if err != nil {
 			return nil, fmt.Errorf("decrypt config for instance %d: %w", inst.ID, err)
 		}
@@ -64,7 +64,7 @@ func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Conte
 // Admin UIs display masked placeholders for these; the raw values never leave
 // the server. Callers that need the full config (e.g. payment runtime) must
 // use decryptConfig directly.
-func (s *PaymentConfigService) decryptAndMaskConfig(encrypted string) (map[string]string, error) {
+func (s *PaymentConfigService) decryptAndMaskConfig(providerKey, encrypted string) (map[string]string, error) {
 	cfg, err := s.decryptConfig(encrypted)
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func (s *PaymentConfigService) decryptAndMaskConfig(encrypted string) (map[strin
 	}
 	masked := make(map[string]string, len(cfg))
 	for k, v := range cfg {
-		if isSensitiveConfigField(k) {
+		if isSensitiveProviderConfigField(providerKey, k) {
 			continue
 		}
 		masked[k] = v
@@ -89,16 +89,27 @@ var pendingOrderStatuses = []string{
 	payment.OrderStatusRecharging,
 }
 
-var sensitiveConfigPatterns = []string{"key", "pkey", "secret", "private", "password"}
+// providerSensitiveConfigFields is the authoritative list of config keys that
+// are treated as secrets per provider. Must stay in sync with the frontend
+// definition at frontend/src/components/payment/providerConfig.ts
+// (PROVIDER_CONFIG_FIELDS, fields with sensitive: true).
+//
+// Key matching is case-insensitive. Non-listed keys (e.g. appId, notifyUrl,
+// stripe publishableKey) are returned in plaintext by the admin GET API.
+var providerSensitiveConfigFields = map[string]map[string]struct{}{
+	payment.TypeEasyPay: {"pkey": {}},
+	payment.TypeAlipay:  {"privatekey": {}, "publickey": {}, "alipaypublickey": {}},
+	payment.TypeWxpay:   {"privatekey": {}, "apiv3key": {}, "publickey": {}},
+	payment.TypeStripe:  {"secretkey": {}, "webhooksecret": {}},
+}
 
-func isSensitiveConfigField(fieldName string) bool {
-	lower := strings.ToLower(fieldName)
-	for _, p := range sensitiveConfigPatterns {
-		if strings.Contains(lower, p) {
-			return true
-		}
+func isSensitiveProviderConfigField(providerKey, fieldName string) bool {
+	fields, ok := providerSensitiveConfigFields[providerKey]
+	if !ok {
+		return false
 	}
-	return false
+	_, found := fields[strings.ToLower(fieldName)]
+	return found
 }
 
 func (s *PaymentConfigService) countPendingOrders(ctx context.Context, providerInstanceID int64) (int, error) {
@@ -154,10 +165,26 @@ func validateProviderRequest(providerKey, name, supportedTypes string) error {
 // NOTE: This function exceeds 30 lines due to per-field nil-check patch update
 // boilerplate and pending-order safety checks.
 func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id int64, req UpdateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
+	var cachedInst *dbent.PaymentProviderInstance
+	loadInst := func() (*dbent.PaymentProviderInstance, error) {
+		if cachedInst != nil {
+			return cachedInst, nil
+		}
+		inst, err := s.entClient.PaymentProviderInstance.Get(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("load provider instance: %w", err)
+		}
+		cachedInst = inst
+		return inst, nil
+	}
 	if req.Config != nil {
+		inst, err := loadInst()
+		if err != nil {
+			return nil, err
+		}
 		hasSensitive := false
-		for k := range req.Config {
-			if isSensitiveConfigField(k) && req.Config[k] != "" {
+		for k, v := range req.Config {
+			if v != "" && isSensitiveProviderConfigField(inst.ProviderKey, k) {
 				hasSensitive = true
 				break
 			}
@@ -305,7 +332,7 @@ func (s *PaymentConfigService) mergeConfig(ctx context.Context, id int64, newCon
 	for k, v := range newConfig {
 		// Preserve existing secrets when the client submits an empty value
 		// (admin UI omits the value to indicate "leave unchanged").
-		if v == "" && isSensitiveConfigField(k) {
+		if v == "" && isSensitiveProviderConfigField(inst.ProviderKey, k) {
 			continue
 		}
 		existing[k] = v
