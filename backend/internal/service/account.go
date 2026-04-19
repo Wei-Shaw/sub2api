@@ -121,6 +121,9 @@ REDACTED
 	if a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {
 		return false
 REDACTED
+	if a.IsAPIKeyOrBedrock() && a.IsQuotaExceeded() {
+		return false
+REDACTED
 	return true
 REDACTED
 
