@@ -137,7 +137,7 @@ func TestDialerAgainstCaptureServer(t *testing.T) {
 			}
 			effectiveKeyShare := tc.profile.KeyShareGroups
 			if len(effectiveKeyShare) == 0 {
-				effectiveKeyShare = []uint16{29} // X25519
+				effectiveKeyShare = []uint16{4588, 29} // X25519MLKEM768 + X25519 (Claude Code CLI default)
 			}
 			effectivePSKModes := tc.profile.PSKModes
 			if len(effectivePSKModes) == 0 {
@@ -361,8 +361,8 @@ func TestBuildClientHelloSpecNewFields(t *testing.T) {
 				t.Errorf("default versions: got %v, want 2 entries", e.Versions)
 			}
 		case *utls.KeyShareExtension:
-			if len(e.KeyShares) != 1 {
-				t.Errorf("default key shares: got %d, want 1", len(e.KeyShares))
+			if len(e.KeyShares) != 2 {
+				t.Errorf("default key shares: got %d, want 2", len(e.KeyShares))
 			}
 		}
 	}

@@ -88,14 +88,14 @@ func TestJA3Fingerprint(t *testing.T) {
 	t.Logf("JA3 Hash: %s", fpResp.TLS.JA3Hash)
 	t.Logf("JA4: %s", fpResp.TLS.JA4)
 
-	expectedJA3Hash := "44f88fca027f27bab4bb08d4af15f23e"
+	expectedJA3Hash := "048900f5ae64cc2a49a44389a5406191"
 	if fpResp.TLS.JA3Hash == expectedJA3Hash {
 		t.Logf("✓ JA3 hash matches: %s", expectedJA3Hash)
 	} else {
 		t.Errorf("✗ JA3 hash mismatch: got %s, expected %s", fpResp.TLS.JA3Hash, expectedJA3Hash)
 	}
 
-	expectedJA4CipherHash := "_5b57614c22b0_"
+	expectedJA4CipherHash := "_b262b3658495_"
 	if strings.Contains(fpResp.TLS.JA4, expectedJA4CipherHash) {
 		t.Logf("✓ JA4 cipher hash matches: %s", expectedJA4CipherHash)
 	} else {
@@ -119,7 +119,7 @@ func TestAllProfiles(t *testing.T) {
 				Name:         "default_node_v24",
 				EnableGREASE: false,
 			},
-			JA4CipherHash: "5b57614c22b0",
+			JA4CipherHash: "b262b3658495",
 		},
 		{
 			// Linux x64 Node.js v22.17.1 (explicit profile with v22 extensions)
