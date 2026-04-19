@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"log/slog"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -53,14 +52,8 @@ type HarvestOptions struct {
 // returned reader must be closed; Close() flushes non-streaming extraction.
 func (h *Harvester) Wrap(ctx context.Context, body io.ReadCloser, opts HarvestOptions) io.ReadCloser {
 	if h == nil || h.pool == nil || h.capacity <= 0 || opts.Bucket == "" {
-		slog.Debug("harvester.wrap_skipped",
-			"nil_h", h == nil,
-			"nil_pool", h != nil && h.pool == nil,
-			"capacity", h != nil && h.capacity <= 0,
-			"empty_bucket", opts.Bucket == "")
 		return body
 	}
-	slog.Info("harvester.wrap_active", "bucket", opts.Bucket, "capacity", h.capacity, "streaming", opts.Streaming)
 	return &harvestReader{
 		ctx:    ctx,
 		src:    body,
@@ -154,9 +147,15 @@ func (r *harvestReader) observeSSE(chunk []byte) {
 	}
 }
 
-// parseLine extracts a signature from a single SSE line of form
-// `data: {"type":"content_block_start",...,"content_block":{...,"signature":"..."}}`.
-// Other lines are ignored cheaply.
+// parseLine extracts a signature from a single SSE data line.
+//
+// Two shapes carry signatures:
+//  1. content_block_start with a non-empty content_block.signature
+//     (older API behavior, kept for compatibility).
+//  2. content_block_delta with delta.type == "signature_delta" and
+//     delta.signature (current API behavior as of 2026-04).
+//
+// Other lines are ignored cheaply via a bytes.Contains pre-filter.
 var sseDataPrefix = []byte("data:")
 
 func (r *harvestReader) parseLine(line []byte) {
@@ -174,16 +173,22 @@ func (r *harvestReader) parseLine(line []byte) {
 	if !bytes.Contains(payload, []byte(`"signature"`)) {
 		return
 	}
-	// Only content_block_start events carry new thinking signatures we care about.
 	evType := gjson.GetBytes(payload, "type").String()
-	if evType != "content_block_start" {
-		return
+	switch evType {
+	case "content_block_start":
+		sig := gjson.GetBytes(payload, "content_block.signature").String()
+		if sig != "" {
+			r.emit(sig)
+		}
+	case "content_block_delta":
+		deltaType := gjson.GetBytes(payload, "delta.type").String()
+		if deltaType == "signature_delta" {
+			sig := gjson.GetBytes(payload, "delta.signature").String()
+			if sig != "" {
+				r.emit(sig)
+			}
+		}
 	}
-	sig := gjson.GetBytes(payload, "content_block.signature").String()
-	if sig == "" {
-		return
-	}
-	r.emit(sig)
 }
 
 // flush parses an accumulated non-streaming body at Close time.
@@ -217,6 +222,5 @@ func (r *harvestReader) emit(sig string) {
 		return
 	}
 	r.seen[sig] = struct{}{}
-	err := r.pool.Add(r.ctx, r.bucket, sig, time.Now(), r.cap)
-	slog.Info("harvester.emit", "bucket", r.bucket, "sig_len", len(sig), "error", err)
+	_ = r.pool.Add(r.ctx, r.bucket, sig, time.Now(), r.cap)
 }
