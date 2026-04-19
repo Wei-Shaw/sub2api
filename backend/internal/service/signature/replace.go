@@ -35,12 +35,18 @@ func ReplaceThinkingSignaturesInBody(body []byte, pool []string) ([]byte, int) {
 
 	out := body
 	replaced := 0
-	msgs.ForEach(func(mKey, msg gjson.Result) bool {
+	mIdx := 0
+	msgs.ForEach(func(_, msg gjson.Result) bool {
+		thisMsg := mIdx
+		mIdx++
 		content := msg.Get("content")
 		if !content.IsArray() {
 			return true
 		}
-		content.ForEach(func(bKey, blk gjson.Result) bool {
+		bIdx := 0
+		content.ForEach(func(_, blk gjson.Result) bool {
+			thisBlk := bIdx
+			bIdx++
 			if blk.Get("type").String() != "thinking" {
 				return true
 			}
@@ -49,7 +55,7 @@ func ReplaceThinkingSignaturesInBody(body []byte, pool []string) ([]byte, int) {
 				return true
 			}
 			newSig := pool[replaced%len(pool)]
-			path := fmt.Sprintf("messages.%s.content.%s.signature", mKey.Raw, bKey.Raw)
+			path := fmt.Sprintf("messages.%d.content.%d.signature", thisMsg, thisBlk)
 			if next, err := sjson.SetBytes(out, path, newSig); err == nil {
 				out = next
 				replaced++
