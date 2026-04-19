@@ -448,8 +448,9 @@ REDACTED
 	REDACTED)
 REDACTED
 
-	if input.RateMultiplier <= 0 {
-		input.RateMultiplier = 1.0
+	// 保存时强制 > 0；若仍有负数泄漏（缓存/迁移残留），按 0 处理避免按 1x 误扣。
+	if input.RateMultiplier < 0 {
+		input.RateMultiplier = 0
 REDACTED
 
 	var breakdown *CostBreakdown
@@ -493,8 +494,9 @@ func (s *BillingService) computeTokenBreakdown(
 	rateMultiplier float64, serviceTier string,
 	applyLongCtx bool,
 ) *CostBreakdown {
-	if rateMultiplier <= 0 {
-		rateMultiplier = 1.0
+	// 保存时强制 > 0；若仍有负数泄漏，按 0 处理避免按 1x 误扣。
+	if rateMultiplier < 0 {
+		rateMultiplier = 0
 REDACTED
 
 	inputPrice := pricing.InputPricePerToken
@@ -831,9 +833,9 @@ REDACTED
 	// 计算总费用
 	totalCost := unitPrice * float64(imageCount)
 
-	// 应用倍率
-	if rateMultiplier <= 0 {
-		rateMultiplier = 1.0
+	// 应用倍率（保存时强制 > 0；负数按 0 处理避免按 1x 误扣）
+	if rateMultiplier < 0 {
+		rateMultiplier = 0
 REDACTED
 	actualCost := totalCost * rateMultiplier
 

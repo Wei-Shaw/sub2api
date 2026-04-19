@@ -71,34 +71,6 @@ REDACTED
 	require.InDelta(t, cost1x.ActualCost*2, cost2x.ActualCost, 1e-10)
 REDACTED
 
-func TestCalculateCost_ZeroMultiplierDefaultsToOne(t *testing.T) {
-	svc := newTestBillingService()
-
-	tokens := UsageTokens{InputTokens: 1000REDACTED
-
-	costZero, err := svc.CalculateCost("claude-sonnet-4", tokens, 0)
-REDACTED
-
-	costOne, err := svc.CalculateCost("claude-sonnet-4", tokens, 1.0)
-REDACTED
-
-	require.InDelta(t, costOne.ActualCost, costZero.ActualCost, 1e-10)
-REDACTED
-
-func TestCalculateCost_NegativeMultiplierDefaultsToOne(t *testing.T) {
-	svc := newTestBillingService()
-
-	tokens := UsageTokens{InputTokens: 1000REDACTED
-
-	costNeg, err := svc.CalculateCost("claude-sonnet-4", tokens, -1.0)
-REDACTED
-
-	costOne, err := svc.CalculateCost("claude-sonnet-4", tokens, 1.0)
-REDACTED
-
-	require.InDelta(t, costOne.ActualCost, costNeg.ActualCost, 1e-10)
-REDACTED
-
 func TestGetModelPricing_FallbackMatchesByFamily(t *testing.T) {
 	svc := newTestBillingService()
 

@@ -125,7 +125,7 @@ import { usePaymentStore REDACTED from '@/stores/payment'
 import { useAppStore REDACTED from '@/stores'
 import { paymentAPI REDACTED from '@/api/payment'
 import { extractApiErrorMessage REDACTED from '@/utils/apiError'
-import { POPUP_WINDOW_FEATURES REDACTED from '@/components/payment/providerConfig'
+import { getPaymentPopupFeatures REDACTED from '@/components/payment/providerConfig'
 import type { PaymentOrder REDACTED from '@/types/payment'
 import Icon from '@/components/icons/Icon.vue'
 import QRCode from 'qrcode'
@@ -194,7 +194,7 @@ REDACTED)
 
 function reopenPopup() {
   if (props.payUrl) {
-    window.open(props.payUrl, 'paymentPopup', POPUP_WINDOW_FEATURES)
+    window.open(props.payUrl, 'paymentPopup', getPaymentPopupFeatures())
   REDACTED
 REDACTED
 

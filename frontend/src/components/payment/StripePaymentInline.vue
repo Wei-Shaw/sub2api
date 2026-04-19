@@ -70,7 +70,7 @@ import { useRouter REDACTED from 'vue-router'
 import { extractApiErrorMessage REDACTED from '@/utils/apiError'
 import { paymentAPI REDACTED from '@/api/payment'
 import { useAppStore REDACTED from '@/stores'
-import { STRIPE_POPUP_WINDOW_FEATURES REDACTED from '@/components/payment/providerConfig'
+import { getPaymentPopupFeatures REDACTED from '@/components/payment/providerConfig'
 import type { Stripe, StripeElements REDACTED from '@stripe/stripe-js'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -151,7 +151,7 @@ async function handlePay() {
         amount: String(props.payAmount),
       REDACTED,
     REDACTED).href
-    const popup = window.open(popupUrl, 'paymentPopup', STRIPE_POPUP_WINDOW_FEATURES)
+    const popup = window.open(popupUrl, 'paymentPopup', getPaymentPopupFeatures())
 
     const onReady = (event: MessageEvent) => {
       if (event.source !== popup || event.data?.type !== 'STRIPE_POPUP_READY') return

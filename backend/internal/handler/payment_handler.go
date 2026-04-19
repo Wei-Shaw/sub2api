@@ -206,6 +206,10 @@ type CreateOrderRequest struct {
 	PaymentType string  `json:"payment_type" binding:"required"`
 	OrderType   string  `json:"order_type"`
 	PlanID      int64   `json:"plan_id"`
+	// IsMobile lets the frontend declare its mobile status directly. When
+	// nil we fall back to User-Agent heuristics (which miss iPadOS / some
+	// embedded browsers that strip the "Mobile" keyword).
+	IsMobile *bool `json:"is_mobile,omitempty"`
 REDACTED
 
 // CreateOrder creates a new payment order.
@@ -222,12 +226,16 @@ REDACTED
 		return
 REDACTED
 
+	mobile := isMobile(c)
+	if req.IsMobile != nil {
+		mobile = *req.IsMobile
+REDACTED
 	result, err := h.paymentService.CreateOrder(c.Request.Context(), service.CreateOrderRequest{
 		UserID:      subject.UserID,
 		Amount:      req.Amount,
 		PaymentType: req.PaymentType,
 		ClientIP:    c.ClientIP(),
-		IsMobile:    isMobile(c),
+		IsMobile:    mobile,
 		SrcHost:     c.Request.Host,
 		SrcURL:      c.Request.Referer(),
 		OrderType:   req.OrderType,

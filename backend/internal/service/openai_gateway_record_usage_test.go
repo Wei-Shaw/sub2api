@@ -1031,7 +1031,7 @@ func TestOpenAIGatewayServiceRecordUsage_SubscriptionBillingSetsSubscriptionFiel
 			Model:     "gpt-5.1",
 			Duration:  time.Second,
 	REDACTED,
-		APIKey:       &APIKey{ID: 100, GroupID: i64p(88), Group: &Group{ID: 88, SubscriptionType: SubscriptionTypeSubscriptionREDACTEDREDACTED,
+		APIKey:       &APIKey{ID: 100, GroupID: i64p(88), Group: &Group{ID: 88, SubscriptionType: SubscriptionTypeSubscription, RateMultiplier: 1.0REDACTEDREDACTED,
 		User:         &User{ID: 200REDACTED,
 		Account:      &Account{ID: 300REDACTED,
 		Subscription: subscription,
