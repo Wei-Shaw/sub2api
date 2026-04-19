@@ -284,6 +284,16 @@ const hasError = computed(() => {
   return props.account.status === 'error'
 REDACTED)
 
+const isQuotaExceeded = computed(() => {
+  const exceeded = (used?: number | null, limit?: number | null) =>
+    typeof limit === 'number' && limit > 0 && typeof used === 'number' && used >= limit
+  return (
+    exceeded(props.account.quota_used, props.account.quota_limit) ||
+    exceeded(props.account.quota_daily_used, props.account.quota_daily_limit) ||
+    exceeded(props.account.quota_weekly_used, props.account.quota_weekly_limit)
+  )
+REDACTED)
+
 // Computed: countdown text for rate limit (429)
 const rateLimitCountdown = computed(() => {
   return formatCountdown(props.account.rate_limit_reset_at)
@@ -307,19 +317,16 @@ const statusClass = computed(() => {
   if (isTempUnschedulable.value) {
     return 'badge-warning'
   REDACTED
+  if (props.account.status !== 'active') {
+    return props.account.status === 'error' ? 'badge-danger' : 'badge-gray'
+  REDACTED
+  if (isQuotaExceeded.value) {
+    return 'badge-warning'
+  REDACTED
   if (!props.account.schedulable) {
     return 'badge-gray'
   REDACTED
-  switch (props.account.status) {
-    case 'active':
-      return 'badge-success'
-    case 'inactive':
-      return 'badge-gray'
-    case 'error':
-      return 'badge-danger'
-    default:
-      return 'badge-gray'
-  REDACTED
+  return 'badge-success'
 REDACTED)
 
 // Computed: status text
@@ -329,6 +336,12 @@ const statusText = computed(() => {
   REDACTED
   if (isTempUnschedulable.value) {
     return t('admin.accounts.status.tempUnschedulable')
+  REDACTED
+  if (props.account.status !== 'active') {
+    return t(`admin.accounts.status.${props.account.statusREDACTED`)
+  REDACTED
+  if (isQuotaExceeded.value) {
+    return t('admin.accounts.status.quotaExceeded')
   REDACTED
   if (!props.account.schedulable) {
     return t('admin.accounts.status.paused')
