@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -52,8 +53,14 @@ type HarvestOptions struct {
 // returned reader must be closed; Close() flushes non-streaming extraction.
 func (h *Harvester) Wrap(ctx context.Context, body io.ReadCloser, opts HarvestOptions) io.ReadCloser {
 	if h == nil || h.pool == nil || h.capacity <= 0 || opts.Bucket == "" {
+		slog.Debug("harvester.wrap_skipped",
+			"nil_h", h == nil,
+			"nil_pool", h != nil && h.pool == nil,
+			"capacity", h != nil && h.capacity <= 0,
+			"empty_bucket", opts.Bucket == "")
 		return body
 	}
+	slog.Info("harvester.wrap_active", "bucket", opts.Bucket, "capacity", h.capacity, "streaming", opts.Streaming)
 	return &harvestReader{
 		ctx:    ctx,
 		src:    body,
@@ -210,5 +217,6 @@ func (r *harvestReader) emit(sig string) {
 		return
 	}
 	r.seen[sig] = struct{}{}
-	_ = r.pool.Add(r.ctx, r.bucket, sig, time.Now(), r.cap)
+	err := r.pool.Add(r.ctx, r.bucket, sig, time.Now(), r.cap)
+	slog.Info("harvester.emit", "bucket", r.bucket, "sig_len", len(sig), "error", err)
 }

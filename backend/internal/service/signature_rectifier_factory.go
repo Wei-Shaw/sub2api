@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"io"
+	"log/slog"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/service/signature"
@@ -108,8 +109,14 @@ func (f *signatureRectifierFactory) ForAntigravity(ctx context.Context, account 
 // on the context — the harvester's Skip callback checks it at read time.
 func (f *signatureRectifierFactory) WrapResponseBody(ctx context.Context, account *Account, body io.ReadCloser, streaming bool) io.ReadCloser {
 	if f == nil || body == nil || !f.shouldUsePool(ctx, account) {
+		slog.Debug("signature_factory.wrap_skipped",
+			"nil_f", f == nil,
+			"nil_body", body == nil,
+			"account_type", account.Type,
+			"account_id", account.ID)
 		return body
 	}
+	slog.Info("signature_factory.wrap_active", "account_id", account.ID, "account_type", account.Type, "streaming", streaming)
 	h := signature.NewHarvester(f.pool, f.poolCapacity(ctx))
 	return h.Wrap(ctx, body, signature.HarvestOptions{
 		Bucket:    signature.BucketFor(account.Type, account.ID),
