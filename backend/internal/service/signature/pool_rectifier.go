@@ -2,6 +2,7 @@ package signature
 
 import (
 	"context"
+	"log/slog"
 )
 
 // PoolClaudeRectifier implements the pool-replace strategy for the Claude native
@@ -41,6 +42,9 @@ func (r *PoolClaudeRectifier) Apply(ctx context.Context, in ClaudeInput, stage S
 	if replaced == 0 {
 		return nil, false
 	}
+	slog.Warn("signature_pool.claude_replace",
+		"account_id", in.AccountID, "bucket", bucket,
+		"pool_size", len(sigs), "replaced", replaced)
 	return newBody, true
 }
 
@@ -80,7 +84,9 @@ func (r *PoolAntigravityRectifier) Apply(ctx context.Context, in AntigravityInpu
 	if replaced == 0 {
 		return false, false, nil
 	}
-	// applied=true (mutation took effect), proceed=false (one-shot, do not try next stage)
+	slog.Warn("signature_pool.antigravity_replace",
+		"account_id", in.AccountID, "bucket", bucket,
+		"pool_size", len(sigs), "replaced", replaced)
 	return true, false, nil
 }
 
