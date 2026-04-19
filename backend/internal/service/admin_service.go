@@ -423,22 +423,23 @@ const (
 
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
-	userRepo             UserRepository
-	groupRepo            GroupRepository
-	accountRepo          AccountRepository
-	proxyRepo            ProxyRepository
-	apiKeyRepo           APIKeyRepository
-	redeemCodeRepo       RedeemCodeRepository
-	userGroupRateRepo    UserGroupRateRepository
-	billingCacheService  *BillingCacheService
-	proxyProber          ProxyExitInfoProber
-	proxyLatencyCache    ProxyLatencyCache
-	authCacheInvalidator APIKeyAuthCacheInvalidator
-	entClient            *dbent.Client // 用于开启数据库事务
-	settingService       *SettingService
-	defaultSubAssigner   DefaultSubscriptionAssigner
-	userSubRepo          UserSubscriptionRepository
-	privacyClientFactory PrivacyClientFactory
+	userRepo              UserRepository
+	groupRepo             GroupRepository
+	accountRepo           AccountRepository
+	proxyRepo             ProxyRepository
+	apiKeyRepo            APIKeyRepository
+	redeemCodeRepo        RedeemCodeRepository
+	userGroupRateRepo     UserGroupRateRepository
+	billingCacheService   *BillingCacheService
+	proxyProber           ProxyExitInfoProber
+	proxyLatencyCache     ProxyLatencyCache
+	authCacheInvalidator  APIKeyAuthCacheInvalidator
+	entClient             *dbent.Client // 用于开启数据库事务
+	settingService        *SettingService
+	defaultSubAssigner    DefaultSubscriptionAssigner
+	userSubRepo           UserSubscriptionRepository
+	privacyClientFactory  PrivacyClientFactory
+	scheduledTestPlanRepo ScheduledTestPlanRepository
 }
 
 type userGroupRateBatchReader interface {
@@ -463,24 +464,26 @@ func NewAdminService(
 	defaultSubAssigner DefaultSubscriptionAssigner,
 	userSubRepo UserSubscriptionRepository,
 	privacyClientFactory PrivacyClientFactory,
+	scheduledTestPlanRepo ScheduledTestPlanRepository,
 ) AdminService {
 	return &adminServiceImpl{
-		userRepo:             userRepo,
-		groupRepo:            groupRepo,
-		accountRepo:          accountRepo,
-		proxyRepo:            proxyRepo,
-		apiKeyRepo:           apiKeyRepo,
-		redeemCodeRepo:       redeemCodeRepo,
-		userGroupRateRepo:    userGroupRateRepo,
-		billingCacheService:  billingCacheService,
-		proxyProber:          proxyProber,
-		proxyLatencyCache:    proxyLatencyCache,
-		authCacheInvalidator: authCacheInvalidator,
-		entClient:            entClient,
-		settingService:       settingService,
-		defaultSubAssigner:   defaultSubAssigner,
-		userSubRepo:          userSubRepo,
-		privacyClientFactory: privacyClientFactory,
+		userRepo:              userRepo,
+		groupRepo:             groupRepo,
+		accountRepo:           accountRepo,
+		proxyRepo:             proxyRepo,
+		apiKeyRepo:            apiKeyRepo,
+		redeemCodeRepo:        redeemCodeRepo,
+		userGroupRateRepo:     userGroupRateRepo,
+		billingCacheService:   billingCacheService,
+		proxyProber:           proxyProber,
+		proxyLatencyCache:     proxyLatencyCache,
+		authCacheInvalidator:  authCacheInvalidator,
+		entClient:             entClient,
+		settingService:        settingService,
+		defaultSubAssigner:    defaultSubAssigner,
+		userSubRepo:           userSubRepo,
+		privacyClientFactory:  privacyClientFactory,
+		scheduledTestPlanRepo: scheduledTestPlanRepo,
 	}
 }
 
@@ -1860,6 +1863,13 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 }
 
 func (s *adminServiceImpl) DeleteAccount(ctx context.Context, id int64) error {
+	if err := s.scheduledTestPlanRepo.DeleteByAccountID(ctx, id); err != nil {
+		slog.Error("failed to delete scheduled test plans for account",
+			"account_id", id,
+			"error", err,
+		)
+		return fmt.Errorf("delete scheduled test plans: %w", err)
+	}
 	if err := s.accountRepo.Delete(ctx, id); err != nil {
 		return err
 	}
