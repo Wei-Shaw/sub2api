@@ -22,6 +22,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/service/signature"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
@@ -870,14 +871,15 @@ func logPrefix(sessionID, accountName string) string {
 
 // AntigravityGatewayService 处理 Antigravity 平台的 API 转发
 type AntigravityGatewayService struct {
-	accountRepo       AccountRepository
-	tokenProvider     *AntigravityTokenProvider
-	rateLimitService  *RateLimitService
-	httpUpstream      HTTPUpstream
-	settingService    *SettingService
-	cache             GatewayCache // 用于模型级限流时清除粘性会话绑定
-	schedulerSnapshot *SchedulerSnapshotService
-	internal500Cache  Internal500CounterCache // INTERNAL 500 渐进惩罚计数器
+	accountRepo        AccountRepository
+	tokenProvider      *AntigravityTokenProvider
+	rateLimitService   *RateLimitService
+	httpUpstream       HTTPUpstream
+	settingService     *SettingService
+	cache              GatewayCache // 用于模型级限流时清除粘性会话绑定
+	schedulerSnapshot  *SchedulerSnapshotService
+	internal500Cache   Internal500CounterCache // INTERNAL 500 渐进惩罚计数器
+	signatureRectifier signature.AntigravityRectifier
 }
 
 func NewAntigravityGatewayService(
@@ -899,6 +901,10 @@ func NewAntigravityGatewayService(
 		cache:             cache,
 		schedulerSnapshot: schedulerSnapshot,
 		internal500Cache:  internal500Cache,
+		signatureRectifier: &signature.StripAntigravityRectifier{
+			StripStage1: stripThinkingFromClaudeRequest,
+			StripStage2: stripSignatureSensitiveBlocksFromClaudeRequest,
+		},
 	}
 }
 
@@ -1468,28 +1474,31 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 				Detail:             upstreamDetail,
 			})
 
-			// Conservative two-stage fallback:
+			// Conservative two-stage fallback (Strip strategy):
 			// 1) Disable top-level thinking + thinking->text
 			// 2) Only if still signature-related 400: also downgrade tool_use/tool_result to text.
+			// Pool strategy (Phase 3) replaces thinking signatures with valid ones from the pool instead.
 
-			retryStages := []struct {
-				name  string
-				strip func(*antigravity.ClaudeRequest) (bool, error)
-			}{
-				{name: "thinking-only", strip: stripThinkingFromClaudeRequest},
-				{name: "thinking+tools", strip: stripSignatureSensitiveBlocksFromClaudeRequest},
-			}
-
-			for _, stage := range retryStages {
+			for _, stage := range s.signatureRectifier.Stages() {
 				retryClaudeReq := claudeReq
 				retryClaudeReq.Messages = append([]antigravity.ClaudeMessage(nil), claudeReq.Messages...)
 
-				stripped, stripErr := stage.strip(&retryClaudeReq)
-				if stripErr != nil || !stripped {
+				sigIn := signature.AntigravityInput{
+					AccountType: account.Type,
+					AccountID:   account.ID,
+					Request:     &retryClaudeReq,
+				}
+				applied, proceedAfter, stripErr := s.signatureRectifier.Apply(ctx, sigIn, stage)
+				if stripErr != nil || !applied {
+					if !proceedAfter {
+						// Rectifier signaled abort (e.g. Pool is empty under rule A).
+						break
+					}
 					continue
 				}
 
-				logger.LegacyPrintf("service.antigravity_gateway", "Antigravity account %d: detected signature-related 400, retrying once (%s)", account.ID, stage.name)
+				stageName := stage.Name()
+				logger.LegacyPrintf("service.antigravity_gateway", "Antigravity account %d: detected signature-related 400, retrying once (%s)", account.ID, stageName)
 
 				retryGeminiBody, txErr := antigravity.TransformClaudeToGeminiWithOptions(&retryClaudeReq, projectID, mappedModel, s.getClaudeTransformOptions(ctx))
 				if txErr != nil {
@@ -1522,7 +1531,10 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 						Kind:               "signature_retry_request_error",
 						Message:            sanitizeUpstreamErrorMessage(retryErr.Error()),
 					})
-					logger.LegacyPrintf("service.antigravity_gateway", "Antigravity account %d: signature retry request failed (%s): %v", account.ID, stage.name, retryErr)
+					logger.LegacyPrintf("service.antigravity_gateway", "Antigravity account %d: signature retry request failed (%s): %v", account.ID, stageName, retryErr)
+					if !proceedAfter {
+						break
+					}
 					continue
 				}
 
@@ -1541,11 +1553,11 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 					if retryResp.Request != nil && retryResp.Request.URL != nil {
 						retryBaseURL = retryResp.Request.URL.Scheme + "://" + retryResp.Request.URL.Host
 					}
-					logger.LegacyPrintf("service.antigravity_gateway", "%s status=429 rate_limited base_url=%s retry_stage=%s body=%s", prefix, retryBaseURL, stage.name, truncateForLog(retryBody, 200))
+					logger.LegacyPrintf("service.antigravity_gateway", "%s status=429 rate_limited base_url=%s retry_stage=%s body=%s", prefix, retryBaseURL, stageName, truncateForLog(retryBody, 200))
 				}
 				kind := "signature_retry"
-				if strings.TrimSpace(stage.name) != "" {
-					kind = "signature_retry_" + strings.ReplaceAll(stage.name, "+", "_")
+				if strings.TrimSpace(stageName) != "" {
+					kind = "signature_retry_" + strings.ReplaceAll(stageName, "+", "_")
 				}
 				retryUpstreamMsg := strings.TrimSpace(extractAntigravityErrorMessage(retryBody))
 				retryUpstreamMsg = sanitizeUpstreamErrorMessage(retryUpstreamMsg)
@@ -1581,6 +1593,10 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 					StatusCode: retryResp.StatusCode,
 					Header:     retryResp.Header.Clone(),
 					Body:       io.NopCloser(bytes.NewReader(retryBody)),
+				}
+				if !proceedAfter {
+					// Rectifier signaled one-shot (e.g. Pool strategy): don't iterate to next stage.
+					break
 				}
 			}
 		}
