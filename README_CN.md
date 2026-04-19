@@ -679,7 +679,9 @@ sub2api/
 
 ## 许可证
 
-MIT License
+本项目基于 [GNU 宽通用公共许可证 v3.0](LICENSE)（或更高版本）授权。
+
+Copyright (c) 2026 Wesley Liddick
 
 ---
 
