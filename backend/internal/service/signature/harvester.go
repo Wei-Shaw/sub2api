@@ -85,7 +85,7 @@ func (r *harvestReader) Read(p []byte) (int, error) {
 		// Non-blocking send. Recover protects against the rare case where
 		// Close() races with Read() and the channel is already closed.
 		func() {
-			defer func() { recover() }()
+			defer func() { _ = recover() }()
 			select {
 			case r.chunks <- chunk:
 			default:
