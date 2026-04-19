@@ -1150,6 +1150,11 @@ REDACTED{
 			wantEffort: "max",
 	REDACTED,
 		{
+			name:       "output_config.effort xhigh",
+			body:       `{"model":"claude-opus-4-7","output_config":{"effort":"xhigh"REDACTED,"messages":[]REDACTED`,
+			wantEffort: "xhigh",
+	REDACTED,
+		{
 			name:       "output_config without effort",
 			body:       `{"model":"claude-opus-4-6","output_config":{REDACTED,"messages":[]REDACTED`,
 			wantEffort: "",
@@ -1186,9 +1191,10 @@ REDACTED{
 		{"LOW", strPtr("low")REDACTED,
 		{"Max", strPtr("max")REDACTED,
 		{" medium ", strPtr("medium")REDACTED,
+		{"xhigh", strPtr("xhigh")REDACTED,
+		{"XHIGH", strPtr("xhigh")REDACTED,
 		{"", nilREDACTED,
 		{"unknown", nilREDACTED,
-		{"xhigh", nilREDACTED,
 REDACTED
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
