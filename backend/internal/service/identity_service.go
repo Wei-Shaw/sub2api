@@ -54,24 +54,25 @@ func SessionHashFromContext(ctx context.Context) string {
 
 // 默认指纹值（当客户端未提供时使用）
 //
-// Re-verified 2026-04-17 against a live capture of Claude Code 2.1.111 on
-// Node.js 24.14.1 / macOS arm64 (capture tool: backend/tools/capture_fingerprint).
-// UA bumped to 2.1.112 (latest on npm as of 2026-04-17) — patch-level Claude
-// Code releases keep the same Stainless fields. Bundled @anthropic-ai/sdk is
-// still 0.81.0. These values match the real CLI's request headers exactly —
+// Re-verified 2026-04-19 against a live capture of Claude Code 2.1.114 on
+// macOS arm64. Baseline at backend/tools/capture_fingerprint/baselines/
+// claude-code-2.1.114.json. Critical: CC 2.1.114 bundles its own Node 24.3.0
+// runtime; the host Node version is NOT what gets advertised in the
+// X-Stainless-Runtime-Version header. Bundled @anthropic-ai/sdk is 0.81.0.
+// These values match the real CLI's request headers exactly —
 // particularly:
-//   - UserAgent:               "claude-cli/2.1.112 (external, sdk-cli)"  (note: "sdk-cli", NOT "cli")
+//   - UserAgent:               "claude-cli/2.1.114 (external, sdk-cli)"  (note: "sdk-cli", NOT "cli")
 //   - StainlessPackageVersion: "0.81.0"
 //   - StainlessOS:             "MacOS"     (case: mixed, not "Linux")
-//   - StainlessRuntimeVersion: "v24.14.1"
+//   - StainlessRuntimeVersion: "v24.3.0"   (bundled, not host)
 var defaultFingerprint = Fingerprint{
-	UserAgent:               "claude-cli/2.1.112 (external, sdk-cli)",
+	UserAgent:               "claude-cli/2.1.114 (external, sdk-cli)",
 	StainlessLang:           "js",
 	StainlessPackageVersion: "0.81.0",
 	StainlessOS:             "MacOS",
 	StainlessArch:           "arm64",
 	StainlessRuntime:        "node",
-	StainlessRuntimeVersion: "v24.14.1",
+	StainlessRuntimeVersion: "v24.3.0",
 }
 
 // Fingerprint represents account fingerprint data

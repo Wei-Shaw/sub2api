@@ -18,6 +18,10 @@ const (
 	BetaContextManagement20250627  = "context-management-2025-06-27"
 	BetaPromptCachingScope20260105 = "prompt-caching-scope-2026-01-05"
 	BetaAdvisorTool20260301        = "advisor-tool-2026-03-01"
+	// Added 2026-04-19 from 2.1.114 haiku title-sidecar capture — haiku
+	// background requests (title generation) carry this but the main sonnet
+	// request does not.
+	BetaStructuredOutputs20251215 = "structured-outputs-2025-12-15"
 )
 
 // DroppedBetas 是转发时需要从 anthropic-beta header 中移除的 beta token 列表。
@@ -52,13 +56,17 @@ const MessageBetaHeaderWithTools = BetaClaudeCode + "," + BetaOAuth + "," + Beta
 // CountTokensBetaHeader count_tokens 请求使用的 anthropic-beta header
 const CountTokensBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaTokenCounting + clientExtraBetas
 
-// HaikuBetaHeader Haiku 模型使用的 anthropic-beta header（不需要 claude-code beta）
-const HaikuBetaHeader = BetaOAuth + "," + BetaInterleavedThinking
+// HaikuBetaHeader Haiku 模型（OAuth）使用的 anthropic-beta header.
+//
+// Captured 2026-04-19 from Claude Code 2.1.114 title-generation sidecar
+// request (api-key mode). Matches the variant exactly except for the oauth
+// token, which is prepended here for OAuth-credential accounts.
+const HaikuBetaHeader = BetaOAuth + "," + BetaInterleavedThinking + clientExtraBetas + "," + BetaStructuredOutputs20251215
 
 // APIKeyBetaHeader API-key 账号使用的 anthropic-beta header.
 //
-// Exactly matches the real Claude Code 2.1.111 capture against x-api-key auth
-// (2.1.112 is a patch bump with no observed beta-token change):
+// Exactly matches Claude Code 2.1.114 main /v1/messages request against
+// x-api-key auth (captured 2026-04-19):
 //
 //	claude-code-20250219,
 //	interleaved-thinking-2025-05-14,
@@ -70,30 +78,32 @@ const HaikuBetaHeader = BetaOAuth + "," + BetaInterleavedThinking
 // (beta is auth-type conditional; non-OAuth requests never carry it).
 const APIKeyBetaHeader = BetaClaudeCode + "," + BetaInterleavedThinking + clientExtraBetas
 
-// APIKeyHaikuBetaHeader Haiku 模型在 API-key 账号下使用的 anthropic-beta header（不包含 oauth / claude-code）
-const APIKeyHaikuBetaHeader = BetaInterleavedThinking
+// APIKeyHaikuBetaHeader Haiku 模型在 API-key 账号下的 anthropic-beta header.
+//
+// Exact match to Claude Code 2.1.114 title-generation sidecar request captured
+// 2026-04-19: interleaved-thinking, context-management, prompt-caching-scope,
+// advisor-tool, structured-outputs. No claude-code and no oauth.
+const APIKeyHaikuBetaHeader = BetaInterleavedThinking + clientExtraBetas + "," + BetaStructuredOutputs20251215
 
 // DefaultHeaders 是 Claude Code 客户端默认请求头。
 //
-// Values re-verified 2026-04-17 from a live capture of Claude Code 2.1.111 on
-// Node.js 24.14.1 / macOS arm64 (backend/tools/capture_fingerprint). UA bumped
-// to 2.1.112 (latest on npm as of 2026-04-17) — patch-level Claude Code releases
-// do not change Stainless package/runtime fields or the timeout. Bundled
-// @anthropic-ai/sdk is still 0.81.0 — unchanged since the 2.1.109 capture.
-// Keep these in sync with recent Claude CLI traffic to reduce the chance that
-// Claude Code-scoped OAuth credentials are rejected as "non-CLI" usage.
+// Re-verified 2026-04-19 from a live capture of Claude Code 2.1.114 on
+// macOS arm64 (backend/tools/capture_fingerprint). Critical: CC 2.1.114
+// bundles its own Node 24.3.0 runtime; the host Node version is NOT what
+// gets advertised in the X-Stainless-Runtime-Version header. Bundled
+// @anthropic-ai/sdk is 0.81.0 — unchanged since the 2.1.109 capture.
+// Keep these in sync with recent Claude CLI traffic to reduce the chance
+// that Claude Code-scoped OAuth credentials are rejected as "non-CLI" usage.
 var DefaultHeaders = map[string]string{
-	"User-Agent":                  "claude-cli/2.1.112 (external, sdk-cli)",
-	"X-Stainless-Lang":            "js",
-	"X-Stainless-Package-Version": "0.81.0",
-	"X-Stainless-OS":              "MacOS",
-	"X-Stainless-Arch":            "arm64",
-	"X-Stainless-Runtime":         "node",
-	"X-Stainless-Runtime-Version": "v24.14.1",
-	// 2.1.111 capture shows timeout=300; 2.1.109 was 600. Matches the
-	// ~5-minute default @anthropic-ai/sdk recently moved to.
-	"X-Stainless-Timeout": "300",
-	"X-App":               "cli",
+	"User-Agent":                                "claude-cli/2.1.114 (external, sdk-cli)",
+	"X-Stainless-Lang":                          "js",
+	"X-Stainless-Package-Version":               "0.81.0",
+	"X-Stainless-OS":                            "MacOS",
+	"X-Stainless-Arch":                          "arm64",
+	"X-Stainless-Runtime":                       "node",
+	"X-Stainless-Runtime-Version":               "v24.3.0",
+	"X-Stainless-Timeout":                       "600",
+	"X-App":                                     "cli",
 	"Anthropic-Dangerous-Direct-Browser-Access": "true",
 }
 

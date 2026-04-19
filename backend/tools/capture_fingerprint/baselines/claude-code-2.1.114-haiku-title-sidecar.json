@@ -1,0 +1,107 @@
+{
+  "captured_at": "2026-04-19T04:39:46Z",
+  "remote_addr": "127.0.0.1:61818",
+  "server_name": "localhost",
+  "tls_version": "TLS 1.3",
+  "negotiated_proto": "http/1.1",
+  "client_hello_raw": "010001fc03035911f99fecac3cc90a1251fea8fb722ac5f5021dec67bb4cb816c41bc523ee7220c539e0ce4ecce98fa8c623c887fd861d285ad713d66c04227f55e02164a9dc230022130113021303c02bc02fc02cc030cca9cca8c009c013c00ac014009c009d002f0035010001910000000e000c0000096c6f63616c686f7374fe0d00ba0000010001080020a12b0c8b0db48cbf999568d621238b4a6cef89cdc1375f824a044e1a4852535d0090cbc4c6a0866cc58ab4195d6329d6ab67155415be6158952da54cd9c3cbdc944f73c15c21457d9c1f2983919b643b97f3c89cf1c3151a9e9870898d59b50ea1847b9c32b331baa6ed8b03cdee26717121712bd5646d72adc40bc5cfaeeab17f2f045bcd586b7a0f23595d39404c44ba49f604b9f40e2b1cdabb330d3a5238fb041c44587d3c1f3fe56632d041181c5bfe00170000ff01000100000a00080006001d00170018000b00020100002300000010000b000908687474702f312e31000500050100000000000d0014001204030804040105030805050108060601020100120000003300260024001d0020f1720607b0bfa3b8369b31a326a54ec274a4619e5e269073126f2c1dd24e410f002d00020101002b000504030403030015003100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+  "cipher_suites": [
+    "0x1301",
+    "0x1302",
+    "0x1303",
+    "0xc02b",
+    "0xc02f",
+    "0xc02c",
+    "0xc030",
+    "0xcca9",
+    "0xcca8",
+    "0xc009",
+    "0xc013",
+    "0xc00a",
+    "0xc014",
+    "0x009c",
+    "0x009d",
+    "0x002f",
+    "0x0035"
+  ],
+  "extensions": [
+    "server_name (0)",
+    "*tls.GREASEEncryptedClientHelloExtension",
+    "extended_master_secret (23)",
+    "renegotiation_info (0xff01)",
+    "supported_groups (10)",
+    "ec_point_formats (11)",
+    "session_ticket (35)",
+    "application_layer_protocol_negotiation (16)",
+    "status_request (5)",
+    "signature_algorithms (13)",
+    "signed_certificate_timestamp (18)",
+    "key_share (51)",
+    "psk_key_exchange_modes (45)",
+    "supported_versions (43)",
+    "padding (21)"
+  ],
+  "curves": [
+    "0x001d",
+    "0x0017",
+    "0x0018"
+  ],
+  "point_formats": [
+    "0x00"
+  ],
+  "signature_algorithms": [
+    "0x0403",
+    "0x0804",
+    "0x0401",
+    "0x0503",
+    "0x0805",
+    "0x0501",
+    "0x0806",
+    "0x0601",
+    "0x0201"
+  ],
+  "supported_versions": [
+    "0x0304",
+    "0x0303"
+  ],
+  "key_share_groups": [
+    "0x001d"
+  ],
+  "alpn_protos": [
+    "http/1.1"
+  ],
+  "psk_modes": [
+    "0x01"
+  ],
+  "ja3_string": "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49161-49171-49162-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-21,29-23-24,0",
+  "ja3_hash": "d871d02cecbde59abbf8f4806134addf",
+  "ja4": "t13d1714h1",
+  "http1": {
+    "request_line": "POST /v1/messages?beta=true HTTP/1.1",
+    "headers_in_order": [
+      "Accept: application/json",
+      "Content-Type: application/json",
+      "User-Agent: claude-cli/2.1.114 (external, sdk-cli)",
+      "X-Claude-Code-Session-Id: 2053d87f-8152-4f29-a0db-0b64722a1fd6",
+      "X-Stainless-Arch: arm64",
+      "X-Stainless-Lang: js",
+      "X-Stainless-OS: MacOS",
+      "X-Stainless-Package-Version: 0.81.0",
+      "X-Stainless-Retry-Count: 0",
+      "X-Stainless-Runtime: node",
+      "X-Stainless-Runtime-Version: v24.3.0",
+      "X-Stainless-Timeout: 600",
+      "anthropic-beta: interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advisor-tool-2026-03-01,structured-outputs-2025-12-15",
+      "anthropic-dangerous-direct-browser-access: true",
+      "anthropic-version: 2023-06-01",
+      "x-api-key: <redacted>",
+      "x-app: cli",
+      "Connection: keep-alive",
+      "Host: localhost:8443",
+      "Accept-Encoding: gzip, deflate, br, zstd",
+      "Content-Length: 1527"
+    ],
+    "body_preview": "{\"model\":\"claude-haiku-4-5-20251001\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Run the bash tool to echo foo\"}]}],\"system\":[{\"type\":\"text\",\"text\":\"x-anthropic-billing-header: cc_version=2.1.114.a7c; cc_entrypoint=sdk-cli; cch=ceefa;\"},{\"type\":\"text\",\"text\":\"You are a Claude agent, built on Anthropic's Claude Agent SDK.\"},{\"type\":\"text\",\"text\":\"Generate a concise, sentence-case title (3-7 words) that captures the main topic or goal of this coding session. The title should be clear enough that the user recognizes the session in a list. Use sentence case: capitalize only the first word and proper nouns.\\n\\nReturn JSON with a single \\\"title\\\" field.\\n\\nGood examples:\\n{\\\"title\\\": \\\"Fix login button on mobile\\\"}\\n{\\\"title\\\": \\\"Add OAuth authentication\\\"}\\n{\\\"title\\\": \\\"Debug failing CI tests\\\"}\\n{\\\"title\\\": \\\"Refactor API client error handling\\\"}\\n\\nBad (too vague): {\\\"title\\\": \\\"Code changes\\\"}\\nBad (too long): {\\\"title\\\": \\\"Investigate and fix the issue where the login button does not respond on mobile devices\\\"}\\nBad (wrong case): {\\\"title\\\": \\\"Fix Login Button On Mobile\\\"}\"}],\"tools\":[],\"metadata\":{\"user_id\":\"{\\\"device_id\\\":\\\"7bea6f9313f3c20e3440b4c4e4c354631176ea4bd8ea6344a2dc93e2319a68ac\\\",\\\"account_uuid\\\":\\\"\\\",\\\"session_id\\\":\\\"2053d87f-8152-4f29-a0db-0b64722a1fd6\\\"}\"},\"max_tokens\":32000,\"temperature\":1,\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"title\":{\"type\":\"string\"}},\"required\":[\"title\"],\"additionalProperties\":false}}},\"stream\":true}",
+    "body_bytes": 1527
+  }
+}
