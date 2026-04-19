@@ -19,10 +19,10 @@ type PoolClaudeRectifier struct {
 const defaultPoolFetchCap = 64
 
 func (r *PoolClaudeRectifier) Apply(ctx context.Context, in ClaudeInput, stage Stage) ([]byte, bool) {
-	if stage != StageThinkingOnly {
+	if r == nil || r.Pool == nil {
 		return nil, false
 	}
-	if r == nil || r.Pool == nil {
+	if stage != StageThinkingOnly {
 		return nil, false
 	}
 	bucket := BucketFor(in.AccountType, in.AccountID)
@@ -55,10 +55,10 @@ type PoolAntigravityRectifier struct {
 }
 
 func (r *PoolAntigravityRectifier) Apply(ctx context.Context, in AntigravityInput, stage Stage) (bool, bool, error) {
-	if stage != StageThinkingOnly {
+	if r == nil || r.Pool == nil || in.Request == nil {
 		return false, false, nil
 	}
-	if r == nil || r.Pool == nil || in.Request == nil {
+	if stage != StageThinkingOnly {
 		return false, false, nil
 	}
 	bucket := BucketFor(in.AccountType, in.AccountID)

@@ -146,3 +146,52 @@ func TestReplaceThinkingSignaturesInClaudeRequest_NilPoolNoop(t *testing.T) {
 		t.Errorf("content must be unchanged for nil pool")
 	}
 }
+
+func TestReplaceThinkingSignaturesInBody_MultipleAssistantMessages(t *testing.T) {
+	body := []byte(`{
+		"messages": [
+			{"role":"user","content":"hi"},
+			{"role":"assistant","content":[
+				{"type":"thinking","thinking":"a","signature":"bad1"}
+			]},
+			{"role":"user","content":"follow up"},
+			{"role":"assistant","content":[
+				{"type":"text","text":"ok"},
+				{"type":"thinking","thinking":"b","signature":"bad2"},
+				{"type":"thinking","thinking":"c","signature":"bad3"}
+			]}
+		]
+	}`)
+	pool := []string{"G0", "G1"}
+	out, replaced := ReplaceThinkingSignaturesInBody(body, pool)
+	if replaced != 3 {
+		t.Fatalf("expected 3 replacements across messages, got %d", replaced)
+	}
+	// msg[1].content[0] → G0, msg[3].content[1] → G1, msg[3].content[2] → G0
+	if got := gjson.GetBytes(out, "messages.1.content.0.signature").String(); got != "G0" {
+		t.Errorf("msg1 sig: got %q, want G0", got)
+	}
+	if got := gjson.GetBytes(out, "messages.3.content.1.signature").String(); got != "G1" {
+		t.Errorf("msg3 sig[1]: got %q, want G1", got)
+	}
+	if got := gjson.GetBytes(out, "messages.3.content.2.signature").String(); got != "G0" {
+		t.Errorf("msg3 sig[2]: got %q, want G0 (cycle)", got)
+	}
+}
+
+func TestReplaceThinkingSignaturesInClaudeRequest_MalformedContentSkipped(t *testing.T) {
+	req := &antigravity.ClaudeRequest{
+		Messages: []antigravity.ClaudeMessage{
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"thinking","thinking":"ok","signature":"bad"}]`)},
+			{Role: "assistant", Content: json.RawMessage(`[{"type":`)}, // malformed
+			{Role: "assistant", Content: json.RawMessage(`[{"type":"thinking","thinking":"y","signature":"bad2"}]`)},
+		},
+	}
+	replaced, err := ReplaceThinkingSignaturesInClaudeRequest(req, []string{"G0", "G1"})
+	if err != nil {
+		t.Fatalf("malformed content should be skipped, not error: %v", err)
+	}
+	if replaced != 2 {
+		t.Fatalf("expected 2 replacements (skip malformed), got %d", replaced)
+	}
+}

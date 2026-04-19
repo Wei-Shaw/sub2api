@@ -125,3 +125,58 @@ func TestHarvester_ZeroCapacityDisablesWrap(t *testing.T) {
 		t.Errorf("zero capacity must return the original body unmodified")
 	}
 }
+
+// splitReader delivers data in fixed-size chunks to exercise the SSE
+// line-accumulation logic across multiple Read calls.
+type splitReader struct {
+	data []byte
+	pos  int
+	size int
+}
+
+func (r *splitReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		return 0, io.EOF
+	}
+	end := r.pos + r.size
+	if end > len(r.data) {
+		end = len(r.data)
+	}
+	n := copy(p, r.data[r.pos:end])
+	r.pos += n
+	return n, nil
+}
+
+func TestHarvester_SSE_SignatureSplitAcrossReads(t *testing.T) {
+	pool := newFakePool()
+	h := NewHarvester(pool, 10)
+	line := `data: {"type":"content_block_start","content_block":{"type":"thinking","signature":"SPLIT-SIG"}}` + "\n\n"
+	// Deliver 7 bytes at a time so the \n boundary falls mid-chunk.
+	rc := h.Wrap(context.Background(), io.NopCloser(&splitReader{data: []byte(line), size: 7}), HarvestOptions{
+		Bucket:    "oauth",
+		Streaming: true,
+	})
+	if _, err := io.ReadAll(rc); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	_ = rc.Close()
+	if got := pool.entries["oauth"]; len(got) != 1 || got[0] != "SPLIT-SIG" {
+		t.Errorf("split-read SSE: got %v, want [SPLIT-SIG]", got)
+	}
+}
+
+func TestHarvester_SSE_LineBufCapTruncatesHugeLine(t *testing.T) {
+	pool := newFakePool()
+	h := NewHarvester(pool, 10)
+	// A line longer than lineBufCap with no newline — must not OOM.
+	huge := strings.Repeat("x", lineBufCap+1000)
+	rc := h.Wrap(context.Background(), io.NopCloser(strings.NewReader(huge)), HarvestOptions{
+		Bucket:    "oauth",
+		Streaming: true,
+	})
+	_, _ = io.ReadAll(rc)
+	_ = rc.Close()
+	if len(pool.entries["oauth"]) != 0 {
+		t.Errorf("huge line should not produce any signature")
+	}
+}

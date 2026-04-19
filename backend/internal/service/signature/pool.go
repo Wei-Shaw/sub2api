@@ -32,12 +32,20 @@ func BucketAPIKey(accountID int64) string {
 
 // BucketFor maps an account type+id to its pool bucket.
 // Returns empty string for types that do not participate in the pool.
+// Account types that do not participate in the signature pool.
+const (
+	accountTypeBedrock  = "bedrock"
+	accountTypeUpstream = "upstream"
+)
+
 func BucketFor(accountType string, accountID int64) string {
 	switch accountType {
 	case accountTypeOAuth, accountTypeSetupToken:
 		return BucketOAuthShared
 	case accountTypeAPIKey:
 		return BucketAPIKey(accountID)
+	case accountTypeBedrock, accountTypeUpstream:
+		return ""
 	}
 	return ""
 }

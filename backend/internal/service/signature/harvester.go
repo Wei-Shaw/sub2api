@@ -75,16 +75,19 @@ type harvestReader struct {
 	skip   func() bool
 
 	stream  bool
-	lineBuf []byte   // SSE line accumulator
-	bodyBuf []byte   // non-streaming body accumulator (bounded)
-	seen    [][]byte // de-dupe within a single response (avoid N writes for repeated sig events)
+	lineBuf []byte            // SSE line accumulator
+	bodyBuf []byte            // non-streaming body accumulator (bounded)
+	seen    map[string]struct{} // de-dupe within a single response
 	closed  bool
 }
 
-// bodyBufCap bounds the accumulation buffer for non-streaming responses so a
-// malicious / buggy upstream cannot blow memory. 2 MiB is well above any
-// real Claude JSON response size.
-const bodyBufCap = 2 * 1024 * 1024
+const (
+	// bodyBufCap bounds the accumulation buffer for non-streaming responses.
+	bodyBufCap = 2 * 1024 * 1024
+	// lineBufCap bounds the SSE line accumulator to prevent memory blow-up
+	// from a malformed upstream that never sends a newline.
+	lineBufCap = 256 * 1024
+)
 
 func (r *harvestReader) Read(p []byte) (int, error) {
 	n, err := r.src.Read(p)
@@ -132,6 +135,10 @@ func (r *harvestReader) observeSSE(chunk []byte) {
 	for {
 		idx := bytes.IndexByte(r.lineBuf, '\n')
 		if idx < 0 {
+			// Prevent unbounded growth from a stream that never sends \n.
+			if len(r.lineBuf) > lineBufCap {
+				r.lineBuf = nil
+			}
 			return
 		}
 		line := r.lineBuf[:idx]
@@ -196,13 +203,12 @@ func (r *harvestReader) flush() {
 
 // emit writes a signature to the pool, de-duplicating within the same response.
 func (r *harvestReader) emit(sig string) {
-	b := []byte(sig)
-	for _, prev := range r.seen {
-		if bytes.Equal(prev, b) {
-			return
-		}
+	if r.seen == nil {
+		r.seen = make(map[string]struct{})
 	}
-	r.seen = append(r.seen, b)
-	// Best-effort: ignore errors so harvesting never affects the response.
+	if _, dup := r.seen[sig]; dup {
+		return
+	}
+	r.seen[sig] = struct{}{}
 	_ = r.pool.Add(r.ctx, r.bucket, sig, time.Now(), r.cap)
 }

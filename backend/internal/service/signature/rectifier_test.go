@@ -197,3 +197,43 @@ func TestPoolClaudeRectifier_PoolErrorIsTreatedAsEmpty(t *testing.T) {
 		t.Errorf("pool error must behave like empty pool (proceed=false)")
 	}
 }
+
+func TestPoolAntigravityRectifier_NilRequestNoop(t *testing.T) {
+	pool := newFakePool()
+	_ = pool.Add(context.Background(), "oauth", "g", time.Now(), 10)
+	r := &PoolAntigravityRectifier{Pool: pool, Capacity: 10}
+	applied, proceed, err := r.Apply(context.Background(), AntigravityInput{AccountType: "oauth", AccountID: 1, Request: nil}, StageThinkingOnly)
+	if applied || proceed || err != nil {
+		t.Errorf("nil request: applied=%v proceed=%v err=%v; want all false/nil", applied, proceed, err)
+	}
+}
+
+func TestPoolClaudeRectifier_NilReceiverNoPanic(t *testing.T) {
+	var r *PoolClaudeRectifier
+	_, proceed := r.Apply(context.Background(), ClaudeInput{AccountType: "oauth", AccountID: 1, Body: []byte(`{}`)}, StageThinkingOnly)
+	if proceed {
+		t.Errorf("nil receiver must return proceed=false")
+	}
+}
+
+func TestStripAntigravityRectifier_BothStages(t *testing.T) {
+	called := [2]bool{}
+	r := &StripAntigravityRectifier{
+		StripStage1: func(req *antigravity.ClaudeRequest) (bool, error) { called[0] = true; return true, nil },
+		StripStage2: func(req *antigravity.ClaudeRequest) (bool, error) { called[1] = true; return true, nil },
+	}
+	stages := r.Stages()
+	if len(stages) != 2 {
+		t.Fatalf("expected 2 stages, got %d", len(stages))
+	}
+	for i, stage := range stages {
+		in := AntigravityInput{AccountType: "oauth", AccountID: 1, Request: &antigravity.ClaudeRequest{}}
+		applied, proceed, err := r.Apply(context.Background(), in, stage)
+		if err != nil || !applied || !proceed {
+			t.Errorf("stage %d: applied=%v proceed=%v err=%v", i, applied, proceed, err)
+		}
+		if !called[i] {
+			t.Errorf("stage %d strip function not called", i)
+		}
+	}
+}
