@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,18 +15,23 @@ import (
 
 // fakePool is an in-memory SignaturePool used by tests; implements the
 // ordering contract (TopN returns most-recently-added first).
+// Thread-safe: the async harvester goroutine calls Add concurrently.
 type fakePool struct {
+	mu      sync.Mutex
 	entries map[string][]string // bucket -> signatures, index 0 = newest
 }
 
 func newFakePool() *fakePool { return &fakePool{entries: map[string][]string{}} }
 
 func (p *fakePool) Add(_ context.Context, bucket, sig string, _ time.Time, _ int) error {
-	// Prepend so index 0 is the newest.
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.entries[bucket] = append([]string{sig}, p.entries[bucket]...)
 	return nil
 }
 func (p *fakePool) TopN(_ context.Context, bucket string, n int) ([]string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	list := p.entries[bucket]
 	if n > len(list) {
 		n = len(list)
@@ -35,6 +41,8 @@ func (p *fakePool) TopN(_ context.Context, bucket string, n int) ([]string, erro
 	return out, nil
 }
 func (p *fakePool) Size(_ context.Context, bucket string) (int64, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	return int64(len(p.entries[bucket])), nil
 }
 

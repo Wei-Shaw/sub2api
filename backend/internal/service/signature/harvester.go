@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -13,18 +15,21 @@ import (
 // SignaturePool. It is implemented as an io.ReadCloser decorator so the
 // surrounding gateway code does not need to know about signature extraction.
 //
-// Two response shapes are handled:
-//   - SSE streams (content-type text/event-stream): line-based parsing, only
-//     data lines carrying `content_block_start` events with a thinking block
-//     are inspected.
-//   - Non-streaming JSON: the entire body is accumulated and parsed once in
-//     Close().
+// Design: fully decoupled from the main read path.
+//   - Read() copies each chunk to a buffered channel (non-blocking).
+//   - A background goroutine drains the channel and parses for signatures.
+//   - Panics in the goroutine are recovered and logged, never affecting callers.
+//   - The goroutine also watches ctx.Done() to avoid leaking when Close() is
+//     never called (e.g., abandoned responses on context cancellation).
 //
-// Ingestion is best-effort — errors writing to Redis are swallowed. Read
-// semantics of the underlying body are preserved exactly.
+// Two SSE event types carry signatures:
+//   - content_block_start with a non-empty content_block.signature (legacy).
+//   - content_block_delta with delta.type == "signature_delta" (current API).
+//
+// Non-streaming JSON responses are accumulated and parsed once on Close.
 type Harvester struct {
 	pool     SignaturePool
-	capacity int // pool capacity (RectifierSettings.SignaturePoolSize)
+	capacity int
 }
 
 // NewHarvester builds a Harvester bound to the given pool and capacity.
@@ -34,136 +39,156 @@ func NewHarvester(pool SignaturePool, capacity int) *Harvester {
 
 // HarvestOptions configures a single Wrap call.
 type HarvestOptions struct {
-	// Bucket is the pool bucket to write into; see BucketFor.
-	// An empty bucket disables harvesting for this response.
-	Bucket string
-	// Streaming=true selects SSE line-based parsing; false accumulates the
-	// body and parses once on Close.
+	Bucket    string
 	Streaming bool
-	// Skip, when non-nil and returns true at read time, short-circuits
-	// harvesting for this call. Typical use: check
-	// ctxkey.IsSignatureRectifyRetry on the request context to avoid
-	// re-ingesting signatures we ourselves injected.
-	Skip func() bool
+	Skip      func() bool
 }
 
 // Wrap returns a reader that transparently forwards body contents and, as a
-// side effect, extracts any thinking signatures it finds into the pool. The
-// returned reader must be closed; Close() flushes non-streaming extraction.
+// side effect, extracts any thinking signatures into the pool via a background
+// goroutine. The returned reader must be closed.
 func (h *Harvester) Wrap(ctx context.Context, body io.ReadCloser, opts HarvestOptions) io.ReadCloser {
 	if h == nil || h.pool == nil || h.capacity <= 0 || opts.Bucket == "" {
 		return body
 	}
-	return &harvestReader{
-		ctx:    ctx,
+	chunks := make(chan []byte, harvestChanCap)
+	r := &harvestReader{
 		src:    body,
-		pool:   h.pool,
-		bucket: opts.Bucket,
-		cap:    h.capacity,
+		chunks: chunks,
 		skip:   opts.Skip,
-		stream: opts.Streaming,
 	}
-}
-
-// harvestReader is the io.ReadCloser decorator.
-type harvestReader struct {
-	ctx    context.Context
-	src    io.ReadCloser
-	pool   SignaturePool
-	bucket string
-	cap    int
-	skip   func() bool
-
-	stream  bool
-	lineBuf []byte              // SSE line accumulator
-	bodyBuf []byte              // non-streaming body accumulator (bounded)
-	seen    map[string]struct{} // de-dupe within a single response
-	closed  bool
+	go processChunks(ctx, chunks, h.pool, opts.Bucket, h.capacity, opts.Streaming)
+	return r
 }
 
 const (
-	// bodyBufCap bounds the accumulation buffer for non-streaming responses.
-	bodyBufCap = 2 * 1024 * 1024
-	// lineBufCap bounds the SSE line accumulator to prevent memory blow-up
-	// from a malformed upstream that never sends a newline.
-	lineBufCap = 256 * 1024
+	harvestChanCap = 64
+	bodyBufCap     = 2 * 1024 * 1024
+	lineBufCap     = 256 * 1024
 )
+
+// harvestReader is the io.ReadCloser decorator. Its Read/Close methods are
+// pure pass-throughs with a non-blocking channel send — zero parsing, zero
+// Redis I/O, zero panic risk on the caller's goroutine.
+type harvestReader struct {
+	src       io.ReadCloser
+	chunks    chan []byte
+	skip      func() bool
+	closeOnce sync.Once
+}
 
 func (r *harvestReader) Read(p []byte) (int, error) {
 	n, err := r.src.Read(p)
 	if n > 0 && !r.skipNow() {
-		r.observe(p[:n])
+		chunk := make([]byte, n)
+		copy(chunk, p[:n])
+		// Non-blocking send. Recover protects against the rare case where
+		// Close() races with Read() and the channel is already closed.
+		func() {
+			defer func() { recover() }()
+			select {
+			case r.chunks <- chunk:
+			default:
+			}
+		}()
 	}
 	return n, err
 }
 
 func (r *harvestReader) Close() error {
-	if !r.closed && !r.skipNow() {
-		r.closed = true
-		r.flush()
-	}
+	r.closeOnce.Do(func() { close(r.chunks) })
 	return r.src.Close()
 }
 
 func (r *harvestReader) skipNow() bool {
-	if r.skip == nil {
-		return false
-	}
-	return r.skip()
+	return r.skip != nil && r.skip()
 }
 
-// observe processes a chunk of freshly-read bytes.
-func (r *harvestReader) observe(chunk []byte) {
-	if r.stream {
-		r.observeSSE(chunk)
+// processChunks runs in a background goroutine. It drains the chunks channel
+// and parses for signatures. Exits when the channel is closed OR the context
+// is cancelled (preventing goroutine leaks on abandoned responses).
+func processChunks(ctx context.Context, chunks <-chan []byte, pool SignaturePool, bucket string, capacity int, streaming bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Warn("signature_harvester_panic", "error", r, "bucket", bucket)
+		}
+	}()
+
+	state := &parseState{
+		ctx:    ctx,
+		pool:   pool,
+		bucket: bucket,
+		cap:    capacity,
+		stream: streaming,
+	}
+	for {
+		select {
+		case chunk, ok := <-chunks:
+			if !ok {
+				state.flush()
+				return
+			}
+			state.observe(chunk)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// parseState holds the goroutine-private parsing state.
+type parseState struct {
+	ctx    context.Context
+	pool   SignaturePool
+	bucket string
+	cap    int
+	stream bool
+
+	lineBuf []byte
+	bodyBuf []byte
+	seen    map[string]struct{}
+}
+
+func (s *parseState) observe(chunk []byte) {
+	if s.stream {
+		s.observeSSE(chunk)
 		return
 	}
-	// Non-streaming: accumulate, parse on Close.
-	remaining := bodyBufCap - len(r.bodyBuf)
+	remaining := bodyBufCap - len(s.bodyBuf)
 	if remaining <= 0 {
 		return
 	}
 	if len(chunk) > remaining {
 		chunk = chunk[:remaining]
 	}
-	r.bodyBuf = append(r.bodyBuf, chunk...)
+	s.bodyBuf = append(s.bodyBuf, chunk...)
 }
 
-// observeSSE accumulates a line at a time and parses each completed line.
-func (r *harvestReader) observeSSE(chunk []byte) {
-	r.lineBuf = append(r.lineBuf, chunk...)
+func (s *parseState) observeSSE(chunk []byte) {
+	s.lineBuf = append(s.lineBuf, chunk...)
 	for {
-		idx := bytes.IndexByte(r.lineBuf, '\n')
+		idx := bytes.IndexByte(s.lineBuf, '\n')
 		if idx < 0 {
-			// Prevent unbounded growth from a stream that never sends \n.
-			if len(r.lineBuf) > lineBufCap {
-				r.lineBuf = nil
+			if len(s.lineBuf) > lineBufCap {
+				s.lineBuf = nil
 			}
 			return
 		}
-		line := r.lineBuf[:idx]
-		r.lineBuf = r.lineBuf[idx+1:]
-		r.parseLine(line)
+		line := s.lineBuf[:idx]
+		s.lineBuf = s.lineBuf[idx+1:]
+		s.parseLine(line)
 	}
 }
+
+var sseDataPrefix = []byte("data:")
 
 // parseLine extracts a signature from a single SSE data line.
 //
 // Two shapes carry signatures:
-//  1. content_block_start with a non-empty content_block.signature
-//     (older API behavior, kept for compatibility).
-//  2. content_block_delta with delta.type == "signature_delta" and
-//     delta.signature (current API behavior as of 2026-04).
-//
-// Other lines are ignored cheaply via a bytes.Contains pre-filter.
-var sseDataPrefix = []byte("data:")
-
-func (r *harvestReader) parseLine(line []byte) {
+//  1. content_block_start with a non-empty content_block.signature (legacy).
+//  2. content_block_delta with delta.type == "signature_delta" (current API).
+func (s *parseState) parseLine(line []byte) {
 	line = bytes.TrimRight(line, "\r")
-	if len(line) == 0 {
-		return
-	}
-	if !bytes.HasPrefix(line, sseDataPrefix) {
+	if len(line) == 0 || !bytes.HasPrefix(line, sseDataPrefix) {
 		return
 	}
 	payload := bytes.TrimSpace(line[len(sseDataPrefix):])
@@ -176,51 +201,44 @@ func (r *harvestReader) parseLine(line []byte) {
 	evType := gjson.GetBytes(payload, "type").String()
 	switch evType {
 	case "content_block_start":
-		sig := gjson.GetBytes(payload, "content_block.signature").String()
-		if sig != "" {
-			r.emit(sig)
+		if sig := gjson.GetBytes(payload, "content_block.signature").String(); sig != "" {
+			s.emit(sig)
 		}
 	case "content_block_delta":
-		deltaType := gjson.GetBytes(payload, "delta.type").String()
-		if deltaType == "signature_delta" {
-			sig := gjson.GetBytes(payload, "delta.signature").String()
-			if sig != "" {
-				r.emit(sig)
+		if gjson.GetBytes(payload, "delta.type").String() == "signature_delta" {
+			if sig := gjson.GetBytes(payload, "delta.signature").String(); sig != "" {
+				s.emit(sig)
 			}
 		}
 	}
 }
 
-// flush parses an accumulated non-streaming body at Close time.
-func (r *harvestReader) flush() {
-	if r.stream {
-		// Any trailing line without newline — try it.
-		if len(r.lineBuf) > 0 {
-			r.parseLine(r.lineBuf)
-			r.lineBuf = nil
+func (s *parseState) flush() {
+	if s.stream {
+		if len(s.lineBuf) > 0 {
+			s.parseLine(s.lineBuf)
+			s.lineBuf = nil
 		}
 		return
 	}
-	if len(r.bodyBuf) == 0 || !bytes.Contains(r.bodyBuf, []byte(`"signature"`)) {
+	if len(s.bodyBuf) == 0 || !bytes.Contains(s.bodyBuf, []byte(`"signature"`)) {
 		return
 	}
-	// Claude non-streaming: top-level content[].signature
-	gjson.GetBytes(r.bodyBuf, "content.#.signature").ForEach(func(_, v gjson.Result) bool {
+	gjson.GetBytes(s.bodyBuf, "content.#.signature").ForEach(func(_, v gjson.Result) bool {
 		if sig := v.String(); sig != "" {
-			r.emit(sig)
+			s.emit(sig)
 		}
 		return true
 	})
 }
 
-// emit writes a signature to the pool, de-duplicating within the same response.
-func (r *harvestReader) emit(sig string) {
-	if r.seen == nil {
-		r.seen = make(map[string]struct{})
+func (s *parseState) emit(sig string) {
+	if s.seen == nil {
+		s.seen = make(map[string]struct{})
 	}
-	if _, dup := r.seen[sig]; dup {
+	if _, dup := s.seen[sig]; dup {
 		return
 	}
-	r.seen[sig] = struct{}{}
-	_ = r.pool.Add(r.ctx, r.bucket, sig, time.Now(), r.cap)
+	s.seen[sig] = struct{}{}
+	_ = s.pool.Add(s.ctx, s.bucket, sig, time.Now(), s.cap)
 }
