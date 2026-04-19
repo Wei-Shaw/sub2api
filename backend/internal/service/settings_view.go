@@ -203,6 +203,9 @@ type RectifierSettings struct {
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`    // Thinking Budget 整流
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`   // API Key 签名整流开关
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`  // API Key 自定义匹配关键词
+	// SignaturePoolSize 签名池容量（0 = 关闭池化，沿用"剥除 thinking 重试"行为；
+	// >0 = 从正常响应抓取 thinking 签名进池，遇到签名错误时从池中取签名替换重试）
+	SignaturePoolSize int `json:"signature_pool_size"`
 }
 
 // DefaultRectifierSettings 返回默认的整流器配置（全部启用）

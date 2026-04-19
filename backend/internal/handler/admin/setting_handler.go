@@ -1765,6 +1765,7 @@ func (h *SettingHandler) GetRectifierSettings(c *gin.Context) {
 		ThinkingBudgetEnabled:    settings.ThinkingBudgetEnabled,
 		APIKeySignatureEnabled:   settings.APIKeySignatureEnabled,
 		APIKeySignaturePatterns:  patterns,
+		SignaturePoolSize:        settings.SignaturePoolSize,
 	})
 }
 
@@ -1775,6 +1776,7 @@ type UpdateRectifierSettingsRequest struct {
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
+	SignaturePoolSize        int      `json:"signature_pool_size"`
 }
 
 // UpdateRectifierSettings 更新请求整流器配置
@@ -1806,12 +1808,24 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 		cleanedPatterns = append(cleanedPatterns, p)
 	}
 
+	// 校验签名池大小
+	const maxSignaturePoolSize = 1000
+	if req.SignaturePoolSize < 0 {
+		response.BadRequest(c, "signature_pool_size must be non-negative")
+		return
+	}
+	if req.SignaturePoolSize > maxSignaturePoolSize {
+		response.BadRequest(c, "signature_pool_size exceeds maximum (1000)")
+		return
+	}
+
 	settings := &service.RectifierSettings{
 		Enabled:                  req.Enabled,
 		ThinkingSignatureEnabled: req.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    req.ThinkingBudgetEnabled,
 		APIKeySignatureEnabled:   req.APIKeySignatureEnabled,
 		APIKeySignaturePatterns:  cleanedPatterns,
+		SignaturePoolSize:        req.SignaturePoolSize,
 	}
 
 	if err := h.settingService.SetRectifierSettings(c.Request.Context(), settings); err != nil {
@@ -1836,6 +1850,7 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 		ThinkingBudgetEnabled:    updatedSettings.ThinkingBudgetEnabled,
 		APIKeySignatureEnabled:   updatedSettings.APIKeySignatureEnabled,
 		APIKeySignaturePatterns:  updatedPatterns,
+		SignaturePoolSize:        updatedSettings.SignaturePoolSize,
 	})
 }
 
