@@ -429,6 +429,32 @@
                 v-if="rectifierForm.enabled"
                 class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
               >
+                <!-- Signature Pool Size -->
+                <div>
+                  <div class="flex items-center justify-between gap-4">
+                    <div class="flex-1">
+                      <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{
+                        t('admin.settings.rectifier.poolSize')
+                      }}</label>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.settings.rectifier.poolSizeHint') }}
+                      </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <input
+                        v-model.number="rectifierForm.signature_pool_size"
+                        type="number"
+                        min="0"
+                        max="1000"
+                        class="input input-sm w-24"
+                      />
+                      <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                        t('admin.settings.rectifier.poolSizeUnit')
+                      }}</span>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Thinking Signature Rectifier -->
                 <div class="flex items-center justify-between">
                   <div>
@@ -436,7 +462,11 @@
                       t('admin.settings.rectifier.thinkingSignature')
                     }}</label>
                     <p class="text-xs text-gray-500 dark:text-gray-400">
-                      {{ t('admin.settings.rectifier.thinkingSignatureHint') }}
+                      {{
+                        rectifierForm.signature_pool_size > 0
+                          ? t('admin.settings.rectifier.thinkingSignatureHintPool')
+                          : t('admin.settings.rectifier.thinkingSignatureHint')
+                      }}
                     </p>
                   </div>
                   <Toggle v-model="rectifierForm.thinking_signature_enabled" />
@@ -462,7 +492,11 @@
                       t('admin.settings.rectifier.apikeySignature')
                     }}</label>
                     <p class="text-xs text-gray-500 dark:text-gray-400">
-                      {{ t('admin.settings.rectifier.apikeySignatureHint') }}
+                      {{
+                        rectifierForm.signature_pool_size > 0
+                          ? t('admin.settings.rectifier.apikeySignatureHintPool')
+                          : t('admin.settings.rectifier.apikeySignatureHint')
+                      }}
                     </p>
                   </div>
                   <Toggle v-model="rectifierForm.apikey_signature_enabled" />
@@ -2923,7 +2957,8 @@ const rectifierForm = reactive({
   thinking_signature_enabled: true,
   thinking_budget_enabled: true,
   apikey_signature_enabled: false,
-  apikey_signature_patterns: [] as string[]
+  apikey_signature_patterns: [] as string[],
+  signature_pool_size: 0
 })
 
 // Beta Policy 状态
@@ -3893,7 +3928,8 @@ async function saveRectifierSettings() {
       apikey_signature_enabled: rectifierForm.apikey_signature_enabled,
       apikey_signature_patterns: rectifierForm.apikey_signature_patterns.filter(
         (p) => p.trim() !== ''
-      )
+      ),
+      signature_pool_size: rectifierForm.signature_pool_size
     })
     Object.assign(rectifierForm, updated)
     if (!Array.isArray(rectifierForm.apikey_signature_patterns)) {
