@@ -77,6 +77,11 @@ func (r *scheduledTestPlanRepository) Delete(ctx context.Context, id int64) erro
 	return err
 }
 
+func (r *scheduledTestPlanRepository) DeleteByAccountID(ctx context.Context, accountID int64) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM scheduled_test_plans WHERE account_id = $1`, accountID)
+	return err
+}
+
 func (r *scheduledTestPlanRepository) UpdateAfterRun(ctx context.Context, id int64, lastRunAt time.Time, nextRunAt time.Time) error {
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE scheduled_test_plans SET last_run_at = $2, next_run_at = $3, updated_at = NOW() WHERE id = $1
