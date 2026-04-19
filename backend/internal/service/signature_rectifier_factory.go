@@ -112,7 +112,7 @@ func (f *signatureRectifierFactory) WrapResponseBody(ctx context.Context, accoun
 	}
 	h := signature.NewHarvester(f.pool, f.poolCapacity(ctx))
 	return h.Wrap(ctx, body, signature.HarvestOptions{
-		Bucket:    signature.BucketFor(account.Type, account.ID),
+		Bucket:    signature.BucketFor(account.Type, account.Platform, account.ID),
 		Streaming: streaming,
 		Skip: func() bool {
 			v, _ := ctx.Value(ctxkey.IsSignatureRectifyRetry).(bool)

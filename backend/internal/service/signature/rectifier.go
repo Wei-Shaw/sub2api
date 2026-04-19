@@ -47,6 +47,7 @@ func (s Stage) Name() string {
 type ClaudeInput struct {
 	AccountType string
 	AccountID   int64
+	Platform    string
 	Body        []byte
 	LastErrMsg  string // error message from the previous stage's 400 response; empty on first stage
 }
@@ -65,6 +66,7 @@ type ClaudeRectifier interface {
 type AntigravityInput struct {
 	AccountType string
 	AccountID   int64
+	Platform    string
 	Request     *antigravity.ClaudeRequest
 	LastErrMsg  string
 }

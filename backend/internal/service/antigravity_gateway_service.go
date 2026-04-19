@@ -1486,6 +1486,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 				sigIn := signature.AntigravityInput{
 					AccountType: account.Type,
 					AccountID:   account.ID,
+					Platform:    account.Platform,
 					Request:     &retryClaudeReq,
 				}
 				applied, proceedAfter, stripErr := rectifier.Apply(ctx, sigIn, stage)

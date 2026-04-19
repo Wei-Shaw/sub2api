@@ -4212,6 +4212,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					sigIn := signature.ClaudeInput{
 						AccountType: account.Type,
 						AccountID:   account.ID,
+						Platform:    account.Platform,
 						Body:        body,
 					}
 					rectifier := s.signatureFactory.ForClaude(ctx, account)
@@ -8374,6 +8375,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		sigIn := signature.ClaudeInput{
 			AccountType: account.Type,
 			AccountID:   account.ID,
+			Platform:    account.Platform,
 			Body:        body,
 		}
 		rectifier := s.signatureFactory.ForClaude(ctx, account)

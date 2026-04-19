@@ -26,7 +26,7 @@ func (r *PoolClaudeRectifier) Apply(ctx context.Context, in ClaudeInput, stage S
 	if stage != StageThinkingOnly {
 		return nil, false
 	}
-	bucket := BucketFor(in.AccountType, in.AccountID)
+	bucket := BucketFor(in.AccountType, in.Platform, in.AccountID)
 	if bucket == "" {
 		return nil, false
 	}
@@ -65,7 +65,7 @@ func (r *PoolAntigravityRectifier) Apply(ctx context.Context, in AntigravityInpu
 	if stage != StageThinkingOnly {
 		return false, false, nil
 	}
-	bucket := BucketFor(in.AccountType, in.AccountID)
+	bucket := BucketFor(in.AccountType, in.Platform, in.AccountID)
 	if bucket == "" {
 		return false, false, nil
 	}

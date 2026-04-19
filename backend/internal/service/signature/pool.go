@@ -15,35 +15,28 @@ const (
 	accountTypeAPIKey     = "apikey"
 )
 
-// Bucket keys used by the SignaturePool.
-//   - BucketOAuthShared: shared pool across all max OAuth and setup-token accounts
-//   - BucketAPIKey(id):  per-account pool for API Key accounts
-//
-// Bedrock / Upstream / other types currently do not participate in the pool
-// (they never emit thinking signatures we can reuse).
-const (
-	BucketOAuthShared = "oauth"
-)
-
-// BucketAPIKey returns the bucket key for an API Key account.
-func BucketAPIKey(accountID int64) string {
-	return fmt.Sprintf("apikey:%d", accountID)
-}
-
-// BucketFor maps an account type+id to its pool bucket.
-// Returns empty string for types that do not participate in the pool.
 // Account types that do not participate in the signature pool.
 const (
 	accountTypeBedrock  = "bedrock"
 	accountTypeUpstream = "upstream"
+
+	platformAnthropicDirect = "anthropic"
 )
 
-func BucketFor(accountType string, accountID int64) string {
+// BucketFor maps (accountType, platform, accountID) to a pool bucket key.
+// OAuth/setup-token accounts share a per-platform pool (anthropic signatures
+// must not mix with antigravity signatures). API Key accounts get a
+// per-account pool regardless of platform. Returns "" for types that do not
+// participate (bedrock, upstream).
+func BucketFor(accountType, platform string, accountID int64) string {
 	switch accountType {
 	case accountTypeOAuth, accountTypeSetupToken:
-		return BucketOAuthShared
+		if platform == "" {
+			platform = platformAnthropicDirect
+		}
+		return fmt.Sprintf("oauth:%s", platform)
 	case accountTypeAPIKey:
-		return BucketAPIKey(accountID)
+		return fmt.Sprintf("apikey:%d", accountID)
 	case accountTypeBedrock, accountTypeUpstream:
 		return ""
 	}
