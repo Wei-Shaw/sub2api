@@ -51,6 +51,7 @@ func (h *Harvester) Wrap(ctx context.Context, body io.ReadCloser, opts HarvestOp
 	if h == nil || h.pool == nil || h.capacity <= 0 || opts.Bucket == "" {
 		return body
 	}
+	slog.Info("harvester.wrap", "bucket", opts.Bucket, "capacity", h.capacity, "streaming", opts.Streaming)
 	chunks := make(chan []byte, harvestChanCap)
 	r := &harvestReader{
 		src:    body,
@@ -240,5 +241,6 @@ func (s *parseState) emit(sig string) {
 		return
 	}
 	s.seen[sig] = struct{}{}
-	_ = s.pool.Add(s.ctx, s.bucket, sig, time.Now(), s.cap)
+	err := s.pool.Add(s.ctx, s.bucket, sig, time.Now(), s.cap)
+	slog.Info("harvester.emit", "bucket", s.bucket, "sig_len", len(sig), "error", err)
 }
