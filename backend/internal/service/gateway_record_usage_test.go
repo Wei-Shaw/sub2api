@@ -44,6 +44,7 @@ func newGatewayRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo 
 		nil,
 		nil,
 		nil,
+		nil, // signaturePool — nil in tests; factory.shouldUsePool short-circuits on nil pool
 	)
 }
 

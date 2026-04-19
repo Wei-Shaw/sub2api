@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service/signature"
 	"github.com/gin-gonic/gin"
@@ -871,15 +872,15 @@ func logPrefix(sessionID, accountName string) string {
 
 // AntigravityGatewayService 处理 Antigravity 平台的 API 转发
 type AntigravityGatewayService struct {
-	accountRepo        AccountRepository
-	tokenProvider      *AntigravityTokenProvider
-	rateLimitService   *RateLimitService
-	httpUpstream       HTTPUpstream
-	settingService     *SettingService
-	cache              GatewayCache // 用于模型级限流时清除粘性会话绑定
-	schedulerSnapshot  *SchedulerSnapshotService
-	internal500Cache   Internal500CounterCache // INTERNAL 500 渐进惩罚计数器
-	signatureRectifier signature.AntigravityRectifier
+	accountRepo       AccountRepository
+	tokenProvider     *AntigravityTokenProvider
+	rateLimitService  *RateLimitService
+	httpUpstream      HTTPUpstream
+	settingService    *SettingService
+	cache             GatewayCache // 用于模型级限流时清除粘性会话绑定
+	schedulerSnapshot *SchedulerSnapshotService
+	internal500Cache  Internal500CounterCache // INTERNAL 500 渐进惩罚计数器
+	signatureFactory  *signatureRectifierFactory
 }
 
 func NewAntigravityGatewayService(
@@ -891,6 +892,7 @@ func NewAntigravityGatewayService(
 	httpUpstream HTTPUpstream,
 	settingService *SettingService,
 	internal500Cache Internal500CounterCache,
+	signaturePool signature.SignaturePool,
 ) *AntigravityGatewayService {
 	return &AntigravityGatewayService{
 		accountRepo:       accountRepo,
@@ -901,10 +903,7 @@ func NewAntigravityGatewayService(
 		cache:             cache,
 		schedulerSnapshot: schedulerSnapshot,
 		internal500Cache:  internal500Cache,
-		signatureRectifier: &signature.StripAntigravityRectifier{
-			StripStage1: stripThinkingFromClaudeRequest,
-			StripStage2: stripSignatureSensitiveBlocksFromClaudeRequest,
-		},
+		signatureFactory:  newSignatureRectifierFactory(signaturePool, settingService),
 	}
 }
 
@@ -1479,7 +1478,8 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 			// 2) Only if still signature-related 400: also downgrade tool_use/tool_result to text.
 			// Pool strategy (Phase 3) replaces thinking signatures with valid ones from the pool instead.
 
-			for _, stage := range s.signatureRectifier.Stages() {
+			rectifier := s.signatureFactory.ForAntigravity(ctx, account)
+			for _, stage := range rectifier.Stages() {
 				retryClaudeReq := claudeReq
 				retryClaudeReq.Messages = append([]antigravity.ClaudeMessage(nil), claudeReq.Messages...)
 
@@ -1488,7 +1488,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 					AccountID:   account.ID,
 					Request:     &retryClaudeReq,
 				}
-				applied, proceedAfter, stripErr := s.signatureRectifier.Apply(ctx, sigIn, stage)
+				applied, proceedAfter, stripErr := rectifier.Apply(ctx, sigIn, stage)
 				if stripErr != nil || !applied {
 					if !proceedAfter {
 						// Rectifier signaled abort (e.g. Pool is empty under rule A).
@@ -1504,8 +1504,10 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 				if txErr != nil {
 					continue
 				}
+				// Mark retry context so the Harvester skips ingesting signatures from retry responses.
+				retryCtx := context.WithValue(ctx, ctxkey.IsSignatureRectifyRetry, true)
 				retryResult, retryErr := s.antigravityRetryLoop(antigravityRetryLoopParams{
-					ctx:             ctx,
+					ctx:             retryCtx,
 					prefix:          prefix,
 					account:         account,
 					proxyURL:        proxyURL,

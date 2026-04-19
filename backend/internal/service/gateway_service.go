@@ -571,7 +571,7 @@ type GatewayService struct {
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
-	signatureRectifier    signature.ClaudeRectifier
+	signatureFactory      *signatureRectifierFactory
 }
 
 // NewGatewayService creates a new GatewayService
@@ -602,6 +602,7 @@ func NewGatewayService(
 	channelService *ChannelService,
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
+	signaturePool signature.SignaturePool,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -637,10 +638,7 @@ func NewGatewayService(
 		channelService:       channelService,
 		resolver:             resolver,
 		balanceNotifyService: balanceNotifyService,
-		signatureRectifier: &signature.StripClaudeRectifier{
-			FilterStage1: FilterThinkingBlocksForRetry,
-			FilterStage2: FilterSignatureSensitiveBlocksForRetry,
-		},
+		signatureFactory:     newSignatureRectifierFactory(signaturePool, settingService),
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -4177,6 +4175,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
+		// Wrap the response body so the signature harvester can ingest any
+		// thinking signatures that flow through (no-op when the pool is disabled
+		// for this account or when this context is a rectify retry).
+		resp.Body = s.signatureFactory.WrapResponseBody(ctx, account, resp.Body, reqStream)
+
 		// 优先检测thinking block签名错误（400）并重试一次
 		if resp.StatusCode == 400 {
 			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
@@ -4218,13 +4221,16 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						AccountID:   account.ID,
 						Body:        body,
 					}
-					filteredBody, proceedStage1 := s.signatureRectifier.Apply(ctx, sigIn, signature.StageThinkingOnly)
+					rectifier := s.signatureFactory.ForClaude(ctx, account)
+					filteredBody, proceedStage1 := rectifier.Apply(ctx, sigIn, signature.StageThinkingOnly)
 					if !proceedStage1 {
 						// Rectifier declined (e.g. signature pool is empty under rule A)
 						resp.Body = io.NopCloser(bytes.NewReader(respBody))
 						break
 					}
 					retryCtx, releaseRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
+					// Mark retry context so the Harvester skips ingesting signatures from retry responses.
+					retryCtx = context.WithValue(retryCtx, ctxkey.IsSignatureRectifyRetry, true)
 					retryReq, buildErr := s.buildUpstreamRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 					releaseRetryCtx()
 					if buildErr == nil {
@@ -4258,10 +4264,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 								msg2 := extractUpstreamErrorMessage(retryRespBody)
 								sigIn2 := sigIn
 								sigIn2.LastErrMsg = msg2
-								filteredBody2, proceedStage2 := s.signatureRectifier.Apply(ctx, sigIn2, signature.StageThinkingAndTools)
+								filteredBody2, proceedStage2 := rectifier.Apply(ctx, sigIn2, signature.StageThinkingAndTools)
 								if proceedStage2 && time.Since(retryStart) < maxRetryElapsed {
 									logger.LegacyPrintf("service.gateway", "Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
 									retryCtx2, releaseRetryCtx2 := detachStreamUpstreamContext(ctx, reqStream)
+									retryCtx2 = context.WithValue(retryCtx2, ctxkey.IsSignatureRectifyRetry, true)
 									retryReq2, buildErr2 := s.buildUpstreamRequest(retryCtx2, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 									releaseRetryCtx2()
 									if buildErr2 == nil {
@@ -4668,6 +4675,9 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
+
+		// Wrap the response body for signature harvesting on the passthrough path.
+		resp.Body = s.signatureFactory.WrapResponseBody(ctx, account, resp.Body, input.RequestStream)
 
 		// 透传分支禁止 400 请求体降级重试（该重试会改写请求体）
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
@@ -5375,6 +5385,9 @@ func (s *GatewayService) executeBedrockUpstream(
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
+
+		// Wrap the response body for signature harvesting on the Bedrock path.
+		resp.Body = s.signatureFactory.WrapResponseBody(ctx, account, resp.Body, stream)
 
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
 			if attempt < maxRetryAttempts {
@@ -8370,10 +8383,12 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 			AccountID:   account.ID,
 			Body:        body,
 		}
-		filteredBody, proceedStage1 := s.signatureRectifier.Apply(ctx, sigIn, signature.StageThinkingOnly)
+		rectifier := s.signatureFactory.ForClaude(ctx, account)
+		filteredBody, proceedStage1 := rectifier.Apply(ctx, sigIn, signature.StageThinkingOnly)
 		if proceedStage1 {
 			logger.LegacyPrintf("service.gateway", "Account %d: detected thinking block signature error on count_tokens, retrying with filtered thinking blocks", account.ID)
-			retryReq, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
+			retryCtx := context.WithValue(ctx, ctxkey.IsSignatureRectifyRetry, true)
+			retryReq, buildErr := s.buildCountTokensRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
 			if buildErr == nil {
 				retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 				if retryErr == nil {
