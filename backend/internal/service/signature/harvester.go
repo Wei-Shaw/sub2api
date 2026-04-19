@@ -75,8 +75,8 @@ type harvestReader struct {
 	skip   func() bool
 
 	stream  bool
-	lineBuf []byte            // SSE line accumulator
-	bodyBuf []byte            // non-streaming body accumulator (bounded)
+	lineBuf []byte              // SSE line accumulator
+	bodyBuf []byte              // non-streaming body accumulator (bounded)
 	seen    map[string]struct{} // de-dupe within a single response
 	closed  bool
 }
