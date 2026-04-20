@@ -848,6 +848,12 @@ REDACTED
 REDACTED
 REDACTED
 
+func shouldSkipAvatarAdoption(err error) bool {
+	return errors.Is(err, service.ErrAvatarInvalid) ||
+		errors.Is(err, service.ErrAvatarTooLarge) ||
+		errors.Is(err, service.ErrAvatarNotImage)
+REDACTED
+
 func applyPendingOAuthBinding(
 	ctx context.Context,
 	client *dbent.Client,
@@ -885,6 +891,14 @@ REDACTED
 	if decision != nil && decision.AdoptAvatar {
 		adoptedAvatarURL = pendingSessionStringValue(session.UpstreamIdentityClaims, "suggested_avatar_url")
 REDACTED
+	shouldAdoptAvatar := false
+	if decision != nil && decision.AdoptAvatar && adoptedAvatarURL != "" {
+		if err := service.ValidateUserAvatar(adoptedAvatarURL); err == nil {
+			shouldAdoptAvatar = true
+	REDACTED else if !shouldSkipAvatarAdoption(err) {
+			return err
+	REDACTED
+REDACTED
 
 	tx, err := client.Tx(ctx)
 	if err != nil {
@@ -913,7 +927,7 @@ REDACTED
 	if decision != nil && decision.AdoptDisplayName && adoptedDisplayName != "" {
 		metadata["display_name"] = adoptedDisplayName
 REDACTED
-	if decision != nil && decision.AdoptAvatar && adoptedAvatarURL != "" {
+	if shouldAdoptAvatar {
 		metadata["avatar_url"] = adoptedAvatarURL
 REDACTED
 
@@ -939,7 +953,7 @@ REDACTED
 	REDACTED
 REDACTED
 
-	if decision != nil && decision.AdoptAvatar && adoptedAvatarURL != "" && userService != nil {
+	if shouldAdoptAvatar && userService != nil {
 		if _, err := userService.SetAvatar(txCtx, targetUserID, adoptedAvatarURL); err != nil {
 			return err
 	REDACTED

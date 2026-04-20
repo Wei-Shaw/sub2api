@@ -298,15 +298,10 @@ REDACTED
 	require.True(t, ok)
 	require.Equal(t, true, emailBinding["bound"])
 
-	avatarSource, ok := resp.Data["avatar_source"].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, "linuxdo", avatarSource["provider"])
-
-	profileSources, ok := resp.Data["profile_sources"].(map[string]any)
-	require.True(t, ok)
-	usernameSource, ok := profileSources["username"].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, "linuxdo", usernameSource["provider"])
+	_, hasAvatarSource := resp.Data["avatar_source"]
+	require.False(t, hasAvatarSource)
+	_, hasProfileSources := resp.Data["profile_sources"]
+	require.False(t, hasProfileSources)
 REDACTED
 
 func TestUserHandlerStartIdentityBindingReturnsAuthorizeURL(t *testing.T) {

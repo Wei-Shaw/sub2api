@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -353,22 +352,16 @@ func userProfileResponseFromService(user *service.User, identities service.UserI
 		return userProfileResponse{REDACTED
 REDACTED
 	bindings := userProfileBindingMap(identities)
-	profileSources, avatarSource, usernameSource := inferUserProfileSources(user, identities)
 	return userProfileResponse{
-		User:              *base,
-		AvatarURL:         user.AvatarURL,
-		AvatarSource:      avatarSource,
-		UsernameSource:    usernameSource,
-		DisplayNameSource: usernameSource,
-		NicknameSource:    usernameSource,
-		ProfileSources:    profileSources,
-		Identities:        identities,
-		AuthBindings:      bindings,
-		IdentityBindings:  bindings,
-		EmailBound:        identities.Email.Bound,
-		LinuxDoBound:      identities.LinuxDo.Bound,
-		OIDCBound:         identities.OIDC.Bound,
-		WeChatBound:       identities.WeChat.Bound,
+		User:             *base,
+		AvatarURL:        user.AvatarURL,
+		Identities:       identities,
+		AuthBindings:     bindings,
+		IdentityBindings: bindings,
+		EmailBound:       identities.Email.Bound,
+		LinuxDoBound:     identities.LinuxDo.Bound,
+		OIDCBound:        identities.OIDC.Bound,
+		WeChatBound:      identities.WeChat.Bound,
 REDACTED
 REDACTED
 
@@ -378,68 +371,5 @@ func userProfileBindingMap(identities service.UserIdentitySummarySet) map[string
 		"linuxdo": identities.LinuxDo,
 		"oidc":    identities.OIDC,
 		"wechat":  identities.WeChat,
-REDACTED
-REDACTED
-
-func inferUserProfileSources(user *service.User, identities service.UserIdentitySummarySet) (
-	map[string]*userProfileSourceContext,
-	*userProfileSourceContext,
-	*userProfileSourceContext,
-) {
-	if user == nil {
-		return nil, nil, nil
-REDACTED
-
-	thirdParty := thirdPartyIdentityProviders(identities)
-	var avatarSource *userProfileSourceContext
-	if strings.TrimSpace(user.AvatarURL) != "" && len(thirdParty) == 1 {
-		avatarSource = buildUserProfileSourceContext(thirdParty[0].Provider)
-REDACTED
-
-	usernameValue := strings.TrimSpace(user.Username)
-	var usernameSource *userProfileSourceContext
-	for _, summary := range thirdParty {
-		if usernameValue != "" && usernameValue == strings.TrimSpace(summary.DisplayName) {
-			usernameSource = buildUserProfileSourceContext(summary.Provider)
-			break
-	REDACTED
-REDACTED
-	if usernameSource == nil && usernameValue != "" && len(thirdParty) == 1 {
-		usernameSource = buildUserProfileSourceContext(thirdParty[0].Provider)
-REDACTED
-
-	profileSources := map[string]*userProfileSourceContext{REDACTED
-	if avatarSource != nil {
-		profileSources["avatar"] = avatarSource
-REDACTED
-	if usernameSource != nil {
-		profileSources["username"] = usernameSource
-		profileSources["display_name"] = usernameSource
-		profileSources["nickname"] = usernameSource
-REDACTED
-	if len(profileSources) == 0 {
-		return nil, avatarSource, usernameSource
-REDACTED
-	return profileSources, avatarSource, usernameSource
-REDACTED
-
-func thirdPartyIdentityProviders(identities service.UserIdentitySummarySet) []service.UserIdentitySummary {
-	out := make([]service.UserIdentitySummary, 0, 3)
-	for _, summary := range []service.UserIdentitySummary{identities.LinuxDo, identities.OIDC, identities.WeChatREDACTED {
-		if summary.Bound {
-			out = append(out, summary)
-	REDACTED
-REDACTED
-	return out
-REDACTED
-
-func buildUserProfileSourceContext(provider string) *userProfileSourceContext {
-	provider = strings.TrimSpace(provider)
-	if provider == "" {
-		return nil
-REDACTED
-	return &userProfileSourceContext{
-		Provider: provider,
-		Source:   provider,
 REDACTED
 REDACTED

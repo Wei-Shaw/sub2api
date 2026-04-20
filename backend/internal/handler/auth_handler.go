@@ -348,8 +348,14 @@ REDACTED
 		return
 REDACTED
 
+	identities, err := h.userService.GetProfileIdentitySummaries(c.Request.Context(), subject.UserID, user)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
 	type UserResponse struct {
-		*dto.User
+		userProfileResponse
 		RunMode string `json:"run_mode"`
 REDACTED
 
@@ -358,7 +364,10 @@ REDACTED
 		runMode = h.cfg.RunMode
 REDACTED
 
-	response.Success(c, UserResponse{User: dto.UserFromService(user), RunMode: runModeREDACTED)
+	response.Success(c, UserResponse{
+		userProfileResponse: userProfileResponseFromService(user, identities),
+		RunMode:             runMode,
+REDACTED)
 REDACTED
 
 // ValidatePromoCodeRequest 验证优惠码请求
