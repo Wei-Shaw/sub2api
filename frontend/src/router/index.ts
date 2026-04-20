@@ -337,6 +337,10 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/admin/channels',
+    redirect: '/admin/channels/pricing'
+  },
+  {
+    path: '/admin/channels/pricing',
     name: 'AdminChannels',
     component: () => import('@/views/admin/ChannelsView.vue'),
     meta: {
@@ -345,6 +349,29 @@ const routes: RouteRecordRaw[] = [
       title: 'Channel Management',
       titleKey: 'admin.channels.title',
       descriptionKey: 'admin.channels.description'
+    }
+  },
+  {
+    path: '/admin/channels/monitor',
+    name: 'AdminChannelMonitor',
+    component: () => import('@/views/admin/ChannelMonitorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Channel Monitor',
+      titleKey: 'admin.channelMonitor.title',
+      descriptionKey: 'admin.channelMonitor.description'
+    }
+  },
+  {
+    path: '/monitor',
+    name: 'ChannelStatus',
+    component: () => import('@/views/user/ChannelStatusView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Channel Status',
+      titleKey: 'nav.channelStatus'
     }
   },
   {

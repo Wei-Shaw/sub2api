@@ -1,0 +1,127 @@
+package handler
+
+import (
+	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+
+	"github.com/gin-gonic/gin"
+)
+
+// ChannelMonitorUserHandler 渠道监控用户只读 handler。
+type ChannelMonitorUserHandler struct {
+	monitorService *service.ChannelMonitorService
+}
+
+// NewChannelMonitorUserHandler 创建 handler。
+func NewChannelMonitorUserHandler(monitorService *service.ChannelMonitorService) *ChannelMonitorUserHandler {
+	return &ChannelMonitorUserHandler{monitorService: monitorService}
+}
+
+// --- Response ---
+
+type channelMonitorUserListItem struct {
+	ID               int64                                `json:"id"`
+	Name             string                               `json:"name"`
+	Provider         string                               `json:"provider"`
+	GroupName        string                               `json:"group_name"`
+	PrimaryModel     string                               `json:"primary_model"`
+	PrimaryStatus    string                               `json:"primary_status"`
+	PrimaryLatencyMs *int                                 `json:"primary_latency_ms"`
+	Availability7d   float64                              `json:"availability_7d"`
+	ExtraModels      []dto.ChannelMonitorExtraModelStatus `json:"extra_models"`
+}
+
+type channelMonitorUserDetailResponse struct {
+	ID        int64                         `json:"id"`
+	Name      string                        `json:"name"`
+	Provider  string                        `json:"provider"`
+	GroupName string                        `json:"group_name"`
+	Models    []channelMonitorUserModelStat `json:"models"`
+}
+
+type channelMonitorUserModelStat struct {
+	Model           string  `json:"model"`
+	LatestStatus    string  `json:"latest_status"`
+	LatestLatencyMs *int    `json:"latest_latency_ms"`
+	Availability7d  float64 `json:"availability_7d"`
+	Availability15d float64 `json:"availability_15d"`
+	Availability30d float64 `json:"availability_30d"`
+	AvgLatency7dMs  *int    `json:"avg_latency_7d_ms"`
+}
+
+func userMonitorViewToItem(v *service.UserMonitorView) channelMonitorUserListItem {
+	extras := make([]dto.ChannelMonitorExtraModelStatus, 0, len(v.ExtraModels))
+	for _, e := range v.ExtraModels {
+		extras = append(extras, dto.ChannelMonitorExtraModelStatus{
+			Model:     e.Model,
+			Status:    e.Status,
+			LatencyMs: e.LatencyMs,
+		})
+	}
+	return channelMonitorUserListItem{
+		ID:               v.ID,
+		Name:             v.Name,
+		Provider:         v.Provider,
+		GroupName:        v.GroupName,
+		PrimaryModel:     v.PrimaryModel,
+		PrimaryStatus:    v.PrimaryStatus,
+		PrimaryLatencyMs: v.PrimaryLatencyMs,
+		Availability7d:   v.Availability7d,
+		ExtraModels:      extras,
+	}
+}
+
+func userMonitorDetailToResponse(d *service.UserMonitorDetail) *channelMonitorUserDetailResponse {
+	models := make([]channelMonitorUserModelStat, 0, len(d.Models))
+	for _, m := range d.Models {
+		models = append(models, channelMonitorUserModelStat{
+			Model:           m.Model,
+			LatestStatus:    m.LatestStatus,
+			LatestLatencyMs: m.LatestLatencyMs,
+			Availability7d:  m.Availability7d,
+			Availability15d: m.Availability15d,
+			Availability30d: m.Availability30d,
+			AvgLatency7dMs:  m.AvgLatency7dMs,
+		})
+	}
+	return &channelMonitorUserDetailResponse{
+		ID:        d.ID,
+		Name:      d.Name,
+		Provider:  d.Provider,
+		GroupName: d.GroupName,
+		Models:    models,
+	}
+}
+
+// --- Handlers ---
+
+// List GET /api/v1/channel-monitors
+func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
+	views, err := h.monitorService.ListUserView(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	items := make([]channelMonitorUserListItem, 0, len(views))
+	for _, v := range views {
+		items = append(items, userMonitorViewToItem(v))
+	}
+	response.Success(c, gin.H{"items": items})
+}
+
+// GetStatus GET /api/v1/channel-monitors/:id/status
+func (h *ChannelMonitorUserHandler) GetStatus(c *gin.Context) {
+	// 复用 admin.ParseChannelMonitorID 保持错误码与日志一致。
+	id, ok := admin.ParseChannelMonitorID(c)
+	if !ok {
+		return
+	}
+	detail, err := h.monitorService.GetUserDetail(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, userMonitorDetailToResponse(detail))
+}

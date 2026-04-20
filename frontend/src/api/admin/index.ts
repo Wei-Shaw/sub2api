@@ -26,6 +26,7 @@ import scheduledTestsAPI from './scheduledTests'
 import backupAPI from './backup'
 import tlsFingerprintProfileAPI from './tlsFingerprintProfile'
 import channelsAPI from './channels'
+import channelMonitorAPI from './channelMonitor'
 import adminPaymentAPI from './payment'
 
 /**
@@ -55,6 +56,7 @@ export const adminAPI = {
   backup: backupAPI,
   tlsFingerprintProfiles: tlsFingerprintProfileAPI,
   channels: channelsAPI,
+  channelMonitor: channelMonitorAPI,
   payment: adminPaymentAPI
 }
 
@@ -82,6 +84,7 @@ export {
   backupAPI,
   tlsFingerprintProfileAPI,
   channelsAPI,
+  channelMonitorAPI,
   adminPaymentAPI
 }
 

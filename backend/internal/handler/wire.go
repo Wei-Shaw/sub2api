@@ -34,6 +34,7 @@ func ProvideAdminHandlers(
 	apiKeyHandler *admin.AdminAPIKeyHandler,
 	scheduledTestHandler *admin.ScheduledTestHandler,
 	channelHandler *admin.ChannelHandler,
+	channelMonitorHandler *admin.ChannelMonitorHandler,
 	paymentHandler *admin.PaymentHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
@@ -62,6 +63,7 @@ func ProvideAdminHandlers(
 		APIKey:                apiKeyHandler,
 		ScheduledTest:         scheduledTestHandler,
 		Channel:               channelHandler,
+		ChannelMonitor:        channelMonitorHandler,
 		Payment:               paymentHandler,
 	}
 }
@@ -85,6 +87,7 @@ func ProvideHandlers(
 	redeemHandler *RedeemHandler,
 	subscriptionHandler *SubscriptionHandler,
 	announcementHandler *AnnouncementHandler,
+	channelMonitorUserHandler *ChannelMonitorUserHandler,
 	adminHandlers *AdminHandlers,
 	gatewayHandler *GatewayHandler,
 	openaiGatewayHandler *OpenAIGatewayHandler,
@@ -103,6 +106,7 @@ func ProvideHandlers(
 		Redeem:         redeemHandler,
 		Subscription:   subscriptionHandler,
 		Announcement:   announcementHandler,
+		ChannelMonitor: channelMonitorUserHandler,
 		Admin:          adminHandlers,
 		Gateway:        gatewayHandler,
 		OpenAIGateway:  openaiGatewayHandler,
@@ -123,6 +127,7 @@ var ProviderSet = wire.NewSet(
 	NewRedeemHandler,
 	NewSubscriptionHandler,
 	NewAnnouncementHandler,
+	NewChannelMonitorUserHandler,
 	NewGatewayHandler,
 	NewOpenAIGatewayHandler,
 	NewTotpHandler,
@@ -156,6 +161,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
 	admin.NewChannelHandler,
+	admin.NewChannelMonitorHandler,
 	admin.NewPaymentHandler,
 
 	// AdminHandlers and Handlers constructors

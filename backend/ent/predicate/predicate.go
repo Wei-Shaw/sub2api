@@ -21,6 +21,12 @@ type Announcement func(*sql.Selector)
 // AnnouncementRead is the predicate function for announcementread builders.
 type AnnouncementRead func(*sql.Selector)
 
+// ChannelMonitor is the predicate function for channelmonitor builders.
+type ChannelMonitor func(*sql.Selector)
+
+// ChannelMonitorHistory is the predicate function for channelmonitorhistory builders.
+type ChannelMonitorHistory func(*sql.Selector)
+
 // ErrorPassthroughRule is the predicate function for errorpassthroughrule builders.
 type ErrorPassthroughRule func(*sql.Selector)
 

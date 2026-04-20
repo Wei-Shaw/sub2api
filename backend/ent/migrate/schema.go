@@ -338,6 +338,83 @@ var (
 			},
 		},
 	}
+	// ChannelMonitorsColumns holds the columns for the "channel_monitors" table.
+	ChannelMonitorsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini"}},
+		{Name: "endpoint", Type: field.TypeString, Size: 500},
+		{Name: "api_key_encrypted", Type: field.TypeString},
+		{Name: "primary_model", Type: field.TypeString, Size: 200},
+		{Name: "extra_models", Type: field.TypeJSON},
+		{Name: "group_name", Type: field.TypeString, Nullable: true, Size: 100, Default: ""},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "interval_seconds", Type: field.TypeInt},
+		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "created_by", Type: field.TypeInt64},
+	}
+	// ChannelMonitorsTable holds the schema information for the "channel_monitors" table.
+	ChannelMonitorsTable = &schema.Table{
+		Name:       "channel_monitors",
+		Columns:    ChannelMonitorsColumns,
+		PrimaryKey: []*schema.Column{ChannelMonitorsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "channelmonitor_enabled_last_checked_at",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[10], ChannelMonitorsColumns[12]},
+			},
+			{
+				Name:    "channelmonitor_provider",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[4]},
+			},
+			{
+				Name:    "channelmonitor_group_name",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[9]},
+			},
+		},
+	}
+	// ChannelMonitorHistoriesColumns holds the columns for the "channel_monitor_histories" table.
+	ChannelMonitorHistoriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "model", Type: field.TypeString, Size: 200},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"operational", "degraded", "failed", "error"}},
+		{Name: "latency_ms", Type: field.TypeInt, Nullable: true},
+		{Name: "ping_latency_ms", Type: field.TypeInt, Nullable: true},
+		{Name: "message", Type: field.TypeString, Nullable: true, Size: 500, Default: ""},
+		{Name: "checked_at", Type: field.TypeTime},
+		{Name: "monitor_id", Type: field.TypeInt64},
+	}
+	// ChannelMonitorHistoriesTable holds the schema information for the "channel_monitor_histories" table.
+	ChannelMonitorHistoriesTable = &schema.Table{
+		Name:       "channel_monitor_histories",
+		Columns:    ChannelMonitorHistoriesColumns,
+		PrimaryKey: []*schema.Column{ChannelMonitorHistoriesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "channel_monitor_histories_channel_monitors_history",
+				Columns:    []*schema.Column{ChannelMonitorHistoriesColumns[7]},
+				RefColumns: []*schema.Column{ChannelMonitorsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "channelmonitorhistory_monitor_id_model_checked_at",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[7], ChannelMonitorHistoriesColumns[1], ChannelMonitorHistoriesColumns[6]},
+			},
+			{
+				Name:    "channelmonitorhistory_checked_at",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[6]},
+			},
+		},
+	}
 	// ErrorPassthroughRulesColumns holds the columns for the "error_passthrough_rules" table.
 	ErrorPassthroughRulesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1318,6 +1395,8 @@ var (
 		AccountGroupsTable,
 		AnnouncementsTable,
 		AnnouncementReadsTable,
+		ChannelMonitorsTable,
+		ChannelMonitorHistoriesTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -1364,6 +1443,13 @@ func init() {
 	AnnouncementReadsTable.ForeignKeys[1].RefTable = UsersTable
 	AnnouncementReadsTable.Annotation = &entsql.Annotation{
 		Table: "announcement_reads",
+	}
+	ChannelMonitorsTable.Annotation = &entsql.Annotation{
+		Table: "channel_monitors",
+	}
+	ChannelMonitorHistoriesTable.ForeignKeys[0].RefTable = ChannelMonitorsTable
+	ChannelMonitorHistoriesTable.Annotation = &entsql.Annotation{
+		Table: "channel_monitor_histories",
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",

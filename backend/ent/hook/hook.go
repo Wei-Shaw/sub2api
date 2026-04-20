@@ -69,6 +69,30 @@ func (f AnnouncementReadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AnnouncementReadMutation", m)
 }
 
+// The ChannelMonitorFunc type is an adapter to allow the use of ordinary
+// function as ChannelMonitor mutator.
+type ChannelMonitorFunc func(context.Context, *ent.ChannelMonitorMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ChannelMonitorFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ChannelMonitorMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChannelMonitorMutation", m)
+}
+
+// The ChannelMonitorHistoryFunc type is an adapter to allow the use of ordinary
+// function as ChannelMonitorHistory mutator.
+type ChannelMonitorHistoryFunc func(context.Context, *ent.ChannelMonitorHistoryMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ChannelMonitorHistoryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ChannelMonitorHistoryMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChannelMonitorHistoryMutation", m)
+}
+
 // The ErrorPassthroughRuleFunc type is an adapter to allow the use of ordinary
 // function as ErrorPassthroughRule mutator.
 type ErrorPassthroughRuleFunc func(context.Context, *ent.ErrorPassthroughRuleMutation) (ent.Value, error)

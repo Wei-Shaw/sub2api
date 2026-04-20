@@ -31,6 +31,7 @@ type AdminHandlers struct {
 	APIKey                *admin.AdminAPIKeyHandler
 	ScheduledTest         *admin.ScheduledTestHandler
 	Channel               *admin.ChannelHandler
+	ChannelMonitor        *admin.ChannelMonitorHandler
 	Payment               *admin.PaymentHandler
 }
 
@@ -43,6 +44,7 @@ type Handlers struct {
 	Redeem         *RedeemHandler
 	Subscription   *SubscriptionHandler
 	Announcement   *AnnouncementHandler
+	ChannelMonitor *ChannelMonitorUserHandler
 	Admin          *AdminHandlers
 	Gateway        *GatewayHandler
 	OpenAIGateway  *OpenAIGatewayHandler

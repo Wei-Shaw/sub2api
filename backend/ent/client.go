@@ -20,6 +20,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -60,6 +62,10 @@ type Client struct {
 	Announcement *AnnouncementClient
 	// AnnouncementRead is the client for interacting with the AnnouncementRead builders.
 	AnnouncementRead *AnnouncementReadClient
+	// ChannelMonitor is the client for interacting with the ChannelMonitor builders.
+	ChannelMonitor *ChannelMonitorClient
+	// ChannelMonitorHistory is the client for interacting with the ChannelMonitorHistory builders.
+	ChannelMonitorHistory *ChannelMonitorHistoryClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
 	// Group is the client for interacting with the Group builders.
@@ -118,6 +124,8 @@ func (c *Client) init() {
 	c.AccountGroup = NewAccountGroupClient(c.config)
 	c.Announcement = NewAnnouncementClient(c.config)
 	c.AnnouncementRead = NewAnnouncementReadClient(c.config)
+	c.ChannelMonitor = NewChannelMonitorClient(c.config)
+	c.ChannelMonitorHistory = NewChannelMonitorHistoryClient(c.config)
 	c.ErrorPassthroughRule = NewErrorPassthroughRuleClient(c.config)
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
@@ -236,6 +244,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		AccountGroup:            NewAccountGroupClient(cfg),
 		Announcement:            NewAnnouncementClient(cfg),
 		AnnouncementRead:        NewAnnouncementReadClient(cfg),
+		ChannelMonitor:          NewChannelMonitorClient(cfg),
+		ChannelMonitorHistory:   NewChannelMonitorHistoryClient(cfg),
 		ErrorPassthroughRule:    NewErrorPassthroughRuleClient(cfg),
 		Group:                   NewGroupClient(cfg),
 		IdempotencyRecord:       NewIdempotencyRecordClient(cfg),
@@ -281,6 +291,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		AccountGroup:            NewAccountGroupClient(cfg),
 		Announcement:            NewAnnouncementClient(cfg),
 		AnnouncementRead:        NewAnnouncementReadClient(cfg),
+		ChannelMonitor:          NewChannelMonitorClient(cfg),
+		ChannelMonitorHistory:   NewChannelMonitorHistoryClient(cfg),
 		ErrorPassthroughRule:    NewErrorPassthroughRuleClient(cfg),
 		Group:                   NewGroupClient(cfg),
 		IdempotencyRecord:       NewIdempotencyRecordClient(cfg),
@@ -332,9 +344,10 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
+		c.ChannelMonitor, c.ChannelMonitorHistory, c.ErrorPassthroughRule, c.Group,
+		c.IdempotencyRecord, c.PaymentAuditLog, c.PaymentOrder,
+		c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage, c.Proxy,
+		c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserSubscription,
@@ -348,9 +361,10 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
-		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
+		c.ChannelMonitor, c.ChannelMonitorHistory, c.ErrorPassthroughRule, c.Group,
+		c.IdempotencyRecord, c.PaymentAuditLog, c.PaymentOrder,
+		c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage, c.Proxy,
+		c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserSubscription,
@@ -372,6 +386,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Announcement.mutate(ctx, m)
 	case *AnnouncementReadMutation:
 		return c.AnnouncementRead.mutate(ctx, m)
+	case *ChannelMonitorMutation:
+		return c.ChannelMonitor.mutate(ctx, m)
+	case *ChannelMonitorHistoryMutation:
+		return c.ChannelMonitorHistory.mutate(ctx, m)
 	case *ErrorPassthroughRuleMutation:
 		return c.ErrorPassthroughRule.mutate(ctx, m)
 	case *GroupMutation:
@@ -1228,6 +1246,304 @@ func (c *AnnouncementReadClient) mutate(ctx context.Context, m *AnnouncementRead
 		return (&AnnouncementReadDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AnnouncementRead mutation op: %q", m.Op())
+	}
+}
+
+// ChannelMonitorClient is a client for the ChannelMonitor schema.
+type ChannelMonitorClient struct {
+	config
+}
+
+// NewChannelMonitorClient returns a client for the ChannelMonitor from the given config.
+func NewChannelMonitorClient(c config) *ChannelMonitorClient {
+	return &ChannelMonitorClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `channelmonitor.Hooks(f(g(h())))`.
+func (c *ChannelMonitorClient) Use(hooks ...Hook) {
+	c.hooks.ChannelMonitor = append(c.hooks.ChannelMonitor, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `channelmonitor.Intercept(f(g(h())))`.
+func (c *ChannelMonitorClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ChannelMonitor = append(c.inters.ChannelMonitor, interceptors...)
+}
+
+// Create returns a builder for creating a ChannelMonitor entity.
+func (c *ChannelMonitorClient) Create() *ChannelMonitorCreate {
+	mutation := newChannelMonitorMutation(c.config, OpCreate)
+	return &ChannelMonitorCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ChannelMonitor entities.
+func (c *ChannelMonitorClient) CreateBulk(builders ...*ChannelMonitorCreate) *ChannelMonitorCreateBulk {
+	return &ChannelMonitorCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ChannelMonitorClient) MapCreateBulk(slice any, setFunc func(*ChannelMonitorCreate, int)) *ChannelMonitorCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ChannelMonitorCreateBulk{err: fmt.Errorf("calling to ChannelMonitorClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ChannelMonitorCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ChannelMonitorCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ChannelMonitor.
+func (c *ChannelMonitorClient) Update() *ChannelMonitorUpdate {
+	mutation := newChannelMonitorMutation(c.config, OpUpdate)
+	return &ChannelMonitorUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ChannelMonitorClient) UpdateOne(_m *ChannelMonitor) *ChannelMonitorUpdateOne {
+	mutation := newChannelMonitorMutation(c.config, OpUpdateOne, withChannelMonitor(_m))
+	return &ChannelMonitorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ChannelMonitorClient) UpdateOneID(id int64) *ChannelMonitorUpdateOne {
+	mutation := newChannelMonitorMutation(c.config, OpUpdateOne, withChannelMonitorID(id))
+	return &ChannelMonitorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ChannelMonitor.
+func (c *ChannelMonitorClient) Delete() *ChannelMonitorDelete {
+	mutation := newChannelMonitorMutation(c.config, OpDelete)
+	return &ChannelMonitorDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ChannelMonitorClient) DeleteOne(_m *ChannelMonitor) *ChannelMonitorDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ChannelMonitorClient) DeleteOneID(id int64) *ChannelMonitorDeleteOne {
+	builder := c.Delete().Where(channelmonitor.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ChannelMonitorDeleteOne{builder}
+}
+
+// Query returns a query builder for ChannelMonitor.
+func (c *ChannelMonitorClient) Query() *ChannelMonitorQuery {
+	return &ChannelMonitorQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeChannelMonitor},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ChannelMonitor entity by its id.
+func (c *ChannelMonitorClient) Get(ctx context.Context, id int64) (*ChannelMonitor, error) {
+	return c.Query().Where(channelmonitor.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ChannelMonitorClient) GetX(ctx context.Context, id int64) *ChannelMonitor {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryHistory queries the history edge of a ChannelMonitor.
+func (c *ChannelMonitorClient) QueryHistory(_m *ChannelMonitor) *ChannelMonitorHistoryQuery {
+	query := (&ChannelMonitorHistoryClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(channelmonitor.Table, channelmonitor.FieldID, id),
+			sqlgraph.To(channelmonitorhistory.Table, channelmonitorhistory.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, channelmonitor.HistoryTable, channelmonitor.HistoryColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ChannelMonitorClient) Hooks() []Hook {
+	return c.hooks.ChannelMonitor
+}
+
+// Interceptors returns the client interceptors.
+func (c *ChannelMonitorClient) Interceptors() []Interceptor {
+	return c.inters.ChannelMonitor
+}
+
+func (c *ChannelMonitorClient) mutate(ctx context.Context, m *ChannelMonitorMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ChannelMonitorCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ChannelMonitorUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ChannelMonitorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ChannelMonitorDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ChannelMonitor mutation op: %q", m.Op())
+	}
+}
+
+// ChannelMonitorHistoryClient is a client for the ChannelMonitorHistory schema.
+type ChannelMonitorHistoryClient struct {
+	config
+}
+
+// NewChannelMonitorHistoryClient returns a client for the ChannelMonitorHistory from the given config.
+func NewChannelMonitorHistoryClient(c config) *ChannelMonitorHistoryClient {
+	return &ChannelMonitorHistoryClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `channelmonitorhistory.Hooks(f(g(h())))`.
+func (c *ChannelMonitorHistoryClient) Use(hooks ...Hook) {
+	c.hooks.ChannelMonitorHistory = append(c.hooks.ChannelMonitorHistory, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `channelmonitorhistory.Intercept(f(g(h())))`.
+func (c *ChannelMonitorHistoryClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ChannelMonitorHistory = append(c.inters.ChannelMonitorHistory, interceptors...)
+}
+
+// Create returns a builder for creating a ChannelMonitorHistory entity.
+func (c *ChannelMonitorHistoryClient) Create() *ChannelMonitorHistoryCreate {
+	mutation := newChannelMonitorHistoryMutation(c.config, OpCreate)
+	return &ChannelMonitorHistoryCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ChannelMonitorHistory entities.
+func (c *ChannelMonitorHistoryClient) CreateBulk(builders ...*ChannelMonitorHistoryCreate) *ChannelMonitorHistoryCreateBulk {
+	return &ChannelMonitorHistoryCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ChannelMonitorHistoryClient) MapCreateBulk(slice any, setFunc func(*ChannelMonitorHistoryCreate, int)) *ChannelMonitorHistoryCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ChannelMonitorHistoryCreateBulk{err: fmt.Errorf("calling to ChannelMonitorHistoryClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ChannelMonitorHistoryCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ChannelMonitorHistoryCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ChannelMonitorHistory.
+func (c *ChannelMonitorHistoryClient) Update() *ChannelMonitorHistoryUpdate {
+	mutation := newChannelMonitorHistoryMutation(c.config, OpUpdate)
+	return &ChannelMonitorHistoryUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ChannelMonitorHistoryClient) UpdateOne(_m *ChannelMonitorHistory) *ChannelMonitorHistoryUpdateOne {
+	mutation := newChannelMonitorHistoryMutation(c.config, OpUpdateOne, withChannelMonitorHistory(_m))
+	return &ChannelMonitorHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ChannelMonitorHistoryClient) UpdateOneID(id int64) *ChannelMonitorHistoryUpdateOne {
+	mutation := newChannelMonitorHistoryMutation(c.config, OpUpdateOne, withChannelMonitorHistoryID(id))
+	return &ChannelMonitorHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ChannelMonitorHistory.
+func (c *ChannelMonitorHistoryClient) Delete() *ChannelMonitorHistoryDelete {
+	mutation := newChannelMonitorHistoryMutation(c.config, OpDelete)
+	return &ChannelMonitorHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ChannelMonitorHistoryClient) DeleteOne(_m *ChannelMonitorHistory) *ChannelMonitorHistoryDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ChannelMonitorHistoryClient) DeleteOneID(id int64) *ChannelMonitorHistoryDeleteOne {
+	builder := c.Delete().Where(channelmonitorhistory.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ChannelMonitorHistoryDeleteOne{builder}
+}
+
+// Query returns a query builder for ChannelMonitorHistory.
+func (c *ChannelMonitorHistoryClient) Query() *ChannelMonitorHistoryQuery {
+	return &ChannelMonitorHistoryQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeChannelMonitorHistory},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ChannelMonitorHistory entity by its id.
+func (c *ChannelMonitorHistoryClient) Get(ctx context.Context, id int64) (*ChannelMonitorHistory, error) {
+	return c.Query().Where(channelmonitorhistory.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ChannelMonitorHistoryClient) GetX(ctx context.Context, id int64) *ChannelMonitorHistory {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryMonitor queries the monitor edge of a ChannelMonitorHistory.
+func (c *ChannelMonitorHistoryClient) QueryMonitor(_m *ChannelMonitorHistory) *ChannelMonitorQuery {
+	query := (&ChannelMonitorClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(channelmonitorhistory.Table, channelmonitorhistory.FieldID, id),
+			sqlgraph.To(channelmonitor.Table, channelmonitor.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, channelmonitorhistory.MonitorTable, channelmonitorhistory.MonitorColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ChannelMonitorHistoryClient) Hooks() []Hook {
+	return c.hooks.ChannelMonitorHistory
+}
+
+// Interceptors returns the client interceptors.
+func (c *ChannelMonitorHistoryClient) Interceptors() []Interceptor {
+	return c.inters.ChannelMonitorHistory
+}
+
+func (c *ChannelMonitorHistoryClient) mutate(ctx context.Context, m *ChannelMonitorHistoryMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ChannelMonitorHistoryCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ChannelMonitorHistoryUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ChannelMonitorHistoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ChannelMonitorHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ChannelMonitorHistory mutation op: %q", m.Op())
 	}
 }
 
@@ -4628,20 +4944,20 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
-		ErrorPassthroughRule, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PromoCode, PromoCodeUsage, Proxy, RedeemCode,
-		SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
-		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserSubscription []ent.Hook
+		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, ChannelMonitor,
+		ChannelMonitorHistory, ErrorPassthroughRule, Group, IdempotencyRecord,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
+		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
 	}
 	inters struct {
-		APIKey, Account, AccountGroup, Announcement, AnnouncementRead,
-		ErrorPassthroughRule, Group, IdempotencyRecord, PaymentAuditLog, PaymentOrder,
-		PaymentProviderInstance, PromoCode, PromoCodeUsage, Proxy, RedeemCode,
-		SecuritySecret, Setting, SubscriptionPlan, TLSFingerprintProfile,
-		UsageCleanupTask, UsageLog, User, UserAllowedGroup, UserAttributeDefinition,
-		UserAttributeValue, UserSubscription []ent.Interceptor
+		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, ChannelMonitor,
+		ChannelMonitorHistory, ErrorPassthroughRule, Group, IdempotencyRecord,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
+		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
 	}
 )
 

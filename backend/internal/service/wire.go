@@ -501,6 +501,8 @@ var ProviderSet = wire.NewSet(
 	NewPaymentService,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
+	ProvideChannelMonitorService,
+	ProvideChannelMonitorRunner,
 )
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named
@@ -519,4 +521,21 @@ func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService) *PaymentOrderE
 	svc := NewPaymentOrderExpiryService(paymentSvc, 60*time.Second)
 	svc.Start()
 	return svc
+}
+
+// ProvideChannelMonitorService 创建渠道监控服务（CRUD + RunCheck + 用户视图聚合）。
+// 加密器复用 wire 中已注入的 SecretEncryptor（AES-256-GCM）。
+func ProvideChannelMonitorService(
+	repo ChannelMonitorRepository,
+	encryptor SecretEncryptor,
+) *ChannelMonitorService {
+	return NewChannelMonitorService(repo, encryptor)
+}
+
+// ProvideChannelMonitorRunner 创建并启动渠道监控调度器。
+// Runner.Stop 由 cleanup function 调用。
+func ProvideChannelMonitorRunner(svc *ChannelMonitorService) *ChannelMonitorRunner {
+	r := NewChannelMonitorRunner(svc)
+	r.Start()
+	return r
 }
