@@ -332,5 +332,38 @@ ON CONFLICT (report_type, report_key) DO NOTHING;
 $sql$;
 END $$;
 
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'auth_identities_metadata_is_object_check'
+    ) THEN
+        ALTER TABLE auth_identities
+            ADD CONSTRAINT auth_identities_metadata_is_object_check
+            CHECK (jsonb_typeof(metadata) = 'object');
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'auth_identity_channels_metadata_is_object_check'
+    ) THEN
+        ALTER TABLE auth_identity_channels
+            ADD CONSTRAINT auth_identity_channels_metadata_is_object_check
+            CHECK (jsonb_typeof(metadata) = 'object');
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'auth_identity_migration_reports_details_is_object_check'
+    ) THEN
+        ALTER TABLE auth_identity_migration_reports
+            ADD CONSTRAINT auth_identity_migration_reports_details_is_object_check
+            CHECK (jsonb_typeof(details) = 'object');
+    END IF;
+END $$;
+
 DROP FUNCTION IF EXISTS public.__migration_116_is_valid_legacy_metadata_jsonb(TEXT);
 DROP FUNCTION IF EXISTS public.__migration_116_safe_legacy_metadata_jsonb(TEXT);

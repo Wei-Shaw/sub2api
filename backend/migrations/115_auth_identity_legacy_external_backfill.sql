@@ -1,3 +1,29 @@
+CREATE OR REPLACE FUNCTION public.__migration_115_safe_legacy_metadata_jsonb(input_text TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    parsed JSONB;
+BEGIN
+    IF input_text IS NULL OR BTRIM(input_text) = '' THEN
+        RETURN '{REDACTED'::jsonb;
+    END IF;
+
+    BEGIN
+        parsed := input_text::jsonb;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RETURN '{REDACTED'::jsonb;
+    END;
+
+    IF jsonb_typeof(parsed) = 'object' THEN
+        RETURN parsed;
+    END IF;
+
+    RETURN jsonb_build_object('_legacy_metadata_raw_json', parsed);
+END;
+$$;
+
 DO $$
 BEGIN
     IF to_regclass('public.user_external_identities') IS NULL THEN
@@ -33,7 +59,7 @@ FROM (
         BTRIM(uei.provider_user_id) AS provider_user_id,
         BTRIM(uei.provider_username) AS provider_username,
         BTRIM(uei.display_name) AS display_name,
-        COALESCE(NULLIF(BTRIM(COALESCE(uei.metadata, '')), '')::jsonb, '{REDACTED'::jsonb) AS metadata_json,
+        public.__migration_115_safe_legacy_metadata_jsonb(uei.metadata) AS metadata_json,
         uei.created_at,
         uei.updated_at
     FROM user_external_identities AS uei
@@ -78,7 +104,7 @@ FROM (
         BTRIM(uei.provider_union_id) AS provider_union_id,
         BTRIM(uei.provider_username) AS provider_username,
         BTRIM(uei.display_name) AS display_name,
-        COALESCE(NULLIF(BTRIM(COALESCE(uei.metadata, '')), '')::jsonb, '{REDACTED'::jsonb) AS metadata_json,
+        public.__migration_115_safe_legacy_metadata_jsonb(uei.metadata) AS metadata_json,
         uei.created_at,
         uei.updated_at
     FROM user_external_identities AS uei
@@ -123,7 +149,7 @@ FROM (
     FROM user_external_identities AS uei
     JOIN users AS u ON u.id = uei.user_id
     CROSS JOIN LATERAL (
-        SELECT COALESCE(NULLIF(BTRIM(COALESCE(uei.metadata, '')), '')::jsonb, '{REDACTED'::jsonb) AS metadata_json
+        SELECT public.__migration_115_safe_legacy_metadata_jsonb(uei.metadata) AS metadata_json
     ) AS meta
     WHERE u.deleted_at IS NULL
       AND LOWER(BTRIM(COALESCE(uei.provider, ''))) = 'wechat'
@@ -157,7 +183,7 @@ FROM (
         uei.id,
         uei.user_id,
         BTRIM(uei.provider_user_id) AS provider_user_id,
-        COALESCE(NULLIF(BTRIM(COALESCE(uei.metadata, '')), '')::jsonb, '{REDACTED'::jsonb) AS metadata_json
+        public.__migration_115_safe_legacy_metadata_jsonb(uei.metadata) AS metadata_json
     FROM user_external_identities AS uei
     JOIN users AS u ON u.id = uei.user_id
     WHERE u.deleted_at IS NULL
@@ -185,3 +211,5 @@ WHERE ai.provider_type = 'wechat'
   AND COALESCE(ai.metadata ->> 'backfill_source', '') = 'synthetic_email'
   AND BTRIM(COALESCE(ai.metadata ->> 'unionid', '')) = ''
 ON CONFLICT (report_type, report_key) DO NOTHING;
+
+DROP FUNCTION IF EXISTS public.__migration_115_safe_legacy_metadata_jsonb(TEXT);

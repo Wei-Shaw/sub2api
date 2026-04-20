@@ -205,6 +205,199 @@ FROM auth_identity_migration_reports
 	require.Equal(t, beforeCount, afterCount)
 REDACTED
 
+func TestAuthIdentityLegacyExternalMigrations_ChainHandlesMalformedAndNonObjectMetadata(t *testing.T) {
+	tx := testTx(t)
+	ctx := context.Background()
+
+	migration115Path := filepath.Join("..", "..", "migrations", "115_auth_identity_legacy_external_backfill.sql")
+	migration115SQL, err := os.ReadFile(migration115Path)
+REDACTED
+
+	migration116Path := filepath.Join("..", "..", "migrations", "116_auth_identity_legacy_external_safety_reports.sql")
+	migration116SQL, err := os.ReadFile(migration116Path)
+REDACTED
+
+	_, err = tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS user_external_identities (
+	id BIGSERIAL PRIMARY KEY,
+	user_id BIGINT NOT NULL,
+	provider TEXT NOT NULL,
+	provider_user_id TEXT NOT NULL,
+	provider_union_id TEXT NULL,
+	provider_username TEXT NOT NULL DEFAULT '',
+	display_name TEXT NOT NULL DEFAULT '',
+	profile_url TEXT NOT NULL DEFAULT '',
+	avatar_url TEXT NOT NULL DEFAULT '',
+	metadata TEXT NOT NULL DEFAULT '{REDACTED',
+	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+TRUNCATE TABLE
+	auth_identity_channels,
+	auth_identities,
+	auth_identity_migration_reports,
+	user_external_identities,
+	users
+RESTART IDENTITY;
+`)
+REDACTED
+
+	var linuxDoMalformedUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-linuxdo-malformed@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&linuxDoMalformedUserID))
+
+	var linuxDoArrayUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-linuxdo-array@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&linuxDoArrayUserID))
+
+	var wechatUnionArrayUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-wechat-array@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&wechatUnionArrayUserID))
+
+	var wechatOpenIDArrayUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-wechat-openid-array@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&wechatOpenIDArrayUserID))
+
+	var linuxDoMalformedLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-malformed', NULL, 'legacy-linuxdo-malformed', 'Legacy LinuxDo Malformed', '{invalid')
+RETURNING id
+`, linuxDoMalformedUserID).Scan(&linuxDoMalformedLegacyID))
+
+	var linuxDoArrayLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-array', NULL, 'legacy-linuxdo-array', 'Legacy LinuxDo Array', '["legacy-linuxdo-array"]')
+RETURNING id
+`, linuxDoArrayUserID).Scan(&linuxDoArrayLegacyID))
+
+	var wechatUnionArrayLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'wechat', 'openid-array', 'union-array', 'legacy-wechat-array', 'Legacy WeChat Array', '["legacy-wechat-array"]')
+RETURNING id
+`, wechatUnionArrayUserID).Scan(&wechatUnionArrayLegacyID))
+
+	var wechatOpenIDArrayLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'wechat', 'openid-array-only', NULL, 'legacy-wechat-array-only', 'Legacy WeChat Array Only', '["legacy-wechat-openid-array"]')
+RETURNING id
+`, wechatOpenIDArrayUserID).Scan(&wechatOpenIDArrayLegacyID))
+
+	_, err = tx.ExecContext(ctx, string(migration115SQL))
+REDACTED
+
+	_, err = tx.ExecContext(ctx, string(migration116SQL))
+REDACTED
+
+	var linuxDoMalformedMetadataType string
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT jsonb_typeof(metadata)
+FROM auth_identities
+WHERE user_id = $1
+  AND provider_type = 'linuxdo'
+  AND provider_key = 'linuxdo'
+  AND provider_subject = 'linuxdo-malformed'
+`, linuxDoMalformedUserID).Scan(&linuxDoMalformedMetadataType))
+	require.Equal(t, "object", linuxDoMalformedMetadataType)
+
+	var linuxDoArrayMetadataType string
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT jsonb_typeof(metadata)
+FROM auth_identities
+WHERE user_id = $1
+  AND provider_type = 'linuxdo'
+  AND provider_key = 'linuxdo'
+  AND provider_subject = 'linuxdo-array'
+`, linuxDoArrayUserID).Scan(&linuxDoArrayMetadataType))
+	require.Equal(t, "object", linuxDoArrayMetadataType)
+
+	var wechatUnionArrayMetadataType string
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT jsonb_typeof(metadata)
+FROM auth_identities
+WHERE user_id = $1
+  AND provider_type = 'wechat'
+  AND provider_key = 'wechat-main'
+  AND provider_subject = 'union-array'
+`, wechatUnionArrayUserID).Scan(&wechatUnionArrayMetadataType))
+	require.Equal(t, "object", wechatUnionArrayMetadataType)
+
+	var invalidJSONReportDetailsType string
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT jsonb_typeof(details)
+FROM auth_identity_migration_reports
+WHERE report_type = 'legacy_external_identity_invalid_metadata_json'
+  AND report_key = $1
+`, "legacy_external_identity:"+strconv.FormatInt(linuxDoMalformedLegacyID, 10)).Scan(&invalidJSONReportDetailsType))
+	require.Equal(t, "object", invalidJSONReportDetailsType)
+
+	var openIDOnlyReportDetailsType string
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT jsonb_typeof(details)
+FROM auth_identity_migration_reports
+WHERE report_type = 'wechat_openid_only_requires_remediation'
+  AND report_key = $1
+`, "legacy_external_identity:"+strconv.FormatInt(wechatOpenIDArrayLegacyID, 10)).Scan(&openIDOnlyReportDetailsType))
+	require.Equal(t, "object", openIDOnlyReportDetailsType)
+
+	var preservedArrayMetadataCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identities
+WHERE id IN (
+	SELECT id
+	FROM auth_identities
+	WHERE (user_id = $1 AND provider_subject = 'linuxdo-array')
+	   OR (user_id = $2 AND provider_subject = 'union-array')
+)
+  AND metadata ? '_legacy_metadata_raw_json'
+`, linuxDoArrayUserID, wechatUnionArrayUserID).Scan(&preservedArrayMetadataCount))
+	require.Equal(t, 2, preservedArrayMetadataCount)
+
+	require.NotZero(t, linuxDoArrayLegacyID)
+	require.NotZero(t, wechatUnionArrayLegacyID)
+REDACTED
+
 func TestAuthIdentityLegacyExternalSafetyMigration_ReportsConflictsAndDowngradesInvalidJSON(t *testing.T) {
 	tx := testTx(t)
 	ctx := context.Background()
