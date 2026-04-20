@@ -86,6 +86,10 @@ REDACTED
 	return &User{ID: id, Balance: s.balanceREDACTED, nil
 REDACTED
 
+func (s *balanceLoadUserRepoStub) ListUserAuthIdentities(context.Context, int64) ([]UserAuthIdentityRecord, error) {
+	return nil, nil
+REDACTED
+
 func TestBillingCacheServiceGetUserBalance_Singleflight(t *testing.T) {
 	cache := &billingCacheMissStub{REDACTED
 	userRepo := &balanceLoadUserRepoStub{
