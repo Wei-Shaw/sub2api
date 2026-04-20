@@ -163,5 +163,42 @@ export async function getModelDefaultPricing(model: string): Promise<ModelDefaul
   return data
 REDACTED
 
-const channelsAPI = { list, getById, create, update, remove, getModelDefaultPricing REDACTED
+// --- Available channels (聚合视图：渠道 + 分组 + 支持模型) ---
+
+export interface AvailableGroupRef {
+  id: number
+  name: string
+  platform: string
+REDACTED
+
+export interface SupportedModel {
+  name: string
+  platform: string
+  pricing: ChannelModelPricing | null
+REDACTED
+
+export interface AvailableChannel {
+  id: number
+  name: string
+  description: string
+  status: string
+  billing_model_source: string
+  restrict_models: boolean
+  groups: AvailableGroupRef[]
+  supported_models: SupportedModel[]
+REDACTED
+
+interface AvailableChannelsResponse {
+  items: AvailableChannel[]
+REDACTED
+
+/** 列出所有可用渠道（含关联分组与支持模型） */
+export async function listAvailable(options?: { signal?: AbortSignal REDACTED): Promise<AvailableChannel[]> {
+  const { data REDACTED = await apiClient.get<AvailableChannelsResponse>('/admin/channels/available', {
+    signal: options?.signal
+  REDACTED)
+  return data.items
+REDACTED
+
+const channelsAPI = { list, getById, create, update, remove, getModelDefaultPricing, listAvailable REDACTED
 export default channelsAPI

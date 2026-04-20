@@ -344,6 +344,7 @@ export default {
     users: 'Users',
     groups: 'Groups',
     channels: 'Channels',
+    availableChannels: 'Available Channels',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     proxies: 'Proxies',
@@ -926,6 +927,38 @@ export default {
     empty: {
       title: 'No channels available',
       description: 'No monitored channels have been configured yet.'
+    REDACTED
+  REDACTED,
+
+  // Available Channels (user-facing)
+  availableChannels: {
+    title: 'Available Channels',
+    description: 'Channels you can access, along with their supported models and pricing',
+    searchPlaceholder: 'Search channels or models...',
+    empty: 'No available channels',
+    noModels: 'No models configured',
+    noPricing: 'Pricing not configured',
+    columns: {
+      name: 'Channel',
+      groups: 'Your Accessible Groups',
+      supportedModels: 'Supported Models'
+    REDACTED,
+    pricing: {
+      billingMode: 'Billing Mode',
+      billingModeToken: 'Per Token',
+      billingModePerRequest: 'Per Request',
+      billingModeImage: 'Per Image',
+      inputPrice: 'Input',
+      outputPrice: 'Output',
+      cacheWritePrice: 'Cache Write',
+      cacheReadPrice: 'Cache Read',
+      imageOutputPrice: 'Image Output',
+      perRequestPrice: 'Per Request',
+      intervals: 'Tiered Pricing',
+      tierLabel: 'Tier',
+      tokenRange: 'Token Range',
+      unitPerMillion: '/ 1M tokens',
+      unitPerRequest: '/ request'
     REDACTED
   REDACTED,
 
@@ -1977,6 +2010,48 @@ export default {
         geminiText: 'Gemini Text',
         geminiImage: 'Gemini Image',
         hint: 'Select at least one model family'
+      REDACTED
+    REDACTED,
+
+    // Available Channels (aggregated read-only view)
+    availableChannels: {
+      title: 'Available Channels',
+      description: 'Aggregated view: each channel with its linked groups and supported models (wildcards expanded)',
+      searchPlaceholder: 'Search channels or models...',
+      columns: {
+        name: 'Channel',
+        status: 'Status',
+        billingSource: 'Billing Model Source',
+        groups: 'Linked Groups',
+        supportedModels: 'Supported Models'
+      REDACTED,
+      empty: 'No data',
+      noGroups: 'No linked groups',
+      noModels: 'No model mapping configured',
+      noPricing: 'Pricing not configured',
+      statusActive: 'Active',
+      statusDisabled: 'Disabled',
+      billingSource: {
+        requested: 'Requested model',
+        upstream: 'Upstream model',
+        channel_mapped: 'Channel-mapped model'
+      REDACTED,
+      pricing: {
+        billingMode: 'Billing Mode',
+        billingModeToken: 'Per Token',
+        billingModePerRequest: 'Per Request',
+        billingModeImage: 'Per Image',
+        inputPrice: 'Input',
+        outputPrice: 'Output',
+        cacheWritePrice: 'Cache Write',
+        cacheReadPrice: 'Cache Read',
+        imageOutputPrice: 'Image Output',
+        perRequestPrice: 'Per Request',
+        intervals: 'Tiered Pricing',
+        tierLabel: 'Tier',
+        tokenRange: 'Token Range',
+        unitPerMillion: '/ 1M tokens',
+        unitPerRequest: '/ request'
       REDACTED
     REDACTED,
 

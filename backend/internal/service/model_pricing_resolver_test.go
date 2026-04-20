@@ -184,7 +184,7 @@ REDACTED
 			return map[int64]string{groupID: "anthropic"REDACTED, nil
 	REDACTED,
 REDACTED
-	cs := NewChannelService(repo, nil)
+	cs := NewChannelService(repo, nil, nil)
 	bs := newTestBillingServiceForResolver()
 	return NewModelPricingResolver(cs, bs)
 REDACTED
@@ -517,7 +517,7 @@ func TestResolve_WithChannelOverride_CacheError(t *testing.T) {
 			return nil, errors.New("database unavailable")
 	REDACTED,
 REDACTED
-	cs := NewChannelService(repo, nil)
+	cs := NewChannelService(repo, nil, nil)
 	bs := newTestBillingServiceForResolver()
 	r := NewModelPricingResolver(cs, bs)
 

@@ -68,6 +68,12 @@ func RegisterUserRoutes(
 			groups.GET("/rates", h.APIKey.GetUserGroupRates)
 	REDACTED
 
+		// 用户可用渠道（非管理员接口）
+		channels := authenticated.Group("/channels")
+		{
+			channels.GET("/available", h.AvailableChannel.List)
+	REDACTED
+
 		// 使用记录
 		usage := authenticated.Group("/usage")
 		{

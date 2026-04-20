@@ -648,6 +648,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment REDACTED,
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment REDACTED,
+    { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true REDACTED,
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true REDACTED,
     { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED,
     ...customMenuItemsForUser.value.map((item): NavItem => ({

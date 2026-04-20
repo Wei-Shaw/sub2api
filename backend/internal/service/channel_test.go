@@ -433,3 +433,207 @@ REDACTED
 	require.Contains(t, err.Error(), "unbounded")
 	require.Contains(t, err.Error(), "last")
 REDACTED
+
+func TestSupportedModels_ExactKeysAndPricing(t *testing.T) {
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 10, Platform: "anthropic", Models: []string{"claude-sonnet-4-6"REDACTED, InputPrice: testPtrFloat64(3e-6)REDACTED,
+			{ID: 11, Platform: "anthropic", Models: []string{"claude-opus-4-6"REDACTED, InputPrice: testPtrFloat64(1.5e-5)REDACTED,
+	REDACTED,
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {
+				"claude-sonnet-4-6": "claude-sonnet-4-6",
+				"claude-opus-4-6":   "claude-opus-4-6",
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	got := ch.SupportedModels()
+	require.Len(t, got, 2)
+	require.Equal(t, "anthropic", got[0].Platform)
+	require.Equal(t, "claude-opus-4-6", got[0].Name)
+	require.NotNil(t, got[0].Pricing)
+	require.Equal(t, int64(11), got[0].Pricing.ID)
+	require.Equal(t, "claude-sonnet-4-6", got[1].Name)
+	require.Equal(t, int64(10), got[1].Pricing.ID)
+REDACTED
+
+func TestSupportedModels_WildcardExpandedFromPricing(t *testing.T) {
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 1, Platform: "anthropic", Models: []string{"claude-sonnet-4-6", "claude-sonnet-4-5"REDACTEDREDACTED,
+			{ID: 2, Platform: "anthropic", Models: []string{"claude-opus-4-6"REDACTEDREDACTED,
+	REDACTED,
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {
+				"claude-sonnet-*": "claude-sonnet-4-6",
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	got := ch.SupportedModels()
+	names := make([]string, 0, len(got))
+	for _, m := range got {
+		names = append(names, m.Name)
+REDACTED
+	require.ElementsMatch(t, []string{"claude-sonnet-4-5", "claude-sonnet-4-6"REDACTED, names)
+	for _, m := range got {
+		require.NotContains(t, m.Name, "*")
+REDACTED
+REDACTED
+
+func TestSupportedModels_PlatformWithoutMappingSkipped(t *testing.T) {
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 1, Platform: "anthropic", Models: []string{"claude-sonnet-4-6"REDACTEDREDACTED,
+			{ID: 2, Platform: "openai", Models: []string{"gpt-4o"REDACTEDREDACTED,
+	REDACTED,
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {"claude-sonnet-4-6": "claude-sonnet-4-6"REDACTED,
+			// openai 没有 mapping 条目
+	REDACTED,
+REDACTED
+
+	got := ch.SupportedModels()
+	require.Len(t, got, 1)
+	require.Equal(t, "anthropic", got[0].Platform)
+	require.Equal(t, "claude-sonnet-4-6", got[0].Name)
+REDACTED
+
+func TestSupportedModels_MissingPricingKeepsNilPricing(t *testing.T) {
+	ch := &Channel{
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {"claude-sonnet-4-6": "claude-sonnet-4-6"REDACTED,
+	REDACTED,
+REDACTED
+
+	got := ch.SupportedModels()
+	require.Len(t, got, 1)
+	require.Equal(t, "claude-sonnet-4-6", got[0].Name)
+	require.Nil(t, got[0].Pricing)
+REDACTED
+
+func TestSupportedModels_DedupAndSort(t *testing.T) {
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 1, Platform: "anthropic", Models: []string{"claude-sonnet-4-6", "claude-sonnet-4-5"REDACTEDREDACTED,
+			{ID: 2, Platform: "openai", Models: []string{"gpt-4o"REDACTEDREDACTED,
+	REDACTED,
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {
+				"claude-sonnet-4-6": "upstream-a",
+				"claude-sonnet-*":   "upstream-a",
+		REDACTED,
+			"openai": {"gpt-4o": "gpt-4o"REDACTED,
+	REDACTED,
+REDACTED
+
+	got := ch.SupportedModels()
+	require.Len(t, got, 3)
+	require.Equal(t, "anthropic", got[0].Platform)
+	require.Equal(t, "claude-sonnet-4-5", got[0].Name)
+	require.Equal(t, "anthropic", got[1].Platform)
+	require.Equal(t, "claude-sonnet-4-6", got[1].Name)
+	require.Equal(t, "openai", got[2].Platform)
+	require.Equal(t, "gpt-4o", got[2].Name)
+REDACTED
+
+func TestSupportedModels_NilChannelAndEmpty(t *testing.T) {
+	var nilCh *Channel
+	require.Nil(t, nilCh.SupportedModels())
+
+	empty := &Channel{REDACTED
+	require.Nil(t, empty.SupportedModels())
+REDACTED
+
+func TestGetModelPricingByPlatform(t *testing.T) {
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 1, Platform: "anthropic", Models: []string{"claude-sonnet-4-6"REDACTED, InputPrice: testPtrFloat64(3e-6)REDACTED,
+			{ID: 2, Platform: "openai", Models: []string{"claude-sonnet-4-6"REDACTED, InputPrice: testPtrFloat64(1e-6)REDACTED,
+	REDACTED,
+REDACTED
+
+	ant := ch.GetModelPricingByPlatform("anthropic", "claude-sonnet-4-6")
+	require.NotNil(t, ant)
+	require.Equal(t, int64(1), ant.ID)
+
+	oa := ch.GetModelPricingByPlatform("openai", "claude-sonnet-4-6")
+	require.NotNil(t, oa)
+	require.Equal(t, int64(2), oa.ID)
+
+	require.Nil(t, ch.GetModelPricingByPlatform("gemini", "claude-sonnet-4-6"))
+REDACTED
+
+func TestSupportedModels_WildcardOnlyPricingRowsSkipped(t *testing.T) {
+	// 定价中含通配符条目（pattern），不应被当作具体模型名展开。
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 1, Platform: "anthropic", Models: []string{"claude-sonnet-*", "claude-sonnet-4-6"REDACTEDREDACTED,
+	REDACTED,
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {"claude-sonnet-*": "claude-sonnet-4-6"REDACTED,
+	REDACTED,
+REDACTED
+	got := ch.SupportedModels()
+	require.Len(t, got, 1)
+	require.Equal(t, "claude-sonnet-4-6", got[0].Name)
+	for _, m := range got {
+		require.NotContains(t, m.Name, "*")
+REDACTED
+REDACTED
+
+func TestSupportedModels_WildcardPrefixMatchesNothing(t *testing.T) {
+	// 通配符模式无任何对应定价模型时，该平台应产出 0 个模型。
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 1, Platform: "openai", Models: []string{"gpt-4o"REDACTEDREDACTED,
+	REDACTED,
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {"gpt-foo-*": "gpt-foo-1"REDACTED,
+	REDACTED,
+REDACTED
+	require.Empty(t, ch.SupportedModels())
+REDACTED
+
+func TestSupportedModels_CrossPlatformPricingDoesNotBleed(t *testing.T) {
+	// anthropic 的通配符不应拉入 openai 定价行，哪怕名字恰好前缀匹配。
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 1, Platform: "openai", Models: []string{"claude-sonnet-4-6"REDACTEDREDACTED,
+	REDACTED,
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {"claude-sonnet-*": "x"REDACTED,
+	REDACTED,
+REDACTED
+	require.Empty(t, ch.SupportedModels())
+REDACTED
+
+func TestSupportedModels_CaseInsensitiveDedup(t *testing.T) {
+	// 两行定价用不同大小写定义了同一模型，结果应去重为 1 条；首次出现的原始大小写保留。
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 1, Platform: "openai", Models: []string{"GPT-4o"REDACTEDREDACTED,
+			{ID: 2, Platform: "openai", Models: []string{"gpt-4o"REDACTEDREDACTED,
+	REDACTED,
+		ModelMapping: map[string]map[string]string{
+			"openai": {"gpt-*": "x"REDACTED,
+	REDACTED,
+REDACTED
+	got := ch.SupportedModels()
+	require.Len(t, got, 1)
+	require.Equal(t, "GPT-4o", got[0].Name)
+REDACTED
+
+func TestSupportedModels_EmptyPlatformMapping(t *testing.T) {
+	// ModelMapping 有一个 platform key 但 value 是空 map —— 该 platform 应被跳过。
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 1, Platform: "anthropic", Models: []string{"claude-sonnet-4-6"REDACTEDREDACTED,
+	REDACTED,
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {REDACTED,
+	REDACTED,
+REDACTED
+	require.Empty(t, ch.SupportedModels())
+REDACTED
