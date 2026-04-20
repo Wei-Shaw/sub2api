@@ -141,6 +141,7 @@ const (
 // ChannelService 渠道管理服务
 type ChannelService struct {
 	repo                 ChannelRepository
+	groupRepo            GroupRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 
 	cache   atomic.Value // *channelCache
@@ -148,9 +149,10 @@ type ChannelService struct {
 }
 
 // NewChannelService 创建渠道服务实例
-func NewChannelService(repo ChannelRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *ChannelService {
+func NewChannelService(repo ChannelRepository, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *ChannelService {
 	s := &ChannelService{
 		repo:                 repo,
+		groupRepo:            groupRepo,
 		authCacheInvalidator: authCacheInvalidator,
 	}
 	return s
@@ -884,12 +886,7 @@ func conflictsBetween(a, b modelEntry) bool {
 
 // toModelEntry 将模型名转换为 modelEntry
 func toModelEntry(pattern string) modelEntry {
-	lower := strings.ToLower(pattern)
-	isWild := strings.HasSuffix(lower, "*")
-	prefix := lower
-	if isWild {
-		prefix = strings.TrimSuffix(lower, "*")
-	}
+	prefix, isWild := splitWildcardSuffix(strings.ToLower(pattern))
 	return modelEntry{pattern: pattern, prefix: prefix, wildcard: isWild}
 }
 

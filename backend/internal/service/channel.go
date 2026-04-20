@@ -345,3 +345,175 @@ type ChannelUsageFields struct {
 	BillingModelSource string // 计费模型来源："requested" / "upstream" / "channel_mapped"
 	ModelMappingChain  string // 映射链描述，如 "a→b→c"
 }
+
+// SupportedModel 渠道的一个支持模型条目（无通配符、可直接展示给用户）
+type SupportedModel struct {
+	Name     string               // 用户侧模型名
+	Platform string               // 所属平台
+	Pricing  *ChannelModelPricing // 定价详情（nil 表示未配置定价）
+}
+
+// wildcardSuffix 是模型模式中的通配符后缀标记（仅支持尾部匹配）。
+const wildcardSuffix = "*"
+
+// splitWildcardSuffix 将模型模式拆分为 (prefix, isWildcard)。
+//
+//	"claude-opus-*"  → ("claude-opus-", true)
+//	"claude-opus-4"  → ("claude-opus-4", false)
+//	"*"              → ("", true)
+//
+// 注意：返回的 prefix 保持原始大小写，由调用方按需 ToLower。
+func splitWildcardSuffix(pattern string) (prefix string, isWildcard bool) {
+	if strings.HasSuffix(pattern, wildcardSuffix) {
+		return strings.TrimSuffix(pattern, wildcardSuffix), true
+	}
+	return pattern, false
+}
+
+// GetModelPricingByPlatform 在指定平台下查找精确模型的定价，未找到返回 nil。
+// 与 GetModelPricing 的区别：按 Platform 隔离，避免跨平台同名模型误匹配。
+func (c *Channel) GetModelPricingByPlatform(platform, model string) *ChannelModelPricing {
+	if c == nil {
+		return nil
+	}
+	modelLower := strings.ToLower(model)
+	for i := range c.ModelPricing {
+		if c.ModelPricing[i].Platform != platform {
+			continue
+		}
+		for _, m := range c.ModelPricing[i].Models {
+			if strings.ToLower(m) == modelLower {
+				cp := c.ModelPricing[i].Clone()
+				return &cp
+			}
+		}
+	}
+	return nil
+}
+
+// pricingLookup 是渠道定价在单个计算过程中的索引：platform → (lowerName → *pricing)。
+// 用于将 SupportedModels 的定价解析从 O(N*M) 降到 O(N+M)。
+type pricingLookup map[string]map[string]*ChannelModelPricing
+
+// buildPricingLookup 对渠道的定价列表做一次扫描，生成 platform+模型名 的索引。
+// 索引值是定价条目的 Clone 指针，调用方可安全按需返回副本而不污染缓存。
+// wildcard 后缀（如 "claude-*"）不会被索引（它们不是精确模型名）。
+func buildPricingLookup(pricings []ChannelModelPricing) pricingLookup {
+	lookup := make(pricingLookup, len(pricings))
+	for i := range pricings {
+		p := pricings[i]
+		byModel, ok := lookup[p.Platform]
+		if !ok {
+			byModel = make(map[string]*ChannelModelPricing, len(p.Models))
+			lookup[p.Platform] = byModel
+		}
+		for _, m := range p.Models {
+			if _, wild := splitWildcardSuffix(m); wild {
+				continue
+			}
+			lower := strings.ToLower(m)
+			if _, exists := byModel[lower]; exists {
+				continue // 首个命中胜出（保持 case-insensitive 去重后第一个定价）
+			}
+			cp := pricings[i].Clone()
+			byModel[lower] = &cp
+		}
+	}
+	return lookup
+}
+
+// pricedNamesFor 返回指定平台下已索引的精确模型名（保留原始大小写，按添加顺序）。
+// 它是从 pricingLookup 中取 keys 并回查原始 ModelPricing 以得到原样字符串。
+func pricedNamesFor(pricings []ChannelModelPricing, platform string) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for i := range pricings {
+		if pricings[i].Platform != platform {
+			continue
+		}
+		for _, m := range pricings[i].Models {
+			if _, wild := splitWildcardSuffix(m); wild {
+				continue
+			}
+			lower := strings.ToLower(m)
+			if _, ok := seen[lower]; ok {
+				continue
+			}
+			seen[lower] = struct{}{}
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// SupportedModels 计算渠道的支持模型列表，结果保证不含通配符。
+//
+// 算法（以渠道自身的 ModelMapping 为唯一入口）：
+//   - 遍历 Channel.ModelMapping 的每个 platform 条目；
+//   - 映射 key 不带尾部 "*"：直接作为一个支持模型名（即使没有匹配的定价行，也会产出 Pricing=nil 的条目）；
+//   - 映射 key 带尾部 "*"：用同 platform 的 ModelPricing.Models 做前缀匹配展开（定价中带 "*" 的条目被忽略，因为它们本身就是模式，不是具体模型名）；
+//   - 未在 ModelMapping 中出现的 platform 不会产出任何条目——这是**刻意设计**（"没配映射就不显示"），即使该平台有定价行。
+//
+// 每个结果尝试从 pricingLookup（平台+模型名索引）查找精确定价，未配置则 Pricing=nil。
+// 结果按 (Platform, Name) 稳定排序，并按 (Platform, lowercase(Name)) 去重。
+func (c *Channel) SupportedModels() []SupportedModel {
+	if c == nil || len(c.ModelMapping) == 0 {
+		return nil
+	}
+
+	lookup := buildPricingLookup(c.ModelPricing)
+
+	type dedupKey struct {
+		platform string
+		name     string
+	}
+	seen := make(map[dedupKey]struct{})
+	result := make([]SupportedModel, 0)
+
+	add := func(platform, name string) {
+		key := dedupKey{platform: platform, name: strings.ToLower(name)}
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		var pricing *ChannelModelPricing
+		if byModel, ok := lookup[platform]; ok {
+			if p, ok := byModel[strings.ToLower(name)]; ok {
+				pricing = p
+			}
+		}
+		result = append(result, SupportedModel{
+			Name:     name,
+			Platform: platform,
+			Pricing:  pricing,
+		})
+	}
+
+	for platform, mapping := range c.ModelMapping {
+		if len(mapping) == 0 {
+			continue
+		}
+		pricedNames := pricedNamesFor(c.ModelPricing, platform)
+		for src := range mapping {
+			prefix, isWild := splitWildcardSuffix(src)
+			if isWild {
+				prefixLower := strings.ToLower(prefix)
+				for _, candidate := range pricedNames {
+					if strings.HasPrefix(strings.ToLower(candidate), prefixLower) {
+						add(platform, candidate)
+					}
+				}
+				continue
+			}
+			add(platform, src)
+		}
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Platform != result[j].Platform {
+			return result[i].Platform < result[j].Platform
+		}
+		return result[i].Name < result[j].Name
+	})
+	return result
+}
