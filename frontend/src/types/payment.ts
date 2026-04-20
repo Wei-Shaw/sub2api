@@ -156,6 +156,28 @@ export interface CreateOrderRequest {
   plan_id?: number
   return_url?: string
   payment_source?: string
+  openid?: string
+  is_mobile?: boolean
+REDACTED
+
+export type CreateOrderResultType = 'order_created' | 'oauth_required' | 'jsapi_ready'
+
+export interface WechatOAuthInfo {
+  authorize_url?: string
+  appid?: string
+  openid?: string
+  scope?: string
+  state?: string
+  redirect_url?: string
+REDACTED
+
+export interface WechatJSAPIPayload {
+  appId?: string
+  timeStamp?: string
+  nonceStr?: string
+  package?: string
+  signType?: string
+  paySign?: string
 REDACTED
 
 export interface CreateOrderResult {
@@ -167,8 +189,14 @@ export interface CreateOrderResult {
   pay_amount: number
   fee_rate: number
   expires_at: string
+  result_type?: CreateOrderResultType
+  payment_type?: string
+  out_trade_no?: string
   payment_mode?: string
   resume_token?: string
+  oauth?: WechatOAuthInfo
+  jsapi?: WechatJSAPIPayload
+  jsapi_payload?: WechatJSAPIPayload
 REDACTED
 
 export interface DashboardStats {

@@ -204,10 +204,12 @@ REDACTED
 type CreateOrderRequest struct {
 	Amount        float64 `json:"amount"`
 	PaymentType   string  `json:"payment_type" binding:"required"`
+	OpenID        string  `json:"openid"`
 	ReturnURL     string  `json:"return_url"`
 	PaymentSource string  `json:"payment_source"`
 	OrderType     string  `json:"order_type"`
 	PlanID        int64   `json:"plan_id"`
+	IsMobile      *bool   `json:"is_mobile,omitempty"`
 REDACTED
 
 // CreateOrder creates a new payment order.
@@ -224,17 +226,25 @@ REDACTED
 		return
 REDACTED
 
+	mobile := isMobile(c)
+	if req.IsMobile != nil {
+		mobile = *req.IsMobile
+REDACTED
+
 	result, err := h.paymentService.CreateOrder(c.Request.Context(), service.CreateOrderRequest{
-		UserID:        subject.UserID,
-		Amount:        req.Amount,
-		PaymentType:   req.PaymentType,
-		ClientIP:      c.ClientIP(),
-		IsMobile:      isMobile(c),
-		SrcHost:       c.Request.Host,
-		ReturnURL:     req.ReturnURL,
-		PaymentSource: req.PaymentSource,
-		OrderType:     req.OrderType,
-		PlanID:        req.PlanID,
+		UserID:          subject.UserID,
+		Amount:          req.Amount,
+		PaymentType:     req.PaymentType,
+		OpenID:          req.OpenID,
+		ClientIP:        c.ClientIP(),
+		IsMobile:        mobile,
+		IsWeChatBrowser: isWeChatBrowser(c),
+		SrcHost:         c.Request.Host,
+		SrcURL:          c.Request.Referer(),
+		ReturnURL:       req.ReturnURL,
+		PaymentSource:   req.PaymentSource,
+		OrderType:       req.OrderType,
+		PlanID:          req.PlanID,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -466,4 +476,8 @@ func isMobile(c *gin.Context) bool {
 	REDACTED
 REDACTED
 	return false
+REDACTED
+
+func isWeChatBrowser(c *gin.Context) bool {
+	return strings.Contains(strings.ToLower(c.GetHeader("User-Agent")), "micromessenger")
 REDACTED

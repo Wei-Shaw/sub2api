@@ -1,0 +1,177 @@
+package service
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+)
+
+func TestBuildCreateOrderResponseDefaultsToOrderCreated(t *testing.T) {
+	t.Parallel()
+
+	expiresAt := time.Date(2026, 4, 16, 12, 0, 0, 0, time.UTC)
+	resp := buildCreateOrderResponse(
+		&dbent.PaymentOrder{
+			ID:         42,
+			Amount:     12.34,
+			FeeRate:    0.03,
+			ExpiresAt:  expiresAt,
+			OutTradeNo: "sub2_42",
+	REDACTED,
+		CreateOrderRequest{PaymentType: payment.TypeWxpayREDACTED,
+		12.71,
+		&payment.InstanceSelection{PaymentMode: "qrcode"REDACTED,
+		&payment.CreatePaymentResponse{
+			TradeNo: "sub2_42",
+			QRCode:  "weixin://wxpay/bizpayurl?pr=test",
+	REDACTED,
+		payment.CreatePaymentResultOrderCreated,
+	)
+
+	if resp.ResultType != payment.CreatePaymentResultOrderCreated {
+		t.Fatalf("result type = %q, want %q", resp.ResultType, payment.CreatePaymentResultOrderCreated)
+REDACTED
+	if resp.OutTradeNo != "sub2_42" {
+		t.Fatalf("out_trade_no = %q, want %q", resp.OutTradeNo, "sub2_42")
+REDACTED
+	if resp.QRCode != "weixin://wxpay/bizpayurl?pr=test" {
+		t.Fatalf("qr_code = %q, want %q", resp.QRCode, "weixin://wxpay/bizpayurl?pr=test")
+REDACTED
+	if resp.JSAPI != nil || resp.JSAPIPayload != nil {
+		t.Fatal("order_created response should not include jsapi payload")
+REDACTED
+	if !resp.ExpiresAt.Equal(expiresAt) {
+		t.Fatalf("expires_at = %v, want %v", resp.ExpiresAt, expiresAt)
+REDACTED
+REDACTED
+
+func TestBuildCreateOrderResponseCopiesJSAPIPayload(t *testing.T) {
+	t.Parallel()
+
+	jsapiPayload := &payment.WechatJSAPIPayload{
+		AppID:     "wx123",
+		TimeStamp: "1712345678",
+		NonceStr:  "nonce-123",
+		Package:   "prepay_id=wx123",
+		SignType:  "RSA",
+		PaySign:   "signed-payload",
+REDACTED
+	resp := buildCreateOrderResponse(
+		&dbent.PaymentOrder{
+			ID:         88,
+			Amount:     66.88,
+			FeeRate:    0.01,
+			ExpiresAt:  time.Date(2026, 4, 16, 13, 0, 0, 0, time.UTC),
+			OutTradeNo: "sub2_88",
+	REDACTED,
+		CreateOrderRequest{PaymentType: payment.TypeWxpayREDACTED,
+		67.55,
+		&payment.InstanceSelection{PaymentMode: "popup"REDACTED,
+		&payment.CreatePaymentResponse{
+			TradeNo:    "sub2_88",
+			ResultType: payment.CreatePaymentResultJSAPIReady,
+			JSAPI:      jsapiPayload,
+	REDACTED,
+		payment.CreatePaymentResultJSAPIReady,
+	)
+
+	if resp.ResultType != payment.CreatePaymentResultJSAPIReady {
+		t.Fatalf("result type = %q, want %q", resp.ResultType, payment.CreatePaymentResultJSAPIReady)
+REDACTED
+	if resp.JSAPI == nil || resp.JSAPIPayload == nil {
+		t.Fatal("expected jsapi payload aliases to be populated")
+REDACTED
+	if resp.JSAPI != jsapiPayload || resp.JSAPIPayload != jsapiPayload {
+		t.Fatal("expected jsapi aliases to preserve the original pointer")
+REDACTED
+REDACTED
+
+func TestMaybeBuildWeChatOAuthRequiredResponse(t *testing.T) {
+	t.Setenv("WECHAT_OAUTH_MP_APP_ID", "wx123456")
+	t.Setenv("WECHAT_OAUTH_MP_APP_SECRET", "wechat-secret")
+
+	svc := &PaymentService{REDACTED
+
+	resp, err := svc.maybeBuildWeChatOAuthRequiredResponse(context.Background(), CreateOrderRequest{
+		Amount:          12.5,
+		PaymentType:     payment.TypeWxpay,
+		IsWeChatBrowser: true,
+		SrcURL:          "https://merchant.example/payment?from=wechat",
+		OrderType:       payment.OrderTypeBalance,
+REDACTED, 12.5, 12.88, 0.03)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+REDACTED
+	if resp == nil {
+		t.Fatal("expected oauth_required response, got nil")
+REDACTED
+	if resp.ResultType != payment.CreatePaymentResultOAuthRequired {
+		t.Fatalf("result type = %q, want %q", resp.ResultType, payment.CreatePaymentResultOAuthRequired)
+REDACTED
+	if resp.OAuth == nil {
+		t.Fatal("expected oauth payload, got nil")
+REDACTED
+	if resp.OAuth.AppID != "wx123456" {
+		t.Fatalf("appid = %q, want %q", resp.OAuth.AppID, "wx123456")
+REDACTED
+	if resp.OAuth.Scope != "snsapi_base" {
+		t.Fatalf("scope = %q, want %q", resp.OAuth.Scope, "snsapi_base")
+REDACTED
+	if resp.OAuth.RedirectURL != "/auth/wechat/payment/callback" {
+		t.Fatalf("redirect_url = %q, want %q", resp.OAuth.RedirectURL, "/auth/wechat/payment/callback")
+REDACTED
+	if resp.OAuth.AuthorizeURL != "/api/v1/auth/oauth/wechat/payment/start?amount=12.5&order_type=balance&payment_type=wxpay&redirect=%2Fpurchase%3Ffrom%3Dwechat&scope=snsapi_base" {
+		t.Fatalf("authorize_url = %q", resp.OAuth.AuthorizeURL)
+REDACTED
+REDACTED
+
+func TestMaybeBuildWeChatOAuthRequiredResponseRequiresMPConfigInWeChat(t *testing.T) {
+	t.Parallel()
+
+	svc := &PaymentService{REDACTED
+
+	resp, err := svc.maybeBuildWeChatOAuthRequiredResponse(context.Background(), CreateOrderRequest{
+		Amount:          12.5,
+		PaymentType:     payment.TypeWxpay,
+		IsWeChatBrowser: true,
+		SrcURL:          "https://merchant.example/payment?from=wechat",
+		OrderType:       payment.OrderTypeBalance,
+REDACTED, 12.5, 12.88, 0.03)
+	if resp != nil {
+		t.Fatalf("expected nil response, got %+v", resp)
+REDACTED
+	if err == nil {
+		t.Fatal("expected error, got nil")
+REDACTED
+
+	appErr := infraerrors.FromError(err)
+	if appErr.Reason != "WECHAT_PAYMENT_MP_NOT_CONFIGURED" {
+		t.Fatalf("reason = %q, want %q", appErr.Reason, "WECHAT_PAYMENT_MP_NOT_CONFIGURED")
+REDACTED
+REDACTED
+
+func TestMaybeBuildWeChatOAuthRequiredResponseForSelectionSkipsEasyPayProvider(t *testing.T) {
+	t.Setenv("WECHAT_OAUTH_MP_APP_ID", "wx123456")
+	t.Setenv("WECHAT_OAUTH_MP_APP_SECRET", "wechat-secret")
+
+	svc := &PaymentService{REDACTED
+
+	resp, err := svc.maybeBuildWeChatOAuthRequiredResponseForSelection(context.Background(), CreateOrderRequest{
+		Amount:          12.5,
+		PaymentType:     payment.TypeWxpay,
+		IsWeChatBrowser: true,
+		OrderType:       payment.OrderTypeBalance,
+REDACTED, 12.5, 12.88, 0.03, &payment.InstanceSelection{
+		ProviderKey: payment.TypeEasyPay,
+REDACTED)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+REDACTED
+	if resp != nil {
+		t.Fatalf("expected nil response, got %+v", resp)
+REDACTED
+REDACTED

@@ -66,6 +66,8 @@ func RegisterAuthRoutes(
 		auth.GET("/oauth/linuxdo/callback", h.Auth.LinuxDoOAuthCallback)
 		auth.GET("/oauth/wechat/start", h.Auth.WeChatOAuthStart)
 		auth.GET("/oauth/wechat/callback", h.Auth.WeChatOAuthCallback)
+		auth.GET("/oauth/wechat/payment/start", h.Auth.WeChatPaymentOAuthStart)
+		auth.GET("/oauth/wechat/payment/callback", h.Auth.WeChatPaymentOAuthCallback)
 		auth.POST("/oauth/pending/exchange",
 			rateLimiter.LimitWithOptions("oauth-pending-exchange", 20, time.Minute, middleware.RateLimitOptions{
 				FailureMode: middleware.RateLimitFailClose,

@@ -105,6 +105,50 @@ describe('decidePaymentLaunch', () => {
     expect(decision.recovery.paymentMode).toBe('popup')
     expect(decision.recovery.resumeToken).toBe('resume-2')
   REDACTED)
+
+  it('returns wechat oauth launch when backend requires in-app authorization', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      result_type: 'oauth_required',
+      payment_type: 'wxpay',
+      oauth: {
+        authorize_url: '/api/v1/auth/oauth/wechat/payment/start?payment_type=wxpay',
+        appid: 'wx123',
+        scope: 'snsapi_base',
+        redirect_url: '/auth/wechat/payment/callback',
+      REDACTED,
+    REDACTED), {
+      visibleMethod: 'wxpay',
+      orderType: 'balance',
+      isMobile: true,
+    REDACTED)
+
+    expect(decision.kind).toBe('wechat_oauth')
+    expect(decision.oauth?.authorize_url).toContain('/api/v1/auth/oauth/wechat/payment/start')
+    expect(decision.paymentState.paymentType).toBe('wxpay')
+  REDACTED)
+
+  it('returns wechat jsapi launch when backend has a jsapi payload ready', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      result_type: 'jsapi_ready',
+      payment_type: 'wxpay',
+      jsapi: {
+        appId: 'wx123',
+        timeStamp: '1712345678',
+        nonceStr: 'nonce-123',
+        package: 'prepay_id=wx123',
+        signType: 'RSA',
+        paySign: 'signed-payload',
+      REDACTED,
+    REDACTED), {
+      visibleMethod: 'wxpay',
+      orderType: 'subscription',
+      isMobile: true,
+    REDACTED)
+
+    expect(decision.kind).toBe('wechat_jsapi')
+    expect(decision.jsapi?.appId).toBe('wx123')
+    expect(decision.paymentState.orderType).toBe('subscription')
+  REDACTED)
 REDACTED)
 
 describe('buildCreateOrderPayload', () => {

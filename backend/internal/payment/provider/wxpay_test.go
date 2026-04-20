@@ -3,10 +3,15 @@
 package provider
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/wechatpay-apiv3/wechatpay-go/core"
+	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/h5"
+	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/jsapi"
+	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/native"
 )
 
 func TestMapWxState(t *testing.T) {
@@ -255,5 +260,199 @@ REDACTED
 				t.Errorf("instanceID = %q, want %q", got.instanceID, "test-instance")
 		REDACTED
 	REDACTED)
+REDACTED
+REDACTED
+
+func TestResolveWxpayJSAPIAppID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		config map[string]string
+		want   string
+REDACTED{
+		{
+			name: "prefers dedicated mp app id",
+			config: map[string]string{
+				"mpAppId": "wx-mp-app",
+				"appId":   "wx-merchant-app",
+		REDACTED,
+			want: "wx-mp-app",
+	REDACTED,
+		{
+			name: "falls back to merchant app id",
+			config: map[string]string{
+				"appId": "wx-merchant-app",
+		REDACTED,
+			want: "wx-merchant-app",
+	REDACTED,
+		{
+			name:   "missing app ids returns empty",
+			config: map[string]string{REDACTED,
+			want:   "",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ResolveWxpayJSAPIAppID(tt.config); got != tt.want {
+				t.Fatalf("ResolveWxpayJSAPIAppID() = %q, want %q", got, tt.want)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestResolveWxpayCreateMode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		req      payment.CreatePaymentRequest
+		wantMode string
+		wantErr  string
+REDACTED{
+		{
+			name:     "desktop uses native",
+			req:      payment.CreatePaymentRequest{REDACTED,
+			wantMode: wxpayModeNative,
+	REDACTED,
+		{
+			name: "mobile uses h5 when client ip is present",
+			req: payment.CreatePaymentRequest{
+				IsMobile: true,
+				ClientIP: "203.0.113.10",
+		REDACTED,
+			wantMode: wxpayModeH5,
+	REDACTED,
+		{
+			name: "mobile without client ip returns clear error",
+			req: payment.CreatePaymentRequest{
+				IsMobile: true,
+		REDACTED,
+			wantErr: "requires client IP",
+	REDACTED,
+		{
+			name: "openid uses jsapi mode",
+			req: payment.CreatePaymentRequest{
+				OpenID: "openid-123",
+		REDACTED,
+			wantMode: wxpayModeJSAPI,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := resolveWxpayCreateMode(tt.req)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+			REDACTED
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error %q should contain %q", err.Error(), tt.wantErr)
+			REDACTED
+				return
+		REDACTED
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+		REDACTED
+			if got != tt.wantMode {
+				t.Fatalf("resolveWxpayCreateMode() = %q, want %q", got, tt.wantMode)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestCreatePaymentWithOpenIDReturnsJSAPIResult(t *testing.T) {
+	origJSAPIPrepay := wxpayJSAPIPrepayWithRequestPayment
+	origNativePrepay := wxpayNativePrepay
+	origH5Prepay := wxpayH5Prepay
+	t.Cleanup(func() {
+		wxpayJSAPIPrepayWithRequestPayment = origJSAPIPrepay
+		wxpayNativePrepay = origNativePrepay
+		wxpayH5Prepay = origH5Prepay
+REDACTED)
+
+	jsapiCalls := 0
+	nativeCalls := 0
+	h5Calls := 0
+	wxpayJSAPIPrepayWithRequestPayment = func(ctx context.Context, svc jsapi.JsapiApiService, req jsapi.PrepayRequest) (*jsapi.PrepayWithRequestPaymentResponse, *core.APIResult, error) {
+		jsapiCalls++
+		if got := wxSV(req.Payer.Openid); got != "openid-123" {
+			t.Fatalf("openid = %q, want %q", got, "openid-123")
+	REDACTED
+		if req.SceneInfo == nil || wxSV(req.SceneInfo.PayerClientIp) != "203.0.113.10" {
+			t.Fatalf("scene_info payer_client_ip = %q, want %q", wxSV(req.SceneInfo.PayerClientIp), "203.0.113.10")
+	REDACTED
+		return &jsapi.PrepayWithRequestPaymentResponse{
+			Appid:     core.String("wx123"),
+			TimeStamp: core.String("1712345678"),
+			NonceStr:  core.String("nonce-123"),
+			Package:   core.String("REDACTED"),
+			SignType:  core.String("RSA"),
+			PaySign:   core.String("signed-payload"),
+	REDACTED, nil, nil
+REDACTED
+	wxpayNativePrepay = func(ctx context.Context, svc native.NativeApiService, req native.PrepayRequest) (*native.PrepayResponse, *core.APIResult, error) {
+		nativeCalls++
+		return &native.PrepayResponse{REDACTED, nil, nil
+REDACTED
+	wxpayH5Prepay = func(ctx context.Context, svc h5.H5ApiService, req h5.PrepayRequest) (*h5.PrepayResponse, *core.APIResult, error) {
+		h5Calls++
+		return &h5.PrepayResponse{REDACTED, nil, nil
+REDACTED
+
+	provider := &Wxpay{
+		config: map[string]string{
+			"appId": "wx123",
+			"mchId": "mch123",
+	REDACTED,
+		coreClient: &core.Client{REDACTED,
+REDACTED
+
+	resp, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:     "sub2_88",
+		Amount:      "66.88",
+		PaymentType: payment.TypeWxpay,
+		NotifyURL:   "https://merchant.example/payment/notify",
+		OpenID:      "openid-123",
+		ClientIP:    "203.0.113.10",
+REDACTED)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+REDACTED
+	if jsapiCalls != 1 {
+		t.Fatalf("jsapi prepay calls = %d, want 1", jsapiCalls)
+REDACTED
+	if nativeCalls != 0 {
+		t.Fatalf("native prepay calls = %d, want 0", nativeCalls)
+REDACTED
+	if h5Calls != 0 {
+		t.Fatalf("h5 prepay calls = %d, want 0", h5Calls)
+REDACTED
+	if resp.ResultType != payment.CreatePaymentResultJSAPIReady {
+		t.Fatalf("result type = %q, want %q", resp.ResultType, payment.CreatePaymentResultJSAPIReady)
+REDACTED
+	if resp.JSAPI == nil {
+		t.Fatal("expected jsapi payload, got nil")
+REDACTED
+	if resp.JSAPI.AppID != "wx123" {
+		t.Fatalf("jsapi appId = %q, want %q", resp.JSAPI.AppID, "wx123")
+REDACTED
+	if resp.JSAPI.TimeStamp != "1712345678" {
+		t.Fatalf("jsapi timeStamp = %q, want %q", resp.JSAPI.TimeStamp, "1712345678")
+REDACTED
+	if resp.JSAPI.NonceStr != "nonce-123" {
+		t.Fatalf("jsapi nonceStr = %q, want %q", resp.JSAPI.NonceStr, "nonce-123")
+REDACTED
+	if resp.JSAPI.Package != "REDACTED" {
+		t.Fatalf("jsapi package = %q, want %q", resp.JSAPI.Package, "REDACTED")
+REDACTED
+	if resp.JSAPI.SignType != "RSA" {
+		t.Fatalf("jsapi signType = %q, want %q", resp.JSAPI.SignType, "RSA")
+REDACTED
+	if resp.JSAPI.PaySign != "signed-payload" {
+		t.Fatalf("jsapi paySign = %q, want %q", resp.JSAPI.PaySign, "signed-payload")
 REDACTED
 REDACTED

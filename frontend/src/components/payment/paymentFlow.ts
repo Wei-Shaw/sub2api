@@ -1,4 +1,11 @@
-import type { CreateOrderRequest, CreateOrderResult, MethodLimit, OrderType REDACTED from '@/types/payment'
+import type {
+  CreateOrderRequest,
+  CreateOrderResult,
+  MethodLimit,
+  OrderType,
+  WechatJSAPIPayload,
+  WechatOAuthInfo,
+REDACTED from '@/types/payment'
 
 export const PAYMENT_RECOVERY_STORAGE_KEY = 'payment.recovery.current'
 
@@ -16,6 +23,8 @@ export type PaymentLaunchKind =
   | 'redirect_waiting'
   | 'stripe_popup'
   | 'stripe_route'
+  | 'wechat_oauth'
+  | 'wechat_jsapi'
   | 'unhandled'
 
 export interface PaymentRecoverySnapshot {
@@ -47,6 +56,8 @@ export interface PaymentLaunchDecision {
   paymentState: PaymentRecoverySnapshot
   recovery: PaymentRecoverySnapshot
   stripeMethod?: StripeVisibleMethod
+  oauth?: WechatOAuthInfo
+  jsapi?: WechatJSAPIPayload
 REDACTED
 
 export interface BuildCreateOrderPayloadInput {
@@ -137,6 +148,15 @@ export function decidePaymentLaunch(
       : context.stripeRouteUrl || context.stripePopupUrl || ''
     const paymentState = { ...baseState, payUrl REDACTED
     return { kind, paymentState, recovery: paymentState, stripeMethod REDACTED
+  REDACTED
+
+  if (result.result_type === 'oauth_required' && result.oauth?.authorize_url) {
+    return { kind: 'wechat_oauth', paymentState: baseState, recovery: baseState, oauth: result.oauth REDACTED
+  REDACTED
+
+  const jsapiPayload = result.jsapi ?? result.jsapi_payload
+  if (result.result_type === 'jsapi_ready' && jsapiPayload) {
+    return { kind: 'wechat_jsapi', paymentState: baseState, recovery: baseState, jsapi: jsapiPayload REDACTED
   REDACTED
 
   if (baseState.qrCode) {

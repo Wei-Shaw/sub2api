@@ -309,6 +309,20 @@ const previewImage = ref('')
 
 const paymentPhase = ref<'select' | 'paying'>('select')
 
+interface CreateOrderOptions {
+  openid?: string
+  paymentType?: string
+  isResume?: boolean
+REDACTED
+
+interface WeixinJSBridgeLike {
+  invoke(
+    action: string,
+    payload: Record<string, unknown>,
+    callback: (result: Record<string, unknown>) => void,
+  ): void
+REDACTED
+
 function emptyPaymentState(): PaymentRecoverySnapshot {
   return {
     orderId: 0,
@@ -324,6 +338,48 @@ function emptyPaymentState(): PaymentRecoverySnapshot {
     resumeToken: '',
     createdAt: 0,
   REDACTED
+REDACTED
+
+function readRouteQueryValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return typeof value[0] === 'string' ? value[0] : ''
+  REDACTED
+  return typeof value === 'string' ? value : ''
+REDACTED
+
+function getWeixinJSBridge(): WeixinJSBridgeLike | undefined {
+  return (window as Window & { WeixinJSBridge?: WeixinJSBridgeLike REDACTED).WeixinJSBridge
+REDACTED
+
+function waitForWeixinJSBridge(timeoutMs = 4000): Promise<WeixinJSBridgeLike | null> {
+  const existing = getWeixinJSBridge()
+  if (existing) return Promise.resolve(existing)
+
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (bridge: WeixinJSBridgeLike | null) => {
+      if (settled) return
+      settled = true
+      document.removeEventListener('WeixinJSBridgeReady', handleReady)
+      document.removeEventListener('onWeixinJSBridgeReady', handleReady)
+      window.clearTimeout(timer)
+      resolve(bridge)
+    REDACTED
+    const handleReady = () => finish(getWeixinJSBridge() ?? null)
+    const timer = window.setTimeout(() => finish(getWeixinJSBridge() ?? null), timeoutMs)
+    document.addEventListener('WeixinJSBridgeReady', handleReady, false)
+    document.addEventListener('onWeixinJSBridgeReady', handleReady, false)
+  REDACTED)
+REDACTED
+
+async function invokeWechatJsapiPayment(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const bridge = await waitForWeixinJSBridge()
+  if (!bridge) {
+    throw new Error('WeixinJSBridge is unavailable')
+  REDACTED
+  return new Promise((resolve) => {
+    bridge.invoke('getBrandWCPayRequest', payload, (result) => resolve(result || {REDACTED))
+  REDACTED)
 REDACTED
 
 const paymentState = ref<PaymentRecoverySnapshot>(emptyPaymentState())
@@ -560,25 +616,32 @@ async function confirmSubscribe() {
   await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
 REDACTED
 
-async function createOrder(orderAmount: number, orderType: OrderType, planId?: number) {
+async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, options: CreateOrderOptions = {REDACTED) {
   submitting.value = true
   errorMessage.value = ''
   try {
-    const result = await paymentStore.createOrder(buildCreateOrderPayload({
+    const requestType = normalizeVisibleMethod(options.paymentType || selectedMethod.value) || options.paymentType || selectedMethod.value
+    const payload = buildCreateOrderPayload({
       amount: orderAmount,
-      paymentType: selectedMethod.value,
+      paymentType: requestType,
       orderType,
       planId,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
-    REDACTED)) as CreateOrderResult & { resume_token?: string REDACTED
+    REDACTED)
+    if (options.openid) {
+      payload.openid = options.openid
+    REDACTED
+    payload.is_mobile = isMobileDevice()
+
+    const result = await paymentStore.createOrder(payload) as CreateOrderResult & { resume_token?: string REDACTED
     const openWindow = (url: string, features = POPUP_WINDOW_FEATURES) => {
       const win = window.open(url, 'paymentPopup', features)
       if (!win || win.closed) {
         window.location.href = url
       REDACTED
     REDACTED
-    const visibleMethod = normalizeVisibleMethod(selectedMethod.value) || selectedMethod.value
+    const visibleMethod = normalizeVisibleMethod(requestType) || requestType
     const stripeMethod = visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
     const stripeRouteUrl = result.client_secret
       ? router.resolve({
@@ -599,6 +662,11 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       stripeRouteUrl,
     REDACTED)
 
+    if (decision.kind === 'wechat_oauth' && decision.oauth?.authorize_url) {
+      window.location.href = decision.oauth.authorize_url
+      return
+    REDACTED
+
     if (decision.kind === 'unhandled') {
       errorMessage.value = t('payment.result.failed')
       appStore.showError(errorMessage.value)
@@ -615,6 +683,16 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     REDACTED
     if (decision.kind === 'stripe_route') {
       window.location.href = decision.paymentState.payUrl
+      return
+    REDACTED
+    if (decision.kind === 'wechat_jsapi' && decision.jsapi) {
+      const jsapiResult = await invokeWechatJsapiPayment(decision.jsapi as Record<string, unknown>)
+      const errMsg = String(jsapiResult.err_msg || '').toLowerCase()
+      if (errMsg.includes('cancel')) {
+        appStore.showInfo(t('payment.qr.cancelled'))
+      REDACTED else if (errMsg && !errMsg.includes('ok')) {
+        appStore.showError(t('payment.result.failed'))
+      REDACTED
       return
     REDACTED
     if (decision.kind === 'redirect_waiting' && decision.paymentState.payUrl) {
@@ -637,6 +715,50 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     appStore.showError(errorMessage.value)
   REDACTED finally {
     submitting.value = false
+  REDACTED
+REDACTED
+
+async function resumeWechatPaymentFromQuery() {
+  const openid = readRouteQueryValue(route.query.openid)
+  if (readRouteQueryValue(route.query.wechat_resume) !== '1' || !openid) {
+    return
+  REDACTED
+
+  const paymentType = normalizeVisibleMethod(readRouteQueryValue(route.query.payment_type)) || 'wxpay'
+  const orderType = readRouteQueryValue(route.query.order_type) === 'subscription' ? 'subscription' : 'balance'
+  const planId = Number.parseInt(readRouteQueryValue(route.query.plan_id), 10)
+  const rawAmount = Number.parseFloat(readRouteQueryValue(route.query.amount))
+  const orderAmount = Number.isFinite(rawAmount) && rawAmount > 0
+    ? rawAmount
+    : (orderType === 'subscription'
+      ? (checkout.value.plans.find(plan => plan.id === planId)?.price ?? 0)
+      : validAmount.value)
+
+  selectedMethod.value = paymentType
+  if (orderType === 'balance' && orderAmount > 0) {
+    amount.value = orderAmount
+  REDACTED
+  if (orderType === 'subscription' && Number.isFinite(planId) && planId > 0) {
+    selectedPlan.value = checkout.value.plans.find(plan => plan.id === planId) ?? null
+  REDACTED
+
+  const nextQuery = { ...route.query REDACTED
+  delete nextQuery.wechat_resume
+  delete nextQuery.openid
+  delete nextQuery.state
+  delete nextQuery.scope
+  delete nextQuery.payment_type
+  delete nextQuery.amount
+  delete nextQuery.order_type
+  delete nextQuery.plan_id
+  await router.replace({ path: route.path, query: nextQuery REDACTED)
+
+  if (orderAmount > 0) {
+    await createOrder(orderAmount, orderType, Number.isFinite(planId) && planId > 0 ? planId : undefined, {
+      openid,
+      paymentType,
+      isResume: true,
+    REDACTED)
   REDACTED
 REDACTED
 
@@ -672,6 +794,7 @@ onMounted(async () => {
         removeRecoverySnapshot()
       REDACTED
     REDACTED
+    await resumeWechatPaymentFromQuery()
     if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'
     REDACTED
