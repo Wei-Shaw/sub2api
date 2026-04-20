@@ -901,7 +901,6 @@ export default {
     closeDetail: '关闭',
     hero: {
       breadcrumb: '渠道 · 状态',
-      title: 'INTELLIGENCE MONITOR',
       subtitleZh: '实时追踪各大 AI 模型对话接口的可用性、延迟与官方服务状态。',
       subtitleEn: 'Advanced performance metrics for next-gen intelligence.'
     REDACTED,
