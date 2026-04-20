@@ -2,30 +2,59 @@
   <BaseDialog
     :show="show"
     :title="t('admin.channelMonitor.form.selectKeyTitle')"
-    width="normal"
+    width="wide"
     @close="$emit('close')"
   >
     <div class="space-y-3">
       <p class="text-xs text-gray-500 dark:text-gray-400">
         {{ t('admin.channelMonitor.form.selectKeyHint') REDACTEDREDACTED
       </p>
+
+      <div class="relative">
+        <input
+          v-model="search"
+          type="text"
+          class="input pl-9"
+          :placeholder="t('keys.searchPlaceholder')"
+        />
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+        </svg>
+      </div>
+
       <div v-if="loading" class="py-6 text-center text-sm text-gray-500">
         {{ t('common.loading') REDACTEDREDACTED
       </div>
-      <div v-else-if="keys.length === 0" class="py-6 text-center text-sm text-gray-500">
+      <div v-else-if="filteredKeys.length === 0" class="py-6 text-center text-sm text-gray-500">
         {{ t('admin.channelMonitor.form.noActiveKey') REDACTEDREDACTED
       </div>
-      <div v-else class="max-h-72 space-y-1 overflow-auto">
-        <button
-          v-for="k in keys"
-          :key="k.id"
-          type="button"
-          @click="$emit('pick', k)"
-          class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700"
-        >
-          <div class="font-medium text-gray-900 dark:text-white">{{ k.name REDACTEDREDACTED</div>
-          <div class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ maskKey(k.key) REDACTEDREDACTED</div>
-        </button>
+      <div v-else class="max-h-96 overflow-auto rounded-lg border border-gray-200 dark:border-dark-600">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-dark-800 sticky top-0 z-10">
+            <tr class="text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              <th class="px-3 py-2">{{ t('common.name') REDACTEDREDACTED</th>
+              <th class="px-3 py-2">{{ t('keys.apiKey') REDACTEDREDACTED</th>
+              <th class="px-3 py-2">{{ t('keys.group') REDACTEDREDACTED</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 dark:divide-dark-700">
+            <tr
+              v-for="k in filteredKeys"
+              :key="k.id"
+              class="cursor-pointer hover:bg-gray-50 dark:hover:bg-dark-700"
+              @click="$emit('pick', k)"
+            >
+              <td class="px-3 py-2 font-medium text-gray-900 dark:text-white">{{ k.name REDACTEDREDACTED</td>
+              <td class="px-3 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">{{ maskApiKey(k.key) REDACTEDREDACTED</td>
+              <td class="px-3 py-2">
+                <span v-if="k.group" class="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-300">
+                  {{ k.group.name REDACTEDREDACTED
+                </span>
+                <span v-else class="text-xs text-gray-400">—</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
     <template #footer>
@@ -39,14 +68,18 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import type { ApiKey REDACTED from '@/types'
+import type { Provider REDACTED from '@/api/admin/channelMonitor'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import { maskApiKey REDACTED from '@/utils/maskApiKey'
 
-defineProps<{
+const props = defineProps<{
   show: boolean
   loading: boolean
   keys: ApiKey[]
+  provider: Provider
 REDACTED>()
 
 defineEmits<{
@@ -56,9 +89,22 @@ REDACTED>()
 
 const { t REDACTED = useI18n()
 
-function maskKey(key: string): string {
-  if (!key) return ''
-  if (key.length <= 12) return `${key.slice(0, 4)REDACTED***`
-  return `${key.slice(0, 6)REDACTED...${key.slice(-4)REDACTED`
-REDACTED
+const search = ref('')
+
+watch(() => props.show, (shown) => {
+  if (!shown) search.value = ''
+REDACTED)
+
+const filteredKeys = computed<ApiKey[]>(() => {
+  const q = search.value.trim().toLowerCase()
+  return props.keys.filter((k) => {
+    if (k.group?.platform !== props.provider) return false
+    if (!q) return true
+    return (
+      k.name.toLowerCase().includes(q) ||
+      k.key.toLowerCase().includes(q) ||
+      (k.group?.name || '').toLowerCase().includes(q)
+    )
+  REDACTED)
+REDACTED)
 </script>

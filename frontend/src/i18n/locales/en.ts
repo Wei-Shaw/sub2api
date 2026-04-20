@@ -2137,7 +2137,7 @@ export default {
       form: {
         name: 'Name',
         namePlaceholder: 'Enter monitor name',
-        provider: 'Provider',
+        provider: 'Platform',
         endpoint: 'Endpoint',
         endpointPlaceholder: 'https://api.example.com',
         useCurrentDomain: 'Use current service',

@@ -611,7 +611,9 @@ const userNavItems = computed((): NavItem[] => {
     { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon REDACTED,
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true REDACTED,
-    { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon REDACTED,
+    ...(appStore.cachedPublicSettings?.channel_monitor_enabled
+      ? [{ path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon REDACTED]
+      : []),
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
     ...(appStore.cachedPublicSettings?.payment_enabled
       ? [
@@ -650,7 +652,9 @@ const personalNavItems = computed((): NavItem[] => {
   const items: NavItem[] = [
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true REDACTED,
-    { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon REDACTED,
+    ...(appStore.cachedPublicSettings?.channel_monitor_enabled
+      ? [{ path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon REDACTED]
+      : []),
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
     ...(appStore.cachedPublicSettings?.payment_enabled
       ? [
@@ -715,7 +719,9 @@ const adminNavItems = computed((): NavItem[] => {
       expandOnly: true,
       children: [
         { path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon REDACTED,
-        { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon REDACTED,
+        ...(appStore.cachedPublicSettings?.channel_monitor_enabled
+          ? [{ path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon REDACTED]
+          : []),
       ],
     REDACTED,
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
