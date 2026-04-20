@@ -141,6 +141,70 @@ REDACTED
 	require.Nil(t, got)
 REDACTED
 
+func TestGetOrderProviderInstanceLeavesLegacyProviderKeyUnresolvedWhenHistoricalInstancesConflict(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	_, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeStripe).
+		SetName("stripe-disabled-legacy").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("stripe").
+		SetEnabled(false).
+		Save(ctx)
+REDACTED
+	_, err = client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeStripe).
+		SetName("stripe-enabled-current").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("stripe").
+		SetEnabled(true).
+		Save(ctx)
+REDACTED
+
+	providerKey := payment.TypeStripe
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeStripe,
+		ProviderKey: &providerKey,
+REDACTED
+
+	svc := &PaymentService{
+		entClient:    client,
+		loadBalancer: newWebhookProviderTestLoadBalancer(client),
+REDACTED
+
+	got, err := svc.getOrderProviderInstance(ctx, order)
+REDACTED
+	require.Nil(t, got)
+REDACTED
+
+func TestGetOrderProviderInstanceLeavesProviderKeyMatchUnresolvedWhenTypeNotSupported(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	_, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeWxpay).
+		SetName("wxpay-only").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("wxpay").
+		SetEnabled(true).
+		Save(ctx)
+REDACTED
+
+	providerKey := payment.TypeWxpay
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeAlipayDirect,
+		ProviderKey: &providerKey,
+REDACTED
+
+	svc := &PaymentService{
+		entClient:    client,
+		loadBalancer: newWebhookProviderTestLoadBalancer(client),
+REDACTED
+
+	got, err := svc.getOrderProviderInstance(ctx, order)
+REDACTED
+	require.Nil(t, got)
+REDACTED
+
 func TestGetWebhookProviderRejectsAmbiguousRegistryFallback(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)

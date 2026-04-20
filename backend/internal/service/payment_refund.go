@@ -21,7 +21,7 @@ import (
 
 // getOrderProviderInstance looks up the provider instance that processed this order.
 // For legacy orders without provider_instance_id, it resolves only when the
-// enabled instance is uniquely identifiable from the stored order fields.
+// historical instance is uniquely identifiable from the stored order fields.
 func (s *PaymentService) getOrderProviderInstance(ctx context.Context, o *dbent.PaymentOrder) (*dbent.PaymentProviderInstance, error) {
 	if s == nil || s.entClient == nil || o == nil {
 		return nil, nil
@@ -40,45 +40,53 @@ REDACTED
 REDACTED
 
 func (s *PaymentService) resolveUniqueLegacyOrderProviderInstance(ctx context.Context, o *dbent.PaymentOrder) (*dbent.PaymentProviderInstance, error) {
+	paymentType := payment.GetBasePaymentType(strings.TrimSpace(o.PaymentType))
 	providerKey := strings.TrimSpace(psStringValue(o.ProviderKey))
 	if providerKey != "" {
 		instances, err := s.entClient.PaymentProviderInstance.Query().
-			Where(
-				paymentproviderinstance.EnabledEQ(true),
-				paymentproviderinstance.ProviderKeyEQ(providerKey),
-			).
+			Where(paymentproviderinstance.ProviderKeyEQ(providerKey)).
 			All(ctx)
 		if err != nil {
 			return nil, err
 	REDACTED
-		if len(instances) == 1 {
-			return instances[0], nil
+		matched := psFilterLegacyOrderProviderInstances(paymentType, instances)
+		if len(matched) == 1 {
+			return matched[0], nil
 	REDACTED
 		return nil, nil
 REDACTED
 
-	paymentType := payment.GetBasePaymentType(strings.TrimSpace(o.PaymentType))
 	if paymentType == "" {
 		return nil, nil
 REDACTED
 
 	instances, err := s.entClient.PaymentProviderInstance.Query().
-		Where(paymentproviderinstance.EnabledEQ(true)).
 		All(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
 
-	var matched []*dbent.PaymentProviderInstance
-	for _, inst := range instances {
-		if psLegacyOrderMatchesInstance(paymentType, inst) {
-			matched = append(matched, inst)
-	REDACTED
-REDACTED
+	matched := psFilterLegacyOrderProviderInstances(paymentType, instances)
 	if len(matched) == 1 {
 		return matched[0], nil
 REDACTED
 	return nil, nil
+REDACTED
+
+func psFilterLegacyOrderProviderInstances(orderPaymentType string, instances []*dbent.PaymentProviderInstance) []*dbent.PaymentProviderInstance {
+	if len(instances) == 0 {
+		return nil
+REDACTED
+	if strings.TrimSpace(orderPaymentType) == "" {
+		return instances
+REDACTED
+	var matched []*dbent.PaymentProviderInstance
+	for _, inst := range instances {
+		if psLegacyOrderMatchesInstance(orderPaymentType, inst) {
+			matched = append(matched, inst)
+	REDACTED
+REDACTED
+	return matched
 REDACTED
 
 func psLegacyOrderMatchesInstance(orderPaymentType string, inst *dbent.PaymentProviderInstance) bool {
