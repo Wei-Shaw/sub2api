@@ -21,6 +21,8 @@ REDACTED
 		Concurrency:                u.Concurrency,
 		Status:                     u.Status,
 		AllowedGroups:              u.AllowedGroups,
+		LastLoginAt:                u.LastLoginAt,
+		LastActiveAt:               u.LastActiveAt,
 		CreatedAt:                  u.CreatedAt,
 		UpdatedAt:                  u.UpdatedAt,
 		BalanceNotifyEnabled:       u.BalanceNotifyEnabled,

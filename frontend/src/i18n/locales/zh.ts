@@ -1417,6 +1417,8 @@ export default {
         usage: '用量',
         concurrency: '并发数',
         status: '状态',
+        lastLogin: '最后登录',
+        lastActive: '最后使用',
         created: '创建时间',
         actions: '操作'
       REDACTED,
