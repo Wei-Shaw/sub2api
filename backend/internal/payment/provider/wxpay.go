@@ -3,7 +3,6 @@ package provider
 import (
 	"bytes"
 	"context"
-	"crypto/rsa"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,9 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/wechatpay-apiv3/wechatpay-go/core"
-	"github.com/wechatpay-apiv3/wechatpay-go/core/auth"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/auth/verifiers"
-	"github.com/wechatpay-apiv3/wechatpay-go/core/downloader"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/notify"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/option"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments"
@@ -63,7 +60,10 @@ type Wxpay struct {
 const wxpayAPIv3KeyLength = 32
 
 func NewWxpay(instanceID string, config map[string]string) (*Wxpay, error) {
-	required := []string{"appId", "mchId", "privateKey", "apiV3Key", "certSerial"}
+	// All fields are required. Platform-certificate mode is intentionally unsupported —
+	// WeChat has been migrating all merchants to the pubkey verifier since 2024-10,
+	// and newly-provisioned merchants cannot download platform certificates at all.
+	required := []string{"appId", "mchId", "privateKey", "apiV3Key", "certSerial", "publicKey", "publicKeyId"}
 	for _, k := range required {
 		if config[k] == "" {
 			return nil, infraerrors.BadRequest("WXPAY_CONFIG_MISSING_KEY", "missing_required_key").
@@ -78,13 +78,13 @@ func NewWxpay(instanceID string, config map[string]string) (*Wxpay, error) {
 				"actual":   strconv.Itoa(len(config["apiV3Key"])),
 			})
 	}
-	// Pubkey verifier mode is opt-in via publicKeyId. If publicKeyId is set,
-	// publicKey must also be set so the verifier can load it.
-	// A leftover publicKey without publicKeyId is treated as unused legacy data,
-	// not an error, so admins can switch back to platform-certificate mode without
-	// having to manually clear the old publicKey field.
-	if config["publicKeyId"] != "" && config["publicKey"] == "" {
-		return nil, infraerrors.BadRequest("WXPAY_CONFIG_MISSING_KEY", "missing_required_key").
+	// Parse PEMs eagerly so malformed keys surface at save time, not at order creation.
+	if _, err := utils.LoadPrivateKey(formatPEM(config["privateKey"], "PRIVATE KEY")); err != nil {
+		return nil, infraerrors.BadRequest("WXPAY_CONFIG_INVALID_KEY", "invalid_key").
+			WithMetadata(map[string]string{"key": "privateKey"})
+	}
+	if _, err := utils.LoadPublicKey(formatPEM(config["publicKey"], "PUBLIC KEY")); err != nil {
+		return nil, infraerrors.BadRequest("WXPAY_CONFIG_INVALID_KEY", "invalid_key").
 			WithMetadata(map[string]string{"key": "publicKey"})
 	}
 	return &Wxpay{instanceID: instanceID, config: config}, nil
@@ -112,12 +112,15 @@ func (w *Wxpay) ensureClient() (*core.Client, error) {
 	}
 	privateKey, err := utils.LoadPrivateKey(formatPEM(w.config["privateKey"], "PRIVATE KEY"))
 	if err != nil {
-		return nil, fmt.Errorf("wxpay load private key: %w", err)
+		return nil, infraerrors.BadRequest("WXPAY_CONFIG_INVALID_KEY", "invalid_key").
+			WithMetadata(map[string]string{"key": "privateKey"})
 	}
-	verifier, err := w.buildVerifier(privateKey)
+	publicKey, err := utils.LoadPublicKey(formatPEM(w.config["publicKey"], "PUBLIC KEY"))
 	if err != nil {
-		return nil, err
+		return nil, infraerrors.BadRequest("WXPAY_CONFIG_INVALID_KEY", "invalid_key").
+			WithMetadata(map[string]string{"key": "publicKey"})
 	}
+	verifier := verifiers.NewSHA256WithRSAPubkeyVerifier(w.config["publicKeyId"], *publicKey)
 	client, err := core.NewClient(context.Background(),
 		option.WithMerchantCredential(w.config["mchId"], w.config["certSerial"], privateKey),
 		option.WithVerifier(verifier))
@@ -131,25 +134,6 @@ func (w *Wxpay) ensureClient() (*core.Client, error) {
 	w.notifyHandler = handler
 	w.coreClient = client
 	return w.coreClient, nil
-}
-
-// buildVerifier picks the verifier mode based on whether publicKeyId is configured:
-//   - publicKeyId set  → new pubkey verifier using the configured publicKey
-//   - publicKeyId empty → legacy mode: auto-download platform certs with apiV3Key
-func (w *Wxpay) buildVerifier(privateKey *rsa.PrivateKey) (auth.Verifier, error) {
-	if w.config["publicKeyId"] != "" {
-		publicKey, err := utils.LoadPublicKey(formatPEM(w.config["publicKey"], "PUBLIC KEY"))
-		if err != nil {
-			return nil, fmt.Errorf("wxpay load public key: %w", err)
-		}
-		return verifiers.NewSHA256WithRSAPubkeyVerifier(w.config["publicKeyId"], *publicKey), nil
-	}
-	mgr := downloader.MgrInstance()
-	err := mgr.RegisterDownloaderWithPrivateKey(context.Background(), privateKey, w.config["certSerial"], w.config["mchId"], w.config["apiV3Key"])
-	if err != nil {
-		return nil, fmt.Errorf("wxpay register platform cert downloader: %w", err)
-	}
-	return verifiers.NewSHA256WithRSAVerifier(mgr.GetCertificateVisitor(w.config["mchId"])), nil
 }
 
 func (w *Wxpay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {

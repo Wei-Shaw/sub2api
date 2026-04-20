@@ -3,11 +3,35 @@
 package provider
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
+
+// generateTestKeyPair returns a fresh RSA 2048 key pair as PEM strings.
+// The wechatpay-go SDK expects PKCS8 private keys and PKIX public keys.
+func generateTestKeyPair(t *testing.T) (privPEM, pubPEM string) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate rsa key: %v", err)
+	}
+	privDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshal pkcs8: %v", err)
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		t.Fatalf("marshal pkix: %v", err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER})),
+		string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}))
+}
 
 func TestMapWxState(t *testing.T) {
 	t.Parallel()
@@ -149,13 +173,14 @@ func TestFormatPEM(t *testing.T) {
 func TestNewWxpay(t *testing.T) {
 	t.Parallel()
 
+	privPEM, pubPEM := generateTestKeyPair(t)
 	validConfig := map[string]string{
 		"appId":       "wx1234567890",
 		"mchId":       "1234567890",
-		"privateKey":  "fake-private-key",
+		"privateKey":  privPEM,
 		"apiV3Key":    "12345678901234567890123456789012", // exactly 32 bytes
-		"publicKey":   "fake-public-key",
-		"publicKeyId": "key-id-001",
+		"publicKey":   pubPEM,
+		"publicKeyId": "PUB_KEY_ID_TEST",
 		"certSerial":  "SERIAL001",
 	}
 
@@ -213,21 +238,28 @@ func TestNewWxpay(t *testing.T) {
 			errSubstr: "certSerial",
 		},
 		{
-			name:    "legacy mode: publicKey+publicKeyId both empty",
-			config:  withOverride(map[string]string{"publicKey": "", "publicKeyId": ""}),
-			wantErr: false,
-		},
-		{
-			// Leftover publicKey from a former pubkey-mode setup is ignored; treated as legacy mode.
-			name:    "publicKey leftover without publicKeyId is allowed",
-			config:  withOverride(map[string]string{"publicKeyId": ""}),
-			wantErr: false,
-		},
-		{
-			name:      "publicKeyId without publicKey",
+			name:      "missing publicKey",
 			config:    withOverride(map[string]string{"publicKey": ""}),
 			wantErr:   true,
-			errSubstr: "WXPAY_CONFIG_MISSING_KEY",
+			errSubstr: "publicKey",
+		},
+		{
+			name:      "missing publicKeyId",
+			config:    withOverride(map[string]string{"publicKeyId": ""}),
+			wantErr:   true,
+			errSubstr: "publicKeyId",
+		},
+		{
+			name:      "malformed privateKey PEM",
+			config:    withOverride(map[string]string{"privateKey": "not-a-valid-pem"}),
+			wantErr:   true,
+			errSubstr: "WXPAY_CONFIG_INVALID_KEY",
+		},
+		{
+			name:      "malformed publicKey PEM",
+			config:    withOverride(map[string]string{"publicKey": "not-a-valid-pem"}),
+			wantErr:   true,
+			errSubstr: "WXPAY_CONFIG_INVALID_KEY",
 		},
 		{
 			name:      "apiV3Key too short",
