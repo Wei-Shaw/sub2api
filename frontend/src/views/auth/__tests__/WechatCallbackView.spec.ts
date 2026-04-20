@@ -342,6 +342,7 @@ describe('WechatCallbackView', () => {
     expect(replaceMock.mock.calls[0]?.[0]).toContain('/login?')
     expect(replaceMock.mock.calls[0]?.[0]).toContain('wechat_bind_existing%3D1')
     expect(replaceMock.mock.calls[0]?.[0]).toContain('email=user%40example.com')
+    expect(replaceMock.mock.calls[0]?.[0]).toContain('mode%3Dopen')
   REDACTED)
 
   it('collects email for pending oauth account creation and submits adoption decisions', async () => {
@@ -592,7 +593,8 @@ describe('WechatCallbackView', () => {
   it('restarts the current-user bind flow after returning from login', async () => {
     routeState.query = {
       wechat_bind_existing: '1',
-      redirect: '/profile'
+      redirect: '/profile',
+      mode: 'mp',
     REDACTED
     getAuthTokenMock.mockReturnValue('existing-auth-token')
 
@@ -612,7 +614,38 @@ describe('WechatCallbackView', () => {
     expect(exchangePendingOAuthCompletionMock).not.toHaveBeenCalled()
     expect(prepareOAuthBindAccessTokenCookieMock).toHaveBeenCalledTimes(1)
     expect(locationState.current.href).toContain('/api/v1/auth/oauth/wechat/start?')
+    expect(locationState.current.href).toContain('mode=mp')
     expect(locationState.current.href).toContain('intent=bind_current_user')
     expect(locationState.current.href).toContain('redirect=%2Fprofile')
+  REDACTED)
+
+  it('redirects back to login instead of falling through when bind-existing resume has no auth token', async () => {
+    routeState.query = {
+      wechat_bind_existing: '1',
+      redirect: '/profile',
+      mode: 'mp',
+      email: 'resume@example.com',
+    REDACTED
+    getAuthTokenMock.mockReturnValue(null)
+
+    mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    expect(exchangePendingOAuthCompletionMock).not.toHaveBeenCalled()
+    expect(replaceMock).toHaveBeenCalledTimes(1)
+    expect(replaceMock.mock.calls[0]?.[0]).toContain('/login?')
+    expect(replaceMock.mock.calls[0]?.[0]).toContain('wechat_bind_existing%3D1')
+    expect(replaceMock.mock.calls[0]?.[0]).toContain('mode%3Dmp')
+    expect(replaceMock.mock.calls[0]?.[0]).toContain('email=resume%40example.com')
   REDACTED)
 REDACTED)
