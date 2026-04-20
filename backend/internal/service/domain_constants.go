@@ -243,6 +243,18 @@ const (
 	SettingKeyOpsRuntimeLogConfig = "ops_runtime_log_config"
 
 	// =========================
+	// Channel Monitor (渠道监控)
+	// =========================
+
+	// SettingKeyChannelMonitorEnabled is a DB-backed soft switch for the channel monitor feature.
+	// When false: runner skips scheduling and user-facing endpoints return an empty list.
+	SettingKeyChannelMonitorEnabled = "channel_monitor_enabled"
+
+	// SettingKeyChannelMonitorDefaultIntervalSeconds controls the default interval (seconds)
+	// pre-filled when creating a new channel monitor from the admin UI. Range: [15, 3600].
+	SettingKeyChannelMonitorDefaultIntervalSeconds = "channel_monitor_default_interval_seconds"
+
+	// =========================
 	// Overload Cooldown (529)
 	// =========================
 

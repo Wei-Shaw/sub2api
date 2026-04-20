@@ -125,6 +125,10 @@ type SystemSettings struct {
 	OpsQueryModeDefault          string
 	OpsMetricsIntervalSeconds    int
 
+	// Channel Monitor feature
+	ChannelMonitorEnabled                 bool `json:"channel_monitor_enabled"`
+	ChannelMonitorDefaultIntervalSeconds  int  `json:"channel_monitor_default_interval_seconds"`
+
 	// Claude Code version check
 	MinClaudeCodeVersion string
 	MaxClaudeCodeVersion string
@@ -209,6 +213,10 @@ type PublicSettings struct {
 	AccountQuotaNotifyEnabled   bool
 	BalanceLowNotifyThreshold   float64
 	BalanceLowNotifyRechargeURL string
+
+	// Channel Monitor feature
+	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
+	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 REDACTED
 
 type WeChatConnectOAuthConfig struct {

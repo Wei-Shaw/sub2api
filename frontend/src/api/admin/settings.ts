@@ -469,6 +469,10 @@ export interface SystemSettings {
   balance_low_notify_recharge_url: string;
   account_quota_notify_enabled: boolean;
   account_quota_notify_emails: NotifyEmailEntry[];
+
+  // Channel Monitor feature switch
+  channel_monitor_enabled: boolean;
+  channel_monitor_default_interval_seconds: number;
 REDACTED
 
 export interface UpdateSettingsRequest {
@@ -618,6 +622,10 @@ export interface UpdateSettingsRequest {
   balance_low_notify_recharge_url?: string;
   account_quota_notify_enabled?: boolean;
   account_quota_notify_emails?: NotifyEmailEntry[];
+
+  // Channel Monitor feature switch
+  channel_monitor_enabled?: boolean;
+  channel_monitor_default_interval_seconds?: number;
 REDACTED
 
 /**

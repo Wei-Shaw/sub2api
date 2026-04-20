@@ -14,11 +14,28 @@ import (
 // ChannelMonitorUserHandler 渠道监控用户只读 handler。
 type ChannelMonitorUserHandler struct {
 	monitorService *service.ChannelMonitorService
+	settingService *service.SettingService
 REDACTED
 
 // NewChannelMonitorUserHandler 创建 handler。
-func NewChannelMonitorUserHandler(monitorService *service.ChannelMonitorService) *ChannelMonitorUserHandler {
-	return &ChannelMonitorUserHandler{monitorService: monitorServiceREDACTED
+// settingService 用于每次请求前读取功能开关；关闭时 List/GetStatus 直接返回空/404。
+func NewChannelMonitorUserHandler(
+	monitorService *service.ChannelMonitorService,
+	settingService *service.SettingService,
+) *ChannelMonitorUserHandler {
+	return &ChannelMonitorUserHandler{
+		monitorService: monitorService,
+		settingService: settingService,
+REDACTED
+REDACTED
+
+// featureEnabled 返回当前渠道监控功能是否开启。
+// settingService 为 nil（测试场景）视为启用。
+func (h *ChannelMonitorUserHandler) featureEnabled(c *gin.Context) bool {
+	if h.settingService == nil {
+		return true
+REDACTED
+	return h.settingService.GetChannelMonitorRuntime(c.Request.Context()).Enabled
 REDACTED
 
 // --- Response ---
@@ -123,6 +140,10 @@ REDACTED
 
 // List GET /api/v1/channel-monitors
 func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
+	if !h.featureEnabled(c) {
+		response.Success(c, gin.H{"items": []channelMonitorUserListItem{REDACTEDREDACTED)
+		return
+REDACTED
 	views, err := h.monitorService.ListUserView(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -137,6 +158,10 @@ REDACTED
 
 // GetStatus GET /api/v1/channel-monitors/:id/status
 func (h *ChannelMonitorUserHandler) GetStatus(c *gin.Context) {
+	if !h.featureEnabled(c) {
+		response.ErrorFrom(c, service.ErrChannelMonitorNotFound)
+		return
+REDACTED
 	// 复用 admin.ParseChannelMonitorID 保持错误码与日志一致。
 	id, ok := admin.ParseChannelMonitorID(c)
 	if !ok {

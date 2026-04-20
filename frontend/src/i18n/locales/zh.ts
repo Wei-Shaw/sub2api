@@ -4695,12 +4695,23 @@ export default {
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
       tabs: {
         general: '通用设置',
+        features: '功能开关',
         security: '安全与认证',
         users: '用户默认值',
         gateway: '网关服务',
         email: '邮件设置',
         backup: '数据备份',
         payment: '支付设置',
+      REDACTED,
+      features: {
+        channelMonitor: {
+          title: '渠道监控',
+          description: '定期对配置的渠道发起健康检查，向用户展示可用性与延迟。关闭后调度器停止扫描，用户端列表为空。',
+          enabled: '启用渠道监控',
+          enabledHint: '关闭后后台不再执行定时检测，已有数据保留。',
+          defaultInterval: '默认检测间隔（秒）',
+          defaultIntervalHint: '新建渠道监控时表单的默认值，可被单个渠道覆盖。范围 15 – 3600 秒。',
+        REDACTED,
       REDACTED,
       emailTabDisabledTitle: '邮箱验证未启用',
       emailTabDisabledHint: '请在「安全与认证」选项卡中启用邮箱验证后，再配置 SMTP 设置。',

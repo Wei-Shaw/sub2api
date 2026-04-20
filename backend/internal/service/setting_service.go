@@ -450,6 +450,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyBalanceLowNotifyThreshold,
 		SettingKeyBalanceLowNotifyRechargeURL,
 		SettingKeyAccountQuotaNotifyEnabled,
+		SettingKeyChannelMonitorEnabled,
+		SettingKeyChannelMonitorDefaultIntervalSeconds,
 REDACTED
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -532,7 +534,65 @@ REDACTED
 		AccountQuotaNotifyEnabled:        settings[SettingKeyAccountQuotaNotifyEnabled] == "true",
 		BalanceLowNotifyThreshold:        balanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:      settings[SettingKeyBalanceLowNotifyRechargeURL],
+
+		ChannelMonitorEnabled:                !isFalseSettingValue(settings[SettingKeyChannelMonitorEnabled]),
+		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 REDACTED, nil
+REDACTED
+
+// channelMonitorIntervalMin / channelMonitorIntervalMax bound the default interval
+// (mirrors the monitor-level constraint but lives here so setting_service stays decoupled).
+const (
+	channelMonitorIntervalMin     = 15
+	channelMonitorIntervalMax     = 3600
+	channelMonitorIntervalFallback = 60
+)
+
+// parseChannelMonitorInterval parses the stored string and clamps to [15, 3600].
+// Empty / invalid input falls back to channelMonitorIntervalFallback.
+func parseChannelMonitorInterval(raw string) int {
+	v, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return channelMonitorIntervalFallback
+REDACTED
+	return clampChannelMonitorInterval(v)
+REDACTED
+
+// clampChannelMonitorInterval clamps v to the allowed range. 0 means "not provided".
+func clampChannelMonitorInterval(v int) int {
+	if v <= 0 {
+		return 0
+REDACTED
+	if v < channelMonitorIntervalMin {
+		return channelMonitorIntervalMin
+REDACTED
+	if v > channelMonitorIntervalMax {
+		return channelMonitorIntervalMax
+REDACTED
+	return v
+REDACTED
+
+// ChannelMonitorRuntime is the lightweight view of the channel monitor feature
+// consumed by the runner and user-facing handlers.
+type ChannelMonitorRuntime struct {
+	Enabled                 bool
+	DefaultIntervalSeconds  int
+REDACTED
+
+// GetChannelMonitorRuntime reads the channel monitor feature flags directly from
+// the settings store. Fail-open: on error returns Enabled=true with the default interval.
+func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMonitorRuntime {
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyChannelMonitorEnabled,
+		SettingKeyChannelMonitorDefaultIntervalSeconds,
+REDACTED)
+	if err != nil {
+		return ChannelMonitorRuntime{Enabled: true, DefaultIntervalSeconds: channelMonitorIntervalFallbackREDACTED
+REDACTED
+	return ChannelMonitorRuntime{
+		Enabled:                !isFalseSettingValue(vals[SettingKeyChannelMonitorEnabled]),
+		DefaultIntervalSeconds: parseChannelMonitorInterval(vals[SettingKeyChannelMonitorDefaultIntervalSeconds]),
+REDACTED
 REDACTED
 
 // SetOnUpdateCallback sets a callback function to be called when settings are updated
@@ -1085,6 +1145,12 @@ REDACTED
 		updates[SettingKeyOpsMetricsIntervalSeconds] = strconv.Itoa(settings.OpsMetricsIntervalSeconds)
 REDACTED
 
+	// Channel monitor feature switch
+	updates[SettingKeyChannelMonitorEnabled] = strconv.FormatBool(settings.ChannelMonitorEnabled)
+	if v := clampChannelMonitorInterval(settings.ChannelMonitorDefaultIntervalSeconds); v > 0 {
+		updates[SettingKeyChannelMonitorDefaultIntervalSeconds] = strconv.Itoa(v)
+REDACTED
+
 	// Claude Code version check
 	updates[SettingKeyMinClaudeCodeVersion] = settings.MinClaudeCodeVersion
 	updates[SettingKeyMaxClaudeCodeVersion] = settings.MaxClaudeCodeVersion
@@ -1630,6 +1696,10 @@ REDACTED
 		SettingKeyOpsQueryModeDefault:          "auto",
 		SettingKeyOpsMetricsIntervalSeconds:    "60",
 
+		// Channel monitor defaults (enabled, 60s)
+		SettingKeyChannelMonitorEnabled:                "true",
+		SettingKeyChannelMonitorDefaultIntervalSeconds: "60",
+
 		// Claude Code version check (default: empty = disabled)
 		SettingKeyMinClaudeCodeVersion: "",
 		SettingKeyMaxClaudeCodeVersion: "",
@@ -1931,6 +2001,12 @@ REDACTED
 			result.OpsMetricsIntervalSeconds = v
 	REDACTED
 REDACTED
+
+	// Channel monitor feature (default: enabled, 60s)
+	result.ChannelMonitorEnabled = !isFalseSettingValue(settings[SettingKeyChannelMonitorEnabled])
+	result.ChannelMonitorDefaultIntervalSeconds = parseChannelMonitorInterval(
+		settings[SettingKeyChannelMonitorDefaultIntervalSeconds],
+	)
 
 	// Claude Code version check
 	result.MinClaudeCodeVersion = settings[SettingKeyMinClaudeCodeVersion]

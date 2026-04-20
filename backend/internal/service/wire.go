@@ -500,8 +500,9 @@ REDACTED
 
 // ProvideChannelMonitorRunner 创建并启动渠道监控调度器。
 // Runner.Stop 由 cleanup function 调用。
-func ProvideChannelMonitorRunner(svc *ChannelMonitorService) *ChannelMonitorRunner {
-	r := NewChannelMonitorRunner(svc)
+// settingService 用于 runner 每个 tick 读取功能开关。
+func ProvideChannelMonitorRunner(svc *ChannelMonitorService, settingService *SettingService) *ChannelMonitorRunner {
+	r := NewChannelMonitorRunner(svc, settingService)
 	r.Start()
 	return r
 REDACTED
