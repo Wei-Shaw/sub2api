@@ -349,6 +349,61 @@ export async function getPublicSettings(): Promise<PublicSettings> {
   return data
 REDACTED
 
+export type WeChatOAuthMode = 'open' | 'mp'
+export type WeChatOAuthUnavailableReason =
+  | 'not_configured'
+  | 'external_browser_required'
+  | 'wechat_browser_required'
+
+export interface ResolvedWeChatOAuthStart {
+  mode: WeChatOAuthMode | null
+  openEnabled: boolean
+  mpEnabled: boolean
+  isWeChatBrowser: boolean
+  unavailableReason: WeChatOAuthUnavailableReason | null
+REDACTED
+
+type WeChatOAuthPublicSettings = {
+  wechat_oauth_enabled?: boolean
+  wechat_oauth_open_enabled?: boolean
+  wechat_oauth_mp_enabled?: boolean
+REDACTED
+
+export function resolveWeChatOAuthStart(
+  settings: WeChatOAuthPublicSettings | null | undefined,
+  userAgent?: string
+): ResolvedWeChatOAuthStart {
+  const normalizedUserAgent = (userAgent
+    ?? (typeof navigator !== 'undefined' ? navigator.userAgent : '')
+    ?? '').trim()
+  const isWeChatBrowser = /MicroMessenger/i.test(normalizedUserAgent)
+  const legacyEnabled = settings?.wechat_oauth_enabled ?? false
+  const openEnabled = typeof settings?.wechat_oauth_open_enabled === 'boolean'
+    ? settings.wechat_oauth_open_enabled
+    : legacyEnabled
+  const mpEnabled = typeof settings?.wechat_oauth_mp_enabled === 'boolean'
+    ? settings.wechat_oauth_mp_enabled
+    : legacyEnabled
+
+  if (isWeChatBrowser) {
+    if (mpEnabled) {
+      return { mode: 'mp', openEnabled, mpEnabled, isWeChatBrowser, unavailableReason: null REDACTED
+    REDACTED
+    if (openEnabled) {
+      return { mode: null, openEnabled, mpEnabled, isWeChatBrowser, unavailableReason: 'external_browser_required' REDACTED
+    REDACTED
+    return { mode: null, openEnabled, mpEnabled, isWeChatBrowser, unavailableReason: 'not_configured' REDACTED
+  REDACTED
+
+  if (openEnabled) {
+    return { mode: 'open', openEnabled, mpEnabled, isWeChatBrowser, unavailableReason: null REDACTED
+  REDACTED
+  if (mpEnabled) {
+    return { mode: null, openEnabled, mpEnabled, isWeChatBrowser, unavailableReason: 'wechat_browser_required' REDACTED
+  REDACTED
+  return { mode: null, openEnabled, mpEnabled, isWeChatBrowser, unavailableReason: 'not_configured' REDACTED
+REDACTED
+
 /**
  * Send verification code to email
  * @param request - Email and optional Turnstile token
