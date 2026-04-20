@@ -33,3 +33,7 @@ REDACTED
 
 	return order, nil
 REDACTED
+
+func (s *PaymentService) ParseWeChatPaymentResumeToken(token string) (*WeChatPaymentResumeClaims, error) {
+	return s.paymentResume().ParseWeChatPaymentResumeToken(strings.TrimSpace(token))
+REDACTED

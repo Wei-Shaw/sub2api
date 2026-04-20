@@ -157,6 +157,7 @@ export interface CreateOrderRequest {
   return_url?: string
   payment_source?: string
   openid?: string
+  wechat_resume_token?: string
   is_mobile?: boolean
 REDACTED
 

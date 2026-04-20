@@ -114,23 +114,17 @@ onMounted(async () => {
     return
   REDACTED
 
-  const openid = readParam('openid')
-  const state = readParam('state')
-  const scope = readParam('scope')
-  const paymentType = readParam('payment_type')
-  const amount = readParam('amount')
-  const orderType = readParam('order_type')
-  const planId = readParam('plan_id')
+  const resumeToken = readParam('wechat_resume_token')
   const redirectURL = new URL(
     normalizeRedirectPath(readParam('redirect')),
     window.location.origin,
   )
 
-  if (!openid) {
+  if (!resumeToken) {
     errorMessage.value = textWithFallback(
-      'auth.wechatPayment.callbackMissingOpenId',
-      '微信支付回调缺少 openid。',
-      'The WeChat payment callback is missing the openid.',
+      'auth.wechatPayment.callbackMissingResumeToken',
+      '微信支付回调缺少恢复令牌。',
+      'The WeChat payment callback is missing the resume token.',
     )
     return
   REDACTED
@@ -138,14 +132,8 @@ onMounted(async () => {
   const query: Record<string, string> = {
     ...Object.fromEntries(redirectURL.searchParams.entries()),
     wechat_resume: '1',
-    openid,
+    wechat_resume_token: resumeToken,
   REDACTED
-  if (state) query.state = state
-  if (scope) query.scope = scope
-  if (paymentType) query.payment_type = paymentType
-  if (amount) query.amount = amount
-  if (orderType) query.order_type = orderType
-  if (planId) query.plan_id = planId
 
   await router.replace({
     path: redirectURL.pathname,

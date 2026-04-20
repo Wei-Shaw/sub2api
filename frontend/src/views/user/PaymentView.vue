@@ -284,6 +284,7 @@ import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { PaymentMethodOption REDACTED from '@/components/payment/PaymentMethodSelector.vue'
 import { describePaymentScenarioError REDACTED from './paymentUx'
+import { parseWechatResumeRoute, stripWechatResumeQuery REDACTED from './paymentWechatResume'
 
 const { t REDACTED = useI18n()
 const route = useRoute()
@@ -315,6 +316,7 @@ const paymentPhase = ref<'select' | 'paying'>('select')
 
 interface CreateOrderOptions {
   openid?: string
+  wechatResumeToken?: string
   paymentType?: string
   isResume?: boolean
 REDACTED
@@ -342,13 +344,6 @@ function emptyPaymentState(): PaymentRecoverySnapshot {
     resumeToken: '',
     createdAt: 0,
   REDACTED
-REDACTED
-
-function readRouteQueryValue(value: unknown): string {
-  if (Array.isArray(value)) {
-    return typeof value[0] === 'string' ? value[0] : ''
-  REDACTED
-  return typeof value === 'string' ? value : ''
 REDACTED
 
 function getWeixinJSBridge(): WeixinJSBridgeLike | undefined {
@@ -637,6 +632,9 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     if (options.openid) {
       payload.openid = options.openid
     REDACTED
+    if (options.wechatResumeToken) {
+      payload.wechat_resume_token = options.wechatResumeToken
+    REDACTED
     payload.is_mobile = isMobileDevice()
 
     const result = await paymentStore.createOrder(payload) as CreateOrderResult & { resume_token?: string REDACTED
@@ -744,44 +742,34 @@ function applyScenarioError(err: unknown, paymentMethod: string) {
 REDACTED
 
 async function resumeWechatPaymentFromQuery() {
-  const openid = readRouteQueryValue(route.query.openid)
-  if (readRouteQueryValue(route.query.wechat_resume) !== '1' || !openid) {
+  const resume = parseWechatResumeRoute(route.query, checkout.value.plans, validAmount.value)
+  if (!resume) {
     return
   REDACTED
 
-  const paymentType = normalizeVisibleMethod(readRouteQueryValue(route.query.payment_type)) || 'wxpay'
-  const orderType = readRouteQueryValue(route.query.order_type) === 'subscription' ? 'subscription' : 'balance'
-  const planId = Number.parseInt(readRouteQueryValue(route.query.plan_id), 10)
-  const rawAmount = Number.parseFloat(readRouteQueryValue(route.query.amount))
-  const orderAmount = Number.isFinite(rawAmount) && rawAmount > 0
-    ? rawAmount
-    : (orderType === 'subscription'
-      ? (checkout.value.plans.find(plan => plan.id === planId)?.price ?? 0)
-      : validAmount.value)
-
-  selectedMethod.value = paymentType
-  if (orderType === 'balance' && orderAmount > 0) {
-    amount.value = orderAmount
+  selectedMethod.value = resume.paymentType
+  if (resume.orderType === 'balance' && resume.orderAmount > 0) {
+    amount.value = resume.orderAmount
   REDACTED
-  if (orderType === 'subscription' && Number.isFinite(planId) && planId > 0) {
-    selectedPlan.value = checkout.value.plans.find(plan => plan.id === planId) ?? null
+  if (resume.orderType === 'subscription' && resume.planId) {
+    selectedPlan.value = checkout.value.plans.find(plan => plan.id === resume.planId) ?? null
   REDACTED
 
-  const nextQuery = { ...route.query REDACTED
-  delete nextQuery.wechat_resume
-  delete nextQuery.openid
-  delete nextQuery.state
-  delete nextQuery.scope
-  delete nextQuery.payment_type
-  delete nextQuery.amount
-  delete nextQuery.order_type
-  delete nextQuery.plan_id
-  await router.replace({ path: route.path, query: nextQuery REDACTED)
+  await router.replace({ path: route.path, query: stripWechatResumeQuery(route.query) REDACTED)
 
-  if (orderAmount > 0) {
-    await createOrder(orderAmount, orderType, Number.isFinite(planId) && planId > 0 ? planId : undefined, {
-      openid,
-      paymentType,
+  if (resume.wechatResumeToken) {
+    await createOrder(0, resume.orderType, resume.planId, {
+      wechatResumeToken: resume.wechatResumeToken,
+      paymentType: resume.paymentType,
+      isResume: true,
+    REDACTED)
+    return
+  REDACTED
+
+  if (resume.orderAmount > 0 && resume.openid) {
+    await createOrder(resume.orderAmount, resume.orderType, resume.planId, {
+      openid: resume.openid,
+      paymentType: resume.paymentType,
       isResume: true,
     REDACTED)
   REDACTED

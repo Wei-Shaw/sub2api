@@ -21,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -173,6 +174,66 @@ REDACTED))
 	count, err := client.PendingAuthSession.Query().Count(context.Background())
 REDACTED
 	require.Zero(t, count)
+REDACTED
+
+func TestWeChatPaymentOAuthCallbackRedirectsWithOpaqueResumeToken(t *testing.T) {
+	t.Setenv("WECHAT_OAUTH_MP_APP_ID", "wx-mp-app")
+	t.Setenv("WECHAT_OAUTH_MP_APP_SECRET", "wx-mp-secret")
+
+	originalAccessTokenURL := wechatOAuthAccessTokenURL
+	t.Cleanup(func() {
+		wechatOAuthAccessTokenURL = originalAccessTokenURL
+REDACTED)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/sns/oauth2/access_token") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"wechat-access","openid":"openid-123","scope":"snsapi_base"REDACTED`))
+			return
+	REDACTED
+		http.NotFound(w, r)
+REDACTED))
+	defer upstream.Close()
+	wechatOAuthAccessTokenURL = upstream.URL + "/sns/oauth2/access_token"
+
+	handler, client := newWeChatOAuthTestHandler(t, false)
+	defer client.Close()
+	handler.cfg.Totp.EncryptionKey = "REDACTEDREDACTED"
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/wechat/payment/callback?code=wechat-code&state=state-123", nil)
+	req.Host = "api.example.com"
+	req.AddCookie(encodedCookie(wechatPaymentOAuthStateName, "state-123"))
+	req.AddCookie(encodedCookie(wechatPaymentOAuthRedirect, "/purchase?from=wechat"))
+	req.AddCookie(encodedCookie(wechatPaymentOAuthContextName, `{"payment_type":"wxpay","amount":"12.5","order_type":"subscription","plan_id":7REDACTED`))
+	req.AddCookie(encodedCookie(wechatPaymentOAuthScope, "snsapi_base"))
+	c.Request = req
+
+	handler.WeChatPaymentOAuthCallback(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	location := recorder.Header().Get("Location")
+	parsed, err := url.Parse(location)
+REDACTED
+	fragment, err := url.ParseQuery(parsed.Fragment)
+REDACTED
+	require.Equal(t, "/purchase?from=wechat", fragment.Get("redirect"))
+	require.NotEmpty(t, fragment.Get("wechat_resume_token"))
+	require.Empty(t, fragment.Get("openid"))
+	require.Empty(t, fragment.Get("payment_type"))
+	require.Empty(t, fragment.Get("amount"))
+	require.Empty(t, fragment.Get("order_type"))
+	require.Empty(t, fragment.Get("plan_id"))
+
+	claims, err := handler.wechatPaymentResumeService().ParseWeChatPaymentResumeToken(fragment.Get("wechat_resume_token"))
+REDACTED
+	require.Equal(t, "openid-123", claims.OpenID)
+	require.Equal(t, payment.TypeWxpay, claims.PaymentType)
+	require.Equal(t, "12.5", claims.Amount)
+	require.Equal(t, payment.OrderTypeSubscription, claims.OrderType)
+	require.EqualValues(t, 7, claims.PlanID)
+	require.Equal(t, "/purchase?from=wechat", claims.RedirectTo)
 REDACTED
 
 func TestWeChatOAuthCallbackBindUsesUnionCanonicalIdentityAcrossChannels(t *testing.T) {

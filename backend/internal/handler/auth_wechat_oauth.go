@@ -435,22 +435,32 @@ REDACTED
 		scope = strings.TrimSpace(tokenResp.Scope)
 REDACTED
 
+	resumeToken, err := h.wechatPaymentResumeService().CreateWeChatPaymentResumeToken(service.WeChatPaymentResumeClaims{
+		OpenID:      openid,
+		PaymentType: paymentContext.PaymentType,
+		Amount:      paymentContext.Amount,
+		OrderType:   paymentContext.OrderType,
+		PlanID:      paymentContext.PlanID,
+		RedirectTo:  redirectTo,
+		Scope:       scope,
+REDACTED)
+	if err != nil {
+		redirectOAuthError(c, frontendCallback, "invalid_context", "failed to encode payment resume context", "")
+		return
+REDACTED
+
 	fragment := url.Values{REDACTED
-	fragment.Set("openid", openid)
-	fragment.Set("state", state)
-	fragment.Set("scope", scope)
-	fragment.Set("payment_type", paymentContext.PaymentType)
-	if paymentContext.Amount != "" {
-		fragment.Set("amount", paymentContext.Amount)
-REDACTED
-	if paymentContext.OrderType != "" {
-		fragment.Set("order_type", paymentContext.OrderType)
-REDACTED
-	if paymentContext.PlanID > 0 {
-		fragment.Set("plan_id", strconv.FormatInt(paymentContext.PlanID, 10))
-REDACTED
+	fragment.Set("wechat_resume_token", resumeToken)
 	fragment.Set("redirect", redirectTo)
 	redirectWithFragment(c, frontendCallback, fragment)
+REDACTED
+
+func (h *AuthHandler) wechatPaymentResumeService() *service.PaymentResumeService {
+	key, err := payment.ProvideEncryptionKey(h.cfg)
+	if err != nil {
+		return service.NewPaymentResumeService(nil)
+REDACTED
+	return service.NewPaymentResumeService([]byte(key))
 REDACTED
 
 type completeWeChatOAuthRequest struct {
