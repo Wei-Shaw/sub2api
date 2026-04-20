@@ -65,6 +65,8 @@ type UserRepository interface {
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]User, *pagination.PaginationResult, error)
 	ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters UserListFilters) ([]User, *pagination.PaginationResult, error)
+	GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []int64) (map[int64]*time.Time, error)
+	GetLatestUsedAtByUserID(ctx context.Context, userID int64) (*time.Time, error)
 
 	UpdateBalance(ctx context.Context, id int64, amount float64) error
 	DeductBalance(ctx context.Context, id int64, amount float64) error
@@ -157,6 +159,33 @@ REDACTED
 
 type userAuthIdentityReader interface {
 	ListUserAuthIdentities(ctx context.Context, userID int64) ([]UserAuthIdentityRecord, error)
+REDACTED
+
+type emailAuthIdentitySynchronizer interface {
+	EnsureEmailAuthIdentity(ctx context.Context, userID int64, email string) error
+	ReplaceEmailAuthIdentity(ctx context.Context, userID int64, oldEmail, newEmail string) error
+REDACTED
+
+func ensureEmailAuthIdentitySync(ctx context.Context, repo UserRepository, userID int64, email string) error {
+	syncer, ok := repo.(emailAuthIdentitySynchronizer)
+	if !ok {
+		return nil
+REDACTED
+	return syncer.EnsureEmailAuthIdentity(ctx, userID, email)
+REDACTED
+
+func replaceEmailAuthIdentitySync(ctx context.Context, repo UserRepository, userID int64, oldEmail, newEmail string) error {
+	oldNormalized := strings.ToLower(strings.TrimSpace(oldEmail))
+	newNormalized := strings.ToLower(strings.TrimSpace(newEmail))
+	if oldNormalized == newNormalized {
+		return nil
+REDACTED
+
+	syncer, ok := repo.(emailAuthIdentitySynchronizer)
+	if !ok {
+		return nil
+REDACTED
+	return syncer.ReplaceEmailAuthIdentity(ctx, userID, oldEmail, newEmail)
 REDACTED
 
 // ChangePasswordRequest 修改密码请求
@@ -252,6 +281,7 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID int64, req Updat
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
 	oldConcurrency := user.Concurrency
+	oldEmail := user.Email
 
 	// 更新字段
 	if req.Email != nil {
@@ -271,24 +301,11 @@ REDACTED
 REDACTED
 
 	if req.AvatarURL != nil {
-		avatarValue := strings.TrimSpace(*req.AvatarURL)
-		switch {
-		case avatarValue == "":
-			if err := s.userRepo.DeleteUserAvatar(ctx, userID); err != nil {
-				return nil, fmt.Errorf("delete avatar: %w", err)
-		REDACTED
-			applyUserAvatar(user, nil)
-		default:
-			avatarInput, err := normalizeUserAvatarInput(avatarValue)
-			if err != nil {
-				return nil, err
-		REDACTED
-			avatar, err := s.userRepo.UpsertUserAvatar(ctx, userID, avatarInput)
-			if err != nil {
-				return nil, fmt.Errorf("upsert avatar: %w", err)
-		REDACTED
-			applyUserAvatar(user, avatar)
+		avatar, err := s.SetAvatar(ctx, userID, *req.AvatarURL)
+		if err != nil {
+			return nil, err
 	REDACTED
+		applyUserAvatar(user, avatar)
 REDACTED
 
 	if req.Concurrency != nil {
@@ -309,11 +326,35 @@ REDACTED
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, fmt.Errorf("update user: %w", err)
 REDACTED
+	if err := replaceEmailAuthIdentitySync(ctx, s.userRepo, user.ID, oldEmail, user.Email); err != nil {
+		return nil, fmt.Errorf("sync email auth identity: %w", err)
+REDACTED
 	if s.authCacheInvalidator != nil && user.Concurrency != oldConcurrency {
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 REDACTED
 
 	return user, nil
+REDACTED
+
+func (s *UserService) SetAvatar(ctx context.Context, userID int64, raw string) (*UserAvatar, error) {
+	avatarValue := strings.TrimSpace(raw)
+	if avatarValue == "" {
+		if err := s.userRepo.DeleteUserAvatar(ctx, userID); err != nil {
+			return nil, fmt.Errorf("delete avatar: %w", err)
+	REDACTED
+		return nil, nil
+REDACTED
+
+	avatarInput, err := normalizeUserAvatarInput(avatarValue)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	avatar, err := s.userRepo.UpsertUserAvatar(ctx, userID, avatarInput)
+	if err != nil {
+		return nil, fmt.Errorf("upsert avatar: %w", err)
+REDACTED
+	return avatar, nil
 REDACTED
 
 func applyUserAvatar(user *User, avatar *UserAvatar) {

@@ -152,6 +152,11 @@ REDACTED
 	require.Equal(t, "Alice Example", identity.Metadata["display_name"])
 	require.Equal(t, "https://cdn.example/alice.png", identity.Metadata["avatar_url"])
 
+	avatar := loadUserAvatarRecord(t, client, userEntity.ID)
+	require.NotNil(t, avatar)
+	require.Equal(t, "remote_url", avatar.StorageProvider)
+	require.Equal(t, "https://cdn.example/alice.png", avatar.URL)
+
 	decision, err := client.IdentityAdoptionDecision.Query().
 		Where(identityadoptiondecision.PendingAuthSessionIDEQ(session.ID)).
 		Only(ctx)
@@ -1242,6 +1247,18 @@ CREATE TABLE IF NOT EXISTS user_provider_default_grants (
 	UNIQUE(user_id, provider_type, grant_reason)
 )`)
 REDACTED
+	_, err = db.Exec(`
+CREATE TABLE IF NOT EXISTS user_avatars (
+	user_id INTEGER PRIMARY KEY,
+	storage_provider TEXT NOT NULL,
+	storage_key TEXT NOT NULL DEFAULT '',
+	url TEXT NOT NULL,
+	content_type TEXT NOT NULL DEFAULT '',
+	byte_size INTEGER NOT NULL DEFAULT 0,
+	sha256 TEXT NOT NULL DEFAULT '',
+	updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+)`)
+REDACTED
 
 	drv := entsql.OpenDB(dialect.SQLite, db)
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
@@ -1492,6 +1509,35 @@ REDACTED
 	return payload
 REDACTED
 
+type oauthPendingFlowAvatarRecord struct {
+	StorageProvider string
+	URL             string
+REDACTED
+
+func loadUserAvatarRecord(t *testing.T, client *dbent.Client, userID int64) *oauthPendingFlowAvatarRecord {
+REDACTED
+
+	var rows entsql.Rows
+	err := client.Driver().Query(
+		context.Background(),
+		`SELECT storage_provider, url FROM user_avatars WHERE user_id = ?`,
+		[]any{userIDREDACTED,
+		&rows,
+	)
+REDACTED
+	defer rows.Close()
+
+	if !rows.Next() {
+		require.NoError(t, rows.Err())
+		return nil
+REDACTED
+
+	var record oauthPendingFlowAvatarRecord
+	require.NoError(t, rows.Scan(&record.StorageProvider, &record.URL))
+	require.NoError(t, rows.Err())
+	return &record
+REDACTED
+
 func countProviderGrantRecords(
 	t *testing.T,
 	client *dbent.Client,
@@ -1604,16 +1650,95 @@ func (r *oauthPendingFlowUserRepo) Delete(ctx context.Context, id int64) error {
 	return r.client.User.DeleteOneID(id).Exec(ctx)
 REDACTED
 
-func (r *oauthPendingFlowUserRepo) GetUserAvatar(context.Context, int64) (*service.UserAvatar, error) {
-	return nil, nil
+func (r *oauthPendingFlowUserRepo) GetUserAvatar(ctx context.Context, userID int64) (*service.UserAvatar, error) {
+	driver := r.client.Driver()
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		driver = tx.Client().Driver()
 REDACTED
 
-func (r *oauthPendingFlowUserRepo) UpsertUserAvatar(context.Context, int64, service.UpsertUserAvatarInput) (*service.UserAvatar, error) {
-	panic("unexpected UpsertUserAvatar call")
+	var rows entsql.Rows
+	if err := driver.Query(
+		ctx,
+		`SELECT storage_provider, storage_key, url, content_type, byte_size, sha256 FROM user_avatars WHERE user_id = ?`,
+		[]any{userIDREDACTED,
+		&rows,
+	); err != nil {
+		return nil, err
+REDACTED
+	defer rows.Close()
+
+	if !rows.Next() {
+		return nil, rows.Err()
 REDACTED
 
-func (r *oauthPendingFlowUserRepo) DeleteUserAvatar(context.Context, int64) error {
-	return nil
+	var avatar service.UserAvatar
+	if err := rows.Scan(
+		&avatar.StorageProvider,
+		&avatar.StorageKey,
+		&avatar.URL,
+		&avatar.ContentType,
+		&avatar.ByteSize,
+		&avatar.SHA256,
+	); err != nil {
+		return nil, err
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+	return &avatar, nil
+REDACTED
+
+func (r *oauthPendingFlowUserRepo) UpsertUserAvatar(ctx context.Context, userID int64, input service.UpsertUserAvatarInput) (*service.UserAvatar, error) {
+	driver := r.client.Driver()
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		driver = tx.Client().Driver()
+REDACTED
+
+	var result entsql.Result
+	if err := driver.Exec(
+		ctx,
+		`INSERT INTO user_avatars (user_id, storage_provider, storage_key, url, content_type, byte_size, sha256, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(user_id) DO UPDATE SET
+	storage_provider = excluded.storage_provider,
+	storage_key = excluded.storage_key,
+	url = excluded.url,
+	content_type = excluded.content_type,
+	byte_size = excluded.byte_size,
+	sha256 = excluded.sha256,
+	updated_at = CURRENT_TIMESTAMP`,
+		[]any{
+			userID,
+			input.StorageProvider,
+			input.StorageKey,
+			input.URL,
+			input.ContentType,
+			input.ByteSize,
+			input.SHA256,
+	REDACTED,
+		&result,
+	); err != nil {
+		return nil, err
+REDACTED
+
+	return &service.UserAvatar{
+		StorageProvider: input.StorageProvider,
+		StorageKey:      input.StorageKey,
+		URL:             input.URL,
+		ContentType:     input.ContentType,
+		ByteSize:        input.ByteSize,
+		SHA256:          input.SHA256,
+REDACTED, nil
+REDACTED
+
+func (r *oauthPendingFlowUserRepo) DeleteUserAvatar(ctx context.Context, userID int64) error {
+	driver := r.client.Driver()
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		driver = tx.Client().Driver()
+REDACTED
+
+	var result entsql.Result
+	return driver.Exec(ctx, `DELETE FROM user_avatars WHERE user_id = ?`, []any{userIDREDACTED, &result)
 REDACTED
 
 func (r *oauthPendingFlowUserRepo) List(context.Context, pagination.PaginationParams) ([]service.User, *pagination.PaginationResult, error) {
@@ -1634,6 +1759,14 @@ REDACTED
 
 func (r *oauthPendingFlowUserRepo) UpdateConcurrency(context.Context, int64, int) error {
 	panic("unexpected UpdateConcurrency call")
+REDACTED
+
+func (r *oauthPendingFlowUserRepo) GetLatestUsedAtByUserIDs(context.Context, []int64) (map[int64]*time.Time, error) {
+	return map[int64]*time.Time{REDACTED, nil
+REDACTED
+
+func (r *oauthPendingFlowUserRepo) GetLatestUsedAtByUserID(context.Context, int64) (*time.Time, error) {
+	return nil, nil
 REDACTED
 
 func (r *oauthPendingFlowUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {

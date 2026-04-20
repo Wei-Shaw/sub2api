@@ -92,6 +92,12 @@ REDACTED
 func (s *userHandlerRepoStub) AddGroupToAllowedGroups(context.Context, int64, int64) error {
 	return nil
 REDACTED
+func (s *userHandlerRepoStub) GetLatestUsedAtByUserIDs(context.Context, []int64) (map[int64]*time.Time, error) {
+	return map[int64]*time.Time{REDACTED, nil
+REDACTED
+func (s *userHandlerRepoStub) GetLatestUsedAtByUserID(context.Context, int64) (*time.Time, error) {
+	return nil, nil
+REDACTED
 func (s *userHandlerRepoStub) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
 	return nil
 REDACTED
@@ -228,6 +234,79 @@ REDACTED
 	require.False(t, resp.Data.Identities.WeChat.Bound)
 	require.True(t, resp.Data.Identities.WeChat.CanBind)
 	require.Contains(t, resp.Data.Identities.WeChat.BindStartPath, "/api/v1/auth/oauth/wechat/start")
+REDACTED
+
+func TestUserHandlerGetProfileReturnsLegacyCompatibilityFields(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	verifiedAt := time.Date(2026, 4, 20, 8, 30, 0, 0, time.UTC)
+	repo := &userHandlerRepoStub{
+		user: &service.User{
+			ID:           21,
+			Email:        "legacy-profile@example.com",
+			Username:     "linuxdo-handle",
+			Role:         service.RoleUser,
+			Status:       service.StatusActive,
+			AvatarURL:    "https://cdn.example.com/linuxdo.png",
+			AvatarSource: "remote_url",
+	REDACTED,
+		identities: []service.UserAuthIdentityRecord{
+			{
+				ProviderType:    "linuxdo",
+				ProviderKey:     "linuxdo",
+				ProviderSubject: "linuxdo-subject-21",
+				VerifiedAt:      &verifiedAt,
+				Metadata: map[string]any{
+					"username": "linuxdo-handle",
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/user/profile", nil)
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 21REDACTED)
+
+	handler.GetProfile(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var resp struct {
+		Code int            `json:"code"`
+		Data map[string]any `json:"data"`
+REDACTED
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, true, resp.Data["email_bound"])
+	require.Equal(t, true, resp.Data["linuxdo_bound"])
+	require.Equal(t, false, resp.Data["oidc_bound"])
+	require.Equal(t, false, resp.Data["wechat_bound"])
+	require.Equal(t, "https://cdn.example.com/linuxdo.png", resp.Data["avatar_url"])
+
+	authBindings, ok := resp.Data["auth_bindings"].(map[string]any)
+	require.True(t, ok)
+	linuxdoBinding, ok := authBindings["linuxdo"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, linuxdoBinding["bound"])
+	require.Equal(t, "linuxdo", linuxdoBinding["provider"])
+
+	identityBindings, ok := resp.Data["identity_bindings"].(map[string]any)
+	require.True(t, ok)
+	emailBinding, ok := identityBindings["email"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, emailBinding["bound"])
+
+	avatarSource, ok := resp.Data["avatar_source"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "linuxdo", avatarSource["provider"])
+
+	profileSources, ok := resp.Data["profile_sources"].(map[string]any)
+	require.True(t, ok)
+	usernameSource, ok := profileSources["username"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "linuxdo", usernameSource["provider"])
 REDACTED
 
 func TestUserHandlerStartIdentityBindingReturnsAuthorizeURL(t *testing.T) {

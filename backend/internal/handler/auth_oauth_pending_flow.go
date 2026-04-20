@@ -852,6 +852,7 @@ func applyPendingOAuthBinding(
 	ctx context.Context,
 	client *dbent.Client,
 	authService *service.AuthService,
+	userService *service.UserService,
 	session *dbent.PendingAuthSession,
 	decision *dbent.IdentityAdoptionDecision,
 	overrideUserID *int64,
@@ -938,6 +939,12 @@ REDACTED
 	REDACTED
 REDACTED
 
+	if decision != nil && decision.AdoptAvatar && adoptedAvatarURL != "" && userService != nil {
+		if _, err := userService.SetAvatar(txCtx, targetUserID, adoptedAvatarURL); err != nil {
+			return err
+	REDACTED
+REDACTED
+
 	return tx.Commit()
 REDACTED
 
@@ -945,6 +952,7 @@ func applyPendingOAuthAdoption(
 	ctx context.Context,
 	client *dbent.Client,
 	authService *service.AuthService,
+	userService *service.UserService,
 	session *dbent.PendingAuthSession,
 	decision *dbent.IdentityAdoptionDecision,
 	overrideUserID *int64,
@@ -953,6 +961,7 @@ func applyPendingOAuthAdoption(
 		ctx,
 		client,
 		authService,
+		userService,
 		session,
 		decision,
 		overrideUserID,
@@ -1092,7 +1101,7 @@ REDACTED
 	REDACTED)
 		return
 REDACTED
-	if err := applyPendingOAuthBinding(c.Request.Context(), h.entClient(), h.authService, session, decision, &user.ID, true, true); err != nil {
+	if err := applyPendingOAuthBinding(c.Request.Context(), h.entClient(), h.authService, h.userService, session, decision, &user.ID, true, true); err != nil {
 		response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_BIND_APPLY_FAILED", "failed to bind pending oauth identity").WithCause(err))
 		return
 REDACTED
@@ -1188,7 +1197,7 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	if err := applyPendingOAuthBinding(c.Request.Context(), client, h.authService, session, decision, &user.ID, true, false); err != nil {
+	if err := applyPendingOAuthBinding(c.Request.Context(), client, h.authService, h.userService, session, decision, &user.ID, true, false); err != nil {
 		response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_BIND_APPLY_FAILED", "failed to bind pending oauth identity").WithCause(err))
 		return
 REDACTED
@@ -1278,7 +1287,7 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	if err := applyPendingOAuthAdoption(c.Request.Context(), h.entClient(), h.authService, session, decision, session.TargetUserID); err != nil {
+	if err := applyPendingOAuthAdoption(c.Request.Context(), h.entClient(), h.authService, h.userService, session, decision, session.TargetUserID); err != nil {
 		response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_ADOPTION_APPLY_FAILED", "failed to apply oauth profile adoption").WithCause(err))
 		return
 REDACTED
