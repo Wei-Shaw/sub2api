@@ -500,10 +500,15 @@ REDACTED{
 					service.SettingKeyTableDefaultPageSize: "20",
 					service.SettingKeyTablePageSizeOptions: "[10,20,50,100]",
 
-					service.SettingKeyOpsMonitoringEnabled:         "false",
-					service.SettingKeyOpsRealtimeMonitoringEnabled: "true",
-					service.SettingKeyOpsQueryModeDefault:          "auto",
-					service.SettingKeyOpsMetricsIntervalSeconds:    "60",
+					service.SettingKeyOpsMonitoringEnabled:           "false",
+					service.SettingKeyOpsRealtimeMonitoringEnabled:   "true",
+					service.SettingKeyOpsQueryModeDefault:            "auto",
+					service.SettingKeyOpsMetricsIntervalSeconds:      "60",
+					service.SettingPaymentVisibleMethodAlipaySource:  service.VisibleMethodSourceEasyPayAlipay,
+					service.SettingPaymentVisibleMethodWxpaySource:   service.VisibleMethodSourceOfficialWechat,
+					service.SettingPaymentVisibleMethodAlipayEnabled: "true",
+					service.SettingPaymentVisibleMethodWxpayEnabled:  "false",
+					"openai_advanced_scheduler_enabled":              "true",
 			REDACTED)
 		REDACTED,
 			method:     http.MethodGet,
@@ -567,6 +572,27 @@ REDACTED{
 						"api_base_url": "https://api.example.com",
 					"contact_info": "support",
 					"doc_url": "https://docs.example.com",
+					"auth_source_default_email_balance": 0,
+					"auth_source_default_email_concurrency": 5,
+					"auth_source_default_email_subscriptions": [],
+					"auth_source_default_email_grant_on_signup": false,
+					"auth_source_default_email_grant_on_first_bind": false,
+					"auth_source_default_linuxdo_balance": 0,
+					"auth_source_default_linuxdo_concurrency": 5,
+					"auth_source_default_linuxdo_subscriptions": [],
+					"auth_source_default_linuxdo_grant_on_signup": false,
+					"auth_source_default_linuxdo_grant_on_first_bind": false,
+					"auth_source_default_oidc_balance": 0,
+					"auth_source_default_oidc_concurrency": 5,
+					"auth_source_default_oidc_subscriptions": [],
+					"auth_source_default_oidc_grant_on_signup": false,
+					"auth_source_default_oidc_grant_on_first_bind": false,
+					"auth_source_default_wechat_balance": 0,
+					"auth_source_default_wechat_concurrency": 5,
+					"auth_source_default_wechat_subscriptions": [],
+					"auth_source_default_wechat_grant_on_signup": false,
+					"auth_source_default_wechat_grant_on_first_bind": false,
+					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
 					"default_subscriptions": [],
@@ -592,6 +618,11 @@ REDACTED{
 					"enable_fingerprint_unification": true,
 					"enable_metadata_passthrough": false,
 					"web_search_emulation_enabled": false,
+					"payment_visible_method_alipay_source": "easypay_alipay",
+					"payment_visible_method_wxpay_source": "official_wxpay",
+					"payment_visible_method_alipay_enabled": true,
+					"payment_visible_method_wxpay_enabled": false,
+					"openai_advanced_scheduler_enabled": true,
 					"custom_menu_items": [],
 					"custom_endpoints": [],
 					"payment_enabled": false,
@@ -858,6 +889,18 @@ func (r *stubUserRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 REDACTED
 
+func (r *stubUserRepo) GetUserAvatar(ctx context.Context, userID int64) (*service.UserAvatar, error) {
+	return nil, nil
+REDACTED
+
+func (r *stubUserRepo) UpsertUserAvatar(ctx context.Context, userID int64, input service.UpsertUserAvatarInput) (*service.UserAvatar, error) {
+	return nil, errors.New("not implemented")
+REDACTED
+
+func (r *stubUserRepo) DeleteUserAvatar(ctx context.Context, userID int64) error {
+	return errors.New("not implemented")
+REDACTED
+
 func (r *stubUserRepo) List(ctx context.Context, params pagination.PaginationParams) ([]service.User, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 REDACTED
@@ -892,6 +935,18 @@ REDACTED
 
 func (r *stubUserRepo) AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
 	return errors.New("not implemented")
+REDACTED
+
+func (r *stubUserRepo) ListUserAuthIdentities(ctx context.Context, userID int64) ([]service.UserAuthIdentityRecord, error) {
+	return nil, errors.New("not implemented")
+REDACTED
+
+func (r *stubUserRepo) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []int64) (map[int64]*time.Time, error) {
+	return map[int64]*time.Time{REDACTED, nil
+REDACTED
+
+func (r *stubUserRepo) GetLatestUsedAtByUserID(ctx context.Context, userID int64) (*time.Time, error) {
+	return nil, nil
 REDACTED
 
 func (r *stubUserRepo) UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error {

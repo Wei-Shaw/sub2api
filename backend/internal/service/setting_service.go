@@ -566,6 +566,16 @@ REDACTED
 		normalizedWhitelist = []string{REDACTED
 REDACTED
 	settings.RegistrationEmailSuffixWhitelist = normalizedWhitelist
+	alipaySource, err := normalizeVisibleMethodSettingSource("alipay", settings.PaymentVisibleMethodAlipaySource, settings.PaymentVisibleMethodAlipayEnabled)
+	if err != nil {
+		return err
+REDACTED
+	wxpaySource, err := normalizeVisibleMethodSettingSource("wxpay", settings.PaymentVisibleMethodWxpaySource, settings.PaymentVisibleMethodWxpayEnabled)
+	if err != nil {
+		return err
+REDACTED
+	settings.PaymentVisibleMethodAlipaySource = alipaySource
+	settings.PaymentVisibleMethodWxpaySource = wxpaySource
 
 	updates := make(map[string]string)
 
@@ -701,6 +711,11 @@ REDACTED
 	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
 	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
 	updates[SettingKeyEnableCCHSigning] = strconv.FormatBool(settings.EnableCCHSigning)
+	updates[SettingPaymentVisibleMethodAlipaySource] = settings.PaymentVisibleMethodAlipaySource
+	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
+	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
+	updates[SettingPaymentVisibleMethodWxpayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodWxpayEnabled)
+	updates[openAIAdvancedSchedulerSettingKey] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerEnabled)
 
 	// Balance low notification
 	updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(settings.BalanceLowNotifyEnabled)
@@ -729,6 +744,11 @@ REDACTED
 			metadataPassthrough:    settings.EnableMetadataPassthrough,
 			cchSigning:             settings.EnableCCHSigning,
 			expiresAt:              time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
+	REDACTED)
+		openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
+		openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{
+			enabled:   settings.OpenAIAdvancedSchedulerEnabled,
+			expiresAt: time.Now().Add(openAIAdvancedSchedulerSettingCacheTTL).UnixNano(),
 	REDACTED)
 		if s.onUpdate != nil {
 			s.onUpdate() // Invalidate cache after settings update
@@ -1137,7 +1157,12 @@ REDACTED
 		SettingKeyMaxClaudeCodeVersion: "",
 
 		// 分组隔离（默认不允许未分组 Key 调度）
-		SettingKeyAllowUngroupedKeyScheduling: "false",
+		SettingKeyAllowUngroupedKeyScheduling:    "false",
+		SettingPaymentVisibleMethodAlipaySource:  "",
+		SettingPaymentVisibleMethodWxpaySource:   "",
+		SettingPaymentVisibleMethodAlipayEnabled: "false",
+		SettingPaymentVisibleMethodWxpayEnabled:  "false",
+		openAIAdvancedSchedulerSettingKey:        "false",
 REDACTED
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -1429,6 +1454,11 @@ REDACTED
 			result.WebSearchEmulationEnabled = wsCfg.Enabled && len(wsCfg.Providers) > 0
 	REDACTED
 REDACTED
+	result.PaymentVisibleMethodAlipaySource = NormalizeVisibleMethodSource("alipay", settings[SettingPaymentVisibleMethodAlipaySource])
+	result.PaymentVisibleMethodWxpaySource = NormalizeVisibleMethodSource("wxpay", settings[SettingPaymentVisibleMethodWxpaySource])
+	result.PaymentVisibleMethodAlipayEnabled = settings[SettingPaymentVisibleMethodAlipayEnabled] == "true"
+	result.PaymentVisibleMethodWxpayEnabled = settings[SettingPaymentVisibleMethodWxpayEnabled] == "true"
+	result.OpenAIAdvancedSchedulerEnabled = settings[openAIAdvancedSchedulerSettingKey] == "true"
 
 	// Balance low notification
 	result.BalanceLowNotifyEnabled = settings[SettingKeyBalanceLowNotifyEnabled] == "true"
@@ -1456,6 +1486,28 @@ func isFalseSettingValue(value string) bool {
 	default:
 		return false
 REDACTED
+REDACTED
+
+func normalizeVisibleMethodSettingSource(method, source string, enabled bool) (string, error) {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		if enabled {
+			return "", infraerrors.BadRequest(
+				"INVALID_PAYMENT_VISIBLE_METHOD_SOURCE",
+				fmt.Sprintf("%s source is required when the visible method is enabled", method),
+			)
+	REDACTED
+		return "", nil
+REDACTED
+
+	normalized := NormalizeVisibleMethodSource(method, source)
+	if normalized == "" {
+		return "", infraerrors.BadRequest(
+			"INVALID_PAYMENT_VISIBLE_METHOD_SOURCE",
+			fmt.Sprintf("%s source must be one of the supported payment providers", method),
+		)
+REDACTED
+	return normalized, nil
 REDACTED
 
 func parseDefaultSubscriptions(raw string) []DefaultSubscriptionSetting {

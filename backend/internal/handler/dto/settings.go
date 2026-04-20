@@ -127,6 +127,15 @@ type SystemSettings struct {
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`
 
+	// Payment visible method routing
+	PaymentVisibleMethodAlipaySource  string `json:"payment_visible_method_alipay_source"`
+	PaymentVisibleMethodWxpaySource   string `json:"payment_visible_method_wxpay_source"`
+	PaymentVisibleMethodAlipayEnabled bool   `json:"payment_visible_method_alipay_enabled"`
+	PaymentVisibleMethodWxpayEnabled  bool   `json:"payment_visible_method_wxpay_enabled"`
+
+	// OpenAI account scheduling
+	OpenAIAdvancedSchedulerEnabled bool `json:"openai_advanced_scheduler_enabled"`
+
 	// Payment configuration
 	PaymentEnabled                   bool     `json:"payment_enabled"`
 	PaymentMinAmount                 float64  `json:"payment_min_amount"`

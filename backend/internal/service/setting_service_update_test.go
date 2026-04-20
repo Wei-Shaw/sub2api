@@ -223,3 +223,34 @@ REDACTED
 	require.Equal(t, "1000", repo.updates[SettingKeyTableDefaultPageSize])
 	require.Equal(t, "[20,100]", repo.updates[SettingKeyTablePageSizeOptions])
 REDACTED
+
+func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler(t *testing.T) {
+	repo := &settingUpdateRepoStub{REDACTED
+	svc := NewSettingService(repo, &config.Config{REDACTED)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		PaymentVisibleMethodAlipaySource:  "alipay",
+		PaymentVisibleMethodWxpaySource:   "easypay",
+		PaymentVisibleMethodAlipayEnabled: true,
+		PaymentVisibleMethodWxpayEnabled:  false,
+		OpenAIAdvancedSchedulerEnabled:    true,
+REDACTED)
+REDACTED
+	require.Equal(t, VisibleMethodSourceOfficialAlipay, repo.updates[SettingPaymentVisibleMethodAlipaySource])
+	require.Equal(t, VisibleMethodSourceEasyPayWechat, repo.updates[SettingPaymentVisibleMethodWxpaySource])
+	require.Equal(t, "true", repo.updates[SettingPaymentVisibleMethodAlipayEnabled])
+	require.Equal(t, "false", repo.updates[SettingPaymentVisibleMethodWxpayEnabled])
+	require.Equal(t, "true", repo.updates[openAIAdvancedSchedulerSettingKey])
+REDACTED
+
+func TestSettingService_UpdateSettings_RejectsInvalidPaymentVisibleMethodSource(t *testing.T) {
+	repo := &settingUpdateRepoStub{REDACTED
+	svc := NewSettingService(repo, &config.Config{REDACTED)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		PaymentVisibleMethodAlipaySource: "not-a-provider",
+REDACTED)
+REDACTED
+	require.Equal(t, "INVALID_PAYMENT_VISIBLE_METHOD_SOURCE", infraerrors.Reason(err))
+	require.Nil(t, repo.updates)
+REDACTED

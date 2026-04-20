@@ -180,6 +180,11 @@ REDACTED
 		EnableMetadataPassthrough:            settings.EnableMetadataPassthrough,
 		EnableCCHSigning:                     settings.EnableCCHSigning,
 		WebSearchEmulationEnabled:            settings.WebSearchEmulationEnabled,
+		PaymentVisibleMethodAlipaySource:     settings.PaymentVisibleMethodAlipaySource,
+		PaymentVisibleMethodWxpaySource:      settings.PaymentVisibleMethodWxpaySource,
+		PaymentVisibleMethodAlipayEnabled:    settings.PaymentVisibleMethodAlipayEnabled,
+		PaymentVisibleMethodWxpayEnabled:     settings.PaymentVisibleMethodWxpayEnabled,
+		OpenAIAdvancedSchedulerEnabled:       settings.OpenAIAdvancedSchedulerEnabled,
 		BalanceLowNotifyEnabled:              settings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:            settings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:          settings.BalanceLowNotifyRechargeURL,
@@ -337,6 +342,15 @@ type UpdateSettingsRequest struct {
 	EnableFingerprintUnification *bool `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough    *bool `json:"enable_metadata_passthrough"`
 	EnableCCHSigning             *bool `json:"enable_cch_signing"`
+
+	// Payment visible method routing
+	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
+	PaymentVisibleMethodWxpaySource   *string `json:"payment_visible_method_wxpay_source"`
+	PaymentVisibleMethodAlipayEnabled *bool   `json:"payment_visible_method_alipay_enabled"`
+	PaymentVisibleMethodWxpayEnabled  *bool   `json:"payment_visible_method_wxpay_enabled"`
+
+	// OpenAI account scheduling
+	OpenAIAdvancedSchedulerEnabled *bool `json:"openai_advanced_scheduler_enabled"`
 
 	// Balance low notification
 	BalanceLowNotifyEnabled     *bool                   `json:"balance_low_notify_enabled"`
@@ -935,6 +949,36 @@ REDACTED
 		REDACTED
 			return previousSettings.EnableCCHSigning
 	REDACTED(),
+		PaymentVisibleMethodAlipaySource: func() string {
+			if req.PaymentVisibleMethodAlipaySource != nil {
+				return strings.TrimSpace(*req.PaymentVisibleMethodAlipaySource)
+		REDACTED
+			return previousSettings.PaymentVisibleMethodAlipaySource
+	REDACTED(),
+		PaymentVisibleMethodWxpaySource: func() string {
+			if req.PaymentVisibleMethodWxpaySource != nil {
+				return strings.TrimSpace(*req.PaymentVisibleMethodWxpaySource)
+		REDACTED
+			return previousSettings.PaymentVisibleMethodWxpaySource
+	REDACTED(),
+		PaymentVisibleMethodAlipayEnabled: func() bool {
+			if req.PaymentVisibleMethodAlipayEnabled != nil {
+				return *req.PaymentVisibleMethodAlipayEnabled
+		REDACTED
+			return previousSettings.PaymentVisibleMethodAlipayEnabled
+	REDACTED(),
+		PaymentVisibleMethodWxpayEnabled: func() bool {
+			if req.PaymentVisibleMethodWxpayEnabled != nil {
+				return *req.PaymentVisibleMethodWxpayEnabled
+		REDACTED
+			return previousSettings.PaymentVisibleMethodWxpayEnabled
+	REDACTED(),
+		OpenAIAdvancedSchedulerEnabled: func() bool {
+			if req.OpenAIAdvancedSchedulerEnabled != nil {
+				return *req.OpenAIAdvancedSchedulerEnabled
+		REDACTED
+			return previousSettings.OpenAIAdvancedSchedulerEnabled
+	REDACTED(),
 		BalanceLowNotifyEnabled: func() bool {
 			if req.BalanceLowNotifyEnabled != nil {
 				return *req.BalanceLowNotifyEnabled
@@ -1153,6 +1197,11 @@ REDACTED
 		EnableFingerprintUnification:         updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:            updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                     updatedSettings.EnableCCHSigning,
+		PaymentVisibleMethodAlipaySource:     updatedSettings.PaymentVisibleMethodAlipaySource,
+		PaymentVisibleMethodWxpaySource:      updatedSettings.PaymentVisibleMethodWxpaySource,
+		PaymentVisibleMethodAlipayEnabled:    updatedSettings.PaymentVisibleMethodAlipayEnabled,
+		PaymentVisibleMethodWxpayEnabled:     updatedSettings.PaymentVisibleMethodWxpayEnabled,
+		OpenAIAdvancedSchedulerEnabled:       updatedSettings.OpenAIAdvancedSchedulerEnabled,
 		BalanceLowNotifyEnabled:              updatedSettings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:            updatedSettings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:          updatedSettings.BalanceLowNotifyRechargeURL,
@@ -1454,6 +1503,21 @@ REDACTED
 REDACTED
 	if before.EnableCCHSigning != after.EnableCCHSigning {
 		changed = append(changed, "enable_cch_signing")
+REDACTED
+	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
+		changed = append(changed, "payment_visible_method_alipay_source")
+REDACTED
+	if before.PaymentVisibleMethodWxpaySource != after.PaymentVisibleMethodWxpaySource {
+		changed = append(changed, "payment_visible_method_wxpay_source")
+REDACTED
+	if before.PaymentVisibleMethodAlipayEnabled != after.PaymentVisibleMethodAlipayEnabled {
+		changed = append(changed, "payment_visible_method_alipay_enabled")
+REDACTED
+	if before.PaymentVisibleMethodWxpayEnabled != after.PaymentVisibleMethodWxpayEnabled {
+		changed = append(changed, "payment_visible_method_wxpay_enabled")
+REDACTED
+	if before.OpenAIAdvancedSchedulerEnabled != after.OpenAIAdvancedSchedulerEnabled {
+		changed = append(changed, "openai_advanced_scheduler_enabled")
 REDACTED
 	// Balance & quota notification
 	if before.BalanceLowNotifyEnabled != after.BalanceLowNotifyEnabled {

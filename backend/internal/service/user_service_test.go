@@ -103,6 +103,12 @@ func (m *mockUserRepo) AddGroupToAllowedGroups(context.Context, int64, int64) er
 func (m *mockUserRepo) ListUserAuthIdentities(context.Context, int64) ([]UserAuthIdentityRecord, error) {
 	return nil, nil
 REDACTED
+func (m *mockUserRepo) GetLatestUsedAtByUserIDs(context.Context, []int64) (map[int64]*time.Time, error) {
+	return map[int64]*time.Time{REDACTED, nil
+REDACTED
+func (m *mockUserRepo) GetLatestUsedAtByUserID(context.Context, int64) (*time.Time, error) {
+	return nil, nil
+REDACTED
 func (m *mockUserRepo) UpdateTotpSecret(context.Context, int64, *string) error { return nil REDACTED
 func (m *mockUserRepo) EnableTotp(context.Context, int64) error                { return nil REDACTED
 func (m *mockUserRepo) DisableTotp(context.Context, int64) error               { return nil REDACTED

@@ -147,3 +147,77 @@ REDACTED
 	require.Equal(t, float64(8), data["auth_source_default_email_concurrency"])
 	require.Equal(t, true, data["force_email_on_third_party_signup"])
 REDACTED
+
+func TestSettingHandler_UpdateSettings_PersistsPaymentVisibleMethodsAndAdvancedScheduler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyPromoCodeEnabled: "true",
+	REDACTED,
+REDACTED
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5REDACTEDREDACTED)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	body := map[string]any{
+		"promo_code_enabled":                    true,
+		"payment_visible_method_alipay_source":  "easypay",
+		"payment_visible_method_wxpay_source":   "wxpay",
+		"payment_visible_method_alipay_enabled": true,
+		"payment_visible_method_wxpay_enabled":  false,
+		"openai_advanced_scheduler_enabled":     true,
+REDACTED
+	rawBody, err := json.Marshal(body)
+REDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, service.VisibleMethodSourceEasyPayAlipay, repo.values[service.SettingPaymentVisibleMethodAlipaySource])
+	require.Equal(t, service.VisibleMethodSourceOfficialWechat, repo.values[service.SettingPaymentVisibleMethodWxpaySource])
+	require.Equal(t, "true", repo.values[service.SettingPaymentVisibleMethodAlipayEnabled])
+	require.Equal(t, "false", repo.values[service.SettingPaymentVisibleMethodWxpayEnabled])
+	require.Equal(t, "true", repo.values["openai_advanced_scheduler_enabled"])
+
+	var resp response.Response
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, service.VisibleMethodSourceEasyPayAlipay, data["payment_visible_method_alipay_source"])
+	require.Equal(t, service.VisibleMethodSourceOfficialWechat, data["payment_visible_method_wxpay_source"])
+	require.Equal(t, true, data["payment_visible_method_alipay_enabled"])
+	require.Equal(t, false, data["payment_visible_method_wxpay_enabled"])
+	require.Equal(t, true, data["openai_advanced_scheduler_enabled"])
+REDACTED
+
+func TestSettingHandler_UpdateSettings_RejectsInvalidPaymentVisibleMethodSource(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyPromoCodeEnabled: "true",
+	REDACTED,
+REDACTED
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5REDACTEDREDACTED)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	body := map[string]any{
+		"promo_code_enabled":                   true,
+		"payment_visible_method_alipay_source": "bogus",
+REDACTED
+	rawBody, err := json.Marshal(body)
+REDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.NotContains(t, repo.values, service.SettingPaymentVisibleMethodAlipaySource)
+REDACTED
