@@ -312,6 +312,19 @@ type PendingOidcCompletion = PendingOAuthExchangeResponse & {
   user_email_masked?: string
 REDACTED
 
+function persistPendingAuthSession(redirect?: string) {
+  authStore.setPendingAuthSession({
+    token: '',
+    token_field: 'pending_oauth_token',
+    provider: 'oidc',
+    redirect: sanitizeRedirectPath(redirect || redirectTo.value)
+  REDACTED)
+REDACTED
+
+function clearPendingAuthSession() {
+  authStore.clearPendingAuthSession()
+REDACTED
+
 function parseFragmentParams(): URLSearchParams {
   const raw = typeof window !== 'undefined' ? window.location.hash : ''
   const hash = raw.startsWith('#') ? raw.slice(1) : raw
@@ -478,6 +491,7 @@ REDACTED
 async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redirect: string) {
   if (getOAuthCompletionKind(completion) === 'bind') {
     const bindRedirect = sanitizeRedirectPath(completion.redirect || '/profile')
+    clearPendingAuthSession()
     appStore.showSuccess(bindSuccessMessage)
     await router.replace(bindRedirect)
     return
@@ -495,16 +509,19 @@ REDACTED
 
 async function finalizePendingAccountResponse(completion: PendingOidcCompletion) {
   applyAdoptionSuggestionState(completion)
+  const redirect = sanitizeRedirectPath(completion.redirect || redirectTo.value)
 
   if (completion.error === 'invitation_required') {
     pendingAccountAction.value = 'none'
     needsInvitation.value = true
     needsAdoptionConfirmation.value = false
     isProcessing.value = false
+    persistPendingAuthSession(redirect)
     return
   REDACTED
 
   if (applyTotpChallenge(completion)) {
+    persistPendingAuthSession(redirect)
     return
   REDACTED
 
@@ -513,10 +530,10 @@ async function finalizePendingAccountResponse(completion: PendingOidcCompletion)
     needsInvitation.value = false
     needsAdoptionConfirmation.value = false
     isProcessing.value = false
+    persistPendingAuthSession(redirect)
     return
   REDACTED
 
-  const redirect = sanitizeRedirectPath(completion.redirect || redirectTo.value)
   await finalizeCompletion(completion, redirect)
 REDACTED
 
@@ -546,8 +563,8 @@ REDACTED
 async function handleContinueLogin() {
   isSubmitting.value = true
   try {
-    const completion = await exchangePendingOAuthCompletion(currentAdoptionDecision())
-    await finalizeCompletion(completion, redirectTo.value)
+    const completion = await exchangePendingOAuthCompletion(currentAdoptionDecision()) as PendingOidcCompletion
+    await finalizePendingAccountResponse(completion)
   REDACTED catch (e: unknown) {
     errorMessage.value = getRequestErrorMessage(e, t('auth.loginFailed'))
     appStore.showError(errorMessage.value)
@@ -644,27 +661,32 @@ onMounted(async () => {
     if (completion.error === 'invitation_required') {
       needsInvitation.value = true
       isProcessing.value = false
+      persistPendingAuthSession(redirect)
       return
     REDACTED
 
     if (applyTotpChallenge(completion)) {
+      persistPendingAuthSession(redirect)
       return
     REDACTED
 
     applyPendingAccountAction(completion)
     if (pendingAccountAction.value !== 'none') {
       isProcessing.value = false
+      persistPendingAuthSession(redirect)
       return
     REDACTED
 
     if (adoptionRequired.value && hasSuggestedProfile(completion)) {
       needsAdoptionConfirmation.value = true
       isProcessing.value = false
+      persistPendingAuthSession(redirect)
       return
     REDACTED
 
     await finalizeCompletion(completion, redirect)
   REDACTED catch (e: unknown) {
+    clearPendingAuthSession()
     errorMessage.value = getRequestErrorMessage(e, t('auth.loginFailed'))
     appStore.showError(errorMessage.value)
     isProcessing.value = false

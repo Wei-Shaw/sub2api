@@ -7,6 +7,8 @@ const replace = vi.fn()
 const showSuccess = vi.fn()
 const showError = vi.fn()
 const setToken = vi.fn()
+const setPendingAuthSession = vi.fn()
+const clearPendingAuthSession = vi.fn()
 const exchangePendingOAuthCompletion = vi.fn()
 const completeOIDCOAuthRegistration = vi.fn()
 const getPublicSettings = vi.fn()
@@ -40,7 +42,9 @@ REDACTED)
 
 vi.mock('@/stores', () => ({
   useAuthStore: () => ({
-    setToken
+    setToken,
+    setPendingAuthSession,
+    clearPendingAuthSession
   REDACTED),
   useAppStore: () => ({
     showSuccess,
@@ -72,6 +76,8 @@ describe('OidcCallbackView', () => {
     showSuccess.mockReset()
     showError.mockReset()
     setToken.mockReset()
+    setPendingAuthSession.mockReset()
+    clearPendingAuthSession.mockReset()
     exchangePendingOAuthCompletion.mockReset()
     completeOIDCOAuthRegistration.mockReset()
     getPublicSettings.mockReset()
@@ -79,7 +85,9 @@ describe('OidcCallbackView', () => {
     apiClientPost.mockReset()
     sendVerifyCode.mockReset()
     getPublicSettings.mockResolvedValue({
-      oidc_oauth_provider_name: 'ExampleID'
+      oidc_oauth_provider_name: 'ExampleID',
+      turnstile_enabled: false,
+      turnstile_site_key: ''
     REDACTED)
   REDACTED)
 
@@ -194,6 +202,72 @@ describe('OidcCallbackView', () => {
     expect(setToken).not.toHaveBeenCalled()
     expect(showSuccess).toHaveBeenCalledWith('profile.authBindings.bindSuccess')
     expect(replace).toHaveBeenCalledWith('/profile')
+  REDACTED)
+
+  it('keeps rendering pending bind-login UI when adoption confirmation leads to another pending step', async () => {
+    exchangePendingOAuthCompletion
+      .mockResolvedValueOnce({
+        redirect: '/profile',
+        adoption_required: true,
+        suggested_display_name: 'OIDC Nick',
+        suggested_avatar_url: 'https://cdn.example/oidc.png'
+      REDACTED)
+      .mockResolvedValueOnce({
+        step: 'bind_login_required',
+        redirect: '/profile',
+        email: 'existing@example.com',
+        adoption_required: true,
+        suggested_display_name: 'OIDC Nick',
+        suggested_avatar_url: 'https://cdn.example/oidc.png'
+      REDACTED)
+
+    const wrapper = mount(OidcCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+    await wrapper.findAll('button')[0].trigger('click')
+    await flushPromises()
+
+    expect(showSuccess).not.toHaveBeenCalled()
+    expect(replace).not.toHaveBeenCalled()
+    expect((wrapper.get('[data-testid="oidc-bind-login-email"]').element as HTMLInputElement).value).toBe(
+      'existing@example.com'
+    )
+  REDACTED)
+
+  it('persists a pending auth session when the oauth flow still needs account creation', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'email_required',
+      redirect: '/welcome'
+    REDACTED)
+
+    mount(OidcCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    expect(setPendingAuthSession).toHaveBeenCalledWith({
+      token: '',
+      token_field: 'pending_oauth_token',
+      provider: 'oidc',
+      redirect: '/welcome'
+    REDACTED)
   REDACTED)
 
   it('renders adoption choices for invitation flow and submits the selected values', async () => {
