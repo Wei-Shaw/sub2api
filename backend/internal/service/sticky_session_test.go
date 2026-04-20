@@ -15,20 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestShouldClearStickySession 测试粘性会话清理判断逻辑。
-// 验证在以下情况下是否正确判断需要清理粘性会话：
-//   - nil 账号：不清理（返回 false）
-//   - 状态为错误或禁用：清理
-//   - 不可调度：清理
-//   - 临时不可调度且未过期：清理
-//   - 临时不可调度已过期：不清理
-//   - 正常可调度状态：不清理
-//   - 模型限流（任意时长）：清理
-//
-// TestShouldClearStickySession tests the sticky session clearing logic.
-// Verifies correct behavior for various account states including:
-// nil account, error/disabled status, unschedulable, temporary unschedulable,
-// and model rate limiting scenarios.
+// TestShouldClearStickySession tests sticky session clearing via IsSchedulable() delegation
+// plus model-level rate limiting.
 func TestShouldClearStickySession(t *testing.T) {
 	now := time.Now()
 	future := now.Add(1 * time.Hour)
@@ -100,6 +88,56 @@ func TestShouldClearStickySession(t *testing.T) {
 			},
 			requestedModel: "claude-opus-4", // 请求不同模型
 			want:           false,           // 不同模型不受影响
+		},
+		{
+			name: "apikey quota exceeded",
+			account: &Account{
+				Status:      StatusActive,
+				Schedulable: true,
+				Type:        AccountTypeAPIKey,
+				Extra: map[string]any{
+					"quota_daily_limit": 10.0,
+					"quota_daily_used":  10.0,
+					"quota_daily_start": now.Add(-1 * time.Hour).Format(time.RFC3339),
+				},
+			},
+			requestedModel: "",
+			want:           true,
+		},
+		{
+			name: "oauth quota exceeded not cleared",
+			account: &Account{
+				Status:      StatusActive,
+				Schedulable: true,
+				Type:        AccountTypeOAuth,
+				Extra: map[string]any{
+					"quota_daily_limit": 10.0,
+					"quota_daily_used":  10.0,
+					"quota_daily_start": now.Add(-1 * time.Hour).Format(time.RFC3339),
+				},
+			},
+			requestedModel: "",
+			want:           false,
+		},
+		{
+			name: "overloaded account",
+			account: &Account{
+				Status:       StatusActive,
+				Schedulable:  true,
+				OverloadUntil: &future,
+			},
+			requestedModel: "",
+			want:           true,
+		},
+		{
+			name: "account-level rate limited",
+			account: &Account{
+				Status:           StatusActive,
+				Schedulable:      true,
+				RateLimitResetAt: &future,
+			},
+			requestedModel: "",
+			want:           true,
 		},
 	}
 

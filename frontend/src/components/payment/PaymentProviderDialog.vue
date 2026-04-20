@@ -88,13 +88,24 @@
               v-model="config[field.key]"
               rows="3"
               class="input font-mono text-xs"
+              autocomplete="new-password"
+              data-1p-ignore
+              data-lpignore="true"
+              data-bwignore="true"
+              spellcheck="false"
+              :placeholder="editing ? t('admin.accounts.leaveEmptyToKeep') : ''"
             />
             <div v-else-if="field.sensitive" class="relative">
               <input
                 :type="visibleFields[field.key] ? 'text' : 'password'"
                 v-model="config[field.key]"
                 class="input pr-10"
-                :placeholder="field.defaultValue || ''"
+                autocomplete="new-password"
+                data-1p-ignore
+                data-lpignore="true"
+                data-bwignore="true"
+                spellcheck="false"
+                :placeholder="editing ? t('admin.accounts.leaveEmptyToKeep') : (field.defaultValue || '')"
               />
               <button
                 type="button"
@@ -398,9 +409,12 @@ function handleSave() {
     emitValidationError(t('admin.settings.payment.validationNameRequired'))
     return
   }
-  // Validate required config fields — all non-optional fields must be filled
+  // Validate required config fields — all non-optional fields must be filled.
+  // In edit mode, sensitive fields may be left blank to preserve the stored
+  // value (backend merges blanks by preserving the existing secret).
   for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
     if (f.optional) continue
+    if (props.editing && f.sensitive) continue
     const val = (config[f.key] || '').trim()
     if (!val) {
       const label = f.label || t(`admin.settings.payment.field_${f.key}`)
@@ -412,8 +426,6 @@ function handleSave() {
   const filteredConfig: Record<string, string> = {}
   for (const [k, v] of Object.entries(config)) {
     if (!v || !v.trim()) continue
-    // Skip masked values — backend keeps existing credentials
-    if (v === '••••••••') continue
     filteredConfig[k] = v
   }
 
@@ -470,7 +482,8 @@ function loadProvider(provider: ProviderInstance) {
   form.refund_enabled = provider.refund_enabled
   form.allow_user_refund = provider.allow_user_refund
   clearConfig()
-  // Pre-fill config from API response (non-sensitive in cleartext, sensitive masked as ••••••••)
+  // Pre-fill config from API response. Backend omits sensitive fields entirely,
+  // so those inputs stay blank — submitting blank preserves the stored secret.
   if (provider.config) {
     for (const [k, v] of Object.entries(provider.config)) {
       // Skip notifyUrl/returnUrl — they are derived from callbackBaseUrl

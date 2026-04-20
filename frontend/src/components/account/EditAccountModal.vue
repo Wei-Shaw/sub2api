@@ -52,6 +52,10 @@
             v-model="editApiKey"
             type="password"
             class="input font-mono"
+            autocomplete="new-password"
+            data-1p-ignore
+            data-lpignore="true"
+            data-bwignore="true"
             :placeholder="
               account.platform === 'openai'
                 ? 'sk-proj-...'

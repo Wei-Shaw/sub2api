@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -51,7 +52,7 @@ func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Conte
 			AllowUserRefund: inst.AllowUserRefund,
 			SortOrder:       inst.SortOrder, PaymentMode: inst.PaymentMode,
 		}
-		resp.Config, err = s.decryptAndMaskConfig(inst.Config)
+		resp.Config, err = s.decryptAndMaskConfig(inst.ProviderKey, inst.Config)
 		if err != nil {
 			return nil, fmt.Errorf("decrypt config for instance %d: %w", inst.ID, err)
 		}
@@ -60,8 +61,26 @@ func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Conte
 	return result, nil
 }
 
-func (s *PaymentConfigService) decryptAndMaskConfig(encrypted string) (map[string]string, error) {
-	return s.decryptConfig(encrypted)
+// decryptAndMaskConfig returns the stored config with sensitive fields omitted.
+// Admin UIs display masked placeholders for these; the raw values never leave
+// the server. Callers that need the full config (e.g. payment runtime) must
+// use decryptConfig directly.
+func (s *PaymentConfigService) decryptAndMaskConfig(providerKey, encrypted string) (map[string]string, error) {
+	cfg, err := s.decryptConfig(encrypted)
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil {
+		return nil, nil
+	}
+	masked := make(map[string]string, len(cfg))
+	for k, v := range cfg {
+		if isSensitiveProviderConfigField(providerKey, k) {
+			continue
+		}
+		masked[k] = v
+	}
+	return masked, nil
 }
 
 // pendingOrderStatuses are order statuses considered "in progress".
@@ -71,16 +90,27 @@ var pendingOrderStatuses = []string{
 	payment.OrderStatusRecharging,
 }
 
-var sensitiveConfigPatterns = []string{"key", "pkey", "secret", "private", "password"}
+// providerSensitiveConfigFields is the authoritative list of config keys that
+// are treated as secrets per provider. Must stay in sync with the frontend
+// definition at frontend/src/components/payment/providerConfig.ts
+// (PROVIDER_CONFIG_FIELDS, fields with sensitive: true).
+//
+// Key matching is case-insensitive. Non-listed keys (e.g. appId, notifyUrl,
+// stripe publishableKey) are returned in plaintext by the admin GET API.
+var providerSensitiveConfigFields = map[string]map[string]struct{}{
+	payment.TypeEasyPay: {"pkey": {}},
+	payment.TypeAlipay:  {"privatekey": {}, "publickey": {}, "alipaypublickey": {}},
+	payment.TypeWxpay:   {"privatekey": {}, "apiv3key": {}, "publickey": {}},
+	payment.TypeStripe:  {"secretkey": {}, "webhooksecret": {}},
+}
 
-func isSensitiveConfigField(fieldName string) bool {
-	lower := strings.ToLower(fieldName)
-	for _, p := range sensitiveConfigPatterns {
-		if strings.Contains(lower, p) {
-			return true
-		}
+func isSensitiveProviderConfigField(providerKey, fieldName string) bool {
+	fields, ok := providerSensitiveConfigFields[providerKey]
+	if !ok {
+		return false
 	}
-	return false
+	_, found := fields[strings.ToLower(fieldName)]
+	return found
 }
 
 func (s *PaymentConfigService) countPendingOrders(ctx context.Context, providerInstanceID int64) (int, error) {
@@ -136,10 +166,26 @@ func validateProviderRequest(providerKey, name, supportedTypes string) error {
 // NOTE: This function exceeds 30 lines due to per-field nil-check patch update
 // boilerplate and pending-order safety checks.
 func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id int64, req UpdateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
+	var cachedInst *dbent.PaymentProviderInstance
+	loadInst := func() (*dbent.PaymentProviderInstance, error) {
+		if cachedInst != nil {
+			return cachedInst, nil
+		}
+		inst, err := s.entClient.PaymentProviderInstance.Get(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("load provider instance: %w", err)
+		}
+		cachedInst = inst
+		return inst, nil
+	}
 	if req.Config != nil {
+		inst, err := loadInst()
+		if err != nil {
+			return nil, err
+		}
 		hasSensitive := false
-		for k := range req.Config {
-			if isSensitiveConfigField(k) && req.Config[k] != "" {
+		for k, v := range req.Config {
+			if v != "" && isSensitiveProviderConfigField(inst.ProviderKey, k) {
 				hasSensitive = true
 				break
 			}
@@ -282,27 +328,48 @@ func (s *PaymentConfigService) mergeConfig(ctx context.Context, id int64, newCon
 		return nil, fmt.Errorf("decrypt existing config for instance %d: %w", id, err)
 	}
 	if existing == nil {
-		return newConfig, nil
+		existing = map[string]string{}
 	}
 	for k, v := range newConfig {
+		// Preserve existing secrets when the client submits an empty value
+		// (admin UI omits the value to indicate "leave unchanged").
+		if v == "" && isSensitiveProviderConfigField(inst.ProviderKey, k) {
+			continue
+		}
 		existing[k] = v
 	}
 	return existing, nil
 }
 
-func (s *PaymentConfigService) decryptConfig(encrypted string) (map[string]string, error) {
-	if encrypted == "" {
+// decryptConfig parses a stored provider config.
+// New records are plaintext JSON; legacy records are AES-256-GCM ciphertext
+// ("iv:authTag:ciphertext"). Values that cannot be parsed as either — including
+// legacy ciphertext with no/invalid TOTP_ENCRYPTION_KEY — are treated as empty,
+// letting the admin re-enter the config via the UI to complete the migration.
+//
+// TODO(deprecated-legacy-ciphertext): The AES fallback branch is a transitional
+// shim for pre-plaintext records. Remove it (and the encryptionKey field) after
+// a few releases once all live deployments have re-saved their provider configs.
+func (s *PaymentConfigService) decryptConfig(stored string) (map[string]string, error) {
+	if stored == "" {
 		return nil, nil
 	}
-	decrypted, err := payment.Decrypt(encrypted, s.encryptionKey)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt config: %w", err)
+	var cfg map[string]string
+	if err := json.Unmarshal([]byte(stored), &cfg); err == nil {
+		return cfg, nil
 	}
-	var raw map[string]string
-	if err := json.Unmarshal([]byte(decrypted), &raw); err != nil {
-		return nil, fmt.Errorf("unmarshal decrypted config: %w", err)
+	// Deprecated: legacy AES-256-GCM ciphertext fallback — scheduled for removal.
+	if len(s.encryptionKey) == payment.AES256KeySize {
+		//nolint:staticcheck // SA1019: intentional legacy fallback, scheduled for removal
+		if plaintext, err := payment.Decrypt(stored, s.encryptionKey); err == nil {
+			if err := json.Unmarshal([]byte(plaintext), &cfg); err == nil {
+				return cfg, nil
+			}
+		}
 	}
-	return raw, nil
+	slog.Warn("payment provider config unreadable, treating as empty for re-entry",
+		"stored_len", len(stored))
+	return nil, nil
 }
 
 func (s *PaymentConfigService) DeleteProviderInstance(ctx context.Context, id int64) error {
@@ -317,14 +384,13 @@ func (s *PaymentConfigService) DeleteProviderInstance(ctx context.Context, id in
 	return s.entClient.PaymentProviderInstance.DeleteOneID(id).Exec(ctx)
 }
 
+// encryptConfig serialises a provider config for storage.
+// New records are written as plaintext JSON; the historical AES-GCM wrapping
+// has been dropped but decryptConfig still accepts old ciphertext during migration.
 func (s *PaymentConfigService) encryptConfig(cfg map[string]string) (string, error) {
 	data, err := json.Marshal(cfg)
 	if err != nil {
 		return "", fmt.Errorf("marshal config: %w", err)
 	}
-	enc, err := payment.Encrypt(string(data), s.encryptionKey)
-	if err != nil {
-		return "", fmt.Errorf("encrypt config: %w", err)
-	}
-	return enc, nil
+	return string(data), nil
 }
