@@ -201,6 +201,252 @@ REDACTED
 	require.NoError(t, tx.QueryRowContext(ctx, `
 SELECT COUNT(*)
 FROM auth_identity_migration_reports
+	`).Scan(&afterCount))
+	require.Equal(t, beforeCount, afterCount)
+REDACTED
+
+func TestAuthIdentityLegacyExternalSafetyMigration_ReportsConflictsAndDowngradesInvalidJSON(t *testing.T) {
+	tx := testTx(t)
+	ctx := context.Background()
+
+	migrationPath := filepath.Join("..", "..", "migrations", "116_auth_identity_legacy_external_safety_reports.sql")
+	migrationSQL, err := os.ReadFile(migrationPath)
+REDACTED
+
+	_, err = tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS user_external_identities (
+	id BIGSERIAL PRIMARY KEY,
+	user_id BIGINT NOT NULL,
+	provider TEXT NOT NULL,
+	provider_user_id TEXT NOT NULL,
+	provider_union_id TEXT NULL,
+	provider_username TEXT NOT NULL DEFAULT '',
+	display_name TEXT NOT NULL DEFAULT '',
+	profile_url TEXT NOT NULL DEFAULT '',
+	avatar_url TEXT NOT NULL DEFAULT '',
+	metadata TEXT NOT NULL DEFAULT '{REDACTED',
+	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+	TRUNCATE TABLE
+		auth_identity_channels,
+		auth_identities,
+		auth_identity_migration_reports,
+		user_external_identities,
+		users
+	RESTART IDENTITY;
+`)
+REDACTED
+
+	userIDs := make([]int64, 0, 8)
+	for _, email := range []string{
+		"linuxdo-conflict-legacy@example.com",
+		"linuxdo-conflict-owner@example.com",
+		"wechat-conflict-legacy@example.com",
+		"wechat-conflict-owner@example.com",
+		"wechat-channel-legacy@example.com",
+		"wechat-channel-owner@example.com",
+		"linuxdo-invalid-json@example.com",
+		"wechat-openid-invalid-json@example.com",
+REDACTED {
+		var userID int64
+		require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ($1, 'hash', 'user', 'active', 0, 1)
+RETURNING id`, email).Scan(&userID))
+		userIDs = append(userIDs, userID)
+REDACTED
+
+	linuxdoConflictLegacyUserID := userIDs[0]
+	linuxdoConflictOwnerUserID := userIDs[1]
+	wechatConflictLegacyUserID := userIDs[2]
+	wechatConflictOwnerUserID := userIDs[3]
+	wechatChannelLegacyUserID := userIDs[4]
+	wechatChannelOwnerUserID := userIDs[5]
+	linuxdoInvalidJSONUserID := userIDs[6]
+	wechatInvalidOpenIDUserID := userIDs[7]
+
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO auth_identities (user_id, provider_type, provider_key, provider_subject, metadata)
+VALUES ($1, 'linuxdo', 'linuxdo', 'linuxdo-conflict', '{REDACTED'::jsonb)
+RETURNING id`, linuxdoConflictOwnerUserID).Scan(new(int64)))
+
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO auth_identities (user_id, provider_type, provider_key, provider_subject, metadata)
+VALUES ($1, 'wechat', 'wechat-main', 'union-conflict', '{REDACTED'::jsonb)
+RETURNING id`, wechatConflictOwnerUserID).Scan(new(int64)))
+
+	var wechatChannelOwnerIdentityID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO auth_identities (user_id, provider_type, provider_key, provider_subject, metadata)
+VALUES ($1, 'wechat', 'wechat-main', 'union-channel-owner', '{REDACTED'::jsonb)
+RETURNING id`, wechatChannelOwnerUserID).Scan(&wechatChannelOwnerIdentityID))
+
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO auth_identity_channels (
+	identity_id,
+	provider_type,
+	provider_key,
+	channel,
+	channel_app_id,
+	channel_subject,
+	metadata
+)
+VALUES ($1, 'wechat', 'wechat-main', 'oa', 'wx-app-conflict', 'openid-channel-conflict', '{REDACTED'::jsonb)
+RETURNING id`, wechatChannelOwnerIdentityID).Scan(new(int64)))
+
+	var linuxdoConflictLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-conflict', NULL, 'legacy-linuxdo', 'Legacy LinuxDo Conflict', '{"source":"legacy"REDACTED')
+RETURNING id
+`, linuxdoConflictLegacyUserID).Scan(&linuxdoConflictLegacyID))
+
+	var wechatConflictLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'wechat', 'openid-union-conflict', 'union-conflict', 'legacy-wechat', 'Legacy WeChat Conflict', '{"channel":"oa","appid":"wx-app-conflict-canon"REDACTED')
+RETURNING id
+`, wechatConflictLegacyUserID).Scan(&wechatConflictLegacyID))
+
+	var wechatChannelConflictLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'wechat', 'openid-channel-conflict', 'union-channel-legacy', 'legacy-wechat-channel', 'Legacy WeChat Channel Conflict', '{"channel":"oa","appid":"wx-app-conflict"REDACTED')
+RETURNING id
+`, wechatChannelLegacyUserID).Scan(&wechatChannelConflictLegacyID))
+
+	var linuxdoInvalidJSONLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-invalid-json', NULL, 'legacy-linuxdo-invalid', 'Legacy LinuxDo Invalid JSON', '{invalid')
+RETURNING id
+`, linuxdoInvalidJSONUserID).Scan(&linuxdoInvalidJSONLegacyID))
+
+	var wechatInvalidOpenIDLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'wechat', 'openid-invalid-json-only', NULL, 'legacy-wechat-invalid', 'Legacy WeChat Invalid JSON', '{still-invalid')
+RETURNING id
+`, wechatInvalidOpenIDUserID).Scan(&wechatInvalidOpenIDLegacyID))
+
+	_, err = tx.ExecContext(ctx, string(migrationSQL))
+REDACTED
+
+	var linuxdoConflictReportCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+WHERE report_type = 'legacy_external_identity_conflict'
+  AND report_key = $1
+`, "legacy_external_identity:"+strconv.FormatInt(linuxdoConflictLegacyID, 10)).Scan(&linuxdoConflictReportCount))
+	require.Equal(t, 1, linuxdoConflictReportCount)
+
+	var wechatConflictReportCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+WHERE report_type = 'legacy_external_identity_conflict'
+  AND report_key = $1
+`, "legacy_external_identity:"+strconv.FormatInt(wechatConflictLegacyID, 10)).Scan(&wechatConflictReportCount))
+	require.Equal(t, 1, wechatConflictReportCount)
+
+	var channelConflictReportCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+WHERE report_type = 'legacy_external_channel_conflict'
+  AND report_key = $1
+`, "legacy_external_identity:"+strconv.FormatInt(wechatChannelConflictLegacyID, 10)).Scan(&channelConflictReportCount))
+	require.Equal(t, 1, channelConflictReportCount)
+
+	var invalidJSONReportCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+WHERE report_type = 'legacy_external_identity_invalid_metadata_json'
+  AND report_key IN ($1, $2)
+`, "legacy_external_identity:"+strconv.FormatInt(linuxdoInvalidJSONLegacyID, 10), "legacy_external_identity:"+strconv.FormatInt(wechatInvalidOpenIDLegacyID, 10)).Scan(&invalidJSONReportCount))
+	require.Equal(t, 2, invalidJSONReportCount)
+
+	var linuxdoInvalidIdentityCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identities
+WHERE user_id = $1
+  AND provider_type = 'linuxdo'
+  AND provider_key = 'linuxdo'
+  AND provider_subject = 'linuxdo-invalid-json'
+`, linuxdoInvalidJSONUserID).Scan(&linuxdoInvalidIdentityCount))
+	require.Equal(t, 1, linuxdoInvalidIdentityCount)
+
+	var wechatOpenIDOnlyReportCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+WHERE report_type = 'wechat_openid_only_requires_remediation'
+  AND report_key = $1
+`, "legacy_external_identity:"+strconv.FormatInt(wechatInvalidOpenIDLegacyID, 10)).Scan(&wechatOpenIDOnlyReportCount))
+	require.Equal(t, 1, wechatOpenIDOnlyReportCount)
+REDACTED
+
+func TestAuthIdentityLegacyExternalSafetyMigration_IsSafeWhenLegacyTableMissing(t *testing.T) {
+	tx := testTx(t)
+	ctx := context.Background()
+
+	migrationPath := filepath.Join("..", "..", "migrations", "116_auth_identity_legacy_external_safety_reports.sql")
+	migrationSQL, err := os.ReadFile(migrationPath)
+REDACTED
+
+	var beforeCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+`).Scan(&beforeCount))
+
+	_, err = tx.ExecContext(ctx, string(migrationSQL))
+REDACTED
+
+	var afterCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
 `).Scan(&afterCount))
 	require.Equal(t, beforeCount, afterCount)
 REDACTED
