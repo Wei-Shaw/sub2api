@@ -321,6 +321,47 @@ REDACTED
 	require.Equal(t, 1, countProviderGrantRecords(t, client, user.ID, "email", "first_bind"))
 REDACTED
 
+func TestAuthServiceLogin_MergesEmailFirstBindSourceOverridesWithGlobalDefaults(t *testing.T) {
+	assigner := &authIdentityDefaultSubAssignerStub{REDACTED
+	svc, _, client := newAuthServiceWithEnt(t, map[string]string{
+		service.SettingKeyRegistrationEnabled:                    "true",
+		service.SettingKeyDefaultSubscriptions:                   `[{"group_id":21,"validity_days":14REDACTED]`,
+		service.SettingKeyAuthSourceDefaultEmailBalance:          "8.5",
+		service.SettingKeyAuthSourceDefaultEmailConcurrency:      "5",
+		service.SettingKeyAuthSourceDefaultEmailSubscriptions:    `[]`,
+		service.SettingKeyAuthSourceDefaultEmailGrantOnFirstBind: "true",
+REDACTED, assigner)
+	ctx := context.Background()
+
+	passwordHash, err := svc.HashPassword("password")
+REDACTED
+	user, err := client.User.Create().
+		SetEmail("merged-first-bind@example.com").
+		SetUsername("merged-user").
+		SetPasswordHash(passwordHash).
+		SetBalance(1.5).
+		SetConcurrency(2).
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	token, gotUser, err := svc.Login(ctx, user.Email, "password")
+REDACTED
+	require.NotEmpty(t, token)
+	require.NotNil(t, gotUser)
+	svc.RecordSuccessfulLogin(ctx, user.ID)
+
+	storedUser, err := client.User.Get(ctx, user.ID)
+REDACTED
+	require.Equal(t, 10.0, storedUser.Balance)
+	require.Equal(t, 4, storedUser.Concurrency)
+	require.Len(t, assigner.calls, 1)
+	require.Equal(t, int64(21), assigner.calls[0].GroupID)
+	require.Equal(t, 14, assigner.calls[0].ValidityDays)
+	require.Equal(t, 1, countProviderGrantRecords(t, client, user.ID, "email", "first_bind"))
+REDACTED
+
 func TestAuthServiceLogin_DoesNotApplyEmailFirstBindDefaultsWhenIdentityAlreadyExists(t *testing.T) {
 	assigner := &authIdentityDefaultSubAssignerStub{REDACTED
 	svc, _, client := newAuthServiceWithEnt(t, map[string]string{

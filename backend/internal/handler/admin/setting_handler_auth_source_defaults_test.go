@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -63,6 +64,58 @@ REDACTED
 REDACTED
 
 func (s *settingHandlerRepoStub) Delete(ctx context.Context, key string) error {
+	panic("unexpected Delete call")
+REDACTED
+
+type failingAuthSourceSettingsRepoStub struct {
+	values map[string]string
+	err    error
+REDACTED
+
+func (s *failingAuthSourceSettingsRepoStub) Get(ctx context.Context, key string) (*service.Setting, error) {
+	panic("unexpected Get call")
+REDACTED
+
+func (s *failingAuthSourceSettingsRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	panic("unexpected GetValue call")
+REDACTED
+
+func (s *failingAuthSourceSettingsRepoStub) Set(ctx context.Context, key, value string) error {
+	panic("unexpected Set call")
+REDACTED
+
+func (s *failingAuthSourceSettingsRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := s.values[key]; ok {
+			out[key] = value
+	REDACTED
+REDACTED
+	return out, nil
+REDACTED
+
+func (s *failingAuthSourceSettingsRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	if _, ok := settings[service.SettingKeyAuthSourceDefaultEmailBalance]; ok {
+		return s.err
+REDACTED
+	for key, value := range settings {
+		if s.values == nil {
+			s.values = map[string]string{REDACTED
+	REDACTED
+		s.values[key] = value
+REDACTED
+	return nil
+REDACTED
+
+func (s *failingAuthSourceSettingsRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
+	out := make(map[string]string, len(s.values))
+	for key, value := range s.values {
+		out[key] = value
+REDACTED
+	return out, nil
+REDACTED
+
+func (s *failingAuthSourceSettingsRepoStub) Delete(ctx context.Context, key string) error {
 	panic("unexpected Delete call")
 REDACTED
 
@@ -220,4 +273,74 @@ REDACTED
 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.NotContains(t, repo.values, service.SettingPaymentVisibleMethodAlipaySource)
+REDACTED
+
+func TestSettingHandler_UpdateSettings_DoesNotPersistPartialSystemSettingsWhenAuthSourceDefaultsFail(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &failingAuthSourceSettingsRepoStub{
+		values: map[string]string{
+			service.SettingKeyRegistrationEnabled:                 "false",
+			service.SettingKeyPromoCodeEnabled:                    "true",
+			service.SettingKeyAuthSourceDefaultEmailBalance:       "9.5",
+			service.SettingKeyAuthSourceDefaultEmailConcurrency:   "8",
+			service.SettingKeyAuthSourceDefaultEmailSubscriptions: `[{"group_id":31,"validity_days":15REDACTED]`,
+	REDACTED,
+		err: errors.New("write auth source defaults failed"),
+REDACTED
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5REDACTEDREDACTED)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	body := map[string]any{
+		"registration_enabled":              true,
+		"promo_code_enabled":                true,
+		"auth_source_default_email_balance": 12.75,
+REDACTED
+	rawBody, err := json.Marshal(body)
+REDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	require.Equal(t, "false", repo.values[service.SettingKeyRegistrationEnabled])
+	require.Equal(t, "9.5", repo.values[service.SettingKeyAuthSourceDefaultEmailBalance])
+REDACTED
+
+func TestDiffSettings_IncludesAuthSourceDefaultsAndForceEmail(t *testing.T) {
+	changed := diffSettings(
+		&service.SystemSettings{REDACTED,
+		&service.SystemSettings{REDACTED,
+		&service.AuthSourceDefaultSettings{
+			Email: service.ProviderDefaultGrantSettings{
+				Balance:          0,
+				Concurrency:      5,
+				Subscriptions:    nil,
+				GrantOnSignup:    true,
+				GrantOnFirstBind: false,
+		REDACTED,
+			ForceEmailOnThirdPartySignup: false,
+	REDACTED,
+		&service.AuthSourceDefaultSettings{
+			Email: service.ProviderDefaultGrantSettings{
+				Balance:          12.5,
+				Concurrency:      7,
+				Subscriptions:    []service.DefaultSubscriptionSetting{{GroupID: 21, ValidityDays: 30REDACTEDREDACTED,
+				GrantOnSignup:    false,
+				GrantOnFirstBind: true,
+		REDACTED,
+			ForceEmailOnThirdPartySignup: true,
+	REDACTED,
+		UpdateSettingsRequest{REDACTED,
+	)
+
+	require.Contains(t, changed, "auth_source_default_email_balance")
+	require.Contains(t, changed, "auth_source_default_email_concurrency")
+	require.Contains(t, changed, "auth_source_default_email_subscriptions")
+	require.Contains(t, changed, "auth_source_default_email_grant_on_signup")
+	require.Contains(t, changed, "auth_source_default_email_grant_on_first_bind")
+	require.Contains(t, changed, "force_email_on_third_party_signup")
 REDACTED

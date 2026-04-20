@@ -44,13 +44,11 @@ func (s *AuthService) applyProviderDefaultSettingsOnFirstBind(
 	userID int64,
 	providerType string,
 ) error {
-	defaults, err := s.settingService.GetAuthSourceDefaultSettings(ctx)
+	providerDefaults, enabled, err := s.settingService.ResolveAuthSourceGrantSettings(ctx, providerType, true)
 	if err != nil {
 		return fmt.Errorf("load auth source defaults: %w", err)
 REDACTED
-
-	providerDefaults, ok := authSourceSignupSettings(defaults, providerType)
-	if !ok || !providerDefaults.GrantOnFirstBind {
+	if !enabled {
 		return nil
 REDACTED
 

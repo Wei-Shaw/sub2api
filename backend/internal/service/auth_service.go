@@ -716,20 +716,18 @@ REDACTED
 	plan.Concurrency = s.settingService.GetDefaultConcurrency(ctx)
 	plan.Subscriptions = s.settingService.GetDefaultSubscriptions(ctx)
 
-	defaults, err := s.settingService.GetAuthSourceDefaultSettings(ctx)
+	resolved, enabled, err := s.settingService.ResolveAuthSourceGrantSettings(ctx, signupSource, false)
 	if err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Failed to load auth source signup defaults for %s: %v", signupSource, err)
 		return plan
 REDACTED
-
-	providerDefaults, ok := authSourceSignupSettings(defaults, signupSource)
-	if !ok || !providerDefaults.GrantOnSignup {
+	if !enabled {
 		return plan
 REDACTED
 
-	plan.Balance = providerDefaults.Balance
-	plan.Concurrency = providerDefaults.Concurrency
-	plan.Subscriptions = providerDefaults.Subscriptions
+	plan.Balance = resolved.Balance
+	plan.Concurrency = resolved.Concurrency
+	plan.Subscriptions = resolved.Subscriptions
 	return plan
 REDACTED
 
