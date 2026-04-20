@@ -538,3 +538,127 @@ References:
 - RFC 7636: <https://www.rfc-editor.org/rfc/rfc7636>
 - OpenID Connect Core 1.0: <https://openid.net/specs/openid-connect-core-1_0.html>
 - Auth0 account linking guidance: <https://auth0.com/docs/manage-users/user-accounts/user-account-linking>
+
+## Audit Synthesis
+
+The clean rebuild direction is not to copy either existing branch directly.
+
+- `feat/auth-identity-foundation` has the better long-term model:
+  - unified auth identities
+  - pending auth sessions
+  - identity adoption decisions
+  - provider-scoped default grants
+  - payment display-method abstraction
+  - OpenAI advanced scheduler layering
+- `personal-dev-branch` has the better real-world closure:
+  - LinuxDo and WeChat callback flows are more operationally complete
+  - profile binding and avatar UX is more complete
+  - historical synthetic-email users are recognized and recovered in live flows
+  - WeChat payment OAuth and recovery behavior is more complete
+- Primary-source guidance supplies hard constraints for OAuth/OIDC, account linking, WeChat identity handling, and payment completion semantics.
+
+The final rebuild must therefore:
+
+- keep the `feat/auth-identity-foundation` data model direction
+- absorb the strongest business-flow behavior from `personal-dev-branch`
+- reject transitional or half-finished behavior from both branches
+- treat compatibility and rollout as first-class implementation scope
+
+## Keep / Adapt / Drop
+
+### Keep
+
+Keep these architectural choices essentially intact:
+
+- `auth_identities`, `auth_identity_channels`, `pending_auth_sessions`, `identity_adoption_decisions`
+- per-provider default grants with one-time grant tracking
+- WeChat canonical identity plus channel mapping model
+- pending-auth verification gates before final bind
+- payment visible-method abstraction (`alipay`, `wechat`) decoupled from backend provider source
+- OpenAI advanced scheduler layering and test-backed behavior
+
+Keep these operational flow ideas from `personal-dev-branch`:
+
+- LinuxDo pending identity callback flow
+- WeChat pending identity callback flow
+- profile bindings UX and “cannot disconnect last usable login method” rule
+- separate WeChat login OAuth and WeChat payment OAuth entry points
+- historical synthetic-email recognition logic as a migration bridge
+
+### Adapt
+
+These areas must be reimplemented with the same intent but stricter boundaries:
+
+- third-party account creation from pending-auth state must be transactional and must not register a plain local user before identity finalization succeeds
+- email identity lifecycle must become real dual-write state, not just one migration-time backfill
+- `signup_source` must be backfilled more accurately for known historical third-party users
+- WeChat payment recovery state must move from frontend-only storage to server-backed continuation state
+- avatar adoption fetches must be security-hardened and failure-visible
+- pending-auth payload modeling must clearly separate immutable upstream payload from mutable local metadata
+- profile binding/avatar DTOs must be simplified to one authoritative backend contract instead of sprawling frontend fallback parsing
+- admin settings should preserve capability while reducing duplicated or transitional config branches
+
+### Drop
+
+Drop these as long-term design choices:
+
+- `user_external_identities` as the primary long-term identity model
+- synthetic email as a long-term canonical identity representation
+- OIDC as a side-path that does not participate in the same identity foundation as LinuxDo and WeChat
+- frontend multi-endpoint probing and broad compatibility parsing once the clean branch becomes the sole supported contract
+- unrelated branch noise such as generated-file churn, locale-only churn, or upstream merge residue as design inputs
+
+## Audit-Driven Hard Constraints
+
+The audit and source review establish these hard constraints:
+
+### Auth
+
+- all authorization-code providers use PKCE where applicable
+- callback handling uses strict `redirect_uri` discipline and state validation
+- OIDC identity key is `issuer + sub`
+- existing-account linking after email conflict must require explicit user action plus local-account verification
+- WeChat canonical identity key is `unionid`; `openid` is channel-scoped only
+
+### Compatibility
+
+- existing email users must continue to work with no manual intervention
+- existing LinuxDo users must not split into duplicate accounts
+- historical LinuxDo synthetic-email users must be backfilled into canonical LinuxDo identities during migration, not only lazily on next login
+- migration backfills must not trigger signup or first-bind grants
+- legacy `pending_auth_token` and `pending_oauth_token` contracts must remain accepted during rollout
+- legacy auth/public setting aliases needed by older frontend builds must remain available during rollout
+- existing payment configs and historical order semantics must remain valid
+
+### Payment
+
+- frontend return pages do not determine final payment success
+- backend order state, webhook processing, and/or provider status query remain authoritative
+- each visible method (`alipay`, `wechat`) may have only one active backend source at a time
+
+## Known Risks To Eliminate In Implementation
+
+These are specifically observed problems in the existing branches that the clean rebuild must eliminate:
+
+- third-party forced-email account creation currently bypasses the provider-aware account creation path and can leave orphan local accounts if bind finalization fails
+- post-migration email accounts are not fully dual-written into `auth_identities`
+- avatar adoption currently risks silent failure and insecure outbound fetch behavior
+- pending-auth payload responsibilities are internally inconsistent
+- OIDC parity is incomplete in `personal-dev-branch`; it must become a first-class provider in the unified identity model
+- WeChat union/open/channel identity handling is conceptually correct in the feature branch but still partially transitional across the codebase
+- WeChat payment recovery in `personal-dev-branch` is frontend-local and not robust across tabs or concurrent attempts
+- the existing pending-auth migration update is too destructive to reuse unchanged in a safer rollout
+- historical provider provenance should not be permanently flattened to `signup_source = email`
+
+## Rollout Gates
+
+The rebuild is not ready for rollout until all of these are satisfied:
+
+1. Identity schema and migration chain are linearized and production-safe.
+2. Email identity backfill is complete and idempotent.
+3. Historical LinuxDo synthetic-email backfill to canonical LinuxDo identity is complete and idempotent.
+4. `signup_source` backfill is accurate for known historical provider-created users.
+5. Dual token acceptance and required legacy field aliases are present.
+6. Existing payment configs are normalized and verified against current frontend-visible capabilities.
+7. New frontend flows are verified against mixed-version backend compatibility windows.
+8. Duplicate-account creation, first-bind grants, and payment route selection have regression coverage.
