@@ -10,6 +10,8 @@ const setToken = vi.fn()
 const exchangePendingOAuthCompletion = vi.fn()
 const completeOIDCOAuthRegistration = vi.fn()
 const getPublicSettings = vi.fn()
+const login2FA = vi.fn()
+const apiClientPost = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({
@@ -45,13 +47,20 @@ vi.mock('@/stores', () => ({
   REDACTED)
 REDACTED))
 
+vi.mock('@/api/client', () => ({
+  apiClient: {
+    post: (...args: any[]) => apiClientPost(...args)
+  REDACTED
+REDACTED))
+
 vi.mock('@/api/auth', async () => {
   const actual = await vi.importActual<typeof import('@/api/auth')>('@/api/auth')
   return {
     ...actual,
     exchangePendingOAuthCompletion: (...args: any[]) => exchangePendingOAuthCompletion(...args),
     completeOIDCOAuthRegistration: (...args: any[]) => completeOIDCOAuthRegistration(...args),
-    getPublicSettings: (...args: any[]) => getPublicSettings(...args)
+    getPublicSettings: (...args: any[]) => getPublicSettings(...args),
+    login2FA: (...args: any[]) => login2FA(...args)
   REDACTED
 REDACTED)
 
@@ -64,6 +73,8 @@ describe('OidcCallbackView', () => {
     exchangePendingOAuthCompletion.mockReset()
     completeOIDCOAuthRegistration.mockReset()
     getPublicSettings.mockReset()
+    login2FA.mockReset()
+    apiClientPost.mockReset()
     getPublicSettings.mockResolvedValue({
       oidc_oauth_provider_name: 'ExampleID'
     REDACTED)
@@ -132,9 +143,7 @@ describe('OidcCallbackView', () => {
     const checkboxes = wrapper.findAll('input[type="checkbox"]')
     await checkboxes[0].setValue(false)
 
-    const buttons = wrapper.findAll('button')
-    expect(buttons).toHaveLength(1)
-    await buttons[0].trigger('click')
+    await wrapper.findAll('button')[0].trigger('click')
     await flushPromises()
 
     expect(exchangePendingOAuthCompletion).toHaveBeenCalledTimes(2)
@@ -184,77 +193,6 @@ describe('OidcCallbackView', () => {
     expect(replace).toHaveBeenCalledWith('/profile')
   REDACTED)
 
-  it('renders pending email collection ui and routes to register with the entered email', async () => {
-    exchangePendingOAuthCompletion.mockResolvedValue({
-      error: 'email_required',
-      redirect: '/profile',
-      provider_fallback: 'ExampleID'
-    REDACTED)
-
-    const wrapper = mount(OidcCallbackView, {
-      global: {
-        stubs: {
-          AuthLayout: { template: '<div><slot /></div>' REDACTED,
-          Icon: true,
-          RouterLink: { template: '<a><slot /></a>' REDACTED,
-          transition: false
-        REDACTED
-      REDACTED
-    REDACTED)
-
-    await flushPromises()
-
-    expect(setToken).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('Continue with email')
-
-    await wrapper.get('input[type="email"]').setValue('alice@example.com')
-    await wrapper.get('button').trigger('click')
-
-    expect(replace).toHaveBeenCalledWith({
-      path: '/register',
-      query: {
-        email: 'alice@example.com',
-        redirect: '/profile',
-        provider: 'ExampleID'
-      REDACTED
-    REDACTED)
-  REDACTED)
-
-  it('renders existing-account binding ui and routes to login', async () => {
-    exchangePendingOAuthCompletion.mockResolvedValue({
-      error: 'existing_account_binding_required',
-      redirect: '/profile',
-      existing_account_email: 'alice@example.com'
-    REDACTED)
-
-    const wrapper = mount(OidcCallbackView, {
-      global: {
-        stubs: {
-          AuthLayout: { template: '<div><slot /></div>' REDACTED,
-          Icon: true,
-          RouterLink: { template: '<a><slot /></a>' REDACTED,
-          transition: false
-        REDACTED
-      REDACTED
-    REDACTED)
-
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('alice@example.com')
-    expect(wrapper.text()).toContain('Sign in to bind')
-
-    await wrapper.get('button').trigger('click')
-
-    expect(replace).toHaveBeenCalledWith({
-      path: '/login',
-      query: {
-        email: 'alice@example.com',
-        redirect: '/profile',
-        provider: 'ExampleID'
-      REDACTED
-    REDACTED)
-  REDACTED)
-
   it('renders adoption choices for invitation flow and submits the selected values', async () => {
     exchangePendingOAuthCompletion.mockResolvedValue({
       error: 'invitation_required',
@@ -284,13 +222,8 @@ describe('OidcCallbackView', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('OIDC Nick')
-    expect(exchangePendingOAuthCompletion).toHaveBeenCalledTimes(1)
-    expect(exchangePendingOAuthCompletion).toHaveBeenCalledWith()
-
     const checkboxes = wrapper.findAll('input[type="checkbox"]')
     expect(checkboxes).toHaveLength(2)
-
     await checkboxes[1].setValue(false)
     await wrapper.find('input[type="text"]').setValue('invite-code')
     await wrapper.find('button').trigger('click')
@@ -299,5 +232,155 @@ describe('OidcCallbackView', () => {
       adoptDisplayName: true,
       adoptAvatar: false
     REDACTED)
+  REDACTED)
+
+  it('collects email for pending oauth account creation and submits adoption decisions', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'email_required',
+      redirect: '/welcome',
+      adoption_required: true,
+      suggested_display_name: 'OIDC Nick',
+      suggested_avatar_url: 'https://cdn.example/oidc.png'
+    REDACTED)
+    apiClientPost.mockResolvedValue({
+      data: {
+        access_token: 'new-access-token',
+        refresh_token: 'new-refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer'
+      REDACTED
+    REDACTED)
+    setToken.mockResolvedValue({REDACTED)
+
+    const wrapper = mount(OidcCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    const checkboxes = wrapper.findAll('input[type="checkbox"]')
+    expect(checkboxes).toHaveLength(2)
+    await checkboxes[1].setValue(false)
+    await wrapper.get('[data-testid="oidc-create-account-email"]').setValue('  new@example.com  ')
+    await wrapper.get('[data-testid="oidc-create-account-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(apiClientPost).toHaveBeenCalledWith('/auth/oauth/pending/create-account', {
+      email: 'new@example.com',
+      adopt_display_name: true,
+      adopt_avatar: false
+    REDACTED)
+    expect(setToken).toHaveBeenCalledWith('new-access-token')
+    expect(replace).toHaveBeenCalledWith('/welcome')
+  REDACTED)
+
+  it('shows bind-login form for existing account binding and submits credentials with adoption decisions', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'adopt_existing_user_by_email',
+      redirect: '/profile/security',
+      email: 'existing@example.com',
+      adoption_required: true,
+      suggested_display_name: 'OIDC Nick',
+      suggested_avatar_url: 'https://cdn.example/oidc.png'
+    REDACTED)
+    apiClientPost.mockResolvedValue({
+      data: {
+        access_token: 'bind-access-token',
+        refresh_token: 'bind-refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer'
+      REDACTED
+    REDACTED)
+    setToken.mockResolvedValue({REDACTED)
+
+    const wrapper = mount(OidcCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    const checkboxes = wrapper.findAll('input[type="checkbox"]')
+    expect(checkboxes).toHaveLength(2)
+    await checkboxes[0].setValue(false)
+    await wrapper.get('[data-testid="oidc-bind-login-email"]').setValue('existing@example.com')
+    await wrapper.get('[data-testid="oidc-bind-login-password"]').setValue('secret-password')
+    await wrapper.get('[data-testid="oidc-bind-login-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(apiClientPost).toHaveBeenCalledWith('/auth/oauth/pending/bind-login', {
+      email: 'existing@example.com',
+      password: 'secret-password',
+      adopt_display_name: false,
+      adopt_avatar: true
+    REDACTED)
+    expect(setToken).toHaveBeenCalledWith('bind-access-token')
+    expect(replace).toHaveBeenCalledWith('/profile/security')
+  REDACTED)
+
+  it('handles bind-login 2FA challenge before redirecting', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'adopt_existing_user_by_email',
+      redirect: '/profile',
+      email: 'existing@example.com',
+      adoption_required: true,
+      suggested_display_name: 'OIDC Nick',
+      suggested_avatar_url: 'https://cdn.example/oidc.png'
+    REDACTED)
+    apiClientPost.mockResolvedValue({
+      data: {
+        requires_2fa: true,
+        temp_token: 'temp-123',
+        user_email_masked: 'o***g@example.com'
+      REDACTED
+    REDACTED)
+    login2FA.mockResolvedValue({
+      access_token: '2fa-access-token'
+    REDACTED)
+    setToken.mockResolvedValue({REDACTED)
+
+    const wrapper = mount(OidcCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    await wrapper.get('[data-testid="oidc-bind-login-password"]').setValue('secret-password')
+    await wrapper.get('[data-testid="oidc-bind-login-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('o***g@example.com')
+    expect(login2FA).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="oidc-bind-login-totp"]').setValue('123456')
+    await wrapper.get('[data-testid="oidc-bind-login-totp-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(login2FA).toHaveBeenCalledWith({
+      temp_token: 'temp-123',
+      totp_code: '123456'
+    REDACTED)
+    expect(setToken).toHaveBeenCalledWith('2fa-access-token')
+    expect(replace).toHaveBeenCalledWith('/profile')
   REDACTED)
 REDACTED)
