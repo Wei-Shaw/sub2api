@@ -12,7 +12,13 @@
 
       <transition name="fade">
         <div
-          v-if="needsInvitation || needsAdoptionConfirmation || needsCreateAccount || needsBindLogin"
+          v-if="
+            needsInvitation ||
+            needsAdoptionConfirmation ||
+            needsCreateAccount ||
+            needsBindLogin ||
+            needsTotpChallenge
+          "
           class="space-y-4"
         >
           <div
@@ -186,6 +192,40 @@
               </p>
             </transition>
           </template>
+
+          <template v-else-if="needsTotpChallenge">
+            <p class="text-sm text-gray-700 dark:text-gray-300">
+              Enter the 6-digit verification code for
+              <span class="font-medium">{{ totpUserEmailMasked || 'your account' REDACTEDREDACTED</span>
+              to finish binding this LinuxDo sign-in.
+            </p>
+            <div class="space-y-3">
+              <input
+                v-model="totpCode"
+                data-testid="linuxdo-bind-login-totp"
+                type="text"
+                inputmode="numeric"
+                maxlength="6"
+                class="input w-full"
+                placeholder="123456"
+                :disabled="isSubmitting"
+                @keyup.enter="handleSubmitTotpChallenge"
+              />
+              <button
+                data-testid="linuxdo-bind-login-totp-submit"
+                class="btn btn-primary w-full"
+                :disabled="isSubmitting || totpCode.trim().length !== 6"
+                @click="handleSubmitTotpChallenge"
+              >
+                {{ isSubmitting ? t('common.processing') : 'Verify and continue' REDACTEDREDACTED
+              </button>
+            </div>
+            <transition name="fade">
+              <p v-if="totpError" class="text-sm text-red-600 dark:text-red-400">
+                {{ totpError REDACTEDREDACTED
+              </p>
+            </transition>
+          </template>
         </div>
       </transition>
 
@@ -226,6 +266,7 @@ import {
   exchangePendingOAuthCompletion,
   getOAuthCompletionKind,
   isOAuthLoginCompletion,
+  login2FA,
   persistOAuthTokenContext,
   type OAuthAdoptionDecision,
   type PendingOAuthExchangeResponse
@@ -260,6 +301,11 @@ const bindLoginPassword = ref('')
 const accountActionError = ref('')
 const canReturnToCreateAccount = ref(false)
 const bindSuccessMessage = t('profile.authBindings.bindSuccess')
+const needsTotpChallenge = ref(false)
+const totpTempToken = ref('')
+const totpCode = ref('')
+const totpError = ref('')
+const totpUserEmailMasked = ref('')
 
 const needsCreateAccount = computed(() => pendingAccountAction.value === 'create_account')
 const needsBindLogin = computed(() => pendingAccountAction.value === 'bind_login')
@@ -346,6 +392,11 @@ function applyPendingAccountAction(completion: LinuxDoPendingActionResponse) {
   const action = resolvePendingAccountAction(completion)
   pendingAccountAction.value = action
   accountActionError.value = ''
+  needsTotpChallenge.value = false
+  totpTempToken.value = ''
+  totpCode.value = ''
+  totpError.value = ''
+  totpUserEmailMasked.value = ''
 
   const email = extractPendingAccountEmail(completion)
   if (action === 'create_account') {
@@ -362,6 +413,23 @@ function applyPendingAccountAction(completion: LinuxDoPendingActionResponse) {
   REDACTED
 
   canReturnToCreateAccount.value = false
+REDACTED
+
+function applyTotpChallenge(completion: LinuxDoPendingActionResponse): boolean {
+  if (completion.requires_2fa !== true || !completion.temp_token) {
+    return false
+  REDACTED
+
+  pendingAccountAction.value = 'none'
+  needsInvitation.value = false
+  needsAdoptionConfirmation.value = false
+  needsTotpChallenge.value = true
+  totpTempToken.value = completion.temp_token
+  totpCode.value = ''
+  totpError.value = ''
+  totpUserEmailMasked.value = completion.user_email_masked || ''
+  isProcessing.value = false
+  return true
 REDACTED
 
 function switchToBindLoginMode() {
@@ -409,6 +477,10 @@ async function finalizePendingAccountResponse(completion: LinuxDoPendingActionRe
     needsInvitation.value = true
     needsAdoptionConfirmation.value = false
     isProcessing.value = false
+    return
+  REDACTED
+
+  if (applyTotpChallenge(completion)) {
     return
   REDACTED
 
@@ -501,6 +573,27 @@ async function handleBindLogin() {
   REDACTED
 REDACTED
 
+async function handleSubmitTotpChallenge() {
+  totpError.value = ''
+  const code = totpCode.value.trim()
+  if (!totpTempToken.value || code.length !== 6) return
+
+  isSubmitting.value = true
+  try {
+    const completion = await login2FA({
+      temp_token: totpTempToken.value,
+      totp_code: code
+    REDACTED)
+    await authStore.setToken(completion.access_token)
+    appStore.showSuccess(t('auth.loginSuccess'))
+    await router.replace(redirectTo.value)
+  REDACTED catch (e: unknown) {
+    totpError.value = getRequestErrorMessage(e, t('auth.loginFailed'))
+  REDACTED finally {
+    isSubmitting.value = false
+  REDACTED
+REDACTED
+
 onMounted(async () => {
   const params = parseFragmentParams()
   const error = params.get('error')
@@ -524,6 +617,10 @@ onMounted(async () => {
     if (completion.error === 'invitation_required') {
       needsInvitation.value = true
       isProcessing.value = false
+      return
+    REDACTED
+
+    if (applyTotpChallenge(completion as LinuxDoPendingActionResponse)) {
       return
     REDACTED
 

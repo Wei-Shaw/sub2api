@@ -196,6 +196,9 @@ REDACTED
 export interface PendingOAuthBindLoginResponse extends Partial<OAuthTokenResponse> {
   redirect?: string
   error?: string
+  requires_2fa?: boolean
+  temp_token?: string
+  user_email_masked?: string
   adoption_required?: boolean
   suggested_display_name?: string
   suggested_avatar_url?: string
