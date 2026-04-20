@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -298,4 +299,74 @@ REDACTED)
 			t.Fatal("expected ok=false for invalid JSON")
 	REDACTED
 REDACTED)
+REDACTED
+
+func TestGetAvailableMethodLimitsRespectsVisibleMethodRouting(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	_, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("Official Alipay").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("alipay").
+		SetLimits(`{"alipay":{"singleMin":10,"singleMax":100REDACTEDREDACTED`).
+		SetEnabled(true).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create official alipay instance: %v", err)
+REDACTED
+	_, err = client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeEasyPay).
+		SetName("EasyPay Alipay").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("alipay").
+		SetLimits(`{"alipay":{"singleMin":20,"singleMax":200REDACTEDREDACTED`).
+		SetEnabled(true).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create easypay alipay instance: %v", err)
+REDACTED
+	_, err = client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeWxpay).
+		SetName("Official WeChat").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("wxpay").
+		SetLimits(`{"wxpay":{"singleMin":30,"singleMax":300REDACTEDREDACTED`).
+		SetEnabled(true).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create official wxpay instance: %v", err)
+REDACTED
+
+	svc := &PaymentConfigService{
+		entClient: client,
+		settingRepo: &paymentConfigSettingRepoStub{
+			values: map[string]string{
+				SettingPaymentVisibleMethodAlipayEnabled: "true",
+				SettingPaymentVisibleMethodAlipaySource:  VisibleMethodSourceEasyPayAlipay,
+				SettingPaymentVisibleMethodWxpayEnabled:  "false",
+				SettingPaymentVisibleMethodWxpaySource:   VisibleMethodSourceOfficialWechat,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	resp, err := svc.GetAvailableMethodLimits(ctx)
+	if err != nil {
+		t.Fatalf("GetAvailableMethodLimits returned error: %v", err)
+REDACTED
+
+	alipayLimits, ok := resp.Methods[payment.TypeAlipay]
+	if !ok {
+		t.Fatalf("expected visible alipay limits, got %v", resp.Methods)
+REDACTED
+	if alipayLimits.SingleMin != 20 || alipayLimits.SingleMax != 200 {
+		t.Fatalf("alipay limits = %+v, want easypay-only min=20 max=200", alipayLimits)
+REDACTED
+	if _, ok := resp.Methods[payment.TypeWxpay]; ok {
+		t.Fatalf("wxpay should be hidden when visible method is disabled, got %v", resp.Methods[payment.TypeWxpay])
+REDACTED
+	if resp.GlobalMin != 20 || resp.GlobalMax != 200 {
+		t.Fatalf("global range = (%v, %v), want (20, 200)", resp.GlobalMin, resp.GlobalMax)
+REDACTED
 REDACTED

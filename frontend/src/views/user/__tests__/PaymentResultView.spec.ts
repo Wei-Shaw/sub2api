@@ -76,6 +76,7 @@ describe('PaymentResultView', () => {
   it('restores order id from a matching resume token and does not trust query success flags', async () => {
     routeState.query = {
       resume_token: 'resume-42',
+      order_id: '999',
       status: 'success',
     REDACTED
     window.localStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, JSON.stringify({
@@ -108,6 +109,29 @@ describe('PaymentResultView', () => {
     expect(verifyOrderPublic).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('payment.result.failed')
     expect(wrapper.text()).not.toContain('payment.result.success')
+  REDACTED)
+
+  it('does not fall back to public out_trade_no verification when resume_token recovery fails', async () => {
+    routeState.query = {
+      resume_token: 'resume-fail',
+      out_trade_no: 'legacy-should-not-run',
+      trade_status: 'TRADE_SUCCESS',
+    REDACTED
+    resolveOrderPublicByResumeToken.mockRejectedValueOnce(new Error('resume failed'))
+
+    mount(PaymentResultView, {
+      global: {
+        stubs: {
+          OrderStatusBadge: true,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-fail')
+    expect(verifyOrderPublic).not.toHaveBeenCalled()
+    expect(verifyOrder).not.toHaveBeenCalled()
   REDACTED)
 
   it('keeps legacy out_trade_no verification as a fallback when no order context is available', async () => {
