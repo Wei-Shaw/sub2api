@@ -459,7 +459,7 @@ Frontend submits display method only. Backend resolves display method to active 
 - force email on third-party signup
 - LinuxDo client settings
 - OIDC issuer/client settings and provider display name
-- WeChat `open` and `mp` settings with config-valid and health indicators
+- WeChat `open` / `mp` capability indicators derived from environment-backed configuration, surfaced to the frontend/admin read models as effective availability rather than full in-panel credential editing
 
 ### Source default settings
 
@@ -476,7 +476,7 @@ Per source (`email`, `linuxdo`, `oidc`, `wechat`):
 - active source for `alipay`
 - active source for `wechat`
 - source-specific credentials and enablement
-- WeChat capability matrix:
+- effective WeChat payment capabilities may differ by enabled provider instances and selected visible-method source:
   - QR available
   - H5 available
   - MP/JSAPI available

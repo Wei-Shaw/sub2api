@@ -61,9 +61,9 @@ Configure the following in Admin Dashboard **Settings → Payment Settings**:
 | **Minimum Amount** | Minimum single top-up amount | 1 |
 | **Maximum Amount** | Maximum single top-up amount (empty = unlimited) | - |
 | **Daily Limit** | Per-user daily cumulative limit (empty = unlimited) | - |
-| **Order Timeout** | Order timeout in minutes (minimum 1) | 5 |
+| **Order Timeout** | Order timeout in minutes (minimum 1) | 30 |
 | **Max Pending Orders** | Maximum concurrent pending orders per user | 3 |
-| **Load Balance Strategy** | Strategy for selecting provider instances | Least Amount |
+| **Load Balance Strategy** | Strategy for selecting provider instances | Round Robin |
 
 ### Frontend Visible Method Routing
 
