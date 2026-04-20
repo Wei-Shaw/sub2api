@@ -116,11 +116,16 @@
                     {{ t('auth.alreadyHaveAccount') REDACTEDREDACTED
                   </p>
                   <p class="text-xs text-gray-500 dark:text-dark-400">
-                    Sign in to an existing account, then bind this WeChat identity to it.
+                    {{
+                      hasCurrentAuthToken
+                        ? 'Bind this WeChat identity to the account currently signed in on this browser.'
+                        : 'Sign in to an existing account, then bind this WeChat identity to it.'
+                    REDACTEDREDACTED
                   </p>
                 </div>
 
                 <input
+                  v-if="!hasCurrentAuthToken"
                   v-model="existingAccountEmail"
                   data-testid="existing-account-email"
                   type="email"
@@ -136,7 +141,7 @@
                   :disabled="isSubmitting"
                   @click="handleExistingAccountBinding"
                 >
-                  {{ t('auth.signIn') REDACTEDREDACTED
+                  {{ hasCurrentAuthToken ? 'Bind current account' : t('auth.signIn') REDACTEDREDACTED
                 </button>
               </div>
             </div>
@@ -353,6 +358,7 @@ const bindSuccessMessage = t('profile.authBindings.bindSuccess')
 const providerName = 'WeChat'
 const needsCreateAccount = computed(() => pendingAccountAction.value === 'create_account')
 const needsBindLogin = computed(() => pendingAccountAction.value === 'bind_login')
+const hasCurrentAuthToken = computed(() => Boolean(getAuthToken()))
 
 type PendingWeChatCompletion = PendingOAuthExchangeResponse & {
   step?: string

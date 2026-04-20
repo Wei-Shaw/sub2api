@@ -345,6 +345,35 @@ describe('WechatCallbackView', () => {
     expect(replaceMock.mock.calls[0]?.[0]).toContain('mode%3Dopen')
   REDACTED)
 
+  it('binds directly to the current signed-in account during invitation flow', async () => {
+    exchangePendingOAuthCompletionMock.mockResolvedValue({
+      error: 'invitation_required',
+      redirect: '/usage',
+    REDACTED)
+    getAuthTokenMock.mockReturnValue('current-auth-token')
+
+    const wrapper = mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="existing-account-email"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="existing-account-submit"]').trigger('click')
+
+    expect(prepareOAuthBindAccessTokenCookieMock).toHaveBeenCalledTimes(1)
+    expect(locationState.current.href).toContain('intent=bind_current_user')
+    expect(locationState.current.href).toContain('redirect=%2Fusage')
+    expect(locationState.current.href).toContain('mode=open')
+  REDACTED)
+
   it('collects email for pending oauth account creation and submits adoption decisions', async () => {
     exchangePendingOAuthCompletionMock.mockResolvedValue({
       error: 'email_required',
