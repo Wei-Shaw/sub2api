@@ -15,7 +15,15 @@
       </div>
 
       <transition name="fade">
-        <div v-if="needsInvitation || needsAdoptionConfirmation" class="space-y-4">
+        <div
+          v-if="
+            needsInvitation ||
+            needsEmailCollection ||
+            needsExistingAccountBinding ||
+            needsAdoptionConfirmation
+          "
+          class="space-y-4"
+        >
           <div
             v-if="adoptionRequired && (suggestedDisplayName || suggestedAvatarUrl)"
             class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-800/60"
@@ -100,6 +108,39 @@
             </button>
           </template>
 
+          <template v-else-if="needsEmailCollection">
+            <p class="text-sm text-gray-700 dark:text-gray-300">
+              Continue with email to finish setting up your {{ providerName REDACTEDREDACTED sign-in.
+            </p>
+            <div>
+              <input
+                v-model="pendingEmail"
+                type="email"
+                class="input w-full"
+                placeholder="you@example.com"
+                :disabled="isSubmitting"
+                @keyup.enter="handleContinueWithEmail"
+              />
+            </div>
+            <button
+              class="btn btn-primary w-full"
+              :disabled="isSubmitting || !pendingEmail.trim()"
+              @click="handleContinueWithEmail"
+            >
+              Continue with email
+            </button>
+          </template>
+
+          <template v-else-if="needsExistingAccountBinding">
+            <p class="text-sm text-gray-700 dark:text-gray-300">
+              Sign in to bind {{ providerName REDACTEDREDACTED to the existing account for
+              <span class="font-medium text-gray-900 dark:text-white">{{ pendingEmail REDACTEDREDACTED</span>.
+            </p>
+            <button class="btn btn-primary w-full" :disabled="isSubmitting" @click="handleContinueToLogin">
+              Sign in to bind
+            </button>
+          </template>
+
           <template v-else-if="needsAdoptionConfirmation">
             <p class="text-sm text-gray-700 dark:text-gray-300">
               Review the {{ providerName REDACTEDREDACTED profile details before continuing.
@@ -174,8 +215,21 @@ const suggestedDisplayName = ref('')
 const suggestedAvatarUrl = ref('')
 const adoptDisplayName = ref(true)
 const adoptAvatar = ref(true)
+const pendingEmail = ref('')
+const needsEmailCollection = ref(false)
+const needsExistingAccountBinding = ref(false)
 const needsAdoptionConfirmation = ref(false)
 const bindSuccessMessage = t('profile.authBindings.bindSuccess')
+
+type PendingOidcCompletion = PendingOAuthExchangeResponse & {
+  step?: string
+  pending_email?: string
+  resolved_email?: string
+  existing_account_email?: string
+  email?: string
+  provider_fallback?: string
+  intent?: string
+REDACTED
 
 function parseFragmentParams(): URLSearchParams {
   const raw = typeof window !== 'undefined' ? window.location.hash : ''
@@ -202,6 +256,34 @@ async function loadProviderName() {
   REDACTED catch {
     // Ignore; fallback remains OIDC
   REDACTED
+REDACTED
+
+function normalizedPendingState(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() || ''
+REDACTED
+
+function resolvePendingEmail(completion: PendingOidcCompletion): string {
+  return (
+    completion.pending_email ||
+    completion.existing_account_email ||
+    completion.resolved_email ||
+    completion.email ||
+    ''
+  ).trim()
+REDACTED
+
+function requiresEmailCollection(completion: PendingOidcCompletion): boolean {
+  const state = normalizedPendingState(completion.step || completion.error)
+  return state === 'email_required'
+REDACTED
+
+function requiresExistingAccountBinding(completion: PendingOidcCompletion): boolean {
+  const state = normalizedPendingState(completion.step || completion.error || completion.intent)
+  return (
+    state === 'existing_account_binding_required' ||
+    state === 'existing_account_required' ||
+    state === 'adopt_existing_user_by_email'
+  )
 REDACTED
 
 function currentAdoptionDecision(): OAuthAdoptionDecision {
@@ -295,6 +377,35 @@ async function handleContinueLogin() {
   REDACTED
 REDACTED
 
+async function handleContinueWithEmail() {
+  const email = pendingEmail.value.trim()
+  if (!email) {
+    return
+  REDACTED
+
+  await router.replace({
+    path: '/register',
+    query: {
+      email,
+      redirect: redirectTo.value,
+      provider: providerName.value
+    REDACTED
+  REDACTED)
+REDACTED
+
+async function handleContinueToLogin() {
+  const email = pendingEmail.value.trim()
+
+  await router.replace({
+    path: '/login',
+    query: {
+      email,
+      redirect: redirectTo.value,
+      provider: providerName.value
+    REDACTED
+  REDACTED)
+REDACTED
+
 onMounted(async () => {
   void loadProviderName()
 
@@ -310,15 +421,28 @@ onMounted(async () => {
   REDACTED
 
   try {
-    const completion = await exchangePendingOAuthCompletion()
+    const completion = await exchangePendingOAuthCompletion() as PendingOidcCompletion
     const redirect = sanitizeRedirectPath(
       completion.redirect || (route.query.redirect as string | undefined) || '/dashboard'
     )
     applyAdoptionSuggestionState(completion)
     redirectTo.value = redirect
+    pendingEmail.value = resolvePendingEmail(completion)
 
     if (completion.error === 'invitation_required') {
       needsInvitation.value = true
+      isProcessing.value = false
+      return
+    REDACTED
+
+    if (requiresEmailCollection(completion)) {
+      needsEmailCollection.value = true
+      isProcessing.value = false
+      return
+    REDACTED
+
+    if (requiresExistingAccountBinding(completion)) {
+      needsExistingAccountBinding.value = true
       isProcessing.value = false
       return
     REDACTED

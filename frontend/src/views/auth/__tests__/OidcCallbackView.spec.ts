@@ -184,6 +184,77 @@ describe('OidcCallbackView', () => {
     expect(replace).toHaveBeenCalledWith('/profile')
   REDACTED)
 
+  it('renders pending email collection ui and routes to register with the entered email', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'email_required',
+      redirect: '/profile',
+      provider_fallback: 'ExampleID'
+    REDACTED)
+
+    const wrapper = mount(OidcCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    expect(setToken).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Continue with email')
+
+    await wrapper.get('input[type="email"]').setValue('alice@example.com')
+    await wrapper.get('button').trigger('click')
+
+    expect(replace).toHaveBeenCalledWith({
+      path: '/register',
+      query: {
+        email: 'alice@example.com',
+        redirect: '/profile',
+        provider: 'ExampleID'
+      REDACTED
+    REDACTED)
+  REDACTED)
+
+  it('renders existing-account binding ui and routes to login', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'existing_account_binding_required',
+      redirect: '/profile',
+      existing_account_email: 'alice@example.com'
+    REDACTED)
+
+    const wrapper = mount(OidcCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('alice@example.com')
+    expect(wrapper.text()).toContain('Sign in to bind')
+
+    await wrapper.get('button').trigger('click')
+
+    expect(replace).toHaveBeenCalledWith({
+      path: '/login',
+      query: {
+        email: 'alice@example.com',
+        redirect: '/profile',
+        provider: 'ExampleID'
+      REDACTED
+    REDACTED)
+  REDACTED)
+
   it('renders adoption choices for invitation flow and submits the selected values', async () => {
     exchangePendingOAuthCompletion.mockResolvedValue({
       error: 'invitation_required',

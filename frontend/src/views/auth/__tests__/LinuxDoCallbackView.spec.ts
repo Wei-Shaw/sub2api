@@ -9,6 +9,7 @@ const showError = vi.fn()
 const setToken = vi.fn()
 const exchangePendingOAuthCompletion = vi.fn()
 const completeLinuxDoOAuthRegistration = vi.fn()
+const apiClientPost = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({
@@ -39,6 +40,12 @@ vi.mock('@/stores', () => ({
   REDACTED)
 REDACTED))
 
+vi.mock('@/api/client', () => ({
+  apiClient: {
+    post: (...args: any[]) => apiClientPost(...args)
+  REDACTED
+REDACTED))
+
 vi.mock('@/api/auth', async () => {
   const actual = await vi.importActual<typeof import('@/api/auth')>('@/api/auth')
   return {
@@ -56,6 +63,7 @@ describe('LinuxDoCallbackView', () => {
     setToken.mockReset()
     exchangePendingOAuthCompletion.mockReset()
     completeLinuxDoOAuthRegistration.mockReset()
+    apiClientPost.mockReset()
   REDACTED)
 
   it('does not send adoption decisions during the initial exchange', async () => {
@@ -238,5 +246,102 @@ describe('LinuxDoCallbackView', () => {
       adoptDisplayName: false,
       adoptAvatar: true
     REDACTED)
+  REDACTED)
+
+  it('collects email for pending oauth account creation and submits adoption decisions', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'email_required',
+      redirect: '/welcome',
+      adoption_required: true,
+      suggested_display_name: 'LinuxDo Nick',
+      suggested_avatar_url: 'https://cdn.example/linuxdo.png'
+    REDACTED)
+    apiClientPost.mockResolvedValue({
+      data: {
+        access_token: 'new-access-token',
+        refresh_token: 'new-refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer'
+      REDACTED
+    REDACTED)
+    setToken.mockResolvedValue({REDACTED)
+
+    const wrapper = mount(LinuxDoCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    const checkboxes = wrapper.findAll('input[type="checkbox"]')
+    expect(checkboxes).toHaveLength(2)
+    await checkboxes[1].setValue(false)
+    await wrapper.get('[data-testid="linuxdo-create-account-email"]').setValue('  new@example.com  ')
+    await wrapper.get('[data-testid="linuxdo-create-account-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(apiClientPost).toHaveBeenCalledWith('/auth/oauth/pending/create-account', {
+      email: 'new@example.com',
+      adopt_display_name: true,
+      adopt_avatar: false
+    REDACTED)
+    expect(setToken).toHaveBeenCalledWith('new-access-token')
+    expect(replace).toHaveBeenCalledWith('/welcome')
+  REDACTED)
+
+  it('shows bind-login form for existing account binding and submits credentials with adoption decisions', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'bind_login_required',
+      redirect: '/profile/security',
+      email: 'existing@example.com',
+      adoption_required: true,
+      suggested_display_name: 'LinuxDo Nick',
+      suggested_avatar_url: 'https://cdn.example/linuxdo.png'
+    REDACTED)
+    apiClientPost.mockResolvedValue({
+      data: {
+        access_token: 'bind-access-token',
+        refresh_token: 'bind-refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer'
+      REDACTED
+    REDACTED)
+    setToken.mockResolvedValue({REDACTED)
+
+    const wrapper = mount(LinuxDoCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    const checkboxes = wrapper.findAll('input[type="checkbox"]')
+    expect(checkboxes).toHaveLength(2)
+    await checkboxes[0].setValue(false)
+    await wrapper.get('[data-testid="linuxdo-bind-login-email"]').setValue('existing@example.com')
+    await wrapper.get('[data-testid="linuxdo-bind-login-password"]').setValue('secret-password')
+    await wrapper.get('[data-testid="linuxdo-bind-login-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(apiClientPost).toHaveBeenCalledWith('/auth/oauth/pending/bind-login', {
+      email: 'existing@example.com',
+      password: 'secret-password',
+      adopt_display_name: false,
+      adopt_avatar: true
+    REDACTED)
+    expect(setToken).toHaveBeenCalledWith('bind-access-token')
+    expect(replace).toHaveBeenCalledWith('/profile/security')
   REDACTED)
 REDACTED)
