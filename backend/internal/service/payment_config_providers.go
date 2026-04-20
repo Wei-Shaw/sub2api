@@ -12,8 +12,21 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
+
+// validateProviderConfig runs the provider's constructor to surface config-level
+// errors at save time (e.g. wxpay missing certSerial), instead of only failing
+// when an order is created. Returns the structured ApplicationError from the
+// constructor so the frontend i18n layer can localize it.
+//
+// Only validates enabled instances — a disabled instance may be a half-filled
+// draft the admin will complete later.
+func (s *PaymentConfigService) validateProviderConfig(providerKey string, config map[string]string) error {
+	_, err := provider.CreateProvider(providerKey, "_validate_", config)
+	return err
+}
 
 // --- Provider Instance CRUD ---
 
@@ -137,6 +150,11 @@ func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req C
 	if err := validateProviderRequest(req.ProviderKey, req.Name, typesStr); err != nil {
 		return nil, err
 	}
+	if req.Enabled {
+		if err := s.validateProviderConfig(req.ProviderKey, req.Config); err != nil {
+			return nil, err
+		}
+	}
 	enc, err := s.encryptConfig(req.Config)
 	if err != nil {
 		return nil, err
@@ -210,16 +228,42 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 				WithMetadata(map[string]string{"count": strconv.Itoa(count)})
 		}
 	}
+	// Validate merged config when the instance will end up enabled.
+	// This surfaces provider-level errors (e.g. wxpay missing certSerial) at save time,
+	// so admins see them in the dialog instead of only when an order is created.
+	inst, err := s.entClient.PaymentProviderInstance.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("load provider instance: %w", err)
+	}
+	finalEnabled := inst.Enabled
+	if req.Enabled != nil {
+		finalEnabled = *req.Enabled
+	}
+	var mergedConfig map[string]string
+	if req.Config != nil {
+		mergedConfig, err = s.mergeConfig(ctx, id, req.Config)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if finalEnabled {
+		configToValidate := mergedConfig
+		if configToValidate == nil {
+			configToValidate, err = s.decryptConfig(inst.Config)
+			if err != nil {
+				return nil, fmt.Errorf("decrypt existing config: %w", err)
+			}
+		}
+		if err := s.validateProviderConfig(inst.ProviderKey, configToValidate); err != nil {
+			return nil, err
+		}
+	}
 	u := s.entClient.PaymentProviderInstance.UpdateOneID(id)
 	if req.Name != nil {
 		u.SetName(*req.Name)
 	}
-	if req.Config != nil {
-		merged, err := s.mergeConfig(ctx, id, req.Config)
-		if err != nil {
-			return nil, err
-		}
-		enc, err := s.encryptConfig(merged)
+	if mergedConfig != nil {
+		enc, err := s.encryptConfig(mergedConfig)
 		if err != nil {
 			return nil, err
 		}

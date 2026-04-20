@@ -78,11 +78,14 @@ func NewWxpay(instanceID string, config map[string]string) (*Wxpay, error) {
 				"actual":   strconv.Itoa(len(config["apiV3Key"])),
 			})
 	}
-	// publicKey + publicKeyId are a pair used by the new pubkey verifier.
-	// If either is set, both must be set; otherwise fall back to legacy platform certificate mode.
-	if (config["publicKey"] != "") != (config["publicKeyId"] != "") {
-		return nil, infraerrors.BadRequest("WXPAY_CONFIG_PAIR_VIOLATION", "pair_violation").
-			WithMetadata(map[string]string{"keys": "publicKey/publicKeyId"})
+	// Pubkey verifier mode is opt-in via publicKeyId. If publicKeyId is set,
+	// publicKey must also be set so the verifier can load it.
+	// A leftover publicKey without publicKeyId is treated as unused legacy data,
+	// not an error, so admins can switch back to platform-certificate mode without
+	// having to manually clear the old publicKey field.
+	if config["publicKeyId"] != "" && config["publicKey"] == "" {
+		return nil, infraerrors.BadRequest("WXPAY_CONFIG_MISSING_KEY", "missing_required_key").
+			WithMetadata(map[string]string{"key": "publicKey"})
 	}
 	return &Wxpay{instanceID: instanceID, config: config}, nil
 }

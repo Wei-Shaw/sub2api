@@ -218,16 +218,16 @@ func TestNewWxpay(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:      "publicKey without publicKeyId",
-			config:    withOverride(map[string]string{"publicKeyId": ""}),
-			wantErr:   true,
-			errSubstr: "WXPAY_CONFIG_PAIR_VIOLATION",
+			// Leftover publicKey from a former pubkey-mode setup is ignored; treated as legacy mode.
+			name:    "publicKey leftover without publicKeyId is allowed",
+			config:  withOverride(map[string]string{"publicKeyId": ""}),
+			wantErr: false,
 		},
 		{
 			name:      "publicKeyId without publicKey",
 			config:    withOverride(map[string]string{"publicKey": ""}),
 			wantErr:   true,
-			errSubstr: "WXPAY_CONFIG_PAIR_VIOLATION",
+			errSubstr: "WXPAY_CONFIG_MISSING_KEY",
 		},
 		{
 			name:      "apiV3Key too short",
