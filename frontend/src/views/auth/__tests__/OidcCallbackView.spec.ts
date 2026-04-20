@@ -12,6 +12,7 @@ const completeOIDCOAuthRegistration = vi.fn()
 const getPublicSettings = vi.fn()
 const login2FA = vi.fn()
 const apiClientPost = vi.fn()
+const sendVerifyCode = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({
@@ -60,7 +61,8 @@ vi.mock('@/api/auth', async () => {
     exchangePendingOAuthCompletion: (...args: any[]) => exchangePendingOAuthCompletion(...args),
     completeOIDCOAuthRegistration: (...args: any[]) => completeOIDCOAuthRegistration(...args),
     getPublicSettings: (...args: any[]) => getPublicSettings(...args),
-    login2FA: (...args: any[]) => login2FA(...args)
+    login2FA: (...args: any[]) => login2FA(...args),
+    sendVerifyCode: (...args: any[]) => sendVerifyCode(...args)
   REDACTED
 REDACTED)
 
@@ -75,6 +77,7 @@ describe('OidcCallbackView', () => {
     getPublicSettings.mockReset()
     login2FA.mockReset()
     apiClientPost.mockReset()
+    sendVerifyCode.mockReset()
     getPublicSettings.mockResolvedValue({
       oidc_oauth_provider_name: 'ExampleID'
     REDACTED)
@@ -234,7 +237,7 @@ describe('OidcCallbackView', () => {
     REDACTED)
   REDACTED)
 
-  it('collects email for pending oauth account creation and submits adoption decisions', async () => {
+  it('collects email, password, and verify code for pending oauth account creation and submits adoption decisions', async () => {
     exchangePendingOAuthCompletion.mockResolvedValue({
       error: 'email_required',
       redirect: '/welcome',
@@ -269,16 +272,52 @@ describe('OidcCallbackView', () => {
     expect(checkboxes).toHaveLength(2)
     await checkboxes[1].setValue(false)
     await wrapper.get('[data-testid="oidc-create-account-email"]').setValue('  new@example.com  ')
+    await wrapper.get('[data-testid="oidc-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="oidc-create-account-verify-code"]').setValue('246810')
     await wrapper.get('[data-testid="oidc-create-account-submit"]').trigger('click')
     await flushPromises()
 
     expect(apiClientPost).toHaveBeenCalledWith('/auth/oauth/pending/create-account', {
       email: 'new@example.com',
+      password: 'secret-123',
+      verify_code: '246810',
       adopt_display_name: true,
       adopt_avatar: false
     REDACTED)
     expect(setToken).toHaveBeenCalledWith('new-access-token')
     expect(replace).toHaveBeenCalledWith('/welcome')
+  REDACTED)
+
+  it('sends a verify code for pending oauth account creation', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'email_required',
+      redirect: '/welcome'
+    REDACTED)
+    sendVerifyCode.mockResolvedValue({
+      message: 'sent',
+      countdown: 60
+    REDACTED)
+
+    const wrapper = mount(OidcCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    await wrapper.get('[data-testid="oidc-create-account-email"]').setValue('  new@example.com  ')
+    await wrapper.get('[data-testid="oidc-create-account-send-code"]').trigger('click')
+    await flushPromises()
+
+    expect(sendVerifyCode).toHaveBeenCalledWith({
+      email: 'new@example.com'
+    REDACTED)
   REDACTED)
 
   it('shows bind-login form for existing account binding and submits credentials with adoption decisions', async () => {
