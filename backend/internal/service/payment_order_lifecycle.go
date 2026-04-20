@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -237,27 +236,36 @@ REDACTED
 // getOrderProvider creates a provider using the order's original instance config.
 // Falls back to registry lookup if instance ID is missing (legacy orders).
 func (s *PaymentService) getOrderProvider(ctx context.Context, o *dbent.PaymentOrder) (payment.Provider, error) {
-	if o.ProviderInstanceID != nil && *o.ProviderInstanceID != "" {
-		instID, err := strconv.ParseInt(*o.ProviderInstanceID, 10, 64)
-		if err == nil {
-			cfg, err := s.loadBalancer.GetInstanceConfig(ctx, instID)
-			if err == nil {
-				providerKey := strings.TrimSpace(psStringValue(o.ProviderKey))
-				if providerKey == "" {
-					providerKey = s.registry.GetProviderKey(o.PaymentType)
-			REDACTED
-				if providerKey == "" {
-					providerKey = o.PaymentType
-			REDACTED
-				p, err := provider.CreateProvider(providerKey, *o.ProviderInstanceID, cfg)
-				if err == nil {
-					return p, nil
-			REDACTED
-		REDACTED
-	REDACTED
+	inst, err := s.getOrderProviderInstance(ctx, o)
+	if err != nil {
+		return nil, fmt.Errorf("load order provider instance: %w", err)
+REDACTED
+	if inst != nil {
+		return s.createProviderFromInstance(ctx, inst)
 REDACTED
 	s.EnsureProviders(ctx)
 	return s.registry.GetProvider(o.PaymentType)
+REDACTED
+
+func (s *PaymentService) createProviderFromInstance(ctx context.Context, inst *dbent.PaymentProviderInstance) (payment.Provider, error) {
+	if inst == nil {
+		return nil, fmt.Errorf("payment provider instance is missing")
+REDACTED
+
+	cfg, err := s.loadBalancer.GetInstanceConfig(ctx, int64(inst.ID))
+	if err != nil {
+		return nil, fmt.Errorf("load provider instance config: %w", err)
+REDACTED
+	if inst.PaymentMode != "" {
+		cfg["paymentMode"] = inst.PaymentMode
+REDACTED
+
+	instID := strconv.FormatInt(int64(inst.ID), 10)
+	prov, err := provider.CreateProvider(inst.ProviderKey, instID, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create provider from instance: %w", err)
+REDACTED
+	return prov, nil
 REDACTED
 
 func psStringValue(value *string) string {

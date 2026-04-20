@@ -12,6 +12,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
@@ -19,16 +20,88 @@ import (
 // --- Refund Flow ---
 
 // getOrderProviderInstance looks up the provider instance that processed this order.
-// Returns nil, nil for legacy orders without provider_instance_id.
+// For legacy orders without provider_instance_id, it resolves only when the
+// enabled instance is uniquely identifiable from the stored order fields.
 func (s *PaymentService) getOrderProviderInstance(ctx context.Context, o *dbent.PaymentOrder) (*dbent.PaymentProviderInstance, error) {
-	if o.ProviderInstanceID == nil || *o.ProviderInstanceID == "" {
+	if s == nil || s.entClient == nil || o == nil {
 		return nil, nil
 REDACTED
-	instID, err := strconv.ParseInt(*o.ProviderInstanceID, 10, 64)
+
+	instIDStr := strings.TrimSpace(psStringValue(o.ProviderInstanceID))
+	if instIDStr == "" {
+		return s.resolveUniqueLegacyOrderProviderInstance(ctx, o)
+REDACTED
+
+	instID, err := strconv.ParseInt(instIDStr, 10, 64)
 	if err != nil {
 		return nil, nil
 REDACTED
 	return s.entClient.PaymentProviderInstance.Get(ctx, instID)
+REDACTED
+
+func (s *PaymentService) resolveUniqueLegacyOrderProviderInstance(ctx context.Context, o *dbent.PaymentOrder) (*dbent.PaymentProviderInstance, error) {
+	providerKey := strings.TrimSpace(psStringValue(o.ProviderKey))
+	if providerKey != "" {
+		instances, err := s.entClient.PaymentProviderInstance.Query().
+			Where(
+				paymentproviderinstance.EnabledEQ(true),
+				paymentproviderinstance.ProviderKeyEQ(providerKey),
+			).
+			All(ctx)
+		if err != nil {
+			return nil, err
+	REDACTED
+		if len(instances) == 1 {
+			return instances[0], nil
+	REDACTED
+		return nil, nil
+REDACTED
+
+	paymentType := payment.GetBasePaymentType(strings.TrimSpace(o.PaymentType))
+	if paymentType == "" {
+		return nil, nil
+REDACTED
+
+	instances, err := s.entClient.PaymentProviderInstance.Query().
+		Where(paymentproviderinstance.EnabledEQ(true)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	var matched []*dbent.PaymentProviderInstance
+	for _, inst := range instances {
+		if psLegacyOrderMatchesInstance(paymentType, inst) {
+			matched = append(matched, inst)
+	REDACTED
+REDACTED
+	if len(matched) == 1 {
+		return matched[0], nil
+REDACTED
+	return nil, nil
+REDACTED
+
+func psLegacyOrderMatchesInstance(orderPaymentType string, inst *dbent.PaymentProviderInstance) bool {
+	if inst == nil {
+		return false
+REDACTED
+
+	baseType := payment.GetBasePaymentType(strings.TrimSpace(orderPaymentType))
+	instanceProviderKey := strings.TrimSpace(inst.ProviderKey)
+	if baseType == "" {
+		return false
+REDACTED
+
+	if baseType == payment.TypeStripe {
+		return instanceProviderKey == payment.TypeStripe
+REDACTED
+	if instanceProviderKey == payment.TypeStripe {
+		return false
+REDACTED
+	if instanceProviderKey == baseType {
+		return true
+REDACTED
+	return payment.InstanceSupportsType(inst.SupportedTypes, baseType)
 REDACTED
 
 func (s *PaymentService) RequestRefund(ctx context.Context, oid, uid int64, reason string) error {

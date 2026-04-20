@@ -4,14 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
-	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 )
 
 // GetWebhookProvider returns the provider instance that should verify a webhook.
@@ -23,6 +21,13 @@ func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, ou
 		if err == nil {
 			if psHasPinnedProviderInstance(order) {
 				return s.getPinnedOrderProvider(ctx, order)
+		REDACTED
+			inst, err := s.getOrderProviderInstance(ctx, order)
+			if err != nil {
+				return nil, fmt.Errorf("load order provider instance: %w", err)
+		REDACTED
+			if inst != nil {
+				return s.createProviderFromInstance(ctx, inst)
 		REDACTED
 			if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
 				return nil, fmt.Errorf("webhook provider fallback is ambiguous for %s", providerKey)
@@ -48,18 +53,7 @@ REDACTED
 	if inst == nil {
 		return nil, fmt.Errorf("order %d provider instance is missing", o.ID)
 REDACTED
-
-	instID := strconv.FormatInt(int64(inst.ID), 10)
-	cfg, err := s.loadBalancer.GetInstanceConfig(ctx, int64(inst.ID))
-	if err != nil {
-		return nil, fmt.Errorf("load provider instance config: %w", err)
-REDACTED
-
-	prov, err := provider.CreateProvider(inst.ProviderKey, instID, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("create pinned provider: %w", err)
-REDACTED
-	return prov, nil
+	return s.createProviderFromInstance(ctx, inst)
 REDACTED
 
 func (s *PaymentService) webhookRegistryFallbackAllowed(ctx context.Context, providerKey string) bool {
