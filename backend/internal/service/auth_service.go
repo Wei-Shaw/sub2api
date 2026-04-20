@@ -807,37 +807,75 @@ func (s *AuthService) backfillEmailIdentityOnSuccessfulLogin(ctx context.Context
 	if s == nil || user == nil || user.ID <= 0 {
 		return
 REDACTED
-	s.ensureEmailAuthIdentity(ctx, user)
+	if s.ensureEmailAuthIdentity(ctx, user) {
+		if err := s.ApplyProviderDefaultSettingsOnFirstBind(ctx, user.ID, "email"); err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to apply email first bind defaults: user_id=%d err=%v", user.ID, err)
+	REDACTED
+REDACTED
 REDACTED
 
-func (s *AuthService) ensureEmailAuthIdentity(ctx context.Context, user *User) {
+func (s *AuthService) ensureEmailAuthIdentity(ctx context.Context, user *User) bool {
 	if s == nil || s.entClient == nil || user == nil || user.ID <= 0 {
-		return
+		return false
 REDACTED
 
 	email := strings.ToLower(strings.TrimSpace(user.Email))
 	if email == "" || isReservedEmail(email) {
-		return
+		return false
 REDACTED
 
-	if err := s.entClient.AuthIdentity.Create().
-		SetUserID(user.ID).
-		SetProviderType("email").
-		SetProviderKey("email").
-		SetProviderSubject(email).
-		SetVerifiedAt(time.Now().UTC()).
-		SetMetadata(map[string]any{
-			"source": "auth_service_dual_write",
-	REDACTED).
-		OnConflictColumns(
-			authidentity.FieldProviderType,
-			authidentity.FieldProviderKey,
-			authidentity.FieldProviderSubject,
-		).
-		DoNothing().
-		Exec(ctx); err != nil {
-		logger.LegacyPrintf("service.auth", "[Auth] Failed to ensure email auth identity: user_id=%d email=%s err=%v", user.ID, email, err)
+	client := s.entClient
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		client = tx.Client()
 REDACTED
+
+	buildQuery := func() *dbent.AuthIdentityQuery {
+		return client.AuthIdentity.Query().Where(
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+			authidentity.ProviderSubjectEQ(email),
+		)
+REDACTED
+
+	existed, err := buildQuery().Exist(ctx)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to inspect email auth identity: user_id=%d email=%s err=%v", user.ID, email, err)
+		return false
+REDACTED
+
+	if !existed {
+		if err := client.AuthIdentity.Create().
+			SetUserID(user.ID).
+			SetProviderType("email").
+			SetProviderKey("email").
+			SetProviderSubject(email).
+			SetVerifiedAt(time.Now().UTC()).
+			SetMetadata(map[string]any{
+				"source": "auth_service_dual_write",
+		REDACTED).
+			OnConflictColumns(
+				authidentity.FieldProviderType,
+				authidentity.FieldProviderKey,
+				authidentity.FieldProviderSubject,
+			).
+			DoNothing().
+			Exec(ctx); err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to ensure email auth identity: user_id=%d email=%s err=%v", user.ID, email, err)
+			return false
+	REDACTED
+REDACTED
+
+	identity, err := buildQuery().Only(ctx)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to reload email auth identity: user_id=%d email=%s err=%v", user.ID, email, err)
+		return false
+REDACTED
+	if identity.UserID != user.ID {
+		logger.LegacyPrintf("service.auth", "[Auth] Email auth identity ownership mismatch: user_id=%d email=%s owner_id=%d", user.ID, email, identity.UserID)
+		return false
+REDACTED
+
+	return !existed
 REDACTED
 
 func inferLegacySignupSource(email string) string {
