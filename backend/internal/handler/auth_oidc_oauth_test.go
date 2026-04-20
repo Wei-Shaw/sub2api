@@ -91,6 +91,26 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestOIDCParseUserInfoIncludesSuggestedProfile(t *testing.T) {
+	cfg := config.OIDCConnectConfig{REDACTED
+
+	claims := oidcParseUserInfo(`{
+		"sub":"subject-1",
+		"preferred_username":"alice",
+		"name":"Alice Example",
+		"picture":"https://cdn.example/avatar.png",
+		"email":"alice@example.com",
+		"email_verified":true
+REDACTED`, cfg)
+
+	require.Equal(t, "subject-1", claims.Subject)
+	require.Equal(t, "alice", claims.Username)
+	require.Equal(t, "Alice Example", claims.DisplayName)
+	require.Equal(t, "https://cdn.example/avatar.png", claims.AvatarURL)
+	require.NotNil(t, claims.EmailVerified)
+	require.True(t, *claims.EmailVerified)
+REDACTED
+
 func buildRSAJWK(kid string, pub *rsa.PublicKey) oidcJWK {
 	n := base64.RawURLEncoding.EncodeToString(pub.N.Bytes())
 	e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes())

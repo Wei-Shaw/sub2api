@@ -41,11 +41,13 @@ func TestLinuxDoParseUserInfoParsesIDAndUsername(t *testing.T) {
 		UserInfoURL: "https://connect.linux.do/api/user",
 REDACTED
 
-	email, username, subject, err := linuxDoParseUserInfo(`{"id":123,"username":"alice"REDACTED`, cfg)
+	email, username, subject, displayName, avatarURL, err := linuxDoParseUserInfo(`{"id":123,"username":"alice","name":"Alice","avatar_url":"https://cdn.example/avatar.png"REDACTED`, cfg)
 REDACTED
 	require.Equal(t, "123", subject)
 	require.Equal(t, "alice", username)
 	require.Equal(t, "linuxdo-123@linuxdo-connect.invalid", email)
+	require.Equal(t, "Alice", displayName)
+	require.Equal(t, "https://cdn.example/avatar.png", avatarURL)
 REDACTED
 
 func TestLinuxDoParseUserInfoDefaultsUsername(t *testing.T) {
@@ -53,11 +55,13 @@ func TestLinuxDoParseUserInfoDefaultsUsername(t *testing.T) {
 		UserInfoURL: "https://connect.linux.do/api/user",
 REDACTED
 
-	email, username, subject, err := linuxDoParseUserInfo(`{"id":"123"REDACTED`, cfg)
+	email, username, subject, displayName, avatarURL, err := linuxDoParseUserInfo(`{"id":"123"REDACTED`, cfg)
 REDACTED
 	require.Equal(t, "123", subject)
 	require.Equal(t, "linuxdo_123", username)
 	require.Equal(t, "linuxdo-123@linuxdo-connect.invalid", email)
+	require.Equal(t, "linuxdo_123", displayName)
+	require.Equal(t, "", avatarURL)
 REDACTED
 
 func TestLinuxDoParseUserInfoRejectsUnsafeSubject(t *testing.T) {
@@ -65,11 +69,11 @@ func TestLinuxDoParseUserInfoRejectsUnsafeSubject(t *testing.T) {
 		UserInfoURL: "https://connect.linux.do/api/user",
 REDACTED
 
-	_, _, _, err := linuxDoParseUserInfo(`{"id":"123@456"REDACTED`, cfg)
+	_, _, _, _, _, err := linuxDoParseUserInfo(`{"id":"123@456"REDACTED`, cfg)
 REDACTED
 
 	tooLong := strings.Repeat("a", linuxDoOAuthMaxSubjectLen+1)
-	_, _, _, err = linuxDoParseUserInfo(`{"id":"`+tooLong+`"REDACTED`, cfg)
+	_, _, _, _, _, err = linuxDoParseUserInfo(`{"id":"`+tooLong+`"REDACTED`, cfg)
 REDACTED
 REDACTED
 

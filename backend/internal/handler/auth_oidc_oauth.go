@@ -87,6 +87,8 @@ type oidcUserInfoClaims struct {
 	Username      string
 	Subject       string
 	EmailVerified *bool
+	DisplayName   string
+	AvatarURL     string
 REDACTED
 
 type oidcJWKSet struct {
@@ -338,12 +340,14 @@ REDACTED
 				RedirectTo:        redirectTo,
 				BrowserSessionKey: browserSessionKey,
 				UpstreamIdentityClaims: map[string]any{
-					"email":             email,
-					"username":          username,
-					"subject":           subject,
-					"issuer":            issuer,
-					"email_verified":    emailVerified != nil && *emailVerified,
-					"provider_fallback": strings.TrimSpace(cfg.ProviderName),
+					"email":                  email,
+					"username":               username,
+					"subject":                subject,
+					"issuer":                 issuer,
+					"email_verified":         emailVerified != nil && *emailVerified,
+					"provider_fallback":      strings.TrimSpace(cfg.ProviderName),
+					"suggested_display_name": firstNonEmpty(userInfoClaims.DisplayName, idClaims.Name, username),
+					"suggested_avatar_url":   userInfoClaims.AvatarURL,
 			REDACTED,
 				CompletionResponse: map[string]any{
 					"error":    "invitation_required",
@@ -371,12 +375,14 @@ REDACTED
 		RedirectTo:        redirectTo,
 		BrowserSessionKey: browserSessionKey,
 		UpstreamIdentityClaims: map[string]any{
-			"email":             email,
-			"username":          username,
-			"subject":           subject,
-			"issuer":            issuer,
-			"email_verified":    emailVerified != nil && *emailVerified,
-			"provider_fallback": strings.TrimSpace(cfg.ProviderName),
+			"email":                  email,
+			"username":               username,
+			"subject":                subject,
+			"issuer":                 issuer,
+			"email_verified":         emailVerified != nil && *emailVerified,
+			"provider_fallback":      strings.TrimSpace(cfg.ProviderName),
+			"suggested_display_name": firstNonEmpty(userInfoClaims.DisplayName, idClaims.Name, username),
+			"suggested_avatar_url":   userInfoClaims.AvatarURL,
 	REDACTED,
 		CompletionResponse: map[string]any{
 			"access_token":  tokenPair.AccessToken,
@@ -643,9 +649,26 @@ func oidcParseUserInfo(body string, cfg config.OIDCConnectConfig) *oidcUserInfoC
 	if verified, ok := getGJSONBool(body, "email_verified"); ok {
 		claims.EmailVerified = &verified
 REDACTED
+	claims.DisplayName = firstNonEmpty(
+		getGJSON(body, "name"),
+		getGJSON(body, "nickname"),
+		getGJSON(body, "display_name"),
+		getGJSON(body, "preferred_username"),
+		getGJSON(body, "username"),
+	)
+	claims.AvatarURL = firstNonEmpty(
+		getGJSON(body, "picture"),
+		getGJSON(body, "avatar_url"),
+		getGJSON(body, "avatar"),
+		getGJSON(body, "profile_image_url"),
+		getGJSON(body, "user.avatar"),
+		getGJSON(body, "user.avatar_url"),
+	)
 	claims.Email = strings.TrimSpace(claims.Email)
 	claims.Username = strings.TrimSpace(claims.Username)
 	claims.Subject = strings.TrimSpace(claims.Subject)
+	claims.DisplayName = strings.TrimSpace(claims.DisplayName)
+	claims.AvatarURL = strings.TrimSpace(claims.AvatarURL)
 	return claims
 REDACTED
 
