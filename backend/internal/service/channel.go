@@ -391,59 +391,50 @@ func (c *Channel) GetModelPricingByPlatform(platform, model string) *ChannelMode
 	return nil
 }
 
-// pricingLookup 是渠道定价在单个计算过程中的索引：platform → (lowerName → *pricing)。
-// 用于将 SupportedModels 的定价解析从 O(N*M) 降到 O(N+M)。
-type pricingLookup map[string]map[string]*ChannelModelPricing
+// platformPricingIndex 是单个平台下定价信息的复合索引。
+// 一次扫描即可同时支持精确查找（exact 分支）与有序遍历（wildcard 分支），
+// 避免 SupportedModels 对每个平台重复扫描定价列表。
+//
+// byLower 与 names/originalCase 共享同一套去重规则：以 lower-case 模型名为 key，
+// 首个命中保留其原始大小写。names 维持按定价行扫描顺序的稳定迭代。
+type platformPricingIndex struct {
+	byLower      map[string]*ChannelModelPricing // lowercased model name → pricing (Clone'd)
+	originalCase map[string]string               // lowercased model name → original-case model name
+	names        []string                        // priced model names in their ORIGINAL case, insertion-ordered, deduped case-insensitively (first wins)
+}
 
-// buildPricingLookup 对渠道的定价列表做一次扫描，生成 platform+模型名 的索引。
+// buildPricingIndex 对渠道的定价列表做一次扫描，按 platform 聚合为查找索引。
 // 索引值是定价条目的 Clone 指针，调用方可安全按需返回副本而不污染缓存。
-// wildcard 后缀（如 "claude-*"）不会被索引（它们不是精确模型名）。
-func buildPricingLookup(pricings []ChannelModelPricing) pricingLookup {
-	lookup := make(pricingLookup, len(pricings))
+// 通配符后缀条目（如 "claude-*"）不被索引（它们是模式，不是具体模型名）。
+// 同一平台中以大小写不敏感方式去重，先出现者保留原始大小写。
+func buildPricingIndex(pricings []ChannelModelPricing) map[string]*platformPricingIndex {
+	idx := make(map[string]*platformPricingIndex)
 	for i := range pricings {
 		p := pricings[i]
-		byModel, ok := lookup[p.Platform]
+		pidx, ok := idx[p.Platform]
 		if !ok {
-			byModel = make(map[string]*ChannelModelPricing, len(p.Models))
-			lookup[p.Platform] = byModel
+			pidx = &platformPricingIndex{
+				byLower:      make(map[string]*ChannelModelPricing),
+				originalCase: make(map[string]string),
+				names:        make([]string, 0),
+			}
+			idx[p.Platform] = pidx
 		}
 		for _, m := range p.Models {
 			if _, wild := splitWildcardSuffix(m); wild {
 				continue
 			}
 			lower := strings.ToLower(m)
-			if _, exists := byModel[lower]; exists {
-				continue // 首个命中胜出（保持 case-insensitive 去重后第一个定价）
+			if _, exists := pidx.byLower[lower]; exists {
+				continue // 首个命中胜出（case-insensitive 去重后第一个定价 / 第一个原始大小写）
 			}
 			cp := pricings[i].Clone()
-			byModel[lower] = &cp
+			pidx.byLower[lower] = &cp
+			pidx.originalCase[lower] = m
+			pidx.names = append(pidx.names, m)
 		}
 	}
-	return lookup
-}
-
-// pricedNamesFor 返回指定平台下已索引的精确模型名（保留原始大小写，按添加顺序）。
-// 它是从 pricingLookup 中取 keys 并回查原始 ModelPricing 以得到原样字符串。
-func pricedNamesFor(pricings []ChannelModelPricing, platform string) []string {
-	seen := make(map[string]struct{})
-	out := make([]string, 0)
-	for i := range pricings {
-		if pricings[i].Platform != platform {
-			continue
-		}
-		for _, m := range pricings[i].Models {
-			if _, wild := splitWildcardSuffix(m); wild {
-				continue
-			}
-			lower := strings.ToLower(m)
-			if _, ok := seen[lower]; ok {
-				continue
-			}
-			seen[lower] = struct{}{}
-			out = append(out, m)
-		}
-	}
-	return out
+	return idx
 }
 
 // SupportedModels 计算渠道的支持模型列表，结果保证不含通配符。
@@ -452,16 +443,19 @@ func pricedNamesFor(pricings []ChannelModelPricing, platform string) []string {
 //   - 遍历 Channel.ModelMapping 的每个 platform 条目；
 //   - 映射 key 不带尾部 "*"：直接作为一个支持模型名（即使没有匹配的定价行，也会产出 Pricing=nil 的条目）；
 //   - 映射 key 带尾部 "*"：用同 platform 的 ModelPricing.Models 做前缀匹配展开（定价中带 "*" 的条目被忽略，因为它们本身就是模式，不是具体模型名）；
+//   - 映射 key 为 `"*"`（单独一个星号）将展开为该平台所有定价模型（前缀为空 → 全匹配）。这是刻意行为，用于"将该平台所有模型透传"的场景；
 //   - 未在 ModelMapping 中出现的 platform 不会产出任何条目——这是**刻意设计**（"没配映射就不显示"），即使该平台有定价行。
 //
-// 每个结果尝试从 pricingLookup（平台+模型名索引）查找精确定价，未配置则 Pricing=nil。
+// 当映射 key（exact 或 wildcard 展开后的候选）能命中定价时，结果中的 Name 使用**定价的原始大小写**
+// （定价是模型身份的事实来源），否则保留映射 key 的原始大小写。
+// 每个结果尝试从 platform 索引查找精确定价，未配置则 Pricing=nil。
 // 结果按 (Platform, Name) 稳定排序，并按 (Platform, lowercase(Name)) 去重。
 func (c *Channel) SupportedModels() []SupportedModel {
 	if c == nil || len(c.ModelMapping) == 0 {
 		return nil
 	}
 
-	lookup := buildPricingLookup(c.ModelPricing)
+	idx := buildPricingIndex(c.ModelPricing)
 
 	type dedupKey struct {
 		platform string
@@ -470,20 +464,23 @@ func (c *Channel) SupportedModels() []SupportedModel {
 	seen := make(map[dedupKey]struct{})
 	result := make([]SupportedModel, 0)
 
-	add := func(platform, name string) {
+	add := func(platform, name string, pidx *platformPricingIndex) {
 		key := dedupKey{platform: platform, name: strings.ToLower(name)}
 		if _, ok := seen[key]; ok {
 			return
 		}
 		seen[key] = struct{}{}
 		var pricing *ChannelModelPricing
-		if byModel, ok := lookup[platform]; ok {
-			if p, ok := byModel[strings.ToLower(name)]; ok {
+		displayName := name
+		if pidx != nil {
+			lower := strings.ToLower(name)
+			if p, ok := pidx.byLower[lower]; ok {
 				pricing = p
+				displayName = pidx.originalCase[lower] // 定价大小写胜出
 			}
 		}
 		result = append(result, SupportedModel{
-			Name:     name,
+			Name:     displayName,
 			Platform: platform,
 			Pricing:  pricing,
 		})
@@ -493,19 +490,22 @@ func (c *Channel) SupportedModels() []SupportedModel {
 		if len(mapping) == 0 {
 			continue
 		}
-		pricedNames := pricedNamesFor(c.ModelPricing, platform)
+		pidx := idx[platform] // 可能为 nil（该平台无定价行）
 		for src := range mapping {
 			prefix, isWild := splitWildcardSuffix(src)
 			if isWild {
+				if pidx == nil {
+					continue
+				}
 				prefixLower := strings.ToLower(prefix)
-				for _, candidate := range pricedNames {
+				for _, candidate := range pidx.names {
 					if strings.HasPrefix(strings.ToLower(candidate), prefixLower) {
-						add(platform, candidate)
+						add(platform, candidate, pidx)
 					}
 				}
 				continue
 			}
-			add(platform, src)
+			add(platform, src, pidx)
 		}
 	}
 

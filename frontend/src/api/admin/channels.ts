@@ -4,8 +4,9 @@
  */
 
 import { apiClient } from '../client'
+import type { BillingMode, ChannelStatus, BillingModelSource } from '@/constants/channel'
 
-export type BillingMode = 'token' | 'per_request' | 'image'
+export type { BillingMode } from '@/constants/channel'
 
 export interface PricingInterval {
   id?: number
@@ -46,8 +47,8 @@ export interface Channel {
   id: number
   name: string
   description: string
-  status: string
-  billing_model_source: string // "requested" | "upstream"
+  status: ChannelStatus
+  billing_model_source: BillingModelSource
   restrict_models: boolean
   features_config?: Record<string, unknown>
   group_ids: number[]
@@ -181,8 +182,8 @@ export interface AvailableChannel {
   id: number
   name: string
   description: string
-  status: string
-  billing_model_source: string
+  status: ChannelStatus
+  billing_model_source: BillingModelSource
   restrict_models: boolean
   groups: AvailableGroupRef[]
   supported_models: SupportedModel[]

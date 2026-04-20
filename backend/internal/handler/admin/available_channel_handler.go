@@ -45,9 +45,9 @@ type availableChannelResponse struct {
 	SupportedModels    []supportedModelResponse `json:"supported_models"`
 }
 
-// AvailableChannelToAdminResponse 将 service 层的 AvailableChannel 转为管理员 DTO。
-// 导出供同 package 的复用；也用于构造测试 fixture。
-func AvailableChannelToAdminResponse(ch service.AvailableChannel) availableChannelResponse {
+// availableChannelToAdminResponse 将 service 层的 AvailableChannel 转为管理员 DTO。
+// 同 package 内复用；也用于构造测试 fixture。
+func availableChannelToAdminResponse(ch service.AvailableChannel) availableChannelResponse {
 	groups := make([]availableGroupResponse, 0, len(ch.Groups))
 	for _, g := range ch.Groups {
 		groups = append(groups, availableGroupResponse{ID: g.ID, Name: g.Name, Platform: g.Platform})
@@ -66,16 +66,12 @@ func AvailableChannelToAdminResponse(ch service.AvailableChannel) availableChann
 			Pricing:  pricing,
 		})
 	}
-	billingSource := ch.BillingModelSource
-	if billingSource == "" {
-		billingSource = service.BillingModelSourceChannelMapped
-	}
 	return availableChannelResponse{
 		ID:                 ch.ID,
 		Name:               ch.Name,
 		Description:        ch.Description,
 		Status:             ch.Status,
-		BillingModelSource: billingSource,
+		BillingModelSource: ch.BillingModelSource,
 		RestrictModels:     ch.RestrictModels,
 		Groups:             groups,
 		SupportedModels:    models,
@@ -93,7 +89,7 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 
 	out := make([]availableChannelResponse, 0, len(channels))
 	for _, ch := range channels {
-		out = append(out, AvailableChannelToAdminResponse(ch))
+		out = append(out, availableChannelToAdminResponse(ch))
 	}
 	response.Success(c, gin.H{"items": out})
 }

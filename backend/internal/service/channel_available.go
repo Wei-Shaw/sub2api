@@ -65,12 +65,17 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 		}
 		sort.Slice(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
 
+		billingSource := ch.BillingModelSource
+		if billingSource == "" {
+			billingSource = BillingModelSourceChannelMapped
+		}
+
 		out = append(out, AvailableChannel{
 			ID:                 ch.ID,
 			Name:               ch.Name,
 			Description:        ch.Description,
 			Status:             ch.Status,
-			BillingModelSource: ch.BillingModelSource,
+			BillingModelSource: billingSource,
 			RestrictModels:     ch.RestrictModels,
 			Groups:             groups,
 			SupportedModels:    ch.SupportedModels(),

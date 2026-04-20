@@ -637,3 +637,34 @@ func TestSupportedModels_EmptyPlatformMapping(t *testing.T) {
 	}
 	require.Empty(t, ch.SupportedModels())
 }
+
+func TestSupportedModels_ExactKeyUsesPricedCaseWhenAvailable(t *testing.T) {
+	// mapping key uses uppercase, pricing uses lowercase — pricing's case should win.
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 1, Platform: "openai", Models: []string{"gpt-4o"}},
+		},
+		ModelMapping: map[string]map[string]string{
+			"openai": {"GPT-4o": "gpt-4o"},
+		},
+	}
+	got := ch.SupportedModels()
+	require.Len(t, got, 1)
+	require.Equal(t, "gpt-4o", got[0].Name) // pricing's case wins
+}
+
+func TestSupportedModels_AsteriskOnlyMappingExpandsAllPriced(t *testing.T) {
+	// 映射 key 为单独的 "*"：前缀为空 → 命中该平台所有定价模型（透传场景）。
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 1, Platform: "openai", Models: []string{"gpt-4o", "gpt-4o-mini"}},
+		},
+		ModelMapping: map[string]map[string]string{
+			"openai": {"*": "gpt-4o"},
+		},
+	}
+	got := ch.SupportedModels()
+	require.Len(t, got, 2)
+	names := []string{got[0].Name, got[1].Name}
+	require.ElementsMatch(t, []string{"gpt-4o", "gpt-4o-mini"}, names)
+}

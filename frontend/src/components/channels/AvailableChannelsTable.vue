@@ -85,18 +85,15 @@ interface Column {
   label: string
 }
 
-withDefaults(
-  defineProps<{
-    columns: Column[]
-    rows: Row[]
-    loading: boolean
-    pricingKeyPrefix: string
-    noPricingLabel: string
-    noModelsLabel: string
-    emptyLabel: string
-  }>(),
-  { loading: false }
-)
+defineProps<{
+  columns: Column[]
+  rows: Row[]
+  loading: boolean
+  pricingKeyPrefix: string
+  noPricingLabel: string
+  noModelsLabel: string
+  emptyLabel: string
+}>()
 
 const slots = useSlots()
 /**

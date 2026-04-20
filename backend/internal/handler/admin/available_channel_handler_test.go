@@ -12,13 +12,13 @@ import (
 
 func TestAvailableChannelToAdminResponse_IncludesFullDTO(t *testing.T) {
 	// 管理员视图应包含 id / status / billing_model_source / restrict_models 等
-	// 管理字段；BillingModelSource 为空时应默认回填 channel_mapped。
+	// 管理字段；mapper 是纯透传，BillingModelSource 的默认回填由 service 层负责。
 	input := service.AvailableChannel{
 		ID:                 42,
 		Name:               "ch",
 		Description:        "d",
 		Status:             service.StatusActive,
-		BillingModelSource: "", // 验证默认值填充
+		BillingModelSource: service.BillingModelSourceChannelMapped,
 		RestrictModels:     true,
 		Groups: []service.AvailableGroupRef{
 			{ID: 1, Name: "g1", Platform: "anthropic"},
@@ -28,7 +28,7 @@ func TestAvailableChannelToAdminResponse_IncludesFullDTO(t *testing.T) {
 		},
 	}
 
-	resp := AvailableChannelToAdminResponse(input)
+	resp := availableChannelToAdminResponse(input)
 	require.Equal(t, int64(42), resp.ID)
 	require.Equal(t, "ch", resp.Name)
 	require.Equal(t, service.StatusActive, resp.Status)
@@ -52,6 +52,6 @@ func TestAvailableChannelToAdminResponse_PreservesExplicitBillingSource(t *testi
 	input := service.AvailableChannel{
 		BillingModelSource: service.BillingModelSourceUpstream,
 	}
-	resp := AvailableChannelToAdminResponse(input)
+	resp := availableChannelToAdminResponse(input)
 	require.Equal(t, service.BillingModelSourceUpstream, resp.BillingModelSource)
 }

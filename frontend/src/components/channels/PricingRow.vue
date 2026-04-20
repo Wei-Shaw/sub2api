@@ -7,6 +7,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { formatScaled } from '@/utils/pricing'
 
 const props = withDefaults(
   defineProps<{
@@ -17,11 +18,6 @@ const props = withDefaults(
   }>(),
   { value: null }
 )
-
-function formatScaled(value: number | null, scale: number): string {
-  if (value == null) return '-'
-  return `$${(value * scale).toPrecision(10).replace(/\.?0+$/, '')}`
-}
 
 const display = computed(() =>
   props.value == null ? '-' : `${formatScaled(props.value, props.scale)} ${props.unit}`
