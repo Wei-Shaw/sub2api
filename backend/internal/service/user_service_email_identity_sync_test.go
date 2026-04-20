@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestUpdateProfile_ReplacesEmailAuthIdentityWhenEmailChanges(t *testing.T) {
+func TestUpdateProfile_DoesNotReturnPartialSuccessFromEmailIdentityResync(t *testing.T) {
 	repo := &emailSyncRepoStub{
 		user: &User{
 			ID:          19,
@@ -17,6 +17,7 @@ func TestUpdateProfile_ReplacesEmailAuthIdentityWhenEmailChanges(t *testing.T) {
 			Username:    "tester",
 			Concurrency: 2,
 	REDACTED,
+		replaceErr: context.DeadlineExceeded,
 REDACTED
 	svc := NewUserService(repo, nil, nil, nil)
 
@@ -28,10 +29,6 @@ REDACTED
 	require.NotNil(t, updated)
 	require.Equal(t, newEmail, updated.Email)
 	require.Equal(t, 1, repo.updateCalls)
-	require.Equal(t, []replaceEmailCall{{
-		userID:   19,
-		oldEmail: "profile-before@example.com",
-		newEmail: "profile-after@example.com",
-REDACTEDREDACTED, repo.replaceCalls)
+	require.Empty(t, repo.replaceCalls)
 	require.Empty(t, repo.ensureCalls)
 REDACTED

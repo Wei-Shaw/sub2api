@@ -31,6 +31,8 @@ type emailSyncRepoStub struct {
 	updated      []*User
 	ensureCalls  []ensureEmailCall
 	replaceCalls []replaceEmailCall
+	ensureErr    error
+	replaceErr   error
 REDACTED
 
 func (s *emailSyncRepoStub) Create(_ context.Context, user *User) error {
@@ -125,7 +127,7 @@ func (s *emailSyncRepoStub) DisableTotp(context.Context, int64) error { return n
 
 func (s *emailSyncRepoStub) EnsureEmailAuthIdentity(_ context.Context, userID int64, email string) error {
 	s.ensureCalls = append(s.ensureCalls, ensureEmailCall{userID: userID, email: emailREDACTED)
-	return nil
+	return s.ensureErr
 REDACTED
 
 func (s *emailSyncRepoStub) ReplaceEmailAuthIdentity(_ context.Context, userID int64, oldEmail, newEmail string) error {
@@ -134,11 +136,14 @@ func (s *emailSyncRepoStub) ReplaceEmailAuthIdentity(_ context.Context, userID i
 		oldEmail: oldEmail,
 		newEmail: newEmail,
 REDACTED)
-	return nil
+	return s.replaceErr
 REDACTED
 
-func TestAdminService_CreateUser_EnsuresEmailAuthIdentity(t *testing.T) {
-	repo := &emailSyncRepoStub{nextID: 55REDACTED
+func TestAdminService_CreateUser_DoesNotReturnPartialSuccessFromEmailIdentityResync(t *testing.T) {
+	repo := &emailSyncRepoStub{
+		nextID:    55,
+		ensureErr: fmt.Errorf("unexpected email resync"),
+REDACTED
 	svc := &adminServiceImpl{userRepo: repoREDACTED
 
 	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
@@ -147,14 +152,12 @@ func TestAdminService_CreateUser_EnsuresEmailAuthIdentity(t *testing.T) {
 REDACTED)
 REDACTED
 	require.NotNil(t, user)
-	require.Equal(t, []ensureEmailCall{{
-		userID: 55,
-		email:  "admin-created@example.com",
-REDACTEDREDACTED, repo.ensureCalls)
+	require.Equal(t, int64(55), user.ID)
+	require.Empty(t, repo.ensureCalls)
 	require.Empty(t, repo.replaceCalls)
 REDACTED
 
-func TestAdminService_UpdateUser_ReplacesEmailAuthIdentity(t *testing.T) {
+func TestAdminService_UpdateUser_DoesNotReturnPartialSuccessFromEmailIdentityResync(t *testing.T) {
 	repo := &emailSyncRepoStub{
 		user: &User{
 			ID:          91,
@@ -163,6 +166,7 @@ func TestAdminService_UpdateUser_ReplacesEmailAuthIdentity(t *testing.T) {
 			Status:      StatusActive,
 			Concurrency: 3,
 	REDACTED,
+		replaceErr: fmt.Errorf("unexpected email resync"),
 REDACTED
 	svc := &adminServiceImpl{userRepo: repoREDACTED
 
@@ -172,10 +176,6 @@ REDACTED)
 REDACTED
 	require.NotNil(t, updated)
 	require.Equal(t, "after@example.com", updated.Email)
-	require.Equal(t, []replaceEmailCall{{
-		userID:   91,
-		oldEmail: "before@example.com",
-		newEmail: "after@example.com",
-REDACTEDREDACTED, repo.replaceCalls)
+	require.Empty(t, repo.replaceCalls)
 	require.Empty(t, repo.ensureCalls)
 REDACTED

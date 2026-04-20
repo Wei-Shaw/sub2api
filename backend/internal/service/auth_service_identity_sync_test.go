@@ -5,6 +5,7 @@ package service_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -31,6 +32,24 @@ func (s *authIdentityDefaultSubAssignerStub) AssignOrExtendSubscription(
 ) (*service.UserSubscription, bool, error) {
 	cloned := *input
 	s.calls = append(s.calls, &cloned)
+	return &service.UserSubscription{UserID: input.UserID, GroupID: input.GroupIDREDACTED, true, nil
+REDACTED
+
+type flakyAuthIdentityDefaultSubAssignerStub struct {
+	failuresRemaining int
+	calls             []*service.AssignSubscriptionInput
+REDACTED
+
+func (s *flakyAuthIdentityDefaultSubAssignerStub) AssignOrExtendSubscription(
+	_ context.Context,
+	input *service.AssignSubscriptionInput,
+) (*service.UserSubscription, bool, error) {
+	cloned := *input
+	s.calls = append(s.calls, &cloned)
+	if s.failuresRemaining > 0 {
+		s.failuresRemaining--
+		return nil, false, errors.New("temporary assign failure")
+REDACTED
 	return &service.UserSubscription{UserID: input.UserID, GroupID: input.GroupIDREDACTED, true, nil
 REDACTED
 
@@ -331,6 +350,55 @@ REDACTED
 	require.Equal(t, 3, storedUser.Concurrency)
 	require.Empty(t, assigner.calls)
 	require.Equal(t, 0, countProviderGrantRecords(t, client, user.ID, "email", "first_bind"))
+REDACTED
+
+func TestAuthServiceLogin_RetriesEmailFirstBindDefaultsAfterPreviousFailure(t *testing.T) {
+	assigner := &flakyAuthIdentityDefaultSubAssignerStub{failuresRemaining: 1REDACTED
+	svc, _, client := newAuthServiceWithEnt(t, map[string]string{
+		service.SettingKeyRegistrationEnabled:                    "true",
+		service.SettingKeyAuthSourceDefaultEmailBalance:          "8.5",
+		service.SettingKeyAuthSourceDefaultEmailConcurrency:      "4",
+		service.SettingKeyAuthSourceDefaultEmailSubscriptions:    `[{"group_id":11,"validity_days":30REDACTED]`,
+		service.SettingKeyAuthSourceDefaultEmailGrantOnFirstBind: "true",
+REDACTED, assigner)
+	ctx := context.Background()
+
+	passwordHash, err := svc.HashPassword("password")
+REDACTED
+	user, err := client.User.Create().
+		SetEmail("retry-first-bind@example.com").
+		SetUsername("retry-user").
+		SetPasswordHash(passwordHash).
+		SetBalance(1.5).
+		SetConcurrency(2).
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	token, gotUser, err := svc.Login(ctx, user.Email, "password")
+REDACTED
+	require.NotEmpty(t, token)
+	require.NotNil(t, gotUser)
+
+	storedUser, err := client.User.Get(ctx, user.ID)
+REDACTED
+	require.Equal(t, 1.5, storedUser.Balance)
+	require.Equal(t, 2, storedUser.Concurrency)
+	require.Len(t, assigner.calls, 1)
+	require.Equal(t, 0, countProviderGrantRecords(t, client, user.ID, "email", "first_bind"))
+
+	token, gotUser, err = svc.Login(ctx, user.Email, "password")
+REDACTED
+	require.NotEmpty(t, token)
+	require.NotNil(t, gotUser)
+
+	storedUser, err = client.User.Get(ctx, user.ID)
+REDACTED
+	require.Equal(t, 10.0, storedUser.Balance)
+	require.Equal(t, 6, storedUser.Concurrency)
+	require.Len(t, assigner.calls, 2)
+	require.Equal(t, 1, countProviderGrantRecords(t, client, user.ID, "email", "first_bind"))
 REDACTED
 
 func countProviderGrantRecords(

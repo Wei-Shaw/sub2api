@@ -161,33 +161,6 @@ type userAuthIdentityReader interface {
 	ListUserAuthIdentities(ctx context.Context, userID int64) ([]UserAuthIdentityRecord, error)
 REDACTED
 
-type emailAuthIdentitySynchronizer interface {
-	EnsureEmailAuthIdentity(ctx context.Context, userID int64, email string) error
-	ReplaceEmailAuthIdentity(ctx context.Context, userID int64, oldEmail, newEmail string) error
-REDACTED
-
-func ensureEmailAuthIdentitySync(ctx context.Context, repo UserRepository, userID int64, email string) error {
-	syncer, ok := repo.(emailAuthIdentitySynchronizer)
-	if !ok {
-		return nil
-REDACTED
-	return syncer.EnsureEmailAuthIdentity(ctx, userID, email)
-REDACTED
-
-func replaceEmailAuthIdentitySync(ctx context.Context, repo UserRepository, userID int64, oldEmail, newEmail string) error {
-	oldNormalized := strings.ToLower(strings.TrimSpace(oldEmail))
-	newNormalized := strings.ToLower(strings.TrimSpace(newEmail))
-	if oldNormalized == newNormalized {
-		return nil
-REDACTED
-
-	syncer, ok := repo.(emailAuthIdentitySynchronizer)
-	if !ok {
-		return nil
-REDACTED
-	return syncer.ReplaceEmailAuthIdentity(ctx, userID, oldEmail, newEmail)
-REDACTED
-
 // ChangePasswordRequest 修改密码请求
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password"`
@@ -281,7 +254,6 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID int64, req Updat
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
 	oldConcurrency := user.Concurrency
-	oldEmail := user.Email
 
 	// 更新字段
 	if req.Email != nil {
@@ -325,9 +297,6 @@ REDACTED
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, fmt.Errorf("update user: %w", err)
-REDACTED
-	if err := replaceEmailAuthIdentitySync(ctx, s.userRepo, user.ID, oldEmail, user.Email); err != nil {
-		return nil, fmt.Errorf("sync email auth identity: %w", err)
 REDACTED
 	if s.authCacheInvalidator != nil && user.Concurrency != oldConcurrency {
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
