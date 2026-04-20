@@ -851,7 +851,6 @@ export default {
     closeDetail: 'Close',
     hero: {
       breadcrumb: 'CHANNEL · STATUS',
-      title: 'INTELLIGENCE MONITOR',
       subtitleZh: 'Real-time tracking of availability, latency and status for leading AI endpoints.',
       subtitleEn: 'Advanced performance metrics for next-gen intelligence.'
     },
