@@ -1746,10 +1746,10 @@ func (h *OpenAIGatewayHandler) submitUsageRecordTask(task service.UsageRecordTas
 	task(ctx)
 }
 
-// handleConcurrencyError handles concurrency-related errors with proper 429 response
+// handleConcurrencyError handles concurrency-slot acquisition failures.
 func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
-	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
-		fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType), streamStarted)
+	status, errType, message := concurrencyAcquireFailureDetails(err)
+	h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 }
 
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
