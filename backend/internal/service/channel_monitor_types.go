@@ -72,15 +72,25 @@ type CheckResult struct {
 
 // UserMonitorView 用户只读视图：监控概览（含主模型最近状态 + 7d 可用率 + 附加模型最近状态）。
 type UserMonitorView struct {
-	ID               int64
-	Name             string
-	Provider         string
-	GroupName        string
-	PrimaryModel     string
-	PrimaryStatus    string
-	PrimaryLatencyMs *int
-	Availability7d   float64 // 0-100
-	ExtraModels      []ExtraModelStatus
+	ID                   int64
+	Name                 string
+	Provider             string
+	GroupName            string
+	PrimaryModel         string
+	PrimaryStatus        string
+	PrimaryLatencyMs     *int
+	PrimaryPingLatencyMs *int    // 主模型最近一次 ping 延迟
+	Availability7d       float64 // 0-100
+	ExtraModels          []ExtraModelStatus
+	Timeline             []UserMonitorTimelinePoint // 主模型最近 N 个历史点（按 checked_at DESC，最新在前）
+}
+
+// UserMonitorTimelinePoint 用户视图 timeline 单点数据（去除 message 以减小响应体）。
+type UserMonitorTimelinePoint struct {
+	Status        string    `json:"status"`
+	LatencyMs     *int      `json:"latency_ms"`
+	PingLatencyMs *int      `json:"ping_latency_ms"`
+	CheckedAt     time.Time `json:"checked_at"`
 }
 
 // ExtraModelStatus 附加模型最近一次状态。
@@ -134,10 +144,11 @@ type ChannelMonitorHistoryEntry struct {
 
 // ChannelMonitorLatest 最近一次检测的简明信息（用于 UserMonitorView 聚合）。
 type ChannelMonitorLatest struct {
-	Model     string
-	Status    string
-	LatencyMs *int
-	CheckedAt time.Time
+	Model         string
+	Status        string
+	LatencyMs     *int
+	PingLatencyMs *int
+	CheckedAt     time.Time
 }
 
 // ChannelMonitorAvailability 单个模型在某窗口内的可用率与平均延迟（用于 UserMonitorDetail 聚合）。

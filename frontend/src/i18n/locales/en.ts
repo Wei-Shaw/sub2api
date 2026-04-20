@@ -821,7 +821,22 @@ export default {
     },
     extraModelsHeader: 'Extra Models',
     extraModelsEmpty: 'No extra models',
-    latencyEmpty: '-'
+    latencyEmpty: '-',
+    availabilityPrefix: 'Availability',
+    dialogLatency: 'Dialog Latency',
+    endpointPing: 'Endpoint PING',
+    history60pts: 'HISTORY ({n} PTS)',
+    nextUpdateIn: 'NEXT UPDATE IN {n}s',
+    past: 'PAST',
+    now: 'NOW',
+    maintenancePaused: 'Maintenance · timeline paused',
+    extraModelsCount: '+ {n} models',
+    pollEvery: '{n}s polling',
+    updatedAt: 'Updated {time}',
+    relativeSecondsAgo: '{n}s ago',
+    relativeMinutesAgo: '{n}m ago',
+    relativeHoursAgo: '{n}h ago',
+    relativeDaysAgo: '{n}d ago'
   },
 
   // Channel Status (user-facing read-only view)
@@ -834,6 +849,22 @@ export default {
     detailLoadError: 'Failed to load channel detail',
     detailTitle: 'Channel Detail',
     closeDetail: 'Close',
+    hero: {
+      breadcrumb: 'CHANNEL · STATUS',
+      title: 'INTELLIGENCE MONITOR',
+      subtitleZh: 'Real-time tracking of availability, latency and status for leading AI endpoints.',
+      subtitleEn: 'Advanced performance metrics for next-gen intelligence.'
+    },
+    windowTab: {
+      '7d': '7 days',
+      '15d': '15 days',
+      '30d': '30 days'
+    },
+    overall: {
+      operational: 'OPERATIONAL',
+      degraded: 'DEGRADED',
+      unavailable: 'UNAVAILABLE'
+    },
     columns: {
       name: 'Name',
       provider: 'Provider',

@@ -14,6 +14,13 @@ export interface UserMonitorExtraModel {
   latency_ms: number | null
 }
 
+export interface MonitorTimelinePoint {
+  status: MonitorStatus
+  latency_ms: number | null
+  ping_latency_ms: number | null
+  checked_at: string
+}
+
 export interface UserMonitorView {
   id: number
   name: string
@@ -22,8 +29,10 @@ export interface UserMonitorView {
   primary_model: string
   primary_status: MonitorStatus
   primary_latency_ms: number | null
+  primary_ping_latency_ms: number | null
   availability_7d: number
   extra_models: UserMonitorExtraModel[]
+  timeline: MonitorTimelinePoint[]
 }
 
 export interface UserMonitorListResponse {

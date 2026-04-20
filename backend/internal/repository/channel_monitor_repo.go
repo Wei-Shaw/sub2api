@@ -243,7 +243,7 @@ func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID in
 func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monitorID int64) ([]*service.ChannelMonitorLatest, error) {
 	const q = `
 		SELECT DISTINCT ON (model)
-		    model, status, latency_ms, checked_at
+		    model, status, latency_ms, ping_latency_ms, checked_at
 		FROM channel_monitor_histories
 		WHERE monitor_id = $1
 		ORDER BY model, checked_at DESC
@@ -257,17 +257,25 @@ func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monit
 	out := make([]*service.ChannelMonitorLatest, 0)
 	for rows.Next() {
 		l := &service.ChannelMonitorLatest{}
-		var latency sql.NullInt64
-		if err := rows.Scan(&l.Model, &l.Status, &latency, &l.CheckedAt); err != nil {
+		var latency, ping sql.NullInt64
+		if err := rows.Scan(&l.Model, &l.Status, &latency, &ping, &l.CheckedAt); err != nil {
 			return nil, fmt.Errorf("scan latest row: %w", err)
 		}
-		if latency.Valid {
-			v := int(latency.Int64)
-			l.LatencyMs = &v
-		}
+		assignNullInt(&l.LatencyMs, latency)
+		assignNullInt(&l.PingLatencyMs, ping)
 		out = append(out, l)
 	}
 	return out, rows.Err()
+}
+
+// assignNullInt 把 sql.NullInt64 解包到 *int 指针目标（valid 才分配新 int）。
+// 集中实现避免 latency / ping 两处重复 if latency.Valid { v := int(...) ... } 模板。
+func assignNullInt(dst **int, n sql.NullInt64) {
+	if !n.Valid {
+		return
+	}
+	v := int(n.Int64)
+	*dst = &v
 }
 
 // ComputeAvailability 计算指定窗口内每个模型的可用率与平均延迟。
@@ -338,7 +346,7 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 	}
 	const q = `
 		SELECT DISTINCT ON (monitor_id, model)
-		    monitor_id, model, status, latency_ms, checked_at
+		    monitor_id, model, status, latency_ms, ping_latency_ms, checked_at
 		FROM channel_monitor_histories
 		WHERE monitor_id = ANY($1)
 		ORDER BY monitor_id, model, checked_at DESC
@@ -352,20 +360,119 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 	for rows.Next() {
 		var monitorID int64
 		l := &service.ChannelMonitorLatest{}
-		var latency sql.NullInt64
-		if err := rows.Scan(&monitorID, &l.Model, &l.Status, &latency, &l.CheckedAt); err != nil {
+		var latency, ping sql.NullInt64
+		if err := rows.Scan(&monitorID, &l.Model, &l.Status, &latency, &ping, &l.CheckedAt); err != nil {
 			return nil, fmt.Errorf("scan latest batch row: %w", err)
 		}
-		if latency.Valid {
-			v := int(latency.Int64)
-			l.LatencyMs = &v
-		}
+		assignNullInt(&l.LatencyMs, latency)
+		assignNullInt(&l.PingLatencyMs, ping)
 		out[monitorID] = append(out[monitorID], l)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// ListRecentHistoryForMonitors 为多个 monitor 批量取各自"指定模型"最近 N 条历史（按 checked_at DESC，最新在前）。
+// primaryModels[monitorID] 指定该监控要过滤的模型名；monitor 不在 primaryModels 中的记录不返回。
+// 通过 CTE + unnest(两个 int8/text 数组) 构造 (monitor_id, model) 白名单，
+// 再用 ROW_NUMBER() OVER (PARTITION BY monitor_id) 取各自前 N 条。
+//
+// 返回值：map[monitorID] -> []*ChannelMonitorHistoryEntry（不含 message，减少网络开销）。
+// 空 ids / 空 primaryModels 返回空 map，不报错。
+func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
+	ctx context.Context,
+	ids []int64,
+	primaryModels map[int64]string,
+	perMonitorLimit int,
+) (map[int64][]*service.ChannelMonitorHistoryEntry, error) {
+	out := make(map[int64][]*service.ChannelMonitorHistoryEntry, len(ids))
+	pairIDs, pairModels := buildMonitorModelPairs(ids, primaryModels)
+	if len(pairIDs) == 0 {
+		return out, nil
+	}
+	perMonitorLimit = clampTimelineLimit(perMonitorLimit)
+
+	const q = `
+		WITH targets AS (
+		    SELECT unnest($1::bigint[]) AS monitor_id,
+		           unnest($2::text[])   AS model
+		),
+		ranked AS (
+		    SELECT h.monitor_id,
+		           h.status,
+		           h.latency_ms,
+		           h.ping_latency_ms,
+		           h.checked_at,
+		           ROW_NUMBER() OVER (PARTITION BY h.monitor_id ORDER BY h.checked_at DESC) AS rn
+		    FROM channel_monitor_histories h
+		    JOIN targets t
+		      ON t.monitor_id = h.monitor_id AND t.model = h.model
+		)
+		SELECT monitor_id, status, latency_ms, ping_latency_ms, checked_at
+		FROM ranked
+		WHERE rn <= $3
+		ORDER BY monitor_id, checked_at DESC
+	`
+	rows, err := r.db.QueryContext(ctx, q, pq.Array(pairIDs), pq.Array(pairModels), perMonitorLimit)
+	if err != nil {
+		return nil, fmt.Errorf("query recent history batch: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var monitorID int64
+		entry := &service.ChannelMonitorHistoryEntry{}
+		var latency, ping sql.NullInt64
+		if err := rows.Scan(&monitorID, &entry.Status, &latency, &ping, &entry.CheckedAt); err != nil {
+			return nil, fmt.Errorf("scan recent history row: %w", err)
+		}
+		assignNullInt(&entry.LatencyMs, latency)
+		assignNullInt(&entry.PingLatencyMs, ping)
+		out[monitorID] = append(out[monitorID], entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// buildMonitorModelPairs 基于 ids 过滤出有效的 (monitor_id, model) 对，model 为空时跳过。
+// 保证两个数组长度一致且一一对应，供 unnest 展开。
+func buildMonitorModelPairs(ids []int64, primaryModels map[int64]string) ([]int64, []string) {
+	if len(ids) == 0 || len(primaryModels) == 0 {
+		return nil, nil
+	}
+	pairIDs := make([]int64, 0, len(ids))
+	pairModels := make([]string, 0, len(ids))
+	for _, id := range ids {
+		model, ok := primaryModels[id]
+		if !ok || strings.TrimSpace(model) == "" {
+			continue
+		}
+		pairIDs = append(pairIDs, id)
+		pairModels = append(pairModels, model)
+	}
+	return pairIDs, pairModels
+}
+
+// timelineLimit* 批量 timeline 查询的 perMonitorLimit 夹紧范围。
+// 下限 1 表示至少返回最近一条；上限 200 控制单次响应体与 SQL 内存占用（ROW_NUMBER 窗口上限）。
+const (
+	timelineLimitMin = 1
+	timelineLimitMax = 200
+)
+
+// clampTimelineLimit 把 perMonitorLimit 夹紧到 [timelineLimitMin, timelineLimitMax]，避免非法值或超大查询。
+func clampTimelineLimit(n int) int {
+	if n < timelineLimitMin {
+		return timelineLimitMin
+	}
+	if n > timelineLimitMax {
+		return timelineLimitMax
+	}
+	return n
 }
 
 // ComputeAvailabilityForMonitors 一次性计算多个监控在某个窗口内的每模型可用率与平均延迟。

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -22,15 +24,26 @@ func NewChannelMonitorUserHandler(monitorService *service.ChannelMonitorService)
 // --- Response ---
 
 type channelMonitorUserListItem struct {
-	ID               int64                                `json:"id"`
-	Name             string                               `json:"name"`
-	Provider         string                               `json:"provider"`
-	GroupName        string                               `json:"group_name"`
-	PrimaryModel     string                               `json:"primary_model"`
-	PrimaryStatus    string                               `json:"primary_status"`
-	PrimaryLatencyMs *int                                 `json:"primary_latency_ms"`
-	Availability7d   float64                              `json:"availability_7d"`
-	ExtraModels      []dto.ChannelMonitorExtraModelStatus `json:"extra_models"`
+	ID                   int64                                `json:"id"`
+	Name                 string                               `json:"name"`
+	Provider             string                               `json:"provider"`
+	GroupName            string                               `json:"group_name"`
+	PrimaryModel         string                               `json:"primary_model"`
+	PrimaryStatus        string                               `json:"primary_status"`
+	PrimaryLatencyMs     *int                                 `json:"primary_latency_ms"`
+	PrimaryPingLatencyMs *int                                 `json:"primary_ping_latency_ms"`
+	Availability7d       float64                              `json:"availability_7d"`
+	ExtraModels          []dto.ChannelMonitorExtraModelStatus `json:"extra_models"`
+	Timeline             []channelMonitorUserTimelinePoint    `json:"timeline"`
+}
+
+// channelMonitorUserTimelinePoint 主模型最近一次检测的 timeline 点。
+// 仅用于用户视图 list 响应，admin 视图不使用。
+type channelMonitorUserTimelinePoint struct {
+	Status        string `json:"status"`
+	LatencyMs     *int   `json:"latency_ms"`
+	PingLatencyMs *int   `json:"ping_latency_ms"`
+	CheckedAt     string `json:"checked_at"`
 }
 
 type channelMonitorUserDetailResponse struct {
@@ -60,16 +73,27 @@ func userMonitorViewToItem(v *service.UserMonitorView) channelMonitorUserListIte
 			LatencyMs: e.LatencyMs,
 		})
 	}
+	timeline := make([]channelMonitorUserTimelinePoint, 0, len(v.Timeline))
+	for _, p := range v.Timeline {
+		timeline = append(timeline, channelMonitorUserTimelinePoint{
+			Status:        p.Status,
+			LatencyMs:     p.LatencyMs,
+			PingLatencyMs: p.PingLatencyMs,
+			CheckedAt:     p.CheckedAt.UTC().Format(time.RFC3339),
+		})
+	}
 	return channelMonitorUserListItem{
-		ID:               v.ID,
-		Name:             v.Name,
-		Provider:         v.Provider,
-		GroupName:        v.GroupName,
-		PrimaryModel:     v.PrimaryModel,
-		PrimaryStatus:    v.PrimaryStatus,
-		PrimaryLatencyMs: v.PrimaryLatencyMs,
-		Availability7d:   v.Availability7d,
-		ExtraModels:      extras,
+		ID:                   v.ID,
+		Name:                 v.Name,
+		Provider:             v.Provider,
+		GroupName:            v.GroupName,
+		PrimaryModel:         v.PrimaryModel,
+		PrimaryStatus:        v.PrimaryStatus,
+		PrimaryLatencyMs:     v.PrimaryLatencyMs,
+		PrimaryPingLatencyMs: v.PrimaryPingLatencyMs,
+		Availability7d:       v.Availability7d,
+		ExtraModels:          extras,
+		Timeline:             timeline,
 	}
 }
 

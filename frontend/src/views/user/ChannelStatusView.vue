@@ -1,93 +1,23 @@
 <template>
   <AppLayout>
-    <TablePageLayout>
-      <template #filters>
-        <div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-          <div class="flex flex-1 flex-wrap items-center gap-3">
-            <div class="relative w-full sm:w-64">
-              <Icon
-                name="search"
-                size="md"
-                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
-              />
-              <input
-                v-model="searchQuery"
-                type="text"
-                :placeholder="t('channelStatus.searchPlaceholder')"
-                class="input pl-10"
-              />
-            </div>
+    <MonitorHero
+      :overall-status="overallStatus"
+      :updated-at="updatedAt"
+      :interval-seconds="DEFAULT_INTERVAL_SECONDS"
+      :window="currentWindow"
+      :loading="loading"
+      @update:window="handleWindowChange"
+      @refresh="manualReload"
+    />
 
-            <Select
-              v-model="providerFilter"
-              :options="providerFilterOptions"
-              :placeholder="t('channelStatus.allProviders')"
-              class="w-44"
-            />
-          </div>
-
-          <div class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto">
-            <button
-              @click="reload"
-              :disabled="loading"
-              class="btn btn-secondary"
-              :title="t('common.refresh')"
-            >
-              <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-            </button>
-          </div>
-        </div>
-      </template>
-
-      <template #table>
-        <DataTable :columns="columns" :data="filteredItems" :loading="loading">
-          <template #cell-name="{ row }">
-            <button
-              @click="openDetail(row)"
-              class="font-medium text-primary-600 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-            >
-              {{ row.name }}
-            </button>
-          </template>
-
-          <template #cell-provider="{ row }">
-            <span
-              class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
-              :class="providerBadgeClass(row.provider)"
-            >
-              {{ providerLabel(row.provider) }}
-            </span>
-          </template>
-
-          <template #cell-group_name="{ value }">
-            <span class="text-sm text-gray-700 dark:text-gray-300">{{ value || '-' }}</span>
-          </template>
-
-          <template #cell-primary_model="{ row }">
-            <MonitorPrimaryModelCell :row="row" />
-          </template>
-
-          <template #cell-availability_7d="{ row }">
-            <span class="text-sm text-gray-900 dark:text-gray-100">
-              {{ formatAvailability(row) }}
-            </span>
-          </template>
-
-          <template #cell-latency="{ row }">
-            <span class="text-sm text-gray-900 dark:text-gray-100">
-              {{ formatLatency(row.primary_latency_ms) }}
-            </span>
-          </template>
-
-          <template #empty>
-            <EmptyState
-              :title="t('channelStatus.empty.title')"
-              :description="t('channelStatus.empty.description')"
-            />
-          </template>
-        </DataTable>
-      </template>
-    </TablePageLayout>
+    <MonitorCardGrid
+      :items="items"
+      :window="currentWindow"
+      :countdown-seconds="countdown"
+      :loading="loading"
+      :detail-cache="detailCache"
+      @card-click="openDetail"
+    />
 
     <MonitorDetailDialog
       :show="showDetail"
@@ -99,79 +29,54 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import {
   list as listChannelMonitorViews,
-  type Provider,
+  status as fetchChannelMonitorDetail,
   type UserMonitorView,
+  type UserMonitorDetail,
 } from '@/api/channelMonitor'
-import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import TablePageLayout from '@/components/layout/TablePageLayout.vue'
-import DataTable from '@/components/common/DataTable.vue'
-import EmptyState from '@/components/common/EmptyState.vue'
-import Select from '@/components/common/Select.vue'
-import Icon from '@/components/icons/Icon.vue'
+import MonitorHero, {
+  type MonitorWindow,
+  type OverallStatus,
+} from '@/components/user/monitor/MonitorHero.vue'
+import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
-import MonitorPrimaryModelCell from '@/components/user/MonitorPrimaryModelCell.vue'
-import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
-import {
-  PROVIDER_OPENAI,
-  PROVIDER_ANTHROPIC,
-  PROVIDER_GEMINI,
-} from '@/constants/channelMonitor'
+import { DEFAULT_INTERVAL_SECONDS, STATUS_OPERATIONAL } from '@/constants/channelMonitor'
 
 const { t } = useI18n()
 const appStore = useAppStore()
-const {
-  providerLabel,
-  providerBadgeClass,
-  formatLatency,
-  formatAvailability,
-} = useChannelMonitorFormat()
 
 // ── State ──
 const items = ref<UserMonitorView[]>([])
 const loading = ref(false)
-const searchQuery = ref('')
-const providerFilter = ref<Provider | ''>('')
+const updatedAt = ref<string | null>(null)
+const currentWindow = ref<MonitorWindow>('7d')
+const detailCache = reactive<Record<number, UserMonitorDetail>>({})
+const countdown = ref(DEFAULT_INTERVAL_SECONDS)
 
 const showDetail = ref(false)
 const detailTarget = ref<UserMonitorView | null>(null)
 
-// ── Options ──
-const providerFilterOptions = computed(() => [
-  { value: '', label: t('channelStatus.allProviders') },
-  { value: PROVIDER_OPENAI, label: providerLabel(PROVIDER_OPENAI) },
-  { value: PROVIDER_ANTHROPIC, label: providerLabel(PROVIDER_ANTHROPIC) },
-  { value: PROVIDER_GEMINI, label: providerLabel(PROVIDER_GEMINI) },
-])
+let countdownTimer: number | undefined
+let abortController: AbortController | null = null
 
-// ── Columns ──
-const columns = computed<Column[]>(() => [
-  { key: 'name', label: t('channelStatus.columns.name'), sortable: false },
-  { key: 'provider', label: t('channelStatus.columns.provider'), sortable: false },
-  { key: 'group_name', label: t('channelStatus.columns.groupName'), sortable: false },
-  { key: 'primary_model', label: t('channelStatus.columns.primaryModel'), sortable: false },
-  { key: 'availability_7d', label: t('channelStatus.columns.availability7d'), sortable: false },
-  { key: 'latency', label: t('channelStatus.columns.latency'), sortable: false },
-])
-
-// ── Filtered data ──
-const filteredItems = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
-  return items.value.filter(it => {
-    if (providerFilter.value && it.provider !== providerFilter.value) return false
-    if (!q) return true
-    return (
-      it.name.toLowerCase().includes(q) ||
-      (it.group_name || '').toLowerCase().includes(q) ||
-      it.primary_model.toLowerCase().includes(q)
-    )
-  })
+// ── Computed ──
+const overallStatus = computed<OverallStatus>(() => {
+  if (items.value.length === 0) return 'operational'
+  let hasFailure = false
+  let hasDegraded = false
+  for (const it of items.value) {
+    if (it.primary_status === 'failed' || it.primary_status === 'error') hasFailure = true
+    else if (it.primary_status !== STATUS_OPERATIONAL) hasDegraded = true
+  }
+  if (hasFailure) return 'unavailable'
+  if (hasDegraded) return 'degraded'
+  return 'operational'
 })
 
 const detailTitle = computed(() => {
@@ -179,16 +84,56 @@ const detailTitle = computed(() => {
 })
 
 // ── Loaders ──
-async function reload() {
-  loading.value = true
+async function reload(silent = false) {
+  if (abortController) abortController.abort()
+  const ctrl = new AbortController()
+  abortController = ctrl
+  if (!silent) loading.value = true
   try {
-    const res = await listChannelMonitorViews()
+    const res = await listChannelMonitorViews({ signal: ctrl.signal })
+    if (ctrl.signal.aborted || abortController !== ctrl) return
     items.value = res.items || []
+    updatedAt.value = new Date().toISOString()
   } catch (err: unknown) {
+    const e = err as { name?: string; code?: string }
+    if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
     appStore.showError(extractApiErrorMessage(err, t('channelStatus.loadError')))
   } finally {
-    loading.value = false
+    if (abortController === ctrl) {
+      if (!silent) loading.value = false
+      countdown.value = DEFAULT_INTERVAL_SECONDS
+      abortController = null
+    }
   }
+}
+
+async function manualReload() {
+  await reload(false)
+  // After base reload, refresh any cached detail records so non-7d availability
+  // values stay in sync without forcing the user to switch tabs again.
+  if (currentWindow.value !== '7d') {
+    await Promise.all(items.value.map(it => loadDetail(it.id, true)))
+  }
+}
+
+async function loadDetail(id: number, force = false) {
+  if (!force && detailCache[id]) return
+  try {
+    detailCache[id] = await fetchChannelMonitorDetail(id)
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('channelStatus.detailLoadError')))
+  }
+}
+
+async function ensureDetailsForWindow() {
+  if (currentWindow.value === '7d') return
+  await Promise.all(items.value.map(it => loadDetail(it.id)))
+}
+
+// ── Handlers ──
+async function handleWindowChange(value: MonitorWindow) {
+  currentWindow.value = value
+  await ensureDetailsForWindow()
 }
 
 function openDetail(row: UserMonitorView) {
@@ -201,8 +146,28 @@ function closeDetail() {
   detailTarget.value = null
 }
 
+// ── Polling ──
+function tick() {
+  if (countdown.value <= 1) {
+    void reload(true)
+    return
+  }
+  countdown.value -= 1
+}
+
+watch(items, () => {
+  // Lazily load detail entries when window requires it and the list refreshes.
+  void ensureDetailsForWindow()
+})
+
 // ── Lifecycle ──
 onMounted(() => {
-  reload()
+  void reload(false)
+  countdownTimer = setInterval(tick, 1000) as unknown as number
+})
+
+onBeforeUnmount(() => {
+  if (countdownTimer !== undefined) clearInterval(countdownTimer)
+  if (abortController) abortController.abort()
 })
 </script>

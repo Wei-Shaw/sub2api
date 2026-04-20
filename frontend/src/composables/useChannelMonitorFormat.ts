@@ -4,6 +4,7 @@
  * Centralises:
  *  - status / provider label + badge class lookups
  *  - latency / availability / percent number formatting
+ *  - dashboard-style helpers (HSL for availability, provider gradient, relative time)
  *
  * i18n keys live under `monitorCommon.*` so admin and user views share the
  * same translation source.
@@ -23,6 +24,11 @@ import {
 
 const NEUTRAL_BADGE = 'bg-gray-100 text-gray-800 dark:bg-dark-700 dark:text-gray-300'
 
+/** Availability HSL hue multiplier: 0%=red(0) / 50%=yellow(60) / 100%=green(120). */
+const HSL_HUE_PER_PERCENT = 1.2
+const HSL_SATURATION = 72
+const HSL_LIGHTNESS = 42
+
 export interface AvailabilityRow {
   primary_status: MonitorStatus | ''
   availability_7d: number | null | undefined
@@ -39,11 +45,11 @@ export function useChannelMonitorFormat() {
   function statusBadgeClass(s: MonitorStatus | ''): string {
     switch (s) {
       case STATUS_OPERATIONAL:
-        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+        return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
       case STATUS_DEGRADED:
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+        return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
       case STATUS_FAILED:
-        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+        return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
       case STATUS_ERROR:
       default:
         return NEUTRAL_BADGE
@@ -60,11 +66,11 @@ export function useChannelMonitorFormat() {
   function providerBadgeClass(p: Provider | string): string {
     switch (p) {
       case PROVIDER_OPENAI:
-        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+        return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
       case PROVIDER_ANTHROPIC:
-        return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
+        return 'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300'
       case PROVIDER_GEMINI:
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+        return 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
       default:
         return NEUTRAL_BADGE
     }
@@ -85,6 +91,20 @@ export function useChannelMonitorFormat() {
     return formatPercent(row.availability_7d)
   }
 
+  function formatRelativeTime(iso: string | null | undefined): string {
+    if (!iso) return t('monitorCommon.latencyEmpty')
+    const ts = Date.parse(iso)
+    if (Number.isNaN(ts)) return t('monitorCommon.latencyEmpty')
+    const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000))
+    if (diffSec < 60) return t('monitorCommon.relativeSecondsAgo', { n: diffSec })
+    const diffMin = Math.floor(diffSec / 60)
+    if (diffMin < 60) return t('monitorCommon.relativeMinutesAgo', { n: diffMin })
+    const diffHour = Math.floor(diffMin / 60)
+    if (diffHour < 24) return t('monitorCommon.relativeHoursAgo', { n: diffHour })
+    const diffDay = Math.floor(diffHour / 24)
+    return t('monitorCommon.relativeDaysAgo', { n: diffDay })
+  }
+
   return {
     statusLabel,
     statusBadgeClass,
@@ -93,5 +113,33 @@ export function useChannelMonitorFormat() {
     formatLatency,
     formatPercent,
     formatAvailability,
+    formatRelativeTime,
+  }
+}
+
+/**
+ * Map availability percent to an HSL colour (red -> yellow -> green).
+ * Returns undefined for null/NaN so callers can fall back to a neutral colour.
+ */
+export function hslForPct(pct: number | null | undefined): string | undefined {
+  if (pct === null || pct === undefined || Number.isNaN(pct)) return undefined
+  const clamped = Math.max(0, Math.min(100, pct))
+  const hue = clamped * HSL_HUE_PER_PERCENT
+  return `hsl(${hue} ${HSL_SATURATION}% ${HSL_LIGHTNESS}%)`
+}
+
+/**
+ * Tailwind gradient class for the provider icon tile background.
+ */
+export function providerGradient(provider: string): string {
+  switch (provider) {
+    case PROVIDER_OPENAI:
+      return 'bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-500/10 dark:to-emerald-500/20'
+    case PROVIDER_ANTHROPIC:
+      return 'bg-gradient-to-br from-orange-50 to-amber-100 dark:from-orange-500/10 dark:to-amber-500/20'
+    case PROVIDER_GEMINI:
+      return 'bg-gradient-to-br from-sky-50 to-indigo-100 dark:from-sky-500/10 dark:to-indigo-500/20'
+    default:
+      return 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-dark-700 dark:to-dark-600'
   }
 }
