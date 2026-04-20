@@ -207,16 +207,27 @@ func TestNewWxpay(t *testing.T) {
 			errSubstr: "apiV3Key",
 		},
 		{
-			name:      "missing publicKey",
-			config:    withOverride(map[string]string{"publicKey": ""}),
+			name:      "missing certSerial",
+			config:    withOverride(map[string]string{"certSerial": ""}),
 			wantErr:   true,
-			errSubstr: "publicKey",
+			errSubstr: "certSerial",
 		},
 		{
-			name:      "missing publicKeyId",
+			name:    "legacy mode: publicKey+publicKeyId both empty",
+			config:  withOverride(map[string]string{"publicKey": "", "publicKeyId": ""}),
+			wantErr: false,
+		},
+		{
+			name:      "publicKey without publicKeyId",
 			config:    withOverride(map[string]string{"publicKeyId": ""}),
 			wantErr:   true,
-			errSubstr: "publicKeyId",
+			errSubstr: "must be provided together",
+		},
+		{
+			name:      "publicKeyId without publicKey",
+			config:    withOverride(map[string]string{"publicKey": ""}),
+			wantErr:   true,
+			errSubstr: "must be provided together",
 		},
 		{
 			name:      "apiV3Key too short",

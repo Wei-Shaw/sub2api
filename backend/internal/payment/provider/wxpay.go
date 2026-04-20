@@ -14,7 +14,9 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/wechatpay-apiv3/wechatpay-go/core"
+	"github.com/wechatpay-apiv3/wechatpay-go/core/auth"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/auth/verifiers"
+	"github.com/wechatpay-apiv3/wechatpay-go/core/downloader"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/notify"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/option"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments"
@@ -57,7 +59,7 @@ type Wxpay struct {
 }
 
 func NewWxpay(instanceID string, config map[string]string) (*Wxpay, error) {
-	required := []string{"appId", "mchId", "privateKey", "apiV3Key", "publicKey", "publicKeyId", "certSerial"}
+	required := []string{"appId", "mchId", "privateKey", "apiV3Key", "certSerial"}
 	for _, k := range required {
 		if config[k] == "" {
 			return nil, fmt.Errorf("wxpay config missing required key: %s", k)
@@ -65,6 +67,13 @@ func NewWxpay(instanceID string, config map[string]string) (*Wxpay, error) {
 	}
 	if len(config["apiV3Key"]) != 32 {
 		return nil, fmt.Errorf("wxpay apiV3Key must be exactly 32 bytes, got %d", len(config["apiV3Key"]))
+	}
+	// publicKey + publicKeyId are a pair used by the new pubkey verifier.
+	// If either is set, both must be set; otherwise fall back to legacy platform certificate mode.
+	hasPubKey := config["publicKey"] != ""
+	hasPubKeyID := config["publicKeyId"] != ""
+	if hasPubKey != hasPubKeyID {
+		return nil, fmt.Errorf("wxpay publicKey and publicKeyId must be provided together")
 	}
 	return &Wxpay{instanceID: instanceID, config: config}, nil
 }
@@ -89,14 +98,16 @@ func (w *Wxpay) ensureClient() (*core.Client, error) {
 	if w.coreClient != nil {
 		return w.coreClient, nil
 	}
-	privateKey, publicKey, err := w.loadKeyPair()
+	privateKey, err := utils.LoadPrivateKey(formatPEM(w.config["privateKey"], "PRIVATE KEY"))
+	if err != nil {
+		return nil, fmt.Errorf("wxpay load private key: %w", err)
+	}
+	verifier, err := w.buildVerifier(privateKey)
 	if err != nil {
 		return nil, err
 	}
-	certSerial := w.config["certSerial"]
-	verifier := verifiers.NewSHA256WithRSAPubkeyVerifier(w.config["publicKeyId"], *publicKey)
 	client, err := core.NewClient(context.Background(),
-		option.WithMerchantCredential(w.config["mchId"], certSerial, privateKey),
+		option.WithMerchantCredential(w.config["mchId"], w.config["certSerial"], privateKey),
 		option.WithVerifier(verifier))
 	if err != nil {
 		return nil, fmt.Errorf("wxpay init client: %w", err)
@@ -110,16 +121,23 @@ func (w *Wxpay) ensureClient() (*core.Client, error) {
 	return w.coreClient, nil
 }
 
-func (w *Wxpay) loadKeyPair() (*rsa.PrivateKey, *rsa.PublicKey, error) {
-	privateKey, err := utils.LoadPrivateKey(formatPEM(w.config["privateKey"], "PRIVATE KEY"))
-	if err != nil {
-		return nil, nil, fmt.Errorf("wxpay load private key: %w", err)
+// buildVerifier picks the verifier mode based on whether publicKeyId is configured:
+//   - publicKeyId set  → new pubkey verifier using the configured publicKey
+//   - publicKeyId empty → legacy mode: auto-download platform certs with apiV3Key
+func (w *Wxpay) buildVerifier(privateKey *rsa.PrivateKey) (auth.Verifier, error) {
+	if w.config["publicKeyId"] != "" {
+		publicKey, err := utils.LoadPublicKey(formatPEM(w.config["publicKey"], "PUBLIC KEY"))
+		if err != nil {
+			return nil, fmt.Errorf("wxpay load public key: %w", err)
+		}
+		return verifiers.NewSHA256WithRSAPubkeyVerifier(w.config["publicKeyId"], *publicKey), nil
 	}
-	publicKey, err := utils.LoadPublicKey(formatPEM(w.config["publicKey"], "PUBLIC KEY"))
+	mgr := downloader.MgrInstance()
+	err := mgr.RegisterDownloaderWithPrivateKey(context.Background(), privateKey, w.config["certSerial"], w.config["mchId"], w.config["apiV3Key"])
 	if err != nil {
-		return nil, nil, fmt.Errorf("wxpay load public key: %w", err)
+		return nil, fmt.Errorf("wxpay register platform cert downloader: %w", err)
 	}
-	return privateKey, publicKey, nil
+	return verifiers.NewSHA256WithRSAVerifier(mgr.GetCertificateVisitor(w.config["mchId"])), nil
 }
 
 func (w *Wxpay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
