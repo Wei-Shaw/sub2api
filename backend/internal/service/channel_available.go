@@ -38,19 +38,17 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 		return nil, fmt.Errorf("list channels: %w", err)
 	}
 
-	groupByID := make(map[int64]AvailableGroupRef)
-	if s.groupRepo != nil {
-		groups, err := s.groupRepo.ListActive(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("list active groups: %w", err)
-		}
-		for i := range groups {
-			g := groups[i]
-			groupByID[g.ID] = AvailableGroupRef{
-				ID:       g.ID,
-				Name:     g.Name,
-				Platform: g.Platform,
-			}
+	groups, err := s.groupRepo.ListActive(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list active groups: %w", err)
+	}
+	groupByID := make(map[int64]AvailableGroupRef, len(groups))
+	for i := range groups {
+		g := groups[i]
+		groupByID[g.ID] = AvailableGroupRef{
+			ID:       g.ID,
+			Name:     g.Name,
+			Platform: g.Platform,
 		}
 	}
 

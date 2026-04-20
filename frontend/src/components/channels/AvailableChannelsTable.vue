@@ -61,6 +61,7 @@ import { computed, useSlots } from 'vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Icon from '@/components/icons/Icon.vue'
 import SupportedModelChip from './SupportedModelChip.vue'
+import type { UserSupportedModelPricing } from '@/api/channels'
 
 interface GroupRef {
   id: number
@@ -75,7 +76,7 @@ interface Row {
   supported_models: Array<{
     name: string
     platform: string
-    pricing: unknown | null
+    pricing: UserSupportedModelPricing | null
   }>
   [key: string]: unknown
 }

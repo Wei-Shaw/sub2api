@@ -127,34 +127,15 @@ import {
   BILLING_MODE_IMAGE,
   type BillingMode
 } from '@/constants/channel'
+import type { UserPricingInterval, UserSupportedModel } from '@/api/channels'
 
-interface PricingInterval {
-  min_tokens: number
-  max_tokens: number | null
-  tier_label?: string
-  input_price: number | null
-  output_price: number | null
-  cache_write_price: number | null
-  cache_read_price: number | null
-  per_request_price: number | null
-}
-
-interface SupportedModelPricing {
-  billing_mode: BillingMode
-  input_price: number | null
-  output_price: number | null
-  cache_write_price: number | null
-  cache_read_price: number | null
-  image_output_price: number | null
-  per_request_price: number | null
-  intervals: PricingInterval[]
-}
-
-interface SupportedModelLike {
-  name: string
-  platform: string
-  pricing: SupportedModelPricing | null
-}
+/**
+ * 复用 api/channels.ts 的用户侧最小形态 DTO。
+ * admin 侧 ChannelModelPricing 字段更多，但结构上是用户 DTO 的超集，
+ * 因此 admin 视图传入时 TypeScript 结构化子类型会直接通过。
+ */
+type PricingInterval = UserPricingInterval
+type SupportedModelLike = UserSupportedModel
 
 const props = withDefaults(
   defineProps<{
